@@ -75,7 +75,9 @@ For serial personal serving, start `psionic-openai-server` with
 cap. Pylon requires a completed final text answer (`finish_reason=stop`);
 truncated, reasoning-only, tool and malformed responses fail explicitly.
 The server keeps its generation slot while decoding continues after a
-caller timeout. Hard timeout recovery is [still pending](../psionic/deepseek-support-plan.md#serving-implementation-progress-12358).
+caller timeout. For llama.cpp, the [managed serial mode](../psionic/deepseek-support-plan.md#automatic-serial-pylon-recovery-12364)
+adds automatic crash and stuck-generation recovery; native Psionic's hard
+recovery remains pending.
 
 ### Choose another text model
 
@@ -123,8 +125,16 @@ llama.cpp parallel slot. For this R1 profile, pass
 `pylon ask --history FILE` reads previous user/assistant turns from a JSON
 array of `{"role":"assistant","content":"..."}` objects. The GPU flow
 fits the existing 90-second provider deadline; the measured CPU
-continuation does not. Explicit crash/restart checks do not imply an
-automatic recovery supervisor.
+continuation does not. To let Pylon own and recover the llama.cpp worker,
+add `--managed-llama /path/to/llama-server --model-file /path/to/model.gguf`
+with an unused loopback `--engine` port and a separate Pylon home. Do not
+start the server separately. The managed Unix path uses a 75-second
+generation deadline, 180-second startup deadline, and three consecutive
+restart attempts. It stops the old process group and request before
+reopening admission, and fails interrupted jobs without retrying them.
+The [automatic GPU recovery checks](../psionic/deepseek-support-plan.md#automatic-serial-pylon-recovery-12364)
+pass after both a crash and a frozen worker. This option supports free
+text serving with one slot; it does not change `pylon up` defaults.
 GPT-OSS passed the full suite through llama.cpp; its native server
 returned no final answer for the summary prompt even with 4,096 output
 tokens, so use the compatible route for this workload.

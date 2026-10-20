@@ -47,6 +47,10 @@ remains unqualified after a timeout; the GPU is the measured serving route.
 The [serial Pylon GPU flow](deepseek-support-plan.md#serial-pylon-gpu-qualification-12360)
 also passes 27 checks, including conversation replay, overlap refusal,
 buyer timeout, and explicitly controlled model-process restart.
+The [managed llama.cpp recovery mode](deepseek-support-plan.md#automatic-serial-pylon-recovery-12364)
+also passes 13 real GPU checks: automatic crash and frozen-worker
+replacement, correct subsequent answers, and clean shutdown. It keeps
+one generation active and fails interrupted jobs without retrying them.
 Qwen3.5 CUDA accepts mixed dense/quantized projection groups and Q4_K/Q6_K
 embedding rows; Gemma 4 accepts dense per-layer projections on CUDA.
 Gemma's BPE tokenizer decodes SentencePiece spaces and literal UTF-8,

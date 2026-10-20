@@ -185,22 +185,22 @@ pub async fn ask_conversation(
         .filter(|(_, r)| r.standing == pylon::Standing::Failing)
         .map(|(address, _)| address)
         .collect();
-    // Slot beacons are throttled. A pinned pylon can finish a job before
-    // its next free-slot beacon reaches the relay; honor the buyer's wait.
+    // A pinned pylon may be busy or restarting. Wait for a ready beacon
+    // within the buyer's budget before publishing any job.
     let beacon = loop {
         if let Some(beacon) = choose(&book, now(), &failing) {
             break beacon;
         }
-        let pinned_busy = ask.pylon.is_some()
+        let pinned_waiting = ask.pylon.is_some()
             && book.iter().any(|(_, beacon)| {
                 !failing.contains(&beacon.address())
                     && pylon::freshness(beacon, now()) == Freshness::Fresh
-                    && beacon.status == Status::Online
+                    && matches!(beacon.status, Status::Online | Status::Draining)
                     && beacon.slots.free == 0
                     && beacon.serves(Lane::CjConversation).is_some()
             });
         let remaining = ask.wait.saturating_sub(started.elapsed());
-        if !pinned_busy || remaining.is_zero() {
+        if !pinned_waiting || remaining.is_zero() {
             return Err("no fresh online pylon with a free slot that passes its checks".into());
         }
         tokio::time::sleep(remaining.min(Duration::from_secs(1))).await;

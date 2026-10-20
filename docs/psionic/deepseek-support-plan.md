@@ -136,10 +136,10 @@ The native CPU continuation took 274 seconds and remains outside Pylon's
 The supervised `pylon up` path does not yet select serial mode automatically.
 
 This completes the admission and completion-validation portion of S1,
-independently of DS0. S1's operator-configured context/output caps and
-execution deadline, S2's automatic stop/restart recovery, and the cloud
-launch remain pending. An active generation that does not
-finish stays busy; this change does not claim to interrupt a hung decoder.
+independently of DS0. The later [managed llama.cpp recovery](#automatic-serial-pylon-recovery-12364)
+adds an execution deadline and automatic process replacement for that route.
+Native Psionic's hard recovery and the cloud launch remain pending.
+Without managed recovery, an active generation that does not finish stays busy.
 Worker/caller-cancellation fixtures and a tiny CPU model cover slot ownership,
 cross-endpoint refusal, error release and sequential reuse; a real HTTP
 disconnect/model-process recovery run belongs to the later S2 check.
@@ -619,9 +619,89 @@ and tunnel afterward.
 All 155 Pylon tests pass, with one existing large-model test ignored;
 20 Python tests and changed-file formatting pass. These are bounded
 shared-host observations. The restart was a qualification-controller
-action, not a shipped watchdog. Native Psionic's real HTTP-disconnect
-check, automatic hard recovery, supervised `pylon up` serial selection,
+action; the later [automatic recovery checks](#automatic-serial-pylon-recovery-12364)
+qualify the shipped managed llama.cpp watchdog. Native Psionic's real HTTP-disconnect
+check and hard recovery, supervised `pylon up` serial selection,
 cloud deployment, long context, and broader model quality remain separate.
+
+### Automatic serial Pylon recovery (#12364)
+
+`pylon serve --managed-llama` uses the existing supervisor to own one
+llama.cpp process group. It detects process exits, failed health checks,
+startup timeout, lost completion responses, and an execution deadline that
+HTTP health cannot reset. It stops admission, fails the interrupted job
+without retrying it, kills and reaps the owned group, waits for the old
+request to end, and starts a replacement. Readiness reopens admission.
+If exit or request completion cannot be confirmed, serving stays paused.
+Unrelated listeners are never adopted or killed.
+
+```sh
+OPENAGENTS_PYLON_HOME="$(openagents scratch)/r1-managed" pylon serve \
+  --managed-llama /path/to/llama-server --model-file /path/to/model.gguf \
+  --managed-device cuda --engine http://127.0.0.1:18434 \
+  --model deepseek-r1-distill-qwen-1.5b --slots 1 --max-tokens 2048 \
+  --temperature 0.6 --top-p 0.95 --seed 1 --allow BUYER_NPUB
+```
+
+Use a separate Pylon home and an unused loopback port. This opt-in Unix
+path supports free text jobs with exactly one slot and explicit sampling.
+It uses context 4,096, one llama.cpp parallel slot, thinking enabled, and
+all GPU layers (`cpu` uses zero). Defaults are 75 seconds per generation,
+180 seconds for startup, five seconds for each exit-confirmation wait,
+and three consecutive restart attempts with exponential backoff. Adjust
+`--generation-seconds` (1–75), `--startup-seconds` (1–900), and
+`--restart-limit` (1–10). A successful generation resets the failure budget;
+HTTP readiness alone does not. Exhaustion pauses serving until the
+operator fixes the worker and restarts the Pylon.
+
+The execution limit leaves recovery time inside the existing 90-second
+provider deadline. Caller cancellation keeps the serial slot until the
+model completes or recovery stops it. Normal shutdown stops the owned
+group before draining the provider. A per-home lock excludes a second
+controller; managed settings use `openagents.pylon.share.v3` so older
+hosts refuse them. Pinned buyers wait for a fresh ready beacon within
+their discovery budget before publishing a new job. An interrupted
+generation is never replayed.
+
+The [automatic recovery report](../../scripts/bench/pylon-models/deepseek-r1-pylon-recovery-2026-10-20.json)
+passes **13/13 checks** on the RTX 4080 with the same pinned R1 Q4_K_M
+and llama.cpp runtime. Real encrypted buyer jobs, signed receipts, a
+private relay, and fresh identities cover a cold answer, actual-history
+continuation, SIGKILL during generation, SIGSTOP during generation,
+automatic replacement, correct subsequent answers, and clean shutdown.
+Every replacement has its own PID and observed GPU allocation; the old
+process is gone before its replacement serves. The test injects faults
+only into its verified child; no external helper performs the restart.
+The qualification uses a 10-second generation limit and 120-second startup
+limit. Clef and `oa-pylon-net` remain untouched.
+
+| Observation | Result |
+| --- | --- |
+| Fresh owned worker ready | 2.088 s; operating-system caches were not cleared |
+| First answer and actual-history continuation | 0.750 s and 1.564 s; correct boxed `2` and `3` |
+| SIGKILL during generation | Failed job in 0.589 s; replacement ready 2.948 s later; next answer succeeds |
+| SIGSTOP during generation | Failed job in 1.938 s; replacement ready 2.943 s later; next answer succeeds |
+| Per-process GPU allocation | 1,384 MiB at readiness for each of three distinct worker PIDs |
+
+Job times include discovery. Replacement times start when the failed
+buyer command returns. The stopped-worker probe exercises failed HTTP
+health; the healthy-but-stuck HTTP fixture separately exercises the
+generation deadline. These are individual shared-host observations.
+
+Reproduce this run with the earlier runner command, an unused port, and
+`--serial-managed-llama-bin /path/to/llama-server`. Do not start a separate
+server or supply `--serial-engine-control`. Runtime, model, binary and
+source hashes, timings, GPU allocations, and checker corrections are in
+the report. GPU allocation comes from per-process NVML readings because
+this runtime's default logging suppresses layer-loading details.
+
+Validation: all 166 Pylon tests pass, with one existing large-model test
+ignored; all 20 Python tests and changed-file formatting pass. Eight
+process/HTTP fixtures cover crash replacement, healthy-but-stuck generation
+with a descendant, startup failure exhaustion, lost responses, shutdown
+while busy, occupied ports, persisted sampling validation, and truncation
+without unnecessary restart. The native worker, `pylon up` defaults, and
+private cloud deployment remain separate work.
 
 ## Further infrastructure lessons and what to defer
 

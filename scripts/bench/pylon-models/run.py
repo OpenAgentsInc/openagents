@@ -613,11 +613,14 @@ def main():
     parser.add_argument("--serial-pylon-api",help="Qualify serial Pylon CLI jobs against an already running loopback llama.cpp API")
     parser.add_argument("--fixture-relay-bin",type=Path,help="The qualification_relay example built with pylon's fixture feature")
     parser.add_argument("--serial-engine-control",type=Path,help="Optional isolated-engine helper, called with crash/start for restart qualification")
+    parser.add_argument("--serial-managed-llama-bin",type=Path,help="Qualify automatic serial recovery; Pylon owns this llama.cpp executable")
     parser.add_argument("--deepseek-sampling",choices=("greedy", "recommended"),
                         help="Defaults to greedy for the native reference, recommended sampling for llama.cpp")
     parser.add_argument("--download-reserve-gib",type=int,default=30,help="Free space to leave after download (default 30 GiB; smaller RAM-backed caches may need less)")
     parser.add_argument("--pause-unit",help="Temporarily stop this systemd user unit and restore it on exit")
     args=parser.parse_args()
+    if args.serial_managed_llama_bin and (not args.serial_pylon_api or args.serial_engine_control):
+        parser.error("--serial-managed-llama-bin needs --serial-pylon-api without --serial-engine-control")
     if args.serial_pylon_api:
         from urllib.parse import urlsplit
         api = urlsplit(args.serial_pylon_api)
@@ -673,8 +676,11 @@ def main():
         if len(rows) != 1 or rows[0].get("qualification") != "deepseek-r1":
             parser.error("serial Pylon qualification needs the pinned DeepSeek R1 model")
         import serial_pylon
-        result = serial_pylon.qualify(args, rows[0], args.output / rows[0]["id"], cli,
-                                     stop_process, deepseek_boxed_response_check)
+        if args.serial_managed_llama_bin:
+            result = serial_pylon.qualify_recovery(args, rows[0], args.output / rows[0]["id"], cli, stop_process)
+        else:
+            result = serial_pylon.qualify(args, rows[0], args.output / rows[0]["id"], cli,
+                                         stop_process, deepseek_boxed_response_check)
         (args.output / "results.json").write_text(json.dumps(result, indent=2))
         return 0 if result["qualified"] else 1
     props=pause_service(args.pause_unit,args.output) if args.pause_unit else None

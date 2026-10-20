@@ -215,6 +215,16 @@ Commands:
       --top-p N             Text sampling probability, greater than 0 and at
                             most 1. Set with --temperature and --seed.
       --seed N              Text sampling seed (unsigned 32-bit integer).
+      --managed-llama FILE  Own this llama.cpp executable and recover its serial
+                            worker automatically. Needs --model-file, --slots 1,
+                            --temperature, --top-p, and --seed. Free text only.
+      --model-file FILE     GGUF loaded by --managed-llama.
+      --managed-device NAME cuda (default), metal, or cpu.
+      --generation-seconds N
+                            Restart a stuck managed generation after 1–75 s
+                            (default 75), even if HTTP health still answers.
+      --startup-seconds N   Managed worker readiness deadline (default 180 s).
+      --restart-limit N     Consecutive managed recovery attempts (default 3).
       --vram-gb N           GPU memory for the beacon's class (default 16).
       --pool SLUG           Pool to ask to join (default everglade).
       --dedicated           Ignore this computer's lease table (a box that
@@ -693,6 +703,21 @@ async fn serve(
     }
     let stops = args.values("--stop")?;
     let sampling = text_sampling(args)?;
+    let managed = args.value("--managed-llama")?.map(PathBuf::from);
+    let model_file = args.value("--model-file")?.map(PathBuf::from);
+    let managed_device = args.value("--managed-device")?;
+    let generation_seconds = args.value("--generation-seconds")?;
+    let startup_seconds = args.value("--startup-seconds")?;
+    let restart_limit = args.value("--restart-limit")?;
+    if managed.is_none()
+        && (model_file.is_some()
+            || managed_device.is_some()
+            || generation_seconds.is_some()
+            || startup_seconds.is_some()
+            || restart_limit.is_some())
+    {
+        return Err("managed worker options need --managed-llama".into());
+    }
     let decide_url = args.value("--decide")?;
     let decide_model = args.value("--decide-model")?;
     let decide_model_file = args.value("--decide-model-file")?;
@@ -743,7 +768,8 @@ async fn serve(
     }
     let price_msat = args.number("--price-msat", 0)?;
     let net = network(args)?;
-    let inner: Arc<dyn Machine> = if args.flag("--dedicated") {
+    let dedicated = args.flag("--dedicated");
+    let inner: Arc<dyn Machine> = if dedicated {
         Arc::new(Dedicated)
     } else {
         Arc::new(Leases::from_env()?)
@@ -754,6 +780,115 @@ async fn serve(
         return Err(format!("unexpected argument `{extra}`"));
     }
     config.owner = load_owner(&home())?;
+    if let Some(server) = managed {
+        if config.total_per_minute.is_some() {
+            return Err("--managed-llama supports --rate; drop --total-rate".into());
+        }
+        if config.slots != 1 || decide_url.is_some() || price_msat != 0 {
+            return Err(
+                "--managed-llama needs --slots 1 and free text serving without --decide".into(),
+            );
+        }
+        let sampling =
+            sampling.ok_or("--managed-llama needs explicit --temperature, --top-p, and --seed")?;
+        let model_file = model_file
+            .filter(|p| p.is_file())
+            .ok_or("--managed-llama needs an existing --model-file")?;
+        let device = managed_device.unwrap_or_else(|| "cuda".into());
+        if !matches!(device.as_str(), "cuda" | "metal" | "cpu") {
+            return Err("--managed-device takes cuda, metal, or cpu".into());
+        }
+        let url =
+            reqwest::Url::parse(&engine_url).map_err(|_| "--engine must be a loopback HTTP URL")?;
+        if url.scheme() != "http"
+            || url.host_str() != Some("127.0.0.1")
+            || !url.username().is_empty()
+            || url.password().is_some()
+            || url.path() != "/"
+            || url.query().is_some()
+            || url.fragment().is_some()
+        {
+            return Err("--managed-llama needs --engine http://127.0.0.1:PORT".into());
+        }
+        let serial = crate::serial::Config {
+            server,
+            sampling,
+            generation_seconds: generation_seconds
+                .map(|s| s.parse())
+                .transpose()
+                .map_err(|_| "--generation-seconds takes a number")?
+                .unwrap_or(75),
+            startup_seconds: startup_seconds
+                .map(|s| s.parse())
+                .transpose()
+                .map_err(|_| "--startup-seconds takes a number")?
+                .unwrap_or(180),
+            stop_seconds: 5,
+            max_restarts: restart_limit
+                .map(|s| s.parse())
+                .transpose()
+                .map_err(|_| "--restart-limit takes a number")?
+                .unwrap_or(3),
+        };
+        serial.validate()?;
+        if crate::share::load(&home())?.is_some_and(|s| s.on)
+            || crate::online::load_live(&home())
+                .is_some_and(|l| crate::online::supervisor_running(&l, crate::now()))
+        {
+            return Err("a pylon already uses this home; stop it or choose a separate OPENAGENTS_PYLON_HOME".into());
+        }
+        let mut settings = crate::share::Settings::off(&slug);
+        settings.on = true;
+        settings.changed_at = crate::now();
+        settings.relay = relay.into();
+        settings.engine = engine_url;
+        settings.model = model.clone();
+        settings.label = config.label;
+        settings.slots = 1;
+        settings.allow = config.allow;
+        settings.rate_per_minute = config.rate_per_minute;
+        settings.max_tokens = config.max_tokens;
+        settings.vram_gb = vram;
+        settings.pool = config.pools[0].clone();
+        settings.dedicated = dedicated;
+        settings.text = Some(crate::share::TextLane {
+            serial: Some(serial),
+            port: url.port_or_known_default().ok_or("--engine needs a port")?,
+            model,
+            model_file,
+            device: Some(device),
+            engine: crate::share::TextEngine::LlamaCpp,
+            chat_template: None,
+            stop: stops,
+            metadata_overrides: Vec::new(),
+            gpu_layers: None,
+        });
+        crate::share::save(&home(), &settings)?;
+        settings.schema = crate::share::SERIAL_SCHEMA.into();
+        emit(
+            json_out,
+            &json!({"managed":true,"serial":settings.text,"settings":crate::share::path(&home())}),
+            "Starting the managed serial model worker. Stop with Ctrl-C.",
+        );
+        let mut options = crate::online::Options::foreground();
+        options.every = Duration::from_millis(250);
+        crate::online::supervise(home(), machine, options,
+            Arc::new(|line| eprintln!("pylon: {line}")), async {
+                #[cfg(unix)] {
+                    let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).ok();
+                    tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = async {
+                        if let Some(term) = &mut term { term.recv().await; } else { std::future::pending::<()>().await; }
+                    } => {} }
+                }
+                #[cfg(not(unix))] { let _ = tokio::signal::ctrl_c().await; }
+            }).await;
+        if crate::share::load(&home())?.as_ref() == Some(&settings) {
+            settings.on = false;
+            settings.changed_at = crate::now();
+            crate::share::save(&home(), &settings)?;
+        }
+        return Ok(());
+    }
     let mut engine = Psionic::new(&engine_url, &model)?.with_stops(stops);
     if let Some(sampling) = sampling {
         engine = engine.with_sampling(sampling);
@@ -2248,6 +2383,7 @@ async fn start(
             log.display()
         );
         let lane = crate::online::LaneSpec {
+            serial: None,
             kind: crate::online::LaneKind::Decisions,
             engine: crate::share::TextEngine::Openai,
             chat_template: None,

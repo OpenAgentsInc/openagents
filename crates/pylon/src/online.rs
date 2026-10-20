@@ -66,6 +66,7 @@ pub enum LaneKind {
 /// One engine child: which lane, where it listens, what it loads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaneSpec {
+    pub serial: Option<crate::serial::Config>,
     pub kind: LaneKind,
     pub engine: TextEngine,
     pub chat_template: Option<PathBuf>,
@@ -104,6 +105,7 @@ pub fn lanes(settings: &Settings) -> Vec<LaneSpec> {
     let mut out = Vec::new();
     if let Some(lane) = &settings.decide {
         out.push(LaneSpec {
+            serial: None,
             kind: LaneKind::Decisions,
             engine: TextEngine::Openai,
             chat_template: None,
@@ -118,6 +120,7 @@ pub fn lanes(settings: &Settings) -> Vec<LaneSpec> {
     }
     if let Some(lane) = &settings.text {
         out.push(LaneSpec {
+            serial: lane.serial.clone(),
             kind: LaneKind::Text,
             engine: lane.engine,
             chat_template: lane.chat_template.clone(),
@@ -150,8 +153,10 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
         let gpu_layers = if lane.device.as_deref() == Some("cpu") {
             "0".to_string()
         } else {
-            lane.gpu_layers
-                .map_or_else(|| "auto".to_string(), |n| n.to_string())
+            lane.gpu_layers.map_or_else(
+                || if lane.serial.is_some() { "all" } else { "auto" }.to_string(),
+                |n| n.to_string(),
+            )
         };
         command.args([
             "--ctx-size",
@@ -160,10 +165,22 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
             "1",
             "--jinja",
             "--chat-template-kwargs",
-            "{\"enable_thinking\":false}",
+            if lane.serial.is_some() {
+                "{\"enable_thinking\":true}"
+            } else {
+                "{\"enable_thinking\":false}"
+            },
             "--n-gpu-layers",
             &gpu_layers,
         ]);
+        if lane.serial.is_some()
+            && lane
+                .model
+                .as_deref()
+                .is_some_and(|m| m.to_lowercase().contains("deepseek-r1"))
+        {
+            command.args(["--reasoning-format", "deepseek"]);
+        }
         if let Some(template) = &lane.chat_template {
             command.arg("--chat-template-file").arg(template);
         }
@@ -259,6 +276,15 @@ pub trait Engines: Send + Sync {
     ) -> Result<Arc<dyn Engine>, String> {
         self.text(url, model)
     }
+    /// Text settings for a managed serial worker. Fixture factories may keep
+    /// their fixed engine; the real factory forwards the explicit sampling.
+    fn serial_text(&self, lane: &TextLane) -> Result<Arc<dyn Engine>, String> {
+        self.text_with_stops(
+            &format!("http://127.0.0.1:{}", lane.port),
+            &lane.model,
+            &lane.stop,
+        )
+    }
     /// Whether `lane`'s engine answers yet (its warm-up is done).
     fn ready<'a>(&'a self, lane: &'a LaneSpec) -> Pending<'a, bool>;
     /// Self-check the decision lane unless this model already passed one;
@@ -275,14 +301,19 @@ pub struct PsionicEngines;
 
 impl Engines for PsionicEngines {
     fn command(&self, home: &Path, lane: &LaneSpec) -> Result<tokio::process::Command, String> {
-        let mut server = crate::setup::find_server().ok_or_else(|| {
-            format!(
-                "{} is not installed; build it with: {}",
-                crate::setup::SERVER,
-                crate::setup::BUILD_SERVER
-            )
-        })?;
-        if lane.engine != TextEngine::Openai {
+        let mut server = lane
+            .serial
+            .as_ref()
+            .map(|s| s.server.clone())
+            .or_else(crate::setup::find_server)
+            .ok_or_else(|| {
+                format!(
+                    "{} is not installed; build it with: {}",
+                    crate::setup::SERVER,
+                    crate::setup::BUILD_SERVER
+                )
+            })?;
+        if lane.engine != TextEngine::Openai && lane.serial.is_none() {
             let (variable, name) = match lane.engine {
                 TextEngine::GptOss => ("OPENAGENTS_PSIONIC_GPT_OSS_BIN", "psionic-gpt-oss-server"),
                 TextEngine::LlamaCpp => ("OPENAGENTS_LLAMA_CPP_BIN", "llama-server"),
@@ -344,6 +375,18 @@ impl Engines for PsionicEngines {
     ) -> Result<Arc<dyn Engine>, String> {
         Ok(Arc::new(
             Psionic::new(url, model)?.with_stops(stop.to_vec()),
+        ))
+    }
+
+    fn serial_text(&self, lane: &TextLane) -> Result<Arc<dyn Engine>, String> {
+        let config = lane
+            .serial
+            .as_ref()
+            .ok_or("missing serial worker settings")?;
+        Ok(Arc::new(
+            Psionic::new(&format!("http://127.0.0.1:{}", lane.port), &lane.model)?
+                .with_stops(lane.stop.clone())
+                .with_sampling(config.sampling),
         ))
     }
 
@@ -464,6 +507,8 @@ impl Phase {
 /// One engine child as the supervisor last saw it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LaneLive {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub generation_busy: Option<bool>,
     pub lane: LaneKind,
     pub port: u16,
     /// The child's process id while it runs.
@@ -690,6 +735,46 @@ async fn unit(
     log: Log,
     mut halt: oneshot::Receiver<()>,
 ) {
+    let serial = settings.text.as_ref().and_then(|lane| lane.serial.as_ref());
+    let mut ownership = None;
+    if let Some(config) = serial {
+        let valid = config.validate().and_then(|()| {
+            if settings.slots != 1 || settings.decide.is_some()
+                || settings
+                    .text
+                    .as_ref()
+                    .is_none_or(|t| t.engine != TextEngine::LlamaCpp)
+            {
+                Err(
+                    "managed serial recovery needs a text-only llama.cpp pylon with exactly one slot"
+                        .to_string(),
+                )
+            } else {
+                Ok(())
+            }
+        });
+        if let Err(reason) = valid {
+            set(&live, |l| {
+                l.state = Phase::Paused;
+                l.why = Some(reason.clone());
+            });
+            log(reason);
+            let _ = halt.await;
+            return;
+        }
+        match crate::serial::ownership(&home) {
+            Ok(file) => ownership = Some(file),
+            Err(reason) => {
+                set(&live, |l| {
+                    l.state = Phase::Paused;
+                    l.why = Some(reason);
+                });
+                let _ = halt.await;
+                return;
+            }
+        }
+    }
+    let control = serial.map(|_| crate::serial::Control::new());
     let specs = lanes(&settings);
     set(&live, |l| {
         l.state = Phase::Starting;
@@ -699,6 +784,7 @@ async fn unit(
         l.lanes = specs
             .iter()
             .map(|lane| LaneLive {
+                generation_busy: lane.serial.as_ref().map(|_| false),
                 lane: lane.kind,
                 port: lane.port,
                 pid: None,
@@ -713,6 +799,32 @@ async fn unit(
         .iter()
         .enumerate()
         .map(|(index, lane)| {
+            if lane.serial.is_some() {
+                let held = Arc::clone(&live);
+                let record = move |pid, up, last_exit: Option<String>, restart| {
+                    set(&held, |l| {
+                        if let Some(lane) = l.lanes.get_mut(index) {
+                            lane.pid = pid;
+                            lane.up = up;
+                            if last_exit.is_some() {
+                                lane.last_exit = last_exit.clone();
+                            }
+                            if restart {
+                                lane.restarts += 1;
+                            }
+                        }
+                    });
+                };
+                return tokio::spawn(crate::serial::supervise(
+                    lane.clone(),
+                    home.clone(),
+                    Arc::clone(&options),
+                    Arc::clone(control.as_ref().expect("serial control")),
+                    record,
+                    Arc::clone(&log),
+                    killed.clone(),
+                ));
+            }
             tokio::spawn(child(
                 index,
                 lane.clone(),
@@ -737,13 +849,24 @@ async fn unit(
     loop {
         let mut ready = true;
         for lane in &specs {
-            if !options.engines.ready(lane).await {
+            if lane.serial.is_some() && control.as_ref().is_none_or(|c| !c.is_ready())
+                || !options.engines.ready(lane).await
+            {
                 ready = false;
                 break;
             }
         }
         if ready {
             break;
+        }
+        if let Some(reason) = control.as_ref().and_then(|c| c.failure()) {
+            set(&live, |l| {
+                l.state = Phase::Paused;
+                l.why = Some(reason);
+            });
+            let _ = (&mut halt).await;
+            stop_children().await;
+            return;
         }
         if started.elapsed() > Duration::from_secs(900) {
             set(&live, |l| {
@@ -791,6 +914,7 @@ async fn unit(
         &settings,
         Arc::clone(&machine),
         options.engines.as_ref(),
+        control.clone(),
     ) {
         Ok(built) => built,
         Err(why) => {
@@ -815,9 +939,14 @@ async fn unit(
     let mut seen = Counters::default();
     let mut reachable = true;
     let mut probed: Option<Instant> = None;
+    let mut previous_down = None;
     loop {
         let down = read(&live, |l| l.lanes.iter().any(|lane| !lane.up)).unwrap_or(false);
         provider.hold(down).await;
+        if control.is_some() && previous_down != Some(down) {
+            provider.refresh_models().await;
+            previous_down = Some(down);
+        }
         let busy = if settings.dedicated {
             false
         } else {
@@ -833,12 +962,24 @@ async fn unit(
         let counters = provider.counters().await;
         let model = decider.as_ref().map(|d| d.identity().advertised());
         set(&live, |l| {
+            if let Some(control) = &control {
+                for lane in &mut l.lanes {
+                    if lane.generation_busy.is_some() {
+                        lane.generation_busy = Some(control.busy());
+                    }
+                }
+            }
             add(l, seen, counters);
             l.model = model;
             let (state, why) = if down {
                 (
                     Phase::Paused,
-                    Some("an engine stopped; restarting it".into()),
+                    Some(
+                        control
+                            .as_ref()
+                            .and_then(|c| c.failure())
+                            .unwrap_or_else(|| "an engine stopped; restarting it".into()),
+                    ),
                 )
             } else if !reachable {
                 (
@@ -866,11 +1007,19 @@ async fn unit(
         l.state = Phase::Paused;
         l.why = Some("finishing jobs before it stops".into());
     });
-    let _ = stop_provider.send(());
-    let _ = serving.await;
+    if control.is_some() {
+        provider.hold(true).await;
+        stop_children().await;
+        let _ = stop_provider.send(());
+        let _ = serving.await;
+    } else {
+        let _ = stop_provider.send(());
+        let _ = serving.await;
+        stop_children().await;
+    }
     let counters = provider.counters().await;
     set(&live, |l| add(l, seen, counters));
-    stop_children().await;
+    drop(ownership);
 }
 
 fn add(live: &mut Live, seen: Counters, now: Counters) {
@@ -889,6 +1038,7 @@ fn build(
     settings: &Settings,
     machine: Arc<dyn Machine>,
     engines: &dyn Engines,
+    serial: Option<Arc<crate::serial::Control>>,
 ) -> Result<Built, String> {
     let mut config = settings.config(home);
     config.owner = load_owner(home)?;
@@ -902,6 +1052,12 @@ fn build(
         .text
         .as_ref()
         .map(|lane| {
+            if let Some(control) = &serial {
+                return Ok(crate::serial::SerialEngine::wrap(
+                    engines.serial_text(lane)?,
+                    Arc::clone(control),
+                ));
+            }
             engines.text_with_stops(
                 &format!("http://127.0.0.1:{}", lane.port),
                 &lane.model,
@@ -1341,6 +1497,7 @@ pub fn settings_for_up(
                 }
             }
             Some(TextLane {
+                serial: None,
                 port: text_port,
                 model,
                 model_file: file,
@@ -1422,6 +1579,12 @@ pub fn foreground_running(live: &Live, at: u64) -> bool {
         && live.state != Phase::Off
         && live.pid != std::process::id()
         && process_alive(live.pid)
+}
+
+/// Whether a recently reporting supervisor still owns this home, even if off.
+#[must_use]
+pub fn supervisor_running(live: &Live, at: u64) -> bool {
+    live.fresh(at) && process_alive(live.pid)
 }
 
 /// Whether process `pid` exists (`kill -0`); `true` where that cannot be

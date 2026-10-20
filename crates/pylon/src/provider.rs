@@ -446,6 +446,13 @@ impl Provider {
         text && decisions
     }
 
+    /// Refresh availability after an owned worker changes readiness.
+    pub(crate) async fn refresh_models(&self) {
+        let healthy = self.models_healthy().await;
+        self.state.lock().await.healthy = healthy;
+        self.changed.notify_one();
+    }
+
     /// Serve until `stop` resolves, let admitted jobs finish (at most
     /// [`DRAIN`]) while taking no new one, then publish an offline beacon.
     ///
@@ -520,7 +527,8 @@ impl Provider {
                 None => true,
                 Some((at, held)) => {
                     let since = at.elapsed();
-                    (held != key && since >= Duration::from_secs(10))
+                    held.0 != key.0
+                        || (held != key && since >= Duration::from_secs(10))
                         || since >= Duration::from_secs(60)
                 }
             };

@@ -296,6 +296,7 @@ fn status_reads_a_fixture_pylon() {
         model: Some("clef-flash@sha256:test".into()),
         lanes: vec![
             LaneLive {
+                generation_busy: None,
                 lane: LaneKind::Decisions,
                 port: 18_096,
                 pid: Some(42),
@@ -304,6 +305,7 @@ fn status_reads_a_fixture_pylon() {
                 last_exit: Some("exited (signal: 9)".into()),
             },
             LaneLive {
+                generation_busy: None,
                 lane: LaneKind::Text,
                 port: 18_097,
                 pid: Some(43),

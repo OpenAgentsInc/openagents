@@ -7,6 +7,8 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import signal
+import re
 import threading
 import time
 import urllib.error
@@ -239,4 +241,159 @@ def qualify(args, row, folder, cli, stop_process, boxed_check):
         for log in provider_logs:
             log.close()
         save()
+    return result
+
+
+def qualify_recovery(args, row, folder, cli, stop_process):
+    """Run real buyer jobs while Pylon automatically replaces its GPU child."""
+    folder.mkdir(parents=True, exist_ok=True)
+    home = folder / "pylon-home"
+    result = {"scope": "automatic_serial_pylon_recovery", "model": row, "qualified": False, "checks": []}
+    report = folder / "results.json"
+    relay = provider = None
+    logs = []
+
+    def record(name, passed, **detail):
+        result["checks"].append({"name": name, "passed": bool(passed), **detail})
+        report.write_text(json.dumps(result, indent=2))
+        print(json.dumps({"event": "automatic-recovery-check", "name": name, "passed": bool(passed)}), flush=True)
+        if not passed:
+            raise RuntimeError("Automatic recovery check failed: " + name)
+
+    def live():
+        try:
+            return json.loads((home / "live.json").read_text())
+        except (OSError, ValueError):
+            return {}
+
+    def wait(predicate, seconds=120):
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            state = live()
+            if predicate(state):
+                return state
+            if provider.poll() is not None:
+                raise RuntimeError("The managed provider stopped; see provider.log")
+            time.sleep(0.05)
+        raise RuntimeError("The managed worker did not reach the expected state")
+
+    def ready(old=None):
+        return wait(lambda s: s.get("state") == "serving" and any(
+            lane.get("up") and lane.get("pid") and lane["pid"] != old
+            and not lane.get("generation_busy") for lane in s.get("lanes", [])))
+
+    def owned(state):
+        lane = state["lanes"][0]
+        pid = lane["pid"]
+        status = Path(f"/proc/{pid}/status").read_text()
+        parent = int(re.search(r"^PPid:\s*(\d+)", status, re.MULTILINE)[1])
+        if parent != provider.pid or os.getpgid(pid) != pid:
+            raise RuntimeError("Refusing to signal a worker not owned by this provider")
+        gpu = subprocess.check_output(["nvidia-smi", "--query-compute-apps=pid,used_memory",
+                                       "--format=csv,noheader,nounits"], text=True)
+        memory = next((int(line.split(",")[1]) for line in gpu.splitlines()
+                       if line.split(",")[0].strip() == str(pid)), 0)
+        return {"pid": pid, "parent": parent, "process_group": os.getpgid(pid),
+                "start_ticks": Path(f"/proc/{pid}/stat").read_text().split()[21],
+                "command": Path(f"/proc/{pid}/cmdline").read_bytes().decode().split("\0")[:-1],
+                "gpu_mib": memory}
+
+    def correct(answer, number):
+        data = answer["response"].get("data", {})
+        text = data.get("text") or ""
+        return (answer["exit_code"] == 0 and re.findall(r"\\boxed\{([+-]?\d+)\}", text) == [number]
+                and not any(marker in text for marker in ("<think>", "</think>", "<｜end▁of▁sentence｜>"))
+                and data.get("receipt") and not data.get("receipt_error"))
+
+    try:
+        if os.name != "posix" or not Path("/proc").is_dir():
+            raise RuntimeError("The GPU recovery probe requires a Linux host")
+        relay_log = (folder / "relay.log").open("w")
+        logs.append(relay_log)
+        relay = subprocess.Popen([str(args.fixture_relay_bin), "900"], stdout=subprocess.PIPE,
+                                 stderr=relay_log, text=True, start_new_session=True)
+        relay_url = relay.stdout.readline().strip()
+        if not relay_url.startswith("ws://127.0.0.1:"):
+            raise RuntimeError("The qualification relay is not on loopback")
+        identity = cli(args.pylon_bin, home, ["whoami"])["response"]["data"]
+        command = [str(args.pylon_bin), "serve", "--engine", args.serial_pylon_api,
+                   "--managed-llama", str(args.serial_managed_llama_bin),
+                   "--model-file", str(args.model_dir / row["id"] / row["file"]),
+                   "--model", row["id"], "--slots", "1", "--max-tokens", "2048", "--dedicated",
+                   "--temperature", "0.6", "--top-p", "0.95", "--seed", "1", "--generation-seconds", "10",
+                   "--startup-seconds", "120", "--restart-limit", "3", "--allow", identity["buyer"],
+                   "--rate", "600", "--relay", relay_url, "--json"]
+        result["provider_command"] = command
+        log = (folder / "provider.log").open("w")
+        logs.append(log)
+        provider = subprocess.Popen(command, env=dict(os.environ, OPENAGENTS_PYLON_HOME=str(home)),
+                                    stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        started = time.perf_counter()
+        state = ready()
+        process = owned(state)
+        record("owned_gpu_ready", process["gpu_mib"] > 0, process=process, state=state,
+               startup_ms=round((time.perf_counter() - started) * 1000, 3))
+        instruction = "Please reason step by step, and put your final answer within \\boxed{}."
+        prompt = "What is 1 + 1? " + instruction
+
+        def ask(text=prompt, history=None):
+            command = ["ask", text, "--pylon", identity["provider"], "--wait", "118", "--relay", relay_url]
+            if history:
+                command += ["--history", str(history)]
+            return cli(args.pylon_bin, home, command, timeout=133)
+
+        first = ask()
+        record("cold_answer", correct(first, "2"), cli=first)
+        history = folder / "history.json"
+        history.write_text(json.dumps([{"role": "user", "content": prompt},
+                                       {"role": "assistant", "content": first["response"]["data"]["text"]}]))
+        continued = ask("Add one to your previous answer. " + instruction, history)
+        record("continuation", correct(continued, "3"), cli=continued)
+
+        for name, sig in [("crash", signal.SIGKILL), ("stopped_worker", signal.SIGSTOP)]:
+            # Only the test's fault is injected; every replacement is started
+            # by the production supervisor, with no external restart helper.
+            state = ready()
+            original = owned(state)
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                pending = pool.submit(ask, "List the integers from 1 to 300 in your reasoning before computing their sum. " + instruction)
+                active = wait(lambda s: any(lane.get("pid") == original["pid"]
+                    and lane.get("generation_busy") for lane in s.get("lanes", [])), seconds=15)
+                checked = owned(active)
+                if checked["start_ticks"] != original["start_ticks"]:
+                    raise RuntimeError("The worker changed before fault injection")
+                record(name + "_request_active", True, state=active, process=checked)
+                os.kill(checked["pid"], sig)
+                failed = pending.result(timeout=25)
+            record(name + "_job_failed", failed["exit_code"] != 0
+                   and failed["response"].get("data", {}).get("text") is None
+                   and failed["response"].get("data", {}).get("outcome") != "timeout", cli=failed)
+            started = time.perf_counter()
+            restarted = ready(original["pid"])
+            current = owned(restarted)
+            record(name + "_automatic_restart", not Path(f"/proc/{original['pid']}").exists()
+                   and current["gpu_mib"] > 0, state=restarted, process=current,
+                   ready_after_failed_job_ms=round((time.perf_counter() - started) * 1000, 3))
+            answered = ask()
+            record(name + "_next_job", correct(answered, "2"), cli=answered)
+
+        # This runtime suppresses layer-loading details at its default log
+        # level. Verify GPU allocation for each owned process through NVML.
+        workers = [check["process"] for check in result["checks"]
+                   if check["name"] in ("owned_gpu_ready", "crash_automatic_restart",
+                                        "stopped_worker_automatic_restart")]
+        record("all_replacements_use_gpu", len({worker["pid"] for worker in workers}) == 3
+               and all(worker["gpu_mib"] > 0 for worker in workers), processes=workers)
+        stop_process(provider)
+        record("shutdown", not Path(f"/proc/{current['pid']}").exists()
+               and live().get("state") == "off" and not json.loads((home / "share.json").read_text())["on"], state=live())
+        result["qualified"] = True
+    except Exception as error:
+        result["error"] = str(error)
+    finally:
+        stop_process(provider)
+        stop_process(relay)
+        for log in logs:
+            log.close()
+        report.write_text(json.dumps(result, indent=2))
     return result

@@ -155,6 +155,15 @@ async fn wait_for_beacon(hub: &Arc<Mutex<Hub>>) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_pinned_buyer_waits_for_a_busy_beacon_to_become_free() {
+    pinned_buyer_waits(nostr::pylon::Status::Online).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_pinned_buyer_waits_for_worker_recovery_before_publishing() {
+    pinned_buyer_waits(nostr::pylon::Status::Draining).await;
+}
+
+async fn pinned_buyer_waits(status: nostr::pylon::Status) {
     let (url, hub) = relay().await;
     let home = tempfile::tempdir().unwrap();
     let provider_key = Identity::generate();
@@ -168,6 +177,7 @@ async fn a_pinned_buyer_waits_for_a_busy_beacon_to_become_free() {
     }));
     wait_for_beacon(&hub).await;
     let mut busy = provider.beacon(None).await;
+    busy.status = status;
     busy.slots.free = 0;
     busy.observed_at = pylon::now();
     let event = nostr::pylon::owned_beacon_event(provider_key.signer(), &busy, None).unwrap();
@@ -180,6 +190,7 @@ async fn a_pinned_buyer_waits_for_a_busy_beacon_to_become_free() {
     tokio::spawn(async move {
         tokio::time::sleep(Duration::from_millis(300)).await;
         busy.slots.free = 1;
+        busy.status = nostr::pylon::Status::Online;
         busy.observed_at = pylon::now();
         let event = nostr::pylon::owned_beacon_event(provider_key.signer(), &busy, None).unwrap();
         let mut stored = shared.lock().await;
@@ -205,6 +216,11 @@ async fn a_pinned_buyer_waits_for_a_busy_beacon_to_become_free() {
 
 #[tokio::test]
 async fn a_pinned_busy_pylon_does_not_wait_beyond_the_buyers_budget() {
+    pinned_unavailable_budget(nostr::pylon::Status::Online).await;
+    pinned_unavailable_budget(nostr::pylon::Status::Draining).await;
+}
+
+async fn pinned_unavailable_budget(status: nostr::pylon::Status) {
     let (url, hub) = relay().await;
     let home = tempfile::tempdir().unwrap();
     let key = Identity::generate();
@@ -215,6 +231,7 @@ async fn a_pinned_busy_pylon_does_not_wait_beyond_the_buyers_budget() {
     )
     .unwrap();
     let mut busy = provider.beacon(None).await;
+    busy.status = status;
     busy.slots.free = 0;
     hub.lock()
         .await

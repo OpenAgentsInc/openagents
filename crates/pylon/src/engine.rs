@@ -9,11 +9,29 @@ use std::time::Duration;
 use serde_json::{Value, json};
 
 /// Explicit text sampling settings, independent of the model server's defaults.
-#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "SamplingInput")]
 pub struct Sampling {
     temperature: f64,
     top_p: f64,
     seed: u32,
+}
+
+// Construction and deserialization both exclude NaN, so equality is reflexive.
+impl Eq for Sampling {}
+
+#[derive(serde::Deserialize)]
+struct SamplingInput {
+    temperature: f64,
+    top_p: f64,
+    seed: u32,
+}
+
+impl TryFrom<SamplingInput> for Sampling {
+    type Error = String;
+    fn try_from(value: SamplingInput) -> Result<Self, Self::Error> {
+        Self::new(value.temperature, value.top_p, value.seed)
+    }
 }
 
 impl Sampling {
@@ -59,6 +77,10 @@ pub type Pending<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// A model a pylon can run jobs on.
 pub trait Engine: Send + Sync {
+    /// Whether the last request ended without confirming worker completion.
+    fn recovery_required(&self) -> bool {
+        false
+    }
     /// The model identifier the beacon advertises.
     fn model(&self) -> &str;
     /// Whether the engine answers right now.
@@ -82,6 +104,7 @@ pub struct Psionic {
     served: tokio::sync::OnceCell<String>,
     stop: Vec<String>,
     sampling: Option<Sampling>,
+    uncertain: std::sync::atomic::AtomicBool,
 }
 
 /// The id in a `/v1/models` body to request `model` by. Psionic lists a
@@ -125,6 +148,7 @@ impl Psionic {
             served: tokio::sync::OnceCell::new(),
             stop: Vec::new(),
             sampling: None,
+            uncertain: std::sync::atomic::AtomicBool::new(false),
         })
     }
 
@@ -179,6 +203,9 @@ impl Psionic {
 }
 
 impl Engine for Psionic {
+    fn recovery_required(&self) -> bool {
+        self.uncertain.load(std::sync::atomic::Ordering::Acquire)
+    }
     fn model(&self) -> &str {
         &self.model
     }
@@ -205,6 +232,8 @@ impl Engine for Psionic {
                 .map(|t| json!({"role": t.role, "content": t.content}))
                 .collect();
             let request = self.request_name().await;
+            self.uncertain
+                .store(true, std::sync::atomic::Ordering::Release);
             let response = self
                 .client
                 .post(format!("{}/v1/chat/completions", self.base))
@@ -214,12 +243,18 @@ impl Engine for Psionic {
                 .map_err(|e| format!("model server unreachable: {e}"))?;
             let status = response.status();
             if !status.is_success() {
+                self.uncertain.store(
+                    status.is_server_error() || status.as_u16() == 429,
+                    std::sync::atomic::Ordering::Release,
+                );
                 return Err(format!("model server refused with {status}"));
             }
             let body: Value = response
                 .json()
                 .await
                 .map_err(|e| format!("model server answered with no JSON: {e}"))?;
+            self.uncertain
+                .store(false, std::sync::atomic::Ordering::Release);
             let text = finished_text(&body)?;
             Ok(Generation {
                 text,

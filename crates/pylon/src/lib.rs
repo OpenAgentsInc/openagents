@@ -59,6 +59,7 @@ pub mod provider;
 pub mod relay;
 pub mod release;
 pub mod route;
+pub mod serial;
 pub mod settings;
 pub mod setup;
 pub mod share;
