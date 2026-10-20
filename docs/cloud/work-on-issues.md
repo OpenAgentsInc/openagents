@@ -25,6 +25,11 @@ the work and why.
 3. **Judged by the diff.** The driver replays the checks itself on what the
    agent actually changed: `cargo fmt` and `cargo test` for every package
    the diff touches. A run passes only with a diff and every check green.
+   If tests fail, the driver reruns them at the base commit and reports tests
+   that fail on main too as `preexisting`; they don't fail the change unless
+   the issue names them. If the bare Claude Code fallback can't run (for
+   example, because it has reached its usage limit), the briefed attempt's
+   checks determine the run's result.
 4. **Escalation to bare Claude Code** (`claude -p "Complete this issue…"`, a
    fresh worktree, judged the same way), recorded in the result as
    `escalated`:
