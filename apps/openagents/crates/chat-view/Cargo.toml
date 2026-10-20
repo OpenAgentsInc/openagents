@@ -14,7 +14,15 @@ serde.workspace = true
 openagents-theme.workspace = true
 # The span and language types only; grammars stay native (`highlight`).
 openagents-syntax = { path = "../syntax", default-features = false }
+openagents-brand.workspace = true
+openagents-proto.workspace = true
+web-time = "1.1.0"
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
+
+[target.'cfg(windows)'.dependencies]
+# The pulse loaders' high-resolution clock (motion/windows_pulse.rs).
+futures.workspace = true
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
 
 [dev-dependencies]
 serde_json.workspace = true

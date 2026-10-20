@@ -11158,13 +11158,18 @@ dependencies = [
 name = "openagents-chat-view"
 version = "1.0.0"
 dependencies = [
+ "futures",
  "gpui",
+ "openagents-brand",
+ "openagents-proto",
  "openagents-syntax",
  "openagents-theme",
  "openagents-workspace-hack",
  "rust-native",
  "serde",
  "serde_json",
+ "web-time",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

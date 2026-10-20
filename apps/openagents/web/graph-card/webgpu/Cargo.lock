@@ -3176,12 +3176,17 @@ dependencies = [
 name = "openagents-chat-view"
 version = "1.0.0"
 dependencies = [
+ "futures",
  "gpui",
+ "openagents-brand",
+ "openagents-proto",
  "openagents-syntax",
  "openagents-theme",
  "openagents-workspace-hack",
  "rust-native",
  "serde",
+ "web-time",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3211,6 +3216,7 @@ dependencies = [
  "gpui",
  "gpui_wgpu",
  "http_client",
+ "image",
  "js-sys",
  "log",
  "parking_lot",
@@ -3278,9 +3284,11 @@ dependencies = [
  "gpui",
  "openagents-chat-view",
  "openagents-doc",
+ "openagents-gpui-web",
  "openagents-markdown",
  "openagents-proto",
  "pulldown-cmark",
+ "resvg",
  "unicode-segmentation",
 ]
 
