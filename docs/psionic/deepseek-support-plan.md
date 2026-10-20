@@ -896,7 +896,9 @@ broader quality qualification remain separate work.
 
 DS1 is protocol-qualified for DeepSeek-V4.1-Flash at checkpoint revision
 `1bae0e1088993b9b82de08f59de5be5a34e42170`. No Psionic executor runs the
-model, and no public model list names it.
+model, and no public model list names it. The mock streams qualify protocol handling
+only: they don't qualify tool execution, constrained output, or model
+quality.
 
 - **Dependency.** `deepseek-recipe` at
   `935817c66f5d6e64838f419692545f06787e485f` is vendored under
@@ -920,7 +922,17 @@ model, and no public model list names it.
   `reasoning_content`, incremental tool-call arguments, finish reasons, and
   usage. Unfinished reasoning stays reasoning, answer whitespace is kept byte
   for byte, and a stream without a finish event is reported as incomplete,
-  never as `stop`.
+  never as `stop`. Mock-backend tests cover reasoning then answer, long tool
+  arguments split across chunks, several tool results, literal marker
+  spellings, split UTF-8, truncated reasoning, and a missing finish event.
+  They also check that output is identical at every single split point and
+  at every pair of split points for short cases, and that a stream cut off
+  mid-reasoning, mid-tool-argument, or mid-UTF-8 ends incomplete or with
+  `length`, never as a finished answer.
+- **Special-token injection.** Marker spellings in system, user, and tool
+  text encode as ordinary text; only the template's own markers become
+  special IDs, and the parser treats the same spellings in generated text
+  as content.
 - **Options and constraints.** Thinking mode, reasoning effort, and the
   recipe's V4.1 `temperature` and `top_p` defaults resolve for V4.1 only,
   then the recipe's `max_tokens` default shrinks to Psionic's context and
