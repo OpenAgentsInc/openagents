@@ -35,6 +35,16 @@ const QWEN35_BYTE_LEVEL_BPE_PATTERN: &str = concat!(
     "\\s+"
 );
 
+const DEEPSEEK_R1_BYTE_LEVEL_BPE_PATTERN: &str = concat!(
+    "(?i:'s|'t|'re|'ve|'m|'ll|'d)|",
+    "[^\\r\\n\\p{L}\\p{N}]?\\p{L}+|",
+    "\\p{N}|",
+    " ?[^\\s\\p{L}\\p{N}]+[\\r\\n]*|",
+    "\\s*[\\r\\n]+|",
+    "\\s+(?!\\S)|",
+    "\\s+"
+);
+
 const LLAMA_TOKEN_TYPE_UNKNOWN: i32 = 2;
 const LLAMA_TOKEN_TYPE_CONTROL: i32 = 3;
 const LLAMA_TOKEN_TYPE_USER_DEFINED: i32 = 4;
@@ -742,8 +752,12 @@ impl ByteLevelBpeTokenizerCore {
 
         let special_regex = build_special_regex(&special_encoder)?;
         let normalize_nfc = match tokenizer.pretokenizer.as_ref() {
-            Some(GgufTokenizerPretokenizer::Qwen35) => true,
-            Some(GgufTokenizerPretokenizer::Custom(value)) => value == "qwen35",
+            Some(GgufTokenizerPretokenizer::Qwen35 | GgufTokenizerPretokenizer::DeepSeekR1Qwen) => {
+                true
+            }
+            Some(GgufTokenizerPretokenizer::Custom(value)) => {
+                matches!(value.as_str(), "qwen35" | "deepseek-r1-qwen")
+            }
             _ => false,
         };
         Ok(Self {
@@ -912,6 +926,10 @@ fn byte_level_bpe_pattern(
         | Some(GgufTokenizerPretokenizer::Qwen3)
         | Some(GgufTokenizerPretokenizer::Refact)
         | Some(GgufTokenizerPretokenizer::Tekken) => Ok(GENERIC_BYTE_LEVEL_BPE_PATTERN),
+        Some(GgufTokenizerPretokenizer::DeepSeekR1Qwen) => Ok(DEEPSEEK_R1_BYTE_LEVEL_BPE_PATTERN),
+        Some(GgufTokenizerPretokenizer::Custom(value)) if value == "deepseek-r1-qwen" => {
+            Ok(DEEPSEEK_R1_BYTE_LEVEL_BPE_PATTERN)
+        }
         // Gemma merges across word boundaries; only newline runs split BPE.
         Some(GgufTokenizerPretokenizer::Gemma4) => Ok("[^\\n]+|[\\n]+"),
         Some(GgufTokenizerPretokenizer::Qwen35) => Ok(QWEN35_BYTE_LEVEL_BPE_PATTERN),

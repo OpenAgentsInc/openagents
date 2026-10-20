@@ -38,15 +38,17 @@ use psionic_cluster::{
 };
 use psionic_models::{
     GgufBlobArtifact, GgufDecoderArtifactInspection, GgufDecoderExpertRuntimeContract,
-    GgufDecoderFamily, GgufDecoderServingAdmissionKind, GgufPromptTemplateRenderer,
-    GptOssHarmonyParseOptions, GptOssHarmonyParsedOutput, GptOssHarmonyRenderContext,
-    GptOssTokenizer, ParsedReasoningResponse, PromptChannelConfig, PromptMessage,
-    PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, QWEN38_TEMPLATE_ID,
-    QWEN38_TEMPLATE_SHA256, QWEN38_TOKENIZER_SHA256, Qwen35MultimodalProjectionConfig,
-    Qwen38PromptContent, Qwen38PromptMessage, Qwen38PromptOptions, Qwen38PromptReceipt,
-    Qwen38PromptRole, Qwen38RenderedPrompt, Qwen38ToolDefinition, Qwen38ToolFunctionDefinition,
-    ReasoningParser, parse_gpt_oss_harmony_text, parse_reasoning_response_text_for_decoder_family,
-    reasoning_parser_for_decoder_family, render_gpt_oss_harmony_prompt, render_qwen38_prompt,
+    GgufDecoderFamily, GgufDecoderServingAdmissionKind, GgufPromptTemplateFamily,
+    GgufPromptTemplateRenderer, GptOssHarmonyParseOptions, GptOssHarmonyParsedOutput,
+    GptOssHarmonyRenderContext, GptOssTokenizer, ParsedReasoningResponse, PromptChannelConfig,
+    PromptMessage, PromptMessageRole, PromptReasoningEffort, PromptRenderOptions,
+    QWEN38_TEMPLATE_ID, QWEN38_TEMPLATE_SHA256, QWEN38_TOKENIZER_SHA256,
+    Qwen35MultimodalProjectionConfig, Qwen38PromptContent, Qwen38PromptMessage,
+    Qwen38PromptOptions, Qwen38PromptReceipt, Qwen38PromptRole, Qwen38RenderedPrompt,
+    Qwen38ToolDefinition, Qwen38ToolFunctionDefinition, ReasoningParser,
+    parse_deepseek_r1_response_text, parse_gpt_oss_harmony_text,
+    parse_reasoning_response_text_for_decoder_family, reasoning_parser_for_decoder_family,
+    render_gpt_oss_harmony_prompt, render_qwen38_prompt,
 };
 use psionic_net::{
     PersistedClusterNetworkState, PersistedImportedJoinBundle, PersistedJoinedMeshPreference,
@@ -2208,7 +2210,7 @@ impl OpenAiCompatLoadedModel {
 
     fn supports_structured_outputs(&self) -> bool {
         self.decoder().is_some_and(|model| {
-            if matches!(model.family, GgufDecoderFamily::Gemma4) {
+            if matches!(model.family, GgufDecoderFamily::Gemma4) || is_deepseek_r1_model(model) {
                 return false;
             }
             !is_qwen35_graph_family(model.family) || self.execution_engine_label() == "psionic"
@@ -2217,6 +2219,9 @@ impl OpenAiCompatLoadedModel {
 
     fn supports_tool_calling(&self) -> bool {
         self.decoder().is_some_and(|model| {
+            if is_deepseek_r1_model(model) {
+                return false;
+            }
             !is_qwen35_graph_family(model.family) || self.execution_engine_label() == "psionic"
         })
     }
@@ -7215,14 +7220,53 @@ fn validate_structured_output_request(
     Ok(structured_output)
 }
 
+fn is_deepseek_r1_model(model: &OpenAiCompatLoadedDecoderModel) -> bool {
+    model.family == GgufDecoderFamily::Qwen
+        && model
+            .prompt_renderer
+            .as_ref()
+            .and_then(GgufPromptTemplateRenderer::default_template_family)
+            == Some(GgufPromptTemplateFamily::DeepSeekR1)
+}
+
+fn reasoning_request_for_model(
+    request: Option<&PsionicReasoningRequest>,
+    model: &OpenAiCompatLoadedDecoderModel,
+) -> Result<Option<ResolvedReasoningRequest>, OpenAiCompatHttpError> {
+    if is_deepseek_r1_model(model) {
+        reasoning_request_for_parser(request, model.family, Some(ReasoningParser::DeepSeekR1))
+    } else {
+        reasoning_request_for_family(request, model.family)
+    }
+}
+
+fn parse_reasoning_response_for_model(
+    model: &OpenAiCompatLoadedDecoderModel,
+    text: &str,
+) -> Result<Option<ParsedReasoningResponse>, OpenAiCompatHttpError> {
+    if is_deepseek_r1_model(model) {
+        Ok(Some(parse_deepseek_r1_response_text(text)))
+    } else {
+        parse_reasoning_response_for_family(model.family, text)
+    }
+}
+
 fn reasoning_request_for_family(
     request: Option<&PsionicReasoningRequest>,
     family: GgufDecoderFamily,
 ) -> Result<Option<ResolvedReasoningRequest>, OpenAiCompatHttpError> {
+    reasoning_request_for_parser(request, family, reasoning_parser_for_decoder_family(family))
+}
+
+fn reasoning_request_for_parser(
+    request: Option<&PsionicReasoningRequest>,
+    family: GgufDecoderFamily,
+    parser: Option<ReasoningParser>,
+) -> Result<Option<ResolvedReasoningRequest>, OpenAiCompatHttpError> {
     let Some(request) = request else {
         return Ok(None);
     };
-    let Some(family_parser) = reasoning_parser_for_decoder_family(family) else {
+    let Some(family_parser) = parser else {
         return Err(OpenAiCompatHttpError::BadRequest(format!(
             "model family `{}` does not expose a Psionic reasoning parser",
             decoder_family_label(family)
@@ -8849,8 +8893,7 @@ async fn handle_generic_chat_completions(
         ));
     }
     enforce_medpsy_medical_request_policy(model, &request.messages)?;
-    let reasoning_request =
-        reasoning_request_for_family(request.psionic_reasoning.as_ref(), model.family)?;
+    let reasoning_request = reasoning_request_for_model(request.psionic_reasoning.as_ref(), model)?;
     let qwen38_prompt_options = qwen38_prompt_options_for_request(
         model.family,
         request.reasoning_effort.as_deref(),
@@ -8947,13 +8990,9 @@ async fn handle_generic_chat_completions(
     };
     let route_execution = route_execution_status_for_local_route(&route.selection);
     state.record_route_execution(route_execution.clone());
-    let parsed_reasoning = if reasoning_parser_for_decoder_family(model.family).is_some() {
-        parse_reasoning_response_for_family(model.family, response.output.text.as_str())
-            .ok()
-            .flatten()
-    } else {
-        None
-    };
+    let parsed_reasoning = parse_reasoning_response_for_model(model, response.output.text.as_str())
+        .ok()
+        .flatten();
     let parsed =
         if state.include_psionic_fields && matches!(model.family, GgufDecoderFamily::GptOss) {
             parse_gpt_oss_harmony_text(
@@ -9328,8 +9367,7 @@ async fn handle_generic_responses(
             "stateful Qwen3.8 `/v1/responses` continuation cannot replay retained binary media yet; submit the media again in a new response request",
         )));
     }
-    let reasoning_request =
-        reasoning_request_for_family(request.psionic_reasoning.as_ref(), model.family)?;
+    let reasoning_request = reasoning_request_for_model(request.psionic_reasoning.as_ref(), model)?;
     let qwen38_prompt_options = qwen38_prompt_options_for_request(
         model.family,
         request.reasoning_effort.as_deref(),
@@ -9425,13 +9463,9 @@ async fn handle_generic_responses(
     };
     let route_execution = route_execution_status_for_local_route(&route.selection);
     state.record_route_execution(route_execution.clone());
-    let parsed_reasoning = if reasoning_parser_for_decoder_family(model.family).is_some() {
-        parse_reasoning_response_for_family(model.family, response.output.text.as_str())
-            .ok()
-            .flatten()
-    } else {
-        None
-    };
+    let parsed_reasoning = parse_reasoning_response_for_model(model, response.output.text.as_str())
+        .ok()
+        .flatten();
     let parsed =
         if state.include_psionic_fields && matches!(model.family, GgufDecoderFamily::GptOss) {
             parse_gpt_oss_harmony_text(
@@ -11888,7 +11922,9 @@ fn completion_choice_for_family(
             reasoning_request,
         ));
     }
-    if matches!(family, GgufDecoderFamily::Qwen38) {
+    if matches!(family, GgufDecoderFamily::Qwen38)
+        || parsed_reasoning.is_some_and(|parsed| parsed.parser == ReasoningParser::DeepSeekR1)
+    {
         return Ok(ParsedCompletionChoice {
             content: parsed_reasoning.map_or_else(
                 || Some(response.output.text.clone()),
@@ -11920,7 +11956,12 @@ fn completion_reasoning_content(
     match reasoning_request.map(|request| request.mode) {
         Some(PsionicReasoningMode::Suppress) => None,
         Some(PsionicReasoningMode::Separate) => reasoning,
-        None if matches!(family, GgufDecoderFamily::Qwen38) => reasoning,
+        None if matches!(family, GgufDecoderFamily::Qwen38)
+            || parsed_reasoning
+                .is_some_and(|parsed| parsed.parser == ReasoningParser::DeepSeekR1) =>
+        {
+            reasoning
+        }
         None => None,
     }
 }
@@ -12177,7 +12218,8 @@ fn assistant_history_from_response(
     {
         return parsed_harmony.messages.clone();
     }
-    if matches!(family, GgufDecoderFamily::Qwen38)
+    if (matches!(family, GgufDecoderFamily::Qwen38)
+        || parsed_reasoning.is_some_and(|parsed| parsed.parser == ReasoningParser::DeepSeekR1))
         && let Some(parsed_reasoning) = parsed_reasoning
     {
         let mut message = PromptMessage::new(
@@ -12223,6 +12265,20 @@ fn chat_messages_to_prompt_messages_for_decoder(
     messages: &[ChatCompletionMessage],
     model: &OpenAiCompatLoadedDecoderModel,
 ) -> Result<Vec<PromptMessage>, OpenAiCompatHttpError> {
+    if is_deepseek_r1_model(model)
+        && messages.iter().any(|message| {
+            message.role == "tool"
+                || message.tool_call_id.is_some()
+                || message
+                    .tool_calls
+                    .as_ref()
+                    .is_some_and(|calls| !calls.is_empty())
+        })
+    {
+        return Err(OpenAiCompatHttpError::BadRequest(String::from(
+            "DeepSeek R1 tool messages are not supported yet.",
+        )));
+    }
     if matches!(model.family, GgufDecoderFamily::GptOss) {
         return chat_messages_to_prompt_messages_gpt_oss(messages);
     }
@@ -20559,6 +20615,101 @@ mod tests {
                 .generate(model.model_key.clone(), generation_request),
         )?;
         assert_eq!(response.usage.output_tokens, 1);
+        Ok(())
+    }
+
+    #[test]
+    fn deepseek_r1_server_selects_reasoning_by_template_and_disables_tools()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let path = temp.path().join("tiny-r1.gguf");
+        let mut metadata = dense_qwen_metadata("tiny R1 contract fixture");
+        metadata.retain(|(key, _)| key != "tokenizer.chat_template");
+        metadata.push((
+            "tokenizer.chat_template".into(),
+            GgufMetadataValue::String(
+                include_str!("../../psionic-models/src/testdata/deepseek_r1/template.jinja").into(),
+            ),
+        ));
+        write_test_gguf(&path, &metadata, &dense_decoder_tensors(true, 2, 3))?;
+        let server = OpenAiCompatServer::from_config(&OpenAiCompatConfig::new(&path))?;
+        let loaded = server
+            .state
+            .models_by_key
+            .values()
+            .next()
+            .ok_or("missing model")?;
+        let model = loaded.decoder().ok_or("missing decoder")?;
+        assert_eq!(model.family, GgufDecoderFamily::Qwen);
+        assert!(super::is_deepseek_r1_model(model));
+        assert!(!loaded.supports_tool_calling());
+        assert!(!loaded.supports_structured_outputs());
+        let tool_message: ChatCompletionMessage = serde_json::from_value(serde_json::json!({
+            "role": "assistant", "content": "", "tool_calls": [{
+                "id": "call-1", "type": "function", "function": {"name": "lookup", "arguments": "{}"}
+            }]
+        }))?;
+        assert!(
+            super::chat_messages_to_prompt_messages_for_decoder(&[tool_message], model).is_err()
+        );
+        assert_eq!(
+            super::reasoning_parser_for_decoder_family(model.family),
+            None
+        );
+        let separate = super::reasoning_request_for_model(
+            Some(&PsionicReasoningRequest {
+                parser: Some(psionic_models::ReasoningParser::DeepSeekR1),
+                mode: PsionicReasoningMode::Separate,
+            }),
+            model,
+        )?;
+        assert!(
+            super::reasoning_request_for_model(
+                Some(&PsionicReasoningRequest {
+                    parser: Some(psionic_models::ReasoningParser::Qwen38Thinking),
+                    mode: PsionicReasoningMode::Separate,
+                }),
+                model
+            )
+            .is_err()
+        );
+        for (text, expected, termination) in [
+            ("work</think>2", Some("2"), TerminationReason::EndOfSequence),
+            ("Let me work", None, TerminationReason::MaxOutputTokens),
+        ] {
+            let parsed = super::parse_reasoning_response_for_model(model, text)?;
+            let mut response = test_generation_response(text);
+            response.termination = termination;
+            let choice = super::completion_choice_for_family(
+                model.family,
+                &response,
+                parsed.as_ref(),
+                separate.as_ref(),
+                None,
+            )?;
+            assert_eq!(choice.content.as_deref(), expected);
+            assert!(choice.reasoning_content.is_some());
+            assert_eq!(
+                choice.finish_reason,
+                if expected.is_some() { "stop" } else { "length" }
+            );
+            let suppressed = super::ResolvedReasoningRequest {
+                parser: psionic_models::ReasoningParser::DeepSeekR1,
+                mode: PsionicReasoningMode::Suppress,
+            };
+            assert!(
+                super::completion_reasoning_content(
+                    model.family,
+                    parsed.as_ref(),
+                    Some(&suppressed)
+                )
+                .is_none()
+            );
+            let history =
+                super::assistant_history_from_response(model.family, text, None, parsed.as_ref());
+            assert_eq!(history[0].content, expected.unwrap_or_default());
+            assert!(history[0].reasoning_content.is_some());
+        }
         Ok(())
     }
 

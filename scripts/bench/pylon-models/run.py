@@ -171,6 +171,48 @@ def score(name, text):
     return None
 
 
+def deepseek_response_check(response, expected=None, truncated=False):
+    """Require a final answer separately from reasoning, with honest stop reasons."""
+    try:
+        choice = response["choices"][0]
+        message = choice["message"]
+        content = message.get("content") or ""
+        reasoning = message.get("reasoning_content") or ""
+        if not isinstance(content, str) or not isinstance(reasoning, str):
+            return False
+        if any(marker in content for marker in ("<think>", "</think>", "<｜end▁of▁sentence｜>")):
+            return False
+        if truncated:
+            # A single token can be whitespace, so a visible thought is optional.
+            return (choice["finish_reason"] == "length" and not content.strip()
+                    and response["usage"]["completion_tokens"] == 1)
+        return (choice["finish_reason"] == "stop" and bool(reasoning.strip())
+                and content.strip() == expected and not message.get("tool_calls"))
+    except (KeyError, IndexError, TypeError):
+        return False
+
+
+def qualify_deepseek(api, model, engine, max_tokens):
+    messages = [{"role": "user", "content": "What is 1 + 1? After thinking, reply with only the number."}]
+    options = {"model": model, "temperature": 0, "seed": 1, "max_tokens": max_tokens}
+    if engine == "psionic":
+        options["psionic_reasoning"] = {"parser": "deepseek_r1", "mode": "separate"}
+    rows = []
+    for name, history, expected, truncated in [
+        ("answer", messages, "2", False),
+        ("continuation", messages + [{"role": "assistant", "content": "2", "reasoning_content": "One plus one is two."},
+                                     {"role": "user", "content": "Add one to your previous answer. After thinking, reply with only the number."}], "3", False),
+        ("truncation", messages, None, True),
+    ]:
+        payload = dict(options, messages=history)
+        if truncated:
+            payload["max_tokens"] = 1
+        response = read_json(api + "/v1/chat/completions", payload, timeout=600)
+        rows.append({"name": name, "response": response,
+                     "passed": deepseek_response_check(response, expected, truncated)})
+    return {"passed": all(row["passed"] for row in rows), "checks": rows}
+
+
 def model_parts(row):
     # download_parts are byte chunks of ONE GGUF, not GGUF tensor shards.
     parts = row.get("download_parts") or [row]
@@ -316,7 +358,7 @@ def qualify(row, args, output):
     home = folder / "pylon-home"
     path = args.model_dir / row["id"] / row["file"]
     max_tokens = args.max_tokens or row.get("max_output_tokens", 2048)
-    thinking = args.thinking == "on"
+    thinking = args.thinking == "on" or row.get("thinking_required", False)
     temperature = row.get("reasoning_temperature", 1.0) if thinking else 0
     top_p = row.get("reasoning_top_p", 0.95) if thinking else 0.95
     if args.engine == "llama-cpp":
@@ -363,6 +405,11 @@ def qualify(row, args, output):
         result["inventory"] = inventory
         model = inventory["data"][0]["id"]
         print(json.dumps({"event": "model-ready", "model": row["id"], "startup_ms": result["startup_ms"]}), flush=True)
+        if row.get("qualification") == "deepseek-r1":
+            result["deepseek_checks"] = qualify_deepseek(api, model, args.engine, max_tokens)
+            (folder/"results.json").write_text(json.dumps(result, indent=2))
+            if not result["deepseek_checks"]["passed"]:
+                raise RuntimeError("DeepSeek answer, continuation, or truncation checks failed")
         result["direct_smoke"] = read_json(api+"/v1/chat/completions", {"model":model, "messages":[{"role":"user","content":"Reply exactly READY."}], "max_tokens":min(max_tokens, 8), "stop":row.get("stop_sequences", [])}, timeout=120)
         identity = cli(args.pylon_bin, home, ["whoami"])["response"]["data"]
         provider_command = [str(args.pylon_bin), "serve", "--engine", api, "--model", model, "--pylon", "qualification-"+re.sub(r"[^a-z0-9_-]", "-", row["id"]), "--label", row["id"]+" qualification", "--pool", "qualification", "--allow", identity["buyer"], "--rate", "600", "--slots", "2", "--max-tokens", str(max_tokens), "--dedicated", "--relay", args.relay, "--json"]
@@ -395,7 +442,8 @@ def qualify(row, args, output):
             result["cases"].append(case)
             (folder/"results.json").write_text(json.dumps(result,indent=2))
             print(json.dumps({"event": "answer", "model": row["id"], "case": name, "wall_ms": case["wall_ms"], "ok": case["response"].get("ok"), "preview": text[:100]}), flush=True)
-        result["qualified"] = all(c["response"].get("ok") for c in result["cases"])
+        result["qualified"] = bool(result["cases"]) and all(
+            c["response"].get("ok") and c["automatic_score"] is not False for c in result["cases"])
         result["median_pylon_wall_ms"] = statistics.median(c["wall_ms"] for c in result["cases"])
     except Exception as error:
         result["qualified"] = False
@@ -474,7 +522,8 @@ def main():
     finally:
         if args.pause_unit:
             restore_service(args.pause_unit,props)
+    return 0 if results and all(result["qualified"] for result in results) else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

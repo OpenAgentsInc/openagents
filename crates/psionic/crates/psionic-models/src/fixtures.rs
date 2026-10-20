@@ -1266,6 +1266,7 @@ fn pretokenizer_fixture_label(pretokenizer: &GgufTokenizerPretokenizer) -> Cow<'
         GgufTokenizerPretokenizer::Llama => Cow::Borrowed("llama"),
         GgufTokenizerPretokenizer::Gemma4 => Cow::Borrowed("gemma4"),
         GgufTokenizerPretokenizer::Qwen2 => Cow::Borrowed("qwen2"),
+        GgufTokenizerPretokenizer::DeepSeekR1Qwen => Cow::Borrowed("deepseek-r1-qwen"),
         GgufTokenizerPretokenizer::Qwen3 => Cow::Borrowed("qwen3"),
         GgufTokenizerPretokenizer::Qwen35 => Cow::Borrowed("qwen35"),
         GgufTokenizerPretokenizer::Refact => Cow::Borrowed("refact"),

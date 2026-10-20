@@ -272,6 +272,61 @@ enum or public capability before its executor passes. Keep protocol-qualified,
 external-engine-qualified, native-reference, native-device, and distributed
 qualification results distinct and attach them to concrete artifacts.
 
+### DS0 implementation: R1-Distill-Qwen-1.5B
+
+The first implementation pins the [official tokenizer revision][H1T] and Unsloth's
+`DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf` at revision
+`3cb4d15544a2a5e07439592b9a0965b6445fbd34`, SHA-256
+`f3bdf9cf31dee4b57ae4e455a1cb0d01b5c2c1b50d72d3112141c195506c2840`.
+The decoder stays `qwen2`. Its `deepseek-r1-qwen` tokenizer now applies NFC,
+splits single digits, and recognizes the R1 control and thinking tokens.
+The BOS token is **151646**; EOS and padding are **151643**, as the actual
+tokenizer and GGUF specify. Do not take BOS from the model config alone.
+
+The exact template hash `56a1447a…79a84f5f` renders text system, user, and
+assistant turns, removes previous assistant thinking through the last
+`</think>`, and ends generation prompts with `<｜Assistant｜><think>\n`.
+Developer and tool turns fail explicitly. Older GGUF templates that omit
+the thinking prefix are not accepted as this template. Native Chat
+Completions and Responses separate `reasoning_content` from final text,
+including an unfinished thought when the token budget runs out. You can
+request `psionic_reasoning: {"parser":"deepseek_r1","mode":"suppress"}`
+to omit reasoning. Tool calling and structured output remain disabled for
+this profile.
+
+The [golden corpus](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_r1/golden.json)
+contains six independently rendered prompts and ten tokenizer samples,
+including continuation, whitespace, digits, decomposed Unicode, code,
+and special tokens. Its 538 vocabulary entries preserve every candidate
+merge for these samples with the original token IDs; it is not a complete
+tokenizer. Refresh it with
+`scripts/bench/pylon-models/refresh_deepseek_r1.py` using its pinned Python
+dependencies. The Rust checks run offline.
+
+After downloading the pinned catalog model, run the artifact check from
+the Psionic workspace with the shared Cargo build settings loaded:
+
+```sh
+cargo run -p psionic-models --example deepseek_r1_text_qualification -- /path/to/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf
+```
+
+This checks byte length and SHA-256, Qwen2 dimensions, BOS/EOS, the complete
+artifact tokenizer against the golden IDs, and template text and tokens.
+It reports text qualification separately from numerical and GPU execution.
+The [2026-10-20 artifact check](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_r1/qualification-2026-10-20.json)
+passes all 16 cases on the pinned GGUF. Focused model and server tests,
+existing template and reasoning tests, 14 Python qualification/download
+tests, and formatting checks also pass.
+The Pylon catalog ID is `deepseek-r1-distill-qwen-1.5b`. This profile always
+uses the thinking prefix, with greedy sampling for qualification. The existing
+qualification runner now requires separate reasoning and exact final
+answers for an arithmetic request and a continuation, plus a one-token
+truncation with `finish_reason=length` and no final answer. Failed checks
+or failed automatic scores produce a failed report and a nonzero exit.
+Full-model CPU answers and separately labeled llama.cpp GPU runs remain
+required before marking DS0 complete; token fixtures alone do not qualify
+model quality, performance, or the advertised long context.
+
 ## Further infrastructure lessons and what to defer
 
 DeepGEMM separates prefill's contiguous grouped layout from decode's masked

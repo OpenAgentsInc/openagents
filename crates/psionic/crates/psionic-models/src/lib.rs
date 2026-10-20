@@ -7,6 +7,7 @@ mod cs336_a1_tokenizer;
 mod cs336_a2_flashattention_reference;
 mod csm;
 mod csm_parity;
+mod deepseek_r1;
 mod fixtures;
 mod harmony;
 mod medpsy_qwen3;
@@ -112,6 +113,7 @@ pub use cs336_a1_tokenizer::*;
 pub use cs336_a2_flashattention_reference::*;
 pub use csm::*;
 pub use csm_parity::*;
+pub use deepseek_r1::*;
 pub use fixtures::*;
 pub use harmony::*;
 pub use medpsy_qwen3::*;
@@ -3040,6 +3042,9 @@ pub enum GgufTokenizerPretokenizer {
     Gemma4,
     /// Qwen2 tokenizer family.
     Qwen2,
+    /// DeepSeek R1 Qwen distills with NFC and single-digit splitting.
+    #[serde(rename = "deepseek_r1_qwen")]
+    DeepSeekR1Qwen,
     /// Qwen3 tokenizer family.
     Qwen3,
     /// Qwen3.5 tokenizer family.
@@ -3059,6 +3064,7 @@ impl GgufTokenizerPretokenizer {
             "llama-bpe" | "llama" => Self::Llama,
             "gemma4" => Self::Gemma4,
             "qwen2" => Self::Qwen2,
+            "deepseek-r1-qwen" => Self::DeepSeekR1Qwen,
             "qwen3" => Self::Qwen3,
             "qwen35" => Self::Qwen35,
             "refact" => Self::Refact,
@@ -3073,6 +3079,7 @@ impl GgufTokenizerPretokenizer {
             Self::Llama => Cow::Borrowed("llama"),
             Self::Gemma4 => Cow::Borrowed("gemma4"),
             Self::Qwen2 => Cow::Borrowed("qwen2"),
+            Self::DeepSeekR1Qwen => Cow::Borrowed("deepseek-r1-qwen"),
             Self::Qwen3 => Cow::Borrowed("qwen3"),
             Self::Qwen35 => Cow::Borrowed("qwen35"),
             Self::Refact => Cow::Borrowed("refact"),
@@ -3377,6 +3384,9 @@ pub enum GgufPromptTemplateFamily {
     Gemma4System,
     /// Qwen2 template family.
     Qwen2,
+    /// Pinned DeepSeek R1 distill text conversations.
+    #[serde(rename = "deepseek_r1")]
+    DeepSeekR1,
     /// Qwen3 text-only thinking template family used by QVAC MedPsy.
     Qwen3,
     /// Standard Qwen3 conversations, without the MedPsy system instruction.
@@ -3397,6 +3407,7 @@ impl GgufPromptTemplateFamily {
             Self::Phi3 => &["<|end|>", "<|system|>", "<|user|>", "<|assistant|>"],
             Self::Gemma4 | Self::Gemma4System => &["<turn|>"],
             Self::Qwen2 => &[],
+            Self::DeepSeekR1 => &["<｜end▁of▁sentence｜>"],
             Self::Qwen3 | Self::Qwen3Chat => &[],
             Self::Qwen35 => &[],
             Self::CommandR => &["<|START_OF_TURN_TOKEN|>", "<|END_OF_TURN_TOKEN|>"],
@@ -3470,6 +3481,14 @@ impl GgufPromptTemplateRenderer {
         }
     }
 
+    /// Returns the supported family of the default template.
+    #[must_use]
+    pub fn default_template_family(&self) -> Option<GgufPromptTemplateFamily> {
+        supported_prompt_template_family(&digest_chat_template(
+            self.chat_templates.default_template()?,
+        ))
+    }
+
     /// Renders a prompt for a supported chat template.
     pub fn render(
         &self,
@@ -3516,7 +3535,8 @@ impl GgufPromptTemplateRenderer {
             GgufPromptTemplateFamily::Llama3
             | GgufPromptTemplateFamily::MistralV3
             | GgufPromptTemplateFamily::Gemma4System
-            | GgufPromptTemplateFamily::Qwen3Chat => released_chat_templates::render(
+            | GgufPromptTemplateFamily::Qwen3Chat
+            | GgufPromptTemplateFamily::DeepSeekR1 => released_chat_templates::render(
                 family,
                 self.bos_token().unwrap_or_default(),
                 messages,
@@ -3981,6 +4001,7 @@ impl GgufPromptTemplateRenderer {
 
 fn supported_prompt_template_family(digest: &str) -> Option<GgufPromptTemplateFamily> {
     match digest {
+        DEEPSEEK_R1_TEMPLATE_SHA256 => Some(GgufPromptTemplateFamily::DeepSeekR1),
         "5816fce10444e03c2e9ee1ef8a4a1ea61ae7e69e438613f3b17b69d0426223a4" => {
             Some(GgufPromptTemplateFamily::Llama3)
         }

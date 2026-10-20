@@ -23,6 +23,9 @@ pub(crate) fn render(
         ));
     }
     match family {
+        GgufPromptTemplateFamily::DeepSeekR1 => {
+            crate::deepseek_r1::render(bos, messages, generation)
+        }
         GgufPromptTemplateFamily::Llama3 => llama3(bos, messages, generation),
         GgufPromptTemplateFamily::MistralV3 => mistral(bos, messages),
         GgufPromptTemplateFamily::Gemma4System => gemma4(bos, messages, generation),

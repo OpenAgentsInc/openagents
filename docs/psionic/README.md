@@ -33,6 +33,10 @@ about 0.2 seconds.
 The pinned public text templates for Llama 3.2, Mistral v0.3, standard
 Qwen3, current Qwen3.5, and Gemma 4 are checked against 26 independent
 Jinja-rendered fixtures. Unknown template hashes still fail closed.
+The first [DeepSeek R1 distill implementation](deepseek-support-plan.md#ds0-implementation-r1-distill-qwen-15b)
+adds pinned Qwen 1.5B tokenizer and prompt fixtures, reasoning separation,
+and qualification checks. Full-model CPU and external GPU qualification
+remain separate requirements.
 Qwen3.5 CUDA accepts mixed dense/quantized projection groups and Q4_K/Q6_K
 embedding rows; Gemma 4 accepts dense per-layer projections on CUDA.
 Gemma's BPE tokenizer decodes SentencePiece spaces and literal UTF-8,
@@ -42,7 +46,7 @@ analysis is kept separate from the final answer.
 
 Pylon can also explicitly supervise a local llama.cpp server for families
 without a native GPU decoder. See [model selection and qualification](../compute/pylon.md#choose-another-text-model)
-for the pinned eight-model catalog and repeatable RTX 4080 checks.
+for the pinned model catalog and repeatable RTX 4080 checks.
 The catalog additionally includes Nemotron-4 340B IQ2_XXS through
 llama.cpp with RAM/GPU offload, a pinned prompt template, and answer stop
 markers; this is not a native Psionic Nemotron decoder.

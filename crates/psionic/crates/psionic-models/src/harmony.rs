@@ -147,6 +147,9 @@ pub enum ReasoningParser {
     GptOssHarmony,
     /// Qwen3.8 thinking-block parser contract.
     Qwen38Thinking,
+    /// DeepSeek R1 output with a prompt-supplied thinking prefix.
+    #[serde(rename = "deepseek_r1")]
+    DeepSeekR1,
 }
 
 impl ReasoningParser {
@@ -156,6 +159,7 @@ impl ReasoningParser {
         match self {
             Self::GptOssHarmony => "gpt_oss_harmony",
             Self::Qwen38Thinking => "qwen38_thinking",
+            Self::DeepSeekR1 => "deepseek_r1",
         }
     }
 }
@@ -295,7 +299,7 @@ pub fn parse_reasoning_response_tokens_for_decoder_family(
         Some(ReasoningParser::GptOssHarmony) => Ok(Some(
             parse_gpt_oss_harmony_tokens(tokens, options)?.reasoning_response(),
         )),
-        Some(ReasoningParser::Qwen38Thinking) => Ok(None),
+        Some(ReasoningParser::Qwen38Thinking | ReasoningParser::DeepSeekR1) => Ok(None),
         None => Ok(None),
     }
 }
@@ -311,6 +315,7 @@ pub fn parse_reasoning_response_text_for_decoder_family(
             parse_gpt_oss_harmony_text(text, options)?.reasoning_response(),
         )),
         Some(ReasoningParser::Qwen38Thinking) => Ok(Some(parse_qwen38_thinking_text(text))),
+        Some(ReasoningParser::DeepSeekR1) => Ok(Some(crate::parse_deepseek_r1_response_text(text))),
         None => Ok(None),
     }
 }
