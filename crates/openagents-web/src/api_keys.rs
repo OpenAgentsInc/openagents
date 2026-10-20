@@ -131,7 +131,11 @@ fn scope_words(scopes: Option<&jev::KeyScopes>) -> String {
     }
 }
 
-pub(crate) async fn keys(State(app): State<App>, headers: HeaderMap) -> Response {
+pub(crate) async fn keys(
+    State(app): State<App>,
+    headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
     let (service, viewer) = match viewer(&app, &headers, KEYS).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -196,7 +200,16 @@ pub(crate) async fn keys(State(app): State<App>, headers: HeaderMap) -> Response
             (own_content(saved, (&tickets[2].0, &tickets[2].1)))
         }
     };
-    page(&headers, service, &viewer, "API keys", KEYS, body)
+    crate::settings::keys_page(
+        &app,
+        &headers,
+        query.as_deref(),
+        service,
+        &viewer,
+        "API keys",
+        KEYS,
+        body,
+    )
 }
 
 /// The page: how to use a key, the keys, the form that makes one.

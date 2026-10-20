@@ -78,6 +78,7 @@ fn full_remote() -> Remote {
         settings: Load::Ready(serde_json::json!({"pause_on_battery": true})),
         ..earn::State::default()
     };
+    remote.keys.signed_in = true;
     remote.account = account::State {
         signed_in: true,
         label: Some("pat@example.com".into()),
@@ -767,4 +768,55 @@ fn projects_list_and_open_one_with_members_repositories_and_sources() {
     }
     // The owner can't leave; a member can.
     assert!(!intents.contains(&Intent::Projects(Action::AskLeave(true))));
+}
+
+#[test]
+fn credentials_keep_secrets_out_of_the_shared_view_and_confirm_revocation() {
+    let entry: keys::Entry = serde_json::from_value(serde_json::json!({
+        "id": "scratch", "name": null, "current": true,
+        "token": "sensitive response field", "secret": "sensitive response field"
+    }))
+    .unwrap();
+    let mut remote = Remote::default();
+    remote.keys = keys::State {
+        signed_in: true,
+        entries: Load::Ready(vec![entry]),
+        copy_available: true,
+        ..Default::default()
+    };
+    for p in [Page::ApiKeys, Page::SignInKeys, Page::AgentAccounts] {
+        let root = page(p, &Prefs::default(), &remote, &Paints::default());
+        let checked = View::new_v3("keys", 1, root.clone()).validate().unwrap();
+        let encoded = serde_json::to_string(checked.view()).unwrap();
+        assert!(!encoded.contains("sensitive response field"));
+        assert!(encoded.contains("••••••••••••••••"));
+        assert_eq!(
+            intent_of(&root, "keys-copy"),
+            &Intent::Keys(keys::Action::Copy)
+        );
+        assert_eq!(
+            intent_of(&root, "keys-ask-scratch"),
+            &Intent::Keys(keys::Action::Confirm(Some("scratch".into())))
+        );
+        assert!(find(&root, "keys-revoke-scratch").is_none());
+    }
+    remote.keys.confirm = Some("scratch".into());
+    let root = page(
+        Page::SignInKeys,
+        &Prefs::default(),
+        &remote,
+        &Paints::default(),
+    );
+    assert_eq!(
+        intent_of(&root, "keys-revoke-scratch"),
+        &Intent::Keys(keys::Action::Revoke("scratch".into()))
+    );
+    remote.keys.copy_available = false;
+    let root = page(
+        Page::ApiKeys,
+        &Prefs::default(),
+        &remote,
+        &Paints::default(),
+    );
+    assert!(find(&root, "keys-copy").is_none());
 }

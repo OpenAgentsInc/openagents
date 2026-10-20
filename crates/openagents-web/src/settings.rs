@@ -33,6 +33,18 @@ const CLAUDE_REMOVE: &str = "/settings/claude/remove";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .route(
+            "/static/gpui-keys.js",
+            get(|| async {
+                (
+                    [(
+                        axum::http::header::CONTENT_TYPE,
+                        "text/javascript; charset=utf-8",
+                    )],
+                    include_str!("../static/gpui-keys.js"),
+                )
+            }),
+        )
         .route(PAGE, get(settings))
         .route(link::PAGE, link::route())
         .route(CLAUDE, get(claude).post(add))
@@ -123,6 +135,33 @@ pub(crate) fn page_as(
             .content(PageColumn::new(body))
             .respond(headers),
     )
+}
+
+/// Offer the credentials canvas while retaining this HTML for browsers without WebGPU or JavaScript.
+pub(crate) fn keys_page(
+    app: &App,
+    headers: &HeaderMap,
+    query: Option<&str>,
+    service: &CloudSession,
+    viewer: &Viewer,
+    title: &str,
+    path: &str,
+    body: Markup,
+) -> Response {
+    let choice = crate::pages::gpui_chat::choice(app.config.features, headers, query);
+    let ready = choice.serves(app, headers)
+        && app
+            .config
+            .gpui_chat
+            .as_ref()
+            .is_some_and(|dir| dir.join("openagents_web_keys_bg.wasm").is_file());
+    let body = html! {
+        (body)
+        @if ready { script type="module" src="/static/gpui-keys.js" {} }
+    };
+    let mut response = page(headers, service, viewer, title, path, body);
+    choice.remember(app, &mut response);
+    response
 }
 
 /// Where the viewer's own Claude credential stands, for the Settings row.
