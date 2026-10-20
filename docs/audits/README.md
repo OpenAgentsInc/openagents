@@ -7,6 +7,7 @@ Use the [master roadmap](../roadmap.md) for current work.
 
 | Document | Recorded topic |
 | --- | --- |
+| [../auth/2026-10-20-workos-source-of-truth.md](../auth/2026-10-20-workos-source-of-truth.md) | WorkOS as the one auth object: today's nine identity and session stores, one WorkOS User per person with Nostr keys linked in our table, whether a Nostr signature can start a WorkOS session (no direct API; a Magic Auth bridge or our own session as fallback), workos-rust, and phases W0 to W4 (#12320 to #12324) |
 | [2026-10-20-openagents-com-unified-plan.md](2026-10-20-openagents-com-unified-plan.md) | One openagents.com: every transcript theme with episodes and code, earlier synthesis and its conflicts, a Nostr-first plan for profiles, agent identities, social agent use, the browser wallet and the route map, and epics U1 to U8 (#12254 to #12261) |
 | [2026-10-20-desktop-web-parity.md](2026-10-20-desktop-web-parity.md) | Bringing the whole desktop app to the web: every desktop feature with its file, what the web has, how it works in a browser (the browser as a paired client of computers over `coder-sync`), backend needs, and size; phases 7 to 13 after the GPUI web chat plan, and what the web can never do (#12262 to #12294) |
 | [2026-10-19-agentgraph-unit.md](2026-10-19-agentgraph-unit.md) | AgentGraph after Unit: Unit and its MIT license, our earlier Unit, Arbiter, and Blueprint Map audits, what AgentGraph meant in the transcripts, the spec and GPUI view behind `/agent/foreman`, and how to graph a new agent (#12229 to #12233) |

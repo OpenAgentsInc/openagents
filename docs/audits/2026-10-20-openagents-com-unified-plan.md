@@ -148,6 +148,10 @@ owns agents, and sees the network of people, agents, compute, and money.
 | Agent ID | Agent key with an NIP-OA `auth` tag signed by the owner | Built for Verse agents (#10807); **U2** makes it general |
 | Agent custody | NIP-SOV for agents that hold their own funds | Partial (`sov-custody`, `sov-treasury`) |
 
+**Proposed (2026-10-20):** [WorkOS as the source of truth for auth](../auth/2026-10-20-workos-source-of-truth.md)
+makes one WorkOS User the auth object for a person. Every row above stays
+Nostr-native; only the account and session records move (#12320 to #12324).
+
 The server never signs a person's profile. Apps sign locally and publish to
 `relay.openagents.com` and the person's own relays. The site reads them,
 caches them, and renders them as HTML.

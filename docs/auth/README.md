@@ -10,6 +10,11 @@ the same, with its issue. The plan and its evidence are in the
 the tracking epic is
 [#12006](https://github.com/OpenAgentsInc/openagents/issues/12006).
 
+**Proposed (2026-10-20):** [WorkOS as the source of truth for auth](2026-10-20-workos-source-of-truth.md)
+plans one WorkOS User as the auth object for a person, with Nostr keys as
+linked identities and Nostr sign-in kept. It waits on the owner's decisions
+and epics #12320 to #12324; until then this README describes what runs.
+
 **GitHub sign-in is deprecated (#12005).** It signs in accounts made with it
 before and makes no new accounts: the account service answers a GitHub user
 no account holds with `403 signup_disabled` unless the deployment sets
