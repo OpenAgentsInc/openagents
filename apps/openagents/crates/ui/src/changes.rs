@@ -733,7 +733,7 @@ struct FileFold {
 }
 
 /// Tween arming window after a fold toggle (COLLAPSE's 180ms plus margin).
-const FOLD_TWEEN_WINDOW: Duration = Duration::from_millis(400);
+pub const FOLD_TWEEN_WINDOW: Duration = Duration::from_millis(400);
 
 /// Ceiling on how much body a fold tween's stand-in row materializes. A
 /// tween always starts from a clicked (on-screen) header, so the revealable

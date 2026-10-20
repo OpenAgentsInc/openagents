@@ -17,7 +17,7 @@ use openagents_doc::{MessagePart, MessageRole, SessionMessageEntry};
 use crate::motion;
 use crate::popover;
 use crate::theme::Theme;
-use crate::transcript::Transcript;
+use crate::transcript::{TranscriptMedia, TranscriptView};
 
 /// 48rem — the container width below which the rail (and wide gutters) collapse.
 pub const RAIL_MIN_CONTAINER_WIDTH: f32 = 768.0;
@@ -295,7 +295,7 @@ fn scroll_trace_enabled() -> bool {
 // Rendering + smooth scroll (Transcript extension)
 // ---------------------------------------------------------------------------
 
-impl Transcript {
+impl<M: TranscriptMedia> TranscriptView<M> {
     /// Smooth-scroll the list so `target` sits at the viewport top, reusing the
     /// transcript scroll-task slot (any running stick/jump animation yields).
     ///
@@ -476,15 +476,14 @@ impl Transcript {
         if !self.rail_enabled() {
             return gpui::Empty.into_any_element();
         }
-        let Some(entity) = crate::transcript_host::AppHost::state_of(self).cloned() else {
-            return gpui::Empty.into_any_element();
-        };
-        let state = entity.read(cx);
+        let host = self.host().clone();
+        let entries = host.entries(None, cx);
+        let echoes = host.pending_echoes(cx);
         let key = RailKey::new(
-            state.selected_chat.clone(),
-            state.transcript_revision,
-            &state.transcript,
-            state.pending_echoes(),
+            host.selected_chat(cx).map(str::to_owned),
+            host.transcript_revision(cx),
+            entries,
+            echoes,
         );
         if self.rail_cache.as_ref().map(|(cached, _)| cached) != Some(&key) {
             let rows: HashMap<&str, usize> = self
@@ -493,7 +492,7 @@ impl Transcript {
                 .enumerate()
                 .map(|(ix, row)| (row.id.as_ref(), ix))
                 .collect();
-            let pairs = rail_ticks(&state.transcript, state.pending_echoes())
+            let pairs = rail_ticks(entries, echoes)
                 .into_iter()
                 .filter_map(|tick| rows.get(tick.message_id.as_str()).map(|&row| (tick, row)))
                 .collect();

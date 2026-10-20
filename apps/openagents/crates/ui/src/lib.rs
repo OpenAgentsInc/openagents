@@ -28,6 +28,7 @@ pub mod changes;
 mod comment_ui;
 pub use openagents_chat_view::comments;
 pub mod composer;
+pub use openagents_chat_view::{composer_chips, composer_mentions, diff};
 mod composer_dock;
 // The composer's Markdown editing helpers moved to the portable crate (#12216).
 pub(crate) use openagents_chat_view::composer_markdown;
@@ -101,6 +102,7 @@ pub mod transcript;
 #[cfg(feature = "account-fixture")]
 pub mod transcript_capture;
 pub mod transcript_host;
+pub mod transcript_media;
 pub mod typography;
 pub mod video_timeline;
 pub mod visuals;

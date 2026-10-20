@@ -32,7 +32,7 @@ const STALE_AFTER: Duration = Duration::from_secs(2);
 
 /// What a frame paints for one key.
 #[derive(Clone)]
-pub(crate) enum Thumb {
+pub enum Thumb {
     Loading,
     Ready {
         image: Arc<RenderImage>,

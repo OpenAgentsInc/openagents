@@ -2,13 +2,14 @@
 //! asks of it. The desktop answers from its app state and engine
 //! connection; another host answers from whatever holds its chats.
 
+use std::rc::Rc;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use gpui::{App, Context, Subscription};
+use gpui::{App, Subscription};
 use openagents_doc::{SessionMessageEntry, TranscriptBaseline};
 
-use super::{PreparedTranscript, Transcript};
+use super::PreparedTranscript;
 use crate::rpc::Rpc;
 use crate::tool_progress::ToolProgress;
 use crate::workspace_links::FileLinkRoot;
@@ -75,7 +76,8 @@ pub trait TranscriptHost: 'static {
     fn rpc(&self, cx: &App) -> Option<Rpc>;
     /// This host as its concrete type, for the app's own extensions.
     fn as_any(&self) -> &dyn std::any::Any;
-    /// Call [`Transcript::host_changed`] whenever what this host answers
-    /// changes.
-    fn watch(&self, cx: &mut Context<Transcript>) -> Vec<Subscription>;
+    /// Call `changed` whenever what this host answers changes: with a
+    /// document's id when only its text changed, `None` for anything else.
+    fn watch(&self, changed: Rc<dyn Fn(Option<&str>, &mut App)>, cx: &mut App)
+    -> Vec<Subscription>;
 }

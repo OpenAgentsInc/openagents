@@ -372,7 +372,7 @@ impl SavedReader {
         });
         let doc_id = format!("openagents-saved-chat-{}", uuid::Uuid::new_v4());
         let transcript = cx.new(|cx| {
-            crate::transcript::Transcript::for_account_history(
+            crate::transcript_media::DesktopMedia::account_transcript(
                 crate::transcript_host::AppHost::shared(&state),
                 model.clone(),
                 doc_id.clone(),
@@ -498,7 +498,7 @@ impl SavedReader {
             self.save_notice = None;
             self.show_files = false;
             self.transcript = cx.new(|cx| {
-                crate::transcript::Transcript::for_account_history(
+                crate::transcript_media::DesktopMedia::account_transcript(
                     crate::transcript_host::AppHost::shared(&self.state),
                     self.model.clone(),
                     self.doc_id.clone(),
@@ -572,8 +572,9 @@ impl SavedReader {
             .and_then(|index| self.snapshot.messages.get(index))
         {
             let id = format!("account-{}-{}", self.snapshot.epoch, message.id);
-            self.transcript
-                .update(cx, |view, cx| view.reveal_account_message(&id, cx));
+            self.transcript.update(cx, |view, cx| {
+                crate::transcript_media::DesktopMedia::reveal_account_message(view, &id, cx)
+            });
         }
     }
     fn continue_window(&mut self, cx: &mut Context<Self>) {

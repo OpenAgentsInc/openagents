@@ -5,14 +5,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
-use gpui::{App, Context, Entity, Subscription};
+use gpui::{App, Entity, Subscription};
 use openagents_doc::{SessionMessageEntry, TranscriptBaseline};
 
 use crate::rpc::Rpc;
 use crate::state::{AppState, Indicator, TranscriptTextChanged};
 use crate::tool_progress::ToolProgress;
 use crate::transcript::host::{ChatPlace, TranscriptHost, TurnActivity};
-use crate::transcript::{PreparedTranscript, Transcript, sending_bridge, turn_elapsed_secs};
+use crate::transcript::{PreparedTranscript, sending_bridge, turn_elapsed_secs};
 use crate::workspace_links::FileLinkRoot;
 
 /// The transcript's host over the desktop's [`AppState`].
@@ -23,15 +23,6 @@ impl AppHost {
     /// A host for transcripts over `state`.
     pub fn shared(state: &Entity<AppState>) -> Rc<dyn TranscriptHost> {
         Rc::new(Self(state.clone()))
-    }
-
-    /// The app state `transcript` draws from, when the desktop hosts it.
-    pub fn state_of(transcript: &Transcript) -> Option<&Entity<AppState>> {
-        transcript
-            .host()
-            .as_any()
-            .downcast_ref::<Self>()
-            .map(|host| &host.0)
     }
 }
 
@@ -187,17 +178,17 @@ impl TranscriptHost for AppHost {
         self
     }
 
-    fn watch(&self, cx: &mut Context<Transcript>) -> Vec<Subscription> {
+    fn watch(
+        &self,
+        changed: Rc<dyn Fn(Option<&str>, &mut App)>,
+        cx: &mut App,
+    ) -> Vec<Subscription> {
+        let on_text = changed.clone();
         vec![
-            cx.observe(&self.0, |this: &mut Transcript, _, cx| {
-                this.host_changed(None, cx)
+            cx.observe(&self.0, move |_, cx| changed(None, cx)),
+            cx.subscribe(&self.0, move |_, event: &TranscriptTextChanged, cx| {
+                on_text(Some(&event.doc_id), cx)
             }),
-            cx.subscribe(
-                &self.0,
-                |this: &mut Transcript, _, event: &TranscriptTextChanged, cx| {
-                    this.host_changed(Some(&event.doc_id), cx)
-                },
-            ),
         ]
     }
 }

@@ -25,8 +25,13 @@
 //! Wheel/touch releases that anchor immediately, including when background
 //! streaming has advanced beyond the last measured frame.
 
-mod account_history;
 pub mod host;
+pub mod media;
+
+pub use self::media::TranscriptMedia;
+
+/// The desktop's transcript.
+pub type Transcript = TranscriptView<crate::transcript_media::DesktopMedia>;
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -36,17 +41,16 @@ use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnyElement, Bounds, ClipboardItem, ContentMask, Context, Entity, ListAlignment, ListOffset,
-    ListScrollEvent, ListState, MouseButton, MouseMoveEvent, MouseUpEvent, ObjectFit, PathBuilder,
-    Pixels, Point, SharedString, StyledImage as _, StyledText, Subscription, Task, TextAlign,
-    TextRun, Window, canvas, div, img, list, point, prelude::*, px, size,
+    AnyElement, Bounds, ClipboardItem, ContentMask, Context, ListAlignment, ListOffset,
+    ListScrollEvent, ListState, MouseButton, MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels,
+    Point, SharedString, StyledText, Subscription, Task, TextAlign, TextRun, Window, canvas, div,
+    list, point, prelude::*, px, size,
 };
 
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus};
 use openagents_proto::ToolCall;
 
 use self::host::TranscriptHost;
-use crate::markdown::mermaid_cache::{self, MermaidCache};
 use crate::markdown::parser::{
     Block, BlockTree, IncrementalParser, InlineRun, InlineStyle, parse_full,
 };
@@ -110,7 +114,7 @@ const ACTIVITY_BEND_RADIUS: f32 = 6.0;
 const ACTIVITY_BRANCH_END_X: f32 = 28.0;
 const ACTIVITY_ICON_LEFT: f32 = 32.0;
 const ACTIVITY_ICON_SIZE: f32 = 16.0;
-const TOOL_TEXT_SIZE: f32 = 12.0;
+pub const TOOL_TEXT_SIZE: f32 = 12.0;
 const TOOL_LABEL_SIZE: f32 = TOOL_TEXT_SIZE;
 const TOOL_LABEL_LINE_HEIGHT: f32 = 18.0;
 const TOOL_GROUP_HEADER_HEIGHT: f32 = 26.0;
@@ -163,7 +167,7 @@ const CHIPS_TOP_PAD: f32 = 2.0;
 /// How long a user fold toggle keeps its height tween armed: the RESIZE
 /// spec's 200ms plus margin. Past this the fold renders statically — an armed
 /// tween replays on remount, i.e. on every scroll-back-into-view.
-const FOLD_TWEEN_WINDOW: std::time::Duration = std::time::Duration::from_millis(400);
+pub const FOLD_TWEEN_WINDOW: std::time::Duration = std::time::Duration::from_millis(400);
 /// A user prompt renders at most this many wrapped lines until expanded. A
 /// pasted log or file drops into the transcript as one endless slab otherwise
 /// (user report) — past the cap the bubble clips and grows a chevron.
@@ -802,7 +806,7 @@ pub const OUTPUT_LINE_HEIGHT: f32 = 18.0;
 const OUTPUT_BODY_PAD: f32 = 12.0;
 
 /// The hairline between an expanded chip's header row and its detail body.
-const DETAIL_SEPARATOR: f32 = 1.0;
+pub const DETAIL_SEPARATOR: f32 = 1.0;
 
 /// Build a tool part's expandable detail. A diff wins over raw output (it is
 /// the more structured record of the same action); post-strip docs carry diff
@@ -1094,7 +1098,7 @@ pub enum RowKind {
     },
 }
 
-fn generated_image_devices(owner: &str, fallback: &[String]) -> Vec<String> {
+pub fn generated_image_devices(owner: &str, fallback: &[String]) -> Vec<String> {
     let mut devices = Vec::new();
     for device in std::iter::once(owner).chain(fallback.iter().map(String::as_str)) {
         if !device.is_empty() && !devices.iter().any(|id| id == device) {
@@ -2205,22 +2209,23 @@ pub fn detail_height(detail: &ToolDetail) -> f32 {
 }
 
 /// Tool image preview frame height; widths follow each image's aspect.
-const TOOL_IMAGE_HEIGHT: f32 = 220.0;
-const TOOL_IMAGE_MAX_WIDTH: f32 = 560.0;
-const TOOL_IMAGE_PAD: f32 = 8.0;
+pub const TOOL_IMAGE_HEIGHT: f32 = 220.0;
+pub const TOOL_IMAGE_MAX_WIDTH: f32 = 560.0;
+pub const TOOL_IMAGE_PAD: f32 = 8.0;
 /// Analytic height an open chip's image strip adds (separator + frames).
-const TOOL_IMAGE_STRIP_HEIGHT: f32 = DETAIL_SEPARATOR + TOOL_IMAGE_HEIGHT + 2.0 * TOOL_IMAGE_PAD;
+pub const TOOL_IMAGE_STRIP_HEIGHT: f32 =
+    DETAIL_SEPARATOR + TOOL_IMAGE_HEIGHT + 2.0 * TOOL_IMAGE_PAD;
 
 /// The open image context menu: what to copy and where it lives.
-struct ImageMenu {
-    path: String,
-    devices: Vec<String>,
-    position: Point<Pixels>,
-    active: Option<usize>,
+pub struct ImageMenu {
+    pub path: String,
+    pub devices: Vec<String>,
+    pub position: Point<Pixels>,
+    pub active: Option<usize>,
 }
 
 /// Spawn chips never expand, so they never preview images either.
-fn chip_has_images(tool: &ToolItem) -> bool {
+pub fn chip_has_images(tool: &ToolItem) -> bool {
     !tool.images.is_empty() && !is_spawn_link(tool)
 }
 
@@ -2395,13 +2400,13 @@ struct HighlightStore {
 
 impl HighlightStore {
     /// Current tokens if ready; kicks a background tokenize when stale/missing.
-    fn request(
+    fn request<M: TranscriptMedia>(
         &mut self,
         row_id: SharedString,
         block_ix: usize,
         lang: Lang,
         code: &str,
-        cx: &mut Context<Transcript>,
+        cx: &mut Context<TranscriptView<M>>,
     ) -> Option<Arc<openagents_syntax::HighlightedDocument>> {
         let slot_key = (row_id.clone(), block_ix);
         let document_key = DocumentHighlightKey::new(lang, code);
@@ -2623,11 +2628,11 @@ struct CachedRows {
 }
 
 #[derive(Default, Clone, Copy)]
-struct FoldState {
+pub struct FoldState {
     /// User pin (click); `None` follows the auto-open rule.
     open: Option<bool>,
     /// Bumped per toggle — keys the 200ms height tween.
-    epoch: usize,
+    pub epoch: usize,
     /// Height at the moment of the toggle (the tween's start). The destination
     /// is always the *current* target height, so content growth after a toggle
     /// snaps instead of replaying a stale tween.
@@ -2637,7 +2642,7 @@ struct FoldState {
     /// virtualized row scrolling back into view is a remount — an armed-forever
     /// tween made every once-collapsed group flash open→closed on each
     /// reappearance (user report).
-    toggled_at: Option<Instant>,
+    pub toggled_at: Option<Instant>,
     disclosure_at: Option<Instant>,
     /// Per-toggle duration. User bubbles scale this with travel distance;
     /// existing tool folds leave it at zero and keep their catalog constants.
@@ -3121,12 +3126,12 @@ impl SavedViewportCache {
     }
 }
 
-pub struct Transcript {
-    host: Rc<dyn TranscriptHost>,
-    list: ListState,
-    rows: Vec<Row>,
+pub struct TranscriptView<M: TranscriptMedia> {
+    pub host: Rc<dyn TranscriptHost>,
+    pub list: ListState,
+    pub rows: Vec<Row>,
     last_source: Option<(Option<String>, TranscriptReplayState, u64)>,
-    chat_id: Option<String>,
+    pub chat_id: Option<String>,
     /// The shell may retain this already-laid-out view briefly for its exit.
     /// Cleared as soon as the exit is invisible; never used for another chat.
     retain_on_deselect: bool,
@@ -3135,8 +3140,7 @@ pub struct Transcript {
     /// the instance is READ-ONLY — no echoes, no own-turn hold, and no global
     /// attachment protection (that set is shared with the primary transcript
     /// and overwritten wholesale).
-    doc_override: Option<String>,
-    account_history: Option<account_history::AccountHistory>,
+    pub doc_override: Option<String>,
     /// Whether an override instance watches a LIVE doc (`for_doc(follow)`):
     /// only then may the working trailer render — a frozen snapshot must
     /// never spin, whatever its entries claim.
@@ -3271,7 +3275,7 @@ pub struct Transcript {
     /// The stick-to-bottom pin. Broken only by user input (wheel/touch up);
     /// re-engaged inside the 70px band, after an own-send first overflows, and
     /// on the jump button.
-    pinned: bool,
+    pub pinned: bool,
     /// A locally-sent prompt currently held near the viewport top while its
     /// reply grows into the empty space below it.
     own_turn: Option<OwnTurnAnchor>,
@@ -3327,35 +3331,6 @@ pub struct Transcript {
     /// Entry whose hover action is showing transient copied-check feedback.
     copied_message: Option<SharedString>,
     copied_message_clear: Option<Task<()>>,
-    /// Transcript attachment being viewed full-size (click a user thumbnail).
-    attachment_preview: Option<crate::attachments::PreviewImage>,
-    /// Focused while the lightbox is open so Escape reaches it.
-    attachment_preview_focus: gpui::FocusHandle,
-    attachment_preview_return_focus: Option<gpui::FocusHandle>,
-    /// Mermaid fences drawn as diagrams in settled Markdown blocks. Each
-    /// row's media handler requests its fences while laying out, so only
-    /// painted diagrams are rendered (see [`MermaidCache`]).
-    diagrams: Rc<RefCell<MermaidCache>>,
-    /// The media handler over `diagrams`, built once and shared by every row.
-    diagram_media: Option<render::MediaUi>,
-    /// The single serialized diagram render loop, while requests remain.
-    diagram_worker: Option<Task<()>>,
-    /// Prepared diagram shown in the lightbox: its natural size frames the
-    /// enlarged raster, which is released when the lightbox closes.
-    diagram_zoom: Option<crate::image_media::MediaImage>,
-    /// Expanded tool chips' image previews; freed shortly after collapse.
-    tool_images: crate::tool_images::ToolImages,
-    /// Right-click menu over any transcript image (Copy path / Copy image).
-    image_menu: crate::popover::Popup<ImageMenu>,
-    image_menu_focus: gpui::FocusHandle,
-    image_copy: Option<Task<()>>,
-    /// In-flight ReadAttachmentChunk loads, keyed by device, path and validation
-    /// policy; results land in the global attachment cache.
-    attachment_loads: HashMap<crate::attachments::AttachmentKey, Task<()>>,
-    /// Inline `show_visual` visuals, keyed by row id.
-    visuals: HashMap<SharedString, Entity<crate::visuals::VisualFrame>>,
-    /// Scheduled retry wake-ups for errored sources (the 2s→15s ladder).
-    attachment_retries: HashMap<(String, String), Task<()>>,
     /// Sidecar blob fetches keyed by doc ref (`chatId/partId[.diff]`,
     /// chat2-sync A3). `Ready` holds the UPGRADED detail, built once on
     /// arrival — render swaps it in per chip; rows never rebuild for it.
@@ -3368,6 +3343,8 @@ pub struct Transcript {
     blob_fetch_order: HashMap<SharedString, u64>,
     blob_fetch_counter: u64,
     _host_watch: Vec<Subscription>,
+    /// This transcript's pictures and other media.
+    pub media: M,
 }
 
 /// One sidecar blob fetch's lifecycle.
@@ -3393,9 +3370,9 @@ pub enum TranscriptEvent {
     },
 }
 
-impl gpui::EventEmitter<TranscriptEvent> for Transcript {}
+impl<M: TranscriptMedia> gpui::EventEmitter<TranscriptEvent> for TranscriptView<M> {}
 
-impl Transcript {
+impl<M: TranscriptMedia> TranscriptView<M> {
     pub(crate) fn set_workspace_link_handler(&mut self, handler: render::LinkUi) {
         self.workspace_link = Some(handler);
     }
@@ -3527,18 +3504,21 @@ impl Transcript {
         let list = ListState::new(0, alignment, px(OVERDRAW_PX));
         let weak = cx.weak_entity();
         list.set_scroll_handler(move |event: &ListScrollEvent, _window, cx| {
-            weak.update(cx, |this: &mut Transcript, cx| {
-                this.handle_scroll(event, cx)
-            })
-            .ok();
+            weak.update(cx, |this: &mut Self, cx| this.handle_scroll(event, cx))
+                .ok();
         });
-        let host_watch = host.watch(cx);
-        cx.on_release(|this: &mut Self, cx| {
-            this.close_diagram_zoom(cx);
-            crate::image_media::release_media(this.diagrams.borrow_mut().drain(), cx);
-            this.tool_images.clear(cx);
-        })
-        .detach();
+        let host_watch = {
+            let weak = cx.weak_entity();
+            host.clone().watch(
+                Rc::new(move |doc_id, cx| {
+                    weak.update(cx, |this, cx| this.host_changed(doc_id, cx))
+                        .ok();
+                }),
+                cx,
+            )
+        };
+        cx.on_release(|this: &mut Self, cx| M::released(this, cx))
+            .detach();
         // The rail is sized for the conversation column; a narrow right-pane
         // tab has no width gate driving it, so override instances skip it.
         let rail_enabled = doc_override.is_none();
@@ -3561,7 +3541,6 @@ impl Transcript {
             land_end_pending: doc_override.is_some() && !follow,
             doc_live: doc_override.is_some() && follow,
             doc_override,
-            account_history: None,
             saved_viewports: SavedViewportCache::default(),
             pending_viewport: None,
             viewport_generation: 0,
@@ -3627,24 +3606,11 @@ impl Transcript {
             code_fences: HashMap::new(),
             copied_message: None,
             copied_message_clear: None,
-            attachment_preview: None,
-            attachment_preview_focus: cx.focus_handle(),
-            attachment_preview_return_focus: None,
-            diagrams: Rc::default(),
-            diagram_media: None,
-            diagram_worker: None,
-            diagram_zoom: None,
-            tool_images: Default::default(),
-            image_menu: Default::default(),
-            image_menu_focus: cx.focus_handle(),
-            image_copy: None,
-            attachment_loads: HashMap::new(),
-            visuals: HashMap::new(),
-            attachment_retries: HashMap::new(),
             blob_details: HashMap::new(),
             blob_fetch_order: HashMap::new(),
             blob_fetch_counter: 0,
             _host_watch: host_watch,
+            media: M::new(cx),
         };
         this.sync(cx);
         this
@@ -3896,8 +3862,8 @@ impl Transcript {
         // end of the effect cycle, after the list has released its borrow.
         let this = cx.weak_entity();
         cx.defer(move |cx| {
-            this.update(cx, |this: &mut Transcript, cx| {
-                this.load_older_account_messages(cx);
+            this.update(cx, |this: &mut Self, cx| {
+                M::scrolled_near_top(this, cx);
                 this.discard_pending_viewport();
                 // Input owns the viewport immediately, including wheel-down
                 // after background streaming. A held turn can be stale while
@@ -4666,7 +4632,7 @@ impl Transcript {
     }
 
     /// Rebuild rows from app state; splice minimal ranges into the list.
-    fn sync(&mut self, cx: &mut Context<Self>) {
+    pub fn sync(&mut self, cx: &mut Context<Self>) {
         if self.retain_on_deselect
             && self.doc_override.is_none()
             && self.host.selected_chat(cx).is_none()
@@ -4730,7 +4696,7 @@ impl Transcript {
             }
             self.chat_id = selected;
             self.rows.clear();
-            self.tool_images.clear(cx);
+            M::chat_changed(self, cx);
             self.row_cache.clear();
             self.live_parsers.clear();
             self.tree_cache.clear();
@@ -5036,11 +5002,7 @@ impl Transcript {
             .collect();
         self.code_fences
             .retain(|key, _| active_code_fences.contains(key));
-        // Diagram source toggles follow the same stable row identity.
-        if self.diagrams.borrow().has_source_toggles() {
-            let row_ids: HashSet<&str> = new_rows.iter().map(|row| row.id.as_ref()).collect();
-            self.diagrams.borrow_mut().retain_rows(&row_ids);
-        }
+        M::rows_built(self, &new_rows);
 
         // Text already streamed before this (re)attach is the veil BASELINE:
         // its rows' veils seed instead of fading (render creates them from
@@ -5084,8 +5046,7 @@ impl Transcript {
         match diff_rows(&self.rows, &new_rows) {
             None => {
                 self.rows = new_rows;
-                self.refresh_protected_attachments(cx);
-                self.release_departed_tool_images(cx);
+                M::rows_changed(self, cx);
                 self.reconcile_own_turn_prompt();
                 // Replay readiness is independent of row content: an empty
                 // reset (or one identical to optimistic rows) still resolves
@@ -5137,8 +5098,7 @@ impl Transcript {
                 });
             }
         }
-        self.refresh_protected_attachments(cx);
-        self.release_departed_tool_images(cx);
+        M::rows_changed(self, cx);
         self.reconcile_own_turn_prompt();
         self.restore_pending_viewport(replay);
         self.promote_materialized_queued_turn(attached, cx);
@@ -5549,667 +5509,6 @@ impl Transcript {
 
     // ---- attachment read-back (user-attachments.tsx + transcript cache) ----
 
-    /// Shield the open transcript's attachments from image-cache eviction —
-    /// rebuilt on every row sync so a chat switch swaps the set. Without it,
-    /// budget pressure evicted thumbnails still on screen (the list caches
-    /// rendered rows, so a visible image's LRU tick goes stale).
-    fn refresh_protected_attachments(&self, cx: &Context<Self>) {
-        // The protected set is GLOBAL and replaced wholesale — an override
-        // instance writing it would clobber the primary transcript's keys.
-        if self.doc_override.is_some() {
-            return;
-        }
-        crate::attachments::protect_attachments(self.protected_attachment_keys(cx));
-    }
-
-    fn protected_attachment_keys(&self, cx: &Context<Self>) -> HashSet<(String, String)> {
-        let devices = self.attachment_device_ids(cx);
-        let mut keys = std::collections::HashSet::new();
-        for row in &self.rows {
-            // Generated images use bounded LRU retention, not history-wide protection.
-            if let RowKind::User {
-                attachments,
-                mentions,
-                ..
-            } = &row.kind
-            {
-                let chipped = mentions
-                    .iter()
-                    .filter(|span| span.kind == crate::composer::ChipKind::Image)
-                    .filter_map(|span| span.upload.as_ref().map(|path| path.to_string()));
-                for path in attachments
-                    .iter()
-                    .map(|att| att.path.clone())
-                    .chain(chipped)
-                {
-                    for dev in &devices {
-                        keys.insert((dev.clone(), path.clone()));
-                    }
-                }
-            }
-        }
-        keys
-    }
-
-    /// Devices that may own a user message's attachment files: the chat's host
-    /// device (uploads targeted it) plus this device (openagents's
-    /// `uniqueIds([attachmentDeviceId, m.device_id])`).
-    fn attachment_device_ids(&self, cx: &Context<Self>) -> Vec<String> {
-        // `selected_chat_row` belongs to the PRIMARY transcript's chat — an
-        // override instance has no chat row, so it claims no devices (its
-        // thumbnails degrade to placeholders instead of guessing).
-        if self.doc_override.is_some() {
-            return Vec::new();
-        }
-        let mut ids = Vec::new();
-        if let Some(place) = self.host.chat_place(None, cx) {
-            ids.push(place.device_id);
-        }
-        if let Some(local) = self.host.local_device_id(cx).map(str::to_owned)
-            && !ids.contains(&local)
-        {
-            ids.push(local);
-        }
-        ids
-    }
-
-    fn generated_attachment_device_ids(&self, owner: &str, cx: &Context<Self>) -> Vec<String> {
-        let mut fallback = self.attachment_device_ids(cx);
-        if let Some(local) = self.host.local_device_id(cx) {
-            fallback.push(local.to_owned());
-        }
-        generated_image_devices(owner, &fallback)
-    }
-
-    /// Effective load state for one attachment across its candidate devices:
-    /// first Loaded source wins; otherwise loads are (re)claimed and the
-    /// snapshot degrades Loading → Error with a scheduled retry wake-up.
-    fn attachment_state(
-        &mut self,
-        device_ids: &[String],
-        path: &str,
-        expected_raster_mime: Option<&str>,
-        cx: &mut Context<Self>,
-    ) -> crate::attachments::AttachmentSnapshot {
-        use crate::attachments::{
-            AttachmentKey, AttachmentSnapshot, attachment_snapshot_for, begin_load_for,
-        };
-        if self.account_history.is_some() {
-            return self.account_attachment(path, cx);
-        }
-        for dev in device_ids {
-            if let AttachmentSnapshot::Loaded(image) =
-                attachment_snapshot_for(&AttachmentKey::new(dev, path, expected_raster_mime))
-            {
-                return AttachmentSnapshot::Loaded(image);
-            }
-        }
-        let mut any_loading = false;
-        let mut min_retry: Option<Duration> = None;
-        for dev in device_ids {
-            if begin_load_for(&AttachmentKey::new(dev, path, expected_raster_mime)) {
-                self.spawn_attachment_load(
-                    dev.clone(),
-                    path.to_string(),
-                    expected_raster_mime.map(str::to_owned),
-                    cx,
-                );
-            }
-            match attachment_snapshot_for(&AttachmentKey::new(dev, path, expected_raster_mime)) {
-                AttachmentSnapshot::Loaded(image) => return AttachmentSnapshot::Loaded(image),
-                AttachmentSnapshot::Loading => {
-                    // Generated assets try the owner first, falling back only
-                    // after failure. Repainting never launches duplicate reads.
-                    if expected_raster_mime.is_some() {
-                        return AttachmentSnapshot::Loading;
-                    }
-                    any_loading = true;
-                }
-                AttachmentSnapshot::Error { retry_in } => {
-                    min_retry = Some(min_retry.map_or(retry_in, |m| m.min(retry_in)));
-                }
-            }
-        }
-        if any_loading {
-            return AttachmentSnapshot::Loading;
-        }
-        match min_retry {
-            Some(retry_in) => {
-                if let Some(dev) = device_ids.first() {
-                    self.schedule_attachment_retry((dev.clone(), path.to_string()), retry_in, cx);
-                }
-                AttachmentSnapshot::Error { retry_in }
-            }
-            // No candidate devices at all — the "unavailable" thumb, no retry.
-            None => AttachmentSnapshot::Error {
-                retry_in: Duration::MAX,
-            },
-        }
-    }
-
-    fn spawn_attachment_load(
-        &mut self,
-        device_id: String,
-        path: String,
-        expected_raster_mime: Option<String>,
-        cx: &mut Context<Self>,
-    ) {
-        use crate::attachments::{
-            AttachmentKey, read_attachment_image, store_error_for, store_loaded_for,
-        };
-        let key = AttachmentKey::new(&device_id, &path, expected_raster_mime.as_deref());
-        let Some(engine) = self.host.rpc(cx) else {
-            store_error_for(&key);
-            return;
-        };
-        let local = self.host.local_device_id(cx).map(str::to_owned);
-        // Relay-forward only for a genuinely remote owner; the local device's
-        // files are served directly.
-        let target = (local.as_deref() != Some(device_id.as_str())).then(|| device_id.clone());
-        let claim = crate::attachments::AttachmentLoadGuard(key.clone());
-        let task_key = key.clone();
-        let task = cx.spawn(async move |this, cx| {
-            let _claim = claim;
-            match read_attachment_image(
-                &engine,
-                cx.background_executor(),
-                target.as_deref(),
-                &path,
-                expected_raster_mime.as_deref(),
-            )
-            .await
-            {
-                Some(loaded) => store_loaded_for(&task_key, loaded.name.into(), loaded.image),
-                None => store_error_for(&task_key),
-            }
-            this.update(cx, |transcript, cx| {
-                transcript.attachment_loads.remove(&task_key);
-                cx.notify();
-            })
-            .ok();
-        });
-        self.attachment_loads.insert(key, task);
-    }
-
-    /// One wake-up per errored source: after the backoff elapses, a notify
-    /// re-renders the thumb, whose `begin_load` then claims the retry.
-    fn schedule_attachment_retry(
-        &mut self,
-        key: (String, String),
-        delay: Duration,
-        cx: &mut Context<Self>,
-    ) {
-        if delay == Duration::MAX || self.attachment_retries.contains_key(&key) {
-            return;
-        }
-        let wake = key.clone();
-        let task = cx.spawn(async move |this, cx| {
-            cx.background_executor()
-                .timer(delay + Duration::from_millis(60))
-                .await;
-            this.update(cx, |transcript, cx| {
-                transcript.attachment_retries.remove(&wake);
-                cx.notify();
-            })
-            .ok();
-        });
-        self.attachment_retries.insert(key, task);
-    }
-
-    /// Open a sent image chip's upload full size, as its thumbnail did. An
-    /// image still loading opens on a later click.
-    fn open_chip_image(
-        &mut self,
-        path: &SharedString,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let device_ids = self.attachment_device_ids(cx);
-        if let crate::attachments::AttachmentSnapshot::Loaded(image) =
-            self.attachment_state(&device_ids, path, None, cx)
-        {
-            let preview = crate::attachments::PreviewImage::new(image.name, image.image.clone());
-            self.attachment_preview_return_focus = window.focused(cx);
-            preview.viewer.reset();
-            self.attachment_preview = Some(preview);
-            window.focus(&self.attachment_preview_focus, cx);
-            cx.notify();
-        }
-    }
-
-    /// Whether an attachment ref is still crossing to the chat's host, and
-    /// how far along it is. Two ref shapes mean "still crossing": the queued
-    /// flow's `pending://` (bytes ship engine-side after the send; the host
-    /// rewrites the ref to an absolute path once they land and the run
-    /// starts) and the legacy echo's synthetic `pending/`. Percent sources, in
-    /// order: this attachment's own relay transfer (`WatchTransfers`, by the
-    /// uploadId its ref names — the leg that actually takes time), else the
-    /// send-wide staging/legacy upload percent. Neither → no number, so a
-    /// ring never shows one that isn't a real transfer position (2026-08-20
-    /// report: the staging-only percent blinked out in ~100ms and lied about
-    /// the slow part).
-    fn upload_status(&self, path: &str, cx: &Context<Self>) -> (bool, Option<u8>) {
-        let sending = path.starts_with("pending://") || path.starts_with("pending/");
-        let upload_id = path
-            .strip_prefix("pending://")
-            .and_then(|rest| rest.split_once('/'))
-            .map(|(id, _)| id);
-        let percent = upload_id
-            .and_then(|id| self.host.transfer_percent(id, cx))
-            .or_else(|| {
-                sending
-                    .then(|| self.host.upload_progress_percent(cx))
-                    .flatten()
-            });
-        (sending, percent)
-    }
-
-    /// What a sent bubble's attachment chips show beyond their label: the
-    /// progress of an upload still crossing to the host in place of the icon
-    /// (the strip's thumbnails used to carry it), a warning for an image that
-    /// can't be read back, and a click target opening a loaded image.
-    fn chip_overlays(
-        &mut self,
-        row_id: &SharedString,
-        mentions: &[crate::composer::SentMentionSpan],
-        theme: &Theme,
-        cx: &mut Context<Self>,
-    ) -> Vec<ChipOverlay> {
-        use crate::attachments::AttachmentSnapshot;
-        if mentions.iter().all(|span| span.upload.is_none()) {
-            return Vec::new();
-        }
-        let device_ids = self.attachment_device_ids(cx);
-        let mut overlays = Vec::new();
-        for (ix, span) in mentions.iter().enumerate() {
-            let Some(upload) = &span.upload else {
-                continue;
-            };
-            let (sending, percent) = self.upload_status(upload, cx);
-            let mut status = sending.then(|| match percent {
-                Some(pct) => crate::loaders::upload_progress_arc(
-                    pct,
-                    CHIP_STATUS_SIZE,
-                    theme.text_muted.opacity(0.35),
-                    theme.text,
-                ),
-                None => crate::loaders::mini_glyph_spinner(
-                    format!("chip-sending-{row_id}-{ix}"),
-                    2.0,
-                    theme.glyph,
-                    cx.entity_id(),
-                    cx,
-                )
-                .into_any_element(),
-            });
-            let mut open = None;
-            if span.kind == crate::composer::ChipKind::Image {
-                // Loading here keeps the image ready for a click, as the
-                // strip's thumbnail did.
-                match self.attachment_state(&device_ids, upload, None, cx) {
-                    AttachmentSnapshot::Loaded(_) => open = Some(upload.clone()),
-                    AttachmentSnapshot::Error { .. } if !sending => {
-                        status = Some(
-                            crate::icons::icon(crate::icons::DANGER_TRIANGLE)
-                                .size(px(CHIP_STATUS_SIZE - 2.0))
-                                .text_color(theme.text_muted)
-                                .into_any_element(),
-                        );
-                    }
-                    _ => {}
-                }
-            }
-            if open.is_some() || status.is_some() {
-                overlays.push(ChipOverlay {
-                    range: span.range.clone(),
-                    open,
-                    status,
-                });
-            }
-        }
-        overlays
-    }
-
-    // ---- tool-call image previews + the image context menu ----
-
-    fn tool_images_of(this: &mut Self) -> &mut crate::tool_images::ToolImages {
-        &mut this.tool_images
-    }
-
-    /// The chat whose agent produced these rows (a subagent tab borrows the
-    /// selected chat's host and cwd).
-    fn image_host(&self, cx: &gpui::App) -> (Option<String>, Option<String>) {
-        let place = self.host.chat_place(self.chat_id.as_deref(), cx);
-        (
-            place.as_ref().map(|place| place.device_id.clone()),
-            place.and_then(|place| place.cwd),
-        )
-    }
-
-    /// Hold the previews of every chip whose body is mounted; release the
-    /// rest. Returns `(absolute path, thumb)` lists per chip index.
-    fn hold_tool_images(
-        &mut self,
-        row_id: &SharedString,
-        tools: &[ToolItem],
-        opens: &[bool],
-        folds: &[FoldState],
-        cx: &mut Context<Self>,
-    ) -> Vec<Option<Vec<(String, crate::tool_images::Thumb)>>> {
-        if !tools.iter().any(chip_has_images) {
-            return vec![None; tools.len()];
-        }
-        let (device, cwd) = self.image_host(cx);
-        let loader = crate::tool_images::Loader {
-            engine: self.host.rpc(cx),
-            local_device: self.host.local_device_id(cx).map(str::to_owned),
-        };
-        tools
-            .iter()
-            .enumerate()
-            .map(|(ix, tool)| {
-                if !chip_has_images(tool) {
-                    return None;
-                }
-                let chip = SharedString::from(format!("{row_id}#d{ix}"));
-                let tweening = folds[ix].epoch > 0
-                    && folds[ix]
-                        .toggled_at
-                        .is_some_and(|at| at.elapsed() < FOLD_TWEEN_WINDOW);
-                if !opens[ix] && !tweening {
-                    self.tool_images.release(&chip, Self::tool_images_of, cx);
-                    return None;
-                }
-                let keys: Vec<_> = tool
-                    .images
-                    .iter()
-                    .map(|path| crate::tool_images::ImageKey {
-                        device: device.clone().unwrap_or_default(),
-                        path: crate::tool_images::resolve_path(path, cwd.as_deref()),
-                    })
-                    .collect();
-                let paths: Vec<String> = keys.iter().map(|key| key.path.clone()).collect();
-                let loader = if device.is_some() {
-                    &loader
-                } else {
-                    &crate::tool_images::Loader {
-                        engine: None,
-                        local_device: None,
-                    }
-                };
-                let thumbs = self
-                    .tool_images
-                    .hold(&chip, keys, loader, Self::tool_images_of, cx);
-                Some(paths.into_iter().zip(thumbs).collect())
-            })
-            .collect()
-    }
-
-    /// Rows left the transcript (compact fold settled, history rebuilt):
-    /// their chips' previews start the release grace.
-    fn release_departed_tool_images(&mut self, cx: &mut Context<Self>) {
-        if self.tool_images.is_idle() {
-            return;
-        }
-        let live: HashSet<&str> = self
-            .rows
-            .iter()
-            .filter(|row| matches!(row.kind, RowKind::ToolGroup { .. }))
-            .map(|row| row.id.as_ref())
-            .collect();
-        self.tool_images
-            .retain_rows(|row| live.contains(row), Self::tool_images_of, cx);
-    }
-
-    fn render_tool_image_strip(
-        &self,
-        chip: &SharedString,
-        images: Vec<(String, crate::tool_images::Thumb)>,
-        collapses: bool,
-        theme: &Theme,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        use crate::tool_images::Thumb;
-        let devices: Rc<[String]> = self.image_host(cx).0.into_iter().collect();
-        let frames = images.into_iter().enumerate().map(|(ix, (path, thumb))| {
-            let name = SharedString::from(file_badge_name(&path).to_owned());
-            let width = match &thumb {
-                Thumb::Ready { aspect, .. } => {
-                    (TOOL_IMAGE_HEIGHT * aspect).clamp(48.0, TOOL_IMAGE_MAX_WIDTH)
-                }
-                _ => TOOL_IMAGE_HEIGHT * 4.0 / 3.0,
-            };
-            let menu_devices = devices.clone();
-            let frame = div()
-                .id(SharedString::from(format!("{chip}-img{ix}")))
-                .w(px(width))
-                .h(px(TOOL_IMAGE_HEIGHT))
-                .flex_none()
-                .flex()
-                .items_center()
-                .justify_center()
-                .rounded(px(8.0))
-                .overflow_hidden()
-                .border_1()
-                .border_color(crate::theme::hairline(0.07))
-                .bg(crate::theme::ink(0.035))
-                .aria_label(name.clone())
-                .on_mouse_down(
-                    gpui::MouseButton::Right,
-                    cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
-                        cx.stop_propagation();
-                        this.open_image_menu(
-                            path.clone(),
-                            menu_devices.to_vec(),
-                            event.position,
-                            window,
-                            cx,
-                        );
-                    }),
-                );
-            match thumb {
-                // Explicit dims: img layout honors intrinsic aspect over a
-                // percent height (see the attachment strip).
-                Thumb::Ready { image, .. } => frame.child(
-                    img(image)
-                        .w(px(width - 2.0))
-                        .h(px(TOOL_IMAGE_HEIGHT - 2.0))
-                        .rounded(px(7.0))
-                        .object_fit(ObjectFit::Contain),
-                ),
-                Thumb::Loading => frame
-                    .text_size(px(TOOL_TEXT_SIZE))
-                    .text_color(theme.text_faint)
-                    .child("Loading image…"),
-                Thumb::Failed => frame
-                    .flex_col()
-                    .gap(px(4.0))
-                    .px(px(12.0))
-                    .text_size(px(TOOL_TEXT_SIZE))
-                    .text_color(theme.text_faint)
-                    .child("Image unavailable")
-                    .child(div().max_w_full().truncate().child(name)),
-            }
-        });
-        div()
-            .h(px(TOOL_IMAGE_STRIP_HEIGHT))
-            .flex_none()
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .h(px(DETAIL_SEPARATOR))
-                    .flex_none()
-                    .when(!collapses, |line| line.bg(crate::theme::hairline(0.06))),
-            )
-            .child(
-                div()
-                    .id(SharedString::from(format!("{chip}-images")))
-                    .h(px(TOOL_IMAGE_HEIGHT + 2.0 * TOOL_IMAGE_PAD))
-                    .py(px(TOOL_IMAGE_PAD))
-                    .when(!collapses, |strip| strip.px(px(TOOL_IMAGE_PAD)))
-                    .flex()
-                    .flex_row()
-                    .gap(px(TOOL_IMAGE_PAD))
-                    .overflow_x_scroll()
-                    .children(frames),
-            )
-            .into_any_element()
-    }
-
-    /// Open the image menu at the pointer. `devices` are the candidate owners
-    /// of `path`, tried in order when copying the image.
-    fn open_image_menu(
-        &mut self,
-        path: String,
-        devices: Vec<String>,
-        position: Point<Pixels>,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.image_menu.open(ImageMenu {
-            path,
-            devices,
-            position,
-            active: None,
-        });
-        window.focus(&self.image_menu_focus, cx);
-        cx.notify();
-    }
-
-    fn close_image_menu(&mut self, cx: &mut Context<Self>) {
-        if self.image_menu.begin_close() {
-            crate::popover::reap_popup(cx, |this: &mut Self| &mut this.image_menu);
-            cx.notify();
-        }
-    }
-
-    fn image_menu_key(&mut self, event: &gpui::KeyDownEvent, cx: &mut Context<Self>) {
-        use crate::popover::MenuKey;
-        let Some(menu) = self.image_menu.open_mut() else {
-            return;
-        };
-        match crate::popover::classify_key(
-            &event.keystroke.key,
-            event.keystroke.modifiers.platform,
-            event.keystroke.modifiers.control,
-        ) {
-            MenuKey::Escape => self.close_image_menu(cx),
-            MenuKey::Up => menu.active = crate::popover::menu_step(menu.active, 2, -1),
-            MenuKey::Down => menu.active = crate::popover::menu_step(menu.active, 2, 1),
-            MenuKey::Enter => {
-                if let Some(action) = menu.active {
-                    self.dispatch_image_menu(action, cx);
-                }
-            }
-            _ => return,
-        }
-        cx.stop_propagation();
-        cx.notify();
-    }
-
-    fn dispatch_image_menu(&mut self, action: usize, cx: &mut Context<Self>) {
-        let Some(menu) = self.image_menu.as_open() else {
-            return;
-        };
-        let (path, devices) = (menu.path.clone(), menu.devices.clone());
-        self.close_image_menu(cx);
-        match action {
-            0 => cx.write_to_clipboard(gpui::ClipboardItem::new_string(path)),
-            1 => self.copy_image(path, devices, cx),
-            _ => {}
-        }
-    }
-
-    /// Copy the original file (not the preview) from its owning device.
-    fn copy_image(&mut self, path: String, devices: Vec<String>, cx: &mut Context<Self>) {
-        let Some(engine) = self.host.rpc(cx) else {
-            return;
-        };
-        let local = self.host.local_device_id(cx).map(str::to_owned);
-        self.image_copy = Some(cx.spawn(async move |this, cx| {
-            let executor = cx.background_executor().clone();
-            for device in &devices {
-                let target = (local.as_deref() != Some(device.as_str())).then_some(device.as_str());
-                if let Some((_, mime, bytes)) = crate::attachments::read_attachment_bytes(
-                    &engine, &executor, target, &path, None,
-                )
-                .await
-                {
-                    let format =
-                        gpui::ImageFormat::from_mime_type(&mime).unwrap_or(gpui::ImageFormat::Png);
-                    // SVG is markup an agent may have written: copy the parsed,
-                    // re-serialized tree (no scripts or external resources),
-                    // as previews render it.
-                    let bytes = if format == gpui::ImageFormat::Svg {
-                        let svg = executor.spawn(async move {
-                            usvg::Tree::from_data(&bytes, &crate::image_media::svg_options())
-                                .map(|tree| tree.to_string(&usvg::WriteOptions::default()))
-                        });
-                        let Ok(svg) = svg.await else {
-                            return;
-                        };
-                        svg.into_bytes()
-                    } else {
-                        bytes
-                    };
-                    let image = gpui::Image::from_bytes(format, bytes);
-                    this.update(cx, |this, cx| {
-                        cx.write_to_clipboard(gpui::ClipboardItem::new_image(&image));
-                        this.image_copy = None;
-                    })
-                    .ok();
-                    return;
-                }
-            }
-        }));
-    }
-
-    fn render_image_menu(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let menu = self.image_menu.get()?;
-        let theme = Theme::of(cx).for_popup();
-        let mut card = crate::popover::popover_card(&theme)
-            .id("transcript-image-menu-card")
-            .track_focus(&self.image_menu_focus)
-            .role(gpui::Role::Menu)
-            .w(px(190.0))
-            .flex()
-            .flex_col()
-            .on_key_down(cx.listener(|this, event, _, cx| this.image_menu_key(event, cx)))
-            .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_image_menu(cx)))
-            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation());
-        for (index, (label, icon)) in [
-            ("Copy path", crate::icons::COPY),
-            ("Copy image", crate::icons::FILE_IMAGE),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            let id = SharedString::from(format!("transcript-image-menu-{index}"));
-            card = card.child(
-                crate::popover::menu_row(&theme, menu.active == Some(index), id.clone())
-                    .id(id)
-                    .role(gpui::Role::MenuItem)
-                    .aria_label(label)
-                    .on_click(
-                        cx.listener(move |this, _, _, cx| this.dispatch_image_menu(index, cx)),
-                    )
-                    .child(
-                        crate::icons::icon(icon)
-                            .size(px(16.0))
-                            .text_color(theme.text_muted),
-                    )
-                    .child(label),
-            );
-        }
-        Some(crate::popover::menu_at(
-            "transcript-image-menu",
-            menu.position,
-            card.into_any_element(),
-            self.image_menu.closing_since(),
-        ))
-    }
-
     /// The inside of a user bubble: the prompt text, clipped to
     /// [`USER_COLLAPSED_LINES`] until expanded, plus the expander chevron for
     /// prompts past the cap. Returns the bubble's children in order.
@@ -6230,7 +5529,7 @@ impl Transcript {
         window: &Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let chip_overlays = self.chip_overlays(row_id, &mentions, theme, cx);
+        let chip_overlays = M::sent_chip_overlays(self, row_id, &mentions, theme, cx);
         let fold = self.user_folds.get(row_id).copied().unwrap_or_default();
         let expanded = fold.open.unwrap_or(false);
         let line_height =
@@ -6304,7 +5603,7 @@ impl Transcript {
                 cx.entity_id(),
                 chip_overlays,
                 Rc::new(cx.listener(|this, path: &SharedString, window, cx| {
-                    this.open_chip_image(path, window, cx);
+                    M::open_sent_chip_image(this, path, window, cx);
                 })),
             ));
         // Height motion uses the same ease-out curve as sidebars, tool folds,
@@ -6421,116 +5720,10 @@ impl Transcript {
             .into_any_element()
     }
 
-    /// Media wiring for settled Markdown: Mermaid fences become diagrams
-    /// once rendered and keep their source until then (or on failure).
-    /// Inline images keep their ordinary chat rendering.
-    fn diagram_media(&mut self, cx: &Context<Self>) -> render::MediaUi {
-        let cache = self.diagrams.clone();
-        let owner = cx.weak_entity();
-        let media = self.diagram_media.get_or_insert_with(|| render::MediaUi {
-            image: None,
-            diagram: Some(Rc::new(move |code, id, _theme| {
-                let lookup = cache.borrow_mut().request(code, &id);
-                match lookup {
-                    mermaid_cache::Lookup::Pending => render::DiagramView::Source,
-                    mermaid_cache::Lookup::Failed(reason) => render::DiagramView::Failed(reason),
-                    mermaid_cache::Lookup::Ready(media) => {
-                        let show_source = cache.borrow().source_visible(&id);
-                        let body = if show_source {
-                            gpui::Empty.into_any_element()
-                        } else {
-                            let open = owner.clone();
-                            let source = media.clone();
-                            crate::image_media::preview_element(
-                                &media,
-                                format!("{id}-image").into(),
-                                move |window, cx| {
-                                    let _ = open.update(cx, |this, cx| {
-                                        this.open_diagram_preview(source.clone(), window, cx)
-                                    });
-                                },
-                            )
-                        };
-                        let toggle = owner.clone();
-                        render::DiagramView::Diagram(render::DiagramUi {
-                            body,
-                            show_source,
-                            toggle_source: Rc::new(move |_, cx| {
-                                let _ = toggle.update(cx, |this, cx| {
-                                    this.diagrams.borrow_mut().toggle_source(&id);
-                                    let row = mermaid_cache::frame_row(&id).to_owned();
-                                    this.diagram_layout_changed(&[row.into()], cx);
-                                });
-                            }),
-                        })
-                    }
-                }
-            })),
-        });
-        media.clone()
-    }
-
-    /// Render requested diagrams one at a time off the UI thread. The loop
-    /// picks its next source between renders, so rows that scrolled away in
-    /// the meantime are skipped rather than queued.
-    fn ensure_diagram_worker(&mut self, cx: &mut Context<Self>) {
-        if self.diagram_worker.is_some() || !self.diagrams.borrow_mut().take_new_requests() {
-            return;
-        }
-        self.diagram_worker = Some(cx.spawn(async move |this, cx| {
-            loop {
-                let job = this.update(cx, |this, cx| {
-                    let job = this.diagrams.borrow_mut().next_job();
-                    if job.is_none() {
-                        this.diagram_worker = None;
-                    }
-                    job.map(|code| {
-                        (
-                            code,
-                            crate::markdown::mermaid::Palette::from_theme(Theme::of(cx)),
-                            crate::theme::style_generation(),
-                        )
-                    })
-                });
-                let Ok(Some((code, palette, style))) = job else {
-                    return;
-                };
-                let source = code.clone();
-                let result = cx
-                    .background_executor()
-                    .spawn(async move {
-                        let svg = crate::markdown::mermaid::render(&source, &palette)?;
-                        crate::image_media::decode_image("image/svg+xml", svg.into_bytes())
-                    })
-                    .await;
-                if this
-                    .update(cx, |this, cx| this.finish_diagram(code, style, result, cx))
-                    .is_err()
-                {
-                    return;
-                }
-            }
-        }));
-    }
-
-    fn finish_diagram(
-        &mut self,
-        code: String,
-        style: u32,
-        result: Result<crate::image_media::MediaImage, String>,
-        cx: &mut Context<Self>,
-    ) {
-        let Some((rows, released)) = self.diagrams.borrow_mut().finish(code, style, result) else {
-            return;
-        };
-        crate::image_media::release_media(released, cx);
-        self.diagram_layout_changed(&rows, cx);
-    }
-
     /// A diagram replaced its source (or the reverse): remeasure the rows
     /// painting it and let the bottom pin and the own-turn runway absorb the
     /// height change, exactly like any other layout-affecting row update.
-    fn diagram_layout_changed(&mut self, rows: &[SharedString], cx: &mut Context<Self>) {
+    pub fn diagram_layout_changed(&mut self, rows: &[SharedString], cx: &mut Context<Self>) {
         let mut changed = false;
         for (ix, row) in self.rows.iter().enumerate() {
             if rows.contains(&row.id) {
@@ -6549,478 +5742,6 @@ impl Transcript {
             self.own_turn_kick = true;
         }
         cx.notify();
-    }
-
-    /// Open a diagram in the shared lightbox, rasterized for the window
-    /// within the memory the retained diagrams leave available.
-    fn open_diagram_preview(
-        &mut self,
-        source: crate::image_media::MediaImage,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        self.close_diagram_zoom(cx);
-        let viewport = window.viewport_size();
-        let available = mermaid_cache::MAX_RETAINED_BYTES
-            .saturating_sub(self.diagrams.borrow().retained_bytes());
-        let enlarged = source.enlarged(
-            (
-                f32::from(viewport.width) * 0.9,
-                f32::from(viewport.height) * 0.85,
-            ),
-            window.scale_factor(),
-            available,
-            None,
-        );
-        self.attachment_preview_return_focus = window.focused(cx);
-        self.attachment_preview = Some(
-            crate::attachments::PreviewImage::new("Mermaid diagram", enlarged.image)
-                .with_plate(crate::markdown::mermaid::Palette::plate(Theme::of(cx))),
-        );
-        self.diagram_zoom = Some(source);
-        window.focus(&self.attachment_preview_focus, cx);
-        cx.notify();
-    }
-
-    /// Release a diagram lightbox's dedicated raster. The row's own preview
-    /// stays with the diagram cache.
-    fn close_diagram_zoom(&mut self, cx: &mut gpui::App) {
-        let Some(source) = self.diagram_zoom.take() else {
-            return;
-        };
-        if let Some(preview) = self.attachment_preview.take()
-            && !Arc::ptr_eq(&preview.image, &source.image)
-        {
-            cx.defer(move |cx| gpui::ImageSource::Image(preview.image).evict(None, cx));
-        }
-    }
-
-    fn render_generated_image(
-        &mut self,
-        row_id: &SharedString,
-        owner: &str,
-        path: &str,
-        name: &str,
-        mime_type: &str,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        use crate::attachments::AttachmentSnapshot;
-        let devices = self.generated_attachment_device_ids(owner, cx);
-        let state = self.attachment_state(&devices, path, Some(mime_type), cx);
-        let theme = Theme::of(cx).clone();
-        let frame = div()
-            .id(SharedString::from(format!("{row_id}-generated")))
-            .w(px(512.0))
-            .max_w_full()
-            .h(px(320.0))
-            .max_h(px(420.0))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded(px(12.0))
-            .overflow_hidden()
-            .bg(crate::theme::ink(0.045));
-        match state {
-            AttachmentSnapshot::Loaded(loaded) => {
-                let dimensions =
-                    crate::appshots::png_dimensions(&loaded.image.bytes).unwrap_or((512, 320));
-                let scale = (512.0 / dimensions.0 as f32)
-                    .min(420.0 / dimensions.1 as f32)
-                    .min(1.0);
-                let preview =
-                    crate::attachments::PreviewImage::new(name.to_owned(), loaded.image.clone());
-                let menu_path = path.to_owned();
-                frame
-                    .on_mouse_down(
-                        gpui::MouseButton::Right,
-                        cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
-                            cx.stop_propagation();
-                            this.open_image_menu(
-                                menu_path.clone(),
-                                devices.clone(),
-                                event.position,
-                                window,
-                                cx,
-                            );
-                        }),
-                    )
-                    .w(px(dimensions.0 as f32 * scale))
-                    .h(px(dimensions.1 as f32 * scale))
-                    .role(gpui::Role::Button)
-                    .aria_label("Preview generated image")
-                    .tab_index(0)
-                    .cursor_pointer()
-                    .focus_visible(move |style| style.border_2().border_color(theme.accent))
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        this.attachment_preview_return_focus = window.focused(cx);
-                        preview.viewer.reset();
-                        this.attachment_preview = Some(preview.clone());
-                        window.focus(&this.attachment_preview_focus, cx);
-                        cx.notify();
-                    }))
-                    .child(
-                        gpui::img(loaded.image)
-                            .size_full()
-                            // The frame's overflow clip is rectangular; round the image itself.
-                            .rounded(px(12.0))
-                            .object_fit(gpui::ObjectFit::Contain),
-                    )
-                    .into_any_element()
-            }
-            AttachmentSnapshot::Loading => frame
-                .text_color(theme.text_muted)
-                .child("Loading generated image…")
-                .into_any_element(),
-            AttachmentSnapshot::Error { .. } => frame
-                .text_color(theme.text_muted)
-                .child("Generated image unavailable")
-                .into_any_element(),
-        }
-    }
-
-    fn render_visual(
-        &mut self,
-        row_id: &SharedString,
-        owner: &str,
-        path: &str,
-        title: &str,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        if let Some(row) = self.render_lab_row(row_id, path, cx) {
-            return row;
-        }
-        let link_ui = self.link_ui(cx);
-        let frame = match self.visuals.get(row_id) {
-            Some(frame) => frame.clone(),
-            None => {
-                let engine = self.host.rpc(cx);
-                // Relay-forward only for a genuinely remote owner.
-                let target =
-                    (self.host.local_device_id(cx) != Some(owner)).then(|| owner.to_owned());
-                let frame = cx.new(|cx| {
-                    crate::visuals::VisualFrame::new(
-                        row_id.clone(),
-                        title.to_owned(),
-                        path.to_owned(),
-                        engine,
-                        target,
-                        cx,
-                    )
-                });
-                // A visual whose tree changes shape (a tab switch, a load)
-                // resizes its row, like a diagram finishing.
-                let id = row_id.clone();
-                cx.subscribe(
-                    &frame,
-                    move |this, _, _: &crate::visuals::VisualLayoutChanged, cx| {
-                        this.diagram_layout_changed(std::slice::from_ref(&id), cx);
-                    },
-                )
-                .detach();
-                self.visuals.insert(row_id.clone(), frame.clone());
-                frame
-            }
-        };
-        frame.update(cx, |frame, cx| frame.set_link_ui(link_ui, cx));
-        div().w_full().child(frame).into_any_element()
-    }
-
-    /// The right-aligned thumbnail strip above a user bubble.
-    fn render_user_attachments(
-        &mut self,
-        row_id: &SharedString,
-        atts: &[crate::attachments::UserImageAttachment],
-        _window: &Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        use crate::attachments::AttachmentSnapshot;
-        let glyph = Theme::of(cx).glyph;
-        let device_ids = self.attachment_device_ids(cx);
-        let mut strip = div()
-            .w_full()
-            .min_w_0()
-            .flex_none()
-            .flex()
-            .flex_row()
-            .flex_wrap()
-            .justify_end()
-            .items_start()
-            .gap(px(8.0))
-            .px(px(4.0))
-            .pt(px(4.0))
-            .pb(px(6.0));
-        for (aix, att) in atts.iter().enumerate() {
-            if !crate::attachments::is_image_path(&att.path) {
-                strip = strip.child(user_file_pill(&att.name, Theme::of(cx)));
-                continue;
-            }
-            let state = self.attachment_state(&device_ids, &att.path, None, cx);
-            // The in-flight send's progress belongs ON the thumbnail
-            // (2026-08-18 user request). No percent → the indeterminate
-            // spinner (staged-but-waiting, retry backoff, or
-            // committed-awaiting-rewrite); see `upload_status`.
-            let (sending, uploading) = self.upload_status(&att.path, cx);
-            if let Some(appshot) = &att.appshot {
-                let has_image = matches!(&state, AttachmentSnapshot::Loaded(_));
-                let theme = Theme::of(cx).clone();
-                let accent = theme.accent;
-                let width = 240.0;
-                let mut card = div()
-                    .id(SharedString::from(format!("{row_id}-appshot-{aix}")))
-                    .w(px(width))
-                    .max_w_full()
-                    .flex_none()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .rounded(px(14.0))
-                    .p(px(8.0))
-                    .gap(px(6.0))
-                    .hover(|style| style.bg(crate::theme::ink(0.045)));
-                let image_frame = div()
-                    .w_full()
-                    .h(px(128.0))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .rounded(px(6.0))
-                    .overflow_hidden();
-                card = match state {
-                    AttachmentSnapshot::Loaded(image) => {
-                        let preview =
-                            crate::attachments::PreviewImage::new(image.name, image.image.clone());
-                        card.role(gpui::Role::Button)
-                            .aria_label(format!(
-                                "Preview {} Appshot: {}",
-                                appshot.app_name,
-                                appshot.title()
-                            ))
-                            .tab_index(0)
-                            .cursor_pointer()
-                            .focus_visible(move |style| style.border_2().border_color(accent))
-                            .on_click(cx.listener(move |this, _, window, cx| {
-                                this.attachment_preview_return_focus = window.focused(cx);
-                                preview.viewer.reset();
-                                this.attachment_preview = Some(preview.clone());
-                                window.focus(&this.attachment_preview_focus, cx);
-                                cx.notify();
-                            }))
-                            .child(
-                                // Inherit the transcript's scroll fade. GPUI replaces
-                                // rather than composes nested edge-fade scopes, so a
-                                // decorative thumbnail fade would bypass the chrome fade.
-                                image_frame.child(
-                                    img(image.image)
-                                        .w_full()
-                                        .h(px(126.0))
-                                        .rounded(px(5.0))
-                                        .object_fit(ObjectFit::Contain),
-                                ),
-                            )
-                    }
-                    AttachmentSnapshot::Loading => card.child(
-                        image_frame.child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(theme.text_muted)
-                                .child(if sending {
-                                    "Uploading Appshot…"
-                                } else {
-                                    "Loading Appshot…"
-                                }),
-                        ),
-                    ),
-                    AttachmentSnapshot::Error { .. } => card.child(
-                        image_frame.child(
-                            div()
-                                .text_size(px(11.0))
-                                .text_color(theme.text_muted)
-                                .child(if sending {
-                                    "Uploading Appshot…"
-                                } else {
-                                    "Appshot unavailable"
-                                }),
-                        ),
-                    ),
-                };
-                card = card
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(5.0))
-                            .max_w_full()
-                            .child(
-                                div()
-                                    .size(px(24.0))
-                                    .flex_none()
-                                    .rounded(px(6.0))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .child(match crate::appshots::presentation_icon(appshot) {
-                                        Some(icon) => img(icon)
-                                            .size(px(24.0))
-                                            .object_fit(ObjectFit::Contain)
-                                            .into_any_element(),
-                                        None => crate::icons::icon(crate::icons::MONITOR)
-                                            .size(px(15.0))
-                                            .text_color(theme.text_muted)
-                                            .into_any_element(),
-                                    }),
-                            )
-                            .child(
-                                div()
-                                    .truncate()
-                                    .text_size(px(11.0))
-                                    .text_color(theme.text_muted)
-                                    .child(SharedString::from(format!(
-                                        "{} · Appshot",
-                                        appshot.app_name
-                                    ))),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .w_full()
-                            .truncate()
-                            .text_center()
-                            .text_size(px(12.0))
-                            .text_color(theme.text)
-                            .child(SharedString::from(appshot.title().to_string())),
-                    );
-                if sending && (has_image || uploading.is_some()) {
-                    card = card.child(
-                        div()
-                            .text_size(px(11.0))
-                            .text_color(theme.text_muted)
-                            .child(SharedString::from(
-                                uploading
-                                    .map(|pct| format!("Uploading {pct}%"))
-                                    .unwrap_or_else(|| "Uploading…".into()),
-                            )),
-                    );
-                }
-                strip = strip.child(card);
-                continue;
-            }
-            let frame = div()
-                .flex_none()
-                .w(px(ATT_THUMB_W))
-                .h(px(ATT_THUMB_H))
-                .rounded(px(8.0))
-                .overflow_hidden();
-            let thumb: AnyElement = match state {
-                AttachmentSnapshot::Loaded(image) => {
-                    let preview = crate::attachments::PreviewImage::new(
-                        image.name.clone(),
-                        image.image.clone(),
-                    );
-                    let (menu_path, menu_devices) = (att.path.clone(), device_ids.clone());
-                    frame
-                        .id(SharedString::from(format!("{row_id}#att{aix}")))
-                        .on_mouse_down(
-                            gpui::MouseButton::Right,
-                            cx.listener(move |this, event: &gpui::MouseDownEvent, window, cx| {
-                                cx.stop_propagation();
-                                this.open_image_menu(
-                                    menu_path.clone(),
-                                    menu_devices.clone(),
-                                    event.position,
-                                    window,
-                                    cx,
-                                );
-                            }),
-                        )
-                        .relative()
-                        .border_1()
-                        .border_color(crate::theme::hairline(0.11))
-                        .bg(crate::theme::ink(0.035))
-                        .cursor_pointer()
-                        .on_click(cx.listener(move |this, _, window, cx| {
-                            this.attachment_preview_return_focus = window.focused(cx);
-                            preview.viewer.reset();
-                            this.attachment_preview = Some(preview.clone());
-                            window.focus(&this.attachment_preview_focus, cx);
-                            cx.notify();
-                        }))
-                        .child(
-                            img(image.image.clone())
-                                // EXPLICIT dims, not size_full: img layout
-                                // honors the intrinsic aspect ratio over a
-                                // percent height (gpui f8d8a90 repoint), so
-                                // size_full let a tall photo grow past the
-                                // frame and the rectangular overflow clip
-                                // squared the bottom corners (2026-08-19).
-                                .w(px(ATT_THUMB_W - 2.0))
-                                .h(px(ATT_THUMB_H - 2.0))
-                                // The IMG needs its own radii: the frame's
-                                // rounding only clips rectangularly, so the
-                                // sprite must round its own corners (7 = the
-                                // frame's 8 minus its 1px border).
-                                .rounded(px(7.0))
-                                .object_fit(ObjectFit::Cover),
-                        )
-                        .when(sending, |el| {
-                            // The pulse read registers this entity for frames,
-                            // so the overlay stays live even once the trailer's
-                            // 30s pending-send bridge has lapsed.
-                            let pulse = motion::pulse_wave(motion::pulse_delta(
-                                &motion::OPENAGENTS_PULSE,
-                                cx.entity_id(),
-                                cx,
-                            ));
-                            let indicator: AnyElement = match uploading {
-                                Some(pct) => crate::loaders::upload_progress_ring(pct, 34.0),
-                                None => crate::loaders::mini_glyph_spinner(
-                                    format!("att-sending-{row_id}-{aix}"),
-                                    3.0,
-                                    glyph,
-                                    cx.entity_id(),
-                                    cx,
-                                )
-                                .into_any_element(),
-                            };
-                            el.child(
-                                div()
-                                    .absolute()
-                                    .inset_0()
-                                    .rounded(px(7.0))
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .bg(gpui::hsla(0.0, 0.0, 0.0, 0.38 + 0.05 * pulse))
-                                    .child(indicator),
-                            )
-                        })
-                        .into_any_element()
-                }
-                // Errored/unavailable: the dashed "missing" thumb.
-                AttachmentSnapshot::Error { .. } => frame
-                    .border_1()
-                    .border_dashed()
-                    .border_color(crate::theme::hairline(0.14))
-                    .bg(crate::theme::ink(0.025))
-                    .into_any_element(),
-                // Loading: the pulsing skeleton (same wash as popover skeletons).
-                AttachmentSnapshot::Loading => frame
-                    .border_1()
-                    .border_color(crate::theme::hairline(0.08))
-                    .bg(crate::theme::ink(0.055))
-                    .opacity(
-                        0.35 + 0.4
-                            * motion::pulse_wave(motion::pulse_delta(
-                                &motion::OPENAGENTS_PULSE,
-                                cx.entity_id(),
-                                cx,
-                            )),
-                    )
-                    .into_any_element(),
-            };
-            strip = strip.child(thumb);
-        }
-        strip.into_any_element()
     }
 
     // ---- rendering ----
@@ -7245,12 +5966,8 @@ impl Transcript {
                 // HStack); image-only sends show no bubble at all.
                 let mut column = div().w_full().flex().flex_col();
                 if !attachments.is_empty() {
-                    column = column.child(self.render_user_attachments(
-                        &row.id,
-                        &attachments,
-                        window,
-                        cx,
-                    ));
+                    column =
+                        column.child(M::user_attachments(self, &row.id, &attachments, window, cx));
                 }
                 if !badges.is_empty() {
                     column = column.child(
@@ -7309,7 +6026,7 @@ impl Transcript {
                 let code = self.code_uis_for(&row.id, &top.block, *block_ix, cx);
                 let opts = RenderOptions {
                     tasks: None,
-                    media: Some(self.diagram_media(cx)),
+                    media: M::markdown_media(self, cx),
                     row_key: row.id.clone(),
                     veil: None,
                     cache: (!render_cache_disabled()).then(|| self.render_cache.clone()),
@@ -7379,7 +6096,7 @@ impl Transcript {
                     .is_some_and(|next| next.entry_id == row.entry_id);
                 let opts = RenderOptions {
                     tasks: None,
-                    media: settled.then(|| self.diagram_media(cx)),
+                    media: settled.then(|| M::markdown_media(self, cx)).flatten(),
                     row_key: row.id.clone(),
                     veil: veil.clone(),
                     cache: (!render_cache_disabled()).then(|| self.render_cache.clone()),
@@ -7464,9 +6181,9 @@ impl Transcript {
                 path,
                 name,
                 mime_type,
-            } => self.render_generated_image(&row.id, owner, path, name, mime_type, cx),
+            } => M::generated_image(self, &row.id, owner, path, name, mime_type, cx),
             RowKind::Visual { owner, path, title } => {
-                self.render_visual(&row.id, owner, path, title, cx)
+                M::visual(self, &row.id, owner, path, title, cx)
             }
             RowKind::ErrorChip { message } => error_chip(message.clone(), &theme),
             RowKind::ForkMarker {
@@ -7475,7 +6192,7 @@ impl Transcript {
             } => fork_marker(source_chat_id.clone(), source_title.clone(), &theme),
         };
         // Diagram fences this row just requested start rendering after layout.
-        self.ensure_diagram_worker(cx);
+        M::after_row(self, cx);
 
         // Hover-revealed metadata strip: a RESERVED 32px lane under the
         // entry's last row. Timestamp, copy action, and copied feedback only
@@ -7921,8 +6638,7 @@ impl Transcript {
         let tools = if body_visible {
             tools.as_slice()
         } else {
-            self.tool_images
-                .release_row(row_id, Self::tool_images_of, cx);
+            M::release_tool_images(self, row_id, cx);
             &[]
         };
         // Chips render their EFFECTIVE detail: the precomputed doc-resident
@@ -8046,7 +6762,8 @@ impl Transcript {
             .collect();
         // Image previews exist only while their chip's body is mounted (open,
         // or tweening shut). Every other chip releases its pixels.
-        let chip_images = self.hold_tool_images(row_id, tools, &detail_opens, &detail_folds, cx);
+        let chip_images =
+            M::hold_tool_images(self, row_id, tools, &detail_opens, &detail_folds, cx);
         let detail_highlights: Vec<Option<Arc<crate::changes::DiffHighlights>>> = details
             .iter()
             .enumerate()
@@ -8410,12 +7127,17 @@ impl Transcript {
                                     .flex_none()
                                     .when(!collapses, |line| line.bg(crate::theme::hairline(0.06))),
                             )
-                            .child(detail_body(invocation, None, &format!("{key}-call"), theme));
+                            .child(detail_body::<M>(
+                                invocation,
+                                None,
+                                &format!("{key}-call"),
+                                theme,
+                            ));
                     }
                     if let Some(images) = chip_images[ix].clone() {
-                        panel = panel.child(
-                            self.render_tool_image_strip(&key, images, collapses, theme, cx),
-                        );
+                        panel = panel.child(M::tool_image_strip(
+                            self, &key, images, collapses, theme, cx,
+                        ));
                     }
                     if let Some(detail) = detail.as_deref() {
                         panel = panel
@@ -8425,7 +7147,7 @@ impl Transcript {
                                     .flex_none()
                                     .when(!collapses, |line| line.bg(crate::theme::hairline(0.06))),
                             )
-                            .child(detail_body(
+                            .child(detail_body::<M>(
                                 detail,
                                 detail_highlights[ix].clone(),
                                 &format!("{key}-out"),
@@ -8787,14 +7509,14 @@ fn user_bubble_text(
 }
 
 /// The upload status painted in a sent chip's icon well.
-const CHIP_STATUS_SIZE: f32 = 14.0;
+pub const CHIP_STATUS_SIZE: f32 = 14.0;
 
 /// One sent chip's extras, laid over its pill: a status in place of its icon
 /// and, for a loaded image, a click target opening it full size.
-struct ChipOverlay {
-    range: Range<usize>,
-    open: Option<SharedString>,
-    status: Option<AnyElement>,
+pub struct ChipOverlay {
+    pub range: Range<usize>,
+    pub open: Option<SharedString>,
+    pub status: Option<AnyElement>,
 }
 
 /// Wraps a sent bubble's text with its chips' overlays. They follow the
@@ -8930,7 +7652,7 @@ impl gpui::Element for ChipOverlays {
 /// A sent message's non-image attachment: the file's icon and name on the
 /// same soft pill the transcript uses for file badges. Its bytes are never
 /// read back to the transcript, so there is no thumbnail to wait for.
-fn user_file_pill(name: &str, theme: &Theme) -> AnyElement {
+pub fn user_file_pill(name: &str, theme: &Theme) -> AnyElement {
     let name = crate::attachments::attachment_display_name(name);
     div()
         .h(px(28.0))
@@ -9135,7 +7857,7 @@ fn tool_icon_path(call: &ToolCall) -> &'static str {
 /// path remains on the tool call (and in expanded diagnostics) for identity
 /// and disambiguation. Accept both separator styles because remote tools can
 /// report Windows paths even when the UI is running elsewhere.
-fn file_badge_name(path: &str) -> &str {
+pub fn file_badge_name(path: &str) -> &str {
     path.rsplit(['/', '\\'])
         .find(|component| !component.is_empty())
         .unwrap_or(path)
@@ -9147,7 +7869,7 @@ fn file_badge_name(path: &str) -> &str {
 /// syntax runs — so an inline tool diff is indistinguishable from the
 /// checkout diff sidebar. Output renders as a code block: verbatim mono
 /// lines, indentation intact, counted-tail truncation.
-fn detail_body(
+fn detail_body<M: TranscriptMedia>(
     detail: &ToolDetail,
     diff_highlights: Option<Arc<crate::changes::DiffHighlights>>,
     selection_key: &str,
@@ -9184,11 +7906,7 @@ fn detail_body(
         // No comment layer: an inline tool diff is a record of what the
         // agent already did, not a review surface.
         ToolDetail::Diff { file, .. } => body
-            .child(crate::changes::render_file_body_with_syntax(
-                file,
-                diff_highlights,
-                theme,
-            ))
+            .child(M::diff_body(file, diff_highlights, theme))
             .into_any_element(),
         ToolDetail::Stats { stats } => body
             .py(px(6.0))
@@ -10074,7 +8792,7 @@ fn entry_fingerprint(entry: &SessionMessageEntry, pending: bool) -> u64 {
     fnv1a(&acc)
 }
 
-impl Render for Transcript {
+impl<M: TranscriptMedia> Render for TranscriptView<M> {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if record_view_frame("transcript") {
             tracing::warn!(
@@ -10142,27 +8860,15 @@ impl Render for Transcript {
             // as the row enters its layout range.
             self.list.remeasure();
         }
-        // Release gpui-side decoded copies of any images the attachment LRU
-        // evicted since the last frame (no-op when nothing was evicted).
-        crate::attachments::flush_evicted(Some(window), cx);
-        // Diagram requests are scoped to paint passes; rasters follow the
-        // reading column and display density (a no-op while both hold).
-        let released_diagrams = {
-            let mut diagrams = self.diagrams.borrow_mut();
-            let mut released = diagrams.begin_frame(crate::theme::style_generation());
-            let list_width = f32::from(self.list.viewport_bounds().size.width);
-            let column = if list_width > 0.0 {
-                self.content_width
-                    .min((list_width - self.right_reserve).max(1.0))
-            } else {
-                self.content_width
-            };
-            released.extend(diagrams.set_view((column.max(1.0), 480.0), window.scale_factor()));
-            released
+        // Media follow the reading column (diagrams rasterize for it).
+        let list_width = f32::from(self.list.viewport_bounds().size.width);
+        let column = if list_width > 0.0 {
+            self.content_width
+                .min((list_width - self.right_reserve).max(1.0))
+        } else {
+            self.content_width
         };
-        if !released_diagrams.is_empty() {
-            crate::image_media::release_media(released_diagrams, cx);
-        }
+        M::begin_frame(self, column, window, cx);
         // Own-turn driver: measurements are only authoritative after layout,
         // so reservation sizing, the send glide, and the outgrown-handoff
         // each advance at most once per requested frame. Scheduled on every
@@ -10177,7 +8883,7 @@ impl Render for Transcript {
             let entity = cx.weak_entity();
             window.on_next_frame(move |_, cx| {
                 entity
-                    .update(cx, |this: &mut Transcript, cx| {
+                    .update(cx, |this: &mut Self, cx| {
                         this.own_turn_scheduled = false;
                         this.step_own_turn(cx);
                     })
@@ -10197,7 +8903,7 @@ impl Render for Transcript {
             let entity = cx.weak_entity();
             window.on_next_frame(move |_, cx| {
                 entity
-                    .update(cx, |this: &mut Transcript, cx| {
+                    .update(cx, |this: &mut Self, cx| {
                         this.spring_scheduled = false;
                         this.step_spring(cx);
                     })
@@ -10216,7 +8922,7 @@ impl Render for Transcript {
             let entity = cx.weak_entity();
             window.on_next_frame(move |_, cx| {
                 entity
-                    .update(cx, |this: &mut Transcript, cx| {
+                    .update(cx, |this: &mut Self, cx| {
                         this.viewport_finalize_scheduled = false;
                         if !token.still_current(this.viewport_generation) {
                             if this.viewport_finalize_pending {
@@ -10246,7 +8952,7 @@ impl Render for Transcript {
             let entity = cx.weak_entity();
             window.on_next_frame(move |_, cx| {
                 entity
-                    .update(cx, |this: &mut Transcript, cx| {
+                    .update(cx, |this: &mut Self, cx| {
                         this.user_collapse_scroll_scheduled = false;
                         this.step_user_collapse_scroll(cx);
                     })
@@ -10309,36 +9015,7 @@ impl Render for Transcript {
             ))
             .child(content)
             .child(rail);
-        let root = root.children(self.render_image_menu(cx));
-        // Full-size viewer for a clicked user-bubble thumbnail
-        // (AttachmentPreviewDialog: bare lightbox, click closes).
-        if let Some(preview) = self.attachment_preview.clone() {
-            let weak = cx.weak_entity();
-            // A diagram's enlarged raster is framed by its natural size.
-            let natural_size = self
-                .diagram_zoom
-                .as_ref()
-                .map(|source| size(px(source.width), px(source.height)));
-            return root.child(crate::attachments::lightbox_with_size(
-                window,
-                &preview,
-                &self.attachment_preview_focus,
-                natural_size,
-                move |window, cx| {
-                    if let Ok(focus) = weak.update(cx, |this, cx| {
-                        this.close_diagram_zoom(cx);
-                        this.attachment_preview = None;
-                        cx.notify();
-                        this.attachment_preview_return_focus.take()
-                    }) && let Some(focus) = focus
-                    {
-                        window.focus(&focus, cx);
-                    }
-                },
-                cx,
-            ));
-        }
-        root
+        root.children(M::overlays(self, window, cx))
     }
 }
 
@@ -10346,6 +9023,8 @@ impl Render for Transcript {
 mod tests {
     use super::*;
     use crate::state::AppState;
+    use crate::transcript_media::DesktopMedia;
+    use gpui::Entity;
 
     #[test]
     fn jump_button_stays_available_when_scrolling_down_until_near_bottom() {
@@ -11849,7 +10528,7 @@ mod tests {
                 div()
                     .w(px(600.0))
                     .child(render::selection_frame_reset_for(7))
-                    .child(detail_body(
+                    .child(detail_body::<DesktopMedia>(
                         &ToolDetail::Output {
                             lines: vec!["cat /workspace/src/main.rs".into()],
                             truncated_by: 0,
@@ -11907,11 +10586,12 @@ mod tests {
         struct PreviewFixture(Entity<Transcript>);
         impl Render for PreviewFixture {
             fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-                if self.0.read(cx).attachment_preview.is_some() {
+                if self.0.read(cx).media.attachment_preview.is_some() {
                     self.0.clone().into_any_element()
                 } else {
                     self.0.update(cx, |this, cx| {
-                        this.render_generated_image(
+                        DesktopMedia::render_generated_image(
+                            this,
                             &"preview".into(),
                             "preview-owner",
                             "/fixture/preview.png",
@@ -11927,8 +10607,9 @@ mod tests {
         cx.run_until_parked();
         cx.simulate_click(gpui::point(px(20.0), px(20.0)), gpui::Modifiers::default());
         let return_focus = transcript.read_with(cx, |this, _| {
-            assert!(this.attachment_preview.is_some());
-            this.attachment_preview_return_focus
+            assert!(this.media.attachment_preview.is_some());
+            this.media
+                .attachment_preview_return_focus
                 .clone()
                 .expect("preview remembers the image button focus")
         });
@@ -11937,7 +10618,9 @@ mod tests {
         fixture.update(cx, |_, cx| cx.notify());
         cx.run_until_parked();
         cx.simulate_keystrokes("escape");
-        transcript.read_with(cx, |this, _| assert!(this.attachment_preview.is_none()));
+        transcript.read_with(cx, |this, _| {
+            assert!(this.media.attachment_preview.is_none())
+        });
         cx.update(|window, _| assert!(return_focus.is_focused(window)));
     }
 
@@ -11998,8 +10681,9 @@ mod tests {
                         panic!("image row")
                     };
                     let (owner, path, mime_type) = (owner.clone(), path.clone(), mime_type.clone());
-                    let devices = this.generated_attachment_device_ids(&owner, cx);
-                    let snapshot = this.attachment_state(&devices, &path, Some(&mime_type), cx);
+                    let devices = DesktopMedia::generated_attachment_device_ids(this, &owner, cx);
+                    let snapshot =
+                        DesktopMedia::attachment_state(this, &devices, &path, Some(&mime_type), cx);
                     match expected {
                         "loaded" => assert!(matches!(snapshot, AttachmentSnapshot::Loaded(_))),
                         "loading" => assert!(matches!(snapshot, AttachmentSnapshot::Loading)),
@@ -12007,21 +10691,21 @@ mod tests {
                     }
                 }
                 assert!(
-                    this.attachment_loads.is_empty(),
+                    this.media.attachment_loads.is_empty(),
                     "cache repaint must not fetch"
                 );
-                assert_eq!(this.attachment_retries.len(), 1);
-                let keys = this.protected_attachment_keys(cx);
+                assert_eq!(this.media.attachment_retries.len(), 1);
+                let keys = DesktopMedia::protected_attachment_keys(this, cx);
                 for entry in &entries {
                     let MessagePart::Image { path, .. } = &entry.parts[0] else {
                         unreachable!()
                     };
                     assert!(!keys.contains(&("fixture-owner".into(), path.clone())));
                 }
-                this.refresh_protected_attachments(cx);
+                DesktopMedia::refresh_protected_attachments(this, cx);
                 this.rows.clear();
-                assert!(this.protected_attachment_keys(cx).is_empty());
-                this.refresh_protected_attachments(cx);
+                assert!(DesktopMedia::protected_attachment_keys(this, cx).is_empty());
+                DesktopMedia::refresh_protected_attachments(this, cx);
             });
         });
     }
@@ -14401,7 +13085,7 @@ mod tests {
         /// Run the next queued diagram synchronously, as the worker would.
         fn render_next_diagram(transcript: &Entity<Transcript>, cx: &mut gpui::App) -> bool {
             transcript.update(cx, |this, cx| {
-                let Some(code) = this.diagrams.borrow_mut().next_job() else {
+                let Some(code) = this.media.diagrams.borrow_mut().next_job() else {
                     return false;
                 };
                 let palette = crate::markdown::mermaid::Palette::from_theme(Theme::of(cx));
@@ -14409,7 +13093,13 @@ mod tests {
                     crate::image_media::decode_image("image/svg+xml", svg.into_bytes())
                 });
                 assert!(result.is_ok(), "fixture diagram must render");
-                this.finish_diagram(code, crate::theme::style_generation(), result, cx);
+                DesktopMedia::finish_diagram(
+                    this,
+                    code,
+                    crate::theme::style_generation(),
+                    result,
+                    cx,
+                );
                 true
             })
         }
@@ -14438,10 +13128,10 @@ mod tests {
                     tick(&transcript, window, cx);
                     let this = transcript.read(cx);
                     assert!(
-                        this.diagram_worker.is_none(),
+                        this.media.diagram_worker.is_none(),
                         "a streaming tail fence must not start a render"
                     );
-                    assert!(this.diagrams.borrow_mut().next_job().is_none());
+                    assert!(this.media.diagrams.borrow_mut().next_job().is_none());
                 }
                 // Enough reply after the fence that the viewport can anchor on
                 // it without clamping back to the end.
@@ -14496,8 +13186,8 @@ mod tests {
                 );
                 let frame: SharedString = "reply#text.1-mermaid-1".into();
                 transcript.update(cx, |this, cx| {
-                    assert_eq!(this.diagrams.borrow().ready_count(), 1);
-                    this.diagrams.borrow_mut().toggle_source(&frame);
+                    assert_eq!(this.media.diagrams.borrow().ready_count(), 1);
+                    this.media.diagrams.borrow_mut().toggle_source(&frame);
                     this.diagram_layout_changed(&["reply#text.1".into()], cx);
                 });
                 draw(window, cx);
@@ -14513,8 +13203,8 @@ mod tests {
                 });
                 draw(window, cx);
                 let this = transcript.read(cx);
-                assert!(this.diagrams.borrow().source_visible(&frame));
-                assert!(this.diagrams.borrow_mut().next_job().is_none());
+                assert!(this.media.diagrams.borrow().source_visible(&frame));
+                assert!(this.media.diagrams.borrow_mut().next_job().is_none());
             });
         }
 
@@ -14576,7 +13266,7 @@ mod tests {
                 let this = transcript.read(cx);
                 assert!(this.pinned);
                 assert!(this.distance_from_bottom() <= 1.0);
-                assert!(this.diagrams.borrow_mut().next_job().is_none());
+                assert!(this.media.diagrams.borrow_mut().next_job().is_none());
             });
         }
 
@@ -14651,17 +13341,17 @@ mod tests {
                     .expect("rendered diagram");
                 cx.update_window(window.into(), |_, window, cx| {
                     transcript.update(cx, |this, cx| {
-                        this.open_diagram_preview(media.clone(), window, cx)
+                        DesktopMedia::open_diagram_preview(this, media.clone(), window, cx)
                     });
                 })
                 .unwrap();
                 draw(window, cx);
                 transcript.update(cx, |this, cx| {
-                    assert!(this.attachment_preview.is_some());
-                    assert!(this.diagram_zoom.is_some());
-                    this.close_diagram_zoom(cx);
-                    assert!(this.attachment_preview.is_none());
-                    assert!(this.diagram_zoom.is_none());
+                    assert!(this.media.attachment_preview.is_some());
+                    assert!(this.media.diagram_zoom.is_some());
+                    DesktopMedia::close_diagram_zoom(this, cx);
+                    assert!(this.media.attachment_preview.is_none());
+                    assert!(this.media.diagram_zoom.is_none());
                 });
                 draw(window, cx);
             });
@@ -15172,7 +13862,13 @@ mod tests {
         assert!(attachments.is_empty());
         let mentions = mentions.clone();
         transcript.update(cx, |transcript, cx| {
-            let overlays = transcript.chip_overlays(&"u5".into(), &mentions, &Theme::dark(), cx);
+            let overlays = DesktopMedia::chip_overlays(
+                transcript,
+                &"u5".into(),
+                &mentions,
+                &Theme::dark(),
+                cx,
+            );
             // The image (43% across) and the file still crossing show a
             // status; the landed file shows its icon.
             assert_eq!(
@@ -15186,11 +13882,11 @@ mod tests {
                 ]
             );
             assert_eq!(
-                transcript.upload_status("pending://att-1/Image 1.png", cx),
+                DesktopMedia::upload_status(transcript, "pending://att-1/Image 1.png", cx),
                 (true, Some(43))
             );
             assert_eq!(
-                transcript.upload_status("/uploads/ef56ab78-done.md", cx),
+                DesktopMedia::upload_status(transcript, "/uploads/ef56ab78-done.md", cx),
                 (false, None)
             );
         });
