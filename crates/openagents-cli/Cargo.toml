@@ -20,6 +20,9 @@ name = "openagents"
 path = "src/main.rs"
 
 [dependencies]
+openagents-rpc = { path = "../../apps/openagents/crates/rpc" }
+openagents-proto = { path = "../../apps/openagents/crates/proto" }
+openagents-brand = { path = "../../apps/openagents/crates/brand" }
 lab-terminal = { path = "../lab-terminal" }
 lightning-invoice = { version = "0.34.1", features = ["std"] }
 user-home = { path = "../user-home" }
@@ -161,6 +164,7 @@ private-fs = { path = "../private-fs" }
 path = "../coder-project"
 
 [dev-dependencies]
+async-trait = "0.1"
 # The plain-words guard over `openagents vault`'s messages.
 oa-copy = { path = "../oa-copy" }
 commercial-accounts = { path = "../commercial-accounts" }

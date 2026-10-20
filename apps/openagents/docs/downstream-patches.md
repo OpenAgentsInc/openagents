@@ -2,6 +2,12 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- [OpenAgents #12022](https://github.com/OpenAgentsInc/openagents/issues/12022):
+  The root CLI reads account quota through `openagents-rpc`. Its sync
+  dependency disables the optional SQLite store; app consumers still enable
+  that store through their direct sync dependency. This lets both workspaces
+  use the existing RPC without changing their SQLite versions.
+
 - [OpenAgents #11836](https://github.com/OpenAgentsInc/openagents/issues/11836):
   Add Coder Light and Coder Noir to `openagents-theme`, make them the default light
   and dark selections, and use them when a selected theme is missing. Map the
