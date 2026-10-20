@@ -244,6 +244,23 @@ impl Scene {
     }
 }
 
+// Browsers have no Rust thread pool. Keep the same band algorithm and
+// sample order, executing each band inline instead.
+#[cfg(target_family = "wasm")]
+struct InlineScope;
+#[cfg(target_family = "wasm")]
+impl InlineScope {
+    fn spawn(&self, work: impl FnOnce()) {
+        work();
+    }
+}
+#[cfg(target_family = "wasm")]
+fn with_scope(work: impl FnOnce(&InlineScope)) {
+    work(&InlineScope);
+}
+#[cfg(not(target_family = "wasm"))]
+use std::thread::scope as with_scope;
+
 /// How many threads share a render.
 fn threads() -> usize {
     std::thread::available_parallelism()
@@ -265,7 +282,7 @@ fn for_bands(
     let rows = grid.height / ss;
     let per = rows.div_ceil(threads()).max(1) * ss;
     let width = grid.width;
-    std::thread::scope(|scope| {
+    with_scope(|scope| {
         let mut color = color;
         let mut depth = depth;
         let mut y0 = 0;
@@ -482,7 +499,7 @@ fn outline(grid: &Grid, ss: usize, color: &mut [[f32; 4]], depth: &[f32]) {
     let (w, h) = (grid.width, grid.height);
     let rows = h / ss;
     let per = rows.div_ceil(threads()).max(1) * ss;
-    std::thread::scope(|scope| {
+    with_scope(|scope| {
         let mut rest = color;
         let mut y0 = 0;
         while y0 < h {
@@ -595,7 +612,7 @@ fn resolve(grid: &Grid, color: &[[f32; 4]], width: usize, height: usize, ss: usi
     let mut out = vec![0u8; width * height * 4];
     let n = (ss * ss) as f32;
     let per = height.div_ceil(threads()).max(1);
-    std::thread::scope(|scope| {
+    with_scope(|scope| {
         for (chunk, rows) in out.chunks_mut(per * width * 4).enumerate() {
             scope.spawn(move || {
                 let y0 = chunk * per;

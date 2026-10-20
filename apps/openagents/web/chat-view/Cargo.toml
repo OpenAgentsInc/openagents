@@ -12,9 +12,11 @@ publish.workspace = true
 license = "MIT"
 
 [dependencies]
+openagents-visual = { path = "../../crates/visual" }
 gpui.workspace = true
-openagents-chat-view.workspace = true
+openagents-chat-view = { workspace = true, features = ["visuals"] }
 anyhow.workspace = true
+serde_json = "1"
 openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }
 openagents-markdown = { path = "../../crates/markdown" }
@@ -24,6 +26,10 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 [target.'cfg(target_family = "wasm")'.dependencies]
 chrono = { version = "0.4", features = ["wasmbind"] }
 openagents-gpui-web.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["Window", "Response"] }
 
 [dev-dependencies]
 gpui = { workspace = true, features = ["test-support"] }
