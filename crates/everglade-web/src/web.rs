@@ -93,6 +93,24 @@ pub fn verse_where() -> String {
 /// a second.
 const AMBIENT_ORBIT: f32 = 9.0;
 
+/// Project DOM pylons with the camera used to draw this Grid frame. The
+/// separately loaded layer owns fixed world anchors, the list, and cards.
+fn pylons_camera(view_proj: glam::Mat4, size: [f32; 2]) {
+    let Ok(callback) = Reflect::get(&js_sys::global(), &"pylonsCamera".into()) else {
+        return;
+    };
+    let Some(callback) = callback.dyn_ref::<js_sys::Function>() else {
+        return;
+    };
+    let matrix = js_sys::Float32Array::from(view_proj.to_cols_array().as_slice());
+    let _ = callback.call3(
+        &JsValue::UNDEFINED,
+        &matrix,
+        &JsValue::from_f64(f64::from(size[0])),
+        &JsValue::from_f64(f64::from(size[1])),
+    );
+}
+
 /// Whether the page is `/lander11` (or one of its chats).
 fn ambient_path(path: &str) -> bool {
     path == "/lander11" || path.starts_with("/lander11/")
@@ -1333,8 +1351,10 @@ impl Page {
             for vertex in &mut ui.vertices {
                 vertex.pos = vertex.pos.map(|v| v * self.scale);
             }
+            let view_proj = view.view_proj;
             match engine.draw(view, &dynamic, &ui, &lighting) {
                 Ok(render_ms) => {
+                    pylons_camera(view_proj, css);
                     if let Some(presence) = &mut self.presence {
                         presence.frame_times(dt, dynamic.len(), render_ms, peers.len());
                     }

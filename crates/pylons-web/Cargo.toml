@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "/pylons' Grid layer: the live list and a glowing pillar per online pylon, placed on the still Grid, fed by the page's event stream."
+description = "/pylons' Grid layer: the live list and a glowing pillar per online pylon, rooted to the Grid, fed by the page's event stream."
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -39,3 +39,6 @@ web-sys = { version = "0.3", features = [
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+glam = "0.30.10"

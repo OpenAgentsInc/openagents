@@ -13,6 +13,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::{Document, Element, EventSource, HtmlElement, KeyboardEvent, MessageEvent, Window};
 
 use crate::camera::{Keep, Placed, blocked, spots};
+use crate::world_camera::{WorldCamera, anchor};
 
 /// The page's event stream.
 const LIVE: &str = "/pylons/live";
@@ -26,6 +27,7 @@ struct Entry {
     item: Element,
     view: Pylon,
     slot: usize,
+    anchor: [f64; 3],
     flip: bool,
 }
 
@@ -41,11 +43,13 @@ struct Layer {
     /// Which pylon stands on each spot; `None` is a free spot.
     slots: Vec<Option<String>>,
     spots: Vec<Placed>,
+    /// The exact camera of the last Verse frame; absent over the shader.
+    world: Option<WorldCamera>,
     /// Boxes pylons stay out of: the list panel and anything the page marks
     /// `data-pylons-keep` (`/lander10`'s chat).
     keep: Vec<Keep>,
-    /// Pillars fading out, by element, until they are removed.
-    leaving: Vec<HtmlElement>,
+    /// Fading pillars keep their world anchors until they are removed.
+    leaving: Vec<Entry>,
     /// The site's clock minus this one, s.
     offset: f64,
     synced: bool,
@@ -83,6 +87,7 @@ fn run() -> Option<()> {
         entries: BTreeMap::new(),
         slots: Vec::new(),
         spots: Vec::new(),
+        world: None,
         keep: Vec::new(),
         leaving: Vec::new(),
         offset: 0.0,
@@ -93,6 +98,42 @@ fn run() -> Option<()> {
         opener: None,
     }));
     layer.borrow_mut().layout();
+
+    // Verse hands us the matrix it just drew with, in CSS-pixel dimensions.
+    // Keep each anchor fixed and move only its projection as the eye moves.
+    {
+        let layer = layer.clone();
+        let camera = Closure::<dyn FnMut(js_sys::Float32Array, f64, f64)>::new(
+            move |matrix: js_sys::Float32Array, width, height| {
+                if matrix.length() != 16 {
+                    return;
+                }
+                let mut columns = [0.0; 16];
+                matrix.copy_to(&mut columns);
+                let Some(camera) = WorldCamera::new(columns, width, height) else {
+                    return;
+                };
+                let mut layer = layer.borrow_mut();
+                layer.world = Some(camera);
+                layer.place_all();
+            },
+        );
+        js_sys::Reflect::set(&js_sys::global(), &"pylonsCamera".into(), camera.as_ref()).ok()?;
+        camera.forget();
+    }
+    {
+        let layer = layer.clone();
+        let fallback = Closure::<dyn FnMut()>::new(move || {
+            let mut layer = layer.borrow_mut();
+            layer.world = None;
+            layer.layout();
+            layer.place_all();
+        });
+        window
+            .add_event_listener_with_callback("verse-stopped", fallback.as_ref().unchecked_ref())
+            .ok()?;
+        fallback.forget();
+    }
 
     let source = EventSource::new(LIVE).ok()?;
     {
@@ -293,14 +334,13 @@ fn leave(layer: &Shared, id: &str, announce: bool) {
     let _ = entry.pillar.class_list().remove_1("in");
     let _ = entry.pillar.class_list().add_1("out");
     let pillar = entry.pillar.clone();
-    l.leaving.push(pillar.clone());
     let layer_for_removal = layer.clone();
     let remove = Closure::once_into_js(move || {
         pillar.remove();
         layer_for_removal
             .borrow_mut()
             .leaving
-            .retain(|p| !p.is_same_node(Some(&pillar)));
+            .retain(|entry| !entry.pillar.is_same_node(Some(&pillar)));
     });
     let _ = l
         .window
@@ -317,6 +357,7 @@ fn leave(layer: &Shared, id: &str, announce: bool) {
         };
         l.show(&shown);
     }
+    l.leaving.push(entry);
 }
 
 fn open(layer: &Shared, id: &str, opener: Option<HtmlElement>) {
@@ -429,14 +470,18 @@ impl Layer {
     }
 
     fn place_all(&self) {
-        for entry in self.entries.values() {
+        for entry in self.entries.values().chain(self.leaving.iter()) {
             self.place(entry);
         }
     }
 
     fn place(&self, entry: &Entry) {
-        let Some(spot) = self.spots.get(entry.slot) else {
-            // No room left on the floor (the page's own content covers it).
+        let placed = match self.world {
+            Some(camera) => camera.place(entry.anchor),
+            None => self.spots.get(entry.slot).copied(),
+        };
+        let Some(spot) = placed else {
+            // Outside the world camera's view, or no clear shader-floor spot.
             let _ = entry.pillar.class_list().add_1("hid");
             return;
         };
@@ -445,8 +490,15 @@ impl Layer {
         let _ = entry
             .pillar
             .class_list()
-            .toggle_with_force("hid", blocked(spot, &self.keep));
+            .toggle_with_force("hid", blocked(&spot, &self.keep));
         let style = entry.pillar.style();
+        // Interpolating transforms would make a world anchor lag behind the
+        // camera. Keep the arrival/departure fade, but follow every frame.
+        if self.world.is_some() {
+            let _ = style.set_property("transition", "opacity .7s ease");
+        } else {
+            let _ = style.remove_property("transition");
+        }
         let _ = style.set_property("--x", &format!("{:.1}px", spot.x));
         let _ = style.set_property("--y", &format!("{:.1}px", spot.y));
         let _ = style.set_property("--h", &format!("{:.1}px", spot.height));
@@ -490,11 +542,17 @@ impl Layer {
         };
         let _ = item.set_attribute("data-id", &pylon.id);
         let slot = self.take_slot(&pylon.id);
+        let anchor = anchor(slot);
+        let _ = pillar.set_attribute(
+            "data-world-anchor",
+            &format!("{},{},{}", anchor[0], anchor[1], anchor[2]),
+        );
         let entry = Entry {
             pillar,
             item,
             view: pylon,
             slot,
+            anchor,
             flip: false,
         };
         self.draw(&entry);

@@ -2,6 +2,8 @@
 //!
 //! - [`camera`] projects the still Grid's floor onto the screen and picks
 //!   the spots the pylons stand on.
+//! - [`world_camera`] roots pylons to fixed floor points when Verse takes
+//!   over, using the camera matrix from each rendered frame.
 //! - The layer (wasm32 only) opens the page's event stream
 //!   (`/pylons/live`), keeps the HTML list and the announcements current,
 //!   stands a glowing pillar per online pylon on the Grid (rising as its
@@ -14,6 +16,7 @@
 //! frame.
 
 pub mod camera;
+pub mod world_camera;
 
 #[cfg(target_arch = "wasm32")]
 mod web;
