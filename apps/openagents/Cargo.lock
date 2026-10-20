@@ -13739,6 +13739,7 @@ version = "1.0.0"
 dependencies = [
  "base64 0.22.1",
  "coder-lease",
+ "libc",
  "nostr",
  "nostr-transport",
  "openagents-workspace-hack",
