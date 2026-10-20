@@ -275,6 +275,7 @@ pub fn owned(path: &str) -> bool {
         || crate::issue_claims::owns(path)
         || crate::vault::owns(path)
         || crate::connections::owns(path)
+        || crate::terminal_connect::gpui::owns(path)
         || crate::sign_in_keys::owns(path)
         || crate::web_sign_in::owns(path)
         || crate::projects::api::owns(path)

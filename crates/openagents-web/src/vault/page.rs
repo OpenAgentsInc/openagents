@@ -11,11 +11,11 @@
 
 use std::sync::OnceLock;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use base64::Engine;
-use maud::{Markup, html};
+use maud::{Markup, PreEscaped, html};
 use openagents_ui::actions::{Button, ButtonVariant, Color, ControlSize};
 use openagents_ui::forms::Textarea;
 use sha2::{Digest, Sha256, Sha384};
@@ -165,12 +165,24 @@ pub(crate) fn settings_row() -> Markup {
 }
 
 /// `GET /settings/vault`.
-pub(crate) async fn settings_page(State(app): State<App>, headers: HeaderMap) -> Response {
+pub(crate) async fn settings_page(
+    State(app): State<App>,
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> Response {
     let (service, viewer) = match crate::settings::viewer(&app, &headers, PAGE).await {
         Ok(found) => found,
         Err(response) => return response,
     };
-    render(&app, &headers, service, &viewer, None, PAGE)
+    let embed = embedded(query.as_deref());
+    if !embed {
+        if let Some(response) =
+            crate::terminal_connect::gpui::shell(&app, &headers, query.as_deref(), PAGE).await
+        {
+            return response;
+        }
+    }
+    render(&app, &headers, service, &viewer, None, PAGE, embed)
 }
 
 /// `GET /projects/{id}/vault`: the same vault, showing the project's files.
@@ -178,6 +190,7 @@ pub(crate) async fn project_page(
     State(app): State<App>,
     headers: HeaderMap,
     Path(id): Path<String>,
+    RawQuery(query): RawQuery,
 ) -> Response {
     let back = super::project_href(&id);
     let (service, viewer) = match crate::settings::viewer(&app, &headers, &back).await {
@@ -203,6 +216,14 @@ pub(crate) async fn project_page(
             (crate::projects::PAGE, "Projects"),
         ));
     };
+    let embed = embedded(query.as_deref());
+    if !embed {
+        if let Some(response) =
+            crate::terminal_connect::gpui::shell(&app, &headers, query.as_deref(), &back).await
+        {
+            return response;
+        }
+    }
     render(
         &app,
         &headers,
@@ -210,7 +231,12 @@ pub(crate) async fn project_page(
         &viewer,
         Some((&project.id, &project.name)),
         &back,
+        embed,
     )
+}
+
+fn embedded(query: Option<&str>) -> bool {
+    query.is_some_and(|q| q.split('&').any(|p| p == "embed=1"))
 }
 
 fn render(
@@ -220,6 +246,7 @@ fn render(
     viewer: &crate::cloud::session::Viewer,
     project: Option<(&str, &str)>,
     path: &str,
+    embed: bool,
 ) -> Response {
     let csrf = service
         .csrf(headers, viewer, CSRF_SCOPE, &viewer.account_id)
@@ -251,20 +278,41 @@ fn render(
         picture: viewer.avatar_url.is_some(),
         admin: viewer.admin,
     };
-    let mut response = protect(
-        crate::ui_page::UiPage::new(title)
-            .path(path)
-            .section(crate::settings::PAGE)
-            .account(account)
-            .scriptless()
-            .head(head)
-            .content(openagents_ui::content::PageColumn::new(body))
-            .respond(headers),
-    );
+    let mut response = if embed {
+        let document = openagents_ui::shell::Document::new(title)
+            .theme(crate::theme::from_headers(headers))
+            .head(html! { (PreEscaped(crate::theme::style_tag())) (head) })
+            .body(openagents_ui::content::PageColumn::new(body));
+        protect(axum::response::Html(html! { (document) }.into_string()).into_response())
+    } else {
+        protect(
+            crate::ui_page::UiPage::new(title)
+                .path(path)
+                .section(crate::settings::PAGE)
+                .account(account)
+                .scriptless()
+                .head(head)
+                .content(openagents_ui::content::PageColumn::new(body))
+                .respond(headers),
+        )
+    };
     let headers = response.headers_mut();
+    if embed {
+        headers.insert(
+            header::X_FRAME_OPTIONS,
+            HeaderValue::from_static("SAMEORIGIN"),
+        );
+    }
     headers.insert(
         header::CONTENT_SECURITY_POLICY,
-        HeaderValue::from_static(POLICY),
+        if embed {
+            HeaderValue::from_str(
+                &POLICY.replace("frame-ancestors 'none'", "frame-ancestors 'self'"),
+            )
+            .expect("static policy")
+        } else {
+            HeaderValue::from_static(POLICY)
+        },
     );
     headers.insert(
         header::CACHE_CONTROL,

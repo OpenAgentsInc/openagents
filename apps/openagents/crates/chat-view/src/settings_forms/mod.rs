@@ -15,6 +15,7 @@ pub mod account;
 /// Agents and the landing queue (#12330).
 pub mod agents;
 pub mod appearance;
+pub mod connections;
 /// Earn on a paired computer (#12294).
 pub mod earn;
 /// A Lab document (#12333).
@@ -42,6 +43,9 @@ pub enum Page {
     General,
     /// Each computer's agents, updates, and accounts (#12283).
     Providers,
+    Connections,
+    Vault,
+    Terminal,
     Appearance,
     Notifications,
     Shortcuts,
@@ -54,9 +58,12 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Page; 9] = [
+    pub const ALL: [Page; 12] = [
         Page::General,
         Page::Providers,
+        Page::Connections,
+        Page::Vault,
+        Page::Terminal,
         Page::Appearance,
         Page::Notifications,
         Page::Shortcuts,
@@ -71,6 +78,9 @@ impl Page {
         match self {
             Page::General => "General",
             Page::Providers => "Providers",
+            Page::Connections => "Connections",
+            Page::Vault => "Vault",
+            Page::Terminal => "Connect your terminal",
             Page::Appearance => "Appearance",
             Page::Notifications => "Notifications",
             Page::Shortcuts => "Shortcuts",
@@ -87,6 +97,9 @@ impl Page {
         match self {
             Page::General => "general",
             Page::Providers => "providers",
+            Page::Connections => "connections",
+            Page::Vault => "vault",
+            Page::Terminal => "terminal",
             Page::Appearance => "appearance",
             Page::Notifications => "notifications",
             Page::Shortcuts => "shortcuts",
@@ -330,6 +343,7 @@ pub enum Intent {
     ArchivedPage(usize),
     /// Your ID (#12290).
     Account(account::Action),
+    Connections(connections::Action),
     /// Earn (#12294).
     Earn(earn::Action),
     /// Providers (#12283).
@@ -449,6 +463,7 @@ pub struct Remote {
     pub confirm_delete_all: bool,
     pub deleting: bool,
     pub account: account::State,
+    pub connections: connections::State,
     /// Earn on the chosen computer (#12294).
     pub earn: earn::State,
     /// Providers: the chosen computer's agents and accounts (#12283).
@@ -469,6 +484,9 @@ pub struct Remote {
 pub fn page(page: Page, prefs: &Prefs, remote: &Remote, paints: &Paints) -> Node<Intent> {
     let body = match page {
         Page::General => general(prefs, remote, paints),
+        Page::Connections | Page::Vault | Page::Terminal => {
+            connections::page(page, &remote.connections, paints)
+        }
         Page::Appearance => appearance::page(&prefs.appearance, remote, paints),
         Page::Notifications => notifications(prefs, remote, paints),
         Page::Shortcuts => shortcuts::page(prefs, remote, paints),

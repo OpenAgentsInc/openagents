@@ -365,16 +365,30 @@ pub(crate) async fn page(
     chat: Option<String>,
     base: &str,
 ) -> Response {
+    page_with_fallback(app, headers, chat, base, None).await
+}
+
+pub(crate) async fn settings_page(app: &App, headers: &HeaderMap, path: &str) -> Response {
+    page_with_fallback(app, headers, None, "", Some(format!("{path}?ui=html"))).await
+}
+
+async fn page_with_fallback(
+    app: &App,
+    headers: &HeaderMap,
+    chat: Option<String>,
+    base: &str,
+    fallback: Option<String>,
+) -> Response {
     let path = match &chat {
         Some(id) => format!("{base}/chat/{id}"),
         None if base.is_empty() => "/".to_owned(),
         None => base.to_owned(),
     };
     // The HTML chat, for a browser that can't draw the canvas.
-    let regular = match &chat {
+    let regular = fallback.unwrap_or_else(|| match &chat {
         Some(id) => format!("/chat/{id}?{UI_QUERY}=html"),
         None => format!("/new?{UI_QUERY}=html"),
-    };
+    });
     if build(app).is_none() {
         return unavailable(headers, &path, &regular);
     }

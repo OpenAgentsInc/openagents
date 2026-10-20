@@ -79,6 +79,7 @@ impl From<Shared> for Known {
 }
 
 pub struct SettingsApp {
+    connection_features: forms::connections::Features,
     client: Client,
     page: Page,
     prefs: Prefs,
@@ -117,6 +118,7 @@ impl SettingsApp {
         )
         .detach();
         let mut this = Self {
+            connection_features: Default::default(),
             client: Client::from_page(),
             page,
             prefs: Prefs::default(),
@@ -144,6 +146,19 @@ impl SettingsApp {
             cx,
         );
         openagents_chat_view::motion::set_system(prefers_reduced_motion(), cx);
+        let client = this.client.clone();
+        cx.spawn(async move |this, cx| {
+            let features = client
+                .get::<forms::connections::Features>("/v1/settings/connection-features")
+                .await;
+            let _ = this.update(cx, |this, cx| {
+                if let Ok(features) = features {
+                    this.connection_features = features;
+                }
+                cx.notify();
+            });
+        })
+        .detach();
         this.reload(cx);
         this.show(page, false, cx);
         this
@@ -193,6 +208,10 @@ impl SettingsApp {
     }
 
     fn show(&mut self, page: Page, push: bool, cx: &mut Context<Self>) {
+        if matches!(page, Page::Connections | Page::Vault | Page::Terminal) {
+            store::signal("oa-page-open", page.slug());
+            return;
+        }
         if push {
             store::signal("oa-settings-page", page.slug());
         }
@@ -938,35 +957,42 @@ impl Render for SettingsApp {
             .when(!wide, |nav| {
                 nav.flex_row().flex_wrap().px(px(12.)).pt(px(10.))
             })
-            .children(Page::ALL.into_iter().filter(|p| shown(*p)).map(|p| {
-                let chosen = p == page;
-                div()
-                    .id(gpui::SharedString::from(format!(
-                        "settings-nav-{}",
-                        p.slug()
-                    )))
-                    .when(wide && p.starts_group(), |row| row.mt(px(14.)))
-                    .flex()
-                    .flex_row()
-                    .items_center()
-                    .gap(px(10.))
-                    .px(px(10.))
-                    .h(px(32.))
-                    .rounded(px(8.))
-                    .text_size(px(13.5))
-                    .cursor_pointer()
-                    .text_color(if chosen {
-                        theme::text()
-                    } else {
-                        theme::text_muted()
+            .children(
+                Page::ALL
+                    .into_iter()
+                    .filter(|p| {
+                        shown(*p) && forms::connections::visible(*p, &self.connection_features)
                     })
-                    .when(chosen, |row| row.bg(theme::element_active()))
-                    .hover(|s| s.bg(theme::element_hover()).text_color(theme::text()))
-                    .on_click(
-                        cx.listener(move |this, _: &ClickEvent, _, cx| this.show(p, true, cx)),
-                    )
-                    .child(p.label())
-            }));
+                    .map(|p| {
+                        let chosen = p == page;
+                        div()
+                            .id(gpui::SharedString::from(format!(
+                                "settings-nav-{}",
+                                p.slug()
+                            )))
+                            .when(wide && p.starts_group(), |row| row.mt(px(14.)))
+                            .flex()
+                            .flex_row()
+                            .items_center()
+                            .gap(px(10.))
+                            .px(px(10.))
+                            .h(px(32.))
+                            .rounded(px(8.))
+                            .text_size(px(13.5))
+                            .cursor_pointer()
+                            .text_color(if chosen {
+                                theme::text()
+                            } else {
+                                theme::text_muted()
+                            })
+                            .when(chosen, |row| row.bg(theme::element_active()))
+                            .hover(|s| s.bg(theme::element_hover()).text_color(theme::text()))
+                            .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                                this.show(p, true, cx)
+                            }))
+                            .child(p.label())
+                    }),
+            );
         let header = div()
             .flex()
             .flex_row()

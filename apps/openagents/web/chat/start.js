@@ -54,7 +54,8 @@ function unsupported() {
     note.hidden = false;
     var link = note.querySelector("a");
     if (link) {
-      location.replace(link.href);
+      var section = settingsSection();
+      location.replace(section ? location.pathname + "?ui=html" : link.href);
     }
   }
 }
@@ -140,6 +141,12 @@ function start() {
   openAddressedPage();
   Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) }), fonts])
     .then(function (loaded) {
+      var section = settingsSection();
+      if (section) {
+        document.addEventListener("gpui-ready", function () {
+          openPage(section);
+        }, { once: true });
+      }
       launch(loaded[1]);
     })
     .catch(function (error) {
@@ -473,6 +480,14 @@ function mountIn(box, mount) {
 var settings = null;
 var settingsBox = null;
 var settingsWanted = null;
+function settingsSection() {
+  var path = location.pathname;
+  if (path === "/settings/connections") return "connections";
+  if (path === "/settings/terminal") return "terminal";
+  if (path === "/settings/vault" || /^\/projects\/[^/]+\/vault$/.test(path)) return "vault";
+  return null;
+}
+
 function openSettings(event) {
   var asked = {};
   try {
@@ -481,6 +496,7 @@ function openSettings(event) {
     asked = {};
   }
   var page = asked.page || "general";
+  if (["connections", "vault", "terminal"].indexOf(page) !== -1) { openPage(page); return; }
   var shared = JSON.stringify(asked.shared || {});
   if (settingsBox) {
     settingsBox.hidden = false;
@@ -515,6 +531,7 @@ function openSettings(event) {
       console.error("Settings couldn't start", error);
       settingsBox.remove();
       settingsBox = null;
+      if (settingsSection()) location.replace(location.pathname + "?ui=html");
     });
 }
 window.addEventListener("oa-settings-open", openSettings);
@@ -525,6 +542,9 @@ window.addEventListener("oa-settings-open", openSettings);
 // path). Its box covers the chat; its Back to chat (`oa-page-close`) hides
 // the box, and moving within the page (`oa-page-path`) keeps the address.
 var PAGES = {
+  connections: ["./openagents_web_connections.js", "./openagents_web_connections_bg.wasm"],
+  vault: ["./openagents_web_vault.js", "./openagents_web_vault_bg.wasm"],
+  terminal: ["./openagents_web_terminal.js", "./openagents_web_terminal_bg.wasm"],
   traces: ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm"],
   agents: ["./openagents_web_agents.js", "./openagents_web_agents_bg.wasm"],
   projects: ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm"],
@@ -550,9 +570,12 @@ function openPage(path) {
   }
   var rest = path.slice(name.length + 1);
   pageParam(path);
+  closeVault();
+  if (settingsBox) settingsBox.hidden = true;
   Object.keys(pageBoxes).forEach(function (other) {
     if (other !== name && pageBoxes[other]) {
       pageBoxes[other].hidden = true;
+      if (pageModules[other] && pageModules[other].hide) pageModules[other].hide();
     }
   });
   if (pageBoxes[name]) {
@@ -585,6 +608,7 @@ function openPage(path) {
       box.remove();
       delete pageBoxes[name];
       pageParam("");
+      if (settingsSection()) location.replace(location.pathname + "?ui=html");
     });
 }
 window.addEventListener("oa-page-open", function (event) {
@@ -597,6 +621,9 @@ window.addEventListener("oa-page-close", function (event) {
   var box = pageBoxes[event.detail || ""];
   if (box) {
     box.hidden = true;
+    var module = pageModules[event.detail || ""];
+    if (module && module.hide) module.hide();
+    closeVault();
   }
   pageParam("");
 });
@@ -615,8 +642,39 @@ function openAddressedPage() {
 window.addEventListener("oa-settings-hide", function () {
   if (settingsBox) {
     settingsBox.hidden = true;
+
   }
 });
+
+// The vault keeps its own module and security policy. Removing this frame
+// on close also discards its unlocked session; the GPUI module reads no keys.
+var vaultBox = null;
+function closeVault() {
+  if (vaultBox) { vaultBox.remove(); vaultBox = null; }
+}
+window.addEventListener("oa-vault-open", function () {
+  if (vaultBox) return;
+  vaultBox = document.createElement("div");
+  vaultBox.setAttribute("role", "dialog");
+  vaultBox.setAttribute("aria-label", "Vault");
+  vaultBox.style.cssText = "position:fixed;inset:16px;z-index:9;background:white;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;";
+  var close = document.createElement("button");
+  close.textContent = "Close vault";
+  close.addEventListener("click", closeVault);
+  vaultBox.appendChild(close);
+  var frame = document.createElement("iframe");
+  frame.title = "Vault";
+  frame.style.cssText = "width:100%;flex:1;border:0;";
+  var project = /^\/projects\/[^/]+\/vault$/.test(location.pathname);
+  frame.src = (project ? location.pathname : "/settings/vault") + "?ui=html&embed=1";
+  vaultBox.appendChild(frame);
+  document.body.appendChild(vaultBox);
+  close.focus();
+});
+window.addEventListener("keydown", function (event) {
+  if (event.key === "Escape") closeVault();
+});
+window.addEventListener("oa-settings-hide", closeVault);
 
 supported().then(function (ok) {
   if (ok) {
