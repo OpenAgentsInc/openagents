@@ -414,7 +414,7 @@ fn policy(workload: &str) -> Policy {
 }
 
 /// The gateway's own check of the records, with every step's verdict.
-fn gateway_check(records: &Records, workload: &str, at: u64) -> Value {
+pub(crate) fn gateway_check(records: &Records, workload: &str, at: u64) -> Value {
     let policy = policy(workload);
     let parsed = match oa_att::parse(records, &policy, at) {
         Ok(parsed) => parsed,

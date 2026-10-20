@@ -6,6 +6,7 @@
 //! or derives an owner secret. Readers verify the event, the tag, and that
 //! the `p` tag names the tag's owner before anything is shown.
 
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::domain::{Event, RelaySigner, Tag, verify_owner_attestation};
@@ -157,6 +158,86 @@ fn tags(owner_tag: &Tag, owner: &str, id: &str, url: &str) -> Vec<Tag> {
     ]
 }
 
+/// Exact NIP-ATT events the owner says this agent runs on. These are
+/// references, not proof that the release or endpoint verifies.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Runtime {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub release: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub endpoint: Option<String>,
+}
+
+impl Runtime {
+    pub fn is_empty(&self) -> bool {
+        self.release.is_none() && self.endpoint.is_none()
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if [&self.release, &self.endpoint]
+            .into_iter()
+            .flatten()
+            .any(|id| !valid_id(id))
+        {
+            return Err("runtime references must be exact event IDs".into());
+        }
+        Ok(())
+    }
+
+    fn from_event(event: &Event) -> Result<Self, String> {
+        let mut runtime = Self::default();
+        for tag in &event.tags {
+            let values = tag.as_slice();
+            let field = match values.get(3).map(String::as_str) {
+                Some("att-release") if values.first().is_some_and(|v| v == "e") => {
+                    &mut runtime.release
+                }
+                Some("att-endpoint") if values.first().is_some_and(|v| v == "e") => {
+                    &mut runtime.endpoint
+                }
+                _ => continue,
+            };
+            if values.len() != 4 || !values[2].is_empty() || field.is_some() {
+                return Err("invalid or repeated runtime reference".into());
+            }
+            *field = Some(values[1].clone());
+        }
+        runtime.validate()?;
+        Ok(runtime)
+    }
+}
+
+/// Sign a definition with explicit NIP-ATT release or endpoint references.
+#[allow(clippy::too_many_arguments)]
+pub fn definition_with_runtime(
+    agent: &RelaySigner,
+    owner_tag: &Tag,
+    owner: &str,
+    id: &str,
+    url: &str,
+    content: &str,
+    runtime: &Runtime,
+    at: u64,
+) -> Result<Event, String> {
+    runtime.validate()?;
+    let mut event = definition_event(agent, owner_tag, owner, id, url, content, at)?;
+    for (marker, reference) in [
+        ("att-release", &runtime.release),
+        ("att-endpoint", &runtime.endpoint),
+    ] {
+        if let Some(reference) = reference {
+            event.tags.push(Tag::new(vec![
+                "e".into(),
+                reference.clone(),
+                String::new(),
+                marker.into(),
+            ]));
+        }
+    }
+    Ok(agent.sign(at, DEFINITION_KIND, event.tags, event.content))
+}
+
 /// The public definition (kind 30187) for published agent `id`.
 ///
 /// # Errors
@@ -220,6 +301,7 @@ pub struct Definition {
     /// The export document, when not revoked and it parses.
     pub document: Option<Value>,
     pub created_at: u64,
+    pub runtime: Runtime,
 }
 
 fn single<'a>(event: &'a Event, name: &'a str) -> Option<&'a str> {
@@ -267,6 +349,7 @@ pub fn read_definition(event: &Event) -> Result<Definition, String> {
         revoked,
         document,
         created_at: event.created_at,
+        runtime: Runtime::from_event(event)?,
     })
 }
 
@@ -329,6 +412,64 @@ mod tests {
         assert!(check_owner_tag(&agent, &long, NOW).is_err(), "too long");
         let bad = Tag::new(vec!["auth".into(), owner.pubkey().into()]);
         assert!(check_owner_tag(&agent, &bad, NOW).is_err());
+    }
+
+    #[test]
+    fn runtime_pins_are_signed_exact_and_unambiguous() {
+        let (owner, agent) = (signer(1), signer(2));
+        let tag = owner_tag(1, &agent, NOW + 3600);
+        let runtime = Runtime {
+            release: Some("ab".repeat(32)),
+            endpoint: Some("cd".repeat(32)),
+        };
+        let event = definition_with_runtime(
+            &agent,
+            &tag,
+            owner.pubkey(),
+            &"ef".repeat(32),
+            "https://example.org",
+            "{}",
+            &runtime,
+            NOW,
+        )
+        .unwrap();
+        assert_eq!(read_definition(&event).unwrap().runtime, runtime);
+        let mut unsigned = event.clone();
+        unsigned.tags.push(Tag::new(vec![
+            "e".into(),
+            "aa".repeat(32),
+            String::new(),
+            "att-release".into(),
+        ]));
+        assert!(read_definition(&unsigned).is_err());
+        let repeated = agent.sign(NOW, DEFINITION_KIND, unsigned.tags, unsigned.content);
+        assert!(read_definition(&repeated).is_err());
+        let mut malformed = runtime.clone();
+        malformed.endpoint = Some("not-an-event".into());
+        assert!(
+            definition_with_runtime(
+                &agent,
+                &tag,
+                owner.pubkey(),
+                &"ef".repeat(32),
+                "https://example.org",
+                "{}",
+                &malformed,
+                NOW
+            )
+            .is_err()
+        );
+        let legacy = definition_event(
+            &agent,
+            &tag,
+            owner.pubkey(),
+            &"ef".repeat(32),
+            "https://example.org",
+            "{}",
+            NOW,
+        )
+        .unwrap();
+        assert!(read_definition(&legacy).unwrap().runtime.is_empty());
     }
 
     #[test]

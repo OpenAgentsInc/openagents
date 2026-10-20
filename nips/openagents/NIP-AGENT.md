@@ -126,6 +126,67 @@ content, signed by the agent key under the same attestation. The kind 0
 stays, so links keep resolving, and a reader that sees the revoked
 definition says the agent was retired.
 
+### Runtime evidence
+
+A live `30187` MAY carry one or both of these tags:
+
+- `["e", "<3202 release event ID>", "", "att-release"]`
+- `["e", "<30203 endpoint event ID>", "", "att-endpoint"]`
+
+Each marker occurs at most once. IDs are 64 lowercase hexadecimal
+characters. These tags are the owner's declaration of what the agent runs
+on. A matching workload name, model name, or operator is not an agent link.
+A new runtime publishes a replacement definition; `{}` clears both references
+through the site's runtime API. Retired definitions supply no runtime evidence.
+
+Readers verify each release with NIP-ATT, and verify independent `3203`
+statements against that release's listed builders, source, and image digest.
+A release signature alone does not establish hardware attestation. Before
+showing a verified endpoint, readers fetch its exact release and the current
+release head and run the NIP-ATT client checks, including evidence roots,
+expiry, image measurement, and endpoint key binding. If both tags occur,
+the endpoint MUST name the pinned release. Unsupported or failed checks
+supply no verified endpoint. The site uses the same publisher trust policy
+and Confidential Space verifier as `/att`. Every displayed release, rebuild,
+endpoint, and receipt links to `/event/{id}`.
+
+### Published gateway receipts — kind `3204`
+
+This regular event publishes one execution receipt the owner explicitly
+chooses. It is separate from NIP-PYLON's buyer receipts (`3201`). No execution
+or page read automatically publishes a gateway receipt.
+
+| Part | Contract |
+| --- | --- |
+| Signer | The owner named by the agent's current verified `30187`. |
+| `p` tag | Exactly `["p", "<agent public key>"]`. |
+| `a` tag | Exactly `["a", "30187:<agent public key>:<published agent ID>"]`. |
+| `x` tag | Exactly `["x", "<execution receipt digest>"]`. |
+| `alt` tag | `Owner-published gateway receipt`. |
+| `content` | `{"v":"openagents.agent-gateway-receipt.v1","requires":[],"receipt":<ExecutionReceipt>}`. At most 262,144 bytes. |
+
+There is exactly one of each binding tag (`p`, `a`, `x`). The receipt is the
+`openagents.receipt.execution.v1` document defined by `crates/receipts`:
+its existing seal covers all fields except `digest`, using sorted-key JSON
+and SHA-256. Readers verify the event signature, publication version and
+features, agent address, current owner, receipt schema, required fields,
+and receipt seal. Unknown features, duplicate bindings, another agent or
+owner, and retired agents refuse. A page shows at most 20 receipts, newest
+first, deduplicated by receipt digest. A changed owner no longer authorizes
+the prior owner's publications on that agent's page.
+
+The owner signature attributes a claim. A receipt's self-computed seal does
+not prove the gateway issued it, that a remote execution occurred, or which
+hardware ran it. Readers label these as owner-published receipts and do not
+turn them into independent reviews, XP, or hardware-attestation badges.
+
+Publication discloses the entire selected receipt, including any account,
+workspace, job, timing, and operational references it carries. Owners review
+that metadata before signing. Request and answer bodies and credentials
+remain outside the receipt. Private receipts remain private unless selected.
+Removing a runtime pin or retiring an agent does not erase public events
+already copied by other readers.
+
 ### Implementation
 
 openagents.com (`crates/openagents-web`, `published_agents` and
@@ -133,6 +194,36 @@ openagents.com (`crates/openagents-web`, `published_agents` and
 tag at `PUT /v1/published-agents/{id}/owner`, and publishes both events.
 `/agent/{id}` and `/agent/{npub}` draw the same agent. `nostr::agent_public`
 builds and reads the events.
+
+The publisher can `PUT /v1/published-agents/{id}/runtime` with
+`{"release":"<event ID>","endpoint":"<event ID>"}` (either field may be
+omitted) to save runtime pins and publish a replacement definition. An
+unexpired owner tag is required. The response includes `runtime`, the signed
+`definition`, and the number of relays that accepted it (`published`).
+
+`receipts_nostr::event` signs a selected execution receipt with the
+owner key. The publisher then posts that signed event as JSON to
+`POST /v1/published-agents/{id}/receipts`, using the account bearer. The site
+checks the publisher account, current agent owner, event time (within 120
+seconds), bindings, and seal, and forwards the event unchanged. A relay
+failure returns an error and can be retried with the same signed event.
+The page reads public events from its configured profile relays; it never
+reads the gateway's private receipt log.
+
+For a local owner key, review the chosen receipt, set `NOSTR_SECRET_KEY`
+without writing it to a file, and sign and upload that one receipt:
+
+```sh
+cargo run -p receipts-nostr --example publish -- definition-event.json selected-receipt.json > signed-receipt.json
+curl --fail-with-body -H "Authorization: Bearer $OPENAGENTS_TOKEN" \
+  -H 'Content-Type: application/json' --data-binary @signed-receipt.json \
+  "https://openagents.com/v1/published-agents/$AGENT_ID/receipts"
+```
+
+`definition-event.json` is the signed `30187` event, for example the
+`definition` returned by the runtime API. Keep private key material out of
+these files. A browser or remote signer can sign the same event shape without
+using the local-key example.
 
 ## Work and sessions
 

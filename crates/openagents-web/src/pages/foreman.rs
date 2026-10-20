@@ -515,6 +515,12 @@ async fn published_page(app: &App, id: &str, headers: &HeaderMap) -> Response {
         ),
         None => None,
     };
+    let additional_evidence = match (&found.agent, &found.owner) {
+        (Some(agent), Some(owner)) if !retired => {
+            crate::profiles::agent_evidence::section(app, agent, id, &owner.pubkey).await
+        }
+        _ => html! {},
+    };
     let owner = html! {
         @if let Some(owned) = found.owner.as_ref() {
             section.oa-card aria-labelledby="agent-owner" {
@@ -569,6 +575,7 @@ async fn published_page(app: &App, id: &str, headers: &HeaderMap) -> Response {
         @if let Some(evidence) = &evidence {
             (crate::profiles::evidence::sections(evidence))
         }
+        (additional_evidence)
         (benchmarks)
         (generic_body(id, &graph, live))
     };

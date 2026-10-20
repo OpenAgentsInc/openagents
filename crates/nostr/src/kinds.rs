@@ -105,6 +105,8 @@ pub const PYLON_RECEIPT: u16 = 3_201;
 pub const ATT_RELEASE: u16 = 3_202;
 /// NIP-ATT independent rebuild statement.
 pub const ATT_REBUILD: u16 = 3_203;
+/// NIP-AGENT owner-published gateway execution receipt.
+pub const AGENT_GATEWAY_RECEIPT: u16 = 3_204;
 /// NIP-ATT release head.
 pub const ATT_HEAD: u16 = 30_202;
 /// NIP-ATT attested endpoint.
@@ -161,6 +163,11 @@ pub const REGISTRY: &[Claim] = &[
     claim(PYLON_RECEIPT, "NIP-PYLON", "Service receipt"),
     claim(ATT_RELEASE, "NIP-ATT", "Attested workload release"),
     claim(ATT_REBUILD, "NIP-ATT", "Independent rebuild statement"),
+    claim(
+        AGENT_GATEWAY_RECEIPT,
+        "NIP-AGENT",
+        "Owner-published gateway execution receipt",
+    ),
     claim(XP_PROFILE, "NIP-XP", "Trainer profile"),
     claim(XP_LINK, "NIP-XP", "Key link"),
     claim(MV_FRAME, "NIP-MV", "Pose frame"),
