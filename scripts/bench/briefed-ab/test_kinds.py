@@ -86,7 +86,9 @@ class KindsTests(unittest.TestCase):
 
     def test_script_tests_are_found_by_name_and_by_mention(self):
         plan = {c["id"]: c for c in kinds.plan(["scripts/dev/tool.py", "scripts/run-thing.sh"], self.tree)}
-        self.assertIn("scripts/tests/test_tool.py", plan["tests:scripts/dev"]["argv"])
+        argv = plan["tests:scripts/dev"]["argv"]
+        expected = "scripts/tests/test_tool.py" if "pytest" in argv else "scripts.tests.test_tool"
+        self.assertIn(expected, argv)
         self.assertEqual(plan["tests:scripts"]["argv"], ["bash", "scripts/run-thing.test.sh"])
 
     def test_a_test_named_test_dash_script_is_found(self):
@@ -107,6 +109,37 @@ class KindsTests(unittest.TestCase):
 
     def test_the_apps_workspace_is_nested(self):
         self.assertEqual(kinds.nested_root("apps/openagents/crates/client/src/lib.rs"), "apps/openagents")
+
+    def test_web_crates_use_the_nearest_workspace(self):
+        files = {
+            "apps/openagents/Cargo.toml": '[workspace]\nmembers = ["apps/openagents"]\n',
+            "apps/openagents/apps/openagents/Cargo.toml": '[package]\nname = "openagents"\n',
+            "apps/openagents/web/Cargo.toml": '[workspace] # web workspace\nmembers = ["agent-graph"]\n',
+            "apps/openagents/web/agent-graph/Cargo.toml": '[package]\nname = "openagents-web-agent-graph"\n',
+        }
+        for path, text in files.items():
+            dest = self.repo.root / path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(text)
+        git(self.repo.root, "add", "-A")
+        git(self.repo.root, "commit", "-q", "-m", "workspaces")
+        paths = ["apps/openagents/web/agent-graph/src/lib.rs",
+                 "apps/openagents/apps/openagents/src/main.rs", "crates/ui/src/lib.rs"]
+        for tree in (self.tree, kinds.Tree(self.repo.root, "HEAD")):
+            plan = kinds.plan(paths, tree)
+            self.assertEqual([c["id"] for c in plan[:3]],
+                             ["check:openagents-web-agent-graph", "test:openagents-web-agent-graph",
+                              "fmt:openagents-web-agent-graph"])
+            for check in plan[:3]:
+                argv = check["argv"]
+                self.assertEqual(argv[argv.index("--manifest-path") + 1],
+                                 "apps/openagents/web/Cargo.toml")
+            for check in plan[3:6]:
+                argv = check["argv"]
+                self.assertEqual(argv[argv.index("--manifest-path") + 1],
+                                 "apps/openagents/Cargo.toml")
+            for check in plan[6:]:
+                self.assertNotIn("--manifest-path", check["argv"])
 
     def test_an_embedded_document_brings_its_consumer_crate(self):
         got = self.ids(["docs/page.md"])

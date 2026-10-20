@@ -202,6 +202,12 @@ def group(paths: list[str], tree: Tree) -> list[dict]:
         name = Path(path).name.lower()
         inside = cargo_package(tree, path) if path.startswith(("crates/", "apps/", "bins/")) else None
         nested = nested_root(path)
+        if nested:
+            for parent in Path(path).parents:
+                manifest = tree.read(f"{parent}/Cargo.toml")
+                if manifest and re.search(r"^\s*\[workspace\]\s*(?:#.*)?$", manifest, re.M):
+                    nested = str(parent) if str(parent) != "." else None
+                    break
         if kind == "rust" or (inside and kind in ("other", "data", "web")
                               or inside and kind == "docs" and name != "readme.md" and "/docs/" not in path):
             if inside:
