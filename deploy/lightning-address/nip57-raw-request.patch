@@ -1,49 +1,27 @@
 --- a/crates/breez-sdk/lnurl/src/routes.rs
 +++ b/crates/breez-sdk/lnurl/src/routes.rs
-@@ -677,8 +677,8 @@
-             None => None,
-         };
- 
+@@ -680,2 +680,2 @@
 -        let desc_hash = if let Some(event) = &zap_request {
 -            sha256::Hash::hash(event.as_json().as_bytes())
 +        let desc_hash = if let Some(raw) = params.nostr.as_ref().filter(|_| zap_request.is_some()) {
 +            sha256::Hash::hash(raw.as_bytes())
-         } else {
-             let metadata = get_metadata(&user.domain, &user);
-             sha256::Hash::hash(metadata.as_bytes())
-@@ -731,12 +731,11 @@
-         })?;
- 
-         // save to zap event to db
+@@ -734 +734 @@
 -        if let Some(event) = zap_request {
 +        if zap_request.is_some() {
-             let zap = Zap {
-                 payment_hash: payment_hash.clone(),
+@@ -737,3 +737,2 @@
 -                // Canonical form, matching the description hash the invoice
 -                // commits to and the receipt's description tag.
 -                zap_request: event.as_json(),
 +                // NIP-57 commits to the received JSON string, including its formatting.
 +                zap_request: params.nostr.clone().expect("validated zap request"),
-                 zap_event: None,
-                 user_pubkey: user.pubkey.clone(),
-                 invoice_expiry,
 --- a/crates/breez-sdk/lnurl/src/zap.rs
 +++ b/crates/breez-sdk/lnurl/src/zap.rs
-@@ -302,9 +302,7 @@
-     let signing_keys = derive_user_nostr_keys(nostr_keys, &zap.user_pubkey)?;
- 
-     // Build the zap receipt
+@@ -305,3 +305 @@
 -    let zap_event =
 -        nostr::EventBuilder::zap_receipt(bolt11, Some(preimage.to_string()), &zap_request)
 -            .sign_with_keys(&signing_keys)?;
 +    let zap_event = raw_zap_receipt(bolt11, preimage, &zap.zap_request, &zap_request, &signing_keys)?;
- 
-     let relays: Vec<_> = zap_request
-         .tags
-@@ -545,3 +543,30 @@
-         shared_tests::take_pending_zap_receipts_respects_limit(&db).await;
-     }
- }
+@@ -547,0 +546,27 @@
 +
 +// Keep the description exactly as it was hashed when the invoice was issued.
 +fn raw_zap_receipt(bolt11: &str, preimage: &str, raw: &str, request: &nostr::Event, keys: &nostr::Keys) -> Result<nostr::Event, anyhow::Error> {
