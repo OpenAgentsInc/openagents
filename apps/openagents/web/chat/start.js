@@ -2,7 +2,7 @@
 // It needs WebGPU; without it, the page goes to the regular
 // chat. Otherwise the module and the fonts download together,
 // and the canvas replaces the page's outline once the app has started.
-import init, { launch, gpuiRecordedFrame } from "./openagents_web_chat.js";
+import init, { launch, paletteShortcut, gpuiRecordedFrame } from "./openagents_web_chat.js";
 
 const FONTS = [
   "Geist.ttf",
@@ -140,6 +140,7 @@ function start() {
   Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) }), fonts])
     .then(function (loaded) {
       launch(loaded[1]);
+      chatInput = document.activeElement;
     })
     .catch(function (error) {
       say("The chat couldn't start. Reload the page to try again.");
@@ -219,6 +220,8 @@ window.addEventListener("keydown", function (event) {
 // The file panel (#12271): its own module, loaded the first time the
 // chat's folder button asks for it, in a box on the right. It shows the
 // open chat's files on the computer the chat runs on (`oa-host`).
+var chatInput = null;
+var paletteInputBefore = null;
 var host = "";
 var files = null;
 var filesBox = null;
@@ -272,6 +275,28 @@ function openFiles() {
       filesBox = null;
     });
 }
+// Other GPUI canvases have their own inputs. Forward an unhandled palette
+// chord to the chat, whose Rust keymap decides whether it is assigned.
+window.addEventListener("keydown", function (event) {
+  if (!chatInput || event.defaultPrevented || event.isComposing || event.repeat) return;
+  if (!(event.ctrlKey || event.metaKey || event.altKey)) return;
+  if (paletteShortcut(event.ctrlKey, event.altKey, event.shiftKey, event.metaKey, event.key)) {
+    event.preventDefault();
+  }
+});
+var paletteFilesWereOpen = false;
+window.addEventListener("oa-palette-open", function () {
+  paletteInputBefore = document.activeElement;
+  paletteFilesWereOpen = !!filesBox && !filesBox.hidden;
+  showFiles(false);
+  queueMicrotask(function () { if (chatInput) chatInput.focus(); });
+});
+window.addEventListener("oa-palette-close", function () {
+  if (paletteFilesWereOpen) showFiles(true);
+  paletteFilesWereOpen = false;
+  var before = paletteInputBefore;
+  queueMicrotask(function () { if (before && before.isConnected) before.focus(); });
+});
 window.addEventListener("oa-files-toggle", openFiles);
 window.addEventListener("oa-files-open", function (event) {
   var hit;
