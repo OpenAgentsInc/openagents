@@ -3413,6 +3413,7 @@ dependencies = [
  "serde_json",
  "uuid",
  "wasm-bindgen",
+ "web-sys",
  "web-time",
 ]
 

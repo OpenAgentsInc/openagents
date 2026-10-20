@@ -44,6 +44,7 @@ pub struct GraphView {
     fitted: bool,
     selected: Option<usize>,
     hovered: Option<usize>,
+    focused: Option<usize>,
     drag: Drag,
     down_at: (f32, f32),
     moved: bool,
@@ -68,6 +69,7 @@ impl GraphView {
             fitted: false,
             selected: None,
             hovered: None,
+            focused: None,
             drag: Drag::None,
             down_at: (0.0, 0.0),
             moved: false,
@@ -75,6 +77,41 @@ impl GraphView {
             still,
             area: (0.0, 0.0),
         }
+    }
+
+    pub(crate) fn keyboard(&mut self, key: &str, unit: usize) -> bool {
+        match key {
+            "Enter" | " " => self.selected = Some(unit),
+            "ArrowLeft" => self.pan.0 += 40.0,
+            "ArrowRight" => self.pan.0 -= 40.0,
+            "ArrowUp" => self.pan.1 += 40.0,
+            "ArrowDown" => self.pan.1 -= 40.0,
+            "+" | "=" => self.zoom_at(1.2, self.area.0 / 2.0, self.area.1 / 2.0),
+            "-" => self.zoom_at(1.0 / 1.2, self.area.0 / 2.0, self.area.1 / 2.0),
+            _ => return false,
+        }
+        true
+    }
+
+    pub(crate) fn focus_unit(&mut self, unit: Option<usize>) {
+        self.focused = unit;
+        if let Some(unit) = unit {
+            let b = self.layout.boxes[unit];
+            self.pan = (
+                self.area.0 / 2.0 - (b.x + b.w / 2.0) * self.zoom,
+                self.area.1 / 2.0 - (b.y + b.h / 2.0) * self.zoom,
+            );
+        }
+    }
+
+    pub(crate) fn tab_order(&self) -> Vec<usize> {
+        let mut order: Vec<_> = (0..self.spec.units.len()).collect();
+        order.sort_by(|&a, &b| {
+            let a = self.layout.boxes[a];
+            let b = self.layout.boxes[b];
+            a.x.total_cmp(&b.x).then(a.y.total_cmp(&b.y))
+        });
+        order
     }
 
     fn to_graph(&self, x: f32, y: f32) -> (f32, f32) {
@@ -370,7 +407,7 @@ impl GraphView {
         let accent = theme::accent(unit.accent);
         let group = self.spec.children(Some(&unit.id)).next().is_some();
         let selected = self.selected == Some(at);
-        let hovered = self.hovered == Some(at);
+        let hovered = self.hovered == Some(at) || self.focused == Some(at);
         let border = if selected {
             accent
         } else if hovered {
@@ -748,6 +785,8 @@ fn detail_block(detail: &Detail) -> AnyElement {
 
 impl Render for GraphView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        #[cfg(target_family = "wasm")]
+        crate::accessibility::sync(&self.spec, self.selected);
         let viewport = window.viewport_size();
         let (vw, vh) = (f(viewport.width), f(viewport.height));
         let narrow = vw < NARROW;
@@ -888,5 +927,44 @@ impl Render for GraphView {
         } else {
             root.flex_row()
         }
+    }
+}
+
+#[cfg(test)]
+mod keyboard_tests {
+    use super::*;
+
+    #[test]
+    fn keyboard_mirror_follows_layout_and_controls_graph() {
+        let mut spec = GraphSpec::new("test", "Test", "");
+        for id in ["a", "b", "c"] {
+            spec.units
+                .push(Unit::new(id, id, "", agent_graph::Accent::Info));
+        }
+        let mut view = GraphView::new(spec, true, vec![]);
+        view.area = (800.0, 600.0);
+        view.layout.boxes[0].x = 300.0;
+        view.layout.boxes[1].x = 0.0;
+        view.layout.boxes[2].x = 0.0;
+        view.layout.boxes[1].y = 100.0;
+        view.layout.boxes[2].y = 0.0;
+        assert_eq!(view.tab_order(), vec![2, 1, 0]);
+        view.focus_unit(Some(2));
+        assert_eq!(view.focused, Some(2));
+        assert_eq!(view.selected, None);
+        assert!(view.keyboard("Enter", 2));
+        assert_eq!(view.selected, Some(2));
+        let pan = view.pan;
+        for key in ["ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown"] {
+            assert!(view.keyboard(key, 2));
+        }
+        assert_eq!(view.pan, pan);
+        assert!(view.keyboard("+", 2));
+        assert!(view.zoom > 1.0);
+        assert!(view.keyboard("-", 2));
+        assert!((view.zoom - 1.0).abs() < 0.001);
+        assert!(!view.keyboard("Tab", 2));
+        view.focus_unit(None);
+        assert_eq!(view.focused, None);
     }
 }

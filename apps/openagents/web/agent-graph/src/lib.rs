@@ -10,6 +10,8 @@
 
 use agent_graph::GraphSpec;
 
+#[cfg(target_family = "wasm")]
+mod accessibility;
 mod app;
 pub mod assets;
 pub mod theme;
@@ -61,7 +63,13 @@ pub fn mount(spec: &str, still: bool, chat: Option<String>) -> Result<(), JsValu
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
                 ..Default::default()
             },
-            move |_, cx| cx.new(|_| app::GraphView::new(spec, still, events)),
+            move |_, cx| {
+                cx.new(|cx| {
+                    let view = app::GraphView::new(spec.clone(), still, events);
+                    accessibility::install(&spec, &view.tab_order(), cx);
+                    view
+                })
+            },
         )
         .expect("the page has a box to draw into");
         cx.activate(true);
