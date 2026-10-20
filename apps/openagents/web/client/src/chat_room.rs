@@ -73,6 +73,15 @@ impl ChatRoom {
         f(&self.state.borrow().replica)
     }
 
+    /// Whether its current room connection is open (#12270).
+    pub fn connected(&self) -> bool {
+        self.state
+            .borrow()
+            .socket
+            .as_ref()
+            .is_some_and(|socket| socket.ready_state() == web_sys::WebSocket::OPEN)
+    }
+
     /// Whether the site serves no room for this chat.
     pub fn unavailable(&self) -> bool {
         self.state.borrow().unavailable
@@ -119,6 +128,7 @@ async fn run(state: Rc<RefCell<State>>, client: Client, chat: String) {
             log::warn!("chat room: connection failed: {error:?}");
         }
         state.borrow_mut().socket = None;
+        notify(&state);
         if state.borrow().closed {
             return;
         }
@@ -147,6 +157,7 @@ async fn session(
         Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
             let hello = state.borrow().replica.hello();
             send(&socket, &hello);
+            notify(&state);
         })
     };
     let on_message = {

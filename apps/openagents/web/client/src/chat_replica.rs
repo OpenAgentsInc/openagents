@@ -133,6 +133,11 @@ impl ChatReplica {
         self.caught_up
     }
 
+    /// Host-reported context occupancy, alongside the transcript (#12270).
+    pub fn context_usage(&self) -> Option<openagents_proto::ContextUsage> {
+        self.doc.context_usage()
+    }
+
     /// The chat's transcript, as the desktop reads it.
     pub fn entries(&self) -> Vec<SessionMessageEntry> {
         self.doc.read_entries().unwrap_or_default()
@@ -180,6 +185,8 @@ mod tests {
     fn rows_after_the_hello_build_the_transcript() {
         let host = SessionDoc::init("c1").unwrap();
         host.push_message(&entry("m1", "hello")).unwrap();
+        host.update_context_usage(Some(50_000), Some(200_000))
+            .unwrap();
         let first = host.doc().export(loro::ExportMode::all_updates()).unwrap();
         let mut replica = ChatReplica::new("web-1");
         let hello = wire::decode(&replica.hello()).unwrap();
@@ -201,6 +208,13 @@ mod tests {
         // A reconnect resumes after the rows it holds.
         let hello = wire::decode(&replica.hello()).unwrap();
         assert_eq!(hello.header["cursor"], 1);
+        assert_eq!(replica.context_usage().unwrap().fraction(), Some(0.25));
+        // Context-only changes arrive without adding a transcript entry.
+        host.update_context_usage(Some(75_000), None).unwrap();
+        let update = host.doc().export(loro::ExportMode::all_updates()).unwrap();
+        assert_eq!(replica.apply(&row(2, &update)), Step::Changed);
+        assert_eq!(replica.context_usage().unwrap().fraction(), Some(0.375));
+        assert_eq!(replica.entries().len(), 1);
     }
 
     #[test]

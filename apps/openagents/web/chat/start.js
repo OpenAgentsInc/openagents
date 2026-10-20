@@ -583,6 +583,106 @@ function openSettings(event) {
 }
 window.addEventListener("oa-settings-open", openSettings);
 
+// Transcript extras: the footer and host watches load only for
+// a chat on a computer. Keep the latest context while the module starts.
+var transcriptExtras = null;
+var extrasBox = null;
+var extrasLoading = null;
+var extrasReady = false;
+var extrasWanted = {};
+var extrasOpen = false;
+var extrasBounds = null;
+function showExtras() {
+  if (!extrasBox) return;
+  extrasBox.style.visibility = extrasWanted.device ? "visible" : "hidden";
+  var center = innerWidth > 820 ? (innerWidth + 272) / 2 : innerWidth / 2;
+  var width = extrasBounds ? extrasBounds.width : Math.min(704, innerWidth - 48);
+  var height = extrasOpen ? 442 : 76;
+  extrasBox.style.width = width + "px";
+  extrasBox.style.left = (extrasBounds ? extrasBounds.x : Math.max(8, center - width / 2)) + "px";
+  extrasBox.style.bottom = (extrasBounds ? innerHeight - extrasBounds.bottom : 24) + "px";
+  extrasBox.style.height = height + "px";
+}
+function flushExtras() {
+  if (transcriptExtras && extrasReady) transcriptExtras.show(JSON.stringify(extrasWanted));
+}
+function loadExtras() {
+  if (extrasLoading || transcriptExtras || !extrasWanted.device) return;
+  extrasBox = document.createElement("div");
+  extrasBox.id = extrasBox.dataset.box = "gpui-transcript-extras";
+  extrasBox.setAttribute("aria-label", "Chat controls");
+  extrasBox.style.cssText = "position:fixed;bottom:24px;z-index:6;";
+  document.body.appendChild(extrasBox);
+  showExtras();
+  var moduleLoading = loadRenderer(
+    new URL("./openagents_web_transcript_extras.js", import.meta.url),
+    new URL("./openagents_web_transcript_extras_bg.wasm", import.meta.url),
+    new URL("./openagents_web_transcript_extras_webgl.js", import.meta.url),
+    new URL("./openagents_web_transcript_extras_webgl_bg.wasm", import.meta.url));
+  extrasLoading = Promise.all([moduleLoading, loadedFonts]).then(function (loaded) {
+    transcriptExtras = loaded[0];
+    mountIn(extrasBox, function () { transcriptExtras.mount(loaded[1], JSON.stringify(extrasWanted)); });
+  }).catch(function () {
+    extrasBox.remove();
+    extrasBox = null;
+    extrasLoading = null;
+    extrasReady = false;
+    transcriptExtras = null;
+    window.dispatchEvent(new CustomEvent("oa-extras-state", {detail: JSON.stringify({
+      chat: extrasWanted.chat, generation: extrasWanted.generation,
+      notice: "The chat controls couldn't load. Reconnect to try again.",
+    })}));
+  });
+}
+window.addEventListener("oa-extras-context", function (event) {
+  try { extrasWanted = JSON.parse(event.detail || "{}"); } catch (_) { return; }
+  extrasOpen = false;
+  showExtras();
+  flushExtras();
+  loadExtras();
+});
+window.addEventListener("oa-extras-usage", function (event) {
+  var usage;
+  try { usage = JSON.parse(event.detail); } catch (_) { return; }
+  if (usage.chat !== extrasWanted.chat || usage.generation !== extrasWanted.generation) return;
+  Object.assign(extrasWanted, usage);
+  flushExtras();
+});
+window.addEventListener("oa-extras-ready", function () {
+  queueMicrotask(function () {
+    extrasReady = true;
+    flushExtras();
+    if (chatInput) chatInput.focus();
+  });
+});
+window.addEventListener("oa-extras-state", function (event) {
+  var state;
+  try { state = JSON.parse(event.detail); } catch (_) { return; }
+  if (state.chat !== extrasWanted.chat || state.generation !== extrasWanted.generation) return;
+  extrasOpen = !!state.open;
+  showExtras();
+});
+window.addEventListener("oa-extras-close", function () {
+  extrasOpen = false;
+  showExtras();
+  queueMicrotask(function () { if (chatInput) chatInput.focus(); });
+});
+window.addEventListener("oa-extras-bounds", function (event) {
+  try { extrasBounds = JSON.parse(event.detail); } catch (_) { return; }
+  showExtras();
+});
+window.addEventListener("oa-settings-changed", flushExtras);
+if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", flushExtras);
+window.addEventListener("resize", showExtras);
+window.__oaReadTranscriptImage = function (device, chat, path) {
+  loadExtras();
+  return Promise.resolve(extrasLoading).then(function () {
+    if (!transcriptExtras) throw new Error("The image reader couldn't load. Reconnect to try again.");
+    return transcriptExtras.readImage(device, chat, path);
+  });
+};
+// End transcript extras.
+
 // The account's pages (#12329, #12330, #12331): Traces, Agents, and
 // Projects, each its own module, loaded the first time the address asks for
 // it (`?page=traces/ID`) or something opens it (`oa-page-open`, with the

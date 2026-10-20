@@ -195,6 +195,30 @@ async fn a_browser_reaches_only_allowed_reads_after_the_computer_allows_it() {
             "{method}"
         );
     }
+    // Transcript reads and actions use the same grant; forwarding is stripped.
+    for method in [
+        methods::FETCH_TOOL_BLOB,
+        methods::LIST_AGENT_ACCOUNTS,
+        methods::WATCH_CONNECTIVITY,
+        methods::FORK_CHAT,
+        methods::RETRY_DELIVERY,
+        methods::ACTIVATE_AGENT_ACCOUNT,
+    ] {
+        let result = value(
+            tab.handle(method, json!({"targetDeviceId": "other", "chatId": "c1"}))
+                .await,
+        );
+        assert_eq!(result["ran"], method);
+        assert!(result["params"].get("targetDeviceId").is_none());
+        assert_eq!(
+            required_right(method),
+            Some(if ALLOWED.contains(&method) {
+                Right::Observe
+            } else {
+                Right::Operate
+            })
+        );
+    }
     // A new session's pickers and a chat's runs reach the engine (#12266),
     // without what only this computer's app may set.
     for method in [

@@ -44,6 +44,7 @@ mod computers;
 mod devices;
 /// The composer's microphone (#12292).
 mod dictation;
+mod extras;
 /// Moving a computer chat to a cloud computer and back (#12282).
 mod move_sheet;
 /// A new session on a computer (#12266).
@@ -85,6 +86,9 @@ enum Menu {
 }
 
 pub struct ChatApp {
+    extras: extras::Extras,
+    extra_events: Option<Task<()>>,
+    pending_fork: Option<openagents_proto::Chat>,
     client: Client,
     /// The open Coder chat's question and agents (#12316).
     work: Entity<crate::work::Work>,
@@ -269,6 +273,15 @@ impl ChatApp {
                 let Ok(()) = this.update(cx, |this, cx| {
                     if this.live.is_some() {
                         cx.notify();
+                    } else if (this.computer_working()
+                        || (this.compose.read(cx).host().is_some()
+                            && this.entries.last().is_some_and(|entry| {
+                                entry.status == Some(MessageStatus::Streaming)
+                            })))
+                        && this.extras.progress_second != now_ms() / 1000
+                    {
+                        this.extras.progress_second = now_ms() / 1000;
+                        this.transcript.update(cx, |_, cx| cx.notify());
                     }
                 }) else {
                     break;
@@ -333,6 +346,9 @@ impl ChatApp {
             });
         }
         let mut this = Self {
+            extras: extras::Extras::default(),
+            extra_events: None,
+            pending_fork: None,
             client,
             work,
             room: None,
@@ -461,6 +477,10 @@ impl ChatApp {
         self.current = chat.clone();
         self.watching = None;
         self.moving = None;
+        self.extras = extras::Extras::default();
+        crate::compose::page_event("oa-extras-context", "{}");
+        self.shared
+            .update(cx, |state, _| state.set_engine(None, None));
         self.entries.clear();
         let placeholder = if chat.is_some() {
             "Ask anything"
@@ -552,6 +572,9 @@ impl ChatApp {
     /// replies go to the computer through the composer's host channel and
     /// come back as rows.
     fn open_room(&mut self, id: String, cx: &mut Context<Self>) {
+        if let Some(chat) = self.chat_metadata(cx) {
+            self.start_extras(&chat, cx);
+        }
         self.loading_chat = true;
         crate::compose::page_event("oa-room-open", &id);
         self.room = Some(id);
@@ -567,6 +590,10 @@ impl ChatApp {
             entries: Vec<SessionMessageEntry>,
             #[serde(default)]
             caught_up: bool,
+            #[serde(default)]
+            context_usage: Option<openagents_proto::ContextUsage>,
+            #[serde(default)]
+            connected: Option<bool>,
             #[serde(default)]
             unavailable: bool,
         }
@@ -584,6 +611,9 @@ impl ChatApp {
         if room.unavailable && room.entries.is_empty() {
             self.notice = Some("This chat's transcript isn't available here right now.".into());
         }
+        self.extras.context = room.context_usage;
+        self.extras.connected = room.connected.unwrap_or(room.caught_up) && !room.unavailable;
+        self.sync_extras();
         self.show_entries(room.entries, cx);
         cx.notify();
     }
@@ -1258,6 +1288,16 @@ impl ChatApp {
     fn render_row(&self, ix: usize, cx: &mut Context<Self>) -> AnyElement {
         let thread = &self.threads[ix];
         let id = thread.id.clone();
+        let saved_agent = self
+            .registry
+            .as_ref()
+            .and_then(|r| r.read(|r| r.chat(&id)))
+            .and_then(|chat| {
+                openagents_proto::saved_agent::agent_name(
+                    chat.config.as_ref(),
+                    chat.title.as_deref(),
+                )
+            });
         let selected = self.current.as_deref() == Some(id.as_str());
         let live_here = self.live.as_ref().is_some_and(|l| l.chat == id);
         let dot: Option<Hsla> = if thread.working || live_here {
@@ -1402,7 +1442,13 @@ impl ChatApp {
             },
             openagents_chat_view::sidebar::RowSlots {
                 title,
-                identity: None,
+                identity: saved_agent.map(|_| {
+                    svg()
+                        .path("icons/openagents-logo.svg")
+                        .size(px(16.))
+                        .text_color(desktop.text_muted)
+                        .into_any_element()
+                }),
                 project_icon: None,
                 compact_status: compact.then(|| {
                     div()
@@ -1663,6 +1709,7 @@ impl ChatApp {
                         }),
                 )
             })
+            .children(self.render_identity())
             .children(project.map(|p| chip("icons/folder.svg", p, theme::text_muted())))
             .children(computer.map(|c| chip("icons/laptop.svg", c, theme::text_muted())))
             .child(
@@ -1767,6 +1814,7 @@ impl ChatApp {
             .pt(px(6.))
             .gap(px(8.))
             .children(blocked.map(|line| footer_text(line)))
+            .children(self.render_todos(cx))
             .children(queue)
             .children(completion)
             .child(
@@ -1800,6 +1848,7 @@ impl ChatApp {
                     .update(cx, |compose, cx| compose.render_attachments(cx)),
             )
             .child(send_key)
+            .children(self.render_extras(cx))
             .into_any_element()
     }
 
@@ -1915,7 +1964,14 @@ impl ChatApp {
                 live.messages.values().map(|(_, text)| text.len()).sum(),
             )
         });
-        let elapsed = live.map_or(-1, |live| live.started.elapsed().as_secs() as i64);
+        let computer_turn = self
+            .entries
+            .last()
+            .filter(|entry| entry.status == Some(MessageStatus::Streaming));
+        let elapsed = live
+            .map(|live| live.started.elapsed().as_secs() as i64)
+            .or_else(|| computer_turn.map(|entry| ((now_ms() - entry.created_at) / 1000).max(0)))
+            .unwrap_or(-1);
         let fingerprint = (self.current.clone(), shape, live_shape, elapsed);
         if self.published.as_ref() == Some(&fingerprint) {
             return;
@@ -1932,6 +1988,14 @@ impl ChatApp {
                 elapsed_secs: Some(elapsed),
                 turn_ms: 0,
             }
+        });
+        let activity = activity.or_else(|| {
+            computer_turn.map(|entry| TurnActivity {
+                sending: false,
+                queued: false,
+                elapsed_secs: Some(elapsed),
+                turn_ms: entry.created_at,
+            })
         });
         let chat = self.current.clone();
         self.shared.update(cx, |state, cx| {
@@ -1966,6 +2030,7 @@ impl Render for ChatApp {
         if self.loaded && !self.loading_chat {
             openagents_gpui_web::announce_ready();
         }
+        self.install_links(cx);
         let wide = window.viewport_size().width > px(820.);
         let width = f32::from(window.viewport_size().width);
         // The message rail needs the room the desktop gives it (48rem).
@@ -2043,6 +2108,11 @@ impl Render for ChatApp {
         let mut root = div()
             .id("openagents-web-chat")
             .track_focus(&self.focus_handle)
+            .on_action(cx.listener(
+                |this, source: &openagents_chat_view::transcript::OpenForkSource, window, cx| {
+                    this.open(Some(source.0.clone()), window, cx);
+                },
+            ))
             // Cmd/Ctrl+C with the focus outside the composer: the
             // transcript's selection (#12305).
             .on_action(cx.listener(|_, _: &Copy, _, cx| {
@@ -2105,6 +2175,18 @@ fn entry_shape(entry: &SessionMessageEntry) -> (usize, usize, u8) {
         .iter()
         .map(|part| match part {
             MessagePart::Text { text, .. } | MessagePart::Reasoning { text, .. } => text.len(),
+            MessagePart::Tool {
+                resolved,
+                output,
+                output_ref,
+                diff_ref,
+                ..
+            } => {
+                usize::from(*resolved)
+                    + output.as_ref().map_or(0, String::len)
+                    + output_ref.as_ref().map_or(0, String::len)
+                    + diff_ref.as_ref().map_or(0, String::len)
+            }
             _ => 1,
         })
         .sum();

@@ -4,7 +4,7 @@
 //! and calls [`open`] with the chat's id; each change to the chat's chat2
 //! room ([`openagents_web_client::chat_room::ChatRoom`]) reaches the page as
 //! an `oa-room` event whose detail is JSON: `{chat, entries, caught_up,
-//! unavailable}`, the entries being the desktop's `SessionMessageEntry`
+//! unavailable, context_usage, connected}`, the entries being the desktop's `SessionMessageEntry`
 //! values. [`close`] leaves the room.
 
 #[cfg(target_family = "wasm")]
@@ -44,6 +44,8 @@ mod web {
                             "chat": chat,
                             "entries": entries,
                             "caught_up": caught_up,
+                            "context_usage": room.read(|r| r.context_usage()),
+                            "connected": room.connected(),
                             "unavailable": room.unavailable(),
                         })
                         .to_string()

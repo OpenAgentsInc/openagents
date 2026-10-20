@@ -3,8 +3,8 @@
 //!
 //! The app keeps the open chat's entries in a [`WebTranscript`] entity and
 //! hands the view a [`WebHost`] over it. [`WebMedia`] draws the images the
-//! app has already loaded; the desktop's diagrams, tool-call previews, and
-//! full-size viewer aren't on the web yet.
+//! app has already loaded, lazy tool-call previews from its paired engine,
+//! and the visuals supplied by the app.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -47,9 +47,18 @@ pub struct WebTranscript {
     revision: u64,
     /// The open chat's working turn, while it has one.
     activity: Option<TurnActivity>,
+    rpc: Option<Rpc>,
+    place: Option<ChatPlace>,
 }
 
 impl WebTranscript {
+    /// The paired engine that serves this chat, and its workspace.
+    pub fn set_engine(&mut self, rpc: Option<Rpc>, place: Option<ChatPlace>) {
+        self.rpc = rpc;
+        self.place = place;
+        self.revision += 1;
+    }
+
     /// Show `chat` with `entries`.
     pub fn open(&mut self, chat: Option<String>, entries: Vec<SessionMessageEntry>) {
         self.chat = chat;
@@ -114,16 +123,26 @@ impl TranscriptHost for WebHost {
         false
     }
 
-    fn link_roots_revision(&self, _cx: &App) -> u64 {
-        0
+    fn link_roots_revision(&self, cx: &App) -> u64 {
+        self.0.read(cx).revision
     }
 
-    fn file_link_roots(&self, _chat_id: &str, _cx: &App) -> Vec<FileLinkRoot> {
-        Vec::new()
+    fn file_link_roots(&self, chat_id: &str, cx: &App) -> Vec<FileLinkRoot> {
+        self.0
+            .read(cx)
+            .place
+            .as_ref()
+            .map(|place| FileLinkRoot {
+                chat: Some(chat_id.into()),
+                root: place.cwd.clone().unwrap_or_else(|| ".".into()),
+                local: false,
+            })
+            .into_iter()
+            .collect()
     }
 
-    fn chat_place(&self, _chat_id: Option<&str>, _cx: &App) -> Option<ChatPlace> {
-        None
+    fn chat_place(&self, _chat_id: Option<&str>, cx: &App) -> Option<ChatPlace> {
+        self.0.read(cx).place.clone()
     }
 
     fn local_device_id<'a>(&self, _cx: &'a App) -> Option<&'a str> {
@@ -155,8 +174,8 @@ impl TranscriptHost for WebHost {
         tool_progress::running(&self.0.read(cx).entries, &[], now)
     }
 
-    fn rpc(&self, _cx: &App) -> Option<Rpc> {
-        None
+    fn rpc(&self, cx: &App) -> Option<Rpc> {
+        self.0.read(cx).rpc.clone()
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -182,6 +201,7 @@ pub type AfterEntry = Rc<dyn Fn(&str, &mut Window, &mut App) -> Option<AnyElemen
 /// serves by path, and the app's own content under an entry.
 #[derive(Default)]
 pub struct WebMedia {
+    pub(crate) previews: crate::tool_previews::Previews,
     /// Computer that owns the open transcript’s visual attachments.
     pub visual_device: Option<String>,
     pub images: Images,
@@ -248,7 +268,7 @@ fn image_tile(image: Arc<Image>) -> AnyElement {
 }
 
 impl TranscriptMedia for WebMedia {
-    type ToolImages = ();
+    type ToolImages = Vec<crate::tool_previews::Preview>;
 
     fn new(_cx: &mut Context<Transcript>) -> Self {
         Self::default()
@@ -257,13 +277,16 @@ impl TranscriptMedia for WebMedia {
     fn released(_this: &mut Transcript, _cx: &mut App) {}
 
     fn chat_changed(_this: &mut Transcript, _cx: &mut Context<Transcript>) {
+        _this.media.previews.clear();
         #[cfg(feature = "visuals")]
         _this.media.visuals.clear();
         #[cfg(all(target_family = "wasm", not(feature = "visuals")))]
         _this.media.lazy_visuals.clear();
     }
 
-    fn rows_built(_this: &mut Transcript, _rows: &[Row]) {}
+    fn rows_built(this: &mut Transcript, rows: &[Row]) {
+        this.media.previews.retain_rows(rows);
+    }
 
     fn rows_changed(_this: &mut Transcript, _cx: &mut Context<Transcript>) {}
 
@@ -412,32 +435,50 @@ impl TranscriptMedia for WebMedia {
     }
 
     fn release_tool_images(
-        _this: &mut Transcript,
-        _row_id: &SharedString,
+        this: &mut Transcript,
+        row_id: &SharedString,
         _cx: &mut Context<Transcript>,
     ) {
+        this.media.previews.release_row(row_id);
     }
 
     fn hold_tool_images(
-        _this: &mut Transcript,
-        _row_id: &SharedString,
+        this: &mut Transcript,
+        row_id: &SharedString,
         tools: &[ToolItem],
-        _opens: &[bool],
-        _folds: &[FoldState],
-        _cx: &mut Context<Transcript>,
-    ) -> Vec<Option<()>> {
-        vec![None; tools.len()]
+        opens: &[bool],
+        folds: &[FoldState],
+        cx: &mut Context<Transcript>,
+    ) -> Vec<Option<Self::ToolImages>> {
+        crate::tool_previews::hold(this, row_id, tools, opens, folds, cx)
     }
 
     fn tool_image_strip(
         _this: &Transcript,
         _chip: &SharedString,
-        _images: (),
+        images: Self::ToolImages,
         _collapses: bool,
-        _theme: &Theme,
+        theme: &Theme,
         _cx: &mut Context<Transcript>,
     ) -> AnyElement {
-        div().into_any_element()
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .children(images.into_iter().map(|preview| {
+                match preview {
+                    crate::tool_previews::Preview::Ready(image) => image_tile(image),
+                    crate::tool_previews::Preview::Loading => div()
+                        .text_color(theme.text_faint)
+                        .child("Loading image…")
+                        .into_any_element(),
+                    crate::tool_previews::Preview::Failed(error) => div()
+                        .text_color(theme.text_faint)
+                        .child(error)
+                        .into_any_element(),
+                }
+            }))
+            .into_any_element()
     }
 
     fn overlays(

@@ -41,6 +41,9 @@ pub const ALLOWED: &[&str] = &[
     methods::VOICE_CAPABILITIES_V2,
     methods::GET_VOICE_AGENT,
     methods::ENGINE_INFO,
+    // Transcript extras (#12270).
+    methods::FETCH_TOOL_BLOB,
+    methods::WATCH_CONNECTIVITY,
     methods::LIST_HARNESSES,
     methods::LIST_MODELS,
     methods::LIST_SKILLS,
@@ -100,6 +103,9 @@ pub const OPERATE: &[&str] = &[
     methods::NEGOTIATE_VOICE_V2,
     methods::OWN_VOICE_V2,
     methods::PREPARE_VOICE_V2,
+    // Transcript extras (#12270).
+    methods::FORK_CHAT,
+    methods::RETRY_DELIVERY,
     // The queue panel and the question wizard (#12268).
     methods::QUEUE_MESSAGE,
     methods::UPDATE_QUEUED_MESSAGE,

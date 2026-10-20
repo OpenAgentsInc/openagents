@@ -4908,6 +4908,7 @@ name = "openagents-web-chat-view"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "gpui",
  "js-sys",
@@ -5274,6 +5275,32 @@ dependencies = [
  "openagents-web-client",
  "openagents-web-page-host",
  "rust-native",
+ "serde_json",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "openagents-web-transcript-extras"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "console_error_panic_hook",
+ "futures",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "gpui",
+ "js-sys",
+ "openagents-chat-view",
+ "openagents-gpui-web",
+ "openagents-proto",
+ "openagents-theme",
+ "openagents-web-chat-view",
+ "openagents-web-client",
+ "postcard",
+ "serde",
  "serde_json",
  "uuid",
  "wasm-bindgen",

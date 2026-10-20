@@ -1538,6 +1538,17 @@ master delegation audit.
   `QueueCommand`, `QueueMessage`). `browser_devices::sanitize` drops what
   only this computer's app may set: `targetDeviceId`, `originChatId`,
   attachment transfers and paths, and a run's OpenAgents tools (`mcp`).
+- #12270 shares the desktop's context indicator and checklist model with the
+  browser. The desktop transcript's web host gets a paired-engine RPC bridge
+  for lazy tool sidecars and bounded image previews, workspace file links
+  into Files, and the desktop's prompt rail and running-tool progress. The
+  chat footer exposes account usage/switch, fork, retry, connection state,
+  and saved-agent identity through the paired-device gate. Chat2 room updates
+  also carry context usage and live connection state to the footer.
+  The footer controls, account and context popovers, host watches, and image
+  chunk reader load in their own browser module to keep the chat within its
+  transfer budget.
+
 - #12282 lets a browser plan, approve, start, discard, and bring back a
   move (`PlanMove`, `ApproveMove`, `StartMove`, `DiscardMove`, `BringBack`)
   under its run right, and read `MoveStatus`. The person at the browser is

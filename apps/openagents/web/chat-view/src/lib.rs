@@ -14,6 +14,8 @@ pub mod markdown;
 pub mod message_input;
 pub mod selection;
 pub mod theme;
+mod tool_previews;
+pub use tool_previews::read_image_bytes;
 
 /// Install what the desktop's views read: the theme global and, in the
 /// browser, the painter for their icons.

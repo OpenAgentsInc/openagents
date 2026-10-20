@@ -135,7 +135,7 @@ pub fn working_label() -> impl IntoElement {
 /// A pill button: solid when `primary`, outlined otherwise.
 pub fn button(
     id: impl Into<SharedString>,
-    label: &'static str,
+    label: impl Into<SharedString>,
     primary: bool,
 ) -> gpui::Stateful<gpui::Div> {
     div()
@@ -158,7 +158,7 @@ pub fn button(
                 .text_color(theme::text())
                 .hover(|style| style.bg(theme::element_hover()))
         })
-        .child(label)
+        .child(label.into())
 }
 
 pub fn truncate(text: &str, max: usize) -> String {
