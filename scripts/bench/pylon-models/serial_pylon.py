@@ -249,6 +249,9 @@ def qualify_recovery(args, row, folder, cli, stop_process):
     folder.mkdir(parents=True, exist_ok=True)
     home = folder / "pylon-home"
     result = {"scope": "automatic_serial_pylon_recovery", "model": row, "qualified": False, "checks": []}
+    via_up = args.serial_pylon_up
+    if via_up:
+        result["scope"] = "managed_deepseek_pylon_up"
     report = folder / "results.json"
     relay = provider = None
     logs = []
@@ -323,6 +326,14 @@ def qualify_recovery(args, row, folder, cli, stop_process):
                    "--temperature", "0.6", "--top-p", "0.95", "--seed", "1", "--generation-seconds", "10",
                    "--startup-seconds", "120", "--restart-limit", "3", "--allow", identity["buyer"],
                    "--rate", "600", "--relay", relay_url, "--json"]
+        if via_up:
+            from urllib.parse import urlsplit
+            command = [str(args.pylon_bin), "up", "--foreground", "--text-profile", row["id"],
+                       "--managed-llama", str(args.serial_managed_llama_bin),
+                       "--text-model", str(args.model_dir / row["id"] / row["file"]),
+                       "--text-port", str(urlsplit(args.serial_pylon_api).port), "--dedicated",
+                       "--generation-seconds", "10", "--startup-seconds", "120", "--restart-limit", "3",
+                       "--allow", identity["buyer"], "--rate", "600", "--relay", relay_url, "--json"]
         result["provider_command"] = command
         log = (folder / "provider.log").open("w")
         logs.append(log)
@@ -333,6 +344,16 @@ def qualify_recovery(args, row, folder, cli, stop_process):
         process = owned(state)
         record("owned_gpu_ready", process["gpu_mib"] > 0, process=process, state=state,
                startup_ms=round((time.perf_counter() - started) * 1000, 3))
+        if via_up:
+            saved = json.loads((home / "share.json").read_text())
+            record("saved_text_only_profile", saved["decide"] is None and saved["text"]["profile"] == row["id"]
+                   and saved["slots"] == 1 and saved["max_tokens"] == 2048
+                   and saved["text"]["serial"]["sampling"] == {"temperature": 0.6, "top_p": 0.95, "seed": 1}, settings=saved)
+            status = cli(args.pylon_bin, home, ["status", "--relay", relay_url])
+            data = status["response"].get("data", {})
+            record("status_serving", status["exit_code"] == 0 and data.get("state") == "serving"
+                   and data.get("model") == row["id"] and data.get("device") == "cuda"
+                   and len(data.get("engines", [])) == 1, cli=status)
         instruction = "Please reason step by step, and put your final answer within \\boxed{}."
         prompt = "What is 1 + 1? " + instruction
 
@@ -349,6 +370,9 @@ def qualify_recovery(args, row, folder, cli, stop_process):
                                        {"role": "assistant", "content": first["response"]["data"]["text"]}]))
         continued = ask("Add one to your previous answer. " + instruction, history)
         record("continuation", correct(continued, "3"), cli=continued)
+        if via_up:
+            warm = [ask() for _ in range(10)]
+            record("ten_warm_answers", all(correct(answer, "2") for answer in warm), cli=warm)
 
         for name, sig in [("crash", signal.SIGKILL), ("stopped_worker", signal.SIGSTOP)]:
             # Only the test's fault is injected; every replacement is started
@@ -384,7 +408,26 @@ def qualify_recovery(args, row, folder, cli, stop_process):
                                         "stopped_worker_automatic_restart")]
         record("all_replacements_use_gpu", len({worker["pid"] for worker in workers}) == 3
                and all(worker["gpu_mib"] > 0 for worker in workers), processes=workers)
-        stop_process(provider)
+        if via_up:
+            down = cli(args.pylon_bin, home, ["down", "--relay", relay_url])
+            provider.wait(timeout=15)
+            record("down", down["exit_code"] == 0 and not Path(f"/proc/{current['pid']}").exists()
+                   and not json.loads((home / "share.json").read_text())["on"], cli=down, state=live())
+            command = [str(args.pylon_bin), "up", "--foreground", "--relay", relay_url, "--json"]
+            result["resume_command"] = command
+            provider = subprocess.Popen(command, env=dict(os.environ, OPENAGENTS_PYLON_HOME=str(home)),
+                                        stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            state = ready(current["pid"])
+            current = owned(state)
+            record("saved_profile_resumed", current["gpu_mib"] > 0
+                   and json.loads((home / "share.json").read_text())["decide"] is None, state=state, process=current)
+            resumed = ask()
+            record("answer_after_up", correct(resumed, "2"), cli=resumed)
+            down = cli(args.pylon_bin, home, ["down", "--relay", relay_url])
+            provider.wait(timeout=15)
+            record("final_down", down["exit_code"] == 0, cli=down)
+        else:
+            stop_process(provider)
         record("shutdown", not Path(f"/proc/{current['pid']}").exists()
                and live().get("state") == "off" and not json.loads((home / "share.json").read_text())["on"], state=live())
         result["qualified"] = True

@@ -44,6 +44,14 @@ Commands:
       --text off            Serve decisions only.
       --text-model FILE     The text engine's GGUF (default
                             ~/.openagents/models/Qwen3.5-0.8B-Q8_0.gguf).
+      --text-profile NAME   deepseek-r1-distill-qwen-1.5b: the pinned CUDA
+                            text-only profile, with serial recovery and no
+                            decision engine. `off` clears the saved profile.
+      --managed-llama FILE  llama-server for that profile (or set
+                            OPENAGENTS_LLAMA_CPP_BIN).
+      --generation-seconds N
+      --startup-seconds N
+      --restart-limit N    Profile recovery limits (defaults 75, 180, 3).
       --text-device NAME    cpu, cuda, or metal for text, independently of
                             the decision engine (default: its device).
       --text-engine NAME    openai (default), gpt-oss, or llama-cpp.
@@ -852,6 +860,7 @@ async fn serve(
         settings.pool = config.pools[0].clone();
         settings.dedicated = dedicated;
         settings.text = Some(crate::share::TextLane {
+            profile: None,
             serial: Some(serial),
             port: url.port_or_known_default().ok_or("--engine needs a port")?,
             model,

@@ -150,6 +150,9 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
         &lane.port.to_string(),
     ]);
     if lane.engine == TextEngine::LlamaCpp {
+        if lane.serial.is_some() && lane.device.as_deref() == Some("cuda") {
+            command.args(["--device", "CUDA0"]);
+        }
         let gpu_layers = if lane.device.as_deref() == Some("cpu") {
             "0".to_string()
         } else {
@@ -735,6 +738,14 @@ async fn unit(
     log: Log,
     mut halt: oneshot::Receiver<()>,
 ) {
+    if let Err(reason) = verify_profile(&settings).await {
+        set(&live, |l| {
+            l.state = Phase::Paused;
+            l.why = Some(reason);
+        });
+        let _ = halt.await;
+        return;
+    }
     let serial = settings.text.as_ref().and_then(|lane| lane.serial.as_ref());
     let mut ownership = None;
     if let Some(config) = serial {
@@ -960,7 +971,10 @@ async fn unit(
             probed = Some(Instant::now());
         }
         let counters = provider.counters().await;
-        let model = decider.as_ref().map(|d| d.identity().advertised());
+        let model = decider
+            .as_ref()
+            .map(|d| d.identity().advertised())
+            .or_else(|| settings.text.as_ref().map(|lane| lane.model.clone()));
         set(&live, |l| {
             if let Some(control) = &control {
                 for lane in &mut l.lanes {
@@ -1220,6 +1234,12 @@ mod emit_tests {
 /// `up`'s choices.
 #[derive(Debug, Clone, Default)]
 pub struct Up {
+    /// An explicit profile, or `None` inside `Some` to clear it.
+    pub text_profile: Option<Option<crate::serial::Profile>>,
+    pub managed_llama: Option<PathBuf>,
+    pub generation_seconds: Option<u64>,
+    pub startup_seconds: Option<u64>,
+    pub restart_limit: Option<u32>,
     pub yes: bool,
     pub foreground: bool,
     /// `false` for `--text off`.
@@ -1256,6 +1276,25 @@ impl Up {
     /// On a value that does not parse.
     pub fn parse(words: &[String]) -> Result<Self, String> {
         let mut words = words.to_vec();
+        let text_profile = share::take_values(&mut words, "--text-profile")?
+            .pop()
+            .map(|value| match value.as_str() {
+                crate::serial::Profile::MODEL => {
+                    Ok(Some(crate::serial::Profile::DeepSeekR1DistillQwen15B))
+                }
+                "off" => Ok(None),
+                _ => Err("--text-profile takes deepseek-r1-distill-qwen-1.5b or off".to_string()),
+            })
+            .transpose()?;
+        let managed_llama = share::take_values(&mut words, "--managed-llama")?
+            .pop()
+            .map(PathBuf::from);
+        let generation_seconds =
+            share::take_number(&mut words, "--generation-seconds")?.map(u64::from);
+        let startup_seconds = share::take_number(&mut words, "--startup-seconds")?.map(u64::from);
+        let restart_limit = share::take_number(&mut words, "--restart-limit")?
+            .map(|n| u32::try_from(n).map_err(|_| "--restart-limit is too large".to_string()))
+            .transpose()?;
         let yes = share::take_flag(&mut words, "--yes");
         let foreground = share::take_flag(&mut words, "--foreground");
         let dedicated = share::take_flag(&mut words, "--dedicated");
@@ -1306,6 +1345,11 @@ impl Up {
             .map(|p| u16::try_from(p).map_err(|_| "--text-port takes a port number".to_string()))
             .transpose()?;
         Ok(Self {
+            text_profile,
+            managed_llama,
+            generation_seconds,
+            startup_seconds,
+            restart_limit,
             yes,
             foreground,
             text,
@@ -1322,6 +1366,21 @@ impl Up {
             dedicated,
             allow_slow,
             serve: words,
+        })
+    }
+
+    fn profile(&self, held: Option<&Settings>) -> Option<crate::serial::Profile> {
+        self.text_profile.unwrap_or_else(|| {
+            held.and_then(|settings| settings.text.as_ref())
+                .filter(|lane| {
+                    self.text
+                        && self
+                            .text_model
+                            .as_ref()
+                            .is_none_or(|file| file == &lane.model_file)
+                        && self.text_engine.is_none_or(|engine| engine == lane.engine)
+                })
+                .and_then(|lane| lane.profile)
         })
     }
 }
@@ -1366,6 +1425,18 @@ pub fn settings_for_up(
     share::apply(&mut settings, &mut words)?;
     if let Some(extra) = words.first() {
         return Err(format!("unexpected argument `{extra}`"));
+    }
+    if let Some(profile) = up.profile(Some(&settings)) {
+        return profile_settings(settings, up, profile, relay);
+    }
+    if up.managed_llama.is_some()
+        || up.generation_seconds.is_some()
+        || up.startup_seconds.is_some()
+        || up.restart_limit.is_some()
+    {
+        return Err(
+            "managed recovery options need --text-profile deepseek-r1-distill-qwen-1.5b".into(),
+        );
     }
     // A decision pylon admits any key by default; rate limits still apply.
     if settings
@@ -1497,6 +1568,7 @@ pub fn settings_for_up(
                 }
             }
             Some(TextLane {
+                profile: None,
                 serial: None,
                 port: text_port,
                 model,
@@ -1516,6 +1588,129 @@ pub fn settings_for_up(
     settings.on = true;
     settings.changed_at = now();
     Ok((settings, notes))
+}
+
+async fn verify_profile(settings: &Settings) -> Result<(), String> {
+    if let Some(lane) = &settings.text
+        && let Some(profile) = lane.profile
+    {
+        let path = lane.model_file.clone();
+        tokio::task::spawn_blocking(move || profile.verify(&path))
+            .await
+            .map_err(|e| format!("model verification stopped: {e}"))??;
+    }
+    Ok(())
+}
+
+fn profile_settings(
+    mut settings: Settings,
+    up: &Up,
+    profile: crate::serial::Profile,
+    relay: &str,
+) -> Result<(Settings, Vec<String>), String> {
+    use crate::serial::{Config, Profile};
+    if !up.text || up.port.is_some() || up.device.is_some() || up.allow_slow {
+        return Err("the DeepSeek text profile does not serve decisions; use --text-device cuda and --text-port".into());
+    }
+    if up
+        .text_engine
+        .is_some_and(|engine| engine != TextEngine::LlamaCpp)
+        || up
+            .text_device
+            .as_deref()
+            .is_some_and(|device| device != "cuda")
+    {
+        return Err("the DeepSeek text profile needs llama-cpp on cuda".into());
+    }
+    if up.text_chat_template.is_some()
+        || up.text_stop.is_some()
+        || up.text_override_kv.is_some()
+        || up.text_gpu_layers.is_some()
+    {
+        return Err("the DeepSeek text profile uses its tested template, stop settings, and full GPU offload; drop the text overrides".into());
+    }
+    if up.serve.iter().any(|word| word == "--slots") && settings.slots != 1 {
+        return Err("the DeepSeek text profile needs --slots 1".into());
+    }
+    if up.serve.iter().any(|word| word == "--max-tokens") && settings.max_tokens != 2048 {
+        return Err("the DeepSeek text profile needs --max-tokens 2048".into());
+    }
+    if settings
+        .allow
+        .as_ref()
+        .is_some_and(std::collections::BTreeSet::is_empty)
+    {
+        return Err("name who may send jobs with --allow NPUB, or pass --allow-any".into());
+    }
+    let held = settings
+        .text
+        .as_ref()
+        .filter(|lane| lane.profile == Some(profile));
+    let file = up
+        .text_model
+        .clone()
+        .or_else(|| held.map(|lane| lane.model_file.clone()))
+        .unwrap_or_else(|| crate::setup::models_dir().join(Profile::FILE));
+    let file = file
+        .canonicalize()
+        .map_err(|e| format!("cannot open the DeepSeek model at {}: {e}", file.display()))?;
+    let server = up.managed_llama.clone()
+        .or_else(|| held.and_then(|lane| lane.serial.as_ref()).map(|config| config.server.clone()))
+        .or_else(crate::serial::find_server)
+        .ok_or("llama.cpp is missing; set OPENAGENTS_LLAMA_CPP_BIN or pass --managed-llama /path/to/llama-server")?;
+    let server = server
+        .canonicalize()
+        .map_err(|e| format!("cannot open llama.cpp at {}: {e}", server.display()))?;
+    let held_config = held.and_then(|lane| lane.serial.as_ref());
+    let config = Config {
+        server,
+        sampling: crate::engine::Sampling::new(0.6, 0.95, 1)?,
+        generation_seconds: up
+            .generation_seconds
+            .or(held_config.map(|c| c.generation_seconds))
+            .unwrap_or(75),
+        startup_seconds: up
+            .startup_seconds
+            .or(held_config.map(|c| c.startup_seconds))
+            .unwrap_or(180),
+        stop_seconds: 5,
+        max_restarts: up
+            .restart_limit
+            .or(held_config.map(|c| c.max_restarts))
+            .unwrap_or(3),
+    };
+    config.validate()?;
+    let port = up
+        .text_port
+        .or(held.map(|lane| lane.port))
+        .unwrap_or(TEXT_PORT);
+    if port == 0 {
+        return Err("--text-port needs a port from 1 to 65535".into());
+    }
+    settings.text = Some(TextLane {
+        profile: Some(profile),
+        serial: Some(config),
+        port,
+        model: Profile::MODEL.into(),
+        model_file: file,
+        device: Some("cuda".into()),
+        engine: TextEngine::LlamaCpp,
+        chat_template: None,
+        stop: Vec::new(),
+        metadata_overrides: Vec::new(),
+        gpu_layers: None,
+    });
+    settings.decide = None;
+    settings.relay = relay.into();
+    settings.slots = 1;
+    settings.max_tokens = 2048;
+    settings.model = Profile::MODEL.into();
+    settings.engine = format!("http://127.0.0.1:{port}");
+    settings.dedicated |= up.dedicated;
+    settings.schema = share::PROFILE_SCHEMA.into();
+    settings.on = true;
+    settings.changed_at = now();
+    Ok((settings, Vec::new()))
 }
 
 /// Download the pinned decision model, asking first on a terminal.
@@ -1627,62 +1822,68 @@ pub fn class_memory_gb(host: &crate::setup::Host, device: &str) -> Option<u32> {
 pub async fn up(json_out: bool, words: &[String], relay: &str) -> Result<(), String> {
     let up = Up::parse(words)?;
     let home = home();
-    let port = up
-        .port
-        .or_else(|| {
-            share::load(&home)
-                .ok()
-                .flatten()
-                .and_then(|s| s.decide.map(|d| d.port))
-        })
-        .unwrap_or(crate::setup::DECIDE_PORT);
-    let mut report = crate::setup::doctor(relay, &format!("http://127.0.0.1:{port}"), false).await;
-    if up.allow_slow {
-        report = report.allowing_slow();
-    }
-    if up.device.as_deref() == Some("cpu") && report.fit.useful {
-        // A GPU machine asked to decide on the CPU: slow, so the same rule.
-        let cpu = crate::setup::Fit {
-            device: "cpu".into(),
-            useful: false,
-            note: "--device cpu decides on the CPU".into(),
-        };
-        crate::setup::may_serve_on(&cpu, up.allow_slow)?;
-    }
-    // `up` fetches the model and runs the self-check itself.
-    let blocks: Vec<&crate::setup::Block> = report
-        .blocks
-        .iter()
-        .filter(|b| b.fix != "openagents pylon setup" && b.fix != "openagents pylon selfcheck")
-        .collect();
-    if !blocks.is_empty() {
-        let lines: Vec<String> = blocks
+    let held = share::load(&home)?;
+    let profile = up.profile(held.as_ref());
+    let (host, device, room) = if profile.is_some() {
+        let host = crate::setup::host();
+        if host.gpu != "nvidia" {
+            return Err("the DeepSeek text profile needs an NVIDIA GPU".into());
+        }
+        (host, "cuda".to_string(), Ok(()))
+    } else {
+        let port = up
+            .port
+            .or_else(|| {
+                held.as_ref()
+                    .and_then(|s| s.decide.as_ref().map(|d| d.port))
+            })
+            .unwrap_or(crate::setup::DECIDE_PORT);
+        let mut report =
+            crate::setup::doctor(relay, &format!("http://127.0.0.1:{port}"), false).await;
+        if up.allow_slow {
+            report = report.allowing_slow();
+        }
+        if up.device.as_deref() == Some("cpu") && report.fit.useful {
+            // A GPU machine asked to decide on the CPU: slow, so the same rule.
+            let cpu = crate::setup::Fit {
+                device: "cpu".into(),
+                useful: false,
+                note: "--device cpu decides on the CPU".into(),
+            };
+            crate::setup::may_serve_on(&cpu, up.allow_slow)?;
+        }
+        // `up` fetches the model and runs the self-check itself.
+        let blocks: Vec<&crate::setup::Block> = report
+            .blocks
             .iter()
-            .map(|b| format!("{} (fix: {})", b.what, b.fix))
+            .filter(|b| b.fix != "openagents pylon setup" && b.fix != "openagents pylon selfcheck")
             .collect();
-        return Err(format!(
-            "this computer cannot serve yet: {}",
-            lines.join("; ")
-        ));
-    }
-    if !report.model.verified {
-        fetch_model(json_out, up.yes).await?;
-    }
-    let device = up
-        .device
-        .clone()
-        .unwrap_or_else(|| report.fit.device.clone());
-    let (mut settings, notes) = settings_for_up(
-        share::load(&home)?,
-        &crate::cli::host_slug(),
-        relay,
-        &up,
-        &device,
-        text_fits(&report.host),
-    )?;
+        if !blocks.is_empty() {
+            let lines: Vec<String> = blocks
+                .iter()
+                .map(|b| format!("{} (fix: {})", b.what, b.fix))
+                .collect();
+            return Err(format!(
+                "this computer cannot serve yet: {}",
+                lines.join("; ")
+            ));
+        }
+        if !report.model.verified {
+            fetch_model(json_out, up.yes).await?;
+        }
+        let device = up
+            .device
+            .clone()
+            .unwrap_or_else(|| report.fit.device.clone());
+        let room = text_fits(&report.host);
+        (report.host, device, room)
+    };
+    let (mut settings, notes) =
+        settings_for_up(held, &crate::cli::host_slug(), relay, &up, &device, room)?;
+    verify_profile(&settings).await?;
     // The beacon's memory is this computer's, unless `--vram-gb` named it.
     if !up.serve.iter().any(|w| w == "--vram-gb")
-        && let Some(gb) = class_memory_gb(&report.host, &device)
+        && let Some(gb) = class_memory_gb(&host, &device)
     {
         settings.vram_gb = gb;
     }
@@ -1762,10 +1963,14 @@ pub async fn up(json_out: bool, words: &[String], relay: &str) -> Result<(), Str
         text.push_str(&format!("note: {note}\n"));
     }
     emit(json_out, &value, text.trim_end());
+    let mut options = Options::foreground();
+    if profile.is_some() {
+        options.every = Duration::from_millis(250);
+    }
     supervise(
         home,
         machine,
-        Options::foreground(),
+        options,
         Arc::new(|line| eprintln!("pylon: {line}")),
         // Stop on Ctrl-C or SIGTERM alike, so `kill` or a service manager
         // still stops the engines and publishes the offline beacon.
@@ -1952,6 +2157,11 @@ pub fn report(
         settings
             .and_then(|s| s.decide.as_ref())
             .map(|_| "clef-flash".to_string())
+            .or_else(|| {
+                settings
+                    .and_then(|s| s.text.as_ref())
+                    .map(|lane| lane.model.clone())
+            })
     });
     let lanes = fresh.map(|l| l.lanes.clone()).unwrap_or_default();
     let (checks, checks_error) = match checks {
@@ -1969,7 +2179,8 @@ pub fn report(
         "supervisor": fresh.map(|l| l.supervisor.clone()),
         "model": model,
         "model_id": selfcheck.as_ref().map(|c| c.model_id.clone()),
-        "device": settings.and_then(|s| s.decide.as_ref()).map(|d| d.device.clone()),
+        "device": settings.and_then(|s| s.decide.as_ref().map(|d| d.device.clone())
+            .or_else(|| s.text.as_ref().and_then(|lane| lane.device.clone()))),
         "engines": lanes,
         "jobs_today": jobs,
         "refused_today": refused,

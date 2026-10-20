@@ -51,6 +51,9 @@ The [managed llama.cpp recovery mode](deepseek-support-plan.md#automatic-serial-
 also passes 13 real GPU checks: automatic crash and frozen-worker
 replacement, correct subsequent answers, and clean shutdown. It keeps
 one generation active and fails interrupted jobs without retrying them.
+The [DeepSeek `pylon up` profile](deepseek-support-plan.md#deepseek-profile-through-pylon-up-12367)
+selects that CUDA configuration, verifies the pinned artifact, skips Clef,
+and preserves recovery settings through `down` and `up`.
 Qwen3.5 CUDA accepts mixed dense/quantized projection groups and Q4_K/Q6_K
 embedding rows; Gemma 4 accepts dense per-layer projections on CUDA.
 Gemma's BPE tokenizer decodes SentencePiece spaces and literal UTF-8,

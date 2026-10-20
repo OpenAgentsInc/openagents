@@ -614,6 +614,7 @@ def main():
     parser.add_argument("--fixture-relay-bin",type=Path,help="The qualification_relay example built with pylon's fixture feature")
     parser.add_argument("--serial-engine-control",type=Path,help="Optional isolated-engine helper, called with crash/start for restart qualification")
     parser.add_argument("--serial-managed-llama-bin",type=Path,help="Qualify automatic serial recovery; Pylon owns this llama.cpp executable")
+    parser.add_argument("--serial-pylon-up", action="store_true", help="Exercise pylon up/status/down and saved DeepSeek profile recovery")
     parser.add_argument("--deepseek-sampling",choices=("greedy", "recommended"),
                         help="Defaults to greedy for the native reference, recommended sampling for llama.cpp")
     parser.add_argument("--download-reserve-gib",type=int,default=30,help="Free space to leave after download (default 30 GiB; smaller RAM-backed caches may need less)")
@@ -621,6 +622,8 @@ def main():
     args=parser.parse_args()
     if args.serial_managed_llama_bin and (not args.serial_pylon_api or args.serial_engine_control):
         parser.error("--serial-managed-llama-bin needs --serial-pylon-api without --serial-engine-control")
+    if args.serial_pylon_up and not args.serial_managed_llama_bin:
+        parser.error("--serial-pylon-up needs --serial-managed-llama-bin")
     if args.serial_pylon_api:
         from urllib.parse import urlsplit
         api = urlsplit(args.serial_pylon_api)

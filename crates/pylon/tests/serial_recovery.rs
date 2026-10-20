@@ -70,6 +70,7 @@ impl Rig {
         settings.max_tokens = 32;
         settings.dedicated = true;
         settings.text = Some(TextLane {
+            profile: None,
             serial: Some(pylon::serial::Config {
                 server: script,
                 generation_seconds: 1,

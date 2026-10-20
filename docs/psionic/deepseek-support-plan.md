@@ -133,7 +133,8 @@ started serial server and the normal engine/model/buyer settings; the
 [serial llama.cpp GPU flow](#serial-pylon-gpu-qualification-12360).
 The native CPU continuation took 274 seconds and remains outside Pylon's
 90-second provider deadline.
-The supervised `pylon up` path does not yet select serial mode automatically.
+The later [DeepSeek `pylon up` profile](#deepseek-profile-through-pylon-up-12367)
+selects managed serial recovery explicitly; ordinary `up` defaults stay unchanged.
 
 This completes the admission and completion-validation portion of S1,
 independently of DS0. The later [managed llama.cpp recovery](#automatic-serial-pylon-recovery-12364)
@@ -621,7 +622,7 @@ All 155 Pylon tests pass, with one existing large-model test ignored;
 shared-host observations. The restart was a qualification-controller
 action; the later [automatic recovery checks](#automatic-serial-pylon-recovery-12364)
 qualify the shipped managed llama.cpp watchdog. Native Psionic's real HTTP-disconnect
-check and hard recovery, supervised `pylon up` serial selection,
+check and hard recovery, broader native serial selection,
 cloud deployment, long context, and broader model quality remain separate.
 
 ### Automatic serial Pylon recovery (#12364)
@@ -702,6 +703,72 @@ with a descendant, startup failure exhaustion, lost responses, shutdown
 while busy, occupied ports, persisted sampling validation, and truncation
 without unnecessary restart. The native worker, `pylon up` defaults, and
 private cloud deployment remain separate work.
+
+### DeepSeek profile through `pylon up` (#12367)
+
+`pylon up --text-profile deepseek-r1-distill-qwen-1.5b` starts the pinned
+Q4_K_M with the managed serial supervisor. This is a text-only CUDA profile:
+it does not require, download, start, or self-check Clef. It verifies the
+model's byte length and SHA-256 before saving settings, and the supervisor
+verifies it again before starting the profile. The profile uses one Pylon
+slot, 2,048 output tokens, context 4,096, `--parallel 1`, `--device CUDA0`,
+full GPU offload, DeepSeek reasoning parsing, and sampling `0.6/0.95/1`.
+
+```sh
+export OPENAGENTS_PYLON_HOME="$(openagents scratch)/r1-up"
+pylon up --foreground --text-profile deepseek-r1-distill-qwen-1.5b \
+  --text-model /path/to/DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf \
+  --managed-llama /path/to/llama-server --text-port 18435 --allow BUYER_NPUB
+# From another terminal with the same OPENAGENTS_PYLON_HOME:
+pylon status
+pylon down
+pylon up --foreground
+```
+
+`OPENAGENTS_LLAMA_CPP_BIN` or `llama-server` on `PATH` can supply the runtime
+instead of `--managed-llama`. Without `--text-model`, the first launch looks
+for the pinned filename in `~/.openagents/models`. The profile does not
+download the text model. Supply `--allow` or explicitly choose `--allow-any`.
+Use a separate Pylon home and unused loopback port. Keep normal lease and
+pause behavior, or use `--dedicated` on an isolated worker.
+
+The profile, model/runtime paths, port, caller list, sampling, and recovery
+limits persist across `down` and `up`. `--generation-seconds`,
+`--startup-seconds`, and `--restart-limit` use the managed mode's bounds and
+defaults. Incompatible slot counts, devices, engines, token limits, and
+template/offload overrides are rejected. `--text-profile off`, changing
+the text model or engine, or `--text off` clears the saved profile and
+returns to ordinary decision/text setup. An explicit profile still requires
+its pinned artifact. Profile settings use `openagents.pylon.share.v4` so an
+older host refuses them; use a profile-aware host or `--foreground` in a
+separate home. The resident host uses the same supervisor when present.
+
+The [full GPU lifecycle report](../../scripts/bench/pylon-models/deepseek-r1-pylon-up-2026-10-20.json)
+passes **20/20 checks** with the real CLI, private relay, fresh identities, signed receipts,
+correct answers, actual-history continuation, ten warm answers, crash and
+frozen-worker recovery, `status`, `down`, and a new `up` using only saved
+settings. Every new worker has observed GPU allocation; old workers exit
+before replacements serve. The runner adds `--serial-pylon-up` to the
+managed recovery qualification command. It performs the final `down` and
+stops its relay; Clef and the network Pylon remain untouched.
+
+| Observation | Result |
+| --- | --- |
+| First `up` reaches readiness | 7.624 s, including verification and model loading; caches were not cleared |
+| First answer / actual-history continuation | 0.866 s / 1.598 s; correct boxed `2` and `3` |
+| Ten warm answers | 10/10; median 0.834 s, range 0.722–0.902 s |
+| Replacement ready after failed crash / frozen-worker job | 5.012 s / 3.692 s |
+| GPU memory at initial readiness | 1,384 MiB; each replacement and saved-profile resume also has observed GPU allocation |
+
+These are individual shared-host measurements. Job times include discovery;
+the crash probe spent 10.538 seconds waiting for a free-slot beacon before
+publication. Replacement times begin when the failed job returns. The
+run uses the foreground supervisor; no production host binary was replaced.
+All 171 Pylon tests pass, with one existing large-model test ignored, along
+with 20 Python tests and changed-file formatting. The five profile tests
+cover saved settings, serial CUDA arguments, incompatible options, model
+changes, schema downgrade refusal, incorrect size/hash, and a changed
+artifact pausing the supervisor before any worker starts.
 
 ## Further infrastructure lessons and what to defer
 

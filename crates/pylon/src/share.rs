@@ -32,6 +32,8 @@ pub const SCHEMA: &str = "openagents.pylon.share.v2";
 pub const SCHEMA_V1: &str = "openagents.pylon.share.v1";
 /// Older readers must reject managed recovery rather than ignore its policy.
 pub const SERIAL_SCHEMA: &str = "openagents.pylon.share.v3";
+/// Profile-aware hosts verify the pinned artifact before starting a worker.
+pub const PROFILE_SCHEMA: &str = "openagents.pylon.share.v4";
 
 /// The decision lane: a Psionic server the supervisor runs on loopback for
 /// NIP-DEC decisions.
@@ -62,6 +64,9 @@ pub enum TextEngine {
 /// NIP-CJ text jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextLane {
+    /// The pinned text-only `up` profile, if explicitly selected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<crate::serial::Profile>,
     /// Opt-in ownership, serial admission, and recovery of this llama.cpp worker.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub serial: Option<crate::serial::Config>,
@@ -162,8 +167,13 @@ impl Settings {
         config.max_tokens = self.max_tokens.clamp(1, 4_096);
         // The beacon's family follows the decision lane's device: a Mac's
         // Metal is unified memory and a CPU box is a CPU, not a GPU.
-        if let Some(lane) = &self.decide {
-            config.class.family = match lane.device.as_str() {
+        if let Some(device) = self
+            .decide
+            .as_ref()
+            .map(|lane| lane.device.as_str())
+            .or_else(|| self.text.as_ref().and_then(|lane| lane.device.as_deref()))
+        {
+            config.class.family = match device {
                 "metal" => Family::UnifiedMemory,
                 "cpu" => Family::Cpu,
                 _ => Family::Gpu,
@@ -195,9 +205,17 @@ pub fn load(home: &Path) -> Result<Option<Settings>, String> {
         Ok(bytes) => {
             let mut settings: Settings = serde_json::from_slice(&bytes)
                 .map_err(|e| format!("{}: {e}", path(home).display()))?;
+            if settings
+                .text
+                .as_ref()
+                .is_some_and(|lane| lane.profile.is_some() && lane.serial.is_none())
+            {
+                return Err("a text profile needs managed serial recovery settings".into());
+            }
             if settings.schema != SCHEMA
                 && settings.schema != SCHEMA_V1
                 && settings.schema != SERIAL_SCHEMA
+                && settings.schema != PROFILE_SCHEMA
             {
                 return Err(format!(
                     "{} is a newer settings file ({}); update openagents",
@@ -209,24 +227,31 @@ pub fn load(home: &Path) -> Result<Option<Settings>, String> {
                 .text
                 .as_ref()
                 .is_some_and(|lane| lane.serial.is_some())
-                && settings.schema != SERIAL_SCHEMA
+                && !matches!(settings.schema.as_str(), SERIAL_SCHEMA | PROFILE_SCHEMA)
             {
                 return Err("managed serial recovery needs version 3 settings".into());
             }
-            settings.schema = if settings
+            if settings
                 .text
                 .as_ref()
-                .is_some_and(|lane| lane.serial.is_some())
+                .is_some_and(|lane| lane.profile.is_some())
+                && settings.schema != PROFILE_SCHEMA
             {
-                SERIAL_SCHEMA
-            } else {
-                SCHEMA
+                return Err("pinned text profiles need version 4 settings".into());
             }
-            .into();
+            settings.schema = settings_schema(&settings).into();
             Ok(Some(settings))
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.to_string()),
+    }
+}
+
+fn settings_schema(settings: &Settings) -> &'static str {
+    match settings.text.as_ref() {
+        Some(lane) if lane.profile.is_some() => PROFILE_SCHEMA,
+        Some(lane) if lane.serial.is_some() => SERIAL_SCHEMA,
+        _ => SCHEMA,
     }
 }
 
@@ -239,16 +264,7 @@ pub fn save(home: &Path, settings: &Settings) -> Result<(), String> {
     std::fs::create_dir_all(home).map_err(|e| e.to_string())?;
     let tmp = home.join("share.json.tmp");
     let mut settings = settings.clone();
-    settings.schema = if settings
-        .text
-        .as_ref()
-        .is_some_and(|lane| lane.serial.is_some())
-    {
-        SERIAL_SCHEMA
-    } else {
-        SCHEMA
-    }
-    .into();
+    settings.schema = settings_schema(&settings).into();
     std::fs::write(
         &tmp,
         serde_json::to_vec_pretty(&settings).map_err(|e| e.to_string())?,

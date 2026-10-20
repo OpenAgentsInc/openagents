@@ -135,6 +135,14 @@ reopening admission, and fails interrupted jobs without retrying them.
 The [automatic GPU recovery checks](../psionic/deepseek-support-plan.md#automatic-serial-pylon-recovery-12364)
 pass after both a crash and a frozen worker. This option supports free
 text serving with one slot; it does not change `pylon up` defaults.
+For the pinned DeepSeek model, `pylon up --text-profile
+deepseek-r1-distill-qwen-1.5b --text-model /path/to/model.gguf
+--managed-llama /path/to/llama-server --allow BUYER_NPUB` selects that
+text-only CUDA setup directly. It verifies the pinned file and saves the
+tested sampling, one-slot admission, and recovery settings without
+starting Clef. `status` reports the text model and CUDA device; `down`
+stops it, and `up` resumes the saved profile. Use a separate Pylon home
+and `--foreground` for an isolated run. See the [profile commands and GPU results](../psionic/deepseek-support-plan.md#deepseek-profile-through-pylon-up-12367).
 GPT-OSS passed the full suite through llama.cpp; its native server
 returned no final answer for the summary prompt even with 4,096 output
 tokens, so use the compatible route for this workload.

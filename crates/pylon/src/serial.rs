@@ -10,6 +10,64 @@ use tokio::sync::{oneshot, watch};
 use crate::engine::{Engine, Pending, Sampling, Turn};
 use crate::online::{LaneSpec, Options};
 
+/// A pinned text profile selected by `pylon up`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Profile {
+    #[serde(rename = "deepseek-r1-distill-qwen-1.5b")]
+    DeepSeekR1DistillQwen15B,
+}
+
+impl Profile {
+    pub const MODEL: &str = "deepseek-r1-distill-qwen-1.5b";
+    pub const FILE: &str = "DeepSeek-R1-Distill-Qwen-1.5B-Q4_K_M.gguf";
+    pub const BYTES: u64 = 1_117_321_312;
+    pub const SHA256: &str = "f3bdf9cf31dee4b57ae4e455a1cb0d01b5c2c1b50d72d3112141c195506c2840";
+
+    /// Verify the complete file before a profile starts a worker.
+    pub fn verify(self, path: &std::path::Path) -> Result<(), String> {
+        use sha2::{Digest, Sha256};
+        use std::io::Read;
+        let mut file = std::fs::File::open(path)
+            .map_err(|e| format!("cannot open the DeepSeek model at {}: {e}", path.display()))?;
+        if file.metadata().map_err(|e| e.to_string())?.len() != Self::BYTES {
+            return Err(
+                "the DeepSeek profile needs the pinned Q4_K_M model file; its size does not match"
+                    .into(),
+            );
+        }
+        let mut hash = Sha256::new();
+        let mut buffer = vec![0; 1024 * 1024];
+        loop {
+            let count = file.read(&mut buffer).map_err(|e| e.to_string())?;
+            if count == 0 {
+                break;
+            }
+            hash.update(&buffer[..count]);
+        }
+        if format!("{:x}", hash.finalize()) != Self::SHA256 {
+            return Err("the DeepSeek model failed its SHA-256 check; replace it with the pinned Q4_K_M file".into());
+        }
+        Ok(())
+    }
+}
+
+/// Locate llama.cpp without requiring a native Psionic installation.
+pub(crate) fn find_server() -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os("OPENAGENTS_LLAMA_CPP_BIN") {
+        return Some(PathBuf::from(path));
+    }
+    crate::setup::find_server()
+        .map(|path| path.with_file_name("llama-server"))
+        .filter(|path| path.is_file())
+        .or_else(|| {
+            std::env::var_os("PATH").and_then(|paths| {
+                std::env::split_paths(&paths)
+                    .map(|dir| dir.join("llama-server"))
+                    .find(|path| path.is_file())
+            })
+        })
+}
+
 /// An explicitly owned llama.cpp worker and its bounded recovery policy.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Config {
