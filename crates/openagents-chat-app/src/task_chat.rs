@@ -947,7 +947,7 @@ impl Session {
         // in place of its state line.
         self.sync_decision();
         if let Some((_, flow)) = &self.decision {
-            let panel = flow.view("task", !self.busy());
+            let panel = flow.view("task", !self.busy(), &crate::decision::paints());
             for (key, control) in panel.controls {
                 let action = match control {
                     crate::decision::Control::Pick(0)

@@ -13,6 +13,11 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 gpui.workspace = true
 openagents-web-chat-view.workspace = true
+# The desktop's Rust Native GPUI adapter and the phone's decision panel,
+# for the approval card fixture (#12218).
+openagents-chat-view.workspace = true
+decision-panel = { path = "../../../../crates/decision-panel" }
+rust-native = { path = "../../../../crates/rust-native", default-features = false }
 openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }
 anyhow.workspace = true

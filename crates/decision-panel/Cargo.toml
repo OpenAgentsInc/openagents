@@ -1,0 +1,20 @@
+# The decision panel: a question or an approval that a waiting Coder task
+# asked, as a Rust Native view. The phone, the desktop, and the web draw
+# the same panel (#12218), so it holds no platform or app state.
+[package]
+name = "decision-panel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The Coder decision panel (questions and approvals) as a Rust Native view."
+
+[dependencies]
+route-contract = { path = "../route-contract" }
+rust-native = { path = "../rust-native", default-features = false }
+
+[lints]
+workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

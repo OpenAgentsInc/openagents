@@ -13,6 +13,8 @@ test-support = []
 openagents-chat = { path = "../openagents-chat" }
 # Where a turn runs: the linked computer while online, else the gateway (#11456).
 route-contract = { path = "../route-contract" }
+# Questions and approvals as a shared Rust Native panel (#12218).
+decision-panel = { path = "../decision-panel" }
 openagents-connect = { path = "../openagents-connect" }
 coder-computers = { path = "../coder-computers" }
 coder-host = { path = "../coder-host", default-features = false }

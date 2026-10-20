@@ -2127,7 +2127,11 @@ impl Run {
         // in place of its card.
         self.sync_decision();
         if let Some((seq, flow)) = &self.decision {
-            let panel = flow.view("coder", !self.busy() && self.can_answer());
+            let panel = flow.view(
+                "coder",
+                !self.busy() && self.can_answer(),
+                &crate::decision::paints(),
+            );
             let card = format!("coder-{seq}");
             for (key, control) in panel.controls {
                 let action = match control {
@@ -2153,7 +2157,11 @@ impl Run {
         if let Some(request) = self.native.request().cloned() {
             let prefix = format!("coder-native-{}", request.id.as_str());
             let flow = self.native.flow().expect("a pending request has a flow");
-            let panel = flow.view(&prefix, self.native.ready() && !self.busy());
+            let panel = flow.view(
+                &prefix,
+                self.native.ready() && !self.busy(),
+                &crate::decision::paints(),
+            );
             for (key, control) in panel.controls {
                 self.actions.insert(
                     key,

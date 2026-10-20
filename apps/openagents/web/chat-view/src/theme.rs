@@ -24,6 +24,14 @@ pub fn desktop() -> &'static Theme {
     &DARK
 }
 
+/// Install the desktop theme as the GPUI global, for the desktop views the
+/// web mounts directly, such as Rust Native cards
+/// (`openagents_chat_view::rust_native_gpui`).
+pub fn install(cx: &mut gpui::App) {
+    openagents_chat_view::theme::set_current_appearance(DARK.appearance);
+    cx.set_global(DARK.clone());
+}
+
 /// Main panel.
 pub fn bg() -> Hsla {
     DARK.bg

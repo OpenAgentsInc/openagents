@@ -6,6 +6,8 @@ mod shims;
 
 #[cfg(target_family = "wasm")]
 mod app;
+#[cfg(target_family = "wasm")]
+mod approval;
 
 pub(crate) use shims::{attachments, client, config, now_ms, rpc};
 
@@ -38,6 +40,7 @@ pub fn launch(fonts: js_sys::Array) {
     let handle = Application::with_platform(Rc::new(platform))
         .with_assets(assets::Assets)
         .run_embedded(|cx| {
+            theme::install(cx);
             composer::bind_keys(cx);
             let bounds = gpui::Bounds::centered(None, size(px(1280.), px(820.)), cx);
             cx.open_window(

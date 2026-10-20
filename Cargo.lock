@@ -5682,6 +5682,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f400d0750c0c069e8493f2256cb4da6f604b6d2eeb69a0ca8863acde352f8400"
 
 [[package]]
+name = "decision-panel"
+version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+ "route-contract",
+ "rust-native",
+]
+
+[[package]]
 name = "defmt"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -12635,6 +12644,7 @@ dependencies = [
  "coder-connect",
  "coder-history",
  "coder-host",
+ "decision-panel",
  "image",
  "nostr",
  "nostr-transport",

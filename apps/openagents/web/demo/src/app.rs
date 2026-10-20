@@ -17,6 +17,7 @@ use openagents_proto::{
 };
 use web_time::Instant;
 
+use openagents_chat_view::rust_native_gpui;
 use openagents_web_chat_view::composer::{Submitted, TextInput};
 use openagents_web_chat_view::markdown::{Veil, visible_chars};
 use openagents_web_chat_view::svg;
@@ -26,6 +27,7 @@ use openagents_web_chat_view::transcript::{
     footer_text, model_label, reasoning_label, truncate, veil_alpha,
 };
 
+use crate::approval::{self, Approval};
 use crate::demo::{fixtures, png, transcripts, transcripts::Step};
 use crate::{attachments, now_ms};
 const LONG_CHAT: &str = "chat-long";
@@ -94,6 +96,8 @@ pub struct ChatApp {
     images: HashMap<String, Arc<Image>>,
     rng: u64,
     new_chats: usize,
+    /// The fixture approval at the end of the working demo chat.
+    approval: Approval,
 }
 
 impl ChatApp {
@@ -132,6 +136,7 @@ impl ChatApp {
             images,
             rng: 0x9e37_79b9_7f4a_7c15,
             new_chats: 0,
+            approval: Approval::new(),
         };
         this.open(0, window, cx);
 
@@ -890,7 +895,43 @@ impl ChatApp {
             MessageRole::User => self.render_user(entry),
             _ => self.render_assistant(chat_ix, ix, entry, cx),
         };
+        let chat = &self.chats[chat_ix];
+        let body = if chat.id == approval::CHAT && ix + 1 == chat.entries.len() {
+            div()
+                .flex()
+                .flex_col()
+                .gap(px(12.))
+                .child(body)
+                .child(self.render_approval(cx))
+                .into_any_element()
+        } else {
+            body
+        };
         transcript::entry_row(ix == 0, body)
+    }
+
+    /// The fixture approval, drawn by the shared decision panel through the
+    /// desktop's Rust Native adapter.
+    fn render_approval(&self, cx: &mut Context<Self>) -> AnyElement {
+        let panel = self.approval.panel(theme::desktop());
+        let card = rust_native_gpui::mount_root(
+            &panel.node,
+            "demo-approval",
+            1,
+            |this: &mut Self, activation, cx| {
+                this.approval.press(&activation.node, theme::desktop());
+                this.list_state.remeasure();
+                cx.notify();
+            },
+            cx,
+        );
+        div()
+            .flex()
+            .flex_col()
+            .gap(px(6.))
+            .child(div().rounded(px(14.)).overflow_hidden().child(card))
+            .children(self.approval.answered().map(footer_text))
+            .into_any_element()
     }
 
     fn render_user(&self, entry: &SessionMessageEntry) -> AnyElement {
