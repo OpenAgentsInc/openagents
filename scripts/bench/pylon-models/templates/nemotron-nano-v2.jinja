@@ -1,0 +1,15 @@
+{%- set first = 1 if messages and messages[0]['role'] == 'system' else 0 -%}
+{{- '<SPECIAL_10>System\n' + (messages[0]['content'].replace('/think', '').replace('/no_think', '').strip() if first else '') + '\n' -}}
+{%- for message in messages[first:] -%}
+    {%- if message['role'] == 'user' -%}
+        {{- '<SPECIAL_11>User\n' + message['content'].replace('/think', '').replace('/no_think', '').strip() + '\n' -}}
+    {%- elif message['role'] == 'assistant' -%}
+        {{- '<SPECIAL_11>Assistant\n' + message['content'].split('</think>')[-1].strip() + '\n<SPECIAL_12>\n' -}}
+    {%- else -%}
+        {{- raise_exception('Nemotron Nano text chat supports a leading system message and user/assistant turns.') -}}
+    {%- endif -%}
+{%- endfor -%}
+{%- if add_generation_prompt -%}
+    {{- '<SPECIAL_11>Assistant\n' -}}
+    {{- '<think>\n' if enable_thinking | default(true) else '<think></think>' -}}
+{%- endif -%}

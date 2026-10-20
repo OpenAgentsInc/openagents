@@ -3,6 +3,7 @@ import importlib.util
 import io
 from pathlib import Path
 import tempfile
+import subprocess
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -95,6 +96,36 @@ class ModelDownloadTests(unittest.TestCase):
         self.path.write_bytes(b"x"*row["bytes"])
         with self.assertRaisesRegex(ValueError, "SHA-256"):
             qualification.verify_model(row, self.path)
+
+    def test_reserve_is_checked_before_fetch_and_can_fit_a_small_cache(self):
+        available = self.row["bytes"] + 1024
+        with patch.object(qualification.shutil, "disk_usage", return_value=SimpleNamespace(free=available)), patch.object(qualification.urllib.request, "urlopen", side_effect=self.respond) as fetch:
+            with self.assertRaisesRegex(RuntimeError, "Free enough space"):
+                qualification.download_model(self.row, self.path)
+            fetch.assert_not_called()
+            qualification.download_model(self.row, self.path, reserve_bytes=1024)
+        self.assertEqual(self.path.read_bytes(), b"first-chunksecond-chunk")
+
+
+class ServicePauseTests(unittest.TestCase):
+    def test_collected_transient_unit_is_already_stopped(self):
+        props = {"Environment": "MODEL=fixture", "ExecStart": "fixture up", "WorkingDirectory": "/tmp", "ActiveState": "active"}
+        def run(args, **kwargs):
+            return subprocess.CompletedProcess(args, 5 if "stop" in args else 0, stdout="not-found\n" if "LoadState" in args else "", stderr="")
+        with tempfile.TemporaryDirectory() as directory, patch.object(qualification.subprocess, "check_output", side_effect=lambda args, **kwargs: props[args[-1]]), patch.object(qualification.subprocess, "run", side_effect=run), patch.object(qualification, "restore_service") as restore:
+            held = qualification.pause_service("fixture.service", Path(directory))
+            self.assertEqual(held, props)
+            self.assertTrue((Path(directory)/"service-before.json").is_file())
+            restore.assert_not_called()
+
+    def test_real_stop_failure_restores_and_raises(self):
+        props = {"Environment": "", "ExecStart": "fixture up", "WorkingDirectory": "/tmp", "ActiveState": "active"}
+        def run(args, **kwargs):
+            return subprocess.CompletedProcess(args, 1 if "stop" in args else 0, stdout="loaded\n" if "LoadState" in args else "", stderr="stop failed")
+        with tempfile.TemporaryDirectory() as directory, patch.object(qualification.subprocess, "check_output", side_effect=lambda args, **kwargs: props[args[-1]]), patch.object(qualification.subprocess, "run", side_effect=run), patch.object(qualification, "restore_service") as restore:
+            with self.assertRaises(subprocess.CalledProcessError):
+                qualification.pause_service("fixture.service", Path(directory))
+            restore.assert_called_once_with("fixture.service", props)
 
 
 if __name__ == "__main__":

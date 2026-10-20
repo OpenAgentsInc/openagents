@@ -112,5 +112,65 @@
     "metadata_overrides": [
       "tokenizer.ggml.add_bos_token=bool:false"
     ]
+  },
+  {
+    "id": "nemotron3-nano-4b",
+    "repo": "unsloth/NVIDIA-Nemotron-3-Nano-4B-GGUF",
+    "revision": "8e81be55c5aa3d63bb82b6ceec62d50805d9e1bb",
+    "file": "NVIDIA-Nemotron-3-Nano-4B-Q4_K_M.gguf",
+    "bytes": 2900295712,
+    "sha256": "e515c9ceb10ae503db22a201fade92167f757510d1247a65987f8b6ae9e296e7",
+    "backend": "cuda",
+    "engines": [
+      "llama-cpp"
+    ],
+    "parameters_billions": 4,
+    "quantization": "Q4_K_M",
+    "upstream_model": "nvidia/NVIDIA-Nemotron-3-Nano-4B-BF16",
+    "download_workers": 4,
+    "execution_backend": "cuda",
+    "reasoning_temperature": 1.0,
+    "reasoning_top_p": 0.95
+  },
+  {
+    "id": "nemotron-nano-9b-v2",
+    "repo": "bartowski/nvidia_NVIDIA-Nemotron-Nano-9B-v2-GGUF",
+    "revision": "b2daccafb3d123ea94653720a0db1f5db9c698ff",
+    "file": "nvidia_NVIDIA-Nemotron-Nano-9B-v2-Q4_K_M.gguf",
+    "bytes": 6525629280,
+    "sha256": "be84528231457f766a35612386e2638d9af10beb10a9d8d23f0cc73c20818da7",
+    "backend": "cuda",
+    "engines": [
+      "llama-cpp"
+    ],
+    "parameters_billions": 9,
+    "quantization": "Q4_K_M",
+    "upstream_model": "nvidia/NVIDIA-Nemotron-Nano-9B-v2",
+    "download_workers": 4,
+    "execution_backend": "cuda",
+    "chat_template": "templates/nemotron-nano-v2.jinja",
+    "chat_template_sha256": "bc2293cbd2e026a1dbcef109838e52da31bba90e52328b92f75927278c508afa",
+    "reasoning_temperature": 0.6,
+    "reasoning_top_p": 0.95
+  },
+  {
+    "id": "nemotron3-nano-30b",
+    "repo": "ggml-org/NVIDIA-Nemotron-3-Nano-30B-A3B-GGUF",
+    "revision": "fe801509a580ff84a5728d4a9104e3f6f7e9b0dd",
+    "file": "NVIDIA-Nemotron-3-Nano-30B-A3B-Q4_K_M.gguf",
+    "bytes": 22421827488,
+    "sha256": "0f111a0d49777a2a0178758b1aee14e5365c495987499401ef3ebe87754322a8",
+    "backend": "cuda",
+    "engines": [
+      "llama-cpp"
+    ],
+    "parameters_billions": 30,
+    "active_parameters_billions": 3,
+    "quantization": "Q4_K_M",
+    "upstream_model": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16",
+    "download_workers": 4,
+    "execution_backend": "cuda+cpu",
+    "reasoning_temperature": 1.0,
+    "reasoning_top_p": 1.0
   }
 ]

@@ -120,8 +120,13 @@ def pause_service(unit, folder):
     if props["ActiveState"] != "active":
         return None
     try:
-        subprocess.run(["systemctl", "--user", "kill", "--signal=SIGINT", "--kill-whom=main", unit], check=True)
-        subprocess.run(["systemctl", "--user", "stop", unit], check=True, timeout=100)
+        for command in (["kill", "--signal=SIGINT", "--kill-whom=main"], ["stop"]):
+            stopped = subprocess.run(["systemctl", "--user", *command, unit], capture_output=True, text=True, timeout=100)
+            if stopped.returncode:
+                # A transient unit can disappear between SIGINT and stop.
+                state = subprocess.run(["systemctl", "--user", "show", unit, "--value", "-p", "LoadState"], capture_output=True, text=True)
+                if stopped.returncode != 5 or state.stdout.strip() != "not-found":
+                    stopped.check_returncode()
     except Exception:
         restore_service(unit, props)
         raise
@@ -210,7 +215,7 @@ def prepare_template(row, model_path):
     return target
 
 
-def download_model(row, path):
+def download_model(row, path, reserve_bytes=30*1024**3):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name+".download")
     # Keep interrupted downloads, verify every source chunk, and publish only
@@ -226,8 +231,8 @@ def download_model(row, path):
             if temporary.stat().st_size > row["bytes"]:
                 output.truncate(0)
             needed = row["bytes"] - temporary.stat().st_size
-            if shutil.disk_usage(path.parent).free < needed + 30*1024**3:
-                raise RuntimeError("Free enough space for the model plus 30 GiB before downloading")
+            if shutil.disk_usage(path.parent).free < needed + reserve_bytes:
+                raise RuntimeError(f"Free enough space for the model plus {reserve_bytes/1024**3:g} GiB before downloading")
             start = 0
             last_progress = time.monotonic()
             for part in model_parts(row):
@@ -311,11 +316,14 @@ def qualify(row, args, output):
     home = folder / "pylon-home"
     path = args.model_dir / row["id"] / row["file"]
     max_tokens = args.max_tokens or row.get("max_output_tokens", 2048)
+    thinking = args.thinking == "on"
+    temperature = row.get("reasoning_temperature", 1.0) if thinking else 0
+    top_p = row.get("reasoning_top_p", 0.95) if thinking else 0.95
     if args.engine == "llama-cpp":
         engine_binary = args.llama_cpp_bin
         if engine_binary is None:
             raise RuntimeError("--llama-cpp-bin is required for the llama-cpp engine")
-        command = [str(engine_binary), "-m", str(path), "--host", "127.0.0.1", "--port", str(args.port), "--ctx-size", "4096", "--parallel", "1", "--n-gpu-layers", "auto", "--threads", str(args.threads), "--temp", "0", "--seed", "1", "--chat-template-kwargs", '{"enable_thinking":false}']
+        command = [str(engine_binary), "-m", str(path), "--host", "127.0.0.1", "--port", str(args.port), "--ctx-size", "4096", "--parallel", "1", "--n-gpu-layers", "auto", "--threads", str(args.threads), "--temp", str(temperature), "--top-p", str(top_p), "--seed", "1", "--chat-template-kwargs", json.dumps({"enable_thinking": thinking})]
         if row.get("chat_template"):
             template = path.parent / "chat-template.jinja"
             if hashlib.sha256(template.read_bytes()).hexdigest() != row["chat_template_sha256"]:
@@ -333,7 +341,7 @@ def qualify(row, args, output):
         if row["id"] != "gpt-oss-20b":
             command += ["--mesh-coordination", "disabled"]
         execution_backend = row["backend"]
-    result = {"model": row, "engine": args.engine, "execution_backend": execution_backend, "server_binary": str(engine_binary), "max_output_tokens": max_tokens, "server_command": command, "cases": []}
+    result = {"model": row, "engine": args.engine, "execution_backend": execution_backend, "server_binary": str(engine_binary), "max_output_tokens": max_tokens, "thinking": thinking, "temperature": temperature if args.engine == "llama-cpp" else None, "top_p": top_p if args.engine == "llama-cpp" else None, "server_command": command, "cases": []}
     engine = provider = None
     engine_log = (folder/"engine.log").open("w")
     provider_log = (folder/"provider.log").open("w")
@@ -419,15 +427,21 @@ def main():
     parser.add_argument("--relay",default="wss://relay.openagents.com")
     parser.add_argument("--port",type=int,default=18200)
     parser.add_argument("--threads",type=int,default=8)
+    parser.add_argument("--thinking",choices=("off","on"),default="off",help="llama.cpp reasoning mode (off: greedy; on: model profile temperature/top-p)")
     parser.add_argument("--max-tokens",type=int,help="Override the model's output budget (default 2048 for the original eight models)")
     parser.add_argument("--start-timeout",type=int,default=240)
     parser.add_argument("--verify",action=argparse.BooleanOptionalAction,default=True)
     parser.add_argument("--download",action="store_true",help="Fetch a missing model at its pinned revision and verify its SHA-256")
     parser.add_argument("--download-only",action="store_true",help="Download and verify the selected models without stopping any service")
+    parser.add_argument("--download-reserve-gib",type=int,default=30,help="Free space to leave after download (default 30 GiB; smaller RAM-backed caches may need less)")
     parser.add_argument("--pause-unit",help="Temporarily stop this systemd user unit and restore it on exit")
     args=parser.parse_args()
     if args.max_tokens is not None and args.max_tokens < 1:
         parser.error("--max-tokens must be positive")
+    if args.download_reserve_gib < 0:
+        parser.error("--download-reserve-gib must be nonnegative")
+    if args.thinking == "on" and args.engine != "llama-cpp":
+        parser.error("--thinking on needs --engine llama-cpp")
     args.output.mkdir(parents=True,exist_ok=True)
     rows=json.loads(Path(__file__).with_name("models.json").read_text())
     if args.models:
@@ -443,7 +457,7 @@ def main():
             parser.error(row["id"]+" needs --engine "+row["engines"][0])
         path = args.model_dir / row["id"] / row["file"]
         if args.download or args.download_only:
-            download_model(row, path)
+            download_model(row, path, reserve_bytes=args.download_reserve_gib*1024**3)
         if not path.is_file() or path.stat().st_size != row["bytes"]:
             raise RuntimeError("The pinned model file is missing or has the wrong size: "+str(path))
         if args.verify:
