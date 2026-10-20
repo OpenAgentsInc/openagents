@@ -3281,6 +3281,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-web-chat"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "console_error_panic_hook",
+ "futures",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "gpui",
+ "js-sys",
+ "log",
+ "openagents-doc",
+ "openagents-gpui-web",
+ "openagents-proto",
+ "openagents-web-chat-view",
+ "openagents-web-client",
+ "serde_json",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
+]
+
+[[package]]
+name = "openagents-web-chat-view"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "gpui",
+ "openagents-doc",
+ "openagents-markdown",
+ "openagents-proto",
+ "pulldown-cmark",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "openagents-web-client"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "js-sys",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "openagents-web-demo"
 version = "1.0.0"
 dependencies = [
@@ -3294,12 +3347,10 @@ dependencies = [
  "openagents-brand",
  "openagents-doc",
  "openagents-gpui-web",
- "openagents-markdown",
  "openagents-proto",
- "pulldown-cmark",
+ "openagents-web-chat-view",
  "serde",
  "serde_json",
- "unicode-segmentation",
  "uuid",
  "wasm-bindgen",
  "web-time",
