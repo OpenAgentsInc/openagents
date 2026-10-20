@@ -4,9 +4,10 @@
 // script inline after wasm-bindgen's `--target no-modules` glue.
 //
 // It paints only when the box measures exactly what the scene was captured
-// at; otherwise it leaves the page as it was. The snapshot canvas sits over
-// the app's own canvas until the app announces its first frame
-// (`gpui-first-frame`), then goes in that same task. Until then the
+// at; otherwise the box stays empty, at its final size, until the app
+// draws, so the server's map never shows for an instant. The snapshot
+// canvas sits over the app's own canvas until the app announces its first
+// frame (`gpui-first-frame`), then goes in that same task. Until then the
 // snapshot shows a progress cursor and takes no input.
 (function () {
   var box = document.getElementById("gpui-mount");
@@ -36,9 +37,10 @@
     );
   };
   if (!fits()) {
-    if (!had) {
-      box.classList.remove("is-live");
-    }
+    // No frame for this size, but the app is coming: keep the box at its
+    // final size and empty until the app draws, rather than show the
+    // server's map for an instant and swap it out. The start script puts
+    // the map back if the app can't start.
     mark("first-frame-skipped");
     return;
   }

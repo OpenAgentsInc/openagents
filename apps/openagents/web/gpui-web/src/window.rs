@@ -114,6 +114,9 @@ impl WebWindow {
         style
             .set_property("touch-action", "none")
             .map_err(|e| anyhow::anyhow!("Failed to set touch-action style: {e:?}"))?;
+        // Hidden until the first frame at its size is drawn, so the page
+        // never shows the unpainted (black) canvas for a frame.
+        style.set_property("visibility", "hidden").ok();
 
         let body = document
             .body()
@@ -355,6 +358,7 @@ impl WebWindowInner {
     /// snapshot swaps it out in the event's handler, in this same task, so
     /// the browser composites the swap and this frame together.
     fn announce_first_frame(&self) {
+        self.canvas.style().remove_property("visibility").ok();
         if let Some(performance) = self.browser_window.performance() {
             performance.mark("gpui-first-frame").ok();
         }
