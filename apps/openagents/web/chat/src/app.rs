@@ -61,6 +61,7 @@ enum Menu {
 
 pub struct ChatApp {
     client: Client,
+    check_ins: Entity<crate::check_ins::CheckIns>,
     /// Signed in, or chatting as the browser's visitor (the page's
     /// `openagents-signed-in`).
     signed_in: bool,
@@ -182,6 +183,7 @@ impl ChatApp {
             .unwrap_or_default();
         let mut this = Self {
             client: Client::from_page(),
+            check_ins: cx.new(crate::check_ins::CheckIns::new),
             signed_in: route::signed_in(),
             origin,
             threads: Vec::new(),
@@ -841,6 +843,9 @@ impl ChatApp {
                             .child(self.search.clone()),
                     ),
             )
+            .when(self.signed_in, |sidebar| {
+                sidebar.child(self.check_ins.clone())
+            })
             .child(
                 div()
                     .id("sidebar-chats")

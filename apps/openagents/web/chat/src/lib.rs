@@ -6,6 +6,7 @@
 //! fonts beside the module and calls [`launch`] with them, so the module
 //! carries no fonts and a return visit reads them from the cache.
 
+pub mod check_ins;
 pub mod model;
 mod notifications;
 pub mod route;
