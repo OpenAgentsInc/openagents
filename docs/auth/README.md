@@ -10,10 +10,13 @@ the same, with its issue. The plan and its evidence are in the
 the tracking epic is
 [#12006](https://github.com/OpenAgentsInc/openagents/issues/12006).
 
-**Proposed (2026-10-20):** [WorkOS as the source of truth for auth](2026-10-20-workos-source-of-truth.md)
-plans one WorkOS User as the auth object for a person, with Nostr keys as
-linked identities and Nostr sign-in kept. It waits on the owner's decisions
-and epics #12320 to #12324; until then this README describes what runs.
+**WorkOS (owner, 2026-10-20):** [WorkOS as the source of truth for auth](2026-10-20-workos-source-of-truth.md)
+makes one WorkOS User the auth object for a person, with Nostr keys as
+linked identities and Nostr sign-in kept. It is built behind
+`OPENAGENTS_AUTH=legacy|dual|workos` (`legacy` by default): with it on,
+`/login` and `/signup` offer the methods the environment has on in WorkOS
+(GitHub, Google, SSO, email and password, an emailed code) beside the Nostr
+key sign-in. Where it is off, this README describes what runs.
 
 **GitHub sign-in is deprecated (#12005).** It signs in accounts made with it
 before and makes no new accounts: the account service answers a GitHub user
@@ -45,11 +48,11 @@ not expose the account service's internal session and approval endpoints. An
 app keeps its credentials in its own OS storage, not in the CLI's saved
 account file.
 
-OpenAgents owns its sign-in. There is no third-party auth service in the path:
-the account service (the `tenancy` stores behind the gateway's account
-routes) is the only thing that decides who an account is, and the web server
-is one of its clients. Owner direction (2026-10-08): own it ourselves, in
-Rust. Owner direction (2026-10-17): open the app and use it right away, with
+The account service (the `tenancy` stores behind the gateway's account
+routes) decides which account a sign-in reaches, and the web server is one
+of its clients. Owner direction (2026-10-08): own it ourselves, in Rust;
+superseded for people on 2026-10-20 by WorkOS as the auth object (above),
+with Nostr keys, `oak_` keys, and `oa_sk_` keys still ours. Owner direction (2026-10-17): open the app and use it right away, with
 no sign-in; the 12 words are the one backup, for the account and the wallet;
 GitHub and other providers are connections only; computers pair by QR code.
 
@@ -85,8 +88,9 @@ Related: [GitHub sign-in details](github.md), the account store
 8. Local testing needs no real third party: a fake GitHub runs in-process for
    tests and the local fixture, and tests sign with throwaway keys.
 
-Non-goals for now: passwords (never), SMS, email codes, and federated login
-*into other sites* with an OpenAgents account. Apps acting for a person on
+Non-goals for now: SMS, and federated login *into other sites* with an
+OpenAgents account. Passwords and emailed codes exist only through WorkOS
+(2026-10-20), which holds them; we never store a password. Apps acting for a person on
 OpenAgents itself (MCP clients) do sign in with OAuth: see "Apps signing in
 with OAuth" below.
 
@@ -180,7 +184,7 @@ connection never strands work.
   see [Link a computer by QR code](#link-a-computer-by-qr-code-planned).
 - An account that predates key sign-in (GitHub, Apple, or device code) gets
   a key the same way: the new app signs in with its old session, then adds
-  its key with `POST /v1/account/keys`. We never link by email.
+  its key with `POST /v1/account/keys`. Key linking never goes by email.
 
 ### Conflicts
 
@@ -189,8 +193,12 @@ link is refused ("That GitHub account is already used by another OpenAgents
 account."). Nothing moves. The person can sign in to that account instead,
 or remove the credential there first.
 
-We never auto-link by email. Two accounts with the same verified email are two
-accounts until a person links them with proofs for both.
+Key and GitHub links never go by email. A WorkOS sign-in is the one
+exception (owner, 2026-10-20): when its User matches no account by link,
+external ID, or GitHub identity, a verified email that is the verified GitHub
+email of exactly one account signs in to that account
+(`oa_auth::workos::link`). Otherwise two accounts with the same verified email
+are two accounts until a person links them with proofs for both.
 
 ### Unlinking
 

@@ -1,7 +1,8 @@
 # WorkOS as the source of truth for auth
 
-Date: 2026-10-20. Status: plan, no code changed. Repository revision
-`fd70af1f17`.
+Date: 2026-10-20. Status: W0 to W3 built, behind the `OPENAGENTS_AUTH`
+switch; W4 open. Planned at repository revision `fd70af1f17`; see
+[What's built](#whats-built) for the code.
 
 Owner request:
 
@@ -15,8 +16,9 @@ their sessions. WorkOS never holds a private key.
 
 The plan supersedes the owner direction of 2026-10-08 recorded in
 [the auth README](README.md) ("own it ourselves, in Rust; no third-party auth
-service in the path") once the owner confirms decision 1 below. Until then the
-README describes what runs.
+service in the path"). The owner confirmed decision 1 on 2026-10-20: WorkOS
+is the auth object for people. The decisions as made are under
+[Owner decisions](#owner-decisions).
 
 Epics, one per phase, all on the OpenAgents board (project 19):
 
@@ -429,22 +431,52 @@ Risks:
   service; the 2026-10-16 merge removed Zeron's WorkOS sign-in (#11848).
   This plan reverses both and needs the owner's explicit yes.
 
-Owner decisions:
+### Owner decisions
 
-1. WorkOS replaces the "own it ourselves" direction of 2026-10-08. Yes or no.
-2. The session bridge: Magic Auth bridge if WorkOS agrees in writing, else
-   our `sess_` bound to the User. Default: ask WorkOS, then decide.
-3. Email for key-only accounts: `acct_…@id.openagents.com`, or collect a
-   real address. Default: synthetic.
-4. Reopen GitHub, email, and passkey sign-in through AuthKit, or keep
-   providers as connections only (#12005). Default: email and passkeys on,
-   GitHub stays a connection.
-5. Personal workspaces as WorkOS Organizations, or only organization
-   workspaces. Default: only organization workspaces; a personal workspace
-   is the User.
-6. Buy the AuthKit custom domain (`auth.openagents.com`, $99 a month).
-   Default: yes, before passkeys.
-7. Keep `oak_` and `oa_sk_` as our own credentials. Default: yes.
+Decided 2026-10-20 ("fully implement workos now, /login and /signup etc -
+all methods we have supported in our account"):
+
+1. **Yes.** WorkOS replaces the "own it ourselves" direction of 2026-10-08
+   for people.
+2. **Our `sess_` for key sign-ins**, tied to the account's WorkOS User. The
+   Magic Auth bridge waits until WorkOS confirms it in writing (asked; see
+   `NEEDS_OWNER.md`).
+3. **Synthetic email** `acct_…@id.openagents.com` for key-only accounts,
+   marked verified. An account with a verified GitHub email gets that one.
+4. **Every method each environment has on in WorkOS.** Production: GitHub,
+   email and password (sign-up with email verification), and Magic Auth.
+   Staging: those plus Google and SSO. Passkeys and MFA stay off. The pages
+   are our own over the User Management API; the hosted AuthKit page isn't
+   used. GitHub sign-in makes new accounts again, through WorkOS.
+5. **Only organization workspaces** become Organizations; a personal
+   workspace is its User.
+6. **No custom domain** for now, since passkeys are off.
+7. **Yes**, `oak_` and `oa_sk_` stay our own credentials.
+
+## What's built
+
+| Part | Where |
+| --- | --- |
+| Rollout switch `OPENAGENTS_AUTH=legacy\|dual\|workos` (also `accounts.workos.mode` / `workos.mode`), `legacy` by default | `oa_auth::workos::{Mode, Settings}` |
+| Client over `workos` `=3.5.0`, copy-safe refusals | `crates/oa-auth/src/workos/client.rs` |
+| Access tokens checked against the cached JWKS | `crates/oa-auth/src/workos/token.rs` |
+| Link table, migration 4 (`identity.workos_users`, `workspace.workos_orgs`; `workos-links.json` on files) | `crates/tenancy/src/workos_links.rs`, `crates/tenancy/migrations/0004_workos_links.sql` |
+| Which account a User signs in to: link, `external_id`, GitHub identity, verified email, else new; never a second account | `crates/oa-auth/src/workos/link.rs` |
+| `POST /v1/sessions/workos`: WorkOS access token in, our session out | `crates/oa-auth/src/workos/session.rs`, `crates/gateway/src/workos_auth.rs` |
+| WorkOS access tokens as bearers on the account routes, beside `sess_`, `oa_sk_`, `oak_` | `gateway::workos_auth::principal` |
+| Dual-write after every account change; backfill (dry run first) and reconcile under the admin token | `crates/oa-auth/src/workos/sync.rs`, `POST /v1/admin/workos/backfill`, `GET /v1/admin/workos/reconcile` |
+| `/login` and `/signup` with the environment's methods and the Nostr key sign-in; `/auth/workos/{github,google}`, `/login/sso`, `/auth/callback`, `/login/code`, `/login/verify`, `/login/forgot`, `/login/reset` | `crates/openagents-web/src/workos_auth.rs` |
+| Sealed WorkOS session cookie `oa_workos` beside `oa_cloud_session`, refreshed when its token expires; in `workos` mode a refused refresh signs the browser out; sign-out revokes the WorkOS session | `workos_auth::layer`, `cloud::sign_out` |
+| Old addresses: `/auth/github` sends a sign-in through WorkOS; the GitHub repository connection, the device code (Coder 1.0.0), key sign-in for the apps, and `sess_` keep working | `crates/openagents-web/src/auth.rs` |
+| An in-process fake WorkOS the real SDK talks to | `crates/oa-auth/src/workos/fake.rs` |
+| Deploy: `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`, `WORKOS_METHODS`, `OPENAGENTS_AUTH` in the web and gateway launchers; `render.py --workos` on staging once its secrets exist | `deploy/staging/{web,gateway}.sh`, `deploy/production/web.sh`, `deploy/staging/render.py` |
+
+Differences from the plan: the link table is its own store beside the
+account document rather than rows in it, so an older binary still opens the
+stores. WorkOS sign-ins mint our `sess_` in every mode until W4; `workos`
+mode ties that session's life to the WorkOS session. The access-token
+bearer works on the account routes; `coder-sync` still takes `sess_` and
+`oa_sk_`.
 
 ## Sources
 
