@@ -222,6 +222,78 @@ needs 0c. Phase 6 needs every other phase.
   for `coder-sync` are new paths. Keep the CSRF checks, short token
   lifetimes, and the grant rules.
 
+## The `/gpui` chat (2026-10-19)
+
+A complete signed-in chat now runs at `/gpui` and `/gpui/chat/{id}`, beside
+the HTML chat, which is unchanged. It is phases 0b, 1, and 2 delivered on
+their own route instead of behind the flag.
+
+- `apps/openagents/web/chat-view` (`openagents-web-chat-view`) holds the
+  views the demo and the chat share: theme, markdown, the composer's text
+  field, transcript pieces (`assistant_body`, tool groups, user bubbles),
+  fonts, and icons. `web/demo` uses it and keeps only its fixtures and
+  scripted replies.
+- `apps/openagents/web/client` (`openagents-web-client`) is the web data
+  client: `/v1/threads`, `/v1/threads/{id}/messages`, `/v1/projects`,
+  `PATCH` and `DELETE /v1/threads/{id}`, `stop`, and the
+  `/v1/threads/{id}/events` stream over `fetch` and `EventSource`.
+- `apps/openagents/web/chat` (`openagents-web-chat`) is the app. The page
+  (`crates/openagents-web/src/pages/gpui_chat.rs`) paints an HTML outline
+  of the chat list, checks for WebGPU or WebGL2, and fetches the module and
+  the Geist faces together.
+- `crates/openagents-web/src/cookie_api.rs` takes the sign-in cookie on
+  `/v1/threads*` and `/v1/projects` for same-origin requests
+  (`Sec-Fetch-Site: same-origin`); writes also carry the chat's CSRF value
+  in `x-openagents-csrf`. The cookie's session token then goes on as the
+  Bearer token, so each route checks it as it checks an app's.
+
+Still duplicated from the desktop, until #12216 moves the views into a
+portable crate:
+
+- `chat-view/src/theme.rs`: the dark theme's tokens as sRGB values, from
+  `crates/ui/src/theme`.
+- `chat-view/src/markdown.rs`: the GPUI markdown renderer. The block tree
+  is the shared `openagents-markdown`; the drawing is a port of
+  `crates/ui/src/markdown`.
+- `chat-view/src/transcript.rs`: user bubbles, tool groups and rows, error
+  and notice lines, and the labels. The group summary is the shared
+  `openagents_proto::view::tool_group_summary`.
+- `chat-view/src/composer.rs`: a single-line field after GPUI's
+  `examples/input.rs`, not the desktop's multi-line composer.
+- `web/chat/src/app.rs`: the sidebar, header, row menu, and composer row.
+  The desktop's own sidebar and composer are in `crates/ui`.
+
+Not done in `/gpui` yet:
+
+- Cards draw as a named card that opens the regular chat; Rust Native cards
+  wait on #12218.
+- Approvals, files and uploads, the agents panel, and computer asks
+  (#12223); Coder chats are read-only with their computer named, and live
+  rooms wait on #12224.
+- The accessibility mirror, find in page, and zoom (#12220).
+- The module is 1.90 MB with brotli, over the 1.5 MB budget, and the
+  files aren't content-hashed yet (#12219).
+- Multi-line messages, and phones beyond a basic layout.
+
+### How to swap it in
+
+The chat is complete on its own route, so making it the default is a
+routing change in `crates/openagents-web`:
+
+1. Serve the canvas at the regular addresses. In `pages/chat.rs`, have
+   `show` (`/chat/{id}`) and the home page's chat (`/`) answer with
+   `gpui_chat::page(app, headers, chat)` for signed-in accounts, while the
+   HTML stays for signed-out visitors, `/share/{token}`, and browsers
+   without JavaScript. The app reads its own address from the page's
+   `openagents-chat-base` meta tag (`/gpui` today, in `gpui_chat::shell`);
+   give it `""` there and the app opens and pushes `/` and `/chat/{id}`
+   with no rebuild of the module.
+2. Behind a flag first: check a per-account setting (`chat_ui = gpui`) or
+   a `?ui=gpui` query in those handlers, and keep `/gpui` as an address
+   that always shows the canvas.
+3. To undo, remove the check; nothing else changes, because both views
+   read the same chats through the same API.
+
 ## Deploy note for `/demo/gpui`
 
 The website image now builds the demo in the `gpuiweb` stages of
