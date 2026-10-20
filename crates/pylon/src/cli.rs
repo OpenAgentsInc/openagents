@@ -315,6 +315,9 @@ Common options:
                             serve and start print it when they start serving,
                             then one JSON event per line.
 
+A decision server URL (--decide, --reference) defaults to this pylon's own
+engine: the port `up --port` chose, else http://127.0.0.1:18096.
+
 Exit codes: 0 ok, 1 refused or failed, 10 blocked, 11 needs the owner,
 13 network or download failure, 20 verification failed, 64 invalid usage.
 
@@ -1329,9 +1332,7 @@ async fn check(json_out: bool, args: &mut Args, relay: &str) -> Result<(), Strin
         let [pylon] = pylons.as_slice() else {
             return Err("check decide takes one --pylon NPUB".into());
         };
-        let reference = args
-            .value("--reference")?
-            .unwrap_or_else(|| DEFAULT_DECIDE.into());
+        let reference = args.value("--reference")?.unwrap_or_else(this_decide);
         let rounds = args.number("--rounds", 1)?.clamp(1, 100);
         let public = args
             .value("--seed")?
@@ -1448,9 +1449,7 @@ async fn check_decide_watch(
     pylons: Vec<String>,
 ) -> Result<(), String> {
     use crate::check_decide::{Items, WatchConfig, Watcher};
-    let reference = args
-        .value("--reference")?
-        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let reference = args.value("--reference")?.unwrap_or_else(this_decide);
     let config = WatchConfig {
         every: args.number("--every", 900)?.clamp(10, 7 * 86_400),
         recheck_struck: args
@@ -1538,6 +1537,21 @@ impl NoTerm {
 /// The default local decision server: Psionic's Clef lane on loopback.
 pub const DEFAULT_DECIDE: &str = "http://127.0.0.1:18096";
 
+/// This computer's decision engine: the port `up` recorded in the
+/// settings (`up --port`), else [`DEFAULT_DECIDE`]. `doctor`, `verify`,
+/// `selfcheck`, and the checker's `--reference` default to it.
+#[must_use]
+pub fn this_decide() -> String {
+    crate::share::load(&home())
+        .ok()
+        .flatten()
+        .and_then(|s| s.decide)
+        .map_or_else(
+            || DEFAULT_DECIDE.to_string(),
+            |d| format!("http://127.0.0.1:{}", d.port),
+        )
+}
+
 /// `calibrate run|compare|reference`.
 /// `canary make`: a checker-private pool of decision canaries.
 async fn canary(json_out: bool, args: &mut Args) -> Result<(), String> {
@@ -1551,9 +1565,7 @@ async fn canary(json_out: bool, args: &mut Args) -> Result<(), String> {
         .value("--seed-file")?
         .map(PathBuf::from)
         .ok_or("canary make needs --seed-file FILE")?;
-    let reference = args
-        .value("--reference")?
-        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let reference = args.value("--reference")?.unwrap_or_else(this_decide);
     let count = u32::try_from(args.number("--count", 200)?.clamp(1, 100_000)).unwrap_or(200);
     let out = args
         .value("--out")?
@@ -1593,9 +1605,7 @@ async fn calibrate(json_out: bool, args: &mut Args) -> Result<(), String> {
     let limits = crate::verify::CLEF_FLASH;
     match sub.as_str() {
         "run" => {
-            let url = args
-                .value("--decide")?
-                .unwrap_or_else(|| DEFAULT_DECIDE.into());
+            let url = args.value("--decide")?.unwrap_or_else(this_decide);
             let model = args
                 .value("--decide-model")?
                 .unwrap_or_else(|| "clef-flash".into());
@@ -1706,9 +1716,7 @@ async fn calibrate(json_out: bool, args: &mut Args) -> Result<(), String> {
 /// `selfcheck`: answer the shipped reference set on this computer's
 /// decision server and keep the result; `serve --decide` reads it.
 async fn selfcheck(json_out: bool, args: &mut Args) -> Result<(), crate::envelope::Outcome> {
-    let url = args
-        .value("--decide")?
-        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let url = args.value("--decide")?.unwrap_or_else(this_decide);
     let limit = usize::try_from(args.number("--items", 64)?.clamp(8, 10_000)).unwrap_or(64);
     let model_file = args.value("--model-file")?.map(PathBuf::from);
     if let Some(extra) = args.words.first() {
@@ -1796,9 +1804,7 @@ async fn doctor(
     args: &mut Args,
     relay: &str,
 ) -> Result<(), crate::envelope::Outcome> {
-    let decide = args
-        .value("--decide")?
-        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let decide = args.value("--decide")?.unwrap_or_else(this_decide);
     let rehash = args.flag("--rehash");
     let allow_slow = args.flag("--allow-slow");
     if let Some(extra) = args.words.first() {
@@ -1829,9 +1835,7 @@ async fn doctor(
 /// platform, then self-check a running decision server. Neither changes
 /// the served model id without `--accept-model-change`.
 async fn setup(json_out: bool, args: &mut Args, update: bool) -> Result<(), String> {
-    let decide = args
-        .value("--decide")?
-        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let decide = args.value("--decide")?.unwrap_or_else(this_decide);
     let accept = args.flag(crate::install::ACCEPT_MODEL_CHANGE);
     if let Some(extra) = args.words.first() {
         return Err(format!("unexpected argument `{extra}`"));
@@ -2150,9 +2154,7 @@ async fn payout(json_out: bool, args: &mut Args, wallet: &dyn Wallet) -> Result<
 
 /// `plan`: the ordered steps that get this computer serving.
 async fn plan(json_out: bool, args: &mut Args, relay: &str) -> Result<(), String> {
-    let decide = args
-        .value("--decide")?
-        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let decide = args.value("--decide")?.unwrap_or_else(this_decide);
     if let Some(extra) = args.words.first() {
         return Err(format!("unexpected argument `{extra}`"));
     }
@@ -2205,9 +2207,7 @@ async fn verify(
     relay: &str,
     checkers: &BTreeSet<String>,
 ) -> Result<(), String> {
-    let decide = args
-        .value("--decide")?
-        .unwrap_or_else(|| DEFAULT_DECIDE.into());
+    let decide = args.value("--decide")?.unwrap_or_else(this_decide);
     if let Some(extra) = args.words.first() {
         return Err(format!("unexpected argument `{extra}`"));
     }
@@ -2219,6 +2219,15 @@ async fn verify(
         .and_then(|p| p.trim_end_matches('/').parse::<u16>().ok())
         .unwrap_or(crate::setup::DECIDE_PORT);
     let mut ports = vec![port, crate::checkup::TEXT_PORT];
+    // The text engine `up` runs, when there is one.
+    if let Some(text) = crate::share::load(&home())
+        .ok()
+        .flatten()
+        .and_then(|s| s.text)
+    {
+        ports.push(text.port);
+    }
+    ports.sort_unstable();
     ports.dedup();
     let list = crate::checkup::run(crate::checkup::Inputs {
         relay,
