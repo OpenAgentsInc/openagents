@@ -23,6 +23,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
 
+pub(crate) mod owner;
+
 const MAX_BYTES: usize = 4 * 1024 * 1024;
 const MAX_REVISIONS: usize = 1024;
 
@@ -37,6 +39,9 @@ struct Record {
     revisions: Vec<PublishedAgent>,
     /// Request ID to the fingerprint of its change and the revision it made.
     receipts: BTreeMap<String, (String, u64)>,
+    /// The agent's owner and their NIP-OA tag, once set (#12255).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    owner: Option<owner::Owned>,
 }
 
 #[derive(Debug)]
@@ -176,6 +181,7 @@ async fn publish(
                 publisher: owner.into(),
                 revisions: vec![],
                 receipts: BTreeMap::new(),
+                owner: None,
             },
             None => return Ok(Err(Refusal::Missing)),
         };
@@ -403,6 +409,10 @@ pub(crate) fn routes() -> Router<App> {
         .route("/v1/published-agents", post(create))
         .route("/v1/published-agents/{id}", get(detail).put(update))
         .route("/v1/published-agents/{id}/fork", post(fork_route))
+        .route(
+            "/v1/published-agents/{id}/owner",
+            get(owner::read).put(owner::set).delete(owner::revoke),
+        )
         .route("/v1/agent-definitions/{id}/publish", post(publish_route))
         .route("/v1/agent-definitions/{id}/upstream", get(upstream_route))
         // A template's draft holds up to the instructions limit (skills
@@ -509,7 +519,10 @@ async fn change(app: App, headers: HeaderMap, c: Change) -> Response {
         Err(r) => return r,
     };
     match publish(&app.config.chat_store, &owner, c).await {
-        Ok(Ok(p)) => answer(StatusCode::OK, json!(p)),
+        Ok(Ok(p)) => {
+            owner::republish(&app, &p.id).await;
+            answer(StatusCode::OK, json!(p))
+        }
         Ok(Err(r)) => r.response(),
         Err(e) => stored(&e),
     }

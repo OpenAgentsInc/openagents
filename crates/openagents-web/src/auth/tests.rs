@@ -65,6 +65,26 @@ async fn world_built(
     extra: Option<Router>,
     github_signup: bool,
 ) -> World {
+    world_built_with(
+        with_github,
+        service_invite,
+        web_invite,
+        extra,
+        github_signup,
+        Vec::new(),
+    )
+    .await
+}
+
+/// [`world_built`] with the relays profiles read and publish on.
+async fn world_built_with(
+    with_github: bool,
+    service_invite: Option<oa_auth::InviteOnly>,
+    web_invite: Option<oa_auth::InviteOnly>,
+    extra: Option<Router>,
+    github_signup: bool,
+    profile_relays: Vec<String>,
+) -> World {
     let fake = Fake::new(CLIENT, SECRET, REDIRECT, vec![fake::octo(), fake::quiet()]);
     let github_origin = fake.spawn().await.unwrap();
     let credentials = fake::credentials(&github_origin, CLIENT, SECRET, REDIRECT).unwrap();
@@ -124,6 +144,8 @@ async fn world_built(
         crate::cloud::session::CloudSession::load(&path).unwrap(),
     ));
     config.api_host = Some("api.openagents.com".into());
+    config.profile_relays = profile_relays;
+    config.agent_key_seed = Some([7; 32]);
     config.public_hosts.push("api.openagents.com".into());
     config.inference = Some(Arc::new(
         crate::upstream::Upstream::new(&account_service).unwrap(),

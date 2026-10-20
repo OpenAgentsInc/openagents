@@ -3306,7 +3306,6 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/releases/coder-latest.tar.gz",
         "/install-terminal.sh",
         "/install-terminal.ps1",
-        "/u/someone",
         "/u/someone/avatar",
         "/ws",
         "/static/coder.css",
@@ -3364,7 +3363,6 @@ async fn unowned_paths_are_proxied_with_their_method_host_body_and_status() {
         "/api/v1/chat",
         "/releases/install-terminal.sh",
         "/install-terminal.sh",
-        "/u/someone",
         "/u/someone/avatar",
         "/static/coder.css",
         "/forums",
@@ -3380,7 +3378,7 @@ async fn unowned_paths_are_proxied_with_their_method_host_body_and_status() {
     let (status, _, body) = get_with(site.clone(), "/", "new.openagents.com").await;
     assert_eq!(status, StatusCode::IM_A_TEAPOT);
     assert!(body.contains("\"host\":\"new.openagents.com\""), "{body}");
-    assert_eq!(hits.load(Ordering::SeqCst), 9);
+    assert_eq!(hits.load(Ordering::SeqCst), 8);
 }
 
 /// #11084: the OAuth metadata is this site's own, and a 401 from the keyed

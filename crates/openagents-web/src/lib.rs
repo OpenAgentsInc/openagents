@@ -77,6 +77,7 @@ mod environments;
 mod issue_claims;
 mod issue_claims_openapi;
 mod owner_notifications;
+mod profiles;
 mod published_agents;
 mod run_commands;
 mod run_commands_openapi;
@@ -461,6 +462,15 @@ pub struct Config {
     /// `wss://relay.openagents.com`, and `off` turns it off). `None`
     /// connects to nothing, and `/pylons/live` answers 404.
     pub pylons_relay: Option<String>,
+    /// The relays `/@{name}` reads profiles from and Settings publishes
+    /// them to (`--profile-relay URL`, repeatable; the binary's default is
+    /// `wss://relay.openagents.com`, and `off` turns it off). Empty reads
+    /// nothing, and every profile page says it can't be reached.
+    pub profile_relays: Vec<String>,
+    /// The seed published agents' own Nostr keys are derived from
+    /// (`OPENAGENTS_WEB_AGENT_KEY_SEED`, 64 hex characters, a secret;
+    /// #12255). `None` turns agent keys off.
+    pub agent_key_seed: Option<[u8; 32]>,
     /// `/lander8`'s chat (`--lander8 DIR`, default `/srv/lander8` when it
     /// exists): its WebGPU-only and WebGL2 builds, served under
     /// `/lander8/build/`. Without it, `/lander8` is the Grid, the name, and
@@ -608,6 +618,8 @@ impl Config {
             lander7: None,
             pylons: None,
             pylons_relay: None,
+            profile_relays: Vec::new(),
+            agent_key_seed: None,
             lander8: None,
             lander9: None,
             snap: None,
@@ -728,6 +740,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(custom_agents::routes())
         .merge(voice_agent::routes())
         .merge(published_agents::routes())
+        .merge(profiles::routes())
         .merge(agent_assignments::routes())
         .merge(agent_lab::routes())
         .merge(agent_lab_page::routes())

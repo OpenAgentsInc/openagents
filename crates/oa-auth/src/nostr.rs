@@ -12,6 +12,8 @@
 //! | `GET /v1/account/keys` | a session | [`NostrAuth::keys`] |
 //! | `DELETE /v1/account/keys/{pubkey}` | a session | [`NostrAuth::unlink`] |
 //!
+//! The `name@openagents.com` routes are in `nostr/names.rs`.
+//!
 //! The event is kind 27235 over the exact URL the app called (one of
 //! [`SIGN_IN_PATHS`] or [`LINK_PATHS`] on a configured origin) and the
 //! method, signed within 60 seconds, with a `challenge` tag holding a
@@ -826,6 +828,49 @@ pub fn router(auth: NostrAuth, tenant: &str) -> axum::Router {
                 },
             ),
         )
+        .route(
+            "/v1/account/name",
+            get(
+                |State(local): State<Local>, headers: HeaderMap| async move {
+                    match caller(&local, &headers) {
+                        Ok(account) => answer(local.0.0.name(&account)),
+                        Err(response) => response,
+                    }
+                },
+            )
+            .put(
+                |State(local): State<Local>, headers: HeaderMap, body: Bytes| async move {
+                    match caller(&local, &headers) {
+                        Ok(account) => answer(local.0.0.claim_name(&account, &body)),
+                        Err(response) => response,
+                    }
+                },
+            )
+            .delete(
+                |State(local): State<Local>, headers: HeaderMap| async move {
+                    match caller(&local, &headers) {
+                        Ok(account) => answer(local.0.0.release_name(&account)),
+                        Err(response) => response,
+                    }
+                },
+            ),
+        )
+        .route(
+            "/v1/names",
+            get(
+                |State(local): State<Local>, uri: axum::http::Uri| async move {
+                    answer(local.0.0.lookup_query(uri.query()))
+                },
+            ),
+        )
+        .route(
+            "/v1/names/{name}",
+            get(
+                |State(local): State<Local>, UrlPath(name): UrlPath<String>| async move {
+                    answer(local.0.0.lookup_name(&name))
+                },
+            ),
+        )
         .with_state(local)
 }
 
@@ -836,6 +881,8 @@ pub fn now() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
 }
+
+mod names;
 
 #[cfg(test)]
 mod tests;

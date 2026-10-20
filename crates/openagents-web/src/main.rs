@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--inference http://HOST:PORT] [--public-host HOST]... [--api-host HOST] [--studio-host HOST]... [--upstream http://HOST:PORT] \
-[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--agent-graph DIRECTORY] [--gpui-fonts DIRECTORY] [--gpui-chat DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--lander5 DIRECTORY] [--lander6 DIRECTORY] [--lander7 DIRECTORY] [--lander8 DIRECTORY] [--lander9 DIRECTORY] [--pylons DIRECTORY] [--pylons-relay URL|off] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--agent-graph DIRECTORY] [--gpui-fonts DIRECTORY] [--gpui-chat DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--lander5 DIRECTORY] [--lander6 DIRECTORY] [--lander7 DIRECTORY] [--lander8 DIRECTORY] [--lander9 DIRECTORY] [--pylons DIRECTORY] [--pylons-relay URL|off] [--profile-relay URL|off] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
 [--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE] [--local-downloads ~/Downloads] \
@@ -91,6 +91,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--lander7" => config.lander7 = Some(PathBuf::from(value)),
             "--pylons" => config.pylons = Some(PathBuf::from(value)),
             "--pylons-relay" => config.pylons_relay = Some(value),
+            "--profile-relay" => config.profile_relays.push(value),
             "--lander8" => config.lander8 = Some(PathBuf::from(value)),
             "--lander9" => config.lander9 = Some(PathBuf::from(value)),
             "--att" => config.att = Some(PathBuf::from(value)),
@@ -244,6 +245,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(relay) = &config.pylons_relay {
         openagents_web::start_pylons_field(relay);
+    }
+    // Profiles read and publish on the production relay unless told otherwise.
+    if config.profile_relays.is_empty() {
+        config.profile_relays.push("wss://relay.openagents.com".to_owned());
+    }
+    config.profile_relays.retain(|relay| relay != "off");
+    // Published agents' own keys derive from this secret seed.
+    if let Ok(seed) = std::env::var("OPENAGENTS_WEB_AGENT_KEY_SEED") {
+        let bytes: Option<Vec<u8>> = (seed.len() == 64)
+            .then(|| {
+                (0..32)
+                    .map(|i| u8::from_str_radix(&seed[2 * i..2 * i + 2], 16).ok())
+                    .collect()
+            })
+            .flatten();
+        match bytes.and_then(|b| <[u8; 32]>::try_from(b).ok()) {
+            Some(seed) => config.agent_key_seed = Some(seed),
+            None => eprintln!("OPENAGENTS_WEB_AGENT_KEY_SEED must be 64 hex characters; agent keys are off"),
+        }
     }
     // /lander8's chat ships at /srv/lander8 in the image.
     if config.lander8.is_none()

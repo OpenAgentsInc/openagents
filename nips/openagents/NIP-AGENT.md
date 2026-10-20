@@ -1,6 +1,6 @@
 # NIP-AGENT: Saved custom agents
 
-`draft` · `openagents.agent.definition.v1` · no new event kinds
+`draft` · `openagents.agent.definition.v1` · `openagents.agent-definition-export` v1 · kind `30187`
 
 ## Scope
 
@@ -65,7 +65,74 @@ ID, revision, and digest. A newer revision cannot silently replace an assigned
 revision. A deletion prevents new assignments; it does not erase prior evidence
 or cancel a running session. Sharing the encrypted envelope grants no execution
 rights. Public AP export is a separate deliberate action and is not implemented
-by this profile.
+by this profile; it is the next section.
+
+## Public agents
+
+A published agent is a Nostr key of its own that a person owns. Revised
+2026-10-20 for openagents.com profiles ([#12255](https://github.com/OpenAgentsInc/openagents/issues/12255)).
+
+### The agent key
+
+Each published agent has its own key, independent of its owner's. The host
+that runs the agent holds the secret. An implementation MAY derive it from a
+secret only that host holds; it MUST NOT be derivable from the owner's
+public key or from anything published. Rotating the key makes a new agent
+identity; grants and follows don't carry over.
+
+### Owner attestation
+
+The owner proves ownership with a [NIP-OA](../block/NIP-OA.md) `auth` tag:
+the owner's key signs `nostr:agent-auth:<agent pubkey>:<conditions>`. The
+conditions MUST include `created_at<T` with `T` at most one year after the
+signature, and MAY add nothing else, so one tag covers the agent's kind 0
+and its definition events. The owner's client signs; the host never holds
+the owner's secret. A host that receives the tag verifies the signature and
+that the owner key is one of the publishing account's keys before it uses
+it.
+
+Every event below carries exactly that `auth` tag. A reader MUST verify it
+under NIP-OA before showing "owned by" and MUST NOT treat the owner as the
+author.
+
+### Agent profile (kind 0)
+
+The agent publishes an ordinary kind 0 with `bot: true` (NIP-24), `name`,
+`about` (the definition's description), `website` (the definition's HTTPS
+URL), and, when it has one, `picture`. Its tags are the `auth` tag and
+nothing that would make clients list it in the owner's timeline.
+
+### Public definition (kind 30187)
+
+An addressable event by the agent key:
+
+| Part | Contract |
+| --- | --- |
+| `d` tag | The published agent ID, 64 lowercase hexadecimal characters. |
+| `auth` tag | The owner attestation above. |
+| `p` tag | The owner's key, so a reader can list an owner's agents with `{"kinds":[30187],"#p":[owner]}`. |
+| `r` tag | The HTTPS URL of the same definition as JSON (`/agent/{id}/definition.json` on openagents.com). |
+| `status` tag | Optional. `revoked` retires the agent: readers drop it from the owner's list and say it was retired. |
+| `alt` tag | `OpenAgents agent definition` (NIP-31). |
+| `content` | The `openagents.agent-definition-export` version 1 document as JSON, the same bytes the `r` URL serves, or empty when revoked. At most 262,144 bytes. |
+
+A reader takes the newest event per `(pubkey, d)` with a valid signature and
+`auth` tag, and drops any whose `p` tag differs from the `auth` tag's owner.
+Instructions in a public definition are public; a private agent stays on
+kind `3188` above.
+
+Revoking publishes a replacement with `["status", "revoked"]` and empty
+content, signed by the agent key under the same attestation. The kind 0
+stays, so links keep resolving, and a reader that sees the revoked
+definition says the agent was retired.
+
+### Implementation
+
+openagents.com (`crates/openagents-web`, `published_agents` and
+`agent_keys`) holds the key for agents published there, takes the owner's
+tag at `PUT /v1/published-agents/{id}/owner`, and publishes both events.
+`/agent/{id}` and `/agent/{npub}` draw the same agent. `nostr::agent_public`
+builds and reads the events.
 
 ## Work and sessions
 

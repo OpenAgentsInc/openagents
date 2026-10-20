@@ -16,6 +16,11 @@
 //!   and `DELETE /v1/account/keys/{pubkey}`, as a session: the account's
 //!   keys, adding one with a proof the new key signed, and removing one
 //!   (never the last).
+//! - `GET`, `PUT` `{name, pubkey?}`, and `DELETE /v1/account/name`, as a
+//!   session: the account's `name@openagents.com` name (#12254); and
+//!   `GET /v1/names/{name}` and `GET /v1/names?pubkey=` or `?github=`,
+//!   for anyone: which key a name points at, which the website's
+//!   `/.well-known/nostr.json` and `/@{name}` pages read.
 //!
 //! Events are accepted for `oa_auth::nostr::DEFAULT_ORIGINS`, the
 //! configured `public_origin`, and the request's own `Host`.
@@ -40,6 +45,12 @@ pub fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/account/keys/challenge", get(link_challenge)),
         ("/v1/account/keys", get(keys).post(link)),
         ("/v1/account/keys/{pubkey}", delete(unlink)),
+        (
+            "/v1/account/name",
+            get(name).put(claim_name).delete(release_name),
+        ),
+        ("/v1/names", get(lookup_query)),
+        ("/v1/names/{name}", get(lookup_name)),
     ]
 }
 
@@ -204,6 +215,62 @@ async fn unlink(
     };
     match auth(&state) {
         Ok(auth) => answer(auth.unlink(&account, &pubkey)),
+        Err(response) => response,
+    }
+}
+
+/// `GET /v1/account/name`.
+async fn name(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
+    let account = match caller(&state, &headers) {
+        Ok(account) => account,
+        Err(response) => return response,
+    };
+    match auth(&state) {
+        Ok(auth) => answer(auth.name(&account)),
+        Err(response) => response,
+    }
+}
+
+/// `PUT /v1/account/name` `{"name", "pubkey"?}`.
+async fn claim_name(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let account = match caller(&state, &headers) {
+        Ok(account) => account,
+        Err(response) => return response,
+    };
+    match auth(&state) {
+        Ok(auth) => answer(auth.claim_name(&account, &body)),
+        Err(response) => response,
+    }
+}
+
+/// `DELETE /v1/account/name`.
+async fn release_name(State(state): State<Arc<ServeState>>, headers: HeaderMap) -> Response {
+    let account = match caller(&state, &headers) {
+        Ok(account) => account,
+        Err(response) => return response,
+    };
+    match auth(&state) {
+        Ok(auth) => answer(auth.release_name(&account)),
+        Err(response) => response,
+    }
+}
+
+/// `GET /v1/names/{name}`.
+async fn lookup_name(State(state): State<Arc<ServeState>>, Path(name): Path<String>) -> Response {
+    match auth(&state) {
+        Ok(auth) => answer(auth.lookup_name(&name)),
+        Err(response) => response,
+    }
+}
+
+/// `GET /v1/names?pubkey=` or `?github=`.
+async fn lookup_query(State(state): State<Arc<ServeState>>, uri: axum::http::Uri) -> Response {
+    match auth(&state) {
+        Ok(auth) => answer(auth.lookup_query(uri.query())),
         Err(response) => response,
     }
 }

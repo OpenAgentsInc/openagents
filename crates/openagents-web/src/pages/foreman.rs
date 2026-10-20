@@ -76,7 +76,12 @@ pub(crate) fn owns(path: &str) -> bool {
         .strip_suffix("/graph.json")
         .or_else(|| rest.strip_suffix("/definition.json"))
         .unwrap_or(rest);
-    !id.contains('/') && (id == "foreman" || template(id).is_some())
+    !id.contains('/') && (id == "foreman" || template(id).is_some() || published_shape(id))
+}
+
+/// A published agent's ID (64 lowercase hex) or an agent's `npub` (#12255).
+fn published_shape(id: &str) -> bool {
+    nostr::agent_public::valid_id(id) || nostr::nip19::decode_npub(id).is_ok()
 }
 
 /// The build directory, when it holds the glue, the module and the start
@@ -312,11 +317,17 @@ fn template_definition(
 
 /// `/agent/{id}/definition.json`: a template's whole definition
 /// (`openagents.agent-definition-export`, version 1).
-async fn definition_json(UrlPath(id): UrlPath<String>) -> Response {
-    let Some((published, experiment)) = template(&id) else {
-        return crate::not_found().await;
+async fn definition_json(State(app): State<App>, UrlPath(id): UrlPath<String>) -> Response {
+    let definition = match template(&id) {
+        Some((published, experiment)) => template_definition(published, &experiment),
+        None => match crate::published_agents::owner::found(&app, &id)
+            .await
+            .and_then(|f| f.definition)
+        {
+            Some(definition) => definition,
+            None => return crate::not_found().await,
+        },
     };
-    let definition = template_definition(published, &experiment);
     let mut response = axum::Json(&definition).into_response();
     if let Ok(value) = HeaderValue::from_str(&format!(
         "inline; filename=\"{}\"",
@@ -357,7 +368,7 @@ async fn agent_page(
     headers: HeaderMap,
 ) -> Response {
     let Some((published, experiment)) = template(&id) else {
-        return crate::not_found().await;
+        return published_page(&app, &id, &headers).await;
     };
     if published == templates::FOREMAN_ID {
         return Redirect::permanent(PATH).into_response();
@@ -449,13 +460,90 @@ fn detail_markup(detail: &agent_graph::Detail) -> Markup {
 }
 
 /// `/agent/{id}/graph.json`: a template's graph (`openagents.agent-graph.v1`).
-async fn graph_json(UrlPath(id): UrlPath<String>) -> Response {
+async fn graph_json(State(app): State<App>, UrlPath(id): UrlPath<String>) -> Response {
     let found = template(&id)
         .or_else(|| (id == "foreman").then(|| (templates::FOREMAN_ID, templates::foreman())));
-    let Some((published, experiment)) = found else {
+    if let Some((published, experiment)) = found {
+        return axum::Json(template_graph(published, &experiment)).into_response();
+    }
+    match crate::published_agents::owner::found(&app, &id).await {
+        Some(found) => axum::Json(published_graph(&found)).into_response(),
+        None => crate::not_found().await,
+    }
+}
+
+fn published_graph(found: &crate::published_agents::owner::Found) -> agent_graph::GraphSpec {
+    agent_graph::lab::of(
+        &found.newest.template,
+        &found.newest.id,
+        &agent_graph::lab::Notes::default(),
+    )
+}
+
+/// `/agent/{id}` for a published agent, and `/agent/{npub}` for its key,
+/// which moves to its published ID.
+async fn published_page(app: &App, id: &str, headers: &HeaderMap) -> Response {
+    if let Ok(key) = nostr::nip19::decode_npub(id) {
+        let hex: String = key.iter().map(|b| format!("{b:02x}")).collect();
+        return match crate::published_agents::owner::id_of_key(app, &hex).await {
+            Some(published) => Redirect::permanent(&format!("/agent/{published}")).into_response(),
+            None => crate::not_found().await,
+        };
+    }
+    let Some(found) = crate::published_agents::owner::found(app, id).await else {
         return crate::not_found().await;
     };
-    axum::Json(template_graph(published, &experiment)).into_response()
+    let graph = published_graph(&found);
+    let owner_name = match found.owner.as_ref() {
+        Some(owned) => crate::profiles::name_of_key(app, &owned.pubkey).await,
+        None => None,
+    };
+    let retired = found.owner.as_ref().is_some_and(|o| o.revoked);
+    let owner = html! {
+        @if let Some(owned) = found.owner.as_ref() {
+            section.oa-card aria-labelledby="agent-owner" {
+                (MarkdownRoot::new(html! {
+                    h2 id="agent-owner" { "Owner" }
+                    @if retired {
+                        p { "Its owner retired this agent." }
+                    }
+                    p {
+                        "Owned by "
+                        a href=(crate::profiles::href(&owned.pubkey, owner_name.as_deref())) {
+                            (owner_name.as_ref().map_or_else(
+                                || crate::profiles::npub(&owned.pubkey),
+                                |name| format!("@{name}"),
+                            ))
+                        }
+                    }
+                    @if let Some(agent) = &found.agent {
+                        p { "Its own Nostr key: " code { (crate::profiles::npub(agent)) } }
+                    }
+                }))
+            }
+        }
+    };
+    let path = format!("/agent/{id}");
+    let ui = UiPage::new(graph.title.clone())
+        .path(path)
+        .description(graph.description.clone());
+    let live = graph_build(app).is_some();
+    let content = html! {
+        (owner)
+        (generic_body(id, &graph, live))
+    };
+    let (true, Some(fonts)) = (live, graph_fonts(app)) else {
+        return ui.scriptless().content(content).respond(headers);
+    };
+    let mut response = ui
+        .head(html! { (graph_script(graph_build(app))) (fonts) })
+        .content(content)
+        .respond(headers);
+    response.headers_mut().insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static(GRAPH_POLICY),
+    );
+    response
 }
 
 async fn graph_file(

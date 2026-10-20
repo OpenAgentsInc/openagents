@@ -14,7 +14,6 @@ use std::path::{Path, PathBuf};
 /// Mounted here but answered by the upstream on purpose, by prefix, and
 /// why. Nothing else may be.
 const NOT_OWNED: &[(&str, &str)] = &[
-    ("/u/", "profiles: the previous server still draws them"),
     (
         "/mcp",
         "the keyed MCP server: the previous server answers it while it runs (docs/deployment/coder-serve-retirement.md)",

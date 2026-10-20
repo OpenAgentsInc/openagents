@@ -92,6 +92,10 @@ pub(crate) struct Screen {
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
     (
+        "/settings/profile",
+        "Public profile: its states need a relay and the account service's names, which its own tests drive",
+    ),
+    (
         "/gpui*",
         "the GPUI web chat: a canvas drawn in the browser, its build files, and its chats",
     ),

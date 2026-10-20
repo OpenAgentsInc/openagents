@@ -43,10 +43,24 @@ fn nip98(key: &RelaySigner, url: &str, challenge: &str, body: &[u8]) -> String {
 /// The site over an account service that signs people in with a key
 /// (`oa_auth::nostr`), accepting events for this site's origin.
 async fn key_world() -> World {
+    key_world_with(Vec::new()).await
+}
+
+/// [`key_world`] with the relays profiles read and publish on, and the
+/// account service's key and name routes.
+async fn key_world_with(profile_relays: Vec<String>) -> World {
     let cell: Arc<OnceLock<Router>> = Arc::default();
     let inner = cell.clone();
     let forward = move |request: Request<Body>| {
         let inner = inner.clone();
+        // A fresh request, so this router's path parameters don't reach
+        // the account service's.
+        let (parts, body) = request.into_parts();
+        let mut fresh = Request::builder().method(parts.method).uri(parts.uri);
+        for (name, value) in &parts.headers {
+            fresh = fresh.header(name, value);
+        }
+        let request = fresh.body(body).unwrap();
         async move {
             inner
                 .get()
@@ -59,8 +73,12 @@ async fn key_world() -> World {
     };
     let extra = Router::new()
         .route("/v1/sessions/nostr/challenge", any(forward.clone()))
+        .route("/v1/account/keys", any(forward.clone()))
+        .route("/v1/account/name", any(forward.clone()))
+        .route("/v1/names", any(forward.clone()))
+        .route("/v1/names/{name}", any(forward.clone()))
         .route("/v1/sessions/nostr", any(forward));
-    let world = world_with_extra_routes(true, None, None, Some(extra)).await;
+    let world = world_built_with(true, None, None, Some(extra), true, profile_relays).await;
     let auth =
         oa_auth::nostr::NostrAuth::open(&world.root.path().join("accounts"), &[ORIGIN.to_string()])
             .unwrap();
@@ -360,3 +378,5 @@ async fn a_scan_sign_in_starts_only_from_this_site() {
     assert_eq!(status, StatusCode::FORBIDDEN);
     assert!(browser.0.is_empty());
 }
+
+mod profiles;

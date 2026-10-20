@@ -38,6 +38,7 @@ mod apple_tests;
 pub mod commercial;
 pub mod deletion;
 pub mod identities;
+pub mod names;
 #[cfg(test)]
 mod identities_tests;
 pub mod nostr;
@@ -299,6 +300,9 @@ pub struct Store {
     /// Linked sign-in identities (GitHub profiles); empty books preserve old digests.
     #[serde(default, skip_serializing_if = "identities::Book::is_empty")]
     pub identities: identities::Book,
+    /// Claimed `name@openagents.com` names (#12254); empty books preserve old digests.
+    #[serde(default, skip_serializing_if = "names::Book::is_empty")]
+    pub names: names::Book,
     /// The digest over every field above.
     pub digest: String,
 }
@@ -573,6 +577,7 @@ impl Store {
         self.team_reports.validate(self)?;
         self.sso.validate(self)?;
         self.identities.validate(self)?;
+        self.names.validate()?;
         Ok(())
     }
 }
@@ -1136,6 +1141,7 @@ impl Accounts {
             team_reports: team_reports::Book::default(),
             sso: sso::Book::default(),
             identities: identities::Book::default(),
+            names: names::Book::default(),
             digest: String::new(),
         };
         store.seal();
@@ -2807,6 +2813,7 @@ mod tests {
             team_reports: team_reports::Book::default(),
             sso: sso::Book::default(),
             identities: identities::Book::default(),
+            names: names::Book::default(),
             digest: String::new(),
         };
         store.seal();

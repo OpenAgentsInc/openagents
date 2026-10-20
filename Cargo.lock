@@ -13224,6 +13224,7 @@ dependencies = [
  "markdown-stream",
  "maud",
  "nostr",
+ "nostr-transport",
  "oa-att",
  "oa-auth",
  "oa-connections",

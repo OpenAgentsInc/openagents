@@ -1,6 +1,7 @@
 //! The public profile at `/u/{login}`: what a person made public by signing
 //! in with GitHub, which is their login, display name, a link to their
-//! GitHub profile, and the month they joined. Nothing private (email, runs,
+//! GitHub profile, and the month they joined. When that account has a
+//! `name@openagents.com` name, the page moves to `/@{name}` (#12254). Nothing private (email, runs,
 //! balance, invite codes) is ever drawn. The private service also served a
 //! stored avatar; this site's policy loads images from its own origin only,
 //! and it stores none yet.
@@ -8,7 +9,7 @@
 use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
-use axum::response::Response;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use maud::html;
 use openagents_ui::actions::Alert;
@@ -41,6 +42,32 @@ async fn profile(
         return missing(&headers);
     }
     let path = format!("/u/{}", segment(&login));
+    if let Some(service) = app.config.cloud.as_ref()
+        && let Ok(answer) = service
+            .nostr_call(
+                reqwest::Method::GET,
+                &format!("/v1/names?github={login}"),
+                None,
+                None,
+            )
+            .await
+    {
+        if answer.status == 404 {
+            return missing(&headers);
+        }
+        if answer.status == 200 {
+            if let Some(name) = answer.body["name"].as_str() {
+                return axum::response::Redirect::permanent(&format!("/@{name}")).into_response();
+            }
+            let github = &answer.body["github"];
+            let profile = crate::backend::Profile {
+                login: github["login"].as_str().unwrap_or(&login).to_string(),
+                name: github["name"].as_str().map(str::to_string),
+                joined: joined(github["joined"].as_str().unwrap_or_default()),
+            };
+            return profile_page(&headers, path, &profile);
+        }
+    }
     let backend = &app.config.backend;
     if !backend.connected() {
         return UiPage::new(format!("@{login}"))
@@ -82,6 +109,35 @@ pub(crate) fn profile_page(
         .respond(headers)
 }
 
+/// "September 2026" from an RFC 3339 time.
+fn joined(stamp: &str) -> String {
+    const MONTHS: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
+    let year = stamp
+        .get(..4)
+        .filter(|y| y.bytes().all(|b| b.is_ascii_digit()));
+    let month = stamp
+        .get(5..7)
+        .and_then(|m| m.parse::<usize>().ok())
+        .and_then(|m| MONTHS.get(m.wrapping_sub(1)));
+    match (year, month) {
+        (Some(year), Some(month)) => format!("{month} {year}"),
+        _ => "a while ago".to_string(),
+    }
+}
+
 pub(crate) fn missing(headers: &HeaderMap) -> Response {
     problem(
         headers,
@@ -95,6 +151,12 @@ pub(crate) fn missing(headers: &HeaderMap) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn joined_reads_the_month() {
+        assert_eq!(joined("2026-09-03T10:00:00Z"), "September 2026");
+        assert_eq!(joined("nonsense"), "a while ago");
+    }
 
     #[test]
     fn only_github_logins_pass() {

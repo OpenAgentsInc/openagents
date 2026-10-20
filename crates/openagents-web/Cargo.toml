@@ -89,6 +89,8 @@ inference = { path = "../inference" }
 libc = "0.2"
 # An account's npub on a shared chat's preview picture (NIP-19).
 nostr = { path = "../nostr" }
+# Profile pages read kind 0 and kind 3 from relays (src/profiles, #12254).
+nostr-transport = { path = "../nostr-transport" }
 # /pylons' live field: NIP-PYLON beacons and receipts from the relay,
 # verified and projected (pylon::field). No broker: it links SQLite.
 pylon = { path = "../pylon", default-features = false }

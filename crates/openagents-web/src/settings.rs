@@ -495,6 +495,15 @@ pub(crate) fn settings_content(
                         span class="oa-settings-label" { (name) }
                     }
                 }
+                div class="oa-settings-row" {
+                    div class="oa-settings-text" {
+                        span class="oa-settings-label" { "Public profile" }
+                        span class="oa-settings-hint" {
+                            "Your name@openagents.com name and the profile people see."
+                        }
+                    }
+                    div class="oa-settings-control" { (action_link("Manage", crate::profiles::SETTINGS_PAGE)) }
+                }
             }
             section class="oa-settings-group" aria-labelledby="settings-appearance" {
                 h2 #settings-appearance { "Appearance" }

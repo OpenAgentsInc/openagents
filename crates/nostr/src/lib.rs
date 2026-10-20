@@ -13,6 +13,7 @@
 pub mod activity_summary;
 pub mod agent_persona;
 pub mod agent_profile;
+pub mod agent_public;
 pub mod att;
 pub mod automation;
 pub mod block_lane;
@@ -36,6 +37,7 @@ pub mod kb;
 pub mod kinds;
 pub mod lane;
 pub mod live;
+pub mod metadata;
 pub mod market_contracts;
 pub mod negentropy;
 pub mod nip04;

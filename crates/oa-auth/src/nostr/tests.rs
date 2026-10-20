@@ -744,3 +744,46 @@ fn mismatched_or_gate_refused_proofs_have_no_account_side_effects() {
         );
     }
 }
+
+#[test]
+fn a_name_is_claimed_looked_up_and_released() {
+    let (_dir, auth) = world();
+    let (alice, bob) = (signer(1), signer(2));
+    let a = sign_in(&auth, &alice).body["account"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let b = sign_in(&auth, &bob).body["account"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(auth.name(&a).body["name"], Value::Null);
+    let claimed = auth.claim_name(&a, br#"{"name":"Alice-W"}"#);
+    assert_eq!(claimed.status, 200, "{}", claimed.body);
+    assert_eq!(claimed.body["name"], "alice-w");
+    assert_eq!(claimed.body["pubkey"], alice.pubkey());
+    assert_eq!(auth.name(&a).body["name"], "alice-w");
+
+    let taken = auth.claim_name(&b, br#"{"name":"alice-w"}"#);
+    assert_eq!(taken.status, 409);
+    assert_eq!(taken.body["error"]["code"], "name_taken");
+    let reserved = auth.claim_name(&b, br#"{"name":"admin"}"#);
+    assert_eq!(reserved.body["error"]["code"], "name_reserved");
+    let theirs = auth.claim_name(
+        &b,
+        format!(r#"{{"name":"bobby","pubkey":"{}"}}"#, alice.pubkey()).as_bytes(),
+    );
+    assert_eq!(theirs.body["error"]["code"], "key_not_yours");
+
+    let found = auth.lookup_name("ALICE-W");
+    assert_eq!(found.status, 200);
+    assert_eq!(found.body["pubkey"], alice.pubkey());
+    let by_key = auth.lookup_query(Some(&format!("pubkey={}", alice.pubkey())));
+    assert_eq!(by_key.body["name"], "alice-w");
+    assert_eq!(auth.lookup_name("nobody").status, 404);
+    assert_eq!(auth.lookup_query(Some("github=someone")).status, 404);
+    assert_eq!(auth.lookup_query(None).status, 400);
+
+    assert_eq!(auth.release_name(&a).body["released"], "alice-w");
+    assert_eq!(auth.lookup_name("alice-w").status, 404);
+}

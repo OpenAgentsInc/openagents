@@ -98,6 +98,8 @@ impl Accounts {
             }
             store.identities.github.retain(|_, i| i.account != account);
             store.identities.apple.retain(|_, i| i.account != account);
+            store.names.names.retain(|_, c| c.account != account);
+            store.names.changes.remove(account);
             let record = store.accounts.get_mut(account).unwrap();
             record.principals.clear();
             record.label = DELETED_LABEL.to_string();
