@@ -31,6 +31,7 @@ use crate::route;
 actions!(
     openagents_settings,
     [
+        CommandPalette,
         ToggleSidebar,
         ToggleFiles,
         NewSession,
@@ -51,7 +52,7 @@ pub(super) struct Settings {
     /// The new-thread background image, read from IndexedDB.
     pub background: Option<Arc<Image>>,
     system_dark: bool,
-    mac: bool,
+    pub(super) mac: bool,
     /// The wide window's sidebar is hidden (Toggle left sidebar).
     pub sidebar_hidden: bool,
     _tasks: Vec<Task<()>>,
@@ -235,7 +236,9 @@ impl ChatApp {
         cx.clear_key_bindings();
         composer::bind_keys(cx);
         selection::bind_keys(cx);
+        super::palette::bind_keys(cx);
         cx.bind_keys([
+            KeyBinding::new(&bind(Shortcut::CommandPalette), CommandPalette, None),
             KeyBinding::new(&bind(Shortcut::ToggleSidebar), ToggleSidebar, None),
             KeyBinding::new(&bind(Shortcut::ToggleFiles), ToggleFiles, None),
             KeyBinding::new(&bind(Shortcut::NewSession), NewSession, None),
@@ -251,7 +254,10 @@ impl ChatApp {
         root: gpui::Stateful<gpui::Div>,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
-        root.on_action(cx.listener(|this, _: &ToggleSidebar, window, cx| {
+        root.on_action(cx.listener(|this, _: &CommandPalette, window, cx| {
+            this.toggle_palette(window, cx);
+        }))
+        .on_action(cx.listener(|this, _: &ToggleSidebar, window, cx| {
             if window.viewport_size().width > px(820.) {
                 this.settings.sidebar_hidden = !this.settings.sidebar_hidden;
             } else {
