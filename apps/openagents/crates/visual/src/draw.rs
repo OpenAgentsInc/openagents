@@ -252,7 +252,10 @@ impl UserData for Graphics {
             g.read_pointer.set(true);
             match g.pointer {
                 Some(p) => {
+                    #[cfg(not(any(target_family = "wasm", feature = "portable-runtime")))]
                     let t = lua.create_table()?;
+                    #[cfg(any(target_family = "wasm", feature = "portable-runtime"))]
+                    let t = lua.create_table();
                     t.set("x", p.x)?;
                     t.set("y", p.y)?;
                     t.set("down", p.down)?;
