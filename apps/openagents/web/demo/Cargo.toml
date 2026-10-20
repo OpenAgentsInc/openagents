@@ -40,4 +40,4 @@ js-sys = "0.3"
 
 # The imported fixture tests validate their Luau visual scripts natively.
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
-openagents-visual = { path = "../../crates/visual" }
+openagents-visual = { path = "../../crates/visual", features = ["portable-runtime"] }
