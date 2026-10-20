@@ -13,6 +13,11 @@ license = "MIT"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+default = ["webgpu"]
+webgpu = ["openagents-gpui-web/webgpu"]
+webgl = ["openagents-gpui-web/webgl"]
+
 [dependencies]
 gpui.workspace = true
 anyhow.workspace = true

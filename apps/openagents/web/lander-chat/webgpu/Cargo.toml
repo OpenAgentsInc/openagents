@@ -23,7 +23,7 @@ license = "MIT"
 crate-type = ["cdylib"]
 
 [dependencies]
-openagents-web-lander-chat = { path = "..", default-features = false }
+openagents-web-lander-chat = { path = "..", default-features = false, features = ["webgpu"] }
 wasm-bindgen = "=0.2.128"
 
 [patch.crates-io]

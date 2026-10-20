@@ -72,15 +72,8 @@ for tool in wasm-opt brotli python3; do
   command -v "$tool" >/dev/null 2>&1 || { echo "$tool is not installed" >&2; exit 69; }
 done
 
-cargo build --locked --manifest-path "$web/Cargo.toml" -p "$package" \
-  --release --target "$target"
-
-mkdir -p "$out"
-wasm-bindgen --target web --no-typescript --out-dir "$out" \
-  "$target_dir/$target/release/$name.wasm"
-wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
-    --enable-sign-ext --enable-mutable-globals --enable-reference-types \
-    "$out/${name}_bg.wasm" -o "$out/${name}_bg.wasm"
+. "$app/scripts/build-web-renderers.sh"
+build_renderers "$package" "$name" "$out"
 if [ "$app_name" = demo ]; then
   "$app/scripts/build-web-visuals.sh" "$out/visuals"
 fi
@@ -88,7 +81,7 @@ cp "$crate/start.js" "$out/start.js"
 if [ "$app_name" = demo ]; then
   cp "$crate/assets/fonts/"*.otf "$crate/assets/fonts/"*.ttf "$out/"
 fi
-python3 "$app/scripts/package-web-build.py" "$out" "$name"
+python3 "$app/scripts/package-web-build.py" "$out" "$name" "${name}_webgl"
 if [ "$app_name" = agent-graph ]; then
   first="$out/first-frame"
   mkdir -p "$first"

@@ -1,6 +1,6 @@
 # GPUI's browser platform: the canvas is the window, requestAnimationFrame is
-# the frame loop, DOM events are input, wgpu draws through WebGPU or WebGL2,
-# and cosmic-text shapes with fonts the app bundles. Ported from zui's
+# the frame loop, DOM events are input, and separate WebGPU and WebGL2
+# builds paint the scene. Text uses the browser or bundled fonts. Ported from zui's
 # `gpui_web` (Apache-2.0, see LICENSE-APACHE and NOTICE); the changes are
 # listed in `apps/openagents/docs/downstream-patches.md`.
 [package]
@@ -11,7 +11,10 @@ edition.workspace = true
 license = "Apache-2.0"
 
 [features]
-default = []
+default = ["webgpu"]
+webgpu = ["dep:gpui_wgpu"]
+# The fallback has no wgpu dependency and uses the browser text system.
+webgl = ["browser-text", "dep:openagents-first-frame-paint", "dep:etagere", "dep:serde_json"]
 # Background threads over SharedArrayBuffer. Needs a nightly compiler with
 # wasm atomics and cross-origin isolation headers; off by default.
 multithreaded = ["dep:wasm_thread"]
@@ -31,7 +34,7 @@ path = "src/gpui_web.rs"
 gpui.workspace = true
 image = { version = "0.25", default-features = false }
 parking_lot = { version = "0.12.1", features = ["nightly"] }
-gpui_wgpu.workspace = true
+gpui_wgpu = { workspace = true, optional = true }
 http_client.workspace = true
 anyhow.workspace = true
 futures.workspace = true
@@ -49,7 +52,19 @@ wasm_thread = { version = "0.3", features = ["es_modules"], optional = true }
 openagents-first-frame = { workspace = true, optional = true }
 unicode-segmentation = { version = "1.10", optional = true }
 openagents-first-frame-record = { workspace = true, optional = true }
+openagents-first-frame-paint = { path = "../first-frame-paint", optional = true, default-features = false }
+etagere = { version = "0.2", optional = true }
+serde_json = { version = "1", optional = true }
 web-sys = { version = "0.3", features = [
+    "WebGl2RenderingContext",
+    "WebGlBuffer",
+    "WebGlContextAttributes",
+    "WebGlFramebuffer",
+    "WebGlProgram",
+    "WebGlRenderbuffer",
+    "WebGlShader",
+    "WebGlTexture",
+    "WebGlUniformLocation",
     "Blob",
     "CanvasRenderingContext2d",
     "ImageBitmap",
@@ -106,3 +121,8 @@ web-sys = { version = "0.3", features = [
 
 [target.'cfg(target_family = "wasm")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.78"
+
+[[example]]
+name = "renderer-fixture"
+required-features = ["webgl"]
+crate-type = ["cdylib"]

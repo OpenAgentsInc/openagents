@@ -49,7 +49,7 @@ publish = false
 gpui = { git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" }
 gpui_wgpu = { git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" }
 http_client = { git = "https://github.com/zeronsh/zui", rev = "361ff20b919fdfb80199ee6d9aed725300cb7d54" }
-openagents-gpui-web = { path = "gpui-web" }
+openagents-gpui-web = { path = "gpui-web", default-features = false }
 openagents-web-chat-view = { path = "chat-view" }
 # The desktop's own portable views (#12216).
 openagents-chat-view = { path = "../crates/chat-view" }

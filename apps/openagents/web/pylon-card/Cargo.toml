@@ -3,7 +3,7 @@
 # drawn with the shared GPUI chat views' styles in the page's card box.
 # The page hands it the pylon (`show`) each time it changes. Built twice by
 # `scripts/build-web-pylon-card.sh`: WebGPU-only (the `webgpu/` workspace
-# beside this crate) and with wgpu's WebGL2 fallback (this workspace).
+# beside this crate) and with the WebGL2 scene renderer (this workspace).
 [package]
 name = "openagents-web-pylon-card"
 version.workspace = true
@@ -15,7 +15,10 @@ license = "MIT"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["export"]
+webgpu = ["openagents-gpui-web/webgpu"]
+webgl = ["openagents-gpui-web/webgl"]
+
+default = ["export", "webgpu"]
 # Exports `mount` and `show` to the page. The WebGPU-only build (`webgpu/`)
 # links this crate without it and exports its own.
 export = []

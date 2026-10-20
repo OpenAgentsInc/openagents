@@ -72,10 +72,29 @@ class PackageTest(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "exceeds"):
                     packager.package(directory, "app", "pane")
 
-    def test_only_the_chat_module_has_the_larger_cap(self):
-        self.assertEqual(packager.budget("openagents_web_chat_bg.wasm"), 1_750_000)
-        for module in ("openagents_web_files_bg.wasm", "openagents_web_demo_bg.wasm", "app_bg.wasm"):
-            self.assertEqual(packager.budget(module), 1_500_000)
+    def test_renderer_selection_and_both_modules_have_content_hashes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            self.fixture(directory)
+            (directory / "app_webgl_bg.wasm").write_bytes(b"\0asm\x01\0\0\0")
+            (directory / "app_webgl.js").write_text('new URL("app_webgl_bg.wasm", import.meta.url)')
+            (directory / "renderer.js").write_text('export const renderer = "webgl"')
+            (directory / "start.js").write_text(
+                'import {renderer} from "./renderer.js"; '
+                'load("./app.js", "./app_bg.wasm", "./app_webgl.js", "./app_webgl_bg.wasm")'
+            )
+            packager.package(directory, "app", "app_webgl")
+            assets = json.loads((directory / "assets.json").read_text())
+            source = (directory / assets["start.js"]).read_text()
+            for name in ("renderer.js", "app.js", "app_bg.wasm", "app_webgl.js", "app_webgl_bg.wasm"):
+                self.assertIn(assets[name], source)
+                self.assertIn(hashlib.sha256((directory / name).read_bytes()).hexdigest(), assets[name])
+
+    def test_renderer_variants_keep_the_release_cap(self):
+        for module in ("openagents_web_chat_bg.wasm", "openagents_web_chat_webgl_bg.wasm",
+                       "openagents_web_demo_bg.wasm", "openagents_web_agent_graph_webgl_bg.wasm"):
+            self.assertEqual(packager.budget(module),
+                             1_750_000 if "web_chat_" in module else 1_500_000)
 
     def test_a_stale_compressed_copy_cannot_hide_an_over_budget_module(self):
         with tempfile.TemporaryDirectory() as tmp:

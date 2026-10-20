@@ -6,7 +6,7 @@
 // It also runs the graph's toolbar: full screen (the browser's API, or
 // filling the window where there is none, as on iPhone), and Copy JSON,
 // which copies the agent's whole definition. Download JSON is a plain link.
-import init, { mount } from "./openagents_web_agent_graph.js";
+import { loadRenderer } from "./renderer.js";
 
 var box = document.getElementById("gpui-mount");
 
@@ -164,18 +164,14 @@ function tools() {
   }
 }
 
-// The module draws with WebGPU only (#12237): without it, don't download
-// it, and keep the page's map.
-if (box && !navigator.gpu) {
-  box.classList.remove("is-live");
-} else if (box) {
+if (box) {
   tools();
   var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_agent_graph_bg.wasm", import.meta.url))) }), graph(), fonts()])
+  Promise.all([loadRenderer(new URL("./openagents_web_agent_graph.js", import.meta.url), new URL("./openagents_web_agent_graph_bg.wasm", import.meta.url), new URL("./openagents_web_agent_graph_webgl.js", import.meta.url), new URL("./openagents_web_agent_graph_webgl_bg.wasm", import.meta.url)), graph(), fonts()])
     .then(function (ready) {
       box.classList.add("is-live");
       var chat = document.getElementById("agent-graph-chat");
-      mount(ready[1], still, chat ? chat.textContent : undefined, ready[2]);
+      ready[0].mount(ready[1], still, chat ? chat.textContent : undefined, ready[2]);
     })
     .catch(function (error) {
       box.classList.remove("is-live");

@@ -241,8 +241,6 @@ fn compressed(headers: &HeaderMap, html: String) -> Response {
 /// The start script, which loads the module and hands it the graph.
 fn graph_script(build: Option<&std::path::Path>) -> Markup {
     html! {
-        link rel="modulepreload" href=(super::gpui_build::url(build, GRAPH_ASSETS, GRAPH_GLUE));
-        link rel="preload" as="fetch" crossorigin="anonymous" href=(super::gpui_build::url(build, GRAPH_ASSETS, GRAPH_WASM));
         script type="module" src=(super::gpui_build::url(build, GRAPH_ASSETS, GRAPH_START)) {}
     }
 }
@@ -1204,9 +1202,8 @@ mod tests {
         assert_eq!(back, graph);
         let script = graph_script(None).into_string();
         assert!(script.contains("src=\"/agent-graph/start.js\""));
-        assert!(script.contains(
-            "rel=\"preload\" as=\"fetch\" crossorigin=\"anonymous\" href=\"/agent-graph/openagents_web_agent_graph_bg.wasm\""
-        ));
+        assert!(!script.contains("rel=\"modulepreload\""));
+        assert!(!script.contains("as=\"fetch\""));
         assert!(GRAPH_POLICY.contains("script-src 'self' 'wasm-unsafe-eval';"));
         assert!(!GRAPH_POLICY.contains("unsafe-inline"));
         crate::copy_guard::assert_plain(PATH, &html);

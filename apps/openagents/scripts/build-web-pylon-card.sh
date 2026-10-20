@@ -4,7 +4,7 @@
 #
 #   OUTDIR/webgpu/   WebGPU only (web/pylon-card/webgpu): what a browser with
 #                    WebGPU loads
-#   OUTDIR/webgl/    with wgpu's WebGL2 fallback: for a browser without it
+#   OUTDIR/webgl/    the WebGL2 scene renderer: for a browser without it
 #
 # Each holds `openagents_web_pylon_card.js` (wasm-bindgen's `--target web` glue),
 # `openagents_web_pylon_card_bg.wasm`, and brotli and gzip copies of both. The
@@ -80,7 +80,7 @@ awk -v from="$opaque_only" '
 ' "$source_dir/src/backend/webgpu.rs" > "$backend"
 
 build() { # MANIFEST PACKAGE NAME DEST
-  cargo build --locked --manifest-path "$1" -p "$2" --release --target "$target"
+  cargo build --locked --manifest-path "$1" -p "$2" --release --target "$target" ${renderer_features[@]+"${renderer_features[@]}"}
   mkdir -p "$4"
   wasm-bindgen --target web --no-typescript --out-name openagents_web_pylon_card --out-dir "$4" \
     "$target_dir/$target/release/$3.wasm"
@@ -95,5 +95,6 @@ build() { # MANIFEST PACKAGE NAME DEST
   done
 }
 build "$card/webgpu/Cargo.toml" openagents-web-pylon-card-webgpu openagents_web_pylon_card_webgpu "$out/webgpu"
+renderer_features=(--no-default-features --features webgl,export)
 build "$web/Cargo.toml" openagents-web-pylon-card openagents_web_pylon_card "$out/webgl"
 ls -l "$out/webgpu" "$out/webgl"

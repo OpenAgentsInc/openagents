@@ -1,8 +1,9 @@
 window.__oaVisualUrl = new URL("./visuals/start.js", import.meta.url).href;
 // Starts the GPUI web chat (crates/openagents-web/src/pages/gpui_chat.rs).
-// It needs WebGPU; without it, the page goes to the regular
-// chat. Otherwise the module and the fonts download together,
+// It selects WebGPU or WebGL2 before fetching the module.
+// The module and the fonts download together,
 // and the canvas replaces the page's outline once the app has started.
+import { loadRenderer } from "./renderer.js";
 var chatModule = null;
 function gpuiRecordedFrame() { return chatModule && chatModule.gpuiRecordedFrame(); }
 function chatShortcut(ctrl, alt, shift, meta, key) {
@@ -22,21 +23,6 @@ const FONTS = [
   "GeistMono-SemiBold.ttf",
 ];
 
-// The module draws with WebGPU only: GPUI's renderer needs storage
-// buffers, which WebGL2 doesn't have (#12237).
-// A browser can name WebGPU and still have no adapter for it (a headless
-// or blocklisted GPU), so the check asks for one.
-function supported() {
-  if (!navigator.gpu) {
-    return Promise.resolve(false);
-  }
-  return navigator.gpu.requestAdapter().then(function (adapter) {
-    return !!adapter;
-  }, function () {
-    return false;
-  });
-}
-
 // The fonts the chat fetched, which the file panel draws with too.
 var loadedFonts = null;
 
@@ -47,7 +33,7 @@ function say(text) {
   }
 }
 
-// Without WebGPU the HTML chat takes over: the page goes to
+// If neither renderer starts, the HTML chat takes over: the page goes to
 // its address (the note's link), and shows the note if it can't.
 function unsupported() {
   var status = document.getElementById("gpui-status");
@@ -158,16 +144,13 @@ function start() {
     return;
   }
   openAddressedPage();
-  var initialized = import("./openagents_web_chat.js").then(function (module) {
-    chatModule = module;
-    return module.default({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) });
-  });
-  Promise.all([initialized, fonts])
+  Promise.all([loadRenderer(new URL("./openagents_web_chat.js", import.meta.url), new URL("./openagents_web_chat_bg.wasm", import.meta.url), new URL("./openagents_web_chat_webgl.js", import.meta.url), new URL("./openagents_web_chat_webgl_bg.wasm", import.meta.url)), fonts])
     .then(function (loaded) {
+      chatModule = loaded[0];
       chatModule.launch(loaded[1]);
     })
     .catch(function (error) {
-      say("The chat couldn't start. Reload the page to try again.");
+      unsupported();
       console.error(error);
     });
 }
@@ -279,13 +262,11 @@ function openFiles() {
   filesBox.setAttribute("aria-label", "Files");
   filesBox.style.cssText = "position:fixed;top:8px;right:8px;bottom:8px;width:min(560px,46vw);z-index:5;border-radius:14px;overflow:hidden;";
   document.body.appendChild(filesBox);
-  var glue = new URL("./openagents_web_files.js", import.meta.url);
-  Promise.all([import(glue.href), loadedFonts])
+  var moduleLoading = loadRenderer(new URL("./openagents_web_files.js", import.meta.url), new URL("./openagents_web_files_bg.wasm", import.meta.url), new URL("./openagents_web_files_webgl.js", import.meta.url), new URL("./openagents_web_files_webgl_bg.wasm", import.meta.url));
+  Promise.all([moduleLoading, loadedFonts])
     .then(function (loaded) {
       var module = loaded[0];
-      return module.default({
-        module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_files_bg.wasm", import.meta.url))),
-      }).then(function () {
+      return Promise.resolve().then(function () {
         files = module;
         var parts = hostParts();
         mountIn(filesBox, function () {
@@ -491,13 +472,11 @@ function openWork(target) {
   workBox.setAttribute("aria-label", "Work");
   workBox.style.cssText = "position:fixed;top:8px;right:8px;bottom:8px;width:min(560px,46vw);z-index:6;border-radius:14px;overflow:hidden;";
   document.body.appendChild(workBox);
-  var glue = new URL("./openagents_web_work.js", import.meta.url);
-  Promise.all([import(glue.href), loadedFonts])
+  var moduleLoading = loadRenderer(new URL("./openagents_web_work.js", import.meta.url), new URL("./openagents_web_work_bg.wasm", import.meta.url), new URL("./openagents_web_work_webgl.js", import.meta.url), new URL("./openagents_web_work_webgl_bg.wasm", import.meta.url));
+  Promise.all([moduleLoading, loadedFonts])
     .then(function (loaded) {
       var module = loaded[0];
-      return module.default({
-        module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_work_bg.wasm", import.meta.url))),
-      }).then(function () {
+      return Promise.resolve().then(function () {
         workModule = module;
         mountIn(workBox, function () {
           module.mount(loaded[1], target || undefined);
@@ -584,13 +563,11 @@ function openSettings(event) {
     settingsBox.style.zIndex = "100";
   }
   document.body.appendChild(settingsBox);
-  var glue = new URL("./openagents_web_settings.js", import.meta.url);
-  Promise.all([import(glue.href), loadedFonts])
+  var moduleLoading = loadRenderer(new URL("./openagents_web_settings.js", import.meta.url), new URL("./openagents_web_settings_bg.wasm", import.meta.url), new URL("./openagents_web_settings_webgl.js", import.meta.url), new URL("./openagents_web_settings_webgl_bg.wasm", import.meta.url));
+  Promise.all([moduleLoading, loadedFonts])
     .then(function (loaded) {
       var module = loaded[0];
-      return module.default({
-        module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_settings_bg.wasm", import.meta.url))),
-      }).then(function () {
+      return Promise.resolve().then(function () {
         settings = module;
         var wanted = settingsWanted;
         mountIn(settingsBox, function () {
@@ -612,15 +589,15 @@ window.addEventListener("oa-settings-open", openSettings);
 // path). Its box covers the chat; its Back to chat (`oa-page-close`) hides
 // the box, and moving within the page (`oa-page-path`) keeps the address.
 var PAGES = {
-  claude: ["./openagents_web_claude.js", "./openagents_web_claude_bg.wasm"],
-  data: ["./openagents_web_data.js", "./openagents_web_data_bg.wasm"],
-  traces: ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm"],
-  agents: ["./openagents_web_agents.js", "./openagents_web_agents_bg.wasm"],
-  projects: ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm"],
-  "agent-lab": ["./openagents_web_agent_lab.js", "./openagents_web_agent_lab_bg.wasm"],
-  cad: ["./openagents_web_cad.js", "./openagents_web_cad_bg.wasm"],
-  labs: ["./openagents_web_lab.js", "./openagents_web_lab_bg.wasm"],
-  voice: ["./openagents_web_voice.js", "./openagents_web_voice_bg.wasm"],
+  "claude": ["./openagents_web_claude.js", "./openagents_web_claude_bg.wasm", "./openagents_web_claude_webgl.js", "./openagents_web_claude_webgl_bg.wasm"],
+  "data": ["./openagents_web_data.js", "./openagents_web_data_bg.wasm", "./openagents_web_data_webgl.js", "./openagents_web_data_webgl_bg.wasm"],
+  "traces": ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm", "./openagents_web_traces_webgl.js", "./openagents_web_traces_webgl_bg.wasm"],
+  "agents": ["./openagents_web_agents.js", "./openagents_web_agents_bg.wasm", "./openagents_web_agents_webgl.js", "./openagents_web_agents_webgl_bg.wasm"],
+  "projects": ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm", "./openagents_web_projects_webgl.js", "./openagents_web_projects_webgl_bg.wasm"],
+  "agent-lab": ["./openagents_web_agent_lab.js", "./openagents_web_agent_lab_bg.wasm", "./openagents_web_agent_lab_webgl.js", "./openagents_web_agent_lab_webgl_bg.wasm"],
+  "cad": ["./openagents_web_cad.js", "./openagents_web_cad_bg.wasm", "./openagents_web_cad_webgl.js", "./openagents_web_cad_webgl_bg.wasm"],
+  "labs": ["./openagents_web_lab.js", "./openagents_web_lab_bg.wasm", "./openagents_web_lab_webgl.js", "./openagents_web_lab_webgl_bg.wasm"],
+  "voice": ["./openagents_web_voice.js", "./openagents_web_voice_bg.wasm", "./openagents_web_voice_webgl.js", "./openagents_web_voice_webgl_bg.wasm"],
 };
 // Pages a reload shouldn't reopen: a call starts only from its button.
 var UNADDRESSED = { voice: true };
@@ -665,12 +642,10 @@ function openPage(path) {
   if (name === "claude" || name === "data") { box.style.zIndex = "100"; }
   document.body.appendChild(box);
   pageBoxes[name] = box;
-  Promise.all([import(new URL(files[0], import.meta.url).href), loadedFonts])
+  Promise.all([loadRenderer(new URL(files[0], import.meta.url), new URL(files[1], import.meta.url), new URL(files[2], import.meta.url), new URL(files[3], import.meta.url)), loadedFonts])
     .then(function (loaded) {
       var module = loaded[0];
-      return module.default({
-        module_or_path: WebAssembly.compileStreaming(fetch(new URL(files[1], import.meta.url))),
-      }).then(function () {
+      return Promise.resolve().then(function () {
         pageModules[name] = module;
         mountIn(box, function () {
           module.mount(loaded[1], rest);
@@ -720,10 +695,4 @@ window.addEventListener("oa-settings-hide", function () {
   }
 });
 
-supported().then(function (ok) {
-  if (ok) {
-    start();
-  } else {
-    unsupported();
-  }
-});
+start();

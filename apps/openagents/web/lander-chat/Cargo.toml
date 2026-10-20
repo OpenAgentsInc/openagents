@@ -3,7 +3,7 @@
 # shared GPUI chat views and answered by the site's chat (the same chat API
 # the apps and /gpui use, signed in by the site's cookie). Built twice by
 # `scripts/build-web-lander-chat.sh`: WebGPU-only (the `webgpu/` workspace
-# beside this crate) and with wgpu's WebGL2 fallback (this workspace).
+# beside this crate) and with the WebGL2 scene renderer (this workspace).
 [package]
 name = "openagents-web-lander-chat"
 version.workspace = true
@@ -15,7 +15,10 @@ license = "MIT"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["export"]
+webgpu = ["openagents-gpui-web/webgpu"]
+webgl = ["openagents-gpui-web/webgl"]
+
+default = ["export", "webgpu"]
 # Exports `mount` to the page. The WebGPU-only build (`webgpu/`) links this
 # crate without it and exports its own.
 export = []

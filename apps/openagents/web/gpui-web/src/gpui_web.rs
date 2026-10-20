@@ -11,7 +11,11 @@ mod platform;
 mod ready;
 #[cfg(feature = "browser-text")]
 mod text;
+#[cfg(feature = "webgl")]
+mod webgl;
 mod window;
+#[cfg(all(feature = "webgl", feature = "webgpu"))]
+compile_error!("choose either webgpu or webgl, not both");
 
 pub use dispatcher::WebDispatcher;
 pub use display::WebDisplay;

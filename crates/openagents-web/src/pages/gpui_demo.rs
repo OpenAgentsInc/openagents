@@ -71,11 +71,8 @@ pub(crate) fn build(app: &App) -> Option<&Path> {
 /// font files the start script hands to the module.
 fn body(fonts: &str, build: Option<&Path>) -> String {
     let start = super::gpui_build::url(build, GPUI_DEMO_PATH, GPUI_DEMO_START);
-    let glue = super::gpui_build::url(build, GPUI_DEMO_PATH, GPUI_DEMO_GLUE);
-    let wasm = super::gpui_build::url(build, GPUI_DEMO_PATH, GPUI_DEMO_WASM);
     format!(
-        "<link rel=\"modulepreload\" href=\"{glue}\">\
-<link rel=\"preload\" as=\"fetch\" crossorigin=\"anonymous\" href=\"{wasm}\">{fonts}<h1 class=\"unseen\">{TITLE}</h1>\
+        "{fonts}<h1 class=\"unseen\">{TITLE}</h1>\
 <p class=\"glade-status\" id=\"gpui-status\" aria-live=\"polite\">Loading\u{2026}</p>\
 <noscript><p class=\"glade-status\">Turn on JavaScript to see the demo.</p></noscript>\
 <script type=\"module\" src=\"{start}\"></script>"
@@ -166,9 +163,8 @@ mod tests {
     fn the_page_loads_the_start_script_from_the_build() {
         let html = body("<link data-gpui-font=\"Geist.ttf\">", None);
         assert!(html.contains("src=\"/demo/gpui/start.js\""));
-        assert!(html.contains(
-            "as=\"fetch\" crossorigin=\"anonymous\" href=\"/demo/gpui/openagents_web_demo_bg.wasm\""
-        ));
+        assert!(!html.contains("rel=\"modulepreload\""));
+        assert!(!html.contains("as=\"fetch\""));
         assert!(html.contains("id=\"gpui-status\""));
     }
 

@@ -16,7 +16,7 @@ license = "MIT"
 crate-type = ["cdylib"]
 
 [dependencies]
-openagents-web-pylon-card = { path = "..", default-features = false }
+openagents-web-pylon-card = { path = "..", default-features = false, features = ["webgpu"] }
 wasm-bindgen = "=0.2.128"
 
 [patch.crates-io]

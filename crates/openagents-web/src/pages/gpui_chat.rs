@@ -8,7 +8,7 @@
 //! same chat API as the phone, using the site's cookie and CSRF value.
 //!
 //! The page paints a plain HTML outline of the chat list first, then its
-//! start script checks for WebGPU, fetches the module and the
+//! start script selects WebGPU or WebGL2, fetches that module and the
 //! fonts together, and swaps the outline for the canvas. Without either
 //! graphics API it says the chat needs a newer browser and links to the
 //! regular chat. `apps/openagents/scripts/build-web-chat.sh DIR` writes the
@@ -586,8 +586,6 @@ fn shell(page: &Shell<'_>) -> Markup {
                 link rel="stylesheet" href=(SHELL_CSS_PATH);
                 (PreEscaped(crate::theme::script_tags()))
                 (crate::chat_html::fragment_head())
-                link rel="modulepreload" href=(super::gpui_build::url(build, BUILD_PATH, GPUI_CHAT_GLUE));
-                link rel="preload" as="fetch" crossorigin="anonymous" href=(super::gpui_build::url(build, BUILD_PATH, GPUI_CHAT_WASM));
                 @if let Some(fonts) = fonts { (fonts) }
             }
             body {
@@ -806,7 +804,8 @@ mod tests {
         })
         .into_string();
         assert!(html.contains("src=\"/gpui/build/start.js\""));
-        assert!(html.contains("rel=\"modulepreload\" href=\"/gpui/build/openagents_web_chat.js\""));
+        assert!(!html.contains("rel=\"modulepreload\""));
+        assert!(!html.contains("as=\"fetch\""));
         assert!(html.contains("name=\"openagents-csrf\" content=\"abc123\""));
         assert!(html.contains("name=\"openagents-features\" content=\"wallet,earn,"));
         assert!(html.contains("name=\"openagents-chat-base\" content=\"/gpui\""));
@@ -996,13 +995,13 @@ mod tests {
     }
 
     #[test]
-    fn the_preload_and_loader_use_the_same_hashed_module() {
+    fn the_shell_loads_the_hashed_start_script_without_preloading_a_backend() {
         let dir = tempfile::tempdir().unwrap();
-        let hashed = format!("openagents_web_chat_bg.{}.wasm", "a".repeat(64));
+        let hashed = format!("start.{}.js", "a".repeat(64));
         std::fs::write(
             dir.path().join("assets.json"),
             serde_json::to_vec(&std::collections::HashMap::from([(
-                GPUI_CHAT_WASM,
+                GPUI_CHAT_START,
                 &hashed,
             )]))
             .unwrap(),
@@ -1022,8 +1021,9 @@ mod tests {
             features: crate::features::Features::all(),
         })
         .into_string();
-        assert!(html.contains(&format!("href=\"{BUILD_PATH}/{hashed}\"")));
-        assert!(!html.contains(&format!("href=\"{BUILD_PATH}/{GPUI_CHAT_WASM}\"")));
+        assert!(html.contains(&format!("src=\"{BUILD_PATH}/{hashed}\"")));
+        assert!(!html.contains("rel=\"modulepreload\""));
+        assert!(!html.contains("as=\"fetch\""));
     }
 
     #[test]

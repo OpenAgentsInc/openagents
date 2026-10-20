@@ -10,6 +10,7 @@ use gpui::{
     PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem, PlatformWindow, Task,
     ThermalState, WindowAppearance, WindowKind, WindowParams, popup::PopupNotSupportedError,
 };
+#[cfg(not(feature = "webgl"))]
 use gpui_wgpu::WgpuContext;
 use std::{
     borrow::Cow,
@@ -52,6 +53,7 @@ pub struct WebPlatform {
     active_window: RefCell<Option<AnyWindowHandle>>,
     active_display: Rc<dyn PlatformDisplay>,
     callbacks: RefCell<WebPlatformCallbacks>,
+    #[cfg(not(feature = "webgl"))]
     wgpu_context: Rc<RefCell<Option<WgpuContext>>>,
     cursor_visible: Rc<Cell<bool>>,
     last_cursor_css: Rc<Cell<&'static str>>,
@@ -117,6 +119,7 @@ impl WebPlatform {
             active_window: RefCell::new(None),
             active_display,
             callbacks: RefCell::new(WebPlatformCallbacks::default()),
+            #[cfg(not(feature = "webgl"))]
             wgpu_context: Rc::new(RefCell::new(None)),
             cursor_visible,
             last_cursor_css,
@@ -139,6 +142,7 @@ impl Platform for WebPlatform {
     }
 
     fn run(&self, on_finish_launching: Box<dyn 'static + FnOnce()>) {
+        #[cfg(not(feature = "webgl"))]
         let wgpu_context = self.wgpu_context.clone();
         wasm_bindgen_futures::spawn_local(async move {
             // The page's fonts must be ready before anything measures text.
@@ -148,6 +152,9 @@ impl Platform for WebPlatform {
             {
                 log::error!("a font didn't load: {error:?}");
             }
+            #[cfg(feature = "webgl")]
+            on_finish_launching();
+            #[cfg(not(feature = "webgl"))]
             match WgpuContext::new_web().await {
                 Ok(context) => {
                     log::info!("WebGPU context initialized successfully");
@@ -199,7 +206,9 @@ impl Platform for WebPlatform {
             return Err(PopupNotSupportedError.into());
         }
 
+        #[cfg(not(feature = "webgl"))]
         let context_ref = self.wgpu_context.borrow();
+        #[cfg(not(feature = "webgl"))]
         let context = context_ref.as_ref().ok_or_else(|| {
             anyhow::anyhow!("WebGPU context not initialized. Was Platform::run() called?")
         })?;
@@ -208,6 +217,7 @@ impl Platform for WebPlatform {
         let window = WebWindow::new(
             handle,
             params,
+            #[cfg(not(feature = "webgl"))]
             context,
             self.browser_window.clone(),
             mount.as_deref(),

@@ -1420,6 +1420,28 @@ The build script writes them, and the capture tool, to
   arrived, and keeps the recorded frame in Cache Storage for the next
   visit. `web/first-frame-paint` draws polychrome sprites too.
 
+### WebGL2 scene renderer (#12297)
+
+- `web/gpui-web` builds either the existing WebGPU renderer or a WebGL2
+  renderer with no wgpu dependency. The latter shares the first-frame
+  painter's GLSL math, keeps a sprite atlas, uploads live instances, and
+  handles color images, underlines, gradients, dashed borders, edge fades,
+  rounded clips, and context restoration. Backdrop blur retains the
+  unblurred backdrop beneath the view's ordinary translucent fill.
+- Page loaders select a backend before fetching app modules. They terminate
+  the capability probe worker before GPUI creates its devices. The chat's
+  file, work, settings, and account page modules use the same selection;
+  the existing lander loaders keep their two output directories.
+- Both backends retain the existing brotli budgets: 1,750,000 bytes for
+  chat and 1,500,000 for the other modules. The WebGL renderer lives in its
+  own lazy module and is excluded from the WebGPU module.
+- Closing a window removes its DPR listener before dropping the resize
+  callback, so a later resize cannot call a closed visual window.
+- `gpui-web/examples/renderer-fixture.rs` exercises live primitives and
+  atlas replacement. `scripts/test-web-renderer.mjs` checks loading,
+  input, lazy panels, resizing, context recovery, and screenshot differences
+  under `openagents browser run`.
+
 ### Browser-drawn text (#12299)
 
 - `web/gpui-web`'s `browser-text` feature: a `PlatformTextSystem`

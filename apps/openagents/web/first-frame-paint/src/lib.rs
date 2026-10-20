@@ -127,10 +127,10 @@ pub fn read(bytes: &[u8]) -> Result<Scene, Error> {
     Ok(scene)
 }
 
-#[cfg(target_family = "wasm")]
+#[cfg(all(target_family = "wasm", feature = "painter"))]
 mod gl;
 
-#[cfg(target_family = "wasm")]
+#[cfg(all(target_family = "wasm", feature = "painter"))]
 pub use gl::paint;
 
 #[cfg(test)]

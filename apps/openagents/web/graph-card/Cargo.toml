@@ -4,7 +4,7 @@
 # data and sats moving along the links as the scripted chat plays, and the
 # chat composer's text field at the bottom. One module for both views.
 # Built twice by `scripts/build-web-graph-card.sh`: WebGPU-only (the
-# `webgpu/` workspace beside this crate) and with wgpu's WebGL2 fallback
+# `webgpu/` workspace beside this crate) and with the WebGL2 scene renderer
 # (this workspace).
 [package]
 name = "openagents-web-graph-card"
@@ -17,7 +17,10 @@ license = "MIT"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["export"]
+webgpu = ["openagents-gpui-web/webgpu"]
+webgl = ["openagents-gpui-web/webgl"]
+
+default = ["export", "webgpu"]
 # Exports `mount` to the page. The WebGPU-only build (`webgpu/`) links this
 # crate without it and exports its own.
 export = []

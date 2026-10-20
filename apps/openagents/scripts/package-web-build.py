@@ -16,7 +16,10 @@ BUDGET = 1_500_000
 # desktop's own transcript (#12216): the last visit's first frame paints in
 # about 0.1 s before the module arrives, and the extra 250 KB costs about
 # 0.1 s at 20 Mbit, which beats keeping a second transcript (#12219).
-BUDGETS = {"openagents_web_chat_bg.wasm": 1_750_000}
+BUDGETS = {
+    "openagents_web_chat_bg.wasm": 1_750_000,
+    "openagents_web_chat_webgl_bg.wasm": 1_750_000,
+}
 
 
 def budget(module):
@@ -55,6 +58,8 @@ def contributors(module, limit=15):
     Empty when either is missing."""
     names = os.environ.get("WEB_BUILD_NAMES_DIR", "")
     source = Path(names) / (module.removesuffix("_bg.wasm") + ".wasm") if names else None
+    if source and not source.is_file() and "_webgl_bg.wasm" in module:
+        source = Path(names) / (module.removesuffix("_webgl_bg.wasm") + ".wasm")
     if not source or not source.is_file() or not shutil.which("twiggy"):
         return []
     try:
@@ -132,6 +137,9 @@ def package(directory, name, *later):
         if glue not in source or wasm not in source:
             raise SystemExit(f"start.js must name both {glue} and its streaming module")
         source = source.replace(glue, hashed_glue).replace(wasm, hashed_wasm)
+    if (directory / "renderer.js").exists():
+        hashed_renderer = write("renderer.js", (directory / "renderer.js").read_bytes())
+        source = source.replace('"./renderer.js"', '"./' + hashed_renderer + '"')
     # Read only fonts named by the source loader, not hashed leftovers from
     # an earlier build in this directory.
     fonts = re.findall(r'"(?:\./)?(Noto[^/"]+\.(?:ttf|otf))"', source)

@@ -3,6 +3,8 @@ use crate::events::{ClickState, WebEventListeners, is_mac_platform};
 use std::sync::Arc;
 use std::{cell::Cell, cell::RefCell, rc::Rc};
 
+#[cfg(feature = "webgl")]
+use crate::webgl::Renderer;
 use gpui::{
     AnyWindowHandle, Bounds, Capslock, Decorations, DevicePixels, DispatchEventResult, GpuSpecs,
     Modifiers, MouseButton, Pixels, PlatformAtlas, PlatformDisplay, PlatformInput,
@@ -10,7 +12,8 @@ use gpui::{
     ResizeEdge, Scene, Size, WindowAppearance, WindowBackgroundAppearance, WindowBounds,
     WindowControlArea, WindowControls, WindowDecorations, WindowParams, px,
 };
-use gpui_wgpu::{WgpuContext, WgpuRenderer, WgpuSurfaceConfig};
+#[cfg(not(feature = "webgl"))]
+use gpui_wgpu::{WgpuContext, WgpuRenderer as Renderer, WgpuSurfaceConfig};
 use wasm_bindgen::prelude::*;
 
 /// The element a page names to hold the canvas (`id="gpui-mount"`).
@@ -31,7 +34,7 @@ pub(crate) struct WebWindowCallbacks {
 }
 
 pub(crate) struct WebWindowMutableState {
-    pub(crate) renderer: WgpuRenderer,
+    pub(crate) renderer: Renderer,
     pub(crate) bounds: Bounds<Pixels>,
     pub(crate) scale_factor: f32,
     pub(crate) max_texture_dimension: u32,
@@ -89,6 +92,9 @@ impl Drop for WebWindow {
         if let Some(id) = self.inner.raf_id.take() {
             self.inner.browser_window.cancel_animation_frame(id).ok();
         }
+        // The DPR listener can re-observe the canvas; remove it before its
+        // ResizeObserver callback is dropped.
+        self.inner.mql_handle.borrow_mut().take();
         if let Some(observer) = &self._resize_observer {
             observer.disconnect();
         }
@@ -106,7 +112,7 @@ impl WebWindow {
     pub fn new(
         handle: AnyWindowHandle,
         _params: WindowParams,
-        context: &WgpuContext,
+        #[cfg(not(feature = "webgl"))] context: &WgpuContext,
         browser_window: web_sys::Window,
         mount_id: Option<&str>,
     ) -> anyhow::Result<Self> {
@@ -121,6 +127,7 @@ impl WebWindow {
             .map_err(|e| anyhow::anyhow!("Created element is not a canvas: {e:?}"))?;
 
         let dpr = browser_window.device_pixel_ratio() as f32;
+        #[cfg(not(feature = "webgl"))]
         let max_texture_dimension = context.device.limits().max_texture_dimension_2d;
         let has_device_pixel_support = check_device_pixel_support();
 
@@ -176,18 +183,25 @@ impl WebWindow {
             input_element.focus().ok();
         }
 
+        #[cfg(not(feature = "webgl"))]
         let device_size = Size {
             width: DevicePixels(0),
             height: DevicePixels(0),
         };
 
+        #[cfg(not(feature = "webgl"))]
         let renderer_config = WgpuSurfaceConfig {
             size: device_size,
             transparent: false,
             preferred_present_mode: None,
         };
 
-        let renderer = WgpuRenderer::new_from_canvas(context, &canvas, renderer_config)?;
+        #[cfg(not(feature = "webgl"))]
+        let renderer = Renderer::new_from_canvas(context, &canvas, renderer_config)?;
+        #[cfg(feature = "webgl")]
+        let renderer = Renderer::new(&canvas).map_err(|e| anyhow::anyhow!("WebGL2: {e:?}"))?;
+        #[cfg(feature = "webgl")]
+        let max_texture_dimension = renderer.max_texture_dimension();
 
         let display: Rc<dyn PlatformDisplay> = Rc::new(WebDisplay::new(browser_window.clone()));
 
@@ -369,11 +383,15 @@ impl WebWindowInner {
         let this = Rc::clone(self);
         let closure = Closure::new(move || {
             {
+                #[cfg(feature = "webgl")]
+                let force_render = this.state.borrow().renderer.needs_redraw();
+                #[cfg(not(feature = "webgl"))]
+                let force_render = false;
                 let mut callbacks = this.callbacks.borrow_mut();
                 if let Some(ref mut callback) = callbacks.request_frame {
                     callback(RequestFrameOptions {
                         require_presentation: true,
-                        force_render: false,
+                        force_render,
                     });
                 }
             }
@@ -803,6 +821,11 @@ impl PlatformWindow for WebWindow {
             drop(state);
         }
 
+        #[cfg(feature = "webgl")]
+        if !self.inner.state.borrow_mut().renderer.draw(scene) {
+            return;
+        }
+        #[cfg(not(feature = "webgl"))]
         self.inner.state.borrow_mut().renderer.draw(scene);
         let sized = self.inner.canvas.width() > 1 && self.inner.canvas.height() > 1;
         if !self.inner.presented.get() && sized && scene.len() > 0 {

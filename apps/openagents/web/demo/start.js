@@ -2,7 +2,7 @@ window.__oaVisualUrl = new URL("./visuals/start.js", import.meta.url).href;
 // Starts the chat demo: loads the wasm-bindgen glue beside this file, which
 // fetches the module next to it, and the shared font files the page names. GPUI then adds its canvas to the page, so
 // the page's own content (the loading line) steps out of its way.
-import init, { launch } from "./openagents_web_demo.js";
+import { loadRenderer } from "./renderer.js";
 
 // The faces the demo draws: the site's shared font files, which the page
 // names (and starts downloading) with `<link data-gpui-font>` preloads.
@@ -28,13 +28,12 @@ function fonts() {
   );
 }
 
-// The module draws with WebGPU only (#12237).
-(navigator.gpu ? Promise.resolve() : Promise.reject(new Error("no WebGPU")))
+Promise.resolve()
   .then(function () {
-    return Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_demo_bg.wasm", import.meta.url))) }), fonts()]);
+    return Promise.all([loadRenderer(new URL("./openagents_web_demo.js", import.meta.url), new URL("./openagents_web_demo_bg.wasm", import.meta.url), new URL("./openagents_web_demo_webgl.js", import.meta.url), new URL("./openagents_web_demo_webgl_bg.wasm", import.meta.url)), fonts()]);
   })
   .then(function (ready) {
-    launch(ready[1]);
+    ready[0].launch(ready[1]);
     var status = document.getElementById("gpui-status");
     if (status) {
       status.remove();
@@ -47,9 +46,7 @@ function fonts() {
   .catch(function (error) {
     var status = document.getElementById("gpui-status");
     if (status) {
-      status.textContent = navigator.gpu
-        ? "The demo couldn't start. Reload the page to try again."
-        : "The demo needs a browser with WebGPU, such as a recent Chrome, Edge, or Safari.";
+      status.textContent = "The demo couldn't start. Reload the page to try again.";
     }
     console.error(error);
   });
