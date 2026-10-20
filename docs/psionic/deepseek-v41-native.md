@@ -374,3 +374,143 @@ but block V7:
 [EPLB]: https://github.com/deepseek-ai/EPLB
 [Muse]: ../research/muse/2026-10-15-muse-spark-serving.md
 [WeightsReport]: ../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41_weights/weights_report_headers.json
+
+## Review addendum (2026-10-20)
+
+Reviewed against `75392db83e` and #12369–#12373. These recommendations qualify
+the hardware, bandwidth, and completion claims above; they do not add a
+second inference engine or revive the V2-Lite detour. The current oracle
+issue #12371 already chooses B200 first, requires a kernel smoke before the
+full download, and includes a 20,000-token selection workload. Preserve
+those improvements rather than reverting to the older G4-oracle summary.
+
+### Strengthen the oracle before paying for later integration work
+
+- Capture a fixed token sequence and teacher-forced component outputs, so a
+  different sampled or rounded token does not invalidate every later layer
+  comparison. Retain full logits at the comparison positions in the bucket,
+  not only top-64 values and a hash: hashes establish file identity but
+  cannot support a numerical tolerance check. Keep small offline fixtures
+  and a manifest/download path to the larger comparisons.
+- State precision at every boundary, including activation quantization,
+  scales, accumulation, and casts. Define absolute/relative tolerances per
+  component before evaluating Psionic. Keep discrete expert/index choices
+  exact under the reference's tie rule; report near ties and first
+  divergence rather than loosening the tolerance after a failure.
+- Add targeted 127/128/129-token window cases, odd/even compression steps,
+  every shared-source/reuse transition, Engram normalization/history cases,
+  and candidate selection beyond 16,384 positions. Compare chunked prefill
+  with one-shot prefill and cached decode with replay. The existing long
+  oracle prompt is valuable, but a few slices alone do not test these edges.
+- On the oracle machine, reuse the downloaded original checkpoint to run
+  #12373's full-byte/hash checks and export the documented
+  `psionic.deepseek_v41.dequant_parity.v1` cases. Keep original-checkpoint
+  identity distinct from TP8-converted files. Upload a complete manifest
+  after each prompt so a spot loss does not require repeating good dumps.
+
+The V4 CPU reference remains the debugging path. Bound its runs and begin
+with a short context; run CUDA component work against component oracles in
+parallel rather than waiting for a slow full 20,000-token CPU decode.
+A second gate must produce complete final answers with honest EOS,
+truncation, reasoning, whitespace, and stream termination. Adapt the *intent*
+of DS0's checks to V4.1's recipe and markers; do not reuse R1's parser or
+assume 32 generated tokens finish a reasoning answer. Advertise only a
+measured context/output/deadline profile, not the configured million-token
+maximum. Tool-capable agent use is a further end-to-end gate after #12372
+and the Pylon transport support it.
+
+Portable kernels are a correctness strategy, not a speed result. Prefill,
+sparse selection, launch overhead, and transfers can dominate a serial
+workload even when weight reads constrain decode. Qualify the stated SM89
+and target-GPU profiles separately before extending the GPU claim.
+
+### Evaluate four native stages before fixing the topology at eight
+
+The [header report][WeightsReport] permits a more useful first placement
+calculation. Excluding MTP and vision, and keeping the two Engram tables in
+host memory, leaves **298,624,579,008 bytes** of packed text-model weights
+for GPUs. A candidate assignment is:
+
+| Stage | Layers and extra weights | GPU weight bytes, decimal GB | Host Engram bytes, decimal GB |
+| --- | --- | --- | --- |
+| 0 | 0–9 and embeddings | 75.409 | 101.378 |
+| 1 | 10–19 | 74.069 | 101.380 |
+| 2 | 20–29 | 73.917 | 0 |
+| 3 | 30–39 and output head | 75.230 | 0 |
+
+This is a header-derived candidate, **not a fit or speed qualification**.
+Placement must also reserve measured peak KV/indexer/candidate state,
+chunked-prefill activations, kernel workspace, staging buffers, driver
+memory, and host RAM. Avoid expanding the packed model to resident f32.
+Measure Engram cold/hot lookup and prefill costs; SSD-backed tables are a
+separate latency profile, not a free substitute for RAM.
+
+Try four whole 96 GB GPUs if that full budget fits; retain eight as the
+fallback. Compare four single-GPU hosts with two two-GPU hosts for V8,
+using the same logical state contract. This still prioritizes several
+physical devices and reduces serial hops. Google's [G4 inventory](https://docs.cloud.google.com/compute/docs/gpus)
+lists both whole-GPU configurations. The checked-in
+[price snapshot](../../scripts/dev/cloud-prices.json) already includes G4
+spot prices, contrary to the older text above; add sourced entries for any
+chosen unpriced machine type before asking the guard to launch it. Use
+B200 for the reference's TP8 run; native placement need not copy its GPU
+count. Quota, capacity, and runtime compatibility still need a fresh check.
+
+### Design and fault-test the stage contract early
+
+Start P2.1's codec and P2.5's lifecycle fixtures before P1.8, using a tiny
+known model or synthetic stage executor. Bind real V4.1 state after the CPU
+components are known. Reuse the existing Gemma pipeline boundary through
+adapters; an unrelated Gemma rewrite is not a prerequisite.
+
+The 40,960-byte BF16 residual is only a lower bound. Specify cache creation,
+prefill snapshots, per-token deltas, source-layer identities, compression
+position, indexer/candidate updates, and Engram history. Measure all wire
+bytes, serialization, host/device copies, hop latency, TTFT, and decode
+latency. One serial request traverses the stages in sequence; summing
+bandwidth or quoting residual wire time does not establish response speed.
+The R1 host-stepped CUDA result is direct evidence that correct native
+kernels alone do not establish a fast serving path.
+
+Each message needs the group-manifest digest, group generation, request and
+attempt, stage/range, step and position, dtype/shape, and bounded payload.
+The front owns sampling and the selected token stream. Refuse duplicate,
+stale, missing, reordered, or cross-request state before consuming it.
+Publish group serving capacity only after all required stages agree on the
+same weights, runtime, protocol, and generation; stage-presence beacons
+must not make an internal stage routable as a complete model.
+
+Test front disconnect, a stopped process that still looks healthy, crash
+before/after a step acknowledgment, lost/replayed messages, and a late old
+stage after restart. Keep admission occupied until all work is stopped or
+its processes are reaped. A replacement changes the group generation and
+invalidates affected request caches. Fail an interrupted request explicitly;
+do not silently replay it after tokens have reached the caller. Couple this
+with N1's versioned long-job, ordered-stream, cancellation, and backpressure
+rules, while preserving the existing shorter job profile.
+
+### Bound the budget guard's claims before larger rentals
+
+#12370 shipped a useful local reservation ledger and recorded a cheap VM's
+expiry. Two follow-ups are concrete at this review's source revision:
+
+1. `locked()` serializes one ledger path on one host. Different hosts or
+   `OA_CLOUD_BUDGET_DIR` values can each admit against their own $3,000.
+   Allocate through one host and one budget ledger until a shared budget
+   authority exists; copying a ledger to workers is not coordination.
+2. `read_ledger()` skips malformed interior records as well as a torn tail.
+   A synthetic local check confirmed an unreadable reservation line can be
+   skipped and a new $2,000 request admitted against a $3,000 budget. Refuse
+   new allocation on interior corruption and resolve uncertain reservations
+   against provider records before releasing their cost.
+
+File bounded follow-ups to the closed guard issue rather than treating its
+closure as a global billing guarantee. Add lost-create-reply, concurrent
+admission, reused VM identity, and delayed-expiry tests. Reserve persistent
+storage, checkpoint copies/conversion, oracle dumps, and network charges;
+these are excluded from the current compute-price table. The existing
+[alert-only billing budgets](https://docs.cloud.google.com/billing/docs/how-to/budgets)
+notify; they do not stop Compute Engine spending. Keep the owner alert step
+in `NEEDS_OWNER.md`, use expiry/reaping for VM lifetime, and compare measured
+costs with the reservation before each later allocation. No new cloud
+resource was created for this review.

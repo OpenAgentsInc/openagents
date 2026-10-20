@@ -135,3 +135,36 @@ Verse pieces.
 
 [The proposed issues](../roadmap/2026-10-20-enter-the-verse-issues.md#epic-f-the-forge)
 break this down.
+
+## Review addendum (2026-10-20)
+
+The first Forge loop should prove one bounded delivery before building a
+new control plane or depending on V4.1. Keep the new records as references
+and state transitions over existing Coder tasks, host grants, issue claims,
+workspaces/leases, ATIF traces, and Gym checks. Work-order scope and resource
+permissions remain explicit; a model's tool output or a capability beacon
+cannot expand them.
+
+Bind every verification report to the repository, base and tested head,
+work-order/agent-definition versions, exact check commands, results, and
+artifact hashes. Keep observed check results separate from a reviewer
+agent's judgment; a second agent is useful review, not independent proof
+that software is production-ready. A waiver names its author and exact
+scope. Rebase or a changed delivery head requires the affected checks to
+run again. Opening a draft PR, publishing, merging, and deploying retain
+separate authority; use the existing land path and manual/non-GitHub-billed
+checks rather than inventing another merge queue or GitHub workflow.
+
+Record an outcome for **every run**, including failure, cancellation,
+timeout, and unknown cost. Delivery-only metrics hide failed attempts.
+Keep private traces/code out of public Gym evidence and training exports
+without a separate grant; preserve protected evaluation splits. A receipt
+attributes the work and evidence, not the truth of a reviewer's verdict.
+
+For the first web view, show the work order, its evidence and checks, and
+its PR link in shared Rust Native cards rendered by GPUI. The broader PR
+browser/preview scope conflicts with the earlier desktop-only decision;
+see the [strategy addendum](../roadmap/2026-10-20-enter-the-verse.md#narrow-the-first-web-delivery-and-reuse-the-existing-app-boundaries).
+Use a code graph tied to the run's repository revision for the floor. Show
+reads, edits, commands, and messages as distinct observed events, with an
+unmapped state when necessary; file proximity is not worker ownership.

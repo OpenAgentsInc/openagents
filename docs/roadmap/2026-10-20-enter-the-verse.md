@@ -277,3 +277,92 @@ Rules for every machine:
 - **The Forge's history.** It was started four times and parked each time,
   mostly for scope. The first version here is deliberately one loop over
   existing crates, with no git hosting.
+
+## Review addendum (2026-10-20)
+
+Reviewed against `75392db83e`, the owner's conversation, the native R1
+qualification, and filed issues #12369–#12373. This addendum updates the
+proposal-era status above and recommends narrower acceptance gates; the
+owner's Forge, web-first, multi-device, and Psionic-only direction stands.
+The [issue addendum](2026-10-20-enter-the-verse-issues.md#review-addendum-2026-10-20-filed-issues-and-changes)
+maps the recommendations to the existing issues.
+
+### Separate implementation, model qualification, and agent qualification
+
+#12368 landed native Qwen2 CUDA and managed recovery: six model checks,
+four real HTTP disconnect/admission checks, and 20 Pylon lifecycle checks
+pass. It qualifies short greedy requests only. Sampled decoding exhausted
+2,048 tokens without a final answer, and a longer greedy boxed prompt took
+83.366 seconds against a 75-second deadline. The route is opt-in; llama.cpp
+remains the unspecified R1 profile's default. See the [retained results](../psionic/deepseek-support-plan.md#native-psionic-cuda-for-the-r1-distill-12368).
+Treat P0.1/P0.2 as satisfied for this bounded foundation, not as outstanding
+duplicates or evidence that large reasoning models meet the same deadline.
+
+#12370's guard and #12373's reader also landed. The reader's retained report
+is `headers_only`, with zero tensor-data reads and no oracle parity yet.
+Their issue closure records implementation completion; V4.1 publication
+still depends on the actual model and device evidence. A 32-token reference
+prefix proves numerical behavior, not a complete answer or a coding agent.
+Use separate gates for component parity, a finished native text answer,
+transport/recovery, and one successful tool-using agent task.
+
+Keep the Bay and the first Forge loop independent of V4.1. Demonstrate the
+Forge with existing harnesses and a test repository while the model work
+runs. Do not bind its first delivery to an unqualified model or show a
+hosted fallback as a requested V4.1 result.
+
+### Make privacy follow the entire job
+
+D5 should authorize a separate public display stream, not publication of raw
+model tokens or agent traces. Publish only explicitly allowed final text;
+reasoning, tool arguments/results, filenames, credentials, and worker
+messages stay private unless separately authorized. Replayed or resumed
+chunks retain the original disclosure choice. Private activity should be
+coarse and uncorrelated with a person's request, rather than exposing its
+route, identifiers, or exact timing to the world.
+
+D6 protects the decision processed inside the attested Clef workload. It
+does not make a later ordinary DeepSeek stage, hosted model, or harness
+confidential. A sensitive turn must not fall through to those destinations
+without an explicit authorized disclosure. A signed beacon is discovery;
+the existing [attestation verification](../security/private-inference.md#live-today)
+checks the workload and bound endpoint key before sensitive text is sealed.
+For a locked turn, verify and seal in the client before the ordinary web
+router, logs, telemetry, or a hosted fallback can receive sensitive state
+as plaintext. Keep the existing browser-publisher trust caveat explicit.
+Trace events must distinguish a locally observed send from a verified
+workload's acknowledgment; the Grid must not infer enclave decryption from
+a generic processing event.
+
+Start distributed inference on explicitly trusted, owner-operated stages.
+Transport encryption does not hide activations or KV from stage operators.
+M2.2 therefore needs operator trust, disclosure, admission, and revocation
+in addition to a fast link. A group of stage Pylons exposes one serial
+model slot, not one complete-model slot per stage.
+
+### Narrow the first web delivery and reuse the existing app boundaries
+
+There is a scope conflict: D2/F4 propose a web PR/preview panel, while the
+[desktop-only decision](../audits/2026-10-20-desktop-web-parity.md#desktop-only-owner-decision-2026-10-20)
+closed #12276 and #12278 as not planned for the web. Recommended F4 minimum:
+a web-first Forge delivery card with checks, evidence, a receipt, and an
+ordinary PR link. A full PR browser or live app preview is an explicit
+scope exception to record before expanding F4, rather than a silent
+reopening of the parity project.
+
+Use Rust Native for cards, forms, sheets, and approvals, with the GPUI
+adapter and Verse scene shared by web and desktop. Forge records should
+refer to existing tasks, ATIF traces, host grants, claims, and checks;
+they should not create another session, approval, or worker-lease system.
+The [Forge addendum](../forge/README.md#review-addendum-2026-10-20) defines the
+minimum evidence and outcome accounting for its first loop.
+
+### Change the next allocation, not the $3,000 ceiling
+
+The [model addendum](../psionic/deepseek-v41-native.md#review-addendum-2026-10-20)
+proposes a four-GPU native placement candidate, stronger oracle fixtures,
+and stage fault tests before a full-model group. It also records concrete
+budget-guard follow-ups. Keep the $3,000 ceiling, use one budget authority
+for all allocating hosts, and reserve storage/network costs as well as
+compute. The historical budget table is an allocation envelope, not a
+reason to rent the largest machine for every step.

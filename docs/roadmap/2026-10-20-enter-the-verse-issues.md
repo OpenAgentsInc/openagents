@@ -114,3 +114,64 @@ These are independent and unblock the most. File and claim them first:
 3. N1.1, N1.2, N2.1, N3.1, N5.1
 4. G1.1, G2.1, L1.1
 5. F1.1, then F2.1 and F3.1
+
+## Review addendum (2026-10-20): filed issues and changes
+
+Snapshot checked against GitHub and `75392db83e`. This supersedes the
+proposal's "none filed" status. These are suggested issue amendments and
+follow-up scopes, not a second set of assignments. Preserve current claims;
+do not reopen code-complete issues merely to wait for device evidence.
+
+| Proposed item | Actual issue and state | Recommended update |
+| --- | --- | --- |
+| P0.1, P0.2 | [#12368](https://github.com/OpenAgentsInc/openagents/issues/12368), closed | Already covered for the pinned R1 native greedy profile: six model, four real HTTP, and 20 managed recovery checks. Do not file duplicates. Carry the same ownership/reaping rules into V4.1 stages, with a newly qualified deadline. |
+| P0.3 | [#12370](https://github.com/OpenAgentsInc/openagents/issues/12370), closed | Keep the implementation and expiry evidence. File focused follow-ups for one cross-host budget authority and refusal on malformed interior ledger records; meanwhile allocate from one ledger host. Include storage/network reserve and current price coverage. See the [budget review](../psionic/deepseek-v41-native.md#bound-the-budget-guards-claims-before-larger-rentals). |
+| Epic P | [#12369](https://github.com/OpenAgentsInc/openagents/issues/12369), open | Replace the old approximate split with #12373's header-derived totals. Separate implementation closure, byte/oracle qualification, complete native answers, and agent use. Record the four-GPU placement as a candidate, not a promised fit. |
+| P1.0 / V0 | [#12371](https://github.com/OpenAgentsInc/openagents/issues/12371), open | Preserve its B200 smoke and 20k-token workload. Add teacher-forced full-logit comparisons, precision/tie rules, boundary/cache cases, and #12373's original-weight byte/hash/dequantization checks on the same rental. Retain dumps incrementally for spot recovery. |
+| P1.1 / V1 | [#12372](https://github.com/OpenAgentsInc/openagents/issues/12372), open | Keep protocol qualification separate from serving. Add chunking-invariant token/text/tool parsing, cancellation/reconnect terminal states, and special-token injection cases. A mock stream does not qualify tool execution, constrained output, or model quality. |
+| P1.2 / V2 | [#12373](https://github.com/OpenAgentsInc/openagents/issues/12373), closed | Reader and offline tests landed. The retained `headers_only` report opened zero tensor bytes and has no oracle parity; complete the listed after-close checks with #12371's downloaded checkpoint. Dependent numerical gates require that evidence, not an issue-state check. |
+
+### Adjust dependencies before filing the remaining waves
+
+- Split M/L work into independently checkable changes before claiming it,
+  consistent with the repository's 24-hour issue rule. For example, split
+  P1.4 by attention mode and shared-cache behavior, P1.10 by kernel, and
+  F2.1 into one-worker delivery followed by crew fan-out. Track required
+  device evidence separately from administrative issue closure.
+- Split P2.1 into early codec/fault fixtures and later binding to real V4.1
+  state. Start the former now; do not make P1.8's full CPU decode its only
+  prerequisite. Prototype group cancellation/fencing with P0's native worker
+  before renting a whole group. Preserve the one-GPU-per-stage shape.
+- P2.2 plans from exact selected weight bytes **plus peak runtime memory**.
+  P2.6 accepts two genuinely different placements with a justified GPU
+  count, rather than requiring eight GPUs in both. P3.1 also depends on the
+  budget follow-ups and the published group's N1/N4/N5 client contract.
+- N1.1–N1.3 should first compare the current NIP-CJ conversation/execution
+  contracts and implemented clients. Reuse their applicable sequencing,
+  terminal-state, and artifact rules; version the Pylon-specific extension.
+  Cover blob size/digest/authorization/expiry, ordered replay, duplicate/gap
+  detection, bounded buffering, cancellation, and old-client refusal.
+  Declared model limits are ceilings intersected with caller budgets;
+  heartbeats do not renew the execution budget. Transport tests can start
+  on R1 or a fixture without V4.1 weights.
+- N2/N3 and D5 need an end-to-end privacy acceptance check: sensitive work
+  cannot fall back to ordinary workers; a public display stream cannot
+  expose reasoning or tool payloads; a beacon does not prove attestation.
+  For N4/N5, match the exact requested artifact and group readiness, and
+  count one serial group slot rather than summing internal-stage slots.
+- Split L3.1's typed text provider from L3.2's actual tool execution. Model
+  selection or text parsing grants no filesystem, shell, wallet, or sharing
+  authority. A requested V4.1 job must not silently become another model.
+- F1/F2 reuse existing tasks, grants, claims, traces, and leases. F5 records
+  every run's outcome, including failure, cancellation, and unknown cost,
+  rather than only deliveries. Protect Gym holdouts and private run data.
+- F4.1 first delivers the web Forge evidence/receipt card with a PR link.
+  Record how any full PR pane or app preview changes the earlier scope of
+  closed #12276/#12278 before including it. UI cards and sheets use Rust
+  Native through GPUI; Verse remains the world scene.
+
+The next focused work is #12371 and #12372, the guard follow-ups, and early
+stage/transport fixtures. Bay and Forge work can proceed independently.
+The [model addendum](../psionic/deepseek-v41-native.md#review-addendum-2026-10-20)
+and [strategy addendum](2026-10-20-enter-the-verse.md#review-addendum-2026-10-20)
+explain the revised gates without changing the owner's product direction.
