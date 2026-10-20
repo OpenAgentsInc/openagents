@@ -52,7 +52,9 @@ const SCHEMA: &str = "openagents.account-export.v1";
 pub(crate) const MAX_TRACE_BYTES: usize = 64 * 1024 * 1024;
 
 pub(crate) fn routes() -> Router<App> {
-    Router::new().route(PATH, get(download))
+    Router::new()
+        .route(PATH, get(download))
+        .route("/v1/account/export", get(download))
 }
 
 /// Who asks for the file: the browser's own session (Settings' Download

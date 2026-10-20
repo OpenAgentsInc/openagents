@@ -42,7 +42,7 @@ fn assets(directory: &Path) -> Option<HashMap<String, String>> {
         .then_some(names)
 }
 
-pub(super) fn url(directory: Option<&Path>, prefix: &str, plain: &str) -> String {
+pub(crate) fn url(directory: Option<&Path>, prefix: &str, plain: &str) -> String {
     let names = directory.and_then(assets);
     let name = names
         .as_ref()

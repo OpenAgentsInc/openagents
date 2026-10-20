@@ -23,6 +23,7 @@ use serde_json::{Value, json};
 use wasm_bindgen::{JsCast, closure::Closure};
 use wasm_bindgen_futures::JsFuture;
 
+mod cloud;
 /// Settings → Providers over host RPC (#12283).
 mod providers;
 
@@ -91,6 +92,8 @@ pub struct SettingsApp {
     focus_wanted: bool,
     computer_task: Option<Task<()>>,
     account_task: Option<Task<()>>,
+    cloud_task: Option<Task<()>>,
+    credential: String,
     /// Earn's reads of the computer (#12294), and the wait before the next.
     earn_task: Option<Task<()>>,
     earn_timer: Option<Task<()>>,
@@ -132,6 +135,8 @@ impl SettingsApp {
             focus_wanted: false,
             computer_task: None,
             account_task: None,
+            cloud_task: None,
+            credential: String::new(),
             earn_task: None,
             earn_timer: None,
             providers_watch: None,
@@ -196,7 +201,11 @@ impl SettingsApp {
         if push {
             store::signal("oa-settings-page", page.slug());
         }
+        self.credential.clear();
+        self.remote.cloud.pasted = false;
+        self.remote.cloud.confirm_delete = false;
         self.page = page;
+        self.remote.account.signed_in = self.context.signed_in;
         self.remote.recording = None;
         self.remote.shortcut_notice = None;
         self.remote.archived = self.context.archived.clone();
@@ -208,6 +217,7 @@ impl SettingsApp {
             }
             Page::Providers => self.load_providers(cx),
             Page::Account => self.load_account(cx),
+            Page::Claude => self.load_cloud(cx),
             Page::Notifications => self.remote.notifications_allowed = notifications_allowed(),
             _ => {}
         }
@@ -609,6 +619,7 @@ impl SettingsApp {
             Intent::Appearance(appearance::Change::ChooseBackground) => self.choose_background(cx),
             Intent::Appearance(appearance::Change::ImportTheme) => self.import_theme(cx),
             Intent::Account(action) => self.account_action(action, cx),
+            Intent::Cloud(action) => self.cloud_action(action, cx),
             _ => {}
         }
         cx.notify();

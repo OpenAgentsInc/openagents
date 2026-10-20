@@ -13,6 +13,7 @@
 
 pub mod account;
 pub mod appearance;
+pub mod cloud;
 /// Earn on a paired computer (#12294).
 pub mod earn;
 pub mod providers;
@@ -34,6 +35,8 @@ pub enum Page {
     General,
     /// Each computer's agents, updates, and accounts (#12283).
     Providers,
+    Claude,
+    Data,
     Appearance,
     Notifications,
     Shortcuts,
@@ -46,9 +49,11 @@ pub enum Page {
 }
 
 impl Page {
-    pub const ALL: [Page; 9] = [
+    pub const ALL: [Page; 11] = [
         Page::General,
         Page::Providers,
+        Page::Claude,
+        Page::Data,
         Page::Appearance,
         Page::Notifications,
         Page::Shortcuts,
@@ -63,6 +68,8 @@ impl Page {
         match self {
             Page::General => "General",
             Page::Providers => "Providers",
+            Page::Claude => "Claude",
+            Page::Data => "Data",
             Page::Appearance => "Appearance",
             Page::Notifications => "Notifications",
             Page::Shortcuts => "Shortcuts",
@@ -79,6 +86,8 @@ impl Page {
         match self {
             Page::General => "general",
             Page::Providers => "providers",
+            Page::Claude => "claude",
+            Page::Data => "data",
             Page::Appearance => "appearance",
             Page::Notifications => "notifications",
             Page::Shortcuts => "shortcuts",
@@ -326,6 +335,7 @@ pub enum Intent {
     Earn(earn::Action),
     /// Providers (#12283).
     Providers(providers::Action),
+    Cloud(cloud::Action),
 }
 
 /// The theme's colors for the forms, which the host reads from its theme
@@ -433,6 +443,7 @@ pub struct Remote {
     pub confirm_delete_all: bool,
     pub deleting: bool,
     pub account: account::State,
+    pub cloud: cloud::State,
     /// Earn on the chosen computer (#12294).
     pub earn: earn::State,
     /// Providers: the chosen computer's agents and accounts (#12283).
@@ -460,6 +471,8 @@ pub fn page(page: Page, prefs: &Prefs, remote: &Remote, paints: &Paints) -> Node
         Page::Archived => archived(remote, paints),
         Page::Earn => earn::page(remote, paints),
         Page::Account => account::page(&remote.account, paints),
+        Page::Claude => cloud::claude(&remote.cloud, paints),
+        Page::Data => cloud::data(&remote.cloud, remote.account.signed_in, paints),
         Page::Providers => providers::page(
             &remote.providers,
             &remote.computers,
