@@ -351,7 +351,7 @@ impl ChatApp {
         cx.notify();
     }
 
-    fn close_settings(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn close_settings(&mut self, cx: &mut Context<Self>) {
         self.settings.page = None;
         store::signal("oa-settings-hide", "");
         route::push(self.current.as_deref());
