@@ -172,3 +172,22 @@ async fn without_a_key_there_are_no_room_tokens() {
     .await;
     assert_eq!(status, 404);
 }
+
+#[test]
+fn checkpoint_paths_name_one_chat() {
+    assert_eq!(
+        super::checkpoint_chat("/v1/sync/chat2/0b3f6a52-8f0c/checkpoint"),
+        Some("0b3f6a52-8f0c")
+    );
+    assert_eq!(super::checkpoint_chat("/v1/sync/chat2//checkpoint"), None);
+    assert_eq!(
+        super::checkpoint_chat("/v1/sync/chat2/a/b/checkpoint"),
+        None
+    );
+    assert_eq!(
+        super::checkpoint_chat("/v1/sync/chat2/a%2f/checkpoint"),
+        None
+    );
+    assert!(super::owns("/v1/sync/chat2/abc/checkpoint"));
+    assert!(!super::owns("/v1/sync/chat2/abc/rows"));
+}

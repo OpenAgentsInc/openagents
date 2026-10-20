@@ -68,6 +68,8 @@ pub(crate) const ACCOUNT: &[&str] = &[
     "/v1/verse/key",
     // Room tokens for the registry, device, and chat rooms (#12263).
     crate::room_tokens::PATH,
+    // A chat room's checkpoint for the browser's chat room (#12224).
+    crate::room_tokens::CHECKPOINTS,
     // Their handlers read the cookie themselves; this layer checks it first.
     crate::traces::API,
     crate::mac_jobs::PREFIX,

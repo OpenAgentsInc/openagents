@@ -27,6 +27,8 @@ sha2 = { version = "0.10", default-features = false }
 # The workspace registry (#12265): its rows, merge, and pending writes, and
 # the values a new session writes, as the desktop and phone apps keep them.
 openagents-doc = { path = "../../crates/doc" }
+# A chat room's session doc (#12224); the version the desktop links.
+loro = "1.13"
 openagents-proto = { path = "../../crates/proto" }
 chat-home = { path = "../../../../crates/chat-home" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde", "wasmbind"] }

@@ -13,7 +13,9 @@
 pub mod account_link;
 pub mod budget;
 pub mod chat_client;
-pub mod chat_frames;
+/// The chat2 wire codec, kept in `openagents-doc` so a browser build reads
+/// the same frames (#12224).
+pub use openagents_doc::chat_frames;
 pub mod device_channel;
 pub mod dial;
 pub mod net_path;

@@ -11,6 +11,7 @@ members = [
     "client",
     "chat",
     "files",
+    "room",
     "demo",
     "agent-graph",
     "first-frame",

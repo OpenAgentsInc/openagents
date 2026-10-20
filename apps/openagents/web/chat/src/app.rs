@@ -81,6 +81,10 @@ pub struct ChatApp {
     client: Client,
     /// The open Coder chat's question and agents (#12316).
     work: Entity<crate::work::Work>,
+    /// The open computer chat whose chat2 room streams its transcript in
+    /// (#12224), through the page's room module.
+    room: Option<String>,
+    _room_events: Task<()>,
     check_ins: Entity<crate::check_ins::CheckIns>,
     /// Signed in, or chatting as the browser's visitor (the page's
     /// `openagents-signed-in`).
@@ -158,6 +162,17 @@ impl ChatApp {
         let client = Client::from_page();
         let work = cx.new(|cx| crate::work::Work::new(client.clone(), cx));
         cx.observe(&work, |_, _, cx| cx.notify()).detach();
+        let mut rooms = room_events();
+        let room_events = cx.spawn(async move |this, cx| {
+            while let Some(detail) = rooms.next().await {
+                if this
+                    .update(cx, |this, cx| this.on_room(&detail, cx))
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        });
         let compose = cx.new(|cx| Compose::new(composer.clone(), client.clone(), cx));
         cx.observe(&compose, |this, compose, cx| {
             if let Some(notice) = compose.update(cx, |compose, _| compose.take_notice()) {
@@ -261,6 +276,8 @@ impl ChatApp {
         let mut this = Self {
             client,
             work,
+            room: None,
+            _room_events: room_events,
             check_ins: cx.new(crate::check_ins::CheckIns::new),
             signed_in: route::signed_in(),
             origin,
@@ -426,13 +443,16 @@ impl ChatApp {
             .or_else(|| self.host_chat_of(&id));
         let on_computer = host.is_some();
         self.set_host_chat(host, cx);
+        if self.room.take().is_some() {
+            crate::compose::page_event("oa-room-close", "");
+        }
         if self.is_computer(&id) {
             self.load_computer(id, generation, cx);
             cx.notify();
             return;
         }
         if on_computer {
-            self.loading_chat = false;
+            self.open_room(id, cx);
             cx.notify();
             return;
         }
@@ -478,6 +498,55 @@ impl ChatApp {
             .ok();
         })
         .detach();
+    }
+
+    /// Streams a computer chat's transcript from its chat2 room (#12224),
+    /// through the room module the page loads for it (`oa-room-open`);
+    /// replies go to the computer through the composer's host channel and
+    /// come back as rows.
+    fn open_room(&mut self, id: String, cx: &mut Context<Self>) {
+        self.loading_chat = true;
+        crate::compose::page_event("oa-room-open", &id);
+        self.room = Some(id);
+        cx.notify();
+    }
+
+    /// One change from the open room (`oa-room`).
+    fn on_room(&mut self, detail: &str, cx: &mut Context<Self>) {
+        #[derive(serde::Deserialize)]
+        struct Room {
+            chat: String,
+            #[serde(default)]
+            entries: Vec<SessionMessageEntry>,
+            #[serde(default)]
+            caught_up: bool,
+            #[serde(default)]
+            unavailable: bool,
+        }
+        let Ok(room) = serde_json::from_str::<Room>(detail) else {
+            return;
+        };
+        if self.room.as_deref() != Some(room.chat.as_str())
+            || self.current.as_deref() != Some(room.chat.as_str())
+        {
+            return;
+        }
+        if room.caught_up || room.unavailable {
+            self.loading_chat = false;
+        }
+        if room.unavailable && room.entries.is_empty() {
+            self.notice = Some("This chat's transcript isn't available here right now.".into());
+        }
+        self.show_entries(room.entries, cx);
+        cx.notify();
+    }
+
+    fn show_entries(&mut self, entries: Vec<SessionMessageEntry>, cx: &mut Context<Self>) {
+        self.entries = entries;
+        self.sync_list();
+        let entries = &self.entries;
+        self.compose
+            .update(cx, |compose, cx| compose.transcript(entries, cx));
     }
 
     fn show(&mut self, messages: &[Msg], cx: &mut Context<Self>) {
@@ -2100,4 +2169,25 @@ fn project_choice(
     div()
         .id(id)
         .child(project_choice_label(label.to_owned(), chosen))
+}
+
+/// The page's `oa-room` events: each change to the open computer chat's
+/// room, as JSON from the room module (#12224).
+fn room_events() -> futures::channel::mpsc::UnboundedReceiver<String> {
+    use wasm_bindgen::JsCast as _;
+    let (sender, receiver) = futures::channel::mpsc::unbounded();
+    if let Some(window) = web_sys::window() {
+        let listener = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::CustomEvent)>::new(
+            move |event: web_sys::CustomEvent| {
+                if let Some(detail) = event.detail().as_string() {
+                    let _ = sender.unbounded_send(detail);
+                }
+            },
+        );
+        let _ =
+            window.add_event_listener_with_callback("oa-room", listener.as_ref().unchecked_ref());
+        // The page keeps one listener for its whole life.
+        listener.forget();
+    }
+    receiver
 }

@@ -8,6 +8,9 @@
 //! LoroList of part maps whose text bodies live in **LoroText** — streaming appends RLE-merge at
 //! ~1.03x oplog overhead, whereas rewriting whole part values costs ~125x.
 
+/// The chat2 room's binary wire frames (the codec `openagents-sync` and the
+/// browser's chat room both speak).
+pub mod chat_frames;
 pub mod commands;
 pub mod continuation;
 pub mod native_fork;

@@ -3831,6 +3831,7 @@ dependencies = [
  "js-sys",
  "k256",
  "log",
+ "loro",
  "openagents-doc",
  "openagents-proto",
  "openagents-sdk",

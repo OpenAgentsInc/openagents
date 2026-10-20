@@ -7,6 +7,8 @@
 //! with `EventSource`, signed in by the site's own cookie; writes carry the
 //! page's CSRF value in `x-openagents-csrf`.
 
+/// One chat's chat2 room, the protocol half (#12224).
+pub mod chat_replica;
 pub mod cloud_computers;
 pub mod event;
 /// Moving a chat to a cloud computer and back (#12282).
@@ -21,6 +23,10 @@ pub mod web;
 /// The browser as a client of one of the account's computers (#12264).
 #[cfg(target_family = "wasm")]
 pub mod computer;
+
+/// One chat's chat2 room over a WebSocket (#12224).
+#[cfg(target_family = "wasm")]
+pub mod chat_room;
 
 /// The registry room over a WebSocket (#12265).
 #[cfg(target_family = "wasm")]

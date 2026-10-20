@@ -1,0 +1,30 @@
+# A computer chat's live transcript for the GPUI web chat (#12224): the
+# chat's chat2 room on coder-sync, its Loro session doc, and the
+# transcript, sent to the page as JSON. Its own module, which the chat page
+# loads the first time a computer chat opens, so the chat's module stays
+# under its budget (Loro alone is about 350 KB with brotli). Built beside
+# the chat by `scripts/build-web-chat.sh`.
+[package]
+name = "openagents-web-room"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+futures.workspace = true
+log.workspace = true
+openagents-web-client.workspace = true
+serde_json = "1"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-bindgen.workspace = true
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1.7"
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["CustomEvent", "CustomEventInit", "Event", "EventTarget", "Window"] }

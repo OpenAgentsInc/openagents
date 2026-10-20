@@ -4419,6 +4419,7 @@ dependencies = [
  "openagents-web-chat-view",
  "openagents-web-client",
  "rust-native",
+ "serde",
  "serde_json",
  "uuid",
  "wasm-bindgen",
@@ -4454,6 +4455,7 @@ dependencies = [
  "js-sys",
  "k256",
  "log",
+ "loro",
  "nostr",
  "openagents-doc",
  "openagents-proto",
@@ -4595,6 +4597,23 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
  "web-time",
+]
+
+[[package]]
+name = "openagents-web-room"
+version = "1.0.0"
+dependencies = [
+ "console_error_panic_hook",
+ "futures",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "js-sys",
+ "log",
+ "openagents-web-client",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

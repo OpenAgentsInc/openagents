@@ -274,6 +274,49 @@ window.addEventListener("oa-host", function (event) {
   }
 });
 
+// A computer chat's live transcript (#12224): its own module, loaded the
+// first time a computer chat opens (`oa-room-open`, with the chat's id); it
+// sends each change back as `oa-room`.
+var room = null;
+var roomLoading = null;
+var roomChat = "";
+function loadRoom() {
+  if (!roomLoading) {
+    var glue = new URL("./openagents_web_room.js", import.meta.url);
+    roomLoading = import(glue.href).then(function (module) {
+      return module.default({
+        module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_room_bg.wasm", import.meta.url))),
+      }).then(function () {
+        room = module;
+        return module;
+      });
+    });
+  }
+  return roomLoading;
+}
+window.addEventListener("oa-room-open", function (event) {
+  roomChat = event.detail || "";
+  loadRoom()
+    .then(function (module) {
+      if (roomChat) {
+        module.open(roomChat);
+      }
+    })
+    .catch(function (error) {
+      console.error("the chat's transcript couldn't load", error);
+      roomLoading = null;
+      window.dispatchEvent(new CustomEvent("oa-room", {
+        detail: JSON.stringify({ chat: roomChat, entries: [], caught_up: false, unavailable: true }),
+      }));
+    });
+});
+window.addEventListener("oa-room-close", function () {
+  roomChat = "";
+  if (room) {
+    room.close();
+  }
+});
+
 supported().then(function (ok) {
   if (ok) {
     start();

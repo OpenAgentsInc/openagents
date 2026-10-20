@@ -240,6 +240,32 @@ impl Client {
         ))
     }
 
+    /// Reads `path` on this site as bytes; `None` when it answers 204.
+    pub async fn bytes(&self, path: &str) -> Result<Option<Vec<u8>>> {
+        let init = web_sys::RequestInit::new();
+        init.set_method("GET");
+        init.set_credentials(web_sys::RequestCredentials::SameOrigin);
+        let request = web_sys::Request::new_with_str_and_init(path, &init).map_err(js_error)?;
+        let window = web_sys::window().ok_or_else(|| anyhow!("no window"))?;
+        let response: web_sys::Response = JsFuture::from(window.fetch_with_request(&request))
+            .await
+            .map_err(js_error)?
+            .dyn_into()
+            .map_err(js_error)?;
+        let status = response.status();
+        if status == 204 {
+            return Ok(None);
+        }
+        let buffer = JsFuture::from(response.array_buffer().map_err(js_error)?)
+            .await
+            .map_err(js_error)?;
+        let bytes = js_sys::Uint8Array::new(&buffer).to_vec();
+        if !(200..300).contains(&status) {
+            return Err(anyhow::Error::new(Refusal::read(status, &bytes)));
+        }
+        Ok(Some(bytes))
+    }
+
     /// Reads `path` on this site as JSON.
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T> {
         self.send("GET", path, None::<&()>).await

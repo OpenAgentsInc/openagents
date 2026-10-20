@@ -26,6 +26,7 @@ decision-panel = { path = "../../../../crates/decision-panel" }
 rust-native = { path = "../../../../crates/rust-native", default-features = false }
 openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
 web-time.workspace = true
