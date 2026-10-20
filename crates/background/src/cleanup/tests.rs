@@ -115,7 +115,13 @@ fn finds_shared_custom_nested_and_registered_targets() {
     .into_iter()
     .map(|p| home.target(p))
     .collect();
+    let package = home
+        .layout
+        .home
+        .join("go/pkg/mod/vendor/module/balancer/weightedtarget");
+    std::fs::create_dir_all(package).unwrap();
     let plan = home.scan();
+    assert!(plan.uncovered.is_empty(), "{:?}", plan.uncovered);
     for root in roots {
         assert!(
             plan.entries.iter().any(|entry| entry.target == root),

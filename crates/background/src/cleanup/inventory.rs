@@ -175,9 +175,13 @@ pub fn discover(home: &Path) -> Inventory {
             targets.insert(path);
             continue;
         }
-        let target_name = path
-            .file_name()
-            .is_some_and(|n| n.to_string_lossy().contains("target"));
+        let target_name = path.file_name().is_some_and(|n| {
+            let name = n.to_string_lossy();
+            name == "target"
+                || name.starts_with("target-")
+                || name.ends_with("-target")
+                || name.contains("-target-")
+        });
         if target_name
             && (path.join("CACHEDIR.TAG").is_file()
                 || path.join("debug/.cargo-lock").is_file()
