@@ -306,3 +306,34 @@ fn retired_demo_addresses_stay_owned() {
         assert!(crate::upstream::owned(path), "{path}");
     }
 }
+
+#[test]
+fn retired_pages_and_shared_assets_stay_owned() {
+    for path in [
+        "/lander3",
+        "/lander3/scene.json",
+        "/lander4",
+        "/lander5",
+        "/lander6/card/webgpu/x",
+        "/lander7",
+        "/lander8",
+        "/lander8/chat/id",
+        "/lander8/session",
+        "/lander8/build/webgl/x",
+        "/lander9",
+        "/lander9/hands/vision_bundle.mjs",
+        "/landing",
+        "/landing/landing.css",
+        "/gpui",
+        "/gpui/chat/id",
+        "/gpui/build/start.js",
+        "/gpui/text",
+        "/gpui/side/files",
+        "/verse/hands/vision_bundle.mjs",
+        "/verse/hands/wasm/vision_wasm_internal.wasm",
+        "/cloud",
+        "/cloud/app/settings",
+    ] {
+        assert!(crate::upstream::owned(path), "{path}");
+    }
+}

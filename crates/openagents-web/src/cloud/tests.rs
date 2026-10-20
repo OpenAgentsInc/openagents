@@ -1195,7 +1195,12 @@ async fn old_cloud_addresses_redirect_to_their_new_homes() {
             None,
         )
         .await;
-        assert_eq!(answer.status, StatusCode::SEE_OTHER, "{path}");
+        let status = if path == "/cloud/sign-in" {
+            StatusCode::SEE_OTHER
+        } else {
+            StatusCode::PERMANENT_REDIRECT
+        };
+        assert_eq!(answer.status, status, "{path}");
         assert_eq!(answer.headers[header::LOCATION], to, "{path}");
     }
 }

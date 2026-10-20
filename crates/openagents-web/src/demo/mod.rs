@@ -7,6 +7,7 @@ use crate::App;
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/demo", get(moved))
+        .route("/demo/", get(moved))
         .route("/demo/{chat}", get(moved))
         .route("/demo/{chat}/thread", get(moved))
         .route("/demo/{chat}/message", get(moved).post(moved))

@@ -117,11 +117,11 @@
         tell("We couldn't find a camera. The keyboard and mouse still work.", true);
         return;
       }
-      var model = import("/lander9/hands/vision_bundle.mjs").then(function (vision) {
-        return vision.FilesetResolver.forVisionTasks("/lander9/hands/wasm").then(function (files) {
+      var model = import("/verse/hands/vision_bundle.mjs").then(function (vision) {
+        return vision.FilesetResolver.forVisionTasks("/verse/hands/wasm").then(function (files) {
           function make(delegate) {
             return vision.HandLandmarker.createFromOptions(files, {
-              baseOptions: { modelAssetPath: "/lander9/hands/hand_landmarker.task", delegate: delegate },
+              baseOptions: { modelAssetPath: "/verse/hands/hand_landmarker.task", delegate: delegate },
               runningMode: "VIDEO",
               numHands: 2,
               minHandDetectionConfidence: 0.6,

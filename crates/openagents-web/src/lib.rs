@@ -453,17 +453,12 @@ pub struct Config {
     /// `/srv/layertree` when it exists), served under `/layertree/`.
     /// Without it, `/layertree` says the demo is unavailable.
     pub layertree: Option<PathBuf>,
-    /// `/lander5`'s WebGL2 runner (`--lander5 DIR`, default `/srv/lander5`
-    /// when it exists), inlined into the page. Without it, `/lander5` shows
-    /// its title and link over a still background.
+    /// The shared Grid runner (`--lander5 DIR`, default `/srv/lander5`)
+    /// for /home, /pylons, /lander10, and /lander11.
     pub lander5: Option<PathBuf>,
-    /// `/lander6`'s agent demo card (`--lander6 DIR`, default `/srv/lander6`
-    /// when it exists): its WebGPU-only and WebGL2 builds, served under
-    /// `/lander6/card/`. Without it, `/lander6` is `/lander5` with no card.
+    /// Compatibility option for the retired /lander6 demo; unused.
     pub lander6: Option<PathBuf>,
-    /// `/lander7`'s AgentGraph demo (`--lander7 DIR`, default `/srv/lander7`
-    /// when it exists): its WebGPU-only and WebGL2 builds, served under
-    /// `/lander7/graph/`. Without it, `/lander7` is the Grid and the name.
+    /// Compatibility option for the retired /lander7 demo; unused.
     pub lander7: Option<PathBuf>,
     /// `/pylons`' builds (`--pylons DIR`, default `/srv/pylons` when it
     /// exists): the Grid layer under `layer/` and the GPUI card's two
@@ -503,16 +498,11 @@ pub struct Config {
     /// Whether agent pages read the published Gym leaderboard (#12302).
     /// On in the binary, off for tests.
     pub gym_results: bool,
-    /// `/lander8`'s chat (`--lander8 DIR`, default `/srv/lander8` when it
-    /// exists): its WebGPU-only and WebGL2 builds, served under
-    /// `/lander8/build/`. Without it, `/lander8` is the Grid, the name, and
-    /// a link to the home page's chat.
+    /// Chat builds used by /lander10 and /lander11 (`--lander8 DIR`,
+    /// default `/srv/lander8`), served under `/lander8/build/`.
     pub lander8: Option<PathBuf>,
-    /// `/lander9`'s hand-tracking demo (`--lander9 DIR`, default
-    /// `/srv/lander9` when it exists): the demo's builds under `graph/`,
-    /// served at `/lander9/graph/`, and the pinned hand landmarker under
-    /// `hands/`, served at `/lander9/hands/`. Without it, `/lander9` is the
-    /// Grid and the name.
+    /// Verse's pinned hand landmarker (`--lander9 DIR`, default
+    /// `/srv/lander9`), read from `hands/` and served at `/verse/hands/`.
     pub lander9: Option<PathBuf>,
     /// The Snap Station web build (`--snap DIR`, default `/srv/snap` when
     /// it exists), served under `/games/snap-station/`. Without it, the
@@ -735,7 +725,6 @@ pub fn router(mut config: Config) -> Router {
         upstream: app.config.upstream.clone(),
         api: app.config.inference.is_some(),
         inference: app.config.inference.clone(),
-        front_door: app.config.front_door,
     };
     let site_hosts = hosts.clone();
     let mut site = Router::<App>::new();
@@ -768,7 +757,9 @@ pub fn router(mut config: Config) -> Router {
         .merge(chat_html::routes())
         .merge(chat_files::routes())
         .merge(chat_export::routes())
+        // The HTML fallback still selects source and runtime here.
         .merge(composer::routes())
+        // The fallback and GPUI Send with files share this selector row.
         .merge(composer_row::routes())
         .merge(demo::routes())
         .merge(environments::routes(&app))
@@ -942,9 +933,6 @@ struct Hosts {
     /// The inference gateway, for `/v1/responses` and
     /// `/v1/chat/completions` naming a model id ([`door_route`]).
     inference: Option<Arc<upstream::Upstream>>,
-    /// The one front door is on ([`Config::front_door`]): the older
-    /// landers move to `/`.
-    front_door: bool,
 }
 
 impl Hosts {
@@ -987,11 +975,6 @@ async fn host_guard(hosts: Hosts, mut request: Request, next: Next) -> Response 
         .to_owned();
     let local = hosts.local(&host) && loopback_peer(&request);
     let path = request.uri().path();
-    if hosts.front_door
-        && let Some(to) = pages::retired_lander(path)
-    {
-        return cloud::protect(axum::response::Redirect::temporary(&to).into_response());
-    }
     // The task browser reads this computer's own task store, so it stays
     // on the local address.
     let browser = path == "/app" || path.starts_with("/app/");

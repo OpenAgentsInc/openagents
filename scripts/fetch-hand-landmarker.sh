@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fetch the hand landmarker /lander9 runs in the browser, pinned by digest,
-# into OUTDIR, which the site serves from its own origin at /lander9/hands/
+# into OUTDIR, which the site serves from its own origin at /verse/hands/
 # (`openagents-web --lander9 DIR` reads DIR/hands/):
 #
 #   OUTDIR/vision_bundle.mjs              MediaPipe Tasks Vision 0.10.35, the JS API

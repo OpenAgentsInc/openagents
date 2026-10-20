@@ -28,24 +28,21 @@ mod icecream;
 mod icecream_guide;
 mod lander10;
 mod lander11;
-mod lander3;
-pub(crate) mod lander4;
 mod lander5;
 mod lander6;
-mod lander7;
 mod lander8;
-mod lander9;
-mod landing;
 mod layertree;
 pub(crate) mod live;
 mod pricing;
 pub(crate) mod profile;
 mod pylons;
 mod pylons_field;
+mod retired;
 pub(crate) mod sdk_docs;
 mod snap;
 mod snap_shares;
 pub(crate) mod stats;
+mod verse_hands;
 
 use axum::Router;
 
@@ -83,17 +80,7 @@ pub(crate) use icecream::{
 #[cfg(test)]
 pub(crate) use icecream_guide::ICECREAM_GUIDE_PATH;
 #[cfg(test)]
-pub(crate) use lander3::LANDER3_POLICY;
-#[cfg(test)]
-pub(crate) use lander5::{LANDER5_GLUE, LANDER5_PATH, LANDER5_WASM};
-#[cfg(test)]
-pub(crate) use lander6::{LANDER6_GLUE, LANDER6_PATH, LANDER6_WASM};
-#[cfg(test)]
-pub(crate) use lander7::{LANDER7_GLUE, LANDER7_PATH, LANDER7_WASM};
-#[cfg(test)]
-pub(crate) use lander8::{LANDER8_GLUE, LANDER8_PATH, LANDER8_SESSION, LANDER8_WASM};
-#[cfg(test)]
-pub(crate) use lander9::LANDER9_PATH;
+pub(crate) use lander8::{LANDER8_GLUE, LANDER8_SESSION, LANDER8_WASM};
 #[cfg(test)]
 pub(crate) use layertree::{
     LAYERTREE_CANVAS, LAYERTREE_GLUE, LAYERTREE_PATH, LAYERTREE_POLICY, LAYERTREE_START,
@@ -114,7 +101,8 @@ pub(crate) use stats::utc;
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(home::routes())
-        .merge(landing::routes())
+        .merge(retired::routes())
+        .merge(verse_hands::routes())
         .merge(contact::routes())
         .merge(blue_rush::routes())
         .merge(chat::routes())
@@ -125,17 +113,11 @@ pub(crate) fn routes() -> Router<App> {
         .merge(foreman::routes())
         .merge(affiliates::routes())
         .merge(everglade::routes())
-        .merge(lander3::routes())
-        .merge(lander5::routes())
-        .merge(lander4::routes())
-        .merge(lander6::routes())
-        .merge(lander7::routes())
         .merge(pylons::routes())
         .merge(lander8::routes())
         .merge(lander10::routes())
         .merge(lander11::routes())
         .merge(grid_home::routes())
-        .merge(lander9::routes())
         .merge(bunny::routes())
         .merge(gpui_demo::routes())
         .merge(gpui_fonts::routes())
@@ -154,22 +136,4 @@ pub(crate) fn routes() -> Router<App> {
         .merge(connect::routes())
         .merge(profile::routes())
         .merge(pricing::routes())
-}
-
-/// Where a retired lander's page moves once the one front door is on
-/// (#12260): `/lander3` to `/lander9` go to `/`, and a `/lander8` chat to
-/// the same chat on `/lander10`. Their build files keep answering, since
-/// `/lander10` loads `/lander8`'s chat.
-#[must_use]
-pub(crate) fn retired_lander(path: &str) -> Option<String> {
-    let path = path.trim_end_matches('/');
-    if matches!(
-        path,
-        "/lander3" | "/lander4" | "/lander5" | "/lander6" | "/lander7" | "/lander8" | "/lander9"
-    ) {
-        return Some("/".into());
-    }
-    path.strip_prefix("/lander8/chat/")
-        .filter(|id| !id.is_empty() && !id.contains('/'))
-        .map(|id| format!("/lander10/chat/{id}"))
 }

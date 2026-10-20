@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Build the chat (apps/openagents/web/lander-chat) that openagents.com's
-# /lander8 fades in over its background, in two builds, as
-# build-web-graph-card.sh builds /lander7's:
+# /lander10 and /lander11 load over their backgrounds, in two builds:
 #
 #   OUTDIR/webgpu/   WebGPU only (web/lander-chat/webgpu): what a browser
 #                    with WebGPU loads
@@ -12,12 +11,13 @@
 # both. The site serves them under /lander8/build/ (`openagents-web
 # --lander8 OUTDIR`).
 #
-# The WebGPU-only build patches wgpu the same way as build-web-card.sh: a
+# The WebGPU-only build patches wgpu with a
 # copy of the crates.io release without the GL, Metal, Vulkan, and DX12
 # backends, whose WebGPU surface also offers a premultiplied canvas. The
 # copy is written to web/lander-chat/webgpu/wgpu/.
 #
-# Prerequisites: as for build-web-card.sh.
+# Prerequisites: the wasm32 target, wasm-bindgen at web/Cargo.lock's
+# version, and brotli. wasm-opt is used when present.
 #
 # Usage: apps/openagents/scripts/build-web-lander-chat.sh OUTDIR
 set -euo pipefail

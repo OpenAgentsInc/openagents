@@ -279,7 +279,7 @@ async fn stage(app: &App, stage: &Stage, headers: &HeaderMap) -> Response {
 }
 
 /// `/verse`'s opt-in hand input (#12309): the button, the note, and the
-/// camera's `<video>`, which `everglade.js` drives with `/lander9`'s hand
+/// camera's `<video>`, which `everglade.js` drives with `/verse/hands`'s hand
 /// landmarker. Nothing loads until the button is pressed.
 const HAND_BAR: &str = "<div class=\"glade-hands\"><button type=\"button\" id=\"hand-toggle\" \
 aria-pressed=\"false\" aria-label=\"Turn on hand tracking\">Hands</button>\
@@ -287,14 +287,14 @@ aria-pressed=\"false\" aria-label=\"Turn on hand tracking\">Hands</button>\
 Hand tracking runs on this device. Your camera's picture is never uploaded.</p></div>\
 <video id=\"hand-video\" muted playsinline aria-hidden=\"true\"></video>";
 
-/// Whether this server has `/lander9`'s hand landmarker to serve.
+/// Whether this server has the hand landmarker to serve.
 fn hand_files(app: &App) -> bool {
     app.config.lander9.as_deref().is_some_and(|root| {
         let hands = root.join("hands");
-        super::lander9::LANDER9_HAND_FILES
+        super::verse_hands::HAND_FILES
             .iter()
             .all(|(file, _)| hands.join(file).is_file())
-            && super::lander9::LANDER9_HAND_WASM
+            && super::verse_hands::HAND_WASM
                 .iter()
                 .all(|(file, _)| hands.join("wasm").join(file).is_file())
     })

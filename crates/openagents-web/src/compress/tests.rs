@@ -252,7 +252,7 @@ async fn the_stylesheet_is_compressed_once_and_kept() {
 async fn self_compressed_pages_are_not_compressed_twice() {
     let root = tempfile::tempdir().unwrap();
     let config = crate::Config::development(root.path().join("tasks"));
-    for path in ["/lander4", "/agent/foreman"] {
+    for path in ["/lander10", "/agent/foreman"] {
         let (status, headers, body) = fetch(crate::router(config.clone()), path, Some("br")).await;
         assert_eq!(status, StatusCode::OK, "{path}");
         let codings: Vec<_> = headers.get_all(header::CONTENT_ENCODING).iter().collect();

@@ -10,6 +10,6 @@ use crate::App;
 pub(crate) fn routes() -> Router<App> {
     Router::new().route(
         "/cloud",
-        get(|| async { Redirect::to("/").into_response() }),
+        get(|| async { Redirect::permanent("/").into_response() }),
     )
 }

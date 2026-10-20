@@ -225,7 +225,7 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
 # AgentGraph, which /agent/foreman draws with (and its first frame: the
 # paint-only painter for wasm32, and Foreman's frames, captured by the
 # native `first-frame-capture` on GPUI's headless platform, no GPU), and
-# the signed-in GPUI web chat at /gpui
+# the GPUI web chat at / and /chat/{id}
 # (apps/openagents/web, its own Cargo workspace and lock). GPUI needs the
 # app's pinned compiler, 1.98.1, so this stage has its own base: the wasm32
 # target, binaryen, brotli, and wasm-bindgen-cli at the version
@@ -296,21 +296,12 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/gpui-chat/openagents_web_chat_bg.wasm \
     && test -s /build/gpui-chat/start.js \
     && test -s /build/gpui-chat/fonts/Geist.ttf \
-    && oa-kache run apps/openagents/scripts/build-web-card.sh /build/lander6 \
-    && test -s /build/lander6/webgpu/openagents_web_card_bg.wasm.br \
-    && test -s /build/lander6/webgl/openagents_web_card_bg.wasm.br \
-    && oa-kache run apps/openagents/scripts/build-web-graph-card.sh /build/lander7 \
-    && test -s /build/lander7/webgpu/openagents_web_graph_card_bg.wasm.br \
-    && test -s /build/lander7/webgl/openagents_web_graph_card_bg.wasm.br \
     && oa-kache run apps/openagents/scripts/build-web-pylon-card.sh /build/pylons-card \
     && test -s /build/pylons-card/webgpu/openagents_web_pylon_card_bg.wasm.br \
     && test -s /build/pylons-card/webgl/openagents_web_pylon_card_bg.wasm.br \
     && oa-kache run apps/openagents/scripts/build-web-lander-chat.sh /build/lander8 \
     && test -s /build/lander8/webgpu/openagents_web_lander_chat_bg.wasm.br \
     && test -s /build/lander8/webgl/openagents_web_lander_chat_bg.wasm.br \
-    && oa-kache run apps/openagents/scripts/build-web-graph-card.sh /build/lander9/graph --hands \
-    && test -s /build/lander9/graph/webgpu/openagents_web_graph_card_bg.wasm.br \
-    && test -s /build/lander9/graph/webgl/openagents_web_graph_card_bg.wasm.br \
     && scripts/fetch-hand-landmarker.sh /build/lander9/hands \
     && test -s /build/lander9/hands/hand_landmarker.task.br \
     && test -s /build/lander9/hands/wasm/vision_wasm_internal.wasm.br
@@ -352,8 +343,6 @@ COPY --from=gpuiweb /build/gpui-demo /srv/gpui-demo
 COPY --from=gpuiweb /build/agent-graph /srv/agent-graph
 COPY --from=gpuiweb /build/gpui-fonts /srv/gpui-fonts
 COPY --from=gpuiweb /build/gpui-chat /srv/gpui-chat
-COPY --from=gpuiweb /build/lander6 /srv/lander6
-COPY --from=gpuiweb /build/lander7 /srv/lander7
 COPY --from=everglade /build/pylons-layer /srv/pylons/layer
 COPY --from=gpuiweb /build/pylons-card /srv/pylons/card
 COPY --from=gpuiweb /build/lander8 /srv/lander8

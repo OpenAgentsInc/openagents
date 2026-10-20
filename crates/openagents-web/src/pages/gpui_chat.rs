@@ -1,17 +1,11 @@
-//! `/gpui` and `/gpui/chat/{id}`: the account's chats drawn by the
-//! OpenAgents desktop app's GPUI interface, compiled to WebAssembly.
+//! The GPUI chat renderer at `/` and `/chat/{id}`, with an HTML fallback.
 //!
-//! It is a second renderer beside the HTML chat at `/` and `/chat/{id}`.
-//! Those addresses draw it too when the person turns it on (#12221,
-//! #12222): `?ui=gpui` on either address shows it and keeps a cookie
-//! ([`UI_COOKIE`]) so later visits show it again, `?ui=html` shows the HTML
-//! chat once (the canvas links there for what it doesn't draw yet), and
-//! `?ui=off` goes back to the HTML chat and clears the cookie ([`choice`]).
-//! Without any of these, the HTML chat stays the default. The app is a client of the chat API the
-//! phone uses (`/v1/threads`, `/v1/threads/{id}/events`, `/v1/projects`),
-//! signed in by the site's cookie through [`crate::cookie_api`], with the
-//! CSRF value this page puts in its `openagents-csrf` meta tag. Signed out,
-//! it chats as the browser's visitor (`oa_visitor`), as `/lander8` does.
+//! `/gpui` and `/gpui/chat/{id}` permanently redirect to those addresses.
+//! Builds, text, and side-panel fragments keep their `/gpui/` paths.
+//! `?ui=gpui` selects GPUI and remembers the choice; `?ui=html` opens the
+//! HTML chat once, and `?ui=off` clears the choice. The `gpui_default`
+//! feature selects GPUI when the browser supports it. The app calls the
+//! same chat API as the phone, using the site's cookie and CSRF value.
 //!
 //! The page paints a plain HTML outline of the chat list first, then its
 //! start script checks for WebGPU, fetches the module and the
@@ -31,9 +25,9 @@
 use std::path::Path;
 
 use axum::Router;
-use axum::extract::{Path as UrlPath, State};
+use axum::extract::{OriginalUri, Path as UrlPath, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
-use axum::response::{Html, IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::routing::get;
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 use openagents_ui::content::{MarkdownRoot, PageColumn};
@@ -73,9 +67,9 @@ const SHELL_CSS: &str = include_str!("gpui_chat.css");
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
-        .route(GPUI_CHAT_PATH, get(new_chat))
-        .route("/gpui/", get(new_chat))
-        .route("/gpui/chat/{id}", get(chat))
+        .route(GPUI_CHAT_PATH, get(moved))
+        .route("/gpui/", get(moved))
+        .route("/gpui/chat/{id}", get(moved))
         .route(SHELL_CSS_PATH, get(shell_css))
         .route("/gpui/build/{file}", get(build_file))
         .route("/gpui/build/fonts/{file}", get(font_file))
@@ -181,19 +175,18 @@ fn build(app: &App) -> Option<&Path> {
         .then_some(directory)
 }
 
-async fn new_chat(State(app): State<App>, headers: HeaderMap) -> Response {
-    page(&app, &headers, None, GPUI_CHAT_PATH).await
-}
-
-async fn chat(
-    State(app): State<App>,
-    headers: HeaderMap,
-    UrlPath(id): UrlPath<String>,
-) -> Response {
-    if !crate::chat_store::valid_id(&id) {
-        return crate::not_found().await;
-    }
-    page(&app, &headers, Some(id), GPUI_CHAT_PATH).await
+async fn moved(OriginalUri(uri): OriginalUri) -> Redirect {
+    let path = uri.path().strip_prefix(GPUI_CHAT_PATH).unwrap_or("");
+    let path = if path.is_empty() || path == "/" {
+        "/"
+    } else {
+        path
+    };
+    let to = match uri.query() {
+        Some(query) => format!("{path}?{query}"),
+        None => path.to_owned(),
+    };
+    Redirect::permanent(&to)
 }
 
 /// What the person chose for the chat's view at `/` and `/chat/{id}`.

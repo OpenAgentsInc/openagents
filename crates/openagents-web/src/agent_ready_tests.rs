@@ -579,14 +579,14 @@ async fn plain_text_json_and_the_root_skill_answer_in_their_types() {
 }
 
 #[tokio::test]
-async fn the_homepage_has_one_heading_a_contact_and_links_to_llms_txt() {
+async fn the_chat_homepage_has_one_heading_and_agent_discovery_links() {
     let root = tempfile::tempdir().unwrap();
     let (status, _, html) = fetch(site(root.path()), "/", Some("text/html")).await;
     assert_eq!(status, StatusCode::OK);
-    // A visitor who isn't signed in gets the landing page: one heading.
+    // The HTML chat fallback keeps one heading and the agent metadata.
     assert_eq!(html.matches("<h1").count(), 1, "{html}");
-    assert!(html.contains("One Coder in front of every coding agent you use"));
-    assert!(html.contains("href=\"mailto:chris@openagents.com\""));
+    assert!(html.contains("id=\"chat-input\""));
+    assert!(html.contains("action=\"/chat\""));
     for file in ["/llms.txt", "/llms-full.txt"] {
         assert!(
             html.contains(&format!(

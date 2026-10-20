@@ -313,7 +313,7 @@ async fn the_public_cloud_page_redirects_home_and_browser_work_stays_unavailable
     settings.public_hosts.push("openagents.com".into());
     let site = router(settings);
     let (status, headers, html) = get_with(site.clone(), "/cloud", "openagents.com").await;
-    assert_eq!(status, StatusCode::SEE_OTHER);
+    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
     assert_eq!(headers[header::LOCATION], "/");
     assert!(!headers.contains_key(header::SET_COOKIE));
     assert!(html.is_empty(), "{html}");
@@ -1514,84 +1514,6 @@ async fn the_grid_page_serves_the_same_build_and_admits_the_relay() {
     assert!(html.contains("Everglade is unavailable on this server"));
 }
 
-/// `/lander4`: one document with a real heading and a real link to the
-/// download page, the painter inlined, a policy that admits only the
-/// page's own script and styles, and brotli for a browser that asks.
-#[tokio::test]
-async fn the_lander4_page_is_one_document_with_a_real_link() {
-    let root = tempfile::tempdir().unwrap();
-    let config = config(root.path().join("tasks"));
-    let (status, headers, html) = get_with(router(config.clone()), "/lander4", LOCAL).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(html.contains("<title>OpenAgents</title>"), "{html}");
-    assert!(html.contains("<h1 id=\"title\">OpenAgents</h1>"));
-    assert!(html.contains(&format!(
-        "<a id=\"download\" href=\"{}\">Download</a>",
-        pages::lander4::DOWNLOAD
-    )));
-    assert_eq!(pages::lander4::DOWNLOAD, "/download");
-    assert!(headers.get(header::CONTENT_ENCODING).is_none());
-    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
-    assert_eq!(policy, pages::lander4::PAGE.policy.to_str().unwrap());
-    assert!(policy.starts_with("default-src 'none'; script-src 'sha256-"));
-    assert!(policy.contains("'wasm-unsafe-eval'") && !policy.contains("unsafe-inline"));
-    crate::copy_guard::assert_plain("/lander4", &html);
-    // The download page it links is live.
-    let (status, _, _) = get_with(router(config.clone()), "/download", LOCAL).await;
-    assert_eq!(status, StatusCode::OK);
-
-    let response = router(config)
-        .oneshot(
-            Request::builder()
-                .uri("/lander4")
-                .header(header::HOST, LOCAL)
-                .header(header::ACCEPT_ENCODING, "gzip, deflate, br, zstd")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
-    let body = to_bytes(response.into_body(), 1 << 20).await.unwrap();
-    assert_eq!(body.as_ref(), pages::lander4::PAGE.brotli.as_slice());
-    assert!(body.len() < html.len() / 2);
-}
-
-/// `/lander3` (#12180): the overhead Grid in three.js, from this site only:
-/// the page, its scene from the verse crate, the pack's textures, and the
-/// vendored three.js.
-#[tokio::test]
-async fn the_lander3_page_serves_the_grid_and_three_from_this_site() {
-    let root = tempfile::tempdir().unwrap();
-    let config = config(root.path().join("tasks"));
-    let (status, headers, html) = get_with(router(config.clone()), "/lander3", LOCAL).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(html.contains("<title>The Grid from above"), "{html}");
-    assert!(html.contains("<script type=\"module\" src=\"/lander3/lander3.js\"></script>"));
-    assert_eq!(
-        headers[header::CONTENT_SECURITY_POLICY],
-        pages::LANDER3_POLICY
-    );
-    let (status, _, scene) = get_with(router(config.clone()), "/lander3/scene.json", LOCAL).await;
-    assert_eq!(status, StatusCode::OK);
-    let scene: serde_json::Value = serde_json::from_str(&scene).unwrap();
-    assert!(scene["models"]["grid/gym"].is_object());
-    for path in [
-        "/lander3/three/three.module.min.js",
-        "/lander3/three/three.core.min.js",
-        "/lander3/lander3.js",
-        "/lander3/lander3.css",
-        "/lander3/texture/everglade-portal.png",
-    ] {
-        let (status, _, _) = get_with(router(config.clone()), path, LOCAL).await;
-        assert_eq!(status, StatusCode::OK, "{path}");
-    }
-    for path in ["/lander3/three/three.js", "/lander3/texture/../pack.json"] {
-        let (status, _, _) = get_with(router(config.clone()), path, LOCAL).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{path}");
-    }
-}
-
 /// Without the build directory, or without the glue in it, the page says
 /// Everglade is unavailable, runs no script, keeps the site's policy, and
 /// serves no build file.
@@ -1757,233 +1679,8 @@ async fn the_bunny_page_says_it_cannot_be_played_without_the_build() {
     }
 }
 
-/// `/lander5`: one response holding the title, the Download link, both
-/// shaders and the runner, under a policy that admits its inline style and
-/// script by hash; without the build, the same title and link and no
-/// script.
 #[tokio::test]
-async fn the_lander5_page_is_one_document_with_its_title_and_link() {
-    let root = tempfile::tempdir().unwrap();
-    let build = root.path().join("lander5");
-    std::fs::create_dir_all(&build).unwrap();
-    std::fs::write(
-        build.join(pages::LANDER5_GLUE),
-        "export function start() {}\nasync function __wbg_init(m) { return m; }\n\
-export { initSync, __wbg_init as default };\n",
-    )
-    .unwrap();
-    std::fs::write(build.join(pages::LANDER5_WASM), b"\0asm\x01\0\0\0").unwrap();
-    let mut with_build = config(root.path().join("tasks"));
-    with_build.lander5 = Some(build);
-    let mut without_build = config(root.path().join("tasks"));
-    without_build.lander5 = Some(root.path().join("nowhere"));
-
-    for (config, runs) in [(with_build, true), (without_build, false)] {
-        let (status, headers, html) =
-            get_with(router(config.clone()), pages::LANDER5_PATH, LOCAL).await;
-        assert_eq!(status, StatusCode::OK);
-        assert!(html.contains("<title>OpenAgents</title>"), "{html}");
-        assert!(html.contains("<h1>OpenAgents</h1>"));
-        assert!(html.contains("<a href=\"/download\">Download</a>"));
-        assert!(html.contains("<canvas id=\"lander5-canvas\" aria-hidden=\"true\">"));
-        // One request: no stylesheet, script, icon, or font from anywhere.
-        let lower = html.to_ascii_lowercase();
-        assert!(!lower.contains(" src=") && !lower.contains("<link rel=\"stylesheet\""));
-        assert!(lower.contains("<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:"));
-        let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
-        assert!(
-            policy.starts_with("default-src 'none'; style-src 'sha256-"),
-            "{policy}"
-        );
-        assert!(!policy.contains("unsafe-inline"));
-        assert_eq!(lower.contains("<script type=\"module\">"), runs);
-        assert_eq!(policy.contains("'wasm-unsafe-eval'"), runs);
-        assert_eq!(html.contains("id=\"lander5-grid\""), runs);
-        assert_eq!(html.contains("Copyright (c) 2026 gokayfem"), runs);
-        crate::copy_guard::assert_plain(pages::LANDER5_PATH, &html);
-        assert_eq!(
-            oa_copy::violations(&oa_copy::visible_text(&html), &[]),
-            vec![]
-        );
-
-        // brotli when asked, with the same page inside
-        let response = router(config.clone())
-            .oneshot(
-                Request::builder()
-                    .uri(pages::LANDER5_PATH)
-                    .header(header::HOST, LOCAL)
-                    .header(header::ACCEPT_ENCODING, "gzip, deflate, br")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
-        assert_eq!(response.headers()[header::VARY], "accept-encoding");
-        let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
-        let mut page = Vec::new();
-        brotli::BrotliDecompress(&mut &bytes[..], &mut page).unwrap();
-        assert_eq!(page, html.as_bytes());
-    }
-    assert!(crate::upstream::owned(pages::LANDER5_PATH));
-}
-
-/// `/lander6`: `/lander5`'s one response plus the card's box and loader,
-/// and the card's two builds served from `--lander6 DIR`, brotli when
-/// asked; nothing else in the directory is served.
-#[tokio::test]
-async fn the_lander6_page_adds_the_card_and_serves_its_builds() {
-    let root = tempfile::tempdir().unwrap();
-    let cards = root.path().join("lander6");
-    for variant in ["webgpu", "webgl"] {
-        let dir = cards.join(variant);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(pages::LANDER6_GLUE), "export function mount() {}").unwrap();
-        std::fs::write(dir.join(pages::LANDER6_WASM), b"\0asm\x01\0\0\0").unwrap();
-        std::fs::write(
-            dir.join(format!("{}.br", pages::LANDER6_WASM)),
-            b"brotli wasm",
-        )
-        .unwrap();
-    }
-    std::fs::write(cards.join("secret.js"), "outside the builds").unwrap();
-    let mut config = config(root.path().join("tasks"));
-    config.lander6 = Some(cards);
-
-    let (status, headers, html) =
-        get_with(router(config.clone()), pages::LANDER6_PATH, LOCAL).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(
-        html.contains(
-            "<h1>OpenAgents</h1><a href=\"/download\">Download</a><div id=\"gpui-mount\""
-        ),
-        "{html}"
-    );
-    assert!(html.contains("/lander6/card/"));
-    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
-    assert!(
-        policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"),
-        "{policy}"
-    );
-    crate::copy_guard::assert_plain(pages::LANDER6_PATH, &html);
-    assert!(crate::upstream::owned(pages::LANDER6_PATH));
-    assert!(crate::upstream::owned(
-        "/lander6/card/webgpu/openagents_web_card.js"
-    ));
-
-    for variant in ["webgpu", "webgl"] {
-        let uri = format!("/lander6/card/{variant}/{}", pages::LANDER6_GLUE);
-        let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;
-        assert_eq!(status, StatusCode::OK, "{uri}");
-        assert_eq!(
-            headers[header::CONTENT_TYPE],
-            "text/javascript; charset=utf-8"
-        );
-        let response = router(config.clone())
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/lander6/card/{variant}/{}", pages::LANDER6_WASM))
-                    .header(header::HOST, LOCAL)
-                    .header(header::ACCEPT_ENCODING, "br")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
-        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/wasm");
-    }
-    for uri in [
-        "/lander6/card/webgpu/secret.js",
-        "/lander6/card/other/openagents_web_card.js",
-        "/lander6/card/..%2Fsecret.js/openagents_web_card.js",
-        "/lander6/card/webgpu/../secret.js",
-    ] {
-        let (status, _, _) = get_bytes(router(config.clone()), uri).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
-    }
-}
-
-/// `/lander7`: `/lander5`'s one response with the name in the corner, no
-/// Download link, and the AgentGraph demo's box and loader, and the demo's
-/// two builds served from `--lander7 DIR`; nothing else is served.
-#[tokio::test]
-async fn the_lander7_page_has_the_corner_name_and_serves_the_graph_builds() {
-    let root = tempfile::tempdir().unwrap();
-    let builds = root.path().join("lander7");
-    for variant in ["webgpu", "webgl"] {
-        let dir = builds.join(variant);
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(pages::LANDER7_GLUE), "export function mount() {}").unwrap();
-        std::fs::write(dir.join(pages::LANDER7_WASM), b"\0asm\x01\0\0\0").unwrap();
-        std::fs::write(
-            dir.join(format!("{}.br", pages::LANDER7_WASM)),
-            b"brotli wasm",
-        )
-        .unwrap();
-    }
-    std::fs::write(builds.join("secret.js"), "outside the builds").unwrap();
-    let mut config = config(root.path().join("tasks"));
-    config.lander7 = Some(builds);
-
-    let (status, headers, html) =
-        get_with(router(config.clone()), pages::LANDER7_PATH, LOCAL).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(
-        html.contains("</svg>OpenAgents</h1><div id=\"gpui-mount\""),
-        "{html}"
-    );
-    assert!(!html.contains("href=\"/download\""), "{html}");
-    assert!(html.contains("/lander7/graph/"));
-    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
-    assert!(
-        policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"),
-        "{policy}"
-    );
-    crate::copy_guard::assert_plain(pages::LANDER7_PATH, &html);
-    assert!(crate::upstream::owned(pages::LANDER7_PATH));
-    assert!(crate::upstream::owned(
-        "/lander7/graph/webgpu/openagents_web_graph_card.js"
-    ));
-
-    for variant in ["webgpu", "webgl"] {
-        let uri = format!("/lander7/graph/{variant}/{}", pages::LANDER7_GLUE);
-        let (status, headers, _) = get_bytes(router(config.clone()), &uri).await;
-        assert_eq!(status, StatusCode::OK, "{uri}");
-        assert_eq!(
-            headers[header::CONTENT_TYPE],
-            "text/javascript; charset=utf-8"
-        );
-        let response = router(config.clone())
-            .oneshot(
-                Request::builder()
-                    .uri(format!("/lander7/graph/{variant}/{}", pages::LANDER7_WASM))
-                    .header(header::HOST, LOCAL)
-                    .header(header::ACCEPT_ENCODING, "br")
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
-        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/wasm");
-    }
-    for uri in [
-        "/lander7/graph/webgpu/secret.js",
-        "/lander7/graph/other/openagents_web_graph_card.js",
-        "/lander7/graph/webgpu/openagents_web_card.js",
-        "/lander7/graph/webgpu/../secret.js",
-    ] {
-        let (status, _, _) = get_bytes(router(config.clone()), uri).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
-    }
-}
-
-/// `/lander8`: `/lander5`'s one response with the name in the corner, the
-/// chat's box and loader, the same page at a chat's address, and the
-/// chat's two builds served from `--lander8 DIR`; nothing else is served.
-#[tokio::test]
-async fn the_lander8_page_has_the_chat_and_serves_its_builds() {
+async fn the_retained_lander_chat_serves_its_builds() {
     let root = tempfile::tempdir().unwrap();
     let builds = root.path().join("lander8");
     for variant in ["webgpu", "webgl"] {
@@ -2001,37 +1698,17 @@ async fn the_lander8_page_has_the_chat_and_serves_its_builds() {
     let mut config = config(root.path().join("tasks"));
     config.lander8 = Some(builds);
 
-    let (status, headers, html) =
-        get_with(router(config.clone()), pages::LANDER8_PATH, LOCAL).await;
+    let (status, headers, body) =
+        get_with(router(config.clone()), pages::LANDER8_SESSION, LOCAL).await;
     assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    let session: serde_json::Value = serde_json::from_str(&body).unwrap();
     assert!(
-        html.contains("</svg>OpenAgents</h1><div id=\"gpui-mount\""),
-        "{html}"
+        session["csrf"]
+            .as_str()
+            .is_some_and(|csrf| !csrf.is_empty())
     );
-    assert!(!html.contains("href=\"/download\""), "{html}");
-    assert!(html.contains("/lander8/build/"));
-    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
-    assert!(
-        policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"),
-        "{policy}"
-    );
-    // The page is the same for everyone; the session read is per browser.
-    assert!(!headers.contains_key(header::SET_COOKIE));
-    crate::copy_guard::assert_plain(pages::LANDER8_PATH, &html);
-    let chat = "/lander8/chat/5e1f0c3a-7d2b-4c4e-9a1b-000000000001";
-    let (status, _, same) = get_with(router(config.clone()), chat, LOCAL).await;
-    assert_eq!(status, StatusCode::OK);
-    assert_eq!(same, html);
-    let (status, _, _) = get_with(router(config.clone()), "/lander8/chat/nope", LOCAL).await;
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    for path in [
-        pages::LANDER8_PATH,
-        chat,
-        pages::LANDER8_SESSION,
-        "/lander8/build/webgpu/x",
-    ] {
-        assert!(crate::upstream::owned(path), "{path}");
-    }
+    assert_eq!(session["signed_in"], false);
 
     for variant in ["webgpu", "webgl"] {
         let uri = format!("/lander8/build/{variant}/{}", pages::LANDER8_GLUE);
@@ -2060,103 +1737,6 @@ async fn the_lander8_page_has_the_chat_and_serves_its_builds() {
         "/lander8/build/other/openagents_web_lander_chat.js",
         "/lander8/build/webgpu/openagents_web_card.js",
         "/lander8/build/webgpu/../secret.js",
-    ] {
-        let (status, _, _) = get_bytes(router(config.clone()), uri).await;
-        assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
-    }
-}
-
-/// `/lander9`: `/lander7` with the hand button, the demo's hand-tracking
-/// builds from `--lander9 DIR/graph`, and the pinned landmarker's four
-/// files from `DIR/hands`; nothing else is served.
-#[tokio::test]
-async fn the_lander9_page_has_the_hand_button_and_serves_the_landmarker() {
-    let root = tempfile::tempdir().unwrap();
-    let dir = root.path().join("lander9");
-    for variant in ["webgpu", "webgl"] {
-        let build = dir.join("graph").join(variant);
-        std::fs::create_dir_all(&build).unwrap();
-        std::fs::write(
-            build.join(pages::LANDER7_GLUE),
-            "export function mount() {}",
-        )
-        .unwrap();
-        std::fs::write(build.join(pages::LANDER7_WASM), b"\0asm\x01\0\0\0").unwrap();
-    }
-    let hands = dir.join("hands");
-    std::fs::create_dir_all(hands.join("wasm")).unwrap();
-    std::fs::write(hands.join("vision_bundle.mjs"), "export {}").unwrap();
-    std::fs::write(hands.join("hand_landmarker.task"), b"model").unwrap();
-    std::fs::write(hands.join("hand_landmarker.task.br"), b"brotli model").unwrap();
-    std::fs::write(hands.join("wasm/vision_wasm_internal.js"), "var x").unwrap();
-    std::fs::write(hands.join("wasm/vision_wasm_internal.wasm"), b"\0asm").unwrap();
-    std::fs::write(hands.join("NOTICE"), "notice").unwrap();
-    let mut config = config(root.path().join("tasks"));
-    config.lander9 = Some(dir);
-
-    let (status, headers, html) =
-        get_with(router(config.clone()), pages::LANDER9_PATH, LOCAL).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(html.contains("<button id=\"hand-toggle\""), "{html}");
-    assert!(html.contains("/lander9/graph/"));
-    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
-    assert!(
-        policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"),
-        "{policy}"
-    );
-    crate::copy_guard::assert_plain(pages::LANDER9_PATH, &html);
-    assert!(crate::upstream::owned(pages::LANDER9_PATH));
-    assert!(crate::upstream::owned(
-        "/lander9/hands/hand_landmarker.task"
-    ));
-
-    for (uri, content_type) in [
-        (
-            "/lander9/graph/webgpu/openagents_web_graph_card.js",
-            "text/javascript; charset=utf-8",
-        ),
-        (
-            "/lander9/graph/webgl/openagents_web_graph_card_bg.wasm",
-            "application/wasm",
-        ),
-        (
-            "/lander9/hands/vision_bundle.mjs",
-            "text/javascript; charset=utf-8",
-        ),
-        (
-            "/lander9/hands/hand_landmarker.task",
-            "application/octet-stream",
-        ),
-        (
-            "/lander9/hands/wasm/vision_wasm_internal.js",
-            "text/javascript; charset=utf-8",
-        ),
-        (
-            "/lander9/hands/wasm/vision_wasm_internal.wasm",
-            "application/wasm",
-        ),
-    ] {
-        let (status, headers, _) = get_bytes(router(config.clone()), uri).await;
-        assert_eq!(status, StatusCode::OK, "{uri}");
-        assert_eq!(headers[header::CONTENT_TYPE], content_type, "{uri}");
-    }
-    let response = router(config.clone())
-        .oneshot(
-            Request::builder()
-                .uri("/lander9/hands/hand_landmarker.task")
-                .header(header::HOST, LOCAL)
-                .header(header::ACCEPT_ENCODING, "br")
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
-    for uri in [
-        "/lander9/hands/NOTICE",
-        "/lander9/hands/wasm/vision_wasm_nosimd_internal.wasm",
-        "/lander9/hands/../graph/webgpu/openagents_web_graph_card.js",
-        "/lander9/graph/other/openagents_web_graph_card.js",
     ] {
         let (status, _, _) = get_bytes(router(config.clone()), uri).await;
         assert_eq!(status, StatusCode::NOT_FOUND, "{uri}");
@@ -2258,7 +1838,8 @@ async fn the_grid_homepage_is_at_home_and_the_classic_one_moved() {
     assert!(!html.contains("<input") && !html.contains("<textarea"));
     let (status, _, home) = get_with(router(config.clone()), "/", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(home, classic);
+    assert!(home.contains("id=\"chat-input\""));
+    assert!(classic.contains("id=\"chat-input\""));
     for path in ["/home", "/home/me", "/home/classic"] {
         assert!(crate::upstream::owned(path), "{path}");
     }
@@ -3792,7 +3373,7 @@ async fn cloud_cookies_reach_owned_pages_only_on_a_configured_host() {
                     .unwrap();
                 // `/cloud` answers locally with its redirect home.
                 let expected = if path == "/cloud" {
-                    StatusCode::SEE_OTHER
+                    StatusCode::PERMANENT_REDIRECT
                 } else if path == "/demo" {
                     StatusCode::PERMANENT_REDIRECT
                 } else {
@@ -5222,19 +4803,18 @@ async fn the_pylons_page_lists_pylons_and_serves_its_builds() {
 }
 
 /// #12260: with the front door on, `/` is `/lander10` for a visitor, the
-/// older landers move to `/`, and the home page stays at `/home`; with it
-/// off nothing moves.
+/// older landers always move to `/home`. The flag only changes `/`.
 #[tokio::test]
 async fn the_front_door_is_lander10_only_when_turned_on() {
     let root = tempfile::tempdir().unwrap();
     let off = crate::router(crate::Config::development(root.path().join("tasks")));
     let (_, _, home) = get_with(off.clone(), "/", LOCAL).await;
     let (status, _, _) = get_with(off.clone(), "/lander5", LOCAL).await;
-    assert_ne!(status, StatusCode::TEMPORARY_REDIRECT);
+    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
     assert!(!home.contains("lander-chat-keep"));
     let (status, _, classic) = get_with(off.clone(), "/home/classic", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(classic, home);
+    assert!(classic.contains("id=\"chat-input\""));
     for link in ["href=\"/explore\"", "href=\"/pylons\""] {
         let (_, _, page) = get_with(off.clone(), "/docs", LOCAL).await;
         assert!(page.contains(link), "{link}");
@@ -5251,19 +4831,16 @@ async fn the_front_door_is_lander10_only_when_turned_on() {
         "/lander3", "/lander4", "/lander5", "/lander6", "/lander7", "/lander8", "/lander9",
     ] {
         let (status, headers, _) = get_with(on.clone(), old, LOCAL).await;
-        assert_eq!(status, StatusCode::TEMPORARY_REDIRECT, "{old}");
-        assert_eq!(headers[header::LOCATION], "/", "{old}");
+        assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{old}");
+        assert_eq!(headers[header::LOCATION], "/home", "{old}");
     }
     let id = "0".repeat(32);
     let (status, headers, _) = get_with(on.clone(), &format!("/lander8/chat/{id}"), LOCAL).await;
-    assert_eq!(status, StatusCode::TEMPORARY_REDIRECT);
-    assert_eq!(
-        headers[header::LOCATION],
-        format!("/lander10/chat/{id}").as_str()
-    );
+    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
+    assert_eq!(headers[header::LOCATION], format!("/chat/{id}").as_str());
     let (status, _, classic) = get_with(on.clone(), "/home/classic", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(classic, home);
+    assert!(classic.contains("id=\"chat-input\""));
 }
 
 /// #12309: /verse offers hand input only when the hand landmarker is
@@ -5372,4 +4949,115 @@ async fn hidden_features_answer_not_found() {
     assert_eq!(status, StatusCode::OK);
     let (status, _, _) = get_with(site, "/cad-shop", LOCAL).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+/// Retired URLs keep working independently of deployment flags and built modules.
+#[tokio::test]
+async fn retired_pages_permanently_redirect_and_keep_queries_on_chats() {
+    let root = tempfile::tempdir().unwrap();
+    let mut settings = config(root.path().join("tasks"));
+    settings.public_hosts.push("openagents.com".into());
+    for front_door in [false, true] {
+        settings.front_door = front_door;
+        let site = router(settings.clone());
+        for host in [LOCAL, "openagents.com"] {
+            for (old, to) in [
+                ("/lander3", "/home"),
+                ("/lander3/", "/home"),
+                ("/lander3/scene.json", "/home"),
+                ("/lander4", "/home"),
+                ("/lander5", "/home"),
+                ("/lander6", "/home"),
+                ("/lander6/card/webgpu/openagents_web_card.js", "/home"),
+                ("/lander7", "/home"),
+                ("/lander8", "/home"),
+                ("/lander8/", "/home"),
+                ("/lander9", "/home"),
+                ("/landing", "/home"),
+                ("/landing/landing.css", "/home"),
+                ("/gpui", "/"),
+                ("/gpui/", "/"),
+                ("/gpui?ui=html&project=p1", "/?ui=html&project=p1"),
+                (
+                    "/gpui/chat/00000000-0000-4000-8000-000000000001?ui=html",
+                    "/chat/00000000-0000-4000-8000-000000000001?ui=html",
+                ),
+                (
+                    "/lander8/chat/00000000-0000-4000-8000-000000000001?ui=gpui",
+                    "/chat/00000000-0000-4000-8000-000000000001?ui=gpui",
+                ),
+                (
+                    "/lander9/hands/vision_bundle.mjs",
+                    "/verse/hands/vision_bundle.mjs",
+                ),
+                (
+                    "/lander9/hands/wasm/vision_wasm_internal.wasm",
+                    "/verse/hands/wasm/vision_wasm_internal.wasm",
+                ),
+                ("/cloud", "/"),
+                ("/cloud/app", "/"),
+                ("/cloud/app/settings", "/settings"),
+                ("/cloud/app/settings/claude", "/settings/claude"),
+            ] {
+                let (status, headers, _) = get_with(site.clone(), old, host).await;
+                assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{host}{old}");
+                assert_eq!(headers[header::LOCATION], to, "{host}{old}");
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn verse_hand_assets_stay_available_under_their_new_address() {
+    let root = tempfile::tempdir().unwrap();
+    let mut settings = config(root.path().join("tasks"));
+    let build = root.path().join("hands-build");
+    std::fs::create_dir_all(build.join("hands/wasm")).unwrap();
+    for file in [
+        "vision_bundle.mjs",
+        "hand_landmarker.task",
+        "wasm/vision_wasm_internal.js",
+        "wasm/vision_wasm_internal.wasm",
+    ] {
+        std::fs::write(build.join("hands").join(file), file).unwrap();
+    }
+    std::fs::write(
+        build.join("hands/wasm/vision_wasm_internal.wasm.br"),
+        "brotli wasm",
+    )
+    .unwrap();
+    settings.lander9 = Some(build);
+    let site = router(settings);
+    for file in [
+        "vision_bundle.mjs",
+        "hand_landmarker.task",
+        "wasm/vision_wasm_internal.js",
+        "wasm/vision_wasm_internal.wasm",
+    ] {
+        let (status, _, body) =
+            get_with(site.clone(), &format!("/verse/hands/{file}"), LOCAL).await;
+        assert_eq!(status, StatusCode::OK, "{file}");
+        assert_eq!(body, file);
+    }
+    let response = site
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/verse/hands/wasm/vision_wasm_internal.wasm")
+                .header(header::HOST, LOCAL)
+                .header(header::ACCEPT_ENCODING, "br")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
+    for file in [
+        "NOTICE",
+        "wasm/vision_wasm_nosimd_internal.wasm",
+        "../graph/webgpu/secret.js",
+    ] {
+        let (status, _, _) = get_with(site.clone(), &format!("/verse/hands/{file}"), LOCAL).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{file}");
+    }
 }

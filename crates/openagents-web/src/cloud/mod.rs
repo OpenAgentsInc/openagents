@@ -123,7 +123,7 @@ fn see_other(to: &str) -> Response {
 /// Old Cloud page addresses: Settings pages keep their place, everything
 /// else goes home.
 async fn moved(OriginalUri(uri): OriginalUri) -> Response {
-    see_other(moved_to(uri.path()))
+    protect(Redirect::permanent(moved_to(uri.path())).into_response())
 }
 
 fn moved_to(path: &str) -> &'static str {

@@ -1,4 +1,6 @@
-//! `/lander5`: a landing page over the Grid at twilight, a full-screen
+//! Shared Grid document renderer for /home, /pylons, /lander10, and /lander11.
+//!
+//! A full-screen
 //! procedural shader built from Shader Skills (gokayfem/shader-skills, MIT;
 //! `crates/lander5-web`).
 //!
@@ -21,23 +23,15 @@
 //! inline style and script by their SHA-256.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use axum::Router;
-use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use sha2::{Digest, Sha256};
 
-use crate::App;
 use crate::pages::everglade::{accepts, accepts_gzip};
-
-/// The page.
-pub(crate) const LANDER5_PATH: &str = "/lander5";
 
 /// The build's files, as `scripts/build-lander5-web.sh` names them.
 pub(crate) const LANDER5_GLUE: &str = "lander5_web.js";
@@ -85,21 +79,6 @@ pub(super) struct Document {
 /// Which build a kept document was made from.
 pub(super) type BuildKey = Option<(PathBuf, SystemTime, SystemTime)>;
 
-/// The last document made, and the build it came from.
-static KEPT: Mutex<Option<(BuildKey, Arc<Document>)>> = Mutex::new(None);
-
-pub(crate) fn routes() -> Router<App> {
-    Router::new().route(LANDER5_PATH, get(page))
-}
-
-async fn page(State(app): State<App>, request: HeaderMap) -> Response {
-    let directory = app.config.lander5.clone();
-    let document = tokio::task::spawn_blocking(move || document(directory.as_deref()))
-        .await
-        .unwrap_or_else(|_| Arc::new(assemble(None)));
-    send(&document, &request)
-}
-
 /// `document` as the response to `request`: brotli or gzip when accepted.
 pub(super) fn send(document: &Document, request: &HeaderMap) -> Response {
     let (body, coding) = if accepts(&request, "br") {
@@ -141,22 +120,6 @@ pub(super) fn build_key(directory: Option<&Path>) -> BuildKey {
             modified(LANDER5_WASM)?,
         ))
     })
-}
-
-/// The document for the build in `directory`, made once per build.
-fn document(directory: Option<&Path>) -> Arc<Document> {
-    let key = build_key(directory);
-    if let Ok(kept) = KEPT.lock()
-        && let Some((kept_key, document)) = kept.as_ref()
-        && *kept_key == key
-    {
-        return document.clone();
-    }
-    let document = Arc::new(assemble(build(directory)));
-    if let Ok(mut kept) = KEPT.lock() {
-        *kept = Some((key, document.clone()));
-    }
-    document
 }
 
 /// The glue as a classic module body: its `export` keywords dropped, so it
@@ -205,6 +168,7 @@ pub(super) struct Addition {
 }
 
 /// The page, with the runner when a build is given.
+#[cfg(test)]
 fn assemble(build: Option<(String, Vec<u8>)>) -> Document {
     assemble_with(build, None)
 }

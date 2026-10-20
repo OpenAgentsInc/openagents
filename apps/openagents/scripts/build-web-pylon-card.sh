@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build the pylon card (apps/openagents/web/pylon-card) that openagents.com/pylons
-# opens over the Grid, in two builds, as build-web-card.sh builds /lander6's card:
+# opens over the Grid, in two builds:
 #
 #   OUTDIR/webgpu/   WebGPU only (web/pylon-card/webgpu): what a browser with
 #                    WebGPU loads
