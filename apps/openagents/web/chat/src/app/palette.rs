@@ -1,7 +1,7 @@
 //! The mod-K palette: the registry's chats and the selected computer's files.
 use super::*;
 use crate::palette::{self, Tab};
-use gpui::{KeyBinding, ScrollHandle, actions};
+use gpui::{KeyBinding, MouseButton, ScrollHandle, actions};
 use openagents_chat_view::settings_forms::{Page, Shortcut, shortcuts};
 use openagents_proto::{
     WorkspaceContentSearchResult, WorkspaceEntryKind, WorkspaceFileSearchMatch,
