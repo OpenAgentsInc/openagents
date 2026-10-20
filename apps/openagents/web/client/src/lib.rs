@@ -10,6 +10,8 @@
 /// One chat's chat2 room, the protocol half (#12224).
 pub mod chat_replica;
 pub mod cloud_computers;
+/// Earn on a paired computer (#12294).
+pub mod earn;
 pub mod event;
 /// Moving a chat to a cloud computer and back (#12282).
 pub mod moves;

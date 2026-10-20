@@ -22,6 +22,7 @@ pub mod composer_mentions;
 pub mod composer_tokens;
 pub mod composer_wizard;
 pub mod diff;
+pub mod earn;
 pub mod edge_fade;
 pub mod file_icons;
 pub mod frost;

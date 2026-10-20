@@ -14,6 +14,7 @@ impl ChatApp {
                 button("computers-back", "Back to chat", false).on_click(cx.listener(
                     |this, _, _, cx| {
                         this.show_computers = false;
+                        this.earning = None;
                         cx.notify();
                     },
                 )),
@@ -60,6 +61,20 @@ impl ChatApp {
                         )),
                     );
                 }
+                if online {
+                    let earn_id = id.clone();
+                    row = row.child(
+                        button(
+                            SharedString::from(format!("earn-device-{id}")),
+                            "Earn",
+                            false,
+                        )
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.toggle_earn(earn_id.clone(), cx);
+                        })),
+                    );
+                }
+                row = row.children(self.render_earn_card(&id, cx));
                 row = row.child(
                     button(
                         SharedString::from(format!("forget-device-{id}")),
