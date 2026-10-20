@@ -700,6 +700,11 @@ impl ByteLevelBpeTokenizerCore {
             message: format!("failed to compile byte-level tokenizer regex: {error}"),
         })?;
         let unicode_to_byte = unicode_to_byte_map();
+        let spm_bpe = tokenizer.model == GgufTokenizerModel::Gemma4Bpe
+            || matches!(
+                tokenizer.pretokenizer,
+                Some(GgufTokenizerPretokenizer::Gemma4)
+            );
         let mut ordinary_encoder = HashMap::new();
         let mut ordinary_decoder = HashMap::new();
         let mut special_encoder = HashMap::new();
@@ -718,7 +723,17 @@ impl ByteLevelBpeTokenizerCore {
                 continue;
             }
 
-            let raw_bytes = gguf_token_to_raw_bytes(token, &unicode_to_byte)?;
+            // Gemma's BPE vocabulary uses literal UTF-8 and SentencePiece
+            // spaces, rather than GPT-2's byte-to-Unicode alphabet.
+            let raw_bytes = if spm_bpe {
+                if let Some(byte) = sentencepiece_byte_fallback_value(token) {
+                    vec![byte]
+                } else {
+                    token.replace('▁', " ").into_bytes()
+                }
+            } else {
+                gguf_token_to_raw_bytes(token, &unicode_to_byte)?
+            };
             ordinary_encoder
                 .entry(raw_bytes.clone())
                 .or_insert(token_id);
@@ -893,11 +908,12 @@ fn byte_level_bpe_pattern(
         None
         | Some(GgufTokenizerPretokenizer::Default)
         | Some(GgufTokenizerPretokenizer::Llama)
-        | Some(GgufTokenizerPretokenizer::Gemma4)
         | Some(GgufTokenizerPretokenizer::Qwen2)
         | Some(GgufTokenizerPretokenizer::Qwen3)
         | Some(GgufTokenizerPretokenizer::Refact)
         | Some(GgufTokenizerPretokenizer::Tekken) => Ok(GENERIC_BYTE_LEVEL_BPE_PATTERN),
+        // Gemma merges across word boundaries; only newline runs split BPE.
+        Some(GgufTokenizerPretokenizer::Gemma4) => Ok("[^\\n]+|[\\n]+"),
         Some(GgufTokenizerPretokenizer::Qwen35) => Ok(QWEN35_BYTE_LEVEL_BPE_PATTERN),
         Some(GgufTokenizerPretokenizer::Custom(value))
             if matches!(
@@ -1381,8 +1397,8 @@ mod tests {
                 tokens: vec![
                     String::from("<bos>"),
                     String::from("<eos>"),
-                    String::from("\u{010A}"),
-                    String::from("\n"),
+                    String::from("▁"),
+                    String::from(" "),
                 ],
                 bos_token_id: Some(TokenId(0)),
                 eos_token_ids: vec![TokenId(1)],
@@ -1399,10 +1415,54 @@ mod tests {
             digest: String::from("gemma4-duplicate-byte-token-test"),
         })
         .expect("gemma4 runtime tokenizer");
-        let encoded = tokenizer.encode("\n");
+        let encoded = tokenizer.encode(" ");
         assert!(!encoded.as_slice().is_empty());
-        assert_eq!(tokenizer.decode(&[TokenId(2)]), "\n");
-        assert_eq!(tokenizer.decode(&[TokenId(3)]), "\n");
+        assert_eq!(tokenizer.decode(&[TokenId(2)]), " ");
+        assert_eq!(tokenizer.decode(&[TokenId(3)]), " ");
+    }
+
+    #[test]
+    fn gemma4_bpe_preserves_spaces_unicode_and_byte_fallbacks() {
+        let tokenizer = GgufRuntimeTokenizer::from_gguf(&GgufTokenizerMetadata {
+            model: GgufTokenizerModel::Gemma4Bpe,
+            vocabulary: crate::GgufTokenizerVocabulary {
+                tokens: [
+                    "<bos>",
+                    "<eos>",
+                    "▁",
+                    "▁café",
+                    "▁中文",
+                    "\n",
+                    "<0x21>",
+                    "▁▁café▁中文",
+                ]
+                .into_iter()
+                .map(String::from)
+                .collect(),
+                bos_token_id: Some(TokenId(0)),
+                eos_token_ids: vec![TokenId(1)],
+                pad_token_id: None,
+                unknown_token_id: None,
+            },
+            scores: Vec::new(),
+            token_types: vec![3, 3, 1, 1, 1, 1, 6, 1],
+            merges: Vec::new(),
+            add_bos: false,
+            add_eos: false,
+            pretokenizer: Some(crate::GgufTokenizerPretokenizer::Gemma4),
+            token_type_count: None,
+            digest: "gemma4-spm-bpe-test".into(),
+        })
+        .unwrap();
+        let text = "  café 中文\n!";
+        let encoded = tokenizer.encode(text);
+        assert_eq!(encoded.as_slice(), &[TokenId(7), TokenId(5), TokenId(6)]);
+        assert_eq!(tokenizer.decode(encoded.as_slice()), text);
+        let mut appended = String::new();
+        for token in encoded.as_slice() {
+            tokenizer.append_decoded_token(&mut appended, *token);
+        }
+        assert_eq!(appended, text);
     }
 
     #[test]

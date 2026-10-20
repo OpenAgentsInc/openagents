@@ -15603,7 +15603,7 @@ impl CudaQuantizedMatrix {
 #[derive(Clone, Debug)]
 struct CudaQuantizedProjectionGroup {
     storage: CudaBuffer,
-    host_parts: Vec<QuantizedMatrix>,
+    host_parts: Vec<HostMatrix>,
     native_parts: Vec<CudaQuantizedMatrix>,
     rows_per_projection: Vec<usize>,
     columns: usize,
@@ -15661,6 +15661,10 @@ impl CudaQuantizedProjectionGroup {
     }
 
     fn device_residency_bytes(&self) -> usize {
+        if self.mode == QuantizationMode::None {
+            // The mixed dense group uses two handles to the same allocation.
+            return self.storage.byte_len();
+        }
         let storage_bytes = if self.native_parts.is_empty() {
             self.storage.byte_len()
         } else {
@@ -15821,6 +15825,38 @@ fn load_cuda_quantized_projection_group(
     names: &[&str],
     allow_mixed_native_parts: bool,
 ) -> Result<CudaQuantizedProjectionGroup, ModelLoadError> {
+    // Public GGUFs can keep the small alpha/beta projections dense while
+    // quantizing qkv and gate. The fused CUDA operation needs one layout.
+    if names.iter().any(|name| {
+        artifact
+            .paged_tensor(name)
+            .is_ok_and(|tensor| tensor.metadata().quantized_layout.is_none())
+    }) {
+        let host_parts = names
+            .iter()
+            .map(|name| HostMatrix::load(artifact, name))
+            .collect::<Result<Vec<_>, _>>()?;
+        let (rows_per_projection, columns, bytes) =
+            host_projection_group_transposed_f16(&host_parts)?;
+        let transposed =
+            backend
+                .byte_buffer(&bytes)
+                .map_err(|error| ModelLoadError::ArtifactFormat {
+                    format: "gguf".into(),
+                    message: format!(
+                        "failed to upload mixed dense and quantized projections: {error}"
+                    ),
+                })?;
+        return Ok(CudaQuantizedProjectionGroup {
+            storage: transposed.clone(),
+            host_parts,
+            native_parts: Vec::new(),
+            rows_per_projection,
+            columns,
+            mode: QuantizationMode::None,
+            transposed_f16: Some(transposed),
+        });
+    }
     let mut mode = None;
     let mut columns = None;
     let mut row_byte_len = None;
@@ -15949,13 +15985,129 @@ fn load_cuda_quantized_projection_group(
     };
     Ok(CudaQuantizedProjectionGroup {
         storage,
-        host_parts,
+        host_parts: host_parts
+            .into_iter()
+            .map(|matrix| HostMatrix {
+                kind: HostMatrixKind::Quantized(matrix),
+            })
+            .collect(),
         native_parts,
         rows_per_projection,
         columns: resolved_columns,
         mode: resolved_mode,
         transposed_f16,
     })
+}
+
+fn host_projection_group_transposed_f16(
+    parts: &[HostMatrix],
+) -> Result<(Vec<usize>, usize, Vec<u8>), ModelLoadError> {
+    let columns = parts
+        .first()
+        .ok_or_else(|| ModelLoadError::ArtifactFormat {
+            format: "gguf".into(),
+            message: "a projection group needs at least one matrix".into(),
+        })?
+        .columns();
+    if parts.iter().any(|part| part.columns() != columns) {
+        return Err(ModelLoadError::ArtifactFormat {
+            format: "gguf".into(),
+            message: "projection matrices must have matching input widths".into(),
+        });
+    }
+    let rows: Vec<usize> = parts.iter().map(HostMatrix::rows).collect();
+    let overflow = || ModelLoadError::ArtifactFormat {
+        format: "gguf".into(),
+        message: "projection dimensions exceed the supported allocation size".into(),
+    };
+    let total_rows = rows
+        .iter()
+        .try_fold(0usize, |total, rows| total.checked_add(*rows))
+        .ok_or_else(overflow)?;
+    let byte_len = total_rows
+        .checked_mul(columns)
+        .and_then(|n| n.checked_mul(2))
+        .ok_or_else(overflow)?;
+    let mut bytes = vec![0; byte_len];
+    let mut row_offset = 0;
+    for part in parts {
+        for row in 0..part.rows() {
+            let values = part
+                .decode_row(row)
+                .map_err(|error| ModelLoadError::ArtifactFormat {
+                    format: "gguf".into(),
+                    message: format!("failed to decode a mixed projection row: {error}"),
+                })?;
+            if values.len() != columns {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: "gguf".into(),
+                    message: "a decoded projection row has the wrong width".into(),
+                });
+            }
+            for (column, value) in values.into_iter().enumerate() {
+                let offset = (column * total_rows + row_offset + row) * 2;
+                bytes[offset..offset + 2].copy_from_slice(&f32_to_f16_bits(value).to_le_bytes());
+            }
+        }
+        row_offset += part.rows();
+    }
+    Ok((rows, columns, bytes))
+}
+
+#[cfg(test)]
+mod mixed_projection_tests {
+    use super::*;
+
+    #[test]
+    fn dense_parts_keep_projection_order_and_transpose_columns() -> Result<(), ModelLoadError> {
+        let parts = [
+            HostMatrix {
+                kind: HostMatrixKind::Dense(DenseMatrix {
+                    rows: 1,
+                    columns: 2,
+                    values: vec![1.0, 2.0],
+                }),
+            },
+            HostMatrix {
+                kind: HostMatrixKind::Dense(DenseMatrix {
+                    rows: 2,
+                    columns: 2,
+                    values: vec![3.0, 4.0, 5.0, 6.0],
+                }),
+            },
+        ];
+        let (rows, columns, bytes) = host_projection_group_transposed_f16(&parts)?;
+        assert_eq!(rows, vec![1, 2]);
+        assert_eq!(columns, 2);
+        let expected: Vec<u8> = [1.0, 3.0, 5.0, 2.0, 4.0, 6.0]
+            .into_iter()
+            .flat_map(|x| f32_to_f16_bits(x).to_le_bytes())
+            .collect();
+        assert_eq!(bytes, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn projection_groups_reject_empty_or_different_widths() {
+        assert!(host_projection_group_transposed_f16(&[]).is_err());
+        let parts = [
+            HostMatrix {
+                kind: HostMatrixKind::Dense(DenseMatrix {
+                    rows: 1,
+                    columns: 2,
+                    values: vec![1.0, 2.0],
+                }),
+            },
+            HostMatrix {
+                kind: HostMatrixKind::Dense(DenseMatrix {
+                    rows: 1,
+                    columns: 1,
+                    values: vec![3.0],
+                }),
+            },
+        ];
+        assert!(host_projection_group_transposed_f16(&parts).is_err());
+    }
 }
 
 fn pack_quantized_projection_bytes(projections: &[&[u8]]) -> Vec<u8> {

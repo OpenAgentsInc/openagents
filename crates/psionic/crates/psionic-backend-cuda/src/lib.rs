@@ -10020,7 +10020,25 @@ mod platform {
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
+        fn psionic_cuda_q4_k_dequantize_row_to_f32(
+            weights: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            row_stride: c_int,
+            decode_params: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
         fn psionic_cuda_q5_k_dequantize_row_to_f32(
+            weights: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            row_stride: c_int,
+            decode_params: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_q6_k_dequantize_row_to_f32(
             weights: *const c_void,
             rows: c_int,
             cols: c_int,
@@ -12288,7 +12306,9 @@ mod platform {
             let kernel: DequantizeRowToF32Kernel = match mode {
                 QuantizationMode::GgmlQ8_0 => psionic_cuda_q8_0_dequantize_row_to_f32,
                 QuantizationMode::GgmlQ3K => psionic_cuda_q3_k_dequantize_row_to_f32,
+                QuantizationMode::GgmlQ4K => psionic_cuda_q4_k_dequantize_row_to_f32,
                 QuantizationMode::GgmlQ5K => psionic_cuda_q5_k_dequantize_row_to_f32,
+                QuantizationMode::GgmlQ6K => psionic_cuda_q6_k_dequantize_row_to_f32,
                 QuantizationMode::GgmlIq3S => psionic_cuda_iq3_s_dequantize_row_to_f32,
                 QuantizationMode::GgmlIq4Xs => psionic_cuda_iq4_xs_dequantize_row_to_f32,
                 QuantizationMode::GgmlMxfp4 => psionic_cuda_mxfp4_dequantize_row_to_f32,
@@ -17248,25 +17268,34 @@ mod platform {
             self.runtime.bind_stream(self.stream)?;
             let alpha_half = half_bits(alpha);
             let beta_half = half_bits(beta);
-            let (alpha_ptr, beta_ptr, compute): (*const c_void, *const c_void, c_int) = if compute_16f {
-                (
-                    (&alpha_half as *const u16).cast(),
-                    (&beta_half as *const u16).cast(),
-                    CUBLAS_COMPUTE_16F,
-                )
-            } else {
-                (
-                    (&alpha as *const f32).cast(),
-                    (&beta as *const f32).cast(),
-                    CUBLAS_COMPUTE_32F,
-                )
-            };
+            let (alpha_ptr, beta_ptr, compute): (*const c_void, *const c_void, c_int) =
+                if compute_16f {
+                    (
+                        (&alpha_half as *const u16).cast(),
+                        (&beta_half as *const u16).cast(),
+                        CUBLAS_COMPUTE_16F,
+                    )
+                } else {
+                    (
+                        (&alpha as *const f32).cast(),
+                        (&beta as *const f32).cast(),
+                        CUBLAS_COMPUTE_32F,
+                    )
+                };
             self.runtime.check_cublas(
                 unsafe {
                     (self.runtime.cublas_gemm_ex)(
                         self.runtime.cublas_handle,
-                        if transpose_a { CUBLAS_OP_T } else { CUBLAS_OP_N },
-                        if transpose_b { CUBLAS_OP_T } else { CUBLAS_OP_N },
+                        if transpose_a {
+                            CUBLAS_OP_T
+                        } else {
+                            CUBLAS_OP_N
+                        },
+                        if transpose_b {
+                            CUBLAS_OP_T
+                        } else {
+                            CUBLAS_OP_N
+                        },
                         m,
                         n,
                         k,
@@ -17314,7 +17343,9 @@ mod platform {
         ) -> Result<(), RuntimeError> {
             let int = |value: usize, what: &str| {
                 c_int::try_from(value).map_err(|_| {
-                    RuntimeError::Backend(format!("cuda clef batched gemm {what} exceeds cublas limits"))
+                    RuntimeError::Backend(format!(
+                        "cuda clef batched gemm {what} exceeds cublas limits"
+                    ))
                 })
             };
             let (m, n, k) = (int(m, "m")?, int(n, "n")?, int(k, "k")?);
@@ -17327,8 +17358,16 @@ mod platform {
                 unsafe {
                     (self.runtime.cublas_gemm_strided_batched_ex)(
                         self.runtime.cublas_handle,
-                        if transpose_a { CUBLAS_OP_T } else { CUBLAS_OP_N },
-                        if transpose_b { CUBLAS_OP_T } else { CUBLAS_OP_N },
+                        if transpose_a {
+                            CUBLAS_OP_T
+                        } else {
+                            CUBLAS_OP_N
+                        },
+                        if transpose_b {
+                            CUBLAS_OP_T
+                        } else {
+                            CUBLAS_OP_N
+                        },
                         m,
                         n,
                         k,
@@ -22625,6 +22664,44 @@ mod tests {
         let actual =
             backend.quantized_matvec(&weights, QuantizationMode::GgmlQ6K, 2, 256, &input)?;
         assert_close(&actual, &expected, 1e-3);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_backend_dequantizes_q4_k_and_q6_k_embedding_rows_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        if backend.selected_device().is_none() || !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+        for (mode, first, second) in [
+            (
+                QuantizationMode::GgmlQ4K,
+                sample_q4_k_row(0.5, 0.125, 3),
+                sample_q4_k_row(0.375, 0.25, 11),
+            ),
+            (
+                QuantizationMode::GgmlQ6K,
+                sample_q6_k_row(0.25, -3),
+                sample_q6_k_row(0.5, 2),
+            ),
+        ] {
+            let stride = first.len();
+            let mut bytes = first.clone();
+            bytes.extend_from_slice(&second);
+            let weights = backend.byte_buffer(&bytes)?;
+            for (index, row) in [first, second].iter().enumerate() {
+                let mut expected = Vec::new();
+                decode_quantized_row_into(mode, row, &mut expected)?;
+                let params = backend.byte_buffer(&i32_slice_to_bytes(&[0, 0, index as i32]))?;
+                let output = backend.f32_buffer(256)?;
+                let mut submission = backend.begin_submission()?;
+                submission
+                    .dequantize_row_to_f32(&weights, mode, 2, stride, 256, &params, &output)?;
+                submission.commit(CudaCommandWait::Completed)?;
+                assert_close(&output.read_f32()?, &expected, 1e-6);
+            }
+        }
         Ok(())
     }
 

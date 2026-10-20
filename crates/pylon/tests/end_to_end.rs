@@ -154,6 +154,92 @@ async fn wait_for_beacon(hub: &Arc<Mutex<Hub>>) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_pinned_buyer_waits_for_a_busy_beacon_to_become_free() {
+    let (url, hub) = relay().await;
+    let home = tempfile::tempdir().unwrap();
+    let provider_key = Identity::generate();
+    let buyer = Identity::generate();
+    let mut config = Config::new(&url, "busy-test", home.path().to_path_buf());
+    config.allow = Some(BTreeSet::from([buyer.pubkey().to_string()]));
+    let provider = Provider::new(config, provider_key.clone(), Arc::new(Echo)).unwrap();
+    let (stop_tx, stop_rx) = tokio::sync::oneshot::channel::<()>();
+    let running = tokio::spawn(Arc::clone(&provider).run(async {
+        let _ = stop_rx.await;
+    }));
+    wait_for_beacon(&hub).await;
+    let mut busy = provider.beacon(None).await;
+    busy.slots.free = 0;
+    busy.observed_at = pylon::now();
+    let event = nostr::pylon::owned_beacon_event(provider_key.signer(), &busy, None).unwrap();
+    {
+        let mut stored = hub.lock().await;
+        stored.stored.retain(|e| e.kind != 30_200);
+        stored.stored.push(event);
+    }
+    let shared = Arc::clone(&hub);
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        busy.slots.free = 1;
+        busy.observed_at = pylon::now();
+        let event = nostr::pylon::owned_beacon_event(provider_key.signer(), &busy, None).unwrap();
+        let mut stored = shared.lock().await;
+        stored.stored.retain(|e| e.kind != 30_200);
+        stored.stored.push(event);
+    });
+    let ask = Ask {
+        relay: url,
+        pylon: Some(provider.pubkey().into()),
+        prompt: "hello".into(),
+        wait: Duration::from_secs(5),
+        publish_receipt: false,
+        home: home.path().to_path_buf(),
+        checkers: BTreeSet::new(),
+        pay: None,
+    };
+    let answer = client::ask(&buyer, &ask).await.unwrap();
+    assert_eq!(answer.text.as_deref(), Some("echo: olleh"));
+    assert!(answer.discover_ms >= 300);
+    stop_tx.send(()).unwrap();
+    running.await.unwrap().unwrap();
+}
+
+#[tokio::test]
+async fn a_pinned_busy_pylon_does_not_wait_beyond_the_buyers_budget() {
+    let (url, hub) = relay().await;
+    let home = tempfile::tempdir().unwrap();
+    let key = Identity::generate();
+    let provider = Provider::new(
+        Config::new(&url, "busy", home.path().into()),
+        key.clone(),
+        Arc::new(Echo),
+    )
+    .unwrap();
+    let mut busy = provider.beacon(None).await;
+    busy.slots.free = 0;
+    hub.lock()
+        .await
+        .stored
+        .push(nostr::pylon::owned_beacon_event(key.signer(), &busy, None).unwrap());
+    let ask = Ask {
+        relay: url,
+        pylon: Some(key.pubkey().into()),
+        prompt: "hello".into(),
+        wait: Duration::from_millis(150),
+        publish_receipt: false,
+        home: home.path().into(),
+        checkers: BTreeSet::new(),
+        pay: None,
+    };
+    let result = tokio::time::timeout(
+        Duration::from_secs(2),
+        client::ask(&Identity::generate(), &ask),
+    )
+    .await
+    .unwrap();
+    assert!(result.unwrap_err().contains("no fresh online pylon"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_free_job_runs_end_to_end_and_the_pool_counts_it() {
     let (url, hub) = relay().await;
     let home = tempfile::tempdir().unwrap();

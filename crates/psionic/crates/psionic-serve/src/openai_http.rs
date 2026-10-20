@@ -10254,11 +10254,12 @@ fn completion_choice(
     parsed_reasoning: Option<&ParsedReasoningResponse>,
     reasoning_request: Option<&ResolvedReasoningRequest>,
 ) -> ParsedCompletionChoice {
-    let content = parsed_reasoning
-        .and_then(|parsed| parsed.final_content.clone())
-        .unwrap_or_else(|| response.output.text.clone());
+    let content = parsed_reasoning.map_or_else(
+        || Some(response.output.text.clone()),
+        |parsed| parsed.final_content.clone(),
+    );
     ParsedCompletionChoice {
-        content: Some(content),
+        content,
         reasoning_content: reasoning_request.and_then(|request| match request.mode {
             PsionicReasoningMode::Separate => {
                 parsed_reasoning.and_then(|parsed| parsed.reasoning_content.clone())
@@ -13476,6 +13477,35 @@ mod tests {
             .expect("typed reasoning should surface");
         assert_eq!(surfaced.final_content.as_deref(), Some("323"));
         assert_eq!(surfaced.reasoning_content.as_deref(), Some("thinking"));
+        Ok(())
+    }
+
+    #[test]
+    fn unfinished_gpt_oss_analysis_is_not_returned_as_the_answer()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let raw = "<|channel|>analysis<|message|>Still working on the answer";
+        let parsed = parse_gpt_oss_harmony_text(
+            raw,
+            GptOssHarmonyParseOptions {
+                role_hint: Some(PromptMessageRole::Assistant),
+                strict: false,
+            },
+        )?
+        .reasoning_response();
+        let response = test_generation_response(raw);
+        let choice = completion_choice(&response, Some(&parsed), None);
+        assert!(choice.content.is_none());
+        assert!(choice.reasoning_content.is_none());
+        let separate = ResolvedReasoningRequest {
+            parser: ReasoningParser::GptOssHarmony,
+            mode: PsionicReasoningMode::Separate,
+        };
+        let choice = completion_choice(&response, Some(&parsed), Some(&separate));
+        assert!(choice.content.is_none());
+        assert_eq!(
+            choice.reasoning_content.as_deref(),
+            Some("Still working on the answer")
+        );
         Ok(())
     }
 

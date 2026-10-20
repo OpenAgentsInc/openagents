@@ -13772,8 +13772,8 @@ struct CudaGemma4Layer {
     feed_forward_post_norm_2: Option<Vec<f32>>,
     feed_forward_post_norm: Option<Vec<f32>>,
     layer_output_scale: Option<f32>,
-    per_layer_input_gate: Option<CudaQuantizedProjectionMatrix>,
-    per_layer_proj: Option<CudaQuantizedProjectionMatrix>,
+    per_layer_input_gate: Option<CudaGemma4PerLayerProjectionMatrix>,
+    per_layer_proj: Option<CudaGemma4PerLayerProjectionMatrix>,
     per_layer_post_norm: Option<Vec<f32>>,
 }
 
@@ -14017,12 +14017,12 @@ impl CudaGemma4Layer {
                 artifact,
                 layout.layer_output_scale.as_deref(),
             )?,
-            per_layer_input_gate: load_named_optional_cuda_quantized_projection_matrix(
+            per_layer_input_gate: load_named_optional_cuda_gemma4_projection_matrix(
                 backend,
                 artifact,
                 format!("blk.{layer_index}.inp_gate.weight").as_str(),
             )?,
-            per_layer_proj: load_named_optional_cuda_quantized_projection_matrix(
+            per_layer_proj: load_named_optional_cuda_gemma4_projection_matrix(
                 backend,
                 artifact,
                 format!("blk.{layer_index}.proj.weight").as_str(),
@@ -14232,7 +14232,11 @@ impl CudaQuantizedProjectionMatrix {
 
 #[derive(Clone, Debug)]
 enum CudaGemma4PerLayerProjectionMatrix {
-    Host(ProjectionMatrix),
+    Dense {
+        rows: usize,
+        columns: usize,
+        weights: Arc<CudaBuffer>,
+    },
     Quantized(CudaQuantizedProjectionMatrix),
 }
 
@@ -14248,7 +14252,24 @@ impl CudaGemma4PerLayerProjectionMatrix {
                 backend, artifact, name,
             )?));
         }
-        Ok(Self::Host(ProjectionMatrix::load(artifact, name)?))
+        let matrix = load_dense_matrix(artifact, name)
+            .map_err(model_load_runtime_error)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let mut transposed = vec![0.0; matrix.values.len()];
+        for row in 0..matrix.rows {
+            for column in 0..matrix.columns {
+                transposed[column * matrix.rows + row] =
+                    matrix.values[row * matrix.columns + column];
+            }
+        }
+        let weights = backend
+            .input_buffer(Shape::new(vec![matrix.columns, matrix.rows]), transposed)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        Ok(Self::Dense {
+            rows: matrix.rows,
+            columns: matrix.columns,
+            weights: Arc::new(weights),
+        })
     }
 
     fn matvec(
@@ -14257,15 +14278,39 @@ impl CudaGemma4PerLayerProjectionMatrix {
         input: &[f32],
     ) -> Result<CudaProjectionStep, ReferenceTextGenerationError> {
         match self {
-            Self::Host(matrix) => {
-                let mut values = Vec::new();
-                matrix
-                    .matvec(input, &mut values)
+            Self::Dense {
+                rows,
+                columns,
+                weights,
+            } => {
+                if input.len() != *columns {
+                    return Err(ReferenceTextGenerationError::Runtime(
+                        crate::RuntimeError::Backend(
+                            "Gemma projection input has the wrong width".into(),
+                        ),
+                    ));
+                }
+                let input = backend
+                    .input_buffer(Shape::new(vec![1, *columns]), input.to_vec())
+                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                let output = backend
+                    .f32_buffer(*rows)
+                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                let mut submission = backend
+                    .begin_submission()
+                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                submission
+                    .matmul(&input, weights.as_ref(), &output, 1, *columns, *rows)
+                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                let report = submission
+                    .commit(psionic_backend_cuda::CudaCommandWait::Completed)
                     .map_err(ReferenceTextGenerationError::Runtime)?;
                 Ok(CudaProjectionStep {
-                    values,
-                    kernel_count: 0,
-                    bytes_moved: matrix.byte_length() as u64,
+                    values: output
+                        .read_f32()
+                        .map_err(ReferenceTextGenerationError::Runtime)?,
+                    kernel_count: report.encoded_operations,
+                    bytes_moved: ((*columns + *rows) * std::mem::size_of::<f32>()) as u64,
                 })
             }
             Self::Quantized(matrix) => matrix.matvec(backend, input),
@@ -14274,7 +14319,7 @@ impl CudaGemma4PerLayerProjectionMatrix {
 
     fn byte_length(&self) -> usize {
         match self {
-            Self::Host(matrix) => matrix.byte_length(),
+            Self::Dense { weights, .. } => weights.byte_len(),
             Self::Quantized(matrix) => matrix.byte_length(),
         }
     }

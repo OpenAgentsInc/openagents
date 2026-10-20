@@ -901,6 +901,15 @@ __device__ __forceinline__ void quantize_q8_1_shared_block(
     quantize_q8_1_warp_value(input[lane], output, lane);
 }
 
+template <typename DotFn>
+struct DotRowDequant {
+    __device__ __forceinline__ float operator()(
+        const uint8_t *row_weights, int block_index, int lane
+    ) const {
+        return DotFn{}(row_weights, block_index * kQ81ElementsPerBlock + lane, 1.0f);
+    }
+};
+
 struct Q80Dequant {
     __device__ __forceinline__ float operator()(
         const uint8_t *row_weights,
@@ -7363,6 +7372,50 @@ extern "C" int psionic_cuda_quantize_q8_1(
         rows,
         cols,
         static_cast<Q81Block *>(output)
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_cuda_q4_k_dequantize_row_to_f32(
+    const void *weights,
+    int rows,
+    int cols,
+    int row_stride,
+    const void *decode_params,
+    void *output,
+    void *stream
+) {
+    const int blocks_per_row = cols / kQ81ElementsPerBlock;
+    dequantize_row_to_f32_kernel<<<blocks_per_row, kQ81ElementsPerBlock, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const uint8_t *>(weights),
+        rows,
+        cols,
+        row_stride,
+        static_cast<const int *>(decode_params),
+        static_cast<float *>(output),
+        DotRowDequant<Q4KDot>{}
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_cuda_q6_k_dequantize_row_to_f32(
+    const void *weights,
+    int rows,
+    int cols,
+    int row_stride,
+    const void *decode_params,
+    void *output,
+    void *stream
+) {
+    const int blocks_per_row = cols / kQ81ElementsPerBlock;
+    dequantize_row_to_f32_kernel<<<blocks_per_row, kQ81ElementsPerBlock, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const uint8_t *>(weights),
+        rows,
+        cols,
+        row_stride,
+        static_cast<const int *>(decode_params),
+        static_cast<float *>(output),
+        DotRowDequant<Q6KDot>{}
     );
     return static_cast<int>(cudaGetLastError());
 }

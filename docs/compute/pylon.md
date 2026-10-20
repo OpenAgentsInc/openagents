@@ -70,6 +70,57 @@ refusal is `status: error` feedback with a NIP-CJ code: `not_admitted`,
 Output is bounded by `--max-tokens` (default 512) and each job by 90
 seconds. The provider logs no job content.
 
+### Choose another text model
+
+`up --text-model /path/model.gguf` selects a local GGUF. `--text-device
+cpu|cuda|metal` selects its device independently of Clef's decision device.
+`--text-engine openai|gpt-oss|llama-cpp` selects the local server; choices
+persist across restarts. The default is Psionic's general OpenAI server.
+GPT-OSS uses `psionic-gpt-oss-server`; llama.cpp uses `llama-server`.
+Set `OPENAGENTS_PSIONIC_GPT_OSS_BIN` or `OPENAGENTS_LLAMA_CPP_BIN` to an
+executable outside `PATH`. All three listen on loopback.
+
+```sh
+openagents pylon up --text-model "$HOME/.openagents/models/gemma4-e4b/gemma-4-E4B-it-Q4_K_M.gguf" \
+  --text-engine llama-cpp --text-device cuda
+```
+
+The [pinned model catalog](../../scripts/bench/pylon-models/models.json)
+covers Qwen3.5 4B/9B, Gemma 4 E4B, Llama 3.2 3B, Mistral 7B v0.3,
+Qwen2.5 3B, Qwen3 4B, and GPT-OSS 20B. All eight completed nine text jobs
+each through Pylon on an RTX 4080 using llama.cpp. Psionic's native CUDA
+route also serves Qwen3.5 4B/9B and Gemma 4; GPT-OSS has its own server.
+The remaining catalog families use native CPU or the explicit llama.cpp
+GPU route. These checks cover text conversations, not images or tools.
+GPT-OSS passed the full suite through llama.cpp; its native server
+returned no final answer for the summary prompt even with 4,096 output
+tokens, so use the compatible route for this workload.
+Models are switched one at a time; Clef also needs room when serving
+decisions beside text. llama.cpp can move layers to host memory to fit.
+
+Run the same checks, with pinned downloads and SHA-256 verification:
+
+```sh
+python3 scripts/bench/pylon-models/run.py \
+  --pylon-bin /path/to/pylon --psionic-bin /path/to/psionic-openai-server \
+  --gpt-oss-bin /path/to/psionic-gpt-oss-server \
+  --engine llama-cpp --llama-cpp-bin /path/to/llama-server \
+  --download --output /tmp/pylon-model-results
+```
+
+The runner uses a separate synthetic identity, allows only its own buyer,
+and publishes no job receipts. `--pause-unit NAME` temporarily stops a
+systemd user service to free model memory and restores it on exit. Raw
+answers, startup times, CLI round trips, and a 128-token HTTP throughput
+probe are saved separately. Throughput includes prompt processing; the
+nine prompts are a small diagnostic sample, not a general accuracy score.
+Five cases have exact checks; prose and generated code require review.
+The [2026-10-20 results](../../scripts/bench/pylon-models/rtx4080-2026-10-20.json)
+retain all 72 answers: median CLI round trips ranged from 608 ms for
+Gemma to 1,602 ms for GPT-OSS. GPT-OSS passed all five exact checks and
+Gemma passed four; smaller models often failed arithmetic or the embedded
+instruction check. Clef was paused for these individual-model timings.
+
 The beacon carries only what NIP-PYLON allows: `class` (`gpu`, `medium`,
 16 GB for the 4080), `slots`, one service (`cj-conversation`, the model
 name, and the capability `<pylon key>:pylon/text-generation`), `free-v1`

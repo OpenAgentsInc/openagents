@@ -172,7 +172,7 @@ pub async fn ask_conversation(
     let started = Instant::now();
     let mut conn = relay::connect(&ask.relay, buyer, LIFETIME).await?;
     let authors = ask.pylon.as_ref().map(|p| vec![p.clone()]);
-    let book = beacons(&mut conn, authors.as_deref()).await?;
+    let mut book = beacons(&mut conn, authors.as_deref()).await?;
     let (labels, checked) = crate::check::fetch(
         &mut conn,
         &ask.checkers,
@@ -185,8 +185,33 @@ pub async fn ask_conversation(
         .filter(|(_, r)| r.standing == pylon::Standing::Failing)
         .map(|(address, _)| address)
         .collect();
-    let beacon = choose(&book, now(), &failing)
-        .ok_or("no fresh online pylon with a free slot that passes its checks")?;
+    // Slot beacons are throttled. A pinned pylon can finish a job before
+    // its next free-slot beacon reaches the relay; honor the buyer's wait.
+    let beacon = loop {
+        if let Some(beacon) = choose(&book, now(), &failing) {
+            break beacon;
+        }
+        let pinned_busy = ask.pylon.is_some()
+            && book.iter().any(|(_, beacon)| {
+                !failing.contains(&beacon.address())
+                    && pylon::freshness(beacon, now()) == Freshness::Fresh
+                    && beacon.status == Status::Online
+                    && beacon.slots.free == 0
+                    && beacon.serves(Lane::CjConversation).is_some()
+            });
+        let remaining = ask.wait.saturating_sub(started.elapsed());
+        if !pinned_busy || remaining.is_zero() {
+            return Err("no fresh online pylon with a free slot that passes its checks".into());
+        }
+        tokio::time::sleep(remaining.min(Duration::from_secs(1))).await;
+        let remaining = ask.wait.saturating_sub(started.elapsed());
+        if remaining.is_zero() {
+            return Err("no fresh online pylon with a free slot that passes its checks".into());
+        }
+        book = tokio::time::timeout(remaining, beacons(&mut conn, authors.as_deref()))
+            .await
+            .map_err(|_| "no fresh online pylon with a free slot that passes its checks")??;
+    };
     let service = beacon
         .serves(Lane::CjConversation)
         .ok_or("pylon serves no conversation lane")?

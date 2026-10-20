@@ -506,6 +506,96 @@ fn up_choices_and_old_settings() {
         args.windows(2).any(|w| w == ["--backend", "cuda"]),
         "{args:?}"
     );
+    // A CPU-only decoder can run beside a CUDA decision engine.
+    let mut cpu_text = choice.clone();
+    cpu_text.text_device = Some("cpu".into());
+    let (settings, _) = online::settings_for_up(
+        None,
+        "box",
+        "wss://r",
+        &cpu_text,
+        "cuda",
+        Err("no GPU room".into()),
+    )
+    .unwrap();
+    let encoded = serde_json::to_vec(&settings).unwrap();
+    let restored: Settings = serde_json::from_slice(&encoded).unwrap();
+    let (restored, notes) = online::settings_for_up(
+        Some(restored),
+        "box",
+        "wss://r",
+        &choice,
+        "cuda",
+        Err("no GPU room".into()),
+    )
+    .unwrap();
+    assert!(notes.is_empty());
+    let specs = online::lanes(&restored);
+    assert_eq!(
+        specs
+            .iter()
+            .find(|l| l.kind == LaneKind::Text)
+            .unwrap()
+            .device
+            .as_deref(),
+        Some("cpu")
+    );
+    assert_eq!(
+        specs
+            .iter()
+            .find(|l| l.kind == LaneKind::Decisions)
+            .unwrap()
+            .device
+            .as_deref(),
+        Some("cuda")
+    );
+    let parsed = Up::parse(&["--text-device".into(), "cpu".into()]).unwrap();
+    assert_eq!(parsed.text_device.as_deref(), Some("cpu"));
+    assert!(Up::parse(&["--text-device".into(), "bogus".into()]).is_err());
+    let mut gpt = choice.clone();
+    gpt.text_engine = Some(pylon::share::TextEngine::GptOss);
+    let (settings, _) =
+        online::settings_for_up(None, "box", "wss://r", &gpt, "cuda", Ok(())).unwrap();
+    let specs = online::lanes(&settings);
+    let text = specs.iter().find(|l| l.kind == LaneKind::Text).unwrap();
+    let command = online::psionic_command(Path::new("psionic-gpt-oss-server"), text);
+    let args: Vec<_> = command
+        .as_std()
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect();
+    assert!(args.windows(2).any(|pair| pair == ["--backend", "cuda"]));
+    assert!(!args.iter().any(|arg| arg == "--mesh-coordination"));
+    let parsed = Up::parse(&["--text-engine".into(), "gpt-oss".into()]).unwrap();
+    assert_eq!(parsed.text_engine, Some(pylon::share::TextEngine::GptOss));
+    assert!(Up::parse(&["--text-engine".into(), "unknown".into()]).is_err());
+    let mut compatible = choice.clone();
+    compatible.text_engine = Some(pylon::share::TextEngine::LlamaCpp);
+    let (settings, _) =
+        online::settings_for_up(None, "box", "wss://r", &compatible, "cuda", Ok(())).unwrap();
+    let restored: Settings =
+        serde_json::from_slice(&serde_json::to_vec(&settings).unwrap()).unwrap();
+    let specs = online::lanes(&restored);
+    let text = specs.iter().find(|l| l.kind == LaneKind::Text).unwrap();
+    let command = online::psionic_command(Path::new("llama-server"), text);
+    let args: Vec<_> = command
+        .as_std()
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect();
+    assert!(args.windows(2).any(|pair| pair == ["--host", "127.0.0.1"]));
+    assert!(
+        args.windows(2)
+            .any(|pair| pair == ["--n-gpu-layers", "auto"])
+    );
+    assert!(args.windows(2).any(|pair| pair == ["--ctx-size", "4096"]));
+    assert!(
+        !args
+            .iter()
+            .any(|arg| arg == "--backend" || arg == "--mesh-coordination")
+    );
+    let parsed = Up::parse(&["--text-engine".into(), "llama-cpp".into()]).unwrap();
+    assert_eq!(parsed.text_engine, Some(pylon::share::TextEngine::LlamaCpp));
     let host = pylon::setup::Host {
         gpu: "apple".into(),
         memory_gb: Some(16.0),

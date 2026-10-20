@@ -21,11 +21,12 @@ mod qwen38_bf16_evidence;
 mod qwen38_forward_admission;
 mod qwen38_gguf_converter_parity;
 mod qwen38_gguf_qualification;
-mod qwen38_prompt;
 mod qwen38_multimodal;
+mod qwen38_prompt;
 mod qwen38_vision;
 mod qwen38_vision_runtime;
 mod qwen_replacement_conformance;
+mod released_chat_templates;
 mod runtime_tokenizer;
 mod sharding;
 mod tassadar;
@@ -126,8 +127,8 @@ pub use qwen38_bf16_evidence::*;
 pub use qwen38_forward_admission::*;
 pub use qwen38_gguf_converter_parity::*;
 pub use qwen38_gguf_qualification::*;
-pub use qwen38_prompt::*;
 pub use qwen38_multimodal::*;
+pub use qwen38_prompt::*;
 pub use qwen38_vision::*;
 pub use qwen38_vision_runtime::*;
 pub use runtime_tokenizer::*;
@@ -3364,14 +3365,22 @@ impl PromptMessage {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GgufPromptTemplateFamily {
+    /// Llama 3.2 Instruct text conversations.
+    Llama3,
+    /// Mistral v0.3 Instruct text conversations.
+    MistralV3,
     /// Phi-3 template family.
     Phi3,
     /// Gemma 4 text-lane template family.
     Gemma4,
+    /// Gemma 4 templates that use a system turn for leading instructions.
+    Gemma4System,
     /// Qwen2 template family.
     Qwen2,
     /// Qwen3 text-only thinking template family used by QVAC MedPsy.
     Qwen3,
+    /// Standard Qwen3 conversations, without the MedPsy system instruction.
+    Qwen3Chat,
     /// Qwen3.5 template family.
     Qwen35,
     /// Command-R template family.
@@ -3383,10 +3392,12 @@ pub enum GgufPromptTemplateFamily {
 impl GgufPromptTemplateFamily {
     fn stop_sequences(self) -> &'static [&'static str] {
         match self {
+            Self::Llama3 => &["<|eot_id|>", "<|end_of_text|>"],
+            Self::MistralV3 => &["</s>"],
             Self::Phi3 => &["<|end|>", "<|system|>", "<|user|>", "<|assistant|>"],
-            Self::Gemma4 => &["<turn|>"],
+            Self::Gemma4 | Self::Gemma4System => &["<turn|>"],
             Self::Qwen2 => &[],
-            Self::Qwen3 => &[],
+            Self::Qwen3 | Self::Qwen3Chat => &[],
             Self::Qwen35 => &[],
             Self::CommandR => &["<|START_OF_TURN_TOKEN|>", "<|END_OF_TURN_TOKEN|>"],
             Self::GptOss => &[],
@@ -3502,6 +3513,15 @@ impl GgufPromptTemplateRenderer {
                 }
             })?;
         let rendered = match family {
+            GgufPromptTemplateFamily::Llama3
+            | GgufPromptTemplateFamily::MistralV3
+            | GgufPromptTemplateFamily::Gemma4System
+            | GgufPromptTemplateFamily::Qwen3Chat => released_chat_templates::render(
+                family,
+                self.bos_token().unwrap_or_default(),
+                messages,
+                add_generation_prompt,
+            ),
             GgufPromptTemplateFamily::Phi3 => self.render_phi3(messages),
             GgufPromptTemplateFamily::Gemma4 => self.render_gemma4(messages, add_generation_prompt),
             GgufPromptTemplateFamily::Qwen2 => self.render_qwen2(messages, add_generation_prompt),
@@ -3961,6 +3981,18 @@ impl GgufPromptTemplateRenderer {
 
 fn supported_prompt_template_family(digest: &str) -> Option<GgufPromptTemplateFamily> {
     match digest {
+        "5816fce10444e03c2e9ee1ef8a4a1ea61ae7e69e438613f3b17b69d0426223a4" => {
+            Some(GgufPromptTemplateFamily::Llama3)
+        }
+        "26a59556925c987317ce5291811ba3b7f32ec4c647c400c6cc7e3a9993007ba7" => {
+            Some(GgufPromptTemplateFamily::MistralV3)
+        }
+        "241c50d86bdfe5e43307da87f559cd2416aacd67a8de46c15acc0105ef2200b7" => {
+            Some(GgufPromptTemplateFamily::Gemma4System)
+        }
+        "5595e8741bb5500f9d395e05a0aefe6ca1e8d54c5dd8b98bcf7760d895fdc6e6" => {
+            Some(GgufPromptTemplateFamily::Qwen3Chat)
+        }
         "268b6082ceb7176dc6ed80557a2f7837f9f0339592fbee677d405a553af15f88" => {
             Some(GgufPromptTemplateFamily::Phi3)
         }
@@ -3993,6 +4025,9 @@ fn supported_prompt_template_family(digest: &str) -> Option<GgufPromptTemplateFa
             Some(GgufPromptTemplateFamily::Qwen35)
         }
         "e60df41481b6ad20571cda7e2e1290cfee25670f1b50973f74576c9354c66336" => {
+            Some(GgufPromptTemplateFamily::Qwen35)
+        }
+        "7f0e529032c25183bcd66c7f238da2d377f43be754a94e2725a58c4e16d2ed67" => {
             Some(GgufPromptTemplateFamily::Qwen35)
         }
         "9db2cf47ce03bfd0aab6ec59942503714fa0372f09f7e1d54cbcd71a1110b863" => {
@@ -13611,7 +13646,7 @@ mod tests {
         }
     }
 
-    fn qwen35_prompt_tokenizer_metadata() -> GgufTokenizerMetadata {
+    pub(crate) fn qwen35_prompt_tokenizer_metadata() -> GgufTokenizerMetadata {
         GgufTokenizerMetadata {
             model: GgufTokenizerModel::Gpt2Bpe,
             vocabulary: super::GgufTokenizerVocabulary {

@@ -1,0 +1,428 @@
+[
+  {
+    "name": "llama3.user",
+    "family": "llama3",
+    "bos": "<|begin_of_text|>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello."
+      }
+    ],
+    "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 26 Jul 2024\n\n<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHello.<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+    "name": "llama3.whitespace",
+    "family": "llama3",
+    "bos": "<|begin_of_text|>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "  Hello.  "
+      }
+    ],
+    "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 26 Jul 2024\n\n<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHello.<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+    "name": "llama3.history",
+    "family": "llama3",
+    "bos": "<|begin_of_text|>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "First question."
+      },
+      {
+        "role": "assistant",
+        "content": "First answer."
+      },
+      {
+        "role": "user",
+        "content": "Next question."
+      }
+    ],
+    "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 26 Jul 2024\n\n<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nFirst question.<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\nFirst answer.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nNext question.<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+    "name": "llama3.closed",
+    "family": "llama3",
+    "bos": "<|begin_of_text|>",
+    "generation": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello."
+      },
+      {
+        "role": "assistant",
+        "content": "Hi."
+      }
+    ],
+    "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 26 Jul 2024\n\n<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHello.<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\nHi.<|eot_id|>"
+  },
+  {
+    "name": "llama3.system",
+    "family": "llama3",
+    "bos": "<|begin_of_text|>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "system",
+        "content": "  Be concise.  "
+      },
+      {
+        "role": "user",
+        "content": "Hello."
+      }
+    ],
+    "expected": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\nCutting Knowledge Date: December 2023\nToday Date: 26 Jul 2024\n\nBe concise.<|eot_id|><|start_header_id|>user<|end_header_id|>\n\nHello.<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
+  },
+  {
+    "name": "mistral.user",
+    "family": "mistral",
+    "bos": "<s>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello."
+      }
+    ],
+    "expected": "<s>[INST] Hello. [/INST]"
+  },
+  {
+    "name": "mistral.whitespace",
+    "family": "mistral",
+    "bos": "<s>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "  Hello.  "
+      }
+    ],
+    "expected": "<s>[INST]   Hello.   [/INST]"
+  },
+  {
+    "name": "mistral.history",
+    "family": "mistral",
+    "bos": "<s>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "First question."
+      },
+      {
+        "role": "assistant",
+        "content": "First answer."
+      },
+      {
+        "role": "user",
+        "content": "Next question."
+      }
+    ],
+    "expected": "<s>[INST] First question. [/INST]First answer.</s>[INST] Next question. [/INST]"
+  },
+  {
+    "name": "mistral.closed",
+    "family": "mistral",
+    "bos": "<s>",
+    "generation": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello."
+      },
+      {
+        "role": "assistant",
+        "content": "Hi."
+      }
+    ],
+    "expected": "<s>[INST] Hello. [/INST]Hi.</s>"
+  },
+  {
+    "name": "qwen3.user",
+    "family": "qwen3",
+    "bos": "",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello."
+      }
+    ],
+    "expected": "<|im_start|>user\nHello.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+    "name": "qwen3.whitespace",
+    "family": "qwen3",
+    "bos": "",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "  Hello.  "
+      }
+    ],
+    "expected": "<|im_start|>user\n  Hello.  <|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+    "name": "qwen3.history",
+    "family": "qwen3",
+    "bos": "",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "First question."
+      },
+      {
+        "role": "assistant",
+        "content": "First answer."
+      },
+      {
+        "role": "user",
+        "content": "Next question."
+      }
+    ],
+    "expected": "<|im_start|>user\nFirst question.<|im_end|>\n<|im_start|>assistant\nFirst answer.<|im_end|>\n<|im_start|>user\nNext question.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+    "name": "qwen3.closed",
+    "family": "qwen3",
+    "bos": "",
+    "generation": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello."
+      },
+      {
+        "role": "assistant",
+        "content": "Hi."
+      }
+    ],
+    "expected": "<|im_start|>user\nHello.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nHi.<|im_end|>\n"
+  },
+  {
+    "name": "qwen3.system",
+    "family": "qwen3",
+    "bos": "",
+    "generation": true,
+    "messages": [
+      {
+        "role": "system",
+        "content": "  Be concise.  "
+      },
+      {
+        "role": "user",
+        "content": "Hello."
+      }
+    ],
+    "expected": "<|im_start|>system\n  Be concise.  <|im_end|>\n<|im_start|>user\nHello.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+    "name": "qwen35.user",
+    "family": "qwen35",
+    "bos": "",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello."
+      }
+    ],
+    "expected": "<|im_start|>user\nHello.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+    "name": "qwen35.whitespace",
+    "family": "qwen35",
+    "bos": "",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "  Hello.  "
+      }
+    ],
+    "expected": "<|im_start|>user\nHello.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+    "name": "qwen35.history",
+    "family": "qwen35",
+    "bos": "",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "First question."
+      },
+      {
+        "role": "assistant",
+        "content": "First answer."
+      },
+      {
+        "role": "user",
+        "content": "Next question."
+      }
+    ],
+    "expected": "<|im_start|>user\nFirst question.<|im_end|>\n<|im_start|>assistant\nFirst answer.<|im_end|>\n<|im_start|>user\nNext question.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+    "name": "qwen35.closed",
+    "family": "qwen35",
+    "bos": "",
+    "generation": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello."
+      },
+      {
+        "role": "assistant",
+        "content": "Hi."
+      }
+    ],
+    "expected": "<|im_start|>user\nHello.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\nHi.<|im_end|>\n"
+  },
+  {
+    "name": "qwen35.system",
+    "family": "qwen35",
+    "bos": "",
+    "generation": true,
+    "messages": [
+      {
+        "role": "system",
+        "content": "  Be concise.  "
+      },
+      {
+        "role": "user",
+        "content": "Hello."
+      }
+    ],
+    "expected": "<|im_start|>system\nBe concise.<|im_end|>\n<|im_start|>user\nHello.<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n"
+  },
+  {
+    "name": "gemma4.user",
+    "family": "gemma4",
+    "bos": "<bos>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello."
+      }
+    ],
+    "expected": "<bos><|turn>user\nHello.<turn|>\n<|turn>model\n"
+  },
+  {
+    "name": "gemma4.whitespace",
+    "family": "gemma4",
+    "bos": "<bos>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "  Hello.  "
+      }
+    ],
+    "expected": "<bos><|turn>user\nHello.<turn|>\n<|turn>model\n"
+  },
+  {
+    "name": "gemma4.history",
+    "family": "gemma4",
+    "bos": "<bos>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "user",
+        "content": "First question."
+      },
+      {
+        "role": "assistant",
+        "content": "First answer."
+      },
+      {
+        "role": "user",
+        "content": "Next question."
+      }
+    ],
+    "expected": "<bos><|turn>user\nFirst question.<turn|>\n<|turn>model\nFirst answer.<turn|>\n<|turn>user\nNext question.<turn|>\n<|turn>model\n"
+  },
+  {
+    "name": "gemma4.closed",
+    "family": "gemma4",
+    "bos": "<bos>",
+    "generation": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello."
+      },
+      {
+        "role": "assistant",
+        "content": "Hi."
+      }
+    ],
+    "expected": "<bos><|turn>user\nHello.<turn|>\n<|turn>model\nHi.<turn|>\n"
+  },
+  {
+    "name": "gemma4.system",
+    "family": "gemma4",
+    "bos": "<bos>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "system",
+        "content": "  Be concise.  "
+      },
+      {
+        "role": "user",
+        "content": "Hello."
+      }
+    ],
+    "expected": "<bos><|turn>system\nBe concise.<turn|>\n<|turn>user\nHello.<turn|>\n<|turn>model\n"
+  },
+  {
+    "name": "gemma4.developer",
+    "family": "gemma4",
+    "bos": "<bos>",
+    "generation": true,
+    "messages": [
+      {
+        "role": "developer",
+        "content": "Be concise."
+      },
+      {
+        "role": "user",
+        "content": "Hello."
+      }
+    ],
+    "expected": "<bos><|turn>system\nBe concise.<turn|>\n<|turn>user\nHello.<turn|>\n<|turn>model\n"
+  },
+  {
+    "name": "gemma4.continuation",
+    "family": "gemma4",
+    "bos": "<bos>",
+    "generation": false,
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello."
+      },
+      {
+        "role": "assistant",
+        "content": "One."
+      },
+      {
+        "role": "assistant",
+        "content": "Two."
+      }
+    ],
+    "expected": "<bos><|turn>user\nHello.<turn|>\n<|turn>model\nOne.Two.<turn|>\n"
+  }
+]

@@ -1,0 +1,74 @@
+[
+  {
+    "id": "qwen35-4b",
+    "repo": "bartowski/Qwen_Qwen3.5-4B-GGUF",
+    "revision": "4168f45a16a1290d65a4ec0fa312ae917a4c15d6",
+    "file": "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+    "bytes": 3013027808,
+    "sha256": "13c16f426047e2de38cd075bdade4a7bcbc8c774384876f677740cda65f8a983",
+    "backend": "cuda"
+  },
+  {
+    "id": "qwen35-9b",
+    "repo": "unsloth/Qwen3.5-9B-GGUF",
+    "revision": "3885219b6810b007914f3a7950a8d1b469d598a5",
+    "file": "Qwen3.5-9B-Q4_K_M.gguf",
+    "bytes": 5680522464,
+    "sha256": "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8",
+    "backend": "cuda"
+  },
+  {
+    "id": "gemma4-e4b",
+    "repo": "unsloth/gemma-4-E4B-it-GGUF",
+    "revision": "bfc15c382204943c3a8fff0c750b94ae2364d7a3",
+    "file": "gemma-4-E4B-it-Q4_K_M.gguf",
+    "bytes": 4977171584,
+    "sha256": "85a896a047553e842f25297ee5b031d64ff30147d9c4af17b1e4b394cd1fab87",
+    "backend": "cuda"
+  },
+  {
+    "id": "llama3.2-3b",
+    "repo": "bartowski/Llama-3.2-3B-Instruct-GGUF",
+    "revision": "5ab33fa94d1d04e903623ae72c95d1696f09f9e8",
+    "file": "Llama-3.2-3B-Instruct-Q4_K_M.gguf",
+    "bytes": 2019377696,
+    "sha256": "6c1a2b41161032677be168d354123594c0e6e67d2b9227c84f296ad037c728ff",
+    "backend": "cpu"
+  },
+  {
+    "id": "mistral7b",
+    "repo": "bartowski/Mistral-7B-Instruct-v0.3-GGUF",
+    "revision": "61fd4167fff3ab01ee1cfe0da183fa27a944db48",
+    "file": "Mistral-7B-Instruct-v0.3-Q4_K_M.gguf",
+    "bytes": 4372812000,
+    "sha256": "1270d22c0fbb3d092fb725d4d96c457b7b687a5f5a715abe1e818da303e562b6",
+    "backend": "cpu"
+  },
+  {
+    "id": "qwen25-3b",
+    "repo": "Qwen/Qwen2.5-3B-Instruct-GGUF",
+    "revision": "7dabda4d13d513e3e842b20f0d435c732f172cbe",
+    "file": "qwen2.5-3b-instruct-q4_k_m.gguf",
+    "bytes": 2104932768,
+    "sha256": "626b4a6678b86442240e33df819e00132d3ba7dddfe1cdc4fbb18e0a9615c62d",
+    "backend": "cpu"
+  },
+  {
+    "id": "qwen3-4b",
+    "repo": "bartowski/Qwen_Qwen3-4B-GGUF",
+    "revision": "cb76885dc66d50759b207c5a48c4e78dfa00c638",
+    "file": "Qwen_Qwen3-4B-Q4_K_M.gguf",
+    "bytes": 2497280960,
+    "sha256": "fbe1d5edd4ce802ae3ae7c7e4ab7d09789d697fdac1fc7929f8df4ca3c41bae3",
+    "backend": "cpu"
+  },
+  {
+    "id": "gpt-oss-20b",
+    "repo": "ggml-org/gpt-oss-20b-GGUF",
+    "revision": "15dcfc7e7c608c6161507211ed43c5b590801b4b",
+    "file": "gpt-oss-20b-MXFP4.gguf",
+    "bytes": 12109566624,
+    "sha256": "27cd6c432c7672cb812a92f611cf3ba7bbc35928262bb1e1253ff4ee6ae35901",
+    "backend": "cuda"
+  }
+]

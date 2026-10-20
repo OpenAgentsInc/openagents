@@ -37,7 +37,7 @@ use crate::engine::{Engine, Pending, Psionic};
 use crate::identity::{Identity, load_owner, npub};
 use crate::lease::{Dedicated, Machine};
 use crate::provider::{Counters, Provider};
-use crate::share::{self, DecideLane, Settings, TextLane};
+use crate::share::{self, DecideLane, Settings, TextEngine, TextLane};
 use crate::{home, now};
 
 /// The schema of `live.json`.
@@ -67,11 +67,11 @@ pub enum LaneKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaneSpec {
     pub kind: LaneKind,
+    pub engine: TextEngine,
     pub port: u16,
     pub model_file: PathBuf,
-    /// The device (`metal`, `cuda`, `cpu`): the decision device, and for
-    /// text the decision lane's device too, so both engines use the GPU
-    /// doctor picked (Psionic's text backend defaults to the CPU).
+    /// The device (`metal`, `cuda`, `cpu`), selected separately for text
+    /// when the chosen model needs another backend.
     pub device: Option<String>,
     /// The served model's name; text only.
     pub model: Option<String>,
@@ -101,6 +101,7 @@ pub fn lanes(settings: &Settings) -> Vec<LaneSpec> {
     if let Some(lane) = &settings.decide {
         out.push(LaneSpec {
             kind: LaneKind::Decisions,
+            engine: TextEngine::Openai,
             port: lane.port,
             model_file: lane.model_file.clone(),
             device: Some(lane.device.clone()),
@@ -110,17 +111,20 @@ pub fn lanes(settings: &Settings) -> Vec<LaneSpec> {
     if let Some(lane) = &settings.text {
         out.push(LaneSpec {
             kind: LaneKind::Text,
+            engine: lane.engine,
             port: lane.port,
             model_file: lane.model_file.clone(),
-            device: settings.decide.as_ref().map(|d| d.device.clone()),
+            device: lane
+                .device
+                .clone()
+                .or_else(|| settings.decide.as_ref().map(|d| d.device.clone())),
             model: Some(lane.model.clone()),
         });
     }
     out
 }
 
-/// The `psionic-openai-server` command line for `lane`: loopback only, no
-/// mesh.
+/// The local model server command for `lane`, listening on loopback.
 #[must_use]
 pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Command {
     let mut command = tokio::process::Command::new(server);
@@ -130,6 +134,24 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
         "--port",
         &lane.port.to_string(),
     ]);
+    if lane.engine == TextEngine::LlamaCpp {
+        command.args([
+            "--ctx-size",
+            "4096",
+            "--parallel",
+            "1",
+            "--jinja",
+            "--chat-template-kwargs",
+            "{\"enable_thinking\":false}",
+            "--n-gpu-layers",
+            if lane.device.as_deref() == Some("cpu") {
+                "0"
+            } else {
+                "auto"
+            },
+        ]);
+        return command;
+    }
     match lane.kind {
         LaneKind::Decisions => {
             command.args(["--decision-device", lane.device.as_deref().unwrap_or("cpu")]);
@@ -140,7 +162,9 @@ pub fn psionic_command(server: &Path, lane: &LaneSpec) -> tokio::process::Comman
             }
         }
     }
-    command.args(["--mesh-coordination", "disabled"]);
+    if lane.engine != TextEngine::GptOss {
+        command.args(["--mesh-coordination", "disabled"]);
+    }
     command
 }
 
@@ -189,18 +213,49 @@ pub trait Engines: Send + Sync {
     ) -> Pending<'a, Result<(), String>>;
 }
 
-/// The production engines: `psionic-openai-server` children.
+/// Supervised local model servers.
 pub struct PsionicEngines;
 
 impl Engines for PsionicEngines {
     fn command(&self, home: &Path, lane: &LaneSpec) -> Result<tokio::process::Command, String> {
-        let server = crate::setup::find_server().ok_or_else(|| {
+        let mut server = crate::setup::find_server().ok_or_else(|| {
             format!(
                 "{} is not installed; build it with: {}",
                 crate::setup::SERVER,
                 crate::setup::BUILD_SERVER
             )
         })?;
+        if lane.engine != TextEngine::Openai {
+            let (variable, name) = match lane.engine {
+                TextEngine::GptOss => ("OPENAGENTS_PSIONIC_GPT_OSS_BIN", "psionic-gpt-oss-server"),
+                TextEngine::LlamaCpp => ("OPENAGENTS_LLAMA_CPP_BIN", "llama-server"),
+                TextEngine::Openai => unreachable!(),
+            };
+            server = std::env::var_os(variable)
+                .map(PathBuf::from)
+                .or_else(|| {
+                    let sibling = server.with_file_name(name);
+                    sibling.is_file().then_some(sibling)
+                })
+                .or_else(|| {
+                    std::env::var_os("PATH").and_then(|path| {
+                        std::env::split_paths(&path)
+                            .map(|folder| folder.join(name))
+                            .find(|candidate| candidate.is_file())
+                    })
+                })
+                .ok_or_else(|| {
+                    format!(
+                        "{name} is missing; install it on PATH or set {variable} to its executable"
+                    )
+                })?;
+            if !server.is_file() {
+                return Err(format!(
+                    "{name} is missing at {}; set {variable} to its executable",
+                    server.display()
+                ));
+            }
+        }
         std::fs::create_dir_all(home).map_err(|e| e.to_string())?;
         let log = home.join(format!("psionic-{}.log", lane.name()));
         let out = std::fs::OpenOptions::new()
@@ -940,6 +995,10 @@ pub struct Up {
     /// `false` for `--text off`.
     pub text: bool,
     pub text_model: Option<PathBuf>,
+    /// The text backend; defaults to the decision lane's device.
+    pub text_device: Option<String>,
+    /// Which local server serves the text model.
+    pub text_engine: Option<TextEngine>,
     pub device: Option<String>,
     pub port: Option<u16>,
     /// `--text-port`: the text engine's loopback port.
@@ -972,6 +1031,21 @@ impl Up {
             .pop()
             .map(PathBuf::from);
         let device = share::take_values(&mut words, "--device")?.pop();
+        let text_device = share::take_values(&mut words, "--text-device")?.pop();
+        let text_engine = share::take_values(&mut words, "--text-engine")?
+            .pop()
+            .map(|value| match value.as_str() {
+                "openai" => Ok(TextEngine::Openai),
+                "gpt-oss" => Ok(TextEngine::GptOss),
+                "llama-cpp" => Ok(TextEngine::LlamaCpp),
+                _ => Err("--text-engine takes openai, gpt-oss, or llama-cpp".to_string()),
+            })
+            .transpose()?;
+        if let Some(value) = &text_device
+            && !matches!(value.as_str(), "metal" | "cuda" | "cpu")
+        {
+            return Err("--text-device takes metal, cuda, or cpu".into());
+        }
         if let Some(device) = &device
             && !matches!(device.as_str(), "metal" | "cuda" | "cpu")
         {
@@ -990,6 +1064,8 @@ impl Up {
             foreground,
             text,
             text_model,
+            text_device,
+            text_engine,
             device,
             port,
             text_port,
@@ -1063,6 +1139,10 @@ pub fn settings_for_up(
         model_file: crate::setup::model_path(),
     });
     let mut notes = Vec::new();
+    let text_device = up
+        .text_device
+        .clone()
+        .or_else(|| settings.text.as_ref().and_then(|t| t.device.clone()));
     settings.text = if up.text {
         let file = up
             .text_model
@@ -1075,7 +1155,9 @@ pub fn settings_for_up(
                 file.display()
             ));
             None
-        } else if let Err(why) = text_room {
+        } else if let Err(why) = text_room
+            && text_device.as_deref() != Some("cpu")
+        {
             notes.push(why);
             None
         } else {
@@ -1102,6 +1184,11 @@ pub fn settings_for_up(
                 port: text_port,
                 model,
                 model_file: file,
+                device: text_device,
+                engine: up
+                    .text_engine
+                    .or_else(|| settings.text.as_ref().map(|t| t.engine))
+                    .unwrap_or_default(),
             })
         }
     } else {

@@ -30,6 +30,20 @@ the Mac, web, and phone builds, do not compile it.
 0.8B Q8_0 loads in about 2 GB of video memory and answers a short prompt in
 about 0.2 seconds.
 
+The pinned public text templates for Llama 3.2, Mistral v0.3, standard
+Qwen3, current Qwen3.5, and Gemma 4 are checked against 26 independent
+Jinja-rendered fixtures. Unknown template hashes still fail closed.
+Qwen3.5 CUDA accepts mixed dense/quantized projection groups and Q4_K/Q6_K
+embedding rows; Gemma 4 accepts dense per-layer projections on CUDA.
+Gemma's BPE tokenizer decodes SentencePiece spaces and literal UTF-8,
+including indentation and byte fallbacks.
+`psionic-gpt-oss-server` is a separate binary for GPT-OSS; unfinished
+analysis is kept separate from the final answer.
+
+Pylon can also explicitly supervise a local llama.cpp server for families
+without a native GPU decoder. See [model selection and qualification](../compute/pylon.md#choose-another-text-model)
+for the pinned eight-model catalog and repeatable RTX 4080 checks.
+
 ## Who uses it
 
 The [Pylon helper](../../scripts/pylon-psionic.sh) builds and starts a local

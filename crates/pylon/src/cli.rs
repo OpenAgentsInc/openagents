@@ -44,6 +44,10 @@ Commands:
       --text off            Serve decisions only.
       --text-model FILE     The text engine's GGUF (default
                             ~/.openagents/models/Qwen3.5-0.8B-Q8_0.gguf).
+      --text-device NAME    cpu, cuda, or metal for text, independently of
+                            the decision engine (default: its device).
+      --text-engine NAME    openai (default), gpt-oss, or llama-cpp.
+                            Runs the chosen local model server.
       --device NAME         metal, cuda, or cpu (default: what doctor picks).
       --port N              The decision engine's loopback port (default 18096).
       --text-port N         The text engine's loopback port (default 18097),
@@ -2113,6 +2117,7 @@ async fn start(
         );
         let lane = crate::online::LaneSpec {
             kind: crate::online::LaneKind::Decisions,
+            engine: crate::share::TextEngine::Openai,
             port,
             model_file: model,
             device: Some(device),

@@ -43,7 +43,20 @@ pub struct DecideLane {
     pub model_file: PathBuf,
 }
 
-/// The text lane: a second Psionic server on another loopback port for
+/// The local server that runs a text model.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TextEngine {
+    /// The general Psionic model server.
+    #[default]
+    Openai,
+    /// Psionic's GPT-OSS server.
+    GptOss,
+    /// A local llama.cpp server using its OpenAI-compatible API.
+    LlamaCpp,
+}
+
+/// The text lane: a second model server on another loopback port for
 /// NIP-CJ text jobs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextLane {
@@ -53,6 +66,12 @@ pub struct TextLane {
     pub model: String,
     /// The GGUF it loads.
     pub model_file: PathBuf,
+    /// Override the decision lane's device for this text model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+    /// Which local server loads this model.
+    #[serde(default)]
+    pub engine: TextEngine,
 }
 
 /// What the owner chose for this computer's shared compute.
