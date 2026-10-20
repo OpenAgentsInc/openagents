@@ -614,6 +614,12 @@ impl Client {
                 Some("invalid_play_integrity") => Some("invalid_play_integrity"),
                 Some("sign_in_denied") => Some("sign_in_denied"),
                 Some("agent_account") => Some("agent_account"),
+                // Names (#12254).
+                Some("name_invalid") => Some("name_invalid"),
+                Some("name_reserved") => Some("name_reserved"),
+                Some("name_taken") => Some("name_taken"),
+                Some("name_too_often") => Some("name_too_often"),
+                Some("key_not_yours") => Some("key_not_yours"),
                 _ => None,
             };
             return Err(Error::Refused {

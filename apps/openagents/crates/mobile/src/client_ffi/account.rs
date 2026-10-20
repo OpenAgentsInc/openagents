@@ -505,8 +505,17 @@ impl CoreAccount {
         super::CoreAgentLab::new(
             self.controller.clone(),
             self.data_dir.join("agent-lab-requests"),
+            self.key_source(),
             listener,
         )
+    }
+    /// Settings > Your ID > Public profile: the name, picture, and about
+    /// this phone's key publishes (#12298).
+    pub fn public_profile(
+        &self,
+        listener: Arc<dyn super::PublicProfileListener>,
+    ) -> Arc<super::CorePublicProfile> {
+        super::CorePublicProfile::new(self.controller.clone(), self.key_source(), listener)
     }
     pub fn custom_agents(
         &self,

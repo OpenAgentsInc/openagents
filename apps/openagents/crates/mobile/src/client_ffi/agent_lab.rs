@@ -20,9 +20,12 @@ impl CoreAgentLab {
     pub(super) fn new(
         controller: Arc<openagents_account::Controller>,
         root: PathBuf,
+        key: openagents_account::public::KeySource,
         listener: Arc<dyn AgentLabListener>,
     ) -> Arc<Self> {
         let lab = openagents_account::agent_lab::Lab::new(controller, root);
+        // The phone's key signs each published agent's owner tag (#12301).
+        lab.set_owner_key(key);
         let cancel = tokio_util::sync::CancellationToken::new();
         let stop = cancel.clone();
         let visible = Arc::new(std::sync::atomic::AtomicBool::new(false));

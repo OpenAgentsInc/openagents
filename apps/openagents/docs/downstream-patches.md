@@ -1440,3 +1440,16 @@ master delegation audit.
   the form's own field changes and actions (`agent_graph::edit::plan`)
   through `openagents_account::agent_lab::Lab`, so the graph and the form
   share one store and one set of checks.
+
+## Public profile and agent owner tags (#12298, #12301)
+
+- `crates/account/src/public.rs` (`openagents_account::public`) publishes the
+  person's kind 0 to `wss://relay.openagents.com` with this device's key,
+  claims the `name@openagents.com` name (`/v1/device/name`), and signs a
+  published agent's NIP-OA owner tag. `ProfileForm` is the Rust Native form
+  both shells draw.
+- Desktop: Your ID > Public profile in the identity menu
+  (`crates/ui/src/openagents_account/public_profile.rs`), and Publish in
+  Agent Lab, which signs the owner tag with `AppAccount::owner_key`.
+- Phone: `CoreAccount::public_profile` and the same Agent Lab Publish through
+  `CoreAgentLab`. iOS mounts the form in `AgentFormController`.

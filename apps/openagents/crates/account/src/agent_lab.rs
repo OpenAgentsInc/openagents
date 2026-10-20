@@ -50,6 +50,9 @@ pub struct Lab {
     state: Mutex<Workbench>,
     updates: tokio::sync::watch::Sender<u64>,
     io: tokio::sync::Mutex<()>,
+    /// The person's key, once the host has one: it signs a published
+    /// agent's owner tag (#12301).
+    key: Mutex<Option<crate::public::KeySource>>,
 }
 impl Lab {
     pub fn new(controller: Arc<Controller>, root: PathBuf) -> Arc<Self> {
@@ -63,7 +66,27 @@ impl Lab {
             )),
             updates: tx,
             io: tokio::sync::Mutex::new(()),
+            key: Mutex::new(None),
         })
+    }
+    /// Offer Publish, signing each published agent's owner tag with the key
+    /// `key` answers.
+    pub fn set_owner_key(&self, key: crate::public::KeySource) {
+        *self.key.lock().unwrap() = Some(key);
+        let mut s = self.state.lock().unwrap();
+        s.signs_owner = true;
+        s.bump();
+        drop(s);
+        self.publish();
+    }
+    fn owner_key(&self) -> Option<Arc<crate::identity::Identity>> {
+        let key = self.key.lock().unwrap().clone()?;
+        key()
+    }
+    /// Where this account's owned agents are kept, beside its pending request.
+    fn owned_dir(&self, lease: &Lease) -> PathBuf {
+        let path = self.path(lease);
+        path.parent().map(PathBuf::from).unwrap_or(path)
     }
     pub fn watch(&self) -> tokio::sync::watch::Receiver<u64> {
         self.updates.subscribe()
@@ -74,6 +97,7 @@ impl Lab {
     pub fn view(&self) -> View<Action> {
         if self.lease().is_err() {
             let mut s = Workbench::new("signed-out".into());
+            s.signs_owner = self.state.lock().unwrap().signs_owner;
             s.notice = Some("Connecting to your account…".into());
             s.busy = true;
             return s.view();
@@ -179,37 +203,104 @@ impl Lab {
         if !lease.is_current() {
             return Ok(());
         }
-        let mut s = self.state.lock().unwrap();
-        // Keep the full opened document for version browsing; catalog pages may contain only its latest version.
-        if let Some(id) = &s.document {
-            if let Some(old) = s.documents.iter().find(|d| &d.id == id) {
-                if let Some(item) = documents.iter_mut().find(|d| &d.id == id) {
-                    if old.versions.len() > item.versions.len() {
-                        *item = old.clone();
+        {
+            let mut s = self.state.lock().unwrap();
+            // Keep the full opened document for version browsing; catalog pages may contain only its latest version.
+            if let Some(id) = &s.document {
+                if let Some(old) = s.documents.iter().find(|d| &d.id == id) {
+                    if let Some(item) = documents.iter_mut().find(|d| &d.id == id) {
+                        if old.versions.len() > item.versions.len() {
+                            *item = old.clone();
+                        }
                     }
                 }
             }
-        }
-        s.pending = self.path(&lease).exists();
-        s.documents = documents;
-        s.runs = runs;
-        s.agents = definitions;
-        s.hosts = hosts;
-        s.published = published;
-        if s.draft.host == "choose" {
-            if let Some(h) = s.hosts.first().cloned() {
-                s.draft.host = h.id;
-                s.draft.project = h
-                    .projects
-                    .first()
-                    .map(|p| p.id.clone())
-                    .unwrap_or_else(|| "choose".into());
+            s.pending = self.path(&lease).exists();
+            s.documents = documents;
+            s.runs = runs;
+            s.agents = definitions;
+            s.hosts = hosts;
+            s.published = published;
+            if s.draft.host == "choose" {
+                if let Some(h) = s.hosts.first().cloned() {
+                    s.draft.host = h.id;
+                    s.draft.project = h
+                        .projects
+                        .first()
+                        .map(|p| p.id.clone())
+                        .unwrap_or_else(|| "choose".into());
+                }
             }
+            s.bump();
         }
-        s.bump();
-        drop(s);
         self.publish();
+        // Owner tags stand a year: sign new ones a month before they lapse.
+        if let Some(identity) = self.owner_key() {
+            crate::public::renew_due(
+                &self.owned_dir(&lease),
+                lease.client(),
+                lease.session(),
+                &identity,
+            )
+            .await;
+        }
         Ok(())
+    }
+    /// Publish saved agent `id` and sign its owner tag with the person's key.
+    async fn publish_owned(&self, lease: &Lease, id: &str) -> Result<(), String> {
+        let identity = self
+            .owner_key()
+            .ok_or("Your account isn't ready yet. Try again in a moment.")?;
+        let (name, template) = {
+            let s = self.state.lock().unwrap();
+            let a = s
+                .agents
+                .iter()
+                .find(|a| a.id == id)
+                .ok_or("This agent is no longer available.")?;
+            (a.spec.name.clone(), api::publish_template(&s.draft, a))
+        };
+        {
+            let mut s = self.state.lock().unwrap();
+            s.busy = true;
+            s.notice = Some(format!("Publishing {name}…"));
+            s.bump();
+        }
+        self.publish();
+        let result = async {
+            let agents = lease
+                .client()
+                .agents(lease.session())
+                .map_err(|_| "We couldn't connect to your account. Try again.")?;
+            let request = agents
+                .publish_request(Some(template))
+                .map_err(|_| "Try this action again.")?;
+            let published = agents
+                .publish(id, &request, &lease.cancel)
+                .await
+                .map_err(|_| format!("Couldn't publish {name}. Try again."))?;
+            let owned =
+                crate::public::own(lease.client(), lease.session(), &identity, &published.id)
+                    .await?;
+            crate::public::remember(&self.owned_dir(lease), &owned);
+            Ok::<_, String>(owned)
+        }
+        .await;
+        if lease.is_current() {
+            let mut s = self.state.lock().unwrap();
+            s.busy = false;
+            s.notice = Some(match &result {
+                Ok(owned) => format!(
+                    "Published {name}. Its page is https://{}/agent/{}.",
+                    crate::public::DOMAIN,
+                    owned.id
+                ),
+                Err(message) => message.clone(),
+            });
+            s.bump();
+        }
+        self.publish();
+        result.map(|_| ())
     }
     pub async fn activate(&self, event: Activation) -> Result<Effect, String> {
         let lease = self.lease()?;
@@ -234,6 +325,10 @@ impl Lab {
         }
         if let Command::Refresh = command {
             self.refresh().await?;
+            return Ok(Effect::None);
+        }
+        if let Command::Publish(id) = command {
+            self.publish_owned(&lease, &id).await?;
             return Ok(Effect::None);
         }
         let labs = lease

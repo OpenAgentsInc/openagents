@@ -706,3 +706,30 @@ fn a_fork_of_foreman_keeps_its_tests_and_takes_its_own_settings() {
     check_published(&t, &definition).unwrap();
     assert_eq!(t.suite, original.suite);
 }
+
+/// Only a host that holds the person's key offers Publish (#12301): a
+/// browser can't sign the agent's owner tag.
+#[cfg(feature = "views")]
+#[test]
+fn publish_shows_only_where_the_owner_tag_can_be_signed() {
+    use agent_lab::view::{Command, Workbench};
+    let mut s = Workbench::new("fixture".into());
+    let id = "b".repeat(64);
+    s.agents.push(agent_contract::AgentDefinition {
+        id: id.clone(),
+        revision: 1,
+        spec: starter().draft.spec,
+        deleted: false,
+    });
+    let key = format!("publish:{id}");
+    let shown = |s: &Workbench| {
+        let json = serde_json::to_value(s.view()).unwrap().to_string();
+        json.contains(&key)
+    };
+    assert!(!shown(&s));
+    assert!(s.action(&key).is_err());
+    s.signs_owner = true;
+    assert!(shown(&s));
+    assert!(matches!(s.action(&key).unwrap(), Some(Command::Publish(p)) if p == id));
+    assert!(s.action(&format!("publish:{}", "c".repeat(64))).is_err());
+}

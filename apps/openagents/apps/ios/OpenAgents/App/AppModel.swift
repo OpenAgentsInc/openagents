@@ -40,6 +40,7 @@ final class AppModel {
     @MainActor lazy var voice = RemoteVoiceController(app: self)
     private(set) var projectSharing: CoreSharing?
     private lazy var sharingBridge = ProjectSharingBridge(app: self)
+    private lazy var profileBridge = PublicProfileBridge(app: self)
     private(set) var voiceAgent: CoreVoiceAgent?
     private(set) var agentLab: CoreAgentLab?
     private lazy var labBridge = LabBridge(app: self)
@@ -246,6 +247,12 @@ final class AppModel {
         let sharing = try account.projectSharing(listener: sharingBridge)
         projectSharing = sharing
         return sharing
+    }
+    /// Settings > Public profile (#12298): a fresh form each time, so it
+    /// reads the profile again.
+    func openPublicProfile() throws -> CorePublicProfile {
+        guard let account else { throw NSError(domain: "OpenAgents", code: 1, userInfo: [NSLocalizedDescriptionKey: "Log in again to continue."]) }
+        return account.publicProfile(listener: profileBridge)
     }
     func openProjectInvitations() {
         guard let site = URL(string: Self.accountWebsite), let url = URL(string: "projects", relativeTo: site)?.absoluteURL else { return }
@@ -1150,6 +1157,12 @@ private final class LabBridge: AgentLabListener {
     weak var app: AppModel?
     init(app: AppModel) { self.app = app }
     func onAgentLabChanged() { DispatchQueue.main.async { [weak self] in self?.app?.notifyChanged() } }
+}
+
+private final class PublicProfileBridge: PublicProfileListener {
+    weak var app: AppModel?
+    init(app: AppModel) { self.app = app }
+    func onPublicProfileChanged() { DispatchQueue.main.async { [weak self] in self?.app?.notifyChanged() } }
 }
 
 private final class ProjectSharingBridge: SharingListener {

@@ -87,6 +87,11 @@ pub trait DesktopIdentity: Send + Sync {
     /// The keys that sign in to the account: this computer, phones, and other
     /// computers.
     fn linked_devices(&self) -> Pending<Vec<LinkedDevice>>;
+    /// This computer's key once it signs in, for what it signs itself: the
+    /// public profile and published agents' owner tags (#12298, #12301).
+    fn key(&self) -> Option<Arc<Identity>> {
+        None
+    }
 }
 
 /// [`DesktopIdentity`] over the shared identity (#11995): the words in
@@ -318,6 +323,10 @@ impl DesktopIdentity for KeyIdentity {
         } else {
             Err("Couldn't save that. Try again.".into())
         }
+    }
+
+    fn key(&self) -> Option<Arc<Identity>> {
+        self.current()
     }
 
     fn linked_devices(&self) -> Pending<Vec<LinkedDevice>> {
@@ -736,6 +745,7 @@ pub mod copy {
 
     pub const SET_UP: &str = "Set up your account";
     pub const YOUR_ID: &str = "Your ID";
+    pub const PUBLIC_PROFILE: &str = "Public profile";
     pub const COPY_ID: &str = "Copy your ID";
     pub const COPIED: &str = "Copied";
     pub const LINKED_DEVICES: &str = "Linked devices";

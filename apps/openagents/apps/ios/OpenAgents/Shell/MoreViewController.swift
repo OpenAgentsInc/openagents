@@ -199,6 +199,9 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         // Rust core has an identity to show (#11995).
         if let identity = app.identity {
             s.appendItems([Row(id: "your-id", title: "Your ID", subtitle: identity.npub, symbol: "person.text.rectangle", accessory: .none)])
+            if case .signedIn? = app.accountSnapshot?.state {
+                s.appendItems([Row(id: "public-profile", title: "Public profile", subtitle: "Your name and picture on your page", symbol: "person.crop.square")])
+            }
             // TODO(#11996): show these once their screens exist. The core
             // has them: backupWords, backupCheck, confirmBackup,
             // restoreFromWords, setIcloudCopy, revealNsec (#11995).
@@ -262,6 +265,15 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
         collectionView.deselectItem(at: path, animated: true)
         guard let row = dataSource.itemIdentifier(for: path) else { return }
         switch row.id {
+        case "public-profile":
+            do {
+                let profile = try app.openPublicProfile()
+                present(UINavigationController(rootViewController: AgentFormController(app: app, profile: profile)), animated: true)
+            } catch {
+                let alert = UIAlertController(title: "Couldn't open your profile", message: error.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default))
+                present(alert, animated: true)
+            }
         case "project-sharing":
             do {
                 let sharing = try app.openProjectSharing()

@@ -3030,3 +3030,13 @@ account switch, restart, screenshots/task previews, autofill/keyboard suggestion
 and explicit sensitive clipboard copy with cleanup within 60 seconds and on exit.
 Verify process death and OEM clipboard behavior physically. Never use the owner's
 real seed, wallet, account, or clipboard for these checks.
+
+## Ship the phone's public profile and agent Publish (#12298, #12301)
+
+The next iOS TestFlight build carries Settings > Public profile and Agent Lab's
+Publish, which sign the profile and the agent's owner tag with the phone's key.
+Cut that build, then with the dedicated test account: open **Public profile**,
+set a name and picture, save, and check `openagents.com/@NAME` shows them;
+then publish a saved agent from Agent Lab and check `/agent/ID` draws it with
+the test account as owner. Android has the Rust side only; its screen is a
+follow-up issue.

@@ -1064,6 +1064,748 @@ public func FfiConverterTypeAgentLabListener_lower(_ value: AgentLabListener) ->
 
 
 
+public protocol AndroidHostListener: AnyObject, Sendable {
+    
+    func onAndroidHostChanged() 
+    
+}
+open class AndroidHostListenerImpl: AndroidHostListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_androidhostlistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_androidhostlistener(handle, $0) }
+    }
+
+    
+
+    
+open func onAndroidHostChanged()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_androidhostlistener_on_android_host_changed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceAndroidHostListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceAndroidHostListener = UniffiVTableCallbackInterfaceAndroidHostListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeAndroidHostListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface AndroidHostListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeAndroidHostListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface AndroidHostListener: handle missing in uniffiClone")
+            }
+        },
+        onAndroidHostChanged: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeAndroidHostListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onAndroidHostChanged(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceAndroidHostListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceAndroidHostListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitAndroidHostListener() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_androidhostlistener(UniffiCallbackInterfaceAndroidHostListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidHostListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<AndroidHostListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = AndroidHostListener
+
+    public static func lift(_ handle: UInt64) throws -> AndroidHostListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AndroidHostListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: AndroidHostListener) -> UInt64 {
+         if let rustImpl = value as? AndroidHostListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidHostListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AndroidHostListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostListener_lift(_ handle: UInt64) throws -> AndroidHostListener {
+    return try FfiConverterTypeAndroidHostListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostListener_lower(_ value: AndroidHostListener) -> UInt64 {
+    return FfiConverterTypeAndroidHostListener.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Reads the old encrypted file. This interface cannot create or delete it.
+ */
+public protocol AndroidRetiredWalletSeed: AnyObject, Sendable {
+    
+    func readRetiredSeed()  -> RetiredSeedRead
+    
+}
+/**
+ * Reads the old encrypted file. This interface cannot create or delete it.
+ */
+open class AndroidRetiredWalletSeedImpl: AndroidRetiredWalletSeed, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_androidretiredwalletseed(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_androidretiredwalletseed(handle, $0) }
+    }
+
+    
+
+    
+open func readRetiredSeed() -> RetiredSeedRead  {
+    return try!  FfiConverterTypeRetiredSeedRead_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_androidretiredwalletseed_read_retired_seed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceAndroidRetiredWalletSeed {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceAndroidRetiredWalletSeed = UniffiVTableCallbackInterfaceAndroidRetiredWalletSeed(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeAndroidRetiredWalletSeed.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface AndroidRetiredWalletSeed: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeAndroidRetiredWalletSeed.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface AndroidRetiredWalletSeed: handle missing in uniffiClone")
+            }
+        },
+        readRetiredSeed: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> RetiredSeedRead in
+                guard let uniffiObj = try? FfiConverterTypeAndroidRetiredWalletSeed.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.readRetiredSeed(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeRetiredSeedRead_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceAndroidRetiredWalletSeed> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceAndroidRetiredWalletSeed>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitAndroidRetiredWalletSeed() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_androidretiredwalletseed(UniffiCallbackInterfaceAndroidRetiredWalletSeed.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidRetiredWalletSeed: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<AndroidRetiredWalletSeed>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = AndroidRetiredWalletSeed
+
+    public static func lift(_ handle: UInt64) throws -> AndroidRetiredWalletSeed {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AndroidRetiredWalletSeedImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: AndroidRetiredWalletSeed) -> UInt64 {
+         if let rustImpl = value as? AndroidRetiredWalletSeedImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidRetiredWalletSeed {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AndroidRetiredWalletSeed, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidRetiredWalletSeed_lift(_ handle: UInt64) throws -> AndroidRetiredWalletSeed {
+    return try FfiConverterTypeAndroidRetiredWalletSeed.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidRetiredWalletSeed_lower(_ value: AndroidRetiredWalletSeed) -> UInt64 {
+    return FfiConverterTypeAndroidRetiredWalletSeed.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Platform operations over opaque encrypted values. The provider must use
+ * Android Keystore backed encryption, atomic writes, and private app files.
+ */
+public protocol AndroidSecretStorage: AnyObject, Sendable {
+    
+    func read(namespace: String, key: String)  -> SecretRead
+    
+    /**
+     * Add only when no value exists. A racing writer must get AlreadyExists.
+     */
+    func create(namespace: String, key: String, bytes: Data)  -> SecretMutation
+    
+    /**
+     * Atomically replace or create one value after Rust authorizes the change.
+     */
+    func replace(namespace: String, key: String, bytes: Data)  -> SecretMutation
+    
+    func delete(namespace: String, key: String)  -> SecretMutation
+    
+}
+/**
+ * Platform operations over opaque encrypted values. The provider must use
+ * Android Keystore backed encryption, atomic writes, and private app files.
+ */
+open class AndroidSecretStorageImpl: AndroidSecretStorage, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_androidsecretstorage(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_androidsecretstorage(handle, $0) }
+    }
+
+    
+
+    
+open func read(namespace: String, key: String) -> SecretRead  {
+    return try!  FfiConverterTypeSecretRead_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_androidsecretstorage_read(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(namespace),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Add only when no value exists. A racing writer must get AlreadyExists.
+     */
+open func create(namespace: String, key: String, bytes: Data) -> SecretMutation  {
+    return try!  FfiConverterTypeSecretMutation_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_androidsecretstorage_create(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(namespace),
+        FfiConverterString.lower(key),
+        FfiConverterData.lower(bytes),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Atomically replace or create one value after Rust authorizes the change.
+     */
+open func replace(namespace: String, key: String, bytes: Data) -> SecretMutation  {
+    return try!  FfiConverterTypeSecretMutation_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_androidsecretstorage_replace(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(namespace),
+        FfiConverterString.lower(key),
+        FfiConverterData.lower(bytes),uniffiCallStatus
+    )
+})
+}
+    
+open func delete(namespace: String, key: String) -> SecretMutation  {
+    return try!  FfiConverterTypeSecretMutation_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_androidsecretstorage_delete(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(namespace),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceAndroidSecretStorage {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceAndroidSecretStorage = UniffiVTableCallbackInterfaceAndroidSecretStorage(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeAndroidSecretStorage.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface AndroidSecretStorage: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeAndroidSecretStorage.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface AndroidSecretStorage: handle missing in uniffiClone")
+            }
+        },
+        read: { (
+            uniffiHandle: UInt64,
+            namespace: RustBuffer,
+            key: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> SecretRead in
+                guard let uniffiObj = try? FfiConverterTypeAndroidSecretStorage.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.read(
+                     namespace: try FfiConverterString.lift(namespace),
+                     key: try FfiConverterString.lift(key)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeSecretRead_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        create: { (
+            uniffiHandle: UInt64,
+            namespace: RustBuffer,
+            key: RustBuffer,
+            bytes: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> SecretMutation in
+                guard let uniffiObj = try? FfiConverterTypeAndroidSecretStorage.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.create(
+                     namespace: try FfiConverterString.lift(namespace),
+                     key: try FfiConverterString.lift(key),
+                     bytes: try FfiConverterData.lift(bytes)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeSecretMutation_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        replace: { (
+            uniffiHandle: UInt64,
+            namespace: RustBuffer,
+            key: RustBuffer,
+            bytes: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> SecretMutation in
+                guard let uniffiObj = try? FfiConverterTypeAndroidSecretStorage.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.replace(
+                     namespace: try FfiConverterString.lift(namespace),
+                     key: try FfiConverterString.lift(key),
+                     bytes: try FfiConverterData.lift(bytes)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeSecretMutation_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        delete: { (
+            uniffiHandle: UInt64,
+            namespace: RustBuffer,
+            key: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> SecretMutation in
+                guard let uniffiObj = try? FfiConverterTypeAndroidSecretStorage.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.delete(
+                     namespace: try FfiConverterString.lift(namespace),
+                     key: try FfiConverterString.lift(key)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeSecretMutation_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceAndroidSecretStorage> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceAndroidSecretStorage>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitAndroidSecretStorage() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_androidsecretstorage(UniffiCallbackInterfaceAndroidSecretStorage.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidSecretStorage: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<AndroidSecretStorage>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = AndroidSecretStorage
+
+    public static func lift(_ handle: UInt64) throws -> AndroidSecretStorage {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AndroidSecretStorageImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: AndroidSecretStorage) -> UInt64 {
+         if let rustImpl = value as? AndroidSecretStorageImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidSecretStorage {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AndroidSecretStorage, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidSecretStorage_lift(_ handle: UInt64) throws -> AndroidSecretStorage {
+    return try FfiConverterTypeAndroidSecretStorage.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidSecretStorage_lower(_ value: AndroidSecretStorage) -> UInt64 {
+    return FfiConverterTypeAndroidSecretStorage.lower(value)
+}
+
+
+
+
+
+
 /**
  * The phone's App Attest (#11994), implemented in Swift over
  * `DCAppAttestService`: make or reuse this install's key (its id kept in
@@ -2030,7 +2772,249 @@ public func FfiConverterTypeCloudChatListener_lower(_ value: CloudChatListener) 
 
 
 
+public protocol CoreAccessibilitySurfaceProtocol: AnyObject, Sendable {
+    
+    func acknowledge(instance: String, revision: UInt64) throws  -> String?
+    
+    /**
+     * Only a scope and node key may survive process recreation. Never save field values.
+     */
+    func bookmark() throws  -> String?
+    
+    func close() 
+    
+    func environment(fontScale: Float, density: Float, reducedMotion: Bool) throws  -> String
+    
+    func focused(instance: String, revision: UInt64, key: String) throws  -> Bool
+    
+    /**
+     * Return requests to existing account/session/media owners; do not change their state here.
+     */
+    func lifecycle(event: String) throws  -> String
+    
+    /**
+     * Accept only local Rust view bytes; validation adds no intent authority.
+     */
+    func prepare(bytes: Data) throws  -> String
+    
+    func restore(bytes: String) throws  -> Bool
+    
+}
+open class CoreAccessibilitySurface: CoreAccessibilitySurfaceProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coreaccessibilitysurface(self.handle, $0) }
+    }
+    /**
+     * Use the same account and screen scope as the Rust view owner.
+     */
+public convenience init(account: CoreAccount, scope: String)throws  {
+    let handle =
+        try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreaccessibilitysurface_new(
+        FfiConverterTypeCoreAccount_lower(account),
+        FfiConverterString.lower(scope),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coreaccessibilitysurface(handle, $0) }
+    }
+
+    
+
+    
+open func acknowledge(instance: String, revision: UInt64)throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_acknowledge(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Only a scope and node key may survive process recreation. Never save field values.
+     */
+open func bookmark()throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_bookmark(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func close()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_close(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func environment(fontScale: Float, density: Float, reducedMotion: Bool)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_environment(
+            self.uniffiCloneHandle(),
+        FfiConverterFloat.lower(fontScale),
+        FfiConverterFloat.lower(density),
+        FfiConverterBool.lower(reducedMotion),uniffiCallStatus
+    )
+})
+}
+    
+open func focused(instance: String, revision: UInt64, key: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_focused(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Return requests to existing account/session/media owners; do not change their state here.
+     */
+open func lifecycle(event: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_lifecycle(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(event),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Accept only local Rust view bytes; validation adds no intent authority.
+     */
+open func prepare(bytes: Data)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_prepare(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(bytes),uniffiCallStatus
+    )
+})
+}
+    
+open func restore(bytes: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccessibilitysurface_restore(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(bytes),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreAccessibilitySurface: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreAccessibilitySurface
+
+    public static func lift(_ handle: UInt64) throws -> CoreAccessibilitySurface {
+        return CoreAccessibilitySurface(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreAccessibilitySurface) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreAccessibilitySurface {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreAccessibilitySurface, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAccessibilitySurface_lift(_ handle: UInt64) throws -> CoreAccessibilitySurface {
+    return try FfiConverterTypeCoreAccessibilitySurface.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAccessibilitySurface_lower(_ value: CoreAccessibilitySurface) -> UInt64 {
+    return FfiConverterTypeCoreAccessibilitySurface.lower(value)
+}
+
+
+
+
+
+
 public protocol CoreAccountProtocol: AnyObject, Sendable {
+    
+    /**
+     * Accept a project invitation for the active account after the person
+     * confirms the preview. The server checks the invitation, expiry, and
+     * recipient against this account's bearer token.
+     */
+    func acceptProjectInvitation(link: String) async throws  -> String
     
     func agentLab(listener: AgentLabListener)  -> CoreAgentLab
     
@@ -2056,7 +3040,24 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      */
     func linkComputer(client: CoreClient, deviceId: String) async throws  -> String
     
+    /**
+     * Preview a project invitation with the active account. The invitation
+     * code stays in Rust and is sent only to the account API.
+     */
+    func previewProjectInvitation(link: String) async throws  -> ProjectInvitationPreview
+    
+    /**
+     * Build chooser content from a validated project invitation link.
+     */
+    func projectInvitationShare(link: String) throws  -> ProjectInvitationShare
+    
     func projectSharing(listener: SharingListener) throws  -> CoreSharing
+    
+    /**
+     * Settings > Your ID > Public profile: the name, picture, and about
+     * this phone's key publishes (#12298).
+     */
+    func publicProfile(listener: PublicProfileListener)  -> CorePublicProfile
     
     func restore() 
     
@@ -2092,6 +3093,11 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      * only after they confirmed giving up paid credit.
      */
     func deleteAccount(forfeitBalance: Bool) async  -> AccountDeletion
+    
+    /**
+     * Restore only for the account/identity that passed this screen's device authentication.
+     */
+    func restoreWordsIfCurrent(words: String, generation: UInt64, npub: String?) throws  -> IdentityView
     
     func chatHomes(client: CoreClient, chat: String) throws  -> CoreChatHomes
     
@@ -2163,6 +3169,12 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      * the default).
      */
     func setIcloudCopy(on: Bool) throws 
+    
+    /**
+     * Set Android's platform provider before `start_identity`. A missing or
+     * unavailable provider keeps the proof-of-work path.
+     */
+    func setPlayIntegrityAttester(attester: PlayIntegrityAttester) 
     
     /**
      * Starts this phone's account on launch, with nothing for the person
@@ -2255,7 +3267,45 @@ public convenience init(dataDir: String, apiUrl: String, websiteUrl: String, lis
     }
 
     
+    /**
+     * Construct an account whose credentials, identity, wallet seed, and
+     * paired grants use Rust policies over Android's encrypted byte store.
+     */
+public static func newWithSecureStorage(dataDir: String, apiUrl: String, websiteUrl: String, listener: AccountListener, storage: AndroidSecretStorage)throws  -> CoreAccount  {
+    return try  FfiConverterTypeCoreAccount_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreaccount_new_with_secure_storage(
+        FfiConverterString.lower(dataDir),
+        FfiConverterString.lower(apiUrl),
+        FfiConverterString.lower(websiteUrl),
+        FfiConverterTypeAccountListener_lower(listener),
+        FfiConverterTypeAndroidSecretStorage_lower(storage),uniffiCallStatus
+    )
+})
+}
+    
 
+    
+    /**
+     * Accept a project invitation for the active account after the person
+     * confirms the preview. The server checks the invitation, expiry, and
+     * recipient against this account's bearer token.
+     */
+open func acceptProjectInvitation(link: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreaccount_accept_project_invitation(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(link)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
     
 open func agentLab(listener: AgentLabListener) -> CoreAgentLab  {
     return try!  FfiConverterTypeCoreAgentLab_lift(try! rustCall() {
@@ -2332,12 +3382,59 @@ open func linkComputer(client: CoreClient, deviceId: String)async throws  -> Str
         )
 }
     
+    /**
+     * Preview a project invitation with the active account. The invitation
+     * code stays in Rust and is sent only to the account API.
+     */
+open func previewProjectInvitation(link: String)async throws  -> ProjectInvitationPreview  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreaccount_preview_project_invitation(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(link)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeProjectInvitationPreview_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * Build chooser content from a validated project invitation link.
+     */
+open func projectInvitationShare(link: String)throws  -> ProjectInvitationShare  {
+    return try  FfiConverterTypeProjectInvitationShare_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_project_invitation_share(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(link),uniffiCallStatus
+    )
+})
+}
+    
 open func projectSharing(listener: SharingListener)throws  -> CoreSharing  {
     return try  FfiConverterTypeCoreSharing_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_coreaccount_project_sharing(
             self.uniffiCloneHandle(),
         FfiConverterTypeSharingListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Settings > Your ID > Public profile: the name, picture, and about
+     * this phone's key publishes (#12298).
+     */
+open func publicProfile(listener: PublicProfileListener) -> CorePublicProfile  {
+    return try!  FfiConverterTypeCorePublicProfile_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_public_profile(
+            self.uniffiCloneHandle(),
+        FfiConverterTypePublicProfileListener_lower(listener),uniffiCallStatus
     )
 })
 }
@@ -2445,6 +3542,21 @@ open func deleteAccount(forfeitBalance: Bool)async  -> AccountDeletion  {
             errorHandler: nil
             
         )
+}
+    
+    /**
+     * Restore only for the account/identity that passed this screen's device authentication.
+     */
+open func restoreWordsIfCurrent(words: String, generation: UInt64, npub: String?)throws  -> IdentityView  {
+    return try  FfiConverterTypeIdentityView_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_restore_words_if_current(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(words),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterOptionString.lower(npub),uniffiCallStatus
+    )
+})
 }
     
 open func chatHomes(client: CoreClient, chat: String)throws  -> CoreChatHomes  {
@@ -2632,6 +3744,19 @@ open func setIcloudCopy(on: Bool)throws   {try rustCallWithError(FfiConverterTyp
     uniffi_openagents_mobile_fn_method_coreaccount_set_icloud_copy(
             self.uniffiCloneHandle(),
         FfiConverterBool.lower(on),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Set Android's platform provider before `start_identity`. A missing or
+     * unavailable provider keeps the proof-of-work path.
+     */
+open func setPlayIntegrityAttester(attester: PlayIntegrityAttester)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_set_play_integrity_attester(
+            self.uniffiCloneHandle(),
+        FfiConverterTypePlayIntegrityAttester_lower(attester),uniffiCallStatus
     )
 }
 }
@@ -3204,6 +4329,2081 @@ public func FfiConverterTypeCoreAgents_lower(_ value: CoreAgents) -> UInt64 {
 
 
 
+public protocol CoreAndroidComposerProtocol: AnyObject, Sendable {
+    
+    func acknowledge(instance: String, revision: UInt64) throws 
+    
+    func activate(instance: String, revision: UInt64, key: String) throws  -> Bool
+    
+    func changeField(instance: String, revision: UInt64, key: String, value: String) throws 
+    
+    func dispose() 
+    
+    func editor(instance: String, revision: UInt64, request: Data) throws  -> Data
+    
+    func frame() throws  -> AndroidComposerFrame
+    
+    func submit(instance: String, revision: UInt64, token: String, lifetime: UInt64, editorRevision: UInt64, choice: String?, text: String, attachments: [OutgoingAttachment]) throws  -> Bool
+    
+}
+open class CoreAndroidComposer: CoreAndroidComposerProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coreandroidcomposer(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coreandroidcomposer(handle, $0) }
+    }
+
+    
+public static func cloud(chat: CoreCloudChat, account: CoreAccount?) -> CoreAndroidComposer  {
+    return try!  FfiConverterTypeCoreAndroidComposer_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreandroidcomposer_cloud(
+        FfiConverterTypeCoreCloudChat_lower(chat),
+        FfiConverterOptionTypeCoreAccount.lower(account),uniffiCallStatus
+    )
+})
+}
+    
+public static func live(session: SessionHandle) -> CoreAndroidComposer  {
+    return try!  FfiConverterTypeCoreAndroidComposer_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreandroidcomposer_live(
+        FfiConverterTypeSessionHandle_lower(session),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+open func acknowledge(instance: String, revision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidcomposer_acknowledge(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+}
+}
+    
+open func activate(instance: String, revision: UInt64, key: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidcomposer_activate(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+})
+}
+    
+open func changeField(instance: String, revision: UInt64, key: String, value: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidcomposer_change_field(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+open func dispose()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidcomposer_dispose(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func editor(instance: String, revision: UInt64, request: Data)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidcomposer_editor(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterData.lower(request),uniffiCallStatus
+    )
+})
+}
+    
+open func frame()throws  -> AndroidComposerFrame  {
+    return try  FfiConverterTypeAndroidComposerFrame_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidcomposer_frame(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func submit(instance: String, revision: UInt64, token: String, lifetime: UInt64, editorRevision: UInt64, choice: String?, text: String, attachments: [OutgoingAttachment])throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidcomposer_submit(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(token),
+        FfiConverterUInt64.lower(lifetime),
+        FfiConverterUInt64.lower(editorRevision),
+        FfiConverterOptionString.lower(choice),
+        FfiConverterString.lower(text),
+        FfiConverterSequenceTypeOutgoingAttachment.lower(attachments),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreAndroidComposer: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreAndroidComposer
+
+    public static func lift(_ handle: UInt64) throws -> CoreAndroidComposer {
+        return CoreAndroidComposer(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreAndroidComposer) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreAndroidComposer {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreAndroidComposer, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidComposer_lift(_ handle: UInt64) throws -> CoreAndroidComposer {
+    return try FfiConverterTypeCoreAndroidComposer.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidComposer_lower(_ value: CoreAndroidComposer) -> UInt64 {
+    return FfiConverterTypeCoreAndroidComposer.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Retains one synthetic SDK workspace. The shell closes its views before shutdown.
+ */
+public protocol CoreAndroidDemoProtocol: AnyObject, Sendable {
+    
+    /**
+     * Labels, ordering, and metadata come from the same Rust fixture workspace.
+     */
+    func choices() throws  -> [AndroidDemoChoice]
+    
+    /**
+     * Borrow the existing host, composer, and transcript attachment path.
+     */
+    func host() throws  -> CoreAndroidHost
+    
+    /**
+     * Only Rust's finite fixture identities can select a session.
+     */
+    func select(fixture: AndroidDemoChat) throws 
+    
+    /**
+     * Retire views first. Synthetic files remain in scratch for the capture receipt.
+     */
+    func shutdown() 
+    
+}
+/**
+ * Retains one synthetic SDK workspace. The shell closes its views before shutdown.
+ */
+open class CoreAndroidDemo: CoreAndroidDemoProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coreandroiddemo(self.handle, $0) }
+    }
+    /**
+     * `data_dir` must be a new absolute child of the caller's scratch directory.
+     * Existing directories are refused, including empty ones; account storage is never opened.
+     */
+public convenience init(dataDir: String, listener: AndroidHostListener)throws  {
+    let handle =
+        try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreandroiddemo_new(
+        FfiConverterString.lower(dataDir),
+        FfiConverterTypeAndroidHostListener_lower(listener),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coreandroiddemo(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Labels, ordering, and metadata come from the same Rust fixture workspace.
+     */
+open func choices()throws  -> [AndroidDemoChoice]  {
+    return try  FfiConverterSequenceTypeAndroidDemoChoice.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroiddemo_choices(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Borrow the existing host, composer, and transcript attachment path.
+     */
+open func host()throws  -> CoreAndroidHost  {
+    return try  FfiConverterTypeCoreAndroidHost_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroiddemo_host(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Only Rust's finite fixture identities can select a session.
+     */
+open func select(fixture: AndroidDemoChat)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroiddemo_select(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAndroidDemoChat_lower(fixture),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Retire views first. Synthetic files remain in scratch for the capture receipt.
+     */
+open func shutdown()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroiddemo_shutdown(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreAndroidDemo: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreAndroidDemo
+
+    public static func lift(_ handle: UInt64) throws -> CoreAndroidDemo {
+        return CoreAndroidDemo(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreAndroidDemo) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreAndroidDemo {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreAndroidDemo, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidDemo_lift(_ handle: UInt64) throws -> CoreAndroidDemo {
+    return try FfiConverterTypeCoreAndroidDemo.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidDemo_lower(_ value: CoreAndroidDemo) -> UInt64 {
+    return FfiConverterTypeCoreAndroidDemo.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreAndroidHostProtocol: AnyObject, Sendable {
+    
+    func accessibilitySurface(surface: AndroidHostSurface) throws  -> CoreAccessibilitySurface
+    
+    func account()  -> CoreAccount?
+    
+    func activateVoiceAgent(generation: UInt64, picker: CoreVoiceAgent, instance: String, revision: UInt64, key: String) async throws 
+    
+    func activateVoiceUsage(generation: UInt64, usage: CoreVoiceUsage, instance: String, revision: UInt64, key: String) throws 
+    
+    /**
+     * Binds Rust sources directly to the shared layout worker, without transcript rows crossing FFI.
+     */
+    func attachTranscript(view: TranscriptView, generation: UInt64, contentRevision: UInt64) throws 
+    
+    func client() throws  -> CoreClient?
+    
+    func composer() throws  -> CoreAndroidComposer?
+    
+    /**
+     * Android uses the same initial session-notification choices as the other phone shell.
+     */
+    func defaultPushPrefs()  -> PushPrefs
+    
+    func dismissLinkReview(review: CoreAndroidLinkReview) throws  -> Bool
+    
+    func history() throws  -> CoreSavedHistory?
+    
+    func navigate(route: AndroidHostRoute) throws 
+    
+    /**
+     * One bounded pending link can survive initial sign-in, without moving codes into Kotlin state.
+     */
+    func offerAppLink(raw: String) throws  -> Bool
+    
+    func offerNotificationTap(link: String, request: String) throws  -> Bool
+    
+    /**
+     * Refresh a saved reader without detaching a live/cloud layout subscription.
+     */
+    func refreshTranscript(view: TranscriptView, generation: UInt64, contentRevision: UInt64) throws 
+    
+    func resolveNotificationTap() async throws  -> AndroidNotificationOpen
+    
+    /**
+     * Called by the Application once instead of `start` on later launches of
+     * a debug build that signed in with `start_with_credential`: restore that
+     * saved sign-in without creating, signing in with, or linking this
+     * install's own key.
+     */
+    func resumeWithoutIdentity() 
+    
+    func saveTextSelection(view: TranscriptView, generation: UInt64, contentRevision: UInt64, frameRevision: UInt64, selection: AndroidHostSelection?) throws 
+    
+    func saveTranscriptAnchor(generation: UInt64, contentRevision: UInt64, anchor: AndroidTranscriptAnchor) throws 
+    
+    /**
+     * Preserve the exact cloud object returned by this account's session action.
+     */
+    func selectCloudChat(chat: CoreCloudChat) throws 
+    
+    func selectDefaultChat() throws 
+    
+    func selectIndexedChat(key: String) async throws 
+    
+    func selectSavedChat(id: String) throws 
+    
+    func selectSession(id: String) throws 
+    
+    func selectedSession() throws  -> SessionHandle?
+    
+    func sessions() throws  -> CoreAndroidSessions?
+    
+    func setForeground(active: Bool) throws 
+    
+    func sharing() throws  -> CoreSharing
+    
+    func snapshot() throws  -> AndroidHostSnapshot
+    
+    /**
+     * Called by the Application once. Activity recreation never starts another identity flow.
+     */
+    func start() 
+    
+    /**
+     * Permission callbacks carry the account/content that requested the microphone.
+     */
+    func startHostVoice(generation: UInt64, contentRevision: UInt64, media: VoiceMediaListener, listener: VoiceSessionListener) throws  -> VoiceCall
+    
+    /**
+     * Called by the Application once instead of `start`: sign in with an
+     * explicit credential (a debug build's dedicated test account) and never
+     * create or sign in with this install's own key, as the iOS account
+     * fixture does. Later `start` calls and the recovery screen start nothing.
+     */
+    func startWithCredential(credential: String) 
+    
+    func syncVoiceUsage(generation: UInt64, usage: CoreVoiceUsage) throws 
+    
+    /**
+     * Read an image from this exact frame's live or saved content source.
+     */
+    func transcriptImage(view: TranscriptView, generation: UInt64, contentRevision: UInt64, frameRevision: UInt64, row: UInt64, widget: UInt32) async throws  -> Data?
+    
+    /**
+     * Only a link in the current visible Rust rows may reach the platform browser.
+     */
+    func transcriptLink(view: TranscriptView, generation: UInt64, contentRevision: UInt64, frameRevision: UInt64, top: Float, height: Float, url: String) throws  -> String
+    
+    /**
+     * The native view reports its first painted rows; Rust supplies the authorized read-marker identity.
+     */
+    func transcriptMounted(generation: UInt64, revision: UInt64) async throws 
+    
+    /**
+     * Borrow only the visual named by a widget in the current account's frame.
+     */
+    func transcriptVisual(view: TranscriptView, generation: UInt64, contentRevision: UInt64, frameRevision: UInt64, row: UInt64, widget: UInt32) throws  -> VisualSession?
+    
+    /**
+     * Resolves a widget identity against the current Rust display, never a caller-supplied payload.
+     */
+    func transcriptWidget(view: TranscriptView, generation: UInt64, contentRevision: UInt64, frameRevision: UInt64, row: UInt64, widget: UInt32) throws  -> AndroidTranscriptEffect
+    
+    /**
+     * A late terminal callback cannot clear a replacement call or account.
+     */
+    func voiceEnded(generation: UInt64, call: VoiceCall, reason: VoiceEndReason?) throws  -> Bool
+    
+    func voiceSettings() throws  -> AndroidVoiceSettings
+    
+    /**
+     * The underlying device wallet is shared across native mounts; account wrappers are fenced.
+     */
+    func wallet(retired: AndroidRetiredWalletSeed) throws  -> CoreAndroidWallet
+    
+}
+open class CoreAndroidHost: CoreAndroidHostProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coreandroidhost(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coreandroidhost(handle, $0) }
+    }
+
+    
+public static func demo(listener: AndroidHostListener) -> CoreAndroidHost  {
+    return try!  FfiConverterTypeCoreAndroidHost_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreandroidhost_demo(
+        FfiConverterTypeAndroidHostListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The offline demo with the same seeded computer sessions as the iOS
+     * demo, so screenshots and checks show a full Sessions list. Nothing is
+     * signed in and nothing reaches the network.
+     */
+public static func demoWithSessions(dataDir: String, listener: AndroidHostListener)throws  -> CoreAndroidHost  {
+    return try  FfiConverterTypeCoreAndroidHost_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreandroidhost_demo_with_sessions(
+        FfiConverterString.lower(dataDir),
+        FfiConverterTypeAndroidHostListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+public static func production(dataDir: String, deviceId: String, deviceName: String, version: String, storage: AndroidSecretStorage, listener: AndroidHostListener)throws  -> CoreAndroidHost  {
+    return try  FfiConverterTypeCoreAndroidHost_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreandroidhost_production(
+        FfiConverterString.lower(dataDir),
+        FfiConverterString.lower(deviceId),
+        FfiConverterString.lower(deviceName),
+        FfiConverterString.lower(version),
+        FfiConverterTypeAndroidSecretStorage_lower(storage),
+        FfiConverterTypeAndroidHostListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+open func accessibilitySurface(surface: AndroidHostSurface)throws  -> CoreAccessibilitySurface  {
+    return try  FfiConverterTypeCoreAccessibilitySurface_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_accessibility_surface(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAndroidHostSurface_lower(surface),uniffiCallStatus
+    )
+})
+}
+    
+open func account() -> CoreAccount?  {
+    return try!  FfiConverterOptionTypeCoreAccount.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_account(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func activateVoiceAgent(generation: UInt64, picker: CoreVoiceAgent, instance: String, revision: UInt64, key: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreandroidhost_activate_voice_agent(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(generation),FfiConverterTypeCoreVoiceAgent_lower(picker),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func activateVoiceUsage(generation: UInt64, usage: CoreVoiceUsage, instance: String, revision: UInt64, key: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_activate_voice_usage(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterTypeCoreVoiceUsage_lower(usage),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Binds Rust sources directly to the shared layout worker, without transcript rows crossing FFI.
+     */
+open func attachTranscript(view: TranscriptView, generation: UInt64, contentRevision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_attach_transcript(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTranscriptView_lower(view),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterUInt64.lower(contentRevision),uniffiCallStatus
+    )
+}
+}
+    
+open func client()throws  -> CoreClient?  {
+    return try  FfiConverterOptionTypeCoreClient.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_client(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func composer()throws  -> CoreAndroidComposer?  {
+    return try  FfiConverterOptionTypeCoreAndroidComposer.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_composer(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Android uses the same initial session-notification choices as the other phone shell.
+     */
+open func defaultPushPrefs() -> PushPrefs  {
+    return try!  FfiConverterTypePushPrefs_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_default_push_prefs(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func dismissLinkReview(review: CoreAndroidLinkReview)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_dismiss_link_review(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreAndroidLinkReview_lower(review),uniffiCallStatus
+    )
+})
+}
+    
+open func history()throws  -> CoreSavedHistory?  {
+    return try  FfiConverterOptionTypeCoreSavedHistory.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_history(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func navigate(route: AndroidHostRoute)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_navigate(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAndroidHostRoute_lower(route),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * One bounded pending link can survive initial sign-in, without moving codes into Kotlin state.
+     */
+open func offerAppLink(raw: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_offer_app_link(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(raw),uniffiCallStatus
+    )
+})
+}
+    
+open func offerNotificationTap(link: String, request: String)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_offer_notification_tap(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(link),
+        FfiConverterString.lower(request),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Refresh a saved reader without detaching a live/cloud layout subscription.
+     */
+open func refreshTranscript(view: TranscriptView, generation: UInt64, contentRevision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_refresh_transcript(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTranscriptView_lower(view),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterUInt64.lower(contentRevision),uniffiCallStatus
+    )
+}
+}
+    
+open func resolveNotificationTap()async throws  -> AndroidNotificationOpen  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreandroidhost_resolve_notification_tap(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeAndroidNotificationOpen_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * Called by the Application once instead of `start` on later launches of
+     * a debug build that signed in with `start_with_credential`: restore that
+     * saved sign-in without creating, signing in with, or linking this
+     * install's own key.
+     */
+open func resumeWithoutIdentity()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_resume_without_identity(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func saveTextSelection(view: TranscriptView, generation: UInt64, contentRevision: UInt64, frameRevision: UInt64, selection: AndroidHostSelection?)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_save_text_selection(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTranscriptView_lower(view),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterUInt64.lower(contentRevision),
+        FfiConverterUInt64.lower(frameRevision),
+        FfiConverterOptionTypeAndroidHostSelection.lower(selection),uniffiCallStatus
+    )
+}
+}
+    
+open func saveTranscriptAnchor(generation: UInt64, contentRevision: UInt64, anchor: AndroidTranscriptAnchor)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_save_transcript_anchor(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterUInt64.lower(contentRevision),
+        FfiConverterTypeAndroidTranscriptAnchor_lower(anchor),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Preserve the exact cloud object returned by this account's session action.
+     */
+open func selectCloudChat(chat: CoreCloudChat)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_select_cloud_chat(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreCloudChat_lower(chat),uniffiCallStatus
+    )
+}
+}
+    
+open func selectDefaultChat()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_select_default_chat(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func selectIndexedChat(key: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreandroidhost_select_indexed_chat(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func selectSavedChat(id: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_select_saved_chat(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+open func selectSession(id: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_select_session(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+open func selectedSession()throws  -> SessionHandle?  {
+    return try  FfiConverterOptionTypeSessionHandle.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_selected_session(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func sessions()throws  -> CoreAndroidSessions?  {
+    return try  FfiConverterOptionTypeCoreAndroidSessions.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_sessions(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func setForeground(active: Bool)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_set_foreground(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(active),uniffiCallStatus
+    )
+}
+}
+    
+open func sharing()throws  -> CoreSharing  {
+    return try  FfiConverterTypeCoreSharing_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_sharing(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func snapshot()throws  -> AndroidHostSnapshot  {
+    return try  FfiConverterTypeAndroidHostSnapshot_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Called by the Application once. Activity recreation never starts another identity flow.
+     */
+open func start()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_start(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Permission callbacks carry the account/content that requested the microphone.
+     */
+open func startHostVoice(generation: UInt64, contentRevision: UInt64, media: VoiceMediaListener, listener: VoiceSessionListener)throws  -> VoiceCall  {
+    return try  FfiConverterTypeVoiceCall_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_start_host_voice(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterUInt64.lower(contentRevision),
+        FfiConverterTypeVoiceMediaListener_lower(media),
+        FfiConverterTypeVoiceSessionListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Called by the Application once instead of `start`: sign in with an
+     * explicit credential (a debug build's dedicated test account) and never
+     * create or sign in with this install's own key, as the iOS account
+     * fixture does. Later `start` calls and the recovery screen start nothing.
+     */
+open func startWithCredential(credential: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_start_with_credential(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(credential),uniffiCallStatus
+    )
+}
+}
+    
+open func syncVoiceUsage(generation: UInt64, usage: CoreVoiceUsage)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_sync_voice_usage(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterTypeCoreVoiceUsage_lower(usage),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Read an image from this exact frame's live or saved content source.
+     */
+open func transcriptImage(view: TranscriptView, generation: UInt64, contentRevision: UInt64, frameRevision: UInt64, row: UInt64, widget: UInt32)async throws  -> Data?  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_image(
+                        self.uniffiCloneHandle(),FfiConverterTypeTranscriptView_lower(view),FfiConverterUInt64.lower(generation),FfiConverterUInt64.lower(contentRevision),FfiConverterUInt64.lower(frameRevision),FfiConverterUInt64.lower(row),FfiConverterUInt32.lower(widget)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionData.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * Only a link in the current visible Rust rows may reach the platform browser.
+     */
+open func transcriptLink(view: TranscriptView, generation: UInt64, contentRevision: UInt64, frameRevision: UInt64, top: Float, height: Float, url: String)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_link(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTranscriptView_lower(view),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterUInt64.lower(contentRevision),
+        FfiConverterUInt64.lower(frameRevision),
+        FfiConverterFloat.lower(top),
+        FfiConverterFloat.lower(height),
+        FfiConverterString.lower(url),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The native view reports its first painted rows; Rust supplies the authorized read-marker identity.
+     */
+open func transcriptMounted(generation: UInt64, revision: UInt64)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_mounted(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(generation),FfiConverterUInt64.lower(revision)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * Borrow only the visual named by a widget in the current account's frame.
+     */
+open func transcriptVisual(view: TranscriptView, generation: UInt64, contentRevision: UInt64, frameRevision: UInt64, row: UInt64, widget: UInt32)throws  -> VisualSession?  {
+    return try  FfiConverterOptionTypeVisualSession.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_visual(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTranscriptView_lower(view),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterUInt64.lower(contentRevision),
+        FfiConverterUInt64.lower(frameRevision),
+        FfiConverterUInt64.lower(row),
+        FfiConverterUInt32.lower(widget),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Resolves a widget identity against the current Rust display, never a caller-supplied payload.
+     */
+open func transcriptWidget(view: TranscriptView, generation: UInt64, contentRevision: UInt64, frameRevision: UInt64, row: UInt64, widget: UInt32)throws  -> AndroidTranscriptEffect  {
+    return try  FfiConverterTypeAndroidTranscriptEffect_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_transcript_widget(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTranscriptView_lower(view),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterUInt64.lower(contentRevision),
+        FfiConverterUInt64.lower(frameRevision),
+        FfiConverterUInt64.lower(row),
+        FfiConverterUInt32.lower(widget),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A late terminal callback cannot clear a replacement call or account.
+     */
+open func voiceEnded(generation: UInt64, call: VoiceCall, reason: VoiceEndReason?)throws  -> Bool  {
+    return try  FfiConverterBool.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_voice_ended(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(generation),
+        FfiConverterTypeVoiceCall_lower(call),
+        FfiConverterOptionTypeVoiceEndReason.lower(reason),uniffiCallStatus
+    )
+})
+}
+    
+open func voiceSettings()throws  -> AndroidVoiceSettings  {
+    return try  FfiConverterTypeAndroidVoiceSettings_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_voice_settings(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The underlying device wallet is shared across native mounts; account wrappers are fenced.
+     */
+open func wallet(retired: AndroidRetiredWalletSeed)throws  -> CoreAndroidWallet  {
+    return try  FfiConverterTypeCoreAndroidWallet_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidhost_wallet(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAndroidRetiredWalletSeed_lower(retired),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreAndroidHost: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreAndroidHost
+
+    public static func lift(_ handle: UInt64) throws -> CoreAndroidHost {
+        return CoreAndroidHost(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreAndroidHost) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreAndroidHost {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreAndroidHost, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidHost_lift(_ handle: UInt64) throws -> CoreAndroidHost {
+    return try FfiConverterTypeCoreAndroidHost.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidHost_lower(_ value: CoreAndroidHost) -> UInt64 {
+    return FfiConverterTypeCoreAndroidHost.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreAndroidLinkReviewProtocol: AnyObject, Sendable {
+    
+    func acknowledge(instance: String, revision: UInt64) throws 
+    
+    /**
+     * Only a current, acknowledged Rust Native confirmation starts a mutation.
+     */
+    func activate(instance: String, revision: UInt64, key: String) async throws  -> Bool
+    
+    func id() throws  -> String
+    
+    /**
+     * Preview is read-only. None of these branches approves or accepts the link.
+     */
+    func load() async throws 
+    
+    func retire() 
+    
+    func snapshot() throws  -> String
+    
+}
+open class CoreAndroidLinkReview: CoreAndroidLinkReviewProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coreandroidlinkreview(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coreandroidlinkreview(handle, $0) }
+    }
+
+    
+
+    
+open func acknowledge(instance: String, revision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidlinkreview_acknowledge(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Only a current, acknowledged Rust Native confirmation starts a mutation.
+     */
+open func activate(instance: String, revision: UInt64, key: String)async throws  -> Bool  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreandroidlinkreview_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_i8,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_i8,
+            freeFunc: ffi_openagents_mobile_rust_future_free_i8,
+            liftFunc: FfiConverterBool.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func id()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidlinkreview_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Preview is read-only. None of these branches approves or accepts the link.
+     */
+open func load()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreandroidlinkreview_load(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func retire()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidlinkreview_retire(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func snapshot()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidlinkreview_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreAndroidLinkReview: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreAndroidLinkReview
+
+    public static func lift(_ handle: UInt64) throws -> CoreAndroidLinkReview {
+        return CoreAndroidLinkReview(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreAndroidLinkReview) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreAndroidLinkReview {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreAndroidLinkReview, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidLinkReview_lift(_ handle: UInt64) throws -> CoreAndroidLinkReview {
+    return try FfiConverterTypeCoreAndroidLinkReview.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidLinkReview_lower(_ value: CoreAndroidLinkReview) -> UInt64 {
+    return FfiConverterTypeCoreAndroidLinkReview.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreAndroidRecoveryProtocol: AnyObject, Sendable {
+    
+    func acknowledge(instance: String, revision: UInt64) throws 
+    
+    func activate(instance: String, revision: UInt64, key: String) throws  -> RecoveryFrame
+    
+    /**
+     * Only the platform authenticator's matching, live callback may answer this request.
+     */
+    func authenticated(token: UInt64, accepted: Bool) throws  -> RecoveryFrame
+    
+    func change(instance: String, revision: UInt64, key: String, value: String) throws 
+    
+    func close() 
+    
+    func redact() 
+    
+    func render() throws  -> RecoveryFrame
+    
+    /**
+     * The shared Rust start path preserves a provider account and existing wallet seed.
+     */
+    func start(deviceName: String) throws  -> RecoveryFrame
+    
+}
+open class CoreAndroidRecovery: CoreAndroidRecoveryProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coreandroidrecovery(self.handle, $0) }
+    }
+    /**
+     * Construct after A3 supplies the shared account and identity stores. Does not create an identity.
+     */
+public convenience init(account: CoreAccount, onboarding: CoreOnboarding) {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreandroidrecovery_new(
+        FfiConverterTypeCoreAccount_lower(account),
+        FfiConverterTypeCoreOnboarding_lower(onboarding),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coreandroidrecovery(handle, $0) }
+    }
+
+    
+
+    
+open func acknowledge(instance: String, revision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidrecovery_acknowledge(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+}
+}
+    
+open func activate(instance: String, revision: UInt64, key: String)throws  -> RecoveryFrame  {
+    return try  FfiConverterTypeRecoveryFrame_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidrecovery_activate(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Only the platform authenticator's matching, live callback may answer this request.
+     */
+open func authenticated(token: UInt64, accepted: Bool)throws  -> RecoveryFrame  {
+    return try  FfiConverterTypeRecoveryFrame_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidrecovery_authenticated(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(token),
+        FfiConverterBool.lower(accepted),uniffiCallStatus
+    )
+})
+}
+    
+open func change(instance: String, revision: UInt64, key: String, value: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidrecovery_change(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+open func close()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidrecovery_close(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func redact()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidrecovery_redact(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func render()throws  -> RecoveryFrame  {
+    return try  FfiConverterTypeRecoveryFrame_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidrecovery_render(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The shared Rust start path preserves a provider account and existing wallet seed.
+     */
+open func start(deviceName: String)throws  -> RecoveryFrame  {
+    return try  FfiConverterTypeRecoveryFrame_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidrecovery_start(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(deviceName),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreAndroidRecovery: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreAndroidRecovery
+
+    public static func lift(_ handle: UInt64) throws -> CoreAndroidRecovery {
+        return CoreAndroidRecovery(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreAndroidRecovery) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreAndroidRecovery {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreAndroidRecovery, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidRecovery_lift(_ handle: UInt64) throws -> CoreAndroidRecovery {
+    return try FfiConverterTypeCoreAndroidRecovery.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidRecovery_lower(_ value: CoreAndroidRecovery) -> UInt64 {
+    return FfiConverterTypeCoreAndroidRecovery.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreAndroidSessionsProtocol: AnyObject, Sendable {
+    
+    func acknowledge(instance: String, revision: UInt64) throws 
+    
+    func activate(instance: String, revision: UInt64, key: String) async throws  -> AndroidSessionAction
+    
+    /**
+     * Attach only a client created by this account's existing connect method.
+     */
+    func attachClient(core: CoreClient) throws 
+    
+    /**
+     * The same account/room/grant continuation owner as the other shells.
+     */
+    func chatHomes(chat: String) throws  -> CoreChatHomes
+    
+    func close() 
+    
+    /**
+     * Continue through the existing room/grant transfer path, never a second copied session path.
+     */
+    func continueOnSelected(draft: CoreContinuationDraft) async throws  -> AndroidSessionAction
+    
+    /**
+     * Resume/onboarding completion reuses this exact object; only NewCloud explicitly resets it.
+     */
+    func defaultChat() throws  -> CoreCloudChat
+    
+    /**
+     * Saved cloud/web chats use the same continuation/grant owner as live computer chats.
+     */
+    func savedChatHomes(history: CoreSavedHistory) throws  -> CoreChatHomes
+    
+    func sharing(listener: SharingListener) throws  -> CoreSharing
+    
+    func view() throws  -> Data
+    
+}
+open class CoreAndroidSessions: CoreAndroidSessionsProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coreandroidsessions(self.handle, $0) }
+    }
+    /**
+     * Own this for the account's screen lifetime. Construction creates no chat or computer.
+     */
+public convenience init(account: CoreAccount, cloudListener: CloudChatListener) {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coreandroidsessions_new(
+        FfiConverterTypeCoreAccount_lower(account),
+        FfiConverterTypeCloudChatListener_lower(cloudListener),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coreandroidsessions(handle, $0) }
+    }
+
+    
+
+    
+open func acknowledge(instance: String, revision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidsessions_acknowledge(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+}
+}
+    
+open func activate(instance: String, revision: UInt64, key: String)async throws  -> AndroidSessionAction  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreandroidsessions_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeAndroidSessionAction_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * Attach only a client created by this account's existing connect method.
+     */
+open func attachClient(core: CoreClient)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidsessions_attach_client(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreClient_lower(core),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The same account/room/grant continuation owner as the other shells.
+     */
+open func chatHomes(chat: String)throws  -> CoreChatHomes  {
+    return try  FfiConverterTypeCoreChatHomes_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidsessions_chat_homes(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(chat),uniffiCallStatus
+    )
+})
+}
+    
+open func close()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidsessions_close(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Continue through the existing room/grant transfer path, never a second copied session path.
+     */
+open func continueOnSelected(draft: CoreContinuationDraft)async throws  -> AndroidSessionAction  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreandroidsessions_continue_on_selected(
+                        self.uniffiCloneHandle(),FfiConverterTypeCoreContinuationDraft_lower(draft)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeAndroidSessionAction_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * Resume/onboarding completion reuses this exact object; only NewCloud explicitly resets it.
+     */
+open func defaultChat()throws  -> CoreCloudChat  {
+    return try  FfiConverterTypeCoreCloudChat_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidsessions_default_chat(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Saved cloud/web chats use the same continuation/grant owner as live computer chats.
+     */
+open func savedChatHomes(history: CoreSavedHistory)throws  -> CoreChatHomes  {
+    return try  FfiConverterTypeCoreChatHomes_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidsessions_saved_chat_homes(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreSavedHistory_lower(history),uniffiCallStatus
+    )
+})
+}
+    
+open func sharing(listener: SharingListener)throws  -> CoreSharing  {
+    return try  FfiConverterTypeCoreSharing_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidsessions_sharing(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeSharingListener_lower(listener),uniffiCallStatus
+    )
+})
+}
+    
+open func view()throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidsessions_view(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreAndroidSessions: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreAndroidSessions
+
+    public static func lift(_ handle: UInt64) throws -> CoreAndroidSessions {
+        return CoreAndroidSessions(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreAndroidSessions) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreAndroidSessions {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreAndroidSessions, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidSessions_lift(_ handle: UInt64) throws -> CoreAndroidSessions {
+    return try FfiConverterTypeCoreAndroidSessions.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidSessions_lower(_ value: CoreAndroidSessions) -> UInt64 {
+    return FfiConverterTypeCoreAndroidSessions.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreAndroidWalletProtocol: AnyObject, Sendable {
+    
+    func acknowledge(instance: String, revision: UInt64) throws 
+    
+    func activate(instance: String, revision: UInt64, key: String) throws  -> AndroidWalletFrame
+    
+    func authenticated(token: UInt64, success: Bool) throws  -> AndroidWalletFrame
+    
+    func changeField(instance: String, revision: UInt64, key: String, value: String) throws 
+    
+    func `open`() throws  -> AndroidWalletFrame
+    
+    func redact() 
+    
+    func snapshot() throws  -> AndroidWalletFrame
+    
+}
+open class CoreAndroidWallet: CoreAndroidWalletProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coreandroidwallet(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coreandroidwallet(handle, $0) }
+    }
+
+    
+
+    
+open func acknowledge(instance: String, revision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidwallet_acknowledge(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+}
+}
+    
+open func activate(instance: String, revision: UInt64, key: String)throws  -> AndroidWalletFrame  {
+    return try  FfiConverterTypeAndroidWalletFrame_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidwallet_activate(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+})
+}
+    
+open func authenticated(token: UInt64, success: Bool)throws  -> AndroidWalletFrame  {
+    return try  FfiConverterTypeAndroidWalletFrame_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidwallet_authenticated(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(token),
+        FfiConverterBool.lower(success),uniffiCallStatus
+    )
+})
+}
+    
+open func changeField(instance: String, revision: UInt64, key: String, value: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidwallet_change_field(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+open func `open`()throws  -> AndroidWalletFrame  {
+    return try  FfiConverterTypeAndroidWalletFrame_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidwallet_open(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func redact()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidwallet_redact(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func snapshot()throws  -> AndroidWalletFrame  {
+    return try  FfiConverterTypeAndroidWalletFrame_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreandroidwallet_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreAndroidWallet: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreAndroidWallet
+
+    public static func lift(_ handle: UInt64) throws -> CoreAndroidWallet {
+        return CoreAndroidWallet(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreAndroidWallet) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreAndroidWallet {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreAndroidWallet, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidWallet_lift(_ handle: UInt64) throws -> CoreAndroidWallet {
+    return try FfiConverterTypeCoreAndroidWallet.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreAndroidWallet_lower(_ value: CoreAndroidWallet) -> UInt64 {
+    return FfiConverterTypeCoreAndroidWallet.lower(value)
+}
+
+
+
+
+
+
 public protocol CoreChatHomesProtocol: AnyObject, Sendable {
     
     func activate(instance: String, revision: UInt64, node: String) async throws  -> ChatHomeAction
@@ -3597,9 +6797,16 @@ public protocol CoreClientProtocol: AnyObject, Sendable {
     func chatReadOnly(id: String)  -> Bool
     
     /**
+     * Present moves as typed intents; `move_pin` remains the write authority.
+     */
+    func drawerPinMoves()  -> [DrawerPinHints]
+    
+    /**
      * Keep a supported draft, or choose from the selected host's successful live catalog.
      */
     func availableChatConfig(deviceId: String, config: ChatConfig) async throws  -> ChatConfig?
+    
+    func handlePushWake(kind: PushWakeKind) async throws  -> OwnerNoteView?
     
     func ownerNotification() async throws  -> OwnerNoteView?
     
@@ -4515,6 +7722,18 @@ open func chatReadOnly(id: String) -> Bool  {
 }
     
     /**
+     * Present moves as typed intents; `move_pin` remains the write authority.
+     */
+open func drawerPinMoves() -> [DrawerPinHints]  {
+    return try!  FfiConverterSequenceTypeDrawerPinHints.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreclient_drawer_pin_moves(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Keep a supported draft, or choose from the selected host's successful live catalog.
      */
 open func availableChatConfig(deviceId: String, config: ChatConfig)async throws  -> ChatConfig?  {
@@ -4529,6 +7748,22 @@ open func availableChatConfig(deviceId: String, config: ChatConfig)async throws 
             completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
             freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
             liftFunc: FfiConverterOptionTypeChatConfig.lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func handlePushWake(kind: PushWakeKind)async throws  -> OwnerNoteView?  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coreclient_handle_push_wake(
+                        self.uniffiCloneHandle(),FfiConverterTypePushWakeKind_lower(kind)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeOwnerNoteView.lift,
             errorHandler: FfiConverterTypeCoreError_lift
         )
 }
@@ -4894,6 +8129,10 @@ public func FfiConverterTypeCoreCloudChat_lower(_ value: CoreCloudChat) -> UInt6
 
 public protocol CoreContinuationDraftProtocol: AnyObject, Sendable {
     
+    func acknowledge(instance: String, revision: UInt64) throws 
+    
+    func activate(instance: String, revision: UInt64, key: String) async throws  -> ContinuationDraftAction
+    
     /**
      * Prepare a durable destination before freezing the earlier computer part.
      */
@@ -4901,7 +8140,11 @@ public protocol CoreContinuationDraftProtocol: AnyObject, Sendable {
     
     func deviceId()  -> String
     
+    func shutdown() 
+    
     func start(core: CoreClient, newSession: NewSession, request: SendRequest) async throws  -> String
+    
+    func view() throws  -> Data
     
 }
 open class CoreContinuationDraft: CoreContinuationDraftProtocol, @unchecked Sendable {
@@ -4957,6 +8200,32 @@ open class CoreContinuationDraft: CoreContinuationDraftProtocol, @unchecked Send
     
 
     
+open func acknowledge(instance: String, revision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corecontinuationdraft_acknowledge(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+}
+}
+    
+open func activate(instance: String, revision: UInt64, key: String)async throws  -> ContinuationDraftAction  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corecontinuationdraft_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeContinuationDraftAction_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
     /**
      * Prepare a durable destination before freezing the earlier computer part.
      */
@@ -4985,6 +8254,14 @@ open func deviceId() -> String  {
 })
 }
     
+open func shutdown()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corecontinuationdraft_shutdown(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
 open func start(core: CoreClient, newSession: NewSession, request: SendRequest)async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
@@ -4999,6 +8276,15 @@ open func start(core: CoreClient, newSession: NewSession, request: SendRequest)a
             liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeCoreError_lift
         )
+}
+    
+open func view()throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corecontinuationdraft_view(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
 
@@ -5044,6 +8330,395 @@ public func FfiConverterTypeCoreContinuationDraft_lift(_ handle: UInt64) throws 
 #endif
 public func FfiConverterTypeCoreContinuationDraft_lower(_ value: CoreContinuationDraft) -> UInt64 {
     return FfiConverterTypeCoreContinuationDraft.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreLabActionsProtocol: AnyObject, Sendable {
+    
+    func acknowledge(instance: String, revision: UInt64) throws 
+    
+    func activate(instance: String, revision: UInt64, node: String) async throws 
+    
+    func changeField(instance: String, revision: UInt64, node: String, value: String) throws 
+    
+    func dismiss() 
+    
+    func frame() throws  -> LabActionsFrame
+    
+    /**
+     * A platform playback fact, sampled once before the person edits this note.
+     */
+    func playbackPosition(seconds: Double?) throws 
+    
+}
+open class CoreLabActions: CoreLabActionsProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corelabactions(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corelabactions(handle, $0) }
+    }
+
+    
+
+    
+open func acknowledge(instance: String, revision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corelabactions_acknowledge(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+}
+}
+    
+open func activate(instance: String, revision: UInt64, node: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corelabactions_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(node)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func changeField(instance: String, revision: UInt64, node: String, value: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corelabactions_change_field(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(node),
+        FfiConverterString.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+open func dismiss()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corelabactions_dismiss(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func frame()throws  -> LabActionsFrame  {
+    return try  FfiConverterTypeLabActionsFrame_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corelabactions_frame(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A platform playback fact, sampled once before the person edits this note.
+     */
+open func playbackPosition(seconds: Double?)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corelabactions_playback_position(
+            self.uniffiCloneHandle(),
+        FfiConverterOptionDouble.lower(seconds),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreLabActions: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreLabActions
+
+    public static func lift(_ handle: UInt64) throws -> CoreLabActions {
+        return CoreLabActions(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreLabActions) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreLabActions {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreLabActions, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreLabActions_lift(_ handle: UInt64) throws -> CoreLabActions {
+    return try FfiConverterTypeCoreLabActions.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreLabActions_lower(_ value: CoreLabActions) -> UInt64 {
+    return FfiConverterTypeCoreLabActions.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreLabCardProtocol: AnyObject, Sendable {
+    
+    func acknowledge(instance: String, revision: UInt64) throws 
+    
+    /**
+     * Resolve an identity-only activation through Rust's validated view.
+     */
+    func activate(instance: String, revision: UInt64, node: String) throws  -> LabCardEffect
+    
+    func dispose() 
+    
+    /**
+     * Check before publishing work decoded asynchronously by the native shell.
+     */
+    func isCurrent()  -> Bool
+    
+    /**
+     * Resource ids resolve only inside this frozen card, never as URLs or paths.
+     */
+    func media(instance: String, revision: UInt64, resource: String, artifact: String) async  -> LabMediaFile
+    
+    func snapshot() throws  -> LabCardProjection
+    
+}
+open class CoreLabCard: CoreLabCardProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corelabcard(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corelabcard(handle, $0) }
+    }
+
+    
+
+    
+open func acknowledge(instance: String, revision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corelabcard_acknowledge(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Resolve an identity-only activation through Rust's validated view.
+     */
+open func activate(instance: String, revision: UInt64, node: String)throws  -> LabCardEffect  {
+    return try  FfiConverterTypeLabCardEffect_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corelabcard_activate(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(node),uniffiCallStatus
+    )
+})
+}
+    
+open func dispose()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corelabcard_dispose(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Check before publishing work decoded asynchronously by the native shell.
+     */
+open func isCurrent() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corelabcard_is_current(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Resource ids resolve only inside this frozen card, never as URLs or paths.
+     */
+open func media(instance: String, revision: UInt64, resource: String, artifact: String)async  -> LabMediaFile  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corelabcard_media(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(resource),FfiConverterString.lower(artifact)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeLabMediaFile_lift,
+            errorHandler: nil
+            
+        )
+}
+    
+open func snapshot()throws  -> LabCardProjection  {
+    return try  FfiConverterTypeLabCardProjection_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corelabcard_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreLabCard: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreLabCard
+
+    public static func lift(_ handle: UInt64) throws -> CoreLabCard {
+        return CoreLabCard(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreLabCard) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreLabCard {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreLabCard, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreLabCard_lift(_ handle: UInt64) throws -> CoreLabCard {
+    return try FfiConverterTypeCoreLabCard.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreLabCard_lower(_ value: CoreLabCard) -> UInt64 {
+    return FfiConverterTypeCoreLabCard.lower(value)
 }
 
 
@@ -5402,6 +9077,203 @@ public func FfiConverterTypeCoreOwnComputerOffer_lower(_ value: CoreOwnComputerO
 
 
 
+/**
+ * The profile form for this phone's key.
+ */
+public protocol CorePublicProfileProtocol: AnyObject, Sendable {
+    
+    /**
+     * Press a button: Save claims the name and publishes the profile.
+     */
+    func activate(instance: String, revision: UInt64, key: String) async throws 
+    
+    /**
+     * Keep a typed change to one field.
+     */
+    func changeField(instance: String, revision: UInt64, key: String, value: String) throws 
+    
+    /**
+     * Read the profile again.
+     */
+    func reload() async throws 
+    
+    /**
+     * The form as Rust Native view JSON.
+     */
+    func snapshot() throws  -> String
+    
+}
+/**
+ * The profile form for this phone's key.
+ */
+open class CorePublicProfile: CorePublicProfileProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corepublicprofile(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corepublicprofile(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Press a button: Save claims the name and publishes the profile.
+     */
+open func activate(instance: String, revision: UInt64, key: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corepublicprofile_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * Keep a typed change to one field.
+     */
+open func changeField(instance: String, revision: UInt64, key: String, value: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corepublicprofile_change_field(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Read the profile again.
+     */
+open func reload()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corepublicprofile_reload(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * The form as Rust Native view JSON.
+     */
+open func snapshot()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corepublicprofile_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCorePublicProfile: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CorePublicProfile
+
+    public static func lift(_ handle: UInt64) throws -> CorePublicProfile {
+        return CorePublicProfile(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CorePublicProfile) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CorePublicProfile {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CorePublicProfile, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCorePublicProfile_lift(_ handle: UInt64) throws -> CorePublicProfile {
+    return try FfiConverterTypeCorePublicProfile.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCorePublicProfile_lower(_ value: CorePublicProfile) -> UInt64 {
+    return FfiConverterTypeCorePublicProfile.lower(value)
+}
+
+
+
+
+
+
 public protocol CoreSavedHistoryProtocol: AnyObject, Sendable {
     
     func chatHomes(client: CoreClient) throws  -> CoreChatHomes
@@ -5450,6 +9322,14 @@ public protocol CoreSavedHistoryProtocol: AnyObject, Sendable {
      */
     func labVisible(card: String, visible: Bool) 
     
+    /**
+     * Read only an existing account-scoped saved or live Lab card.
+     * Mount only the registered media in a Rust transcript's LabMedia rectangle.
+     */
+    func labInlineProjection(card: String) throws  -> CoreLabCard
+    
+    func labProjection(card: String) throws  -> CoreLabCard
+    
     func action(action: SavedHistoryAction) throws 
     
     /**
@@ -5464,11 +9344,22 @@ public protocol CoreSavedHistoryProtocol: AnyObject, Sendable {
     func downloadedFilePart(part: UInt64) throws  -> SavedFilePart
     
     /**
+     * File an already-loaded owned chat. Refresh only after server confirmation;
+     * neither navigation nor list ordering changes optimistically.
+     */
+    func fileChat(id: String, change: SavedFilingChange) async throws 
+    
+    /**
      * Native view visibility controls following; navigation never grants write access.
      */
     func follow(visible: Bool) 
     
     func message(id: String, part: UInt64) throws  -> SavedMessagePart
+    
+    /**
+     * Move an owned saved pin using the last confirmed owner-order revision.
+     */
+    func movePin(id: String, after: String?, before: String?, revision: UInt64) async throws 
     
     /**
      * Render account history through the same Rust layout engine as computer sessions.
@@ -5480,6 +9371,16 @@ public protocol CoreSavedHistoryProtocol: AnyObject, Sendable {
     func shutdown() 
     
     func snapshot()  -> SavedHistorySnapshot
+    
+    /**
+     * Load an existing indexed session in this history's current account/project scope.
+     */
+    func indexedSession(key: String) async throws  -> SavedIndexedTranscript
+    
+    /**
+     * Call only after the indexed transcript mounted successfully, using its exact revision.
+     */
+    func markIndexedSeen(key: String, activityRevision: String) async throws 
     
 }
 open class CoreSavedHistory: CoreSavedHistoryProtocol, @unchecked Sendable {
@@ -5678,6 +9579,30 @@ open func labVisible(card: String, visible: Bool)  {try! rustCall() {
 }
 }
     
+    /**
+     * Read only an existing account-scoped saved or live Lab card.
+     * Mount only the registered media in a Rust transcript's LabMedia rectangle.
+     */
+open func labInlineProjection(card: String)throws  -> CoreLabCard  {
+    return try  FfiConverterTypeCoreLabCard_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresavedhistory_lab_inline_projection(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(card),uniffiCallStatus
+    )
+})
+}
+    
+open func labProjection(card: String)throws  -> CoreLabCard  {
+    return try  FfiConverterTypeCoreLabCard_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresavedhistory_lab_projection(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(card),uniffiCallStatus
+    )
+})
+}
+    
 open func action(action: SavedHistoryAction)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_coresavedhistory_action(
@@ -5735,6 +9660,26 @@ open func downloadedFilePart(part: UInt64)throws  -> SavedFilePart  {
 }
     
     /**
+     * File an already-loaded owned chat. Refresh only after server confirmation;
+     * neither navigation nor list ordering changes optimistically.
+     */
+open func fileChat(id: String, change: SavedFilingChange)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresavedhistory_file_chat(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id),FfiConverterTypeSavedFilingChange_lower(change)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
      * Native view visibility controls following; navigation never grants write access.
      */
 open func follow(visible: Bool)  {try! rustCall() {
@@ -5755,6 +9700,25 @@ open func message(id: String, part: UInt64)throws  -> SavedMessagePart  {
         FfiConverterUInt64.lower(part),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Move an owned saved pin using the last confirmed owner-order revision.
+     */
+open func movePin(id: String, after: String?, before: String?, revision: UInt64)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresavedhistory_move_pin(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(id),FfiConverterOptionString.lower(after),FfiConverterOptionString.lower(before),FfiConverterUInt64.lower(revision)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
 }
     
     /**
@@ -5793,6 +9757,44 @@ open func snapshot() -> SavedHistorySnapshot  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Load an existing indexed session in this history's current account/project scope.
+     */
+open func indexedSession(key: String)async throws  -> SavedIndexedTranscript  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresavedhistory_indexed_session(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeSavedIndexedTranscript_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * Call only after the indexed transcript mounted successfully, using its exact revision.
+     */
+open func markIndexedSeen(key: String, activityRevision: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresavedhistory_mark_indexed_seen(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(key),FfiConverterString.lower(activityRevision)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
 }
     
 
@@ -5838,6 +9840,242 @@ public func FfiConverterTypeCoreSavedHistory_lift(_ handle: UInt64) throws -> Co
 #endif
 public func FfiConverterTypeCoreSavedHistory_lower(_ value: CoreSavedHistory) -> UInt64 {
     return FfiConverterTypeCoreSavedHistory.lower(value)
+}
+
+
+
+
+
+
+public protocol CoreSettingsProtocol: AnyObject, Sendable {
+    
+    func acknowledge(instance: String, revision: UInt64) throws 
+    
+    func activate(instance: String, revision: UInt64, key: String) async throws  -> SettingsEffect
+    
+    func changeField(instance: String, revision: UInt64, key: String, value: String) throws 
+    
+    func dispose() 
+    
+    func preferences() throws  -> SettingsPreferences
+    
+    /**
+     * Cloud controls appear only after an authorized status read succeeds.
+     */
+    func refreshCloud() async throws 
+    
+    /**
+     * Only bytes prepared by the landed Rust AndroidView bridge may be mounted.
+     */
+    func snapshot() throws  -> Data
+    
+    /**
+     * The platform reports success only after retaining its document permission.
+     */
+    func wallpaperSelected(ticket: String, uri: String, name: String, permissionSaved: Bool) async throws  -> SettingsEffect
+    
+}
+open class CoreSettings: CoreSettingsProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coresettings(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coresettings(handle, $0) }
+    }
+
+    
+
+    
+open func acknowledge(instance: String, revision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresettings_acknowledge(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+}
+}
+    
+open func activate(instance: String, revision: UInt64, key: String)async throws  -> SettingsEffect  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresettings_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeSettingsEffect_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+open func changeField(instance: String, revision: UInt64, key: String, value: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresettings_change_field(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(key),
+        FfiConverterString.lower(value),uniffiCallStatus
+    )
+}
+}
+    
+open func dispose()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresettings_dispose(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func preferences()throws  -> SettingsPreferences  {
+    return try  FfiConverterTypeSettingsPreferences_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresettings_preferences(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Cloud controls appear only after an authorized status read succeeds.
+     */
+open func refreshCloud()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresettings_refresh_cloud(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * Only bytes prepared by the landed Rust AndroidView bridge may be mounted.
+     */
+open func snapshot()throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coresettings_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The platform reports success only after retaining its document permission.
+     */
+open func wallpaperSelected(ticket: String, uri: String, name: String, permissionSaved: Bool)async throws  -> SettingsEffect  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_coresettings_wallpaper_selected(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(ticket),FfiConverterString.lower(uri),FfiConverterString.lower(name),FfiConverterBool.lower(permissionSaved)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_rust_buffer,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_rust_buffer,
+            freeFunc: ffi_openagents_mobile_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeSettingsEffect_lift,
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreSettings: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreSettings
+
+    public static func lift(_ handle: UInt64) throws -> CoreSettings {
+        return CoreSettings(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreSettings) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreSettings {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreSettings, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreSettings_lift(_ handle: UInt64) throws -> CoreSettings {
+    return try FfiConverterTypeCoreSettings.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreSettings_lower(_ value: CoreSettings) -> UInt64 {
+    return FfiConverterTypeCoreSettings.lower(value)
 }
 
 
@@ -6011,6 +10249,157 @@ public func FfiConverterTypeCoreSharing_lower(_ value: CoreSharing) -> UInt64 {
 
 
 
+/**
+ * Reads the current immutable frame, with no viewport or session mutation.
+ */
+public protocol CoreTranscriptAccessibilityProtocol: AnyObject, Sendable {
+    
+    func page(revision: UInt64, anchor: UInt64, direction: AccessibilityDirection, count: UInt32) throws  -> AccessibilityPage
+    
+    func rowPart(revision: UInt64, key: UInt64, byte: UInt32) throws  -> AccessibilityRow
+    
+}
+/**
+ * Reads the current immutable frame, with no viewport or session mutation.
+ */
+open class CoreTranscriptAccessibility: CoreTranscriptAccessibilityProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_coretranscriptaccessibility(self.handle, $0) }
+    }
+public convenience init(account: CoreAccount, transcript: TranscriptView) {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_coretranscriptaccessibility_new(
+        FfiConverterTypeCoreAccount_lower(account),
+        FfiConverterTypeTranscriptView_lower(transcript),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_coretranscriptaccessibility(handle, $0) }
+    }
+
+    
+
+    
+open func page(revision: UInt64, anchor: UInt64, direction: AccessibilityDirection, count: UInt32)throws  -> AccessibilityPage  {
+    return try  FfiConverterTypeAccessibilityPage_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coretranscriptaccessibility_page(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterUInt64.lower(anchor),
+        FfiConverterTypeAccessibilityDirection_lower(direction),
+        FfiConverterUInt32.lower(count),uniffiCallStatus
+    )
+})
+}
+    
+open func rowPart(revision: UInt64, key: UInt64, byte: UInt32)throws  -> AccessibilityRow  {
+    return try  FfiConverterTypeAccessibilityRow_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coretranscriptaccessibility_row_part(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterUInt64.lower(key),
+        FfiConverterUInt32.lower(byte),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreTranscriptAccessibility: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreTranscriptAccessibility
+
+    public static func lift(_ handle: UInt64) throws -> CoreTranscriptAccessibility {
+        return CoreTranscriptAccessibility(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreTranscriptAccessibility) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreTranscriptAccessibility {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreTranscriptAccessibility, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreTranscriptAccessibility_lift(_ handle: UInt64) throws -> CoreTranscriptAccessibility {
+    return try FfiConverterTypeCoreTranscriptAccessibility.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreTranscriptAccessibility_lower(_ value: CoreTranscriptAccessibility) -> UInt64 {
+    return FfiConverterTypeCoreTranscriptAccessibility.lower(value)
+}
+
+
+
+
+
+
 public protocol CoreVoiceAgentProtocol: AnyObject, Sendable {
     
     func activate(instance: String, revision: UInt64, key: String) async throws 
@@ -6159,6 +10548,11 @@ public func FfiConverterTypeCoreVoiceAgent_lower(_ value: CoreVoiceAgent) -> UIn
 
 public protocol CoreVoiceUsageProtocol: AnyObject, Sendable {
     
+    /**
+     * Resolve and run refresh from the current Rust Native tree by identity only.
+     */
+    func activateView(instance: String, revision: UInt64, node: String) throws 
+    
     func refresh() 
     
     func snapshot()  -> VoiceUsageSnapshot
@@ -6167,6 +10561,11 @@ public protocol CoreVoiceUsageProtocol: AnyObject, Sendable {
      * Presence and preferences may change while this screen is open.
      */
     func track(preferredHost: String?, activeCall: VoiceCall?) 
+    
+    /**
+     * Build and retain the current usage view so activations resolve in Rust.
+     */
+    func viewJson() throws  -> String
     
 }
 open class CoreVoiceUsage: CoreVoiceUsageProtocol, @unchecked Sendable {
@@ -6222,6 +10621,20 @@ open class CoreVoiceUsage: CoreVoiceUsageProtocol, @unchecked Sendable {
     
 
     
+    /**
+     * Resolve and run refresh from the current Rust Native tree by identity only.
+     */
+open func activateView(instance: String, revision: UInt64, node: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corevoiceusage_activate_view(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(node),uniffiCallStatus
+    )
+}
+}
+    
 open func refresh()  {try! rustCall() {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_corevoiceusage_refresh(
@@ -6250,6 +10663,18 @@ open func track(preferredHost: String?, activeCall: VoiceCall?)  {try! rustCall(
         FfiConverterOptionTypeVoiceCall.lower(activeCall),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Build and retain the current usage view so activations resolve in Rust.
+     */
+open func viewJson()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corevoiceusage_view_json(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
 
@@ -6414,6 +10839,21 @@ public convenience init(home: String, store: KeyStore, listener: WalletListener)
         try! rustCall { uniffi_openagents_mobile_fn_free_corewallet(handle, $0) }
     }
 
+    
+    /**
+     * Open the Android wallet after checking the retired encrypted seed.
+     */
+public static func android(home: String, current: AndroidSecretStorage, retired: AndroidRetiredWalletSeed, listener: WalletListener) -> CoreWallet  {
+    return try!  FfiConverterTypeCoreWallet_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_corewallet_android(
+        FfiConverterString.lower(home),
+        FfiConverterTypeAndroidSecretStorage_lower(current),
+        FfiConverterTypeAndroidRetiredWalletSeed_lower(retired),
+        FfiConverterTypeWalletListener_lower(listener),uniffiCallStatus
+    )
+})
+}
     
     /**
      * An offline wallet for simulator captures: a fixed balance and
@@ -8002,6 +12442,416 @@ public func FfiConverterTypePlatformMeasurer_lower(_ value: PlatformMeasurer) ->
 
 
 
+/**
+ * Thin Android callback over Standard Play Integrity. Only a request digest
+ * crosses this boundary. Called off the main thread; implementations must
+ * return within their platform timeout.
+ */
+public protocol PlayIntegrityAttester: AnyObject, Sendable {
+    
+    func attest(requestHash: String)  -> PlayIntegrityResult
+    
+}
+/**
+ * Thin Android callback over Standard Play Integrity. Only a request digest
+ * crosses this boundary. Called off the main thread; implementations must
+ * return within their platform timeout.
+ */
+open class PlayIntegrityAttesterImpl: PlayIntegrityAttester, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_playintegrityattester(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_playintegrityattester(handle, $0) }
+    }
+
+    
+
+    
+open func attest(requestHash: String) -> PlayIntegrityResult  {
+    return try!  FfiConverterTypePlayIntegrityResult_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_playintegrityattester_attest(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(requestHash),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfacePlayIntegrityAttester {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfacePlayIntegrityAttester = UniffiVTableCallbackInterfacePlayIntegrityAttester(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypePlayIntegrityAttester.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface PlayIntegrityAttester: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypePlayIntegrityAttester.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface PlayIntegrityAttester: handle missing in uniffiClone")
+            }
+        },
+        attest: { (
+            uniffiHandle: UInt64,
+            requestHash: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> PlayIntegrityResult in
+                guard let uniffiObj = try? FfiConverterTypePlayIntegrityAttester.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.attest(
+                     requestHash: try FfiConverterString.lift(requestHash)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypePlayIntegrityResult_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfacePlayIntegrityAttester> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfacePlayIntegrityAttester>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitPlayIntegrityAttester() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_playintegrityattester(UniffiCallbackInterfacePlayIntegrityAttester.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePlayIntegrityAttester: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<PlayIntegrityAttester>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = PlayIntegrityAttester
+
+    public static func lift(_ handle: UInt64) throws -> PlayIntegrityAttester {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return PlayIntegrityAttesterImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: PlayIntegrityAttester) -> UInt64 {
+         if let rustImpl = value as? PlayIntegrityAttesterImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PlayIntegrityAttester {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: PlayIntegrityAttester, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlayIntegrityAttester_lift(_ handle: UInt64) throws -> PlayIntegrityAttester {
+    return try FfiConverterTypePlayIntegrityAttester.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlayIntegrityAttester_lower(_ value: PlayIntegrityAttester) -> UInt64 {
+    return FfiConverterTypePlayIntegrityAttester.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Told whenever the form changes, so the shell draws it again.
+ */
+public protocol PublicProfileListener: AnyObject, Sendable {
+    
+    func onPublicProfileChanged() 
+    
+}
+/**
+ * Told whenever the form changes, so the shell draws it again.
+ */
+open class PublicProfileListenerImpl: PublicProfileListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_publicprofilelistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_publicprofilelistener(handle, $0) }
+    }
+
+    
+
+    
+open func onPublicProfileChanged()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_publicprofilelistener_on_public_profile_changed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfacePublicProfileListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfacePublicProfileListener = UniffiVTableCallbackInterfacePublicProfileListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypePublicProfileListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface PublicProfileListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypePublicProfileListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface PublicProfileListener: handle missing in uniffiClone")
+            }
+        },
+        onPublicProfileChanged: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypePublicProfileListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onPublicProfileChanged(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfacePublicProfileListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfacePublicProfileListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitPublicProfileListener() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_publicprofilelistener(UniffiCallbackInterfacePublicProfileListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePublicProfileListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<PublicProfileListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = PublicProfileListener
+
+    public static func lift(_ handle: UInt64) throws -> PublicProfileListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return PublicProfileListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: PublicProfileListener) -> UInt64 {
+         if let rustImpl = value as? PublicProfileListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PublicProfileListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: PublicProfileListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePublicProfileListener_lift(_ handle: UInt64) throws -> PublicProfileListener {
+    return try FfiConverterTypePublicProfileListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePublicProfileListener_lower(_ value: PublicProfileListener) -> UInt64 {
+    return FfiConverterTypePublicProfileListener.lower(value)
+}
+
+
+
+
+
+
 public protocol SavedHistoryListener: AnyObject, Sendable {
     
     func onSavedHistoryChanged() 
@@ -8202,9 +13052,31 @@ public func FfiConverterTypeSavedHistoryListener_lower(_ value: SavedHistoryList
  */
 public protocol SessionHandleProtocol: AnyObject, Sendable {
     
+    /**
+     * Mark a mounted view current only after the native adapter applied it.
+     */
+    func acknowledgeNativeView(instance: String, revision: UInt64) throws 
+    
+    /**
+     * Resolve an activation against the acknowledged view, then call an
+     * existing session operation. Unknown intents fail during view decoding.
+     */
+    func activateNative(instance: String, revision: UInt64, node: String, text: String?, attachments: [OutgoingAttachment]) throws  -> NativeActionResult
+    
     func beginQueuedEdit(id: String, instanceId: String) async  -> QueueEditStart
     
+    /**
+     * Resolve a field change against the acknowledged Rust Native view.
+     * Only draft fields may change through this bridge.
+     */
+    func changeNativeField(instance: String, revision: UInt64, node: String, value: String) throws  -> NativeActionResult
+    
     func chatId()  -> String
+    
+    /**
+     * Remove this session's saved draft after sending or cancelling it.
+     */
+    func clearComposerDraft() throws 
     
     func clearQueueError() 
     
@@ -8212,6 +13084,12 @@ public protocol SessionHandleProtocol: AnyObject, Sendable {
      * Composer + status strip state (pull after `ComposerChanged`).
      */
     func composer()  -> ComposerState
+    
+    /**
+     * Edit the native composer through Rust Native's UTF-16/IME mirror.
+     * Successful changes are saved in the signed-in account's draft store.
+     */
+    func composerEditor(instance: String, viewRevision: UInt64, requestJson: Data) throws  -> Data
     
     /**
      * A row's primary action: steer text into the live turn (never
@@ -8246,6 +13124,12 @@ public protocol SessionHandleProtocol: AnyObject, Sendable {
     func moveQueuedBy(id: String, delta: Int32) throws  -> Bool
     
     /**
+     * Validate a Rust Native view whose intents use the closed mobile
+     * session action set. Return its canonical bytes for native mounting.
+     */
+    func prepareNativeView(viewJson: Data) throws  -> Data
+    
+    /**
      * Remove a queued row (applied locally after the host acks).
      */
     func removeQueued(id: String) async throws  -> Bool
@@ -8255,9 +13139,19 @@ public protocol SessionHandleProtocol: AnyObject, Sendable {
     func respondInput(requestId: String, answers: [UserInputAnswer]) throws 
     
     /**
+     * Restore the saved text draft for this session.
+     */
+    func restoreComposerDraft() throws  -> String?
+    
+    /**
      * "Not delivered — tap to retry".
      */
     func retryDelivery() throws 
+    
+    /**
+     * Save this session's bounded text draft in the signed-in account store.
+     */
+    func saveComposerDraft(text: String) throws 
     
     /**
      * Send: a new turn when idle; while working, queue (or steer per `busy`).
@@ -8273,6 +13167,12 @@ public protocol SessionHandleProtocol: AnyObject, Sendable {
      * A transcript view is on/off screen (marks seen on attach).
      */
     func setViewAttached(attached: Bool) 
+    
+    /**
+     * Submit the current Rust Native composer input through the existing
+     * session send operation. Rust resolves the choice token and busy policy.
+     */
+    func submitNativeComposer(instance: String, viewRevision: UInt64, inputToken: String, editingLifetime: UInt64, editorRevision: UInt64, choiceToken: String?, text: String, attachments: [OutgoingAttachment]) throws  -> NativeActionResult
     
     func transcriptStatus()  -> TranscriptStatus
     
@@ -8333,6 +13233,37 @@ open class SessionHandle: SessionHandleProtocol, @unchecked Sendable {
     
 
     
+    /**
+     * Mark a mounted view current only after the native adapter applied it.
+     */
+open func acknowledgeNativeView(instance: String, revision: UInt64)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_sessionhandle_acknowledge_native_view(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Resolve an activation against the acknowledged view, then call an
+     * existing session operation. Unknown intents fail during view decoding.
+     */
+open func activateNative(instance: String, revision: UInt64, node: String, text: String?, attachments: [OutgoingAttachment])throws  -> NativeActionResult  {
+    return try  FfiConverterTypeNativeActionResult_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_sessionhandle_activate_native(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(node),
+        FfiConverterOptionString.lower(text),
+        FfiConverterSequenceTypeOutgoingAttachment.lower(attachments),uniffiCallStatus
+    )
+})
+}
+    
 open func beginQueuedEdit(id: String, instanceId: String)async  -> QueueEditStart  {
     return
         try!  await uniffiRustCallAsync(
@@ -8350,6 +13281,23 @@ open func beginQueuedEdit(id: String, instanceId: String)async  -> QueueEditStar
         )
 }
     
+    /**
+     * Resolve a field change against the acknowledged Rust Native view.
+     * Only draft fields may change through this bridge.
+     */
+open func changeNativeField(instance: String, revision: UInt64, node: String, value: String)throws  -> NativeActionResult  {
+    return try  FfiConverterTypeNativeActionResult_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_sessionhandle_change_native_field(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(node),
+        FfiConverterString.lower(value),uniffiCallStatus
+    )
+})
+}
+    
 open func chatId() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
         uniffiCallStatus in
@@ -8357,6 +13305,17 @@ open func chatId() -> String  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Remove this session's saved draft after sending or cancelling it.
+     */
+open func clearComposerDraft()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_sessionhandle_clear_composer_draft(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
 }
     
 open func clearQueueError()  {try! rustCall() {
@@ -8375,6 +13334,22 @@ open func composer() -> ComposerState  {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_sessionhandle_composer(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Edit the native composer through Rust Native's UTF-16/IME mirror.
+     * Successful changes are saved in the signed-in account's draft store.
+     */
+open func composerEditor(instance: String, viewRevision: UInt64, requestJson: Data)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_sessionhandle_composer_editor(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(viewRevision),
+        FfiConverterData.lower(requestJson),uniffiCallStatus
     )
 })
 }
@@ -8489,6 +13464,20 @@ open func moveQueuedBy(id: String, delta: Int32)throws  -> Bool  {
 }
     
     /**
+     * Validate a Rust Native view whose intents use the closed mobile
+     * session action set. Return its canonical bytes for native mounting.
+     */
+open func prepareNativeView(viewJson: Data)throws  -> Data  {
+    return try  FfiConverterData.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_sessionhandle_prepare_native_view(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(viewJson),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Remove a queued row (applied locally after the host acks).
      */
 open func removeQueued(id: String)async throws  -> Bool  {
@@ -8535,12 +13524,36 @@ open func respondInput(requestId: String, answers: [UserInputAnswer])throws   {t
 }
     
     /**
+     * Restore the saved text draft for this session.
+     */
+open func restoreComposerDraft()throws  -> String?  {
+    return try  FfiConverterOptionString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_sessionhandle_restore_composer_draft(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * "Not delivered — tap to retry".
      */
 open func retryDelivery()throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_sessionhandle_retry_delivery(
             self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Save this session's bounded text draft in the signed-in account store.
+     */
+open func saveComposerDraft(text: String)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_sessionhandle_save_composer_draft(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(text),uniffiCallStatus
     )
 }
 }
@@ -8587,6 +13600,27 @@ open func setViewAttached(attached: Bool)  {try! rustCall() {
         FfiConverterBool.lower(attached),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Submit the current Rust Native composer input through the existing
+     * session send operation. Rust resolves the choice token and busy policy.
+     */
+open func submitNativeComposer(instance: String, viewRevision: UInt64, inputToken: String, editingLifetime: UInt64, editorRevision: UInt64, choiceToken: String?, text: String, attachments: [OutgoingAttachment])throws  -> NativeActionResult  {
+    return try  FfiConverterTypeNativeActionResult_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_sessionhandle_submit_native_composer(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(viewRevision),
+        FfiConverterString.lower(inputToken),
+        FfiConverterUInt64.lower(editingLifetime),
+        FfiConverterUInt64.lower(editorRevision),
+        FfiConverterOptionString.lower(choiceToken),
+        FfiConverterString.lower(text),
+        FfiConverterSequenceTypeOutgoingAttachment.lower(attachments),uniffiCallStatus
+    )
+})
 }
     
 open func transcriptStatus() -> TranscriptStatus  {
@@ -8641,6 +13675,201 @@ public func FfiConverterTypeSessionHandle_lift(_ handle: UInt64) throws -> Sessi
 #endif
 public func FfiConverterTypeSessionHandle_lower(_ value: SessionHandle) -> UInt64 {
     return FfiConverterTypeSessionHandle.lower(value)
+}
+
+
+
+
+
+
+public protocol SettingsListener: AnyObject, Sendable {
+    
+    func onSettingsChanged() 
+    
+}
+open class SettingsListenerImpl: SettingsListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_settingslistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_settingslistener(handle, $0) }
+    }
+
+    
+
+    
+open func onSettingsChanged()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_settingslistener_on_settings_changed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceSettingsListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceSettingsListener = UniffiVTableCallbackInterfaceSettingsListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeSettingsListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface SettingsListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeSettingsListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface SettingsListener: handle missing in uniffiClone")
+            }
+        },
+        onSettingsChanged: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeSettingsListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onSettingsChanged(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceSettingsListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceSettingsListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitSettingsListener() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_settingslistener(UniffiCallbackInterfaceSettingsListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSettingsListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<SettingsListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = SettingsListener
+
+    public static func lift(_ handle: UInt64) throws -> SettingsListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return SettingsListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: SettingsListener) -> UInt64 {
+         if let rustImpl = value as? SettingsListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SettingsListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: SettingsListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsListener_lift(_ handle: UInt64) throws -> SettingsListener {
+    return try FfiConverterTypeSettingsListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsListener_lower(_ value: SettingsListener) -> UInt64 {
+    return FfiConverterTypeSettingsListener.lower(value)
 }
 
 
@@ -9028,6 +14257,11 @@ public protocol TranscriptViewProtocol: AnyObject, Sendable {
      */
     func visual(id: String)  -> VisualSession?
     
+    /**
+     * Follow cloud/default-chat or synthetic-demo messages in Rust, without native row copies.
+     */
+    func attachCloud(chat: CoreCloudChat)  -> Bool
+    
 }
 /**
  * One transcript's layout engine.
@@ -9244,6 +14478,19 @@ open func visual(id: String) -> VisualSession?  {
     uniffi_openagents_mobile_fn_method_transcriptview_visual(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Follow cloud/default-chat or synthetic-demo messages in Rust, without native row copies.
+     */
+open func attachCloud(chat: CoreCloudChat) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_transcriptview_attach_cloud(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreCloudChat_lower(chat),uniffiCallStatus
     )
 })
 }
@@ -10183,18 +15430,58 @@ public func FfiConverterTypeVoiceAgentListener_lower(_ value: VoiceAgentListener
 public protocol VoiceCallProtocol: AnyObject, Sendable {
     
     /**
+     * Resolve only the current Rust Native tree. No action payload crosses this boundary.
+     */
+    func activateView(instance: String, revision: UInt64, node: String) throws  -> VoiceUiAction
+    
+    /**
+     * Read the latest platform state for the active call.
+     */
+    func audioState()  -> VoiceAudioState
+    
+    /**
+     * Current Rust-owned compact call view. A new revision replaces its prior activation tree.
+     */
+    func capsuleView() throws  -> String
+    
+    /**
      * Late native callbacks simply miss the retired request. No resume is possible.
      */
     func completeMedia(requestId: UInt64, failure: VoiceMediaFailure?, sdp: String?, microphone: UInt16, speaker: UInt16) 
+    
+    /**
+     * Current Rust-owned full call view. A new revision replaces its prior activation tree.
+     */
+    func screenView() throws  -> String
     
     func setMuted(muted: Bool) 
     
     func stop() 
     
     /**
+     * Record focus changes, including interruptions and ducking.
+     */
+    func updateAudioFocus(focus: VoiceAudioFocus) 
+    
+    /**
+     * Record the current platform route while the call is active.
+     */
+    func updateAudioRoute(route: VoiceAudioRoute) 
+    
+    /**
      * Update presentation context; only the active call may publish it.
      */
     func updateContext(chatId: String?, title: String?) 
+    
+    /**
+     * Record connectivity changes without creating a second reconnect path.
+     */
+    func updateNetworkState(network: VoiceNetworkState) 
+    
+    /**
+     * Record proximity so the platform can select its near/far audio behavior.
+     */
+    func updateProximity(near: Bool) 
     
 }
 open class VoiceCall: VoiceCallProtocol, @unchecked Sendable {
@@ -10251,6 +15538,45 @@ open class VoiceCall: VoiceCallProtocol, @unchecked Sendable {
 
     
     /**
+     * Resolve only the current Rust Native tree. No action payload crosses this boundary.
+     */
+open func activateView(instance: String, revision: UInt64, node: String)throws  -> VoiceUiAction  {
+    return try  FfiConverterTypeVoiceUiAction_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_voicecall_activate_view(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(instance),
+        FfiConverterUInt64.lower(revision),
+        FfiConverterString.lower(node),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Read the latest platform state for the active call.
+     */
+open func audioState() -> VoiceAudioState  {
+    return try!  FfiConverterTypeVoiceAudioState_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_voicecall_audio_state(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Current Rust-owned compact call view. A new revision replaces its prior activation tree.
+     */
+open func capsuleView()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_voicecall_capsule_view(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Late native callbacks simply miss the retired request. No resume is possible.
      */
 open func completeMedia(requestId: UInt64, failure: VoiceMediaFailure?, sdp: String?, microphone: UInt16, speaker: UInt16)  {try! rustCall() {
@@ -10264,6 +15590,18 @@ open func completeMedia(requestId: UInt64, failure: VoiceMediaFailure?, sdp: Str
         FfiConverterUInt16.lower(speaker),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Current Rust-owned full call view. A new revision replaces its prior activation tree.
+     */
+open func screenView()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_voicecall_screen_view(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
 open func setMuted(muted: Bool)  {try! rustCall() {
@@ -10284,6 +15622,30 @@ open func stop()  {try! rustCall() {
 }
     
     /**
+     * Record focus changes, including interruptions and ducking.
+     */
+open func updateAudioFocus(focus: VoiceAudioFocus)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_voicecall_update_audio_focus(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeVoiceAudioFocus_lower(focus),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Record the current platform route while the call is active.
+     */
+open func updateAudioRoute(route: VoiceAudioRoute)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_voicecall_update_audio_route(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeVoiceAudioRoute_lower(route),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Update presentation context; only the active call may publish it.
      */
 open func updateContext(chatId: String?, title: String?)  {try! rustCall() {
@@ -10292,6 +15654,30 @@ open func updateContext(chatId: String?, title: String?)  {try! rustCall() {
             self.uniffiCloneHandle(),
         FfiConverterOptionString.lower(chatId),
         FfiConverterOptionString.lower(title),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Record connectivity changes without creating a second reconnect path.
+     */
+open func updateNetworkState(network: VoiceNetworkState)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_voicecall_update_network_state(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeVoiceNetworkState_lower(network),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Record proximity so the platform can select its near/far audio behavior.
+     */
+open func updateProximity(near: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_voicecall_update_proximity(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(near),uniffiCallStatus
     )
 }
 }
@@ -11183,6 +16569,206 @@ public func FfiConverterTypeWalletListener_lower(_ value: WalletListener) -> UIn
 
 
 
+public struct AccessibilityBounds: Equatable, Hashable {
+    public var x: Float
+    public var y: Float
+    public var width: Float
+    public var height: Float
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(x: Float, y: Float, width: Float, height: Float) {
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AccessibilityBounds: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAccessibilityBounds: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccessibilityBounds {
+        return
+            try AccessibilityBounds(
+                x: FfiConverterFloat.read(from: &buf), 
+                y: FfiConverterFloat.read(from: &buf), 
+                width: FfiConverterFloat.read(from: &buf), 
+                height: FfiConverterFloat.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AccessibilityBounds, into buf: inout [UInt8]) {
+        FfiConverterFloat.write(value.x, into: &buf)
+        FfiConverterFloat.write(value.y, into: &buf)
+        FfiConverterFloat.write(value.width, into: &buf)
+        FfiConverterFloat.write(value.height, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccessibilityBounds_lift(_ buf: RustBuffer) throws -> AccessibilityBounds {
+    return try FfiConverterTypeAccessibilityBounds.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccessibilityBounds_lower(_ value: AccessibilityBounds) -> RustBuffer {
+    return FfiConverterTypeAccessibilityBounds.lower(value)
+}
+
+
+public struct AccessibilityPage: Equatable, Hashable {
+    public var revision: UInt64
+    public var rows: [AccessibilityRow]
+    public var earlier: Bool
+    public var later: Bool
+    public var earlierLabel: String
+    public var laterLabel: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(revision: UInt64, rows: [AccessibilityRow], earlier: Bool, later: Bool, earlierLabel: String, laterLabel: String) {
+        self.revision = revision
+        self.rows = rows
+        self.earlier = earlier
+        self.later = later
+        self.earlierLabel = earlierLabel
+        self.laterLabel = laterLabel
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AccessibilityPage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAccessibilityPage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccessibilityPage {
+        return
+            try AccessibilityPage(
+                revision: FfiConverterUInt64.read(from: &buf), 
+                rows: FfiConverterSequenceTypeAccessibilityRow.read(from: &buf), 
+                earlier: FfiConverterBool.read(from: &buf), 
+                later: FfiConverterBool.read(from: &buf), 
+                earlierLabel: FfiConverterString.read(from: &buf), 
+                laterLabel: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AccessibilityPage, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterSequenceTypeAccessibilityRow.write(value.rows, into: &buf)
+        FfiConverterBool.write(value.earlier, into: &buf)
+        FfiConverterBool.write(value.later, into: &buf)
+        FfiConverterString.write(value.earlierLabel, into: &buf)
+        FfiConverterString.write(value.laterLabel, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccessibilityPage_lift(_ buf: RustBuffer) throws -> AccessibilityPage {
+    return try FfiConverterTypeAccessibilityPage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccessibilityPage_lower(_ value: AccessibilityPage) -> RustBuffer {
+    return FfiConverterTypeAccessibilityPage.lower(value)
+}
+
+
+public struct AccessibilityRow: Equatable, Hashable {
+    public var key: UInt64
+    /**
+     * Bounds are measured by Rust in the current transcript frame, in layout points.
+     */
+    public var bounds: AccessibilityBounds
+    public var text: String
+    public var nextByte: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(key: UInt64, 
+        /**
+         * Bounds are measured by Rust in the current transcript frame, in layout points.
+         */bounds: AccessibilityBounds, text: String, nextByte: UInt32?) {
+        self.key = key
+        self.bounds = bounds
+        self.text = text
+        self.nextByte = nextByte
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AccessibilityRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAccessibilityRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccessibilityRow {
+        return
+            try AccessibilityRow(
+                key: FfiConverterUInt64.read(from: &buf), 
+                bounds: FfiConverterTypeAccessibilityBounds.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf), 
+                nextByte: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AccessibilityRow, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.key, into: &buf)
+        FfiConverterTypeAccessibilityBounds.write(value.bounds, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterOptionUInt32.write(value.nextByte, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccessibilityRow_lift(_ buf: RustBuffer) throws -> AccessibilityRow {
+    return try FfiConverterTypeAccessibilityRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccessibilityRow_lower(_ value: AccessibilityRow) -> RustBuffer {
+    return FfiConverterTypeAccessibilityRow.lower(value)
+}
+
+
 public struct AccountSnapshot: Equatable, Hashable {
     public var generation: UInt64
     public var state: AccountState
@@ -11234,6 +16820,748 @@ public func FfiConverterTypeAccountSnapshot_lift(_ buf: RustBuffer) throws -> Ac
 #endif
 public func FfiConverterTypeAccountSnapshot_lower(_ value: AccountSnapshot) -> RustBuffer {
     return FfiConverterTypeAccountSnapshot.lower(value)
+}
+
+
+/**
+ * A bounded route and optional code for the existing core flow. Invitation
+ * codes stay in Rust and are never returned to the platform.
+ */
+public struct AndroidAppLink: Equatable, Hashable {
+    public var kind: AndroidAppLinkKind
+    public var code: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(kind: AndroidAppLinkKind, code: String?) {
+        self.kind = kind
+        self.code = code
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AndroidAppLink: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidAppLink: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidAppLink {
+        return
+            try AndroidAppLink(
+                kind: FfiConverterTypeAndroidAppLinkKind.read(from: &buf), 
+                code: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AndroidAppLink, into buf: inout [UInt8]) {
+        FfiConverterTypeAndroidAppLinkKind.write(value.kind, into: &buf)
+        FfiConverterOptionString.write(value.code, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidAppLink_lift(_ buf: RustBuffer) throws -> AndroidAppLink {
+    return try FfiConverterTypeAndroidAppLink.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidAppLink_lower(_ value: AndroidAppLink) -> RustBuffer {
+    return FfiConverterTypeAndroidAppLink.lower(value)
+}
+
+
+/**
+ * Rust's decision about which existing core flow may receive a scanned link.
+ * `code` is absent when the Rust account API consumes the original link.
+ */
+public struct AndroidAppLinkDispatch: Equatable, Hashable {
+    public var operation: AndroidAppLinkOperation
+    public var code: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(operation: AndroidAppLinkOperation, code: String?) {
+        self.operation = operation
+        self.code = code
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AndroidAppLinkDispatch: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidAppLinkDispatch: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidAppLinkDispatch {
+        return
+            try AndroidAppLinkDispatch(
+                operation: FfiConverterTypeAndroidAppLinkOperation.read(from: &buf), 
+                code: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AndroidAppLinkDispatch, into buf: inout [UInt8]) {
+        FfiConverterTypeAndroidAppLinkOperation.write(value.operation, into: &buf)
+        FfiConverterOptionString.write(value.code, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidAppLinkDispatch_lift(_ buf: RustBuffer) throws -> AndroidAppLinkDispatch {
+    return try FfiConverterTypeAndroidAppLinkDispatch.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidAppLinkDispatch_lower(_ value: AndroidAppLinkDispatch) -> RustBuffer {
+    return FfiConverterTypeAndroidAppLinkDispatch.lower(value)
+}
+
+
+public struct AndroidComposerFrame: Equatable, Hashable {
+    public var instance: String
+    public var revision: UInt64
+    public var token: String
+    public var editingLifetime: UInt64
+    public var editorRevision: UInt64
+    public var draft: String
+    public var placeholder: String
+    public var maxBytes: UInt32
+    public var enabled: Bool
+    public var busy: Bool
+    public var primaryLabel: String
+    public var stopKey: String?
+    public var attachmentKey: String?
+    public var error: String?
+    public var sharedCardsJson: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(instance: String, revision: UInt64, token: String, editingLifetime: UInt64, editorRevision: UInt64, draft: String, placeholder: String, maxBytes: UInt32, enabled: Bool, busy: Bool, primaryLabel: String, stopKey: String?, attachmentKey: String?, error: String?, sharedCardsJson: String?) {
+        self.instance = instance
+        self.revision = revision
+        self.token = token
+        self.editingLifetime = editingLifetime
+        self.editorRevision = editorRevision
+        self.draft = draft
+        self.placeholder = placeholder
+        self.maxBytes = maxBytes
+        self.enabled = enabled
+        self.busy = busy
+        self.primaryLabel = primaryLabel
+        self.stopKey = stopKey
+        self.attachmentKey = attachmentKey
+        self.error = error
+        self.sharedCardsJson = sharedCardsJson
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AndroidComposerFrame: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidComposerFrame: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidComposerFrame {
+        return
+            try AndroidComposerFrame(
+                instance: FfiConverterString.read(from: &buf), 
+                revision: FfiConverterUInt64.read(from: &buf), 
+                token: FfiConverterString.read(from: &buf), 
+                editingLifetime: FfiConverterUInt64.read(from: &buf), 
+                editorRevision: FfiConverterUInt64.read(from: &buf), 
+                draft: FfiConverterString.read(from: &buf), 
+                placeholder: FfiConverterString.read(from: &buf), 
+                maxBytes: FfiConverterUInt32.read(from: &buf), 
+                enabled: FfiConverterBool.read(from: &buf), 
+                busy: FfiConverterBool.read(from: &buf), 
+                primaryLabel: FfiConverterString.read(from: &buf), 
+                stopKey: FfiConverterOptionString.read(from: &buf), 
+                attachmentKey: FfiConverterOptionString.read(from: &buf), 
+                error: FfiConverterOptionString.read(from: &buf), 
+                sharedCardsJson: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AndroidComposerFrame, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.instance, into: &buf)
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterString.write(value.token, into: &buf)
+        FfiConverterUInt64.write(value.editingLifetime, into: &buf)
+        FfiConverterUInt64.write(value.editorRevision, into: &buf)
+        FfiConverterString.write(value.draft, into: &buf)
+        FfiConverterString.write(value.placeholder, into: &buf)
+        FfiConverterUInt32.write(value.maxBytes, into: &buf)
+        FfiConverterBool.write(value.enabled, into: &buf)
+        FfiConverterBool.write(value.busy, into: &buf)
+        FfiConverterString.write(value.primaryLabel, into: &buf)
+        FfiConverterOptionString.write(value.stopKey, into: &buf)
+        FfiConverterOptionString.write(value.attachmentKey, into: &buf)
+        FfiConverterOptionString.write(value.error, into: &buf)
+        FfiConverterOptionString.write(value.sharedCardsJson, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidComposerFrame_lift(_ buf: RustBuffer) throws -> AndroidComposerFrame {
+    return try FfiConverterTypeAndroidComposerFrame.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidComposerFrame_lower(_ value: AndroidComposerFrame) -> RustBuffer {
+    return FfiConverterTypeAndroidComposerFrame.lower(value)
+}
+
+
+public struct AndroidDemoChoice: Equatable, Hashable {
+    public var fixture: AndroidDemoChat
+    public var row: SessionRow
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(fixture: AndroidDemoChat, row: SessionRow) {
+        self.fixture = fixture
+        self.row = row
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AndroidDemoChoice: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidDemoChoice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidDemoChoice {
+        return
+            try AndroidDemoChoice(
+                fixture: FfiConverterTypeAndroidDemoChat.read(from: &buf), 
+                row: FfiConverterTypeSessionRow.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AndroidDemoChoice, into buf: inout [UInt8]) {
+        FfiConverterTypeAndroidDemoChat.write(value.fixture, into: &buf)
+        FfiConverterTypeSessionRow.write(value.row, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidDemoChoice_lift(_ buf: RustBuffer) throws -> AndroidDemoChoice {
+    return try FfiConverterTypeAndroidDemoChoice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidDemoChoice_lower(_ value: AndroidDemoChoice) -> RustBuffer {
+    return FfiConverterTypeAndroidDemoChoice.lower(value)
+}
+
+
+public struct AndroidHostSelection: Equatable, Hashable {
+    public var anchor: AndroidHostTextPoint
+    public var focus: AndroidHostTextPoint
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(anchor: AndroidHostTextPoint, focus: AndroidHostTextPoint) {
+        self.anchor = anchor
+        self.focus = focus
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AndroidHostSelection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidHostSelection: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidHostSelection {
+        return
+            try AndroidHostSelection(
+                anchor: FfiConverterTypeAndroidHostTextPoint.read(from: &buf), 
+                focus: FfiConverterTypeAndroidHostTextPoint.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AndroidHostSelection, into buf: inout [UInt8]) {
+        FfiConverterTypeAndroidHostTextPoint.write(value.anchor, into: &buf)
+        FfiConverterTypeAndroidHostTextPoint.write(value.focus, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostSelection_lift(_ buf: RustBuffer) throws -> AndroidHostSelection {
+    return try FfiConverterTypeAndroidHostSelection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostSelection_lower(_ value: AndroidHostSelection) -> RustBuffer {
+    return FfiConverterTypeAndroidHostSelection.lower(value)
+}
+
+
+public struct AndroidHostSnapshot {
+    public var generation: UInt64
+    public var route: AndroidHostRoute
+    public var contentRevision: UInt64
+    public var selectedChat: String?
+    public var source: AndroidHostContent
+    public var signedIn: Bool
+    public var notice: String?
+    public var composer: CoreAndroidComposer?
+    public var sessions: CoreAndroidSessions?
+    public var client: CoreClient?
+    public var history: CoreSavedHistory?
+    public var account: CoreAccount?
+    public var anchor: AndroidTranscriptAnchor?
+    public var recovery: CoreAndroidRecovery?
+    public var selection: AndroidHostSelection?
+    public var activeVoice: VoiceCall?
+    public var labActions: CoreLabActions?
+    public var canStartVoice: Bool
+    public var linkReview: CoreAndroidLinkReview?
+    public var pendingNotification: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(generation: UInt64, route: AndroidHostRoute, contentRevision: UInt64, selectedChat: String?, source: AndroidHostContent, signedIn: Bool, notice: String?, composer: CoreAndroidComposer?, sessions: CoreAndroidSessions?, client: CoreClient?, history: CoreSavedHistory?, account: CoreAccount?, anchor: AndroidTranscriptAnchor?, recovery: CoreAndroidRecovery?, selection: AndroidHostSelection?, activeVoice: VoiceCall?, labActions: CoreLabActions?, canStartVoice: Bool, linkReview: CoreAndroidLinkReview?, pendingNotification: Bool) {
+        self.generation = generation
+        self.route = route
+        self.contentRevision = contentRevision
+        self.selectedChat = selectedChat
+        self.source = source
+        self.signedIn = signedIn
+        self.notice = notice
+        self.composer = composer
+        self.sessions = sessions
+        self.client = client
+        self.history = history
+        self.account = account
+        self.anchor = anchor
+        self.recovery = recovery
+        self.selection = selection
+        self.activeVoice = activeVoice
+        self.labActions = labActions
+        self.canStartVoice = canStartVoice
+        self.linkReview = linkReview
+        self.pendingNotification = pendingNotification
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AndroidHostSnapshot: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidHostSnapshot: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidHostSnapshot {
+        return
+            try AndroidHostSnapshot(
+                generation: FfiConverterUInt64.read(from: &buf), 
+                route: FfiConverterTypeAndroidHostRoute.read(from: &buf), 
+                contentRevision: FfiConverterUInt64.read(from: &buf), 
+                selectedChat: FfiConverterOptionString.read(from: &buf), 
+                source: FfiConverterTypeAndroidHostContent.read(from: &buf), 
+                signedIn: FfiConverterBool.read(from: &buf), 
+                notice: FfiConverterOptionString.read(from: &buf), 
+                composer: FfiConverterOptionTypeCoreAndroidComposer.read(from: &buf), 
+                sessions: FfiConverterOptionTypeCoreAndroidSessions.read(from: &buf), 
+                client: FfiConverterOptionTypeCoreClient.read(from: &buf), 
+                history: FfiConverterOptionTypeCoreSavedHistory.read(from: &buf), 
+                account: FfiConverterOptionTypeCoreAccount.read(from: &buf), 
+                anchor: FfiConverterOptionTypeAndroidTranscriptAnchor.read(from: &buf), 
+                recovery: FfiConverterOptionTypeCoreAndroidRecovery.read(from: &buf), 
+                selection: FfiConverterOptionTypeAndroidHostSelection.read(from: &buf), 
+                activeVoice: FfiConverterOptionTypeVoiceCall.read(from: &buf), 
+                labActions: FfiConverterOptionTypeCoreLabActions.read(from: &buf), 
+                canStartVoice: FfiConverterBool.read(from: &buf), 
+                linkReview: FfiConverterOptionTypeCoreAndroidLinkReview.read(from: &buf), 
+                pendingNotification: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AndroidHostSnapshot, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.generation, into: &buf)
+        FfiConverterTypeAndroidHostRoute.write(value.route, into: &buf)
+        FfiConverterUInt64.write(value.contentRevision, into: &buf)
+        FfiConverterOptionString.write(value.selectedChat, into: &buf)
+        FfiConverterTypeAndroidHostContent.write(value.source, into: &buf)
+        FfiConverterBool.write(value.signedIn, into: &buf)
+        FfiConverterOptionString.write(value.notice, into: &buf)
+        FfiConverterOptionTypeCoreAndroidComposer.write(value.composer, into: &buf)
+        FfiConverterOptionTypeCoreAndroidSessions.write(value.sessions, into: &buf)
+        FfiConverterOptionTypeCoreClient.write(value.client, into: &buf)
+        FfiConverterOptionTypeCoreSavedHistory.write(value.history, into: &buf)
+        FfiConverterOptionTypeCoreAccount.write(value.account, into: &buf)
+        FfiConverterOptionTypeAndroidTranscriptAnchor.write(value.anchor, into: &buf)
+        FfiConverterOptionTypeCoreAndroidRecovery.write(value.recovery, into: &buf)
+        FfiConverterOptionTypeAndroidHostSelection.write(value.selection, into: &buf)
+        FfiConverterOptionTypeVoiceCall.write(value.activeVoice, into: &buf)
+        FfiConverterOptionTypeCoreLabActions.write(value.labActions, into: &buf)
+        FfiConverterBool.write(value.canStartVoice, into: &buf)
+        FfiConverterOptionTypeCoreAndroidLinkReview.write(value.linkReview, into: &buf)
+        FfiConverterBool.write(value.pendingNotification, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostSnapshot_lift(_ buf: RustBuffer) throws -> AndroidHostSnapshot {
+    return try FfiConverterTypeAndroidHostSnapshot.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostSnapshot_lower(_ value: AndroidHostSnapshot) -> RustBuffer {
+    return FfiConverterTypeAndroidHostSnapshot.lower(value)
+}
+
+
+public struct AndroidHostTextPoint: Equatable, Hashable {
+    public var row: UInt64
+    public var utf16: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(row: UInt64, utf16: UInt32) {
+        self.row = row
+        self.utf16 = utf16
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AndroidHostTextPoint: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidHostTextPoint: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidHostTextPoint {
+        return
+            try AndroidHostTextPoint(
+                row: FfiConverterUInt64.read(from: &buf), 
+                utf16: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AndroidHostTextPoint, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.row, into: &buf)
+        FfiConverterUInt32.write(value.utf16, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostTextPoint_lift(_ buf: RustBuffer) throws -> AndroidHostTextPoint {
+    return try FfiConverterTypeAndroidHostTextPoint.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostTextPoint_lower(_ value: AndroidHostTextPoint) -> RustBuffer {
+    return FfiConverterTypeAndroidHostTextPoint.lower(value)
+}
+
+
+public struct AndroidNotificationOpen: Equatable, Hashable {
+    public var retryAfterMs: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(retryAfterMs: UInt32?) {
+        self.retryAfterMs = retryAfterMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AndroidNotificationOpen: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidNotificationOpen: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidNotificationOpen {
+        return
+            try AndroidNotificationOpen(
+                retryAfterMs: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AndroidNotificationOpen, into buf: inout [UInt8]) {
+        FfiConverterOptionUInt32.write(value.retryAfterMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidNotificationOpen_lift(_ buf: RustBuffer) throws -> AndroidNotificationOpen {
+    return try FfiConverterTypeAndroidNotificationOpen.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidNotificationOpen_lower(_ value: AndroidNotificationOpen) -> RustBuffer {
+    return FfiConverterTypeAndroidNotificationOpen.lower(value)
+}
+
+
+public struct AndroidTranscriptAnchor: Equatable, Hashable {
+    public var row: UInt64
+    public var inside: Float
+    public var following: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(row: UInt64, inside: Float, following: Bool) {
+        self.row = row
+        self.inside = inside
+        self.following = following
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AndroidTranscriptAnchor: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidTranscriptAnchor: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidTranscriptAnchor {
+        return
+            try AndroidTranscriptAnchor(
+                row: FfiConverterUInt64.read(from: &buf), 
+                inside: FfiConverterFloat.read(from: &buf), 
+                following: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AndroidTranscriptAnchor, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.row, into: &buf)
+        FfiConverterFloat.write(value.inside, into: &buf)
+        FfiConverterBool.write(value.following, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidTranscriptAnchor_lift(_ buf: RustBuffer) throws -> AndroidTranscriptAnchor {
+    return try FfiConverterTypeAndroidTranscriptAnchor.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidTranscriptAnchor_lower(_ value: AndroidTranscriptAnchor) -> RustBuffer {
+    return FfiConverterTypeAndroidTranscriptAnchor.lower(value)
+}
+
+
+public struct AndroidVoiceSettings {
+    public var generation: UInt64
+    public var picker: CoreVoiceAgent
+    public var usage: CoreVoiceUsage
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(generation: UInt64, picker: CoreVoiceAgent, usage: CoreVoiceUsage) {
+        self.generation = generation
+        self.picker = picker
+        self.usage = usage
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AndroidVoiceSettings: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidVoiceSettings: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidVoiceSettings {
+        return
+            try AndroidVoiceSettings(
+                generation: FfiConverterUInt64.read(from: &buf), 
+                picker: FfiConverterTypeCoreVoiceAgent.read(from: &buf), 
+                usage: FfiConverterTypeCoreVoiceUsage.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AndroidVoiceSettings, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.generation, into: &buf)
+        FfiConverterTypeCoreVoiceAgent.write(value.picker, into: &buf)
+        FfiConverterTypeCoreVoiceUsage.write(value.usage, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidVoiceSettings_lift(_ buf: RustBuffer) throws -> AndroidVoiceSettings {
+    return try FfiConverterTypeAndroidVoiceSettings.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidVoiceSettings_lower(_ value: AndroidVoiceSettings) -> RustBuffer {
+    return FfiConverterTypeAndroidVoiceSettings.lower(value)
+}
+
+
+public struct AndroidWalletFrame: Equatable, Hashable {
+    public var json: Data
+    public var secure: Bool
+    public var authentication: RecoveryAuthentication?
+    public var clipboard: RecoveryClipboard?
+    public var redactAfterMs: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(json: Data, secure: Bool, authentication: RecoveryAuthentication?, clipboard: RecoveryClipboard?, redactAfterMs: UInt32?) {
+        self.json = json
+        self.secure = secure
+        self.authentication = authentication
+        self.clipboard = clipboard
+        self.redactAfterMs = redactAfterMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AndroidWalletFrame: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidWalletFrame: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidWalletFrame {
+        return
+            try AndroidWalletFrame(
+                json: FfiConverterData.read(from: &buf), 
+                secure: FfiConverterBool.read(from: &buf), 
+                authentication: FfiConverterOptionTypeRecoveryAuthentication.read(from: &buf), 
+                clipboard: FfiConverterOptionTypeRecoveryClipboard.read(from: &buf), 
+                redactAfterMs: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AndroidWalletFrame, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.json, into: &buf)
+        FfiConverterBool.write(value.secure, into: &buf)
+        FfiConverterOptionTypeRecoveryAuthentication.write(value.authentication, into: &buf)
+        FfiConverterOptionTypeRecoveryClipboard.write(value.clipboard, into: &buf)
+        FfiConverterOptionUInt32.write(value.redactAfterMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidWalletFrame_lift(_ buf: RustBuffer) throws -> AndroidWalletFrame {
+    return try FfiConverterTypeAndroidWalletFrame.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidWalletFrame_lower(_ value: AndroidWalletFrame) -> RustBuffer {
+    return FfiConverterTypeAndroidWalletFrame.lower(value)
 }
 
 
@@ -13052,6 +19380,118 @@ public func FfiConverterTypeDeviceView_lower(_ value: DeviceView) -> RustBuffer 
 }
 
 
+public struct DrawerPinHints: Equatable, Hashable {
+    public var id: String
+    public var earlier: DrawerPinMove?
+    public var later: DrawerPinMove?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, earlier: DrawerPinMove?, later: DrawerPinMove?) {
+        self.id = id
+        self.earlier = earlier
+        self.later = later
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DrawerPinHints: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDrawerPinHints: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DrawerPinHints {
+        return
+            try DrawerPinHints(
+                id: FfiConverterString.read(from: &buf), 
+                earlier: FfiConverterOptionTypeDrawerPinMove.read(from: &buf), 
+                later: FfiConverterOptionTypeDrawerPinMove.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DrawerPinHints, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterOptionTypeDrawerPinMove.write(value.earlier, into: &buf)
+        FfiConverterOptionTypeDrawerPinMove.write(value.later, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDrawerPinHints_lift(_ buf: RustBuffer) throws -> DrawerPinHints {
+    return try FfiConverterTypeDrawerPinHints.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDrawerPinHints_lower(_ value: DrawerPinHints) -> RustBuffer {
+    return FfiConverterTypeDrawerPinHints.lower(value)
+}
+
+
+public struct DrawerPinMove: Equatable, Hashable {
+    public var after: String?
+    public var before: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(after: String?, before: String?) {
+        self.after = after
+        self.before = before
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension DrawerPinMove: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeDrawerPinMove: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> DrawerPinMove {
+        return
+            try DrawerPinMove(
+                after: FfiConverterOptionString.read(from: &buf), 
+                before: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: DrawerPinMove, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.after, into: &buf)
+        FfiConverterOptionString.write(value.before, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDrawerPinMove_lift(_ buf: RustBuffer) throws -> DrawerPinMove {
+    return try FfiConverterTypeDrawerPinMove.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeDrawerPinMove_lower(_ value: DrawerPinMove) -> RustBuffer {
+    return FfiConverterTypeDrawerPinMove.lower(value)
+}
+
+
 public struct FaceData: Equatable, Hashable {
     public var role: FaceRole
     public var bytes: Data
@@ -13882,6 +20322,72 @@ public func FfiConverterTypeInputRequest_lower(_ value: InputRequest) -> RustBuf
 }
 
 
+public struct LabActionsFrame: Equatable, Hashable {
+    public var instance: String
+    public var card: String
+    public var needsPlaybackPosition: Bool
+    public var json: Data
+    public var closed: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(instance: String, card: String, needsPlaybackPosition: Bool, json: Data, closed: Bool) {
+        self.instance = instance
+        self.card = card
+        self.needsPlaybackPosition = needsPlaybackPosition
+        self.json = json
+        self.closed = closed
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LabActionsFrame: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLabActionsFrame: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LabActionsFrame {
+        return
+            try LabActionsFrame(
+                instance: FfiConverterString.read(from: &buf), 
+                card: FfiConverterString.read(from: &buf), 
+                needsPlaybackPosition: FfiConverterBool.read(from: &buf), 
+                json: FfiConverterData.read(from: &buf), 
+                closed: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LabActionsFrame, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.instance, into: &buf)
+        FfiConverterString.write(value.card, into: &buf)
+        FfiConverterBool.write(value.needsPlaybackPosition, into: &buf)
+        FfiConverterData.write(value.json, into: &buf)
+        FfiConverterBool.write(value.closed, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabActionsFrame_lift(_ buf: RustBuffer) throws -> LabActionsFrame {
+    return try FfiConverterTypeLabActionsFrame.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabActionsFrame_lower(_ value: LabActionsFrame) -> RustBuffer {
+    return FfiConverterTypeLabActionsFrame.lower(value)
+}
+
+
 /**
  * What a Lab card's media cell draws, as artifact ids the cell passes to
  * `lab_media`.
@@ -14005,6 +20511,114 @@ public func FfiConverterTypeLabCardFiles_lift(_ buf: RustBuffer) throws -> LabCa
 #endif
 public func FfiConverterTypeLabCardFiles_lower(_ value: LabCardFiles) -> RustBuffer {
     return FfiConverterTypeLabCardFiles.lower(value)
+}
+
+
+public struct LabCardProjection: Equatable, Hashable {
+    public var json: Data
+    public var surfaces: [LabSurfaceRegistration]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(json: Data, surfaces: [LabSurfaceRegistration]) {
+        self.json = json
+        self.surfaces = surfaces
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LabCardProjection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLabCardProjection: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LabCardProjection {
+        return
+            try LabCardProjection(
+                json: FfiConverterData.read(from: &buf), 
+                surfaces: FfiConverterSequenceTypeLabSurfaceRegistration.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LabCardProjection, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.json, into: &buf)
+        FfiConverterSequenceTypeLabSurfaceRegistration.write(value.surfaces, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabCardProjection_lift(_ buf: RustBuffer) throws -> LabCardProjection {
+    return try FfiConverterTypeLabCardProjection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabCardProjection_lower(_ value: LabCardProjection) -> RustBuffer {
+    return FfiConverterTypeLabCardProjection.lower(value)
+}
+
+
+public struct LabSurfaceRegistration: Equatable, Hashable {
+    public var resource: String
+    public var files: LabCardFiles
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(resource: String, files: LabCardFiles) {
+        self.resource = resource
+        self.files = files
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LabSurfaceRegistration: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLabSurfaceRegistration: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LabSurfaceRegistration {
+        return
+            try LabSurfaceRegistration(
+                resource: FfiConverterString.read(from: &buf), 
+                files: FfiConverterTypeLabCardFiles.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LabSurfaceRegistration, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.resource, into: &buf)
+        FfiConverterTypeLabCardFiles.write(value.files, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabSurfaceRegistration_lift(_ buf: RustBuffer) throws -> LabSurfaceRegistration {
+    return try FfiConverterTypeLabSurfaceRegistration.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabSurfaceRegistration_lower(_ value: LabSurfaceRegistration) -> RustBuffer {
+    return FfiConverterTypeLabSurfaceRegistration.lower(value)
 }
 
 
@@ -15016,6 +21630,128 @@ public func FfiConverterTypePendingSend_lower(_ value: PendingSend) -> RustBuffe
 }
 
 
+/**
+ * A server-checked invitation preview for the currently signed-in account.
+ */
+public struct ProjectInvitationPreview: Equatable, Hashable {
+    public var projectName: String
+    public var role: String
+    public var expiresAt: String
+    public var alreadyMember: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(projectName: String, role: String, expiresAt: String, alreadyMember: Bool) {
+        self.projectName = projectName
+        self.role = role
+        self.expiresAt = expiresAt
+        self.alreadyMember = alreadyMember
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ProjectInvitationPreview: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProjectInvitationPreview: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProjectInvitationPreview {
+        return
+            try ProjectInvitationPreview(
+                projectName: FfiConverterString.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf), 
+                expiresAt: FfiConverterString.read(from: &buf), 
+                alreadyMember: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ProjectInvitationPreview, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.projectName, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+        FfiConverterString.write(value.expiresAt, into: &buf)
+        FfiConverterBool.write(value.alreadyMember, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProjectInvitationPreview_lift(_ buf: RustBuffer) throws -> ProjectInvitationPreview {
+    return try FfiConverterTypeProjectInvitationPreview.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProjectInvitationPreview_lower(_ value: ProjectInvitationPreview) -> RustBuffer {
+    return FfiConverterTypeProjectInvitationPreview.lower(value)
+}
+
+
+/**
+ * Text Android can pass to the system share chooser for a project invitation.
+ */
+public struct ProjectInvitationShare: Equatable, Hashable {
+    public var title: String
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(title: String, text: String) {
+        self.title = title
+        self.text = text
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ProjectInvitationShare: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeProjectInvitationShare: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ProjectInvitationShare {
+        return
+            try ProjectInvitationShare(
+                title: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ProjectInvitationShare, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProjectInvitationShare_lift(_ buf: RustBuffer) throws -> ProjectInvitationShare {
+    return try FfiConverterTypeProjectInvitationShare.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeProjectInvitationShare_lower(_ value: ProjectInvitationShare) -> RustBuffer {
+    return FfiConverterTypeProjectInvitationShare.lower(value)
+}
+
+
 public struct ProjectRef: Equatable, Hashable {
     public var id: String
     public var name: String
@@ -15579,6 +22315,191 @@ public func FfiConverterTypeQueueItem_lower(_ value: QueueItem) -> RustBuffer {
 }
 
 
+public struct RecoveryAuthentication: Equatable, Hashable {
+    public var token: UInt64
+    public var title: String
+    public var description: String
+    public var timeoutMs: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(token: UInt64, title: String, description: String, timeoutMs: UInt32) {
+        self.token = token
+        self.title = title
+        self.description = description
+        self.timeoutMs = timeoutMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RecoveryAuthentication: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRecoveryAuthentication: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RecoveryAuthentication {
+        return
+            try RecoveryAuthentication(
+                token: FfiConverterUInt64.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                description: FfiConverterString.read(from: &buf), 
+                timeoutMs: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RecoveryAuthentication, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.token, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.description, into: &buf)
+        FfiConverterUInt32.write(value.timeoutMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecoveryAuthentication_lift(_ buf: RustBuffer) throws -> RecoveryAuthentication {
+    return try FfiConverterTypeRecoveryAuthentication.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecoveryAuthentication_lower(_ value: RecoveryAuthentication) -> RustBuffer {
+    return FfiConverterTypeRecoveryAuthentication.lower(value)
+}
+
+
+/**
+ * Only an explicit Copy activation returns this value. It is never kept in a view or frame cache.
+ */
+public struct RecoveryClipboard: Equatable, Hashable {
+    public var text: String
+    public var clearAfterMs: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, clearAfterMs: UInt32) {
+        self.text = text
+        self.clearAfterMs = clearAfterMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RecoveryClipboard: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRecoveryClipboard: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RecoveryClipboard {
+        return
+            try RecoveryClipboard(
+                text: FfiConverterString.read(from: &buf), 
+                clearAfterMs: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RecoveryClipboard, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterUInt32.write(value.clearAfterMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecoveryClipboard_lift(_ buf: RustBuffer) throws -> RecoveryClipboard {
+    return try FfiConverterTypeRecoveryClipboard.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecoveryClipboard_lower(_ value: RecoveryClipboard) -> RustBuffer {
+    return FfiConverterTypeRecoveryClipboard.lower(value)
+}
+
+
+public struct RecoveryFrame: Equatable, Hashable {
+    public var json: Data
+    public var secure: Bool
+    public var authentication: RecoveryAuthentication?
+    public var openChat: Bool
+    public var clipboard: RecoveryClipboard?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(json: Data, secure: Bool, authentication: RecoveryAuthentication?, openChat: Bool, clipboard: RecoveryClipboard?) {
+        self.json = json
+        self.secure = secure
+        self.authentication = authentication
+        self.openChat = openChat
+        self.clipboard = clipboard
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RecoveryFrame: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRecoveryFrame: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RecoveryFrame {
+        return
+            try RecoveryFrame(
+                json: FfiConverterData.read(from: &buf), 
+                secure: FfiConverterBool.read(from: &buf), 
+                authentication: FfiConverterOptionTypeRecoveryAuthentication.read(from: &buf), 
+                openChat: FfiConverterBool.read(from: &buf), 
+                clipboard: FfiConverterOptionTypeRecoveryClipboard.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RecoveryFrame, into buf: inout [UInt8]) {
+        FfiConverterData.write(value.json, into: &buf)
+        FfiConverterBool.write(value.secure, into: &buf)
+        FfiConverterOptionTypeRecoveryAuthentication.write(value.authentication, into: &buf)
+        FfiConverterBool.write(value.openChat, into: &buf)
+        FfiConverterOptionTypeRecoveryClipboard.write(value.clipboard, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecoveryFrame_lift(_ buf: RustBuffer) throws -> RecoveryFrame {
+    return try FfiConverterTypeRecoveryFrame.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRecoveryFrame_lower(_ value: RecoveryFrame) -> RustBuffer {
+    return FfiConverterTypeRecoveryFrame.lower(value)
+}
+
+
 public struct RepoRef: Equatable, Hashable {
     public var name: String
     /**
@@ -15646,6 +22567,82 @@ public func FfiConverterTypeRepoRef_lift(_ buf: RustBuffer) throws -> RepoRef {
 #endif
 public func FfiConverterTypeRepoRef_lower(_ value: RepoRef) -> RustBuffer {
     return FfiConverterTypeRepoRef.lower(value)
+}
+
+
+/**
+ * A text range's reveal age, indexed into one original shaped text run.
+ *
+ * `start` and `len` are absolute UTF-16 offsets in [`RowDisplay::text`].
+ * Slices cover the indexed run in order and do not change its shaping.
+ */
+public struct RevealSlice: Equatable, Hashable {
+    public var runIndex: UInt32
+    public var start: UInt32
+    public var len: UInt32
+    /**
+     * Fade-in start in ms since the row's Rust monotonic reveal clock.
+     * `None` means fully visible.
+     */
+    public var revealMs: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(runIndex: UInt32, start: UInt32, len: UInt32, 
+        /**
+         * Fade-in start in ms since the row's Rust monotonic reveal clock.
+         * `None` means fully visible.
+         */revealMs: UInt32?) {
+        self.runIndex = runIndex
+        self.start = start
+        self.len = len
+        self.revealMs = revealMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension RevealSlice: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRevealSlice: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RevealSlice {
+        return
+            try RevealSlice(
+                runIndex: FfiConverterUInt32.read(from: &buf), 
+                start: FfiConverterUInt32.read(from: &buf), 
+                len: FfiConverterUInt32.read(from: &buf), 
+                revealMs: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: RevealSlice, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.runIndex, into: &buf)
+        FfiConverterUInt32.write(value.start, into: &buf)
+        FfiConverterUInt32.write(value.len, into: &buf)
+        FfiConverterOptionUInt32.write(value.revealMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRevealSlice_lift(_ buf: RustBuffer) throws -> RevealSlice {
+    return try FfiConverterTypeRevealSlice.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRevealSlice_lower(_ value: RevealSlice) -> RustBuffer {
+    return FfiConverterTypeRevealSlice.lower(value)
 }
 
 
@@ -15794,16 +22791,34 @@ public struct RowDisplay: Equatable, Hashable {
     public var widgets: [Widget]
     public var fades: [Fade]
     /**
+     * Age of the row's Rust monotonic reveal clock when this display was
+     * built. Painters may advance this value with their own monotonic clock;
+     * the two clocks do not need to share an origin.
+     */
+    public var revealAgeMs: UInt32?
+    /**
      * Plain text for copy / accessibility.
      */
     public var copyText: String
+    /**
+     * Ages follow grapheme-aligned ranges; slices follow existing runs and do not alter shaping.
+     */
+    public var revealSlices: [RevealSlice]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(key: UInt64, version: UInt64, width: Float, height: Float, text: String, runs: [TextRun], boxes: [BoxPrim], links: [LinkHit], scrollers: [Scroller], widgets: [Widget], fades: [Fade], 
         /**
+         * Age of the row's Rust monotonic reveal clock when this display was
+         * built. Painters may advance this value with their own monotonic clock;
+         * the two clocks do not need to share an origin.
+         */revealAgeMs: UInt32?, 
+        /**
          * Plain text for copy / accessibility.
-         */copyText: String) {
+         */copyText: String, 
+        /**
+         * Ages follow grapheme-aligned ranges; slices follow existing runs and do not alter shaping.
+         */revealSlices: [RevealSlice]) {
         self.key = key
         self.version = version
         self.width = width
@@ -15815,7 +22830,9 @@ public struct RowDisplay: Equatable, Hashable {
         self.scrollers = scrollers
         self.widgets = widgets
         self.fades = fades
+        self.revealAgeMs = revealAgeMs
         self.copyText = copyText
+        self.revealSlices = revealSlices
     }
 
     
@@ -15845,7 +22862,9 @@ public struct FfiConverterTypeRowDisplay: FfiConverterRustBuffer {
                 scrollers: FfiConverterSequenceTypeScroller.read(from: &buf), 
                 widgets: FfiConverterSequenceTypeWidget.read(from: &buf), 
                 fades: FfiConverterSequenceTypeFade.read(from: &buf), 
-                copyText: FfiConverterString.read(from: &buf)
+                revealAgeMs: FfiConverterOptionUInt32.read(from: &buf), 
+                copyText: FfiConverterString.read(from: &buf), 
+                revealSlices: FfiConverterSequenceTypeRevealSlice.read(from: &buf)
         )
     }
 
@@ -15861,7 +22880,9 @@ public struct FfiConverterTypeRowDisplay: FfiConverterRustBuffer {
         FfiConverterSequenceTypeScroller.write(value.scrollers, into: &buf)
         FfiConverterSequenceTypeWidget.write(value.widgets, into: &buf)
         FfiConverterSequenceTypeFade.write(value.fades, into: &buf)
+        FfiConverterOptionUInt32.write(value.revealAgeMs, into: &buf)
         FfiConverterString.write(value.copyText, into: &buf)
+        FfiConverterSequenceTypeRevealSlice.write(value.revealSlices, into: &buf)
     }
 }
 
@@ -16023,14 +23044,44 @@ public struct SavedChatRow: Equatable, Hashable {
     public var title: String
     public var subtitle: String
     public var group: String
+    public var pinned: Bool
+    public var archived: Bool
+    /**
+     * Shared-project rows remain read-only; the server authorizes every write.
+     */
+    public var canFile: Bool
+    public var projectId: String?
+    /**
+     * Saved conversations do not publish these live-session fields.
+     */
+    public var agentName: String?
+    public var indicator: ChatIndicator?
+    public var unseen: Bool?
+    public var moveEarlier: SavedPinMove?
+    public var moveLater: SavedPinMove?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, title: String, subtitle: String, group: String) {
+    public init(id: String, title: String, subtitle: String, group: String, pinned: Bool, archived: Bool, 
+        /**
+         * Shared-project rows remain read-only; the server authorizes every write.
+         */canFile: Bool, projectId: String?, 
+        /**
+         * Saved conversations do not publish these live-session fields.
+         */agentName: String?, indicator: ChatIndicator?, unseen: Bool?, moveEarlier: SavedPinMove?, moveLater: SavedPinMove?) {
         self.id = id
         self.title = title
         self.subtitle = subtitle
         self.group = group
+        self.pinned = pinned
+        self.archived = archived
+        self.canFile = canFile
+        self.projectId = projectId
+        self.agentName = agentName
+        self.indicator = indicator
+        self.unseen = unseen
+        self.moveEarlier = moveEarlier
+        self.moveLater = moveLater
     }
 
     
@@ -16052,7 +23103,16 @@ public struct FfiConverterTypeSavedChatRow: FfiConverterRustBuffer {
                 id: FfiConverterString.read(from: &buf), 
                 title: FfiConverterString.read(from: &buf), 
                 subtitle: FfiConverterString.read(from: &buf), 
-                group: FfiConverterString.read(from: &buf)
+                group: FfiConverterString.read(from: &buf), 
+                pinned: FfiConverterBool.read(from: &buf), 
+                archived: FfiConverterBool.read(from: &buf), 
+                canFile: FfiConverterBool.read(from: &buf), 
+                projectId: FfiConverterOptionString.read(from: &buf), 
+                agentName: FfiConverterOptionString.read(from: &buf), 
+                indicator: FfiConverterOptionTypeChatIndicator.read(from: &buf), 
+                unseen: FfiConverterOptionBool.read(from: &buf), 
+                moveEarlier: FfiConverterOptionTypeSavedPinMove.read(from: &buf), 
+                moveLater: FfiConverterOptionTypeSavedPinMove.read(from: &buf)
         )
     }
 
@@ -16061,6 +23121,15 @@ public struct FfiConverterTypeSavedChatRow: FfiConverterRustBuffer {
         FfiConverterString.write(value.title, into: &buf)
         FfiConverterString.write(value.subtitle, into: &buf)
         FfiConverterString.write(value.group, into: &buf)
+        FfiConverterBool.write(value.pinned, into: &buf)
+        FfiConverterBool.write(value.archived, into: &buf)
+        FfiConverterBool.write(value.canFile, into: &buf)
+        FfiConverterOptionString.write(value.projectId, into: &buf)
+        FfiConverterOptionString.write(value.agentName, into: &buf)
+        FfiConverterOptionTypeChatIndicator.write(value.indicator, into: &buf)
+        FfiConverterOptionBool.write(value.unseen, into: &buf)
+        FfiConverterOptionTypeSavedPinMove.write(value.moveEarlier, into: &buf)
+        FfiConverterOptionTypeSavedPinMove.write(value.moveLater, into: &buf)
     }
 }
 
@@ -16197,7 +23266,11 @@ public struct SavedHistorySnapshot: Equatable, Hashable {
     public var loginRequired: Bool
     public var archived: Bool
     public var project: String?
+    public var query: String
+    public var pinOrder: SavedPinOrder?
+    public var pinOrderState: SavedLoadState
     public var rows: [SavedChatRow]
+    public var sessions: [SavedIndexedRow]
     public var projects: [SavedProjectRow]
     public var hasMore: Bool
     public var moreProjects: Bool
@@ -16207,12 +23280,16 @@ public struct SavedHistorySnapshot: Equatable, Hashable {
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(signedIn: Bool, loginRequired: Bool, archived: Bool, project: String?, rows: [SavedChatRow], projects: [SavedProjectRow], hasMore: Bool, moreProjects: Bool, state: SavedLoadState, projectsState: SavedLoadState, transcript: SavedTranscript) {
+    public init(signedIn: Bool, loginRequired: Bool, archived: Bool, project: String?, query: String, pinOrder: SavedPinOrder?, pinOrderState: SavedLoadState, rows: [SavedChatRow], sessions: [SavedIndexedRow], projects: [SavedProjectRow], hasMore: Bool, moreProjects: Bool, state: SavedLoadState, projectsState: SavedLoadState, transcript: SavedTranscript) {
         self.signedIn = signedIn
         self.loginRequired = loginRequired
         self.archived = archived
         self.project = project
+        self.query = query
+        self.pinOrder = pinOrder
+        self.pinOrderState = pinOrderState
         self.rows = rows
+        self.sessions = sessions
         self.projects = projects
         self.hasMore = hasMore
         self.moreProjects = moreProjects
@@ -16241,7 +23318,11 @@ public struct FfiConverterTypeSavedHistorySnapshot: FfiConverterRustBuffer {
                 loginRequired: FfiConverterBool.read(from: &buf), 
                 archived: FfiConverterBool.read(from: &buf), 
                 project: FfiConverterOptionString.read(from: &buf), 
+                query: FfiConverterString.read(from: &buf), 
+                pinOrder: FfiConverterOptionTypeSavedPinOrder.read(from: &buf), 
+                pinOrderState: FfiConverterTypeSavedLoadState.read(from: &buf), 
                 rows: FfiConverterSequenceTypeSavedChatRow.read(from: &buf), 
+                sessions: FfiConverterSequenceTypeSavedIndexedRow.read(from: &buf), 
                 projects: FfiConverterSequenceTypeSavedProjectRow.read(from: &buf), 
                 hasMore: FfiConverterBool.read(from: &buf), 
                 moreProjects: FfiConverterBool.read(from: &buf), 
@@ -16256,7 +23337,11 @@ public struct FfiConverterTypeSavedHistorySnapshot: FfiConverterRustBuffer {
         FfiConverterBool.write(value.loginRequired, into: &buf)
         FfiConverterBool.write(value.archived, into: &buf)
         FfiConverterOptionString.write(value.project, into: &buf)
+        FfiConverterString.write(value.query, into: &buf)
+        FfiConverterOptionTypeSavedPinOrder.write(value.pinOrder, into: &buf)
+        FfiConverterTypeSavedLoadState.write(value.pinOrderState, into: &buf)
         FfiConverterSequenceTypeSavedChatRow.write(value.rows, into: &buf)
+        FfiConverterSequenceTypeSavedIndexedRow.write(value.sessions, into: &buf)
         FfiConverterSequenceTypeSavedProjectRow.write(value.projects, into: &buf)
         FfiConverterBool.write(value.hasMore, into: &buf)
         FfiConverterBool.write(value.moreProjects, into: &buf)
@@ -16279,6 +23364,156 @@ public func FfiConverterTypeSavedHistorySnapshot_lift(_ buf: RustBuffer) throws 
 #endif
 public func FfiConverterTypeSavedHistorySnapshot_lower(_ value: SavedHistorySnapshot) -> RustBuffer {
     return FfiConverterTypeSavedHistorySnapshot.lower(value)
+}
+
+
+public struct SavedIndexedRow: Equatable, Hashable {
+    public var key: String
+    public var id: String
+    public var deviceId: String
+    public var title: String
+    public var subtitle: String
+    public var projectId: String?
+    public var agentName: String?
+    public var status: String?
+    public var unseen: Bool?
+    public var online: Bool
+    public var activityRevision: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(key: String, id: String, deviceId: String, title: String, subtitle: String, projectId: String?, agentName: String?, status: String?, unseen: Bool?, online: Bool, activityRevision: String?) {
+        self.key = key
+        self.id = id
+        self.deviceId = deviceId
+        self.title = title
+        self.subtitle = subtitle
+        self.projectId = projectId
+        self.agentName = agentName
+        self.status = status
+        self.unseen = unseen
+        self.online = online
+        self.activityRevision = activityRevision
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedIndexedRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedIndexedRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedIndexedRow {
+        return
+            try SavedIndexedRow(
+                key: FfiConverterString.read(from: &buf), 
+                id: FfiConverterString.read(from: &buf), 
+                deviceId: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                subtitle: FfiConverterString.read(from: &buf), 
+                projectId: FfiConverterOptionString.read(from: &buf), 
+                agentName: FfiConverterOptionString.read(from: &buf), 
+                status: FfiConverterOptionString.read(from: &buf), 
+                unseen: FfiConverterOptionBool.read(from: &buf), 
+                online: FfiConverterBool.read(from: &buf), 
+                activityRevision: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedIndexedRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.key, into: &buf)
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.deviceId, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.subtitle, into: &buf)
+        FfiConverterOptionString.write(value.projectId, into: &buf)
+        FfiConverterOptionString.write(value.agentName, into: &buf)
+        FfiConverterOptionString.write(value.status, into: &buf)
+        FfiConverterOptionBool.write(value.unseen, into: &buf)
+        FfiConverterBool.write(value.online, into: &buf)
+        FfiConverterOptionString.write(value.activityRevision, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedIndexedRow_lift(_ buf: RustBuffer) throws -> SavedIndexedRow {
+    return try FfiConverterTypeSavedIndexedRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedIndexedRow_lower(_ value: SavedIndexedRow) -> RustBuffer {
+    return FfiConverterTypeSavedIndexedRow.lower(value)
+}
+
+
+public struct SavedIndexedTranscript: Equatable, Hashable {
+    public var row: SavedIndexedRow
+    /**
+     * None means no authorized transcript copy is currently available.
+     */
+    public var messages: [SavedMessagePart]?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(row: SavedIndexedRow, 
+        /**
+         * None means no authorized transcript copy is currently available.
+         */messages: [SavedMessagePart]?) {
+        self.row = row
+        self.messages = messages
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedIndexedTranscript: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedIndexedTranscript: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedIndexedTranscript {
+        return
+            try SavedIndexedTranscript(
+                row: FfiConverterTypeSavedIndexedRow.read(from: &buf), 
+                messages: FfiConverterOptionSequenceTypeSavedMessagePart.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedIndexedTranscript, into buf: inout [UInt8]) {
+        FfiConverterTypeSavedIndexedRow.write(value.row, into: &buf)
+        FfiConverterOptionSequenceTypeSavedMessagePart.write(value.messages, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedIndexedTranscript_lift(_ buf: RustBuffer) throws -> SavedIndexedTranscript {
+    return try FfiConverterTypeSavedIndexedTranscript.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedIndexedTranscript_lower(_ value: SavedIndexedTranscript) -> RustBuffer {
+    return FfiConverterTypeSavedIndexedTranscript.lower(value)
 }
 
 
@@ -16403,6 +23638,118 @@ public func FfiConverterTypeSavedMessageRow_lift(_ buf: RustBuffer) throws -> Sa
 #endif
 public func FfiConverterTypeSavedMessageRow_lower(_ value: SavedMessageRow) -> RustBuffer {
     return FfiConverterTypeSavedMessageRow.lower(value)
+}
+
+
+public struct SavedPinMove: Equatable, Hashable {
+    public var revision: UInt64
+    public var after: String?
+    public var before: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(revision: UInt64, after: String?, before: String?) {
+        self.revision = revision
+        self.after = after
+        self.before = before
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedPinMove: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedPinMove: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedPinMove {
+        return
+            try SavedPinMove(
+                revision: FfiConverterUInt64.read(from: &buf), 
+                after: FfiConverterOptionString.read(from: &buf), 
+                before: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedPinMove, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterOptionString.write(value.after, into: &buf)
+        FfiConverterOptionString.write(value.before, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedPinMove_lift(_ buf: RustBuffer) throws -> SavedPinMove {
+    return try FfiConverterTypeSavedPinMove.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedPinMove_lower(_ value: SavedPinMove) -> RustBuffer {
+    return FfiConverterTypeSavedPinMove.lower(value)
+}
+
+
+public struct SavedPinOrder: Equatable, Hashable {
+    public var revision: UInt64
+    public var ids: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(revision: UInt64, ids: [String]) {
+        self.revision = revision
+        self.ids = ids
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SavedPinOrder: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedPinOrder: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedPinOrder {
+        return
+            try SavedPinOrder(
+                revision: FfiConverterUInt64.read(from: &buf), 
+                ids: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SavedPinOrder, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.revision, into: &buf)
+        FfiConverterSequenceString.write(value.ids, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedPinOrder_lift(_ buf: RustBuffer) throws -> SavedPinOrder {
+    return try FfiConverterTypeSavedPinOrder.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedPinOrder_lower(_ value: SavedPinOrder) -> RustBuffer {
+    return FfiConverterTypeSavedPinOrder.lower(value)
 }
 
 
@@ -17140,6 +24487,204 @@ public func FfiConverterTypeSessionRow_lower(_ value: SessionRow) -> RustBuffer 
 }
 
 
+public struct SettingsCapabilities: Equatable, Hashable {
+    public var appearance: Bool
+    public var wallpaperPicker: Bool
+    public var pairing: Bool
+    public var cloud: Bool
+    public var archive: Bool
+    public var projectSharing: Bool
+    public var wallet: Bool
+    public var notificationSettings: Bool
+    public var shareChooser: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(appearance: Bool, wallpaperPicker: Bool, pairing: Bool, cloud: Bool, archive: Bool, projectSharing: Bool, wallet: Bool, notificationSettings: Bool, shareChooser: Bool) {
+        self.appearance = appearance
+        self.wallpaperPicker = wallpaperPicker
+        self.pairing = pairing
+        self.cloud = cloud
+        self.archive = archive
+        self.projectSharing = projectSharing
+        self.wallet = wallet
+        self.notificationSettings = notificationSettings
+        self.shareChooser = shareChooser
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SettingsCapabilities: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSettingsCapabilities: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SettingsCapabilities {
+        return
+            try SettingsCapabilities(
+                appearance: FfiConverterBool.read(from: &buf), 
+                wallpaperPicker: FfiConverterBool.read(from: &buf), 
+                pairing: FfiConverterBool.read(from: &buf), 
+                cloud: FfiConverterBool.read(from: &buf), 
+                archive: FfiConverterBool.read(from: &buf), 
+                projectSharing: FfiConverterBool.read(from: &buf), 
+                wallet: FfiConverterBool.read(from: &buf), 
+                notificationSettings: FfiConverterBool.read(from: &buf), 
+                shareChooser: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SettingsCapabilities, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.appearance, into: &buf)
+        FfiConverterBool.write(value.wallpaperPicker, into: &buf)
+        FfiConverterBool.write(value.pairing, into: &buf)
+        FfiConverterBool.write(value.cloud, into: &buf)
+        FfiConverterBool.write(value.archive, into: &buf)
+        FfiConverterBool.write(value.projectSharing, into: &buf)
+        FfiConverterBool.write(value.wallet, into: &buf)
+        FfiConverterBool.write(value.notificationSettings, into: &buf)
+        FfiConverterBool.write(value.shareChooser, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsCapabilities_lift(_ buf: RustBuffer) throws -> SettingsCapabilities {
+    return try FfiConverterTypeSettingsCapabilities.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsCapabilities_lower(_ value: SettingsCapabilities) -> RustBuffer {
+    return FfiConverterTypeSettingsCapabilities.lower(value)
+}
+
+
+public struct SettingsPreferences: Equatable, Hashable {
+    public var schema: UInt32
+    public var appearance: SettingsAppearance
+    public var wallpaper: SettingsWallpaper?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(schema: UInt32, appearance: SettingsAppearance, wallpaper: SettingsWallpaper?) {
+        self.schema = schema
+        self.appearance = appearance
+        self.wallpaper = wallpaper
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SettingsPreferences: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSettingsPreferences: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SettingsPreferences {
+        return
+            try SettingsPreferences(
+                schema: FfiConverterUInt32.read(from: &buf), 
+                appearance: FfiConverterTypeSettingsAppearance.read(from: &buf), 
+                wallpaper: FfiConverterOptionTypeSettingsWallpaper.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SettingsPreferences, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.schema, into: &buf)
+        FfiConverterTypeSettingsAppearance.write(value.appearance, into: &buf)
+        FfiConverterOptionTypeSettingsWallpaper.write(value.wallpaper, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsPreferences_lift(_ buf: RustBuffer) throws -> SettingsPreferences {
+    return try FfiConverterTypeSettingsPreferences.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsPreferences_lower(_ value: SettingsPreferences) -> RustBuffer {
+    return FfiConverterTypeSettingsPreferences.lower(value)
+}
+
+
+public struct SettingsWallpaper: Equatable, Hashable {
+    public var uri: String
+    public var name: String
+    public var effect: SettingsWallpaperEffect
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(uri: String, name: String, effect: SettingsWallpaperEffect) {
+        self.uri = uri
+        self.name = name
+        self.effect = effect
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SettingsWallpaper: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSettingsWallpaper: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SettingsWallpaper {
+        return
+            try SettingsWallpaper(
+                uri: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                effect: FfiConverterTypeSettingsWallpaperEffect.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SettingsWallpaper, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.uri, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterTypeSettingsWallpaperEffect.write(value.effect, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsWallpaper_lift(_ buf: RustBuffer) throws -> SettingsWallpaper {
+    return try FfiConverterTypeSettingsWallpaper.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsWallpaper_lower(_ value: SettingsWallpaper) -> RustBuffer {
+    return FfiConverterTypeSettingsWallpaper.lower(value)
+}
+
+
 /**
  * A style the platform must be able to draw: `id` → (face, size).
  */
@@ -17292,8 +24837,8 @@ public struct TextRun: Equatable, Hashable {
      */
     public var scroller: UInt32?
     /**
-     * Fade-in start in ms since the row's layout epoch (streaming veil);
-     * `None` = fully visible.
+     * Coarse fade-in age for clients that cannot consume reveal slices.
+     * Android uses [`RowDisplay::reveal_slices`] and paints the full run.
      */
     public var revealMs: UInt32?
 
@@ -17307,8 +24852,8 @@ public struct TextRun: Equatable, Hashable {
          * Index into [`RowDisplay::scrollers`] when the run scrolls horizontally.
          */scroller: UInt32?, 
         /**
-         * Fade-in start in ms since the row's layout epoch (streaming veil);
-         * `None` = fully visible.
+         * Coarse fade-in age for clients that cannot consume reveal slices.
+         * Android uses [`RowDisplay::reveal_slices`] and paints the full run.
          */revealMs: UInt32?) {
         self.start = start
         self.len = len
@@ -18073,6 +25618,71 @@ public func FfiConverterTypeVisualSurface_lower(_ value: VisualSurface) -> RustB
 
 
 /**
+ * Ephemeral audio state owned by the active call and reported by the host OS.
+ */
+public struct VoiceAudioState: Equatable, Hashable {
+    public var route: VoiceAudioRoute
+    public var focus: VoiceAudioFocus
+    public var network: VoiceNetworkState
+    public var proximityNear: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(route: VoiceAudioRoute, focus: VoiceAudioFocus, network: VoiceNetworkState, proximityNear: Bool) {
+        self.route = route
+        self.focus = focus
+        self.network = network
+        self.proximityNear = proximityNear
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension VoiceAudioState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVoiceAudioState: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VoiceAudioState {
+        return
+            try VoiceAudioState(
+                route: FfiConverterTypeVoiceAudioRoute.read(from: &buf), 
+                focus: FfiConverterTypeVoiceAudioFocus.read(from: &buf), 
+                network: FfiConverterTypeVoiceNetworkState.read(from: &buf), 
+                proximityNear: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: VoiceAudioState, into buf: inout [UInt8]) {
+        FfiConverterTypeVoiceAudioRoute.write(value.route, into: &buf)
+        FfiConverterTypeVoiceAudioFocus.write(value.focus, into: &buf)
+        FfiConverterTypeVoiceNetworkState.write(value.network, into: &buf)
+        FfiConverterBool.write(value.proximityNear, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceAudioState_lift(_ buf: RustBuffer) throws -> VoiceAudioState {
+    return try FfiConverterTypeVoiceAudioState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceAudioState_lower(_ value: VoiceAudioState) -> RustBuffer {
+    return FfiConverterTypeVoiceAudioState.lower(value)
+}
+
+
+/**
  * Everything a call screen shows. Ephemeral: never log or persist captions.
  */
 public struct VoiceCallState: Equatable, Hashable {
@@ -18725,6 +26335,72 @@ public func FfiConverterTypeWorktreeSpec_lower(_ value: WorktreeSpec) -> RustBuf
 }
 
 
+
+public enum AccessibilityDirection: Equatable, Hashable {
+    
+    case earlier
+    case later
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AccessibilityDirection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAccessibilityDirection: FfiConverterRustBuffer {
+    typealias SwiftType = AccessibilityDirection
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AccessibilityDirection {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .earlier
+        
+        case 2: return .later
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AccessibilityDirection, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .earlier:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .later:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccessibilityDirection_lift(_ buf: RustBuffer) throws -> AccessibilityDirection {
+    return try FfiConverterTypeAccessibilityDirection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAccessibilityDirection_lower(_ value: AccessibilityDirection) -> RustBuffer {
+    return FfiConverterTypeAccessibilityDirection.lower(value)
+}
+
+
+
 /**
  * What a delete request came to.
  */
@@ -18934,6 +26610,761 @@ public func FfiConverterTypeAccountState_lift(_ buf: RustBuffer) throws -> Accou
 #endif
 public func FfiConverterTypeAccountState_lower(_ value: AccountState) -> RustBuffer {
     return FfiConverterTypeAccountState.lower(value)
+}
+
+
+
+/**
+ * A route recognized by the OpenAgents app-link classifier.
+ */
+
+public enum AndroidAppLinkKind: Equatable, Hashable {
+    
+    case connect
+    case projectInvitation
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AndroidAppLinkKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidAppLinkKind: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidAppLinkKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidAppLinkKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .connect
+        
+        case 2: return .projectInvitation
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AndroidAppLinkKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .connect:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .projectInvitation:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidAppLinkKind_lift(_ buf: RustBuffer) throws -> AndroidAppLinkKind {
+    return try FfiConverterTypeAndroidAppLinkKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidAppLinkKind_lower(_ value: AndroidAppLinkKind) -> RustBuffer {
+    return FfiConverterTypeAndroidAppLinkKind.lower(value)
+}
+
+
+
+/**
+ * A closed route to an existing Rust operation. This selects a flow; it does
+ * not authorize it. The account and server APIs still check the operation.
+ */
+
+public enum AndroidAppLinkOperation: Equatable, Hashable {
+    
+    case pairComputer
+    case reviewWebsiteSignIn
+    case reviewProjectInvitation
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AndroidAppLinkOperation: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidAppLinkOperation: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidAppLinkOperation
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidAppLinkOperation {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .pairComputer
+        
+        case 2: return .reviewWebsiteSignIn
+        
+        case 3: return .reviewProjectInvitation
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AndroidAppLinkOperation, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .pairComputer:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .reviewWebsiteSignIn:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .reviewProjectInvitation:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidAppLinkOperation_lift(_ buf: RustBuffer) throws -> AndroidAppLinkOperation {
+    return try FfiConverterTypeAndroidAppLinkOperation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidAppLinkOperation_lower(_ value: AndroidAppLinkOperation) -> RustBuffer {
+    return FfiConverterTypeAndroidAppLinkOperation.lower(value)
+}
+
+
+
+
+public enum AndroidDemoChat: Equatable, Hashable {
+    
+    case picker
+    case visuals
+    case cjk
+    case veil
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AndroidDemoChat: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidDemoChat: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidDemoChat
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidDemoChat {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .picker
+        
+        case 2: return .visuals
+        
+        case 3: return .cjk
+        
+        case 4: return .veil
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AndroidDemoChat, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .picker:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .visuals:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .cjk:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .veil:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidDemoChat_lift(_ buf: RustBuffer) throws -> AndroidDemoChat {
+    return try FfiConverterTypeAndroidDemoChat.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidDemoChat_lower(_ value: AndroidDemoChat) -> RustBuffer {
+    return FfiConverterTypeAndroidDemoChat.lower(value)
+}
+
+
+
+
+public enum AndroidHostContent: Equatable, Hashable {
+    
+    case cloud
+    case live
+    case saved
+    case indexed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AndroidHostContent: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidHostContent: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidHostContent
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidHostContent {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .cloud
+        
+        case 2: return .live
+        
+        case 3: return .saved
+        
+        case 4: return .indexed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AndroidHostContent, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .cloud:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .live:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .saved:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .indexed:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostContent_lift(_ buf: RustBuffer) throws -> AndroidHostContent {
+    return try FfiConverterTypeAndroidHostContent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostContent_lower(_ value: AndroidHostContent) -> RustBuffer {
+    return FfiConverterTypeAndroidHostContent.lower(value)
+}
+
+
+
+
+public enum AndroidHostRoute: Equatable, Hashable {
+    
+    case chat
+    case sessions
+    case settings
+    case recovery
+    case voice
+    case linkReview
+    case wallet
+    case voiceSettings
+    case sharing
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AndroidHostRoute: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidHostRoute: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidHostRoute
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidHostRoute {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .chat
+        
+        case 2: return .sessions
+        
+        case 3: return .settings
+        
+        case 4: return .recovery
+        
+        case 5: return .voice
+        
+        case 6: return .linkReview
+        
+        case 7: return .wallet
+        
+        case 8: return .voiceSettings
+        
+        case 9: return .sharing
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AndroidHostRoute, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .chat:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .sessions:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .settings:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .recovery:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .voice:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .linkReview:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .wallet:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .voiceSettings:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .sharing:
+            writeInt(&buf, Int32(9))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostRoute_lift(_ buf: RustBuffer) throws -> AndroidHostRoute {
+    return try FfiConverterTypeAndroidHostRoute.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostRoute_lower(_ value: AndroidHostRoute) -> RustBuffer {
+    return FfiConverterTypeAndroidHostRoute.lower(value)
+}
+
+
+
+
+public enum AndroidHostSurface: Equatable, Hashable {
+    
+    case sessions
+    case settings
+    case recovery
+    case wallet
+    case voiceCapsule
+    case voiceScreen
+    case voiceAgent
+    case voiceUsage
+    case sharing
+    case linkReview
+    case composer
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AndroidHostSurface: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidHostSurface: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidHostSurface
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidHostSurface {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .sessions
+        
+        case 2: return .settings
+        
+        case 3: return .recovery
+        
+        case 4: return .wallet
+        
+        case 5: return .voiceCapsule
+        
+        case 6: return .voiceScreen
+        
+        case 7: return .voiceAgent
+        
+        case 8: return .voiceUsage
+        
+        case 9: return .sharing
+        
+        case 10: return .linkReview
+        
+        case 11: return .composer
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AndroidHostSurface, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .sessions:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .settings:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .recovery:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .wallet:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .voiceCapsule:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .voiceScreen:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .voiceAgent:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .voiceUsage:
+            writeInt(&buf, Int32(8))
+        
+        
+        case .sharing:
+            writeInt(&buf, Int32(9))
+        
+        
+        case .linkReview:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .composer:
+            writeInt(&buf, Int32(11))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostSurface_lift(_ buf: RustBuffer) throws -> AndroidHostSurface {
+    return try FfiConverterTypeAndroidHostSurface.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidHostSurface_lower(_ value: AndroidHostSurface) -> RustBuffer {
+    return FfiConverterTypeAndroidHostSurface.lower(value)
+}
+
+
+
+
+public enum AndroidSessionAction {
+    
+    case updated
+    case cloud(chat: CoreCloudChat
+    )
+    case session(id: String, client: CoreClient
+    )
+    case sharing
+    case openUrl(url: String
+    )
+    case clipboard(text: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AndroidSessionAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidSessionAction: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidSessionAction
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidSessionAction {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .updated
+        
+        case 2: return .cloud(chat: try FfiConverterTypeCoreCloudChat.read(from: &buf)
+        )
+        
+        case 3: return .session(id: try FfiConverterString.read(from: &buf), client: try FfiConverterTypeCoreClient.read(from: &buf)
+        )
+        
+        case 4: return .sharing
+        
+        case 5: return .openUrl(url: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 6: return .clipboard(text: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AndroidSessionAction, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .updated:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .cloud(chat):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeCoreCloudChat.write(chat, into: &buf)
+            
+        
+        case let .session(id,client):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterTypeCoreClient.write(client, into: &buf)
+            
+        
+        case .sharing:
+            writeInt(&buf, Int32(4))
+        
+        
+        case let .openUrl(url):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(url, into: &buf)
+            
+        
+        case let .clipboard(text):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(text, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidSessionAction_lift(_ buf: RustBuffer) throws -> AndroidSessionAction {
+    return try FfiConverterTypeAndroidSessionAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidSessionAction_lower(_ value: AndroidSessionAction) -> RustBuffer {
+    return FfiConverterTypeAndroidSessionAction.lower(value)
+}
+
+
+
+
+public enum AndroidTranscriptEffect: Equatable, Hashable {
+    
+    case handled
+    case openPage(url: String
+    )
+    case copy(text: String
+    )
+    case media(row: UInt64, widget: UInt32, kind: WidgetKind
+    )
+    case unavailable
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AndroidTranscriptEffect: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAndroidTranscriptEffect: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidTranscriptEffect
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AndroidTranscriptEffect {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .handled
+        
+        case 2: return .openPage(url: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .copy(text: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .media(row: try FfiConverterUInt64.read(from: &buf), widget: try FfiConverterUInt32.read(from: &buf), kind: try FfiConverterTypeWidgetKind.read(from: &buf)
+        )
+        
+        case 5: return .unavailable
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AndroidTranscriptEffect, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .handled:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .openPage(url):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(url, into: &buf)
+            
+        
+        case let .copy(text):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(text, into: &buf)
+            
+        
+        case let .media(row,widget,kind):
+            writeInt(&buf, Int32(4))
+            FfiConverterUInt64.write(row, into: &buf)
+            FfiConverterUInt32.write(widget, into: &buf)
+            FfiConverterTypeWidgetKind.write(kind, into: &buf)
+            
+        
+        case .unavailable:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidTranscriptEffect_lift(_ buf: RustBuffer) throws -> AndroidTranscriptEffect {
+    return try FfiConverterTypeAndroidTranscriptEffect.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAndroidTranscriptEffect_lower(_ value: AndroidTranscriptEffect) -> RustBuffer {
+    return FfiConverterTypeAndroidTranscriptEffect.lower(value)
 }
 
 
@@ -20020,6 +28451,72 @@ public func FfiConverterTypeConnectivityState_lower(_ value: ConnectivityState) 
 
 
 
+public enum ContinuationDraftAction: Equatable, Hashable {
+    
+    case updated
+    case `continue`
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ContinuationDraftAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeContinuationDraftAction: FfiConverterRustBuffer {
+    typealias SwiftType = ContinuationDraftAction
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ContinuationDraftAction {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .updated
+        
+        case 2: return .`continue`
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ContinuationDraftAction, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .updated:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .`continue`:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeContinuationDraftAction_lift(_ buf: RustBuffer) throws -> ContinuationDraftAction {
+    return try FfiConverterTypeContinuationDraftAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeContinuationDraftAction_lower(_ value: ContinuationDraftAction) -> RustBuffer {
+    return FfiConverterTypeContinuationDraftAction.lower(value)
+}
+
+
+
+
 public enum ControlKind: Equatable, Hashable {
     
     case button(primary: Bool
@@ -20893,6 +29390,10 @@ public enum KeyRead: Equatable, Hashable {
      */
     case notFound
     /**
+     * A value is stored but its authenticated bytes are invalid.
+     */
+    case unreadable
+    /**
      * The read failed for another reason, such as a locked device. `status`
      * is the platform's code (an `OSStatus` on iOS), for the log only.
      */
@@ -20924,7 +29425,9 @@ public struct FfiConverterTypeKeyRead: FfiConverterRustBuffer {
         
         case 2: return .notFound
         
-        case 3: return .failed(status: try FfiConverterInt32.read(from: &buf)
+        case 3: return .unreadable
+        
+        case 4: return .failed(status: try FfiConverterInt32.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -20944,8 +29447,12 @@ public struct FfiConverterTypeKeyRead: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
         
         
-        case let .failed(status):
+        case .unreadable:
             writeInt(&buf, Int32(3))
+        
+        
+        case let .failed(status):
+            writeInt(&buf, Int32(4))
             FfiConverterInt32.write(status, into: &buf)
             
         }
@@ -20965,6 +29472,68 @@ public func FfiConverterTypeKeyRead_lift(_ buf: RustBuffer) throws -> KeyRead {
 #endif
 public func FfiConverterTypeKeyRead_lower(_ value: KeyRead) -> RustBuffer {
     return FfiConverterTypeKeyRead.lower(value)
+}
+
+
+
+
+public enum LabCardEffect: Equatable, Hashable {
+    
+    case openPage(url: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LabCardEffect: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLabCardEffect: FfiConverterRustBuffer {
+    typealias SwiftType = LabCardEffect
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LabCardEffect {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .openPage(url: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LabCardEffect, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .openPage(url):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(url, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabCardEffect_lift(_ buf: RustBuffer) throws -> LabCardEffect {
+    return try FfiConverterTypeLabCardEffect.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLabCardEffect_lower(_ value: LabCardEffect) -> RustBuffer {
+    return FfiConverterTypeLabCardEffect.lower(value)
 }
 
 
@@ -21170,6 +29739,116 @@ public func FfiConverterTypeLabMediaView_lower(_ value: LabMediaView) -> RustBuf
 
 
 
+
+public enum NativeActionResult: Equatable, Hashable {
+    
+    case draftSaved
+    case sendStarted(messageId: String
+    )
+    case sendSteered(messageId: String
+    )
+    case sendQueued(queueId: String
+    )
+    case interrupted
+    case inputAnswered
+    case attachmentPickerRequested
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NativeActionResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeActionResult: FfiConverterRustBuffer {
+    typealias SwiftType = NativeActionResult
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeActionResult {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .draftSaved
+        
+        case 2: return .sendStarted(messageId: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .sendSteered(messageId: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 4: return .sendQueued(queueId: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .interrupted
+        
+        case 6: return .inputAnswered
+        
+        case 7: return .attachmentPickerRequested
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeActionResult, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .draftSaved:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .sendStarted(messageId):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(messageId, into: &buf)
+            
+        
+        case let .sendSteered(messageId):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(messageId, into: &buf)
+            
+        
+        case let .sendQueued(queueId):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(queueId, into: &buf)
+            
+        
+        case .interrupted:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .inputAnswered:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .attachmentPickerRequested:
+            writeInt(&buf, Int32(7))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeActionResult_lift(_ buf: RustBuffer) throws -> NativeActionResult {
+    return try FfiConverterTypeNativeActionResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeActionResult_lower(_ value: NativeActionResult) -> RustBuffer {
+    return FfiConverterTypeNativeActionResult.lower(value)
+}
+
+
+
 /**
  * The four tuned size presets (inline 20, avatar 64, large 96, hero 128).
  */
@@ -21315,6 +29994,85 @@ public func FfiConverterTypePendingKind_lift(_ buf: RustBuffer) throws -> Pendin
 #endif
 public func FfiConverterTypePendingKind_lower(_ value: PendingKind) -> RustBuffer {
     return FfiConverterTypePendingKind.lower(value)
+}
+
+
+
+/**
+ * Android's platform result; Rust owns fallback and sign-in policy.
+ */
+
+public enum PlayIntegrityResult: Equatable, Hashable {
+    
+    case token(token: String
+    )
+    case unavailable
+    case refused
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension PlayIntegrityResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePlayIntegrityResult: FfiConverterRustBuffer {
+    typealias SwiftType = PlayIntegrityResult
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PlayIntegrityResult {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .token(token: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 2: return .unavailable
+        
+        case 3: return .refused
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PlayIntegrityResult, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .token(token):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(token, into: &buf)
+            
+        
+        case .unavailable:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .refused:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlayIntegrityResult_lift(_ buf: RustBuffer) throws -> PlayIntegrityResult {
+    return try FfiConverterTypePlayIntegrityResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePlayIntegrityResult_lower(_ value: PlayIntegrityResult) -> RustBuffer {
+    return FfiConverterTypePlayIntegrityResult.lower(value)
 }
 
 
@@ -21468,6 +30226,75 @@ public func FfiConverterTypePullRequestState_lift(_ buf: RustBuffer) throws -> P
 #endif
 public func FfiConverterTypePullRequestState_lower(_ value: PullRequestState) -> RustBuffer {
     return FfiConverterTypePullRequestState.lower(value)
+}
+
+
+
+/**
+ * A data-only push wake. Rust owns the reconnect and owner-note behavior.
+ */
+
+public enum PushWakeKind: Equatable, Hashable {
+    
+    case attention
+    case reconnect
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension PushWakeKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePushWakeKind: FfiConverterRustBuffer {
+    typealias SwiftType = PushWakeKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PushWakeKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .attention
+        
+        case 2: return .reconnect
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PushWakeKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .attention:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .reconnect:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePushWakeKind_lift(_ buf: RustBuffer) throws -> PushWakeKind {
+    return try FfiConverterTypePushWakeKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePushWakeKind_lower(_ value: PushWakeKind) -> RustBuffer {
+    return FfiConverterTypePushWakeKind.lower(value)
 }
 
 
@@ -21829,6 +30656,96 @@ public func FfiConverterTypeQueueGate_lower(_ value: QueueGate) -> RustBuffer {
 
 
 
+
+public enum RetiredSeedRead: Equatable, Hashable {
+    
+    case absent
+    case present(bytes: Data
+    )
+    case locked
+    case corrupt
+    case failed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension RetiredSeedRead: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeRetiredSeedRead: FfiConverterRustBuffer {
+    typealias SwiftType = RetiredSeedRead
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> RetiredSeedRead {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .absent
+        
+        case 2: return .present(bytes: try FfiConverterData.read(from: &buf)
+        )
+        
+        case 3: return .locked
+        
+        case 4: return .corrupt
+        
+        case 5: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: RetiredSeedRead, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .absent:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .present(bytes):
+            writeInt(&buf, Int32(2))
+            FfiConverterData.write(bytes, into: &buf)
+            
+        
+        case .locked:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .corrupt:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRetiredSeedRead_lift(_ buf: RustBuffer) throws -> RetiredSeedRead {
+    return try FfiConverterTypeRetiredSeedRead.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeRetiredSeedRead_lower(_ value: RetiredSeedRead) -> RustBuffer {
+    return FfiConverterTypeRetiredSeedRead.lower(value)
+}
+
+
+
 /**
  * Row kinds the painter may style differently (e.g. context menus).
  */
@@ -22017,6 +30934,88 @@ public func FfiConverterTypeSandboxLevel_lower(_ value: SandboxLevel) -> RustBuf
 
 
 
+public enum SavedFilingChange: Equatable, Hashable {
+    
+    case pin(pinned: Bool
+    )
+    case archive(archived: Bool
+    )
+    case rename(title: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SavedFilingChange: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSavedFilingChange: FfiConverterRustBuffer {
+    typealias SwiftType = SavedFilingChange
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SavedFilingChange {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .pin(pinned: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 2: return .archive(archived: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 3: return .rename(title: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SavedFilingChange, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .pin(pinned):
+            writeInt(&buf, Int32(1))
+            FfiConverterBool.write(pinned, into: &buf)
+            
+        
+        case let .archive(archived):
+            writeInt(&buf, Int32(2))
+            FfiConverterBool.write(archived, into: &buf)
+            
+        
+        case let .rename(title):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(title, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedFilingChange_lift(_ buf: RustBuffer) throws -> SavedFilingChange {
+    return try FfiConverterTypeSavedFilingChange.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSavedFilingChange_lower(_ value: SavedFilingChange) -> RustBuffer {
+    return FfiConverterTypeSavedFilingChange.lower(value)
+}
+
+
+
+
 public enum SavedHistoryAction: Equatable, Hashable {
     
     case moreChats
@@ -22040,6 +31039,8 @@ public enum SavedHistoryAction: Equatable, Hashable {
     )
     case retrySend
     case stopAnswer
+    case search(query: String
+    )
 
 
 
@@ -22098,6 +31099,9 @@ public struct FfiConverterTypeSavedHistoryAction: FfiConverterRustBuffer {
         case 16: return .retrySend
         
         case 17: return .stopAnswer
+        
+        case 18: return .search(query: try FfiConverterString.read(from: &buf)
+        )
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -22178,6 +31182,11 @@ public struct FfiConverterTypeSavedHistoryAction: FfiConverterRustBuffer {
         case .stopAnswer:
             writeInt(&buf, Int32(17))
         
+        
+        case let .search(query):
+            writeInt(&buf, Int32(18))
+            FfiConverterString.write(query, into: &buf)
+            
         }
     }
 }
@@ -22359,6 +31368,183 @@ public func FfiConverterTypeSearchField_lift(_ buf: RustBuffer) throws -> Search
 #endif
 public func FfiConverterTypeSearchField_lower(_ value: SearchField) -> RustBuffer {
     return FfiConverterTypeSearchField.lower(value)
+}
+
+
+
+
+public enum SecretMutation: Equatable, Hashable {
+    
+    case stored
+    case alreadyExists
+    case absent
+    case locked
+    case failed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SecretMutation: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSecretMutation: FfiConverterRustBuffer {
+    typealias SwiftType = SecretMutation
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SecretMutation {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .stored
+        
+        case 2: return .alreadyExists
+        
+        case 3: return .absent
+        
+        case 4: return .locked
+        
+        case 5: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SecretMutation, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .stored:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .alreadyExists:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .absent:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .locked:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSecretMutation_lift(_ buf: RustBuffer) throws -> SecretMutation {
+    return try FfiConverterTypeSecretMutation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSecretMutation_lower(_ value: SecretMutation) -> RustBuffer {
+    return FfiConverterTypeSecretMutation.lower(value)
+}
+
+
+
+
+public enum SecretRead: Equatable, Hashable {
+    
+    case absent
+    case present(bytes: Data
+    )
+    case locked
+    case corrupt
+    case failed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SecretRead: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSecretRead: FfiConverterRustBuffer {
+    typealias SwiftType = SecretRead
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SecretRead {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .absent
+        
+        case 2: return .present(bytes: try FfiConverterData.read(from: &buf)
+        )
+        
+        case 3: return .locked
+        
+        case 4: return .corrupt
+        
+        case 5: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SecretRead, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .absent:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .present(bytes):
+            writeInt(&buf, Int32(2))
+            FfiConverterData.write(bytes, into: &buf)
+            
+        
+        case .locked:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .corrupt:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSecretRead_lift(_ buf: RustBuffer) throws -> SecretRead {
+    return try FfiConverterTypeSecretRead.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSecretRead_lower(_ value: SecretRead) -> RustBuffer {
+    return FfiConverterTypeSecretRead.lower(value)
 }
 
 
@@ -22610,6 +31796,291 @@ public func FfiConverterTypeSessionTarget_lift(_ buf: RustBuffer) throws -> Sess
 #endif
 public func FfiConverterTypeSessionTarget_lower(_ value: SessionTarget) -> RustBuffer {
     return FfiConverterTypeSessionTarget.lower(value)
+}
+
+
+
+
+public enum SettingsAppearance: Equatable, Hashable {
+    
+    case system
+    case light
+    case dark
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SettingsAppearance: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSettingsAppearance: FfiConverterRustBuffer {
+    typealias SwiftType = SettingsAppearance
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SettingsAppearance {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .system
+        
+        case 2: return .light
+        
+        case 3: return .dark
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SettingsAppearance, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .system:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .light:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .dark:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsAppearance_lift(_ buf: RustBuffer) throws -> SettingsAppearance {
+    return try FfiConverterTypeSettingsAppearance.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsAppearance_lower(_ value: SettingsAppearance) -> RustBuffer {
+    return FfiConverterTypeSettingsAppearance.lower(value)
+}
+
+
+
+
+public enum SettingsEffect: Equatable, Hashable {
+    
+    case none
+    case openPairing
+    case openArchive
+    case openProjectSharing
+    case openWallet
+    case openNotificationSettings
+    case chooseWallpaper(ticket: String
+    )
+    case preferencesChanged(preferences: SettingsPreferences
+    )
+    case shareText(title: String, text: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SettingsEffect: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSettingsEffect: FfiConverterRustBuffer {
+    typealias SwiftType = SettingsEffect
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SettingsEffect {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .none
+        
+        case 2: return .openPairing
+        
+        case 3: return .openArchive
+        
+        case 4: return .openProjectSharing
+        
+        case 5: return .openWallet
+        
+        case 6: return .openNotificationSettings
+        
+        case 7: return .chooseWallpaper(ticket: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 8: return .preferencesChanged(preferences: try FfiConverterTypeSettingsPreferences.read(from: &buf)
+        )
+        
+        case 9: return .shareText(title: try FfiConverterString.read(from: &buf), text: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SettingsEffect, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .none:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .openPairing:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .openArchive:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .openProjectSharing:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .openWallet:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .openNotificationSettings:
+            writeInt(&buf, Int32(6))
+        
+        
+        case let .chooseWallpaper(ticket):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(ticket, into: &buf)
+            
+        
+        case let .preferencesChanged(preferences):
+            writeInt(&buf, Int32(8))
+            FfiConverterTypeSettingsPreferences.write(preferences, into: &buf)
+            
+        
+        case let .shareText(title,text):
+            writeInt(&buf, Int32(9))
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterString.write(text, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsEffect_lift(_ buf: RustBuffer) throws -> SettingsEffect {
+    return try FfiConverterTypeSettingsEffect.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsEffect_lower(_ value: SettingsEffect) -> RustBuffer {
+    return FfiConverterTypeSettingsEffect.lower(value)
+}
+
+
+
+
+public enum SettingsWallpaperEffect: Equatable, Hashable {
+    
+    case none
+    case dither
+    case ascii
+    case halftone
+    case scanlines
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SettingsWallpaperEffect: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSettingsWallpaperEffect: FfiConverterRustBuffer {
+    typealias SwiftType = SettingsWallpaperEffect
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SettingsWallpaperEffect {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .none
+        
+        case 2: return .dither
+        
+        case 3: return .ascii
+        
+        case 4: return .halftone
+        
+        case 5: return .scanlines
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SettingsWallpaperEffect, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .none:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .dither:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .ascii:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .halftone:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .scanlines:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsWallpaperEffect_lift(_ buf: RustBuffer) throws -> SettingsWallpaperEffect {
+    return try FfiConverterTypeSettingsWallpaperEffect.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSettingsWallpaperEffect_lower(_ value: SettingsWallpaperEffect) -> RustBuffer {
+    return FfiConverterTypeSettingsWallpaperEffect.lower(value)
 }
 
 
@@ -22955,6 +32426,180 @@ public func FfiConverterTypeVisualShape_lift(_ buf: RustBuffer) throws -> Visual
 #endif
 public func FfiConverterTypeVisualShape_lower(_ value: VisualShape) -> RustBuffer {
     return FfiConverterTypeVisualShape.lower(value)
+}
+
+
+
+/**
+ * Audio focus as reported by the platform audio session.
+ */
+
+public enum VoiceAudioFocus: Equatable, Hashable {
+    
+    case gained
+    case lost
+    case lostTransient
+    case lostTransientCanDuck
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension VoiceAudioFocus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVoiceAudioFocus: FfiConverterRustBuffer {
+    typealias SwiftType = VoiceAudioFocus
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VoiceAudioFocus {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .gained
+        
+        case 2: return .lost
+        
+        case 3: return .lostTransient
+        
+        case 4: return .lostTransientCanDuck
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: VoiceAudioFocus, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .gained:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .lost:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .lostTransient:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .lostTransientCanDuck:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceAudioFocus_lift(_ buf: RustBuffer) throws -> VoiceAudioFocus {
+    return try FfiConverterTypeVoiceAudioFocus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceAudioFocus_lower(_ value: VoiceAudioFocus) -> RustBuffer {
+    return FfiConverterTypeVoiceAudioFocus.lower(value)
+}
+
+
+
+/**
+ * The currently selected Android output route. Other platforms can report
+ * their closest equivalent; this is state, not a command to the audio device.
+ */
+
+public enum VoiceAudioRoute: Equatable, Hashable {
+    
+    case unknown
+    case earpiece
+    case speaker
+    case wiredHeadset
+    case bluetooth
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension VoiceAudioRoute: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVoiceAudioRoute: FfiConverterRustBuffer {
+    typealias SwiftType = VoiceAudioRoute
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VoiceAudioRoute {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .unknown
+        
+        case 2: return .earpiece
+        
+        case 3: return .speaker
+        
+        case 4: return .wiredHeadset
+        
+        case 5: return .bluetooth
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: VoiceAudioRoute, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .unknown:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .earpiece:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .speaker:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .wiredHeadset:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .bluetooth:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceAudioRoute_lift(_ buf: RustBuffer) throws -> VoiceAudioRoute {
+    return try FfiConverterTypeVoiceAudioRoute.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceAudioRoute_lower(_ value: VoiceAudioRoute) -> RustBuffer {
+    return FfiConverterTypeVoiceAudioRoute.lower(value)
 }
 
 
@@ -23402,6 +33047,75 @@ public func FfiConverterTypeVoiceMediaOperation_lower(_ value: VoiceMediaOperati
 
 
 /**
+ * Connectivity relevant to the active voice media session.
+ */
+
+public enum VoiceNetworkState: Equatable, Hashable {
+    
+    case available
+    case lost
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension VoiceNetworkState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVoiceNetworkState: FfiConverterRustBuffer {
+    typealias SwiftType = VoiceNetworkState
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VoiceNetworkState {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .available
+        
+        case 2: return .lost
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: VoiceNetworkState, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .available:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .lost:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceNetworkState_lift(_ buf: RustBuffer) throws -> VoiceNetworkState {
+    return try FfiConverterTypeVoiceNetworkState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceNetworkState_lower(_ value: VoiceNetworkState) -> RustBuffer {
+    return FfiConverterTypeVoiceNetworkState.lower(value)
+}
+
+
+
+/**
  * What the voice orb is showing, in call terms.
  */
 
@@ -23570,6 +33284,76 @@ public func FfiConverterTypeVoiceSpeaker_lift(_ buf: RustBuffer) throws -> Voice
 #endif
 public func FfiConverterTypeVoiceSpeaker_lower(_ value: VoiceSpeaker) -> RustBuffer {
     return FfiConverterTypeVoiceSpeaker.lower(value)
+}
+
+
+
+/**
+ * The only app-shell action a call view can return after Rust validates it.
+ * Mute and end run on the Rust call handle inside `VoiceCall::activate_view`.
+ */
+
+public enum VoiceUiAction: Equatable, Hashable {
+    
+    case handled
+    case openCall
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension VoiceUiAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeVoiceUiAction: FfiConverterRustBuffer {
+    typealias SwiftType = VoiceUiAction
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> VoiceUiAction {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .handled
+        
+        case 2: return .openCall
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: VoiceUiAction, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .handled:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .openCall:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceUiAction_lift(_ buf: RustBuffer) throws -> VoiceUiAction {
+    return try FfiConverterTypeVoiceUiAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeVoiceUiAction_lower(_ value: VoiceUiAction) -> RustBuffer {
+    return FfiConverterTypeVoiceUiAction.lower(value)
 }
 
 
@@ -24319,6 +34103,198 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
+    typealias SwiftType = Data?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterData.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterData.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCoreAccount: FfiConverterRustBuffer {
+    typealias SwiftType = CoreAccount?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCoreAccount.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCoreAccount.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCoreAndroidComposer: FfiConverterRustBuffer {
+    typealias SwiftType = CoreAndroidComposer?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCoreAndroidComposer.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCoreAndroidComposer.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCoreAndroidLinkReview: FfiConverterRustBuffer {
+    typealias SwiftType = CoreAndroidLinkReview?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCoreAndroidLinkReview.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCoreAndroidLinkReview.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCoreAndroidRecovery: FfiConverterRustBuffer {
+    typealias SwiftType = CoreAndroidRecovery?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCoreAndroidRecovery.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCoreAndroidRecovery.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCoreAndroidSessions: FfiConverterRustBuffer {
+    typealias SwiftType = CoreAndroidSessions?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCoreAndroidSessions.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCoreAndroidSessions.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCoreClient: FfiConverterRustBuffer {
+    typealias SwiftType = CoreClient?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCoreClient.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCoreClient.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCoreLabActions: FfiConverterRustBuffer {
+    typealias SwiftType = CoreLabActions?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCoreLabActions.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCoreLabActions.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeCoreSavedHistory: FfiConverterRustBuffer {
     typealias SwiftType = CoreSavedHistory?
 
@@ -24463,6 +34439,102 @@ fileprivate struct FfiConverterOptionTypeVoiceCall: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeAndroidAppLink: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidAppLink?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAndroidAppLink.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAndroidAppLink.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeAndroidAppLinkDispatch: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidAppLinkDispatch?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAndroidAppLinkDispatch.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAndroidAppLinkDispatch.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeAndroidHostSelection: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidHostSelection?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAndroidHostSelection.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAndroidHostSelection.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeAndroidTranscriptAnchor: FfiConverterRustBuffer {
+    typealias SwiftType = AndroidTranscriptAnchor?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAndroidTranscriptAnchor.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAndroidTranscriptAnchor.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeAppAttestation: FfiConverterRustBuffer {
     typealias SwiftType = AppAttestation?
 
@@ -24575,6 +34647,30 @@ fileprivate struct FfiConverterOptionTypeCustomAgentRow: FfiConverterRustBuffer 
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeCustomAgentRow.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeDrawerPinMove: FfiConverterRustBuffer {
+    typealias SwiftType = DrawerPinMove?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeDrawerPinMove.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeDrawerPinMove.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -24775,6 +34871,54 @@ fileprivate struct FfiConverterOptionTypePullRequest: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeRecoveryAuthentication: FfiConverterRustBuffer {
+    typealias SwiftType = RecoveryAuthentication?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeRecoveryAuthentication.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeRecoveryAuthentication.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeRecoveryClipboard: FfiConverterRustBuffer {
+    typealias SwiftType = RecoveryClipboard?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeRecoveryClipboard.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeRecoveryClipboard.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeRgba: FfiConverterRustBuffer {
     typealias SwiftType = Rgba?
 
@@ -24847,6 +34991,54 @@ fileprivate struct FfiConverterOptionTypeRowPlacement: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeSavedPinMove: FfiConverterRustBuffer {
+    typealias SwiftType = SavedPinMove?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSavedPinMove.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSavedPinMove.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeSavedPinOrder: FfiConverterRustBuffer {
+    typealias SwiftType = SavedPinOrder?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSavedPinOrder.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSavedPinOrder.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeSessionRow: FfiConverterRustBuffer {
     typealias SwiftType = SessionRow?
 
@@ -24863,6 +35055,30 @@ fileprivate struct FfiConverterOptionTypeSessionRow: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeSessionRow.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeSettingsWallpaper: FfiConverterRustBuffer {
+    typealias SwiftType = SettingsWallpaper?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSettingsWallpaper.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSettingsWallpaper.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -24911,6 +35127,30 @@ fileprivate struct FfiConverterOptionTypeAuthCallback: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeAuthCallback.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeChatIndicator: FfiConverterRustBuffer {
+    typealias SwiftType = ChatIndicator?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChatIndicator.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChatIndicator.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -25063,6 +35303,30 @@ fileprivate struct FfiConverterOptionTypeVoiceSpeaker: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionSequenceTypeSavedMessagePart: FfiConverterRustBuffer {
+    typealias SwiftType = [SavedMessagePart]?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterSequenceTypeSavedMessagePart.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterSequenceTypeSavedMessagePart.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceUInt32: FfiConverterRustBuffer {
     typealias SwiftType = [UInt32]
 
@@ -25130,6 +35394,56 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAccessibilityRow: FfiConverterRustBuffer {
+    typealias SwiftType = [AccessibilityRow]
+
+    public static func write(_ value: [AccessibilityRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAccessibilityRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AccessibilityRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AccessibilityRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAccessibilityRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAndroidDemoChoice: FfiConverterRustBuffer {
+    typealias SwiftType = [AndroidDemoChoice]
+
+    public static func write(_ value: [AndroidDemoChoice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAndroidDemoChoice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AndroidDemoChoice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AndroidDemoChoice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAndroidDemoChoice.read(from: &buf))
         }
         return seq
     }
@@ -25313,6 +35627,31 @@ fileprivate struct FfiConverterSequenceTypeDeviceView: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeDrawerPinHints: FfiConverterRustBuffer {
+    typealias SwiftType = [DrawerPinHints]
+
+    public static func write(_ value: [DrawerPinHints], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeDrawerPinHints.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [DrawerPinHints] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [DrawerPinHints]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeDrawerPinHints.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFaceData: FfiConverterRustBuffer {
     typealias SwiftType = [FaceData]
 
@@ -25430,6 +35769,31 @@ fileprivate struct FfiConverterSequenceTypeHarnessInfo: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeHarnessInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeLabSurfaceRegistration: FfiConverterRustBuffer {
+    typealias SwiftType = [LabSurfaceRegistration]
+
+    public static func write(_ value: [LabSurfaceRegistration], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeLabSurfaceRegistration.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [LabSurfaceRegistration] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [LabSurfaceRegistration]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeLabSurfaceRegistration.read(from: &buf))
         }
         return seq
     }
@@ -25713,6 +36077,31 @@ fileprivate struct FfiConverterSequenceTypeRepoRef: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeRevealSlice: FfiConverterRustBuffer {
+    typealias SwiftType = [RevealSlice]
+
+    public static func write(_ value: [RevealSlice], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeRevealSlice.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [RevealSlice] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [RevealSlice]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeRevealSlice.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeRowPlacement: FfiConverterRustBuffer {
     typealias SwiftType = [RowPlacement]
 
@@ -25780,6 +36169,56 @@ fileprivate struct FfiConverterSequenceTypeSavedChatRow: FfiConverterRustBuffer 
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeSavedChatRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeSavedIndexedRow: FfiConverterRustBuffer {
+    typealias SwiftType = [SavedIndexedRow]
+
+    public static func write(_ value: [SavedIndexedRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSavedIndexedRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SavedIndexedRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SavedIndexedRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSavedIndexedRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeSavedMessagePart: FfiConverterRustBuffer {
+    typealias SwiftType = [SavedMessagePart]
+
+    public static func write(_ value: [SavedMessagePart], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSavedMessagePart.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SavedMessagePart] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SavedMessagePart]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSavedMessagePart.read(from: &buf))
         }
         return seq
     }
@@ -26555,6 +36994,44 @@ public func accountDeletionWarning() -> String  {
     )
 })
 }
+public func androidWalletKeyStore(storage: AndroidSecretStorage) -> KeyStore  {
+    return try!  FfiConverterTypeKeyStore_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_android_wallet_key_store(
+        FfiConverterTypeAndroidSecretStorage_lower(storage),uniffiCallStatus
+    )
+})
+}
+/**
+ * Classifies an untrusted URL without performing network or account actions.
+ * Returns `None` for other hosts, schemes, paths, expired connect codes, and
+ * malformed or overlong input.
+ */
+public func classifyAndroidAppLink(url: String) -> AndroidAppLink?  {
+    return try!  FfiConverterOptionTypeAndroidAppLink.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_classify_android_app_link(
+        FfiConverterString.lower(url),uniffiCallStatus
+    )
+})
+}
+/**
+ * Routes a recognized URL to an existing Rust-owned flow.
+ *
+ * Computer links go to `CoreClient::connect_computer`. Website sign-in links
+ * go first to `CoreAccount::scanned_login`, which returns the browser for the
+ * confirmation step; approval remains a separate explicit call. Project
+ * invitations go to the active account's preview and explicit acceptance
+ * methods; the opaque code is not returned to the platform.
+ */
+public func dispatchAndroidAppLink(url: String) -> AndroidAppLinkDispatch?  {
+    return try!  FfiConverterOptionTypeAndroidAppLinkDispatch.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_dispatch_android_app_link(
+        FfiConverterString.lower(url),uniffiCallStatus
+    )
+})
+}
 /**
  * A sample agent's card for the offline demo and Design Lab (#12045).
  */
@@ -26599,6 +37076,18 @@ public func ownerNotificationChatFromLink(link: String) -> String?  {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_func_owner_notification_chat_from_link(
         FfiConverterString.lower(link),uniffiCallStatus
+    )
+})
+}
+public func openSettings(account: CoreAccount, client: CoreClient?, capabilities: SettingsCapabilities, version: String, listener: SettingsListener)throws  -> CoreSettings  {
+    return try  FfiConverterTypeCoreSettings_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_open_settings(
+        FfiConverterTypeCoreAccount_lower(account),
+        FfiConverterOptionTypeCoreClient.lower(client),
+        FfiConverterTypeSettingsCapabilities_lower(capabilities),
+        FfiConverterString.lower(version),
+        FfiConverterTypeSettingsListener_lower(listener),uniffiCallStatus
     )
 })
 }
@@ -26810,6 +37299,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_func_account_deletion_warning() != 18673) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_func_android_wallet_key_store() != 27579) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_classify_android_app_link() != 8258) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_dispatch_android_app_link() != 26899) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_func_demo_autonomy_card() != 22875) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -26820,6 +37318,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_owner_notification_chat_from_link() != 17687) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_open_settings() != 24464) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_file_mention_link() != 21705) {
@@ -27050,7 +37551,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreclient_chat_read_only() != 30414) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_drawer_pin_moves() != 57686) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreclient_available_chat_config() != 58721) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreclient_handle_push_wake() != 42618) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreclient_owner_notification() != 14038) {
@@ -27071,7 +37578,40 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_uploadprogress_on_progress() != 48365) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_acknowledge() != 2878) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_bookmark() != 2179) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_close() != 38145) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_environment() != 27087) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_focused() != 54834) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_lifecycle() != 60200) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_prepare() != 27388) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccessibilitysurface_restore() != 55995) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coretranscriptaccessibility_page() != 28029) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coretranscriptaccessibility_row_part() != 54886) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_accountlistener_on_account_changed() != 40050) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_accept_project_invitation() != 8940) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_agent_lab() != 15653) {
@@ -27092,7 +37632,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_link_computer() != 29105) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_preview_project_invitation() != 12125) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_project_invitation_share() != 49741) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_project_sharing() != 8843) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_public_profile() != 58560) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_restore() != 29093) {
@@ -27120,6 +37669,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_delete_account() != 60111) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_restore_words_if_current() != 42439) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_chat_homes() != 42622) {
@@ -27161,6 +37713,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_set_icloud_copy() != 17892) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_set_play_integrity_attester() != 61108) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_start_identity() != 62974) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -27188,6 +37743,249 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreagentlab_snapshot() != 64507) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_androidhostlistener_on_android_host_changed() != 35876) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_accessibility_surface() != 20573) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_account() != 11736) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_activate_voice_agent() != 64212) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_activate_voice_usage() != 54281) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_attach_transcript() != 187) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_client() != 49971) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_composer() != 62007) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_default_push_prefs() != 16504) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_dismiss_link_review() != 59498) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_history() != 56895) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_navigate() != 1188) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_offer_app_link() != 14612) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_offer_notification_tap() != 8193) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_refresh_transcript() != 65138) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_resolve_notification_tap() != 40515) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_resume_without_identity() != 40098) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_save_text_selection() != 20085) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_save_transcript_anchor() != 14037) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_select_cloud_chat() != 35287) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_select_default_chat() != 54699) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_select_indexed_chat() != 13980) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_select_saved_chat() != 2406) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_select_session() != 59213) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_selected_session() != 16905) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_sessions() != 2293) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_set_foreground() != 11809) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_sharing() != 23251) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_snapshot() != 32492) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_start() != 46699) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_start_host_voice() != 64672) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_start_with_credential() != 43145) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_sync_voice_usage() != 5557) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_image() != 28885) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_link() != 19887) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_mounted() != 24470) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_visual() != 18971) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_transcript_widget() != 12490) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_voice_ended() != 27161) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_voice_settings() != 35874) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidhost_wallet() != 27593) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroiddemo_choices() != 18862) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroiddemo_host() != 53647) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroiddemo_select() != 54456) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroiddemo_shutdown() != 54100) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_acknowledge() != 31708) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_activate() != 17854) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_id() != 4425) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_load() != 42028) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_retire() != 10167) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidlinkreview_snapshot() != 51438) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidwallet_acknowledge() != 58000) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidwallet_activate() != 28742) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidwallet_authenticated() != 59011) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidwallet_change_field() != 33558) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidwallet_open() != 64218) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidwallet_redact() != 12525) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidwallet_snapshot() != 49295) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidrecovery_acknowledge() != 29945) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidrecovery_activate() != 44633) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidrecovery_authenticated() != 61380) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidrecovery_change() != 18256) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidrecovery_close() != 33533) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidrecovery_redact() != 49367) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidrecovery_render() != 54435) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidrecovery_start() != 25572) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidsessions_acknowledge() != 50) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidsessions_activate() != 30288) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidsessions_attach_client() != 64252) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidsessions_chat_homes() != 16993) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidsessions_close() != 15107) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidsessions_continue_on_selected() != 34222) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidsessions_default_chat() != 43789) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidsessions_saved_chat_homes() != 40789) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidsessions_sharing() != 24415) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidsessions_view() != 57280) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_androidsecretstorage_read() != 28347) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_androidsecretstorage_create() != 42449) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_androidsecretstorage_replace() != 64531) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_androidsecretstorage_delete() != 56954) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_androidretiredwalletseed_read_retired_seed() != 13277) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_corechathomes_activate() != 47837) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -27197,13 +37995,25 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_corechathomes_parts() != 50792) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_acknowledge() != 52868) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_activate() != 21226) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_create() != 58009) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_device_id() != 28877) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_shutdown() != 46901) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_start() != 37618) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corecontinuationdraft_view() != 20931) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_cloudchatdone_on_done() != 48276) {
@@ -27278,6 +38088,45 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_appattester_attest() != 48015) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_playintegrityattester_attest() != 48301) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabactions_acknowledge() != 20293) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabactions_activate() != 61376) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabactions_change_field() != 28290) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabactions_dismiss() != 26271) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabactions_frame() != 19632) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabactions_playback_position() != 545) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabcard_acknowledge() != 48027) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabcard_activate() != 12380) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabcard_dispose() != 31390) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabcard_is_current() != 62665) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabcard_media() != 63846) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corelabcard_snapshot() != 62790) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreonboarding_finish() != 30618) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -27294,6 +38143,21 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coreowncomputeroffer_shows() != 20949) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corepublicprofile_activate() != 11901) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corepublicprofile_change_field() != 52236) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corepublicprofile_reload() != 50262) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corepublicprofile_snapshot() != 51980) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_publicprofilelistener_on_public_profile_changed() != 44163) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_chat_homes() != 64078) {
@@ -27323,6 +38187,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_visible() != 3398) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_inline_projection() != 26842) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_lab_projection() != 26469) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_action() != 4715) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -27338,10 +38208,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_downloaded_file_part() != 2055) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_file_chat() != 27842) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_follow() != 17681) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_message() != 57619) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_move_pin() != 34235) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_render_transcript() != 10609) {
@@ -27356,19 +38232,40 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coresavedhistory_snapshot() != 54548) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_indexed_session() != 42907) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresavedhistory_mark_indexed_seen() != 16496) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_savedhistorylistener_on_saved_history_changed() != 38424) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_acknowledge_native_view() != 36331) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_activate_native() != 63439) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_begin_queued_edit() != 65066) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_change_native_field() != 60488) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_chat_id() != 55811) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_clear_composer_draft() != 8561) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_clear_queue_error() != 11908) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_composer() != 44897) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_composer_editor() != 24418) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_deliver_queued_now() != 36693) {
@@ -27395,6 +38292,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_move_queued_by() != 23401) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_prepare_native_view() != 35725) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_remove_queued() != 1476) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -27404,7 +38304,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_respond_input() != 11537) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_restore_composer_draft() != 11522) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_retry_delivery() != 61808) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_save_composer_draft() != 38204) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_send() != 33402) {
@@ -27416,7 +38322,58 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_set_view_attached() != 32385) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_sessionhandle_submit_native_composer() != 40776) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_sessionhandle_transcript_status() != 24478) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidcomposer_acknowledge() != 18370) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidcomposer_activate() != 44632) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidcomposer_change_field() != 25684) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidcomposer_dispose() != 13534) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidcomposer_editor() != 42720) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidcomposer_frame() != 46755) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coreandroidcomposer_submit() != 34669) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresettings_acknowledge() != 40773) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresettings_activate() != 24593) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresettings_change_field() != 54547) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresettings_dispose() != 37755) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresettings_preferences() != 1746) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresettings_refresh_cloud() != 312) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresettings_snapshot() != 61927) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_coresettings_wallpaper_selected() != 2158) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_settingslistener_on_settings_changed() != 41641) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_coresharing_activate() != 63786) {
@@ -27434,7 +38391,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_sharinglistener_on_sharing_changed() != 62009) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_voicecall_activate_view() != 50099) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_voicecall_audio_state() != 24789) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_voicecall_capsule_view() != 45767) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_voicecall_complete_media() != 40162) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_voicecall_screen_view() != 57527) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_voicecall_set_muted() != 61805) {
@@ -27443,7 +38412,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_voicecall_stop() != 32163) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_voicecall_update_audio_focus() != 38706) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_voicecall_update_audio_route() != 20317) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_voicecall_update_context() != 64757) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_voicecall_update_network_state() != 47102) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_voicecall_update_proximity() != 56937) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_voicemedialistener_on_request() != 44204) {
@@ -27467,6 +38448,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_voiceagentlistener_on_voice_agent_changed() != 44992) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_corevoiceusage_activate_view() != 20799) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_corevoiceusage_refresh() != 39150) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -27474,6 +38458,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_corevoiceusage_track() != 32803) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corevoiceusage_view_json() != 14772) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_voiceusagelistener_on_voice_usage_changed() != 17737) {
@@ -27569,6 +38556,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_transcriptview_visual() != 38186) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_transcriptview_attach_cloud() != 17521) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_orbrenderer_next_frame() != 5432) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -27647,7 +38637,34 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_constructor_coreclient_new() != 50306) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_constructor_coreaccessibilitysurface_new() != 3436) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coretranscriptaccessibility_new() != 61586) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_constructor_coreaccount_new() != 30316) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreaccount_new_with_secure_storage() != 54541) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreandroidhost_demo() != 41549) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreandroidhost_demo_with_sessions() != 32562) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreandroidhost_production() != 82) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreandroiddemo_new() != 53302) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreandroidrecovery_new() != 49660) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreandroidsessions_new() != 7455) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_corecloudchat_demo() != 48106) {
@@ -27662,6 +38679,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_constructor_coreowncomputeroffer_demo() != 291) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_constructor_coreandroidcomposer_cloud() != 10045) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_coreandroidcomposer_live() != 40372) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_constructor_textsystem_new() != 39900) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -27669,6 +38692,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_orbrenderer_new() != 33643) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_corewallet_android() != 16399) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_corewallet_fixture() != 43539) {
@@ -27680,6 +38706,9 @@ private let initializationResult: InitializationResult = {
 
     uniffiCallbackInitAccountListener()
     uniffiCallbackInitAgentLabListener()
+    uniffiCallbackInitAndroidHostListener()
+    uniffiCallbackInitAndroidRetiredWalletSeed()
+    uniffiCallbackInitAndroidSecretStorage()
     uniffiCallbackInitAppAttester()
     uniffiCallbackInitClientListener()
     uniffiCallbackInitCloudChatDone()
@@ -27688,7 +38717,10 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitKeyStore()
     uniffiCallbackInitLayoutListener()
     uniffiCallbackInitPlatformMeasurer()
+    uniffiCallbackInitPlayIntegrityAttester()
+    uniffiCallbackInitPublicProfileListener()
     uniffiCallbackInitSavedHistoryListener()
+    uniffiCallbackInitSettingsListener()
     uniffiCallbackInitSharingListener()
     uniffiCallbackInitUploadProgress()
     uniffiCallbackInitVisualListener()

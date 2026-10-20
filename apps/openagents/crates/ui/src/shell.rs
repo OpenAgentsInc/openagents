@@ -9037,6 +9037,8 @@ impl Shell {
                 return;
             }
         }
+        let owner_key =
+            crate::openagents_account::AppAccount::global(cx).and_then(|a| a.read(cx).owner_key());
         let Some(controller) = crate::openagents_account::AppAccount::global(cx)
             .and_then(|a| a.read(cx).controller.clone())
         else {
@@ -9061,7 +9063,9 @@ impl Shell {
                 ..Default::default()
             },
             |window, cx| {
-                let lab = cx.new(|cx| crate::agent_lab::AgentLab::new(controller, root, cx));
+                let lab = cx.new(|cx| {
+                    crate::agent_lab::AgentLab::new(controller, root, cx).with_owner_key(owner_key)
+                });
                 cx.subscribe(&lab, move |_, event: &crate::agent_lab::Event, cx| {
                     let crate::agent_lab::Event::Session(id) = event;
                     crate::open_notification_target(id.clone(), &state, cx);

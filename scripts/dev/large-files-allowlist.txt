@@ -11,6 +11,8 @@ assets/*
 apps/openagents/dist/openagents.png
 # The generated UniFFI Kotlin binding the Android app compiles (scripts/android/build-core.sh).
 apps/openagents/apps/android/app/src/main/java/uniffi/openagents_core/openagents_core.kt
+# The generated UniFFI Swift binding the iOS app compiles (scripts/ios/build-core.sh).
+apps/openagents/apps/ios/OpenAgents/Core/Generated/openagents_core.swift
 bins/*
 *.ttf
 *.otf

@@ -38,6 +38,8 @@ pub mod owner_notifications;
 #[cfg(feature = "transport")]
 mod payment;
 #[cfg(feature = "transport")]
+pub mod profiles;
+#[cfg(feature = "transport")]
 pub mod rooms;
 #[cfg(feature = "transport")]
 pub mod runs;

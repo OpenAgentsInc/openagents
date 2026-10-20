@@ -50,6 +50,8 @@ pub struct IdentityState {
     backup: Option<BackupStep>,
     copied: bool,
     copied_task: Option<Task<()>>,
+    /// Your ID > Public profile, while open (#12298).
+    pub(super) profile: Option<super::public_profile::ProfileDialog>,
 }
 
 impl AppAccount {
@@ -72,7 +74,7 @@ impl AppAccount {
 
     /// Whether the welcome or Back up is on screen and owns the keyboard.
     pub fn identity_overlay_open(&self) -> bool {
-        self.id.welcome.is_some() || self.id.backup.is_some()
+        self.id.welcome.is_some() || self.id.backup.is_some() || self.id.profile.is_some()
     }
 
     /// Read the identity again after any account change: open the welcome on
@@ -421,6 +423,16 @@ impl AppAccount {
                     ),
             );
         }
+        if self.id.view.is_some() && matches!(self.snapshot.phase, Phase::SignedIn { .. }) {
+            menu = menu.child(
+                popover::menu_row(theme, false, "openagents-public-profile")
+                    .id("openagents-public-profile")
+                    .debug_selector(|| "openagents-public-profile".into())
+                    .on_click(cx.listener(|this, _, _, cx| this.open_profile(cx)))
+                    .child(icon(icons::PEN).size(px(16.)).text_color(theme.text_muted))
+                    .child(div().flex_1().child(copy::PUBLIC_PROFILE)),
+            );
+        }
         if let Some(devices) = &self.id.devices {
             menu = menu.child(heading(copy::LINKED_DEVICES));
             let rows = identity::device_rows(devices);
@@ -548,6 +560,9 @@ impl AppAccount {
         if let Some(step) = self.id.backup.clone() {
             let card = self.backup_card(step, cx);
             overlays.push(popover::modal("openagents-backup", viewport, card));
+        }
+        if let Some(card) = self.profile_card(cx) {
+            overlays.push(popover::modal("openagents-profile", viewport, card));
         }
         overlays
     }

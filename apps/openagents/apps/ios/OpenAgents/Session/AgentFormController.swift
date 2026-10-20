@@ -7,7 +7,8 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     private let lab: CoreAgentLab?
     private let voiceAgent: CoreVoiceAgent?
     private let sharing: CoreSharing?
-    private var prefix: String { if voiceAgent != nil { return "voice-agent" }; return sharing != nil ? "sharing" : (lab == nil ? "agent" : "lab") }
+    private var profile: CorePublicProfile?
+    private var prefix: String { if profile != nil { return "profile" }; if voiceAgent != nil { return "voice-agent" }; return sharing != nil ? "sharing" : (lab == nil ? "agent" : "lab") }
     private let stack = UIStackView()
     private var observation: AnyObject?
     private var instance = ""
@@ -39,6 +40,15 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         self.sharing = sharing
         super.init(nibName: nil, bundle: nil)
     }
+    init(app: AppModel, profile: CorePublicProfile) {
+        self.voiceAgent = nil
+        self.app = app
+        self.agents = nil
+        self.lab = nil
+        self.sharing = nil
+        self.profile = profile
+        super.init(nibName: nil, bundle: nil)
+    }
     init(app: AppModel, voiceAgent: CoreVoiceAgent) {
         self.app = app
         self.agents = nil
@@ -52,7 +62,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = voiceAgent != nil ? "Voice agent" : sharing != nil ? "Project sharing" : (lab == nil ? "Agent" : "Agent Lab")
+        title = profile != nil ? "Public profile" : voiceAgent != nil ? "Voice agent" : sharing != nil ? "Project sharing" : (lab == nil ? "Agent" : "Agent Lab")
         view.backgroundColor = .systemBackground
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         let scroll = UIScrollView()
@@ -93,7 +103,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     }
     private func render() {
         let snapshot = agents?.snapshot()
-        guard let json = voiceAgent.flatMap({ try? $0.snapshot() }) ?? sharing.flatMap({ try? $0.snapshot() }) ?? lab.flatMap({ try? $0.snapshot() }) ?? snapshot?.formJson else { dismiss(animated: true); return }
+        guard let json = profile.flatMap({ try? $0.snapshot() }) ?? voiceAgent.flatMap({ try? $0.snapshot() }) ?? sharing.flatMap({ try? $0.snapshot() }) ?? lab.flatMap({ try? $0.snapshot() }) ?? snapshot?.formJson else { dismiss(animated: true); return }
         guard let data = json.data(using: .utf8), let form = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let root = form["root"] as? [String: Any] else { return }
         instance = form["instance"] as? String ?? ""
         revision = (form["revision"] as? NSNumber)?.uint64Value ?? 0
@@ -188,13 +198,25 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     }
     func textViewDidChange(_ textView: UITextView) {
         guard let key = fieldKeys[ObjectIdentifier(textView)] else { return }
-        do { if let sharing { try sharing.changeField(instance: instance, revision: revision, key: key, value: textView.text) }
+        do { if let profile { try profile.changeField(instance: instance, revision: revision, key: key, value: textView.text) }
+            else if let sharing { try sharing.changeField(instance: instance, revision: revision, key: key, value: textView.text) }
             else if let lab { try lab.changeField(instance: instance, revision: revision, key: key, value: textView.text) }
             else { try agents?.changeField(instance: instance, revision: revision, key: key, value: textView.text) } }
         catch { /* Restore the Rust-owned value after a rejected edit. */ }
         render()
     }
     private func activate(_ key: String) {
+        if let profile {
+            let currentInstance = instance
+            let currentRevision = revision
+            Task { @MainActor [weak self] in
+                do {
+                    try await profile.activate(instance: currentInstance, revision: currentRevision, key: key)
+                    self?.render()
+                } catch { self?.showError(error); self?.render() }
+            }
+            return
+        }
         if let voiceAgent {
             let currentInstance = instance
             let currentRevision = revision

@@ -26,6 +26,11 @@ pub struct Workbench {
     /// ([`crate::templates::offered`]) that the host could fetch.
     #[serde(default)]
     pub published: Vec<crate::api::PublishedAgent>,
+    /// Whether this host holds the person's key and can sign a published
+    /// agent's owner tag (#12301): the apps can, a browser can't, so only
+    /// the apps offer Publish.
+    #[serde(default)]
+    pub signs_owner: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Command {
@@ -45,6 +50,8 @@ pub enum Command {
     Session(String),
     /// Fork the published agent with this ID into the person's agents.
     Fork(String),
+    /// Publish the saved agent with this ID, owned by the person's key.
+    Publish(String),
 }
 fn node(key: impl Into<String>, element: Element<Action>) -> Node<Action> {
     Node {
@@ -118,6 +125,7 @@ impl Workbench {
             inputs: Default::default(),
             review_notes: Default::default(),
             published: vec![],
+            signs_owner: false,
         }
     }
     /// The templates to start from, by published ID: the published copy when
@@ -211,6 +219,15 @@ impl Workbench {
                 format!("Start from {}", a.spec.name),
                 enabled,
             ));
+        }
+        if self.signs_owner {
+            for a in &self.agents {
+                n.push(button(
+                    format!("publish:{}", a.id),
+                    format!("Publish {}", a.spec.name),
+                    enabled,
+                ));
+            }
         }
         n.extend([
             field(
@@ -961,6 +978,9 @@ impl Workbench {
                         self.inputs.clear();
                     }
                     "open" => command = Some(Command::Load(id.into())),
+                    "publish" if self.signs_owner && self.agents.iter().any(|a| a.id == id) => {
+                        command = Some(Command::Publish(id.into()))
+                    }
                     "run" => self.selected_run = Some(id.into()),
                     "session" => command = Some(Command::Session(id.into())),
                     "stop" => command = Some(Command::Stop(id.into())),

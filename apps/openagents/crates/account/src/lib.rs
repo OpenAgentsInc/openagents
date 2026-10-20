@@ -24,6 +24,7 @@ pub mod lab_cards;
 pub mod lab_row;
 pub mod own_computer;
 mod platform;
+pub mod public;
 pub mod reader;
 pub mod turns;
 pub mod video_editor;

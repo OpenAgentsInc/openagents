@@ -48,7 +48,7 @@ enum Area {
 /// Presentation grouping only. All controls and their enabled states come from Rust Native.
 fn area(key: &str) -> Area {
     if matches!(key, "heading" | "refresh" | "new")
-        || ["template:", "open:", "agent:"]
+        || ["template:", "open:", "agent:", "publish:"]
             .iter()
             .any(|p| key.starts_with(p))
     {
@@ -102,6 +102,8 @@ struct Input {
 }
 pub struct AgentLab {
     controller: Arc<Controller>,
+    /// The computer's key, which signs a published agent's owner tag.
+    owner_key: Option<openagents_account::public::KeySource>,
     root: PathBuf,
     account: Option<String>,
     lab: Option<Arc<Lab>>,
@@ -143,6 +145,7 @@ impl AgentLab {
         });
         let mut this = Self {
             controller,
+            owner_key: None,
             root,
             account: None,
             lab: None,
@@ -163,6 +166,15 @@ impl AgentLab {
         this.account_changed(cx);
         this
     }
+    /// Offer Publish, with `key` signing each published agent's owner tag
+    /// (#12301).
+    pub fn with_owner_key(mut self, key: Option<openagents_account::public::KeySource>) -> Self {
+        if let (Some(lab), Some(key)) = (&self.lab, &key) {
+            lab.set_owner_key(key.clone());
+        }
+        self.owner_key = key;
+        self
+    }
     fn account_changed(&mut self, cx: &mut Context<Self>) {
         let account = self
             .controller
@@ -182,6 +194,9 @@ impl AgentLab {
         self.busy = false;
         if self.account.is_some() {
             let lab = Lab::new(self.controller.clone(), self.root.clone());
+            if let Some(key) = &self.owner_key {
+                lab.set_owner_key(key.clone());
+            }
             let mut updates = lab.watch();
             self.lab = Some(lab.clone());
             self.watch = Some(cx.spawn(async move |this, cx| {

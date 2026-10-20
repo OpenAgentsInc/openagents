@@ -136,6 +136,8 @@ fn every_public_sdk_item_is_described_and_its_calls_resolve() {
         "DELETE /v1/device/keys/*",
         "GET /v1/cloud-host",
         "GET /v1/device/keys",
+        "GET /v1/device/name",
+        "GET /v1/published-agents/*/owner",
         "GET /v1/schedules",
         "GET /v1/schedules/*/health",
         "GET /v1/web-sign-in/*",
@@ -147,6 +149,8 @@ fn every_public_sdk_item_is_described_and_its_calls_resolve() {
         "POST /v1/inputs/file",
         "POST /v1/poll",
         "POST /v1/schedules/sync",
+        "PUT /v1/device/name",
+        "PUT /v1/published-agents/*/owner",
     ];
     let unknown: Vec<&String> = unresolved
         .iter()

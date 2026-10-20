@@ -11067,10 +11067,12 @@ dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
  "core-foundation 0.10.1",
+ "futures",
  "getrandom 0.3.4",
  "lab-kit",
  "lab-ui",
  "nostr",
+ "nostr-transport",
  "oa-copy",
  "openagents-brand",
  "openagents-doc",
@@ -11086,6 +11088,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
+ "tokio-tungstenite 0.24.0",
  "video-lab",
 ]
 

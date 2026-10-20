@@ -11,6 +11,9 @@
 //! - `GET /v1/device/keys/challenge`, `GET` and `POST /v1/device/keys`
 //!   `{"proof"}`, and `DELETE /v1/device/keys/{pubkey}`, with the app's
 //!   `Authorization: Bearer sess_…`: the account's keys.
+//! - `GET`, `PUT` `{"name", "pubkey"?}`, and `DELETE /v1/device/name`, with
+//!   the app's bearer: the account's `name@openagents.com` name (#12254),
+//!   which the apps claim from Settings > Your ID.
 //!
 //! Refusals pass through in the account service's envelope,
 //! `{"error": {"code", "message"}}`.
@@ -35,6 +38,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/v1/device/keys/challenge", get(link_challenge))
         .route("/v1/device/keys", get(keys).post(link))
         .route("/v1/device/keys/{pubkey}", delete(unlink))
+        .route("/v1/device/name", get(name).put(claim_name).delete(name))
 }
 
 fn refused(status: StatusCode, code: &str, message: &str) -> Response {
@@ -247,4 +251,50 @@ async fn unlink(
         None,
     )
     .await
+}
+
+/// `GET` and `DELETE /v1/device/name`.
+async fn name(State(app): State<App>, method: reqwest::Method, headers: HeaderMap) -> Response {
+    match bearer(&headers) {
+        Ok(token) => call(&app, method, "/v1/account/name", Some(&token), None).await,
+        Err(response) => response,
+    }
+}
+
+/// `PUT /v1/device/name` `{"name", "pubkey"?}`. A claimed name shows on its
+/// key's profile page at once.
+async fn claim_name(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
+    let token = match bearer(&headers) {
+        Ok(token) => token,
+        Err(response) => return response,
+    };
+    if body.len() > 4096 {
+        return refused(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "invalid_request",
+            "That request is too large.",
+        );
+    }
+    let Some(service) = app.config.cloud.as_deref() else {
+        return unavailable();
+    };
+    match service
+        .nostr_call(
+            reqwest::Method::PUT,
+            "/v1/account/name",
+            Some(&token),
+            Some(body.to_vec()),
+        )
+        .await
+    {
+        Ok(answer) => {
+            if answer.status == 200
+                && let Some(key) = answer.body["pubkey"].as_str()
+            {
+                crate::profiles::forget(&app.config.profile_relays, key);
+            }
+            passed(answer)
+        }
+        Err(_) => unavailable(),
+    }
 }

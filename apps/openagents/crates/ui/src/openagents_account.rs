@@ -17,6 +17,7 @@ use openagents_account::{Controller, Deletion, Phase, Snapshot};
 use std::{future::Future, path::PathBuf, sync::Arc};
 
 mod identity;
+mod public_profile;
 #[cfg(feature = "account-fixture")]
 pub use identity::capture_identity;
 

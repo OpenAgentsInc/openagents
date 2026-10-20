@@ -3742,6 +3742,50 @@
               "calls": []
             },
             {
+              "name": "account_name",
+              "doc": "The signed-in account's `name@openagents.com` name.",
+              "declaration": "pub async fn account_name(&self, session: &Session) -> Result<AccountName, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/device/name"
+                }
+              ]
+            },
+            {
+              "name": "claim_account_name",
+              "doc": "Claim or change the account's name, pointing it at `pubkey` (one of\nthe account's keys) when given. A refusal carries the name's\nproblem as its code: `name_invalid`, `name_reserved`, `name_taken`,\n`name_too_often`, or `key_not_yours`.",
+              "declaration": "pub async fn claim_account_name(\n    &self,\n    session: &Session,\n    name: &str,\n    pubkey: Option<&str>,\n) -> Result<AccountName, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/device/name"
+                }
+              ]
+            },
+            {
+              "name": "published_agent_owner",
+              "doc": "The key of the published agent `id` and what its owner signs.\nAnyone can read it.",
+              "declaration": "pub async fn published_agent_owner(&self, id: &str) -> Result<AgentOwner, Error>",
+              "calls": [
+                {
+                  "method": "GET",
+                  "path": "/v1/published-agents/*/owner"
+                }
+              ]
+            },
+            {
+              "name": "set_published_agent_owner",
+              "doc": "Set the owner of the agent you published as `id` with the\n`[\"auth\", owner, conditions, signature]` tag the owner's key signed.\nThe site then publishes the agent's profile and definition.",
+              "declaration": "pub async fn set_published_agent_owner(\n    &self,\n    session: &Session,\n    id: &str,\n    auth: &[String],\n) -> Result<OwnerSet, Error>",
+              "calls": [
+                {
+                  "method": "PUT",
+                  "path": "/v1/published-agents/*/owner"
+                }
+              ]
+            },
+            {
               "name": "runs",
               "doc": "Access runs belonging to the session's account.",
               "declaration": "pub fn runs<'a>(&'a self, session: &'a Session) -> Result<Runs<'a>, Error>",
@@ -4321,6 +4365,31 @@
           "doc": "Return the chat ID from an OpenAgents chat link. Refuse other destinations.",
           "declaration": "pub fn chat_from_deep_link(link: &str) -> Option<&str>",
           "calls": []
+        }
+      ],
+      "reexports": []
+    },
+    {
+      "path": "profiles",
+      "doc": "Public profiles and published agents' owners (#12254, #12255).\n\nA person's profile is a kind 0 event their own key signs; the apps\npublish it to a relay themselves. What this module calls is the rest:\n\n- The account's `name@openagents.com` name, as the app's session\n  (`GET`, `PUT`, and `DELETE /v1/device/name`).\n- A published agent's own key and the NIP-OA owner tag the owner's\n  client signs for it (`GET`, `PUT /v1/published-agents/{id}/owner`).",
+      "items": [
+        {
+          "kind": "struct",
+          "name": "AccountName",
+          "doc": "The account's name and the key it points at, or no name.",
+          "declaration": "pub struct AccountName {\n    pub name: Option<String>,\n    pub pubkey: Option<String>,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "AgentOwner",
+          "doc": "What the owner of a published agent signs, and who owns it now.",
+          "declaration": "pub struct AgentOwner {\n    pub agent: String,\n    pub npub: String,\n    pub conditions: String,\n    pub preimage: String,\n    pub owner: Option<String>,\n    pub revoked: bool,\n}"
+        },
+        {
+          "kind": "struct",
+          "name": "OwnerSet",
+          "doc": "The answer after the owner's tag was accepted.",
+          "declaration": "pub struct OwnerSet {\n    pub agent: String,\n    pub npub: String,\n    pub owner: String,\n    pub published: u64,\n}"
         }
       ],
       "reexports": []

@@ -76,6 +76,16 @@ impl Identity {
     pub fn entropy(&self) -> Vec<u8> {
         self.mnemonic.entropy()
     }
+    /// The secret key, for signing inside this crate only: a NIP-OA owner
+    /// tag ([`crate::public::own`]).
+    pub(crate) fn secret_key(&self) -> secp256k1::SecretKey {
+        *self.key.secret_key()
+    }
+    /// A signer for whole events, such as the profile's kind 0.
+    pub(crate) fn relay_signer(&self) -> nostr::domain::RelaySigner {
+        nostr::domain::RelaySigner::from_secret_hex(&hex(&self.key.secret_bytes()))
+            .expect("a NIP-06 key is a valid secret key")
+    }
     /// Sign a NIP-01 event, answering it as JSON.
     pub fn sign(&self, template: &EventTemplate) -> String {
         let tags: Vec<nostr::domain::Tag> = template

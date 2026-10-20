@@ -124,6 +124,12 @@ fn no_identity() -> CoreError {
 }
 
 impl CoreAccount {
+    /// This phone's key once it is open, for what the phone signs itself:
+    /// the public profile and published agents' owner tags.
+    pub(super) fn key_source(&self) -> openagents_account::public::KeySource {
+        let slot = self.identity.clone();
+        Arc::new(move || slot.lock().unwrap().clone())
+    }
     fn loaded(&self) -> CoreResult<Arc<openagents_account::identity::Identity>> {
         self.identity
             .lock()
