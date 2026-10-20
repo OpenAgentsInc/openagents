@@ -446,6 +446,12 @@ impl ChatApp {
     /// does): its commands, skills, files, queue, and questions come from
     /// there (#12267, #12268).
     pub fn set_host_chat(&mut self, host: Option<HostChat>, cx: &mut Context<Self>) {
+        // The file panel follows the open chat (#12271).
+        let detail = host
+            .as_ref()
+            .map(|host| format!("{}\n{}", host.device, host.chat))
+            .unwrap_or_default();
+        crate::compose::page_event("oa-host", &detail);
         self.compose
             .update(cx, |compose, cx| compose.set_host(host, cx));
         cx.notify();
@@ -1429,6 +1435,12 @@ impl ChatApp {
             )
             .children(project.map(|p| chip("icons/folder.svg", p, theme::text_muted())))
             .children(computer.map(|c| chip("icons/laptop.svg", c, theme::text_muted())))
+            // The file panel, for a chat on a computer (#12271).
+            .when(self.compose.read(cx).host().is_some(), |row| {
+                row.child(icon_button("header-files", "icons/folder.svg").on_click(
+                    |_: &ClickEvent, _, _| crate::compose::page_event("oa-files-toggle", ""),
+                ))
+            })
             .when(!wide && self.current.is_some(), |row| {
                 row.child(
                     icon_button("header-new-chat", "icons/pen-new-square.svg").on_click(

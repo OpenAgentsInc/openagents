@@ -4490,6 +4490,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-web-files"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.22.1",
+ "console_error_panic_hook",
+ "futures",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "gpui",
+ "js-sys",
+ "openagents-gpui-web",
+ "openagents-proto",
+ "openagents-web-chat-view",
+ "openagents-web-client",
+ "serde_json",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "web-time",
+]
+
+[[package]]
 name = "openagents-web-graph-card"
 version = "1.0.0"
 dependencies = [

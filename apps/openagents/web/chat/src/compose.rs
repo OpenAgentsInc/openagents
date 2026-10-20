@@ -1127,6 +1127,19 @@ fn card(id: &'static str) -> gpui::Stateful<gpui::Div> {
         .bg(theme::surface_card())
 }
 
+/// Tell the page's script something: `oa-host` (the open chat's computer
+/// and chat, `DEVICE\nCHAT`, or empty) and `oa-files-toggle` (the file
+/// panel's button).
+pub fn page_event(name: &str, detail: &str) {
+    let init = web_sys::CustomEventInit::new();
+    init.set_detail(&wasm_bindgen::JsValue::from_str(detail));
+    if let Some(window) = web_sys::window()
+        && let Ok(event) = web_sys::CustomEvent::new_with_event_init_dict(name, &init)
+    {
+        let _ = window.dispatch_event(&event);
+    }
+}
+
 fn is_mac() -> bool {
     web_sys::window()
         .and_then(|w| w.navigator().platform().ok())

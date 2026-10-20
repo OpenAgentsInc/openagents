@@ -32,6 +32,9 @@ function supported() {
   });
 }
 
+// The fonts the chat fetched, which the file panel draws with too.
+var loadedFonts = null;
+
 function say(text) {
   var status = document.getElementById("gpui-status");
   if (status) {
@@ -133,6 +136,7 @@ function start() {
         console.warn("couldn't keep this frame for the next visit", error);
       });
   }, { once: true });
+  loadedFonts = fonts;
   Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) }), fonts])
     .then(function (loaded) {
       launch(loaded[1]);
@@ -211,6 +215,64 @@ window.addEventListener("keydown", function (event) {
     showText(false);
   }
 }, true);
+
+// The file panel (#12271): its own module, loaded the first time the
+// chat's folder button asks for it, in a box on the right. It shows the
+// open chat's files on the computer the chat runs on (`oa-host`).
+var host = "";
+var files = null;
+var filesBox = null;
+function hostParts() {
+  var at = host.indexOf("\n");
+  return at < 0 ? ["", ""] : [host.slice(0, at), host.slice(at + 1)];
+}
+function showFiles(open) {
+  if (filesBox) {
+    filesBox.hidden = !open;
+  }
+}
+function openFiles() {
+  if (filesBox) {
+    showFiles(filesBox.hidden);
+    return;
+  }
+  filesBox = document.createElement("div");
+  filesBox.id = "gpui-mount";
+  filesBox.setAttribute("aria-label", "Files");
+  filesBox.style.cssText = "position:fixed;top:8px;right:8px;bottom:8px;width:min(560px,46vw);z-index:5;border-radius:14px;overflow:hidden;";
+  document.body.appendChild(filesBox);
+  var glue = new URL("./openagents_web_files.js", import.meta.url);
+  Promise.all([import(glue.href), loadedFonts])
+    .then(function (loaded) {
+      var module = loaded[0];
+      return module.default({
+        module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_files_bg.wasm", import.meta.url))),
+      }).then(function () {
+        files = module;
+        var parts = hostParts();
+        module.mount(loaded[1], parts[0], parts[1]);
+      });
+    })
+    .catch(function (error) {
+      console.error("the file panel couldn't start", error);
+      filesBox.remove();
+      filesBox = null;
+    });
+}
+window.addEventListener("oa-files-toggle", openFiles);
+window.addEventListener("oa-files-close", function () {
+  showFiles(false);
+});
+window.addEventListener("oa-host", function (event) {
+  host = event.detail || "";
+  if (files) {
+    var parts = hostParts();
+    files.show(parts[0], parts[1]);
+  }
+  if (!host) {
+    showFiles(false);
+  }
+});
 
 supported().then(function (ok) {
   if (ok) {

@@ -49,6 +49,29 @@ class PackageTest(unittest.TestCase):
             self.assertEqual(report["brotli_bytes"], (directory / "app_bg.wasm.br").stat().st_size)
             self.assertEqual(report["budget_bytes"], 1_500_000)
 
+    def test_a_later_module_is_hashed_and_checked_too(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            self.fixture(directory)
+            (directory / "pane_bg.wasm").write_bytes(b"\0asm\x01\0\0\1")
+            (directory / "pane.js").write_text('new URL("pane_bg.wasm", import.meta.url)')
+            start = (directory / "start.js").read_text()
+            (directory / "start.js").write_text(
+                start + '; import("./pane.js"); fetch("./pane_bg.wasm")'
+            )
+            packager.package(directory, "app", "pane")
+            assets = json.loads((directory / "assets.json").read_text())
+            start = (directory / assets["start.js"]).read_text()
+            self.assertIn(assets["pane.js"], start)
+            self.assertIn(assets["pane_bg.wasm"], start)
+            self.assertIn(assets["pane_bg.wasm"], (directory / assets["pane.js"]).read_text())
+            report = json.loads((directory / "size.json").read_text())
+            self.assertEqual(report["module"], "app_bg.wasm")
+            self.assertEqual(report["later"][0]["module"], "pane_bg.wasm")
+            with patch.object(packager, "BUDGET", 1):
+                with self.assertRaisesRegex(SystemExit, "exceeds"):
+                    packager.package(directory, "app", "pane")
+
     def test_a_stale_compressed_copy_cannot_hide_an_over_budget_module(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

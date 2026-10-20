@@ -6,6 +6,8 @@
 #
 #   openagents_web_chat.js        wasm-bindgen's `--target web` glue
 #   openagents_web_chat_bg.wasm   the module
+#   openagents_web_files.js       the file panel's glue and module, loaded
+#   openagents_web_files_bg.wasm  when the panel first opens (#12271)
 #   start.js                      the page's one script: checks, loads, launches
 #   fonts/*.ttf                   the Geist faces the chat draws, fetched apart
 #   *.gz, *.br                    gzip and brotli copies, sent when asked
@@ -51,6 +53,15 @@ wasm-bindgen --target web --no-typescript --out-dir "$out" \
 wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
     --enable-sign-ext --enable-mutable-globals --enable-reference-types \
     "$out/openagents_web_chat_bg.wasm" -o "$out/openagents_web_chat_bg.wasm"
+# The file panel (#12271): its own module, which start.js loads the first
+# time the panel opens.
+cargo build --locked --manifest-path "$web/Cargo.toml" -p openagents-web-files \
+  --release --target "$target"
+wasm-bindgen --target web --no-typescript --out-dir "$out" \
+  "$target_dir/$target/release/openagents_web_files.wasm"
+wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
+    --enable-sign-ext --enable-mutable-globals --enable-reference-types \
+    "$out/openagents_web_files_bg.wasm" -o "$out/openagents_web_files_bg.wasm"
 cp "$web/chat/start.js" "$out/start.js"
 # The faces start.js asks for, by the names in its FONTS list.
 fonts="$(sed -n 's/^  "\([A-Za-z-]*\.ttf\)",$/\1/p' "$web/chat/start.js")"
@@ -66,7 +77,7 @@ compress() {
 # The first-frame painter: the page paints the frame this browser kept
 # from the last visit before the module loads (#12244).
 "$app/scripts/build-first-frame-painter.sh" "$out/first-frame"
-python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat
+python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files
 for font in $fonts; do
   compress "$out/fonts/$font"
 done

@@ -26,23 +26,34 @@ def commit():
         return "unknown"
 
 
-def package(directory, name):
-    directory = Path(directory)
-    wasm = name + "_bg.wasm"
-    # Recompress the actual optimized module: a stale .br must never pass.
+def measure(directory, wasm):
+    """The module's brotli size, from a fresh compression: a stale .br must
+    never pass."""
     subprocess.run(["brotli", "-q", "11", "-f", str(directory / wasm)], check=True)
-    size = (directory / (wasm + ".br")).stat().st_size
-    report = {
-        "commit": commit(),
+    return {
         "module": wasm,
         "raw_bytes": (directory / wasm).stat().st_size,
-        "brotli_bytes": size,
-        "budget_bytes": BUDGET,
+        "brotli_bytes": (directory / (wasm + ".br")).stat().st_size,
     }
+
+
+def package(directory, name, *later):
+    """Package the page's module `name` and the modules its start script
+    loads `later` (each under the same budget), naming every asset by
+    content."""
+    directory = Path(directory)
+    wasm = name + "_bg.wasm"
+    measured = [measure(directory, module + "_bg.wasm") for module in (name, *later)]
+    report = {"commit": commit(), **measured[0], "budget_bytes": BUDGET}
+    if later:
+        report["later"] = measured[1:]
     (directory / "size.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report), flush=True)
-    if size > BUDGET:
-        raise SystemExit(f"{wasm}: {size} bytes brotli exceeds the {BUDGET} byte budget")
+    for module in measured:
+        if module["brotli_bytes"] > BUDGET:
+            raise SystemExit(
+                f"{module['module']}: {module['brotli_bytes']} bytes brotli exceeds the {BUDGET} byte budget"
+            )
 
     assets = {}
 
@@ -54,22 +65,24 @@ def package(directory, name):
         target = directory / original
         target.write_bytes(content)
         target.with_name(original + ".gz").write_bytes(gzip.compress(content, mtime=0))
-        if original != wasm:
+        if not original.endswith("_bg.wasm"):
             subprocess.run(["brotli", "-q", "11", "-f", str(target)], check=True)
         for suffix in ("", ".gz", ".br"):
             shutil.copyfile(directory / (original + suffix), directory / (hashed + suffix))
         return hashed
 
-    hashed_wasm = write(wasm, (directory / wasm).read_bytes())
-    glue = name + ".js"
-    source = (directory / glue).read_text()
-    if wasm not in source:
-        raise SystemExit(f"{glue}: wasm-bindgen no longer names {wasm}")
-    hashed_glue = write(glue, source.replace(wasm, hashed_wasm).encode())
     source = (directory / "start.js").read_text()
-    if glue not in source or wasm not in source:
-        raise SystemExit("start.js must name both the glue and the streaming module")
-    source = source.replace(glue, hashed_glue).replace(wasm, hashed_wasm)
+    for module in (name, *later):
+        wasm = module + "_bg.wasm"
+        hashed_wasm = write(wasm, (directory / wasm).read_bytes())
+        glue = module + ".js"
+        glue_source = (directory / glue).read_text()
+        if wasm not in glue_source:
+            raise SystemExit(f"{glue}: wasm-bindgen no longer names {wasm}")
+        hashed_glue = write(glue, glue_source.replace(wasm, hashed_wasm).encode())
+        if glue not in source or wasm not in source:
+            raise SystemExit(f"start.js must name both {glue} and its streaming module")
+        source = source.replace(glue, hashed_glue).replace(wasm, hashed_wasm)
     # Read only fonts named by the source loader, not hashed leftovers from
     # an earlier build in this directory.
     fonts = re.findall(r'"(?:\./)?(Noto[^/"]+\.(?:ttf|otf))"', source)
@@ -81,6 +94,6 @@ def package(directory, name):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        raise SystemExit("usage: package-web-build.py OUTDIR MODULE_NAME")
+    if len(sys.argv) < 3:
+        raise SystemExit("usage: package-web-build.py OUTDIR MODULE_NAME [LATER_MODULE...]")
     package(*sys.argv[1:])

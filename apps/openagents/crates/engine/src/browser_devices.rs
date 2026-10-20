@@ -54,7 +54,9 @@ pub const ALLOWED: &[&str] = &[
     // read of its last entries (#12268).
     methods::WATCH_QUEUE,
     methods::READ_CHAT_WINDOW,
-    // The file panel follows changes on the computer (#12272).
+    // The file panel's git badges (#12271), and changes on the computer
+    // (#12272).
+    methods::WATCH_WORKSPACE_GIT_STATUS,
     methods::WATCH_WORKSPACE_FILES,
     // A new session's pickers (#12266).
     methods::LIST_REPOS,
