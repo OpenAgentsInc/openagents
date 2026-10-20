@@ -136,8 +136,9 @@ mod tests {
         let _guard = runtime.enter();
         let (out, mut requests) = tokio::sync::mpsc::channel(16);
         let (replies, inbound) = tokio::sync::mpsc::channel(16);
-        let engine =
-            crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(out, inbound));
+        let engine = crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(
+            out, inbound,
+        ));
         let dir = tempfile::tempdir().unwrap();
         let window = test_shell(cx, dir.path());
         window

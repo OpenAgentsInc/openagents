@@ -9,7 +9,8 @@ use openagents_ui::browser::BrowserSurface;
 /// blocking this thread would prevent the frame we're waiting for.
 pub(super) async fn wait_for_visible_window(cx: &mut AsyncApp) -> anyhow::Result<()> {
     // Wayland captures the already-mapped nested compositor's X11 window.
-    if openagents_brand::env_var("OPENAGENTS_BROWSER_CAPTURE_WINDOW").is_ok_and(|id| !id.is_empty()) {
+    if openagents_brand::env_var("OPENAGENTS_BROWSER_CAPTURE_WINDOW").is_ok_and(|id| !id.is_empty())
+    {
         return Ok(());
     }
     let deadline = std::time::Instant::now() + Duration::from_secs(10);
@@ -64,7 +65,8 @@ pub(super) fn dispatch(
             _ => None,
         };
         if let Some((position, action)) = pointer {
-            let id = if let Ok(id) = openagents_brand::env_var("OPENAGENTS_BROWSER_CAPTURE_WINDOW") {
+            let id = if let Ok(id) = openagents_brand::env_var("OPENAGENTS_BROWSER_CAPTURE_WINDOW")
+            {
                 id
             } else {
                 let ids = std::process::Command::new("xdotool")

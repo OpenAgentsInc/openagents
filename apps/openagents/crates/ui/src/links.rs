@@ -1,7 +1,7 @@
 //! Stable conversation links shared by sidebar copy actions and inbound URL routing.
 
-use sha2::{Digest, Sha256};
 use openagents_proto::{AuthState, Chat, HarnessId, WorkspaceScope};
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationDeepLink {
