@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
 
+mod evidence;
 pub(crate) mod owner;
 pub(crate) mod social;
 
@@ -428,6 +429,14 @@ pub(crate) fn routes() -> Router<App> {
         .route(
             "/v1/published-agents/{id}/messages",
             axum::routing::put(social::set_messages),
+        )
+        .route(
+            "/v1/published-agents/{id}/runtime",
+            axum::routing::put(evidence::set_runtime),
+        )
+        .route(
+            "/v1/published-agents/{id}/receipts",
+            post(evidence::publish_receipt),
         )
         .route("/v1/agent-definitions/{id}/publish", post(publish_route))
         .route("/v1/agent-definitions/{id}/upstream", get(upstream_route))

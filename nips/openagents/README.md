@@ -1,6 +1,6 @@
 # OpenAgents protocols
 
-[NIP-AGENT](NIP-AGENT.md) defines private, revisioned custom-agent exports using existing artifact events, and public agents: an agent key of its own, owned through a NIP-OA tag, with a kind 0 and a public definition (`30187`). It adds no execution authority.
+[NIP-AGENT](NIP-AGENT.md) defines private, revisioned custom-agent exports using existing artifact events, and public agents: an agent key of its own, owned through a NIP-OA tag, with a kind 0 and a public definition (`30187`), exact NIP-ATT runtime references, and owner-selected public gateway receipts (`3204`). It adds no execution authority.
 
 OpenAgents defines general agent infrastructure. Coding agents are the first
 specialization. These specifications describe how agents share capabilities,
@@ -367,6 +367,7 @@ NIP-32 `1985` labels or Block `24200` frames, aren't claims.
 | `3201` | [NIP-PYLON](NIP-PYLON.md) | Service receipt |
 | `3202` | [NIP-ATT](NIP-ATT.md) | Attested workload release |
 | `3203` | [NIP-ATT](NIP-ATT.md) | Independent rebuild statement |
+| `3204` | [NIP-AGENT](NIP-AGENT.md) | Owner-published gateway execution receipt |
 | `13193` | [NIP-XP](NIP-XP.md) | Trainer profile |
 | `13195` | [NIP-XP](NIP-XP.md) | Key link |
 | `23300` | [NIP-MV](NIP-MV.md) | Pose frame |

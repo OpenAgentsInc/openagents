@@ -13230,6 +13230,7 @@ dependencies = [
  "agent-lab",
  "async-trait",
  "atif",
+ "att-release",
  "axum 0.8.9",
  "base64 0.22.1",
  "bitcoin",
@@ -13307,6 +13308,7 @@ dependencies = [
  "pylons-web",
  "qrcodegen",
  "receipts",
+ "receipts-nostr",
  "reqwest 0.12.28",
  "resvg",
  "retail-cloud",
@@ -15655,6 +15657,18 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+]
+
+[[package]]
+name = "receipts-nostr"
+version = "1.0.0"
+dependencies = [
+ "nostr",
+ "openagents-workspace-hack",
+ "receipts",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

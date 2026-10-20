@@ -54,6 +54,8 @@ pub(crate) struct Owned {
     /// when unset.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) messages: Option<super::social::MessagesFrom>,
+    #[serde(default, skip_serializing_if = "agent_public::Runtime::is_empty")]
+    pub(crate) runtime: agent_public::Runtime,
 }
 
 /// Who may message the agent.
@@ -139,7 +141,7 @@ pub(super) fn document(record: &Record) -> Option<agent_graph::definition::Defin
 }
 
 /// Publish `events` to the profile relays; how many relays took them all.
-async fn send(app: &App, events: &[nostr::domain::Event]) -> usize {
+pub(super) async fn send(app: &App, events: &[nostr::domain::Event]) -> usize {
     let relays = &app.config.profile_relays;
     let mut took = 0;
     for relay in relays {
@@ -165,7 +167,7 @@ async fn send(app: &App, events: &[nostr::domain::Event]) -> usize {
 }
 
 /// The agent's kind 0 and definition for `record`, signed now.
-fn events(
+pub(super) fn events(
     app: &App,
     id: &str,
     record: &Record,
@@ -193,8 +195,17 @@ fn events(
         at,
     );
     let content = serde_json::to_string(&document(record)?).ok()?;
-    let definition =
-        agent_public::definition_event(&agent, &tag, &owned.pubkey, id, &url, &content, at).ok()?;
+    let definition = agent_public::definition_with_runtime(
+        &agent,
+        &tag,
+        &owned.pubkey,
+        id,
+        &url,
+        &content,
+        &owned.runtime,
+        at,
+    )
+    .ok()?;
     Some(vec![profile, definition])
 }
 
@@ -403,6 +414,7 @@ pub(super) async fn set(
             revoked: false,
             signed_at: now(),
             messages: None,
+            runtime: agent_public::Runtime::default(),
         })
     })
     .await;

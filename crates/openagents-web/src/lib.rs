@@ -150,9 +150,9 @@ mod verse_key;
 mod visitor_api;
 mod wallet_browser;
 mod web_sign_in;
-mod workos_auth;
 mod wellknown;
 mod work_runs;
+mod workos_auth;
 
 use std::path::PathBuf;
 use std::sync::Arc;

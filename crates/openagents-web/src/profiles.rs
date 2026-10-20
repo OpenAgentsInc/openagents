@@ -25,11 +25,12 @@
 //! Reads are cached for [`FRESH`] per key, so a busy page reads the
 //! relays about once a minute.
 
+pub(crate) mod agent_evidence;
 mod edit;
 pub(crate) mod evidence;
 mod explore;
-pub(crate) mod skills;
 pub(crate) mod gym;
+pub(crate) mod skills;
 pub(crate) use edit::PAGE as SETTINGS_PAGE;
 mod picture;
 pub(crate) mod relays;

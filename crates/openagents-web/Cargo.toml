@@ -71,6 +71,7 @@ coder-demo-ui = { path = "../coder-demo-ui" }
 coder-ui = { path = "../coder-ui" }
 compute-workbench = { path = "../compute-workbench", features = ["client"] }
 receipts = { path = "../receipts" }
+receipts-nostr = { path = "../receipts-nostr" }
 retail-cloud = { path = "../retail-cloud" }
 rust-native = { path = "../rust-native" }
 rust-native-web = { path = "../rust-native-web" }
@@ -115,6 +116,7 @@ oa-connections = { path = "../oa-connections" }
 oa-seal = { path = "../oa-seal" }
 # The sealed-inference demo at /att (NIP-ATT): the gateway's own checks and
 # its relay reads and exchange.
+att-release = { path = "../att-release" }
 oa-att = { path = "../oa-att", features = ["net"] }
 # The vault (#11240): NIP-VAULT shapes the server checks.
 oa-vault = { path = "../oa-vault" }
