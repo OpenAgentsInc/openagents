@@ -31,6 +31,8 @@ use serde_json::Value;
 
 use super::Action;
 
+/// Above this, the shell asks for Face ID or the passcode before Pay.
+const CHECK_ABOVE_MSAT: u64 = 1_000_000;
 /// A day, the phase 1 grant's period, before its end when the phone renews it.
 const RENEW_BEFORE: u64 = 24 * 60 * 60;
 
@@ -378,6 +380,19 @@ impl Approvals {
         let sent = self.api.settle(receipt).await;
         self.done(id, None);
         sent
+    }
+
+    /// Whether pressing `key` pays more than the phone pays without asking
+    /// for Face ID or the passcode first: 1,000 sats, as for agents.
+    pub fn needs_check(&self, key: &str) -> bool {
+        let Some(id) = key.strip_prefix("approve:") else {
+            return false;
+        };
+        self.lock()
+            .pending
+            .iter()
+            .find(|r| r.request == id)
+            .is_some_and(|r| r.amount_msat > CHECK_ABOVE_MSAT)
     }
 
     /// The approval card.

@@ -131,6 +131,12 @@ impl CoreBrowserPayments {
         result.map_err(failed)
     }
 
+    /// Whether the shell asks for Face ID or the passcode before `key`
+    /// (Pay above 1,000 sats).
+    pub fn needs_check(&self, key: String) -> bool {
+        self.approvals.needs_check(&key)
+    }
+
     /// Press Pay or Decline on a request.
     pub async fn activate(&self, instance: String, revision: u64, key: String) -> CoreResult<()> {
         let _ = (instance, revision);

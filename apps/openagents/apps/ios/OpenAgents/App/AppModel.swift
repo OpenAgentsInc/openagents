@@ -41,6 +41,7 @@ final class AppModel {
     private(set) var projectSharing: CoreSharing?
     private lazy var sharingBridge = ProjectSharingBridge(app: self)
     private lazy var profileBridge = PublicProfileBridge(app: self)
+    private lazy var browserPaymentsBridge = BrowserPaymentsBridge(app: self)
     private(set) var voiceAgent: CoreVoiceAgent?
     private(set) var agentLab: CoreAgentLab?
     private lazy var labBridge = LabBridge(app: self)
@@ -253,6 +254,11 @@ final class AppModel {
     func openPublicProfile() throws -> CorePublicProfile {
         guard let account else { throw NSError(domain: "OpenAgents", code: 1, userInfo: [NSLocalizedDescriptionKey: "Log in again to continue."]) }
         return account.publicProfile(listener: profileBridge)
+    }
+    /// Wallet > Payments from your browser (#12310), paying through `wallet`.
+    func openBrowserPayments(wallet: CoreWallet) throws -> CoreBrowserPayments {
+        guard let account else { throw NSError(domain: "OpenAgents", code: 1, userInfo: [NSLocalizedDescriptionKey: "Log in again to continue."]) }
+        return try account.browserPayments(wallet: wallet, listener: browserPaymentsBridge)
     }
     func openProjectInvitations() {
         guard let site = URL(string: Self.accountWebsite), let url = URL(string: "projects", relativeTo: site)?.absoluteURL else { return }
@@ -1157,6 +1163,12 @@ private final class LabBridge: AgentLabListener {
     weak var app: AppModel?
     init(app: AppModel) { self.app = app }
     func onAgentLabChanged() { DispatchQueue.main.async { [weak self] in self?.app?.notifyChanged() } }
+}
+
+private final class BrowserPaymentsBridge: BrowserPaymentsListener {
+    weak var app: AppModel?
+    init(app: AppModel) { self.app = app }
+    func onBrowserPaymentsChanged() { DispatchQueue.main.async { [weak self] in self?.app?.notifyChanged() } }
 }
 
 private final class PublicProfileBridge: PublicProfileListener {

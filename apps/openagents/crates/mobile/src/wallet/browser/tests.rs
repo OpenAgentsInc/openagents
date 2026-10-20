@@ -117,6 +117,10 @@ async fn the_phone_grants_then_pays_or_declines_what_the_browser_asks() {
     assert!(card.contains("1000 sats"), "{card}");
     assert!(card.contains(&format!("approve:{}", small.request)));
 
+    assert!(!phone.needs_check(&format!("approve:{}", small.request)));
+    assert!(phone.needs_check(&format!("approve:{}", other.request)));
+    assert!(!phone.needs_check(&format!("decline:{}", other.request)));
+
     // Pay one: the receipt proves it; decline the other.
     phone.approve(&small.request).await.unwrap();
     phone.decline(&other.request).await.unwrap();

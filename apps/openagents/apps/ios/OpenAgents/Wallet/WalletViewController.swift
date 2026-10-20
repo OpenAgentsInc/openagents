@@ -58,7 +58,23 @@ final class WalletViewController: UIViewController, UITextViewDelegate {
             content.widthAnchor.constraint(equalTo: scroll.frameLayoutGuide.widthAnchor, constant: -40),
         ])
         observation = app.observeWallet { [weak self] in self?.render() }
+        // Payments your browser asks for on openagents.com (#12310).
+        let browser = UIBarButtonItem(title: "Browser", primaryAction: UIAction { [weak self] _ in self?.openBrowserPayments() })
+        browser.accessibilityLabel = "Payments from your browser"
+        browser.accessibilityIdentifier = "wallet-browser-payments"
+        navigationItem.rightBarButtonItem = browser
         render()
+    }
+
+    private func openBrowserPayments() {
+        do {
+            let payments = try app.openBrowserPayments(wallet: wallet)
+            present(UINavigationController(rootViewController: AgentFormController(app: app, payments: payments)), animated: true)
+        } catch {
+            let alert = UIAlertController(title: "Couldn't open your browser's payments", message: error.localizedDescription, preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "OK", style: .default))
+            present(alert, animated: true)
+        }
     }
 
     override func viewWillAppear(_ animated: Bool) {

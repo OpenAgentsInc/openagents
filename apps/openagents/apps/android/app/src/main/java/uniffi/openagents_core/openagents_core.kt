@@ -687,6 +687,9 @@ internal interface UniffiCallbackInterfaceAndroidSecretStorageMethod3 : com.sun.
 internal interface UniffiCallbackInterfaceAndroidRetiredWalletSeedMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
 }
+internal interface UniffiCallbackInterfaceBrowserPaymentsListenerMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceCloudChatDoneMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`error`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -701,6 +704,9 @@ internal interface UniffiCallbackInterfaceAppAttesterMethod0 : com.sun.jna.Callb
 }
 internal interface UniffiCallbackInterfacePlayIntegrityAttesterMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`requestHash`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfacePublicProfileListenerMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceSavedHistoryListenerMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
@@ -892,6 +898,25 @@ internal open class UniffiVTableCallbackInterfaceAndroidRetiredWalletSeed(
     }
 
 }
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "onBrowserPaymentsChanged")
+internal open class UniffiVTableCallbackInterfaceBrowserPaymentsListener(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `onBrowserPaymentsChanged`: UniffiCallbackInterfaceBrowserPaymentsListenerMethod0? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `onBrowserPaymentsChanged`: UniffiCallbackInterfaceBrowserPaymentsListenerMethod0? = null,
+    ): UniffiVTableCallbackInterfaceBrowserPaymentsListener(`uniffiFree`,`uniffiClone`,`onBrowserPaymentsChanged`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceBrowserPaymentsListener) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `onBrowserPaymentsChanged` = other.`onBrowserPaymentsChanged`
+    }
+
+}
 @Structure.FieldOrder("uniffiFree", "uniffiClone", "onDone")
 internal open class UniffiVTableCallbackInterfaceCloudChatDone(
     @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
@@ -984,6 +1009,25 @@ internal open class UniffiVTableCallbackInterfacePlayIntegrityAttester(
         `uniffiFree` = other.`uniffiFree`
         `uniffiClone` = other.`uniffiClone`
         `attest` = other.`attest`
+    }
+
+}
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "onPublicProfileChanged")
+internal open class UniffiVTableCallbackInterfacePublicProfileListener(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `onPublicProfileChanged`: UniffiCallbackInterfacePublicProfileListenerMethod0? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `onPublicProfileChanged`: UniffiCallbackInterfacePublicProfileListenerMethod0? = null,
+    ): UniffiVTableCallbackInterfacePublicProfileListener(`uniffiFree`,`uniffiClone`,`onPublicProfileChanged`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfacePublicProfileListener) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `onPublicProfileChanged` = other.`onPublicProfileChanged`
     }
 
 }
@@ -1524,6 +1568,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_project_sharing(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccount_public_profile(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_restore(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_revalidate(
@@ -1543,6 +1589,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_delete_account(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_restore_words_if_current(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreaccount_browser_payments(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreaccount_chat_homes(
     ): Int
@@ -1602,6 +1650,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_attach_transcript(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_browser_payments(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_client(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_composer(
@@ -1617,6 +1667,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_offer_app_link(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_offer_notification_tap(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_public_profile(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreandroidhost_refresh_transcript(
     ): Int
@@ -1752,6 +1804,16 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_androidretiredwalletseed_read_retired_seed(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_method_browserpaymentslistener_on_browser_payments_changed(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corebrowserpayments_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corebrowserpayments_needs_check(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corebrowserpayments_refresh(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corebrowserpayments_snapshot(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_method_corechathomes_activate(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_corechathomes_choices(
@@ -1857,6 +1919,16 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_openagents_mobile_checksum_method_coreowncomputeroffer_close(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coreowncomputeroffer_shows(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corepublicprofile_activate(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corepublicprofile_change_field(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corepublicprofile_reload(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_corepublicprofile_snapshot(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_method_publicprofilelistener_on_public_profile_changed(
     ): Int
     external fun uniffi_openagents_mobile_checksum_method_coresavedhistory_chat_homes(
     ): Int
@@ -2240,6 +2312,7 @@ internal object UniffiLib {
         uniffiCallbackInterfaceAndroidRetiredWalletSeed.register(this)
         uniffiCallbackInterfaceAndroidSecretStorage.register(this)
         uniffiCallbackInterfaceAppAttester.register(this)
+        uniffiCallbackInterfaceBrowserPaymentsListener.register(this)
         uniffiCallbackInterfaceClientListener.register(this)
         uniffiCallbackInterfaceCloudChatDone.register(this)
         uniffiCallbackInterfaceCloudChatListener.register(this)
@@ -2248,6 +2321,7 @@ internal object UniffiLib {
         uniffiCallbackInterfaceLayoutListener.register(this)
         uniffiCallbackInterfacePlatformMeasurer.register(this)
         uniffiCallbackInterfacePlayIntegrityAttester.register(this)
+        uniffiCallbackInterfacePublicProfileListener.register(this)
         uniffiCallbackInterfaceSavedHistoryListener.register(this)
         uniffiCallbackInterfaceSettingsListener.register(this)
         uniffiCallbackInterfaceSharingListener.register(this)
@@ -2506,6 +2580,8 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_coreaccount_project_sharing(`ptr`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
+    external fun uniffi_openagents_mobile_fn_method_coreaccount_public_profile(`ptr`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
     external fun uniffi_openagents_mobile_fn_method_coreaccount_restore(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coreaccount_revalidate(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2526,6 +2602,8 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_openagents_mobile_fn_method_coreaccount_restore_words_if_current(`ptr`: Long,`words`: RustBuffer.ByValue,`generation`: Long,`npub`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_method_coreaccount_browser_payments(`ptr`: Long,`wallet`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
     external fun uniffi_openagents_mobile_fn_method_coreaccount_chat_homes(`ptr`: Long,`client`: Long,`chat`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_method_coreaccount_cloud_chat(`ptr`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2610,6 +2688,8 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_attach_transcript(`ptr`: Long,`view`: Long,`generation`: Long,`contentRevision`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_browser_payments(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_client(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_composer(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -2626,6 +2706,8 @@ internal object UniffiLib {
     ): Byte
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_offer_notification_tap(`ptr`: Long,`link`: RustBuffer.ByValue,`request`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
     ): Byte
+    external fun uniffi_openagents_mobile_fn_method_coreandroidhost_public_profile(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_refresh_transcript(`ptr`: Long,`view`: Long,`generation`: Long,`contentRevision`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coreandroidhost_resolve_notification_tap(`ptr`: Long,
@@ -2797,6 +2879,26 @@ internal object UniffiLib {
     external fun uniffi_openagents_mobile_fn_init_callback_vtable_androidretiredwalletseed(`vtable`: UniffiVTableCallbackInterfaceAndroidRetiredWalletSeed,
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_androidretiredwalletseed_read_retired_seed(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_clone_browserpaymentslistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_browserpaymentslistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_init_callback_vtable_browserpaymentslistener(`vtable`: UniffiVTableCallbackInterfaceBrowserPaymentsListener,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_browserpaymentslistener_on_browser_payments_changed(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_clone_corebrowserpayments(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_corebrowserpayments(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corebrowserpayments_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_corebrowserpayments_needs_check(`ptr`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Byte
+    external fun uniffi_openagents_mobile_fn_method_corebrowserpayments_refresh(`ptr`: Long,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_corebrowserpayments_snapshot(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_clone_corechathomes(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
@@ -2974,6 +3076,26 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_openagents_mobile_fn_method_coreowncomputeroffer_shows(`ptr`: Long,`chat`: Long,`computers`: Int,uniffi_out_err: UniffiRustCallStatus,
     ): Byte
+    external fun uniffi_openagents_mobile_fn_clone_corepublicprofile(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_corepublicprofile(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corepublicprofile_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_corepublicprofile_change_field(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_corepublicprofile_reload(`ptr`: Long,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_method_corepublicprofile_snapshot(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
+    external fun uniffi_openagents_mobile_fn_clone_publicprofilelistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
+    external fun uniffi_openagents_mobile_fn_free_publicprofilelistener(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_init_callback_vtable_publicprofilelistener(`vtable`: UniffiVTableCallbackInterfacePublicProfileListener,
+    ): Unit
+    external fun uniffi_openagents_mobile_fn_method_publicprofilelistener_on_public_profile_changed(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Unit
     external fun uniffi_openagents_mobile_fn_clone_coresavedhistory(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_free_coresavedhistory(`handle`: Long,uniffi_out_err: UniffiRustCallStatus,
@@ -4035,6 +4157,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_project_sharing() and 0xFFFF) != 8843) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_public_profile() and 0xFFFF) != 58560) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_restore() and 0xFFFF) != 29093) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4063,6 +4188,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_restore_words_if_current() and 0xFFFF) != 42439) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_browser_payments() and 0xFFFF) != 52192) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreaccount_chat_homes() and 0xFFFF) != 42622) {
@@ -4152,6 +4280,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_attach_transcript() and 0xFFFF) != 187) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_browser_payments() and 0xFFFF) != 43429) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_client() and 0xFFFF) != 49971) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4174,6 +4305,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_offer_notification_tap() and 0xFFFF) != 8193) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_public_profile() and 0xFFFF) != 47980) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreandroidhost_refresh_transcript() and 0xFFFF) != 65138) {
@@ -4377,6 +4511,21 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_openagents_mobile_checksum_method_androidretiredwalletseed_read_retired_seed() and 0xFFFF) != 13277) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_openagents_mobile_checksum_method_browserpaymentslistener_on_browser_payments_changed() and 0xFFFF) != 14330) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corebrowserpayments_activate() and 0xFFFF) != 30421) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corebrowserpayments_needs_check() and 0xFFFF) != 27717) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corebrowserpayments_refresh() and 0xFFFF) != 64661) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corebrowserpayments_snapshot() and 0xFFFF) != 15006) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_openagents_mobile_checksum_method_corechathomes_activate() and 0xFFFF) != 47837) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4534,6 +4683,21 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coreowncomputeroffer_shows() and 0xFFFF) != 20949) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corepublicprofile_activate() and 0xFFFF) != 11901) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corepublicprofile_change_field() and 0xFFFF) != 52236) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corepublicprofile_reload() and 0xFFFF) != 50262) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_corepublicprofile_snapshot() and 0xFFFF) != 51980) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_method_publicprofilelistener_on_public_profile_changed() and 0xFFFF) != 44163) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_method_coresavedhistory_chat_homes() and 0xFFFF) != 64078) {
@@ -7669,6 +7833,321 @@ public object FfiConverterTypeAppAttester: FfiConverter<AppAttester, Long> {
 
 
 /**
+ * Told whenever the card changes, so the shell draws it again.
+ */
+public interface BrowserPaymentsListener {
+
+    fun `onBrowserPaymentsChanged`()
+
+    companion object
+}
+
+/**
+ * Told whenever the card changes, so the shell draws it again.
+ */
+open class BrowserPaymentsListenerImpl: Disposable, AutoCloseable, BrowserPaymentsListener
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_browserpaymentslistener(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_browserpaymentslistener(handle, status)
+        }
+    }
+
+    override fun `onBrowserPaymentsChanged`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_browserpaymentslistener_on_browser_payments_changed(
+        it,
+        _status)
+}
+    }
+
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceBrowserPaymentsListener {
+    internal object `onBrowserPaymentsChanged`: UniffiCallbackInterfaceBrowserPaymentsListenerMethod0 {
+        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeBrowserPaymentsListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onBrowserPaymentsChanged`(
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeBrowserPaymentsListener.handleMap.remove(handle)
+        }
+    }
+
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
+        override fun callback(handle: Long): Long {
+            return FfiConverterTypeBrowserPaymentsListener.handleMap.clone(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceBrowserPaymentsListener.UniffiByValue(
+        uniffiFree,
+        uniffiClone,
+        `onBrowserPaymentsChanged`,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_openagents_mobile_fn_init_callback_vtable_browserpaymentslistener(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeBrowserPaymentsListener: FfiConverter<BrowserPaymentsListener, Long> {
+    internal val handleMap = UniffiHandleMap<BrowserPaymentsListener>()
+
+    override fun lower(value: BrowserPaymentsListener): Long {
+        if (value is BrowserPaymentsListenerImpl) {
+             // Rust-implemented object.  Clone the handle and return it
+            return value.uniffiCloneHandle()
+         } else {
+            // Kotlin object, generate a new vtable handle and return that.
+            return handleMap.insert(value)
+         }
+    }
+
+    override fun lift(value: Long): BrowserPaymentsListener {
+        if ((value and 1.toLong()) == 0.toLong()) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return BrowserPaymentsListenerImpl(UniffiWithHandle, value)
+        } else {
+            // Kotlin-generated handle, get the object from the handle map
+            return handleMap.remove(value)
+        }
+    }
+
+    override fun read(buf: ByteBuffer): BrowserPaymentsListener {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: BrowserPaymentsListener) = 8UL
+
+    override fun write(value: BrowserPaymentsListener, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
  * One call's caption. Advance it whenever the caption changes and on every
  * display frame while the last frame was `animating`.
  */
@@ -9350,6 +9829,12 @@ public interface CoreAccountInterface {
 
     fun `projectSharing`(`listener`: SharingListener): CoreSharing
 
+    /**
+     * Settings > Your ID > Public profile: the name, picture, and about
+     * this phone's key publishes (#12298).
+     */
+    fun `publicProfile`(`listener`: PublicProfileListener): CorePublicProfile
+
     fun `restore`()
 
     /**
@@ -9389,6 +9874,11 @@ public interface CoreAccountInterface {
      * Restore only for the account/identity that passed this screen's device authentication.
      */
     fun `restoreWordsIfCurrent`(`words`: kotlin.String, `generation`: kotlin.ULong, `npub`: kotlin.String?): IdentityView
+
+    /**
+     * Wallet > Payments from your browser, paying through `wallet`.
+     */
+    fun `browserPayments`(`wallet`: CoreWallet, `listener`: BrowserPaymentsListener): CoreBrowserPayments
 
     fun `chatHomes`(`client`: CoreClient, `chat`: kotlin.String): CoreChatHomes
 
@@ -9800,6 +10290,24 @@ open class CoreAccount: Disposable, AutoCloseable, CoreAccountInterface
     }
 
 
+
+    /**
+     * Settings > Your ID > Public profile: the name, picture, and about
+     * this phone's key publishes (#12298).
+     */override fun `publicProfile`(`listener`: PublicProfileListener): CorePublicProfile {
+            return FfiConverterTypeCorePublicProfile.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccount_public_profile(
+        it,
+
+        FfiConverterTypePublicProfileListener.lower(`listener`),_status)
+}
+    }
+    )
+    }
+
+
     override fun `restore`()
         =
     callWithHandle {
@@ -9957,6 +10465,25 @@ open class CoreAccount: Disposable, AutoCloseable, CoreAccountInterface
         FfiConverterString.lower(`words`),
         FfiConverterULong.lower(`generation`),
         FfiConverterOptionalString.lower(`npub`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Wallet > Payments from your browser, paying through `wallet`.
+     */
+    @Throws(CoreException::class)override fun `browserPayments`(`wallet`: CoreWallet, `listener`: BrowserPaymentsListener): CoreBrowserPayments {
+            return FfiConverterTypeCoreBrowserPayments.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreaccount_browser_payments(
+        it,
+
+        FfiConverterTypeCoreWallet.lower(`wallet`),
+        FfiConverterTypeBrowserPaymentsListener.lower(`listener`),_status)
 }
     }
     )
@@ -12030,6 +12557,12 @@ public interface CoreAndroidHostInterface {
      */
     fun `attachTranscript`(`view`: TranscriptView, `generation`: kotlin.ULong, `contentRevision`: kotlin.ULong)
 
+    /**
+     * More > Payments from your browser, paying through the wallet once it
+     * is open (#12310).
+     */
+    fun `browserPayments`(): CoreBrowserPayments
+
     fun `client`(): CoreClient?
 
     fun `composer`(): CoreAndroidComposer?
@@ -12051,6 +12584,12 @@ public interface CoreAndroidHostInterface {
     fun `offerAppLink`(`raw`: kotlin.String): kotlin.Boolean
 
     fun `offerNotificationTap`(`link`: kotlin.String, `request`: kotlin.String): kotlin.Boolean
+
+    /**
+     * More > Public profile: the shared Rust Native form this phone's key
+     * signs (#12308).
+     */
+    fun `publicProfile`(): CorePublicProfile
 
     /**
      * Refresh a saved reader without detaching a live/cloud layout subscription.
@@ -12348,6 +12887,24 @@ open class CoreAndroidHost: Disposable, AutoCloseable, CoreAndroidHostInterface
 
 
 
+    /**
+     * More > Payments from your browser, paying through the wallet once it
+     * is open (#12310).
+     */
+    @Throws(CoreException::class)override fun `browserPayments`(): CoreBrowserPayments {
+            return FfiConverterTypeCoreBrowserPayments.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_browser_payments(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
     @Throws(CoreException::class)override fun `client`(): CoreClient? {
             return FfiConverterOptionalTypeCoreClient.lift(
     callWithHandle {
@@ -12462,6 +13019,24 @@ open class CoreAndroidHost: Disposable, AutoCloseable, CoreAndroidHostInterface
 
         FfiConverterString.lower(`link`),
         FfiConverterString.lower(`request`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * More > Public profile: the shared Rust Native form this phone's key
+     * signs (#12308).
+     */
+    @Throws(CoreException::class)override fun `publicProfile`(): CorePublicProfile {
+            return FfiConverterTypeCorePublicProfile.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_coreandroidhost_public_profile(
+        it,
+        _status)
 }
     }
     )
@@ -14627,6 +15202,363 @@ public object FfiConverterTypeCoreAndroidWallet: FfiConverter<CoreAndroidWallet,
     override fun allocationSize(value: CoreAndroidWallet) = 8UL
 
     override fun write(value: CoreAndroidWallet, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * The browser's payment requests, for this phone's wallet and key.
+ */
+public interface CoreBrowserPaymentsInterface {
+
+    /**
+     * Press Pay or Decline on a request.
+     */
+    suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String)
+
+    /**
+     * Whether the shell asks for Face ID or the passcode before `key`
+     * (Pay above 1,000 sats).
+     */
+    fun `needsCheck`(`key`: kotlin.String): kotlin.Boolean
+
+    /**
+     * Read the browser's requests again. The app calls it while the
+     * Wallet is open, every 10 seconds, as it does for computers.
+     */
+    suspend fun `refresh`()
+
+    /**
+     * The card as Rust Native view JSON.
+     */
+    fun `snapshot`(): kotlin.String
+
+    companion object
+}
+
+/**
+ * The browser's payment requests, for this phone's wallet and key.
+ */
+open class CoreBrowserPayments: Disposable, AutoCloseable, CoreBrowserPaymentsInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_corebrowserpayments(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_corebrowserpayments(handle, status)
+        }
+    }
+
+
+    /**
+     * Press Pay or Decline on a request.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_corebrowserpayments_activate(
+                uniffiHandle,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * Whether the shell asks for Face ID or the passcode before `key`
+     * (Pay above 1,000 sats).
+     */override fun `needsCheck`(`key`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corebrowserpayments_needs_check(
+        it,
+
+        FfiConverterString.lower(`key`),_status)
+}
+    }
+    )
+    }
+
+
+
+    /**
+     * Read the browser's requests again. The app calls it while the
+     * Wallet is open, every 10 seconds, as it does for computers.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `refresh`() {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_corebrowserpayments_refresh(
+                uniffiHandle,
+
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * The card as Rust Native view JSON.
+     */
+    @Throws(CoreException::class)override fun `snapshot`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corebrowserpayments_snapshot(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCoreBrowserPayments: FfiConverter<CoreBrowserPayments, Long> {
+    override fun lower(value: CoreBrowserPayments): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CoreBrowserPayments {
+        return CoreBrowserPayments(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CoreBrowserPayments {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CoreBrowserPayments) = 8UL
+
+    override fun write(value: CoreBrowserPayments, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -18923,6 +19855,362 @@ public object FfiConverterTypeCoreOwnComputerOffer: FfiConverter<CoreOwnComputer
     override fun allocationSize(value: CoreOwnComputerOffer) = 8UL
 
     override fun write(value: CoreOwnComputerOffer, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * The profile form for this phone's key.
+ */
+public interface CorePublicProfileInterface {
+
+    /**
+     * Press a button: Save claims the name and publishes the profile.
+     */
+    suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String)
+
+    /**
+     * Keep a typed change to one field.
+     */
+    fun `changeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String, `value`: kotlin.String)
+
+    /**
+     * Read the profile again.
+     */
+    suspend fun `reload`()
+
+    /**
+     * The form as Rust Native view JSON.
+     */
+    fun `snapshot`(): kotlin.String
+
+    companion object
+}
+
+/**
+ * The profile form for this phone's key.
+ */
+open class CorePublicProfile: Disposable, AutoCloseable, CorePublicProfileInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_corepublicprofile(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_corepublicprofile(handle, status)
+        }
+    }
+
+
+    /**
+     * Press a button: Save claims the name and publishes the profile.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `activate`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_corepublicprofile_activate(
+                uniffiHandle,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * Keep a typed change to one field.
+     */
+    @Throws(CoreException::class)override fun `changeField`(`instance`: kotlin.String, `revision`: kotlin.ULong, `key`: kotlin.String, `value`: kotlin.String)
+        =
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corepublicprofile_change_field(
+        it,
+
+        FfiConverterString.lower(`instance`),
+        FfiConverterULong.lower(`revision`),
+        FfiConverterString.lower(`key`),
+        FfiConverterString.lower(`value`),_status)
+}
+    }
+
+
+
+
+    /**
+     * Read the profile again.
+     */
+    @Throws(CoreException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `reload`() {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_openagents_mobile_fn_method_corepublicprofile_reload(
+                uniffiHandle,
+
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_openagents_mobile_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_openagents_mobile_rust_future_free_void(future) },
+        // lift function
+        { },
+
+        // Error FFI converter
+        CoreException.ErrorHandler,
+    )
+    }
+
+
+    /**
+     * The form as Rust Native view JSON.
+     */
+    @Throws(CoreException::class)override fun `snapshot`(): kotlin.String {
+            return FfiConverterString.lift(
+    callWithHandle {
+    uniffiRustCallWithError(CoreException) { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_corepublicprofile_snapshot(
+        it,
+        _status)
+}
+    }
+    )
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCorePublicProfile: FfiConverter<CorePublicProfile, Long> {
+    override fun lower(value: CorePublicProfile): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): CorePublicProfile {
+        return CorePublicProfile(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): CorePublicProfile {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: CorePublicProfile) = 8UL
+
+    override fun write(value: CorePublicProfile, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -24405,6 +25693,321 @@ public object FfiConverterTypePlayIntegrityAttester: FfiConverter<PlayIntegrityA
     override fun allocationSize(value: PlayIntegrityAttester) = 8UL
 
     override fun write(value: PlayIntegrityAttester, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Told whenever the form changes, so the shell draws it again.
+ */
+public interface PublicProfileListener {
+
+    fun `onPublicProfileChanged`()
+
+    companion object
+}
+
+/**
+ * Told whenever the form changes, so the shell draws it again.
+ */
+open class PublicProfileListenerImpl: Disposable, AutoCloseable, PublicProfileListener
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_openagents_mobile_fn_free_publicprofilelistener(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_openagents_mobile_fn_clone_publicprofilelistener(handle, status)
+        }
+    }
+
+    override fun `onPublicProfileChanged`()
+        =
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_method_publicprofilelistener_on_public_profile_changed(
+        it,
+        _status)
+}
+    }
+
+
+
+
+
+
+
+
+
+
+    /**
+     * @suppress
+     */
+    companion object
+
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfacePublicProfileListener {
+    internal object `onPublicProfileChanged`: UniffiCallbackInterfacePublicProfileListenerMethod0 {
+        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypePublicProfileListener.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`onPublicProfileChanged`(
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypePublicProfileListener.handleMap.remove(handle)
+        }
+    }
+
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
+        override fun callback(handle: Long): Long {
+            return FfiConverterTypePublicProfileListener.handleMap.clone(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfacePublicProfileListener.UniffiByValue(
+        uniffiFree,
+        uniffiClone,
+        `onPublicProfileChanged`,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_openagents_mobile_fn_init_callback_vtable_publicprofilelistener(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePublicProfileListener: FfiConverter<PublicProfileListener, Long> {
+    internal val handleMap = UniffiHandleMap<PublicProfileListener>()
+
+    override fun lower(value: PublicProfileListener): Long {
+        if (value is PublicProfileListenerImpl) {
+             // Rust-implemented object.  Clone the handle and return it
+            return value.uniffiCloneHandle()
+         } else {
+            // Kotlin object, generate a new vtable handle and return that.
+            return handleMap.insert(value)
+         }
+    }
+
+    override fun lift(value: Long): PublicProfileListener {
+        if ((value and 1.toLong()) == 0.toLong()) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return PublicProfileListenerImpl(UniffiWithHandle, value)
+        } else {
+            // Kotlin-generated handle, get the object from the handle map
+            return handleMap.remove(value)
+        }
+    }
+
+    override fun read(buf: ByteBuffer): PublicProfileListener {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: PublicProfileListener) = 8UL
+
+    override fun write(value: PublicProfileListener, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -38421,7 +40024,15 @@ enum class AndroidHostRoute {
     LINK_REVIEW,
     WALLET,
     VOICE_SETTINGS,
-    SHARING;
+    SHARING,
+    /**
+     * More > Public profile (#12308).
+     */
+    PUBLIC_PROFILE,
+    /**
+     * More > Payments from your browser (#12310).
+     */
+    BROWSER_PAYMENTS;
 
 
 
@@ -38464,7 +40075,9 @@ enum class AndroidHostSurface {
     VOICE_USAGE,
     SHARING,
     LINK_REVIEW,
-    COMPOSER;
+    COMPOSER,
+    PUBLIC_PROFILE,
+    BROWSER_PAYMENTS;
 
 
 

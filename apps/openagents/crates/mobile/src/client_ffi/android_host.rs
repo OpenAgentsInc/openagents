@@ -58,6 +58,16 @@ impl crate::wallet::WalletListener for Events {
         self.0.on_android_host_changed();
     }
 }
+impl super::PublicProfileListener for Events {
+    fn on_public_profile_changed(&self) {
+        self.0.on_android_host_changed();
+    }
+}
+impl super::BrowserPaymentsListener for Events {
+    fn on_browser_payments_changed(&self) {
+        self.0.on_android_host_changed();
+    }
+}
 impl SavedHistoryListener for Events {
     fn on_saved_history_changed(&self) {
         self.0.on_android_host_changed();
@@ -76,6 +86,8 @@ pub enum AndroidHostSurface {
     Sharing,
     LinkReview,
     Composer,
+    PublicProfile,
+    BrowserPayments,
 }
 impl AndroidHostSurface {
     fn scope(self) -> &'static str {
@@ -91,6 +103,8 @@ impl AndroidHostSurface {
             Self::Sharing => "android:sharing",
             Self::LinkReview => "android:link-review",
             Self::Composer => "android:composer",
+            Self::PublicProfile => "android:public-profile",
+            Self::BrowserPayments => "android:browser-payments",
         }
     }
 }
@@ -105,6 +119,10 @@ pub enum AndroidHostRoute {
     Wallet,
     VoiceSettings,
     Sharing,
+    /// More > Public profile (#12308).
+    PublicProfile,
+    /// More > Payments from your browser (#12310).
+    BrowserPayments,
 }
 #[derive(Clone, Debug, PartialEq, uniffi::Record)]
 pub struct AndroidTranscriptAnchor {
@@ -795,6 +813,35 @@ impl CoreAndroidHost {
         Ok(AndroidNotificationOpen {
             retry_after_ms: None,
         })
+    }
+    /// More > Public profile: the shared Rust Native form this phone's key
+    /// signs (#12308).
+    pub fn public_profile(&self) -> CoreResult<Arc<super::CorePublicProfile>> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        Ok(self
+            .account
+            .as_ref()
+            .ok_or(CoreError::Closed)?
+            .public_profile(self.events.clone()))
+    }
+    /// More > Payments from your browser, paying through the wallet once it
+    /// is open (#12310).
+    pub fn browser_payments(&self) -> CoreResult<Arc<super::CoreBrowserPayments>> {
+        let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;
+        self.refresh(&mut state)?;
+        let wallet = self
+            .wallet_core
+            .lock()
+            .map_err(|_| CoreError::Closed)?
+            .clone()
+            .ok_or_else(|| CoreError::InvalidArgument {
+                message: "Open your wallet first.".into(),
+            })?;
+        self.account
+            .as_ref()
+            .ok_or(CoreError::Closed)?
+            .browser_payments(wallet, self.events.clone())
     }
     pub fn sharing(&self) -> CoreResult<Arc<CoreSharing>> {
         let mut state = self.state.lock().map_err(|_| CoreError::Closed)?;

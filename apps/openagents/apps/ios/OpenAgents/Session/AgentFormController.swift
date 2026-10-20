@@ -1,3 +1,4 @@
+import LocalAuthentication
 import UIKit
 
 /// UIKit renders the Rust Native form; Rust resolves and validates every action.
@@ -8,7 +9,9 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
     private let voiceAgent: CoreVoiceAgent?
     private let sharing: CoreSharing?
     private var profile: CorePublicProfile?
-    private var prefix: String { if profile != nil { return "profile" }; if voiceAgent != nil { return "voice-agent" }; return sharing != nil ? "sharing" : (lab == nil ? "agent" : "lab") }
+    private var payments: CoreBrowserPayments?
+    private var poll: Timer?
+    private var prefix: String { if payments != nil { return "browser-payments" }; if profile != nil { return "profile" }; if voiceAgent != nil { return "voice-agent" }; return sharing != nil ? "sharing" : (lab == nil ? "agent" : "lab") }
     private let stack = UIStackView()
     private var observation: AnyObject?
     private var instance = ""
@@ -49,6 +52,17 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         self.profile = profile
         super.init(nibName: nil, bundle: nil)
     }
+    /// Wallet > Payments from your browser (#12310): Rust draws the card and
+    /// decides; this asks for Face ID before a large Pay and polls while open.
+    init(app: AppModel, payments: CoreBrowserPayments) {
+        self.voiceAgent = nil
+        self.app = app
+        self.agents = nil
+        self.lab = nil
+        self.sharing = nil
+        self.payments = payments
+        super.init(nibName: nil, bundle: nil)
+    }
     init(app: AppModel, voiceAgent: CoreVoiceAgent) {
         self.app = app
         self.agents = nil
@@ -62,7 +76,7 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = profile != nil ? "Public profile" : voiceAgent != nil ? "Voice agent" : sharing != nil ? "Project sharing" : (lab == nil ? "Agent" : "Agent Lab")
+        title = payments != nil ? "Payments from your browser" : profile != nil ? "Public profile" : voiceAgent != nil ? "Voice agent" : sharing != nil ? "Project sharing" : (lab == nil ? "Agent" : "Agent Lab")
         view.backgroundColor = .systemBackground
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         let scroll = UIScrollView()
@@ -93,17 +107,24 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         voiceAgent?.setVisible(visible: true)
         lab?.setVisible(visible: true)
         sharing?.setVisible(visible: true)
+        if let payments {
+            let refresh = { Task { @MainActor [weak self] in try? await payments.refresh(); self?.render() } }
+            _ = refresh()
+            poll = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { _ in _ = refresh() }
+        }
     }
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         voiceAgent?.setVisible(visible: false)
         lab?.setVisible(visible: false)
         sharing?.setVisible(visible: false)
+        poll?.invalidate()
+        poll = nil
         if lab != nil { app.customAgents?.refresh() }
     }
     private func render() {
         let snapshot = agents?.snapshot()
-        guard let json = profile.flatMap({ try? $0.snapshot() }) ?? voiceAgent.flatMap({ try? $0.snapshot() }) ?? sharing.flatMap({ try? $0.snapshot() }) ?? lab.flatMap({ try? $0.snapshot() }) ?? snapshot?.formJson else { dismiss(animated: true); return }
+        guard let json = payments.flatMap({ try? $0.snapshot() }) ?? profile.flatMap({ try? $0.snapshot() }) ?? voiceAgent.flatMap({ try? $0.snapshot() }) ?? sharing.flatMap({ try? $0.snapshot() }) ?? lab.flatMap({ try? $0.snapshot() }) ?? snapshot?.formJson else { dismiss(animated: true); return }
         guard let data = json.data(using: .utf8), let form = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let root = form["root"] as? [String: Any] else { return }
         instance = form["instance"] as? String ?? ""
         revision = (form["revision"] as? NSNumber)?.uint64Value ?? 0
@@ -206,6 +227,29 @@ final class AgentFormController: UIViewController, UITextViewDelegate {
         render()
     }
     private func activate(_ key: String) {
+        if let payments {
+            let currentInstance = instance
+            let currentRevision = revision
+            let run = {
+                Task { @MainActor [weak self] in
+                    do {
+                        try await payments.activate(instance: currentInstance, revision: currentRevision, key: key)
+                        self?.render()
+                    } catch { self?.showError(error); self?.render() }
+                }
+            }
+            guard payments.needsCheck(key: key) else { _ = run(); return }
+            let context = LAContext()
+            var problem: NSError?
+            guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &problem) else {
+                showError(NSError(domain: "OpenAgents", code: 1, userInfo: [NSLocalizedDescriptionKey: "Set a passcode on this phone to pay more than 1,000 sats."]))
+                return
+            }
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Pay what your browser asked for") { success, _ in
+                if success { DispatchQueue.main.async { _ = run() } }
+            }
+            return
+        }
         if let profile {
             let currentInstance = instance
             let currentRevision = revision

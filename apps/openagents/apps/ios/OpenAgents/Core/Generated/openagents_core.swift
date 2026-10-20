@@ -2022,6 +2022,207 @@ public func FfiConverterTypeAppAttester_lower(_ value: AppAttester) -> UInt64 {
 
 
 /**
+ * Told whenever the card changes, so the shell draws it again.
+ */
+public protocol BrowserPaymentsListener: AnyObject, Sendable {
+    
+    func onBrowserPaymentsChanged() 
+    
+}
+/**
+ * Told whenever the card changes, so the shell draws it again.
+ */
+open class BrowserPaymentsListenerImpl: BrowserPaymentsListener, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_browserpaymentslistener(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_browserpaymentslistener(handle, $0) }
+    }
+
+    
+
+    
+open func onBrowserPaymentsChanged()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_browserpaymentslistener_on_browser_payments_changed(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceBrowserPaymentsListener {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceBrowserPaymentsListener = UniffiVTableCallbackInterfaceBrowserPaymentsListener(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeBrowserPaymentsListener.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface BrowserPaymentsListener: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeBrowserPaymentsListener.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface BrowserPaymentsListener: handle missing in uniffiClone")
+            }
+        },
+        onBrowserPaymentsChanged: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeBrowserPaymentsListener.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.onBrowserPaymentsChanged(
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceBrowserPaymentsListener> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceBrowserPaymentsListener>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitBrowserPaymentsListener() {
+    uniffi_openagents_mobile_fn_init_callback_vtable_browserpaymentslistener(UniffiCallbackInterfaceBrowserPaymentsListener.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBrowserPaymentsListener: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<BrowserPaymentsListener>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = BrowserPaymentsListener
+
+    public static func lift(_ handle: UInt64) throws -> BrowserPaymentsListener {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return BrowserPaymentsListenerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: BrowserPaymentsListener) -> UInt64 {
+         if let rustImpl = value as? BrowserPaymentsListenerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BrowserPaymentsListener {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: BrowserPaymentsListener, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBrowserPaymentsListener_lift(_ handle: UInt64) throws -> BrowserPaymentsListener {
+    return try FfiConverterTypeBrowserPaymentsListener.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBrowserPaymentsListener_lower(_ value: BrowserPaymentsListener) -> UInt64 {
+    return FfiConverterTypeBrowserPaymentsListener.lower(value)
+}
+
+
+
+
+
+
+/**
  * One call's caption. Advance it whenever the caption changes and on every
  * display frame while the last frame was `animating`.
  */
@@ -3099,6 +3300,11 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
      */
     func restoreWordsIfCurrent(words: String, generation: UInt64, npub: String?) throws  -> IdentityView
     
+    /**
+     * Wallet > Payments from your browser, paying through `wallet`.
+     */
+    func browserPayments(wallet: CoreWallet, listener: BrowserPaymentsListener) throws  -> CoreBrowserPayments
+    
     func chatHomes(client: CoreClient, chat: String) throws  -> CoreChatHomes
     
     /**
@@ -3555,6 +3761,20 @@ open func restoreWordsIfCurrent(words: String, generation: UInt64, npub: String?
         FfiConverterString.lower(words),
         FfiConverterUInt64.lower(generation),
         FfiConverterOptionString.lower(npub),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Wallet > Payments from your browser, paying through `wallet`.
+     */
+open func browserPayments(wallet: CoreWallet, listener: BrowserPaymentsListener)throws  -> CoreBrowserPayments  {
+    return try  FfiConverterTypeCoreBrowserPayments_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_coreaccount_browser_payments(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCoreWallet_lower(wallet),
+        FfiConverterTypeBrowserPaymentsListener_lower(listener),uniffiCallStatus
     )
 })
 }
@@ -6397,6 +6617,205 @@ public func FfiConverterTypeCoreAndroidWallet_lift(_ handle: UInt64) throws -> C
 #endif
 public func FfiConverterTypeCoreAndroidWallet_lower(_ value: CoreAndroidWallet) -> UInt64 {
     return FfiConverterTypeCoreAndroidWallet.lower(value)
+}
+
+
+
+
+
+
+/**
+ * The browser's payment requests, for this phone's wallet and key.
+ */
+public protocol CoreBrowserPaymentsProtocol: AnyObject, Sendable {
+    
+    /**
+     * Press Pay or Decline on a request.
+     */
+    func activate(instance: String, revision: UInt64, key: String) async throws 
+    
+    /**
+     * Whether the shell asks for Face ID or the passcode before `key`
+     * (Pay above 1,000 sats).
+     */
+    func needsCheck(key: String)  -> Bool
+    
+    /**
+     * Read the browser's requests again. The app calls it while the
+     * Wallet is open, every 10 seconds, as it does for computers.
+     */
+    func refresh() async throws 
+    
+    /**
+     * The card as Rust Native view JSON.
+     */
+    func snapshot() throws  -> String
+    
+}
+/**
+ * The browser's payment requests, for this phone's wallet and key.
+ */
+open class CoreBrowserPayments: CoreBrowserPaymentsProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_corebrowserpayments(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_corebrowserpayments(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Press Pay or Decline on a request.
+     */
+open func activate(instance: String, revision: UInt64, key: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corebrowserpayments_activate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(instance),FfiConverterUInt64.lower(revision),FfiConverterString.lower(key)
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * Whether the shell asks for Face ID or the passcode before `key`
+     * (Pay above 1,000 sats).
+     */
+open func needsCheck(key: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebrowserpayments_needs_check(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(key),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Read the browser's requests again. The app calls it while the
+     * Wallet is open, every 10 seconds, as it does for computers.
+     */
+open func refresh()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_corebrowserpayments_refresh(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeCoreError_lift
+        )
+}
+    
+    /**
+     * The card as Rust Native view JSON.
+     */
+open func snapshot()throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_corebrowserpayments_snapshot(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCoreBrowserPayments: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = CoreBrowserPayments
+
+    public static func lift(_ handle: UInt64) throws -> CoreBrowserPayments {
+        return CoreBrowserPayments(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: CoreBrowserPayments) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CoreBrowserPayments {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: CoreBrowserPayments, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreBrowserPayments_lift(_ handle: UInt64) throws -> CoreBrowserPayments {
+    return try FfiConverterTypeCoreBrowserPayments.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCoreBrowserPayments_lower(_ value: CoreBrowserPayments) -> UInt64 {
+    return FfiConverterTypeCoreBrowserPayments.lower(value)
 }
 
 
@@ -37674,6 +38093,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_coreaccount_restore_words_if_current() != 42439) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_coreaccount_browser_payments() != 52192) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_coreaccount_chat_homes() != 42622) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -37984,6 +38406,21 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_androidretiredwalletseed_read_retired_seed() != 13277) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_browserpaymentslistener_on_browser_payments_changed() != 14330) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebrowserpayments_activate() != 30421) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebrowserpayments_needs_check() != 27717) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebrowserpayments_refresh() != 64661) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_corebrowserpayments_snapshot() != 15006) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_method_corechathomes_activate() != 47837) {
@@ -38710,6 +39147,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitAndroidRetiredWalletSeed()
     uniffiCallbackInitAndroidSecretStorage()
     uniffiCallbackInitAppAttester()
+    uniffiCallbackInitBrowserPaymentsListener()
     uniffiCallbackInitClientListener()
     uniffiCallbackInitCloudChatDone()
     uniffiCallbackInitCloudChatListener()

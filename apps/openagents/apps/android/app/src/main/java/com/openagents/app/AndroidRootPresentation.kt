@@ -72,6 +72,8 @@ internal class AndroidRootPresentation(
     private var chatHomes: AndroidChatHomesHost? = null
     private var settings: SettingsHost? = null
     private var sharing: AndroidSharingMount? = null
+    private var profile: AndroidProfileMount? = null
+    private var browserPayments: AndroidBrowserPaymentsMount? = null
     private var recovery: RecoveryHost? = null
     private var wallet: RecoveryHost? = null
     private var voiceSettings: AndroidVoiceSettingsMount? = null
@@ -242,6 +244,12 @@ internal class AndroidRootPresentation(
             if (yourIdShown) menu.add("Your ID").setOnMenuItemClickListener {
                 guarded { owner.navigate(AndroidHostRoute.RECOVERY); panes.showSession() }; true
             }
+            if (yourIdShown) menu.add("Public profile").setOnMenuItemClickListener {
+                guarded { owner.navigate(AndroidHostRoute.PUBLIC_PROFILE); panes.showSession() }; true
+            }
+            if (walletButton.visibility == View.VISIBLE) menu.add("Payments from your browser").setOnMenuItemClickListener {
+                guarded { owner.navigate(AndroidHostRoute.BROWSER_PAYMENTS); panes.showSession() }; true
+            }
             if (voiceSettingsShown) menu.add("Voice").setOnMenuItemClickListener {
                 guarded { owner.navigate(AndroidHostRoute.VOICE_SETTINGS); panes.showSession() }; true
             }
@@ -316,6 +324,8 @@ internal class AndroidRootPresentation(
         }
         if (next.route != AndroidHostRoute.CHAT) { closeMedia(); transcriptSurfaces?.retire() }
         if (next.route != AndroidHostRoute.SHARING) { sharing?.close(); sharing = null }
+        if (next.route != AndroidHostRoute.PUBLIC_PROFILE) { profile?.close(); profile = null }
+        if (next.route != AndroidHostRoute.BROWSER_PAYMENTS) { browserPayments?.close(); browserPayments = null }
         if (next.route != AndroidHostRoute.VOICE_SETTINGS) { voiceSettings?.close(); voiceSettings = null }
         if (next.route != AndroidHostRoute.WALLET) { wallet?.close(); wallet = null }
         if (next.route != AndroidHostRoute.LINK_REVIEW) { linkReview?.close(); linkReview = null }
@@ -364,6 +374,36 @@ internal class AndroidRootPresentation(
                     sharing = AndroidSharingMount(activity, routeContainer, owner.sharing(), application.presentationWork,
                         semantics(AndroidHostSurface.SHARING), ::showFailure)
                 } else sharing?.render()
+            }
+            AndroidHostRoute.PUBLIC_PROFILE -> {
+                recovery?.close(); recovery = null
+                sessions?.close(); sessions = null
+                settings?.close(); settings = null
+                settingsActions?.close(); settingsActions = null
+                chatContainer.visibility = View.GONE; routeContainer.visibility = View.VISIBLE
+                if (profile == null) {
+                    routeContainer.removeAllViews()
+                    val core = owner.publicProfile()
+                    profile = AndroidProfileMount(activity, routeContainer, core, application.presentationWork,
+                        semantics(AndroidHostSurface.PUBLIC_PROFILE), ::showFailure)
+                    application.presentationWork.launch { runCatching { core.reload() }; activity.runOnUiThread { profile?.render() } }
+                } else profile?.render()
+            }
+            AndroidHostRoute.BROWSER_PAYMENTS -> {
+                recovery?.close(); recovery = null
+                sessions?.close(); sessions = null
+                settings?.close(); settings = null
+                settingsActions?.close(); settingsActions = null
+                chatContainer.visibility = View.GONE; routeContainer.visibility = View.VISIBLE
+                if (browserPayments == null) {
+                    routeContainer.removeAllViews()
+                    // The wallet opens first, so its key is there to pay with.
+                    owner.wallet(AndroidRetiredSparkSeed(activity.applicationContext))
+                    browserPayments = AndroidBrowserPaymentsMount(activity, routeContainer, owner.browserPayments(),
+                        application.presentationWork,
+                        AndroidDeviceAuthentication(activity, CredentialLauncher(activity::launchDeviceCredential)),
+                        semantics(AndroidHostSurface.BROWSER_PAYMENTS), ::showFailure)
+                } else browserPayments?.render()
             }
             AndroidHostRoute.VOICE_SETTINGS -> {
                 recovery?.close(); recovery = null
@@ -872,6 +912,8 @@ internal class AndroidRootPresentation(
     }
     private fun closeRoutes() {
         sharing?.close(); sharing = null
+        profile?.close(); profile = null
+        browserPayments?.close(); browserPayments = null
         voiceSettings?.close(); voiceSettings = null
         wallet?.close(); wallet = null
         linkReview?.close(); linkReview = null
