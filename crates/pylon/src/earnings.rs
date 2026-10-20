@@ -176,11 +176,28 @@ async fn call(
     if status.is_success() {
         return Ok(value);
     }
+    // A 404 with no JSON body is the site's own page: this API does not
+    // offer earnings at all, which is different from a party it has never
+    // paid.
+    if status == reqwest::StatusCode::NOT_FOUND && value.is_null() {
+        return Err(format!(
+            "the OpenAgents API at {} does not offer earnings yet (HTTP 404)",
+            origin(url)
+        ));
+    }
     let message = value["error"]["message"]
         .as_str()
         .or_else(|| value["message"].as_str())
         .unwrap_or("the OpenAgents API refused the request");
     Err(format!("{message} (HTTP {})", status.as_u16()))
+}
+
+/// `scheme://host` of `url`, for messages.
+fn origin(url: &str) -> &str {
+    let after = url.find("://").map_or(0, |i| i + 3);
+    url[after..]
+        .find('/')
+        .map_or(url, |slash| &url[..after + slash])
 }
 
 /// The statement for `party` from `api`.
@@ -505,6 +522,16 @@ mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    #[test]
+    fn origin_names_scheme_and_host() {
+        assert_eq!(
+            origin("https://api.openagents.com/v1/earnings/ab"),
+            "https://api.openagents.com"
+        );
+        assert_eq!(origin("http://127.0.0.1:9/x"), "http://127.0.0.1:9");
+        assert_eq!(origin("no-scheme"), "no-scheme");
+    }
 
     /// One request the fixture server saw.
     #[derive(Clone, Debug)]

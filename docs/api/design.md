@@ -459,7 +459,8 @@ A caller sends the HTTP object. The NIP is the record inside OpenAgents. The two
 | `POST /v1/workspaces/{ws}/billing/reconcile` | same | Re-read the processor's state | INTERNAL | admin | `money.subscriptions`, `provider_events` | built |
 | `POST /v1/billing/webhook`, `POST /v1/billing/prepaid/webhook` | same | Stripe tells us about payments | INTERNAL | provider signature | `money.provider_events` | built |
 | `GET`/`PUT /v1/workspaces/{ws}/budgets` | same | Team budgets | PUBLIC | session (owner, admin) | `money.reservations`, `ledger_entries` | built, not offered |
-| `GET /v1/earnings`, `/earnings/{party}`, `/export`, `/destination`, `/payouts/{p}` | same | What you earned and where it goes | FIRST-PARTY | session | `money.payouts`, `ledger_entries` | built |
+| `GET /v1/earnings` | same | Every party this account earns as | FIRST-PARTY | session | `money.payouts`, `ledger_entries` | built |
+| `GET /v1/earnings/{party}`, `/export`, `/payouts/{p}`; `GET`/`PUT /destination` | same | What one party earned and where it goes (a pylon reads and sets its own) | PUBLIC | session / the party's own key (NIP-98) | `money.payouts`, `ledger_entries` | built |
 | `GET /v1/workspaces/{ws}/commercial/{product}`, `/plugin-reader`, `/purchase-context/{door}` | same | Purchase authority for the CLI and the plugin host | FIRST-PARTY | session / key | `money` | built |
 | commercial-spend operations (Reserve, Settle, Refund, ...) | Unix socket | The private spend controller | INTERNAL | file permissions | `money.reservations`, `ledger_entries` | built |
 | `GET /v1/receipts`, `GET /v1/receipts/{id}` | — (one file per replay key in `crates/x402`) | Payment receipts, any method | PUBLIC | key `usage:read` | `money.receipts` | planned #11138 |

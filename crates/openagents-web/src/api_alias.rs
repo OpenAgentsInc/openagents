@@ -70,6 +70,13 @@ const PUBLIC: &[Rule] = &[
     Rule(GET, "/v1/key"),
     Rule(GET, "/v1/usage/*"),
     Rule(GET, "/v1/balance"),
+    // One party's earnings: its statement, export, payouts, and where they
+    // go, signed by the party's own key or a session (#12193). The
+    // account-wide index (`GET /v1/earnings`) stays first-party.
+    Rule(GET, "/v1/earnings/*"),
+    Rule(GET, "/v1/earnings/*/export"),
+    Rule(Methods::Only(&["GET", "PUT"]), "/v1/earnings/*/destination"),
+    Rule(GET, "/v1/earnings/*/payouts/*"),
     // Identity and workspaces (4.1, 4.2).
     Rule(GET, "/v1/account"),
     Rule(GET, "/v1/account/access"),
