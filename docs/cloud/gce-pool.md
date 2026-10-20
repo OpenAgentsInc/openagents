@@ -150,9 +150,12 @@ every call and the roles behind it is in
   rebuild only when `origin/main` moved.
 - **Self-delete.** The VM's startup script is the host agent
   (`cloud::HOST_AGENT`). A one-minute timer keeps `~/.oa-pool/busy` fresh
-  while any run's process lives, and once it is older than
+  while a run is active or being placed, or an SSH session has been open
+  for at least two minutes; status reads do not count as work. Once it is older than
   `oa-pool-idle-minutes` (default 10) the host deletes its own VM through
-  the compute API. `cloud up` grants `oa-coder-host@` the role
+  the compute API. Before deleting itself, the host writes
+  `~/.oa-pool/deleting`; a run started there exits with code 76, and
+  `chat work --on gce` tries another host. `cloud up` grants `oa-coder-host@` the role
   `roles/compute.instanceAdmin.v1` **on that one instance**; it has no
   project role. If the delete is refused the host powers off instead (a
   stopped VM bills only its disk; `cloud down` deletes it). Every host also
