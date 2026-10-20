@@ -768,7 +768,9 @@ All 171 Pylon tests pass, with one existing large-model test ignored, along
 with 20 Python tests and changed-file formatting. The five profile tests
 cover saved settings, serial CUDA arguments, incompatible options, model
 changes, schema downgrade refusal, incorrect size/hash, and a changed
-artifact pausing the supervisor before any worker starts.
+artifact pausing the supervisor before any worker starts. After rebasing
+onto the concurrent Pylon router change, all 182 package tests pass on
+`bbd5fc4f57`, with the same one ignored test.
 
 ## Further infrastructure lessons and what to defer
 

@@ -1630,5 +1630,13 @@
       "0.02.532.284 I slot print_timing: id  0 | task 0 |    graphs reused =        160",
       "0.02.532.305 I slot      release: id  0 | task 0 | stop processing: n_tokens = 188, truncated = 0"
     ]
+  },
+  "integration": {
+    "commit": "bbd5fc4f577acddc02835174ff4618fba8288ea6",
+    "cargo_test_pylon": {
+      "passed": 182,
+      "ignored": 1
+    },
+    "notes": "Rebased onto the concurrent Pylon router and wallet changes. The qualified worker/profile/runner sources are unchanged. Cargo.lock differs from the recorded GPU-build base due to unrelated workspace dependencies; the original GPU-build hashes remain above."
   }
 }
