@@ -72,6 +72,7 @@ pub fn mount(fonts: js_sys::Array, device: String, chat: String) {
                 Ok(entity) => {
                     let async_cx = cx.to_async();
                     PANEL.with(|panel| *panel.borrow_mut() = Some((entity.downgrade(), async_cx)));
+                    app::signal("oa-files-ready");
                 }
                 Err(_) => app::signal("oa-files-failed"),
             }

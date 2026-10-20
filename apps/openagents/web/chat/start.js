@@ -226,10 +226,11 @@ var chatInput = null;
 var paletteInputBefore = null;
 var host = "";
 var files = null;
+var filesReady = false;
 var filesBox = null;
 var pendingFile = null;
 function revealFile() {
-  if (!files || !pendingFile) return;
+  if (!files || !filesReady || !pendingFile) return;
   var parts = hostParts();
   var hit = pendingFile;
   pendingFile = null;
@@ -275,6 +276,7 @@ function openFiles() {
       console.error("the file panel couldn't start", error);
       filesBox.remove();
       filesBox = null;
+      filesReady = false;
     });
 }
 // Other GPUI canvases have their own inputs. Forward an unhandled palette
@@ -298,6 +300,16 @@ window.addEventListener("oa-palette-close", function () {
   paletteFilesWereOpen = false;
   var before = paletteInputBefore;
   queueMicrotask(function () { if (before && before.isConnected) before.focus(); });
+});
+window.addEventListener("oa-files-ready", function () {
+  // The window opens after mount returns. Wait until its Rust callback
+  // finishes before entering that app again, and use the latest chat.
+  queueMicrotask(function () {
+    filesReady = true;
+    var parts = hostParts();
+    files.show(parts[0], parts[1]);
+    revealFile();
+  });
 });
 window.addEventListener("oa-files-toggle", openFiles);
 window.addEventListener("oa-files-open", function (event) {
