@@ -51,7 +51,9 @@ are under `apps/openagents/crates/`. Paths that start with `web:` are under
   Verse, and no AgentGraph view (#12231). The web already has
   `/agent/foreman` and the land queue in `/settings/agents`; Gym results on
   agent pages are U4 (#12257), and `/verse` is U8 (#12261).
-- The plan files 33 issues in seven phases. Each is sized for one agent
+- The plan filed 33 issues in seven phases; the owner then closed seven
+  as desktop-only (see [Desktop-only](#desktop-only-owner-decision-2026-10-20)).
+  Each remaining issue is sized for one agent
   session.
 
 ## How the desktop is built, and what that means for the web
@@ -79,8 +81,7 @@ Three kinds of desktop feature follow from this:
    `/v1/threads*` and `/v1/projects`, so most of these need phase 7's cookie
    auth issue first.
 2. **Host features** are engine RPC methods: chats on a computer, files,
-   terminal, diffs, pull requests, harnesses, agent accounts, check-ins,
-   moves, voice. The browser sends them through the device room with
+   harnesses, agent accounts, check-ins, moves, voice. The browser sends them through the device room with
    `Client::host_rpc`, the way the phone does. This needs the browser to be
    a paired device.
 3. **Device features** use the operating system of the machine running the
@@ -143,12 +144,6 @@ These rows are in the chat plan. They are listed so the matrix is complete.
 | --- | --- | --- | --- | --- | --- | --- |
 | Right pane and file panel, read: tree, search, text, Markdown and image preview, download | `ui/src/shell.rs:11829`, `:12157`, `ui/src/files/mod.rs:302`, `ui/src/files/preview.rs:2785`, `ui/src/files/download.rs:39` (#12213) | Chat files only (`web:chat_files.rs:643`) | Host files through the device room; download as a browser `Blob` | `ListWorkspaceDirectory`, `ReadWorkspaceFile`, `ReadWorkspaceImage`, `ReadWorkspaceBytes`, `SearchWorkspaceFiles` (`rpc/src/lib.rs:156-172`) | M | [#12271](https://github.com/OpenAgentsInc/openagents/issues/12271) |
 | File panel, write: edit and save, rename, move, delete, drag, watch, autosave, word wrap | `ui/src/files/client.rs:140-411`, `ui/src/settings/files.rs:81` | None | Same | Workspace write methods, `WatchWorkspaceFiles` | M | [#12272](https://github.com/OpenAgentsInc/openagents/issues/12272) |
-| Terminal | `ui/src/terminal/panel.rs:321`, `engine/src/terminals.rs:202` | `/settings/terminal` pairs the Coder terminal; no web terminal | A shell on the computer through the device room; terminal grid drawn in wasm | `OpenTerminal`, `SubscribeTerminal`, `WriteTerminal`, `ResizeTerminal`, `CloseTerminal` (`rpc/src/lib.rs:181-185`) | M | [#12273](https://github.com/OpenAgentsInc/openagents/issues/12273) |
-| Changes pane: working tree, branch, and latest-turn diffs, unified or split, syntax, discard | `ui/src/changes.rs:1637`, `ui/src/syntax_cache.rs`, `engine/src/diff_sync.rs:378` | No diff view | Host RPC | `WatchCheckoutDiffs`, `DiscardCheckoutChanges` (`engine/src/rpc.rs:2593`, `:2822`) | M | [#12274](https://github.com/OpenAgentsInc/openagents/issues/12274) |
-| Line comments on diffs and files, staged into the next prompt | `ui/src/comments.rs:131`, `ui/src/comment_ui.rs:48` | None | Local to the tab | None | S | [#12275](https://github.com/OpenAgentsInc/openagents/issues/12275) |
-| Pull request pane: description, checks, review threads, review stream, post a comment, hand off to an agent | `ui/src/pull_request_detail.rs:405`, `ui/src/pull_request_handoff.rs:193`, `ui/src/shell/chat_pull_requests.rs` | No PR page | Host RPC (the host runs `gh`) | `GetChangeRequest`, `GetChangeRequestDiff`, `PostChangeRequestComment`, `WatchCheckoutChangeRequest` | M | [#12276](https://github.com/OpenAgentsInc/openagents/issues/12276) |
-| Git history pane and project run actions | `ui/src/history.rs:1303`, `ui/src/shell/actions_ui.rs:508`, `ui/src/project_actions.rs:94` | None | Host RPC; an action opens a terminal tab | Git history methods, `List/Upsert/Delete/RunProjectAction` | S | [#12277](https://github.com/OpenAgentsInc/openagents/issues/12277) |
-| Dev-server previews | `ui/src/browser/mod.rs:145`, `preview/src/service.rs:91`, `preview/src/signaling.rs:128` | None | No native webview. The browser joins the preview service's WebRTC data channel, and a service worker serves the preview in an iframe | `WatchPreviews`; preview signaling at `{edge}/preview/{org}/ws` with a browser token | M | [#12278](https://github.com/OpenAgentsInc/openagents/issues/12278) |
 | Command palette and keyboard shortcuts | `ui/src/shell/command_palette.rs:1125`, `ui/src/app_menus.rs:145`, `ui/src/settings.rs:1160` | None | Same palette; the keymap skips chords the browser keeps (mod-W, mod-N, mod-T) | `SearchWorkspaceFiles`, `SearchWorkspaceContent` | M | [#12279](https://github.com/OpenAgentsInc/openagents/issues/12279) |
 
 ### Phase 10: computers and cloud computers
@@ -176,7 +171,6 @@ These rows are in the chat plan. They are listed so the matrix is complete.
 | Feature | Desktop | Web today | In a browser | Backend needed | Size | Issue |
 | --- | --- | --- | --- | --- | --- | --- |
 | Lab row: image, compare, video, 3D, playable, report | `ui/src/lab_view.rs:109`, `ui/src/lab_model.rs:130` | `/labs/{kind}/{document}`, `/v1/labs/*` | Account API | None | n/a | #12223 |
-| Video timeline editor | `ui/src/video_timeline.rs:24`, `account/src/video_editor.rs` | `/v1/labs/documents/{d}/versions/{v}/timeline` (read) | Same editor as a sheet | `POST /v1/labs/documents/{id}/versions` with the cookie ([#12262](https://github.com/OpenAgentsInc/openagents/issues/12262)) | M | [#12286](https://github.com/OpenAgentsInc/openagents/issues/12286) |
 | Agent visuals (`show_visual`): charts, tables, controls, canvases, 3D | `ui/src/visuals.rs`, `visual/` (Luau through `mlua`), `visual-gpu/` | None | Luau is C, so it needs a `wasm32` build or another runner; `visual-gpu` draws through wgpu on the web | None | M (spike and first visual) | [#12287](https://github.com/OpenAgentsInc/openagents/issues/12287) |
 | Local Video Lab card | `ui/src/lab_card.rs:81` (loopback `127.0.0.1:8792`) | None | Never: it's a local developer server | n/a | n/a | none |
 
@@ -196,6 +190,38 @@ These rows are in the chat plan. They are listed so the matrix is complete.
 | App update, host upgrade, harness CLI on this machine, MCP server, menu-bar item, haptics | `ui/src/app_update.rs:92`, `ui/src/host_upgrade.rs:36`, `mcp/src/lib.rs:88`, `ui/src/background.rs`, `ui/src/haptics.rs:3` | n/a | Not needed: the site updates on deploy, and these belong to the machine | n/a | n/a | none |
 | Design Lab tour | `ui/src/shell/design_lab_tour.rs:107` | `/ui/screens.json` | Developer tool; capture the web app the same way later | n/a | n/a | none |
 
+### Desktop-only (owner decision, 2026-10-20)
+
+The owner decided the web app won't have these. Their issues are closed as
+not planned. They stay in the desktop app.
+
+| Feature | Desktop | Closed issue |
+| --- | --- | --- |
+| Terminal | `ui/src/terminal/panel.rs:321`, `engine/src/terminals.rs:202` | [#12273](https://github.com/OpenAgentsInc/openagents/issues/12273) |
+| Changes pane: working tree, branch, and latest-turn diffs, unified or split, syntax, discard | `ui/src/changes.rs:1637`, `ui/src/syntax_cache.rs`, `engine/src/diff_sync.rs:378` | [#12274](https://github.com/OpenAgentsInc/openagents/issues/12274) |
+| Line comments on diffs and files, staged into the next prompt | `ui/src/comments.rs:131`, `ui/src/comment_ui.rs:48` | [#12275](https://github.com/OpenAgentsInc/openagents/issues/12275) |
+| Pull request pane: description, checks, review threads, review stream, post a comment, hand off to an agent | `ui/src/pull_request_detail.rs:405`, `ui/src/pull_request_handoff.rs:193`, `ui/src/shell/chat_pull_requests.rs` | [#12276](https://github.com/OpenAgentsInc/openagents/issues/12276) |
+| Git history pane and project run actions | `ui/src/history.rs:1303`, `ui/src/shell/actions_ui.rs:508`, `ui/src/project_actions.rs:94` | [#12277](https://github.com/OpenAgentsInc/openagents/issues/12277) |
+| Dev-server previews | `ui/src/browser/mod.rs:145`, `preview/src/service.rs:91`, `preview/src/signaling.rs:128` | [#12278](https://github.com/OpenAgentsInc/openagents/issues/12278) |
+| Video timeline editor | `ui/src/video_timeline.rs:24`, `account/src/video_editor.rs` | [#12286](https://github.com/OpenAgentsInc/openagents/issues/12286) |
+
+The file panel ([#12271](https://github.com/OpenAgentsInc/openagents/issues/12271), [#12272](https://github.com/OpenAgentsInc/openagents/issues/12272)) and the command palette ([#12279](https://github.com/OpenAgentsInc/openagents/issues/12279)) stand on their own without these.
+
+## Start here
+
+The ten issues to do first, in order:
+
+1. [#12262](https://github.com/OpenAgentsInc/openagents/issues/12262), cookie auth on `/v1`: small, and every account feature on the web needs it.
+2. [#12263](https://github.com/OpenAgentsInc/openagents/issues/12263), room tokens: small, and it opens the registry and device rooms to the browser.
+3. [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264), the browser as a paired device: it unlocks every feature that runs on a computer.
+4. [#12265](https://github.com/OpenAgentsInc/openagents/issues/12265), the registry sidebar: the web lists every computer's chats, not only web chats.
+5. [#12266](https://github.com/OpenAgentsInc/openagents/issues/12266), start a session on a computer: the first time the web runs agents the way the desktop does.
+6. [#12267](https://github.com/OpenAgentsInc/openagents/issues/12267), the full composer: used on every turn, and the base for the queue, attachments, and dictation.
+7. [#12268](https://github.com/OpenAgentsInc/openagents/issues/12268), the queue and the question wizard: without answers to its questions, an agent on a computer stalls.
+8. [#12270](https://github.com/OpenAgentsInc/openagents/issues/12270), transcript extras: many small visible pieces, blocked only by the view split.
+9. [#12281](https://github.com/OpenAgentsInc/openagents/issues/12281), cloud computers: people without a computer of their own get a place to run sessions.
+10. [#12271](https://github.com/OpenAgentsInc/openagents/issues/12271), the file panel: the one workspace pane the web keeps, and where workspace links open.
+
 ## Phases and dependencies
 
 Phases 7 to 13 extend the chat plan's phases 0a to 6. They use the same flag
@@ -206,10 +232,10 @@ Safari, and Firefox at desktop size, on the test account and a scratch host.
 | --- | --- | --- |
 | 7. Workspace foundation | [#12262](https://github.com/OpenAgentsInc/openagents/issues/12262), [#12263](https://github.com/OpenAgentsInc/openagents/issues/12263), [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264), [#12265](https://github.com/OpenAgentsInc/openagents/issues/12265) | #12217, #12222, #12224 |
 | 8. Chats on your computers | [#12266](https://github.com/OpenAgentsInc/openagents/issues/12266), [#12267](https://github.com/OpenAgentsInc/openagents/issues/12267), [#12268](https://github.com/OpenAgentsInc/openagents/issues/12268), [#12269](https://github.com/OpenAgentsInc/openagents/issues/12269), [#12270](https://github.com/OpenAgentsInc/openagents/issues/12270) | Phase 7, #12216, #12221 |
-| 9. Workspace panes | [#12271](https://github.com/OpenAgentsInc/openagents/issues/12271) to [#12279](https://github.com/OpenAgentsInc/openagents/issues/12279) | [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264), #12216 |
+| 9. Workspace panes | [#12271](https://github.com/OpenAgentsInc/openagents/issues/12271), [#12272](https://github.com/OpenAgentsInc/openagents/issues/12272), [#12279](https://github.com/OpenAgentsInc/openagents/issues/12279) | [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264), #12216 |
 | 10. Computers and cloud computers | [#12280](https://github.com/OpenAgentsInc/openagents/issues/12280), [#12281](https://github.com/OpenAgentsInc/openagents/issues/12281), [#12282](https://github.com/OpenAgentsInc/openagents/issues/12282), [#12283](https://github.com/OpenAgentsInc/openagents/issues/12283) | [#12262](https://github.com/OpenAgentsInc/openagents/issues/12262), [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264), [#12265](https://github.com/OpenAgentsInc/openagents/issues/12265), [#12266](https://github.com/OpenAgentsInc/openagents/issues/12266) |
 | 11. Agents | [#12284](https://github.com/OpenAgentsInc/openagents/issues/12284), [#12285](https://github.com/OpenAgentsInc/openagents/issues/12285) | [#12262](https://github.com/OpenAgentsInc/openagents/issues/12262), [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264), #12218 |
-| 12. Labs and visuals | [#12286](https://github.com/OpenAgentsInc/openagents/issues/12286), [#12287](https://github.com/OpenAgentsInc/openagents/issues/12287) | #12218, #12223 |
+| 12. Labs and visuals | [#12287](https://github.com/OpenAgentsInc/openagents/issues/12287) | #12218 |
 | 13. Settings, account, notifications, voice, Earn | [#12288](https://github.com/OpenAgentsInc/openagents/issues/12288) to [#12294](https://github.com/OpenAgentsInc/openagents/issues/12294) | #12216, #12218, [#12262](https://github.com/OpenAgentsInc/openagents/issues/12262), [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264); links to U1 (#12254) and U5 (#12258) |
 
 Phase 6 (#12226, default on) waits only on the chat phases. These phases can
@@ -221,13 +247,12 @@ Issue-level dependencies:
   #12222.
 - [#12266](https://github.com/OpenAgentsInc/openagents/issues/12266) needs [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264) and [#12265](https://github.com/OpenAgentsInc/openagents/issues/12265). [#12267](https://github.com/OpenAgentsInc/openagents/issues/12267) needs #12216 and #12221. [#12268](https://github.com/OpenAgentsInc/openagents/issues/12268) needs [#12267](https://github.com/OpenAgentsInc/openagents/issues/12267) and #12224.
   [#12269](https://github.com/OpenAgentsInc/openagents/issues/12269) needs [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264) and [#12267](https://github.com/OpenAgentsInc/openagents/issues/12267). [#12270](https://github.com/OpenAgentsInc/openagents/issues/12270) needs #12216, #12224, and [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264).
-- [#12271](https://github.com/OpenAgentsInc/openagents/issues/12271) needs [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264) and #12216. [#12272](https://github.com/OpenAgentsInc/openagents/issues/12272), [#12274](https://github.com/OpenAgentsInc/openagents/issues/12274), [#12276](https://github.com/OpenAgentsInc/openagents/issues/12276), and [#12278](https://github.com/OpenAgentsInc/openagents/issues/12278) need [#12271](https://github.com/OpenAgentsInc/openagents/issues/12271). [#12273](https://github.com/OpenAgentsInc/openagents/issues/12273) needs [#12271](https://github.com/OpenAgentsInc/openagents/issues/12271).
-  [#12275](https://github.com/OpenAgentsInc/openagents/issues/12275) needs [#12274](https://github.com/OpenAgentsInc/openagents/issues/12274) and [#12267](https://github.com/OpenAgentsInc/openagents/issues/12267). [#12277](https://github.com/OpenAgentsInc/openagents/issues/12277) needs [#12273](https://github.com/OpenAgentsInc/openagents/issues/12273). [#12279](https://github.com/OpenAgentsInc/openagents/issues/12279) needs [#12265](https://github.com/OpenAgentsInc/openagents/issues/12265) and [#12271](https://github.com/OpenAgentsInc/openagents/issues/12271). [#12278](https://github.com/OpenAgentsInc/openagents/issues/12278) also needs
-  [#12263](https://github.com/OpenAgentsInc/openagents/issues/12263).
+- [#12271](https://github.com/OpenAgentsInc/openagents/issues/12271) needs [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264) and #12216. [#12272](https://github.com/OpenAgentsInc/openagents/issues/12272) needs [#12271](https://github.com/OpenAgentsInc/openagents/issues/12271). [#12279](https://github.com/OpenAgentsInc/openagents/issues/12279)
+  needs [#12265](https://github.com/OpenAgentsInc/openagents/issues/12265) and [#12271](https://github.com/OpenAgentsInc/openagents/issues/12271).
 - [#12280](https://github.com/OpenAgentsInc/openagents/issues/12280) needs [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264) and [#12265](https://github.com/OpenAgentsInc/openagents/issues/12265). [#12281](https://github.com/OpenAgentsInc/openagents/issues/12281) needs [#12262](https://github.com/OpenAgentsInc/openagents/issues/12262) and [#12266](https://github.com/OpenAgentsInc/openagents/issues/12266). [#12282](https://github.com/OpenAgentsInc/openagents/issues/12282) needs [#12281](https://github.com/OpenAgentsInc/openagents/issues/12281) and [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264). [#12283](https://github.com/OpenAgentsInc/openagents/issues/12283) needs [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264) and
   [#12288](https://github.com/OpenAgentsInc/openagents/issues/12288).
 - [#12284](https://github.com/OpenAgentsInc/openagents/issues/12284) needs [#12262](https://github.com/OpenAgentsInc/openagents/issues/12262) and [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264). [#12285](https://github.com/OpenAgentsInc/openagents/issues/12285) needs [#12262](https://github.com/OpenAgentsInc/openagents/issues/12262) and #12218.
-- [#12286](https://github.com/OpenAgentsInc/openagents/issues/12286) needs #12223 and [#12262](https://github.com/OpenAgentsInc/openagents/issues/12262). [#12287](https://github.com/OpenAgentsInc/openagents/issues/12287) needs #12218.
+- [#12287](https://github.com/OpenAgentsInc/openagents/issues/12287) needs #12218.
 - [#12288](https://github.com/OpenAgentsInc/openagents/issues/12288) needs #12216 and #12218. [#12289](https://github.com/OpenAgentsInc/openagents/issues/12289) and [#12290](https://github.com/OpenAgentsInc/openagents/issues/12290) need [#12288](https://github.com/OpenAgentsInc/openagents/issues/12288); [#12290](https://github.com/OpenAgentsInc/openagents/issues/12290) also needs [#12262](https://github.com/OpenAgentsInc/openagents/issues/12262). [#12291](https://github.com/OpenAgentsInc/openagents/issues/12291)
   needs [#12262](https://github.com/OpenAgentsInc/openagents/issues/12262) and [#12265](https://github.com/OpenAgentsInc/openagents/issues/12265). [#12292](https://github.com/OpenAgentsInc/openagents/issues/12292) needs [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264) and [#12267](https://github.com/OpenAgentsInc/openagents/issues/12267). [#12293](https://github.com/OpenAgentsInc/openagents/issues/12293) needs [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264). [#12294](https://github.com/OpenAgentsInc/openagents/issues/12294) needs [#12264](https://github.com/OpenAgentsInc/openagents/issues/12264) and [#12288](https://github.com/OpenAgentsInc/openagents/issues/12288).
 
@@ -236,14 +261,14 @@ Issue-level dependencies:
 | The desktop does | The web can't, because | The web does instead |
 | --- | --- | --- |
 | Runs Claude Code, Codex, OpenCode, Cursor, and the other harnesses as local processes (`harness/src/lib.rs`, `engine/src/sessions.rs:582`) | A tab can't start processes | Runs them on a paired computer or a cloud computer, and shows the chat through its room |
-| Opens a shell in a local PTY (`engine/src/terminals.rs:202`) | No PTY in a browser | Opens the shell on the computer and streams it through the device room ([#12273](https://github.com/OpenAgentsInc/openagents/issues/12273)) |
-| Reads and writes project files and runs `git` and `gh` | No file system or git | Uses the computer's files, diffs, and pull requests through host RPC ([#12271](https://github.com/OpenAgentsInc/openagents/issues/12271) to [#12277](https://github.com/OpenAgentsInc/openagents/issues/12277)) |
+| Opens a shell in a local PTY (`engine/src/terminals.rs:202`) | No PTY in a browser | Nothing: the terminal is desktop-only (owner decision) |
+| Reads and writes project files and runs `git` and `gh` | No file system or git | Uses the computer's files through host RPC ([#12271](https://github.com/OpenAgentsInc/openagents/issues/12271), [#12272](https://github.com/OpenAgentsInc/openagents/issues/12272)); diffs, pull requests, and git history are desktop-only (owner decision) |
 | Keeps the identity and session in the Keychain (`account/src/platform.rs:224`) | No Keychain | Uses the sign-in cookie for the account and a revocable device grant for computers ([#12264](https://github.com/OpenAgentsInc/openagents/issues/12264)); recovery words in the browser are U5's decision (#12258) |
 | Makes a phone-pairing code | Codes come only from the computer's own app, by design (`engine/src/connect_phone.rs:5-9`) | Shows the computer list and lets the user revoke grants ([#12280](https://github.com/OpenAgentsInc/openagents/issues/12280)); pairing the browser is approved on a computer or phone |
 | Earns by sharing the computer (Pylon) | A tab is not a compute provider | Turns a paired computer's Pylon on and off and shows earnings ([#12294](https://github.com/OpenAgentsInc/openagents/issues/12294)) |
 | Holds and spends the wallet through the CLI and the phone | The desktop's wallet is a local process | A wasm Spark wallet in the browser, with custody chosen in U5 (#12258) |
 | Captures other app windows with Appshots | Browsers capture only what the user picks | `getDisplayMedia` screenshot as an attachment ([#12269](https://github.com/OpenAgentsInc/openagents/issues/12269)) |
-| Shows local dev servers in a native webview | No native webview | WebRTC preview from the computer into an iframe ([#12278](https://github.com/OpenAgentsInc/openagents/issues/12278)) |
+| Shows local dev servers in a native webview | No native webview | Nothing: previews are desktop-only (owner decision) |
 | Transcribes speech with a local model | The model is too large for a tab | Records in the browser and transcribes on a paired computer ([#12292](https://github.com/OpenAgentsInc/openagents/issues/12292)) |
 | Posts OS banners and keeps running in the menu bar | Closing the tab ends it | The work keeps running on the computer; banners while the tab is open ([#12291](https://github.com/OpenAgentsInc/openagents/issues/12291)), web push later |
 | Self-updates, upgrades the host, serves MCP, plays haptics | Not a browser concern | Nothing; the site updates when it's deployed |
@@ -257,10 +282,9 @@ Issue-level dependencies:
   Computers.
 - **Room tokens in WebSocket URLs** can land in logs. Keep them short-lived
   and scoped to one room kind, as the phone's are.
-- **Wasm builds of native crates.** `alacritty_terminal`, the syntax
-  highlighter, and `mlua`'s Luau may not build for `wasm32-unknown-unknown`.
-  Each pane issue starts by checking its crate; `crates/coder-vt` is a
-  smaller terminal grid if `alacritty_terminal` doesn't build.
+- **Wasm builds of native crates.** The syntax highlighter used by file
+  previews and `mlua`'s Luau may not build for `wasm32-unknown-unknown`.
+  Each issue starts by checking its crate.
 - **Size.** Each pane adds code. Load panes as separate modules on first use,
   under the size check from #12219.
 - **The `ui` crate split.** Every pane here reuses desktop views, so each

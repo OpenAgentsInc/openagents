@@ -201,8 +201,7 @@ Phases 0a to 0e can run in parallel. Phase 1 needs 0a, 0b, and 0d. Phase 3
 needs 0c. Phase 6 needs every other phase.
 
 This plan covers the chat surfaces. The rest of the desktop app (computers,
-files, terminal, diffs, pull requests, settings, check-ins, Agent Lab, voice,
-and Earn) is in the
+files, settings, check-ins, Agent Lab, voice, and Earn) is in the
 [desktop and web parity plan](2026-10-20-desktop-web-parity.md), as phases 7
 to 13 (#12262 to #12294).
 
