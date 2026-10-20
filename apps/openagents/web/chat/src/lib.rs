@@ -46,6 +46,7 @@ pub fn launch(fonts: js_sys::Array) {
         .with_assets(assets::Assets)
         .with_http_client(Arc::new(FetchHttpClient::new()))
         .run_embedded(|cx| {
+            openagents_web_chat_view::install(cx);
             composer::bind_keys(cx);
             let bounds = gpui::Bounds::centered(None, size(px(1280.), px(820.)), cx);
             cx.open_window(

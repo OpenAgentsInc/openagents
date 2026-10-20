@@ -369,6 +369,29 @@ pub fn init(settings: UiSettings, data_dir: impl Into<PathBuf>, cx: &mut App) {
         code_fences_generation: 0,
         save_task: None,
     });
+    openagents_chat_view::prefs::install(
+        openagents_chat_view::prefs::Store {
+            read: view_prefs,
+            write: save_view_prefs,
+        },
+        cx,
+    );
+}
+
+/// The markdown views' preferences, kept in these settings.
+fn view_prefs(cx: &App) -> openagents_chat_view::prefs::Prefs {
+    let settings = current(cx);
+    openagents_chat_view::prefs::Prefs {
+        code_fences_fit_content: settings.code_fences_fit_content,
+        open_web_links_in_openagents: settings.open_web_links_in_openagents,
+    }
+}
+
+fn save_view_prefs(prefs: openagents_chat_view::prefs::Prefs, cx: &mut App) {
+    update(SavePolicy::Immediate, cx, |settings| {
+        settings.code_fences_fit_content = prefs.code_fences_fit_content;
+        settings.open_web_links_in_openagents = prefs.open_web_links_in_openagents;
+    });
 }
 
 /// Latest settings, including mutations still inside the debounce window.

@@ -28,7 +28,7 @@ pub use caption::{CAPTION_EXIT_MS, CaptionFrame, CaptionVeil, caption_tail};
 
 use std::collections::HashMap;
 use std::ops::Range;
-use std::time::Instant;
+use web_time::Instant;
 
 /// EMA seed for the inter-append gap (mugen `EMA_SEED_MS`).
 pub const VEIL_EMA_SEED_MS: f32 = 160.0;

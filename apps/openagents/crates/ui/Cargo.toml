@@ -15,7 +15,7 @@ compact-picker-fixture = ["gpui_platform/test-support"]
 
 # Native captures explicitly present the freshly drawn scene, including when
 # a nested Wayland compositor has stopped requesting idle frames.
-browser-fixture = ["gpui/bench"]
+browser-fixture = ["gpui/bench", "openagents-chat-view/browser-fixture"]
 windows-render-fixture = []
 appshots-fixture = ["gpui_platform/test-support"]
 pull-request-fixture = ["gpui_platform/test-support"]
@@ -195,6 +195,7 @@ url = "2"
 x11rb = { version = "0.14.0", features = ["image"] }
 
 [dev-dependencies]
+openagents-chat-view = { workspace = true, features = ["test-support"] }
 # Headless GPUI tests and offscreen captures; the only way tests and
 # fixtures reach the real platform (#11973).
 openagents-gpui-test = { path = "../gpui-test" }

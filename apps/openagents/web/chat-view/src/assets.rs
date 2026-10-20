@@ -1,13 +1,23 @@
 //! Fonts and icons: a browser page has no system fonts GPUI can reach, and
-//! no file system to load icons from, so the icons are compiled in.
+//! no file system to load icons from, so the icons are compiled in (as
+//! masks in the browser).
 
 use std::borrow::Cow;
 
 use gpui::{AssetSource, SharedString};
 
+// In the browser every icon draws from its build-time mask (`crate::svg`),
+// so the SVG sources stay native, where GPUI's own `svg` reads them.
+#[cfg(not(target_family = "wasm"))]
 macro_rules! ui_asset {
     ($path:literal) => {
         include_bytes!(concat!("../../../crates/ui/assets/", $path))
+    };
+}
+#[cfg(target_family = "wasm")]
+macro_rules! ui_asset {
+    ($path:literal) => {
+        &[]
     };
 }
 
@@ -92,6 +102,9 @@ pub struct Assets;
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
+        if cfg!(target_family = "wasm") {
+            return Ok(None);
+        }
         Ok(ICONS
             .iter()
             .find(|(name, _)| *name == path)

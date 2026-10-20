@@ -6,21 +6,28 @@
 //! authored SVG colors are preserved in light mode; dark mode lifts the
 //! palette's darker accents without replacing polychrome artwork with a tint.
 
+#[cfg(not(target_family = "wasm"))]
 use std::{
     borrow::Cow,
-    collections::HashMap,
-    sync::{Arc, LazyLock, Mutex},
+    sync::{Arc, Mutex},
 };
+use std::{collections::HashMap, sync::LazyLock};
 
-use gpui::{App, AssetSource, Img, RenderImage, Result, SharedString, Styled as _, img};
+#[cfg(not(target_family = "wasm"))]
+use gpui::{App, AssetSource, RenderImage, Result};
+#[cfg(not(target_family = "wasm"))]
+use gpui::{Img, img};
+use gpui::{SharedString, Styled as _};
+use openagents_syntax::LanguageId;
+#[cfg(not(target_family = "wasm"))]
 use rust_embed::RustEmbed;
 use serde::Deserialize;
-use openagents_syntax::LanguageId;
 
 use crate::theme::{Appearance, Theme};
 
 const ASSET_PREFIX: &str = "file-icons/";
 
+#[cfg(not(target_family = "wasm"))]
 fn dark_icon_svg(svg: &str) -> String {
     // Lift shared palette accents, preserving bright colors, transparency,
     // gradients, and the contrasting black/white details within brand marks.
@@ -45,7 +52,7 @@ fn dark_icon_svg(svg: &str) -> String {
 /// appropriate; its counter-shade stays visible in both appearances without
 /// tinting the authored artwork. Frost needs more coverage because the
 /// backdrop beneath the translucent surface can vary.
-pub(crate) fn well_bg(theme: &Theme) -> gpui::Hsla {
+pub fn well_bg(theme: &Theme) -> gpui::Hsla {
     let alpha = if theme.is_frost() { 0.32 } else { 0.16 };
     match theme.appearance {
         Appearance::Dark => crate::theme::grey(0).opacity(alpha),
@@ -53,13 +60,16 @@ pub(crate) fn well_bg(theme: &Theme) -> gpui::Hsla {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(RustEmbed)]
-#[folder = "assets/file-icons"]
+#[folder = "../ui/assets/file-icons"]
 struct EmbeddedFileIcons;
 
 /// File-icon half of the application's composite gpui asset source.
-pub(crate) struct Assets;
+#[cfg(not(target_family = "wasm"))]
+pub struct Assets;
 
+#[cfg(not(target_family = "wasm"))]
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
         let Some(path) = path.strip_prefix(ASSET_PREFIX) else {
@@ -204,13 +214,22 @@ pub fn asset_path(identity: FileIconIdentity<'_>, appearance: Appearance) -> Sha
 /// an alpha mask and requires a `text_color` before it paints. Loading the same
 /// embedded SVG through [`gpui::img`] rasterizes its authored fills into a
 /// polychrome image, preserving the VS Code theme artwork.
+#[cfg(not(target_family = "wasm"))]
 pub fn icon(identity: FileIconIdentity<'_>, appearance: Appearance) -> Img {
     img(asset_path(identity, appearance)).flex_none()
 }
 
+/// The web has no file-icon theme: its pages link no workspace files, and
+/// leaving the image decoders out keeps the module small.
+#[cfg(target_family = "wasm")]
+pub fn icon(_identity: FileIconIdentity<'_>, _appearance: Appearance) -> gpui::Div {
+    gpui::div().flex_none()
+}
+
 /// A file-theme icon rasterized for painting straight into a text layout,
 /// where no [`Img`] element can sit. Rasterized once per asset path.
-pub(crate) fn raster(path: &SharedString, cx: &App) -> Option<Arc<RenderImage>> {
+#[cfg(not(target_family = "wasm"))]
+pub fn raster(path: &SharedString, cx: &App) -> Option<Arc<RenderImage>> {
     static CACHE: LazyLock<Mutex<HashMap<SharedString, Arc<RenderImage>>>> =
         LazyLock::new(Default::default);
     let mut cache = CACHE.lock().unwrap();
@@ -227,7 +246,11 @@ pub(crate) fn raster(path: &SharedString, cx: &App) -> Option<Arc<RenderImage>> 
 /// document fallback. This is intentionally stricter than [`asset_path`]: it
 /// lets prose renderers decorate a standalone filename without treating every
 /// dotted token as a file reference.
-pub(crate) fn has_specific_file_icon(path: &str) -> bool {
+pub fn has_specific_file_icon(path: &str) -> bool {
+    // The web draws no file icons, so it leaves the theme's manifest out.
+    if cfg!(target_family = "wasm") {
+        return false;
+    }
     let name = basename(path).to_ascii_lowercase();
     let identity = FileIconIdentity::file(path);
     resolve_file(&name, identity) != generic_file_asset()
@@ -352,7 +375,7 @@ fn mime_asset(mime_type: Option<&str>) -> Option<&'static str> {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 mod tests {
     use super::*;
 

@@ -15,11 +15,11 @@ use gpui::{
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
 use openagents_gpui_web::img;
 use openagents_web_chat_view::composer::{Cancelled, Submitted, TextInput};
-use openagents_web_chat_view::markdown::{Veil, visible_chars};
+use openagents_web_chat_view::markdown::{self, Veil};
 use openagents_web_chat_view::svg;
 use openagents_web_chat_view::transcript::{
-    self, CONTENT_WIDTH, OnClick, SIDEBAR_WIDTH, TurnView, VEIL_FADE_MS, ago, button, chip,
-    footer_text, info_card, truncate, veil_alpha,
+    self, CONTENT_WIDTH, OnClick, SIDEBAR_WIDTH, TurnView, ago, button, chip, footer_text,
+    info_card, truncate,
 };
 use openagents_web_chat_view::{now_ms, theme};
 use openagents_web_client::web::{Client, Follow};
@@ -41,8 +41,8 @@ struct Live {
     /// The answer's messages by their position in the chat.
     messages: BTreeMap<usize, (String, String)>,
     cards: Vec<serde_json::Value>,
-    /// Chunks of the text now arriving: visible characters, arrived at.
-    chunks: Vec<(usize, Instant)>,
+    /// The fade on the text now arriving.
+    veil: Veil,
     started: Instant,
     stopping: bool,
     _follow: Option<Follow>,
@@ -153,11 +153,7 @@ impl ChatApp {
                     .timer(Duration::from_millis(32))
                     .await;
                 let Ok(()) = this.update(cx, |this, cx| {
-                    if let Some(live) = &mut this.live {
-                        let now = Instant::now();
-                        live.chunks.retain(|(_, at)| {
-                            now.duration_since(*at).as_secs_f32() * 1000. < VEIL_FADE_MS
-                        });
+                    if this.live.is_some() {
                         let at = this.entries.len();
                         this.list_state.remeasure_items(at..at + 1);
                         cx.notify();
@@ -376,7 +372,7 @@ impl ChatApp {
             request,
             messages: seed,
             cards: Vec::new(),
-            chunks: Vec::new(),
+            veil: markdown::new_veil(),
             started: Instant::now(),
             stopping: false,
             _follow: Some(follow),
@@ -417,7 +413,6 @@ impl ChatApp {
                 if replace {
                     slot.1 = text;
                 } else {
-                    live.chunks.push((visible_chars(&text), Instant::now()));
                     slot.1.push_str(&text);
                 }
             }
@@ -1586,13 +1581,23 @@ impl Render for ChatApp {
                 .child(footer_text("Loading the chat…"))
                 .into_any_element()
         } else {
-            list(
-                self.list_state.clone(),
-                cx.processor(|this, ix: usize, window, cx| this.render_entry(ix, window, cx)),
-            )
-            .flex_1()
-            .w_full()
-            .into_any_element()
+            div()
+                .flex_1()
+                .w_full()
+                .flex()
+                .flex_col()
+                .child(markdown::selection_reset())
+                .child(
+                    list(
+                        self.list_state.clone(),
+                        cx.processor(|this, ix: usize, window, cx| {
+                            this.render_entry(ix, window, cx)
+                        }),
+                    )
+                    .flex_1()
+                    .w_full(),
+                )
+                .into_any_element()
         };
         let notice = self.notice.clone().map(|line| {
             div()
@@ -1680,16 +1685,7 @@ fn live_entry(live: &Live) -> SessionMessageEntry {
 }
 
 fn live_veil(live: &Live) -> Option<Veil> {
-    let now = Instant::now();
-    let tail = live
-        .chunks
-        .iter()
-        .filter_map(|(chars, at)| {
-            let elapsed = now.duration_since(*at).as_secs_f32() * 1000.;
-            (elapsed < VEIL_FADE_MS).then(|| (*chars, veil_alpha(elapsed, VEIL_FADE_MS)))
-        })
-        .collect::<Vec<_>>();
-    Some(Veil { tail })
+    Some(live.veil.clone())
 }
 
 /// A card's title: its own, or the name of the Lab that made it. Each

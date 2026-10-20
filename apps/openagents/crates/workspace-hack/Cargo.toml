@@ -194,6 +194,7 @@ core-foundation-sys = { version = "0.8" }
 core-graphics = { version = "0.24", features = ["elcapitan", "highsierra"] }
 errno = { version = "0.3" }
 fontdb = { version = "0.23" }
+form_urlencoded = { version = "1" }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16", default-features = false, features = ["default-hasher", "inline-more"] }
 hmac = { version = "0.12", default-features = false, features = ["reset", "std"] }
@@ -241,6 +242,7 @@ core-foundation-sys = { version = "0.8" }
 core-graphics = { version = "0.24", features = ["elcapitan", "highsierra"] }
 errno = { version = "0.3" }
 fontdb = { version = "0.23" }
+form_urlencoded = { version = "1" }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16", default-features = false, features = ["default-hasher", "inline-more"] }
 hmac = { version = "0.12", default-features = false, features = ["reset", "std"] }
@@ -284,6 +286,7 @@ security-framework-sys = { version = "2" }
 bitflags = { version = "2", default-features = false, features = ["std"] }
 concurrent-queue = { version = "2" }
 digest-a6292c17cd707f01 = { package = "digest", version = "0.11", default-features = false, features = ["mac"] }
+form_urlencoded = { version = "1" }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 hashbrown-3575ec1268b04181 = { package = "hashbrown", version = "0.15", default-features = false, features = ["default-hasher", "inline-more"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16" }
@@ -316,6 +319,7 @@ syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", default-features = fals
 bitflags = { version = "2", default-features = false, features = ["std"] }
 concurrent-queue = { version = "2" }
 digest-a6292c17cd707f01 = { package = "digest", version = "0.11", default-features = false, features = ["mac"] }
+form_urlencoded = { version = "1" }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 hashbrown-3575ec1268b04181 = { package = "hashbrown", version = "0.15", default-features = false, features = ["default-hasher", "inline-more"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16" }
@@ -346,6 +350,7 @@ syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", default-features = fals
 
 [target.x86_64-pc-windows-msvc.dependencies]
 concurrent-queue = { version = "2" }
+form_urlencoded = { version = "1" }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 hashbrown-3575ec1268b04181 = { package = "hashbrown", version = "0.15", default-features = false, features = ["default-hasher", "inline-more"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16" }
@@ -374,6 +379,7 @@ bitflags = { version = "2", default-features = false, features = ["std"] }
 block2 = { version = "0.6" }
 dispatch2 = { version = "0.3" }
 errno = { version = "0.3" }
+form_urlencoded = { version = "1" }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16", default-features = false, features = ["default-hasher", "inline-more"] }
 hmac = { version = "0.12", default-features = false, features = ["reset", "std"] }
@@ -405,6 +411,7 @@ bitflags = { version = "2", default-features = false, features = ["std"] }
 block2 = { version = "0.6" }
 dispatch2 = { version = "0.3" }
 errno = { version = "0.3" }
+form_urlencoded = { version = "1" }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16", default-features = false, features = ["default-hasher", "inline-more"] }
 hmac = { version = "0.12", default-features = false, features = ["reset", "std"] }
@@ -434,6 +441,7 @@ rustix = { version = "1", features = ["event", "fs", "mm", "param", "pipe", "pro
 [target.aarch64-linux-android.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
 errno = { version = "0.3" }
+form_urlencoded = { version = "1" }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 hashbrown-3575ec1268b04181 = { package = "hashbrown", version = "0.15", default-features = false, features = ["default-hasher", "inline-more"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16" }
@@ -464,6 +472,7 @@ simdutf8 = { version = "0.1", default-features = false, features = ["aarch64_neo
 [target.x86_64-linux-android.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
 errno = { version = "0.3" }
+form_urlencoded = { version = "1" }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 hashbrown-3575ec1268b04181 = { package = "hashbrown", version = "0.15", default-features = false, features = ["default-hasher", "inline-more"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16" }

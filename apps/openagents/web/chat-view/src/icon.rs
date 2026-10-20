@@ -35,3 +35,11 @@ impl IntoElement for Icon {
         image.into_any_element()
     }
 }
+
+/// Draws the desktop views' icons (`openagents_chat_view::icons::icon`) from
+/// the same masks.
+pub fn paint(path: SharedString, style: StyleRefinement) -> AnyElement {
+    let mut image = openagents_gpui_web::mask_image(mask(&path).unwrap_or(&[]), 64);
+    image.style().refine(&style);
+    image.into_any_element()
+}

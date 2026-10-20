@@ -28,8 +28,9 @@ pub fn desktop() -> &'static Theme {
 /// web mounts directly, such as Rust Native cards
 /// (`openagents_chat_view::rust_native_gpui`).
 pub fn install(cx: &mut gpui::App) {
-    openagents_chat_view::theme::set_current_appearance(DARK.appearance);
-    cx.set_global(DARK.clone());
+    let theme = Theme::dark();
+    openagents_chat_view::theme::set_current_appearance(theme.appearance);
+    cx.set_global(theme);
 }
 
 /// Main panel.

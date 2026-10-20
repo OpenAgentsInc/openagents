@@ -8,7 +8,7 @@ const FILE_MENTION_SCHEME: &str = "openagents-file:";
 
 /// Where a classified file link sits relative to a surface's ordered roots.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum FileLinkResolution {
+pub enum FileLinkResolution {
     /// `roots[index]` owns the target: the link opens in that root's file
     /// context and `link.path` stays workspace-relative.
     Owned {
@@ -27,7 +27,7 @@ pub(crate) enum FileLinkResolution {
 /// link: the linking chat reads it read-only as a host file
 /// ([`FileLinkResolution::Outside`]). A relative target stays
 /// inside-or-unresolved, as before.
-pub(crate) fn first_root_owning<'a>(
+pub fn first_root_owning<'a>(
     target: &str,
     roots: impl IntoIterator<Item = &'a str>,
 ) -> Option<FileLinkResolution> {
@@ -70,7 +70,7 @@ pub(crate) fn first_root_owning<'a>(
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct WorkspaceFileLink {
+pub struct WorkspaceFileLink {
     /// Workspace-relative wire path for owned links; the absolute host path
     /// for outside ones.
     pub path: String,
@@ -85,7 +85,7 @@ pub(crate) struct WorkspaceFileLink {
 /// root — project roots carry no chat, so their links open in the linking
 /// chat's file context.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct FileLinkRoot {
+pub struct FileLinkRoot {
     pub chat: Option<String>,
     pub root: String,
     /// The owner lives on this device — the file is on this disk, so the
@@ -96,14 +96,14 @@ pub(crate) struct FileLinkRoot {
 impl FileLinkRoot {
     /// The on-disk path `link` names under this root — never built from the
     /// raw link text, always from the resolved root join.
-    pub(crate) fn absolute(&self, link: &WorkspaceFileLink) -> PathBuf {
+    pub fn absolute(&self, link: &WorkspaceFileLink) -> PathBuf {
         Path::new(&self.root).join(&link.path)
     }
 }
 
 /// What one filesystem probe found at a candidate path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum PathKind {
+pub enum PathKind {
     File,
     Directory,
     Missing,
@@ -112,12 +112,12 @@ pub(crate) enum PathKind {
 /// Memoized path probes behind inline-code file links: one `metadata` call
 /// per path per link-roots revision, however many spans and frames ask.
 #[derive(Default)]
-pub(crate) struct PathProbes {
+pub struct PathProbes {
     kinds: HashMap<PathBuf, PathKind>,
 }
 
 impl PathProbes {
-    pub(crate) fn kind(&mut self, path: &Path) -> PathKind {
+    pub fn kind(&mut self, path: &Path) -> PathKind {
         if let Some(kind) = self.kinds.get(path) {
             return *kind;
         }
@@ -133,7 +133,7 @@ impl PathProbes {
 
 /// An inline code span that names something on this device.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum InlineCodePath {
+pub enum InlineCodePath {
     /// An existing regular file: the `file://` target that opens it, its
     /// `:line`/`#L` anchor kept.
     File(String),
@@ -148,7 +148,7 @@ pub(crate) enum InlineCodePath {
 /// the same text part named. Only local roots are probed — a remote chat's
 /// checkout is not on this disk. A path shape with nothing behind it stays
 /// plain code.
-pub(crate) fn resolve_inline_code_path(
+pub fn resolve_inline_code_path(
     candidate: &str,
     roots: &[FileLinkRoot],
     context_dirs: &[PathBuf],
@@ -245,7 +245,7 @@ fn probe_path(
 
 /// A file link's resolved match: the absolute path on the owning device, the
 /// wire path its presentation shows, and whether that device is this one.
-pub(crate) struct FileLink {
+pub struct FileLink {
     pub absolute: PathBuf,
     /// The decoded path the hover card shows: workspace-relative for owned
     /// links, absolute for outside ones.
@@ -279,7 +279,7 @@ enum LineAnchor {
     Invalid,
 }
 
-pub(crate) fn resolve_workspace_file_link(
+pub fn resolve_workspace_file_link(
     target: &str,
     workspace_root: &str,
 ) -> Option<WorkspaceFileLink> {
@@ -405,7 +405,7 @@ fn classify_file_link(target: &str) -> Option<ClassifiedLink> {
 
 /// `target` without its `#L12` fragment or `:12` line suffix: the path a
 /// location link points into. A target that is not a location stays whole.
-pub(crate) fn without_location(target: &str) -> &str {
+pub fn without_location(target: &str) -> &str {
     split_line_fragment(target)
         .and_then(|(path, _)| split_line_suffix(path))
         .map_or(target, |(path, _)| path)

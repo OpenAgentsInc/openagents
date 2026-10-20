@@ -49,7 +49,7 @@ impl OffsetMap {
     }
     /// This stage only: shown range for an input range — an input range that
     /// overlaps a replaced span expands to cover the replacement.
-    pub(crate) fn local_displayed_range(&self, range: Range<usize>) -> Range<usize> {
+    pub fn local_displayed_range(&self, range: Range<usize>) -> Range<usize> {
         let mut result = self.local_displayed(range.start)..self.local_displayed(range.end);
         for (source, shown) in &self.omissions {
             if range.start < source.end && range.end > source.start {
@@ -89,7 +89,7 @@ pub struct OriginalText {
     pub offsets: OffsetMap,
 }
 
-pub(crate) fn slice_runs(runs: &[TextRun], range: Range<usize>) -> Vec<TextRun> {
+pub fn slice_runs(runs: &[TextRun], range: Range<usize>) -> Vec<TextRun> {
     let mut at = 0;
     runs.iter()
         .filter_map(|run| {
@@ -232,15 +232,19 @@ pub(super) fn present(
 /// the shaped text never notices. Copy and selection map the slot back to the
 /// link end, so the raw text survives and nothing reflows on hover.
 const FILE_GLYPH_SLOT: &str = "\u{00A0}\u{00A0}\u{00A0}\u{00A0}";
-pub(crate) const FILE_GLYPH_SIZE: f32 = 12.0;
-pub(crate) const FILE_GLYPH_GAP: f32 = 4.0;
+pub const FILE_GLYPH_SIZE: f32 = 12.0;
+pub const FILE_GLYPH_GAP: f32 = 4.0;
 
 /// Reserve a slot after every file link the surface's roots resolve. Web
 /// links and targets no known root owns keep their shape, as does a
 /// paragraph that is nothing but one file link — that renders as the sole
 /// file row with its own icon tile.
 fn with_file_link_glyphs(flat: &FlatText, opts: &RenderOptions) -> FlatText {
-    let Some(ui) = opts.link.as_ref().filter(|ui| ui.file_roots.is_some()) else {
+    let Some(ui) = opts
+        .link
+        .as_ref()
+        .filter(|ui| ui.file_roots.is_some() && !cfg!(target_family = "wasm"))
+    else {
         return flat.clone();
     };
     if flat.links.is_empty() || paragraph_is_sole_file_link(flat, opts.workspace_root.as_deref()) {
@@ -444,7 +448,7 @@ impl Element for ResponsiveText {
 /// Paints the trailing open glyph of every resolved file link over the
 /// shaped text — the same reserved-slot overlay pattern, so the NBSP slots
 /// keep layout, selection and copy stable.
-pub(crate) struct FileLinkGlyphs {
+pub struct FileLinkGlyphs {
     pub id: SharedString,
     pub child: AnyElement,
     pub layout: TextLayout,

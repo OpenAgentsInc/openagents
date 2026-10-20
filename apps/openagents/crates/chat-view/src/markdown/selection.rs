@@ -53,8 +53,8 @@ fn state() -> &'static Mutex<Option<MdSelection>> {
 
 /// Selection state is process-global; tests that exercise its lifecycle must
 /// not race each other.
-#[cfg(test)]
-pub(crate) fn test_state_lock() -> std::sync::MutexGuard<'static, ()> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn test_state_lock() -> std::sync::MutexGuard<'static, ()> {
     static LOCK: Mutex<()> = Mutex::new(());
     LOCK.lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -94,7 +94,7 @@ pub fn begin(key: &str, ix: usize) {
 }
 
 /// `begin` on one of several surfaces painted in the same frame.
-pub(crate) fn begin_in(surface: u64, key: &str, ix: usize) {
+pub fn begin_in(surface: u64, key: &str, ix: usize) {
     *state().lock().unwrap() = Some(MdSelection {
         surface,
         anchor_key: key.to_string(),
@@ -111,7 +111,7 @@ pub fn begin_with_span(key: &str, text: &str, range: Range<usize>) {
 }
 
 /// `begin_with_span` on one of several surfaces painted in the same frame.
-pub(crate) fn begin_with_span_in(surface: u64, key: &str, text: &str, range: Range<usize>) {
+pub fn begin_with_span_in(surface: u64, key: &str, text: &str, range: Range<usize>) {
     *state().lock().unwrap() = Some(MdSelection {
         surface,
         anchor_key: key.to_string(),
@@ -133,7 +133,7 @@ pub fn drag_anchor(key: &str) -> Option<usize> {
     (sel.dragging && sel.anchor_key == key).then_some(sel.anchor_ix)
 }
 
-pub(crate) fn anchor_key() -> Option<String> {
+pub fn anchor_key() -> Option<String> {
     state()
         .lock()
         .unwrap()
@@ -142,7 +142,7 @@ pub(crate) fn anchor_key() -> Option<String> {
 }
 
 /// The surface the selection lives in (0 when there is none).
-pub(crate) fn anchor_surface() -> u64 {
+pub fn anchor_surface() -> u64 {
     state().lock().unwrap().as_ref().map_or(0, |s| s.surface)
 }
 

@@ -10,7 +10,7 @@ impl LinkTarget {
         Self {
             label: label.into(),
             original: original.into(),
-            navigation: crate::browser::model::transcript_address(original),
+            navigation: crate::web_address::transcript_address(original),
         }
     }
 }

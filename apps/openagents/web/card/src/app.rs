@@ -9,16 +9,15 @@ use std::time::Duration;
 
 use gpui::{
     AnyElement, ClickEvent, Context, FollowMode, FontWeight, IntoElement, ListAlignment, ListState,
-    ParentElement, Render, Styled, Window, div, list, prelude::*, px, svg,
+    ParentElement, Render, Styled, Window, div, list, prelude::*, px,
 };
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
+use openagents_web_chat_view::svg;
 use web_time::Instant;
 
-use openagents_web_chat_view::markdown::{Veil, visible_chars};
+use openagents_web_chat_view::markdown::{self, Veil};
 use openagents_web_chat_view::theme;
-use openagents_web_chat_view::transcript::{
-    self, OnClick, TurnView, VEIL_FADE_MS, footer_text, veil_alpha, working_label,
-};
+use openagents_web_chat_view::transcript::{self, OnClick, TurnView, footer_text, working_label};
 
 use crate::demo::transcripts::{self, Step};
 use crate::{now_ms, split_words};
@@ -71,8 +70,8 @@ struct Stream {
     started: Instant,
     /// The running tool: its part index, when it finishes, its output.
     tool: Option<(usize, Instant, Option<String>, bool)>,
-    /// Chunks of the text part now streaming: visible characters, appended at.
-    chunks: Vec<(usize, Instant)>,
+    /// The fade on the text part now streaming.
+    veil: Veil,
 }
 
 pub struct CardApp {
@@ -191,7 +190,7 @@ impl CardApp {
                     wait_until: now + Duration::from_millis(450),
                     started: now,
                     tool: None,
-                    chunks: Vec::new(),
+                    veil: markdown::new_veil(),
                 });
                 cx.notify();
             }
@@ -241,7 +240,6 @@ impl CardApp {
                     Some(MessagePart::Text { text, .. }) => text.push_str(&word),
                     _ => entry.parts.push(transcripts::text("t-live", &word)),
                 }
-                stream.chunks.push((visible_chars(&word), now));
                 stream.wait_until = now + Duration::from_millis(pause);
             } else if let Some(step) = stream.steps.pop_front() {
                 let ix = entry.parts.len();
@@ -256,7 +254,7 @@ impl CardApp {
                     Step::Text(body) => {
                         entry.parts.push(transcripts::text(&format!("t{ix}"), ""));
                         stream.words = split_words(&body);
-                        stream.chunks.clear();
+                        stream.veil = markdown::new_veil();
                     }
                     Step::Tool {
                         call,
@@ -287,10 +285,7 @@ impl CardApp {
                 return;
             }
         }
-        let fading = stream
-            .chunks
-            .iter()
-            .any(|(_, at)| now.duration_since(*at).as_secs_f32() * 1000. < VEIL_FADE_MS);
+        let fading = markdown::is_fading(&stream.veil);
         if changed || fading {
             self.list_state.remeasure_items(last..last + 1);
             cx.notify();
@@ -306,16 +301,7 @@ impl CardApp {
         if part + 1 != parts.len() || stream.tool.is_some() {
             return None;
         }
-        let now = Instant::now();
-        let tail = stream
-            .chunks
-            .iter()
-            .filter_map(|(chars, at)| {
-                let elapsed = now.duration_since(*at).as_secs_f32() * 1000.;
-                (elapsed < VEIL_FADE_MS).then(|| (*chars, veil_alpha(elapsed, VEIL_FADE_MS)))
-            })
-            .collect::<Vec<_>>();
-        Some(Veil { tail })
+        Some(stream.veil.clone())
     }
 
     fn render_entry(&mut self, ix: usize) -> AnyElement {
@@ -409,13 +395,15 @@ impl Render for CardApp {
             .text_color(theme::text())
             .text_size(px(theme::BODY));
         root.text_style().font_fallbacks = Some(theme::fallbacks());
-        root.child(self.render_header()).child(
-            list(
-                self.list_state.clone(),
-                cx.processor(|this, ix: usize, _window, _cx| this.render_entry(ix)),
+        root.child(self.render_header())
+            .child(markdown::selection_reset())
+            .child(
+                list(
+                    self.list_state.clone(),
+                    cx.processor(|this, ix: usize, _window, _cx| this.render_entry(ix)),
+                )
+                .flex_1()
+                .w_full(),
             )
-            .flex_1()
-            .w_full(),
-        )
     }
 }

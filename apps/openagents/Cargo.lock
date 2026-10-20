@@ -11160,14 +11160,23 @@ version = "1.0.0"
 dependencies = [
  "futures",
  "gpui",
+ "gpui-base",
  "openagents-brand",
+ "openagents-gpui-test",
+ "openagents-markdown",
  "openagents-proto",
  "openagents-syntax",
  "openagents-theme",
+ "openagents-veil",
  "openagents-workspace-hack",
+ "rust-embed",
  "rust-native",
  "serde",
  "serde_json",
+ "tempfile",
+ "unicode-segmentation",
+ "url",
+ "web-sys",
  "web-time",
  "windows-sys 0.61.2",
 ]
@@ -11821,6 +11830,7 @@ name = "openagents-veil"
 version = "1.0.0"
 dependencies = [
  "openagents-workspace-hack",
+ "web-time",
 ]
 
 [[package]]
@@ -11943,6 +11953,7 @@ dependencies = [
  "flate2",
  "fnv",
  "fontdb",
+ "form_urlencoded",
  "futures-channel",
  "futures-core",
  "futures-io",

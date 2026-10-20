@@ -19,12 +19,12 @@ use web_time::Instant;
 
 use openagents_chat_view::rust_native_gpui;
 use openagents_web_chat_view::composer::{Submitted, TextInput};
-use openagents_web_chat_view::markdown::{Veil, visible_chars};
+use openagents_web_chat_view::markdown::{self, Veil};
 use openagents_web_chat_view::svg;
 use openagents_web_chat_view::theme;
 use openagents_web_chat_view::transcript::{
-    self, CONTENT_WIDTH, OnClick, SIDEBAR_WIDTH, TurnView, VEIL_FADE_MS, ago, chip, choice_mark,
-    footer_text, model_label, reasoning_label, truncate, veil_alpha,
+    self, CONTENT_WIDTH, OnClick, SIDEBAR_WIDTH, TurnView, ago, chip, choice_mark, footer_text,
+    model_label, reasoning_label, truncate,
 };
 
 use crate::approval::{self, Approval};
@@ -79,8 +79,8 @@ struct Stream {
     started: Instant,
     /// The running tool: its part index, when it finishes, its output.
     tool: Option<(usize, Instant, Option<String>, bool)>,
-    /// Chunks of the text part now streaming: visible characters, appended at.
-    chunks: Vec<(usize, Instant)>,
+    /// The fade on the text part now streaming.
+    veil: Veil,
     ends_with_question: bool,
 }
 
@@ -184,7 +184,8 @@ impl ChatApp {
                 wait_until: Instant::now() + Duration::from_millis(600),
                 started: Instant::now(),
                 tool: None,
-                chunks: Vec::new(),
+                // The reply already on screen stays; only the rest fades in.
+                veil: markdown::seeded_veil(),
                 ends_with_question: false,
             });
         }
@@ -283,7 +284,7 @@ impl ChatApp {
             wait_until: Instant::now() + Duration::from_millis(450),
             started: Instant::now(),
             tool: None,
-            chunks: Vec::new(),
+            veil: markdown::new_veil(),
             ends_with_question,
         });
         cx.notify();
@@ -348,7 +349,6 @@ impl ChatApp {
                     Some(MessagePart::Text { text, .. }) => text.push_str(&word),
                     _ => entry.parts.push(transcripts::text("t-live", &word)),
                 }
-                stream.chunks.push((visible_chars(&word), now));
                 let pause = self.random_ms(28, 110);
                 stream.wait_until = now + Duration::from_millis(pause);
             } else if let Some(step) = stream.steps.pop_front() {
@@ -364,7 +364,7 @@ impl ChatApp {
                     Step::Text(body) => {
                         entry.parts.push(transcripts::text(&format!("t{ix}"), ""));
                         stream.words = split_words(&body);
-                        stream.chunks.clear();
+                        stream.veil = markdown::new_veil();
                     }
                     Step::Tool {
                         call,
@@ -408,10 +408,7 @@ impl ChatApp {
                 return;
             }
         }
-        let fading = stream
-            .chunks
-            .iter()
-            .any(|(_, at)| now.duration_since(*at).as_secs_f32() * 1000. < VEIL_FADE_MS);
+        let fading = markdown::is_fading(&stream.veil);
         if (changed || fading) && stream.chat == self.current {
             self.list_state
                 .remeasure_items(stream.entry..stream.entry + 1);
@@ -431,16 +428,7 @@ impl ChatApp {
         if part + 1 != parts.len() || !stream.tool.is_none() {
             return None;
         }
-        let now = Instant::now();
-        let tail = stream
-            .chunks
-            .iter()
-            .filter_map(|(chars, at)| {
-                let elapsed = now.duration_since(*at).as_secs_f32() * 1000.;
-                (elapsed < VEIL_FADE_MS).then(|| (*chars, veil_alpha(elapsed, VEIL_FADE_MS)))
-            })
-            .collect::<Vec<_>>();
-        Some(Veil { tail })
+        Some(stream.veil.clone())
     }
 
     fn submit_answers(&mut self, entry_ix: usize, part_ix: usize, cx: &mut Context<Self>) {
@@ -1148,13 +1136,23 @@ impl Render for ChatApp {
                 )
                 .into_any_element()
         } else {
-            list(
-                self.list_state.clone(),
-                cx.processor(|this, ix: usize, window, cx| this.render_entry(ix, window, cx)),
-            )
-            .flex_1()
-            .w_full()
-            .into_any_element()
+            div()
+                .flex_1()
+                .w_full()
+                .flex()
+                .flex_col()
+                .child(markdown::selection_reset())
+                .child(
+                    list(
+                        self.list_state.clone(),
+                        cx.processor(|this, ix: usize, window, cx| {
+                            this.render_entry(ix, window, cx)
+                        }),
+                    )
+                    .flex_1()
+                    .w_full(),
+                )
+                .into_any_element()
         };
         let mut root = div()
             .id("openagents-web")

@@ -14,25 +14,27 @@
 //!
 //! Icons render via [`icon`]: `icon(icons::PAPERCLIP).size(px(16.)).text_color(…)`.
 
+#[cfg(not(target_family = "wasm"))]
 use std::borrow::Cow;
 
-use gpui::{
-    AssetSource, Div, Hsla, ParentElement as _, Result, SharedString, Styled as _, Svg, div, px,
-    svg,
-};
+#[cfg(not(target_family = "wasm"))]
+use gpui::{AssetSource, Result, Svg, svg};
+use gpui::{Div, Hsla, ParentElement as _, SharedString, Styled as _, div, px};
 
 macro_rules! icon_assets {
     ($(($const_name:ident, $path:literal)),+ $(,)?) => {
         $(pub const $const_name: &str = concat!("icons/", $path, ".svg");)+
 
         /// Serves the embedded control icons to gpui's SVG renderer.
+        #[cfg(not(target_family = "wasm"))]
         struct ControlAssets;
 
+        #[cfg(not(target_family = "wasm"))]
         impl AssetSource for ControlAssets {
             fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
                 Ok(match path {
                     $(concat!("icons/", $path, ".svg") => Some(Cow::Borrowed(
-                        include_bytes!(concat!("../assets/icons/", $path, ".svg")).as_slice(),
+                        include_bytes!(concat!("../../ui/assets/icons/", $path, ".svg")).as_slice(),
                     )),)+
                     _ => None,
                 })
@@ -232,8 +234,11 @@ icon_assets![
 
 /// Serves both the compact control-icon set and the complete file-identity
 /// icon theme through the single asset source registered at app startup.
+/// The web draws its own icon masks instead (see [`set_web_painter`]).
+#[cfg(not(target_family = "wasm"))]
 pub struct Assets;
 
+#[cfg(not(target_family = "wasm"))]
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
         if let Some(asset) = ControlAssets.load(path)? {
@@ -260,8 +265,71 @@ pub fn claude_brand() -> Hsla {
 /// `[&_svg]:size-4` idiom.
 /// GPUI's SVG painter reads the SVG's own text color; a color on its parent
 /// does not provide the paint input. Always set `.text_color(..)` on the icon.
+#[cfg(not(target_family = "wasm"))]
 pub fn icon(path: &'static str) -> Svg {
     svg().path(path).flex_none()
+}
+
+/// On the web, an icon is drawn by the page's painter, which ships prepared
+/// masks rather than an SVG parser.
+#[cfg(target_family = "wasm")]
+pub fn icon(path: &'static str) -> Icon {
+    Icon {
+        path: SharedString::new_static(path),
+        style: gpui::StyleRefinement::default(),
+    }
+    .flex_none()
+}
+
+/// Draws an icon path with the caller's style on the web.
+#[cfg(target_family = "wasm")]
+pub type WebPainter = fn(SharedString, gpui::StyleRefinement) -> gpui::AnyElement;
+
+#[cfg(target_family = "wasm")]
+static WEB_PAINTER: std::sync::OnceLock<WebPainter> = std::sync::OnceLock::new();
+
+/// Set once at startup by the web app that bundles the icon masks.
+#[cfg(target_family = "wasm")]
+pub fn set_web_painter(painter: WebPainter) {
+    let _ = WEB_PAINTER.set(painter);
+}
+
+#[cfg(target_family = "wasm")]
+pub struct Icon {
+    path: SharedString,
+    style: gpui::StyleRefinement,
+}
+
+#[cfg(target_family = "wasm")]
+impl Icon {
+    pub fn path(mut self, path: impl Into<SharedString>) -> Self {
+        self.path = path.into();
+        self
+    }
+}
+
+#[cfg(target_family = "wasm")]
+impl gpui::Styled for Icon {
+    fn style(&mut self) -> &mut gpui::StyleRefinement {
+        &mut self.style
+    }
+}
+
+#[cfg(target_family = "wasm")]
+impl gpui::IntoElement for Icon {
+    type Element = gpui::AnyElement;
+
+    fn into_element(self) -> gpui::AnyElement {
+        use gpui::Refineable as _;
+        match WEB_PAINTER.get() {
+            Some(paint) => paint(self.path, self.style),
+            None => {
+                let mut empty = div();
+                empty.style().refine(&self.style);
+                gpui::IntoElement::into_any_element(empty)
+            }
+        }
+    }
 }
 
 /// The OpenAgents Icons sidebar glyph (icons.openagents.sh "Sidebar" / "Right
@@ -344,7 +412,7 @@ pub fn corner_card_glyph(size: f32, color: Hsla) -> Div {
         .child(panel)
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(target_family = "wasm")))]
 mod tests {
     use super::*;
 

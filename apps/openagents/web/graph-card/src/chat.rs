@@ -13,10 +13,8 @@ use gpui::{
     ParentElement, Render, Styled, Window, div, list, px,
 };
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
-use openagents_web_chat_view::markdown::{Veil, visible_chars};
-use openagents_web_chat_view::transcript::{
-    self, OnClick, TurnView, VEIL_FADE_MS, info_card, veil_alpha,
-};
+use openagents_web_chat_view::markdown::{self, Veil};
+use openagents_web_chat_view::transcript::{self, OnClick, TurnView, info_card};
 use web_time::Instant;
 
 use crate::script::{self, Beat, Cue, PROMPT};
@@ -91,7 +89,7 @@ struct Stream {
     wait_until: Instant,
     started: Instant,
     tool: Option<Running>,
-    chunks: Vec<(usize, Instant)>,
+    veil: Veil,
 }
 
 /// What one tick of the chat tells the graph.
@@ -214,7 +212,7 @@ impl ChatView {
                     wait_until: now + Duration::from_millis(400),
                     started: now,
                     tool: None,
-                    chunks: Vec::new(),
+                    veil: markdown::new_veil(),
                 });
                 cx.notify();
             }
@@ -279,7 +277,6 @@ impl ChatView {
                     Some(MessagePart::Text { text, .. }) => text.push_str(&word),
                     _ => entry.parts.push(text("t-live", &word)),
                 }
-                stream.chunks.push((visible_chars(&word), now));
                 stream.wait_until = now + Duration::from_millis(pause);
                 changed = true;
             } else if let Some(beat) = stream.beats.pop_front() {
@@ -296,7 +293,7 @@ impl ChatView {
                     Beat::Text(body) => {
                         entry.parts.push(text(&format!("t{ix}"), ""));
                         stream.words = crate::split_words(body);
-                        stream.chunks.clear();
+                        stream.veil = markdown::new_veil();
                     }
                     Beat::Tool {
                         call,
@@ -330,10 +327,7 @@ impl ChatView {
                 return;
             }
         }
-        let fading = stream
-            .chunks
-            .iter()
-            .any(|(_, at)| now.duration_since(*at).as_secs_f32() * 1000. < VEIL_FADE_MS);
+        let fading = markdown::is_fading(&stream.veil);
         // A running tool group pulses its summary line.
         let running = stream.tool.is_some();
         if changed || fading || running {
@@ -391,7 +385,7 @@ impl ChatView {
             wait_until: now + THINK / 2,
             started: now,
             tool: None,
-            chunks: Vec::new(),
+            veil: markdown::new_veil(),
         });
         cut
     }
@@ -404,16 +398,7 @@ impl ChatView {
         if part + 1 != parts.len() || stream.tool.is_some() {
             return None;
         }
-        let now = Instant::now();
-        let tail = stream
-            .chunks
-            .iter()
-            .filter_map(|(chars, at)| {
-                let elapsed = now.duration_since(*at).as_secs_f32() * 1000.;
-                (elapsed < VEIL_FADE_MS).then(|| (*chars, veil_alpha(elapsed, VEIL_FADE_MS)))
-            })
-            .collect::<Vec<_>>();
-        Some(Veil { tail })
+        Some(stream.veil.clone())
     }
 
     fn render_entry(&mut self, ix: usize) -> AnyElement {
@@ -470,10 +455,17 @@ impl ChatView {
 
 impl Render for ChatView {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        list(
-            self.list_state.clone(),
-            cx.processor(|this, ix: usize, _window, _cx| this.render_entry(ix)),
-        )
-        .size_full()
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .child(markdown::selection_reset())
+            .child(
+                list(
+                    self.list_state.clone(),
+                    cx.processor(|this, ix: usize, _window, _cx| this.render_entry(ix)),
+                )
+                .size_full(),
+            )
     }
 }

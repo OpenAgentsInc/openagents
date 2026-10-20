@@ -20,7 +20,7 @@ thread_local! {
     static FIXTURE_LINKS: RefCell<std::collections::HashMap<String, (Point<Pixels>, FocusHandle)>> = RefCell::default();
 }
 #[cfg(feature = "browser-fixture")]
-pub(crate) fn fixture_link(target: &str) -> Option<(Point<Pixels>, FocusHandle)> {
+pub fn fixture_link(target: &str) -> Option<(Point<Pixels>, FocusHandle)> {
     FIXTURE_LINKS.with(|links| links.borrow().get(target).cloned())
 }
 
@@ -31,6 +31,12 @@ pub struct LinkRanges {
     pub links: Vec<(Range<usize>, LinkTarget)>,
     pub ui: Option<LinkUi>,
 }
+
+/// The link context menu (open in the app's browser, copy, the default
+/// destination) belongs to the desktop. A browser page opens a link on
+/// click and leaves the menu out of its module.
+const CONTEXT_MENU: bool = !cfg!(target_family = "wasm");
+
 struct Interaction {
     targets: Vec<LinkTarget>,
     focus: Vec<FocusHandle>,
@@ -195,11 +201,13 @@ impl Element for LinkRanges {
                                 );
                             }
                         })
-                        .on_mouse_down(MouseButton::Right, move |event, window, cx| {
-                            *menu.borrow_mut() = Some((index, event.position));
-                            pointer_focus_pending.set(true);
-                            cx.stop_propagation();
-                            window.refresh();
+                        .when(CONTEXT_MENU, |hit| {
+                            hit.on_mouse_down(MouseButton::Right, move |event, window, cx| {
+                                *menu.borrow_mut() = Some((index, event.position));
+                                pointer_focus_pending.set(true);
+                                cx.stop_propagation();
+                                window.refresh();
+                            })
                         })
                         .on_key_down(move |event, window, cx| {
                             match event.keystroke.key.as_str() {
@@ -210,7 +218,7 @@ impl Element for LinkRanges {
                                         window.focus_next(cx);
                                     }
                                 }
-                                "f10" if event.keystroke.modifiers.shift => {
+                                "f10" if CONTEXT_MENU && event.keystroke.modifiers.shift => {
                                     *keyboard_menu.borrow_mut() = Some((index, rect.bottom_left()));
                                     menu_focus_pending.set(true);
                                     window.refresh();
@@ -288,7 +296,7 @@ impl Element for LinkRanges {
                     }
                 }
             }
-            if let Some((index, position)) = *state.menu.borrow() {
+            if let Some((index, position)) = state.menu.borrow().filter(|_| CONTEXT_MENU) {
                 let theme = theme.for_popup();
                 let menu = state.menu.clone();
                 let dismiss_menu = state.menu.clone();
@@ -437,7 +445,8 @@ impl Element for LinkRanges {
                     if file.local {
                         // The system opener goes through a file:// URL —
                         // the resolved path is a filesystem path, not a web
-                        // address.
+                        // address. A browser page has no local files.
+                        #[cfg(not(target_family = "wasm"))]
                         if let Ok(url) = url::Url::from_file_path(&file.absolute) {
                             let url = url.to_string();
                             card = card.child(file_row(
@@ -487,7 +496,7 @@ impl Element for LinkRanges {
                         5,
                         "link-menu-copy-address",
                     ));
-                    let open_in_openagents = crate::settings::current(cx).open_web_links_in_openagents;
+                    let open_in_openagents = crate::prefs::current(cx).open_web_links_in_openagents;
                     let menu = state.menu.clone();
                     card = card.child(popover::menu_separator()).child(
                         popover::menu_row(
@@ -514,13 +523,9 @@ impl Element for LinkRanges {
                         })
                         .focus_visible(|s| s.bg(crate::theme::card_selected_bg()))
                         .on_click(move |_, window, cx| {
-                            crate::settings::update(
-                                crate::settings::SavePolicy::Immediate,
-                                cx,
-                                |settings| {
-                                    settings.open_web_links_in_openagents = !open_in_openagents;
-                                },
-                            );
+                            crate::prefs::update(cx, |prefs| {
+                                prefs.open_web_links_in_openagents = !open_in_openagents;
+                            });
                             menu.borrow_mut().take();
                             cx.refresh_windows();
                             window.refresh();
@@ -891,10 +896,8 @@ mod rendered_tests {
         ignore = "requires a native desktop; run with --ignored --test-threads=1"
     )]
     fn context_menu_cancels_visible_and_pending_hover_tooltips() {
-        let dir = tempfile::tempdir().unwrap();
         test_application().run(move |cx| {
             cx.set_global(Theme::dark());
-            crate::settings::init(crate::settings::UiSettings::default(), dir.path(), cx);
             // Keep the headless event loop alive between scenario windows.
             cx.open_window(Default::default(), |_, cx| cx.new(|_| gpui::Empty))
                 .unwrap();
@@ -983,13 +986,13 @@ mod rendered_tests {
                                 !draw_has_tooltip(window, cx),
                                 "pending hover must not appear over the menu"
                             );
-                            let before = crate::settings::current(cx).open_web_links_in_openagents;
+                            let before = crate::prefs::current(cx).open_web_links_in_openagents;
                             key(window, "down", cx);
                             key(window, "down", cx);
                             key(window, "down", cx);
                             key(window, "enter", cx);
                             assert_ne!(
-                                crate::settings::current(cx).open_web_links_in_openagents,
+                                crate::prefs::current(cx).open_web_links_in_openagents,
                                 before,
                                 "the fourth menu row toggles the default destination"
                             );
@@ -1196,10 +1199,8 @@ mod rendered_tests {
     fn file_link_menu_offers_local_rows_and_acts_on_the_absolute_path(
         cx: &mut gpui::TestAppContext,
     ) {
-        let dir = tempfile::tempdir().unwrap();
         cx.update(|cx| {
             cx.set_global(Theme::dark());
-            crate::settings::init(crate::settings::UiSettings::default(), dir.path(), cx);
         });
         let roots = Rc::new(vec![crate::workspace_links::FileLinkRoot {
             chat: Some("chat".into()),
@@ -1267,10 +1268,15 @@ mod rendered_tests {
         // owning surface as an internal open.
         cx.simulate_mouse_down(position, MouseButton::Right, gpui::Modifiers::default());
         cx.simulate_mouse_up(position, MouseButton::Right, gpui::Modifiers::default());
-        let row = cx.debug_bounds("link-menu-open-openagents").unwrap().center();
+        let row = cx
+            .debug_bounds("link-menu-open-openagents")
+            .unwrap()
+            .center();
         cx.simulate_click(row, gpui::Modifiers::default());
         let activated = activated.borrow();
-        let last = activated.last().expect("open in openagents activates the link");
+        let last = activated
+            .last()
+            .expect("open in openagents activates the link");
         assert_eq!(last.action, LinkAction::Internal);
         assert_eq!(last.target.original, "src/lib.rs");
     }
@@ -1280,11 +1286,11 @@ mod rendered_tests {
     /// system-level rows that act on the absolute path.
     #[cfg(unix)]
     #[gpui::test]
-    fn outside_file_link_menu_keeps_open_in_openagents_and_local_rows(cx: &mut gpui::TestAppContext) {
-        let dir = tempfile::tempdir().unwrap();
+    fn outside_file_link_menu_keeps_open_in_openagents_and_local_rows(
+        cx: &mut gpui::TestAppContext,
+    ) {
         cx.update(|cx| {
             cx.set_global(Theme::dark());
-            crate::settings::init(crate::settings::UiSettings::default(), dir.path(), cx);
         });
         let roots = Rc::new(vec![crate::workspace_links::FileLinkRoot {
             chat: Some("chat".into()),
@@ -1326,10 +1332,15 @@ mod rendered_tests {
                 "{selector} is a web-link row"
             );
         }
-        let row = cx.debug_bounds("link-menu-open-openagents").unwrap().center();
+        let row = cx
+            .debug_bounds("link-menu-open-openagents")
+            .unwrap()
+            .center();
         cx.simulate_click(row, gpui::Modifiers::default());
         let activated = activated.borrow();
-        let last = activated.last().expect("open in openagents activates the link");
+        let last = activated
+            .last()
+            .expect("open in openagents activates the link");
         assert_eq!(last.action, LinkAction::Internal);
         assert_eq!(last.target.original, "/elsewhere/team/INFORME.md");
     }
@@ -1339,10 +1350,8 @@ mod rendered_tests {
     /// link shows only the web rows.
     #[gpui::test]
     fn file_link_menu_hides_system_rows_for_remote_and_web_links(cx: &mut gpui::TestAppContext) {
-        let dir = tempfile::tempdir().unwrap();
         cx.update(|cx| {
             cx.set_global(Theme::dark());
-            crate::settings::init(crate::settings::UiSettings::default(), dir.path(), cx);
         });
         for (markdown, roots, has_copy_path) in [
             (

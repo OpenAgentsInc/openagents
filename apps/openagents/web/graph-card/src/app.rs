@@ -14,9 +14,10 @@ use gpui::{
     AnyElement, AnyView, App, Bounds, Context, Entity, Focusable, FontWeight, Hsla, IntoElement,
     KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, ParentElement, PathBuilder, Pixels,
     Render, SharedString, StyleRefinement, Styled, Window, actions, canvas, div, fill, point,
-    prelude::*, px, rgb, size, svg,
+    prelude::*, px, rgb, size,
 };
 use openagents_web_chat_view::composer::{self, TextInput};
+use openagents_web_chat_view::svg;
 use openagents_web_chat_view::theme;
 use openagents_web_chat_view::transcript::{footer_text, working_label};
 use web_time::Instant;

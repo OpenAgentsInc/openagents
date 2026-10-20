@@ -23,8 +23,6 @@ use crate::{now_ms, theme};
 
 pub const SIDEBAR_WIDTH: f32 = 272.;
 pub const CONTENT_WIDTH: f32 = 740.;
-/// The desktop veil's fade, `clamp(ema × 3, 120, 400)` at a typical cadence.
-pub const VEIL_FADE_MS: f32 = 320.;
 
 /// A text part whose id starts with this is a notice from the site (a
 /// stopped answer, a failure) and draws as a quiet line, not markdown.
@@ -63,7 +61,6 @@ pub fn entry_row(first: bool, body: AnyElement) -> AnyElement {
 pub fn user_bubble(id: &str, body: &str, attachments: Vec<AnyElement>) -> AnyElement {
     let markdown = Markdown {
         id: format!("u-{id}").into(),
-        color: theme::text(),
     };
     div()
         .flex()
@@ -144,7 +141,6 @@ pub fn assistant_body(
                     let veil = view.veil.as_ref().filter(|_| last);
                     let markdown = Markdown {
                         id: format!("{}-{id}-{ix}", view.key).into(),
-                        color: theme::text(),
                     };
                     blocks.push(markdown.render(text, streaming, veil));
                 }
@@ -640,12 +636,6 @@ pub fn button(
         .child(label)
 }
 
-/// The desktop veil's curve, `1 − (1−p)^1.6`: fast attack, soft landing.
-pub fn veil_alpha(elapsed_ms: f32, duration_ms: f32) -> f32 {
-    let p = (elapsed_ms / duration_ms).clamp(0.0, 1.0);
-    1.0 - (1.0 - p).powf(1.6)
-}
-
 pub fn truncate(text: &str, max: usize) -> String {
     if text.chars().count() <= max {
         return text.to_owned();
@@ -724,11 +714,5 @@ mod tests {
         assert_eq!(ago(90_000), "1m");
         assert_eq!(truncate("abcdef", 4), "abc…");
         assert_eq!(duration(61_000), "1m 1s");
-    }
-
-    #[test]
-    fn the_veil_rises_to_full() {
-        assert_eq!(veil_alpha(0., 320.), 0.);
-        assert_eq!(veil_alpha(320., 320.), 1.);
     }
 }

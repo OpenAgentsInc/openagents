@@ -33,7 +33,7 @@ const CACHED_PARTS: usize = 32;
 /// Text parts already rewritten, keyed by their source tree and reset when
 /// the file-link roots change.
 #[derive(Default)]
-pub(crate) struct InlineCodeLinkCache {
+pub struct InlineCodeLinkCache {
     revision: u64,
     probes: PathProbes,
     parts: Vec<LinkedPart>,
@@ -51,7 +51,7 @@ impl InlineCodeLinkCache {
     /// can stale a resolved link. Reports whether anything was dropped, so
     /// the caller can also invalidate presentation caches holding the old
     /// styling.
-    pub(crate) fn set_revision(&mut self, revision: u64) -> bool {
+    pub fn set_revision(&mut self, revision: u64) -> bool {
         if self.revision == revision {
             return false;
         }
@@ -65,7 +65,7 @@ impl InlineCodeLinkCache {
     /// rewritten into the link it stands for. `source_local` gates the whole
     /// walk: a remote chat's text names files on its own device, which must
     /// not be probed here.
-    pub(crate) fn linked_tree(
+    pub fn linked_tree(
         &mut self,
         tree: &Arc<BlockTree>,
         roots: &[FileLinkRoot],
@@ -742,11 +742,6 @@ mod tests {
             let fixture = Fixture::new();
             cx.update(|cx| {
                 cx.set_global(Theme::dark());
-                crate::settings::init(
-                    crate::settings::UiSettings::default(),
-                    fixture._dir.path(),
-                    cx,
-                );
             });
             let roots = Rc::new(fixture.roots(true));
             let source = Arc::new(fixture.tree("`top.md`"));

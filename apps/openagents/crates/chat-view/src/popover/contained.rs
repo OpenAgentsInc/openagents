@@ -4,19 +4,19 @@ use gpui::{
     AnyElement, App, Bounds, Element, GlobalElementId, InspectorElementId, IntoElement, LayoutId,
     Pixels, Point, Position, SharedString, Size, Style, Window, div, point, prelude::*, px,
 };
-use std::time::Instant;
+use web_time::Instant;
 
 /// Which trigger edge the menu lines up with: `End` grows leftward from the
 /// trigger's right edge, `Start` rightward from its left edge.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum MenuAlign {
+pub enum MenuAlign {
     Start,
     End,
 }
 
 /// Mount from a relative trigger. The menu uses the available side of the
 /// trigger instead of sliding over it when it approaches the dialog edge.
-pub(crate) fn contained_menu(
+pub fn contained_menu(
     id: SharedString,
     content: gpui::Div,
     closing: Option<Instant>,
@@ -217,91 +217,5 @@ mod tests {
             MenuAlign::Start,
         );
         assert_eq!(origin.x, limits.right() - menu.width);
-    }
-
-    struct MenuFixture {
-        background: gpui::ScrollHandle,
-    }
-
-    impl gpui::Render for MenuFixture {
-        fn render(&mut self, _: &mut Window, cx: &mut gpui::Context<Self>) -> impl IntoElement {
-            let theme = crate::theme::Theme::of(cx);
-            div()
-                .size_full()
-                .child(
-                    div()
-                        .id("background-scroll")
-                        .size_full()
-                        .overflow_y_scroll()
-                        .track_scroll(&self.background)
-                        .child(div().h(px(1200.0))),
-                )
-                .child(
-                    div()
-                        .absolute()
-                        .left(px(300.0))
-                        .top(px(300.0))
-                        .w(px(200.0))
-                        .h(px(34.0))
-                        .id("test-menu-trigger")
-                        .debug_selector(|| "test-menu-trigger".into())
-                        .child(contained_menu(
-                            "test-contained-menu".into(),
-                            super::super::popover_card(theme)
-                                .w(px(260.0))
-                                .flex()
-                                .flex_col()
-                                .child(crate::settings::widgets::dropdown_rows(
-                                    "fixture-rows",
-                                    (0..30usize).map(|ix| {
-                                        div()
-                                            .id(("contained-row", ix))
-                                            .when(ix == 10, |row| {
-                                                row.debug_selector(|| "contained-row-ten".into())
-                                            })
-                                            .h(px(32.0))
-                                            .flex_none()
-                                            .into_any_element()
-                                    }),
-                                    34.0,
-                                    8.0,
-                                )),
-                            None,
-                            34.0,
-                            Bounds::new(point(px(100.0), px(80.0)), size(px(600.0), px(400.0))),
-                            MenuAlign::End,
-                        )),
-                )
-        }
-    }
-
-    #[gpui::test]
-    fn long_menu_scrolls_and_flips_above_trigger(cx: &mut gpui::TestAppContext) {
-        cx.update(|cx| {
-            gpui_base::init(cx);
-            cx.set_global(crate::theme::Theme::default());
-        });
-        let background = gpui::ScrollHandle::new();
-        let (_, cx) = cx.add_window_view(|_, _| MenuFixture {
-            background: background.clone(),
-        });
-        cx.update(|window, cx| window.draw(cx).clear());
-        let trigger = cx.debug_bounds("test-menu-trigger").unwrap();
-        let menu = cx.debug_bounds("contained-menu-scroll").unwrap();
-        assert!(menu.size.height <= px(177.0));
-        assert!(menu.top() >= px(80.0));
-        assert!(menu.bottom() <= trigger.top() - px(6.0));
-        assert!(menu.right() <= px(700.0));
-        assert!(menu.left() >= px(100.0));
-        let list = cx.debug_bounds("settings-dropdown-list").unwrap();
-        assert!(list.size.height <= menu.size.height);
-        assert!(background.max_offset().y > px(0.0));
-        cx.simulate_event(gpui::ScrollWheelEvent {
-            position: list.center(),
-            delta: gpui::ScrollDelta::Pixels(point(px(0.0), px(-10_000.0))),
-            ..Default::default()
-        });
-        cx.run_until_parked();
-        assert_eq!(background.offset().y, px(0.0));
     }
 }

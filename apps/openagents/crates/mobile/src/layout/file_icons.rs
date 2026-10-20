@@ -1,4 +1,4 @@
-//! File → icon asset, resolved exactly like the desktop (`ui/src/file_icons.rs`,
+//! File → icon asset, resolved exactly like the desktop (`chat-view/src/file_icons.rs`,
 //! same bundled VS Code-theme manifest): exact basename, then the longest
 //! compound extension, then the generic document. Returns the asset name the
 //! platform bundles (`fileicon-files-rust`).
@@ -26,7 +26,7 @@ struct IconDefinition {
 }
 
 static MANIFEST: LazyLock<Manifest> = LazyLock::new(|| {
-    let mut m: Manifest = serde_json::from_str(include_str!("../../../ui/src/file-icons.json")).expect("bundled file-icon manifest");
+    let mut m: Manifest = serde_json::from_str(include_str!("../../../chat-view/src/file-icons.json")).expect("bundled file-icon manifest");
     m.file_extensions = m.file_extensions.into_iter().map(|(k, v)| (k.to_ascii_lowercase(), v)).collect();
     m.file_names = m.file_names.into_iter().map(|(k, v)| (k.to_ascii_lowercase(), v)).collect();
     m

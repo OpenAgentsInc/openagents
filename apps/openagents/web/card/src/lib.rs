@@ -64,6 +64,7 @@ pub fn run(still: bool) {
     let handle = Application::with_platform(Rc::new(platform))
         .with_assets(assets::Assets)
         .run_embedded(move |cx| {
+            openagents_web_chat_view::install(cx);
             let bounds = gpui::Bounds::centered(None, size(px(640.), px(420.)), cx);
             let opened = cx.open_window(
                 WindowOptions {

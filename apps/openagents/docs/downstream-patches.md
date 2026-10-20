@@ -1245,10 +1245,10 @@ so wasm-only dependencies stay out of the desktop lock and its hakari crate
   `openagents-markdown`'s block tree, tool groups with the shared
   `tool_group_summary`, question cards, and the composer (after GPUI's
   `examples/input.rs`). Replies are the demo's scripted turns, streamed word
-  by word with the desktop veil's curve. The components are ports, not the
+  by word through the desktop's veil. The components are ports, not the
   `openagents-ui` crate itself, which needs tokio, reqwest, alacritty, and
   the webviews; they live in `web/chat-view` (`openagents-web-chat-view`:
-  theme, markdown, composer field, transcript pieces, fonts and icons), so
+  theme, composer field, transcript pieces, fonts and icons), so
   the demo and the signed-in chat share one copy.
 - `web/chat` (`openagents-web-chat`) is the signed-in chat at `/gpui`: the
   shared views over `web/client` (`openagents-web-client`), which reads and
@@ -1257,6 +1257,24 @@ so wasm-only dependencies stay out of the desktop lock and its hakari crate
   separate files and hands them to `launch`, so the module carries no
   fonts. Build with `scripts/build-web-chat.sh OUTDIR`; `openagents-web
   --gpui-chat OUTDIR` serves it (the image copies it to `/srv/gpui-chat`).
+- The markdown is the desktop's own renderer. Zeron's `crates/ui` markdown
+  stack (`markdown/render.rs`, links, selection, veil), with the icons,
+  file icons, popovers, frost, edge fade, and workspace links it draws
+  through, moved unchanged into `crates/chat-view` (`openagents-chat-view`,
+  #12216); `openagents-ui` re-exports each under its old path and keeps the
+  Mermaid diagrams. The changes that let it build for wasm32: the clock is
+  `web_time::Instant` (also in `crates/veil`); `prefs` replaces the direct
+  reads and writes of `ui-settings.json` for the code-fence fit and
+  web-link choices, which `settings::init` installs; the icon and
+  file-icon SVGs (still under `crates/ui/assets`) embed natively only, and
+  on the web `icons::icon` draws through a painter the page installs; the
+  task checkbox is `gpui_base`'s natively and a plain box on the web; and
+  the address checks moved from `browser::model` to `web_address`, which
+  parses with the browser's `URL` on the web instead of `url`. To keep the
+  module within its transfer budget, the wasm build leaves out what the web
+  doesn't wire: the link context menu, workspace-file links and their
+  icons, Mermaid diagrams, and the code fences' copy, fit, and scroll
+  controls (each behind `cfg!(target_family = "wasm")`).
 - Start the app with `Application::run_embedded` and keep the handle: on
   the web, `Application::run` drops the app as soon as it launches.
 - GPUI drops a named font family whose face has no Latin `m`, so the CJK

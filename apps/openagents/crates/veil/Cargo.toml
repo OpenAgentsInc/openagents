@@ -8,6 +8,8 @@ publish.workspace = true
 # The streaming fade veil without a renderer: the desktop transcript recolors
 # GPUI runs with it; voice captions use it on desktop and mobile.
 [dependencies]
+# The browser's clock on the web; `std::time::Instant` natively.
+web-time = "1.1.0"
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 openagents-workspace-hack = { version = "0.1" }

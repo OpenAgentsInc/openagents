@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::Instant;
+use web_time::Instant;
 
 use gpui::{
     AnyElement, BorderStyle, Bounds, Context, CursorStyle, Div, FontStyle, FontWeight, Hsla,
@@ -149,7 +149,7 @@ pub struct LinkUi {
     /// The ordered checkouts a file link may resolve against on this surface,
     /// the linking chat's own first. `None` renders no trailing open glyph
     /// and offers no file paths — previews and web-only surfaces.
-    pub(crate) file_roots: Option<Rc<Vec<crate::workspace_links::FileLinkRoot>>>,
+    pub file_roots: Option<Rc<Vec<crate::workspace_links::FileLinkRoot>>>,
     pub handler: Rc<dyn Fn(&LinkActivation, &mut Window, &mut gpui::App) -> LinkOutcome>,
 }
 
@@ -160,7 +160,10 @@ impl LinkUi {
     /// get their absolute path from the resolved root joined with the link's
     /// workspace-relative path; an outside link's absolute path is the
     /// decoded target itself.
-    pub(crate) fn file_link(&self, target: &str) -> Option<crate::workspace_links::FileLink> {
+    pub fn file_link(&self, target: &str) -> Option<crate::workspace_links::FileLink> {
+        if cfg!(target_family = "wasm") {
+            return None;
+        }
         let roots = self.file_roots.as_deref()?;
         match crate::workspace_links::first_root_owning(
             target,
@@ -326,10 +329,8 @@ where
         scroll,
         scrollbar,
         toggle_fit: Rc::new(move |_, cx| {
-            let fit = !crate::settings::current(cx).code_fences_fit_content;
-            crate::settings::update(crate::settings::SavePolicy::Immediate, cx, |settings| {
-                settings.code_fences_fit_content = fit
-            });
+            let fit = !crate::prefs::current(cx).code_fences_fit_content;
+            crate::prefs::update(cx, |prefs| prefs.code_fences_fit_content = fit);
             cx.refresh_windows();
         }),
         viewport_hover: {
@@ -397,6 +398,15 @@ impl Render for CodeBlockTooltip {
 }
 
 impl RenderOptions {
+    /// The root workspace-file references resolve under. A browser page
+    /// links no workspace files, so the web leaves that code out.
+    fn file_root(&self) -> Option<&str> {
+        if cfg!(target_family = "wasm") {
+            return None;
+        }
+        self.workspace_root.as_deref()
+    }
+
     /// Options for a completed (non-streaming) row — no veil, no cache.
     pub fn settled(row_key: SharedString) -> Self {
         Self {
@@ -448,7 +458,7 @@ pub struct CachedCode {
 impl RenderCache {
     /// Keep rows laid out in the previous viewport, including GPUI overdraw.
     /// Scrolling back regenerates these derived strings and code-line runs.
-    pub(crate) fn retain_rows(&mut self, rows: &std::collections::HashSet<SharedString>) {
+    pub fn retain_rows(&mut self, rows: &std::collections::HashSet<SharedString>) {
         self.flats.retain(|(row, _, _), _| rows.contains(row));
         self.code.retain(|(row, _, _), _| rows.contains(row));
     }
@@ -523,7 +533,7 @@ fn list_child_ix(ix: usize, item_ix: usize, child_ix: usize) -> usize {
 /// Element discriminators for every code block below `block`. Transcript rows
 /// use this to provision one independent scroll handle per nested fence before
 /// the renderer recursively reaches it.
-pub(crate) fn code_block_indices(block: &Block, ix: usize) -> Vec<usize> {
+pub fn code_block_indices(block: &Block, ix: usize) -> Vec<usize> {
     fn collect(block: &Block, ix: usize, out: &mut Vec<usize>) {
         match block {
             Block::CodeBlock { .. } => out.push(ix),
@@ -645,50 +655,17 @@ pub fn render_block(
                         .h(px(MD_LINE_HEIGHT))
                         .flex()
                         .items_center()
-                        .child(
-                            gpui_base::Checkbox::new(SharedString::from(format!(
+                        .child(task_checkbox(
+                            SharedString::from(format!(
                                 "{}-task-{}",
                                 opts.row_key, task.range.start
-                            )))
-                            .checked(task.checked)
-                            .disabled(toggle.is_none())
-                            .when(toggle.is_some(), |checkbox| checkbox.cursor_pointer())
-                            .focus_visible(|style| style.border_color(theme.text))
-                            .styles(|styles| styles.disabled(|style| style.opacity(0.5)))
-                            .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| {
-                                cx.stop_propagation()
-                            })
-                            .accessibility_label(label)
-                            .size(px(16.0))
-                            .border_1()
-                            .rounded(px(3.0))
-                            .border_color(if task.checked {
-                                theme.accent
-                            } else {
-                                theme.border
-                            })
-                            .bg(if task.checked {
-                                theme.accent
-                            } else {
-                                gpui::transparent_black()
-                            })
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .when(task.checked, |checkbox| {
-                                checkbox.child(
-                                    crate::icons::icon(crate::icons::CHECK)
-                                        .size(px(12.0))
-                                        .text_color(theme.bg),
-                                )
-                            })
-                            .on_change(move |_, _, window, cx| {
-                                cx.stop_propagation();
-                                if let Some(toggle) = &toggle {
-                                    toggle(&marker, window, cx);
-                                }
-                            }),
-                        )
+                            )),
+                            task.checked,
+                            label,
+                            toggle,
+                            marker,
+                            theme,
+                        ))
                         .into_any_element()
                 } else {
                     match ordered_start {
@@ -1329,7 +1306,7 @@ pub(super) fn flat_text_presented_element(
     }
     .into_any_element();
     // Trailing open glyphs of resolved file links paint over the shaped text.
-    if flat.file_glyphs.is_empty() {
+    if flat.file_glyphs.is_empty() || cfg!(target_family = "wasm") {
         return child;
     }
     super::link_presentation::FileLinkGlyphs {
@@ -1352,7 +1329,7 @@ fn selection_wash(theme: &Theme) -> Hsla {
 /// markdown rows and Cmd+C joins in order), and re-registers the mouse
 /// listeners. Call from a paint-phase canvas that sits UNDER the text, passing
 /// the hitbox inserted in that canvas's prepaint phase.
-pub(crate) fn paint_text_selection(
+pub fn paint_text_selection(
     window: &mut Window,
     hitbox: gpui::Hitbox,
     key: &std::sync::Arc<str>,
@@ -1403,11 +1380,11 @@ fn paint_text_selection_with_wash(
 /// Link hitboxes overlay the wrapper with `.cursor_pointer()` and the
 /// topmost hitbox under the mouse wins, so links inside keep the hand
 /// cursor.
-pub(crate) fn selectable_text_wrap() -> Div {
+pub fn selectable_text_wrap() -> Div {
     div().relative().cursor(CursorStyle::IBeam)
 }
 
-pub(crate) fn selectable_text_element(
+pub fn selectable_text_element(
     key: std::sync::Arc<str>,
     text: SharedString,
     runs: Vec<TextRun>,
@@ -1455,8 +1432,102 @@ thread_local! {
     static PAINTED_SURFACES: RefCell<Vec<u64>> = const { RefCell::new(Vec::new()) };
 }
 
-#[cfg(test)]
-pub(crate) fn selection_test_entry_count(prefix: &str) -> usize {
+type TaskToggle = Rc<dyn Fn(&super::parser::TaskMarker, &mut Window, &mut gpui::App)>;
+
+/// A task-list item's checkbox.
+#[cfg(not(target_family = "wasm"))]
+fn task_checkbox(
+    id: SharedString,
+    checked: bool,
+    label: String,
+    toggle: Option<TaskToggle>,
+    marker: super::parser::TaskMarker,
+    theme: &Theme,
+) -> AnyElement {
+    gpui_base::Checkbox::new(id)
+        .checked(checked)
+        .disabled(toggle.is_none())
+        .when(toggle.is_some(), |checkbox| checkbox.cursor_pointer())
+        .focus_visible(|style| style.border_color(theme.text))
+        .styles(|styles| styles.disabled(|style| style.opacity(0.5)))
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .accessibility_label(label)
+        .size(px(16.0))
+        .border_1()
+        .rounded(px(3.0))
+        .border_color(if checked { theme.accent } else { theme.border })
+        .bg(if checked {
+            theme.accent
+        } else {
+            gpui::transparent_black()
+        })
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(checked, |checkbox| {
+            checkbox.child(
+                crate::icons::icon(crate::icons::CHECK)
+                    .size(px(12.0))
+                    .text_color(theme.bg),
+            )
+        })
+        .on_change(move |_, _, window, cx| {
+            cx.stop_propagation();
+            if let Some(toggle) = &toggle {
+                toggle(&marker, window, cx);
+            }
+        })
+        .into_any_element()
+}
+
+/// The web draws the same box without `gpui_base`, which does not build for
+/// wasm32.
+#[cfg(target_family = "wasm")]
+fn task_checkbox(
+    id: SharedString,
+    checked: bool,
+    label: String,
+    toggle: Option<TaskToggle>,
+    marker: super::parser::TaskMarker,
+    theme: &Theme,
+) -> AnyElement {
+    let _ = label;
+    let enabled = toggle.is_some();
+    div()
+        .id(id)
+        .when(enabled, |checkbox| checkbox.cursor_pointer())
+        .when(!enabled, |checkbox| checkbox.opacity(0.5))
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .size(px(16.0))
+        .border_1()
+        .rounded(px(3.0))
+        .border_color(if checked { theme.accent } else { theme.border })
+        .bg(if checked {
+            theme.accent
+        } else {
+            gpui::transparent_black()
+        })
+        .flex()
+        .items_center()
+        .justify_center()
+        .when(checked, |checkbox| {
+            checkbox.child(
+                crate::icons::icon(crate::icons::CHECK)
+                    .size(px(12.0))
+                    .text_color(theme.bg),
+            )
+        })
+        .on_click(move |_, window, cx| {
+            cx.stop_propagation();
+            if let Some(toggle) = &toggle {
+                toggle(&marker, window, cx);
+            }
+        })
+        .into_any_element()
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn selection_test_entry_count(prefix: &str) -> usize {
     REGISTRY.with(|registry| {
         registry
             .borrow()
@@ -1466,8 +1537,8 @@ pub(crate) fn selection_test_entry_count(prefix: &str) -> usize {
     })
 }
 
-#[cfg(test)]
-pub(crate) fn selection_test_bounds(key: &str) -> gpui::Bounds<gpui::Pixels> {
+#[cfg(any(test, feature = "test-support"))]
+pub fn selection_test_bounds(key: &str) -> gpui::Bounds<gpui::Pixels> {
     REGISTRY.with(|r| {
         r.borrow()
             .iter()
@@ -1551,7 +1622,7 @@ fn selection_scope(key: &str) -> &str {
     }
 }
 
-pub(crate) fn clear_selection_surface(prefix: &str) {
+pub fn clear_selection_surface(prefix: &str) {
     REGISTRY.with(|r| {
         r.borrow_mut()
             .retain(|entry| !entry.key.starts_with(prefix))
@@ -1655,7 +1726,7 @@ fn resolve_drag(head: (usize, usize)) -> bool {
 /// Continue the active drag at a window position. The transcript's edge-scroll
 /// driver calls this between scroll steps, so a stationary pointer keeps
 /// extending through newly painted rows.
-pub(crate) fn update_drag_at(position: gpui::Point<gpui::Pixels>) -> bool {
+pub fn update_drag_at(position: gpui::Point<gpui::Pixels>) -> bool {
     let Some(head) = registry_point(position) else {
         return false;
     };
@@ -1740,7 +1811,7 @@ fn register_selection_listeners(
 /// text's own geometry. `pad_x` overhangs the box horizontally (inline code);
 /// `inset_y` shrinks it vertically — both 0 for a selection wash, which wants
 /// full-line-height boxes that tile seamlessly across wrapped rows.
-pub(crate) fn range_rects(
+pub fn range_rects(
     layout: &gpui::TextLayout,
     range: &Range<usize>,
     pad_x: f32,
@@ -1880,8 +1951,7 @@ fn text_element(
         }
     }
     if let Some(lines) = opts
-        .workspace_root
-        .as_deref()
+        .file_root()
         .and_then(|root| plain_file_reference_lines(runs, root))
     {
         let style = runs[0].style.clone();
@@ -1913,8 +1983,7 @@ fn text_element(
     let flat = flatten_cached(runs, weight, top_ix, ix, opts, theme);
     let inner = flat_text_element(&flat, ix, opts, theme);
     let direct_file = opts
-        .workspace_root
-        .as_deref()
+        .file_root()
         .and_then(|root| sole_file_reference(runs, root));
     let content = if let Some(path) = direct_file {
         div()
@@ -2045,7 +2114,9 @@ fn render_code_block(
     theme: &Theme,
     highlight: CodeHighlight,
 ) -> AnyElement {
-    if language.is_some_and(|l| l.eq_ignore_ascii_case("mermaid")) {
+    // The web has no diagram renderer; its fences stay source.
+    let diagrams = !cfg!(target_family = "wasm");
+    if diagrams && language.is_some_and(|l| l.eq_ignore_ascii_case("mermaid")) {
         if let Some(handler) = opts.media.as_ref().and_then(|media| media.diagram.as_ref()) {
             let frame_id: SharedString = format!("{}-mermaid-{ix}", opts.row_key).into();
             let diagram = match handler(code, frame_id.clone(), theme) {
@@ -2167,6 +2238,10 @@ fn code_copy_button(
     opts: &RenderOptions,
     theme: &Theme,
 ) -> Option<AnyElement> {
+    // The web wires no copy button yet, so it leaves this out.
+    if cfg!(target_family = "wasm") {
+        return None;
+    }
     opts.copy.clone().map(|copy| {
         let copied = copy.copied_ix == Some(ix);
         let code_text: SharedString = code.to_string().into();
@@ -2354,7 +2429,13 @@ fn render_code_block_source_with_actions(
     };
     let scroll_id: SharedString = format!("{}-code{ix}", opts.row_key).into();
     let sel_wash = selection_wash(theme);
-    let code_ui = opts.code.as_ref().and_then(|code| code.get(&ix)).cloned();
+    // Fence fit and scroll controls are the desktop transcript's; the web
+    // passes none, so it leaves them out.
+    let code_ui: Option<CodeUi> = if cfg!(target_family = "wasm") {
+        None
+    } else {
+        opts.code.as_ref().and_then(|code| code.get(&ix)).cloned()
+    };
     let fit_content = code_ui.as_ref().is_some_and(|ui| ui.fit_content);
 
     let fit_button = code_ui.as_ref().map(|ui| {

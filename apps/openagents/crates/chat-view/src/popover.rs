@@ -13,14 +13,15 @@
 
 mod contained;
 mod hover_intent;
-pub(crate) use contained::{MenuAlign, contained_menu};
+pub use contained::{MenuAlign, contained_menu};
 pub use hover_intent::{HoverAction, HoverIntent};
 
 use gpui::{
     Anchor, AnyElement, Context, Div, ElementId, IntoElement, MouseButton, MouseDownEvent,
     MouseUpEvent, Pixels, Point, ScrollHandle, SharedString, Stateful, Window, div, prelude::*, px,
 };
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use crate::motion::{self, OPENAGENTS_PULSE};
 use crate::theme::{Theme, hairline, ink};
@@ -74,7 +75,7 @@ impl<T> Loadable<T> {
 pub struct Popup<T> {
     /// `Some((state, closing_since))` while mounted; `closing_since` is the
     /// exit-phase start.
-    inner: Option<(T, Option<std::time::Instant>)>,
+    inner: Option<(T, Option<Instant>)>,
     /// Whether the popup was still mounted when the current trigger press
     /// began — see [`Self::note_trigger_press`].
     pressed_while_open: bool,
@@ -105,7 +106,7 @@ impl<T> Popup<T> {
 
     /// When the exit phase began — what the render path hands to the popover
     /// wrappers, which derive the eased exit progress from it each frame.
-    pub fn closing_since(&self) -> Option<std::time::Instant> {
+    pub fn closing_since(&self) -> Option<Instant> {
         match &self.inner {
             Some((_, Some(since))) => Some(*since),
             _ => None,
@@ -140,7 +141,7 @@ impl<T> Popup<T> {
     pub fn begin_close(&mut self) -> bool {
         match &mut self.inner {
             Some((_, closing @ None)) => {
-                *closing = Some(std::time::Instant::now());
+                *closing = Some(Instant::now());
                 true
             }
             _ => false,
@@ -459,7 +460,7 @@ fn pinned_layer(layer: AnyElement) -> AnyElement {
 /// Eased exit progress (0..=1) for a [`Popup`] closing instant, computed from
 /// the wall clock at render time. Monotonic by construction — unlike the
 /// animation element's own clock, it can never replay from 0 mid-exit.
-fn exit_progress(since: std::time::Instant) -> f32 {
+fn exit_progress(since: Instant) -> f32 {
     let total = motion::MENU_OUT
         .total()
         .mul_f32(motion::speed_scale())
@@ -546,7 +547,7 @@ const MENU_TRAVEL: f32 = 4.0;
 pub fn anchored_menu(
     id: impl Into<SharedString>,
     content: AnyElement,
-    closing: Option<std::time::Instant>,
+    closing: Option<Instant>,
 ) -> AnyElement {
     let exit = closing.map(exit_progress);
     let content = frosted_menu(exit, content);
@@ -573,7 +574,7 @@ pub fn anchored_menu(
 pub fn anchored_menu_below(
     id: impl Into<SharedString>,
     content: AnyElement,
-    closing: Option<std::time::Instant>,
+    closing: Option<Instant>,
 ) -> AnyElement {
     anchored_menu_below_gap(id, content, closing, 6.0)
 }
@@ -584,7 +585,7 @@ pub fn anchored_menu_below(
 pub fn anchored_menu_below_end(
     id: impl Into<SharedString>,
     content: AnyElement,
-    closing: Option<std::time::Instant>,
+    closing: Option<Instant>,
 ) -> AnyElement {
     let exit = closing.map(exit_progress);
     let content = frosted_menu(exit, content);
@@ -615,7 +616,7 @@ pub fn anchored_menu_below_end(
 pub fn anchored_menu_right(
     id: impl Into<SharedString>,
     content: AnyElement,
-    closing: Option<std::time::Instant>,
+    closing: Option<Instant>,
 ) -> AnyElement {
     let exit = closing.map(exit_progress);
     let content = frosted_menu(exit, content);
@@ -673,7 +674,7 @@ pub fn nested_menu(id: impl Into<SharedString>, content: AnyElement, left: bool)
 pub fn anchored_menu_below_gap(
     id: impl Into<SharedString>,
     content: AnyElement,
-    closing: Option<std::time::Instant>,
+    closing: Option<Instant>,
     gap: f32,
 ) -> AnyElement {
     anchored_menu_below_layer(id, content, closing, gap, 1)
@@ -684,7 +685,7 @@ pub fn anchored_menu_below_gap(
 pub fn anchored_menu_below_layer(
     id: impl Into<SharedString>,
     content: AnyElement,
-    closing: Option<std::time::Instant>,
+    closing: Option<Instant>,
     gap: f32,
     priority: usize,
 ) -> AnyElement {
@@ -719,7 +720,7 @@ pub fn anchored_menu_below_layer(
 pub fn anchored_menu_above(
     id: impl Into<SharedString>,
     content: AnyElement,
-    closing: Option<std::time::Instant>,
+    closing: Option<Instant>,
 ) -> AnyElement {
     let exit = closing.map(exit_progress);
     let content = frosted_menu(exit, content);
@@ -747,7 +748,7 @@ pub fn anchored_menu_above_at(
     id: impl Into<SharedString>,
     position: Point<Pixels>,
     content: AnyElement,
-    closing: Option<std::time::Instant>,
+    closing: Option<Instant>,
 ) -> AnyElement {
     div()
         .absolute()
@@ -761,7 +762,7 @@ pub fn anchored_menu_above_at(
 pub fn full_width_menu_above(
     id: impl Into<SharedString>,
     content: AnyElement,
-    closing: Option<std::time::Instant>,
+    closing: Option<Instant>,
 ) -> AnyElement {
     let exit = closing.map(exit_progress);
     let content = frosted_menu(exit, content);
@@ -787,7 +788,7 @@ pub fn full_width_menu_above(
 pub fn anchored_menu_above_end(
     id: impl Into<SharedString>,
     content: AnyElement,
-    closing: Option<std::time::Instant>,
+    closing: Option<Instant>,
 ) -> AnyElement {
     let exit = closing.map(exit_progress);
     let content = frosted_menu(exit, content);
@@ -820,7 +821,7 @@ pub fn menu_at(
     id: impl Into<SharedString>,
     position: Point<Pixels>,
     content: AnyElement,
-    closing: Option<std::time::Instant>,
+    closing: Option<Instant>,
 ) -> AnyElement {
     let exit = closing.map(exit_progress);
     let content = frosted_menu(exit, content);
@@ -843,7 +844,7 @@ pub fn menu_at(
 /// ratio so the *dark* result is always exactly `alpha_dark` (never routed
 /// through [`Hsla::opacity`], whose `0..=1` clamp would clip a
 /// larger-than-0.6 alpha before it could scale the light side).
-pub(crate) fn scrim_alpha(alpha_dark: f32) -> gpui::Hsla {
+pub fn scrim_alpha(alpha_dark: f32) -> gpui::Hsla {
     crate::theme::scrim(alpha_dark)
 }
 
@@ -2464,7 +2465,7 @@ mod tests {
 }
 
 /// Compact mention-style match washes preserve the row's font and spacing.
-pub(crate) fn search_highlight(
+pub fn search_highlight(
     text: SharedString,
     query: Option<&str>,
     theme: &Theme,
@@ -2479,7 +2480,7 @@ pub(crate) fn search_highlight(
 /// [`search_highlight`] over byte ranges the caller already knows (a
 /// content search's matches). Ranges that are empty, out of bounds or off
 /// a character boundary are skipped.
-pub(crate) fn search_highlight_ranges(
+pub fn search_highlight_ranges(
     text: SharedString,
     ranges: Vec<std::ops::Range<usize>>,
     theme: &Theme,

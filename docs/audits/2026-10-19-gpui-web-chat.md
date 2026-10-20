@@ -257,14 +257,26 @@ their own route instead of behind the flag.
   in `x-openagents-csrf`. The cookie's session token then goes on as the
   Bearer token, so each route checks it as it checks an app's.
 
+The desktop's theme, motion, icons, popovers, and markdown renderer now
+live in the portable `apps/openagents/crates/chat-view`
+(`openagents-chat-view`, #12216), which `crates/ui` re-exports. The web
+draws markdown with it: `web/chat-view/src/markdown.rs` only parses
+(`parse_streaming` while a reply streams) and hands the tree to the
+desktop's `render_tree`, and the veil is the desktop's `RowVeil`. The host
+fills two seams: `prefs` (the code-fence fit and web-link choices, kept in
+the desktop's saved settings) and, on the web, `icons::set_web_painter`
+(the prepared icon masks; the desktop draws SVGs). The task checkbox uses
+`gpui_base` on the desktop and a plain box on the web. To stay within the
+1.5 MB budget the web build leaves out what it doesn't wire yet: the link
+context menu, workspace-file links, Mermaid diagrams, and the code fences'
+copy, fit, and scroll controls. The chat module is 1.498 MB with brotli,
+with about 2 KB to spare.
+
 Still duplicated from the desktop, until #12216 moves the views into a
 portable crate:
 
-- `chat-view/src/theme.rs`: the dark theme's tokens as sRGB values, from
-  `crates/ui/src/theme`.
-- `chat-view/src/markdown.rs`: the GPUI markdown renderer. The block tree
-  is the shared `openagents-markdown`; the drawing is a port of
-  `crates/ui/src/markdown`.
+- `chat-view/src/theme.rs`: reads the desktop's `Theme::dark()` tokens; only
+  the web's own sizes remain.
 - `chat-view/src/transcript.rs`: user bubbles, tool groups and rows, error
   and notice lines, and the labels. The group summary is the shared
   `openagents_proto::view::tool_group_summary`.

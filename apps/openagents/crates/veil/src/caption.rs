@@ -2,7 +2,7 @@
 //! veiled in exactly like transcript text, and the previous utterance fading
 //! out when the speaker turn changes.
 use crate::{ElemVeil, VeilSpan, slice_spans, veil_opacity};
-use std::time::Instant;
+use web_time::Instant;
 
 /// The previous utterance fades out over this long when the turn changes.
 pub const CAPTION_EXIT_MS: f32 = 180.0;
