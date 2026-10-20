@@ -343,6 +343,13 @@ impl ChatApp {
                             if this.generation == generation {
                                 this.loading_chat = false;
                                 this.notice = Some(error.to_string());
+                                // The computer can't serve this browser now
+                                // (not allowed yet, offline, or too old): the
+                                // chat's room still holds its transcript
+                                // (#12224).
+                                if let Some(chat) = this.current.clone() {
+                                    this.open_room(chat, cx);
+                                }
                                 cx.notify();
                             }
                         })

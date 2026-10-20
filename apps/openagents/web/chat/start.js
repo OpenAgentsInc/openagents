@@ -297,27 +297,34 @@ function loadRoom() {
   }
   return roomLoading;
 }
+// Both run after the canvas's own work: the canvas sends them from inside
+// its update, which must not re-enter either module.
 window.addEventListener("oa-room-open", function (event) {
-  roomChat = event.detail || "";
-  loadRoom()
-    .then(function (module) {
-      if (roomChat) {
-        module.open(roomChat);
-      }
-    })
-    .catch(function (error) {
-      console.error("the chat's transcript couldn't load", error);
-      roomLoading = null;
-      window.dispatchEvent(new CustomEvent("oa-room", {
-        detail: JSON.stringify({ chat: roomChat, entries: [], caught_up: false, unavailable: true }),
-      }));
-    });
+  var chat = event.detail || "";
+  setTimeout(function () {
+    roomChat = chat;
+    loadRoom()
+      .then(function (module) {
+        if (roomChat === chat) {
+          module.open(chat);
+        }
+      })
+      .catch(function (error) {
+        console.error("the chat's transcript couldn't load", error);
+        roomLoading = null;
+        window.dispatchEvent(new CustomEvent("oa-room", {
+          detail: JSON.stringify({ chat: chat, entries: [], caught_up: false, unavailable: true }),
+        }));
+      });
+  }, 0);
 });
 window.addEventListener("oa-room-close", function () {
-  roomChat = "";
-  if (room) {
-    room.close();
-  }
+  setTimeout(function () {
+    roomChat = "";
+    if (room) {
+      room.close();
+    }
+  }, 0);
 });
 
 // Dictation (#12292): its own module, loaded the first time the composer's
