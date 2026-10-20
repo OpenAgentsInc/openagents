@@ -287,6 +287,8 @@ fn the_api_paths_and_the_older_coder_paths_are_owned() {
         "/coder/sessions/s1/captures/a1",
         "/coder/check-in",
         "/coder/sync",
+        "/v1/memory",
+        "/v1/memory/m1",
         "/coder/memory",
         "/coder/memory/sync",
         "/coder/memory/m1",

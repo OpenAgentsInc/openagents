@@ -1506,3 +1506,5 @@ master delegation audit.
   off, set the update policy of, check, apply, and cancel agents and their
   updates, and add, switch, and remove agent accounts. A browser's
   `StartAgentLogin` never names another device to serve its callback.
+
+- #12327: Shared Rust Native Memory and Schedules settings forms, editable GPUI field mounting, and account API wiring in separate lazy Memory and Schedules modules over page-host; existing account sync records and HTML fallback forms remain in use.
