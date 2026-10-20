@@ -308,6 +308,7 @@ cat > "$private/gateway.json" << EOF
 {
   "v": "openagents.gateway.v1",
   "listen": "0.0.0.0:8791",
+  "public_origin": "$PUBLIC_ORIGIN",
   "registry": "$state/gateway/registry",
   "accounts": {
     "signup_tenant": "signup",
