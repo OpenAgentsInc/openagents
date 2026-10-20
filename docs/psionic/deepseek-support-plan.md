@@ -864,6 +864,16 @@ llama.cpp. Local checks pass: 184 Pylon tests (one existing ignored test),
 tests, and changed-file formatting; the GPU fixture also passes on the
 RTX 4080 with `PSIONIC_REQUIRE_CUDA=1`.
 
+The GPU binaries use the recorded `9dc99f096e` base and exact source
+hashes. The rebase before `19d35ac356` also includes the separate V4.1
+weight reader from `cc6d1352c5` and its test-only `flate2` dependency.
+The R1 decoder, HTTP route, CUDA kernels, Pylon, and runner files still
+match the GPU-tested sources; the evidence records this lockfile difference.
+Post-rebase checks on `19d35ac356` pass the `qwen2_` (3), `generic_cuda_`
+(3), and `deepseek_r1_` (1) filters against the same compiled test binary.
+The GPU-conditional test skips on macOS; its real GPU result retains the
+original build pin.
+
 The first native sampled probe (`temperature=0.6`, `top_p=0.95`, `seed=1`)
 produced 2,048 reasoning tokens without a final answer in 333.765 seconds.
 A separate greedy boxed-prompt probe completed correctly in 83.366 seconds

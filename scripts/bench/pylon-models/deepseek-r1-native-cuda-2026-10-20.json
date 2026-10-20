@@ -2739,5 +2739,20 @@
     "remote_test_worktree_removed": true,
     "isolated_pylon_state": "off; no model lanes remain"
   },
-  "logs_root": "/home/christopherdavid/.openagents/scratch/process-1296378/ds0/native-cuda"
+  "logs_root": "/home/christopherdavid/.openagents/scratch/process-1296378/ds0/native-cuda",
+  "integration": {
+    "code_commit": "19d35ac356",
+    "rebase_base": "737fe18504",
+    "concurrent_weight_reader": "cc6d1352c5bc628124d766b4151bdeb623cc4622",
+    "current_psionic_lockfile_sha256": "0fc5302ee9be004c87f6fec22d23584294c3c07d437f65ac075bf8f538b25979",
+    "difference": "The rebase adds a separate V4.1 safetensors reader and its test-only flate2 dependency in psionic-models. Qwen2 decoder, HTTP route, native CUDA kernels, Pylon, and qualification runner files still match the GPU-tested source hashes. The retained GPU binaries were built on the recorded 9dc99f096e base before this unrelated reader landed.",
+    "post_rebase_validation": {
+      "qwen2_filter": 3,
+      "generic_cuda_filter": 3,
+      "deepseek_r1_filter": 1,
+      "gpu_conditional_case": "skipped on macOS; actual GPU fixture was run on the recorded GPU build base",
+      "method": "cargo test -p psionic-serve --lib qwen2_; remaining filters executed against that same built test executable to avoid a shared Cargo artifact lock held by another build. The blocked Cargo belonging to this worktree was stopped.",
+      "compiled_test_binary_sha256": "c7e4692ffe14c92197eaf969c1f57deb993aff8709ac6373b779839a295e40de"
+    }
+  }
 }
