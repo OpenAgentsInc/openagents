@@ -244,7 +244,7 @@ impl ChatApp {
             let name = event.0.trim().to_owned();
             this.rename = None;
             if !name.is_empty() {
-                let name = openagents_web_chat_view::transcript::truncate(&name, 60);
+                let name = openagents_web_chat_view::labels::truncate(&name, 60);
                 match &rename {
                     Some((id, _)) => {
                         let id = id.clone();
@@ -388,7 +388,6 @@ impl ChatApp {
                                 this.notice = None;
                             }
                             this.entries = shown;
-                            this.sync_list();
                             let entries = &this.entries;
                             this.compose
                                 .update(cx, |compose, cx| compose.transcript(entries, cx));

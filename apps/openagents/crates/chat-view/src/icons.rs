@@ -294,6 +294,32 @@ pub fn set_web_painter(painter: WebPainter) {
     let _ = WEB_PAINTER.set(painter);
 }
 
+/// Paints an icon path's mask, tinted, into bounds during a paint pass.
+#[cfg(target_family = "wasm")]
+pub type WebGlyphPainter = fn(&mut gpui::Window, gpui::Bounds<gpui::Pixels>, SharedString, Hsla);
+
+#[cfg(target_family = "wasm")]
+static WEB_GLYPH_PAINTER: std::sync::OnceLock<WebGlyphPainter> = std::sync::OnceLock::new();
+
+/// Set once at startup by the web app that bundles the icon masks.
+#[cfg(target_family = "wasm")]
+pub fn set_web_glyph_painter(painter: WebGlyphPainter) {
+    let _ = WEB_GLYPH_PAINTER.set(painter);
+}
+
+/// Paint `path`'s icon into `bounds` in `color`, from the page's masks.
+#[cfg(target_family = "wasm")]
+pub fn paint_web_glyph(
+    window: &mut gpui::Window,
+    bounds: gpui::Bounds<gpui::Pixels>,
+    path: SharedString,
+    color: Hsla,
+) {
+    if let Some(paint) = WEB_GLYPH_PAINTER.get() {
+        paint(window, bounds, path, color);
+    }
+}
+
 #[cfg(target_family = "wasm")]
 pub struct Icon {
     path: SharedString,

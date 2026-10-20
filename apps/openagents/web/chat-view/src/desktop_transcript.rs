@@ -14,8 +14,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use gpui::{
     AnyElement, App, AppContext as _, Context, Entity, Image, IntoElement, ObjectFit,
-    ParentElement, SharedString, Styled, Subscription, Window, div, prelude::*,
-    px,
+    ParentElement, SharedString, Styled, Subscription, Window, div, prelude::*, px,
 };
 use openagents_chat_view::attachments::UserImageAttachment;
 use openagents_chat_view::composer_mentions::SentMentionSpan;
@@ -26,7 +25,8 @@ use openagents_chat_view::theme::Theme;
 use openagents_chat_view::tool_progress::{self, ToolProgress};
 use openagents_chat_view::transcript::host::{ChatPlace, TranscriptHost, TurnActivity};
 use openagents_chat_view::transcript::{
-    ChipOverlay, FoldState, PreparedTranscript, Row, ToolItem, TranscriptMedia, TranscriptView,
+    ChipOverlay, FoldState, HostLayout, PreparedTranscript, Row, ToolItem, TranscriptMedia,
+    TranscriptView,
 };
 use openagents_chat_view::workspace_links::FileLinkRoot;
 use openagents_doc::{SessionMessageEntry, TranscriptBaseline};
@@ -175,10 +175,49 @@ impl TranscriptHost for WebHost {
 /// Images a web app has loaded, by the path a message names.
 pub type Images = Rc<RefCell<HashMap<String, Arc<Image>>>>;
 
-/// A web transcript's media: the app's loaded images.
+/// What an app draws under an entry, by the entry's id.
+pub type AfterEntry = Rc<dyn Fn(&str, &mut Window, &mut App) -> Option<AnyElement>>;
+
+/// A web transcript's media: the app's loaded images, pictures the site
+/// serves by path, and the app's own content under an entry.
 #[derive(Default)]
 pub struct WebMedia {
     pub images: Images,
+    /// The site an image's path is on, when the app loads images by URL.
+    pub origin: Option<String>,
+    pub after_entry: Option<AfterEntry>,
+}
+
+impl WebMedia {
+    /// A picture at `path`: loaded already, or read from the site.
+    fn picture(&self, path: &str, name: &str) -> Option<AnyElement> {
+        if let Some(image) = self.images.borrow().get(path).cloned() {
+            return Some(image_tile(image));
+        }
+        let origin = self.origin.as_ref()?;
+        let name = SharedString::from(name.to_owned());
+        Some(
+            div()
+                .rounded(px(10.0))
+                .overflow_hidden()
+                .h(px(THUMB_HEIGHT))
+                .max_w(px(THUMB_MAX_WIDTH))
+                .child(
+                    img(gpui::SharedUri::from(format!("{origin}{path}")))
+                        .h(px(THUMB_HEIGHT))
+                        .max_w(px(THUMB_MAX_WIDTH))
+                        .object_fit(ObjectFit::Cover)
+                        .with_fallback(move || {
+                            div()
+                                .p(px(8.0))
+                                .text_size(px(12.0))
+                                .child(name.clone())
+                                .into_any_element()
+                        }),
+                )
+                .into_any_element(),
+        )
+    }
 }
 
 const THUMB_HEIGHT: f32 = 160.0;
@@ -233,7 +272,10 @@ impl TranscriptMedia for WebMedia {
         _window: &Window,
         _cx: &mut Context<Transcript>,
     ) -> AnyElement {
-        let images = this.media.images.borrow();
+        let tiles: Vec<AnyElement> = attachments
+            .iter()
+            .filter_map(|attachment| this.media.picture(&attachment.path, &attachment.name))
+            .collect();
         div()
             .w_full()
             .flex()
@@ -242,12 +284,7 @@ impl TranscriptMedia for WebMedia {
             .justify_end()
             .gap(px(8.0))
             .pb(px(8.0))
-            .children(
-                attachments
-                    .iter()
-                    .filter_map(|attachment| images.get(&attachment.path).cloned())
-                    .map(image_tile),
-            )
+            .children(tiles)
             .into_any_element()
     }
 
@@ -274,14 +311,13 @@ impl TranscriptMedia for WebMedia {
         _row_id: &SharedString,
         _owner: &str,
         path: &str,
-        _name: &str,
+        name: &str,
         _mime_type: &str,
         _cx: &mut Context<Transcript>,
     ) -> AnyElement {
-        match this.media.images.borrow().get(path).cloned() {
-            Some(image) => image_tile(image),
-            None => div().into_any_element(),
-        }
+        this.media
+            .picture(path, name)
+            .unwrap_or_else(|| div().into_any_element())
     }
 
     fn visual(
@@ -339,6 +375,16 @@ impl TranscriptMedia for WebMedia {
         Vec::new()
     }
 
+    fn after_entry(
+        this: &mut Transcript,
+        entry_id: &SharedString,
+        window: &mut Window,
+        cx: &mut Context<Transcript>,
+    ) -> Option<AnyElement> {
+        let after = this.media.after_entry.clone()?;
+        after(entry_id, window, cx)
+    }
+
     /// The lines of a diff, colored by kind, without the desktop's syntax
     /// highlighting.
     fn diff_body(
@@ -374,6 +420,73 @@ impl TranscriptMedia for WebMedia {
             }))
             .into_any_element()
     }
+}
+
+/// What changes an entry's rows: its parts, their text, and its status.
+/// Apps compare it between frames to hand the transcript only changes.
+pub fn shape(entries: &[SessionMessageEntry]) -> Vec<(usize, usize, u8)> {
+    entries
+        .iter()
+        .map(|entry| {
+            let text = entry
+                .parts
+                .iter()
+                .map(|part| match part {
+                    openagents_doc::MessagePart::Text { text, .. }
+                    | openagents_doc::MessagePart::Reasoning { text, .. } => text.len(),
+                    openagents_doc::MessagePart::Tool {
+                        resolved, output, ..
+                    } => usize::from(*resolved) + output.as_ref().map_or(0, String::len),
+                    _ => 1,
+                })
+                .sum();
+            (
+                entry.parts.len(),
+                text,
+                entry.status.map_or(0, |s| s as u8 + 1),
+            )
+        })
+        .collect()
+}
+
+/// Hand `entries` to `transcript` as `chat`, drawn from this frame on.
+pub fn show(
+    state: &Entity<WebTranscript>,
+    transcript: &Entity<Transcript>,
+    chat: Option<String>,
+    entries: Vec<SessionMessageEntry>,
+    activity: Option<TurnActivity>,
+    cx: &mut App,
+) {
+    state.update(cx, |state, cx| {
+        if state.chat != chat {
+            state.open(chat, entries);
+        } else {
+            state.set_entries(entries);
+        }
+        state.set_activity(activity);
+        cx.notify();
+    });
+    transcript.update(cx, |transcript, cx| transcript.host_changed(None, cx));
+}
+
+/// How a web page lays the transcript out for a `width` px wide view:
+/// the column under the page's own header, narrower gutters on a phone,
+/// and `fit_content` for a card that grows with its chat.
+pub fn page_layout(width: f32, fit_content: bool) -> HostLayout {
+    HostLayout {
+        top: 16.0,
+        bottom: 16.0,
+        side: if width < 600.0 { 16.0 } else { 48.0 },
+        fit_content,
+    }
+}
+
+/// Lay `transcript` out for a `width` px wide view; a no-op while that
+/// holds.
+pub fn fit(transcript: &Entity<Transcript>, width: f32, fit_content: bool, cx: &mut App) {
+    let layout = page_layout(width, fit_content);
+    transcript.update(cx, |view, cx| view.set_host_layout(Some(layout), cx));
 }
 
 /// A transcript over `state`, drawing `images`.

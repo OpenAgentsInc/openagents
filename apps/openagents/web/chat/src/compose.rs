@@ -28,8 +28,8 @@ use openagents_doc::{QueuedMessage, SessionCommandPayload, SessionMessageEntry};
 use openagents_proto::SlashCommand;
 use openagents_proto::invocation::Skill;
 use openagents_web_chat_view::composer::{Cancelled, CompletionKey, Edited, Submitted, TextInput};
+use openagents_web_chat_view::labels::{button, footer_text, truncate};
 use openagents_web_chat_view::theme;
-use openagents_web_chat_view::transcript::{button, footer_text, truncate};
 use openagents_web_client::computer;
 use openagents_web_client::web::Client;
 use serde_json::{Value, json};
@@ -1188,9 +1188,7 @@ impl Compose {
         Some(
             div()
                 .w_full()
-                .max_w(px(
-                    openagents_web_chat_view::transcript::content_width() + 24.
-                ))
+                .max_w(px(openagents_web_chat_view::labels::content_width() + 24.))
                 .flex()
                 .flex_col()
                 .gap(px(10.))
@@ -1281,9 +1279,7 @@ fn card(id: &'static str) -> gpui::Stateful<gpui::Div> {
     div()
         .id(id)
         .w_full()
-        .max_w(px(
-            openagents_web_chat_view::transcript::content_width() + 24.
-        ))
+        .max_w(px(openagents_web_chat_view::labels::content_width() + 24.))
         .flex()
         .flex_col()
         .gap(px(2.))

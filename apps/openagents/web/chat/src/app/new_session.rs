@@ -702,7 +702,7 @@ impl ChatApp {
                 .flex_col()
                 .items_center()
                 .gap(px(8.))
-                .max_w(px(openagents_web_chat_view::transcript::content_width()))
+                .max_w(px(openagents_web_chat_view::labels::content_width()))
                 .child(
                     div()
                         .flex()

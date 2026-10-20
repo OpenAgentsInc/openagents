@@ -12,6 +12,17 @@ import sys
 
 BUDGET = 1_500_000
 
+# Modules allowed more than BUDGET, with brotli. The `/gpui` chat draws the
+# desktop's own transcript (#12216): the last visit's first frame paints in
+# about 0.1 s before the module arrives, and the extra 250 KB costs about
+# 0.1 s at 20 Mbit, which beats keeping a second transcript (#12219).
+BUDGETS = {"openagents_web_chat_bg.wasm": 1_750_000}
+
+
+def budget(module):
+    """The brotli cap for `module`."""
+    return BUDGETS.get(module, BUDGET)
+
 
 def commit():
     """The build's commit: OPENAGENTS_COMMIT, else git's, else "unknown" (the
@@ -44,15 +55,16 @@ def package(directory, name, *later):
     directory = Path(directory)
     wasm = name + "_bg.wasm"
     measured = [measure(directory, module + "_bg.wasm") for module in (name, *later)]
-    report = {"commit": commit(), **measured[0], "budget_bytes": BUDGET}
+    report = {"commit": commit(), **measured[0], "budget_bytes": budget(measured[0]["module"])}
     if later:
         report["later"] = measured[1:]
     (directory / "size.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report), flush=True)
     for module in measured:
-        if module["brotli_bytes"] > BUDGET:
+        cap = budget(module["module"])
+        if module["brotli_bytes"] > cap:
             raise SystemExit(
-                f"{module['module']}: {module['brotli_bytes']} bytes brotli exceeds the {BUDGET} byte budget"
+                f"{module['module']}: {module['brotli_bytes']} bytes brotli exceeds the {cap} byte budget"
             )
 
     assets = {}

@@ -11,8 +11,8 @@ use gpui::{
     prelude::*, px,
 };
 use openagents_proto::DeviceOrigin;
+use openagents_web_chat_view::labels::button;
 use openagents_web_chat_view::theme;
-use openagents_web_chat_view::transcript::button;
 use openagents_web_client::computer;
 use openagents_web_client::moves::{self, MoveStatus, PlanView};
 use openagents_web_client::web::Client;

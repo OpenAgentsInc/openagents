@@ -35,7 +35,6 @@ unicode-segmentation.workspace = true
 serde_json.workspace = true
 roxmltree = "0.21.1"
 sha2.workspace = true
-similar.workspace = true
 tracing.workspace = true
 uuid.workspace = true
 
@@ -56,6 +55,8 @@ oa-copy = { path = "../../../../crates/oa-copy" }
 openagents-workspace-hack = { version = "0.1" }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
+# Tool diffs; the web pairs lines without it (transcript::diff_to_file).
+similar.workspace = true
 # The embedded file-icon theme and the task checkbox. The web ships its own
 # icon masks and draws a plain checkbox.
 rust-embed = "=8.7.2"

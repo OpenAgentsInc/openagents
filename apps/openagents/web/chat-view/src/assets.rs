@@ -39,6 +39,38 @@ pub const FONT_FILES: [&str; 10] = [
 ];
 
 const ICONS: &[(&str, &[u8])] = &[
+    // The desktop transcript's icons (openagents_chat_view::transcript).
+    (
+        "icons/alt-arrow-up.svg",
+        ui_asset!("icons/alt-arrow-up.svg"),
+    ),
+    (
+        "icons/arrow-up-right.svg",
+        ui_asset!("icons/arrow-up-right.svg"),
+    ),
+    ("icons/bot.svg", ui_asset!("icons/bot.svg")),
+    ("icons/checklist.svg", ui_asset!("icons/checklist.svg")),
+    ("icons/command.svg", ui_asset!("icons/command.svg")),
+    ("icons/copy.svg", ui_asset!("icons/copy.svg")),
+    (
+        "icons/document-add.svg",
+        ui_asset!("icons/document-add.svg"),
+    ),
+    ("icons/eye.svg", ui_asset!("icons/eye.svg")),
+    ("icons/file-code.svg", ui_asset!("icons/file-code.svg")),
+    (
+        "icons/folder-with-files.svg",
+        ui_asset!("icons/folder-with-files.svg"),
+    ),
+    ("icons/gallery.svg", ui_asset!("icons/gallery.svg")),
+    ("icons/global.svg", ui_asset!("icons/global.svg")),
+    (
+        "icons/magic-stick-3.svg",
+        ui_asset!("icons/magic-stick-3.svg"),
+    ),
+    ("icons/terminal.svg", ui_asset!("icons/terminal.svg")),
+    ("icons/wrap-text.svg", ui_asset!("icons/wrap-text.svg")),
+    ("icons/file-image.svg", ui_asset!("icons/file-image.svg")),
     (
         "icons/alt-arrow-right.svg",
         ui_asset!("icons/alt-arrow-right.svg"),

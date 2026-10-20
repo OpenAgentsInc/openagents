@@ -17,8 +17,8 @@ use gpui::{
     Styled, Task, Window, actions, div, prelude::*, px, relative,
 };
 use openagents_chat_view::settings_forms::{Page, Prefs, Shortcut, shortcuts};
+use openagents_web_chat_view::labels::ago;
 use openagents_web_chat_view::svg;
-use openagents_web_chat_view::transcript::ago;
 use openagents_web_chat_view::{composer, now_ms, selection, theme};
 use openagents_web_client::{Change, store};
 use serde_json::{Value, json};
@@ -219,10 +219,11 @@ impl ChatApp {
                 .unwrap_or_default()
         };
         theme::set(look.theme_with(families, self.settings.system_dark), cx);
-        openagents_web_chat_view::transcript::set_content_width(f32::from(look.width()));
+        openagents_web_chat_view::labels::set_content_width(f32::from(look.width()));
         openagents_chat_view::motion::set_preference(look.reduce_motion, cx);
         openagents_chat_view::motion::set_pause_in_background(look.pause_in_background, cx);
-        self.list_state.remeasure();
+        self.transcript
+            .update(cx, |transcript, _| transcript.list.remeasure());
         cx.refresh_windows();
     }
 

@@ -3,21 +3,23 @@
 //! on the composer and grows upward as it goes, until it reaches the page's
 //! name and scrolls.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 use std::time::Duration;
 
 use futures::StreamExt as _;
 use gpui::{
-    AnyElement, App, ClickEvent, Context, Entity, Focusable, FontWeight, IntoElement,
-    ParentElement, Render, ScrollHandle, ScrollWheelEvent, SharedString, Styled, Task, Window, div,
-    prelude::*, px,
+    AnyElement, ClickEvent, Context, Entity, Focusable, FontWeight, IntoElement, ParentElement,
+    Render, ScrollHandle, SharedString, Styled, Task, Window, div, prelude::*, px,
 };
-use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
+use openagents_chat_view::transcript::host::TurnActivity;
+use openagents_doc::{MessagePart, MessageStatus, SessionMessageEntry};
 use openagents_web_chat_view::composer::{Submitted, TextInput};
-use openagents_web_chat_view::markdown::{self, Veil};
+use openagents_web_chat_view::desktop_transcript::{self, WebTranscript};
+use openagents_web_chat_view::labels::{self, button};
 use openagents_web_chat_view::svg;
 use openagents_web_chat_view::theme;
-use openagents_web_chat_view::transcript::{self, OnClick, TurnView, button, working_label};
 use openagents_web_client::web::{Client, Follow};
 use openagents_web_client::{Event, MessageRole as SentBy, Refusal};
 use wasm_bindgen::{JsCast, JsValue};
@@ -36,7 +38,6 @@ struct Live {
     /// The answer's messages by their position in the chat.
     messages: BTreeMap<usize, (String, String)>,
     /// The fade on the text now arriving.
-    veil: Veil,
     started: Instant,
     stopping: bool,
     _follow: Follow,
@@ -55,7 +56,7 @@ pub struct LanderChat {
     kept: Option<(f32, f32, f32, f32)>,
     client: Option<Client>,
     session: Option<Session>,
-    still: bool,
+
     /// The open chat; `None` before the first message.
     current: Option<String>,
     title: String,
@@ -66,13 +67,13 @@ pub struct LanderChat {
     notice: Option<Notice>,
     composer: Entity<TextInput>,
     scroll: ScrollHandle,
-    /// Whether the transcript keeps its end in view.
-    following: bool,
-    /// The person scrolled; whether it is still at its end is checked on
-    /// the next tick, after the scroll is applied.
-    scrolled: bool,
-    expanded: HashSet<String>,
-    images: HashMap<String, std::sync::Arc<gpui::Image>>,
+    /// The open chat as the desktop's transcript reads it.
+    shared: Entity<WebTranscript>,
+    /// The desktop's transcript, drawing `shared` (#12216).
+    transcript: Entity<desktop_transcript::Transcript>,
+    /// What `shared` last got: the entries' shape, the answer being
+    /// written, and whether a message is on its way.
+    published: Option<(Vec<(usize, usize, u8)>, (usize, usize), bool, i64)>,
     /// Bumped on each load, so a slow read for a chat left behind is dropped.
     generation: u64,
     _ticker: Task<()>,
@@ -101,12 +102,19 @@ impl LanderChat {
                 }
             }
         });
+        // A page that asked for no motion draws text as it arrives.
+        if still {
+            openagents_chat_view::motion::set_reduced_motion(cx, true);
+        }
+        let shared = cx.new(|_| WebTranscript::default());
+        let transcript =
+            desktop_transcript::new(&shared, Rc::new(RefCell::new(HashMap::new())), cx);
+        transcript.update(cx, |view, cx| view.set_rail_enabled(false, cx));
         let mut this = Self {
             layout: None,
             kept: None,
             client: None,
             session: None,
-            still,
             current: route_chat(),
             title: String::new(),
             entries: Vec::new(),
@@ -116,10 +124,9 @@ impl LanderChat {
             notice: None,
             composer,
             scroll: ScrollHandle::new(),
-            following: true,
-            scrolled: false,
-            expanded: HashSet::new(),
-            images: HashMap::new(),
+            shared,
+            transcript,
+            published: None,
             generation: 0,
             _ticker: ticker,
         };
@@ -173,14 +180,8 @@ impl LanderChat {
 
     fn tick(&mut self, cx: &mut Context<Self>) {
         self.keep_area();
-        if self.scrolled {
-            self.scrolled = false;
-            let offset = self.scroll.offset().y;
-            let max = self.scroll.max_offset().y;
-            self.following = f32::from(offset) <= -f32::from(max) + 24.;
-        }
-        if self.live.is_some() {
-            // The veil's fade and the working label's dots.
+        if self.live.is_some() || self.sending {
+            // The working row's timer.
             cx.notify();
         }
     }
@@ -242,7 +243,6 @@ impl LanderChat {
                         let pending = thread.pending();
                         let messages = model::without_pending(detail.messages, pending);
                         this.entries = model::entries(&messages);
-                        this.following = true;
                         match (pending, thread.request_id) {
                             (true, Some(request)) => this.follow(chat.clone(), request, cx),
                             _ => this.live = None,
@@ -276,7 +276,6 @@ impl LanderChat {
         self.current = None;
         self.title.clear();
         self.entries.clear();
-        self.expanded.clear();
         self.notice = None;
         self.loading = false;
         push_path(None);
@@ -344,7 +343,6 @@ impl LanderChat {
         self.live = Some(Live {
             request,
             messages: BTreeMap::new(),
-            veil: markdown::new_veil(),
             started: Instant::now(),
             stopping: false,
             _follow: follow,
@@ -453,7 +451,6 @@ impl LanderChat {
             .push(model::user_entry(format!("u-{request}"), &text));
         self.sending = true;
         self.notice = None;
-        self.following = true;
         let current = self.current.clone();
         mark("lander8-send");
         cx.spawn(async move |this, cx| {
@@ -467,8 +464,7 @@ impl LanderChat {
                     Ok(id) => {
                         if current.is_none() {
                             push_path(Some(&id));
-                            this.title =
-                                transcript::truncate(text.lines().next().unwrap_or(""), 60);
+                            this.title = labels::truncate(text.lines().next().unwrap_or(""), 60);
                             set_title(&this.title);
                             this.current = Some(id.clone());
                             this.generation += 1;
@@ -528,89 +524,76 @@ impl LanderChat {
         cx.notify();
     }
 
-    fn veil(&self) -> Option<Veil> {
-        // A page that asked for no motion draws text as it arrives.
-        let live = self.live.as_ref().filter(|_| !self.still)?;
-        Some(live.veil.clone())
-    }
-
-    fn render_assistant(
-        &self,
-        entry: &SessionMessageEntry,
-        veil: Option<Veil>,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let chat = self.current.clone().unwrap_or_default();
-        let key = format!("{chat}/{}", entry.id);
-        let view = TurnView {
-            key: &key,
-            parts: &entry.parts,
-            status: entry.status,
-            duration_ms: entry.duration_ms,
-            images: &self.images,
-            expanded: &self.expanded,
-            veil,
-        };
-        let entity = cx.entity().downgrade();
-        let toggle = move |key: String| -> OnClick {
-            let entity = entity.clone();
-            Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                let key = key.clone();
-                entity
-                    .update(cx, |this: &mut LanderChat, cx| {
-                        if !this.expanded.remove(&key) {
-                            this.expanded.insert(key);
-                        }
-                        cx.notify();
-                    })
-                    .ok();
+    /// Hand the chat to the transcript when it changed.
+    fn publish(&mut self, cx: &mut Context<Self>) {
+        let shape =
+            self.entries
+                .iter()
+                .map(|entry| {
+                    let text = entry
+                        .parts
+                        .iter()
+                        .map(|part| match part {
+                            MessagePart::Text { text, .. }
+                            | MessagePart::Reasoning { text, .. } => text.len(),
+                            _ => 1,
+                        })
+                        .sum();
+                    (
+                        entry.parts.len(),
+                        text,
+                        entry.status.map_or(0, |s| s as u8 + 1),
+                    )
+                })
+                .collect();
+        let live = self.live.as_ref().map_or((0, 0), |live| {
+            (
+                live.messages.len() + 1,
+                live.messages.values().map(|(_, text)| text.len()).sum(),
+            )
+        });
+        let elapsed = self
+            .live
+            .as_ref()
+            .map_or(-1, |live| live.started.elapsed().as_secs() as i64);
+        let fingerprint = (shape, live, self.sending, elapsed);
+        if self.published.as_ref() == Some(&fingerprint) {
+            return;
+        }
+        self.published = Some(fingerprint);
+        let mut entries = self.entries.clone();
+        let activity = if let Some(live) = &self.live {
+            entries.push(model::live_entry(&live.request, &live.messages));
+            Some(TurnActivity {
+                sending: live.messages.is_empty(),
+                queued: false,
+                elapsed_secs: Some(elapsed),
+                turn_ms: 0,
+            })
+        } else {
+            self.sending.then_some(TurnActivity {
+                sending: true,
+                queued: false,
+                elapsed_secs: None,
+                turn_ms: 0,
             })
         };
-        // The site's chat asks no questions of its own.
-        let mut questions =
-            |_: usize, _: &[openagents_proto::UserInputQuestion], _: bool| div().into_any_element();
-        transcript::assistant_body(view, &toggle, &mut questions)
+        // Before the first message there is no chat yet; the working row
+        // still needs one to belong to.
+        let chat = Some(self.current.clone().unwrap_or_else(|| "new".into()));
+        self.shared.update(cx, |state, cx| {
+            state.open(chat, entries);
+            state.set_activity(activity);
+            cx.notify();
+        });
+        self.transcript
+            .update(cx, |transcript, cx| transcript.host_changed(None, cx));
     }
 
-    fn render_entry(
-        &self,
-        entry: &SessionMessageEntry,
-        veil: Option<Veil>,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        match entry.role {
-            MessageRole::User => {
-                let text = entry
-                    .parts
-                    .iter()
-                    .filter_map(|part| match part {
-                        MessagePart::Text { text, .. } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n\n");
-                transcript::user_bubble(&entry.id, &text, Vec::new())
-            }
-            _ => self.render_assistant(entry, veil, cx),
-        }
-    }
-
-    fn render_card(&self, layout: &Layout, cx: &mut Context<Self>) -> AnyElement {
+    fn render_card(&mut self, layout: &Layout, cx: &mut Context<Self>) -> AnyElement {
         let pad = if layout.narrow { 14. } else { 22. };
-        let mut rows: Vec<AnyElement> = Vec::new();
-        for entry in &self.entries {
-            rows.push(self.render_entry(entry, None, cx));
-        }
-        if let Some(live) = &self.live {
-            let entry = model::live_entry(&live.request, &live.messages);
-            rows.push(self.render_entry(&entry, self.veil(), cx));
-        }
-        if self.sending {
-            rows.push(working_label().into_any_element());
-        }
-        if self.following {
-            self.scroll.scroll_to_bottom();
-        }
+        self.publish(cx);
+        desktop_transcript::fit(&self.transcript, layout.room.w, true, cx);
         div()
             .flex()
             .flex_col()
@@ -623,23 +606,16 @@ impl LanderChat {
             .border_1()
             .border_color(theme::border_strong())
             .child(
+                // Measured for the area the page keeps clear (`keep_area`).
                 div()
                     .id("lander8-transcript")
-                    .child(markdown::selection_reset())
-                    .flex_shrink(1.)
-                    .min_h_0()
-                    .overflow_y_scroll()
                     .track_scroll(&self.scroll)
-                    .on_scroll_wheel(cx.listener(|this, _: &ScrollWheelEvent, _, _| {
-                        this.scrolled = true;
-                    }))
-                    .px(px(pad))
-                    .pt(px(18.))
-                    .pb(px(20.))
                     .flex()
                     .flex_col()
-                    .gap(px(22.))
-                    .children(rows),
+                    .flex_shrink(1.)
+                    .min_h_0()
+                    .px(px(pad - 16.).max(px(0.)))
+                    .child(self.transcript.clone()),
             )
             .into_any_element()
     }

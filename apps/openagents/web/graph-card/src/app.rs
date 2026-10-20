@@ -17,9 +17,9 @@ use gpui::{
     prelude::*, px, rgb, size,
 };
 use openagents_web_chat_view::composer::{self, TextInput};
+use openagents_web_chat_view::labels::{footer_text, working_label};
 use openagents_web_chat_view::svg;
 use openagents_web_chat_view::theme;
-use openagents_web_chat_view::transcript::{footer_text, working_label};
 use web_time::Instant;
 
 use agent_graph::Accent;
@@ -133,7 +133,7 @@ const PULSE_MS: u64 = 1_400;
 
 impl GraphCard {
     pub fn new(still: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let chat = cx.new(|_| ChatView::new(still));
+        let chat = cx.new(|cx| ChatView::new(still, cx));
         let composer = cx.new(|cx| TextInput::new(PLACEHOLDER, cx));
         window.focus(&composer.focus_handle(cx), cx);
         if !still {

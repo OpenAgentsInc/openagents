@@ -72,6 +72,11 @@ class PackageTest(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "exceeds"):
                     packager.package(directory, "app", "pane")
 
+    def test_only_the_chat_module_has_the_larger_cap(self):
+        self.assertEqual(packager.budget("openagents_web_chat_bg.wasm"), 1_750_000)
+        for module in ("openagents_web_files_bg.wasm", "openagents_web_demo_bg.wasm", "app_bg.wasm"):
+            self.assertEqual(packager.budget(module), 1_500_000)
+
     def test_a_stale_compressed_copy_cannot_hide_an_over_budget_module(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

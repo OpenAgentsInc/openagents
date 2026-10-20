@@ -1,20 +1,21 @@
 //! The demo chat at the center of the graph: the person's question, then the
-//! scripted reply streamed through the shared chat views (thoughts and tool
-//! calls folded into groups, text word by word through the veil, a table),
+//! scripted reply drawn by the desktop's transcript (thoughts and tool
+//! calls folded into groups, text word by word, a table),
 //! ending with the agent asking before it sends anything. As each tool call
 //! runs, the chat hands the graph its cues. Some seconds after it settles
 //! the chat starts over.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::cell::RefCell;
+use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, ClickEvent, Context, FollowMode, IntoElement, ListAlignment, ListState,
-    ParentElement, Render, Styled, Window, div, list, px,
+    AppContext as _, Context, Entity, IntoElement, ParentElement, Render, Styled, Window, div,
 };
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
-use openagents_web_chat_view::markdown::{self, Veil};
-use openagents_web_chat_view::transcript::{self, OnClick, TurnView, info_card};
+use openagents_web_chat_view::desktop_transcript::{self, WebTranscript};
+use openagents_web_chat_view::labels::info_card;
 use web_time::Instant;
 
 use crate::script::{self, Beat, Cue, PROMPT};
@@ -89,7 +90,6 @@ struct Stream {
     wait_until: Instant,
     started: Instant,
     tool: Option<Running>,
-    veil: Veil,
 }
 
 /// What one tick of the chat tells the graph.
@@ -102,7 +102,11 @@ pub struct Tick {
 
 pub struct ChatView {
     entries: Vec<SessionMessageEntry>,
-    list_state: ListState,
+    /// The chat as the desktop's transcript reads it.
+    shared: Entity<WebTranscript>,
+    /// The desktop's transcript, drawing `shared` (#12216).
+    transcript: Entity<desktop_transcript::Transcript>,
+    published: Option<(Vec<(usize, usize, u8)>, bool)>,
     phase: Phase,
     /// The question the agent is waiting on, once it asks.
     asking: Option<(&'static str, &'static str)>,
@@ -114,10 +118,33 @@ pub struct ChatView {
 }
 
 impl ChatView {
-    pub fn new(still: bool) -> Self {
+    pub fn new(still: bool, cx: &mut Context<Self>) -> Self {
+        let shared = cx.new(|_| WebTranscript::default());
+        let transcript =
+            desktop_transcript::new(&shared, Rc::new(RefCell::new(HashMap::new())), cx);
+        {
+            let chat = cx.entity().downgrade();
+            transcript.update(cx, |view, cx| {
+                view.set_rail_enabled(false, cx);
+                // The agent's question, under its reply once it asks.
+                view.media.after_entry = Some(Rc::new(move |entry, _, cx| {
+                    let chat = chat.upgrade()?;
+                    let chat = chat.read(cx);
+                    let (title, line) = chat.asking?;
+                    (chat.entries.last().map(|last| last.id.as_str()) == Some(entry)).then(|| {
+                        div()
+                            .pt(gpui::px(14.))
+                            .child(info_card("icons/check.svg", title.into(), line.into()))
+                            .into_any_element()
+                    })
+                }));
+            });
+        }
         let mut this = Self {
             entries: Vec::new(),
-            list_state: ListState::new(0, ListAlignment::Top, px(800.)),
+            shared,
+            transcript,
+            published: None,
             phase: Phase::Still,
             asking: None,
             rng: 0x2545_f491_4f6c_dd1d,
@@ -153,12 +180,6 @@ impl ChatView {
         entry
     }
 
-    fn sync_list(&mut self) {
-        self.list_state.reset(self.entries.len());
-        self.list_state.set_follow_mode(FollowMode::Tail);
-        self.list_state.scroll_to_end();
-    }
-
     fn ask(&mut self) {
         self.entries = vec![entry(
             "graph-u",
@@ -166,7 +187,6 @@ impl ChatView {
             vec![text("t0", PROMPT)],
         )];
         self.asking = None;
-        self.sync_list();
         self.phase = Phase::Asking(Instant::now() + THINK);
     }
 
@@ -194,7 +214,6 @@ impl ChatView {
             entry("graph-u", MessageRole::User, vec![text("t0", PROMPT)]),
             reply,
         ];
-        self.sync_list();
         self.phase = Phase::Still;
     }
 
@@ -205,14 +224,12 @@ impl ChatView {
             Phase::Asking(at) if now >= at => {
                 self.entries
                     .push(Self::reply_entry(MessageStatus::Streaming));
-                self.sync_list();
                 self.phase = Phase::Streaming(Stream {
                     beats: script::reply().into(),
                     words: VecDeque::new(),
                     wait_until: now + Duration::from_millis(400),
                     started: now,
                     tool: None,
-                    veil: markdown::new_veil(),
                 });
                 cx.notify();
             }
@@ -293,7 +310,6 @@ impl ChatView {
                     Beat::Text(body) => {
                         entry.parts.push(text(&format!("t{ix}"), ""));
                         stream.words = crate::split_words(body);
-                        stream.veil = markdown::new_veil();
                     }
                     Beat::Tool {
                         call,
@@ -320,18 +336,12 @@ impl ChatView {
             } else {
                 entry.status = Some(MessageStatus::Complete);
                 entry.duration_ms = Some(now.duration_since(stream.started).as_millis() as i64);
-                self.list_state.remeasure_items(last..last + 1);
-                self.list_state.scroll_to_end();
                 self.phase = Phase::Holding(now + HOLD);
                 cx.notify();
                 return;
             }
         }
-        let fading = markdown::is_fading(&stream.veil);
-        // A running tool group pulses its summary line.
-        let running = stream.tool.is_some();
-        if changed || fading || running {
-            self.list_state.remeasure_items(last..last + 1);
+        if changed {
             cx.notify();
         }
         self.phase = Phase::Streaming(stream);
@@ -377,7 +387,6 @@ impl ChatView {
         let mut reply = Self::reply_entry(MessageStatus::Streaming);
         reply.id = format!("graph-a{n}");
         self.entries.push(reply);
-        self.sync_list();
         let now = Instant::now();
         self.phase = Phase::Streaming(Stream {
             beats: beats.into(),
@@ -385,87 +394,34 @@ impl ChatView {
             wait_until: now + THINK / 2,
             started: now,
             tool: None,
-            veil: markdown::new_veil(),
         });
         cut
-    }
-
-    fn veil(&self, part: usize) -> Option<Veil> {
-        let Phase::Streaming(stream) = &self.phase else {
-            return None;
-        };
-        let parts = &self.entries.last()?.parts;
-        if part + 1 != parts.len() || stream.tool.is_some() {
-            return None;
-        }
-        Some(stream.veil.clone())
-    }
-
-    fn render_entry(&mut self, ix: usize) -> AnyElement {
-        let Some(entry) = self.entries.get(ix) else {
-            return div().into_any_element();
-        };
-        let body = match entry.role {
-            MessageRole::User => {
-                let text = entry
-                    .parts
-                    .iter()
-                    .filter_map(|part| match part {
-                        MessagePart::Text { text, .. } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n\n");
-                transcript::user_bubble(&entry.id, &text, Vec::new())
-            }
-            _ => {
-                let key = format!("graph/{}", entry.id);
-                // Every tool group shows its steps; the chat takes no clicks.
-                let expanded: HashSet<String> = (0..entry.parts.len())
-                    .map(|start| format!("{key}/{start}"))
-                    .collect();
-                let images = HashMap::new();
-                let view = TurnView {
-                    key: &key,
-                    parts: &entry.parts,
-                    status: entry.status,
-                    duration_ms: entry.duration_ms,
-                    images: &images,
-                    expanded: &expanded,
-                    veil: self.veil(entry.parts.len().saturating_sub(1)),
-                };
-                let toggle = |_: String| -> OnClick { Box::new(|_: &ClickEvent, _, _| {}) };
-                let mut questions = |_: usize, _: &[_], _: bool| div().into_any_element();
-                let body = transcript::assistant_body(view, &toggle, &mut questions);
-                match self.asking {
-                    Some((title, line)) if ix + 1 == self.entries.len() => div()
-                        .flex()
-                        .flex_col()
-                        .gap(px(14.))
-                        .child(body)
-                        .child(info_card("icons/check.svg", title.into(), line.into()))
-                        .into_any_element(),
-                    _ => body,
-                }
-            }
-        };
-        transcript::entry_row(ix == 0, body)
     }
 }
 
 impl Render for ChatView {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .size_full()
-            .flex()
-            .flex_col()
-            .child(markdown::selection_reset())
-            .child(
-                list(
-                    self.list_state.clone(),
-                    cx.processor(|this, ix: usize, _window, _cx| this.render_entry(ix)),
-                )
-                .size_full(),
-            )
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let published = (
+            desktop_transcript::shape(&self.entries),
+            self.asking.is_some(),
+        );
+        if self.published.as_ref() != Some(&published) {
+            self.published = Some(published);
+            desktop_transcript::show(
+                &self.shared,
+                &self.transcript,
+                Some("graph".into()),
+                self.entries.clone(),
+                None,
+                cx,
+            );
+        }
+        desktop_transcript::fit(
+            &self.transcript,
+            f32::from(window.viewport_size().width),
+            false,
+            cx,
+        );
+        div().size_full().child(self.transcript.clone())
     }
 }

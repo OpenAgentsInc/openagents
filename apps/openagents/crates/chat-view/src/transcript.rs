@@ -41,10 +41,13 @@ use web_time::Instant;
 
 use gpui::{
     AnyElement, Bounds, ClipboardItem, ContentMask, Context, ListAlignment, ListOffset,
-    ListScrollEvent, ListState, MouseButton, MouseMoveEvent, MouseUpEvent, PathBuilder, Pixels,
-    Point, SharedString, StyledText, Subscription, Task, TextAlign, TextRun, Window, canvas, div,
-    list, point, prelude::*, px, size,
+    ListScrollEvent, ListState, MouseButton, MouseMoveEvent, MouseUpEvent, Pixels, Point,
+    SharedString, StyledText, Subscription, Task, TextAlign, TextRun, Window, canvas, div, list,
+    point, prelude::*, px, size,
 };
+
+#[cfg(not(target_family = "wasm"))]
+use gpui::PathBuilder;
 
 use openagents_doc::{
     MessagePart, MessageRole, MessageStatus, SessionMessageEntry, SubagentStatus,
@@ -62,6 +65,20 @@ use crate::notice::{NoticeChipIcon::Tile, notice_chip};
 use crate::syntax_cache::{DocumentHighlightKey, SyntaxHighlightCache};
 use crate::theme::Theme;
 use openagents_syntax::LanguageId as Lang;
+
+/// How a host lays a transcript out when it has none of the desktop's
+/// window chrome (a web page's chat).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HostLayout {
+    /// The first row's gap.
+    pub top: f32,
+    /// The gap under the last row.
+    pub bottom: f32,
+    /// Each side's gutter around the column.
+    pub side: f32,
+    /// Size to the rows, up to the room the host gives, instead of filling it.
+    pub fit_content: bool,
+}
 
 /// The engine method that returns a tool's full output or diff.
 pub const FETCH_TOOL_BLOB: &str = "FetchToolBlob";
@@ -970,6 +987,7 @@ pub fn call_block(call: &ToolCall) -> Option<ToolDetail> {
 /// Reduce an inline [`openagents_proto::ToolDiff`] to the changes pane's
 /// [`crate::diff::FileDiff`]: hunks grouped with 3 context lines, dual
 /// 1-based line numbers, unified-diff hunk headers, and add/del counts.
+#[cfg(not(target_family = "wasm"))]
 pub fn diff_to_file(diff: &openagents_proto::ToolDiff) -> crate::diff::FileDiff {
     use crate::diff::{DiffLine, FileDiff, FileStatus, Hunk, LineKind};
     let old = diff.old_text.as_deref().unwrap_or("");
@@ -1031,6 +1049,82 @@ pub fn diff_to_file(diff: &openagents_proto::ToolDiff) -> crate::diff::FileDiff 
         additions,
         deletions,
         max_line,
+    }
+}
+
+/// The web's [`diff_to_file`], without a diff library: the lines both sides
+/// share at the start and end are context (three of each kept), and the
+/// rest reads as removed, then added. One hunk.
+#[cfg(target_family = "wasm")]
+pub fn diff_to_file(diff: &openagents_proto::ToolDiff) -> crate::diff::FileDiff {
+    use crate::diff::{DiffLine, FileDiff, FileStatus, Hunk, LineKind};
+    let old: Vec<&str> = diff.old_text.as_deref().unwrap_or("").lines().collect();
+    let new: Vec<&str> = diff.new_text.lines().collect();
+    let prefix = old.iter().zip(&new).take_while(|(a, b)| a == b).count();
+    let suffix = old[prefix..]
+        .iter()
+        .rev()
+        .zip(new[prefix..].iter().rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let (old_end, new_end) = (old.len() - suffix, new.len() - suffix);
+    let mut hunks = Vec::new();
+    let (mut additions, mut deletions) = (0u32, 0u32);
+    if prefix < old_end || prefix < new_end {
+        let lead = prefix.saturating_sub(3);
+        let tail = (old_end + 3).min(old.len());
+        let mut lines = Vec::new();
+        let context = |ix: usize, offset: usize| DiffLine {
+            kind: LineKind::Context,
+            old_no: Some(ix as u32 + 1),
+            new_no: Some((ix + offset) as u32 + 1),
+            text: old[ix].to_owned(),
+        };
+        lines.extend((lead..prefix).map(|ix| context(ix, 0)));
+        for ix in prefix..old_end {
+            deletions += 1;
+            lines.push(DiffLine {
+                kind: LineKind::Del,
+                old_no: Some(ix as u32 + 1),
+                new_no: None,
+                text: old[ix].to_owned(),
+            });
+        }
+        for ix in prefix..new_end {
+            additions += 1;
+            lines.push(DiffLine {
+                kind: LineKind::Add,
+                old_no: None,
+                new_no: Some(ix as u32 + 1),
+                text: new[ix].to_owned(),
+            });
+        }
+        let shift = new_end as isize - old_end as isize;
+        lines.extend((old_end..tail).map(|ix| context(ix, 0)).map(|mut line| {
+            line.new_no = line.old_no.map(|n| (n as isize + shift) as u32);
+            line
+        }));
+        let old_len = tail - lead;
+        let new_len = (old_len as isize + shift) as usize;
+        hunks.push(Hunk {
+            header: format!("@@ -{},{} +{},{} @@", lead + 1, old_len, lead + 1, new_len),
+            lines,
+        });
+    }
+    FileDiff {
+        path: diff.path.clone(),
+        old_path: None,
+        status: if diff.old_text.is_none() {
+            FileStatus::Added
+        } else {
+            FileStatus::Modified
+        },
+        binary: false,
+        notices: Vec::new(),
+        hunks,
+        additions,
+        deletions,
+        max_line: old.len().max(new.len()) as u32,
     }
 }
 
@@ -3328,8 +3422,8 @@ pub struct TranscriptView<M: TranscriptMedia> {
     /// transcript's bottom (measured last frame): the last row pads past it
     /// so pinned content rests above the glass chrome it scrolls under.
     pub bottom_clearance: f32,
-    /// The first row's gap when the host has no titlebar over the list.
-    pub top_inset: Option<f32>,
+    /// How a host without the desktop's window chrome lays the list out.
+    pub host_layout: Option<HostLayout>,
     /// Hovered rail tick (grows + shows the preview card).
     pub rail_hover: Option<usize>,
     pub rail_cache: Option<crate::rail::RailCache>,
@@ -3618,7 +3712,7 @@ impl<M: TranscriptMedia> TranscriptView<M> {
             selection_scroll_task: None,
             rail_enabled,
             bottom_clearance: 0.0,
-            top_inset: None,
+            host_layout: None,
             rail_hover: None,
             rail_cache: None,
             hovered_entry: None,
@@ -3666,19 +3760,19 @@ impl<M: TranscriptMedia> TranscriptView<M> {
         self.rail_enabled
     }
 
-    /// Shell-driven: the measured height of the bottom chrome stack the
-    /// transcript scrolls under. Sub-pixel jitter is ignored so steady-state
-    /// frames don't re-notify.
-    /// Override the first row's gap, for a host whose list starts below
-    /// its own header rather than under a titlebar.
-    pub fn set_top_inset(&mut self, inset: Option<f32>, cx: &mut Context<Self>) {
-        if self.top_inset != inset {
-            self.top_inset = inset;
+    /// Lay the list out for a host without the desktop's titlebar,
+    /// composer overlay, and wide column; `None` keeps the desktop's.
+    pub fn set_host_layout(&mut self, layout: Option<HostLayout>, cx: &mut Context<Self>) {
+        if self.host_layout != layout {
+            self.host_layout = layout;
             self.list.remeasure();
             cx.notify();
         }
     }
 
+    /// Shell-driven: the measured height of the bottom chrome stack the
+    /// transcript scrolls under. Sub-pixel jitter is ignored so steady-state
+    /// frames don't re-notify.
     pub fn set_bottom_clearance(&mut self, height: f32, cx: &mut Context<Self>) {
         if (self.bottom_clearance - height).abs() > 0.5 {
             self.bottom_clearance = height;
@@ -5943,6 +6037,7 @@ impl<M: TranscriptMedia> TranscriptView<M> {
         };
         self.rendered_rows.insert(row.id.clone());
         let theme = Theme::of(cx).clone();
+        let side_gutter = self.host_layout.map_or(48.0, |layout| layout.side);
         let workspace_root = {
             self.host
                 .chat_place(self.chat_id.as_deref(), cx)
@@ -5955,8 +6050,8 @@ impl<M: TranscriptMedia> TranscriptView<M> {
         // for the titlebar — an override instance's first row keeps only the
         // ordinary turn gap, or the content sits double-chrome low.
         let top_gap = if ix == 0 {
-            if let Some(inset) = self.top_inset {
-                inset
+            if let Some(layout) = self.host_layout {
+                layout.top
             } else if self.doc_override.is_some() {
                 Theme::SPACE_LG
             } else {
@@ -5971,7 +6066,10 @@ impl<M: TranscriptMedia> TranscriptView<M> {
         // transcript is pinned to the bottom.
         let is_last = ix + 1 == self.rows.len();
         let bottom_pad = if is_last {
-            self.bottom_clearance + Theme::TRANSCRIPT_FADE_BAND + 8.0
+            match self.host_layout {
+                Some(layout) => layout.bottom,
+                None => self.bottom_clearance + Theme::TRANSCRIPT_FADE_BAND + 8.0,
+            }
         } else {
             0.0
         };
@@ -6227,6 +6325,11 @@ impl<M: TranscriptMedia> TranscriptView<M> {
         // Diagram fences this row just requested start rendering after layout.
         M::after_row(self, cx);
 
+        // The app's own content for the entry, under its last row.
+        let after_entry = row
+            .timestamp
+            .and_then(|_| M::after_entry(self, &row.entry_id, window, cx));
+
         // Hover-revealed metadata strip: a RESERVED 32px lane under the
         // entry's last row. Timestamp, copy action, and copied feedback only
         // flip visibility/content, so none of them shifts the virtualizer.
@@ -6244,7 +6347,13 @@ impl<M: TranscriptMedia> TranscriptView<M> {
             let timestamp = div()
                 .text_size(crate::typography::ui_rems(12.0))
                 .text_color(theme.text_muted.opacity(0.55))
-                .child(SharedString::from(format_timestamp(ms, &chrono::Local)));
+                // A host without message times (the web's site chats) leaves
+                // the time out and keeps the copy action.
+                .child(if ms > 0 {
+                    SharedString::from(format_timestamp(ms, &chrono::Local))
+                } else {
+                    SharedString::default()
+                });
             let copy = copy_text.map(|text| {
                 let entry_id = copy_entry_id.clone();
                 let fade_key = format!("copy-message-hover-{entry_id}");
@@ -6341,14 +6450,15 @@ impl<M: TranscriptMedia> TranscriptView<M> {
             .pb(px(bottom_pad))
             // Keep side gutters as the configurable column shrinks to fit;
             // a docked side card's room comes off the right.
-            .pl(px(48.0))
-            .pr(px(48.0 + self.right_reserve))
+            .pl(px(side_gutter))
+            .pr(px(side_gutter + self.right_reserve))
             .child(
                 div()
                     .w_full()
                     .max_w(px(self.content_width))
                     .min_w_0()
                     .child(inner)
+                    .children(after_entry)
                     .children(strip)
                     .children(trailer),
             );
@@ -8572,11 +8682,47 @@ pub fn activity_rail(
                     let x = bounds.origin.x + px(ACTIVITY_TRUNK_X);
                     let branch_y = bounds.origin.y + px(row_height / 2.0);
                     let bend_y = branch_y - px(ACTIVITY_BEND_RADIUS);
+                    // The web draws the tree from quads, square elbows and
+                    // all: path tessellation is a large part of a module.
+                    #[cfg(target_family = "wasm")]
+                    {
+                        let mut line = |origin: Point<Pixels>, size: gpui::Size<Pixels>| {
+                            window.paint_quad(gpui::fill(gpui::Bounds::new(origin, size), color));
+                        };
+                        if incoming_reveal > 0.0 {
+                            let mut bottom = bounds.origin.y
+                                + px((row_height / 2.0 - ACTIVITY_BEND_RADIUS) * incoming_reveal);
+                            if incoming_reveal >= 1.0 && continues && continuation_reveal > 0.0 {
+                                let continuation_height = (f32::from(bounds.size.height)
+                                    - (row_height / 2.0 - ACTIVITY_BEND_RADIUS))
+                                    .max(0.0);
+                                bottom = bend_y + px(continuation_height * continuation_reveal);
+                            }
+                            line(
+                                point(x - px(0.5), bounds.origin.y),
+                                gpui::size(px(1.0), bottom - bounds.origin.y),
+                            );
+                        }
+                        if branch_reveal > 0.0 {
+                            let down = (branch_y - bend_y) * branch_reveal.min(0.5) * 2.0;
+                            line(point(x - px(0.5), bend_y), gpui::size(px(1.0), down));
+                            let across = (ACTIVITY_BRANCH_END_X - ACTIVITY_TRUNK_X)
+                                * ((branch_reveal - 0.5).max(0.0) * 2.0);
+                            if across > 0.0 {
+                                line(
+                                    point(x - px(0.5), branch_y - px(0.5)),
+                                    gpui::size(px(across + 0.5), px(1.0)),
+                                );
+                            }
+                        }
+                    }
                     // Union the ribbons before painting. Stroke tessellation
                     // blends intersections twice, even in a single path.
+                    #[cfg(not(target_family = "wasm"))]
                     let mut tree = PathBuilder::fill().with_style(gpui::PathStyle::Fill(
                         gpui::FillOptions::default().with_fill_rule(gpui::FillRule::NonZero),
                     ));
+                    #[cfg(not(target_family = "wasm"))]
                     if incoming_reveal > 0.0 {
                         let mut bottom = point(
                             x,
@@ -8592,6 +8738,7 @@ pub fn activity_rail(
                         }
                         activity_ribbon(&mut tree, &[point(x, bounds.origin.y), bottom]);
                     }
+                    #[cfg(not(target_family = "wasm"))]
                     if branch_reveal > 0.0 {
                         let points: Vec<_> = activity_branch_points(branch_reveal)
                             .into_iter()
@@ -8599,6 +8746,7 @@ pub fn activity_rail(
                             .collect();
                         activity_ribbon(&mut tree, &points);
                     }
+                    #[cfg(not(target_family = "wasm"))]
                     if let Ok(path) = tree.build() {
                         window.paint_path(path, color);
                     }
@@ -8624,6 +8772,7 @@ pub fn activity_rail(
 
 /// A clockwise ribbon contour. Nonzero fill unions intersecting contours,
 /// preserving one alpha contribution at the fork on transparent surfaces.
+#[cfg(not(target_family = "wasm"))]
 pub fn activity_ribbon(path: &mut PathBuilder, points: &[Point<Pixels>]) {
     let mut left = Vec::with_capacity(points.len());
     let mut right = Vec::with_capacity(points.len());
@@ -9011,7 +9160,13 @@ impl<M: TranscriptMedia> Render for TranscriptView<M> {
             crate::overscroll::OverscrollSource::List(self.list.clone()),
             list(self.list.clone(), cx.processor(Self::render_row))
                 .size_full()
-                .with_sizing_behavior(gpui::ListSizingBehavior::Auto),
+                .with_sizing_behavior(
+                    if self.host_layout.is_some_and(|layout| layout.fit_content) {
+                        gpui::ListSizingBehavior::Infer
+                    } else {
+                        gpui::ListSizingBehavior::Auto
+                    },
+                ),
         );
         let content: AnyElement = if self.doc_override.is_some() {
             // The primary transcript's fade lives on the SHELL's outlet
@@ -9035,9 +9190,13 @@ impl<M: TranscriptMedia> Render for TranscriptView<M> {
         } else {
             list_el.into_any_element()
         };
+        let fit_content = self.host_layout.is_some_and(|layout| layout.fit_content);
         let root = div()
             .relative()
-            .size_full()
+            .when(!fit_content, |root| root.size_full())
+            .when(fit_content, |root| {
+                root.w_full().flex().flex_col().flex_shrink(1.)
+            })
             .min_h_0()
             .on_mouse_down(
                 MouseButton::Left,

@@ -4587,6 +4587,7 @@ dependencies = [
  "js-sys",
  "log",
  "oa-copy",
+ "openagents-chat-view",
  "openagents-doc",
  "openagents-gpui-web",
  "openagents-proto",

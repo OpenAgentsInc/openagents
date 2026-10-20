@@ -1,23 +1,26 @@
 //! The card: a header and one chat. A person's question appears, then the
 //! desktop demo's scripted reply streams in (a thought, text with code, a
-//! file read, a test run, a table), word by word through the veil, as the
+//! file read, a test run, a table), word by word, drawn by the desktop's
+//! transcript, as the
 //! demo at /demo/gpui plays it. Some seconds after it settles the chat
 //! starts over.
 
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::cell::RefCell;
+use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, ClickEvent, Context, FollowMode, FontWeight, IntoElement, ListAlignment, ListState,
-    ParentElement, Render, Styled, Window, div, list, prelude::*, px,
+    AppContext as _, Context, Entity, FontWeight, IntoElement, ParentElement, Render, Styled,
+    Window, div, prelude::*, px,
 };
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
 use openagents_web_chat_view::svg;
 use web_time::Instant;
 
-use openagents_web_chat_view::markdown::{self, Veil};
+use openagents_web_chat_view::desktop_transcript::{self, WebTranscript};
+use openagents_web_chat_view::labels::{footer_text, working_label};
 use openagents_web_chat_view::theme;
-use openagents_web_chat_view::transcript::{self, OnClick, TurnView, footer_text, working_label};
 
 use crate::demo::transcripts::{self, Step};
 use crate::{now_ms, split_words};
@@ -70,22 +73,30 @@ struct Stream {
     started: Instant,
     /// The running tool: its part index, when it finishes, its output.
     tool: Option<(usize, Instant, Option<String>, bool)>,
-    /// The fade on the text part now streaming.
-    veil: Veil,
 }
 
 pub struct CardApp {
     entries: Vec<SessionMessageEntry>,
-    list_state: ListState,
+    /// The chat as the desktop's transcript reads it.
+    shared: Entity<WebTranscript>,
+    /// The desktop's transcript, drawing `shared` (#12216).
+    transcript: Entity<desktop_transcript::Transcript>,
+    published: Option<Vec<(usize, usize, u8)>>,
     phase: Phase,
     rng: u64,
 }
 
 impl CardApp {
     pub fn new(still: bool, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let shared = cx.new(|_| WebTranscript::default());
+        let transcript =
+            desktop_transcript::new(&shared, Rc::new(RefCell::new(HashMap::new())), cx);
+        transcript.update(cx, |view, cx| view.set_rail_enabled(false, cx));
         let mut this = Self {
             entries: Vec::new(),
-            list_state: ListState::new(0, ListAlignment::Top, px(800.)),
+            shared,
+            transcript,
+            published: None,
             phase: Phase::Still,
             rng: 0x9e37_79b9_7f4a_7c15,
         };
@@ -131,16 +142,9 @@ impl CardApp {
         entry
     }
 
-    fn sync_list(&mut self) {
-        self.list_state.reset(self.entries.len());
-        self.list_state.set_follow_mode(FollowMode::Tail);
-        self.list_state.scroll_to_end();
-    }
-
     /// The question alone, with the reply to follow.
     fn ask(&mut self) {
         self.entries = vec![Self::question()];
-        self.sync_list();
         self.phase = Phase::Asking(Instant::now() + THINK);
     }
 
@@ -173,7 +177,6 @@ impl CardApp {
         }
         reply.duration_ms = Some(9_000);
         self.entries = vec![Self::question(), reply];
-        self.sync_list();
         self.phase = Phase::Still;
     }
 
@@ -183,14 +186,12 @@ impl CardApp {
             Phase::Asking(at) if now >= at => {
                 self.entries
                     .push(Self::reply_entry(MessageStatus::Streaming));
-                self.sync_list();
                 self.phase = Phase::Streaming(Stream {
                     steps: transcripts::reply(PROMPT, false).into(),
                     words: VecDeque::new(),
                     wait_until: now + Duration::from_millis(450),
                     started: now,
                     tool: None,
-                    veil: markdown::new_veil(),
                 });
                 cx.notify();
             }
@@ -254,7 +255,6 @@ impl CardApp {
                     Step::Text(body) => {
                         entry.parts.push(transcripts::text(&format!("t{ix}"), ""));
                         stream.words = split_words(&body);
-                        stream.veil = markdown::new_veil();
                     }
                     Step::Tool {
                         call,
@@ -279,70 +279,15 @@ impl CardApp {
             } else {
                 entry.status = Some(MessageStatus::Complete);
                 entry.duration_ms = Some(now.duration_since(stream.started).as_millis() as i64);
-                self.list_state.remeasure_items(last..last + 1);
                 self.phase = Phase::Holding(now + HOLD);
                 cx.notify();
                 return;
             }
         }
-        let fading = markdown::is_fading(&stream.veil);
-        if changed || fading {
-            self.list_state.remeasure_items(last..last + 1);
+        if changed {
             cx.notify();
         }
         self.phase = Phase::Streaming(stream);
-    }
-
-    fn veil(&self, part: usize) -> Option<Veil> {
-        let Phase::Streaming(stream) = &self.phase else {
-            return None;
-        };
-        let parts = &self.entries.last()?.parts;
-        if part + 1 != parts.len() || stream.tool.is_some() {
-            return None;
-        }
-        Some(stream.veil.clone())
-    }
-
-    fn render_entry(&mut self, ix: usize) -> AnyElement {
-        let Some(entry) = self.entries.get(ix) else {
-            return div().into_any_element();
-        };
-        let body = match entry.role {
-            MessageRole::User => {
-                let text = entry
-                    .parts
-                    .iter()
-                    .filter_map(|part| match part {
-                        MessagePart::Text { text, .. } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n\n");
-                transcript::user_bubble(&entry.id, &text, Vec::new())
-            }
-            _ => {
-                let key = format!("card/{}", entry.id);
-                // Every tool group shows its steps; the card has no clicks.
-                let expanded: HashSet<String> = (0..entry.parts.len())
-                    .map(|start| format!("{key}/{start}"))
-                    .collect();
-                let images = HashMap::new();
-                let view = TurnView {
-                    key: &key,
-                    parts: &entry.parts,
-                    status: entry.status,
-                    duration_ms: entry.duration_ms,
-                    images: &images,
-                    expanded: &expanded,
-                    veil: self.veil(entry.parts.len().saturating_sub(1)),
-                };
-                let toggle = |_: String| -> OnClick { Box::new(|_: &ClickEvent, _, _| {}) };
-                let mut questions = |_: usize, _: &[_], _: bool| div().into_any_element();
-                transcript::assistant_body(view, &toggle, &mut questions)
-            }
-        };
-        transcript::entry_row(ix == 0, body)
     }
 
     fn render_header(&self) -> impl IntoElement {
@@ -382,7 +327,25 @@ impl CardApp {
 }
 
 impl Render for CardApp {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let shape = desktop_transcript::shape(&self.entries);
+        if self.published.as_ref() != Some(&shape) {
+            self.published = Some(shape);
+            desktop_transcript::show(
+                &self.shared,
+                &self.transcript,
+                Some("card".into()),
+                self.entries.clone(),
+                None,
+                cx,
+            );
+        }
+        desktop_transcript::fit(
+            &self.transcript,
+            f32::from(window.viewport_size().width),
+            false,
+            cx,
+        );
         let mut root = div()
             .id("openagents-card")
             .size_full()
@@ -395,15 +358,12 @@ impl Render for CardApp {
             .text_color(theme::text())
             .text_size(px(theme::BODY));
         root.text_style().font_fallbacks = Some(theme::fallbacks());
-        root.child(self.render_header())
-            .child(markdown::selection_reset())
-            .child(
-                list(
-                    self.list_state.clone(),
-                    cx.processor(|this, ix: usize, _window, _cx| this.render_entry(ix)),
-                )
+        root.child(self.render_header()).child(
+            div()
                 .flex_1()
-                .w_full(),
-            )
+                .min_h_0()
+                .w_full()
+                .child(self.transcript.clone()),
+        )
     }
 }

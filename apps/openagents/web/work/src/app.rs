@@ -10,8 +10,8 @@ use gpui::{
     SharedString, Styled, Task, Window, div, prelude::*, px,
 };
 use openagents_web_chat_view::composer::{Submitted, TextInput};
+use openagents_web_chat_view::labels::{button, footer_text};
 use openagents_web_chat_view::theme;
-use openagents_web_chat_view::transcript::{button, footer_text};
 use openagents_web_client::web::Client;
 use serde_json::{Value, json};
 

@@ -178,6 +178,21 @@ fn tinted_mask(mask: &'static [u8], side: u32, color: gpui::Hsla) -> Arc<RenderI
     })
 }
 
+/// Paint a build-time mask, tinted `color`, into `bounds` during a paint
+/// pass: icons drawn outside an element (a chip's glyph under its text).
+pub fn paint_mask(
+    window: &mut Window,
+    bounds: Bounds<Pixels>,
+    mask: &'static [u8],
+    side: u32,
+    color: gpui::Hsla,
+) {
+    let image = tinted_mask(mask, side, color);
+    if let Err(error) = window.paint_image(bounds, Default::default(), image, 0, false) {
+        log::error!("mask: {error}");
+    }
+}
+
 impl BrowserImage {
     pub fn object_fit(mut self, fit: ObjectFit) -> Self {
         self.fit = fit;

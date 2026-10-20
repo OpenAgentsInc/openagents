@@ -120,6 +120,16 @@ pub trait TranscriptMedia: Sized + 'static {
         window: &mut Window,
         cx: &mut Context<TranscriptView<Self>>,
     ) -> Vec<AnyElement>;
+    /// What the app draws under an entry, after its last row: a web chat's
+    /// cards and check-ins. Nothing by default.
+    fn after_entry(
+        _this: &mut TranscriptView<Self>,
+        _entry_id: &SharedString,
+        _window: &mut Window,
+        _cx: &mut Context<TranscriptView<Self>>,
+    ) -> Option<AnyElement> {
+        None
+    }
     /// A file diff's lines inside a tool chip.
     fn diff_body(
         file: &FileDiff,

@@ -43,3 +43,16 @@ pub fn paint(path: SharedString, style: StyleRefinement) -> AnyElement {
     image.style().refine(&style);
     image.into_any_element()
 }
+
+/// Paints a chip's glyph from the same masks
+/// (`openagents_chat_view::icons::paint_web_glyph`).
+pub fn paint_glyph(
+    window: &mut gpui::Window,
+    bounds: gpui::Bounds<gpui::Pixels>,
+    path: SharedString,
+    color: gpui::Hsla,
+) {
+    if let Some(mask) = mask(&path) {
+        openagents_gpui_web::paint_mask(window, bounds, mask, 64, color);
+    }
+}

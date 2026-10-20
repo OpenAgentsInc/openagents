@@ -281,19 +281,34 @@ portable crate:
 
 - `chat-view/src/theme.rs`: reads the desktop's `Theme::dark()` tokens; only
   the web's own sizes remain.
-- `chat-view/src/transcript.rs`: user bubbles, tool groups and rows, error
-  and notice lines, and the labels, which `/gpui` still draws turns with.
-  The desktop's whole transcript is now portable
-  (`openagents_chat_view::transcript`, a `TranscriptView<M>` over a host
-  and a media type), and `/demo/gpui` draws it through
-  `chat-view/src/desktop_transcript.rs`. In the demo it adds about 200 KB
-  with brotli (1.157 MB to 1.357 MB): the transcript, the rail, and the
-  GPUI list and path code they use. `/gpui` is 1.460 MB, so it can take
-  the desktop's transcript only once that much room is found.
+- The transcript is no longer duplicated (#12216): `/gpui`, `/demo/gpui`,
+  the landers, the card, and AgentGraph's chat all draw the desktop's
+  `openagents_chat_view::transcript` through
+  `chat-view/src/desktop_transcript.rs`. What stays web-only is how the
+  pictures load (`WebMedia`), the site's cards under an answer (the
+  transcript's after-entry slot), and the labels around the chat
+  (`chat-view/src/labels.rs`). On the web the activity rail draws square
+  elbows from quads, a tool diff pairs lines without a diff library, chip
+  glyphs paint from the build-time masks, and a group hover doesn't recolor
+  an icon: each keeps a large dependency out of the module.
 - `chat-view/src/composer.rs`: a single-line field after GPUI's
   `examples/input.rs`, not the desktop's multi-line composer.
 - `web/chat/src/app.rs`: the sidebar, header, row menu, and composer row.
   The desktop's own sidebar and composer are in `crates/ui`.
+
+### Size cap for the chat module
+
+The `/gpui` chat module's cap is 1.75 MB with brotli (owner's coordinator,
+2026-10-20); every other module keeps 1.5 MB
+(`scripts/package-web-build.py`, `BUDGETS`). The reasons:
+
+- The last visit's first frame (#12244) paints in about 0.1 s, before the
+  module finishes downloading.
+- The extra 250 KB costs about 0.1 s at 20 Mbit/s.
+- One transcript for the desktop and the web beats keeping two.
+
+With the desktop's transcript in it, the chat module is 1,635,344 bytes
+with brotli (1,497,605 before, at `cdd534307e`).
 
 Not done in `/gpui` yet:
 

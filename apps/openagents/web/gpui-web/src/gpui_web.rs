@@ -16,7 +16,7 @@ mod window;
 pub use dispatcher::WebDispatcher;
 pub use display::WebDisplay;
 pub use http_client::FetchHttpClient;
-pub use image::{BrowserImage, img, mask_image};
+pub use image::{BrowserImage, img, mask_image, paint_mask};
 pub use keyboard::WebKeyboardLayout;
 pub use logging::init_logging;
 pub use platform::{WebFonts, WebPlatform};

@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
-use openagents_web_chat_view::transcript::NOTICE_PREFIX;
+use openagents_web_chat_view::labels::NOTICE_PREFIX;
 use openagents_web_client::ThreadMessage;
 use serde::Deserialize;
 

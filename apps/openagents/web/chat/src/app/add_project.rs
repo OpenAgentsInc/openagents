@@ -10,7 +10,7 @@ use gpui::{
 };
 use openagents_proto::{FolderEntry, FolderListing, HomeFolderMatch};
 use openagents_web_chat_view::composer::{Submitted, TextInput};
-use openagents_web_chat_view::transcript::button;
+use openagents_web_chat_view::labels::button;
 use openagents_web_chat_view::{svg, theme};
 use openagents_web_client::computer;
 use serde_json::json;

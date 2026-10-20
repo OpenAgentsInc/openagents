@@ -166,6 +166,7 @@ pub fn chip_pad_overrides(spans: &[SentMentionSpan]) -> Vec<Range<usize>> {
 }
 
 /// The icon of a chip. `path` names the file or folder for the file kinds.
+#[cfg(not(target_family = "wasm"))]
 pub fn chip_icon(kind: ChipKind, path: &str, appearance: crate::theme::Appearance) -> ChipIcon {
     use crate::file_icons::{FileIconIdentity, asset_path};
     match kind {
@@ -179,6 +180,20 @@ pub fn chip_icon(kind: ChipKind, path: &str, appearance: crate::theme::Appearanc
             appearance,
         )),
     }
+}
+
+/// The web's [`chip_icon`]: files and folders take the plain document and
+/// folder glyphs, since the file theme's manifest and art stay native.
+#[cfg(target_family = "wasm")]
+pub fn chip_icon(kind: ChipKind, _path: &str, _appearance: crate::theme::Appearance) -> ChipIcon {
+    ChipIcon::Glyph(match kind {
+        ChipKind::Image => crate::icons::GALLERY,
+        ChipKind::Skill => crate::icons::MAGIC_STICK_3,
+        ChipKind::Command => crate::icons::COMMAND,
+        ChipKind::Chat => crate::icons::CHAT_ROUND_LINE,
+        ChipKind::File => crate::icons::DOCUMENT,
+        ChipKind::Directory => crate::icons::FOLDER,
+    })
 }
 
 /// Paint a chip like the transcript's file badges: a soft rounded pill whose
@@ -222,10 +237,11 @@ pub fn paint_chip(
         size(side, side),
     );
     match icon {
-        // The web draws icons through its painter's masks, never an SVG
-        // renderer; its chips keep the plain well.
+        // The web paints its build-time masks, never an SVG renderer.
         #[cfg(target_family = "wasm")]
-        ChipIcon::Glyph(_) => {}
+        ChipIcon::Glyph(path) => {
+            crate::icons::paint_web_glyph(window, bounds, (*path).into(), theme.text_muted);
+        }
         #[cfg(not(target_family = "wasm"))]
         ChipIcon::Glyph(path) => {
             let _ = window.paint_svg(

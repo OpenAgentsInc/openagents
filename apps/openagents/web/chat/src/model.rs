@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
 use openagents_proto::SidebarSection;
-use openagents_web_chat_view::transcript::NOTICE_PREFIX;
+use openagents_web_chat_view::labels::NOTICE_PREFIX;
 use openagents_web_client::workspace::{ChatRow, Organize, Sort, View};
 use openagents_web_client::{FileRef, MessageRow, Project, Thread, ThreadMessage, file_url};
 
@@ -371,7 +371,7 @@ pub fn title_from(text: &str) -> String {
         .find(|l| !l.trim().is_empty())
         .unwrap_or("")
         .trim();
-    openagents_web_chat_view::transcript::truncate(line, 60)
+    openagents_web_chat_view::labels::truncate(line, 60)
 }
 
 #[cfg(test)]
