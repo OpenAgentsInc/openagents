@@ -105,7 +105,7 @@ border-radius:14px;background:rgba(10,10,10,.62);border:1px solid rgba(255,255,2
 .pylon{all:unset;position:absolute;left:0;top:0;box-sizing:border-box;cursor:pointer;pointer-events:auto;\
 width:var(--hw);height:var(--h);transform:translate3d(calc(var(--x) - var(--hw) / 2),calc(var(--y) - var(--h)),0);\
 opacity:0;transition:opacity .7s ease,transform .6s cubic-bezier(.2,.8,.2,1)}\
-.pylon.in{opacity:1}.pylon.out{opacity:0;pointer-events:none}\
+.pylon.in{opacity:1}.pylon.out,.pylon.hid{opacity:0;pointer-events:none}\
 .pylon .beam{position:absolute;left:50%;bottom:0;width:var(--bw);height:100%;margin-left:calc(var(--bw) / -2);\
 transform:scaleY(0);transform-origin:50% 100%;border-radius:999px 999px 2px 2px;\
 background:linear-gradient(to top,#fff 0%,rgba(255,255,255,.9) 35%,rgba(255,255,255,0) 100%);\
@@ -232,7 +232,7 @@ else{new PerformanceObserver((list,observer)=>{\
 if(list.getEntriesByName(\"lander5-presented\").length){observer.disconnect();go()}}).observe({type:\"mark\"});\
 addEventListener(\"load\",()=>setTimeout(go,1200))}";
 
-fn still_gray_grid() -> String {
+pub(super) fn still_gray_grid() -> String {
     lander5_web::shaders::still_gray_grid_source(CAMERA_TIME)
 }
 

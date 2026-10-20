@@ -2050,6 +2050,33 @@ async fn the_lander9_page_has_the_hand_button_and_serves_the_landmarker() {
     }
 }
 
+/// `/lander10`: one response with the chat's box, the pylons' visually
+/// hidden list, the box the pillars stay out of, and the loader; the same
+/// page at a chat's address. It loads `/lander8`'s and `/pylons`' builds.
+#[tokio::test]
+async fn the_lander10_page_has_the_chat_and_the_pylons() {
+    let root = tempfile::tempdir().unwrap();
+    let config = config(root.path().join("tasks"));
+    let (status, headers, html) = get_with(router(config.clone()), "/lander10", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("</svg>OpenAgents</h1><section id=\"pylons-panel\" class=\"sr\""), "{html}");
+    assert!(html.contains("data-pylons-keep") && html.contains("class=\"chat-mount\""));
+    assert!(html.contains("/lander8/build/") && html.contains("/pylons/layer/"));
+    assert!(!html.contains("What can we help with"));
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"), "{policy}");
+    crate::copy_guard::assert_plain("/lander10", &html);
+    let chat = "/lander10/chat/5e1f0c3a-7d2b-4c4e-9a1b-000000000001";
+    let (status, _, same) = get_with(router(config.clone()), chat, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(same, html);
+    let (status, _, _) = get_with(router(config.clone()), "/lander10/chat/nope", LOCAL).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    for path in ["/lander10", chat] {
+        assert!(crate::upstream::owned(path), "{path}");
+    }
+}
+
 /// A server started with `--layertree DIR` holding a stand-in LayerTree
 /// demo build.
 fn with_layertree(root: &std::path::Path) -> Config {

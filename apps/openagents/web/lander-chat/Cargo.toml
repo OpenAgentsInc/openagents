@@ -46,4 +46,4 @@ getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] 
 uuid.workspace = true
 chrono = { version = "0.4", features = ["wasmbind"] }
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Document", "Element", "Event", "EventTarget", "History", "Location", "Performance", "Storage", "Window"] }
+web-sys = { version = "0.3", features = ["CssStyleDeclaration", "Document", "Element", "Event", "EventTarget", "History", "HtmlElement", "Location", "Performance", "Storage", "Window"] }

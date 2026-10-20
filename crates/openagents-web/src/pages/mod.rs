@@ -32,6 +32,7 @@ mod lander7;
 mod pylons;
 mod pylons_field;
 mod lander8;
+mod lander10;
 mod lander9;
 mod landing;
 mod layertree;
@@ -128,6 +129,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(lander7::routes())
         .merge(pylons::routes())
         .merge(lander8::routes())
+        .merge(lander10::routes())
         .merge(lander9::routes())
         .merge(bunny::routes())
         .merge(gpui_demo::routes())

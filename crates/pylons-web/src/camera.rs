@@ -105,6 +105,14 @@ fn overlaps(a: Keep, b: Keep) -> bool {
     a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3
 }
 
+/// Whether the pillar at `placed`, with its tag, overlaps one of `keep`.
+#[must_use]
+pub fn blocked(placed: &Placed, keep: &[Keep]) -> bool {
+    let tag = tag(placed);
+    keep.iter()
+        .any(|k| overlaps((tag.0, tag.1, tag.2, placed.y + 6.0), *k))
+}
+
 /// Up to `count` spots on a `width` × `height` view, nearest the middle of
 /// the floor first: crossings of the Grid's lines whose pillar and tag fit
 /// on the screen, below `top` (the corner name), outside `keep` (the list

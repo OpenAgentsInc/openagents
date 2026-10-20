@@ -12,7 +12,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::{Document, Element, EventSource, HtmlElement, KeyboardEvent, MessageEvent, Window};
 
-use crate::camera::{Keep, Placed, spots};
+use crate::camera::{Keep, Placed, blocked, spots};
 
 /// The page's event stream.
 const LIVE: &str = "/pylons/live";
@@ -41,6 +41,9 @@ struct Layer {
     /// Which pylon stands on each spot; `None` is a free spot.
     slots: Vec<Option<String>>,
     spots: Vec<Placed>,
+    /// Boxes pylons stay out of: the list panel and anything the page marks
+    /// `data-pylons-keep` (`/lander10`'s chat).
+    keep: Vec<Keep>,
     /// Pillars fading out, by element, until they are removed.
     leaving: Vec<HtmlElement>,
     /// The site's clock minus this one, s.
@@ -80,6 +83,7 @@ fn run() -> Option<()> {
         entries: BTreeMap::new(),
         slots: Vec::new(),
         spots: Vec::new(),
+        keep: Vec::new(),
         leaving: Vec::new(),
         offset: 0.0,
         synced: false,
@@ -122,7 +126,23 @@ fn run() -> Option<()> {
         on_resize.forget();
     }
 
-    // Clicks on a pillar or a list entry open its card.
+    // A page whose own content moves (the chat card growing) says so, and
+    // the pillars make room.
+    {
+        let layer = layer.clone();
+        let on_keep = Closure::<dyn FnMut()>::new(move || {
+            let mut layer = layer.borrow_mut();
+            layer.layout();
+            layer.place_all();
+        });
+        document
+            .add_event_listener_with_callback("pylons-keep", on_keep.as_ref().unchecked_ref())
+            .ok()?;
+        on_keep.forget();
+    }
+
+    // Clicks on a pillar or a list entry open its card; a click anywhere
+    // else but the card closes it.
     {
         let layer = layer.clone();
         let on_click = Closure::<dyn FnMut(web_sys::Event)>::new(move |event: web_sys::Event| {
@@ -134,6 +154,10 @@ fn run() -> Option<()> {
                 return;
             }
             let Some(found) = target.closest("[data-pylon]").ok().flatten() else {
+                let inside = target.closest("#pylon-card").ok().flatten().is_some();
+                if !inside && layer.borrow().open.is_some() {
+                    close(&layer);
+                }
                 return;
             };
             if let Some(id) = found.get_attribute("data-pylon") {
@@ -375,8 +399,23 @@ impl Layer {
             .and_then(|v| v.as_f64())
             .unwrap_or(720.0);
         let mut keep: Vec<Keep> = Vec::new();
+        let mut boxes: Vec<Element> = Vec::new();
         if let Some(panel) = self.document.get_element_by_id("pylons-panel") {
-            let rect = panel.get_bounding_client_rect();
+            boxes.push(panel);
+        }
+        if let Ok(marked) = self.document.query_selector_all("[data-pylons-keep]") {
+            for i in 0..marked.length() {
+                if let Some(element) = marked.item(i).and_then(|n| n.dyn_into::<Element>().ok()) {
+                    boxes.push(element);
+                }
+            }
+        }
+        for element in boxes {
+            let rect = element.get_bounding_client_rect();
+            // A visually hidden list takes no room.
+            if rect.width() < 2.0 || rect.height() < 2.0 {
+                continue;
+            }
             keep.push((
                 rect.left() - 8.0,
                 rect.top() - 8.0,
@@ -386,6 +425,7 @@ impl Layer {
         }
         let count = self.slots.len().max(12);
         self.spots = spots(count, width, height, TOP, &keep);
+        self.keep = keep;
     }
 
     fn place_all(&self) {
@@ -396,8 +436,16 @@ impl Layer {
 
     fn place(&self, entry: &Entry) {
         let Some(spot) = self.spots.get(entry.slot) else {
+            // No room left on the floor (the page's own content covers it).
+            let _ = entry.pillar.class_list().add_1("hid");
             return;
         };
+        // A spot the page's own content now covers (the chat card grew
+        // over it before the pillars moved) hides its pillar.
+        let _ = entry
+            .pillar
+            .class_list()
+            .toggle_with_force("hid", blocked(spot, &self.keep));
         let style = entry.pillar.style();
         let _ = style.set_property("--x", &format!("{:.1}px", spot.x));
         let _ = style.set_property("--y", &format!("{:.1}px", spot.y));

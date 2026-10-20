@@ -9,8 +9,10 @@ use openagents_web_chat_view::transcript::NOTICE_PREFIX;
 use openagents_web_client::ThreadMessage;
 use serde::Deserialize;
 
-/// The page.
+/// The pages the chat is on: `/lander8`, and `/lander10` with the live
+/// pylons around it.
 pub const BASE: &str = "/lander8";
+pub const BASES: [&str; 2] = ["/lander8", "/lander10"];
 /// What the chat reads before it sends anything (`pages/lander8.rs`).
 pub const SESSION: &str = "/lander8/session";
 /// The composer's longest message, as the site takes it.
@@ -39,17 +41,34 @@ pub struct Session {
 
 /// The chat an address names, if any: `/lander8/chat/{id}`.
 pub fn chat_of(path: &str) -> Option<String> {
-    let id = path.strip_prefix(BASE)?.strip_prefix("/chat/")?;
+    let id = path.strip_prefix(base_of(path))?.strip_prefix("/chat/")?;
     let id = id.trim_end_matches('/');
     (!id.is_empty() && !id.contains('/')).then(|| id.to_owned())
 }
 
 /// The address for `chat`, or the page's own for a new one.
-pub fn path_for(chat: Option<&str>) -> String {
+pub fn path_for(base: &str, chat: Option<&str>) -> String {
     match chat {
-        Some(id) => format!("{BASE}/chat/{id}"),
-        None => BASE.to_owned(),
+        Some(id) => format!("{base}/chat/{id}"),
+        None => base.to_owned(),
     }
+}
+
+/// Which of [`BASES`] the address `path` is under (`/lander8` when none).
+pub fn base_of(path: &str) -> &'static str {
+    BASES
+        .into_iter()
+        .find(|base| {
+            path.strip_prefix(base)
+                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+        })
+        .unwrap_or(BASE)
+}
+
+/// Whether the page says something over the composer before the first
+/// message: `/lander10` shows only the composer.
+pub fn welcomes(base: &str) -> bool {
+    base == BASE
 }
 
 /// Whether a refusal means the person has to sign in to keep going.
@@ -207,8 +226,35 @@ pub struct Layout {
 /// Under the mark and name in the page's corner.
 const TOP: f32 = 60.;
 
+/// How far down the page the card may grow on `/lander10`, as a share of
+/// its height: the pylons stand above it. A wide page has room for them
+/// beside the card too; a phone keeps the band under the horizon for them.
+pub const PYLONS_SHARE: f32 = 0.4;
+pub const PYLONS_SHARE_NARROW: f32 = 0.58;
+
+/// The highest the card grows on a `w` by `h` page under `base`.
+pub fn card_top(base: &str, w: f32, h: f32) -> f32 {
+    let share = if w < 640. {
+        PYLONS_SHARE_NARROW
+    } else {
+        PYLONS_SHARE
+    };
+    if welcomes(base) {
+        TOP
+    } else {
+        (h * share).max(TOP)
+    }
+}
+
 impl Layout {
     pub fn new(w: f32, h: f32) -> Self {
+        Self::under(w, h, TOP)
+    }
+
+    /// [`Layout::new`] with the card growing no higher than `top`
+    /// (`/lander10` keeps the upper part of the page for the pylons).
+    pub fn under(w: f32, h: f32, top: f32) -> Self {
+        let top = top.max(TOP);
         let narrow = w < 640.;
         let gutter = if narrow { 12. } else { 24. };
         let col = (w - 2. * gutter).clamp(0., 760.);
@@ -217,16 +263,16 @@ impl Layout {
         let bottom = if narrow { 12. } else { 28. };
         let composer = Rect {
             x,
-            y: (h - bottom - composer_h).max(TOP),
+            y: (h - bottom - composer_h).max(top),
             w: col,
             h: composer_h,
         };
         let gap = if narrow { 10. } else { 14. };
         let room = Rect {
             x,
-            y: TOP,
+            y: top,
             w: col,
-            h: (composer.y - gap - TOP).max(0.),
+            h: (composer.y - gap - top).max(0.),
         };
         Self {
             narrow,
@@ -251,8 +297,15 @@ mod tests {
         assert_eq!(chat_of("/lander8/chat/abc/"), Some("abc".into()));
         assert_eq!(chat_of("/lander8/chat/a/b"), None);
         assert_eq!(chat_of("/gpui/chat/abc"), None);
-        assert_eq!(path_for(Some("x")), "/lander8/chat/x");
-        assert_eq!(path_for(None), "/lander8");
+        assert_eq!(path_for(BASE, Some("x")), "/lander8/chat/x");
+        assert_eq!(path_for(BASE, None), "/lander8");
+        assert_eq!(chat_of("/lander10/chat/abc"), Some("abc".into()));
+        assert_eq!(chat_of("/lander100/chat/abc"), None);
+        assert_eq!(base_of("/lander10"), "/lander10");
+        assert_eq!(base_of("/lander10/chat/x"), "/lander10");
+        assert_eq!(base_of("/lander8/chat/x"), "/lander8");
+        assert_eq!(path_for("/lander10", Some("x")), "/lander10/chat/x");
+        assert!(welcomes("/lander8") && !welcomes("/lander10"));
     }
 
     #[test]
@@ -308,6 +361,9 @@ mod tests {
         assert_eq!(phone.composer.w, 390. - 24.);
         assert_eq!(phone.composer.x, 12.);
         assert!(phone.room.h > 600.);
+        let shared = Layout::under(1440., 900., card_top("/lander10", 1440., 900.));
+        assert_eq!(shared.room.y, 360.);
+        assert_eq!(shared.composer, desktop.composer);
     }
 
     #[test]

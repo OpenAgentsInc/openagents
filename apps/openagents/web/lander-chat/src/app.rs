@@ -21,7 +21,7 @@ use openagents_web_chat_view::transcript::{
 };
 use openagents_web_client::web::{Client, Follow};
 use openagents_web_client::{Refusal, StreamEvent};
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue};
 use web_time::Instant;
 
 use crate::model::{self, Layout, Session};
@@ -51,6 +51,9 @@ struct Notice {
 }
 
 pub struct LanderChat {
+    /// The last frame's layout, and the area published for it.
+    layout: Option<Layout>,
+    kept: Option<(f32, f32, f32, f32)>,
     client: Option<Client>,
     session: Option<Session>,
     still: bool,
@@ -100,6 +103,8 @@ impl LanderChat {
             }
         });
         let mut this = Self {
+            layout: None,
+            kept: None,
             client: None,
             session: None,
             still,
@@ -168,6 +173,7 @@ impl LanderChat {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
+        self.keep_area();
         if self.scrolled {
             self.scrolled = false;
             let offset = self.scroll.offset().y;
@@ -180,6 +186,38 @@ impl LanderChat {
                 .retain(|(_, at)| now.duration_since(*at).as_secs_f32() * 1000. < VEIL_FADE_MS);
             // The veil's fade and the working label's dots.
             cx.notify();
+        }
+    }
+
+    /// The card and the composer's box on the page, published when it
+    /// changes ([`publish_keep`]).
+    fn keep_area(&mut self) {
+        let Some(layout) = self.layout else {
+            return;
+        };
+        let shows_card = !self.entries.is_empty() || self.live.is_some() || self.sending;
+        let transcript = self.scroll.bounds();
+        let top = if shows_card && f32::from(transcript.size.height) > 0. {
+            let above = if self.current.is_some() { 42. } else { 0. };
+            f32::from(transcript.origin.y) - 1. - above
+        } else {
+            layout.composer.y
+        };
+        let area = (
+            layout.room.x,
+            top.max(0.),
+            layout.room.w,
+            layout.composer.bottom() - top.max(0.),
+        );
+        let moved = self.kept.is_none_or(|kept| {
+            (kept.0 - area.0).abs() > 1.
+                || (kept.1 - area.1).abs() > 1.
+                || (kept.2 - area.2).abs() > 1.
+                || (kept.3 - area.3).abs() > 1.
+        });
+        if moved {
+            self.kept = Some(area);
+            publish_keep(area);
         }
     }
 
@@ -745,7 +783,8 @@ impl Render for LanderChat {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = window.viewport_size();
         let (w, h) = (f32::from(viewport.width), f32::from(viewport.height));
-        let layout = Layout::new(w, h);
+        let layout = Layout::under(w, h, model::card_top(base(), w, h));
+        self.layout = Some(layout);
         let shows_card = !self.entries.is_empty() || self.live.is_some() || self.sending;
         let mut column = div()
             .absolute()
@@ -762,7 +801,7 @@ impl Render for LanderChat {
                 column = column.child(new_chat);
             }
             column = column.child(self.render_card(&layout, cx));
-        } else if !self.loading {
+        } else if !self.loading && model::welcomes(base()) {
             column = column.child(
                 div()
                     .flex_1()
@@ -799,6 +838,39 @@ impl Render for LanderChat {
 // The page around the canvas
 // ---------------------------------------------------------------------
 
+/// The page this chat is on (`/lander8` or `/lander10`).
+fn base() -> &'static str {
+    let path = web_sys::window()
+        .and_then(|w| w.location().pathname().ok())
+        .unwrap_or_default();
+    model::base_of(&path)
+}
+
+/// Tells the page where the chat is drawn, when the page asks (an element
+/// `#lander-chat-keep`, which `/lander10`'s pylons stay out of): the box
+/// is moved to cover the card and the composer, and `pylons-keep` fires on
+/// the document.
+fn publish_keep(area: (f32, f32, f32, f32)) {
+    let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+        return;
+    };
+    let Some(element) = document.get_element_by_id("lander-chat-keep") else {
+        return;
+    };
+    let Ok(element) = element.dyn_into::<web_sys::HtmlElement>() else {
+        return;
+    };
+    let style = element.style();
+    let (x, y, w, h) = area;
+    let _ = style.set_property("left", &format!("{x:.0}px"));
+    let _ = style.set_property("top", &format!("{y:.0}px"));
+    let _ = style.set_property("width", &format!("{w:.0}px"));
+    let _ = style.set_property("height", &format!("{h:.0}px"));
+    if let Ok(event) = web_sys::Event::new("pylons-keep") {
+        let _ = document.dispatch_event(&event);
+    }
+}
+
 fn route_chat() -> Option<String> {
     let path = web_sys::window()?.location().pathname().ok()?;
     model::chat_of(&path)
@@ -809,7 +881,7 @@ fn push_path(chat: Option<&str>) {
     let Some(window) = web_sys::window() else {
         return;
     };
-    let path = model::path_for(chat);
+    let path = model::path_for(base(), chat);
     if window.location().pathname().ok().as_deref() == Some(path.as_str()) {
         return;
     }
@@ -833,7 +905,7 @@ fn sign_in(chat: Option<&str>) {
     let Some(window) = web_sys::window() else {
         return;
     };
-    let back = String::from(js_sys::encode_uri_component(&model::path_for(chat)));
+    let back = String::from(js_sys::encode_uri_component(&model::path_for(base(), chat)));
     let _ = window
         .location()
         .assign(&format!("/login?return_to={back}"));
