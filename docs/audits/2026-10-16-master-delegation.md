@@ -523,8 +523,9 @@ The status lines below summarize each issue and its comments. Open the issue for
   compare their hyper-connection coefficients/residuals, router ids/weights and
   expert activations, attention/compression/index selections, and Engram map,
   hashes, and gated output against #12371's pinned original-weight oracle. Record
-  BF16/FP8/FP4 activation boundaries and tie behavior explicitly. Synthetic NumPy
-  fixtures qualify float32 equations only; full attention wiring, 40-layer
+  BF16/FP8/FP4 activation boundaries and tie behavior explicitly. The complete Engram token map now matches the pinned reference function
+  (see the model plan); synthetic NumPy fixtures qualify float32 equations
+  only. Full attention wiring, 40-layer
   decode, native CUDA, and a V4.1 serving model remain separate gates.
 
 - #12373: on the #12371 oracle VM with the V4.1-Flash weights, from

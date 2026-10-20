@@ -593,7 +593,7 @@ This phase does not publish a V4.1 serving model.
 | [#12377](https://github.com/OpenAgentsInc/openagents/issues/12377), P1.3 | Hyper-connections | Float32 joint-stream RMS projection, pre/post coefficients, exact Sinkhorn order, collapse using the previous pre-mix, and residual expansion with `comb[source, target]`. Four targeted tests cover a nonuniform four-stream fixture, orientation, extreme logits, and invalid input. |
 | [#12378](https://github.com/OpenAgentsInc/openagents/issues/12378), P1.7 | MoE | Float32 sqrtsoftplus routing, selection-only correction bias, top-k normalization, asymmetric SwiGLU clamps, selected-expert accumulation, and the shared expert. The row-provider adapter reads FP4/FP8/BF16/F32 rows through the existing loader. |
 | [#12379](https://github.com/OpenAgentsInc/openagents/issues/12379), P1.4a/P1.5a | Attention and selection primitives | Float32 latent sparse attention and sink, causal window/ring addresses, transactional compression chunks, rectified index scores, and two-level candidate selection. Low-rank projections, RoPE/YaRN, activation quantization, and cross-layer source-cache wiring remain later work. |
-| [#12380](https://github.com/OpenAgentsInc/openagents/issues/12380), P1.6 | Engram | Filed; implement after #12379. |
+| [#12380](https://github.com/OpenAgentsInc/openagents/issues/12380), P1.6 | Engram | Rust token normalization/compression, both prime bucket layouts, pinned per-layer multipliers, streaming/masked n-grams, sparse row lookup, and per-stream signed-square-root residual gating. |
 
 The math is reimplemented from the MIT-licensed checkpoint reference at
 `1bae0e1088993b9b82de08f59de5be5a34e42170`.
@@ -631,3 +631,31 @@ selection always intersects them with the causal visible length. Exact ties
 choose the lower block/position. Unavailable picks become `-1`, including masked
 candidates, so they cannot address a KV row. The official device's tie ordering
 and BF16 attention-probability rounding still need oracle comparison.
+
+The Engram addition brings the accumulated CPU component suite to 26 passing
+tests. Integer hash IDs and prime layouts match the NumPy fixture exactly;
+residual gating uses `2e-6` absolute tolerance. Hash history stops at masked
+tokens, survives prefill/decode boundaries, and resets explicitly. The fixed
+layer-1/layer-14 multipliers come from the reference's NumPy RNG; substituting
+another random generator would select different table rows.
+
+The [retained tokenizer qualification](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41_cpu/engram_tokenizer_qualification.json)
+also compares the complete pinned tokenizer against the unmodified
+`build_compressed_token_map` function extracted from the SHA-256-checked public
+`inference/engram.py`. All 129,280 entries agree by their little-endian `u32`
+map digest, `c60a86322ec17b4142bfef3c57a8d81fb428550cdf487f88a4320cb59fe46481`.
+The result has 99,092 compressed IDs and compressed pad ID 2. Rust uses the
+locked `tokenizers` 0.23.2; the independent Python check uses 0.22.2. No model
+weight bytes were opened. The [Rust checker](../../crates/psionic/crates/psionic-models/examples/deepseek_v41_engram_check.rs)
+checks the tokenizer pin and generates a report; the
+[qualification script](../../scripts/dev/deepseek-v41-engram-qualification.py)
+compares that report with the pinned reference function. Neither runs PyTorch
+or TileLang.
+
+This completes the four filed CPU-component implementations. Next, connect
+these components to the checkpoint's projection weights, implement the precise
+BF16 and activation-quantization boundaries and RoPE/YaRN, and wire the shared
+KV/indexer state across layers before attempting P1.8's full CPU decoder. The
+original-weight oracle remains a numerical dependency for that integration;
+closing these issues does not mark P1.4's whole attention block, full CPU decode,
+native V4.1 CUDA, stage transport, or Pylon recovery as qualified.

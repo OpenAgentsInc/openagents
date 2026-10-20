@@ -8,6 +8,7 @@
 //! checkpoint in memory.
 
 pub mod attention;
+pub mod engram;
 pub mod hyperconnections;
 pub mod moe;
 
@@ -26,6 +27,8 @@ pub enum CpuError {
     },
     #[error("{0} contains a nonfinite value")]
     NonFinite(&'static str),
+    #[error("Engram token normalization failed: {0}")]
+    Tokenization(String),
     #[error(transparent)]
     Weights(#[from] crate::deepseek_v41_weights::V41WeightsError),
 }

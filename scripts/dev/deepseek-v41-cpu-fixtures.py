@@ -89,8 +89,54 @@ def attention():
     write('attention',dict(query=q.flatten().tolist(),kv=kv.flatten().tolist(),sinks=sinks.tolist(),indices=ids.tolist(),attention=y.flatten().tolist(),index_weights=iw.tolist(),scores=score.tolist(),values=values.flatten().tolist(),gates=gates.flatten().tolist(),norm=norm.tolist(),compressed=compressed.tolist()))
 
 
+def engram():
+    # engram.py:68-184, using the same NumPy RNG and exact integer products.
+    import math
+    seen=set();primes=[]
+    for layer in [1,14]:
+        row=[]
+        for gram in range(3):
+            n=15999999
+            for head in range(8):
+                n+=1
+                while n in seen or n%2==0 or any(n%d==0 for d in range(3,math.isqrt(n)+1,2)):
+                    n+=1
+                seen.add(n);row.append(n)
+        primes.append(row)
+    bound=(np.iinfo(np.int64).max//99092)//2
+    multipliers=[(np.random.default_rng(10007*layer).integers(0,bound,size=(4,),dtype=np.int64)*2+1).tolist() for layer in [1,14]]
+    compressed=[4,5,None,6,7,8,99091]
+    hashes=[]
+    for pos in range(len(compressed)):
+        tokens=[];blocked=False
+        for shift in range(4):
+            source=compressed[pos-shift] if pos>=shift else None
+            blocked=blocked or source is None
+            tokens.append(2 if blocked else source)
+        layers=[]
+        for ps,ms in zip(primes,multipliers):
+            rolling=tokens[0]*ms[0];row=[];offset=0
+            for gram in range(1,4):
+                rolling^=tokens[gram]*ms[gram]
+                for head in range(8):
+                    p=ps[(gram-1)*8+head];row.append(rolling%p+offset);offset+=p
+            layers.append(row)
+        hashes.append(layers)
+    x=np.array([[1,-2,3],[10,-.1,.25]],dtype=np.float32)
+    keys=np.array([[.25,2,-1],[-.1,3,7]],dtype=np.float32)
+    value=np.array([.25,-1.5,2],dtype=np.float32)
+    qw=np.array([[1,.5,2],[.2,1,1.5]],dtype=np.float32)
+    kw=np.array([[.5,1,1],[2,.5,1]],dtype=np.float32)
+    rstd=(1/np.sqrt(np.mean(x*x,axis=-1)+np.float32(1e-20)))*(1/np.sqrt(np.mean(keys*keys,axis=-1)+np.float32(1e-20)))
+    dot=(x*(qw*kw)*keys).sum(axis=-1)*rstd*np.float32(3**-.5)
+    gate=1/(1+np.exp(-np.copysign(np.sqrt(np.maximum(np.abs(dot),np.float32(1e-6))),dot)))
+    output=x+gate[:,None]*value
+    write('engram',dict(primes=primes,multipliers=multipliers,compressed=compressed,hashes=hashes,residual=x.flatten().tolist(),keys=keys.flatten().tolist(),value=value.tolist(),q_weight=qw.flatten().tolist(),k_weight=kw.flatten().tolist(),output=output.flatten().tolist()))
+
+
 if __name__ == '__main__':
     OUT.mkdir(parents=True, exist_ok=True)
     hyperconnections()
     moe()
     attention()
+    engram()
