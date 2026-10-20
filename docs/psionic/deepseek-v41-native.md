@@ -592,7 +592,7 @@ This phase does not publish a V4.1 serving model.
 | --- | --- | --- |
 | [#12377](https://github.com/OpenAgentsInc/openagents/issues/12377), P1.3 | Hyper-connections | Float32 joint-stream RMS projection, pre/post coefficients, exact Sinkhorn order, collapse using the previous pre-mix, and residual expansion with `comb[source, target]`. Four targeted tests cover a nonuniform four-stream fixture, orientation, extreme logits, and invalid input. |
 | [#12378](https://github.com/OpenAgentsInc/openagents/issues/12378), P1.7 | MoE | Float32 sqrtsoftplus routing, selection-only correction bias, top-k normalization, asymmetric SwiGLU clamps, selected-expert accumulation, and the shared expert. The row-provider adapter reads FP4/FP8/BF16/F32 rows through the existing loader. |
-| [#12379](https://github.com/OpenAgentsInc/openagents/issues/12379), P1.4a/P1.5a | Attention and selection primitives | Filed; implement after #12378. Low-rank projections, RoPE/YaRN, activation quantization, and cross-layer source-cache wiring remain later work. |
+| [#12379](https://github.com/OpenAgentsInc/openagents/issues/12379), P1.4a/P1.5a | Attention and selection primitives | Float32 latent sparse attention and sink, causal window/ring addresses, transactional compression chunks, rectified index scores, and two-level candidate selection. Low-rank projections, RoPE/YaRN, activation quantization, and cross-layer source-cache wiring remain later work. |
 | [#12380](https://github.com/OpenAgentsInc/openagents/issues/12380), P1.6 | Engram | Filed; implement after #12379. |
 
 The math is reimplemented from the MIT-licensed checkpoint reference at
@@ -620,3 +620,14 @@ PyTorch's device `topk` tie order is not a portable guarantee. The oracle
 comparison must report ties separately. Route weights multiply the intermediate
 activation before the down projection, as in the reference; activation
 quantization and BF16 rounding at that boundary are still deferred.
+
+Eighteen accumulated CPU component tests pass after the attention addition.
+Attention checks cover a synthetic NumPy equation fixture (`2e-6` absolute),
+positions 127/128/129, a denominator-only sink and empty histories, odd
+compression tails, chunk/replay equality, reset and failed-chunk state, short
+index rows, and 20,001 positions beyond the 16,384-position candidate budget.
+Candidate masks include the whole newest partial block as in the reference;
+selection always intersects them with the causal visible length. Exact ties
+choose the lower block/position. Unavailable picks become `-1`, including masked
+candidates, so they cannot address a KV row. The official device's tie ordering
+and BF16 attention-probability rounding still need oracle comparison.

@@ -69,7 +69,28 @@ def moe():
           w1=[w.flatten().tolist() for w in w1],w2=[w.flatten().tolist() for w in w2],w3=[w.flatten().tolist() for w in w3]))
 
 
+def attention():
+    # model.py:429-486, 558-563 and kernel.py:311-389, float32 boundaries.
+    q=np.array([[.5,-1,2],[-2,.75,.25]],dtype=np.float32)
+    kv=np.array([[1,-2,.5],[.25,1,2],[-1,.5,3],[4,-1,-2]],dtype=np.float32)
+    sinks=np.array([.75,-.25],dtype=np.float32)
+    ids=np.array([0,-1,2,3]);valid=ids[ids>=0]
+    logits=q@kv[valid].T/np.sqrt(np.float32(3))
+    all_scores=np.concatenate([logits,sinks[:,None]],axis=-1)
+    weights=np.exp(all_scores-all_scores.max(axis=-1,keepdims=True));weights/=weights.sum(axis=-1,keepdims=True)
+    y=weights[:,:-1]@kv[valid]
+    iw=np.array([.75,-.2],dtype=np.float32)
+    score=(np.maximum(q@kv.T,0)*(iw/np.sqrt(np.float32(3))/np.sqrt(np.float32(2)))[:,None]).sum(axis=0)
+    values=np.array([[1,2,-3],[4,-1,2]],dtype=np.float32)
+    gates=np.array([[0,2,-1],[1,-2,3]],dtype=np.float32)
+    norm=np.array([1,.5,1.5],dtype=np.float32)
+    cw=np.exp(gates-gates.max(axis=0,keepdims=True));cw/=cw.sum(axis=0,keepdims=True)
+    compressed=(values*cw).sum(axis=0);compressed=norm*(compressed/np.sqrt(np.mean(compressed**2)+np.float32(1e-20)))
+    write('attention',dict(query=q.flatten().tolist(),kv=kv.flatten().tolist(),sinks=sinks.tolist(),indices=ids.tolist(),attention=y.flatten().tolist(),index_weights=iw.tolist(),scores=score.tolist(),values=values.flatten().tolist(),gates=gates.flatten().tolist(),norm=norm.tolist(),compressed=compressed.tolist()))
+
+
 if __name__ == '__main__':
     OUT.mkdir(parents=True, exist_ok=True)
     hyperconnections()
     moe()
+    attention()

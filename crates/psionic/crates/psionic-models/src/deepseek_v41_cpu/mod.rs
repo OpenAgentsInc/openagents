@@ -7,6 +7,7 @@
 //! qualify a serving model. Matrix rows can be supplied without expanding a
 //! checkpoint in memory.
 
+pub mod attention;
 pub mod hyperconnections;
 pub mod moe;
 
