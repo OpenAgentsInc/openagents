@@ -130,7 +130,7 @@ openagents-host-upgrade.workspace = true
 openagents-syntax.workspace = true
 openagents-theme.workspace = true
 # The views shared with the web apps (#12216).
-openagents-chat-view.workspace = true
+openagents-chat-view = { workspace = true, features = ["visuals"] }
 openagents-visual.workspace = true
 openagents-visual-gpu.workspace = true
 gpui.workspace = true
