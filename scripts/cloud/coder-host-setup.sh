@@ -134,6 +134,8 @@ as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-re
   build-essential pkg-config clang cmake protobuf-compiler libprotobuf-dev libssl-dev \
   ca-certificates curl git gh ripgrep jq xz-utils unzip zstd procps time bubblewrap python3 util-linux \
   zsh fish libasound2-dev libudev-dev \
+  libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev libx11-xcb-dev \
+  libfontconfig1-dev libfreetype-dev libvulkan-dev libwebkit2gtk-4.1-dev libjson-glib-dev shellcheck \
   >/dev/null
 log packages end
 

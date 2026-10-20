@@ -823,6 +823,16 @@ for attempt in 1 2 3; do
   apt-get update -q >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y -q python3-numpy >/dev/null 2>&1 && break
   sleep 10
 done
+# The desktop app's workspace (apps/openagents) builds and tests GPUI, which
+# needs these system libraries (apps/openagents/CONTRIBUTORS.md); without
+# them its checks fail on the pool. shellcheck checks shell changes.
+gpui_libs="libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libx11-dev libxcb1-dev libx11-xcb-dev libfontconfig1-dev libfreetype-dev libasound2-dev libvulkan-dev libwebkit2gtk-4.1-dev libjson-glib-dev pkg-config cmake shellcheck"
+for attempt in 1 2 3; do
+  pkg-config --exists fontconfig xkbcommon 2>/dev/null && command -v shellcheck >/dev/null && break
+  apt-get update -q >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends $gpui_libs >/dev/null 2>&1 && break
+  sleep 10
+done
+pkg-config --exists fontconfig 2>/dev/null || echo "OA_POOL_AGENT the GPUI libraries could not be installed" >/dev/ttyS0
 touch /home/coder/.oa-pool/agent-ready
 echo "OA_POOL_AGENT_READY" >/dev/ttyS0
 "#;
@@ -1602,6 +1612,7 @@ mod tests {
         assert!(HOST_AGENT.contains("bubblewrap") && HOST_AGENT.contains("agent-ready"));
         assert!(HOST_AGENT.contains("compute.googleapis.com"));
         assert!(HOST_AGENT.contains("/etc/openagents/pool-host"));
+        assert!(HOST_AGENT.contains("libfontconfig1-dev") && HOST_AGENT.contains("shellcheck"));
         assert!(prepare_script().contains("oa_build"));
     }
 
