@@ -885,6 +885,15 @@ fn heading_level(level: HeadingLevel) -> u8 {
     }
 }
 
+/// Parse a reply that is still streaming, as it should draw: the whole text
+/// with its unfinished tail cut and mended ([`IncrementalParser::display_tree`]).
+/// For a renderer that reparses each frame instead of keeping a parser.
+pub fn parse_streaming(source: &str) -> BlockTree {
+    let mut parser = IncrementalParser::new();
+    parser.reset(source);
+    parser.display_tree()
+}
+
 // ---------------------------------------------------------------------------
 // Incremental parse
 // ---------------------------------------------------------------------------
@@ -1023,33 +1032,48 @@ impl IncrementalParser {
         self.remend();
     }
 
-    /// Recompute the display tail: mend hanging inline markers in the last
-    /// top-level block (only place they can hang — a blank line settles a
-    /// block, and CommonMark keeps unclosed markers literal across it) and
-    /// reparse just that block's source. `close_hanging` is one O(last block)
-    /// scan and returns `None` when nothing hangs, so the extra parse happens
-    /// only while a marker is actually open.
+    /// Recompute the display tail from the last top-level block (the only
+    /// place streaming syntax can still be unfinished: a blank line settles a
+    /// block, and CommonMark keeps unclosed markers literal across it):
+    ///
+    /// 1. Cut it to what renders without half-written block syntax
+    ///    ([`markdown_stream::renderable_blocks`], shared with the web site
+    ///    and the terminal): a table header waiting for its delimiter row, a
+    ///    fence's opening line, a bare list or heading marker, and a bare
+    ///    inline opener at the very end are held back; an open fence is
+    ///    closed (#12246).
+    /// 2. Mend hanging inline markers in what's left ([`crate::mend`]).
+    ///
+    /// Both are one O(last block) scan and borrow when nothing changes, so the
+    /// extra parse happens only while the tail is actually unfinished.
     fn remend(&mut self) {
         self.display_tail = None;
         let Some(last) = self.tree.blocks.last() else {
             return;
         };
-        // Code blocks render an unclosed fence verbatim (already stable);
-        // rules and tables have no inline tail to mend.
-        if matches!(
+        let start = last.range.start;
+        // Code blocks, rules and tables have no inline tail to mend.
+        let mendable = !matches!(
             last.block,
             Block::CodeBlock { .. } | Block::Rule | Block::Table { .. }
-        ) {
-            return;
-        }
-        let start = last.range.start;
-        let Some(mended) = crate::mend::close_hanging(&self.source[start..]) else {
-            return;
+        );
+        let source = &self.source[start..];
+        let settled = markdown_stream::renderable_blocks(source);
+        let mended = if mendable {
+            crate::mend::close_hanging(&settled)
+        } else {
+            None
+        };
+        let display = match (mended, settled) {
+            (Some(mended), _) => mended,
+            (None, Cow::Owned(closed)) => closed,
+            (None, Cow::Borrowed(cut)) if cut.len() == source.len() => return,
+            (None, Cow::Borrowed(cut)) => cut.to_owned(),
         };
         // Count toward the O(tail) instrumentation — this is real parse work,
         // in the same bound as the reparse that produced the block.
-        self.last_parse_bytes += mended.len();
-        let mut tail = parse_at(&mended, start).blocks;
+        self.last_parse_bytes += display.len();
+        let mut tail = parse_at(&display, start).blocks;
         for top in &mut tail {
             let top = Arc::make_mut(top);
             // Display ranges point back into the unmended source; synthetic
@@ -1532,6 +1556,82 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// Everything a reader sees in a block, table cells and code included.
+    fn shown(block: &Block, out: &mut String) {
+        match block {
+            Block::Paragraph { runs } | Block::Heading { runs, .. } => {
+                runs.iter().for_each(|r| out.push_str(&r.text));
+            }
+            Block::CodeBlock { code, .. } => out.push_str(code),
+            Block::BlockQuote { children } => children.iter().for_each(|c| shown(c, out)),
+            Block::List { items, .. } => items.iter().flatten().for_each(|c| shown(c, out)),
+            Block::Table { header, rows, .. } => {
+                for cell in header.iter().chain(rows.iter().flatten()) {
+                    cell.iter().for_each(|r| out.push_str(&r.text));
+                }
+            }
+            Block::Rule => {}
+            other => out.push_str(&format!("{other:?}")),
+        }
+        out.push('\n');
+    }
+
+    fn visible(tree: &BlockTree) -> String {
+        let mut out = String::new();
+        tree.blocks
+            .iter()
+            .for_each(|top| shown(&top.block, &mut out));
+        out
+    }
+
+    /// #12246: streamed one character at a time, no frame shows markdown
+    /// syntax the finished reply doesn't (a table header as a paragraph of
+    /// pipes, a fence's backticks, `**`, `[`, a bare `#` or `-`).
+    #[test]
+    fn streamed_one_character_at_a_time_no_frame_shows_raw_syntax() {
+        let replies = [
+            "Costs:\n\n| Stage | Per token |\n|---|---:|\n| Prefill | 0.2 ms |\n| Decode | 9 ms |\n\nDone.",
+            "Intro:\n| a | b |\n| :- | -: |\n| 1 | 2 |\n",
+            "Run this:\n\n```rust\nfn main() {\n    println!(\"hi\");\n}\n```\n\nThen ~~~ ok.",
+            "Say **bold** and *it* and _em_ and `code` and ~~gone~~ now.",
+            "See [the docs](https://openagents.com/docs) and ![a chart](/x.png) too.",
+            "# Title\n\n## Steps\n\n- one\n- **two**\n1. three\n\n> quoted `x`\n",
+            "| only | header |\nand then text, so not a table",
+            "snake_case_names, 2 * 3 = 6, and a \\*literal\\* star!\n\n---\n\nEnd.",
+        ];
+        for reply in replies {
+            let finished = visible(&parse_full(reply));
+            let mut p = IncrementalParser::new();
+            for (at, _) in reply.char_indices().skip(1).chain([(reply.len(), ' ')]) {
+                p.set_text(&reply[..at]);
+                let now = visible(&p.display_tree());
+                for mark in ['*', '_', '`', '[', ']', '(', '|', '#', '~', '<', '!', '-'] {
+                    assert!(
+                        now.matches(mark).count() <= finished.matches(mark).count(),
+                        "{mark:?} shows at {at}: {:?}\nshows {now:?}",
+                        &reply[..at]
+                    );
+                }
+                // The one-shot streaming parse draws the same frame.
+                assert_eq!(visible(&parse_streaming(&reply[..at])), now);
+            }
+        }
+    }
+
+    #[test]
+    fn a_table_header_waits_for_its_delimiter_row() {
+        for partial in [
+            "Costs:\n\n| Stage | Per token |",
+            "Costs:\n\n| Stage | Per token |\n|--",
+        ] {
+            let tree = parse_streaming(partial);
+            assert_eq!(tree.blocks.len(), 1, "{partial:?}: {tree:?}");
+            assert!(!visible(&tree).contains('|'));
+        }
+        let tree = parse_streaming("Costs:\n\n| Stage | Per token |\n|---|---|\n");
+        assert!(matches!(tree.blocks[1].block, Block::Table { .. }));
     }
 
     #[test]

@@ -13,7 +13,7 @@ use gpui::{
     px,
 };
 use openagents_markdown::parser::TableAlign;
-use openagents_markdown::{Block, InlineRun, parse_full};
+use openagents_markdown::{Block, InlineRun, parse_full, parse_streaming};
 
 use crate::theme;
 
@@ -46,8 +46,16 @@ pub struct Markdown {
 }
 
 impl Markdown {
-    pub fn render(&self, source: &str, veil: Option<&Veil>) -> AnyElement {
-        let tree = parse_full(source);
+    /// Draws `source`. While it streams, its unfinished tail is held back or
+    /// closed for display (a table header waiting for its delimiter row, a
+    /// fence's opening line, a bare `**`), so raw syntax never flashes
+    /// (#12246).
+    pub fn render(&self, source: &str, streaming: bool, veil: Option<&Veil>) -> AnyElement {
+        let tree = if streaming {
+            parse_streaming(source)
+        } else {
+            parse_full(source)
+        };
         let count = tree.blocks.len();
         let mut counter = 0usize;
         div()

@@ -188,3 +188,48 @@ fn every_cut_point_renders_without_raw_syntax() {
         }
     }
 }
+
+fn blocks(text: &str) -> String {
+    super::renderable_blocks(text).into_owned()
+}
+
+#[test]
+fn the_block_cut_holds_unclassified_lines_and_leaves_inline_text() {
+    // #12246: a table's header row waits for its delimiter row.
+    assert_eq!(blocks("Costs:\n\n| Stage | Per token |"), "Costs:\n\n");
+    assert_eq!(blocks("Costs:\n\n| Stage | Per token |\n"), "Costs:\n\n");
+    assert_eq!(
+        blocks("Costs:\n\n| Stage | Per token |\n|---|--"),
+        "Costs:\n\n"
+    );
+    assert_eq!(
+        blocks("| Stage | Per token |\n|---|---|\n"),
+        "| Stage | Per token |\n|---|---|\n"
+    );
+    // Fences, bare markers, and headings without text, as in `renderable`.
+    assert_eq!(blocks("Text\n\n```ru"), "Text\n\n");
+    assert_eq!(blocks("```\ncode\n``"), "```\ncode\n```");
+    assert_eq!(blocks("- a\n- "), "- a\n");
+    assert_eq!(blocks("Intro\n\n## "), "Intro\n\n");
+    // Inline syntax with text after it is the renderer's to close.
+    for open in [
+        "Say **bo",
+        "Say *it",
+        "Say `cargo",
+        "See [the docs](https://x",
+    ] {
+        assert_eq!(blocks(open), open);
+    }
+    // A bare opener at the very end waits for its text.
+    assert_eq!(blocks("Say **"), "Say ");
+    assert_eq!(blocks("Say _"), "Say ");
+    assert_eq!(blocks("Say `"), "Say ");
+    assert_eq!(blocks("See ["), "See ");
+    assert_eq!(blocks("See !["), "See ");
+    assert_eq!(blocks("See !"), "See ");
+    assert_eq!(blocks("See [the docs]"), "See [the docs");
+    assert_eq!(blocks("Hello!"), "Hello!");
+    assert_eq!(blocks("- **"), "");
+    // Never more than the line being written.
+    assert_eq!(blocks("a **b\nc **"), "a **b\nc ");
+}

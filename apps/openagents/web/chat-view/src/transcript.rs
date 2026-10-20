@@ -85,7 +85,7 @@ pub fn user_bubble(id: &str, body: &str, attachments: Vec<AnyElement>) -> AnyEle
                 .bg(theme::surface_raised())
                 .text_size(px(theme::BODY))
                 .line_height(px(theme::BODY_LINE))
-                .child(markdown.render(body, None)),
+                .child(markdown.render(body, false, None)),
         )
         .into_any_element()
 }
@@ -134,12 +134,14 @@ pub fn assistant_body(
             }
             MessagePart::Text { id, text } => {
                 if !text.is_empty() {
-                    let veil = view.veil.as_ref().filter(|_| ix + 1 == parts.len());
+                    let last = ix + 1 == parts.len();
+                    let streaming = last && view.status == Some(MessageStatus::Streaming);
+                    let veil = view.veil.as_ref().filter(|_| last);
                     let markdown = Markdown {
                         id: format!("{}-{id}-{ix}", view.key).into(),
                         color: theme::text(),
                     };
-                    blocks.push(markdown.render(text, veil));
+                    blocks.push(markdown.render(text, streaming, veil));
                 }
             }
             MessagePart::Image { path, name, .. } => {

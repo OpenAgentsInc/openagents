@@ -9,6 +9,9 @@ publish.workspace = true
 # desktop transcript and the mobile layout core, so it stays UI-free.
 [dependencies]
 pulldown-cmark.workspace = true
+# The streaming cut every chat surface shares (#12246): the web site, the
+# terminal, and this crate's display tree.
+markdown-stream = { path = "../../../../crates/markdown-stream" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 openagents-workspace-hack = { version = "0.1" }

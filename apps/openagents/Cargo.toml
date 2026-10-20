@@ -158,7 +158,7 @@ zip = { version = "7.2", default-features = false, features = ["deflate-flate2-z
 notify = "7"
 portable-pty = "0.8"
 alacritty_terminal = "0.26"
-pulldown-cmark = "0.12"
+pulldown-cmark = { version = "0.13.4", default-features = false }
 unicode-segmentation = "1"
 unicode-width = "0.2"
 fontdb = "0.23"

@@ -25,6 +25,14 @@
 //!   tag.
 //! - Partial plain text is kept.
 //!
+//! [`renderable_blocks`] makes the same block-level cut but leaves inline
+//! syntax to a renderer that closes it for display instead (the OpenAgents
+//! app's transcript styles `**bo` as bold at once). It still holds back a
+//! trailing run of bare openers (`**`, `_`, a backtick, `[`, `![`, `~~`, `<`,
+//! a lone backslash) that has no text after it yet, and it never cuts more
+//! than the line being written, except for a table header waiting for its
+//! delimiter row.
+//!
 //! Every other block is settled and shown as written. When the reply ends,
 //! renderers draw the whole text, so the final render is exactly the
 //! one-shot render. Raw HTML is still a renderer's concern: the web renderer
@@ -42,11 +50,34 @@ use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
 /// so far shows. Borrowed when no fence needed closing.
 #[must_use]
 pub fn renderable(partial: &str) -> Cow<'_, str> {
+    cut(partial, Inline::Hold)
+}
+
+/// The prefix of `partial` whose blocks are settled: [`renderable`]'s cut
+/// without holding back unclosed inline syntax, for a renderer that closes
+/// emphasis, code spans, and links for display itself. A trailing run of
+/// bare openers with no text after it is still held back, since no closer
+/// can style it yet.
+#[must_use]
+pub fn renderable_blocks(partial: &str) -> Cow<'_, str> {
+    cut(partial, Inline::Openers)
+}
+
+/// What the cut does with inline syntax in the block still being written.
+#[derive(Clone, Copy)]
+enum Inline {
+    /// Hold back unclosed syntax from its opening marker.
+    Hold,
+    /// Hold back only bare openers at the very end of the text.
+    Openers,
+}
+
+fn cut(partial: &str, inline: Inline) -> Cow<'_, str> {
     let mut end = partial.len();
     // Each pass can only shorten the text; a cut can expose a new tail
     // (`- **bo` becomes `- `, a bare marker), so repeat until it holds.
     for _ in 0..16 {
-        match step(&partial[..end]) {
+        match step(&partial[..end], inline) {
             Step::Keep => break,
             Step::At(at) => end = at,
             Step::Close(closed) => return Cow::Owned(closed),
@@ -69,7 +100,7 @@ struct Fence {
     prefix: String,
 }
 
-fn step(text: &str) -> Step {
+fn step(text: &str, inline: Inline) -> Step {
     let complete = text.rfind('\n').map_or(0, |at| at + 1);
     let tail = &text[complete..];
 
@@ -115,7 +146,11 @@ fn step(text: &str) -> Step {
     {
         end = header;
     }
-    if let Some(at) = open_inline(&text[..end]) {
+    let open = match inline {
+        Inline::Hold => open_inline(&text[..end]),
+        Inline::Openers => bare_openers(&text[..end]),
+    };
+    if let Some(at) = open {
         end = end.min(at);
     }
     if end < text.len() {
@@ -259,6 +294,31 @@ fn unconfirmed_header(complete: &str) -> Option<usize> {
         .take_while(|(_, line)| line.contains('|') && !line.trim().is_empty())
         .any(|(_, line)| delimiter(line));
     (!table).then_some(start)
+}
+
+/// Where a trailing run of inline openers starts on the last line of
+/// `text`, when nothing follows it yet: `**`, `_`, backticks, `~`, `[`
+/// (with the `!` of an image), `<`, or a lone backslash; also a `]` that
+/// may still be followed by a link's `(`. Content after an opener is the
+/// renderer's to style; a bare opener would draw as itself.
+fn bare_openers(text: &str) -> Option<usize> {
+    let line = text.rfind('\n').map_or(0, |at| at + 1);
+    let mut kept = text[line..].trim_end_matches(['*', '_', '`', '~', '[', '<', '\\']);
+    if kept.contains('[') {
+        kept = kept.trim_end_matches([']', '*', '_', '`', '~', '[', '<', '\\']);
+    }
+    let mut at = line + kept.len();
+    // The `!` of an image, before its `[` or alone after a space.
+    let bang = |kept: &str| {
+        kept.strip_suffix('!')
+            .is_some_and(|before| before.is_empty() || before.ends_with(char::is_whitespace))
+    };
+    if (at < text.len() && text[at..].starts_with('[') && kept.ends_with('!'))
+        || (at == text.len() && bang(kept))
+    {
+        at -= 1;
+    }
+    (at < text.len()).then_some(at)
 }
 
 /// A block that holds inline text, as the parser reports it.
