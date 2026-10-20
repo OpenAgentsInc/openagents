@@ -8,6 +8,17 @@ word from the answer. Delete the chat afterward. Chrome's automated check
 passed: the text view holds the live transcript, its status line is a live
 region, its links are real anchors, and find opens it.
 
+## Install build 1018 and check the long-chat crash is gone (#12338)
+
+OpenAgents 1.0.0 (1018) is processed in TestFlight (Internal Testers). Update
+the app from TestFlight on your iPhone. Your sign-in and chats stay. Open the
+chat that holds the long agent briefs (the one with about 2,700 messages) and
+leave it open for a few minutes while a reply streams. The app should stay
+open; in 1017 iOS closed it for memory. Tap Show more and Copy on one of the
+long messages. If it still closes, run
+`xcrun devicectl device info files --device <id> --domain-type systemCrashLogs`
+and file a new issue with the newest `JetsamEvent` file.
+
 ## Check the GPUI web chat in Safari and Firefox (#12221)
 
 The GPUI chat at `/`, `/new`, and `/chat/{id}` is on in production for
