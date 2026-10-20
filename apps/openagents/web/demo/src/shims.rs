@@ -30,19 +30,6 @@ pub(crate) mod attachments {
             .join("\n");
         format!("{body}\n\n{ATTACHMENT_MARKER}\n{refs}")
     }
-
-    /// Splits a user message into its text and attached paths.
-    pub fn split(text: &str) -> (&str, Vec<&str>) {
-        match text.split_once(ATTACHMENT_MARKER) {
-            Some((body, refs)) => (
-                body.trim_end(),
-                refs.lines()
-                    .filter_map(|line| line.trim().strip_prefix("- "))
-                    .collect(),
-            ),
-            None => (text, Vec::new()),
-        }
-    }
 }
 
 /// `openagents_client::client::ms`.

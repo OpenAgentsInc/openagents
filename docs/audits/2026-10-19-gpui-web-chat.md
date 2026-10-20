@@ -278,8 +278,14 @@ portable crate:
 - `chat-view/src/theme.rs`: reads the desktop's `Theme::dark()` tokens; only
   the web's own sizes remain.
 - `chat-view/src/transcript.rs`: user bubbles, tool groups and rows, error
-  and notice lines, and the labels. The group summary is the shared
-  `openagents_proto::view::tool_group_summary`.
+  and notice lines, and the labels, which `/gpui` still draws turns with.
+  The desktop's whole transcript is now portable
+  (`openagents_chat_view::transcript`, a `TranscriptView<M>` over a host
+  and a media type), and `/demo/gpui` draws it through
+  `chat-view/src/desktop_transcript.rs`. In the demo it adds about 200 KB
+  with brotli (1.157 MB to 1.357 MB): the transcript, the rail, and the
+  GPUI list and path code they use. `/gpui` is 1.460 MB, so it can take
+  the desktop's transcript only once that much room is found.
 - `chat-view/src/composer.rs`: a single-line field after GPUI's
   `examples/input.rs`, not the desktop's multi-line composer.
 - `web/chat/src/app.rs`: the sidebar, header, row menu, and composer row.

@@ -186,6 +186,7 @@ pub fn chip_icon(kind: ChipKind, path: &str, appearance: crate::theme::Appearanc
 /// the label's cap height: the row's middle moved by [`chip_label_offset`],
 /// which is zero for Geist (ascent 1005, descent 295, cap 710 per 1000 units)
 /// and corrects for other interface fonts.
+#[cfg_attr(target_family = "wasm", allow(unused_variables))]
 pub fn paint_chip(
     window: &mut Window,
     chip: Bounds<Pixels>,
@@ -221,6 +222,11 @@ pub fn paint_chip(
         size(side, side),
     );
     match icon {
+        // The web draws icons through its painter's masks, never an SVG
+        // renderer; its chips keep the plain well.
+        #[cfg(target_family = "wasm")]
+        ChipIcon::Glyph(_) => {}
+        #[cfg(not(target_family = "wasm"))]
         ChipIcon::Glyph(path) => {
             let _ = window.paint_svg(
                 bounds,

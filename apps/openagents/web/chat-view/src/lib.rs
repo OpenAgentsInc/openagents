@@ -1,12 +1,15 @@
 //! The chat views the web apps share, drawn with GPUI.
 //!
-//! The markdown is the desktop's own renderer from `openagents-chat-view`;
-//! the transcript and composer are still ports of the desktop's views in
-//! `apps/openagents/crates/ui`. `docs/audits/2026-10-19-gpui-web-chat.md`
-//! records what still duplicates the desktop and the split that ends it.
+//! The markdown is the desktop's own renderer from `openagents-chat-view`.
+//! [`desktop_transcript`] hosts the desktop's whole transcript, which the
+//! demo draws; the signed-in chat still draws turns with [`transcript`], a
+//! port that stays until the chat's module has room for the desktop's
+//! (about 200 KB brotli). `docs/audits/2026-10-19-gpui-web-chat.md` records
+//! what still duplicates the desktop.
 
 pub mod assets;
 pub mod composer;
+pub mod desktop_transcript;
 pub mod markdown;
 pub mod selection;
 pub mod theme;

@@ -3328,6 +3328,8 @@ pub struct TranscriptView<M: TranscriptMedia> {
     /// transcript's bottom (measured last frame): the last row pads past it
     /// so pinned content rests above the glass chrome it scrolls under.
     pub bottom_clearance: f32,
+    /// The first row's gap when the host has no titlebar over the list.
+    pub top_inset: Option<f32>,
     /// Hovered rail tick (grows + shows the preview card).
     pub rail_hover: Option<usize>,
     pub rail_cache: Option<crate::rail::RailCache>,
@@ -3616,6 +3618,7 @@ impl<M: TranscriptMedia> TranscriptView<M> {
             selection_scroll_task: None,
             rail_enabled,
             bottom_clearance: 0.0,
+            top_inset: None,
             rail_hover: None,
             rail_cache: None,
             hovered_entry: None,
@@ -3666,6 +3669,16 @@ impl<M: TranscriptMedia> TranscriptView<M> {
     /// Shell-driven: the measured height of the bottom chrome stack the
     /// transcript scrolls under. Sub-pixel jitter is ignored so steady-state
     /// frames don't re-notify.
+    /// Override the first row's gap, for a host whose list starts below
+    /// its own header rather than under a titlebar.
+    pub fn set_top_inset(&mut self, inset: Option<f32>, cx: &mut Context<Self>) {
+        if self.top_inset != inset {
+            self.top_inset = inset;
+            self.list.remeasure();
+            cx.notify();
+        }
+    }
+
     pub fn set_bottom_clearance(&mut self, height: f32, cx: &mut Context<Self>) {
         if (self.bottom_clearance - height).abs() > 0.5 {
             self.bottom_clearance = height;
@@ -5942,7 +5955,9 @@ impl<M: TranscriptMedia> TranscriptView<M> {
         // for the titlebar — an override instance's first row keeps only the
         // ordinary turn gap, or the content sits double-chrome low.
         let top_gap = if ix == 0 {
-            if self.doc_override.is_some() {
+            if let Some(inset) = self.top_inset {
+                inset
+            } else if self.doc_override.is_some() {
                 Theme::SPACE_LG
             } else {
                 Theme::TITLEBAR_HEIGHT + Theme::SPACE_LG + 10.0

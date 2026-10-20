@@ -2,14 +2,16 @@
 //! composer. Everything runs in the page; replies are the desktop demo's
 //! scripted turns, streamed word by word through the veil.
 
-use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::cell::RefCell;
+use std::collections::{BTreeSet, HashMap, VecDeque};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
-    AnyElement, App, ClickEvent, Context, Entity, FocusHandle, Focusable, FollowMode, FontWeight,
-    Hsla, Image, ImageFormat, IntoElement, ListAlignment, ListState, ParentElement, Render,
-    SharedString, Styled, Window, div, list, prelude::*, px,
+    AnyElement, App, ClickEvent, Context, Entity, FocusHandle, Focusable, FontWeight,
+    Hsla, Image, ImageFormat, IntoElement, ParentElement, Render,
+    SharedString, Styled, Window, div, prelude::*, px,
 };
 use openagents_doc::{MessagePart, MessageRole, MessageStatus, SessionMessageEntry};
 use openagents_proto::{
@@ -18,18 +20,20 @@ use openagents_proto::{
 use web_time::Instant;
 
 use openagents_chat_view::rust_native_gpui;
+use openagents_chat_view::transcript::host::TurnActivity;
 use openagents_web_chat_view::composer::{Submitted, TextInput};
+use openagents_web_chat_view::desktop_transcript::{self, WebTranscript};
 use openagents_web_chat_view::markdown::{self, Veil};
 use openagents_web_chat_view::svg;
 use openagents_web_chat_view::theme;
 use openagents_web_chat_view::transcript::{
-    self, CONTENT_WIDTH, OnClick, SIDEBAR_WIDTH, TurnView, ago, chip, choice_mark, footer_text,
+    CONTENT_WIDTH, SIDEBAR_WIDTH, ago, chip, choice_mark, footer_text,
     model_label, reasoning_label, truncate,
 };
 
 use crate::approval::{self, Approval};
 use crate::demo::{fixtures, png, transcripts, transcripts::Step};
-use crate::{attachments, now_ms};
+use crate::now_ms;
 const LONG_CHAT: &str = "chat-long";
 const WEB_DEVICE: &str = "web-demo";
 
@@ -87,15 +91,17 @@ struct Stream {
 pub struct ChatApp {
     chats: Vec<Chat>,
     current: usize,
-    list_state: ListState,
-    /// A transcript selection drag, scrolling at the edges (#12305).
-    selection_drag: openagents_web_chat_view::selection::DragScroll,
+    /// The open chat as the desktop's transcript reads it.
+    shared: Entity<WebTranscript>,
+    /// The desktop's transcript, drawing `shared`.
+    view: Entity<desktop_transcript::Transcript>,
+    /// What `shared` last got: the chat, its entries' shape, and the
+    /// working turn's elapsed seconds.
+    published: Option<(String, Vec<(usize, usize, u8)>, i64)>,
     composer: Entity<TextInput>,
     focus_handle: FocusHandle,
     stream: Option<Stream>,
-    expanded: HashSet<String>,
     answers: HashMap<String, BTreeSet<usize>>,
-    images: HashMap<String, Arc<Image>>,
     rng: u64,
     new_chats: usize,
     /// The fixture approval at the end of the working demo chat.
@@ -114,7 +120,7 @@ impl ChatApp {
         )
         .detach();
 
-        let images = transcripts::DEMO_IMAGES
+        let images: HashMap<String, Arc<Image>> = transcripts::DEMO_IMAGES
             .iter()
             .map(|(path, width, height, seed)| {
                 let bytes = png::gradient(*width, *height, *seed);
@@ -125,18 +131,21 @@ impl ChatApp {
             })
             .collect();
 
-        let list_state = ListState::new(0, ListAlignment::Top, px(1200.));
+        let images = Rc::new(RefCell::new(images));
+        let shared = cx.new(|_| WebTranscript::default());
+        let view = desktop_transcript::new(&shared, images, cx);
+        // The header sits above the list; no titlebar to clear.
+        view.update(cx, |view, cx| view.set_top_inset(Some(16.), cx));
         let mut this = Self {
             chats: load_chats(),
             current: 0,
-            list_state,
-            selection_drag: Default::default(),
+            shared,
+            view,
+            published: None,
             composer,
             focus_handle: cx.focus_handle(),
             stream: None,
-            expanded: HashSet::new(),
             answers: HashMap::new(),
-            images,
             rng: 0x9e37_79b9_7f4a_7c15,
             new_chats: 0,
             approval: Approval::new(),
@@ -170,9 +179,6 @@ impl ChatApp {
         chat.seen = true;
         let first_open = !chat.opened;
         chat.opened = true;
-        self.list_state.reset(chat.entries.len());
-        self.list_state.set_follow_mode(FollowMode::Tail);
-        self.list_state.scroll_to_end();
         // The veil chat's last reply is still streaming when it first opens.
         if first_open
             && chat.id == "chat-veil"
@@ -248,7 +254,7 @@ impl ChatApp {
             now,
             vec![transcripts::text("t0", &prompt)],
         ));
-        self.sync_list();
+        self.publish(cx);
         let steps = if prompt.contains("?ask") {
             transcripts::asking()
         } else {
@@ -276,7 +282,7 @@ impl ChatApp {
         chat.last_at = now;
         let entry = chat.entries.len() - 1;
         if ix == self.current {
-            self.sync_list();
+            self.publish(cx);
         }
         let ends_with_question = matches!(steps.last(), Some(Step::Question(_)));
         self.stream = Some(Stream {
@@ -293,18 +299,58 @@ impl ChatApp {
         cx.notify();
     }
 
-    /// Tells the list about entries appended to the open chat, and keeps it
-    /// glued to the bottom so the new turn is in view.
-    fn sync_list(&mut self) {
-        let count = self.chats[self.current].entries.len();
-        let known = self.list_state.item_count();
-        if count > known {
-            self.list_state.splice(known..known, count - known);
-        } else if count < known {
-            self.list_state.reset(count);
+    /// Hand the open chat to the transcript when it changed: another chat,
+    /// a new entry or part, more text, a status, or a second of work.
+    fn publish(&mut self, cx: &mut Context<Self>) {
+        let chat = &self.chats[self.current];
+        let shape: Vec<(usize, usize, u8)> = chat
+            .entries
+            .iter()
+            .map(|entry| {
+                let text: usize = entry
+                    .parts
+                    .iter()
+                    .map(|part| match part {
+                        MessagePart::Text { text, .. } | MessagePart::Reasoning { text, .. } => {
+                            text.len()
+                        }
+                        MessagePart::Tool {
+                            resolved, output, ..
+                        } => usize::from(*resolved) + output.as_ref().map_or(0, String::len),
+                        MessagePart::Input { resolved, .. } => usize::from(*resolved),
+                        _ => 1,
+                    })
+                    .sum();
+                (entry.parts.len(), text, entry.status.map_or(0, |s| s as u8 + 1))
+            })
+            .collect();
+        let stream = self.stream.as_ref().filter(|stream| stream.chat == self.current);
+        let elapsed = stream.map_or(-1, |stream| stream.started.elapsed().as_secs() as i64);
+        let fingerprint = (chat.id.clone(), shape, elapsed);
+        if self.published.as_ref() == Some(&fingerprint) {
+            return;
         }
-        self.list_state.set_follow_mode(FollowMode::Tail);
-        self.list_state.scroll_to_end();
+        let opened = self.published.as_ref().map(|(id, _, _)| id) != Some(&chat.id);
+        self.published = Some(fingerprint);
+        let activity = stream.map(|stream| TurnActivity {
+            sending: false,
+            queued: false,
+            elapsed_secs: Some(elapsed),
+            turn_ms: chat
+                .entries
+                .get(stream.entry)
+                .map_or(0, |entry| entry.created_at),
+        });
+        let (id, entries) = (chat.id.clone(), chat.entries.clone());
+        self.shared.update(cx, |state, cx| {
+            if opened {
+                state.open(Some(id), entries);
+            } else {
+                state.set_entries(entries);
+            }
+            state.set_activity(activity);
+            cx.notify();
+        });
     }
 
     fn stop(&mut self, cx: &mut Context<Self>) {
@@ -403,35 +449,16 @@ impl ChatApp {
                 chat.status = stream
                     .ends_with_question
                     .then_some(SessionStatus::AwaitingInput);
-                if stream.chat == self.current {
-                    self.list_state
-                        .remeasure_items(stream.entry..stream.entry + 1);
-                }
+                self.publish(cx);
                 cx.notify();
                 return;
             }
         }
-        let fading = markdown::is_fading(&stream.veil);
-        if (changed || fading) && stream.chat == self.current {
-            self.list_state
-                .remeasure_items(stream.entry..stream.entry + 1);
-            cx.notify();
-        } else if changed {
-            cx.notify();
-        }
         self.stream = Some(stream);
-    }
-
-    fn veil_for(&self, chat: usize, entry: usize, part: usize) -> Option<Veil> {
-        let stream = self.stream.as_ref()?;
-        if stream.chat != chat || stream.entry != entry {
-            return None;
+        if changed {
+            cx.notify();
         }
-        let parts = &self.chats[chat].entries[entry].parts;
-        if part + 1 != parts.len() || !stream.tool.is_none() {
-            return None;
-        }
-        Some(stream.veil.clone())
+        self.publish(cx);
     }
 
     fn submit_answers(&mut self, entry_ix: usize, part_ix: usize, cx: &mut Context<Self>) {
@@ -463,9 +490,6 @@ impl ChatApp {
             }
         }
         *resolved = true;
-        if chat_ix == self.current {
-            self.list_state.remeasure_items(entry_ix..entry_ix + 1);
-        }
         self.start_reply(chat_ix, transcripts::answered(&labels), cx);
     }
 
@@ -479,7 +503,6 @@ impl ChatApp {
             }
             picked.insert(option);
         }
-        self.list_state.remeasure();
         cx.notify();
     }
 
@@ -872,35 +895,6 @@ impl ChatApp {
     // Transcript
     // -----------------------------------------------------------------
 
-    fn render_entry(
-        &mut self,
-        ix: usize,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let chat_ix = self.current;
-        let Some(entry) = self.chats[chat_ix].entries.get(ix) else {
-            return div().into_any_element();
-        };
-        let body = match entry.role {
-            MessageRole::User => self.render_user(entry),
-            _ => self.render_assistant(chat_ix, ix, entry, cx),
-        };
-        let chat = &self.chats[chat_ix];
-        let body = if chat.id == approval::CHAT && ix + 1 == chat.entries.len() {
-            div()
-                .flex()
-                .flex_col()
-                .gap(px(12.))
-                .child(body)
-                .child(self.render_approval(cx))
-                .into_any_element()
-        } else {
-            body
-        };
-        transcript::entry_row(ix == 0, body)
-    }
-
     /// The fixture approval, drawn by the shared decision panel through the
     /// desktop's Rust Native adapter.
     fn render_approval(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -911,7 +905,6 @@ impl ChatApp {
             1,
             |this: &mut Self, activation, cx| {
                 this.approval.press(&activation.node, theme::desktop());
-                this.list_state.remeasure();
                 cx.notify();
             },
             cx,
@@ -923,71 +916,6 @@ impl ChatApp {
             .child(div().rounded(px(14.)).overflow_hidden().child(card))
             .children(self.approval.answered().map(footer_text))
             .into_any_element()
-    }
-
-    fn render_user(&self, entry: &SessionMessageEntry) -> AnyElement {
-        let text = entry
-            .parts
-            .iter()
-            .filter_map(|part| match part {
-                MessagePart::Text { text, .. } => Some(text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        let (body, paths) = attachments::split(&text);
-        let row = paths
-            .iter()
-            .map(|path| match self.images.get(*path) {
-                Some(image) => transcript::attachment_image(image.clone()),
-                None => {
-                    let name = path.rsplit('/').next().unwrap_or(path);
-                    chip("icons/paperclip.svg", name.to_owned(), theme::text_muted())
-                }
-            })
-            .collect();
-        transcript::user_bubble(&entry.id, body, row)
-    }
-
-    fn render_assistant(
-        &self,
-        chat_ix: usize,
-        entry_ix: usize,
-        entry: &SessionMessageEntry,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let chat_id = self.chats[chat_ix].id.clone();
-        let key = format!("{chat_id}/{}", entry.id);
-        let last_text = entry.parts.len().saturating_sub(1);
-        let view = TurnView {
-            key: &key,
-            parts: &entry.parts,
-            status: entry.status,
-            duration_ms: entry.duration_ms,
-            images: &self.images,
-            expanded: &self.expanded,
-            veil: self.veil_for(chat_ix, entry_ix, last_text),
-        };
-        let entity = cx.entity().downgrade();
-        let toggle = move |key: String| -> OnClick {
-            let entity = entity.clone();
-            Box::new(move |_: &ClickEvent, _: &mut Window, cx: &mut App| {
-                let key = key.clone();
-                entity
-                    .update(cx, |this: &mut ChatApp, cx| {
-                        if !this.expanded.remove(&key) {
-                            this.expanded.insert(key);
-                        }
-                        this.list_state.remeasure();
-                        cx.notify();
-                    })
-                    .ok();
-            })
-        };
-        let mut questions = |part_ix: usize, asked: &[UserInputQuestion], resolved: bool| {
-            self.render_questions(&chat_id, entry_ix, part_ix, asked, resolved, cx)
-        };
-        transcript::assistant_body(view, &toggle, &mut questions)
     }
 
     fn render_questions(
@@ -1107,6 +1035,10 @@ impl Focusable for ChatApp {
 impl Render for ChatApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let wide = window.viewport_size().width > px(820.);
+        // The message rail needs the room the desktop gives it (48rem).
+        let rail = window.viewport_size().width > px(768.);
+        self.view
+            .update(cx, |view, cx| view.set_rail_enabled(rail, cx));
         let chat = &self.chats[self.current];
         let empty = chat.entries.is_empty();
         let transcript: AnyElement = if empty {
@@ -1139,43 +1071,50 @@ impl Render for ChatApp {
                 )
                 .into_any_element()
         } else {
+            // A question the reply is waiting on, and the working chat's
+            // approval, sit between the transcript and the composer.
+            let chat_id = chat.id.clone();
+            let pending = chat.entries.iter().enumerate().rev().find_map(|(entry_ix, entry)| {
+                entry.parts.iter().enumerate().rev().find_map(|(part_ix, part)| match part {
+                    MessagePart::Input {
+                        questions,
+                        resolved: false,
+                        ..
+                    } => Some((entry_ix, part_ix, questions.clone())),
+                    _ => None,
+                })
+            });
+            let approval = (chat.id == approval::CHAT).then(|| self.render_approval(cx));
+            let questions = pending.map(|(entry_ix, part_ix, questions)| {
+                self.render_questions(&chat_id, entry_ix, part_ix, &questions, false, cx)
+            });
+            let extras: Vec<AnyElement> = approval.into_iter().chain(questions).collect();
             div()
                 .flex_1()
+                .min_h_0()
                 .w_full()
                 .flex()
                 .flex_col()
-                .child(markdown::selection_reset())
-                .on_mouse_move(cx.listener(|this, event: &gpui::MouseMoveEvent, _, cx| {
-                    let list = this.list_state.clone();
-                    this.selection_drag.moved(
-                        event,
-                        &list,
-                        |this: &mut Self| &mut this.selection_drag,
-                        cx,
-                    );
-                }))
-                .on_mouse_up(
-                    gpui::MouseButton::Left,
-                    cx.listener(|this, _: &gpui::MouseUpEvent, _, cx| {
-                        this.selection_drag.released(cx)
-                    }),
-                )
-                .on_mouse_up_out(
-                    gpui::MouseButton::Left,
-                    cx.listener(|this, _: &gpui::MouseUpEvent, _, cx| {
-                        this.selection_drag.released(cx)
-                    }),
-                )
-                .child(
-                    list(
-                        self.list_state.clone(),
-                        cx.processor(|this, ix: usize, window, cx| {
-                            this.render_entry(ix, window, cx)
-                        }),
+                .child(div().flex_1().min_h_0().w_full().child(self.view.clone()))
+                .when(!extras.is_empty(), |column| {
+                    column.child(
+                        div()
+                            .w_full()
+                            .flex()
+                            .justify_center()
+                            .px(px(24.))
+                            .pb(px(8.))
+                            .child(
+                                div()
+                                    .w_full()
+                                    .max_w(px(CONTENT_WIDTH))
+                                    .flex()
+                                    .flex_col()
+                                    .gap(px(12.))
+                                    .children(extras),
+                            ),
                     )
-                    .flex_1()
-                    .w_full(),
-                )
+                })
                 .into_any_element()
         };
         let mut root = div()
