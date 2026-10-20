@@ -1,7 +1,8 @@
-//! The site's own pages calling the chat API with the sign-in cookie
-//! (#12217): the GPUI web chat (`crate::pages::gpui_chat`) reads and writes
-//! the account's chats through `/v1/threads` and `/v1/projects`, as the
-//! apps do, without a token of its own.
+//! The site's own pages calling the account API with the sign-in cookie:
+//! the GPUI web chat (`crate::pages::gpui_chat`) reads and writes the
+//! account's chats through `/v1/threads` and `/v1/projects` (#12217), and
+//! the rest of the desktop app's account features through the routes in
+//! [`ACCOUNT`] (#12262), as the apps do, without a token of its own.
 //!
 //! A request to one of those routes with no `Authorization` header and an
 //! `oa_cloud_session` cookie is taken only when the browser marks it
@@ -13,8 +14,16 @@
 //! it checks an app's. A request that already has an `Authorization` header
 //! is left as it is.
 //!
+//! Routes that used to take the cookie in their own handlers, without the
+//! same-origin check (traces, Mac jobs, work runs, and Labs), are in
+//! [`ACCOUNT`] too, so a cookie reaches them only through this layer.
+//! `GET /v1/account` is the account service's own route: this site answers
+//! it ([`gateway`]) so the cookie can become a Bearer first, and forwards it
+//! with no cookies.
+//!
 //! Signed out, a browser's `oa_visitor` cookie ([`crate::ask::visitor`]) is
-//! taken the same way, with the same two checks, and goes on as that
+//! taken on the chat routes only ([`visitor_covered`]), with the same two
+//! checks, and goes on as that
 //! visitor's own token ([`crate::visitor_api::token`]): the page then
 //! chats as the app's signed-out visitors do, with their limits, and the
 //! chats are the ones the home page shows for that browser (`/lander8`).
@@ -31,12 +40,75 @@ use crate::coder_sync::refused;
 /// the chat's file uploads do (`crate::chat_files`).
 pub(crate) const CSRF_HEADER: &str = crate::chat_files::TOKEN_HEADER;
 
+/// The account routes a signed-in page reaches with the cookie, each with
+/// everything under it (#12262). `/v1/projects` covers a project's own
+/// routes (`/v1/projects/{id}*`) too.
+pub(crate) const ACCOUNT: &[&str] = &[
+    "/v1/threads",
+    "/v1/projects",
+    "/v1/history",
+    "/v1/computers",
+    "/v1/computer-usage",
+    "/v1/cloud-host",
+    "/v1/agent-definitions",
+    "/v1/agent-assignments",
+    "/v1/published-agents",
+    "/v1/schedules",
+    "/v1/labs",
+    "/v1/voice-agent",
+    "/v1/keys",
+    "/v1/device/keys",
+    "/v1/attention",
+    "/v1/notify",
+    "/v1/land",
+    "/v1/files",
+    // Their handlers read the cookie themselves; this layer checks it first.
+    crate::traces::API,
+    crate::mac_jobs::PREFIX,
+    crate::work_runs::PREFIX,
+];
+
+/// Account routes that take the cookie at that exact path only.
+const EXACT: &[&str] = &["/v1/account"];
+
+/// `path` is `prefix` or a path under it.
+fn under(path: &str, prefix: &str) -> bool {
+    path.strip_prefix(prefix)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+}
+
 /// Whether `path` takes the sign-in cookie.
 pub(crate) fn covered(path: &str) -> bool {
-    path == "/v1/projects"
-        || path
-            .strip_prefix("/v1/threads")
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
+    EXACT.contains(&path) || ACCOUNT.iter().any(|prefix| under(path, prefix))
+}
+
+/// Whether `path` takes a signed-out browser's visitor cookie: the chat
+/// routes a visitor's token reaches (`/lander8`).
+fn visitor_covered(path: &str) -> bool {
+    path == "/v1/projects" || under(path, "/v1/threads")
+}
+
+/// Whether this site answers `method path` only to forward it to the
+/// account service ([`gateway`]): a covered route the service owns.
+pub(crate) fn owns(method: &Method, path: &str) -> bool {
+    matches!(*method, Method::GET | Method::HEAD) && path == "/v1/account"
+}
+
+/// The routes this site forwards to the account service once the layer has
+/// turned the cookie into a Bearer.
+pub(crate) fn routes() -> axum::Router<App> {
+    axum::Router::new().route("/v1/account", axum::routing::get(gateway))
+}
+
+/// Forward a covered account-service route to the gateway, as the
+/// `/api/v1` alias does: the site's cookies stay behind.
+async fn gateway(State(app): State<App>, mut request: Request) -> Response {
+    use axum::response::IntoResponse;
+    let Some(upstream) = &app.config.inference else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    request.headers_mut().remove(header::COOKIE);
+    upstream.forward(request).await
 }
 
 /// Whether the browser says the request came from this site's own page.
@@ -54,12 +126,13 @@ fn visitor(headers: &HeaderMap) -> Option<String> {
 }
 
 pub(crate) async fn layer(State(app): State<App>, mut request: Request, next: Next) -> Response {
-    if !covered(request.uri().path()) || request.headers().contains_key(header::AUTHORIZATION) {
+    let path = request.uri().path();
+    if !covered(path) || request.headers().contains_key(header::AUTHORIZATION) {
         return next.run(request).await;
     }
     let token = match crate::chat_owner::session(request.headers()) {
         Some(token) => token,
-        None => match visitor(request.headers()) {
+        None => match visitor(request.headers()).filter(|_| visitor_covered(path)) {
             Some(visitor) => crate::visitor_api::token(&app.config.ask_salt, &visitor),
             None => return next.run(request).await,
         },
@@ -100,13 +173,71 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_the_chat_routes_take_the_cookie() {
-        assert!(covered("/v1/threads"));
-        assert!(covered("/v1/threads/abc/events"));
-        assert!(covered("/v1/projects"));
-        assert!(!covered("/v1/threadsx"));
-        assert!(!covered("/v1/computers"));
-        assert!(!covered("/v1/projects/p1/files"));
+    fn every_account_route_takes_the_cookie() {
+        for prefix in ACCOUNT {
+            assert!(covered(prefix), "{prefix}");
+            assert!(covered(&format!("{prefix}/abc/events")), "{prefix}");
+            assert!(!covered(&format!("{prefix}x")), "{prefix}");
+        }
+        for path in [
+            "/v1/threads",
+            "/v1/threads/abc/events",
+            "/v1/projects",
+            "/v1/projects/p1/files",
+            "/v1/history/pins",
+            "/v1/computers/Studio/sync",
+            "/v1/computer-usage",
+            "/v1/cloud-host/stop",
+            "/v1/agent-definitions/a1/grants",
+            "/v1/agent-assignments/a1/commands",
+            "/v1/published-agents/p1/fork",
+            "/v1/schedules/s1",
+            "/v1/labs/agent/kinds",
+            "/v1/labs/documents/d1",
+            "/v1/voice-agent",
+            "/v1/keys/k1",
+            "/v1/device/keys/challenge",
+            "/v1/account",
+            "/v1/attention",
+            "/v1/notify/n1/read",
+            "/v1/land/l1",
+            "/v1/files/f1/content",
+            "/v1/traces/t1",
+            "/v1/mac-jobs/events",
+            "/v1/work/w1",
+        ] {
+            assert!(covered(path), "{path}");
+        }
+        for path in [
+            "/v1/threadsx",
+            "/v1/account/github/token",
+            "/v1/accounts",
+            "/v1/device/nostr/challenge",
+            "/v1/work-hosts",
+            "/v1/responses",
+            "/v1/workspaces/w1/keys",
+            "/api/v1/account",
+        ] {
+            assert!(!covered(path), "{path}");
+        }
+    }
+
+    #[test]
+    fn a_visitor_cookie_reaches_only_the_chat_routes() {
+        assert!(visitor_covered("/v1/threads"));
+        assert!(visitor_covered("/v1/threads/abc/messages"));
+        assert!(visitor_covered("/v1/projects"));
+        assert!(!visitor_covered("/v1/projects/p1"));
+        assert!(!visitor_covered("/v1/computers"));
+        assert!(!visitor_covered("/v1/keys"));
+    }
+
+    #[test]
+    fn only_reading_the_account_is_forwarded() {
+        assert!(owns(&Method::GET, "/v1/account"));
+        assert!(owns(&Method::HEAD, "/v1/account"));
+        assert!(!owns(&Method::DELETE, "/v1/account"));
+        assert!(!owns(&Method::GET, "/v1/account/access"));
     }
 
     #[test]

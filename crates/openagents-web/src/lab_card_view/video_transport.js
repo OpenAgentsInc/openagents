@@ -31,7 +31,7 @@
   }
   async function request(path, body, key) {
     if (closed) throw Error('Open the film again to continue.');
-    const headers = body ? { 'Content-Type': 'application/json' } : {};
+    const headers = body ? { 'Content-Type': 'application/json', 'x-openagents-csrf': config.csrf || '' } : {};
     if (key) headers['Idempotency-Key'] = key;
     const response = await fetch(path + (path.includes('?') ? '&' : '?') + scope, {
       method: body ? 'POST' : 'GET', credentials: 'same-origin', cache: 'no-store', headers,

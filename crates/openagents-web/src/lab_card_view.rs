@@ -63,7 +63,11 @@ async fn document(
         Err(error) => return error.into_response(),
     };
     if card.kind == "video" {
-        return video::page(&card, &space);
+        let csrf = match crate::chat_owner::who(&app, &headers).await.writer() {
+            Some(owner) => crate::pages::chat::csrf(&app, owner),
+            None => String::new(),
+        };
+        return video::page(&card, &space, &csrf);
     }
     crate::chat_html::protect(
         crate::ui_page::UiPage::new(&card.title)

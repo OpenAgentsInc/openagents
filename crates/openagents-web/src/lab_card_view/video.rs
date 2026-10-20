@@ -6,8 +6,10 @@ use serde_json::json;
 const PLAYER: &str = include_str!("../../../../scripts/film/lab_player.html");
 const TRANSPORT: &str = include_str!("video_transport.js");
 
-pub(super) fn page(card: &Card, space: &str) -> Response {
-    let config = json!({"document": card.document, "space": space});
+/// The player page. Its writes go to `/v1/labs` with the sign-in cookie, so
+/// they carry the page's CSRF value (`csrf`, [`crate::cookie_api`]).
+pub(super) fn page(card: &Card, space: &str, csrf: &str) -> Response {
+    let config = json!({"document": card.document, "space": space, "csrf": csrf});
     let config = script_json(&config);
     let bootstrap =
         format!("<script>window.videoLabConfig={config};\n{TRANSPORT}</script>\n<script>");

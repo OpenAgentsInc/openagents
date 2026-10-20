@@ -1417,9 +1417,11 @@ async fn public_key_contract_preserves_account_authority_and_uncertain_creation(
     let token = alice.0["oa_cloud_session"].clone();
     let other = bob.0["oa_cloud_session"].clone();
 
-    // A browser cookie alone and a model API key cannot manage account keys.
+    // A browser cookie alone (not from this site's page, #12262) and a
+    // model API key cannot manage account keys.
     let response = alice.get(&world, "/v1/keys").await;
-    assert_eq!(response.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(response.status, StatusCode::FORBIDDEN);
+    assert!(response.body.contains("cross_site"), "{}", response.body);
     for unsupported in ["", "opaque-api-credential"] {
         let (status, body) = agent_call(&world, "GET", "/v1/keys", None, unsupported).await;
         assert_eq!(status, StatusCode::UNAUTHORIZED);

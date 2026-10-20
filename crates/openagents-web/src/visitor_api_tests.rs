@@ -745,3 +745,151 @@ async fn a_visitor_lists_changes_and_deletes_its_own_chats() {
     let (status, _) = call(&world, Some(&token), "GET", &path, None).await;
     assert_eq!(status, 404);
 }
+
+/// A signed-in page reaches the rest of the account API with its cookie
+/// (#12262): each route answers a same-origin read exactly as it answers
+/// the same session as a Bearer, a cross-site read is refused, and a write
+/// needs the page's CSRF value.
+#[tokio::test]
+async fn a_signed_in_page_reads_the_account_api_with_its_cookie() {
+    let world = world_with(Options::default()).await;
+    let mut alice = Browser::default();
+    alice.sign_in(&world, "octo-local").await;
+    let session = alice.0["oa_cloud_session"].clone();
+    let cookie = format!("oa_cloud_session={session}");
+    let (status, _, page) = from_page(
+        &world,
+        &cookie,
+        None,
+        "same-origin",
+        "GET",
+        "/lander8/session",
+        None,
+    )
+    .await;
+    assert_eq!((status, &page["signed_in"]), (200, &json!(true)), "{page}");
+    let csrf = page["csrf"].as_str().unwrap().to_owned();
+    for path in [
+        "/v1/history",
+        "/v1/computers",
+        "/v1/computer-usage",
+        "/v1/agent-definitions",
+        "/v1/agent-assignments",
+        "/v1/schedules",
+        "/v1/labs/agent/kinds",
+        "/v1/labs/agent/documents",
+        "/v1/voice-agent",
+        "/v1/keys",
+        "/v1/device/keys",
+        "/v1/account",
+        "/v1/notify",
+        "/v1/land",
+        "/v1/traces",
+        "/v1/work",
+    ] {
+        let (bearer, _) = call(&world, Some(&session), "GET", path, None).await;
+        let (status, _, body) =
+            from_page(&world, &cookie, None, "same-origin", "GET", path, None).await;
+        assert_eq!(status, bearer, "{path}: {body}");
+        // `/v1/notify` forwards to a service this world doesn't run.
+        if path != "/v1/notify" {
+            assert_ne!(status, 401, "{path}: {body}");
+        }
+        let (status, _, body) =
+            from_page(&world, &cookie, None, "cross-site", "GET", path, None).await;
+        assert_eq!(
+            (status, &body["error"]["code"]),
+            (403, &json!("cross_site")),
+            "{path}"
+        );
+    }
+    // A write: refused without the page's value, taken with it as the
+    // Bearer's is.
+    let spec = openagents_sdk::agents::AgentSpec {
+        name: "Reviewer".into(),
+        description: "Reviews changes".into(),
+        instructions: "Review the change.".into(),
+        runtime: "claude-code".into(),
+        model: None,
+        access: openagents_sdk::agents::Access::ReadOnly,
+        fallbacks: vec![],
+        autonomy: None,
+    };
+    let agent = json!({"request_id": format!("{:064x}", 12262), "spec": spec});
+    let (status, _, body) = from_page(
+        &world,
+        &cookie,
+        None,
+        "same-origin",
+        "POST",
+        "/v1/agent-definitions",
+        Some(agent.clone()),
+    )
+    .await;
+    assert_eq!(status, 403, "{body}");
+    let (status, _, body) = from_page(
+        &world,
+        &cookie,
+        Some("not-the-value"),
+        "same-origin",
+        "POST",
+        "/v1/agent-definitions",
+        Some(agent.clone()),
+    )
+    .await;
+    assert_eq!(status, 403, "{body}");
+    let (status, _, made) = from_page(
+        &world,
+        &cookie,
+        Some(&csrf),
+        "same-origin",
+        "POST",
+        "/v1/agent-definitions",
+        Some(agent.clone()),
+    )
+    .await;
+    assert_eq!(status, 200, "{made}");
+    let (status, listed) = call(&world, Some(&session), "GET", "/v1/agent-definitions", None).await;
+    assert_eq!(status, 200);
+    assert!(listed.to_string().contains("Reviewer"), "{listed}");
+    // A visitor's cookie reaches only the chat routes.
+    let (_, headers, _) = from_page(
+        &world,
+        "",
+        None,
+        "same-origin",
+        "GET",
+        "/lander8/session",
+        None,
+    )
+    .await;
+    let visitor = headers[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let (status, _, _) = from_page(
+        &world,
+        &visitor,
+        None,
+        "same-origin",
+        "GET",
+        "/v1/threads",
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (status, _, body) = from_page(
+        &world,
+        &visitor,
+        None,
+        "same-origin",
+        "GET",
+        "/v1/computers",
+        None,
+    )
+    .await;
+    assert_eq!(status, 401, "{body}");
+}

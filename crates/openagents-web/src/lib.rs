@@ -52,7 +52,6 @@ mod chat_vision;
 pub mod cloud;
 mod cloud_host;
 mod coder_sync;
-mod cookie_api;
 mod components;
 mod composer;
 mod composer_row;
@@ -64,6 +63,7 @@ pub mod connections;
 mod continuation_receipts;
 mod continuations;
 mod continuations_openapi;
+mod cookie_api;
 mod custom_agents;
 mod custom_agents_openapi;
 mod dashboard;
@@ -781,6 +781,7 @@ pub fn router(mut config: Config) -> Router {
         .merge(vault::routes())
         .merge(account_export::routes())
         .merge(account_delete::routes())
+        .merge(cookie_api::routes())
         .merge(projects::routes())
         .merge(github_tools::routes())
         .merge(lab::routes())
@@ -801,7 +802,10 @@ pub fn router(mut config: Config) -> Router {
         .merge(attribution::routes())
         .route_layer(middleware::from_fn(analytics::mark))
         .fallback(not_found)
-        .layer(middleware::from_fn_with_state(app.clone(), cookie_api::layer))
+        .layer(middleware::from_fn_with_state(
+            app.clone(),
+            cookie_api::layer,
+        ))
         .layer(middleware::from_fn_with_state(
             app.clone(),
             work_runs::computers::guard,
@@ -1035,6 +1039,7 @@ async fn host_guard(hosts: Hosts, mut request: Request, next: Next) -> Response 
         });
     let owned = upstream::owned(path)
         || account_delete::owns(request.method(), path)
+        || cookie_api::owns(request.method(), path)
         || (hosts.api && path.starts_with("/api/v1/"));
     // A wrongly routed Cloud credential cannot become a legacy credential.
     if cloud_cookie && (!(local || public) || !owned)
