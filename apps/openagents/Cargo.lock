@@ -11311,6 +11311,7 @@ dependencies = [
  "openagents-sync",
  "openagents-update",
  "openagents-visual",
+ "openagents-voice",
  "openagents-workspace-hack",
  "portable-pty",
  "reqwest 0.12.28",

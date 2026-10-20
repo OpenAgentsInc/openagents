@@ -37,6 +37,8 @@ mod cloud_computers;
 /// Every computer's chats from the registry (#12265).
 mod computers;
 mod devices;
+/// The composer's microphone (#12292).
+mod dictation;
 /// Moving a computer chat to a cloud computer and back (#12282).
 mod move_sheet;
 /// A new session on a computer (#12266).
@@ -111,6 +113,7 @@ pub struct ChatApp {
     target: new_session::Target,
     /// The open move card (#12282).
     moving: Option<move_sheet::MoveSheet>,
+    dictation: dictation::Dictation,
     cloud_computers: cloud_computers::State,
     _registry: Task<()>,
     /// The open chat; `None` is a new chat.
@@ -299,6 +302,7 @@ impl ChatApp {
             watching: None,
             target: new_session::Target::default(),
             moving: None,
+            dictation: Default::default(),
             cloud_computers: cloud_computers::State::default(),
             _registry: Task::ready(()),
             current: None,
@@ -1698,6 +1702,7 @@ impl ChatApp {
                             .py(px(5.))
                             .child(self.composer.clone()),
                     )
+                    .children(self.render_mic(cx))
                     .child(send),
             )
             .child(

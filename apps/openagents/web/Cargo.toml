@@ -12,6 +12,7 @@ members = [
     "chat",
     "files",
     "room",
+    "dictation",
     "work",
     "settings",
     "demo",

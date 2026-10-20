@@ -74,6 +74,7 @@ const ICONS: &[(&str, &[u8])] = &[
         ui_asset!("icons/pull-request.svg"),
     ),
     ("icons/stop.svg", ui_asset!("icons/stop.svg")),
+    ("icons/microphone.svg", ui_asset!("icons/microphone.svg")),
     ("icons/tuning.svg", ui_asset!("icons/tuning.svg")),
     // The sidebar's Settings row (#12288).
     ("icons/settings.svg", ui_asset!("icons/settings.svg")),

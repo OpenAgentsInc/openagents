@@ -11,6 +11,8 @@
 #   openagents_web_room.js        a computer chat's live transcript (its
 #   openagents_web_room_bg.wasm   chat2 room and Loro doc), loaded when one
 #                                 first opens (#12224)
+#   openagents_web_dictation.js   dictation's glue and module, loaded the
+#   openagents_web_dictation_bg.wasm  first time the microphone starts (#12292)
 #   openagents_web_work.js        the work panel's glue and module, loaded
 #   openagents_web_work_bg.wasm   when it first opens (#12225)
 #   openagents_web_settings.js    Settings' glue and module, loaded the
@@ -78,6 +80,15 @@ wasm-bindgen --target web --no-typescript --out-dir "$out" \
 wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
     --enable-sign-ext --enable-mutable-globals --enable-reference-types \
     "$out/openagents_web_room_bg.wasm" -o "$out/openagents_web_room_bg.wasm"
+# Dictation (#12292): its own module, which start.js loads the first time
+# the composer's microphone starts.
+cargo build --locked --manifest-path "$web/Cargo.toml" -p openagents-web-dictation \
+  --release --target "$target"
+wasm-bindgen --target web --no-typescript --out-dir "$out" \
+  "$target_dir/$target/release/openagents_web_dictation.wasm"
+wasm-opt -Os --enable-bulk-memory --enable-nontrapping-float-to-int \
+    --enable-sign-ext --enable-mutable-globals --enable-reference-types \
+    "$out/openagents_web_dictation_bg.wasm" -o "$out/openagents_web_dictation_bg.wasm"
 # The work panel (#12225): its own module too, loaded when it first opens.
 cargo build --locked --manifest-path "$web/Cargo.toml" -p openagents-web-work \
   --release --target "$target"
@@ -110,7 +121,7 @@ compress() {
 # The first-frame painter: the page paints the frame this browser kept
 # from the last visit before the module loads (#12244).
 "$app/scripts/build-first-frame-painter.sh" "$out/first-frame"
-python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_work openagents_web_settings
+python3 "$app/scripts/package-web-build.py" "$out" openagents_web_chat openagents_web_files openagents_web_room openagents_web_dictation openagents_web_work openagents_web_settings
 for font in $fonts; do
   compress "$out/fonts/$font"
 done

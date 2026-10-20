@@ -319,6 +319,61 @@ window.addEventListener("oa-room-close", function () {
   }
 });
 
+// Dictation (#12292): its own module, loaded the first time the composer's
+// microphone asks for it (`oa-dictation-start`, with the chat's computer).
+// The AudioContext is made here, during the click, so Safari lets it run.
+// The module sends each step back as `oa-dictation`.
+var dictation = null;
+var dictationLoading = null;
+function loadDictation() {
+  if (!dictationLoading) {
+    var glue = new URL("./openagents_web_dictation.js", import.meta.url);
+    dictationLoading = import(glue.href).then(function (module) {
+      return module.default({
+        module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_dictation_bg.wasm", import.meta.url))),
+      }).then(function () {
+        dictation = module;
+        return module;
+      });
+    });
+  }
+  return dictationLoading;
+}
+function dictationFailed(message) {
+  window.dispatchEvent(new CustomEvent("oa-dictation", {
+    detail: JSON.stringify({ state: "failed", message: message }),
+  }));
+}
+window.addEventListener("oa-dictation-start", function (event) {
+  var device = event.detail || "";
+  var Context = window.AudioContext || window.webkitAudioContext;
+  if (!Context) {
+    dictationFailed("This browser can't record.");
+    return;
+  }
+  var context = new Context();
+  loadDictation()
+    .then(function (module) {
+      module.start(device, context);
+    })
+    .catch(function (error) {
+      console.error("dictation couldn't load", error);
+      dictationLoading = null;
+      context.close();
+      dictationFailed("Dictation didn't start.");
+    });
+});
+window.addEventListener("oa-dictation-stop", function () {
+  if (dictation) {
+    dictation.stop();
+  }
+});
+window.addEventListener("oa-dictation-cancel", function () {
+  if (dictation) {
+    dictation.cancel();
+  }
+});
+
 // The work panel (#12225): work runs, environments, and Mac jobs. Its
 // own module, loaded the first time the header's work button asks for it,
 // in a box on the right.
