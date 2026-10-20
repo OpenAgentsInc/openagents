@@ -40,7 +40,21 @@ invite=""
 if [ -n "${INVITE_ONLY_JSON:-}" ]; then
     invite=",\"invite_only\":$INVITE_ONLY_JSON"
 fi
-printf '{"schema":"openagents.cloud.web-config.v1","public_origin":"%s","account_service":"http://127.0.0.1:8791","csrf_secret":"%s/csrf.key"%s}' "$PUBLIC_ORIGIN" "$p" "$invite" > "$p/cloud.json"
+# WorkOS sign-in (docs/auth/2026-10-20-workos-source-of-truth.md), optional:
+# the environment's client and API key (Secret Manager), the methods it has
+# turned on (WORKOS_METHODS, comma-separated: github, google, password,
+# magic_code, sso), and the mode, OPENAGENTS_AUTH (legacy, dual, or workos;
+# legacy when unset), which the process reads itself. Without the client
+# and key, sign-in is what it was.
+workos=""
+if [ -n "${WORKOS_CLIENT_ID:-}" ] && [ -n "${WORKOS_API_KEY:-}" ]; then
+    printf '%s' "$WORKOS_API_KEY" > "$p/workos.key"
+    methods=$(printf '%s' "${WORKOS_METHODS:-}" | tr -d ' ' | sed 's/^,*//; s/,*$//; s/,/","/g')
+    [ -n "$methods" ] && methods="\"$methods\""
+    workos=",\"workos\":{\"client_id\":\"$WORKOS_CLIENT_ID\",\"api_key_file\":\"$p/workos.key\",\"methods\":[$methods]}"
+fi
+unset WORKOS_API_KEY
+printf '{"schema":"openagents.cloud.web-config.v1","public_origin":"%s","account_service":"http://127.0.0.1:8791","csrf_secret":"%s/csrf.key"%s%s}' "$PUBLIC_ORIGIN" "$p" "$invite" "$workos" > "$p/cloud.json"
 # Agent work (#11162, docs/deployment/agent-work.md): Environments and
 # Claude Code runs, for site admins and OPENAGENTS_WEB_AGENT_ACCOUNTS. The
 # machines are our own Boat-compatible service on GCE, oa-boat (#11256;

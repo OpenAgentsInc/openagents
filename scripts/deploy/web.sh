@@ -180,11 +180,20 @@ stage() {
     t=$(now)
     spec=$STATE/staging-$sha.json
     revision=$STAGING-$sha-$(date -u +%H%M%S)
+    # WorkOS sign-in on staging (deploy/staging/render.py) once the staging
+    # environment's two secrets exist and REF's render.py knows the flag.
+    workos=
+    if grep -q -- '--workos' "$ctx/deploy/staging/render.py" &&
+        g secrets describe openagents-web-workos-staging-api-key --project "$PROJECT" > /dev/null 2>&1 &&
+        g secrets describe openagents-web-workos-staging-client-id --project "$PROJECT" > /dev/null 2>&1; then
+        workos=--workos
+        say "  WorkOS sign-in on (dual)"
+    fi
     if [ -n "$keep" ]; then
         # REF's own web container, for its launcher and what it adds.
         python3 "$ctx/deploy/staging/render.py" --revision "$revision" \
             --web-image "$REPO/openagents-web@$web_digest" --stack-image unused \
-            --worker-pubkey "$WORKER_PUBKEY" > "$STATE/ref-$sha.json"
+            --worker-pubkey "$WORKER_PUBKEY" $workos > "$STATE/ref-$sha.json"
         g run services describe "$STAGING" --region "$REGION" --project "$PROJECT" --format=json |
             python3 -c 'import json, sys
 d = json.load(sys.stdin)
@@ -233,7 +242,7 @@ print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
         python3 "$ctx/deploy/staging/render.py" --revision "$revision" \
             --web-image "$REPO/openagents-web@$web_digest" \
             --stack-image "$REPO/openagents-stack@$stack_digest" \
-            --worker-pubkey "$WORKER_PUBKEY" > "$spec"
+            --worker-pubkey "$WORKER_PUBKEY" $workos > "$spec"
     fi
     SERVICE=$STAGING
     TRAFFIC_ORIGIN=https://staging.openagents.com

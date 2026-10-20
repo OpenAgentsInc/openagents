@@ -232,6 +232,20 @@ invite=""
 if [ -n "${INVITE_ONLY_JSON:-}" ]; then
     invite="\"invite_only\": $INVITE_ONLY_JSON,"
 fi
+# WorkOS sign-in (docs/auth/2026-10-20-workos-source-of-truth.md), optional:
+# the environment's client and API key (Secret Manager), the methods it has
+# turned on (WORKOS_METHODS, comma-separated: github, google, password,
+# magic_code, sso), and the mode, OPENAGENTS_AUTH (legacy, dual, or workos;
+# legacy when unset), which the process reads itself. Without the client
+# and key, sign-in is what it was.
+workos=""
+if [ -n "${WORKOS_CLIENT_ID:-}" ] && [ -n "${WORKOS_API_KEY:-}" ]; then
+    printf '%s' "$WORKOS_API_KEY" > "$private/workos.key"
+    methods=$(printf '%s' "${WORKOS_METHODS:-}" | tr -d ' ' | sed 's/^,*//; s/,*$//; s/,/","/g')
+    [ -n "$methods" ] && methods="\"$methods\""
+    workos="\"workos\": {\"client_id\": \"$WORKOS_CLIENT_ID\", \"api_key_file\": \"$private/workos.key\", \"methods\": [$methods]},"
+fi
+unset WORKOS_API_KEY
 # The deployment's GitHub App (#11056, #11226; docs/auth/github.md "GitHub
 # App"), optional: its private file (GITHUB_APP_JSON, whose private_key is
 # "github-app.pem") and the key GitHub generated (GITHUB_APP_PEM). With it,
@@ -302,6 +316,7 @@ cat > "$private/gateway.json" << EOF
     $invite
     $database
     $github_app
+    $workos
     "github": {
       "credentials": "$private/github-oauth.json",
       "redirect_url": "$PUBLIC_ORIGIN/auth/github/callback"

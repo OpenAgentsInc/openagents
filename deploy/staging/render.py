@@ -78,6 +78,14 @@ CLAUDE_TOKEN_ACCOUNTS = f"chris@openagents.com,{AGENT_ACCOUNTS}"
 # staging GitHub App exists. Production has no stand-in.
 PUSH_STANDIN_REPOS = "AtlantisPleb/openagents-b2-git-checkout-fixture-20260611144040"
 PUSH_STANDIN_SECRET = "openagents-web-1-staging-push-standin-token"
+# WorkOS sign-in on staging (docs/auth/2026-10-20-workos-source-of-truth.md):
+# the WorkOS staging environment's client ID and API key. `--workos` (which
+# scripts/deploy/web.sh stage passes once both secrets exist) adds them to
+# the web and gateway containers in `dual` mode, with every method the
+# staging environment has on. Undo with OPENAGENTS_AUTH=legacy.
+WORKOS_STAGING_CLIENT = "openagents-web-workos-staging-client-id"
+WORKOS_STAGING_KEY = "openagents-web-workos-staging-api-key"
+WORKOS_STAGING_METHODS = "github,google,password,magic_code,sso"
 
 
 def secret(name, var):
@@ -94,7 +102,18 @@ def main():
     parser.add_argument("--stack-image", required=True)
     parser.add_argument("--worker-pubkey", required=True)
     parser.add_argument("--revision", required=True)
+    parser.add_argument("--workos", action="store_true")
     args = parser.parse_args()
+    workos = (
+        [
+            secret(WORKOS_STAGING_CLIENT, "WORKOS_CLIENT_ID"),
+            secret(WORKOS_STAGING_KEY, "WORKOS_API_KEY"),
+            plain("WORKOS_METHODS", WORKOS_STAGING_METHODS),
+            plain("OPENAGENTS_AUTH", "dual"),
+        ]
+        if args.workos
+        else []
+    )
     here = pathlib.Path(__file__).resolve().parent
     web_sh = (here / "web.sh").read_text()
     stack = {"name": "stack", "mountPath": "/stack"}
@@ -154,6 +173,7 @@ def main():
             plain("OPENAGENTS_WEB_LABS_BUCKET", CHAT_BUCKET),
             plain("OPENAGENTS_WEB_LABS_SIGNING_ACCOUNT", RUNTIME),
             plain("OPENAGENTS_WEB_MAC_JOBS_ACTORS", MAC_JOBS_ACTORS),
+            *workos,
         ],
         # The gateway's store, read-only: the web reads only the house
         # service key there, for the environments setup agent.
@@ -188,6 +208,7 @@ def main():
             secret("openagents-gateway-staging-byok-keyring", "BYOK_KEYRING_JSON"),
             secret("openagents-gateway-staging-store-key", "INFERENCE_STORE_KEY"),
             secret(DATABASE_SECRET, "OPENAGENTS_ACCOUNTS_DATABASE_URL"),
+            *workos,
         ],
         "volumeMounts": [stack],
         "resources": {"limits": {"cpu": "1", "memory": "512Mi"}},
