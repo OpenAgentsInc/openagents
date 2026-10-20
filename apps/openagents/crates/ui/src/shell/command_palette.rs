@@ -157,8 +157,10 @@ fn search_error_message(error: &FilesClientError, what: &str) -> SharedString {
             } else {
                 "files"
             };
-            format!("The session's device runs an older openagents — update it to search its {subject}")
-                .into()
+            format!(
+                "The session's device runs an older openagents — update it to search its {subject}"
+            )
+            .into()
         }
         FilesClientError::Transport(_) => "The session's device is unreachable".into(),
         FilesClientError::Encode(_)
@@ -404,7 +406,11 @@ fn scroll_child_index(sections: &[PaletteSection], row_ix: usize) -> usize {
     for (section_ix, section) in sections.iter().enumerate() {
         if row_ix < rows_before + section.rows.len() {
             let child = row_ix + section_ix + 1;
-            return if row_ix == rows_before { child - 1 } else { child };
+            return if row_ix == rows_before {
+                child - 1
+            } else {
+                child
+            };
         }
         rows_before += section.rows.len();
     }
@@ -518,8 +524,8 @@ impl Shell {
         let query = palette.search.read(cx).text().trim().to_owned();
         // An empty query lists the workspace's recent files (the default
         // Files list); a single character is too broad to search.
-        let Some(client) =
-            workspace.filter(|_| query.is_empty() || query.chars().count() >= MIN_WORKSPACE_QUERY_CHARS)
+        let Some(client) = workspace
+            .filter(|_| query.is_empty() || query.chars().count() >= MIN_WORKSPACE_QUERY_CHARS)
         else {
             palette.files.clear();
             palette.content.clear();
@@ -668,7 +674,9 @@ impl Shell {
         // files (the host's empty-query list), each path once.
         let recent_files = |limit| {
             let mut seen = std::collections::HashSet::new();
-            let opened = self.recent_files(&self.active_chat).map(|path| (path.clone(), false));
+            let opened = self
+                .recent_files(&self.active_chat)
+                .map(|path| (path.clone(), false));
             let changed = palette
                 .files
                 .results
@@ -1453,17 +1461,12 @@ pub(super) fn command_key_hint(theme: &Theme, keys: &str, label: &'static str) -
             .text_color(theme.text_muted)
             .child(SharedString::from(keys.to_string())),
     };
-    div()
-        .flex()
-        .items_center()
-        .gap(px(5.0))
-        .child(cap)
-        .child(
-            div()
-                .text_size(crate::typography::ui_rems(10.0))
-                .text_color(theme.text_muted)
-                .child(label),
-        )
+    div().flex().items_center().gap(px(5.0)).child(cap).child(
+        div()
+            .text_size(crate::typography::ui_rems(10.0))
+            .text_color(theme.text_muted)
+            .child(label),
+    )
 }
 
 #[cfg(test)]
@@ -1785,7 +1788,9 @@ mod tests {
         let (replies, inbound) = tokio::sync::mpsc::channel(64);
         let engine = {
             let _guard = runtime.enter();
-            crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(out, inbound))
+            crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(
+                out, inbound,
+            ))
         };
         let (window, dir) = palette_window(cx);
         window
@@ -1931,7 +1936,11 @@ mod tests {
             .collect();
         // Files only; no content search runs without a query.
         assert_eq!(paths, ["src/recent.rs", "README.md"]);
-        assert!(engine.take(methods::SEARCH_WORKSPACE_CONTENT, cx).is_empty());
+        assert!(
+            engine
+                .take(methods::SEARCH_WORKSPACE_CONTENT, cx)
+                .is_empty()
+        );
     }
 
     #[gpui::test]

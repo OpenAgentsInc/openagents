@@ -2,9 +2,9 @@
 //! progress driven by RPC notifications rather than iteration counts or sleeps.
 use futures::future::BoxFuture;
 use gpui::{Entity, TestAppContext};
+use openagents_rpc::{RpcClient, RpcError, RpcReply, RpcService};
 use serde_json::Value;
 use std::sync::Arc;
-use openagents_rpc::{RpcClient, RpcError, RpcReply, RpcService};
 
 type Reply = Result<RpcReply, RpcError>;
 
