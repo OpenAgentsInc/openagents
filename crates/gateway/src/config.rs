@@ -660,6 +660,12 @@ pub struct Accounts {
     /// apply.
     #[serde(default)]
     pub key_accounts: crate::key_accounts::KeyAccounts,
+    /// WorkOS (docs/auth/2026-10-20-workos-source-of-truth.md): the
+    /// environment's client, its API key's source, the sign-in methods it
+    /// has on, and the rollout mode (`OPENAGENTS_AUTH` overrides it).
+    /// Absent, or in `legacy` mode, nothing about sign-in changes.
+    #[serde(default)]
+    pub workos: Option<oa_auth::workos::Settings>,
 }
 
 /// Agent self-registration and what an agent account may use for free

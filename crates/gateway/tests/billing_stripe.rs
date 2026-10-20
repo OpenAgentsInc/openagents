@@ -169,6 +169,7 @@ async fn deploy() -> Deployment {
             store: Default::default(),
             database_url_env: String::new(),
             import_files: false,
+            workos: None,
             agents: None,
             key_accounts: Default::default(),
             anonymous: None,

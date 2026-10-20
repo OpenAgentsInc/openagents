@@ -102,3 +102,4 @@ mod receipt_log;
 pub mod team_policy;
 
 pub mod team_reports;
+pub mod workos_auth;

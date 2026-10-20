@@ -29,7 +29,7 @@ futures-util = { version = "0.3", default-features = false, features = ["sink"] 
 hex = "0.4"
 hmac = "0.12.1"
 nostr = { path = "../nostr" }
-oa-auth = { path = "../oa-auth", features = ["postgres"] }
+oa-auth = { path = "../oa-auth", features = ["postgres", "workos"] }
 inference = { path = "../inference" }
 # Bring your own key on the inference API: who pays, and sealed keys.
 model-access = { path = "../model-access" }
@@ -51,6 +51,8 @@ tokio = { version = "1", features = ["full"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 
 [dev-dependencies]
+# The in-process WorkOS the WorkOS sign-in tests run against.
+oa-auth = { path = "../oa-auth", features = ["postgres", "workos", "fake-workos"] }
 base64 = "0.22"
 commercial-spend = { path = "../commercial-spend" }
 hex = "0.4"

@@ -23,6 +23,8 @@ mod referrals;
 mod team;
 #[path = "accounts_team_policy/mod.rs"]
 mod team_policy;
+#[path = "accounts_workos/mod.rs"]
+mod workos;
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -62,6 +64,7 @@ fn account_config(anonymous: Option<config::Anonymous>) -> config::Accounts {
         store: Default::default(),
         database_url_env: String::new(),
         import_files: false,
+        workos: None,
         agents: None,
         // No proof of work, so tests sign in new keys at once (#11994).
         key_accounts: gateway::key_accounts::KeyAccounts {
@@ -1878,6 +1881,7 @@ async fn signup_and_anonymous_off_when_not_configured() {
             store: Default::default(),
             database_url_env: String::new(),
             import_files: false,
+            workos: None,
             agents: None,
             key_accounts: Default::default(),
             anonymous: None,
@@ -1997,6 +2001,7 @@ async fn stores_install_under_accounts_config_and_validate() {
             store: Default::default(),
             database_url_env: String::new(),
             import_files: false,
+            workos: None,
             agents: None,
             key_accounts: Default::default(),
             recovery_ttl_secs: 3_600,

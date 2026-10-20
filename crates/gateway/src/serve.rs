@@ -226,6 +226,9 @@ pub struct ServeState {
     pub(crate) agents: Option<crate::agent_accounts::Agents>,
     /// Limits for key-only accounts (#11994).
     pub(crate) key_accounts: crate::key_accounts::KeyState,
+    /// WorkOS (#12320 to #12323), present when `accounts.workos` is set and
+    /// its mode isn't `legacy`.
+    pub(crate) workos: Option<crate::workos_auth::WorkosState>,
 }
 
 impl ServeState {
@@ -442,6 +445,15 @@ impl ServeState {
                 .unwrap_or_default(),
         )
         .map_err(Trouble::Money)?;
+        let workos = match config
+            .accounts
+            .as_ref()
+            .and_then(|accounts| accounts.workos.as_ref())
+        {
+            Some(settings) => crate::workos_auth::WorkosState::open(settings)
+                .map_err(|error| Trouble::Io(std::io::Error::other(format!("accounts.workos: {error}"))))?,
+            None => None,
+        };
         let inference_book = inference_book.map(Mutex::new);
         let provider_keys = config
             .inference
@@ -533,6 +545,7 @@ impl ServeState {
             decisions,
             agents,
             key_accounts,
+            workos,
         });
         Ok(state)
     }
@@ -617,6 +630,7 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
     crate::card_funding::controller::resume(&state);
     crate::inference_status::resume(&state);
     crate::subscriptions::resume(&state);
+    crate::workos_auth::resume(&state);
     router
         .layer(DefaultBodyLimit::max(body_max))
         .layer(middleware::from_fn_with_state(
@@ -624,6 +638,10 @@ pub fn router(state: Arc<ServeState>) -> axum::Router {
             crate::agent_accounts::limits,
         ))
         .layer(middleware::from_fn(purchase_route))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            crate::workos_auth::layer,
+        ))
         .layer(middleware::from_fn(crate::envelope::layer))
         .layer(middleware::from_fn_with_state(state.clone(), cors))
         .with_state(state)
@@ -785,6 +803,9 @@ fn api_routes(state: &ServeState) -> Vec<(&'static str, MethodRouter<Arc<ServeSt
     }
     if state.config.accounts.is_some() {
         routes.extend(crate::accounts::routes());
+        if state.workos.is_some() {
+            routes.extend(crate::workos_auth::routes());
+        }
         routes.extend(crate::sso::routes());
         routes.extend(crate::github_repos::routes());
         routes.extend(crate::usage::routes());

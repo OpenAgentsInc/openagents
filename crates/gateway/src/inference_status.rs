@@ -137,6 +137,12 @@ fn same(given: &str, expected: &str) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
+/// Whether `headers` carry the inference admin token, for other admin
+/// routes (the WorkOS backfill).
+pub(crate) fn admin_authorized(state: &ServeState, headers: &HeaderMap) -> bool {
+    authorized(state, headers)
+}
+
 fn authorized(state: &ServeState, headers: &HeaderMap) -> bool {
     let Some(expected) = expected(state) else {
         return false;

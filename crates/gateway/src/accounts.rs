@@ -352,6 +352,10 @@ fn principal_unbound(
     action: &str,
 ) -> Result<Principal, Response> {
     let token = bearer(headers)?;
+    // A WorkOS access token, when WorkOS is on (#12323).
+    if let Some(found) = crate::workos_auth::principal(state, &token) {
+        return found;
+    }
     if tenancy::sessions::is_session_bearer(&token) {
         return session_principal(state, &token).map_err(|refusal| match refusal {
             SessionRefusal::Unavailable(details) => unavailable(
@@ -603,6 +607,14 @@ pub(crate) fn record(
             )
             .ok();
     }
+}
+
+/// Whether the request is part of a test run (`X-OpenAgents-Test: 1`),
+/// whose WorkOS records are marked `test=1`.
+pub(crate) fn test_run(headers: &HeaderMap) -> bool {
+    headers
+        .get("x-openagents-test")
+        .is_some_and(|value| value.as_bytes() == b"1")
 }
 
 /// The current time as Unix seconds.
