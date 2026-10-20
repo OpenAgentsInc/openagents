@@ -14,7 +14,7 @@
 mod host;
 
 #[cfg(target_family = "wasm")]
-pub use host::{Host, Page, Prompt, mount, show};
+pub use host::{Host, Page, Prompt, hide, mount, show};
 
 pub use openagents_chat_view::settings_forms::{Intent, Load, Paints};
 

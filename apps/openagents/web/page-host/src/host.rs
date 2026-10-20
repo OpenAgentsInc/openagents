@@ -39,6 +39,8 @@ pub trait Page: Sized + 'static {
     /// Show `path` (after the module's name: `""`, or `ID`, or `ID/more`).
     fn open(host: &mut Host<Self>, path: &str, cx: &mut Context<Host<Self>>);
     fn intent(host: &mut Host<Self>, intent: Intent, cx: &mut Context<Host<Self>>);
+    /// Stop work while the page is hidden.
+    fn hide(_host: &mut Host<Self>, _cx: &mut Context<Host<Self>>) {}
     /// The text the person entered for `prompt`.
     fn submit(
         _host: &mut Host<Self>,
@@ -334,7 +336,7 @@ impl<P: Page> Render for Host<P> {
 }
 
 thread_local! {
-    static OPEN: RefCell<Option<(Rc<dyn Fn(String)>, AsyncApp)>> = const { RefCell::new(None) };
+    static OPEN: RefCell<Option<(Rc<dyn Fn(String)>, Rc<dyn Fn()>, AsyncApp)>> = const { RefCell::new(None) };
 }
 
 /// Starts page `P` in the page's box at `path`, with the page's fonts, one
@@ -375,7 +377,12 @@ pub fn mount<P: Page>(fonts: js_sys::Array, path: String) {
                         host.changed(cx);
                     });
                 });
-                OPEN.with(|open| *open.borrow_mut() = Some((show, async_cx)));
+                let weak = entity.downgrade();
+                let again = async_cx.clone();
+                let hide: Rc<dyn Fn()> = Rc::new(move || {
+                    let _ = weak.update(&mut again.clone(), |host, cx| P::hide(host, cx));
+                });
+                OPEN.with(|open| *open.borrow_mut() = Some((show, hide, async_cx)));
             }
             cx.activate(true);
         });
@@ -384,8 +391,16 @@ pub fn mount<P: Page>(fonts: js_sys::Array, path: String) {
 
 /// Shows `path` again in the mounted page.
 pub fn show(path: String) {
-    let show = OPEN.with(|open| open.borrow().as_ref().map(|(show, _)| show.clone()));
+    let show = OPEN.with(|open| open.borrow().as_ref().map(|(show, _, _)| show.clone()));
     if let Some(show) = show {
         show(path);
+    }
+}
+
+/// Stops work in the hidden page.
+pub fn hide() {
+    let hide = OPEN.with(|open| open.borrow().as_ref().map(|(_, hide, _)| hide.clone()));
+    if let Some(hide) = hide {
+        hide();
     }
 }

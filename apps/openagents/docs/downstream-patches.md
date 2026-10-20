@@ -2,6 +2,9 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12328: add shared Connections, Vault, and Terminal forms to the
+  separate lazy modules over page-host; keep vault keys in its separate module.
+
 - OpenAgents #12281: add cloud computer creation, stop, wake, removal, and CPU
   usage to the web chat's new-session computer picker.
 - OpenAgents #12295: wrap web chat table cells within their columns, including
