@@ -525,6 +525,8 @@ window.addEventListener("oa-settings-open", openSettings);
 // path). Its box covers the chat; its Back to chat (`oa-page-close`) hides
 // the box, and moving within the page (`oa-page-path`) keeps the address.
 var PAGES = {
+  memory: ["./openagents_web_memory.js", "./openagents_web_memory_bg.wasm"],
+  schedules: ["./openagents_web_schedules.js", "./openagents_web_schedules_bg.wasm"],
   traces: ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm"],
   agents: ["./openagents_web_agents.js", "./openagents_web_agents_bg.wasm"],
   projects: ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm"],

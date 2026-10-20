@@ -1,0 +1,20 @@
+[package]
+name = "openagents-web-memory"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+openagents-web-page-host = { path = "../page-host" }
+openagents-web-account-prompts = { path = "../account-prompts" }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+wasm-bindgen.workspace = true
+js-sys = "0.3"
+console_error_panic_hook = "0.1.7"
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }

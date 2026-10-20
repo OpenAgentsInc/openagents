@@ -5,7 +5,7 @@
 //!
 //! A node's [`Style`] applies only where it sets a field, so a view built
 //! with default styles draws as it always has. Elements the adapter has no
-//! control for yet (`Field`, `Surface`, and the transcript elements) draw
+//! control for yet (`Surface` and the transcript elements) draw
 //! nothing; a native surface such as CAD or Robot is placed by its host.
 
 use gpui::{prelude::*, *};
@@ -45,11 +45,25 @@ pub fn mount_root<I: 'static, V: 'static>(
     action: impl Fn(&mut V, Activation, &mut Context<V>) + 'static,
     cx: &mut Context<V>,
 ) -> AnyElement {
+    mount_root_with_fields(root, instance, revision, action, |_, _| None, cx)
+}
+
+/// Mount shared forms with editable fields supplied by the shell. The shell
+/// keeps each field entity alive across renders and handles its edits.
+pub fn mount_root_with_fields<I: 'static, V: 'static>(
+    root: &Node<I>,
+    instance: &str,
+    revision: u64,
+    action: impl Fn(&mut V, Activation, &mut Context<V>) + 'static,
+    field: impl Fn(&str, &mut Context<V>) -> Option<AnyElement> + 'static,
+    cx: &mut Context<V>,
+) -> AnyElement {
     let theme = Theme::of(cx).clone();
     let mount = Mount {
         instance,
         revision,
         action: Rc::new(action),
+        field: Rc::new(field),
         theme: &theme,
     };
     mount.node(root, cx)
@@ -59,6 +73,7 @@ struct Mount<'a, V> {
     instance: &'a str,
     revision: u64,
     action: Action<V>,
+    field: Rc<dyn Fn(&str, &mut Context<V>) -> Option<AnyElement>>,
     theme: &'a Theme,
 }
 
@@ -204,6 +219,20 @@ impl<V: 'static> Mount<'_, V> {
                     );
                 texted(boxed(el, style), style)
                     .child(value.clone())
+                    .into_any_element()
+            }
+            Element::Field {
+                label,
+                value,
+                enabled,
+                ..
+            } => {
+                let input = enabled.then(|| (self.field)(&node.key, cx)).flatten();
+                let content =
+                    input.unwrap_or_else(|| div().child(value.clone()).into_any_element());
+                texted(boxed(div().flex().flex_col().gap(px(6.)), style), style)
+                    .child(label.clone())
+                    .child(content)
                     .into_any_element()
             }
             Element::RichText { runs, role } => {

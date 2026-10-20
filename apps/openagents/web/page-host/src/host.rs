@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -12,7 +13,7 @@ use openagents_chat_view::rust_native_gpui;
 use openagents_chat_view::settings_forms::{Intent, Paints};
 use openagents_chat_view::theme::Theme;
 use openagents_gpui_web::{FetchHttpClient, WebFonts, WebPlatform};
-use openagents_web_chat_view::composer::{Cancelled, Submitted, TextInput};
+use openagents_web_chat_view::composer::{Cancelled, Edited, Submitted, TextInput};
 use openagents_web_chat_view::{assets, theme};
 use openagents_web_client::store;
 use openagents_web_client::web::Client;
@@ -44,6 +45,8 @@ pub trait Page: Sized + 'static {
     fn pinned(&self) -> Option<f32> {
         None
     }
+    /// An edit to a Field in the shared Rust Native tree.
+    fn field(_host: &mut Host<Self>, _key: &str, _value: String, _cx: &mut Context<Host<Self>>) {}
     /// The text the person entered for `prompt`.
     fn submit(
         _host: &mut Host<Self>,
@@ -62,6 +65,7 @@ pub struct Host<P: Page> {
     focus: FocusHandle,
     field: Option<(Prompt, Entity<TextInput>)>,
     focus_field: bool,
+    fields: HashMap<String, Entity<TextInput>>,
 }
 
 impl<P: Page> Host<P> {
@@ -74,9 +78,82 @@ impl<P: Page> Host<P> {
             focus: cx.focus_handle(),
             field: None,
             focus_field: false,
+            fields: HashMap::new(),
         };
         P::open(&mut this, path, cx);
         this
+    }
+
+    fn prepare_fields(&mut self, root: &rust_native::Node<Intent>, cx: &mut Context<Self>) {
+        use rust_native::Element;
+        match &root.element {
+            Element::Field {
+                value,
+                placeholder,
+                multiline,
+                max_bytes,
+                enabled,
+                ..
+            } if *enabled => {
+                let key = root.key.clone();
+                if !self.fields.contains_key(&key) {
+                    let input = cx.new(|cx| {
+                        if *multiline {
+                            {
+                                let mut field = TextInput::multiline(placeholder.clone(), cx);
+                                field.set_send_with_modifier(true);
+                                field
+                            }
+                        } else {
+                            TextInput::new(placeholder.clone(), cx)
+                        }
+                    });
+                    cx.subscribe(
+                        &input,
+                        |_,
+                         input,
+                         submitted: &openagents_web_chat_view::composer::Submitted,
+                         cx| {
+                            input.update(cx, |input, cx| input.set_text(submitted.0.clone(), cx));
+                        },
+                    )
+                    .detach();
+                    let field_key = key.clone();
+                    let limit = *max_bytes;
+                    cx.subscribe(&input, move |this, input, _: &Edited, cx| {
+                        let text = input.read(cx).text();
+                        if text.len() > limit {
+                            let mut end = limit;
+                            while !text.is_char_boundary(end) {
+                                end -= 1;
+                            }
+                            input
+                                .update(cx, |input, cx| input.set_text(text[..end].to_owned(), cx));
+                        }
+                        let text = input.read(cx).text();
+                        P::field(this, &field_key, text, cx);
+                        this.revision += 1;
+                        cx.notify();
+                    })
+                    .detach();
+                    self.fields.insert(key.clone(), input);
+                }
+                if let Some(input) = self.fields.get(&key) {
+                    if input.read(cx).text() != *value {
+                        input.update(cx, |input, cx| input.set_text(value.clone(), cx));
+                    }
+                }
+            }
+            Element::Stack { children, .. }
+            | Element::List { children, .. }
+            | Element::Choice { children, .. }
+            | Element::Dialog { children, .. } => {
+                for child in children {
+                    self.prepare_fields(child, cx);
+                }
+            }
+            _ => {}
+        }
     }
 
     /// Draw again: the page's state changed.
@@ -209,7 +286,9 @@ impl<P: Page> Render for Host<P> {
         }
         let paints = paints(&theme::desktop());
         let root = self.page.view(&paints);
-        let body = rust_native_gpui::mount_root(
+        self.prepare_fields(&root, cx);
+        let fields = self.fields.clone();
+        let body = rust_native_gpui::mount_root_with_fields(
             &root,
             P::NAME,
             self.revision,
@@ -220,6 +299,19 @@ impl<P: Page> Render for Host<P> {
                     P::intent(this, intent, cx);
                     this.changed(cx);
                 }
+            },
+            move |key, _| {
+                fields.get(key).map(|input| {
+                    div()
+                        .px(px(12.))
+                        .py(px(8.))
+                        .rounded(px(8.))
+                        .border_1()
+                        .border_color(theme::border_strong())
+                        .bg(theme::input_bg())
+                        .child(input.clone())
+                        .into_any_element()
+                })
             },
             cx,
         );
@@ -370,6 +462,7 @@ pub fn mount<P: Page>(fonts: js_sys::Array, path: String) {
         .with_http_client(Arc::new(FetchHttpClient::new()))
         .run_embedded(move |cx| {
             openagents_web_chat_view::install(cx);
+            openagents_web_chat_view::composer::bind_keys(cx);
             let bounds = gpui::Bounds::centered(None, size(px(1280.), px(820.)), cx);
             let opened = cx.open_window(
                 WindowOptions {
