@@ -1,6 +1,10 @@
 //! Exercise isolated account controls or an explicitly selected test-account chat.
 //! Pass an empty scratch directory. Account credentials stay in memory.
 //! The continuation mode starts its own engine and uses the selected test chat.
+use ::openagents_account::{
+    Controller, Phase,
+    openagents::{Client, CredentialRecord, CredentialStore, Deployment, StorageError},
+};
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -8,11 +12,8 @@ use axum::{
     response::{Html, IntoResponse, Response},
     routing::{get, post},
 };
-use ::openagents_account::{
-    Controller, Phase,
-    openagents::{Client, CredentialRecord, CredentialStore, Deployment, StorageError},
-};
 use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
+use openagents_ui::{openagents_account::AppAccount, *};
 use serde_json::json;
 use std::{
     path::PathBuf,
@@ -22,7 +23,6 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use openagents_ui::{openagents_account::AppAccount, *};
 #[derive(Default)]
 struct Store(Mutex<Option<CredentialRecord>>);
 impl CredentialStore for Store {

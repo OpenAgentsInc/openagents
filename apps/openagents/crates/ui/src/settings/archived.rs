@@ -17,8 +17,16 @@ use crate::theme::Theme;
 /// Archived rows in sidebar (recency) order. Pure. Side chats stay listed:
 /// once archived and closed, this is the only place to restore them.
 pub fn archived_chats(chats: &[Chat]) -> Vec<&Chat> {
-    chats.iter().filter(|c| c.archived && c.links.continued_by.is_none()
-        && !c.config.as_ref().is_some_and(|config| config.model_options.contains_key(chat_home::REQUEST_OPTION))).collect()
+    chats
+        .iter()
+        .filter(|c| {
+            c.archived
+                && c.links.continued_by.is_none()
+                && !c.config.as_ref().is_some_and(|config| {
+                    config.model_options.contains_key(chat_home::REQUEST_OPTION)
+                })
+        })
+        .collect()
 }
 
 const ARCHIVE_PAGE_SIZE: usize = 40;
@@ -635,8 +643,9 @@ mod tests {
         let _guard = runtime.enter();
         let (out, mut requests) = tokio::sync::mpsc::channel(16);
         let (replies, inbound) = tokio::sync::mpsc::channel(16);
-        let engine =
-            crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(out, inbound));
+        let engine = crate::state::EngineHandle::from_test_client(openagents_rpc::RpcClient::new(
+            out, inbound,
+        ));
         let dir = tempfile::tempdir().unwrap();
         cx.update(|cx| {
             crate::settings::init(Default::default(), dir.path(), cx);

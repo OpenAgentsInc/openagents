@@ -8,8 +8,8 @@ use std::{
     sync::Arc,
 };
 
-use sha2::{Digest, Sha256};
 use openagents_syntax::{HighlightedDocument, LanguageId};
+use sha2::{Digest, Sha256};
 
 pub const QUERY_GENERATION: u32 = 1;
 const MAX_DOCUMENTS: usize = 96;

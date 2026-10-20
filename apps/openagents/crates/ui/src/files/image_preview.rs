@@ -269,7 +269,8 @@ mod tests {
             &self,
             _: &str,
             _: serde_json::Value,
-        ) -> Result<tokio::sync::mpsc::Receiver<serde_json::Value>, openagents_rpc::RpcError> {
+        ) -> Result<tokio::sync::mpsc::Receiver<serde_json::Value>, openagents_rpc::RpcError>
+        {
             unreachable!()
         }
     }
@@ -383,7 +384,8 @@ mod tests {
             &self,
             _: &str,
             _: serde_json::Value,
-        ) -> Result<tokio::sync::mpsc::Receiver<serde_json::Value>, openagents_rpc::RpcError> {
+        ) -> Result<tokio::sync::mpsc::Receiver<serde_json::Value>, openagents_rpc::RpcError>
+        {
             unreachable!()
         }
     }

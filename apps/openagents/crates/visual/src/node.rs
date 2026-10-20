@@ -3,7 +3,7 @@
 //! renders it with native elements, and handlers are indexes into the
 //! render's handler list.
 
-use mlua::{Function, Table, Value};
+use crate::runtime::{Function, Table, Value};
 
 use crate::VisualError;
 use crate::style::{Align, Color, Justify, TextSize, Token, Weight};
@@ -274,9 +274,10 @@ const MAX_TEXT: usize = 8000;
 
 /// Builds a [`Node`] tree from a view's return value, collecting the
 /// functions it references.
-pub(crate) struct Parser {
-    pub handlers: Vec<Function>,
+pub(crate) struct Parser<'lua> {
+    pub handlers: Vec<Function<'lua>>,
     nodes: usize,
+    _lua: std::marker::PhantomData<&'lua ()>,
 }
 
 /// Field names every node accepts.
@@ -299,20 +300,21 @@ fn forbidden(prop: &str) -> Option<&'static str> {
     })
 }
 
-impl Parser {
+impl<'lua> Parser<'lua> {
     pub fn new() -> Self {
         Self {
             handlers: Vec::new(),
             nodes: 0,
+            _lua: Default::default(),
         }
     }
 
-    fn handler(&mut self, function: Function) -> HandlerId {
+    fn handler(&mut self, function: Function<'lua>) -> HandlerId {
         self.handlers.push(function);
         HandlerId(self.handlers.len() as u32 - 1)
     }
 
-    pub fn root(&mut self, value: Value) -> Result<Node, VisualError> {
+    pub fn root(&mut self, value: Value<'lua>) -> Result<Node, VisualError> {
         let mut children = Vec::new();
         self.children_into(value, &mut children, 0)?;
         Ok(match children.len() {
@@ -334,7 +336,7 @@ impl Parser {
     /// (from a map), or nil/false (conditional rendering).
     fn children_into(
         &mut self,
-        value: Value,
+        value: Value<'lua>,
         out: &mut Vec<Node>,
         depth: usize,
     ) -> Result<(), VisualError> {
@@ -343,7 +345,7 @@ impl Parser {
         }
         match value {
             Value::Nil | Value::Boolean(false) => {}
-            Value::String(s) => out.push(self.plain_text(s.to_string_lossy())?),
+            Value::String(s) => out.push(self.plain_text(crate::runtime::string_text(&s))?),
             Value::Integer(_) | Value::Number(_) => out.push(self.plain_text(number_text(&value))?),
             Value::Table(table) => {
                 if table.raw_get::<Option<String>>("__kind")?.is_some() {
@@ -390,10 +392,10 @@ impl Parser {
         })
     }
 
-    fn node(&mut self, table: &Table, depth: usize) -> Result<Node, VisualError> {
+    fn node(&mut self, table: &Table<'lua>, depth: usize) -> Result<Node, VisualError> {
         self.count()?;
         let kind: String = table.raw_get("__kind")?;
-        let props = Props { table, kind: &kind };
+        let props = Props::new(table, &kind);
         let node_kind = match kind.as_str() {
             "column" | "row" => {
                 props.allow(&["gap", "align", "justify", "wrap", "hover", "on_click"])?;
@@ -497,7 +499,7 @@ impl Parser {
                     "transparent",
                 ])?;
                 let code = match props.table.raw_get::<Value>("code")? {
-                    Value::String(code) => code.to_string_lossy(),
+                    Value::String(code) => crate::runtime::string_text(&code),
                     Value::Nil => {
                         return Err(props.error(
                             "needs code: GLSL defining void mainImage(out vec4 fragColor, in \
@@ -510,7 +512,7 @@ impl Parser {
                 if let Some(table) = props.get::<Option<Table>>("buffers")? {
                     for value in table.sequence_values::<Value>() {
                         match value? {
-                            Value::String(code) => buffers.push(code.to_string_lossy()),
+                            Value::String(code) => buffers.push(crate::runtime::string_text(&code)),
                             _ => return Err(props.error("'buffers' is a list of GLSL strings")),
                         }
                     }
@@ -525,7 +527,9 @@ impl Parser {
                 if let Some(table) = props.get::<Option<Table>>("textures")? {
                     for value in table.sequence_values::<Value>() {
                         match value? {
-                            Value::String(name) => textures.push(name.to_string_lossy()),
+                            Value::String(name) => {
+                                textures.push(crate::runtime::string_text(&name))
+                            }
                             _ => return Err(props.error("'textures' is a list of asset names")),
                         }
                     }
@@ -675,14 +679,18 @@ impl Parser {
         })
     }
 
-    fn required_function(&mut self, props: &Props, name: &str) -> Result<HandlerId, VisualError> {
+    fn required_function(
+        &mut self,
+        props: &Props<'_, 'lua>,
+        name: &str,
+    ) -> Result<HandlerId, VisualError> {
         match props.function(name)? {
             Some(function) => Ok(self.handler(function)),
             None => Err(props.error(&format!("needs {name} = function(...) end"))),
         }
     }
 
-    fn text(&mut self, props: &Props) -> Result<Text, VisualError> {
+    fn text(&mut self, props: &Props<'_, 'lua>) -> Result<Text, VisualError> {
         props.allow(&[
             "size", "weight", "color", "mono", "italic", "align", "truncate",
         ])?;
@@ -693,10 +701,7 @@ impl Parser {
                 Value::Table(table)
                     if table.raw_get::<Option<String>>("__kind")?.as_deref() == Some("span") =>
                 {
-                    let span_props = Props {
-                        table: &table,
-                        kind: "span",
-                    };
+                    let span_props = Props::new(&table, "span");
                     span_props.allow(&["weight", "color", "mono", "italic"])?;
                     let text: String = table
                         .sequence_values::<Value>()
@@ -738,7 +743,7 @@ impl Parser {
         })
     }
 
-    fn table(&mut self, props: &Props, depth: usize) -> Result<Table_, VisualError> {
+    fn table(&mut self, props: &Props<'_, 'lua>, depth: usize) -> Result<Table_, VisualError> {
         props.allow(&["columns", "rows", "hover"])?;
         let mut columns = Vec::new();
         for column in props
@@ -805,7 +810,7 @@ impl Parser {
     }
 }
 
-fn chart(props: &Props) -> Result<Chart, VisualError> {
+fn chart(props: &Props<'_, '_>) -> Result<Chart, VisualError> {
     props.allow(&[
         "type",
         "height",
@@ -847,10 +852,7 @@ fn chart(props: &Props) -> Result<Chart, VisualError> {
         .into_iter()
         .enumerate()
     {
-        let s_props = Props {
-            table: &s,
-            kind: "chart series",
-        };
+        let s_props = Props::new(&s, "chart series");
         s_props.allow(&["name", "values", "points", "color"])?;
         let values = match s.get::<Option<Table>>("values")? {
             Some(values) => {
@@ -914,12 +916,21 @@ fn chart(props: &Props) -> Result<Chart, VisualError> {
     })
 }
 
-struct Props<'a> {
-    table: &'a Table,
+struct Props<'a, 'lua> {
+    table: &'a Table<'lua>,
     kind: &'a str,
+    _lua: std::marker::PhantomData<&'lua ()>,
 }
 
-impl Props<'_> {
+impl<'a, 'lua> Props<'a, 'lua> {
+    fn new(table: &'a Table<'lua>, kind: &'a str) -> Self {
+        Self {
+            table,
+            kind,
+            _lua: Default::default(),
+        }
+    }
+
     fn error(&self, message: &str) -> VisualError {
         VisualError::script(format!("ui.{} {message}", self.kind))
     }
@@ -930,7 +941,7 @@ impl Props<'_> {
         for pair in self.table.pairs::<Value, Value>() {
             let (key, _) = pair?;
             let Value::String(key) = key else { continue };
-            let key = key.to_string_lossy();
+            let key = crate::runtime::string_text(&key);
             if COMMON.contains(&key.as_str()) || known.contains(&key.as_str()) {
                 continue;
             }
@@ -948,7 +959,7 @@ impl Props<'_> {
         Ok(())
     }
 
-    fn get<T: mlua::FromLua>(&self, name: &str) -> Result<T, VisualError> {
+    fn get<T: crate::runtime::FromLua<'lua>>(&self, name: &str) -> Result<T, VisualError> {
         self.table
             .raw_get(name)
             .map_err(|e| self.error(&format!("'{name}': {}", short_error(&e))))
@@ -986,7 +997,7 @@ impl Props<'_> {
         self.string(name)
     }
 
-    fn function(&self, name: &str) -> Result<Option<Function>, VisualError> {
+    fn function(&self, name: &str) -> Result<Option<Function<'lua>>, VisualError> {
         match self.table.raw_get::<Value>(name)? {
             Value::Nil => Ok(None),
             Value::Function(f) => Ok(Some(f)),
@@ -1007,7 +1018,7 @@ impl Props<'_> {
             Value::Nil => None,
             Value::Integer(n) => Some(Weight::from_number(n as f64)),
             Value::Number(n) => Some(Weight::from_number(n)),
-            Value::String(s) => Some(Weight::parse(&s.to_string_lossy())?),
+            Value::String(s) => Some(Weight::parse(&crate::runtime::string_text(&s))?),
             _ => return Err(self.error("'weight' must be a number or a name")),
         })
     }
@@ -1036,10 +1047,12 @@ impl Props<'_> {
 }
 
 /// A color: a token name, or a `ui.color` / `ui.mix` table.
-pub(crate) fn parse_color(value: Value) -> Result<Option<Color>, VisualError> {
+pub(crate) fn parse_color(value: Value<'_>) -> Result<Option<Color>, VisualError> {
     Ok(match value {
         Value::Nil => None,
-        Value::String(s) => Some(Color::token(Token::parse(&s.to_string_lossy())?)),
+        Value::String(s) => Some(Color::token(Token::parse(&crate::runtime::string_text(
+            &s,
+        ))?)),
         Value::Table(t) if t.raw_get::<Option<bool>>("__color")?.unwrap_or(false) => {
             let token = Token::parse(&t.raw_get::<String>("token")?)?;
             let mix = match t.raw_get::<Option<String>>("mix")? {
@@ -1071,7 +1084,7 @@ pub(crate) fn parse_color(value: Value) -> Result<Option<Color>, VisualError> {
 
 pub(crate) fn value_text(value: &Value) -> String {
     match value {
-        Value::String(s) => s.to_string_lossy(),
+        Value::String(s) => crate::runtime::string_text(&s),
         Value::Integer(_) | Value::Number(_) => number_text(value),
         Value::Boolean(b) => b.to_string(),
         Value::Nil => String::new(),
@@ -1102,9 +1115,9 @@ fn clip(mut text: String) -> String {
     text
 }
 
-pub(crate) fn short_error(error: &mlua::Error) -> String {
+pub(crate) fn short_error(error: &crate::runtime::Error) -> String {
     match error {
-        mlua::Error::FromLuaConversionError { from, to, .. } => {
+        crate::runtime::Error::FromLuaConversionError { from, to, .. } => {
             format!("expected {to}, got {from}")
         }
         other => other.to_string(),

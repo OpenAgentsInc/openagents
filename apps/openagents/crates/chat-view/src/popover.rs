@@ -2465,11 +2465,7 @@ mod tests {
 }
 
 /// Compact mention-style match washes preserve the row's font and spacing.
-pub fn search_highlight(
-    text: SharedString,
-    query: Option<&str>,
-    theme: &Theme,
-) -> AnyElement {
+pub fn search_highlight(text: SharedString, query: Option<&str>, theme: &Theme) -> AnyElement {
     let Some(query) = query.filter(|query| !query.trim().is_empty()) else {
         return text.into_any_element();
     };

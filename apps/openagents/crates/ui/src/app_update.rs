@@ -221,7 +221,10 @@ impl AppUpdate {
             // newest release, with that release's checksums.
             let manifest = openagents_update::fetch_latest(&edge_url).await?;
             anyhow::ensure!(
-                openagents_update::version_newer(&manifest.version, openagents_update::current_version()),
+                openagents_update::version_newer(
+                    &manifest.version,
+                    openagents_update::current_version()
+                ),
                 "the release feed no longer offers a newer version"
             );
             let staged = install

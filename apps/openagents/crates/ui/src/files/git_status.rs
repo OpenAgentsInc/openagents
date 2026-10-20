@@ -3,7 +3,9 @@
 use std::{collections::HashMap, time::Duration};
 
 use gpui::{App, Context, Entity, Global, Task, WeakEntity, prelude::*};
-use openagents_proto::{CheckoutGitStatus, GitFileState, GitFileStatus, WatchWorkspaceFilesRequest};
+use openagents_proto::{
+    CheckoutGitStatus, GitFileState, GitFileStatus, WatchWorkspaceFilesRequest,
+};
 use openagents_rpc::{RpcError, methods};
 
 use super::{
