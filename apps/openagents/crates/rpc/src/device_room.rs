@@ -977,15 +977,19 @@ impl LinkCache {
                     .and_then(|cache| cache.config.token.subscribe());
                 loop {
                     tokio::select! {
+                        // A lagged receiver missed events but is still
+                        // subscribed: act on it. Only a closed channel ends
+                        // the listener, or one burst of upgrades (the
+                        // channel holds four) stopped every later reset.
                         result = wake.recv() => {
-                            if result.is_err() { return; }
+                            if matches!(result, Err(tokio::sync::broadcast::error::RecvError::Closed)) { return; }
                             let Some(cache) = weak.upgrade() else { return };
                             lock(&cache.links).clear();
                             lock(&cache.dial_state).clear();
                             tracing::info!("peer: links + cooldowns cleared after wake");
                         }
                         result = online.recv() => {
-                            if result.is_err() { return; }
+                            if matches!(result, Err(tokio::sync::broadcast::error::RecvError::Closed)) { return; }
                             let Some(cache) = weak.upgrade() else { return };
                             lock(&cache.dial_state).retain(|_, state| !state.reset_on_online);
                         }

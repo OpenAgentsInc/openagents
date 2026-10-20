@@ -5,11 +5,11 @@ use openagents_rpc::{RpcError, RpcReply};
 use crate::auth::Auth;
 
 pub(super) async fn status(auth: &Auth) -> Result<RpcReply, RpcError> {
-    let lease = auth.openagents_lease().ok_or_else(|| {
-        RpcError::Failed(
-            "We couldn't connect to your account to read the landing queue. Try again.".into(),
-        )
-    })?;
+    // No lease means no OpenAgents account here (a development identity
+    // isn't one): say what to do, not "try again" (#12300).
+    let lease = auth
+        .openagents_lease()
+        .ok_or_else(|| RpcError::Failed("Log in to OpenAgents to see the landing queue.".into()))?;
     let status = lease
         .client()
         .land(lease.session())
@@ -104,6 +104,9 @@ mod tests {
             Err(error) => error,
             Ok(_) => panic!("a development identity is not an app account"),
         };
-        assert!(error.to_string().contains("Sign in to OpenAgents"));
+        assert!(
+            error.to_string().contains("Log in to OpenAgents"),
+            "{error}"
+        );
     }
 }

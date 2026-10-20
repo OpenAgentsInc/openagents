@@ -1017,7 +1017,9 @@ async fn a_refusing_room_without_a_direct_route_says_sync_is_unavailable() {
     };
     let message = err.to_string();
     assert!(message.contains(STATUS_SYNC_UNAVAILABLE), "got: {message}");
-    assert!(message.contains("429"), "got: {message}");
+    // The room's 429 closes the sync server's gate (#12128), so the call's
+    // later attempts are refused here and say so.
+    assert!(message.contains("server busy"), "got: {message}");
     assert!(!message.contains("offline"), "got: {message}");
     assert_eq!(links.status("dev-a"), Some(STATUS_SYNC_UNAVAILABLE));
 }
@@ -1048,8 +1050,16 @@ async fn a_successful_upgrade_retries_room_connection_failures() {
     let Err(error) = links.client("dev-a").await else {
         panic!("room still refuses connections")
     };
-    assert!(error.to_string().contains("429"), "room retried: {error}");
-    assert!(room_dials.load(Ordering::SeqCst) > attempts);
+    // The upgrade cleared this peer's cooldown, so the call tried the room
+    // again instead of waiting out its 120 s backoff. The room's 429 still
+    // holds the sync server's gate closed (#12128), so the retry is refused
+    // here, or reaches the room once the gate has opened.
+    let error = error.to_string();
+    assert!(!error.contains("backing off"), "room retried: {error}");
+    assert!(
+        error.contains("server busy") || room_dials.load(Ordering::SeqCst) > attempts,
+        "room retried: {error}"
+    );
     room.abort();
 }
 
