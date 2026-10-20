@@ -7,6 +7,7 @@ Use the [master roadmap](../roadmap.md) for current work.
 
 | Document | Recorded topic |
 | --- | --- |
+| [2026-10-20-openagents-com-unified-plan.md](2026-10-20-openagents-com-unified-plan.md) | One openagents.com: every transcript theme with episodes and code, earlier synthesis and its conflicts, a Nostr-first plan for profiles, agent identities, social agent use, the browser wallet and the route map, and epics U1 to U8 (#12254 to #12261) |
 | [2026-10-19-agentgraph-unit.md](2026-10-19-agentgraph-unit.md) | AgentGraph after Unit: Unit and its MIT license, our earlier Unit, Arbiter, and Blueprint Map audits, what AgentGraph meant in the transcripts, the spec and GPUI view behind `/agent/foreman`, and how to graph a new agent (#12229 to #12233) |
 | [2026-10-19-gpui-web-chat.md](2026-10-19-gpui-web-chat.md) | Replacing the web app's chat surfaces with the desktop GPUI UI on the web: surface inventory, architecture from the desktop crates, measured wasm size and first paint, accessibility gaps, and phased rollout (#12216 to #12226) |
 | [2026-10-19-rust-compile-times.md](2026-10-19-rust-compile-times.md) | Rust compile times: the edit loop, land-queue checks and deploy builds measured, incremental leaf crates and line tables (edits 81 to 82% faster), ranked options, and why not to rewrite |

@@ -200,6 +200,11 @@ Firefox, desktop size.
 Phases 0a to 0e can run in parallel. Phase 1 needs 0a, 0b, and 0d. Phase 3
 needs 0c. Phase 6 needs every other phase.
 
+The wider site plan, which puts these phases under profiles, agent
+identities, and one front door at `/`, is
+[One openagents.com](2026-10-20-openagents-com-unified-plan.md) (#12254 to
+#12261).
+
 ## Risks
 
 - **Two chat UIs during the split.** Moving code out of `ui` (16,000-line
