@@ -35115,6 +35115,106 @@
       "summary": "Share this computer's model as a NIP-PYLON pylon, or use one.",
       "children": [
         {
+          "name": "up",
+          "leaf": {
+            "path": [
+              "pylon",
+              "up"
+            ],
+            "usage": [
+              "up"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "up"
+                  }
+                ]
+              }
+            ],
+            "summary": "Make this computer a pylon and keep it one: read it (doctor), download the decision model if it is missing, then run Psionic's decision engine (and a text engine when memory allows), self-check it, and serve. The host service keeps it running, restarts a crashed engine, and brings it back after a restart; without the host service it runs here. Admits any key unless --allow names some (rate limits apply). Takes serve's options. --yes                 Download the model without asking. --foreground          Run it in this terminal, not the host service. --text off            Serve decisions only. --text-model FILE     The text engine's GGUF (default ~/.openagents/models/Qwen3.5-0.8B-Q8_0.gguf). --device NAME         metal, cuda, or cpu (default: what doctor picks). --port N              The decision engine's loopback port (default 18096). --dedicated           Ignore this computer's lease table.",
+            "effect": "long_running",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "down",
+          "leaf": {
+            "path": [
+              "pylon",
+              "down"
+            ],
+            "usage": [
+              "down"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "down"
+                  }
+                ]
+              }
+            ],
+            "summary": "Stop serving: tell the relay this pylon is offline, let jobs it took finish (at most 90 s), stop the engines, and keep it off until `up`.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "pylon",
+              "status"
+            ],
+            "usage": [
+              "status"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  }
+                ]
+              }
+            ],
+            "summary": "This pylon: serving, paused and why, or off; jobs today, the model, its engines, the last self-check, and checkers' verdicts about it. --field               Every verified pylon on the relay instead. --pool SLUG           With --field: only pylons asking to join this pool.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "id",
+          "leaf": {
+            "path": [
+              "pylon",
+              "id"
+            ],
+            "usage": [
+              "id"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "id"
+                  }
+                ]
+              }
+            ],
+            "summary": "This pylon's key, name, owner link, relays, and beacon address, with this computer's buyer, aggregator, and checker keys (`whoami` too).",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "doctor",
           "leaf": {
             "path": [
@@ -35134,8 +35234,108 @@
                 ]
               }
             ],
-            "summary": "Read this computer (memory, GPU, disk, the pinned decision model and its digest, the Psionic server, outbound reach to the relay, the last self-check) and name what blocks serving decisions, each with the command that fixes it. Writes nothing. --decide URL          The local decision server (default http://127.0.0.1:18096). --rehash              Re-hash the model instead of the remembered digest.",
+            "summary": "Read this computer (memory, GPU, disk, the pinned decision model and its digest, the Psionic server, outbound reach to the relay, the last self-check) and name what blocks serving decisions, each with the command that fixes it. Writes nothing. --decide URL          The local decision server (default http://127.0.0.1:18096). --rehash              Re-hash the model instead of the remembered digest. --allow-slow          Count a computer that would decide on the CPU (no Apple Silicon from 16 GB, no NVIDIA from 8 GB) as ready; it is refused by default because each decision takes seconds.",
             "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "plan",
+          "leaf": {
+            "path": [
+              "pylon",
+              "plan"
+            ],
+            "usage": [
+              "plan"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "plan"
+                  }
+                ]
+              }
+            ],
+            "summary": "The ordered steps that get this computer serving, each marked agent (may run unattended) or owner (needs the owner: identity, payout, a slow machine), with download size, time, cost, and the command. Writes nothing. --decide URL          The local decision server (default http://127.0.0.1:18096).",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "verify",
+          "leaf": {
+            "path": [
+              "pylon",
+              "verify"
+            ],
+            "usage": [
+              "verify"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "verify"
+                  }
+                ]
+              }
+            ],
+            "summary": "A pass/fail checklist for this running pylon: the engine answers /health, its beacon is visible on the relay from a fresh connection, the owner link verifies, the trusted checkers' latest verdicts, the clock is within 30 s of the relay's, and nothing answers on the engine ports beyond loopback. --decide URL          The local decision server (default http://127.0.0.1:18096).",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "logs",
+          "leaf": {
+            "path": [
+              "pylon",
+              "logs"
+            ],
+            "usage": [
+              "logs"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "logs"
+                  }
+                ]
+              }
+            ],
+            "summary": "Recent log lines (the pylon home's run/ folder, the engine's log, the host service's pylon lines), secrets redacted, each line at most 400 characters, marked untrusted. --lines N             Lines per log (default 100, at most 2000).",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "settings",
+          "leaf": {
+            "path": [
+              "pylon",
+              "settings"
+            ],
+            "usage": [
+              "settings"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "settings"
+                  }
+                ]
+              }
+            ],
+            "summary": "Show or change your own pause choices. Both are off by default; when on, the pylon finishes the jobs it took and takes no new ones while it holds. --pause-on-battery on|off Pause while this computer runs on battery. --pause-when-hot on|off Pause while this computer (or its NVIDIA GPU) is hot.",
+            "effect": "local_write",
             "runs_on": "connected_computer"
           }
         },
@@ -35159,7 +35359,7 @@
                 ]
               }
             ],
-            "summary": "Download the pinned decision model (Clef-Flash Q4_K_M, 6.5 GB, sha256-checked) and self-check a decision server that is already running. --decide URL          The local decision server (default http://127.0.0.1:18096).",
+            "summary": "Download the pinned decision model (Clef-Flash Q4_K_M, 6.5 GB, sha256-checked), install this release's Psionic engine for this platform in ~/.openagents/bin (size and sha256 checked), and self-check a decision server that is already running. Without a published engine for this platform, the one you built on PATH is used. --decide URL          The local decision server (default http://127.0.0.1:18096).",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
@@ -35184,7 +35384,7 @@
                 ]
               }
             ],
-            "summary": "As setup, but re-hash the model and fetch it again when it is not the file this build pins. --decide URL          The local decision server (default http://127.0.0.1:18096).",
+            "summary": "As setup, but re-hash the model and fetch it again when it is not the file this build pins. Never changes the served model id on its own. --decide URL          The local decision server (default http://127.0.0.1:18096). --accept-model-change The owner accepts a new served model id; the self-check runs again before it serves. Not offered to agents or timers.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
@@ -35209,7 +35409,7 @@
                 ]
               }
             ],
-            "summary": "Start Psionic's decision lane on loopback, self-check it, and serve decisions only. Takes serve's options (--allow NPUB or --allow-any, --slots, --rate, ...). Nothing listens beyond loopback; the pylon dials out. --port N              Psionic's loopback port (default 18096). --device NAME         metal, cuda, or cpu (default: what doctor picks).",
+            "summary": "Start Psionic's decision lane on loopback, self-check it, and serve decisions only. Takes serve's options (--allow NPUB or --allow-any, --slots, --rate, ...). Nothing listens beyond loopback; the pylon dials out. --port N              Psionic's loopback port (default 18096). --device NAME         metal, cuda, or cpu (default: what doctor picks). --yes                 Link this pylon to your OpenAgents key and send its earnings to your OpenAgents wallet without asking, when neither is set. On a terminal start asks; without one and without --yes it changes nothing. --allow-slow          Serve decisions on the CPU anyway (refused by default: each decision takes seconds).",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -35577,6 +35777,71 @@
           }
         },
         {
+          "name": "earnings",
+          "leaf": {
+            "path": [
+              "pylon",
+              "earnings"
+            ],
+            "usage": [
+              "earnings"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "earnings"
+                  }
+                ]
+              }
+            ],
+            "summary": "What this pylon has earned so far (earned, held for checking, paid, forfeited), where it is paid, and the wallet balance when that is this computer's OpenAgents wallet. Read from the OpenAgents API as the earning key: the linked owner, else the pylon. --owner-secret FILE   The linked owner's key, when it is not this computer's OpenAgents key (read once, never stored). --api URL             The OpenAgents API (default https://api.openagents.com, or OPENAGENTS_API_BASE).",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "payout",
+          "children": [
+            {
+              "name": "set",
+              "leaf": {
+                "path": [
+                  "pylon",
+                  "payout",
+                  "set"
+                ],
+                "usage": [
+                  "payout set [ADDRESS]"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "payout"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "set"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "ADDRESS",
+                        "optional": true
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Where earnings go: a Lightning address or a Spark address. With no ADDRESS, this computer's OpenAgents wallet (`openagents wallet`). Bitcoin rails only. Takes --owner-secret FILE and --api URL as earnings.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "route",
           "children": [
             {
@@ -35873,31 +36138,6 @@
           }
         },
         {
-          "name": "status",
-          "leaf": {
-            "path": [
-              "pylon",
-              "status"
-            ],
-            "usage": [
-              "status"
-            ],
-            "forms": [
-              {
-                "tokens": [
-                  {
-                    "kind": "literal",
-                    "word": "status"
-                  }
-                ]
-              }
-            ],
-            "summary": "The Pylon Field: every verified pylon's state. --pool SLUG           Only pylons asking to join this pool.",
-            "effect": "local_write",
-            "runs_on": "connected_computer"
-          }
-        },
-        {
           "name": "pool",
           "leaf": {
             "path": [
@@ -35969,6 +36209,82 @@
       "options": [
         {
           "kind": "option",
+          "name": "allow",
+          "value": "NPUB",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "yes",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "foreground",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "text",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "text-model",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "device",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "port",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "dedicated",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "field",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "pool",
+          "value": "SLUG",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "field:",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "decide",
           "value": "URL",
           "open": true,
@@ -35983,9 +36299,43 @@
         },
         {
           "kind": "option",
-          "name": "allow",
-          "value": "NPUB",
+          "name": "allow-slow",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "lines",
+          "value": "N",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "pause-on-battery",
+          "value": "on|off",
+          "choices": [
+            "on",
+            "off"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "pause-when-hot",
+          "value": "on|off",
+          "choices": [
+            "on",
+            "off"
+          ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "accept-model-change",
           "optional": true,
           "repeated": true
         },
@@ -36007,22 +36357,6 @@
           "kind": "option",
           "name": "rate",
           "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "port",
-          "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "device",
-          "value": "NAME",
           "open": true,
           "optional": true,
           "repeated": true
@@ -36256,20 +36590,6 @@
         },
         {
           "kind": "option",
-          "name": "pool",
-          "value": "SLUG",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "dedicated",
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
           "name": "price-msat",
           "value": "N",
           "open": true,
@@ -36303,6 +36623,14 @@
         {
           "kind": "option",
           "name": "remove",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "api",
+          "value": "URL",
+          "open": true,
           "optional": true,
           "repeated": true
         },

@@ -439,7 +439,8 @@ fn capture_in(plan: &Plan, scratch: &Path) -> Result<Capture, String> {
     let briefing = artifacts.join("delegate-1.briefing.md");
     std::fs::write(&briefing, &plan.briefing).map_err(|error| error.to_string())?;
     cli.prepare()?;
-    let mut command = cli.command(
+    let mut command = exec_command(
+        &cli,
         &binary,
         &briefing,
         &artifacts.join("delegate-1.stream.jsonl"),
@@ -854,6 +855,72 @@ pub fn measure(agent: Agent, body: &Value, variant: Option<&Variant>) -> Value {
         },
         "checks": checks,
     })
+}
+
+/// The one-shot command a capture runs: `binary` through `sh`, with the
+/// briefing redirected in and the stream out, and the child's environment
+/// set from the resolved configuration. The delegate dropped its exec-mode
+/// drivers for the shared native harness (#12227), so the capture keeps
+/// its own copy of the scripts it records.
+fn exec_command(cli: &Cli, binary: &Path, briefing: &Path, stream: &Path) -> std::process::Command {
+    let script = match cli.agent {
+        Agent::ClaudeCode => {
+            "exec \"$0\" -p --output-format stream-json --verbose --model \"$1\" \
+             --permission-mode bypassPermissions ${4:+--tools \"$4\"} ${5:+--effort \"$5\"} \
+             ${6:+--system-prompt-file \"$6\"} ${7:+--append-system-prompt-file \"$7\"} \
+             < \"$2\" > \"$3\""
+        }
+        Agent::Codex | Agent::Microluna => {
+            "exec \"$0\" exec --json --skip-git-repo-check -m \"$1\" \
+             ${5:+-c \"model_reasoning_effort=$5\"} ${6:+-c \"$6\"} ${7:+-c \"$7\"} \
+             --dangerously-bypass-approvals-and-sandbox - < \"$2\" > \"$3\""
+        }
+        Agent::OpenCode => {
+            "exec \"$0\" run --format json ${1:+-m \"$1\"} ${5:+--variant \"$5\"} \
+             --auto < \"$2\" > \"$3\""
+        }
+    };
+    let (replace, append) = system_args(cli);
+    let mut command = std::process::Command::new("sh");
+    command
+        .arg("-c")
+        .arg(script)
+        .arg(binary)
+        .arg(&cli.model)
+        .arg(briefing)
+        .arg(stream)
+        .arg(cli.tools.as_deref().unwrap_or_default())
+        .arg(cli.effort.as_deref().unwrap_or_default())
+        .arg(replace)
+        .arg(append);
+    cli.configure_command(&mut command);
+    command
+}
+
+/// The replacing and appending system prompt arguments of
+/// [`exec_command`], empty when unused.
+fn system_args(cli: &Cli) -> (String, String) {
+    use crate::system::Mode as SystemMode;
+    let Some(variant) = &cli.system else {
+        return (String::new(), String::new());
+    };
+    let path = cli.system_path().to_string_lossy().into_owned();
+    // A JSON string is a TOML basic string, so Codex's `-c` reads the value
+    // as the string it is, whatever it holds.
+    let toml = |text: &str| serde_json::to_string(text).unwrap_or_default();
+    match (cli.agent, variant.policy.mode) {
+        (Agent::ClaudeCode, SystemMode::Replace) => (path, String::new()),
+        (Agent::ClaudeCode, SystemMode::Append) => (String::new(), path),
+        (Agent::Codex | Agent::Microluna, SystemMode::Replace) => (
+            format!("model_instructions_file={}", toml(&path)),
+            String::new(),
+        ),
+        (Agent::Codex | Agent::Microluna, SystemMode::Append) => (
+            String::new(),
+            format!("developer_instructions={}", toml(&variant.text())),
+        ),
+        (Agent::OpenCode, _) => (String::new(), String::new()),
+    }
 }
 
 #[cfg(test)]

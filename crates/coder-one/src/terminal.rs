@@ -847,7 +847,8 @@ mod tests {
             assert_eq!(mine.jev, reference.jev);
             assert_eq!(mine.evidence, reference.evidence);
             assert_eq!(mine.brief, reference.brief);
-            assert_eq!(mine.executor.model, Agent::Microluna.default_model());
+            // The retained Microluna manifests keep the model they ran.
+            assert_eq!(mine.executor.model, "gpt-6-luna");
             assert_eq!(mine.executor.effort, None);
         }
     }

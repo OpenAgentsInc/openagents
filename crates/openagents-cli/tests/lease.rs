@@ -132,7 +132,9 @@ fn lease_build_runs_in_a_target_slot_and_lists_its_holder() {
     assert_eq!(held["holder"]["session"], "lease-test");
     assert_eq!(held["holder"]["command"], "sh");
 
-    // --keep-target-dir keeps a target directory already set.
+    // --keep-target-dir keeps a target directory already set. On macOS the
+    // lease creates it to exclude it from Spotlight, so it must be writable.
+    let kept = dir.path().join("kept/target");
     let output = Command::new(me)
         .args([
             "lease",
@@ -147,13 +149,13 @@ fn lease_build_runs_in_a_target_slot_and_lists_its_holder() {
         .env("PATH", std::env::var_os("PATH").unwrap_or_default())
         .env("HOME", dir.path())
         .env("OPENAGENTS_LEASE_ROOT", dir.path().join("leases"))
-        .env("CARGO_TARGET_DIR", "/kept/target")
+        .env("CARGO_TARGET_DIR", &kept)
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
     assert_eq!(
         String::from_utf8_lossy(&output.stdout).trim(),
-        "/kept/target"
+        kept.display().to_string()
     );
 }
 

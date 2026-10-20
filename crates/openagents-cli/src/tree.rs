@@ -102,6 +102,18 @@ const WORKSPACE: &[Declared] = &[Declared::computer("", Effect::Grants)];
 const REGISTRY: &[Declared] = &[Declared::computer("", Effect::Publishes)];
 const TRAJECTORY: &[Declared] = &[Declared::computer("", Effect::Publishes)];
 const PYLON: &[Declared] = &[
+    // The one-command pylon (#12187 and later): up runs it, down tells the
+    // relay it is offline, id is whoami.
+    Declared::computer("up", Effect::LongRunning),
+    Declared::computer("down", Effect::Publishes),
+    Declared::computer("id", Effect::LocalWrite),
+    Declared::computer("plan", Effect::ReadOnly),
+    Declared::computer("verify", Effect::ReadOnly),
+    Declared::computer("logs", Effect::ReadOnly),
+    Declared::computer("settings", Effect::LocalWrite),
+    // Earnings reads the API; payout set changes where earnings go there.
+    Declared::computer("earnings", Effect::ReadOnly),
+    Declared::computer("payout set", Effect::Publishes),
     // Decision serving setup (#11635): doctor only reads; setup and update
     // fetch the pinned model; start runs Psionic and serves.
     Declared::computer("doctor", Effect::ReadOnly),
