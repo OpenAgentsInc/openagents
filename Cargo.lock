@@ -17,6 +17,9 @@ name = "ab_glyph_rasterizer"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
+dependencies = [
+ "libm",
+]
 
 [[package]]
 name = "accesskit"
@@ -9783,6 +9786,19 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "workspace-host",
+]
+
+[[package]]
+name = "lander-gl"
+version = "1.0.0"
+dependencies = [
+ "ab_glyph_rasterizer",
+ "js-sys",
+ "libm",
+ "swash",
+ "ttf-parser",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

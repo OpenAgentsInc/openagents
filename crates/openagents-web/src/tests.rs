@@ -1482,6 +1482,49 @@ async fn the_grid_page_serves_the_same_build_and_admits_the_relay() {
     assert!(html.contains("Everglade is unavailable on this server"));
 }
 
+/// `/lander4`: one document with a real heading and a real link to the
+/// download page, the painter inlined, a policy that admits only the
+/// page's own script and styles, and brotli for a browser that asks.
+#[tokio::test]
+async fn the_lander4_page_is_one_document_with_a_real_link() {
+    let root = tempfile::tempdir().unwrap();
+    let config = config(root.path().join("tasks"));
+    let (status, headers, html) = get_with(router(config.clone()), "/lander4", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<title>OpenAgents</title>"), "{html}");
+    assert!(html.contains("<h1 id=\"title\">OpenAgents</h1>"));
+    assert!(html.contains(&format!(
+        "<a id=\"download\" href=\"{}\">Download</a>",
+        pages::lander4::DOWNLOAD
+    )));
+    assert_eq!(pages::lander4::DOWNLOAD, "/download");
+    assert!(headers.get(header::CONTENT_ENCODING).is_none());
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert_eq!(policy, pages::lander4::PAGE.policy.to_str().unwrap());
+    assert!(policy.starts_with("default-src 'none'; script-src 'sha256-"));
+    assert!(policy.contains("'wasm-unsafe-eval'") && !policy.contains("unsafe-inline"));
+    crate::copy_guard::assert_plain("/lander4", &html);
+    // The download page it links is live.
+    let (status, _, _) = get_with(router(config.clone()), "/download", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+
+    let response = router(config)
+        .oneshot(
+            Request::builder()
+                .uri("/lander4")
+                .header(header::HOST, LOCAL)
+                .header(header::ACCEPT_ENCODING, "gzip, deflate, br, zstd")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
+    let body = to_bytes(response.into_body(), 1 << 20).await.unwrap();
+    assert_eq!(body.as_ref(), pages::lander4::PAGE.brotli.as_slice());
+    assert!(body.len() < html.len() / 2);
+}
+
 /// `/lander3` (#12180): the overhead Grid in three.js, from this site only:
 /// the page, its scene from the verse crate, the pack's textures, and the
 /// vendored three.js.
