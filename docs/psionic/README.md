@@ -106,6 +106,12 @@ Its [personal serving plan](deepseek-support-plan.md#personal-serving-first-one-
 prioritizes one reliable generation, recovery and a private cloud worker,
 with DS0 ownership and prerequisites explicit; multiuser scaling comes later.
 
+The [native DeepSeek-V4.1-Flash plan](deepseek-v41-native.md) sizes the
+current checkpoint, chooses hardware, and orders the work from golden
+reference activations to multi-GPU and multi-Pylon stages, with Psionic as
+the only engine in the serving path. The product roadmap that consumes it is
+[Enter the Verse](../roadmap/2026-10-20-enter-the-verse.md).
+
 The [DeepInfer review](deepinfer-lessons.md) compares its released inference
 engine with Psionic's serving paths and recommends focused work on device
 batching, reproducibility, structured outputs, and speculative verification.

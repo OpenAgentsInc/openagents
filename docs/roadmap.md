@@ -30,6 +30,12 @@ research of 2026-10-14/15 into work: the pre-1.0 launch-safety items (#11763 to
 #11769), what comes soon after 1.0, the bets with their triggers, what we're not
 doing, and the owner decisions they wait on.
 
+[Enter the Verse](roadmap/2026-10-20-enter-the-verse.md) (2026-10-20, proposal)
+plans the Grid as the product: Pylon-served inference including native
+DeepSeek-V4.1-Flash, attested decisions, and the Agent Lab composing them with
+people's own harnesses. Its [proposed issues](roadmap/2026-10-20-enter-the-verse-issues.md)
+aren't filed yet.
+
 The [launch roadmap](roadmap/2026-09-29-launch-roadmap.md) holds the OpenAgents
 app MVP that ships to playtesters on 2026-09-29, its known limits, and the
 dated milestones after it; the [playtesting program](game/playtesting.md) runs

@@ -341,6 +341,11 @@ contract. Sampling top-k and DSA indexing need separate tests. [Select kernel] [
 
 ### V4.1 is a distinct graph
 
+The [native V4.1-Flash plan](deepseek-v41-native.md) turns this section into
+a build order, with checkpoint sizes, stage state for splitting the model,
+and hardware choices. It proposes building V4.1 directly from golden
+reference activations instead of waiting for DS2's V2-Lite reference.
+
 The pinned checkpoint and DeepInfer builder require more than V3.2 MLA plus
 another weight file:
 
