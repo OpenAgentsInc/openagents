@@ -1074,7 +1074,7 @@ fn summary(id: &str, repository: &str, status: Status, saved: Option<u64>) -> Su
 
 fn summaries() -> Vec<Summary> {
     vec![
-        summary(ENV, REPO, Status::Saved, Some(NOW * 1_000)),
+        summary(ENV, REPO, Status::Saved, Some(1)),
         summary(
             "env-sample-2",
             "sample-org/sample-site",
@@ -1328,8 +1328,9 @@ fn run_starting(headers: &HeaderMap) -> Response {
 
 fn run_events() -> Vec<serde_json::Value> {
     vec![
-        json!({"event": "message", "text": "I'll find the failing test first."}),
-        json!({"event": "message", "text": "The login test waits for a button that moved."}),
+        json!({"event": "delta", "text": "I'll find the failing test first."}),
+        json!({"event": "entry", "entry": {"title": "Ran the tests", "command": "cargo test login"}}),
+        json!({"event": "delta", "text": "The login test waits for a button that moved."}),
     ]
 }
 

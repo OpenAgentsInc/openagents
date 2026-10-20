@@ -62,8 +62,29 @@ fn phase_text(phase: Phase) -> &'static str {
     }
 }
 
+/// Millisatoshis as sats: `21 sats`, `0.012 sats`, `1 sat`.
 fn msat(value: u64) -> String {
-    format!("{value} msat")
+    let whole = value / 1000;
+    let part = value % 1000;
+    if part == 0 {
+        if whole == 1 {
+            "1 sat".to_owned()
+        } else {
+            format!("{whole} sats")
+        }
+    } else {
+        let fraction = format!("{part:03}");
+        format!("{whole}.{} sats", fraction.trim_end_matches('0'))
+    }
+}
+
+/// `phase_text` with a capital first letter, for the start of a line.
+fn phase_title(phase: Phase) -> String {
+    let text = phase_text(phase);
+    let mut chars = text.chars();
+    chars.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(chars).collect()
+    })
 }
 
 fn option(value: Option<&str>) -> String {
@@ -72,7 +93,7 @@ fn option(value: Option<&str>) -> String {
 
 pub(crate) fn render_list(list: &[Summary]) -> String {
     let mut body = String::from(
-        "<p class=\"oa-page-eyebrow\">LOCAL / READ ONLY</p><h1>Plugin purchases</h1>\
+        "<h1>Plugin purchases</h1>\
 <p class=\"oa-page-meta\">Plugins you bought from this computer. \
 <a href=\"/app/purchases\">Refresh</a></p><ul class=\"oa-item-list\">",
     );
@@ -81,10 +102,10 @@ pub(crate) fn render_list(list: &[Summary]) -> String {
     }
     for item in list {
         body.push_str(&format!(
-            "<li><p><a class=\"oa-item-title\" href=\"/app/purchases/{id}\">{plugin}</a></p><p class=\"oa-page-meta\">{id} \u{b7} {phase:?} / {price}</p></li>",
+            "<li><p><a class=\"oa-item-title\" href=\"/app/purchases/{id}\">{plugin}</a></p><p class=\"oa-page-meta\">{phase} \u{b7} {price}</p></li>",
             id = escape(&item.id),
             plugin = option(item.plugin.as_deref()),
-            phase = item.phase,
+            phase = phase_title(item.phase),
             price = msat(item.price_msat),
         ));
     }
@@ -95,70 +116,86 @@ pub(crate) fn render_list(list: &[Summary]) -> String {
 
 pub(crate) fn render_one(item: &Summary) -> String {
     let id = escape(&item.id);
+    let expires = i64::try_from(item.expires_at_ms).ok().map_or_else(
+        || "Not known".to_owned(),
+        |ms| format!("{} UTC", crate::pages::stats::utc(ms)),
+    );
     let mut body = format!(
         "<p class=\"oa-page-meta\"><a href=\"/app/purchases\">All purchases</a> / {id}</p><h1>{plugin}</h1>\
 <p><a href=\"/app/purchases/{id}\">Refresh</a></p>\
-<p class=\"oa-page-eyebrow\">LOCAL / READ ONLY</p><dl class=\"oa-facts\">\
-<div><dt>Status</dt><dd>{phase_text}</dd></div>\
-<div><dt>Release</dt><dd>{release}</dd></div>\
-<div><dt>Endpoint</dt><dd>{url}</dd></div>\
-<div><dt>Account / workspace</dt><dd>{account} / {workspace}</dd></div>\
-<div><dt>Payer</dt><dd>{node} on {network}</dd></div>\
+<dl class=\"oa-facts\">\
+<div><dt>Status</dt><dd>{phase}</dd></div>\
+<div><dt>Version</dt><dd>{release}</dd></div>\
 <div><dt>Price</dt><dd>{price}, fee at most {fee}</dd></div>\
-<div><dt>Quote ID</dt><dd>{quote}</dd></div>\
-<div><dt>Approval ID</dt><dd>{approval}</dd></div>\
-<div><dt>Quote expires</dt><dd>{expires}</dd></div>",
+<div><dt>Price good until</dt><dd>{expires}</dd></div>",
         plugin = option(item.plugin.as_deref()),
-        phase_text = phase_text(item.phase),
-        release = option(item.release.as_deref()),
-        url = escape(&item.url),
-        account = escape(&item.account),
-        workspace = escape(&item.workspace),
-        node = escape(&item.payer_node),
-        network = escape(&item.payer_network),
+        phase = phase_title(item.phase),
+        release = item
+            .release
+            .as_deref()
+            .map_or_else(|| "Not known".to_owned(), escape),
         price = msat(item.price_msat),
         fee = msat(item.max_fee_msat),
-        quote = escape(&item.quote_digest),
-        approval = escape(&item.approval_digest),
-        expires = item.expires_at_ms,
     );
     match &item.charge {
         Some(charge) => body.push_str(&format!(
-            "<div><dt>Charge</dt><dd>{} paid, {} fee, payment hash {}</dd></div>",
+            "<div><dt>Paid</dt><dd>{}, plus {} fee</dd></div>",
             msat(charge.amount_msat),
             msat(charge.fee_msat),
-            escape(&charge.payment_hash)
         )),
-        None => body.push_str("<div><dt>Charge</dt><dd>none</dd></div>"),
+        None => body.push_str("<div><dt>Paid</dt><dd>Nothing yet</dd></div>"),
     }
     body.push_str(&format!(
-        "<div><dt>Settlement</dt><dd>{}</dd></div>",
-        match (item.settled, item.transaction.as_deref()) {
-            (Some(true), Some(t)) => format!("settled, transaction {}", escape(t)),
-            (Some(false), _) => "settlement failed".to_string(),
-            _ => "unknown".to_string(),
+        "<div><dt>Settled</dt><dd>{}</dd></div>",
+        match item.settled {
+            Some(true) => "Yes",
+            Some(false) => "No, it failed",
+            None => "Not yet",
         }
     ));
     body.push_str(&format!(
-        "<div><dt>Delivery</dt><dd>{}</dd></div><div><dt>Result</dt><dd>{}</dd></div>",
-        item.delivery_status
-            .map_or_else(|| "unknown".to_string(), |s| format!("HTTP {s}")),
+        "<div><dt>Delivered</dt><dd>{}</dd></div><div><dt>Result</dt><dd>{}</dd></div>",
+        match item.delivery_status {
+            Some(status) if (200..300).contains(&status) => "Yes".to_owned(),
+            Some(status) => format!("No, the plugin answered with an error ({status})"),
+            None => "Not yet".to_owned(),
+        },
         if item.result_present {
-            "saved; see it with <code>openagents plugin purchase show</code>"
+            "Saved; see it with <code>openagents plugin purchase show</code>"
         } else {
-            "none"
+            "None yet"
         }
     ));
     if let Some(maximum) = item.unresolved_maximum_msat {
         body.push_str(&format!(
-            "<div><dt>May still be charged</dt><dd>up to {}</dd></div>",
+            "<div><dt>May still be charged</dt><dd>Up to {}</dd></div>",
             msat(maximum)
         ));
     }
     if item.recovery_present {
-        body.push_str("<div><dt>Recovery</dt><dd>checked</dd></div>");
+        body.push_str("<div><dt>Checked again</dt><dd>Yes</dd></div>");
     }
-    body.push_str("</dl><h2>Next step</h2><p>Run this on your computer:</p>");
+    body.push_str("</dl>");
+    let mut details = format!(
+        "Plugin address: {}\nAccount: {}\nWorkspace: {}\nPaid from: {} on {}\nQuote: {}\nApproval: {}",
+        escape(&item.url),
+        escape(&item.account),
+        escape(&item.workspace),
+        escape(&item.payer_node),
+        escape(&item.payer_network),
+        escape(&item.quote_digest),
+        escape(&item.approval_digest),
+    );
+    if let Some(charge) = &item.charge {
+        details.push_str(&format!("\nPayment: {}", escape(&charge.payment_hash)));
+    }
+    if let Some(transaction) = item.transaction.as_deref() {
+        details.push_str(&format!("\nTransaction: {}", escape(transaction)));
+    }
+    body.push_str(&format!(
+        "<details><summary>Details for support</summary><pre>{details}</pre></details>"
+    ));
+    body.push_str("<h2>Next step</h2><p>Run this on your computer:</p>");
     let next = match item.phase {
         Phase::Quoted => format!(
             "openagents plugin purchase approve --root ROOT --purchase {id} --digest {}",

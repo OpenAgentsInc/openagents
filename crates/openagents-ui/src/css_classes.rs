@@ -12,8 +12,9 @@ use std::collections::BTreeSet;
 /// sidebar project groups, row menus, and plugin cards. Raised to 315,000
 /// on 2026-10-09 for the answer components an answer draws inline (cards,
 /// columns, numbered steps, and tabs, `answer.css`, about 5 KB; #11187),
-/// with room for the next component.
-pub const STYLESHEET_BUDGET_BYTES: usize = 315_000;
+/// with room for the next component. Raised to 320,000 on 2026-10-11 for
+/// the screens gallery's sample strip and note (`catalog.css`; #11324).
+pub const STYLESHEET_BUDGET_BYTES: usize = 320_000;
 
 /// Classes that components emit on purpose with no rule of their own:
 /// script hooks (`querySelector`, Alpine roots) and structural wrappers

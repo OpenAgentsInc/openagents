@@ -101,6 +101,32 @@ fn words(status: task::Status, execution: task::Execution) -> &'static str {
     }
 }
 
+/// How a task's checks went, in plain words.
+fn checks_words(verification: &str) -> &'static str {
+    match verification {
+        "not_run" => "Not run",
+        "running" => "Running",
+        "passed" => "Passed",
+        "failed" => "Failed",
+        "unavailable" => "Couldn't run",
+        "disputed" => "Disputed",
+        _ => "Not known",
+    }
+}
+
+/// What the task's recorded transcript holds, in plain words.
+fn transcript_words(state: &str) -> &'static str {
+    match state {
+        "not_started" => "Not started yet",
+        "sealed" => "Complete",
+        "unsealed" | "incomplete" => "Still being written",
+        "missing" => "Missing",
+        "damaged" | "digest_mismatch" | "malformed" => "Damaged",
+        "oversized" => "Too large to show",
+        _ => "Can't be read",
+    }
+}
+
 /// The task list page over `list`.
 pub(crate) fn list_page(headers: &HeaderMap, list: &[task::Task]) -> Response {
     let mut body = String::from(
@@ -174,29 +200,31 @@ async fn task(
 /// One task's page.
 pub(crate) fn task_page(headers: &HeaderMap, view: &task::view::View) -> Response {
     let task = &view.task;
+    let cost = view
+        .cost_usd
+        .map_or_else(|| "Not known yet".to_owned(), |cost| format!("${cost:.2}"));
     let mut body = format!(
         "<p class=\"oa-page-meta\"><a href=\"/app\">All tasks</a> / {}</p><h1>{}</h1>\
 <p><a href=\"/app/tasks/{}\">Refresh</a></p>\
-<dl class=\"oa-facts\"><div><dt>Queue</dt><dd>{:?}</dd></div><div><dt>Execution</dt><dd>{:?}</dd></div>\
-<div><dt>Checks</dt><dd>{}</dd></div><div><dt>Integration</dt><dd>{}</dd></div><div><dt>Cost</dt><dd>{}</dd></div></dl>\
-<section><h2>Request</h2><pre>{}</pre><p class=\"oa-page-meta\">Workspace: <code>{}</code> \u{b7} Adapter: <code>{}</code></p></section>",
+<dl class=\"oa-facts\"><div><dt>Status</dt><dd>{}</dd></div>\
+<div><dt>Checks</dt><dd>{}</dd></div><div><dt>Cost</dt><dd>{}</dd></div></dl>\
+<section><h2>Request</h2><pre>{}</pre><p class=\"oa-page-meta\">Folder: <code>{}</code></p></section>",
         escape(&task.task_id),
         escape(&task.intent.title),
         escape(&task.task_id),
-        task.status,
-        task.execution,
-        escape(&view.verification),
-        escape(&view.integration),
-        view.cost_usd
-            .map_or_else(|| escape(&view.cost_status), |cost| format!("${cost:.2}")),
+        words(task.status, task.execution),
+        checks_words(&view.verification),
+        escape(&cost),
         escape(task.effective_prompt()),
         escape(&task.intent.workspace.path),
-        escape(&task.intent.configuration.adapter),
     );
     body.push_str(&format!(
-        "<section><h2>Transcript</h2><p class=\"oa-page-meta\">{} \u{b7} {} steps</p>",
-        escape(&view.evidence.state),
-        view.evidence.total_steps
+        "<section><h2>Transcript</h2><p class=\"oa-page-meta\">{} \u{b7} {}</p>",
+        transcript_words(&view.evidence.state),
+        match view.evidence.total_steps {
+            1 => "1 step".to_owned(),
+            n => format!("{n} steps"),
+        }
     ));
     if let Some(digest) = &view.evidence.digest {
         body.push_str(&format!(
@@ -237,14 +265,20 @@ pub(crate) fn task_page(headers: &HeaderMap, view: &task::view::View) -> Respons
             URL_SAFE_NO_PAD.encode(bytes)
         ));
     }
-    body.push_str("</section><section><h2>Artifacts</h2>");
+    body.push_str("</section><section><h2>Files</h2>");
     if let Some(manifest) = &view.artifacts {
-        body.push_str(&format!(
-            "<p class=\"oa-page-meta\">Snapshot: <code>{}</code> \u{b7} Complete: {} \u{b7} Omitted changes: {}</p>",
-            escape(manifest.candidate_snapshot.as_deref().unwrap_or("unknown")),
-            manifest.complete,
-            manifest.omitted_changes
-        ));
+        if let Some(snapshot) = manifest.candidate_snapshot.as_deref() {
+            body.push_str(&format!(
+                "<p class=\"oa-page-meta\">Snapshot: <code>{}</code></p>",
+                escape(snapshot)
+            ));
+        }
+        if !manifest.complete || manifest.omitted_changes > 0 {
+            body.push_str(&format!(
+                "<p class=\"oa-page-meta\">Not every change was saved ({} left out).</p>",
+                manifest.omitted_changes
+            ));
+        }
         for entry in &manifest.entries {
             body.push_str(&format!(
                 "<p><code>{}</code> \u{b7} {} \u{b7} <code>{}</code></p>",

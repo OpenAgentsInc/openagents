@@ -16,12 +16,13 @@ pub(crate) const NAME: &str = "Christopher D.";
 pub(crate) const COMPUTER: &str = "Christopher's MacBook Pro";
 const CSRF: &str = "sample-ticket";
 
-/// A signed-in account with a profile picture.
+/// A signed-in account. No profile picture: the picture route answers
+/// only the visitor's own session, which a sample never sees.
 pub(crate) fn signed_in() -> Account {
     Account::SignedIn {
         name: NAME.to_owned(),
         sign_out: Some(CSRF.to_owned()),
-        picture: true,
+        picture: false,
         admin: false,
     }
 }

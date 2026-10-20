@@ -332,6 +332,50 @@ fn sample_note() -> Markup {
 /// The strip at the top of every sample page.
 const SAMPLE_STRIP: &str = "<p class=\"oa-sample-strip\" role=\"note\">Sample page. Made-up data; buttons and forms do nothing.</p>";
 
+/// A picture every sample file thumbnail shows instead of a chat file,
+/// which a sample has none of.
+const SAMPLE_PICTURE: &str = "/static/verse-grid.jpg";
+
+/// `html` with nothing that moves the page on its own (a refresh tag) and
+/// sample chat-file pictures pointed at [`SAMPLE_PICTURE`].
+fn inert_html(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(at) = rest.find('<') {
+        out.push_str(&rest[..at]);
+        let tag_end = rest[at..].find('>').map_or(rest.len(), |end| at + end + 1);
+        let tag = &rest[at..tag_end];
+        let lower = tag.to_ascii_lowercase();
+        if lower.starts_with("<meta") && lower.contains("http-equiv=\"refresh\"") {
+            // dropped
+        } else if lower.starts_with("<img") {
+            out.push_str(&sample_picture(tag));
+        } else {
+            out.push_str(tag);
+        }
+        rest = &rest[tag_end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// `tag` (an `<img>`) showing [`SAMPLE_PICTURE`] when it shows a chat file.
+fn sample_picture(tag: &str) -> String {
+    const SRC: &str = "src=\"";
+    let Some(start) = tag.find(SRC).map(|at| at + SRC.len()) else {
+        return tag.to_owned();
+    };
+    let Some(len) = tag[start..].find('"') else {
+        return tag.to_owned();
+    };
+    let src = &tag[start..start + len];
+    if src.starts_with("/chat/") && src.contains("/files/") {
+        format!("{}{SAMPLE_PICTURE}{}", &tag[..start], &tag[start + len..])
+    } else {
+        tag.to_owned()
+    }
+}
+
 /// `policy` with no form posts and no requests, framable by this site.
 pub(crate) fn inert_policy(policy: Option<&str>) -> String {
     let mut directives: Vec<&str> = policy
@@ -383,7 +427,7 @@ pub(crate) async fn render(state: &State, headers: &HeaderMap, theme: Option<The
         .headers
         .insert("X-Robots-Tag", HeaderValue::from_static("noindex"));
     let bytes = to_bytes(body, usize::MAX).await.unwrap_or_default();
-    let html = String::from_utf8_lossy(&bytes);
+    let html = inert_html(&String::from_utf8_lossy(&bytes));
     let marked = match html
         .find("<body")
         .and_then(|at| html[at..].find('>').map(|end| at + end + 1))

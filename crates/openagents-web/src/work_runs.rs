@@ -49,6 +49,7 @@ use axum::routing::{get, post};
 use maud::{Markup, html};
 use openagents_ui::actions::{Button, ButtonType, ButtonVariant, Color};
 use openagents_ui::content::PageColumn;
+use openagents_ui::forms::{Checkbox, Field, Input, InputType, Select};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -1857,8 +1858,8 @@ pub(crate) fn result_markup(run: &WorkRun) -> Markup {
         span class="oa-settings-hint" {
             (engine_words(&outcome.engine))
             " · " (duration(outcome.secs))
-            " · " (money(outcome.cost_usd))
-            " · checks " (passed) "/" (outcome.checks.len())
+            " · " @if outcome.cost_usd.is_some() { (money(outcome.cost_usd)) } @else { "cost not known" }
+            " · " (passed) " of " (outcome.checks.len()) " checks passed"
             @if let Some(pr) = &outcome.pr { " · " a href=(pr) { "pull request" } }
             @else if let Some(entry) = &outcome.landing { " · in the landing queue (" (entry) ")" }
             @else if let Some(commit) = &outcome.commit { " · commit " (commit.chars().take(10).collect::<String>()) }
@@ -1936,6 +1937,9 @@ pub(crate) fn list_body(
     csrf: &str,
     now: u64,
 ) -> Markup {
+    let repo_field = Field::new("work-repo", "Repository");
+    let issue_field = Field::new("work-issue", "Issue number or link");
+    let land_field = Field::new("work-land", "When it passes");
     html! {
         div class="oa-settings" {
             p {
@@ -1950,28 +1954,33 @@ pub(crate) fn list_body(
             }
             section class="oa-settings-group" aria-labelledby="work-new" {
                 h2 #work-new { "Work on an issue" }
-                form method="post" action=(PAGE) class="oa-settings-row" {
+                form method="post" action=(PAGE) {
                     input type="hidden" name="csrf" value=(csrf);
                     input type="hidden" name="source" value="web";
-                    div class="oa-settings-text" {
-                        label class="oa-settings-label" for="work-repo" { "Repository" }
-                        input #work-repo type="text" name="repo" value=(repo) required;
-                        label class="oa-settings-label" for="work-issue" { "Issue number or link" }
-                        input #work-issue type="text" name="issue" value=(issue) required;
-                        label class="oa-settings-label" for="work-land" { "When it passes" }
-                        select #work-land name="land" {
-                            option value="pr" selected { "Open a pull request" }
-                            option value="queue" { "Land through the landing queue" }
-                            option value="none" { "Commit only" }
-                        }
-                        label class="oa-settings-hint" {
-                            input type="checkbox" name="engine" value="bare";
-                            " Use Claude Code alone instead of the briefed agent"
-                        }
-                    }
-                    div class="oa-settings-control" {
-                        (Button::new("Work on this issue").kind(ButtonType::Submit))
-                    }
+                    (repo_field.clone().control(
+                        Input::new("repo")
+                            .input_type(InputType::Text)
+                            .value(repo)
+                            .required(true)
+                            .aria(repo_field.aria()),
+                    ))
+                    (issue_field.clone().control(
+                        Input::new("issue")
+                            .input_type(InputType::Text)
+                            .value(issue)
+                            .required(true)
+                            .aria(issue_field.aria()),
+                    ))
+                    (land_field.clone().control(
+                        Select::new("land")
+                            .option("pr", "Open a pull request")
+                            .option("queue", "Land through the landing queue")
+                            .option("none", "Commit only")
+                            .selected("pr")
+                            .aria(land_field.aria()),
+                    ))
+                    p { (Checkbox::new("engine", "Use Claude Code alone instead of the briefed agent").value("bare")) }
+                    p { (Button::new("Work on this issue").kind(ButtonType::Submit)) }
                 }
             }
             section class="oa-settings-group" aria-labelledby="work-runs" {
@@ -2169,7 +2178,12 @@ pub(crate) fn run_body(run: &WorkRun, now: u64, csrf: &str) -> Markup {
                             div class="oa-settings-row" {
                                 div class="oa-settings-text" {
                                     span class="oa-settings-label" { @if check.ok { "Passed: " } @else { "Failed: " } (check.name) }
-                                    @if let Some(passed) = check.passed { span class="oa-settings-hint" { (passed) " tests passed" } }
+                                    @if let Some(passed) = check.passed {
+                                        span class="oa-settings-hint" {
+                                            (passed) " tests passed"
+                                            @if !check.ok { ", some failed" }
+                                        }
+                                    }
                                 }
                             }
                         }

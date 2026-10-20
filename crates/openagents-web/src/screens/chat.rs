@@ -263,10 +263,19 @@ fn working_chat() -> Conversation {
 }
 
 fn failed_chat(outcome: &str) -> Conversation {
+    let mut messages = vec![user("Translate this letter into French.", "r1")];
+    // A failed answer leaves the note the live chat writes (pages/chat.rs).
+    if outcome == "failed" {
+        messages.push(json!({
+            "role": "tool",
+            "text": "We couldn't get an answer. Try asking again.",
+            "request_id": "r1"
+        }));
+    }
     conversation(
         4,
         "Translate a letter",
-        vec![user("Translate this letter into French.", "r1")],
+        messages,
         json!({ "requests": [{ "id": "r1", "digest": "sample", "outcome": outcome }] }),
     )
 }
@@ -796,8 +805,8 @@ fn composer_connect(headers: &HeaderMap) -> Response {
         branch: Some("main".to_owned()),
         target: Target::Claude(ENVIRONMENT.to_owned()),
     };
-    let card = crate::composer_row::connect_card(ENVIRONMENT, true, false, None);
-    home(headers, row(&choices, &picked), None, card, &[])
+    // The row draws the connect card itself, as the live home does.
+    home(headers, row(&choices, &picked), None, html! {}, &[])
 }
 
 fn composer_suggestions(headers: &HeaderMap) -> Response {
@@ -901,7 +910,20 @@ fn sidebar_move(headers: &HeaderMap) -> Response {
 
 fn sidebar_move_none(headers: &HeaderMap) -> Response {
     let chat = answer_chat();
-    chat::sidebar::move_page_for(headers, &chat, &[], CSRF, list(&rows(), Some(&chat.id), ""))
+    // No projects here, so the list beside it shows none either.
+    let mut rows = rows();
+    for row in &mut rows {
+        row.project = None;
+    }
+    let view = chat::sidebar::View {
+        current: Some(&chat.id),
+        hx: true,
+        q: "",
+        archived: None,
+        projects: None,
+    };
+    let sidebar = chat::sidebar::build(ChatList::new().id("chat-sidebar"), &rows, CSRF, view);
+    chat::sidebar::move_page_for(headers, &chat, &[], CSRF, html! { (sidebar) })
 }
 
 fn run_page(

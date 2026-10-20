@@ -1080,7 +1080,9 @@ pub(crate) fn sign_in_page_for(
                     .crumb("Environments", "/environments")
                     .crumb(repository, format!("/environments/{id}")),
             )
-            .content(html! { div.oa-page-column { h1 { "Sign in to Claude" } (panel) } })
+            .content(openagents_ui::content::PageColumn::new(
+                html! { h1 { "Sign in to Claude" } (panel) },
+            ))
             .respond(headers),
     )
 }

@@ -2224,10 +2224,12 @@ async fn task_view_escapes_private_content_and_rejects_bad_cursor() {
     let (status, body) = get(router(config(store.clone())), "/app/tasks/example-task-1").await;
     assert_eq!(status, StatusCode::OK);
     assert!(body.contains("&lt;img src=x onerror=alert(1)&gt;"));
+    // Plain words, never the raw state names.
     assert!(
-        body.contains("not_started") || body.contains("NotStarted"),
+        body.contains("Waiting to start") && body.contains("Not started yet"),
         "{body}"
     );
+    assert!(!body.contains("not_started") && !body.contains("NotStarted"));
     let (status, _) = get(
         router(config(store)),
         "/app/tasks/example-task-1?cursor=bogus",
@@ -3251,14 +3253,21 @@ fn purchase_pages_show_identical_terms_and_name_the_installed_client_step() {
     use coder::customer::plugins::Phase;
     let mut item = purchase_summary();
     let list = crate::purchases::render_list(std::slice::from_ref(&item));
-    assert!(list.contains("meeting-action-items") && list.contains("Unknown / 6000 msat"));
+    assert!(
+        list.contains("meeting-action-items")
+            && list.contains(
+                "We couldn't confirm the payment or result; check it in the app \u{b7} 6 sats"
+            ),
+        "{list}"
+    );
     let one = crate::purchases::render_one(&item);
     assert!(one.contains("&lt;b&gt;ws&lt;/b&gt;") && !one.contains("<b>ws</b>"));
     for term in [
         "sha256:q",
         "sha256:approval",
         "02node on bitcoin",
-        "up to 6010 msat",
+        "Up to 6.01 sats",
+        "6 sats, plus 0.003 sats fee",
     ] {
         assert!(one.contains(term), "{term}");
     }

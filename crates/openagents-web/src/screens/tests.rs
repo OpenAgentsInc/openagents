@@ -58,6 +58,10 @@ async fn every_state_renders_in_both_themes() {
                     "{route}: theme"
                 );
                 assert!(html.contains("oa-sample-strip"), "{route}: sample strip");
+                // A sample stays put and shows no picture it cannot load.
+                assert!(!html.contains("http-equiv=\"refresh\""), "{route}: refresh");
+                assert!(!html.contains("src=\"/account/avatar"), "{route}: avatar");
+                assert!(!html.contains("<img src=\"/chat/"), "{route}: chat file");
                 // A page keeps the allowances of the address it lives at.
                 let guarded = match screen.routes {
                     [live, ..] if live.starts_with('/') => format!("{live}?{route}"),

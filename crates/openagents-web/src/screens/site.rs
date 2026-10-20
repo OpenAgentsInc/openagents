@@ -236,18 +236,18 @@ fn sample_stats() -> (Stats, Snapshot) {
                 "pending_accruals_sats": 250 }
         },
         "series_24h": [
-            { "at": 1_791_600_000, "totals": { "received_sats": 400, "calls": 12 } },
-            { "at": 1_791_603_600, "totals": { "received_sats": 900, "calls": 25 } }
+            { "at": 1_791_600_000_000_i64, "totals": { "received_sats": 400, "calls": 12 } },
+            { "at": 1_791_603_600_000_i64, "totals": { "received_sats": 900, "calls": 25 } }
         ],
         "series_30d": [
-            { "at": 1_789_000_000, "totals": { "received_sats": 5_000, "calls": 140 } },
-            { "at": 1_789_086_400, "totals": { "received_sats": 7_500, "calls": 200 } }
+            { "at": 1_789_000_000_000_i64, "totals": { "received_sats": 5_000, "calls": 140 } },
+            { "at": 1_789_086_400_000_i64, "totals": { "received_sats": 7_500, "calls": 200 } }
         ],
         "reconciliation": "ok"
     });
     let snapshot = serde_json::json!({
         "events": [{
-            "at": 1_791_603_000, "type": "payout", "plugin": "sample-weather",
+            "at": 1_791_603_000_000_i64, "type": "payout", "plugin": "sample-weather",
             "author": "Sample Author A", "amount_sats": 6_500
         }]
     });

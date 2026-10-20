@@ -536,7 +536,7 @@ fn a_finished_runs_result_reads_plainly() {
     };
     let html = html! { div { (result_markup(&run)) } }.into_string();
     assert!(
-        html.contains("Claude Code · 2 min 5 s · unknown · checks 1/1"),
+        html.contains("Claude Code · 2 min 5 s · cost not known · 1 of 1 checks passed"),
         "{html}"
     );
     assert!(html.contains("Handed to Claude Code: low briefing confidence"));
