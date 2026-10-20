@@ -512,6 +512,131 @@ async fn a_published_agent_gets_its_own_key_an_owner_and_a_page() {
     relay.put(job.clone());
     relay.put(review.clone());
 
+    // Runtime references name exact signed releases. A saved runtime change
+    // republishes the agent definition rather than matching by model name.
+    let release: Event = serde_json::from_str(include_str!(
+        "../../../../../att-release/tests/fixtures/layertree-signet/release.json"
+    ))
+    .unwrap();
+    let runtime_path = format!("/v1/published-agents/{id}/runtime");
+    let invalid = serde_json::to_vec(&json!({"release": "short"})).unwrap();
+    let (status, _) = call(
+        &world,
+        &mut Browser::default(),
+        "PUT",
+        &runtime_path,
+        None,
+        Some(&bearer),
+        Some(&invalid),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let runtime = serde_json::to_vec(&json!({"release": release.id})).unwrap();
+    let (status, linked) = call(
+        &world,
+        &mut Browser::default(),
+        "PUT",
+        &runtime_path,
+        None,
+        Some(&bearer),
+        Some(&runtime),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{linked}");
+    assert_eq!(linked["published"], 1);
+    let linked_definition: Event = serde_json::from_value(linked["definition"].clone()).unwrap();
+    assert_eq!(
+        nostr::agent_public::read_definition(&linked_definition)
+            .unwrap()
+            .runtime
+            .release
+            .as_deref(),
+        Some(release.id.as_str())
+    );
+    relay.put(release.clone());
+    let rebuild: Event = serde_json::from_str(include_str!(
+        "../../../../../att-release/tests/fixtures/layertree-signet/gcp-rebuild.json"
+    ))
+    .unwrap();
+    relay.put(rebuild.clone());
+
+    // Only a chosen, sealed receipt signed by this owner can be published.
+    // Merely reading a page publishes nothing.
+    let mut execution =
+        receipts::ExecutionReceipt::for_attempt("http", "selected-request", 1, "sha256:request");
+    execution.attempt_id = "selected-attempt".into();
+    execution.served.model = "test-model".into();
+    execution.outcome = receipts::Outcome::Answered;
+    execution.seal();
+    let selected = receipts_nostr::event(
+        &pat,
+        &linked_definition,
+        &execution,
+        crate::cloud::session::now(),
+    )
+    .unwrap();
+    let receipts_path = format!("/v1/published-agents/{id}/receipts");
+    let stranger_event = stranger.sign(
+        selected.created_at,
+        selected.kind,
+        selected.tags.clone(),
+        selected.content.clone(),
+    );
+    let bad = serde_json::to_vec(&stranger_event).unwrap();
+    let (status, _) = call(
+        &world,
+        &mut Browser::default(),
+        "POST",
+        &receipts_path,
+        None,
+        Some(&bearer),
+        Some(&bad),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let changed = pat.sign(
+        selected.created_at,
+        selected.kind,
+        selected.tags.clone(),
+        selected
+            .content
+            .replace("selected-attempt", "another-attempt"),
+    );
+    let bad = serde_json::to_vec(&changed).unwrap();
+    let (status, _) = call(
+        &world,
+        &mut Browser::default(),
+        "POST",
+        &receipts_path,
+        None,
+        Some(&bearer),
+        Some(&bad),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let chosen = serde_json::to_vec(&selected).unwrap();
+    let (status, done) = call(
+        &world,
+        &mut Browser::default(),
+        "POST",
+        &receipts_path,
+        None,
+        Some(&bearer),
+        Some(&chosen),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{done}");
+    assert_eq!(done["published"], 1);
+    assert_eq!(done["id"], selected.id);
+    assert!(
+        relay
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| serde_json::to_value(e).unwrap() == serde_json::to_value(&selected).unwrap())
+    );
+
     // The owner's profile lists it; its page names the owner; its key moves to it.
     let page = anyone.get(&world, "/@pat-test").await;
     assert!(
@@ -534,6 +659,38 @@ async fn a_published_agent_gets_its_own_key_an_owner_and_a_page() {
             .contains(&format!("href=\"/event/{}\"", review.id))
     );
     assert!(agent_page.body.contains("reliable"));
+    assert!(
+        agent_page
+            .body
+            .contains(&format!("href=\"/event/{}\"", release.id))
+    );
+    assert!(
+        agent_page
+            .body
+            .contains(&format!("href=\"/event/{}\"", selected.id))
+    );
+    assert!(
+        agent_page
+            .body
+            .contains("Chosen and published by the owner.")
+    );
+    assert!(
+        agent_page
+            .body
+            .contains(&format!("href=\"/event/{}\"", rebuild.id))
+    );
+    let before = relay.events.lock().unwrap().len();
+    let gpui = anyone.get(&world, &format!("/agent/{id}?ui=gpui")).await;
+    assert_eq!(gpui.status, StatusCode::OK);
+    assert!(
+        gpui.body
+            .contains(&format!("href=\"/event/{}\"", selected.id))
+    );
+    assert_eq!(relay.events.lock().unwrap().len(), before);
+    let signed_page = anyone.get(&world, &format!("/event/{}", selected.id)).await;
+    assert_eq!(signed_page.status, StatusCode::OK);
+    assert!(signed_page.body.contains(&execution.digest));
+
     crate::copy_guard::assert_plain("/agent/{id}", &agent_page.body);
     let by_key = anyone
         .get(&world, &format!("/agent/{}", crate::profiles::npub(&agent)))
@@ -566,6 +723,19 @@ async fn a_published_agent_gets_its_own_key_an_owner_and_a_page() {
     assert!(!page.body.contains(&format!("href=\"/agent/{id}\"")));
     let agent_page = anyone.get(&world, &format!("/agent/{id}")).await;
     assert!(agent_page.body.contains("Its owner retired this agent."));
+    assert!(!agent_page.body.contains("agent-gateway-receipts"));
+    assert!(!agent_page.body.contains("agent-attestations"));
+    let (status, _) = call(
+        &world,
+        &mut Browser::default(),
+        "POST",
+        &receipts_path,
+        None,
+        Some(&bearer),
+        Some(&chosen),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
 }
 
 /// An `eval-check` quest by `referee`, an evaluator's result, a checker's

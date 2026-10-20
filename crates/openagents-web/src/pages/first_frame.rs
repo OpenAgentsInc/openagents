@@ -388,12 +388,18 @@ mod tests {
     fn a_page_can_carry_the_painter_alone_for_a_kept_frame() {
         let dir = build("{}");
         let painter = Painter::read(&dir.path().join(DIRECTORY)).unwrap();
-        let html = painter.kept("/__first-frame/chat/abc/gpui", "0123").into_string();
+        let html = painter
+            .kept("/__first-frame/chat/abc/gpui", "0123")
+            .into_string();
         assert!(html.contains("id=\"first-frame-painter\">d2FzbQ==</script>"));
         assert!(html.contains(
             "data-cache=\"/__first-frame/chat/abc/gpui\" data-outline=\"0123\" data-swap=\"gpui-ready\"></script>"
         ));
-        assert!(painter.policy(crate::pages::foreman::GRAPH_POLICY).contains(&painter.hash));
+        assert!(
+            painter
+                .policy(crate::pages::foreman::GRAPH_POLICY)
+                .contains(&painter.hash)
+        );
         assert_eq!(short_digest("x").len(), 16);
         assert!(Painter::read(Path::new("/nowhere")).is_none());
     }

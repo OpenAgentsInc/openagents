@@ -178,7 +178,11 @@ async fn world_tweaked(
     // GPUI account pages (#12329).
     let gpui = root.path().join("gpui-chat");
     std::fs::create_dir(&gpui).unwrap();
-    for file in ["openagents_web_chat.js", "openagents_web_chat_bg.wasm", "start.js"] {
+    for file in [
+        "openagents_web_chat.js",
+        "openagents_web_chat_bg.wasm",
+        "start.js",
+    ] {
         std::fs::write(gpui.join(file), "").unwrap();
     }
     config.gpui_chat = Some(gpui);

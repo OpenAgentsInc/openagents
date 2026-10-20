@@ -3,7 +3,7 @@
 pub(crate) mod affiliates;
 pub(crate) mod agent_docs;
 pub(crate) mod api_docs;
-mod att;
+pub(crate) mod att;
 pub(crate) mod blog;
 mod blue_rush;
 mod bunny;
