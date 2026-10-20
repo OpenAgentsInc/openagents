@@ -174,6 +174,21 @@ if (textToggle) {
     showText(!textView.classList.contains("g-open"));
   });
 }
+// A card in the canvas opens the text view at the newest card (`#text`),
+// where the card draws itself.
+window.addEventListener("hashchange", function () {
+  if (location.hash !== "#text") {
+    return;
+  }
+  history.replaceState(null, "", location.pathname + location.search);
+  showText(true);
+  var cards = textView ? textView.querySelectorAll("[class*='card']") : [];
+  if (cards.length) {
+    cards[cards.length - 1].scrollIntoView({ block: "center" });
+  } else if (textView) {
+    textView.scrollTop = textView.scrollHeight;
+  }
+});
 window.addEventListener("keydown", function (event) {
   if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "f") {
     showText(true);

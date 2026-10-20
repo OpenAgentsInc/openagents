@@ -1517,22 +1517,22 @@ impl ChatApp {
             })
             .collect::<Vec<_>>()
             .join("\n\n");
-        let cards_chat = chat.clone();
         div()
             .flex()
             .flex_col()
             .gap(px(6.))
             .child(body)
             .children(cards.iter().enumerate().map(|(ix, card)| {
-                let chat = cards_chat.clone();
+                // The text view draws the card itself, live (the page's
+                // `#text` opens it at the newest card).
                 div()
                     .id(SharedString::from(format!("card-{key}-{ix}")))
                     .cursor_pointer()
-                    .on_click(move |_, _, _| route::go(&route::regular(Some(&chat))))
+                    .on_click(|_, _, _| route::go("#text"))
                     .child(info_card(
                         "icons/widget.svg",
                         card_title(card),
-                        "Open it in the regular chat.".into(),
+                        "Open it in the text view.".into(),
                     ))
             }))
             .when(copy && !text.is_empty(), |col| {
