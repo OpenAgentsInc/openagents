@@ -17,6 +17,7 @@ openagents-web-hands = { path = "../../apps/openagents/web/hands" }
 
 # Everything else is browser-only; a native build of this crate holds only that data.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+pylons-view = { path = "../pylons-view" }
 coder-browser = { path = "../coder-browser" }
 coder-ui = { path = "../coder-ui" }
 coder-host-wire = { path = "../coder-host-wire" }

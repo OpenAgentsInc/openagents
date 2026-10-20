@@ -19,7 +19,7 @@ class Cdp:
  def recv(self):
   a,b=self.exact(2);n=b&127
   if n==126:n=struct.unpack("!H",self.exact(2))[0]
-  if n==127:n=struct.unpack("!Q",self.exact(8))[0]
+  elif n==127:n=struct.unpack("!Q",self.exact(8))[0]
   assert n<32*1024*1024
   m=self.exact(4) if b&128 else None;d=self.exact(n)
   if m:d=bytes(v^m[i%4] for i,v in enumerate(d))

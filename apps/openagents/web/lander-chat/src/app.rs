@@ -81,7 +81,16 @@ pub struct LanderChat {
 
 impl LanderChat {
     pub fn new(still: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let composer = cx.new(|cx| TextInput::new(model::PLACEHOLDER, cx));
+        let composer = cx.new(|cx| {
+            TextInput::new(
+                if base() == model::HOME_BASE {
+                    "Message the pylons"
+                } else {
+                    model::PLACEHOLDER
+                },
+                cx,
+            )
+        });
         cx.subscribe_in(
             &composer,
             window,
@@ -179,6 +188,31 @@ impl LanderChat {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
+        if base() == model::HOME_BASE
+            && let Some(panel) = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.get_element_by_id("pylon-composer"))
+        {
+            let _ = panel.set_attribute(
+                "data-draft-chars",
+                &self.composer.read(cx).text().chars().count().to_string(),
+            );
+            let _ = panel.set_attribute("data-message-count", &self.entries.len().to_string());
+            let _ = panel.set_attribute(
+                "data-chat-state",
+                if self.live.is_some() {
+                    "streaming"
+                } else if self.sending {
+                    "sending"
+                } else if self.notice.is_some() {
+                    "notice"
+                } else if self.client.is_some() {
+                    "ready"
+                } else {
+                    "connecting"
+                },
+            );
+        }
         self.keep_area();
         if self.live.is_some() || self.sending {
             // The working row's timer.
@@ -842,8 +876,13 @@ fn publish_keep(area: (f32, f32, f32, f32)) {
 }
 
 fn route_chat() -> Option<String> {
-    let path = web_sys::window()?.location().pathname().ok()?;
-    model::chat_of(&path)
+    let location = web_sys::window()?.location();
+    let path = location.pathname().ok()?;
+    if model::base_of(&path) == model::HOME_BASE {
+        model::home_chat(&location.search().ok()?)
+    } else {
+        model::chat_of(&path)
+    }
 }
 
 /// Shows `chat`'s address without loading the page again.
@@ -851,7 +890,15 @@ fn push_path(chat: Option<&str>) {
     let Some(window) = web_sys::window() else {
         return;
     };
-    let path = model::path_for(base(), chat);
+    let mut path = model::path_for(base(), chat);
+    if base() == model::HOME_BASE
+        && window
+            .location()
+            .search()
+            .is_ok_and(|q| q.trim_start_matches('?').split('&').any(|p| p == "gl"))
+    {
+        path.push_str(if chat.is_some() { "&gl" } else { "?gl" });
+    }
     if window.location().pathname().ok().as_deref() == Some(path.as_str()) {
         return;
     }

@@ -15,6 +15,8 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--url", default="http://localhost:4331/home")
 parser.add_argument("--out", required=True, type=Path)
 parser.add_argument("--timeout", type=float, default=120)
+parser.add_argument("--chat", action="store_true", help="Submit a test chat; use only a local fixture or dedicated test account.")
+parser.add_argument("--allow-context-loss", action="store_true", help="Check input/API behavior despite a software GPU failure; does not verify rendering.")
 parser.add_argument("--movement", action="store_true", help="Walk to the shared terminal and check typing (fresh spawn).")
 args = parser.parse_args()
 args.out.mkdir(parents=True, exist_ok=True)
@@ -134,68 +136,91 @@ for sample in samples:
         assert anchors.setdefault(pylon["id"], pylon["anchor"]) == pylon["anchor"], pylon
 result = {"url": args.url, "state": state, "marks": marks, "world_anchors": samples}
 if args.movement:
-    assert evaluate('document.querySelectorAll("#pylons-terminal").length') == 1
-    assert evaluate('document.querySelector("#pylon-message").disabled')
+    assert evaluate('document.querySelector("#everglade-canvas").dataset.pylonTerminal') == "world"
+    assert evaluate('document.querySelector("svg#pylons-terminal") === null'), "Computer still overlays the world."
+    assert evaluate('document.querySelector("#pylon-composer").hasAttribute("inert")')
 
     def position():
         return evaluate('globalThis.__pylonsFrame.player')
 
-    def key(code, down, text=None):
-        event = {"type": "keyDown" if down else "keyUp", "code": code,
-                 "key": {"Escape": "Escape"}.get(code, code[-1].lower())}
+    def key(code, down, text=None, repeat=False):
+        name = {"Escape": "Escape", "Enter": "Enter", "Space": " "}.get(code, code[-1].lower())
+        event = {"type": "keyDown" if down else "keyUp", "code": code, "key": name, "autoRepeat": repeat}
         if text is not None:
             event["text"] = text
         cdp.call("Input.dispatchKeyEvent", event)
 
+    def wait_for(condition, label, timeout=60):
+        deadline = time.monotonic() + timeout
+        while not condition():
+            if time.monotonic() > deadline:
+                raise TimeoutError((label, position(), evaluate('document.querySelector("#home-chat-status").textContent')))
+            time.sleep(.05)
+
     def walk_until(code, condition):
         key(code, True)
-        deadline = time.monotonic() + 25
         try:
-            while not condition(position()):
-                if time.monotonic() > deadline:
-                    raise TimeoutError(f"Walking with {code}: {position()}")
-                time.sleep(.05)
+            wait_for(lambda: condition(position()), code)
         finally:
             key(code, False)
 
+    def draft_chars():
+        return evaluate('Number(document.querySelector("#pylon-composer").dataset.draftChars)')
+
     start = position()
-    walk_until("KeyW", lambda p: p[2] >= 1.5)
-    time.sleep(.4)
-    assert evaluate('!document.querySelector("#pylon-message").disabled')
-    assert evaluate('getComputedStyle(document.querySelector("#pylon-composer")).opacity') == "1"
-    assert evaluate('document.querySelector("#pylon-composer").getAttribute("aria-hidden")') == "false"
-    # A and D strafe in /home, without rotating the player or the anchors.
-    x = position()[0]
+    x = start[0]
     walk_until("KeyA", lambda p: abs(p[0] - x) >= .8)
     walk_until("KeyD", lambda p: abs(p[0] - x) <= .2)
-    # Focusing the field while W is held must release it, even before keyup.
     key("KeyW", True)
-    evaluate('document.querySelector("#pylon-message").focus()')
-    time.sleep(.2)
+    try:
+        wait_for(lambda: evaluate('document.activeElement?.id === "pylon-message"'), "GPUI autofocus")
+        key("KeyW", True, "w", repeat=True)
+        time.sleep(.2)
+        assert draft_chars() == 0, "Held walking key leaked into the composer."
+    finally:
+        key("KeyW", False)
+    time.sleep(.4)
+    assert evaluate('document.querySelector("#home-chat-mount canvas") !== null'), "No GPUI canvas."
+    assert evaluate('getComputedStyle(document.querySelector("#pylon-composer")).opacity') == "1"
+    assert evaluate('document.querySelector("#pylon-composer").getAttribute("aria-hidden")') == "false"
     typing_at = position()
-    cdp.call("Input.insertText", {"text": "hello pylons "})
-    for code, text in [("KeyW", "w"), ("KeyA", "a"), ("KeyS", "s"), ("KeyD", "d"), ("Space", " ")]:
-        key(code, True, text)
-        time.sleep(.1)
+    draft = "hello pylons wasd "
+    for char in draft:
+        code = "Space" if char == " " else "Key" + char.upper()
+        key(code, True, char)
         key(code, False)
+    wait_for(lambda: draft_chars() == len(draft), "GPUI typed draft")
     time.sleep(.3)
     assert all(abs(a-b) < .02 for a,b in zip(typing_at, position())), (typing_at, position())
-    draft = evaluate('document.querySelector("#pylon-message").value')
-    assert draft == "hello pylons wasd ", draft
     png = cdp.call("Page.captureScreenshot", {"format": "png"})["data"]
     (args.out / "home-terminal.png").write_bytes(base64.b64decode(png))
     key("Escape", True)
     key("Escape", False)
+    assert evaluate('document.querySelector("#pylon-composer").hasAttribute("inert")')
     walk_until("KeyS", lambda p: p[2] <= -.5)
-    time.sleep(.4)
-    assert evaluate('document.querySelector("#pylon-message").disabled')
-    assert evaluate('document.querySelector("#pylon-composer").hasAttribute("inert")')
-    walk_until("KeyW", lambda p: p[2] >= 1.5)
-    assert evaluate('document.querySelector("#pylon-message").value') == draft
+    walk_until("KeyW", lambda _: evaluate('document.activeElement?.id === "pylon-message"'))
+    wait_for(lambda: draft_chars() == len(draft), "GPUI draft recovery")
     samples.append(sample_anchors())
-    result["terminal"] = {"start": start, "typing_at": typing_at, "returned": position(), "draft": draft}
+    result["terminal"] = {"start": start, "typing_at": typing_at, "returned": position(), "draft_chars": draft_chars()}
+    if args.chat:
+        wait_for(lambda: evaluate('document.querySelector("#pylon-composer").dataset.chatState === "ready"'), "Chat connection")
+        key("Enter", True)
+        key("Enter", False)
+        wait_for(lambda: evaluate('Number(document.querySelector("#pylon-composer").dataset.messageCount)>=2 && document.querySelector("#pylon-composer").dataset.chatState === "ready"'), "GPUI streamed reply")
+        posts = [e["params"]["request"] for e in cdp.events if e.get("method") == "Network.requestWillBeSent" and e["params"]["request"]["method"] == "POST" and "/v1/threads" in e["params"]["request"]["url"]]
+        assert len(posts) == 1, posts
+        assert json.loads(posts[0]["postData"])["text"] == draft.strip(), posts
+        assert evaluate('location.pathname') == "/home"
+        assert evaluate('new URLSearchParams(location.search).has("chat")')
+        result["chat"] = {"submitted": json.loads(posts[0]["postData"]), "messages": evaluate('Number(document.querySelector("#pylon-composer").dataset.messageCount)')}
+        png = cdp.call("Page.captureScreenshot", {"format": "png"})["data"]
+        (args.out / "home-chat.png").write_bytes(base64.b64decode(png))
     evaluate('window.dispatchEvent(new Event("verse-stopped"))')
-    assert evaluate('document.querySelector("#pylon-message").disabled')
     assert evaluate('document.querySelector("#pylon-composer").hasAttribute("inert")')
+losses = [e["params"]["entry"]["text"] for e in cdp.events
+          if e.get("method") == "Log.entryAdded"
+          and "context lost" in e["params"]["entry"]["text"].lower()]
+result["graphics_context_losses"] = losses
 (args.out / "home-check.json").write_text(json.dumps(result, indent=2) + "\n")
+assert args.allow_context_loss or not losses, losses
 print(json.dumps(result))

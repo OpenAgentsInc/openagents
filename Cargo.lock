@@ -6824,6 +6824,7 @@ dependencies = [
  "oa-copy",
  "openagents-web-hands",
  "openagents-workspace-hack",
+ "pylons-view",
  "raw-window-handle",
  "secp256k1 0.31.1",
  "serde",

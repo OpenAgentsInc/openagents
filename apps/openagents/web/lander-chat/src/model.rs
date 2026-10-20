@@ -12,7 +12,8 @@ use serde::Deserialize;
 /// The pages the chat is on: `/lander8`, and `/lander10` with the live
 /// pylons around it.
 pub const BASE: &str = "/lander8";
-pub const BASES: [&str; 3] = ["/lander8", "/lander10", "/lander11"];
+pub const BASES: [&str; 4] = ["/lander8", "/lander10", "/lander11", "/home"];
+pub const HOME_BASE: &str = "/home";
 /// `/lander10`: the pylons share the page.
 pub const PYLONS_BASE: &str = "/lander10";
 /// `/lander11`: Verse's Grid draws behind the chat.
@@ -50,9 +51,22 @@ pub fn chat_of(path: &str) -> Option<String> {
     (!id.is_empty() && !id.contains('/')).then(|| id.to_owned())
 }
 
+/// /home keeps the conversation in the query so it stays on the Grid page.
+pub fn home_chat(search: &str) -> Option<String> {
+    search.trim_start_matches('?').split('&').find_map(|part| {
+        let id = part.strip_prefix("chat=")?;
+        (!id.is_empty()
+            && id
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
+        .then(|| id.to_owned())
+    })
+}
+
 /// The address for `chat`, or the page's own for a new one.
 pub fn path_for(base: &str, chat: Option<&str>) -> String {
     match chat {
+        Some(id) if base == HOME_BASE => format!("{base}?chat={id}"),
         Some(id) => format!("{base}/chat/{id}"),
         None => base.to_owned(),
     }
@@ -61,7 +75,11 @@ pub fn path_for(base: &str, chat: Option<&str>) -> String {
 /// How opaque the card is: on `/lander11` it is glass, so the Grid shows
 /// through it faintly.
 pub fn card_alpha(base: &str) -> f32 {
-    if base == VERSE_BASE { 0.72 } else { 0.92 }
+    if matches!(base, VERSE_BASE | HOME_BASE) {
+        0.72
+    } else {
+        0.92
+    }
 }
 
 /// Which of [`BASES`] the address `path` is under (`/lander8` when none).
@@ -320,6 +338,16 @@ mod tests {
         assert_eq!(chat_of("/lander11/chat/x"), Some("x".into()));
         assert!(card_alpha("/lander11") < card_alpha("/lander8"));
         assert_eq!(card_top("/lander11", 1440., 900.), 60.);
+    }
+
+    #[test]
+    fn home_chat_stays_on_the_grid_and_restores_its_query() {
+        assert_eq!(base_of("/home"), HOME_BASE);
+        assert_eq!(path_for(HOME_BASE, Some("abc-123")), "/home?chat=abc-123");
+        assert_eq!(home_chat("?gl&chat=abc-123"), Some("abc-123".into()));
+        assert_eq!(home_chat("?chat="), None);
+        assert_eq!(home_chat("?chat=x/y"), None);
+        assert!(!welcomes(HOME_BASE));
     }
 
     #[test]

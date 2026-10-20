@@ -11,6 +11,8 @@
 //! The words here are what a person reads ("Online", "1 of 2 busy", "Jobs,
 //! last 24 h"), never the protocol's.
 
+pub mod terminal;
+
 use serde::{Deserialize, Serialize};
 
 /// Every pylon that is online now, as the site saw it.

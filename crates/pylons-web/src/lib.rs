@@ -16,7 +16,7 @@
 //! frame.
 
 pub mod camera;
-pub mod terminal;
+pub use pylons_view::terminal;
 pub mod world_camera;
 
 #[cfg(target_arch = "wasm32")]

@@ -137,10 +137,13 @@ fn walking() -> bool {
 
 /// Browser text controls own their keys, including WASD and space.
 fn editing() -> bool {
-    web_sys::window()
-        .and_then(|w| w.document())
-        .and_then(|d| d.active_element())
-        .is_some_and(|e| {
+    let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+        return false;
+    };
+    document
+        .get_element_by_id(CANVAS_ID)
+        .is_some_and(|c| c.has_attribute("data-composing"))
+        || document.active_element().is_some_and(|e| {
             matches!(e.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT")
                 || e.dyn_ref::<HtmlElement>()
                     .is_some_and(HtmlElement::is_content_editable)
@@ -288,7 +291,11 @@ async fn open_grid(
     // Three tasks, not one (#12319: the start blocked the page for 167 ms):
     // the pack's meshes on the CPU, the GPU's adapter and device, then the
     // upload. The page gets a turn between each.
-    let content = verse::grid_engine::Content::grid()?;
+    let content = if HOME.with(std::cell::Cell::get) {
+        crate::home_terminal::content()?
+    } else {
+        verse::grid_engine::Content::grid()?
+    };
     mark("verse-grid-content");
     yield_to_page().await;
     let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle(Box::new(WebDisplay));
@@ -302,6 +309,9 @@ async fn open_grid(
     yield_to_page().await;
     let engine = GridEngine::on_surface_with(gpu, surface, content, atlas, width, height)?;
     mark("verse-grid-engine");
+    if HOME.with(std::cell::Cell::get) {
+        let _ = canvas.set_attribute("data-pylon-terminal", "world");
+    }
     Ok(engine)
 }
 
