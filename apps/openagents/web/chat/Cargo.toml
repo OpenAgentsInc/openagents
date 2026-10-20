@@ -1,0 +1,36 @@
+# The signed-in OpenAgents chat on the web: GPUI drawing the account's
+# chats into a canvas at openagents.com/gpui, over the site's JSON API.
+# Built by apps/openagents/scripts/build-web-chat.sh; served by
+# openagents-web (`--gpui-chat DIR`).
+[package]
+name = "openagents-web-chat"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+gpui.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+log.workspace = true
+openagents-web-chat-view.workspace = true
+openagents-web-client.workspace = true
+openagents-doc = { path = "../../crates/doc" }
+openagents-proto = { path = "../../crates/proto" }
+serde_json = "1"
+web-time.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+openagents-gpui-web.workspace = true
+wasm-bindgen.workspace = true
+wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1.7"
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+uuid.workspace = true
+js-sys = "0.3"
+web-sys = { version = "0.3", features = ["History", "Location", "PopStateEvent", "Window", "Document", "Element", "HtmlElement"] }

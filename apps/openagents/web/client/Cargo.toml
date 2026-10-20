@@ -1,0 +1,37 @@
+# The signed-in web chat's data client: the account's chats, projects,
+# messages, and live answers from openagents.com's own JSON API
+# (`/v1/threads`, `/v1/threads/{id}/events`, `/v1/projects`), over the
+# browser's `fetch` and `EventSource` with the site's sign-in cookie. The
+# types build anywhere; the transport is wasm32 only.
+[package]
+name = "openagents-web-client"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license = "MIT"
+
+[dependencies]
+anyhow.workspace = true
+futures.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen.workspace = true
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "EventSource",
+    "EventSourceInit",
+    "Headers",
+    "HtmlMetaElement",
+    "Location",
+    "MessageEvent",
+    "Request",
+    "RequestCredentials",
+    "RequestInit",
+    "Response",
+    "Window",
+] }

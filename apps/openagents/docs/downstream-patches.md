@@ -1218,7 +1218,7 @@ links remain readable. Upstream fixes now require manual ports.
   method (`crates/ui/src/files/download.rs`), and a chat link whose text
   starts with "Download" starts one.
 
-## The chat UI on the web (`/demo/gpui`)
+## The chat UI on the web (`/demo/gpui` and `/gpui`)
 
 The desktop chat UI runs in a browser from `web/`, its own Cargo workspace,
 so wasm-only dependencies stay out of the desktop lock and its hakari crate
@@ -1241,9 +1241,18 @@ so wasm-only dependencies stay out of the desktop lock and its hakari crate
   `openagents-markdown`'s block tree, tool groups with the shared
   `tool_group_summary`, question cards, and the composer (after GPUI's
   `examples/input.rs`). Replies are the demo's scripted turns, streamed word
-  by word with the desktop veil's curve. It is a port of the components,
-  not the `openagents-ui` crate itself, which needs tokio, reqwest,
-  alacritty, and the webviews.
+  by word with the desktop veil's curve. The components are ports, not the
+  `openagents-ui` crate itself, which needs tokio, reqwest, alacritty, and
+  the webviews; they live in `web/chat-view` (`openagents-web-chat-view`:
+  theme, markdown, composer field, transcript pieces, fonts and icons), so
+  the demo and the signed-in chat share one copy.
+- `web/chat` (`openagents-web-chat`) is the signed-in chat at `/gpui`: the
+  shared views over `web/client` (`openagents-web-client`), which reads and
+  writes the account's chats through the site's JSON API with `fetch` and
+  `EventSource` and the sign-in cookie. The page fetches the Geist faces as
+  separate files and hands them to `launch`, so the module carries no
+  fonts. Build with `scripts/build-web-chat.sh OUTDIR`; `openagents-web
+  --gpui-chat OUTDIR` serves it (the image copies it to `/srv/gpui-chat`).
 - Start the app with `Application::run_embedded` and keep the handle: on
   the web, `Application::run` drops the app as soon as it launches.
 - GPUI drops a named font family whose face has no Latin `m`, so the CJK
