@@ -65,6 +65,23 @@ key, a saved provider key and a saved own-Claude key, forces a new
 revision, and checks they all still work (`--only durable --restart` runs
 just that).
 
+### The test account on staging
+
+Staging keeps its own account store, so the production test account's key
+(`~/work/.secrets/openagents-test-account.env`) is refused here with 401,
+as a cookie or a bearer token (#12235). On staging, sign in as staging's
+test account, `acct_dc7a799879686fc5`. Its API key is the staging-only
+secret `openagents-web-1-staging-agent-smoke-key`, which the automation
+account reads (`CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config`). Trade
+the key for an eight-hour session with `POST /api/v1/sessions` and the key
+as the bearer, and send the session as `Authorization: Bearer` or the
+`oa_cloud_session` cookie. Never print the key or the session.
+
+`scripts/smoke/staging-chat.py` does this, then makes a chat, waits for the
+answer, sends a second message, waits again, and deletes the chat. Every
+request carries `X-OpenAgents-Test: 1`. `--delete ID...` deletes chats that
+an earlier run left behind.
+
 ## Deploy
 
 `scripts/deploy/web.sh stage [REF]` does all of this from a clean export
