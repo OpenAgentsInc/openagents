@@ -4863,6 +4863,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-web-claude"
+version = "1.0.0"
+dependencies = [
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "gpui",
+ "js-sys",
+ "openagents-gpui-web",
+ "openagents-web-client",
+ "openagents-web-cloud-settings",
+ "openagents-web-page-host",
+ "rust-native",
+ "serde_json",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "openagents-web-client"
 version = "1.0.0"
 dependencies = [
@@ -4885,6 +4905,43 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "openagents-web-cloud-settings"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "js-sys",
+ "openagents-chat-view",
+ "openagents-web-client",
+ "openagents-web-page-host",
+ "rust-native",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "openagents-web-data"
+version = "1.0.0"
+dependencies = [
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "gpui",
+ "js-sys",
+ "openagents-gpui-web",
+ "openagents-web-client",
+ "openagents-web-cloud-settings",
+ "openagents-web-page-host",
+ "rust-native",
+ "serde_json",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]

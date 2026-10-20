@@ -24,6 +24,7 @@ use crate::cloud::session::{CloudSession, SessionError, Viewer, now};
 use crate::cloud::{default_workspace, default_workspace_cookies, protect, refused, service};
 use crate::ui_page::{UiPage, action_link};
 
+mod api;
 pub(crate) mod link;
 pub(crate) mod subscription;
 
@@ -33,6 +34,7 @@ const CLAUDE_REMOVE: &str = "/settings/claude/remove";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .merge(api::routes())
         .route(PAGE, get(settings))
         .route(link::PAGE, link::route())
         .route(CLAUDE, get(claude).post(add))
@@ -170,7 +172,9 @@ async fn settings(
     RawQuery(query): RawQuery,
     headers: HeaderMap,
 ) -> Response {
-    let returned = query.is_some_and(|q| q.split('&').any(|p| p == "plan=started"));
+    let returned = query
+        .as_ref()
+        .is_some_and(|q| q.split('&').any(|p| p == "plan=started"));
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -211,6 +215,7 @@ async fn settings(
         html! {}
     };
     let body = html! {
+        (gpui_bootstrap(&app, &viewer.account_id, query.as_deref(), "general"))
         (settings_content(&viewer.account_label, claude, chats, plan))
         (link::row())
         (affiliate)
@@ -220,7 +225,23 @@ async fn settings(
         (macs)
         (crate::vault::settings_row())
     };
-    page(&headers, service, &viewer, "Settings", PAGE, body)
+    gpui_policy(page(&headers, service, &viewer, "Settings", PAGE, body))
+}
+
+fn gpui_policy(mut response: Response) -> Response {
+    if let Some(policy) = response
+        .headers()
+        .get(header::CONTENT_SECURITY_POLICY)
+        .and_then(|v| v.to_str().ok())
+    {
+        let policy = policy.replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'");
+        if let Ok(value) = policy.parse() {
+            response
+                .headers_mut()
+                .insert(header::CONTENT_SECURITY_POLICY, value);
+        }
+    }
+    response
 }
 
 /// "Your affiliate earnings", for an account with an affiliate link
@@ -244,6 +265,34 @@ async fn affiliate_section(app: &App, service: &CloudSession, headers: &HeaderMa
         .await
         .unwrap_or_default();
     settings_section(&report, &days)
+}
+
+/// Leave HTML in place until WebGPU and the separate Settings module start.
+fn gpui_bootstrap(app: &App, account_id: &str, query: Option<&str>, default_page: &str) -> Markup {
+    if query.is_some_and(|q| q.split('&').any(|p| matches!(p, "ui=html" | "ui=off"))) {
+        return html! {};
+    }
+    let module = if default_page == "claude" {
+        "claude"
+    } else {
+        "settings"
+    };
+    let Some(directory) = app
+        .config
+        .gpui_chat
+        .as_deref()
+        .filter(|d| d.join(format!("openagents_web_{module}.js")).is_file())
+    else {
+        return html! {};
+    };
+    let owner = crate::chat_store::account_owner(account_id);
+    let csrf = crate::pages::chat::csrf(app, &owner);
+    html! {
+        meta name="openagents-csrf" content=(csrf);
+        meta name="openagents-settings" content=(default_page);
+        meta name=(crate::features::META) content=(app.config.features.meta());
+        script type="module" src=(crate::pages::gpui_build::url(Some(directory), "/gpui/build", "start.js")) {}
+    }
 }
 
 /// The plan section for the viewer: the server's plan (or the checked-in
@@ -513,7 +562,7 @@ pub fn settings_content(
                             "Your name@openagents.com name and the profile people see."
                         }
                     }
-                    div class="oa-settings-control" { (action_link("Manage", crate::profiles::SETTINGS_PAGE)) }
+                    div class="oa-settings-control" { (action_link("Your ID", "/settings?ui=gpui&page=account")) }
                 }
             }
             @if crate::wallet_restore::available() {
@@ -775,7 +824,7 @@ fn check_failure(material: Material, error: byo::CheckError) -> Response {
     problem(status, text, CLAUDE)
 }
 
-async fn claude(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn claude(State(app): State<App>, RawQuery(query): RawQuery, headers: HeaderMap) -> Response {
     let context = match context(&app, &headers).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -809,7 +858,7 @@ async fn claude(State(app): State<App>, headers: HeaderMap) -> Response {
         None
     };
     let saved = status.map(|status| (status.material, status.masked()));
-    let body = claude_content(
+    let content = claude_content(
         saved
             .as_ref()
             .map(|(material, print)| (*material, print.as_str())),
@@ -819,14 +868,18 @@ async fn claude(State(app): State<App>, headers: HeaderMap) -> Response {
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
     );
-    page(
+    let body = html! {
+        (gpui_bootstrap(&app, &context.viewer.account_id, query.as_deref(), "claude"))
+        (content)
+    };
+    gpui_policy(page(
         &headers,
         context.service,
         &context.viewer,
         "Claude credential",
         CLAUDE,
         body,
-    )
+    ))
 }
 
 /// Where Settings, Claude sends people for Max and Team monthly API
@@ -1074,6 +1127,39 @@ mod tests {
     use super::*;
 
     const SUBSCRIBE: Option<(&str, &str)> = Some(("s", "q"));
+
+    #[test]
+    fn settings_bootstraps_only_when_built_and_keeps_the_html_opt_out() {
+        let root = tempfile::tempdir().unwrap();
+        let mut config = crate::Config::development(root.path().join("tasks"));
+        config.gpui_chat = Some(root.path().into());
+        config.features = crate::features::Features::none();
+        let app = App(std::sync::Arc::new(crate::Inner { config }));
+        assert!(
+            gpui_bootstrap(&app, "acct_test", None, "general")
+                .into_string()
+                .is_empty()
+        );
+        std::fs::write(root.path().join("openagents_web_settings.js"), "built").unwrap();
+        for query in ["ui=html", "ui=off", "page=claude&ui=html"] {
+            assert!(
+                gpui_bootstrap(&app, "acct_test", Some(query), "general")
+                    .into_string()
+                    .is_empty()
+            );
+        }
+        for query in [None, Some("ui=gpui")] {
+            let html = gpui_bootstrap(&app, "acct_test", query, "general").into_string();
+            assert!(html.contains("name=\"openagents-settings\""));
+            assert!(html.contains("name=\"openagents-csrf\""));
+            assert!(html.contains("/gpui/build/start.js"));
+            assert!(html.contains("name=\"openagents-features\" content=\"\""));
+            assert!(!html.contains("openagents_web_chat_bg.wasm"));
+        }
+        std::fs::write(root.path().join("openagents_web_claude.js"), "built").unwrap();
+        let claude = gpui_bootstrap(&app, "acct_test", None, "claude").into_string();
+        assert!(claude.contains("name=\"openagents-settings\" content=\"claude\""));
+    }
 
     #[test]
     fn the_claude_page_says_usage_bills_to_the_users_own_account() {

@@ -143,7 +143,7 @@ async fn remove(
 /// Remove every chat of `owner`, each fenced by the generation it was read
 /// at (a chat that changes meanwhile is read again). A chat whose answer is
 /// still being written stays. Returns how many chats stayed.
-pub(super) async fn delete_all(
+pub(crate) async fn delete_all(
     store: &crate::chat_store::Store,
     owner: &str,
 ) -> Result<usize, Error> {

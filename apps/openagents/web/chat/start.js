@@ -3,7 +3,11 @@ window.__oaVisualUrl = new URL("./visuals/start.js", import.meta.url).href;
 // It needs WebGPU; without it, the page goes to the regular
 // chat. Otherwise the module and the fonts download together,
 // and the canvas replaces the page's outline once the app has started.
-import init, { launch, chatShortcut, gpuiRecordedFrame } from "./openagents_web_chat.js";
+var chatModule = null;
+function gpuiRecordedFrame() { return chatModule && chatModule.gpuiRecordedFrame(); }
+function chatShortcut(ctrl, alt, shift, meta, key) {
+  return !!chatModule && chatModule.chatShortcut(ctrl, alt, shift, meta, key);
+}
 
 const FONTS = [
   "Geist.ttf",
@@ -140,10 +144,27 @@ function start() {
       });
   }, { once: true });
   loadedFonts = fonts;
+  if (document.querySelector('meta[name="openagents-settings"]')) {
+    var page = new URLSearchParams(location.search).get("page") || document.querySelector('meta[name="openagents-settings"]').content || "general";
+    if (page === "claude" || page === "data") {
+      openPage(page);
+    } else {
+      openSettings({ detail: JSON.stringify({ page: page, shared: { signedIn: true } }) });
+    }
+    window.addEventListener("oa-settings-close", function () { location.assign("/?ui=gpui"); });
+    window.addEventListener("oa-settings-page", function (event) {
+      history.replaceState(null, "", "/settings?ui=gpui&page=" + encodeURIComponent(event.detail));
+    });
+    return;
+  }
   openAddressedPage();
-  Promise.all([init({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) }), fonts])
+  var initialized = import("./openagents_web_chat.js").then(function (module) {
+    chatModule = module;
+    return module.default({ module_or_path: WebAssembly.compileStreaming(fetch(new URL("./openagents_web_chat_bg.wasm", import.meta.url))) });
+  });
+  Promise.all([initialized, fonts])
     .then(function (loaded) {
-      launch(loaded[1]);
+      chatModule.launch(loaded[1]);
     })
     .catch(function (error) {
       say("The chat couldn't start. Reload the page to try again.");
@@ -559,6 +580,9 @@ function openSettings(event) {
   settingsBox.id = settingsBox.dataset.box = "gpui-settings";
   settingsBox.setAttribute("aria-label", "Settings");
   settingsBox.style.cssText = "position:fixed;inset:0;z-index:7;";
+  if (document.querySelector('meta[name="openagents-settings"]')) {
+    settingsBox.style.zIndex = "100";
+  }
   document.body.appendChild(settingsBox);
   var glue = new URL("./openagents_web_settings.js", import.meta.url);
   Promise.all([import(glue.href), loadedFonts])
@@ -588,6 +612,8 @@ window.addEventListener("oa-settings-open", openSettings);
 // path). Its box covers the chat; its Back to chat (`oa-page-close`) hides
 // the box, and moving within the page (`oa-page-path`) keeps the address.
 var PAGES = {
+  claude: ["./openagents_web_claude.js", "./openagents_web_claude_bg.wasm"],
+  data: ["./openagents_web_data.js", "./openagents_web_data_bg.wasm"],
   traces: ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm"],
   agents: ["./openagents_web_agents.js", "./openagents_web_agents_bg.wasm"],
   projects: ["./openagents_web_projects.js", "./openagents_web_projects_bg.wasm"],
@@ -616,6 +642,7 @@ function openPage(path) {
     return;
   }
   var rest = path.slice(name.length + 1);
+  if ((name === "claude" || name === "data") && settingsBox) { settingsBox.hidden = true; }
   if (!UNADDRESSED[name]) {
     pageParam(path);
   }
@@ -635,6 +662,7 @@ function openPage(path) {
   box.id = box.dataset.box = "gpui-page-" + name;
   box.setAttribute("aria-label", name);
   box.style.cssText = "position:fixed;inset:0;z-index:7;";
+  if (name === "claude" || name === "data") { box.style.zIndex = "100"; }
   document.body.appendChild(box);
   pageBoxes[name] = box;
   Promise.all([import(new URL(files[0], import.meta.url).href), loadedFonts])
@@ -669,6 +697,9 @@ window.addEventListener("oa-page-close", function (event) {
   }
   if (!UNADDRESSED[event.detail || ""]) {
     pageParam("");
+  }
+  if (event.detail === "claude" || event.detail === "data") {
+    location.assign("/?ui=gpui");
   }
 });
 function openAddressedPage() {

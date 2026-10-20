@@ -44,6 +44,8 @@ pub(crate) const CSRF_HEADER: &str = crate::chat_files::TOKEN_HEADER;
 /// everything under it (#12262). `/v1/projects` covers a project's own
 /// routes (`/v1/projects/{id}*`) too.
 pub(crate) const ACCOUNT: &[&str] = &[
+    "/v1/settings",
+    "/v1/account/export",
     "/v1/threads",
     "/v1/projects",
     "/v1/history",
