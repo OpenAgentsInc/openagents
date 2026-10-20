@@ -17,6 +17,7 @@ members = [
     "traces",
     "work",
     "settings",
+    "keys",
     "demo",
     "agent-graph",
     "first-frame",

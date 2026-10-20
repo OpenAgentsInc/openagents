@@ -172,7 +172,11 @@ pub(crate) fn content(
     }
 }
 
-async fn show(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn show(
+    State(app): State<App>,
+    headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
     let (service, viewer) = match viewer(&app, &headers, PAGE).await {
         Ok(value) => value,
         Err(response) => return response,
@@ -201,7 +205,16 @@ async fn show(State(app): State<App>, headers: HeaderMap) -> Response {
         (&tickets[0].0, &tickets[0].1),
         (&tickets[1].0, &tickets[1].1),
     );
-    page(&headers, service, &viewer, "Agents", PAGE, body)
+    crate::settings::keys_page(
+        &app,
+        &headers,
+        query.as_deref(),
+        service,
+        &viewer,
+        "Agent accounts",
+        PAGE,
+        body,
+    )
 }
 
 #[derive(Deserialize)]

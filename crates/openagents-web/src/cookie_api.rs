@@ -83,7 +83,20 @@ pub(crate) const ACCOUNT: &[&str] = &[
 /// `/v1/agents` and its actions are the running work Coder reports and
 /// Approve, Deny, and Stop on it, for the GPUI chat (#12316); the gateway's
 /// agent sign-up routes under `/v1/agents/` stay out.
-const EXACT: &[&str] = &["/v1/account", "/v1/agents", "/v1/agents/actions"];
+const EXACT: &[&str] = &[
+    "/v1/account",
+    "/v1/agents",
+    "/v1/agents/actions",
+    "/v1/agents/claimed",
+    "/v1/agents/claim",
+];
+
+// Only the account management actions, never agent registration or challenges.
+fn agent_revoke(path: &str) -> bool {
+    path.strip_prefix("/v1/agents/")
+        .and_then(|rest| rest.strip_suffix("/revoke"))
+        .is_some_and(|id| !id.is_empty() && !id.contains('/'))
+}
 
 /// `path` is `prefix` or a path under it.
 fn under(path: &str, prefix: &str) -> bool {
@@ -93,7 +106,7 @@ fn under(path: &str, prefix: &str) -> bool {
 
 /// Whether `path` takes the sign-in cookie.
 pub(crate) fn covered(path: &str) -> bool {
-    EXACT.contains(&path) || ACCOUNT.iter().any(|prefix| under(path, prefix))
+    agent_revoke(path) || EXACT.contains(&path) || ACCOUNT.iter().any(|prefix| under(path, prefix))
 }
 
 /// Whether `path` takes a signed-out browser's visitor cookie: the chat
@@ -105,13 +118,19 @@ fn visitor_covered(path: &str) -> bool {
 /// Whether this site answers `method path` only to forward it to the
 /// account service ([`gateway`]): a covered route the service owns.
 pub(crate) fn owns(method: &Method, path: &str) -> bool {
-    matches!(*method, Method::GET | Method::HEAD) && path == "/v1/account"
+    (matches!(*method, Method::GET | Method::HEAD)
+        && matches!(path, "/v1/account" | "/v1/agents/claimed"))
+        || (*method == Method::POST && (path == "/v1/agents/claim" || agent_revoke(path)))
 }
 
 /// The routes this site forwards to the account service once the layer has
 /// turned the cookie into a Bearer.
 pub(crate) fn routes() -> axum::Router<App> {
-    axum::Router::new().route("/v1/account", axum::routing::get(gateway))
+    axum::Router::new()
+        .route("/v1/account", axum::routing::get(gateway))
+        .route("/v1/agents/claimed", axum::routing::get(gateway))
+        .route("/v1/agents/claim", axum::routing::post(gateway))
+        .route("/v1/agents/{id}/revoke", axum::routing::post(gateway))
 }
 
 /// Forward a covered account-service route to the gateway, as the
@@ -190,6 +209,13 @@ mod tests {
     fn the_agents_routes_take_the_cookie_but_not_the_gateway_sign_up() {
         assert!(covered("/v1/agents"));
         assert!(covered("/v1/agents/actions"));
+        assert!(covered("/v1/agents/claimed"));
+        assert!(covered("/v1/agents/claim"));
+        assert!(covered("/v1/agents/acct_one/revoke"));
+        assert!(!covered("/v1/agents//revoke"));
+        assert!(!covered("/v1/agents/a/b/revoke"));
+        assert!(!covered("/v1/agents/register"));
+        assert!(!covered("/v1/agents/challenge"));
         assert!(!covered("/v1/agents/signup"));
         assert!(!covered("/v1/agentsx"));
     }
@@ -259,6 +285,11 @@ mod tests {
     fn only_reading_the_account_is_forwarded() {
         assert!(owns(&Method::GET, "/v1/account"));
         assert!(owns(&Method::HEAD, "/v1/account"));
+        assert!(owns(&Method::GET, "/v1/agents/claimed"));
+        assert!(owns(&Method::POST, "/v1/agents/claim"));
+        assert!(owns(&Method::POST, "/v1/agents/acct_one/revoke"));
+        assert!(!owns(&Method::GET, "/v1/agents/claim"));
+        assert!(!owns(&Method::POST, "/v1/agents/register"));
         assert!(!owns(&Method::DELETE, "/v1/account"));
         assert!(!owns(&Method::GET, "/v1/account/access"));
     }
