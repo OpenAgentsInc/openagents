@@ -89,6 +89,9 @@ V3.2 sparse attention, and V4.1, with pinned model and kernel compatibility.
 The [DeepInfer review](deepinfer-lessons.md) compares its released inference
 engine with Psionic's serving paths and recommends focused work on device
 batching, reproducibility, structured outputs, and speculative verification.
+Its [GCP deployment proposal](deepinfer-lessons.md#gcp-deployment-proposal-2026-10-20)
+adds current GPU/quota observations, small-model hosting candidates, and a
+staged path from private workers to optional P/D and persistent KV.
 
 The [Mesh-LLM review](mesh-llm-lessons.md) compares distributed placement,
 stage packages, activation transport, readiness, and cache-aware routing with

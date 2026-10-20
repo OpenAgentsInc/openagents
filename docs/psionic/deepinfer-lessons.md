@@ -278,6 +278,203 @@ plotting mode. Psionic should count actually committed output tokens and label
 estimates separately; do not compare projected speculative throughput with
 measured non-speculative throughput as if both were observed. [D18]
 
+## GCP deployment proposal (2026-10-20)
+
+This is a deployment proposal, based on the [read-only project snapshot](assets/gcp-inventory-2026-10-20.json)
+and the deeper Q&A/source review at DeepInfer `774ce244`. It adds no serving
+implementation and makes no new throughput claim. Native R1-distill work
+(DS0) remains a separate implementation; a working external engine does not
+qualify a native Psionic decoder.
+
+### What the deployment Q&A changes
+
+The useful lesson is to budget the whole service: scheduling, cache placement,
+communication, recovery and protocol processing together. DeepSeek separates
+vision, prefill and decode; its efficient deployment example uses 64 GPUs
+for prefill plus 64 for decode. It budgets about 400 Gbps between stages per
+eight GPUs and retains persistent cache outside the compute fleet. These are
+scale-specific choices, not prerequisites for our first service. [D4]
+
+Several tempting optimizations have conditions. Cache-independent routing
+relies on a shared cache accessible to every worker. Bounded SWA replay is
+approximate. Variable-length speculation has a trained confidence head and
+wins at some concurrency levels but loses at the smallest published point.
+The current release still omits the complete persistent-cache, disaggregated
+service and replica-balancing implementation. [D1] [D4] [D18]
+
+Our immediate inference from that review: start with complete requests on
+one GPU, measure queueing and reuse, and split stages only when the measured
+benefit exceeds transfer, scheduling and failure-recovery cost.
+
+### What is actually available to plan around
+
+The automation account could inspect `openagentsgemini`: 78 GCE VMs, three
+listed GKE clusters and 48 Cloud Run services at collection time. These counts
+include unrelated applications and stopped machines. They are not an inference
+fleet. The snapshot contains observation times, commands and access gaps.
+
+| Running GPU VM | Shape | Current role |
+| --- | --- | --- |
+| `clef-decisions-h100`, `us-central1-a` | Spot H100 80 GB | Production Clef decision pool |
+| `clef-decisions-a100`, `us-central1-b` | Standard A100 40 GB | Production Clef decision pool |
+| `oa-pylon-gpu-1`, `us-central1-a` | Standard L4 24 GB | Network Pylon |
+
+Two older H100 experiment VMs were stopped. Neither those machines nor the
+three running services were changed. In particular, an existing production
+GPU is not spare capacity. Their existing decision performance measurements
+remain in [GPU options](../inference/gpu-options.md); they do not predict chat
+decode throughput.
+
+| Reported quota | Relevant observation | Planning consequence |
+| --- | --- | --- |
+| A100 40 GB: 16 standard / 64 spot per region | `us-central1` standard usage 1 | A separate A100 is a plausible durable small-model worker; 15 standard GPU units remained in that counter. |
+| L4: 16 standard / 16 spot per region | `us-central1` standard usage 1 | Low-cost small-model replicas; leave the existing Pylon intact. |
+| H100, H100 Mega, H200, B200: 64 spot per family/region | Positive Cloud Quotas values in the inspected US regions and `europe-west4` | Larger experiments are quota-plausible. GPU-family standard quota fields did not report a positive value. |
+| RTX PRO 6000: 16 spot per region | Separate from virtual-workstation quota | A full G4 GPU is an interesting 96 GB single-device candidate. |
+| A100 80 GB | Standard and spot regional counters were zero | Do not substitute A2 Ultra for the available 40 GB A100 tier. |
+| TPU v6e spot | 1,536 in `us-central1`, `us-east1`, `europe-west4`; values unset in `us-east4`/`us-east5` | Candidate for a separate qualified TPU engine, not today's native Psionic runtime. |
+| TPU7x spot; Cloud Run GPU | No positive values confirmed in inspected regions | No Ironwood or Cloud Run GPU deployment assumption. GCE GPU quota does not grant Cloud Run GPU capacity. |
+
+The global GPU quota reported 3,000. This is only another ceiling. Committed
+or zone-only unlimited counters do not grant hardware. Reservations, successful
+allocation, quota consumption at start time and compatible runtime execution
+still need checking. Staging was visible as a project, but listing its VMs
+returned a permission warning despite CLI exit zero; the empty result is not
+proof of an empty staging environment.
+
+The live machine catalog lists A4/B200, A3 Ultra/H200 and G4 in
+`us-central1-b`; A4 and G4 also appeared in other queried zones. The same
+machine descriptions returned not-found in `us-central1-a`. A type appearing
+in the catalog does not prove that spot capacity is available. Google lists
+[8 × 180 GB usable HBM for A4](https://docs.cloud.google.com/compute/docs/gpus)
+and 96 GB GDDR7 for a full G4 GPU. Do not budget a B200 using its nominal
+192 GB physical figure or treat G4 PCIe peer-to-peer as NVLink.
+
+### Models and a sensible first deployment
+
+The following are memory-planning candidates, not new qualified endpoints.
+Use pinned converted weights and tested context/output caps; include KV,
+workspace, concurrent requests and replacement headroom in the actual plan.
+The [official R1 release](https://github.com/deepseek-ai/DeepSeek-R1) lists the
+distills separately from the full MoE model.
+The existing [Pylon measurements](../compute/pylon.md#choose-another-text-model)
+are local single-request evidence, not cloud speed estimates.
+
+| Worker | Candidate workload | Execution boundary |
+| --- | --- | --- |
+| L4 24 GB | Gemma 4 E4B, Qwen3.5 4B/9B, small R1 distills; a 14B Q4 artifact may fit with bounded context | Native CUDA only for the families it actually supports; otherwise explicit compatible engine. |
+| A100 40 GB | R1-Distill-Qwen-32B Q4, smaller models with more KV/batch space, Nemotron Nano 30B-A3B Q4 | Checkpoint-specific template/reasoning/EOS checks; Qwen2 distill ancestry is not native Qwen3.5 CUDA support. |
+| G4 96 GB or H100 80 GB | R1-Distill-Llama-70B Q4, or higher-precision 32B with a bounded KV budget | Qualify device build and model independently. G4 is not the SM100 hardware target of this DeepInfer release. |
+| One A4 node, eight B200s | V4.1-Flash offline EP8 experiment, then a separately engineered service | Upstream's offline example supports `--ep 8`; checkpoint, memory, kernels and GCP runtime still need an actual run. This is external-engine research, not native Psionic support. |
+| TPU v6e | Small dense/distilled models in a qualified TPU engine; Clef has a separate [TPU plan](../inference/clef-tpu-survey.md) | No native Psionic TPU backend exists. A CUDA model result does not qualify this path. |
+
+For dense full R1/V3 at 671B, raw four-bit weights alone have a 335.5 GB
+lower bound, before scales and runtime state: eight 40 GB A100s are insufficient
+even at that ideal bound. Multi-GPU H200/B200 memory is more plausible, but
+that does not establish native decoder, quantization or fabric compatibility.
+Distills are the practical first DeepSeek product; active MoE parameter counts
+are never the total resident-weight budget.
+
+Recommend one separately budgeted A100 worker for the first durable endpoint,
+with a spot G4 pilot as the larger-model cost comparison. Use the A4 node only
+as a time-bounded offline experiment after a concrete model-quality target and
+budget are set. The published [Google spot pricing](https://cloud.google.com/spot-vms/pricing)
+is a starting point, not a project quote; price GPU, CPU/RAM, disks, idle time,
+spares and egress together. Historical Clef prices are dated measurements.
+Google inference credits and the Coder build-pool budget do not establish a
+GPU-serving budget or eligibility for compute credits.
+
+### Shape of our backend
+
+Proposed, not currently deployed:
+
+```mermaid
+flowchart LR
+    client[Apps and API clients] --> gateway[Existing Rust inference gateway on Cloud Run]
+    gateway --> hosted[Explicit hosted-model upstream and admission]
+    hosted --> worker[Private GCE model workers]
+    worker --> native[Psionic native engine]
+    worker --> compatible[Qualified compatible engine]
+    worker --> cache[Bounded local prefix cache]
+    artifacts[GCS pinned models and runtime images] --> worker
+```
+
+Keep authentication, tenant accounting, model capabilities, routing, response
+storage and fallback in `crates/inference`/`crates/gateway`. Reuse their event
+codec, meter, first-output gate and HTTP adapters. The current Cloud Run
+`coder` service already has Direct VPC egress to the production subnet;
+`openagentsgemini-decision-throughput` already holds model/runtime artifacts.
+Start with separately tagged GCE workers and a small model registry, using the
+existing deployment/health-check patterns rather than placing model weights
+inside the web service. GKE is a later operational choice, not a prerequisite.
+Authenticate the gateway's workload identity or use mTLS at the hosted ingress;
+a private IP alone is not request authentication. Keep tenant attribution and
+the admitted model, token and deadline bounds attached to each job.
+
+Add an explicit hosted upstream instead of pointing `PSIONIC_BASE_URL` at
+GCE. [`LocalPsionic`](../../crates/inference/src/upstream/psionic.rs) is opt-in
+`local/*`, has local privacy/cost semantics, and currently collects a complete
+non-streamed response. The [Chat Completions adapter](../../crates/inference/src/upstream/chat.rs)
+already has translation, SSE handling and reasoning-chunk normalization to
+extend; model-specific thinking options still need an explicit dialect.
+A hosted model's streaming, tools, JSON constraints and reasoning behavior must
+be independently advertised and checked. The backend executes inference;
+the existing agent/tool owners execute tools.
+
+Pylon remains useful for contributor text jobs, but its present 32-turn,
+16 KiB, whole-answer transport and 90-second provider deadline do not substitute
+for a general long-context streaming hosted API. Its gateway registration also
+requires the earnings ledger and exchange-rate configuration. Do not bypass
+those conditions or relabel an operator worker as local to route around them.
+
+For the first worker, admit by estimated KV bytes, prefill cost, output cap
+and queue delay, not just request count. Use bounded queues and real device
+batching, then overlap preparation/readback. Preserve the existing cancellation
+and sampler/cache identity rules. Scale whole-request replicas on queue-inclusive
+TTFT, inter-token latency and actual completed-token throughput. Pending
+requests can fail over after a spot loss; a stream already started must fail
+visibly unless an independently qualified exact-state handoff exists.
+
+Start with tenant-scoped local prefix caching and soft affinity while caches
+are local. Key reuse by model weights, tokenizer/template, mode, backend/kernel,
+KV format and tenant identity. GCS is suitable for immutable weights and
+artifacts; it is not a low-latency mutable KV block store. A future persistent
+cache needs its own consistency, encryption, deletion and recovery contracts.
+Hybrid prefix reuse must include recurrent and other model-specific state,
+not only attention tensors. No-retention routes must disable cross-request
+retention unless their declared policy explicitly permits it.
+Implement exact recomputation before evaluating V4.1's approximate SWA replay.
+The existing VPC is not a confidential-computing claim; attested serving follows
+its separate [private-inference path](../security/private-inference.md).
+
+### When a larger DeepInfer-style system becomes justified
+
+First measure prefill and decode separately on real agent/chat traffic,
+including cold starts, prefix reuse, repeated schemas and long reasoning.
+Only then consider separate worker pools and an authenticated KV/state transfer
+contract. Place a fast expert-parallel group inside a qualified local fabric;
+use ordinary networks for complete requests or measured pipeline stages.
+
+The 64-B200 regional spot ceiling permits at most eight eight-GPU A4 nodes
+before other consumers and constraints. It does not provide the Q&A's efficient
+64-prefill-plus-64-decode deployment in one region, spare capacity, or a
+64-GPU NVLink scale-up domain. A4 has eight-GPU NVLink within a VM; its
+[Cloud RDMA setup](https://docs.cloud.google.com/compute/docs/gpus/create-gpu-vm-a3u-a4)
+and NCCL/DeepEP compatibility across VMs need qualification. Moving expert calls
+across regions to add quotas is not a substitute. An EP8 offline prototype is
+a valid smaller question; reproducing the published EP64 decode economics is
+a different project.
+
+Promotion should require pinned artifacts, independent prompt/token fixtures,
+final/reasoning separation, cancellation and truncation checks, measured memory,
+and queue-inclusive p50/p95/p99 latency at an arrival rate. Count committed
+output tokens, including billed reasoning; do not turn draft-step estimates
+or Clef input-prefill rates into claimed chat output rates. Before splitting
+P/D, demonstrate a gain after KV transfer and failover costs. Before retaining
+remote KV, demonstrate a hit-rate and avoided-prefill benefit that covers its
+storage, network and operational cost. Keep always-on baseline capacity separate
+from revocable spot expansion, with an enforced spend/TTL limit per experiment.
+
 ## Sources
 
 DeepInfer links below are pinned to the reviewed revision. Psionic links point

@@ -73,6 +73,27 @@ older DeepSeek models and changes KV formats; use the support plan's pinned
 kernel/model/device matrix rather than combining upstream `main` branches.
 The RTX 4080 is outside the primary optimized FlashMLA/DeepGEMM targets.
 
+## GCP rollout alongside the runtime work
+
+The [GCP deployment proposal](deepinfer-lessons.md#gcp-deployment-proposal-2026-10-20)
+uses the current project inventory, rather than assuming the local GPU or
+DeepSeek's production topology. These are proposed serving milestones; the
+[2026-10-20 snapshot](assets/gcp-inventory-2026-10-20.json) is read-only evidence,
+not an allocation or device qualification.
+
+| Milestone | Existing boundary | Completion evidence |
+| --- | --- | --- |
+| C0: One private hosted worker | Gateway `Upstream`/Chat Completions transport; model registry and current GCE health/deployment patterns | Explicit hosted identity, pinned model/runtime, actual end-to-end final answer and capability/cost/cancellation checks. Preserve opt-in `local/*` semantics. |
+| C1: Efficient replicas | R0/R1/R2, bounded admission, existing accounting and fallback | Real device batches, queue-inclusive latency, overload and spot-loss behavior; compare A100 with a qualified G4/H100 candidate at the same quality floor. |
+| C2: Native DeepSeek or an isolated Blackwell experiment | DS0–DS4 for native support; separately qualified external engine for an EP8 B200 experiment | Exact model/device/format results. The current DeepInfer release is SM100/V4.1-specific; no native or multi-node claim from a successful external-engine run. |
+| C3: Optional P/D and persistent KV | R3–R8, measured transfer and restore contracts | A serving gain after transfer, storage, failure and idle-capacity costs. Local cache affinity stays until any worker can really access shared cache. |
+
+A100/L4 quota and newer spot B200/H200/G4 ceilings make these experiments
+plausible; they do not grant GPU-serving budget or guarantee a successful
+allocation. Cloud Run GPU has separate quota, and a count of A4 nodes is not a
+64-GPU NVLink domain. Start complete-request serving before disaggregation;
+leave the production Clef GPUs and the owner's build priorities intact.
+
 ## What already exists
 
 | Existing path | Source evidence | Reuse and remaining work |
