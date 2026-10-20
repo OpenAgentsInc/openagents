@@ -164,7 +164,11 @@ function tools() {
   }
 }
 
-if (box) {
+// The module draws with WebGPU only (#12237): without it, don't download
+// it, and keep the page's map.
+if (box && !navigator.gpu) {
+  box.classList.remove("is-live");
+} else if (box) {
   tools();
   var still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   Promise.all([init(), graph(), fonts()])

@@ -1,6 +1,6 @@
 // Starts the GPUI web chat (crates/openagents-web/src/pages/gpui_chat.rs).
-// It needs WebGPU or WebGL2; without either, the page says so and links to
-// the regular chat. Otherwise the module and the fonts download together,
+// It needs WebGPU; without it, the page says so and links to the regular
+// chat. Otherwise the module and the fonts download together,
 // and the canvas replaces the page's outline once the app has started.
 import init, { launch } from "./openagents_web_chat.js";
 
@@ -17,15 +17,10 @@ const FONTS = [
   "GeistMono-SemiBold.ttf",
 ];
 
+// The module draws with WebGPU only: GPUI's renderer needs storage
+// buffers, which WebGL2 doesn't have (#12237).
 function supported() {
-  if (navigator.gpu) {
-    return true;
-  }
-  try {
-    return !!document.createElement("canvas").getContext("webgl2");
-  } catch (error) {
-    return false;
-  }
+  return !!navigator.gpu;
 }
 
 function say(text) {

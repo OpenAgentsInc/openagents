@@ -24,7 +24,11 @@ function fonts() {
   );
 }
 
-Promise.all([init(), fonts()])
+// The module draws with WebGPU only (#12237).
+(navigator.gpu ? Promise.resolve() : Promise.reject(new Error("no WebGPU")))
+  .then(function () {
+    return Promise.all([init(), fonts()]);
+  })
   .then(function (ready) {
     launch(ready[1]);
     var status = document.getElementById("gpui-status");
@@ -39,7 +43,9 @@ Promise.all([init(), fonts()])
   .catch(function (error) {
     var status = document.getElementById("gpui-status");
     if (status) {
-      status.textContent = "The demo couldn't start. Reload the page to try again.";
+      status.textContent = navigator.gpu
+        ? "The demo couldn't start. Reload the page to try again."
+        : "The demo needs a browser with WebGPU, such as a recent Chrome, Edge, or Safari.";
     }
     console.error(error);
   });

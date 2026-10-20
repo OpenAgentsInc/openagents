@@ -13,7 +13,9 @@
   var box = document.getElementById("gpui-mount");
   var scene = document.getElementById("first-frame-scene");
   var painter = document.getElementById("first-frame-painter");
-  if (!box || !scene || !painter || !window.DecompressionStream || !window.WebGL2RenderingContext) {
+  // The app draws with WebGPU only (#12237); without it the page keeps its
+  // own map, so there is nothing to bridge.
+  if (!box || !scene || !painter || !navigator.gpu || !window.DecompressionStream || !window.WebGL2RenderingContext) {
     return;
   }
   var mark = function (name) {

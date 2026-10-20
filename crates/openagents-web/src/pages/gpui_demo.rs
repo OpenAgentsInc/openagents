@@ -70,7 +70,9 @@ fn build(app: &App) -> Option<&Path> {
 /// font files the start script hands to the module.
 fn body(fonts: &str) -> String {
     format!(
-        "{fonts}<h1 class=\"unseen\">{TITLE}</h1>\
+        "<link rel=\"modulepreload\" href=\"{GPUI_DEMO_PATH}/{GPUI_DEMO_GLUE}\">\
+<link rel=\"preload\" as=\"fetch\" crossorigin=\"anonymous\" href=\"{GPUI_DEMO_PATH}/{GPUI_DEMO_WASM}\">\
+{fonts}<h1 class=\"unseen\">{TITLE}</h1>\
 <p class=\"glade-status\" id=\"gpui-status\" aria-live=\"polite\">Loading\u{2026}</p>\
 <noscript><p class=\"glade-status\">Turn on JavaScript to see the demo.</p></noscript>\
 <script type=\"module\" src=\"{GPUI_DEMO_PATH}/{GPUI_DEMO_START}\"></script>"
@@ -140,6 +142,7 @@ mod tests {
     fn the_page_loads_the_start_script_from_the_build() {
         let html = body("<link data-gpui-font=\"Geist.ttf\">");
         assert!(html.contains("src=\"/demo/gpui/start.js\""));
+        assert!(html.contains("as=\"fetch\" crossorigin=\"anonymous\" href=\"/demo/gpui/openagents_web_demo_bg.wasm\""));
         assert!(html.contains("id=\"gpui-status\""));
     }
 

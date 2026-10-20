@@ -186,7 +186,15 @@ fn compressed(headers: &HeaderMap, html: String) -> Response {
 
 /// The start script, which loads the module and hands it the graph.
 fn graph_script() -> Markup {
-    html! { script type="module" src=(format!("{GRAPH_ASSETS}/{GRAPH_START}")) {} }
+    // The glue and the module start downloading with the page instead of
+    // after the start script and the glue have each made a round trip
+    // (#12237). wasm-bindgen fetches the module with `fetch`, which this
+    // `as=fetch crossorigin` preload matches.
+    html! {
+        link rel="modulepreload" href=(format!("{GRAPH_ASSETS}/{GRAPH_GLUE}"));
+        link rel="preload" as="fetch" crossorigin="anonymous" href=(format!("{GRAPH_ASSETS}/{GRAPH_WASM}"));
+        script type="module" src=(format!("{GRAPH_ASSETS}/{GRAPH_START}")) {}
+    }
 }
 
 /// A graph's JSON, safe inside a `<script type="application/json">`: every
@@ -1021,6 +1029,9 @@ mod tests {
         assert_eq!(back, graph);
         let script = graph_script().into_string();
         assert!(script.contains("src=\"/agent-graph/start.js\""));
+        assert!(script.contains(
+            "rel=\"preload\" as=\"fetch\" crossorigin=\"anonymous\" href=\"/agent-graph/openagents_web_agent_graph_bg.wasm\""
+        ));
         assert!(GRAPH_POLICY.contains("script-src 'self' 'wasm-unsafe-eval';"));
         assert!(!GRAPH_POLICY.contains("unsafe-inline"));
         crate::copy_guard::assert_plain(PATH, &html);

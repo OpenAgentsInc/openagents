@@ -173,7 +173,7 @@ A canvas is one opaque element to the browser. Be plain about it:
 | Links | No real anchors | The mirror holds real `<a>` elements; the canvas opens links with `window.open` on click |
 | Zoom and text size | Ignores browser text size | Read `devicePixelRatio` and the root font size; scale the UI |
 | SEO and link previews | No text | Public pages stay server HTML (`/share/{token}`, `/demo`). Chat pages are `noindex` already |
-| No WebGPU | | wgpu falls back to WebGL2. With neither, or with JavaScript off, the server HTML stays |
+| No WebGPU | | The modules are WebGPU-only: GPUI's renderer reads storage buffers, which WebGL2 lacks, so wgpu can't fall back. Without WebGPU, or with JavaScript off, the server HTML stays (#12237) |
 | Phones | Touch is minimal in `gpui-web`; memory is tight on iOS | Phones keep the HTML chat until a phase passes on iOS Safari and Android Chrome |
 
 ## Rollout
@@ -249,7 +249,7 @@ their own route instead of behind the flag.
   `/v1/threads/{id}/events` stream over `fetch` and `EventSource`.
 - `apps/openagents/web/chat` (`openagents-web-chat`) is the app. The page
   (`crates/openagents-web/src/pages/gpui_chat.rs`) paints an HTML outline
-  of the chat list, checks for WebGPU or WebGL2, and fetches the module and
+  of the chat list, checks for WebGPU, and fetches the module and
   the Geist faces together.
 - `crates/openagents-web/src/cookie_api.rs` takes the sign-in cookie on
   `/v1/threads*` and `/v1/projects` for same-origin requests
@@ -426,8 +426,45 @@ Doesn't:
   (polychrome sprites), link underlines, and edge fades. The painter and
   the capture refuse these today.
 - Glyph rendering mode: the frames carry subpixel text. A browser where the
-  app falls back to WebGL2 draws grayscale text, so its text's color
+  GPU has no dual-source blending draws grayscale text, so its text's color
   fringes change at the swap (#12243).
+
+## WebGPU-only modules, preloads, and shared fonts (2026-10-20)
+
+- **The GPUI modules were already WebGPU-only.** `gpui_wgpu` takes wgpu's
+  default features, which on wasm32 include `webgpu` but not `webgl`
+  (`cargo tree --target wasm32-unknown-unknown -e features -i wgpu`). So
+  dropping a WebGL2 backend saves nothing for `/demo/gpui`, `/gpui`, or
+  AgentGraph. A WebGL2 fallback can't come from wgpu either: GPUI's shaders
+  read their instances from storage buffers, which WebGL2 doesn't have. A
+  fallback would be a WebGL2 renderer of GPUI's scene, which is what the
+  first-frame painter already is for the primitives it supports (#12297).
+  The start scripts now check for WebGPU before downloading a module; the
+  chat's check used to accept WebGL2, where the module would then fail.
+- **Everglade** is the one module built with wgpu's WebGL2 backend, and
+  its renderer runs on it. Its module is 37.6 MB with brotli in
+  production, so the GL backend (about 0.5 MB) is under 2% of it; a split
+  isn't worth a second build.
+- **Preloads.** AgentGraph's, the demo's, and the chat's pages preload the
+  glue (`modulepreload`) and the module (`preload as=fetch crossorigin`),
+  so the module starts downloading with the page instead of after the
+  start script and the glue have each made a round trip.
+- **Shared fonts** (#12233): the apps take Geist and Geist Mono from
+  `/gpui-fonts/` instead of compiling them in.
+
+AgentGraph on `/agent/foreman`, measured as before (headless Chrome 155,
+cache off, 5 runs, medians), with `ui.css` now served compressed (#12241):
+
+| Profile | App's first frame before (2026-10-19) | Now | Snapshot frame now |
+| --- | --- | --- | --- |
+| 20 Mbit/s, 40 ms | 1,059 ms | 878 ms | 215 ms |
+| 9 Mbit/s, 150 ms | 2,418 ms | 1,942 ms | 506 ms |
+
+The module is 1.39 MB with brotli (was 1.51 MB) plus 213 KB of fonts that
+any other GPUI page has already cached. On loopback and with a 4× slower
+CPU the app's first frame was later than the day before (202 and 722 ms
+against 159 and 441 ms) while other agents' builds were loading the Mac;
+those runs aren't comparable.
 
 ## Deploy note for `/demo/gpui`
 

@@ -9,7 +9,7 @@
 //! this page puts in its `openagents-csrf` meta tag.
 //!
 //! The page paints a plain HTML outline of the chat list first, then its
-//! start script checks for WebGPU or WebGL2, fetches the module and the
+//! start script checks for WebGPU, fetches the module and the
 //! fonts together, and swaps the outline for the canvas. Without either
 //! graphics API it says the chat needs a newer browser and links to the
 //! regular chat. `apps/openagents/scripts/build-web-chat.sh DIR` writes the
@@ -189,6 +189,8 @@ fn shell(
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
                 link rel="stylesheet" href=(SHELL_CSS_PATH);
                 link rel="modulepreload" href={ (BUILD_PATH) "/" (GPUI_CHAT_GLUE) };
+                // The module downloads with the page (#12237).
+                link rel="preload" as="fetch" crossorigin="anonymous" href={ (BUILD_PATH) "/" (GPUI_CHAT_WASM) };
                 @if let Some(fonts) = fonts { (fonts) }
             }
             body {
