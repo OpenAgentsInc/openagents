@@ -1559,3 +1559,4 @@ master delegation audit.
 - 2026-10-20 (#12325): shared Rust Native Claude and Data settings forms,
   loaded as separate Claude and Data modules through `web/page-host`; `/settings` opens
   it on WebGPU with the HTML fallback retained.
+- #12335: Analytics, attribution, and Drive access use shared Rust Native admin forms in three lazy web modules through `web/page-host`; admin-only JSON reads and the HTML fallback stay available.

@@ -589,6 +589,9 @@ window.addEventListener("oa-settings-open", openSettings);
 // path). Its box covers the chat; its Back to chat (`oa-page-close`) hides
 // the box, and moving within the page (`oa-page-path`) keeps the address.
 var PAGES = {
+  "admin-drive-access": ["./openagents_web_admin_drive_access.js", "./openagents_web_admin_drive_access_bg.wasm", "./openagents_web_admin_drive_access_webgl.js", "./openagents_web_admin_drive_access_webgl_bg.wasm"],
+  "admin-attribution": ["./openagents_web_admin_attribution.js", "./openagents_web_admin_attribution_bg.wasm", "./openagents_web_admin_attribution_webgl.js", "./openagents_web_admin_attribution_webgl_bg.wasm"],
+  "admin-analytics": ["./openagents_web_admin_analytics.js", "./openagents_web_admin_analytics_bg.wasm", "./openagents_web_admin_analytics_webgl.js", "./openagents_web_admin_analytics_webgl_bg.wasm"],
   "claude": ["./openagents_web_claude.js", "./openagents_web_claude_bg.wasm", "./openagents_web_claude_webgl.js", "./openagents_web_claude_webgl_bg.wasm"],
   "data": ["./openagents_web_data.js", "./openagents_web_data_bg.wasm", "./openagents_web_data_webgl.js", "./openagents_web_data_webgl_bg.wasm"],
   "traces": ["./openagents_web_traces.js", "./openagents_web_traces_bg.wasm", "./openagents_web_traces_webgl.js", "./openagents_web_traces_webgl_bg.wasm"],

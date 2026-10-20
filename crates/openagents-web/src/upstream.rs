@@ -33,13 +33,20 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 95] = [
+const OWNED_EXACT: [&str; 100] = [
     "/",
     // The GPUI web chat (crate::pages::gpui_chat).
     "/gpui",
     crate::analytics::BEACON,
     crate::analytics::SCRIPT,
     crate::analytics::DASHBOARD,
+    "/v1/admin/analytics",
+    "/v1/admin/attribution",
+    // These were test-server fixture URLs in the GPUI audit, never pages.
+    // Keep them as local 404s, including for a signed-in browser.
+    "/board",
+    "/limited",
+    "/revoked",
     "/static/ui.css",
     "/static/ui.js",
     "/static/vendor/alpine-csp.js",

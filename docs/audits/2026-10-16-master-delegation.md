@@ -527,6 +527,8 @@ The status lines below summarize each issue and its comments. Open the issue for
   has 0 mismatches. Post the JSON on #12373. Without the oracle file, run it
   without `--oracle` first and add parity when #12371 writes the file.
 
+- #12335: After the web deploy, use a dedicated test-admin account to open analytics, attribution, and Drive access with `?ui=gpui`. Confirm reports render, Drive entries can be added and removed, and a non-admin receives 404. Capture the pages on a hardware WebGPU browser; software captures here were blank for baseline Traces as well. Never use the owner’s account.
+
 - #12344: After the web deploy, use the dedicated test account and a disposable computer chat with a saved chart and 3D visual. Confirm the visual module downloads only when a visual is shown, attachment reads follow the computer grant, controls work, resizing and scrolling keep the canvases in their rows, and changing chats removes them. Delete the chat afterward.
 
 - #12337: After the next web deploy, confirm 308 redirects from `/lander3`–`/lander9` and `/landing` to `/home`, `/lander8/chat/{id}` and `/gpui/chat/{id}` to `/chat/{id}`, `/gpui` and `/cloud` to `/`, `/cloud/app/settings*` to the corresponding Settings page, and `/demo` and its HTML demo chats to `/demo/gpui`. Confirm `/`, `/home`, `/chat/{id}`, `/lander10`, `/lander11`, `/verse`, `/verse/hands/*`, `/demo/gpui`, and the HTML fallback still load.

@@ -464,6 +464,7 @@ pub(crate) fn routes() -> Router<App> {
             "/r/{token}/{series}",
             get(affiliate_series).post(affiliate_series_consent),
         )
+        .route("/v1/admin/attribution", get(scoreboard::api))
         .route(SCOREBOARD, get(scoreboard::show).fallback(crate::not_found))
 }
 

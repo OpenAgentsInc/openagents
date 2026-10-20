@@ -21,7 +21,7 @@
 //! passed a signed-in check by email or as an admin ([`knows`]).
 
 use axum::Router;
-use axum::extract::{Form, Path, State};
+use axum::extract::{Form, Path, RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{delete, get};
@@ -332,7 +332,17 @@ async fn admin_page_viewer<'a>(
     if app.config.connections.is_none() {
         return Err(crate::not_found_page());
     }
-    let (service, viewer) = crate::settings::viewer(app, headers, PAGE).await?;
+    // This list belongs to the site, not a selected workspace. Check admin
+    // authority before any sign-in or workspace-selection redirect.
+    let service = app
+        .config
+        .cloud
+        .as_deref()
+        .ok_or_else(crate::not_found_page)?;
+    let viewer = service
+        .authenticate(headers)
+        .await
+        .map_err(|_| crate::not_found_page())?;
     if viewer.admin {
         Ok((service, viewer))
     } else {
@@ -340,11 +350,16 @@ async fn admin_page_viewer<'a>(
     }
 }
 
-async fn page(State(app): State<App>, headers: HeaderMap) -> Response {
+async fn page(State(app): State<App>, headers: HeaderMap, RawQuery(query): RawQuery) -> Response {
     let (service, viewer) = match admin_page_viewer(&app, &headers).await {
         Ok(found) => found,
         Err(response) => return response,
     };
+    if let Some(page) =
+        crate::pages::gpui_chat::page_for(&app, &headers, query.as_deref(), "admin-drive-access")
+    {
+        return protect(page);
+    }
     let csrf = service
         .csrf(&headers, &viewer, CSRF_SCOPE, &viewer.account_id)
         .unwrap_or_default();

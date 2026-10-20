@@ -685,6 +685,7 @@ pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(BEACON, post(beacon))
         .route(SCRIPT, get(script))
+        .route("/v1/admin/analytics", get(dashboard::api))
         .route(DASHBOARD, get(dashboard::show).fallback(crate::not_found))
 }
 

@@ -166,8 +166,10 @@ HTML (server HTML, maud, often HTMX), GPUI, WASM, JSON.
 
 | Routes | What | Who | Tech today | Class | Issue |
 | --- | --- | --- | --- | --- | --- |
-| `/admin/analytics`, `/admin/attribution`, `/admin/access/drive-connections`, `/board`, `/limited`, `/revoked` | Analytics, attribution, Drive access, issue board | admin | HTML | APP | #12335 |
+| `/admin/analytics`, `/admin/attribution`, `/admin/access/drive-connections` | Analytics, attribution, Drive access | admin | HTML | APP | #12335 |
 | `/ui`, `/ui/screens*`, `/components*` | Component catalog and screen gallery | out | HTML | SIMPLE (developer tool); prune with #12337 |
+
+`/board`, `/limited`, and `/revoked` in `dashboard/issues.rs` are test-server fixtures, not site routes; they remain 404.
 
 ### APIs
 

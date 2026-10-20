@@ -5,11 +5,12 @@
 
 use std::collections::BTreeMap;
 
-use axum::extract::State;
+use axum::extract::{RawQuery, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::Response;
 use maud::{Markup, html};
 use openagents_ui::content::{MarkdownRoot, PageColumn, Table};
+use serde_json::json;
 
 use super::{Counted, Day, Link, SCOREBOARD};
 use crate::App;
@@ -19,9 +20,18 @@ use crate::ui_page::UiPage;
 /// How many weeks the scoreboard shows.
 pub const WEEKS: u64 = 8;
 
-pub(super) async fn show(State(app): State<App>, headers: HeaderMap) -> Response {
+pub(super) async fn show(
+    State(app): State<App>,
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> Response {
     if !allowed(&app, &headers).await {
         return guarded(crate::not_found().await);
+    }
+    if let Some(page) =
+        crate::pages::gpui_chat::page_for(&app, &headers, query.as_deref(), "admin-attribution")
+    {
+        return guarded(page);
     }
     let attribution = &app.config.attribution;
     let content = match attribution.load(WEEKS * 7).await {
@@ -195,4 +205,53 @@ pub(crate) fn report(days: &BTreeMap<u64, Day>) -> Markup {
             (counted)
         }
     }
+}
+
+/// The same aggregate weekly report, for the GPUI app. Click records,
+/// account ids, and browser tokens never leave the server.
+pub(super) async fn api(State(app): State<App>, headers: HeaderMap) -> Response {
+    if !crate::analytics::dashboard::api_allowed(&app, &headers).await {
+        return guarded(crate::coder_sync::refused(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "Not found.",
+        ));
+    }
+    let days = match app.config.attribution.load(WEEKS * 7).await {
+        Ok(days) => days,
+        Err(_) => {
+            return guarded(crate::coder_sync::refused(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "unavailable",
+                "The numbers couldn't be read. Try again in a minute.",
+            ));
+        }
+    };
+    let mut sections = vec![
+        json!({"title":"Per link", "rows": scores(&days).iter().rev().map(|((week,link,key,series),s)| json!({"label":format!("{} · {} · {key} {series}", crate::analytics::date(*week), match link { Link::Go => "Our post", Link::Affiliate => "Affiliate" }), "detail":format!("Clicks: {} · Sign-ups: {} · Sign-ups per click: {} · Agents and bots: {}", number(s.clicks), number(s.signups), rate(s.signups,s.clicks), number(s.machines))})).collect::<Vec<_>>()}),
+        json!({"title":"Counted only", "rows":totals(&days).iter().rev().map(|((week,why),n)| json!({"label":format!("{} · {}",crate::analytics::date(*week),why.name()),"detail":number(*n)})).collect::<Vec<_>>()}),
+    ];
+    // The affiliate controls and figures obey the feature registry too.
+    if app.config.features.on(crate::features::Feature::Affiliates) {
+        // The bridge keeps the session cookie; use it only after the bearer
+        // has passed the site-admin check above.
+        if let Some(report) = app
+            .config
+            .cloud
+            .as_deref()
+            .map(|s| s.affiliates(&headers, true))
+        {
+            if let Some(report) = report.await.and_then(super::commission::Report::parse) {
+                use super::commission::dollars;
+                sections.push(json!({"title":"Commission", "rows":report.affiliates.iter().map(|a| json!({"label":if a.label.is_empty() { &a.referrer } else { &a.label },"detail":format!("Paid sales: {} · Refunds: {} · Earned: {} · Waiting: {} · Ready to pay: {} · Paid: {} · Taken back: {}",number(a.paid_conversions),number(a.refunds),dollars(a.accrued_micros),dollars(a.held_micros),dollars(a.payable_micros),dollars(a.paid_micros),dollars(a.clawed_back_micros))})).collect::<Vec<_>>()}));
+                sections.push(json!({"title":"Payouts due", "rows":report.payouts_due.iter().map(|d| json!({"label":if d.label.is_empty() {&d.referrer} else {&d.label},"detail":format!("{} · {} sats",dollars(d.usd_micros),number(d.sats))})).collect::<Vec<_>>()}));
+            } else {
+                sections.push(json!({"title":"Commission", "rows":[{"label":"The numbers couldn't be read. Try again in a minute.", "detail":""}]}));
+            }
+        }
+    }
+    guarded(crate::coder_sync::answer(
+        StatusCode::OK,
+        json!({"description":"Clicks and sign-ups for the last 8 weeks. Agents and bots are counted separately.","sections": sections}),
+    ))
 }

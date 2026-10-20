@@ -195,12 +195,24 @@ struct PageQuery {
     page: Option<String>,
 }
 
-/// The new-chat shell, including the selected CAD page's HTML fallback.
+/// The new-chat shell, including the selected page's HTML fallback.
 pub(crate) async fn new_page(app: &App, headers: &HeaderMap, query: Option<&str>) -> Response {
-    let fallback = query
+    let page = query
         .and_then(|query| format!("/?{query}").parse::<axum::http::Uri>().ok())
         .and_then(|uri| axum::extract::Query::<PageQuery>::try_from_uri(&uri).ok())
-        .and_then(|query| query.page.as_deref().and_then(cad_fallback));
+        .and_then(|query| query.page.clone());
+    let admin_fallback = match page.as_deref() {
+        Some("admin-analytics") => Some("/admin/analytics?ui=html"),
+        Some("admin-attribution") => Some("/admin/attribution?ui=html"),
+        Some("admin-drive-access") => Some("/admin/access/drive-connections?ui=html"),
+        _ => None,
+    };
+    if admin_fallback.is_some() && !crate::analytics::dashboard::allowed(app, headers).await {
+        return crate::analytics::dashboard::guarded(crate::not_found_page());
+    }
+    let fallback = admin_fallback
+        .map(str::to_owned)
+        .or_else(|| page.as_deref().and_then(cad_fallback));
     page_with_fallback(app, headers, None, "", fallback).await
 }
 

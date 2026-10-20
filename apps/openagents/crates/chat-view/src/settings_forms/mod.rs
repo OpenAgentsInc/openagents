@@ -12,6 +12,7 @@
 //! the rest to the computer or the account.
 
 pub mod account;
+pub mod admin;
 /// Agents and the landing queue (#12330).
 pub mod agents;
 pub mod appearance;
@@ -341,6 +342,8 @@ pub enum Intent {
     ArchivedPage(usize),
     /// Your ID (#12290).
     Account(account::Action),
+    /// Site administration (#12335).
+    Admin(admin::Action),
     /// Earn (#12294).
     Earn(earn::Action),
     /// Providers (#12283).

@@ -25,6 +25,9 @@ mod account_export;
 #[path = "connections_api_tests.rs"]
 mod connections_api;
 
+#[path = "admin_gpui_tests.rs"]
+mod admin_gpui;
+
 #[path = "cad_gate_tests.rs"]
 mod cad_gate;
 

@@ -49,6 +49,8 @@ pub enum Deleting {
 pub struct State {
     /// This browser is signed in; signed out, the page offers sign-in only.
     pub signed_in: bool,
+    /// The account service names this person as a site admin.
+    pub admin: bool,
     /// The account's name, such as its email or GitHub login.
     pub label: Option<String>,
     /// The claimed `name@openagents.com` name, without the domain.
@@ -150,6 +152,18 @@ pub(super) fn page(state: &State, paints: &Paints) -> Vec<Node<Intent>> {
             paints,
         ));
         return out;
+    }
+    if state.admin {
+        out.push(section(
+            "account-admin",
+            "Admin",
+            vec![button(
+                "account-admin-open",
+                "Open admin",
+                act(Action::Open("/admin/analytics?ui=gpui".into())),
+            )],
+            paints,
+        ));
     }
     let id = state.id();
     let mut id_controls = Vec::new();

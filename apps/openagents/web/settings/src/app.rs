@@ -504,8 +504,10 @@ impl SettingsApp {
             let name: Result<Value, _> = client.get("/v1/device/name").await;
             this.update(cx, |this, cx| {
                 let state = &mut this.remote.account;
+                state.admin = false;
                 if let Ok(account) = account {
                     let account = &account["account"];
+                    state.admin = account["admin"].as_bool().unwrap_or(false);
                     state.label = account["email"]
                         .as_str()
                         .or(account["label"].as_str())

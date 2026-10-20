@@ -10,11 +10,12 @@
 
 use std::collections::BTreeMap;
 
-use axum::extract::State;
+use axum::extract::{RawQuery, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::Response;
 use maud::{Markup, html};
 use openagents_ui::content::{Facts, MarkdownRoot, PageColumn, Table};
+use serde_json::{Value, json};
 
 use super::{Counts, DASHBOARD, Series, hour_now};
 use crate::App;
@@ -23,9 +24,18 @@ use crate::ui_page::UiPage;
 /// The windows every table shows, in days.
 const WINDOWS: [(u64, &str); 3] = [(1, "Today"), (7, "7 days"), (30, "30 days")];
 
-pub(super) async fn show(State(app): State<App>, headers: HeaderMap) -> Response {
+pub(super) async fn show(
+    State(app): State<App>,
+    headers: HeaderMap,
+    RawQuery(query): RawQuery,
+) -> Response {
     if !allowed(&app, &headers).await {
         return guarded(crate::not_found().await);
+    }
+    if let Some(page) =
+        crate::pages::gpui_chat::page_for(&app, &headers, query.as_deref(), "admin-analytics")
+    {
+        return guarded(page);
     }
     let analytics = &app.config.analytics;
     let content = match analytics.load(30).await {
@@ -410,5 +420,307 @@ pub(super) fn report(counts: &Counts, hour: u64, stored: bool) -> Markup {
         (windowed_table("Time to first byte", "Time", &latency, 10))
         h3 { "Slow pages" }
         (windowed_table("Slow responses", "Time and page", &slow, 15))
+    }
+}
+
+/// JSON reads use the same site-admin authority as the pages, with app
+/// sessions supplied by the cookie bridge. A dashboard key still serves scripts.
+pub(crate) async fn api_allowed(app: &App, headers: &HeaderMap) -> bool {
+    if let Some(token) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        if app.config.analytics.admits(token) {
+            return true;
+        }
+        return match app.config.cloud.as_deref() {
+            Some(service) => service.app_viewer(token).await.is_ok_and(|v| v.admin),
+            None => false,
+        };
+    }
+    false
+}
+
+pub(super) async fn api(State(app): State<App>, headers: HeaderMap) -> Response {
+    if !api_allowed(&app, &headers).await {
+        return guarded(crate::coder_sync::refused(
+            StatusCode::NOT_FOUND,
+            "not_found",
+            "Not found.",
+        ));
+    }
+    match app.config.analytics.load(30).await {
+        Ok(counts) => guarded(crate::coder_sync::answer(
+            StatusCode::OK,
+            report_json(&counts, hour_now(), app.config.analytics.has_store()),
+        )),
+        Err(_) => guarded(crate::coder_sync::refused(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "unavailable",
+            "The counts couldn't be read. Try again in a minute.",
+        )),
+    }
+}
+
+/// Aggregate report for shared Rust Native rows; no per-person data.
+fn report_json(counts: &Counts, hour: u64, stored: bool) -> Value {
+    let w = Window {
+        counts,
+        today: hour / 24,
+    };
+    let table = |title: &str, series, group: fn(&str, &str) -> Option<String>, limit: usize| json!({"title": title, "rows": w.table(series, group).into_iter().take(limit).map(|(label, sums)| json!({"label": label, "detail": format!("Today: {} · 7 days: {} · 30 days: {}", number(sums[0]), number(sums[1]), number(sums[2]))})).collect::<Vec<_>>()});
+    let views = |s, _: &str, d: &str| s == Series::View && d == "human";
+    let mut sections = vec![
+        table("Who", Series::View, |_, d| Some(d.into()), 10),
+        table(
+            "Top pages for people",
+            Series::View,
+            |n, d| (d == "human").then(|| n.into()),
+            25,
+        ),
+        table(
+            "Top pages for agents",
+            Series::View,
+            |n, d| (d == "agent").then(|| n.into()),
+            15,
+        ),
+        table(
+            "Where people came from",
+            Series::Referrer,
+            |n, _| Some(n.into()),
+            25,
+        ),
+        table("Devices", Series::Device, |n, _| Some(n.into()), 5),
+        table(
+            "Events",
+            Series::Event,
+            |n, d| Some(format!("{n} {d}").trim().into()),
+            40,
+        ),
+        table(
+            "Errors",
+            Series::Status,
+            |n, d| (d.starts_with('4') || d.starts_with('5')).then(|| format!("{d} {n}")),
+            25,
+        ),
+        table("Speed", Series::Latency, |_, d| Some(d.into()), 10),
+        table(
+            "Slow pages",
+            Series::Latency,
+            |n, d| matches!(d, "1-3s" | ">3s").then(|| format!("{d} {n}")),
+            15,
+        ),
+    ];
+    for (title, steps) in [
+        (
+            "Chat",
+            vec![
+                ("Home page views", Series::View, "/", "human"),
+                ("Chats sent", Series::Event, "chat_sent", ""),
+                ("Answers shown", Series::Event, "answer_shown", ""),
+            ],
+        ),
+        (
+            "Download",
+            vec![
+                ("Download page views", Series::View, "/download", "human"),
+                ("Downloads clicked", Series::Event, "download_clicked", ""),
+                (
+                    "Install command copied",
+                    Series::Event,
+                    "install_copied",
+                    "",
+                ),
+                ("Installer fetched", Series::Event, "installer_fetched", ""),
+            ],
+        ),
+        (
+            "Phone",
+            vec![
+                ("New visitors", Series::Event, "app_visitor_started", ""),
+                (
+                    "Visitor chats started",
+                    Series::Event,
+                    "app_visitor_chat",
+                    "",
+                ),
+                (
+                    "Signed-in chats started",
+                    Series::Event,
+                    "app_cloud_chat",
+                    "",
+                ),
+                (
+                    "Our cloud started",
+                    Series::Event,
+                    "app_cloud_host_started",
+                    "",
+                ),
+                ("First answers", Series::Event, "app_first_answer", ""),
+                (
+                    "First answers that failed",
+                    Series::Event,
+                    "app_first_answer_failed",
+                    "",
+                ),
+                (
+                    "Visitors who reached the limit",
+                    Series::Event,
+                    "app_visitor_limit",
+                    "",
+                ),
+                (
+                    "Visitors who signed in and kept their chats",
+                    Series::Event,
+                    "app_visitor_claimed",
+                    "",
+                ),
+                (
+                    "Of them, after reaching the limit",
+                    Series::Event,
+                    "app_visitor_signed_in_after_limit",
+                    "",
+                ),
+            ],
+        ),
+        (
+            "Time to the first answer",
+            vec![
+                (
+                    "Under 5 seconds",
+                    Series::Event,
+                    "app_first_answer",
+                    "under_5s",
+                ),
+                (
+                    "5 to 15 seconds",
+                    Series::Event,
+                    "app_first_answer",
+                    "under_15s",
+                ),
+                (
+                    "15 to 60 seconds",
+                    Series::Event,
+                    "app_first_answer",
+                    "under_60s",
+                ),
+                (
+                    "Over a minute",
+                    Series::Event,
+                    "app_first_answer",
+                    "over_60s",
+                ),
+            ],
+        ),
+    ] {
+        let rows: Vec<_> = steps.into_iter().map(|(label, series, name, detail)| {
+            let sums = WINDOWS.map(|(days, _)| w.sum(days, |s, n, d| s == series && n == name && (detail.is_empty() || d == detail)));
+            json!({"label": label, "detail": format!("Today: {} · 7 days: {} · 30 days: {}", number(sums[0]), number(sums[1]), number(sums[2]))})
+        }).collect();
+        sections.push(json!({"title": title, "rows": rows}));
+    }
+    for (title, points) in [
+        (
+            "People, last 30 days",
+            w.daily(30, views)
+                .into_iter()
+                .map(|(d, n)| (super::date(d), n))
+                .collect::<Vec<_>>(),
+        ),
+        (
+            "People, today by hour",
+            w.hourly(views)
+                .into_iter()
+                .map(|(h, n)| (format!("{:02}:00 UTC", h % 24), n))
+                .collect(),
+        ),
+        (
+            "Agents, last 30 days",
+            w.daily(30, |s, _, d| s == Series::View && d == "agent")
+                .into_iter()
+                .map(|(d, n)| (super::date(d), n))
+                .collect(),
+        ),
+    ] {
+        sections.push(json!({"title": title, "rows": points.into_iter().map(|(label,n)| json!({"label":label,"detail":number(n)})).collect::<Vec<_>>()}));
+    }
+    json!({"description": if stored { "Counts only. Times are UTC. Updated every minute." } else { "Counts only. Times are UTC. This server keeps counts in memory only." }, "sections": sections})
+}
+
+#[cfg(test)]
+mod gpui_tests {
+    use super::*;
+    use crate::analytics::Key;
+
+    #[test]
+    fn json_report_keeps_the_windows_and_traffic_classes_separate() {
+        let today = 100 * 24;
+        let counts = Counts::from([
+            (
+                Key {
+                    hour: today,
+                    series: Series::View,
+                    name: "/".into(),
+                    detail: "human".into(),
+                },
+                3,
+            ),
+            (
+                Key {
+                    hour: today - 2 * 24,
+                    series: Series::View,
+                    name: "/".into(),
+                    detail: "human".into(),
+                },
+                5,
+            ),
+            (
+                Key {
+                    hour: today - 20 * 24,
+                    series: Series::View,
+                    name: "/".into(),
+                    detail: "human".into(),
+                },
+                7,
+            ),
+            (
+                Key {
+                    hour: today,
+                    series: Series::View,
+                    name: "/".into(),
+                    detail: "agent".into(),
+                },
+                100,
+            ),
+        ]);
+        let report = report_json(&counts, today, false);
+        let sections = report["sections"].as_array().unwrap();
+        let people = sections
+            .iter()
+            .find(|s| s["title"] == "Top pages for people")
+            .unwrap();
+        assert_eq!(
+            people["rows"][0]["detail"],
+            "Today: 3 · 7 days: 8 · 30 days: 15"
+        );
+        let agents = sections
+            .iter()
+            .find(|s| s["title"] == "Top pages for agents")
+            .unwrap();
+        assert_eq!(
+            agents["rows"][0]["detail"],
+            "Today: 100 · 7 days: 100 · 30 days: 100"
+        );
+        assert_eq!(
+            sections
+                .iter()
+                .find(|s| s["title"] == "People, today by hour")
+                .unwrap()["rows"]
+                .as_array()
+                .unwrap()
+                .len(),
+            24
+        );
     }
 }

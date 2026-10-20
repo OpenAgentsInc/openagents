@@ -873,3 +873,57 @@ fn cloud_pages_hide_subscription_and_require_save_and_delete_confirmation() {
         assert_eq!(oa_copy::violations(&text.join("\n"), &[]), vec![]);
     }
 }
+
+#[test]
+fn admin_entry_is_only_for_admins_and_drive_removal_requires_confirmation() {
+    let paints = Paints::default();
+    let mut account = account::State {
+        signed_in: true,
+        ..Default::default()
+    };
+    let node = column("account", account::page(&account, &paints));
+    assert!(find(&node, "account-admin-open").is_none());
+    account.admin = true;
+    let node = column("account", account::page(&account, &paints));
+    assert_eq!(
+        intent_of(&node, "account-admin-open"),
+        &Intent::Account(account::Action::Open("/admin/analytics?ui=gpui".into()))
+    );
+    let mut state = admin::State {
+        report: Load::Ready(admin::drive_report(
+            &serde_json::json!({"data":[{"email":"test+admin@example.com","added_at":"2026-10-20"}]}),
+        )),
+        ..Default::default()
+    };
+    let node = admin::view("Google Drive access", true, &state, &paints);
+    let actions = intents(&node);
+    assert!(actions.contains(&Intent::Admin(admin::Action::Add)));
+    assert!(
+        actions.contains(&Intent::Admin(admin::Action::ConfirmRemove(Some(
+            "test+admin@example.com".into()
+        ))))
+    );
+    assert!(!actions.contains(&Intent::Admin(admin::Action::Remove(
+        "test+admin@example.com".into()
+    ))));
+    state.confirm_remove = Some("test+admin@example.com".into());
+    let node = admin::view("Google Drive access", true, &state, &paints);
+    assert!(
+        intents(&node).contains(&Intent::Admin(admin::Action::Remove(
+            "test+admin@example.com".into()
+        )))
+    );
+    let mut lines = Vec::new();
+    words(&node, &mut lines);
+    assert!(oa_copy::violations(&lines.join(" "), &[]).is_empty());
+    state.busy = true;
+    assert!(
+        !intents(&admin::view("Google Drive access", true, &state, &paints))
+            .contains(&Intent::Admin(admin::Action::Add))
+    );
+    assert!(
+        !intents(&admin::view("Analytics", false, &state, &paints)).contains(&Intent::Admin(
+            admin::Action::Remove("test+admin@example.com".into())
+        ))
+    );
+}
