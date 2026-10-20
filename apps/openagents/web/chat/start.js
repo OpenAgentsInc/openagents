@@ -274,7 +274,6 @@ window.addEventListener("oa-host", function (event) {
   }
 });
 
-<<<<<<< Updated upstream
 // A computer chat's live transcript (#12224): its own module, loaded the
 // first time a computer chat opens (`oa-room-open`, with the chat's id); it
 // sends each change back as `oa-room`.
@@ -315,7 +314,9 @@ window.addEventListener("oa-room-close", function () {
   roomChat = "";
   if (room) {
     room.close();
-=======
+  }
+});
+
 // The work panel (#12225): work runs, environments, and Mac jobs. Its
 // own module, loaded the first time the header's work button asks for it,
 // in a box on the right.
@@ -356,7 +357,6 @@ window.addEventListener("oa-work-failed", function () {
   if (workBox) {
     workBox.remove();
     workBox = null;
->>>>>>> Stashed changes
   }
 });
 

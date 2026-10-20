@@ -11,11 +11,8 @@ members = [
     "client",
     "chat",
     "files",
-<<<<<<< Updated upstream
     "room",
-=======
     "work",
->>>>>>> Stashed changes
     "demo",
     "agent-graph",
     "first-frame",
