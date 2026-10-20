@@ -31,6 +31,8 @@ agent-graph = { path = "../../../../crates/agent-graph", default-features = fals
 web-time.workspace = true
 
 [dev-dependencies]
+# The step test reads each streamed prefix as the chat views parse it.
+openagents-markdown = { path = "../../crates/markdown" }
 oa-copy = { path = "../../../../crates/oa-copy" }
 
 [target.'cfg(target_family = "wasm")'.dependencies]

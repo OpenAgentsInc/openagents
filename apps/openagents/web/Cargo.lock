@@ -3538,6 +3538,7 @@ dependencies = [
  "oa-copy",
  "openagents-doc",
  "openagents-gpui-web",
+ "openagents-markdown",
  "openagents-proto",
  "openagents-web-chat-view",
  "uuid",

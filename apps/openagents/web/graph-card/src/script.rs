@@ -400,6 +400,31 @@ mod tests {
         }
     }
 
+    /// Every prefix the chat streams, word by word, parses (as the chat
+    /// views parse a streaming part) to text with no raw table pipes or
+    /// bold markers, so no frame of the loop shows Markdown syntax.
+    #[test]
+    fn no_streamed_frame_shows_raw_markdown() {
+        // The check sees raw syntax when a parser leaves it in.
+        let raw = format!("{:?}", openagents_markdown::parse_full("| Issue | Label"));
+        assert!(raw.contains("text: \"| Issue"), "{raw}");
+        for beat in reply() {
+            let Beat::Text(body) = beat else { continue };
+            let mut shown = String::new();
+            for word in crate::split_words(body) {
+                shown.push_str(&word);
+                let tree = format!("{:?}", openagents_markdown::parse_streaming(&shown));
+                for text in tree.split("text: \"").skip(1) {
+                    let text = text.split('"').next().unwrap_or_default();
+                    assert!(
+                        !text.contains('|') && !text.contains("**"),
+                        "{text:?} after {shown:?}"
+                    );
+                }
+            }
+        }
+    }
+
     #[test]
     fn the_tools_are_the_catalog_s() {
         for beat in reply() {
