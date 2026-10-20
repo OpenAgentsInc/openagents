@@ -193,6 +193,9 @@ pub(super) struct Addition {
     pub style: &'static str,
     pub in_main: &'static str,
     pub script: &'static str,
+    /// Appended to the runner's script, after its start; the runner's
+    /// start promise is `ready` there.
+    pub runner_tail: &'static str,
 }
 
 /// The page, with the runner when a build is given.
@@ -210,12 +213,21 @@ pub(super) fn assemble_with(
     let scene = build.and_then(|(glue, wasm)| {
         let sky = lander5_web::shaders::minify(&lander5_web::shaders::sky_source());
         let grid = lander5_web::shaders::minify(&lander5_web::shaders::grid_source());
-        let script = format!(
-            "{}const s=atob(\"{}\"),b=new Uint8Array(s.length);\
+        let script = match addition {
+            None => format!(
+                "{}const s=atob(\"{}\"),b=new Uint8Array(s.length);\
 for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);__wbg_init({{module_or_path:b}});",
-            inline_glue(&glue),
-            STANDARD.encode(&wasm)
-        );
+                inline_glue(&glue),
+                STANDARD.encode(&wasm)
+            ),
+            Some(addition) => format!(
+                "{}const s=atob(\"{}\"),b=new Uint8Array(s.length);\
+for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);const ready=__wbg_init({{module_or_path:b}});{}",
+                inline_glue(&glue),
+                STANDARD.encode(&wasm),
+                addition.runner_tail
+            ),
+        };
         [&sky, &grid, &script]
             .iter()
             .all(|text| fits_in_script(text))
@@ -252,7 +264,7 @@ for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);__wbg_init({{module_or_path:b}})
                 "<script type=\"module\">{}</script>",
                 addition.script
             ));
-            connect = "connect-src 'self'; ".to_owned();
+            connect = "connect-src 'self'; worker-src blob:; ".to_owned();
             let runner = script_hash.as_deref().unwrap_or_default();
             format!(
                 "{runner} {} 'self' 'wasm-unsafe-eval'",

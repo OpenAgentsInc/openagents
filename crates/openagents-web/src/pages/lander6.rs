@@ -15,9 +15,19 @@
 //! DIR/*/*.br, DIR/*/*.gz                    brotli and gzip copies
 //! ```
 //!
-//! and served at `/lander6/card/{webgpu,webgl}/{file}`. The page's loader
-//! waits for the background's first full frame, then, when the browser is
-//! idle, picks the WebGPU build when `navigator.gpu` gives an adapter and
+//! and served at `/lander6/card/{webgpu,webgl}/{file}`.
+//!
+//! The background starts exactly as `/lander5`'s does, on the page's main
+//! thread. Before the card loads, the loader hands the Grid to a dedicated
+//! worker: the same runner (`--lander5 DIR`'s `worker/` build, with its
+//! worker exports) started from the page's own runner script, drawing on a
+//! second canvas transferred with `transferControlToOffscreen`, from the
+//! scene time the page had reached. Once the worker has presented a frame
+//! the page's loop stops, so GPUI's work on the main thread (instantiating,
+//! starting, its first layouts) can't hold up a Grid frame. Without
+//! `OffscreenCanvas`, or with reduced motion, the Grid stays on the page.
+//!
+//! The loader then waits for an idle moment, picks the WebGPU build when `navigator.gpu` gives an adapter and
 //! the WebGL2 build otherwise, and fetches it at low priority with streaming
 //! compilation. When the card's first frame is drawn, the box fades and
 //! scales in (a short fade alone for reduced motion). If anything fails, the
@@ -78,7 +88,10 @@ answers a question, reads a file, and runs the tests.\"></div>";
 
 /// The loader: after the background's first full frame and an idle moment,
 /// the card's build for this browser, fetched at low priority and compiled
-/// as it streams in; the box fades in when GPUI reports the card's first
+/// off the main thread as it streams in (`compileStreaming`). Instantiating
+/// it (which runs its static constructors) and starting GPUI each take an
+/// idle slice of their own, so neither lands in the same task as the other
+/// or as a Grid frame. The box fades in when GPUI reports the card's first
 /// frame at the box's size (`gpui-first-frame`, bubbling from its canvas). GPUI
 /// focuses a text field of its own when it starts; the card takes no
 /// typing, so that field is hidden from the keyboard and screen readers and
@@ -88,16 +101,21 @@ const LOADER: &str = "\
 const box=document.getElementById(\"gpui-mount\");\
 const still=matchMedia(\"(prefers-reduced-motion: reduce)\").matches;\
 const fail=()=>{box.remove()};\
+const idle=()=>new Promise(r=>(window.requestIdleCallback||(f=>setTimeout(f,1)))(r,{timeout:400}));\
 let started=false;\
 const load=async()=>{try{\
 performance.mark(\"card-start\");\
 let gpu=false;try{gpu=!!(navigator.gpu&&await navigator.gpu.requestAdapter())}catch(e){}\
 const dir=\"/lander6/card/\"+(gpu?\"webgpu\":\"webgl\")+\"/\";\
 performance.mark(\"card-requested\");\
-const wasm=fetch(dir+\"openagents_web_card_bg.wasm\",{priority:\"low\"});\
+const compiled=WebAssembly.compileStreaming(fetch(dir+\"openagents_web_card_bg.wasm\",{priority:\"low\"}));\
 const glue=await import(dir+\"openagents_web_card.js\");\
-await glue.default({module_or_path:wasm});\
+const module=await compiled;\
 performance.mark(\"card-compiled\");\
+await idle();\
+await glue.default({module_or_path:module});\
+performance.mark(\"card-instantiated\");\
+await idle();\
 const before=document.activeElement;\
 box.addEventListener(\"gpui-failed\",fail,{once:true});\
 box.addEventListener(\"gpui-first-frame\",()=>{\
@@ -109,17 +127,47 @@ for(const field of document.querySelectorAll(\"body>input\")){field.tabIndex=-1;
 const now=document.activeElement;\
 if(now&&now.tagName===\"INPUT\"){if(before&&before!==document.body)before.focus({preventScroll:true});else now.blur()}})},{once:true});\
 glue.mount(still)}catch(e){fail()}};\
+const handoff=()=>new Promise(done=>{\
+const runner=globalThis.lander5Runner,main=document.getElementById(\"lander5-canvas\");\
+if(still||!runner||!main||!main.transferControlToOffscreen||!window.Worker)return done();\
+setTimeout(done,2000);\
+runner.ready.then(()=>{\
+const grid=document.createElement(\"canvas\");grid.id=\"lander6-grid\";grid.setAttribute(\"aria-hidden\",\"true\");main.after(grid);\
+const offscreen=grid.transferControlToOffscreen();\
+const source=document.querySelector(\"script[type=module]\").textContent;\
+const worker=new Worker(URL.createObjectURL(new Blob([source],{type:\"text/javascript\"})),{type:\"module\"});\
+const view=()=>({w:innerWidth,h:innerHeight,dpr:devicePixelRatio});\
+worker.addEventListener(\"message\",e=>{if(e.data===\"presented\"){performance.mark(\"grid-worker-presented\");runner.pause();done()}});\
+worker.addEventListener(\"error\",()=>{grid.remove();done()});\
+worker.postMessage({canvas:offscreen,sky:document.getElementById(\"lander5-sky\").textContent,\
+grid:document.getElementById(\"lander5-grid\").textContent,...view(),time:runner.scene_time()},[offscreen]);\
+addEventListener(\"resize\",()=>worker.postMessage({resize:1,...view()}));\
+globalThis.lander6GridWorker=worker}).catch(done)});\
 const go=()=>{if(started)return;started=true;\
-(window.requestIdleCallback||(f=>setTimeout(f,1)))(load,{timeout:400})};\
+handoff().then(()=>(window.requestIdleCallback||(f=>setTimeout(f,1)))(load,{timeout:400}))};\
 if(performance.getEntriesByName(\"lander5-presented\").length)go();\
 else{new PerformanceObserver((list,observer)=>{\
 if(list.getEntriesByName(\"lander5-presented\").length){observer.disconnect();go()}}).observe({type:\"mark\"});\
 addEventListener(\"load\",()=>setTimeout(go,1500))}";
 
+/// The end of the runner's own script on this page. On the page it hands
+/// the loader the runner (its start promise, `pause`, and `scene_time`). The
+/// loader starts a worker from this same script text, where it runs the
+/// Grid on the transferred canvas instead and answers the page's messages:
+/// the canvas and shaders to start, a new view size, or a request for its
+/// recent frame times.
+const RUNNER_TAIL: &str = "\
+if(typeof WorkerGlobalScope!==\"undefined\"){self.onmessage=async e=>{await ready;const d=e.data;\
+if(d.canvas)start_worker(d.canvas,d.sky,d.grid,d.w,d.h,d.dpr,d.time);\
+else if(d.resize)resize_worker(d.w,d.h,d.dpr);\
+else if(d.frames)postMessage({frames:frame_times()})}}\
+else globalThis.lander5Runner={ready,pause,scene_time};";
+
 const ADDITION: Addition = Addition {
     style: STYLE,
     in_main: CARD,
     script: LOADER,
+    runner_tail: RUNNER_TAIL,
 };
 
 /// The last document made, and the background build it came from.
@@ -147,7 +195,15 @@ fn document(directory: Option<&Path>) -> Arc<Document> {
 }
 
 async fn page(State(app): State<App>, request: HeaderMap) -> Response {
-    let directory = app.config.lander5.clone();
+    // The runner built with its worker exports, beside /lander5's own.
+    let directory = app.config.lander5.as_deref().map(|directory| {
+        let worker = directory.join("worker");
+        if worker.join(super::lander5::LANDER5_WASM).is_file() {
+            worker
+        } else {
+            directory.to_path_buf()
+        }
+    });
     let document = tokio::task::spawn_blocking(move || document(directory.as_deref()))
         .await
         .unwrap_or_else(|_| Arc::new(assemble_with(None, Some(&ADDITION))));
@@ -191,7 +247,11 @@ mod tests {
         assert!(policy.contains(&super::super::lander5::source_hash(LOADER)));
         assert!(policy.contains(&super::super::lander5::source_hash(STYLE)));
         assert!(policy.contains("'self' 'wasm-unsafe-eval'"));
-        assert!(policy.contains("connect-src 'self';"));
+        assert!(policy.contains("connect-src 'self'; worker-src blob:;"));
+        // The runner keeps its start promise and hands itself to the loader,
+        // or, in the worker, answers the loader's messages.
+        assert!(RUNNER_TAIL.contains("start_worker(d.canvas"));
+        assert!(RUNNER_TAIL.contains("globalThis.lander5Runner={ready,pause,scene_time}"));
         assert!(!policy.contains("unsafe-inline"));
     }
 
@@ -201,6 +261,9 @@ mod tests {
         assert!(LOADER.contains("requestIdleCallback"));
         assert!(LOADER.contains("priority:\"low\""));
         assert!(LOADER.contains("navigator.gpu"));
+        assert!(LOADER.contains("transferControlToOffscreen"));
+        assert!(LOADER.contains("runner.pause()"));
+        assert!(LOADER.contains("WebAssembly.compileStreaming"));
         assert!(LOADER.contains("glue.mount(still)"));
         assert!(STYLE.contains("prefers-reduced-motion:reduce"));
         assert!(!LOADER.contains("</script"));

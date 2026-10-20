@@ -25,7 +25,7 @@ an HTML comment beside the shaders.
 | `shaders/sky.glsl` | Pass 1: `atmosphereSky` into a 128 x 128 RGBA8 table, once. |
 | `shaders/grid.glsl` | Pass 2: the floor, sky, haze, and post, every frame. Art controls and `DEBUG_MODE` views (0 to 6) are at the top. |
 | `src/shaders.rs` | The sources as complete units, and the minifier. |
-| `src/web.rs` | The runner: half-resolution first frame, dynamic resolution, a still frame under reduced motion. |
+| `src/web.rs` | The runner: half-resolution first frame, dynamic resolution, a still frame under reduced motion. With the `worker` feature it can also run in a dedicated worker on an `OffscreenCanvas` (`start_worker`, `pause`, `scene_time`, `frame_times`), which `/lander6` hands the Grid to; the build script writes that build to `OUTDIR/worker/`. |
 | `src/bump.rs` | A bump allocator in place of dlmalloc (the runner allocates only while it starts). |
 
 ## Build and check

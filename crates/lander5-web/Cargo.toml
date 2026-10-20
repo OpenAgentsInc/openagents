@@ -9,6 +9,12 @@ description = "/lander5's procedural background: two GLSL passes (a sky-view tab
 [lib]
 crate-type = ["cdylib", "rlib"]
 
+[features]
+# Exports for running the Grid in a dedicated worker on an OffscreenCanvas
+# (`start_worker`, `pause`, `scene_time`, `frame_times`), which /lander6
+# hands over to; /lander5's build leaves them out.
+worker = []
+
 # The shaders and their minifier build natively, for the site that inlines
 # them and for the tests; only the runner is browser-only.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -17,11 +23,13 @@ crate-type = ["cdylib", "rlib"]
 wasm-bindgen = "0.2.128"
 js-sys = "0.3"
 web-sys = { version = "0.3", features = [
+    "DedicatedWorkerGlobalScope",
     "Document",
     "Element",
     "HtmlCanvasElement",
     "MediaQueryList",
     "Node",
+    "OffscreenCanvas",
     "Performance",
     "WebGl2RenderingContext",
     "WebGlFramebuffer",

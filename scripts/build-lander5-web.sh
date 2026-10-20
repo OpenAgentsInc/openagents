@@ -5,6 +5,8 @@
 #
 #   lander5_web.js          the wasm-bindgen glue (an ES module)
 #   lander5_web_bg.wasm     the module, size-optimized
+#   worker/                 the same with the `worker` feature, which
+#                           /lander6 inlines to hand the Grid to a worker
 #
 # The site reads both from the directory it was started with
 # (`openagents-web --lander5 OUTDIR`, default /srv/lander5) and inlines them,
@@ -42,19 +44,22 @@ if [ "$installed" != "$locked" ]; then
 fi
 
 cd "$root"
-cargo build --locked --profile "$profile" --target "$target" -p lander5-web
-mkdir -p "$out"
-wasm-bindgen --target web --no-typescript --out-dir "$out" \
-  "$target_dir/$target/$profile/lander5_web.wasm"
+build() { # OUTDIR [FEATURES]
+  cargo build --locked --profile "$profile" --target "$target" -p lander5-web ${2:+--features "$2"}
+  mkdir -p "$1"
+  wasm-bindgen --target web --no-typescript --out-dir "$1" \
+    "$target_dir/$target/$profile/lander5_web.wasm"
+  if command -v wasm-opt >/dev/null 2>&1; then
+    # The features Rust's wasm32 target enables by default.
+    wasm-opt -Oz \
+      --enable-bulk-memory --enable-mutable-globals --enable-nontrapping-float-to-int \
+      --enable-sign-ext --enable-reference-types --enable-multivalue \
+      "$1/lander5_web_bg.wasm" -o "$1/lander5_web_bg.wasm"
+  else
+    echo "wasm-opt not found; the module is not size-optimized" >&2
+  fi
+}
+build "$out/worker" worker
+build "$out"
 
-if command -v wasm-opt >/dev/null 2>&1; then
-  # The features Rust's wasm32 target enables by default.
-  wasm-opt -Oz \
-    --enable-bulk-memory --enable-mutable-globals --enable-nontrapping-float-to-int \
-    --enable-sign-ext --enable-reference-types --enable-multivalue \
-    "$out/lander5_web_bg.wasm" -o "$out/lander5_web_bg.wasm"
-else
-  echo "wasm-opt not found; the module is not size-optimized" >&2
-fi
-
-ls -l "$out/lander5_web.js" "$out/lander5_web_bg.wasm"
+ls -l "$out/lander5_web.js" "$out/lander5_web_bg.wasm" "$out/worker"

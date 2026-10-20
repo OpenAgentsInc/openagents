@@ -32,6 +32,15 @@ const MOUNT_ID: &str = "gpui-mount";
 const THINK: Duration = Duration::from_millis(900);
 /// How long the finished chat stays before it starts over.
 const HOLD: Duration = Duration::from_millis(6000);
+/// From the card's first frame to the question appearing. The first frame
+/// is the header alone: on a slow computer every new glyph is rasterized on
+/// the main thread the first time it is drawn, so the transcript's arrive a
+/// few at a time instead of all in the frame that starts the card.
+const OPENING: Duration = Duration::from_millis(500);
+/// The card's update rate while it plays: 30 times a second, which the
+/// word-by-word stream (a word every 28 to 110 ms) never outpaces, and half
+/// the main-thread layout of 60.
+const TICK: Duration = Duration::from_millis(33);
 
 /// Tells the page something about the card: an event on `#gpui-mount`.
 pub(crate) fn signal(name: &str) {
@@ -44,6 +53,8 @@ pub(crate) fn signal(name: &str) {
 }
 
 enum Phase {
+    /// The empty card; the question appears at the instant.
+    Opening(Instant),
     /// The question is showing; the reply starts at the instant.
     Asking(Instant),
     Streaming(Stream),
@@ -82,12 +93,10 @@ impl CardApp {
         if still {
             this.finished();
         } else {
-            this.ask();
+            this.phase = Phase::Opening(Instant::now() + OPENING);
             cx.spawn(async move |this, cx| {
                 loop {
-                    cx.background_executor()
-                        .timer(Duration::from_millis(16))
-                        .await;
+                    cx.background_executor().timer(TICK).await;
                     if this.update(cx, |this, cx| this.tick(cx)).is_err() {
                         break;
                     }
@@ -184,6 +193,10 @@ impl CardApp {
                     tool: None,
                     chunks: Vec::new(),
                 });
+                cx.notify();
+            }
+            Phase::Opening(at) if now >= at => {
+                self.ask();
                 cx.notify();
             }
             Phase::Holding(at) if now >= at => {
@@ -347,7 +360,10 @@ impl CardApp {
     }
 
     fn render_header(&self) -> impl IntoElement {
-        let working = matches!(self.phase, Phase::Asking(_) | Phase::Streaming(_));
+        let working = matches!(
+            self.phase,
+            Phase::Opening(_) | Phase::Asking(_) | Phase::Streaming(_)
+        );
         div()
             .flex_none()
             .flex()
