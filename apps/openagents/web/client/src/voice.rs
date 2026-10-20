@@ -417,6 +417,25 @@ impl Call {
             "OwnVoiceV2",
             json!({"targetDeviceId":self.device,"payload":lease}),
         )?;
+        // The first snapshot acknowledges ownership. The host rejects
+        // reports and negotiation until this stream has attached its owner.
+        let first: VoiceEvent = serde_json::from_value(
+            timeout(
+                async {
+                    owner
+                        .items
+                        .next()
+                        .await
+                        .ok_or_else(|| anyhow!("The call disconnected. Try again."))?
+                },
+                8_000,
+            )
+            .await?,
+        )?;
+        if !matches!(&first, VoiceEvent::Snapshot { .. }) || !current(&first, &lease) {
+            return Err(anyhow!("Couldn't connect the call. Try again."));
+        }
+        (event.borrow_mut())(first);
         let _: Value = self
             .rpc(
                 "UpdateVoiceContextV2",
