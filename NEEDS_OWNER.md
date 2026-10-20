@@ -3222,6 +3222,11 @@ browser completes it; on Android, save a name and picture and check `/@NAME`.
 
 ## Create the DeepSeek-V4.1 billing alerts (#12370) (2026-10-20)
 
+Done 2026-10-20: both budgets exist on billing account `01D15C-64524A-1062EA`
+(`78cf308d-827d-46c4-b29d-de6e59713989` at $1,500 and
+`5a2120b0-c740-48a3-b041-6a7ef8d726ad` at $2,500), created with the owner's
+login. The commands below are kept for reference.
+
 The agent's service account can't read or create billing budgets on the
 billing account. Signed in as yourself (`gcloud auth login` first if gcloud
 asks), run these two commands. They alert the billing account's admins when
