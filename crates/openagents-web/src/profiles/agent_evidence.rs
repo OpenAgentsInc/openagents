@@ -53,15 +53,13 @@ async fn load(app: &App, agent: &str, id: &str, owner: &str) -> Evidence {
     else {
         return Evidence::default();
     };
+    let receipt_filter = json!({
+        "kinds": [receipts_nostr::KIND], "authors": [owner], "#p": [agent],
+        "#a": [format!("{}:{agent}:{id}", agent_public::DEFINITION_KIND)], "limit": SHOWN * 4,
+    });
     let (mut found, (events, _)) = tokio::join!(
         runtime(&relays, &definition.runtime, at),
-        read_all(
-            &relays,
-            &json!({
-                "kinds": [receipts_nostr::KIND], "authors": [owner], "#p": [agent],
-                "#a": [format!("{}:{agent}:{id}", agent_public::DEFINITION_KIND)], "limit": SHOWN * 4,
-            })
-        ),
+        read_all(&relays, &receipt_filter),
     );
     found.receipts = selected_receipts(&definition, &events, at);
     found
