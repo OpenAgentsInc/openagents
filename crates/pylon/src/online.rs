@@ -1193,6 +1193,18 @@ fn process_alive(pid: u32) -> bool {
     }
 }
 
+/// The memory a beacon's class names for `host` serving on `device`: the
+/// GPU's own memory on NVIDIA, else the computer's (a Mac's unified
+/// memory, or a CPU box's).
+#[must_use]
+pub fn class_memory_gb(host: &crate::setup::Host, device: &str) -> Option<u32> {
+    let gb = match device {
+        "cuda" => host.gpu_memory_gb?,
+        _ => host.memory_gb?,
+    };
+    Some(gb.round().clamp(1.0, 4096.0) as u32)
+}
+
 /// `openagents pylon up`.
 ///
 /// # Errors
@@ -1247,7 +1259,7 @@ pub async fn up(json_out: bool, words: &[String], relay: &str) -> Result<(), Str
         .device
         .clone()
         .unwrap_or_else(|| report.fit.device.clone());
-    let (settings, notes) = settings_for_up(
+    let (mut settings, notes) = settings_for_up(
         share::load(&home)?,
         &crate::cli::host_slug(),
         relay,
@@ -1255,6 +1267,12 @@ pub async fn up(json_out: bool, words: &[String], relay: &str) -> Result<(), Str
         &device,
         text_fits(&report.host),
     )?;
+    // The beacon's memory is this computer's, unless `--vram-gb` named it.
+    if !up.serve.iter().any(|w| w == "--vram-gb")
+        && let Some(gb) = class_memory_gb(&report.host, &device)
+    {
+        settings.vram_gb = gb;
+    }
     share::save(&home, &settings)?;
     let identity = Identity::load_or_create(&home.join("provider.key"))?;
     let at = now();

@@ -436,6 +436,33 @@ fn up_choices_and_old_settings() {
     assert_eq!(settings.text.as_ref().unwrap().port, 18_197);
     second.text_port = Some(18_196);
     assert!(online::settings_for_up(None, "box", "wss://r", &second, "metal", Ok(())).is_err());
+    // The beacon's class follows the device and this computer's memory.
+    let mac = pylon::setup::Host {
+        gpu: "apple".into(),
+        memory_gb: Some(127.6),
+        ..pylon::setup::Host::default()
+    };
+    assert_eq!(online::class_memory_gb(&mac, "metal"), Some(128));
+    let nvidia = pylon::setup::Host {
+        gpu: "nvidia".into(),
+        memory_gb: Some(126.0),
+        gpu_memory_gb: Some(16.0),
+        ..pylon::setup::Host::default()
+    };
+    assert_eq!(online::class_memory_gb(&nvidia, "cuda"), Some(16));
+    let (mut cpu_box, _) = online::settings_for_up(
+        None,
+        "box",
+        "wss://r",
+        &Up::default(),
+        "cpu",
+        Err("no".into()),
+    )
+    .unwrap();
+    cpu_box.vram_gb = 63;
+    let config = cpu_box.config(std::path::Path::new("."));
+    assert_eq!(config.class.family, nostr::pylon::Family::Cpu);
+    assert_eq!(config.class.memory_gb, 32);
     let slow = Up::parse(&["--allow-slow".into()]).unwrap();
     assert!(slow.allow_slow && slow.serve.is_empty());
     assert!(Up::parse(&["--text".into(), "maybe".into()]).is_err());

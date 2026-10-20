@@ -21,7 +21,7 @@ use crate::identity::{Identity, hex_pubkey, load_owner, npub};
 use crate::lease::{Leases, Machine};
 use crate::provider::Config;
 use crate::{DEFAULT_RELAY, now};
-use nostr::pylon::Tier;
+use nostr::pylon::{Family, Tier};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -124,6 +124,15 @@ impl Settings {
         config.allow.clone_from(&self.allow);
         config.rate_per_minute = self.rate_per_minute.clamp(1, 600);
         config.max_tokens = self.max_tokens.clamp(1, 4_096);
+        // The beacon's family follows the decision lane's device: a Mac's
+        // Metal is unified memory and a CPU box is a CPU, not a GPU.
+        if let Some(lane) = &self.decide {
+            config.class.family = match lane.device.as_str() {
+                "metal" => Family::UnifiedMemory,
+                "cpu" => Family::Cpu,
+                _ => Family::Gpu,
+            };
+        }
         config.class.tier = Tier::for_gpu(self.vram_gb);
         config.class.memory_gb = [512, 256, 128, 64, 32, 16, 8]
             .into_iter()
