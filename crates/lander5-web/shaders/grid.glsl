@@ -1,8 +1,9 @@
 // /lander5, pass 2: the Grid at twilight. An infinite plane of filtered
 // white lines on the near-black field, light pulses running along the
-// major lines in amber, a physically based sky read from the table
+// major lines in white, a physically based sky read from the table
 // (iChannel0, filled by sky.glsl), aerial perspective, and analytic height
-// haze lit by the sun below the horizon and by the grid itself.
+// haze lit by the sun below the horizon and by the grid itself, all drawn
+// in grayscale.
 // Units are meters; the atmosphere works in kilometers.
 
 #define DEBUG_MODE 0   // 0 final | 1 plane distance | 2 reflection direction | 3 cell ids | 4 filter footprint | 5 masks (lines, glow, pulses) | 6 light terms (emission, reflection, haze)
@@ -19,7 +20,7 @@ const float HORIZON_UV = 0.16;       // where the horizon sits, in uv.y
 const float FOCAL = 1.75;
 const float EXPOSURE = 0.6;
 const vec3  LINE_COLOR = vec3(0.84, 0.84, 0.84); // linear; #ededed
-const vec3  PULSE_COLOR = vec3(1.0, 0.42, 0.08); // linear amber
+const vec3  PULSE_COLOR = vec3(1.0, 1.0, 1.0); // linear white
 const float LINE_LIGHT = 1.6;
 const float PULSE_LIGHT = 10.0;
 const float AERIAL = 6.0;            // aerial perspective strength (haze above clear air)
@@ -170,7 +171,9 @@ vec3 render(vec2 fragCoord) {
     return vec3(luminance(emission), luminance(reflection) * 20.0, haze);
 #endif
 
-    return col * vignette(uv, FOCAL * 1.3);
+    // grayscale: the twilight's light without its color, white to grays to
+    // near-black, in keeping with the white grid
+    return vec3(luminance(col)) * vignette(uv, FOCAL * 1.3);
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {

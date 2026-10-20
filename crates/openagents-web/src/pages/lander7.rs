@@ -57,7 +57,7 @@ pub(crate) const LANDER7_WASM: &str = "openagents_web_graph_card_bg.wasm";
 const STYLE: &str = "\
 :root{color-scheme:dark}\
 html,body{margin:0;height:100%}\
-body{background:#0a0a0a linear-gradient(180deg,#090909 0%,#0d0a09 22%,#1c0f09 36%,#3b1a0b 41.6%,#120c0a 42.2%,#0b0a0a 60%,#0a0a0a 100%);\
+body{background:#0a0a0a linear-gradient(180deg,#090909 0%,#0a0a0a 22%,#111111 36%,#202020 41.6%,#0d0d0d 42.2%,#0a0a0a 60%,#0a0a0a 100%);\
 color:#e5e5e5;font-family:Geist,-apple-system,BlinkMacSystemFont,\"Segoe UI\",Inter,Roboto,\"Helvetica Neue\",Arial,sans-serif;overflow:hidden}\
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block}\
 h1{position:fixed;z-index:2;top:calc(18px + env(safe-area-inset-top));left:calc(18px + env(safe-area-inset-left));\

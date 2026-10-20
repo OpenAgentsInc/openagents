@@ -60,7 +60,7 @@ pub(crate) const LANDER6_WASM: &str = "openagents_web_card_bg.wasm";
 const STYLE: &str = "\
 :root{color-scheme:dark}\
 html,body{margin:0;height:100%}\
-body{background:#0a0a0a linear-gradient(180deg,#090909 0%,#0d0a09 22%,#1c0f09 36%,#3b1a0b 41.6%,#120c0a 42.2%,#0b0a0a 60%,#0a0a0a 100%);\
+body{background:#0a0a0a linear-gradient(180deg,#090909 0%,#0a0a0a 22%,#111111 36%,#202020 41.6%,#0d0d0d 42.2%,#0a0a0a 60%,#0a0a0a 100%);\
 color:#ededed;font-family:-apple-system,BlinkMacSystemFont,\"Segoe UI\",Inter,Roboto,\"Helvetica Neue\",Arial,sans-serif;overflow:hidden}\
 canvas{position:fixed;inset:0;width:100%;height:100%;display:block}\
 main{position:relative;box-sizing:border-box;min-height:100%;display:flex;flex-direction:column;align-items:center;\
@@ -68,9 +68,9 @@ justify-content:center;gap:clamp(22px,3.6vh,36px);padding:4vh 16px;text-align:ce
 h1{margin:0;font-size:clamp(46px,8.4vw,112px);font-weight:600;letter-spacing:-.035em;line-height:1;\
 text-shadow:0 2px 30px rgba(0,0,0,.55)}\
 a{display:inline-block;padding:15px 34px;border-radius:999px;background:#ededed;color:#0a0a0a;\
-font-size:17px;font-weight:600;text-decoration:none;box-shadow:0 0 0 1px rgba(255,255,255,.2),0 8px 40px rgba(255,140,40,.18)}\
+font-size:17px;font-weight:600;text-decoration:none;box-shadow:0 0 0 1px rgba(255,255,255,.2),0 8px 40px rgba(255,255,255,.12)}\
 a:hover{background:#fff}\
-a:focus-visible{outline:2px solid #ffb35c;outline-offset:4px}\
+a:focus-visible{outline:2px solid #ededed;outline-offset:4px}\
 #gpui-mount{position:relative;flex:none;width:min(680px,calc(100vw - 32px));height:min(440px,46vh);margin-top:4px;\
 border-radius:18px;overflow:hidden;text-align:left;background:rgba(12,12,12,.58);\
 -webkit-backdrop-filter:blur(18px) saturate(1.25);backdrop-filter:blur(18px) saturate(1.25);\
