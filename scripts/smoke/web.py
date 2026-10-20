@@ -655,10 +655,14 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
         fallback = site.get("/?ui=html")
         chat_form = re.search(r'<form(?=[^>]*id="chat-form")(?=[^>]*action="/chat")[^>]*>.*?</form>',
                               fallback.text, re.S)
+        # The composer keeps its CSRF input outside the form, linked by form="chat-form".
+        associated = "".join(tag for tag in re.findall(r"<input[^>]*>", fallback.text)
+                             if re.search(r'\sform="chat-form"', tag))
+        chat_fields = hidden_fields((chat_form.group(0) if chat_form else "") + associated)
         record("home: HTML chat fallback loads", fallback.status == 200
                and re.search(r'<h1[^>]*>OpenAgents</h1>', fallback.text) is not None
                and chat_form is not None
-               and bool(hidden_fields(chat_form.group(0)).get("csrf"))
+               and bool(chat_fields.get("csrf"))
                and 'id="chat-input"' in fallback.text
                and 'id="gpui-shell"' not in fallback.text
                and 'id="gpui-mount"' not in fallback.text, f"{fallback.status}")
