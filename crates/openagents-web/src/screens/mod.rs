@@ -100,6 +100,11 @@ pub(crate) const NOT_SCREENS: &[(&str, &str)] = &[
         "the desktop chat UI's demo: a canvas drawn in the browser and its build files",
     ),
     (
+        "/agent/{id}*",
+        "an agent's AgentGraph page: a canvas drawn in the browser and its graph data",
+    ),
+    ("/agent-graph/*", "the AgentGraph canvas's build files"),
+    (
         "/login/key/{request}/qr.svg",
         "the QR code image on the sign-in card, not a page",
     ),

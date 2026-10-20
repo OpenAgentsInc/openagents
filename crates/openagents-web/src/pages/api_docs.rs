@@ -489,7 +489,17 @@ mod tests {
             as_of: "2026-10-09".into(),
         }));
         let table = rate_card(&card);
-        assert!(table.contains("plus our 5%"), "{table}");
+        // The Pylon rows carry no margin, so the card names no one percent.
+        let one_margin = card
+            .rows
+            .iter()
+            .all(|row| row.margin_percent == card.rows[0].margin_percent);
+        let margin = if one_margin {
+            "plus our 5%"
+        } else {
+            "plus our margin"
+        };
+        assert!(table.contains(margin), "{table}");
         assert!(table.contains("$100,000 per bitcoin"), "{table}");
         assert!(
             table.contains(

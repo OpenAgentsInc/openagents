@@ -20,6 +20,10 @@ const NOT_OWNED: &[(&str, &str)] = &[
         "the keyed MCP server: the previous server answers it while it runs (docs/deployment/coder-serve-retirement.md)",
     ),
     (
+        "/agent/",
+        "an Agent Lab template's page and graph: owned only for a known template (`foreman::owns`); other ids go upstream",
+    ),
+    (
         "/api/v1/",
         "the API alias: owned when the inference gateway is configured (`guard`)",
     ),
