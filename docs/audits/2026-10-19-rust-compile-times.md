@@ -38,7 +38,7 @@ files the larger items as issues.
   the website for its tests (#12199), the Verse stack inside the website
   (#12183), per-command feature sets (#12185), land checks that find compile
   errors after 14 to 38 minutes (#12198), and the opt-in nightly parallel
-  front end (#12186, owner decision). Other chats landed the shared remote
+  front end (#12186, now opt-in with `OPENAGENTS_NIGHTLY=1`). Other chats landed the shared remote
   cache (#12176) and deploy image caching (#12177) the same day; a web image
   build fell from 858 to 1,288 s to 499 to 573 s.
 - **Don't rewrite.** Changing language or build system would cost far more
@@ -306,7 +306,7 @@ queue and deploys. None of these options weakens type safety.
 | 8 | **Drop Verse from `openagents-web`** (move the CAD physics types to a small crate) | About 750 CPU-s of every cold web build, and Verse edits stop recompiling the site | Small | Low | #12183 |
 | 9 | **Split the god crates** (`openagents-web`, `coder`, the app's `ui`) | Front end parallelism on stable; an edit recompiles one piece. Bounded by the nightly result: up to 28 to 48% of a crate's compile | Large | Medium | #12184 |
 | 10 | **One feature set** (`cargo-hakari` workspace-hack) | Removes the 118 to 265 s rebuilds when the `-p` set changes | Small to medium | Low to medium: unified features may enable code a crate didn't use | #12185, landed after these measurements (`2796c12a25`); not re-measured here |
-| 11 | **Nightly parallel front end** (`-Zthreads=8`), opt-in for dev | `openagents-web` lib 81.0 to 58.0 s, `coder` 51.2 to 26.8 s; with Cranelift 50.1 and 19.9 s | Small | Medium: a nightly compiler for dev builds | #12186, owner decision |
+| 11 | **Nightly parallel front end** (`-Zthreads=8`), opt-in for dev | `openagents-web` lib 81.0 to 58.0 s, `coder` 51.2 to 26.8 s; with Cranelift 50.1 and 19.9 s | Small | Medium: a nightly compiler for dev builds | #12186: opt-in `OPENAGENTS_NIGHTLY=1`, local only ([verification](../verification.md#opt-in-nightly-parallel-front-end)) |
 | 12 | **kache without stored executables on macOS** (`cache_executables = false`) | `coder-host` test build 36.8 to 20.4 s, `coder` 152 to 155 s to 105 to 116 s | Trivial | Low: a new worktree relinks executables instead of restoring them | **Done today** |
 | 13 | **App dependency optimization**: `opt-level = 1` (or 0) for the root domain crates the app links by path, keeping 2 for GPUI | Up to about 600 CPU-s of the app's cold build (`coder-host`, `openagents-chat`, `coder-access`, `nostr`, `pylon`, `coder-delegate`) | Trivial | Medium: run-time speed of the dev app (#12152) | In this audit; measure before changing |
 | 14 | **Cranelift backend for dev**, whole graph | 13 to 17% per crate alone (above); more on code-generation-heavy crates | Small | Medium: nightly only; slower run time; some crates (inline assembly, SIMD) need LLVM | Part of #12186 |

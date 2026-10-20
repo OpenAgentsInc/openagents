@@ -193,6 +193,45 @@ In both nextest runs the longest test,
 took 189 to 192 seconds; run alone it took 150 seconds under `cargo test`
 and 100 seconds under nextest, at different loads.
 
+## Opt-in nightly parallel front end
+
+For local edit loops you can build and test with a pinned nightly compiler
+and its parallel front end (`-Zthreads`, #12186). Pinned stable stays the
+default. Releases, the land queue, the pool, and Docker builds never use
+the nightly, so check a change on stable before you land it.
+
+```sh
+rustup toolchain install "$(cat scripts/dev/nightly-toolchain)" --profile minimal
+export CARGO_TARGET_DIR=~/work/openagents-target-1
+OPENAGENTS_NIGHTLY=1 . scripts/dev/cargo-build-env.sh   # OPENAGENTS_NIGHTLY_THREADS=N, default 8
+cargo test -p coder
+```
+
+- [`scripts/dev/nightly-toolchain`](../scripts/dev/nightly-toolchain) holds
+  the one pinned nightly version.
+- With `OPENAGENTS_NIGHTLY=1`, the build helper pins `RUSTC` to that
+  nightly and adds `-Zthreads=N` to `RUSTFLAGS` when it is set, or else to
+  `CARGO_BUILD_RUSTFLAGS`.
+- The helper keys build state by the compiler's `rustc -vV` output and
+  path, so nightly artifacts live in their own `worktrees/` folder of the
+  shared target and never mix with stable's.
+- If the pinned nightly isn't installed, the helper prints a warning and
+  the build uses stable. It never installs a toolchain itself.
+- Set the variable per shell or per command, not in a shell profile, so a
+  host or release script started from that profile stays on stable. To go
+  back to stable in the same shell, run
+  `unset OPENAGENTS_NIGHTLY RUSTC CARGO_BUILD_RUSTFLAGS` and reload the
+  helper.
+
+The compile-time audit measured a one-line edit's full crate recompile on a
+22-vCPU Linux VM with `nightly-2026-08-03`: `openagents-web` 81.0 s to
+58.0 s and `coder` 51.2 s to 26.8 s
+([audit](audits/2026-10-19-rust-compile-times.md)). On the owner's Mac
+(18 cores, kache), stable `openagents-web` took 296.8 s to build from a
+fresh target and 21.8 s to rebuild after an edit (`scripts/dev/build-bench.sh
+--only build`). The Mac's nightly comparison is deferred: the disk was too
+full on 2026-10-20 for a second full target.
+
 ## Building and testing on Windows
 
 `cargo test -p coder-new --lib` passes on Windows (#11695). A Windows

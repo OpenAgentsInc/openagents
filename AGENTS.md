@@ -197,8 +197,11 @@ last-use time, including for all-fresh builds. Reload the helper after changing
 `RUSTC`. To switch rustup toolchains, unset `RUSTC`, set `RUSTUP_TOOLCHAIN`,
 and reload the helper. Pinning Cargo alone leaves a rustup proxy free
 to select a different compiler in each dependency directory (#12113).
-Old path-only state stays unused until the sweep removes it. The agent and
-lease shims use
+Old path-only state stays unused until the sweep removes it.
+`OPENAGENTS_NIGHTLY=1` opts a local build into the pinned nightly with
+`-Zthreads` and its own build state; never for releases, the land queue,
+the pool, or Docker ([verification](docs/verification.md#opt-in-nightly-parallel-front-end)).
+The agent and lease shims use
 this same helper, including with `OPENAGENTS_KEEP_TARGET_DIR=1` and inside an
 existing build lease. Never flatten compiler state onto the shared target:
 Cargo can call another worktree's older source fresh without running rustc

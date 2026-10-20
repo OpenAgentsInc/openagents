@@ -5,6 +5,32 @@
 oa_build_manifest=${oa_build_manifest:-$(cargo locate-project --workspace --message-format plain)} || return 1
 oa_build_parent=$(CDPATH= cd -- "$(dirname -- "$oa_build_manifest")" && pwd -P) || return 1
 oa_build_manifest=$oa_build_parent/$(basename -- "$oa_build_manifest")
+# OPENAGENTS_NIGHTLY=1 opts a local dev build or test into the pinned nightly
+# in scripts/dev/nightly-toolchain with the parallel front end (#12186).
+# Releases, the land queue, the pool and Docker never set it. Its compiler
+# version gives it build state of its own below, apart from stable's.
+if [ "${OPENAGENTS_NIGHTLY:-}" = 1 ]; then
+  oa_build_nightly=$(sed -n '1p' "$(dirname -- "$oa_build_manifest")/scripts/dev/nightly-toolchain" 2>/dev/null)
+  [ -n "$oa_build_nightly" ] || oa_build_nightly=$(sed -n '1p' "$(dirname -- "$oa_build_manifest")/../../scripts/dev/nightly-toolchain" 2>/dev/null)
+  oa_build_threads=${OPENAGENTS_NIGHTLY_THREADS:-8}
+  # rustup which installs a missing toolchain, so ask the list first.
+  if [ -n "$oa_build_nightly" ] && command -v rustup >/dev/null 2>&1 \
+    && rustup toolchain list 2>/dev/null | grep -q "^$oa_build_nightly" \
+    && oa_build_rustc=$(rustup which --toolchain "$oa_build_nightly" rustc 2>/dev/null); then
+    RUSTC=$oa_build_rustc
+    # RUSTFLAGS replaces the config's build.rustflags, so add to whichever
+    # one Cargo reads.
+    if [ -n "${RUSTFLAGS:-}" ]; then
+      RUSTFLAGS="$RUSTFLAGS -Zthreads=$oa_build_threads"
+      export RUSTFLAGS
+    else
+      CARGO_BUILD_RUSTFLAGS="${CARGO_BUILD_RUSTFLAGS:+$CARGO_BUILD_RUSTFLAGS }-Zthreads=$oa_build_threads"
+      export CARGO_BUILD_RUSTFLAGS
+    fi
+  else
+    echo "OPENAGENTS_NIGHTLY is set, but ${oa_build_nightly:-the pinned nightly} is not installed, so this build uses stable. Install it with: rustup toolchain install ${oa_build_nightly:-NIGHTLY} --profile minimal" >&2
+  fi
+fi
 # A rustup proxy selects again in each dependency's working directory. Pin
 # the compiler here, before Cargo changes directories (#12113).
 oa_build_rustc=$(command -v "${RUSTC:-${CARGO_BUILD_RUSTC:-rustc}}") || { echo 'Cannot find the Rust compiler. Set RUSTC, then try again.' >&2; return 1; }
@@ -66,4 +92,4 @@ printf '%s\n%s\n' "$RUSTC" "$oa_build_version" > "$CARGO_BUILD_BUILD_DIR/.compil
 mv -f "$CARGO_BUILD_BUILD_DIR/.compiler.$$.new" "$CARGO_BUILD_BUILD_DIR/.openagents-compiler" || return 1
 printf '%s\n' "$oa_build_manifest" > "$CARGO_BUILD_BUILD_DIR/.workspace.$$.new" || return 1
 mv -f "$CARGO_BUILD_BUILD_DIR/.workspace.$$.new" "$CARGO_BUILD_BUILD_DIR/.openagents-workspace" || return 1
-unset oa_build_manifest oa_build_parent oa_build_hash oa_build_rustc oa_build_rustup oa_build_version oa_build_kache oa_build_key
+unset oa_build_nightly oa_build_threads oa_build_manifest oa_build_parent oa_build_hash oa_build_rustc oa_build_rustup oa_build_version oa_build_kache oa_build_key
