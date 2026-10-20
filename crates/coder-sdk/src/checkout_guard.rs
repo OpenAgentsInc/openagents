@@ -636,6 +636,20 @@ pub fn tool_refusal(
     input: &Value,
     cwd: &Path,
 ) -> Option<String> {
+    tool_refusal_in(boundary, tool, input, cwd, false)
+}
+
+/// [`tool_refusal`] for a session whose `cwd` is a worktree of its own
+/// (`own`): git may discard uncommitted work there, but only there
+/// ([`crate::git_guard::refusal_in`]).
+#[must_use]
+pub fn tool_refusal_in(
+    boundary: Option<&Boundary>,
+    tool: &str,
+    input: &Value,
+    cwd: &Path,
+    own: bool,
+) -> Option<String> {
     match tool {
         "Bash" | "Run" | "Monitor" | "shell" | "exec_command" | "local_shell" => {
             let text = crate::floors::command_text(input)?;
@@ -645,8 +659,10 @@ pub fn tool_refusal(
                 .map_or_else(|| cwd.to_path_buf(), |dir| cwd.join(dir));
             // The command and each script a shell wrapper in it runs
             // (`bash -lc '...'`), so wrapping never hides a write.
+            let own = own && here.starts_with(cwd);
             crate::floors::scripts(&text).iter().find_map(|script| {
-                crate::git_guard::refusal(script).or_else(|| boundary?.run_refusal(script, &here))
+                crate::git_guard::refusal_in(script, own)
+                    .or_else(|| boundary?.run_refusal(script, &here))
             })
         }
         "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => {
@@ -698,6 +714,18 @@ pub fn hook(cwd: PathBuf) -> Hook {
 /// is the whole disk); `None` leaves only [`crate::git_guard`].
 #[must_use]
 pub fn hook_on(cwd: PathBuf, boundary: Option<Boundary>) -> Hook {
+    fence(cwd, boundary, false)
+}
+
+/// [`hook`] for a session in a worktree made for it alone (an issue run's,
+/// #12247): git may restore or reset files in `cwd`, never elsewhere.
+#[must_use]
+pub fn own_worktree_hook(cwd: PathBuf) -> Hook {
+    let boundary = Boundary::around(&cwd);
+    fence(cwd, boundary, true)
+}
+
+fn fence(cwd: PathBuf, boundary: Option<Boundary>, own: bool) -> Hook {
     Hook::floor(
         "worktree-fence",
         Event::PreToolUse,
@@ -707,7 +735,7 @@ pub fn hook_on(cwd: PathBuf, boundary: Option<Boundary>) -> Hook {
         move |call: &Call| {
             let tool = call.tool.as_deref().unwrap_or_default();
             Ok(
-                match tool_refusal(boundary.as_ref(), tool, &call.input, &cwd) {
+                match tool_refusal_in(boundary.as_ref(), tool, &call.input, &cwd, own) {
                     Some(reason) => HookOutcome::deny(&reason),
                     None => HookOutcome::none(),
                 },
@@ -949,6 +977,20 @@ mod tests {
                 .is_none()
         );
         assert!(b.file_refusal("Write", "/elsewhere/notes.md", wt).is_none());
+    }
+
+    #[test]
+    fn a_runs_own_worktree_may_restore_only_inside_it() {
+        // #12247: `git restore` of the agent's own stray edits.
+        let cwd = Path::new("/home/coder/.openagents/work/runs/r/briefed:codex/worktree");
+        let restore = |input: serde_json::Value, own| {
+            super::tool_refusal_in(None, "exec_command", &input, cwd, own)
+        };
+        let here = serde_json::json!({"cmd": "git restore crates/a/src/lib.rs"});
+        assert!(restore(here.clone(), true).is_none());
+        assert!(restore(here, false).is_some());
+        let away = serde_json::json!({"cmd": "git restore .", "workdir": "/home/coder/openagents"});
+        assert!(restore(away, true).is_some());
     }
 
     #[test]

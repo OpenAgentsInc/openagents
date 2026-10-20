@@ -141,9 +141,13 @@ fn compose(setup: &Setup<'_>) -> Result<Composed, String> {
     // The shared-checkout fence (#11532): no git command that throws away
     // uncommitted work, and no write to the checkout a Coder worktree came
     // from.
-    registry.register(coder_sdk::checkout_guard::hook(
-        setup.worktree.to_path_buf(),
-    ))?;
+    // A worktree the driver made for this run alone (`own_worktree`) lets
+    // the agent undo its own edits there (#12247).
+    registry.register(if config["own_worktree"].as_bool() == Some(true) {
+        coder_sdk::checkout_guard::own_worktree_hook(setup.worktree.to_path_buf())
+    } else {
+        coder_sdk::checkout_guard::hook(setup.worktree.to_path_buf())
+    })?;
 
     // System One hook 1 (#11486): noisy Bash output squeezed.
     if config["squeeze"].as_bool() == Some(true)

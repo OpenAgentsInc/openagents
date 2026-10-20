@@ -536,6 +536,8 @@ def run_briefed(run: Run, b: dict, root: Path, out: Path, model: str, timeout: i
         "summary_path": str(out / "summary.json"), "briefed_files": [f["path"] for f in b["files"]],
         "model": model, "timeout_secs": timeout, "tools": ["Read", "Edit", "Write", "Grep", "Glob"],
         "custom": ["verify"], "inherit_api_key": keeps_api_key(), "engine": backend,
+        # The worktree is this attempt's alone: the agent may undo its own edits (#12247).
+        "own_worktree": True,
         "verify": {
             "exec": str(LOCAL_EXEC), "crates": packages, "baseline_errors": [],
             "done_when": [p.removeprefix("Required: ") for p in b["plan"] if p.startswith("Required: ")]

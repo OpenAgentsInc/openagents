@@ -6,6 +6,31 @@
 /// Why `command` is refused, or `None` when it may run.
 #[must_use]
 pub fn refusal(command: &str) -> Option<String> {
+    refusal_in(command, false)
+}
+
+/// [`refusal`] for a command run in a checkout that is the session's own
+/// (`own`): a worktree made for this one run, whose uncommitted changes
+/// are all the session's. There it may restore, check out, reset, or
+/// clean its own files (#12247: a briefed agent couldn't undo its stray
+/// edits). A stash still goes to the repository's shared stash, and a
+/// command that names another checkout (`-C`, `--git-dir`, `--work-tree`,
+/// or a `cd`) is judged as in a shared one.
+#[must_use]
+pub fn refusal_in(command: &str, own: bool) -> Option<String> {
+    let elsewhere = segments(command).any(|words| {
+        words
+            .first()
+            .is_some_and(|word| matches!(word.as_str(), "cd" | "pushd"))
+            || git_subcommand(&words).is_some_and(|_| {
+                words.iter().any(|word| {
+                    matches!(word.as_str(), "-C" | "--git-dir" | "--work-tree")
+                        || word.starts_with("--git-dir=")
+                        || word.starts_with("--work-tree=")
+                })
+            })
+    });
+    let own = own && !elsewhere;
     // A PowerShell script Coder can't read could run any of these
     // (#11708).
     if crate::floors::unreadable(command) {
@@ -13,6 +38,9 @@ pub fn refusal(command: &str) -> Option<String> {
     }
     segments(command).find_map(|words| {
         let (subcommand, rest) = git_subcommand(&words)?;
+        if own && subcommand != "stash" {
+            return None;
+        }
         let refused = match subcommand {
             "stash" => !matches!(rest.first().map(String::as_str), Some("list" | "show")),
             "reset" => rest.iter().any(|word| word == "--hard" || word == "--merge" || word == "--keep"),
@@ -77,6 +105,28 @@ mod tests {
             "git clean -fd",
         ] {
             assert!(refusal(command).is_some(), "{command}");
+        }
+    }
+
+    #[test]
+    fn a_runs_own_worktree_may_undo_its_own_edits() {
+        use super::refusal_in;
+        for command in [
+            "git restore apps/openagents/crates/client/src/demo/mod.rs crates/openagents-web/src/pages/mod.rs",
+            "git checkout -- src/lib.rs",
+            "git reset --hard",
+            "git clean -fd",
+        ] {
+            assert!(refusal_in(command, true).is_none(), "{command}");
+            assert!(refusal_in(command, false).is_some(), "{command}");
+        }
+        for command in [
+            "git stash",
+            "git -C /home/coder/openagents restore .",
+            "git --work-tree=/repo checkout -- .",
+            "cd /home/coder/openagents && git restore .",
+        ] {
+            assert!(refusal_in(command, true).is_some(), "{command}");
         }
     }
 
