@@ -152,7 +152,7 @@ impl ChatApp {
         self.meta.contains_key(id)
     }
 
-    fn registry_write(
+    pub(super) fn registry_write(
         &mut self,
         cx: &mut Context<Self>,
         f: impl FnOnce(&mut workspace::Replica) -> Result<(), String>,
