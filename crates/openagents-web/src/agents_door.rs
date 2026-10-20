@@ -24,7 +24,6 @@ use std::time::Duration;
 
 use openagents_chat::basic_coder::{self, Door, Failure, Reply, Role as TurnRole, Turn};
 use openagents_chat::router::Context;
-use openagents_sdk::agent_lab::Host;
 use openagents_sdk::agents::AgentDefinition;
 use openagents_sdk::agents::assignments::{AssignmentSpec, AssignmentState, CreateAssignment};
 use serde_json::{Value, json};
@@ -162,49 +161,6 @@ fn request(instructions: &str, turns: &[Turn], agents: &[AgentDefinition]) -> Va
     })
 }
 
-/// Where an agent runs: an online computer with its runtime and a project
-/// on it. Among those, the computer that has a project named like the
-/// chat's repository comes first, then the one seen most recently.
-pub(crate) fn place(
-    hosts: &[Host],
-    agent: &AgentDefinition,
-    repository: Option<&str>,
-) -> Option<(Host, String)> {
-    let wanted = repository
-        .and_then(|r| r.rsplit('/').next())
-        .map(str::to_lowercase);
-    let runs_here = |h: &&Host| {
-        if agent.spec.runtime == "sdk" {
-            agent
-                .spec
-                .model
-                .as_ref()
-                .is_some_and(|m| h.runners.contains(m))
-        } else {
-            h.runtimes.iter().any(|r| *r == agent.spec.runtime)
-        }
-    };
-    let mut fit: Vec<&Host> = hosts
-        .iter()
-        .filter(runs_here)
-        .filter(|h| !h.projects.is_empty())
-        .collect();
-    fit.sort_by(|a, b| b.seen_ms.cmp(&a.seen_ms));
-    let named = |h: &Host| {
-        wanted.as_ref().and_then(|w| {
-            h.projects
-                .iter()
-                .find(|p| p.name.to_lowercase() == *w)
-                .map(|p| p.id.clone())
-        })
-    };
-    if let Some((h, p)) = fit.iter().find_map(|h| named(h).map(|p| (*h, p))) {
-        return Some((h.clone(), p));
-    }
-    fit.first()
-        .map(|h| ((*h).clone(), h.projects[0].id.clone()))
-}
-
 /// The assignment request for this turn and agent: the same turn retried
 /// finds the same assignment instead of starting the agent twice.
 pub(crate) fn assignment_id(turn: &str, agent: &str) -> String {
@@ -227,7 +183,13 @@ async fn ask(door: &AgentsDoor, agent: &AgentDefinition, question: &str) -> Stri
             );
         }
     };
-    let Some((host, project)) = place(&hosts, agent, door.repository.as_deref()) else {
+    let prefer = door
+        .repository
+        .as_deref()
+        .and_then(|r| r.rsplit('/').next());
+    let Ok((host, project)) =
+        openagents_sdk::agents::place::place(&hosts, agent, None, None, prefer)
+    else {
         return format!(
             "{name} runs on your computer, and none is online with {} and a project. \
 Open the OpenAgents desktop app on that computer, then ask again.",
@@ -263,7 +225,9 @@ Open the OpenAgents desktop app on that computer, then ask again.",
     let id = match created {
         Ok(Ok(a)) => a.id,
         _ => {
-            return format!("We couldn't give {name} the question just now. Try again in a minute.");
+            return format!(
+                "We couldn't give {name} the question just now. Try again in a minute."
+            );
         }
     };
     let started = tokio::time::Instant::now();
@@ -403,7 +367,6 @@ impl Door for AgentsDoor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openagents_sdk::agent_lab::Project;
     use openagents_sdk::agents::{Access, AgentSpec};
 
     fn agent(runtime: &str) -> AgentDefinition {
@@ -421,40 +384,6 @@ mod tests {
             deleted: false,
         }
     }
-    fn host(id: &str, seen: u64, runtimes: &[&str], projects: &[&str]) -> Host {
-        Host {
-            id: id.into(),
-            name: id.into(),
-            projects: projects
-                .iter()
-                .map(|p| Project {
-                    id: format!("{id}-{p}"),
-                    name: (*p).into(),
-                })
-                .collect(),
-            runtimes: runtimes.iter().map(|r| (*r).into()).collect(),
-            runners: vec![],
-            tools: vec![],
-            seen_ms: seen,
-        }
-    }
-
-    #[test]
-    fn places_on_a_computer_with_the_runtime_preferring_the_named_project() {
-        let hosts = vec![
-            host("old", 1, &["claude-code"], &["openagents"]),
-            host("new", 2, &["claude-code"], &["scratch"]),
-            host("codex-only", 3, &["codex"], &["openagents"]),
-        ];
-        let a = agent("claude-code");
-        let (h, p) = place(&hosts, &a, Some("OpenAgentsInc/openagents")).unwrap();
-        assert_eq!((h.id.as_str(), p.as_str()), ("old", "old-openagents"));
-        let (h, p) = place(&hosts, &a, None).unwrap();
-        assert_eq!((h.id.as_str(), p.as_str()), ("new", "new-scratch"));
-        assert!(place(&[host("x", 1, &["claude-code"], &[])], &a, None).is_none());
-        assert!(place(&hosts, &agent("sdk"), None).is_none());
-    }
-
     #[test]
     fn a_retried_turn_reuses_its_assignment() {
         let id = assignment_id("turn-1", &"a".repeat(64));

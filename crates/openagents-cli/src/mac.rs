@@ -184,6 +184,11 @@ pub(crate) fn saved(dir: Option<&str>) -> Result<Saved, String> {
     {
         return Ok(saved);
     }
+    if dir.is_none() && openagents_login::token_env_set(|name| std::env::var(name).ok()) {
+        return Err(
+            "OPENAGENTS_TOKEN isn't a login key. Set it to a sign-in key or session token, or unset it to use this computer's login.".into(),
+        );
+    }
     let dir = dir.map_or_else(
         || {
             let root = user_home::home_os()

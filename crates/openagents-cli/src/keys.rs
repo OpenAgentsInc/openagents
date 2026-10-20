@@ -321,6 +321,16 @@ impl Site {
             .is_none()
             .then(|| Saved::from_env(|name| std::env::var(name).ok()))
             .flatten();
+        // A token in the environment that isn't a login must not quietly
+        // fall back to the login saved on disk, another account's (#11935).
+        if dir.is_none()
+            && from_env.is_none()
+            && openagents_login::token_env_set(|name| std::env::var(name).ok())
+        {
+            return Err(
+                "OPENAGENTS_TOKEN isn't a login key. Set it to a sign-in key or session token, or unset it to use this computer's login.".into(),
+            );
+        }
         let (saved, dir) = match from_env {
             Some(saved) => (saved, None),
             None => {
