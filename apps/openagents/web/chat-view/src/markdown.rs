@@ -493,24 +493,27 @@ fn split_at(runs: &mut Vec<TextRun>, at: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{AvailableSpace, TestAppContext, point, size};
+    use gpui::{Context, Render, TestAppContext, TextLayout, size};
 
-    #[gpui::test]
-    fn table_cells_wrap_at_phone_width(cx: &mut TestAppContext) {
-        let cx = cx.add_empty_window();
-        cx.simulate_resize(size(px(390.), px(844.)));
-        cx.update(|window, cx| {
-            let sources = [
-                "A long table cell with several words that must wrap inside its column.",
-                "https://example.com/averylongunbrokenpaththatmuststayinsideitscolumn",
-                "averylongunbrokenidentifierthatmustwrapwithoutlosinganycharacters",
-            ];
+    const SOURCES: [&str; 3] = [
+        "A long table cell with several words that must wrap inside its column.",
+        "https://example.com/averylongunbrokenpaththatmuststayinsideitscolumn",
+        "averylongunbrokenidentifierthatmustwrapwithoutlosinganycharacters",
+    ];
+
+    #[derive(Default)]
+    struct TableCellHarness {
+        layouts: Vec<TextLayout>,
+    }
+
+    impl Render for TableCellHarness {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
             let aligns = [TableAlign::Left, TableAlign::Center, TableAlign::Right];
-            let mut layouts = Vec::new();
+            self.layouts.clear();
             let mut row = div().flex().w_full();
-            for (ix, source) in sources.iter().enumerate() {
+            for (ix, source) in SOURCES.iter().enumerate() {
                 let styled = StyledText::new(*source);
-                layouts.push(styled.layout().clone());
+                self.layouts.push(styled.layout().clone());
                 let content = if ix == 1 {
                     InteractiveText::new("table-link", styled)
                         .on_click(vec![0..source.len()], |_, _, _| {})
@@ -521,29 +524,29 @@ mod tests {
                 row = row.child(table_cell(content, aligns[ix]));
             }
             // The card has the same side inset as a phone transcript.
-            let mut card = div()
+            div()
                 .w(px(390.))
                 .px(px(16.))
                 .text_size(px(theme::BODY))
                 .line_height(px(theme::BODY_LINE))
                 .child(row)
-                .into_any_element();
-            card.prepaint_as_root(
-                point(px(0.), px(0.)),
-                size(
-                    AvailableSpace::Definite(px(390.)),
-                    AvailableSpace::MaxContent,
-                ),
-                window,
-                cx,
-            );
+        }
+    }
+
+    #[gpui::test]
+    fn table_cells_wrap_at_phone_width(cx: &mut TestAppContext) {
+        let (view, cx) = cx.add_window_view(|_, _| TableCellHarness::default());
+        cx.simulate_resize(size(px(390.), px(844.)));
+        cx.update(|window, cx| {
+            window.refresh();
+            window.draw(cx).clear();
             let column_width = (390. - 32.) / 3.;
-            for (ix, layout) in layouts.iter().enumerate() {
+            for (ix, layout) in view.read(cx).layouts.iter().enumerate() {
                 let left = px(16. + ix as f32 * column_width + 12.);
                 let right = left + px(column_width - 24.);
                 assert!(layout.bounds().size.height > px(theme::BODY_LINE));
-                assert_eq!(layout.wrapped_text().replace('\n', ""), sources[ix]);
-                for (index, _) in sources[ix].char_indices() {
+                assert_eq!(layout.wrapped_text().replace('\n', ""), SOURCES[ix]);
+                for (index, _) in SOURCES[ix].char_indices() {
                     let position = layout.position_for_index(index).expect("visible character");
                     assert!(position.x >= left - px(1.), "column {ix}: {position:?}");
                     assert!(position.x <= right + px(1.), "column {ix}: {position:?}");
