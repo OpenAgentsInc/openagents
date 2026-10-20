@@ -511,8 +511,7 @@ impl PullRequestDetailPage {
                                     .on_click(cx.listener(move |page, _, _, cx| {
                                         page.verification_platform = platform;
                                         cx.notify();
-                                    },
-                                ))
+                                    }))
                             }),
                         ),
                     ),
@@ -707,7 +706,9 @@ mod tests {
         assert!(checks.contains("If it changed, refresh the assessment"));
         assert!(checks.contains("exact final commit tested"));
         assert!(checks.contains("test commands, and pass/fail/skipped results"));
-        assert!(checks.contains("- linux: https://github.com/acme/openagents/actions/runs/1 (FAILURE)"));
+        assert!(
+            checks.contains("- linux: https://github.com/acme/openagents/actions/runs/1 (FAILURE)")
+        );
         assert!(!checks.contains("macos"), "passing checks are not listed");
         let review = prompt(
             Handoff::Review,

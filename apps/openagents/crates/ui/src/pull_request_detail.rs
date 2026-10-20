@@ -14,12 +14,12 @@ use gpui::{
     Action, AnyElement, App, Context, Entity, Focusable, IntoElement, Render, SharedString,
     Subscription, Task, Window, div, prelude::*, px,
 };
-#[cfg(test)]
-use std::time::Duration;
-use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 use openagents_proto::change_request_assessment::{CiState, Facts, check_failed, check_status};
 use openagents_proto::{ChangeRequestDetail, ChangeRequestListItem};
 use openagents_rpc::methods;
+#[cfg(test)]
+use std::time::Duration;
+use std::{cell::RefCell, rc::Rc, sync::Arc, time::Instant};
 
 #[derive(Clone, PartialEq, Action)]
 #[action(namespace = shell, no_json)]
@@ -1224,9 +1224,7 @@ fn inline_thread(
 
 fn activity_time(raw: &str) -> String {
     chrono::DateTime::parse_from_rfc3339(raw)
-        .map(|time| {
-            relative_time(time.with_timezone(&chrono::Utc), chrono::Utc::now())
-        })
+        .map(|time| relative_time(time.with_timezone(&chrono::Utc), chrono::Utc::now()))
         .unwrap_or_else(|_| raw.to_owned())
 }
 
@@ -1829,75 +1827,74 @@ impl Render for PullRequestDetailPage {
                             .id("pr-assessment")
                             .debug_selector(|| "pr-assessment".into())
                             .child(
-                                widgets::card_row(&theme, true)
-                                    .child(
-                                        div()
-                                            .flex_1()
-                                            .min_w_0()
-                                            .flex()
-                                            .flex_col()
-                                            .gap(px(6.0))
-                                            .child(widgets::row_title(&theme, "Current assessment"))
-                                            .child(
-                                                div()
-                                                    .text_size(crate::typography::ui_rems(12.0))
-                                                    .text_color(theme.text_muted)
-                                                    .child(if assessment.blockers.is_empty() {
-                                                        if assessment.missing.is_empty() {
-                                                            "No blockers reported".to_owned()
-                                                        } else {
-                                                            "Assessment incomplete".to_owned()
-                                                        }
+                                widgets::card_row(&theme, true).child(
+                                    div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .flex()
+                                        .flex_col()
+                                        .gap(px(6.0))
+                                        .child(widgets::row_title(&theme, "Current assessment"))
+                                        .child(
+                                            div()
+                                                .text_size(crate::typography::ui_rems(12.0))
+                                                .text_color(theme.text_muted)
+                                                .child(if assessment.blockers.is_empty() {
+                                                    if assessment.missing.is_empty() {
+                                                        "No blockers reported".to_owned()
                                                     } else {
-                                                        assessment
-                                                            .blockers
-                                                            .iter()
-                                                            .map(|blocker| blocker.label())
-                                                            .collect::<Vec<_>>()
-                                                            .join(" · ")
-                                                    }),
-                                            )
-                                            .children(assessment.actions.first().map(|action| {
-                                                div()
-                                                    .text_size(crate::typography::ui_rems(12.0))
-                                                    .text_color(theme.text)
-                                                    .child(format!("Next: {}", action.label()))
-                                            }))
-                                            .children(assessment.missing.iter().map(|missing| {
-                                                div()
-                                                    .text_size(crate::typography::ui_rems(11.0))
-                                                    .text_color(theme.text_muted)
-                                                    .child(missing.label())
-                                            }))
-                                            .child(
-                                                div()
-                                                    .id("pr-head-commit")
-                                                    .min_w_0()
-                                                    .truncate()
-                                                    .tooltip(widgets::text_tooltip(
-                                                        if detail.head_ref_oid.is_empty() {
-                                                            "Current commit unavailable".to_owned()
-                                                        } else {
-                                                            detail.head_ref_oid.clone()
-                                                        },
-                                                    ))
-                                                    .text_size(crate::typography::ui_rems(11.0))
-                                                    .font_family(theme.font_mono.clone())
-                                                    .text_color(theme.text_muted)
-                                                    .child(if detail.head_ref_oid.is_empty() {
-                                                        "Commit unavailable".to_owned()
+                                                        "Assessment incomplete".to_owned()
+                                                    }
+                                                } else {
+                                                    assessment
+                                                        .blockers
+                                                        .iter()
+                                                        .map(|blocker| blocker.label())
+                                                        .collect::<Vec<_>>()
+                                                        .join(" · ")
+                                                }),
+                                        )
+                                        .children(assessment.actions.first().map(|action| {
+                                            div()
+                                                .text_size(crate::typography::ui_rems(12.0))
+                                                .text_color(theme.text)
+                                                .child(format!("Next: {}", action.label()))
+                                        }))
+                                        .children(assessment.missing.iter().map(|missing| {
+                                            div()
+                                                .text_size(crate::typography::ui_rems(11.0))
+                                                .text_color(theme.text_muted)
+                                                .child(missing.label())
+                                        }))
+                                        .child(
+                                            div()
+                                                .id("pr-head-commit")
+                                                .min_w_0()
+                                                .truncate()
+                                                .tooltip(widgets::text_tooltip(
+                                                    if detail.head_ref_oid.is_empty() {
+                                                        "Current commit unavailable".to_owned()
                                                     } else {
-                                                        format!(
-                                                            "Commit {}",
-                                                            detail
-                                                                .head_ref_oid
-                                                                .chars()
-                                                                .take(7)
-                                                                .collect::<String>()
-                                                        )
-                                                    }),
-                                            ),
-                                    ),
+                                                        detail.head_ref_oid.clone()
+                                                    },
+                                                ))
+                                                .text_size(crate::typography::ui_rems(11.0))
+                                                .font_family(theme.font_mono.clone())
+                                                .text_color(theme.text_muted)
+                                                .child(if detail.head_ref_oid.is_empty() {
+                                                    "Commit unavailable".to_owned()
+                                                } else {
+                                                    format!(
+                                                        "Commit {}",
+                                                        detail
+                                                            .head_ref_oid
+                                                            .chars()
+                                                            .take(7)
+                                                            .collect::<String>()
+                                                    )
+                                                }),
+                                        ),
+                                ),
                             );
                         column = column
                             .child(assessment_card)
@@ -2474,7 +2471,9 @@ mod tests {
         );
         cx.simulate_keystrokes("cmd-c");
         assert_eq!(
-            cx.read_from_clipboard().and_then(|item| item.text()).as_deref(),
+            cx.read_from_clipboard()
+                .and_then(|item| item.text())
+                .as_deref(),
             Some("First")
         );
         page.update(cx, |page, cx| page.select_tab(Tab::Activity, cx));
@@ -2969,15 +2968,18 @@ mod tests {
 
     #[test]
     fn ci_summary_handles_mixed_and_unreported_checks() {
-        let check = |conclusion: &str, state: &str, status: &str| openagents_proto::ChangeRequestCheck {
-            conclusion: conclusion.into(),
-            state: state.into(),
-            status: status.into(),
-            ..Default::default()
-        };
+        let check =
+            |conclusion: &str, state: &str, status: &str| openagents_proto::ChangeRequestCheck {
+                conclusion: conclusion.into(),
+                state: state.into(),
+                status: status.into(),
+                ..Default::default()
+            };
         let ci_status = |checks: &[openagents_proto::ChangeRequestCheck]| {
             super::ci_status(&ChangeRequestDetail {
-                ci: openagents_proto::change_request_assessment::ChangeRequestCi::from_checks(checks),
+                ci: openagents_proto::change_request_assessment::ChangeRequestCi::from_checks(
+                    checks,
+                ),
                 status_check_rollup: checks.to_vec(),
                 ..Default::default()
             })

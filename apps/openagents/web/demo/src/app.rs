@@ -134,6 +134,11 @@ impl ChatApp {
         let images = Rc::new(RefCell::new(images));
         let shared = cx.new(|_| WebTranscript::default());
         let view = desktop_transcript::new(&shared, images, cx);
+        view.update(cx, |view, _| {
+            view.media.visual_reader = Some(Rc::new(|path| {
+                Box::pin(async move { crate::demo::visuals::read(&path) })
+            }));
+        });
         let mut this = Self {
             chats: load_chats(),
             current: 0,

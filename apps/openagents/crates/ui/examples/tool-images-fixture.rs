@@ -3,10 +3,10 @@
 //! workspace. Close the window to exit. No agent runs.
 use gpui::{AppContext, Bounds, WindowBounds, WindowOptions, px, size};
 use image::{ImageEncoder, Rgba, RgbaImage};
-use serde_json::json;
-use std::{path::Path, sync::Arc};
 use openagents_proto::ToolCall;
 use openagents_ui::*;
+use serde_json::json;
+use std::{path::Path, sync::Arc};
 
 fn port() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0")
