@@ -186,7 +186,14 @@ async fn settings(
     )
     .await;
     let computers = crate::device::computers_section(&app, service, &headers, &viewer).await;
-    let plan = plan_section(&app, service, &headers, &viewer, returned);
+    // Billing and the affiliate program aren't ready (#12336): without
+    // their features, Settings leaves their sections out.
+    let features = app.config.features;
+    let plan = if features.on(crate::features::Feature::Billing) {
+        plan_section(&app, service, &headers, &viewer, returned)
+    } else {
+        html! {}
+    };
     let macs = crate::mac_jobs_page::settings_row(
         &app.config.chat_store,
         &crate::chat_store::account_owner(&viewer.account_id),
@@ -198,7 +205,11 @@ async fn settings(
         crate::environments::board::rows(&app, &viewer.account_id, Some(&viewer)).await,
     )
     .await;
-    let affiliate = affiliate_section(&app, service, &headers).await;
+    let affiliate = if features.on(crate::features::Feature::Affiliates) {
+        affiliate_section(&app, service, &headers).await
+    } else {
+        html! {}
+    };
     let body = html! {
         (settings_content(&viewer.account_label, claude, chats, plan))
         (link::row())

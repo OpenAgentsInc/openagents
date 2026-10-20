@@ -34,10 +34,12 @@ pub(crate) fn routes() -> Router<App> {
 
 /// Whether this page is served. It promises the 3-day trial and Pro
 /// features that aren't built yet (`docs/pro/README.md`, build steps 2-6),
-/// so a deployment shows it only with `OPENAGENTS_PRICING_PAGE=1`;
-/// otherwise `/pricing` goes to the pricing guide, as it did before.
-fn served() -> bool {
-    cfg!(test) || std::env::var("OPENAGENTS_PRICING_PAGE").is_ok_and(|v| v == "1")
+/// so a deployment shows it only with the `billing` feature on
+/// ([`crate::features::Feature::Billing`]; `OPENAGENTS_PRICING_PAGE=1` still
+/// turns it on); otherwise `/pricing` goes to the pricing guide, as it did
+/// before.
+fn served(app: &App) -> bool {
+    app.config.features.on(crate::features::Feature::Billing)
 }
 
 /// Who is looking: what each card's button says and where it goes.
@@ -51,7 +53,7 @@ enum Visitor {
 }
 
 async fn pricing(State(app): State<App>, headers: HeaderMap) -> Response {
-    if !served() {
+    if !served(&app) {
         return axum::response::Redirect::temporary("/docs/pricing").into_response();
     }
     let visitor = match crate::account::current() {

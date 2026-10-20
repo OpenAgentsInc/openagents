@@ -253,7 +253,10 @@ async fn stage(app: &App, stage: &Stage, headers: &HeaderMap) -> Response {
     } else {
         None
     };
-    let hands = stage.path == VERSE.path && hand_files(app);
+    // Hand tracking waits on its check (#12309, #12336).
+    let hands = stage.path == VERSE.path
+        && app.config.features.on(crate::features::Feature::VerseHands)
+        && hand_files(app);
     // A signed-in person's browser asks for its Verse key's owner tag with
     // the page's own write value (#12313).
     let csrf = if stage.path == VERSE.path && name.is_some() {

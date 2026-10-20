@@ -901,12 +901,15 @@ fn civil(days: i64) -> String {
     format!("{year:04}-{month:02}-{day:02}")
 }
 
-pub(crate) fn sitemap_xml(origin: &str) -> String {
+pub(crate) fn sitemap_xml(origin: &str, features: crate::features::Features) -> String {
     let mut out = String::from(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
 <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n",
     );
     for path in public_paths() {
+        if features.hides(&path).is_some() {
+            continue;
+        }
         out.push_str(&format!(
             "  <url><loc>{origin}{path}</loc><lastmod>{}</lastmod></url>\n",
             started()
@@ -918,7 +921,7 @@ pub(crate) fn sitemap_xml(origin: &str) -> String {
 
 async fn sitemap(State(app): State<App>) -> Response {
     text_response(
-        sitemap_xml(&crate::wellknown::origin(&app)),
+        sitemap_xml(&crate::wellknown::origin(&app), app.config.features),
         "application/xml; charset=utf-8",
     )
 }

@@ -1477,6 +1477,7 @@ pub(crate) fn doc_content(
     csrf: Option<&str>,
     engine_in_browser: bool,
     plan: crate::cad_gate::Plan,
+    shop: bool,
 ) -> Markup {
     // CAD Lab's edits are part of Pro (#11693); a design stays viewable
     // and downloadable without it.
@@ -1496,7 +1497,9 @@ pub(crate) fn doc_content(
             data-cad-csrf=[csrf] data-cad-project=(scope.project.as_deref().unwrap_or("")) {
             (MarkdownRoot::new(html! {
                 h1 id="cad-doc-title" { (entry.title) }
-                a href="/cad-shop" {"Browse parts"} " · " a href="/cad-purchases" {"Your purchases"}
+                @if shop {
+                    a href="/cad-shop" {"Browse parts"} " · " a href="/cad-purchases" {"Your purchases"}
+                }
                 p.oa-page-lead {
                     "Version " (version) " of " (entry.versions)
                     @if let Some(summary) = record["summary"].as_str() { " · " (summary) }
@@ -1657,6 +1660,7 @@ pub(crate) async fn doc_page(
                 csrf.as_deref(),
                 engine_in_browser,
                 plan,
+                app.config.features.on(crate::features::Feature::CadShop),
             ))
             .wide(),
         )

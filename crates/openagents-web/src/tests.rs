@@ -5273,4 +5273,69 @@ async fn verse_offers_hands_only_with_the_landmarker() {
     );
     let (_, _, grid) = get_with(site, "/grid", LOCAL).await;
     assert!(!grid.contains("hand-toggle"));
+
+    // Hand tracking is off in production until its check passes (#12336).
+    let mut config = crate::Config::development(root.path().join("tasks"));
+    config.everglade = Some(root.path().join("everglade"));
+    config.lander9 = Some(root.path().join("lander9"));
+    config.features = crate::features::Features::none();
+    let (status, _, verse) = get_with(crate::router(config), "/verse", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(!verse.contains("hand-toggle"));
+}
+
+/// #12336: with every unready feature off, as production starts, each of
+/// their routes answers 404 (JSON under `/v1/`), the sitemap leaves their
+/// pages out, and turning a feature on brings its routes back.
+#[tokio::test]
+async fn hidden_features_answer_not_found() {
+    let root = tempfile::tempdir().unwrap();
+    let mut config = config(root.path().join("tasks"));
+    config.features = crate::features::Features::none();
+    let site = crate::router(config);
+    for path in [
+        "/v1/wallet/browser",
+        "/v1/wallet/browser/requests/abc",
+        "/affiliates",
+        "/cad-shop",
+        "/cad-shop/tok",
+        "/cad-order/o1",
+        "/cad-purchases",
+        "/live",
+        "/stats",
+    ] {
+        let (status, headers, body) = get_with(site.clone(), path, LOCAL).await;
+        assert_eq!(status, StatusCode::NOT_FOUND, "{path}: {body}");
+        if path.starts_with("/v1/") {
+            assert!(body.contains("\"not_found\""), "{path}: {body}");
+        } else {
+            assert!(
+                headers[header::CONTENT_TYPE]
+                    .to_str()
+                    .unwrap()
+                    .starts_with("text/html"),
+                "{path}"
+            );
+        }
+    }
+    // Without billing, /pricing is the pricing guide, as before.
+    let (status, headers, _) = get_with(site.clone(), "/pricing", LOCAL).await;
+    assert!(status.is_redirection(), "{status}");
+    assert_eq!(headers[header::LOCATION], "/docs/pricing");
+    let (_, _, sitemap) = get_with(site.clone(), "/sitemap.xml", LOCAL).await;
+    assert!(sitemap.contains("/roadmap</loc>"), "{sitemap}");
+    assert!(!sitemap.contains("/live</loc>") && !sitemap.contains("/stats</loc>"));
+    // Pages that stay don't link the hidden ones.
+    let (_, _, home) = get_with(site.clone(), "/", LOCAL).await;
+    assert!(!home.contains("href=\"/affiliates\""));
+    assert!(!home.contains("href=\"/cad-shop\""));
+
+    let mut config = crate::Config::development(root.path().join("tasks"));
+    config.features =
+        crate::features::Features::none().with(crate::features::Feature::Affiliates, true);
+    let site = crate::router(config);
+    let (status, _, _) = get_with(site.clone(), "/affiliates", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, _, _) = get_with(site, "/cad-shop", LOCAL).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

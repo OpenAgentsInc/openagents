@@ -256,7 +256,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Published agents answer mentions and private messages only when asked.
     config.gym_results = std::env::var("OPENAGENTS_WEB_GYM_RESULTS").map_or(true, |v| v != "off");
     config.front_door = std::env::var("OPENAGENTS_WEB_FRONT_DOOR").is_ok_and(|v| v == "on");
-    config.agent_replies = std::env::var("OPENAGENTS_WEB_AGENT_REPLIES").is_ok_and(|v| v == "on");
+    // Features that aren't ready start off (#12336): OPENAGENTS_WEB_FEATURES
+    // lists the ones to turn on.
+    config.features = openagents_web::features::Features::from_env();
+    config.agent_replies = config
+        .features
+        .on(openagents_web::features::Feature::AgentReplies);
     // Whose XP awards count on profiles.
     if let Ok(list) = std::env::var("OPENAGENTS_WEB_XP_REFEREES") {
         config.xp_referees = list.split(',').filter_map(xp_ledger::parse_key).collect();

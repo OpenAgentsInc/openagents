@@ -371,6 +371,7 @@ pub(crate) async fn page(
         fonts,
         build: build(app),
         first,
+        features: app.config.features,
     });
     let mut response = Html(document.into_string()).into_response();
     let policy = match &painter {
@@ -414,6 +415,9 @@ struct Shell<'a> {
     /// The painter and the kept frame's address, when the build has the
     /// painter.
     first: Option<Markup>,
+    /// The features that are on, for the canvas to hide the rest
+    /// ([`crate::features::META`]).
+    features: crate::features::Features,
 }
 
 /// The page: the outline the canvas replaces, the message for browsers
@@ -430,6 +434,7 @@ fn shell(page: &Shell<'_>) -> Markup {
         ref fonts,
         build,
         ref first,
+        features,
     } = *page;
     let new_chat = if base.is_empty() { "/" } else { base };
     html! {
@@ -444,6 +449,7 @@ fn shell(page: &Shell<'_>) -> Markup {
                 meta name="openagents-csrf" content=(csrf);
                 meta name="openagents-chat-base" content=(base);
                 meta name="openagents-signed-in" content=(if signed_in { "1" } else { "0" });
+                meta name=(crate::features::META) content=(features.meta());
                 title { (title) " \u{b7} OpenAgents" }
                 link rel="icon" type="image/svg+xml" href="/favicon.svg";
                 (PreEscaped(crate::theme::style_tag()))
@@ -635,11 +641,13 @@ mod tests {
             fonts: None,
             build: None,
             first: None,
+            features: crate::features::Features::all(),
         })
         .into_string();
         assert!(html.contains("src=\"/gpui/build/start.js\""));
         assert!(html.contains("rel=\"modulepreload\" href=\"/gpui/build/openagents_web_chat.js\""));
         assert!(html.contains("name=\"openagents-csrf\" content=\"abc123\""));
+        assert!(html.contains("name=\"openagents-features\" content=\"wallet,earn,"));
         assert!(html.contains("name=\"openagents-chat-base\" content=\"/gpui\""));
         assert!(html.contains("href=\"/gpui/chat/c1\""));
         assert!(html.contains("Fix the build &lt;now&gt;"));
@@ -663,6 +671,7 @@ mod tests {
             fonts: None,
             build: None,
             first: None,
+            features: crate::features::Features::all(),
         })
         .into_string();
         assert!(html.contains("name=\"openagents-chat-base\" content=\"\""));
@@ -716,6 +725,7 @@ mod tests {
             fonts: None,
             build: None,
             first: None,
+            features: crate::features::Features::all(),
         })
         .into_string();
         assert!(html.contains("id=\"gpui-side-live\" hx-get=\"/gpui/side\""));
@@ -788,6 +798,7 @@ mod tests {
             fonts: None,
             build: Some(dir.path()),
             first: None,
+            features: crate::features::Features::all(),
         })
         .into_string();
         assert!(html.contains(&format!("href=\"{BUILD_PATH}/{hashed}\"")));
@@ -808,6 +819,7 @@ mod tests {
             fonts: None,
             build: None,
             first: None,
+            features: crate::features::Features::all(),
         })
         .into_string();
         let text = oa_copy::visible_text(&html);

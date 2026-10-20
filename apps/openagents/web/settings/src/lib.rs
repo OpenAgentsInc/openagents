@@ -26,7 +26,12 @@ thread_local! {
 
 #[cfg(target_family = "wasm")]
 fn page_of(slug: &str) -> openagents_chat_view::settings_forms::Page {
-    openagents_chat_view::settings_forms::Page::from_slug(slug).unwrap_or_default()
+    let page = openagents_chat_view::settings_forms::Page::from_slug(slug).unwrap_or_default();
+    if app::shown(page) {
+        page
+    } else {
+        Default::default()
+    }
 }
 
 #[cfg(target_family = "wasm")]

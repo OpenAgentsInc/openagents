@@ -155,16 +155,21 @@ async fn settings(
     let links = tokens(&app.config.chat_store, &scope, &doc)
         .await
         .unwrap_or_default();
-    let offers = super::sales::listings(&app.config.chat_store, &scope, &doc)
-        .await
-        .unwrap_or_default();
+    let shop = app.config.features.on(crate::features::Feature::CadShop);
+    let offers = if shop {
+        super::sales::listings(&app.config.chat_store, &scope, &doc)
+            .await
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
     let action = format!("/cad/{doc}/configurator");
     let mut response = crate::ui_page::UiPage::new("Share a configurable design").head(html!{link rel="stylesheet" href=(crate::cad_lab::ASSET_CSS);script type="module" src=(SCRIPT) {}}).content(PageColumn::new(html!{
         h1 {"Share " (&entry.title)}
         @if !plan.pro() {
             (crate::cad_gate::upsell(plan, &scope.page(&doc, Some(version))))
         } @else {
-        p {"Choose up to eight sliders and their limits. Create a free link or list this version for sale."}
+        p {"Choose up to eight sliders and their limits. Create a free link" @if shop {" or list this version for sale"} "."}
         form method="post" action=(&action) hx-boost="false" data-cad-config-form="" {
             input type="hidden" name="csrf" value=(&csrf);input type="hidden" name="project" value=(scope.project.as_deref().unwrap_or(""));input type="hidden" name="version" value=(version);input type="hidden" name="controls";
             @for option in options {
@@ -178,12 +183,14 @@ async fn settings(
                 }
             }
             (Button::new("Create link").kind(ButtonType::Submit).attr("name","mode").attr("value","free").disabled(true))
+            @if shop {
             details {
                 summary {"Sell this version"}
                 label {"Price (sats) " input type="number" name="sats" min="1" max="10000000" step="1";}
                 label {"Your Lightning address " input type="text" name="lightning" maxlength="256" placeholder="you@your-wallet.com";}
                 p {"Payments go directly to this address. Your wallet must support payment checks."}
                 (Button::new("List for sale").kind(ButtonType::Submit).attr("name","mode").attr("value","sell").disabled(true))
+            }
             }
         }
         }
@@ -285,6 +292,10 @@ async fn publish(
     };
     let data = json!({"title":result["document"]["title"].as_str().unwrap_or(&doc),"version":form.version,"document":result["document"],"controls":result["controls"],"values":result["values"],"assets":assets,"view":view});
     if form.mode == "sell" {
+        // Selling parts isn't ready (#12336).
+        if !app.config.features.on(crate::features::Feature::CadShop) {
+            return crate::not_found_for(&headers);
+        }
         let sats = match form.sats.parse::<u64>() {
             Ok(sats) => sats,
             Err(_) => return (StatusCode::BAD_REQUEST, "Enter a price in sats.").into_response(),

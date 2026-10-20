@@ -13,6 +13,7 @@ pub mod cloud_computers;
 /// Earn on a paired computer (#12294).
 pub mod earn;
 pub mod event;
+pub mod features;
 /// Moving a chat to a cloud computer and back (#12282).
 pub mod moves;
 pub mod types;

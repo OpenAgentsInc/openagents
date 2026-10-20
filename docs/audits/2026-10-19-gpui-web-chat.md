@@ -210,6 +210,10 @@ identities, and one front door at `/`, is
 [One openagents.com](2026-10-20-openagents-com-unified-plan.md) (#12254 to
 #12261).
 
+The rest of the site's pages, the feature flags that hide what isn't ready,
+and the plan for making GPUI the default are in
+[GPUI everywhere](2026-10-20-gpui-everywhere.md) (#12325 to #12337).
+
 ## Risks
 
 - **Two chat UIs during the split.** Moving code out of `ui` (16,000-line

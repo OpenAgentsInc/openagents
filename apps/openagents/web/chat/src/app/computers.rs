@@ -624,7 +624,14 @@ impl ChatApp {
                     .into_any_element(),
             );
         }
-        if !meta.archived {
+        // Moving to a cloud computer waits on its check (#12336); bringing
+        // a chat back stays.
+        if !meta.archived
+            && (self.on_cloud(&id)
+                || openagents_web_client::features::on(
+                    openagents_web_client::features::MOVE_TO_CLOUD,
+                ))
+        {
             let moving = id.clone();
             let (key, label) = if self.on_cloud(&id) {
                 ("menu-bring-back", "Bring back")

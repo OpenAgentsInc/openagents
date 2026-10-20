@@ -311,6 +311,7 @@ fn the_page_lists_versions_and_files() {
         Some("token"),
         true,
         crate::cad_gate::Plan::Pro,
+        true,
     )
     .into_string();
     assert!(
@@ -329,6 +330,22 @@ fn the_page_lists_versions_and_files() {
     assert!(!html.contains("style="));
     let violations = oa_copy::violations(&html, &[]);
     assert!(violations.is_empty(), "{violations:?}");
+    assert!(html.contains("href=\"/cad-shop\""));
+    // Without the shop (#12336) the page links neither the parts nor the
+    // purchases.
+    let unsold = doc_content(
+        &scope,
+        "bracket",
+        &entry,
+        2,
+        &record,
+        Some("token"),
+        true,
+        crate::cad_gate::Plan::Pro,
+        false,
+    )
+    .into_string();
+    assert!(!unsold.contains("/cad-shop") && !unsold.contains("/cad-purchases"));
     // A viewer sees no delete, and without the browser engine no buttons
     // that can't work.
     let plain = doc_content(
@@ -340,6 +357,7 @@ fn the_page_lists_versions_and_files() {
         None,
         false,
         crate::cad_gate::Plan::Pro,
+        true,
     )
     .into_string();
     assert!(!plain.contains("Delete this design"));
@@ -357,6 +375,7 @@ fn the_page_lists_versions_and_files() {
         Some("token"),
         true,
         crate::cad_gate::Plan::Free,
+        true,
     )
     .into_string();
     assert!(free.contains(crate::cad_gate::TITLE), "{free}");

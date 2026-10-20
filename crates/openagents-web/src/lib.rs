@@ -74,6 +74,7 @@ mod device_nostr;
 mod docs_mcp;
 mod door_route;
 mod environments;
+pub mod features;
 mod issue_claims;
 mod issue_claims_openapi;
 mod owner_notifications;
@@ -145,8 +146,8 @@ mod traces;
 pub mod ui_page;
 pub mod upstream;
 mod vault;
-mod visitor_api;
 mod verse_key;
+mod visitor_api;
 mod wallet_browser;
 mod web_sign_in;
 mod wellknown;
@@ -486,8 +487,13 @@ pub struct Config {
     /// #12257). Empty shows no XP.
     pub xp_referees: Vec<String>,
     /// Whether published agents answer room mentions and private messages
-    /// (`OPENAGENTS_WEB_AGENT_REPLIES=on`; #12256). Off by default.
+    /// (#12256): [`features::Feature::AgentReplies`], which the binary sets
+    /// from [`features::Features::from_env`]. Off by default.
     pub agent_replies: bool,
+    /// The features that aren't ready for everyone, and which of them are
+    /// on (#12336). Every one is on in a config built in code; the binary
+    /// reads `OPENAGENTS_WEB_FEATURES`, where every one starts off.
+    pub features: features::Features,
     /// Whether `/` is the one front door for signed-out visitors: `/lander10`
     /// (`OPENAGENTS_WEB_FRONT_DOOR=on`; #12260), with the older landers
     /// moving to `/`. Off by default until the owner confirms; the current
@@ -652,6 +658,7 @@ impl Config {
             agent_key_seed: None,
             xp_referees: Vec::new(),
             agent_replies: false,
+            features: features::Features::all(),
             front_door: false,
             gym_results: false,
             lander8: None,
@@ -853,6 +860,9 @@ pub fn router(mut config: Config) -> Router {
             app.clone(),
             analytics::observe,
         ))
+        // A hidden feature's routes answer 404 before anything but the
+        // host guard runs (#12336).
+        .layer(middleware::from_fn_with_state(app.clone(), features::gate))
         .layer(middleware::from_fn(move |request, next| {
             let hosts = hosts.clone();
             async move { guard(hosts, request, next).await }

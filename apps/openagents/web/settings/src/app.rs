@@ -938,7 +938,7 @@ impl Render for SettingsApp {
             .when(!wide, |nav| {
                 nav.flex_row().flex_wrap().px(px(12.)).pt(px(10.))
             })
-            .children(Page::ALL.into_iter().map(|p| {
+            .children(Page::ALL.into_iter().filter(|p| shown(*p)).map(|p| {
                 let chosen = p == page;
                 div()
                     .id(gpui::SharedString::from(format!(
@@ -1298,4 +1298,10 @@ fn pick_file(accept: &str) -> impl std::future::Future<Output = Option<(String, 
         let buffer = JsFuture::from(file.array_buffer()).await.ok()?;
         Some((file.name(), js_sys::Uint8Array::new(&buffer).to_vec()))
     }
+}
+
+/// Whether Settings offers `page`: Earn only while the site turns it on
+/// (#12336).
+pub(crate) fn shown(page: Page) -> bool {
+    page != Page::Earn || openagents_web_client::features::on(openagents_web_client::features::EARN)
 }

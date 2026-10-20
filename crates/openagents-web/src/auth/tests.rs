@@ -85,6 +85,28 @@ async fn world_built_with(
     github_signup: bool,
     profile_relays: Vec<String>,
 ) -> World {
+    world_tweaked(
+        with_github,
+        service_invite,
+        web_invite,
+        extra,
+        github_signup,
+        profile_relays,
+        |_| {},
+    )
+    .await
+}
+
+/// [`world_built_with`], with `tweak` applied to the site's config last.
+async fn world_tweaked(
+    with_github: bool,
+    service_invite: Option<oa_auth::InviteOnly>,
+    web_invite: Option<oa_auth::InviteOnly>,
+    extra: Option<Router>,
+    github_signup: bool,
+    profile_relays: Vec<String>,
+    tweak: impl FnOnce(&mut crate::Config),
+) -> World {
     let fake = Fake::new(CLIENT, SECRET, REDIRECT, vec![fake::octo(), fake::quiet()]);
     let github_origin = fake.spawn().await.unwrap();
     let credentials = fake::credentials(&github_origin, CLIENT, SECRET, REDIRECT).unwrap();
@@ -169,6 +191,7 @@ async fn world_built_with(
             .unwrap()
             .checking(None),
     ));
+    tweak(&mut config);
     World {
         root,
         site: crate::router(config),
@@ -1906,3 +1929,47 @@ async fn apple_sign_in_was_removed_and_answers_gone() {
 }
 
 mod web_sign_in;
+
+/// #12336: with billing and the affiliate program off, as in production,
+/// Settings leaves out the plan section, and the plan and wallet routes
+/// answer 404; with them on, the plan section is back.
+#[tokio::test]
+async fn settings_leaves_out_hidden_features() {
+    let hidden = world_tweaked(true, None, None, None, true, Vec::new(), |config| {
+        config.features = crate::features::Features::none();
+    })
+    .await;
+    let mut browser = Browser::default();
+    let done = browser
+        .through_github(&hidden, "%2Fsettings", "login=octo-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    let settings = browser.get(&hidden, "/settings").await;
+    assert_eq!(settings.status, StatusCode::OK, "{}", settings.body);
+    assert!(
+        !settings.body.contains("settings-plan"),
+        "{}",
+        settings.body
+    );
+    assert!(!settings.body.contains("/settings/plan/"));
+    assert!(!settings.body.contains("Your affiliate earnings"));
+    for path in [
+        "/settings/plan/subscribe",
+        "/settings/plan/manage",
+        "/settings/plan/extra",
+    ] {
+        let answer = browser.post(&hidden, path, &[("csrf", "x")]).await;
+        assert_eq!(answer.status, StatusCode::NOT_FOUND, "{path}");
+    }
+    let wallet = browser.get(&hidden, "/v1/wallet/browser").await;
+    assert_eq!(wallet.status, StatusCode::NOT_FOUND);
+    assert!(wallet.body.contains("not_found"), "{}", wallet.body);
+
+    let shown = world(true).await;
+    let mut browser = Browser::default();
+    browser
+        .through_github(&shown, "%2Fsettings", "login=octo-local")
+        .await;
+    let settings = browser.get(&shown, "/settings").await;
+    assert!(settings.body.contains("settings-plan"), "{}", settings.body);
+}
