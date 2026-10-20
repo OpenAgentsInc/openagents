@@ -197,6 +197,55 @@ def finder_tool() -> Path | None:
     return dest / "filefind.py"
 
 
+# A cold index takes about 90 s on a pool host and a refresh about 10 s
+# (#12314); past this the briefing goes on with the lite finder.
+INDEX_SECS = int(os.environ.get("OA_FILEFIND_INDEX_SECS", "900"))
+
+
+def index_stamp(rev_sha: str) -> Path:
+    """The file recording which commit this repository's finder index is
+    at, beside the finder's copy (one per checkout)."""
+    import hashlib
+    repo = hashlib.sha256(str(Path(REPO).resolve()).encode()).hexdigest()[:12]
+    return WORK / "filefind" / f"indexed-{repo}"
+
+
+def ensure_index(tool: Path, rev: str, env: dict) -> str | None:
+    """Build the finder's index on first use, or refresh it when `rev` is
+    a commit it hasn't seen (#12314: pool hosts had none, so every
+    briefing fell back to the lite finder). Runs that brief at once take
+    turns under a lock, so one builds and the rest find it built. The
+    issue index is left out: it needs embeddings and `gh`. Returns None
+    when the index is at `rev`, else why it isn't."""
+    sha = git("rev-parse", "--verify", f"{rev}^{{commit}}", check=False).strip()
+    if not sha:
+        return f"{rev} isn't a commit here"
+    stamp = index_stamp(sha)
+    if stamp.exists() and stamp.read_text().strip() == sha:
+        return None
+    stamp.parent.mkdir(parents=True, exist_ok=True)
+    with open(stamp.with_suffix(".lock"), "w") as lock:
+        try:
+            import fcntl
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            pass
+        if stamp.exists() and stamp.read_text().strip() == sha:
+            return None
+        try:
+            proc = subprocess.run(
+                [sys.executable, str(tool), "index", "--repo", str(REPO), "--rev", sha, "--no-issues"],
+                cwd=REPO, capture_output=True, text=True, errors="replace", timeout=INDEX_SECS, env=env,
+            )
+        except subprocess.TimeoutExpired:
+            return f"building its index took over {INDEX_SECS} s"
+        if proc.returncode != 0:
+            last = [row for row in (proc.stderr or "").splitlines() if row.strip()][-1:]
+            return f"building its index failed (exit {proc.returncode})" + (f": {last[0][:160]}" if last else "")
+        stamp.write_text(sha + "\n")
+    return None
+
+
 def finder_env() -> dict:
     """The environment with the embeddings key loaded from the secrets
     file (never printed)."""
@@ -215,7 +264,10 @@ def finder_files(task: dict, levers: dict, no_cards: bool = False) -> tuple[list
     tool = finder_tool()
     env = finder_env()
     why = "filefind isn't on origin/main"
-    if tool is not None:
+    unindexed = ensure_index(tool, task["parent"], env) if tool is not None else None
+    if unindexed:
+        why = unindexed
+    elif tool is not None:
         proc = subprocess.run(
             [sys.executable, str(tool), "query", "--repo", str(REPO), "--rev", task["parent"],
              "--issue", str(task["issue"]), "--k", str(int(levers["briefing_files"])), "--json"]
@@ -240,10 +292,9 @@ def finder_files(task: dict, levers: dict, no_cards: bool = False) -> tuple[list
 def finder_failure(proc, env: dict) -> str:
     """Why filefind gave no files, in a few words for the run's progress
     line (#12250: every pool run said only "finder unavailable")."""
-    if not env.get("OPENROUTER_API_KEY"):
-        return "no OPENROUTER_API_KEY for its embeddings"
     if proc.returncode == 0:
-        return "it found no files"
+        return "it found no files" + ("" if env.get("OPENROUTER_API_KEY") else
+                                      " (no OPENROUTER_API_KEY for its embeddings)")
     last = [row for row in (proc.stderr or "").splitlines() if row.strip()][-1:]
     return f"exit {proc.returncode}" + (f": {last[0][:160]}" if last else "")
 

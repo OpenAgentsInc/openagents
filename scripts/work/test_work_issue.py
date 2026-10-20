@@ -461,10 +461,64 @@ class FinderFailureTests(unittest.TestCase):
         work.sys.path.insert(0, str(work.BENCH))
         import briefing
         failed = Mock(returncode=1, stderr="Traceback\nKeyError: 'data'\n")
-        self.assertEqual(briefing.finder_failure(failed, {}), "no OPENROUTER_API_KEY for its embeddings")
-        self.assertEqual(briefing.finder_failure(failed, {"OPENROUTER_API_KEY": "k"}), "exit 1: KeyError: 'data'")
+        self.assertEqual(briefing.finder_failure(failed, {}), "exit 1: KeyError: 'data'")
         self.assertEqual(briefing.finder_failure(Mock(returncode=0, stderr=""), {"OPENROUTER_API_KEY": "k"}),
                          "it found no files")
+        self.assertEqual(briefing.finder_failure(Mock(returncode=0, stderr=""), {}),
+                         "it found no files (no OPENROUTER_API_KEY for its embeddings)")
+
+
+class FinderIndexTests(unittest.TestCase):
+    """The finder's index is built on first use and refreshed per commit,
+    one run at a time (#12314)."""
+
+    def setUp(self):
+        work.sys.path.insert(0, str(work.BENCH))
+        import briefing
+        import common
+        self.briefing, self.common = briefing, common
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self.tmp.name) / "repo"
+        work.sh(["git", "init", "-q", str(self.repo)])
+        self.commit("a.txt", "one\n")
+        self.tool = Path(self.tmp.name) / "fake_filefind.py"
+        self.calls = Path(self.tmp.name) / "calls"
+        self.tool.write_text("import sys\nopen(%r, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n" % str(self.calls))
+        self.patches = [patch.object(common, "REPO", self.repo), patch.object(briefing, "REPO", self.repo),
+                        patch.object(briefing, "WORK", Path(self.tmp.name) / "work")]
+        for p in self.patches:
+            p.start()
+
+    def tearDown(self):
+        for p in self.patches:
+            p.stop()
+        self.tmp.cleanup()
+
+    def commit(self, name, text):
+        (self.repo / name).write_text(text)
+        work.sh(["git", "-C", str(self.repo), "add", "-A"])
+        work.sh(["git", "-C", str(self.repo), "-c", "user.email=t@example.com", "-c", "user.name=t",
+                 "commit", "-qm", name])
+        return work.sh(["git", "-C", str(self.repo), "rev-parse", "HEAD"]).stdout.strip()
+
+    def builds(self):
+        return self.calls.read_text().splitlines() if self.calls.exists() else []
+
+    def test_built_once_per_commit(self):
+        first = work.sh(["git", "-C", str(self.repo), "rev-parse", "HEAD"]).stdout.strip()
+        self.assertIsNone(self.briefing.ensure_index(self.tool, "HEAD", {}))
+        self.assertIsNone(self.briefing.ensure_index(self.tool, first, {}))
+        self.assertEqual(len(self.builds()), 1)
+        self.assertIn(f"index --repo {self.repo} --rev {first} --no-issues", self.builds()[0])
+        second = self.commit("b.txt", "two\n")
+        self.assertIsNone(self.briefing.ensure_index(self.tool, second, {}))
+        self.assertEqual(len(self.builds()), 2, "a new commit refreshes it")
+
+    def test_a_failed_build_says_why_and_is_tried_again(self):
+        self.tool.write_text("import sys\nprint('no git history', file=sys.stderr)\nsys.exit(3)\n")
+        why = self.briefing.ensure_index(self.tool, "HEAD", {})
+        self.assertEqual(why, "building its index failed (exit 3): no git history")
+        self.assertFalse(any(Path(self.tmp.name, "work", "filefind").glob("indexed-*[!k]")))
 
 
 if __name__ == "__main__":

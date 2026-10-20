@@ -908,6 +908,29 @@ oa_toolchains() {
       || { tail -n 20 "$log" >&2; return 3; }
   done
 }
+# The context finder's index for origin/main (#12314), once per host and
+# revision: about 90 s cold, about 10 s for a new revision. It runs after
+# the build lock is released, under the lock and stamp the briefing reads
+# (scripts/bench/briefed-ab/briefing.py `ensure_index`), so a run that
+# briefs meanwhile waits for it instead of building a second one. A failure
+# leaves briefings on the lite finder; nothing else stops.
+oa_finder_index() {
+  local rev=$1 dir="$HOME/.openagents/work/briefing/filefind" repo stamp f
+  repo=$(cd "$HOME/openagents" 2>/dev/null && pwd -P) || return 0
+  stamp="$dir/indexed-$(printf %s "$repo" | sha256sum | cut -c1-12)"
+  [ "$(cat "$stamp" 2>/dev/null)" != "$rev" ] || return 0
+  mkdir -p "$dir" || return 0
+  for f in filefind.py cards.py model.json; do
+    git -C "$repo" show "$rev:scripts/filefind/$f" >"$dir/$f.next" 2>/dev/null && mv -f "$dir/$f.next" "$dir/$f" || return 0
+  done
+  (
+    flock 6
+    [ "$(cat "$stamp" 2>/dev/null)" = "$rev" ] && exit 0
+    timeout 900 nice python3 "$dir/filefind.py" index --repo "$repo" --rev "$rev" --no-issues \
+      >/tmp/oa-pool-filefind.log 2>&1 && echo "$rev" >"$stamp"
+  ) 6>"$stamp.lock" || echo "pool: the finder's index could not be built; briefings use the lite finder" >&2
+  return 0
+}
 oa_build() {
   exec 8>"$HOME/.oa-pool/build.lock"; flock 8
   cd "$HOME/openagents" || { echo "pool: no clone at ~/openagents" >&2; return 2; }
@@ -915,7 +938,7 @@ oa_build() {
   local rev; rev=$(git rev-parse origin/main)
   oa_toolchains "$rev" || { echo "pool: installing the pinned Rust toolchains failed" >&2; flock -u 8; exec 8>&-; return 3; }
   if [ "$(cat "$HOME/.oa-pool/bin/rev" 2>/dev/null)" = "$rev" ] && [ -x "$HOME/.oa-pool/bin/microcoder" ] && [ -L "$HOME/.oa-pool/bin/coder-cloud-runtime" ] && [ -x "$HOME/.oa-pool/bin/briefed-agent" ]; then
-    flock -u 8; exec 8>&-; return 0
+    flock -u 8; exec 8>&-; oa_finder_index "$rev"; return 0
   fi
   git checkout -q --detach "$rev" || return 2
   # The runs' checks build --offline; apps/openagents is its own workspace
@@ -944,6 +967,7 @@ oa_build() {
   done
   oa_install "$warm" "$rev" || { echo "pool: installing the build failed" >&2; flock -u 8; exec 8>&-; return 3; }
   flock -u 8; exec 8>&-
+  oa_finder_index "$rev"
 }
 "#;
 
@@ -1989,6 +2013,81 @@ mod placement_tests {
         let home = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(home.path().join(".oa-pool/runs")).unwrap();
         home
+    }
+
+    /// #12314: the build step warms the context finder's index once per
+    /// revision, under the stamp the briefing reads.
+    #[test]
+    fn the_finder_index_is_built_once_per_revision() {
+        let home = tempfile::tempdir().unwrap();
+        let repo = home.path().join("openagents");
+        let git = |args: &[&str]| {
+            let out = Command::new("git")
+                .arg("-C")
+                .arg(&repo)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{out:?}");
+            String::from_utf8(out.stdout).unwrap().trim().to_owned()
+        };
+        std::fs::create_dir_all(repo.join("scripts/filefind")).unwrap();
+        let calls = home.path().join("calls");
+        std::fs::write(
+            repo.join("scripts/filefind/filefind.py"),
+            format!(
+                "import sys\nopen({:?}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n",
+                calls.display().to_string()
+            ),
+        )
+        .unwrap();
+        std::fs::write(repo.join("scripts/filefind/cards.py"), "").unwrap();
+        std::fs::write(repo.join("scripts/filefind/model.json"), "{}").unwrap();
+        git(&["init", "-q"]);
+        git(&["add", "-A"]);
+        git(&[
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "user.name=t",
+            "commit",
+            "-qm",
+            "a",
+        ]);
+        let rev = git(&["rev-parse", "HEAD"]);
+        let start = super::BUILD.find("oa_finder_index() {").unwrap();
+        let end = super::BUILD[start..].find("\n}\n").unwrap() + start + 3;
+        let script = format!(
+            "{}\noa_finder_index {rev}\noa_finder_index {rev}\n",
+            &super::BUILD[start..end]
+        );
+        let status = Command::new("bash")
+            .args(["-c", &script])
+            .env("HOME", home.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let made = std::fs::read_to_string(&calls).unwrap();
+        assert_eq!(made.lines().count(), 1, "{made}");
+        let real = repo.canonicalize().unwrap();
+        assert!(made.contains(&format!(
+            "index --repo {} --rev {rev} --no-issues",
+            real.display()
+        )));
+        // The briefing's stamp: sha256 of the checkout's real path, 12 hex.
+        let key = {
+            use sha2::Digest as _;
+            let digest = sha2::Sha256::digest(real.display().to_string().as_bytes());
+            digest
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()[..12]
+                .to_owned()
+        };
+        let stamp = home
+            .path()
+            .join(format!(".openagents/work/briefing/filefind/indexed-{key}"));
+        assert_eq!(std::fs::read_to_string(stamp).unwrap().trim(), rev);
     }
 
     #[test]
