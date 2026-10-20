@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use futures::stream::BoxStream;
 use openagents_engine::{EngineCore, HarnessRegistry};
 use openagents_harness::{Harness, HarnessError, RunControls, mock::MockHarness};
-use openagents_mcp::{Origin, Tools, OpenAgents};
+use openagents_mcp::{OpenAgents, Origin, Tools};
 use openagents_proto::{
     AgentEvent, DoneStatus, HarnessId, Model, ReasoningLevel, RunRequest, SteeringMode,
 };

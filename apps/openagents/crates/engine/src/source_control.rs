@@ -28,8 +28,7 @@ const GIT_OUTPUT_LIMIT: usize = 64 * 1024;
 /// `ssh -G` only reads configuration; it never connects.
 const SSH_CONFIG_TIMEOUT: Duration = Duration::from_secs(3);
 /// `repository()` follows renames: the old name resolves to the current one.
-const GITHUB_REPOSITORY_QUERY: &str =
-    "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { nameWithOwner } }";
+const GITHUB_REPOSITORY_QUERY: &str = "query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { nameWithOwner } }";
 const GITHUB_OUTPUT_LIMIT: usize = 1024 * 1024;
 const GITHUB_RESULT_LIMIT: &str = "20";
 const GITHUB_JSON_FIELDS: &str = "number,title,url,state,baseRefName,headRefName,updatedAt,isCrossRepository,headRepositoryOwner";
@@ -624,9 +623,10 @@ impl GitHubCli {
             let mut detail: openagents_proto::ChangeRequestDetail =
                 serde_json::from_value(value).map_err(|_| ChangeRequestError::Decode)?;
             if checks_reported {
-                detail.ci = openagents_proto::change_request_assessment::ChangeRequestCi::from_checks(
-                    &detail.status_check_rollup,
-                );
+                detail.ci =
+                    openagents_proto::change_request_assessment::ChangeRequestCi::from_checks(
+                        &detail.status_check_rollup,
+                    );
             }
             if openagents_proto::change_request_assessment::valid_head_oid(&detail.head_ref_oid)
                 && let Ok(metadata) = self.fetch_pr_metadata(&detail.url, &url).await
@@ -863,7 +863,9 @@ impl GitHubCli {
         {
             return Ok(page);
         }
-        let page = self.fetch_list_page(repository, filter, after, refresh).await?;
+        let page = self
+            .fetch_list_page(repository, filter, after, refresh)
+            .await?;
         if let Some((store, account)) = stored {
             store.save(&account, repository, filter, &page).await;
         }
@@ -1624,7 +1626,9 @@ impl GhPrMetadata {
                     )
                     .any(|count| {
                         count.count > 0
-                            && openagents_proto::change_request_assessment::check_failed(&count.state)
+                            && openagents_proto::change_request_assessment::check_failed(
+                                &count.state,
+                            )
                     })
                 {
                     state = CiState::Failed;
@@ -2231,9 +2235,9 @@ mod tests {
     /// execution is scripted. Repository discovery still runs real local Git.
     #[tokio::test]
     async fn pull_request_workflow_crosses_engine_transport_and_github() {
-        use serde_json::json;
         use openagents_proto::{ChangeRequestComment, ChangeRequestDetail, ChangeRequestPage};
         use openagents_rpc::{RpcError, capability_errors, methods};
+        use serde_json::json;
 
         let dir = tempfile::tempdir().unwrap();
         let checkout = dir.path().join("checkout");
@@ -2241,7 +2245,12 @@ mod tests {
         run_git(&checkout, &["init", "--quiet"]);
         run_git(
             &checkout,
-            &["remote", "add", "origin", "git@github.com:acme/openagents.git"],
+            &[
+                "remote",
+                "add",
+                "origin",
+                "git@github.com:acme/openagents.git",
+            ],
         );
         let core = crate::EngineCore::assemble(
             &dir.path().join("engine"),
@@ -2541,7 +2550,10 @@ mod tests {
             "invalid input never reaches gh and writes are not retried"
         );
         // The first two resolve the checkout's remotes to canonical names.
-        for (request, name) in requests[..2].iter().zip(["name=openagents", "name=upstream"]) {
+        for (request, name) in requests[..2]
+            .iter()
+            .zip(["name=openagents", "name=upstream"])
+        {
             assert!(request.args.contains(&"owner=acme".into()));
             assert!(request.args.contains(&name.into()), "{:?}", request.args);
         }
@@ -2559,9 +2571,12 @@ mod tests {
             assert_eq!(request.timeout, GITHUB_TIMEOUT);
             assert_eq!(request.output_limit, GITHUB_OUTPUT_LIMIT);
         }
-        assert!(requests[0].args.contains(
-            &"search=is:pr is:open review-requested:@me repo:acme/openagents sort:updated-desc".into()
-        ));
+        assert!(
+            requests[0].args.contains(
+                &"search=is:pr is:open review-requested:@me repo:acme/openagents sort:updated-desc"
+                    .into()
+            )
+        );
         assert!(requests[1].args.contains(&"after=Y3Vyc29yOjE=".into()));
         assert_eq!(&requests[2].args[..3], ["pr", "view", url]);
         let variables = |index: usize| {
@@ -2664,9 +2679,8 @@ mod tests {
 
     #[tokio::test]
     async fn ssh_alias_remote_matches_through_ssh_config() {
-        let runner = FakeProcessRunner::with_responses([command_success(
-            "user git\nhostname github.com\n",
-        )]);
+        let runner =
+            FakeProcessRunner::with_responses([command_success("user git\nhostname github.com\n")]);
         let resolver = ChangeRequestResolver {
             inspector: GitCheckoutInspector::new(runner.clone()),
             github: GitHubCli::with_runner(runner.clone()),
@@ -2689,7 +2703,12 @@ mod tests {
                 .as_deref(),
             Some("acme/openagents")
         );
-        assert_eq!(resolver.github_slug("https://gitlab.com/acme/openagents").await, None);
+        assert_eq!(
+            resolver
+                .github_slug("https://gitlab.com/acme/openagents")
+                .await,
+            None
+        );
         assert_eq!(runner.requests().len(), 1);
     }
 
@@ -3157,7 +3176,13 @@ mod tests {
         assert_eq!(first.next_cursor.as_deref(), Some("Y3Vyc29yOjUw"));
         assert_eq!(first.total_count, Some(120));
         let second = github
-            .list_page("acme/openagents", filter, first.next_cursor.as_deref(), false, false)
+            .list_page(
+                "acme/openagents",
+                filter,
+                first.next_cursor.as_deref(),
+                false,
+                false,
+            )
             .await
             .unwrap();
         assert_eq!(second.items[0].number, 2);
@@ -3172,7 +3197,13 @@ mod tests {
         );
         assert_eq!(
             github
-                .list_page("acme/openagents", filter, Some("x repo:other/x"), false, false)
+                .list_page(
+                    "acme/openagents",
+                    filter,
+                    Some("x repo:other/x"),
+                    false,
+                    false
+                )
                 .await,
             Err(ChangeRequestError::Decode),
             "cursors cannot smuggle search qualifiers"
@@ -3618,7 +3649,11 @@ mod tests {
                 .iter()
                 .map(|item| (item.repository.as_str(), item.number))
                 .collect::<Vec<_>>(),
-            [("acme/openagents", 2), ("acme/openagents", 4), ("acme/openagents", 8)]
+            [
+                ("acme/openagents", 2),
+                ("acme/openagents", 4),
+                ("acme/openagents", 8)
+            ]
         );
         assert_eq!(items[2].title, "A title with spacing");
         assert_eq!(items[0].state, ChangeRequestState::Open);
@@ -3900,10 +3935,10 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
             // Git reports slash-separated paths on Windows, while settings
             // retain canonical Win32 prefixes. Compare the actual directory.
             assert!(
-                refs.iter().any(|entry| entry
-                    .worktree_path
-                    .as_ref()
-                    .is_some_and(|listed| same_file::is_same_file(listed, path).unwrap_or(false))),
+                refs.iter()
+                    .any(|entry| entry.worktree_path.as_ref().is_some_and(|listed| {
+                        same_file::is_same_file(listed, path).unwrap_or(false)
+                    })),
                 "Git refs must include worktree {path}; got {refs:?}"
             );
         }
@@ -3963,7 +3998,12 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
         run_git(&checkout, &["init", "-q", "-b", "main"]);
         run_git(
             &checkout,
-            &["remote", "add", "upstream", "git@github.com:acme/openagents.git"],
+            &[
+                "remote",
+                "add",
+                "upstream",
+                "git@github.com:acme/openagents.git",
+            ],
         );
         run_git(
             &checkout,
@@ -3976,7 +4016,10 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
             ],
         );
         run_git(&checkout, &["config", "branch.main.remote", "upstream"]);
-        run_git(&checkout, &["config", "branch.main.merge", "refs/heads/main"]);
+        run_git(
+            &checkout,
+            &["config", "branch.main.merge", "refs/heads/main"],
+        );
 
         let resolver = ChangeRequestResolver::new();
         let source = resolver
@@ -4016,7 +4059,12 @@ printf '%s\n' '[{"number":90,"title":"Host-resolved pull request","url":"https:/
         );
         run_git(
             &checkout,
-            &["remote", "add", "origin", "git@github.com:acme/openagents.git"],
+            &[
+                "remote",
+                "add",
+                "origin",
+                "git@github.com:acme/openagents.git",
+            ],
         );
         // A repository-controlled transport command: any Git subcommand that
         // touches the remote (such as the former `ls-remote` default-branch

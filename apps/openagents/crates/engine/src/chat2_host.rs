@@ -518,7 +518,8 @@ mod frontier_tests {
 
     #[test]
     fn empty_frontier_is_not_contained() {
-        let dir = std::env::temp_dir().join(format!("openagents-frontier-test-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("openagents-frontier-test-{}", std::process::id()));
         let store = Arc::new(DocsStore::open(&dir).expect("store opens"));
         let doc = Arc::new(SessionDoc::from_doc(loro::LoroDoc::new()));
         let sink = EngineChatSink::new(&doc, store, "frontier-test");

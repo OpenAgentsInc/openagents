@@ -1,14 +1,14 @@
 //! Persist only successful live catalogs, partitioned by credential/binary context.
+use openagents_harness::{
+    CatalogFailure, CatalogFailureCode, Harness, HarnessError, ModelCatalog, ModelContext,
+};
+use openagents_proto::Model;
 use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use openagents_harness::{
-    CatalogFailure, CatalogFailureCode, Harness, HarnessError, ModelCatalog, ModelContext,
-};
-use openagents_proto::Model;
 
 #[derive(Serialize, Deserialize)]
 struct Saved {

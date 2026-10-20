@@ -115,9 +115,11 @@ impl AuthState {
         };
         match self {
             AuthState::SignedOut => openagents_proto::AuthState::SignedOut,
-            AuthState::NeedsOrganization { user } => openagents_proto::AuthState::NeedsOrganization {
-                user: profile(user),
-            },
+            AuthState::NeedsOrganization { user } => {
+                openagents_proto::AuthState::NeedsOrganization {
+                    user: profile(user),
+                }
+            }
             AuthState::SignedIn { user, org_id } => openagents_proto::AuthState::SignedIn {
                 user: profile(user),
                 org_id: org_id.clone(),
@@ -1274,7 +1276,9 @@ async fn handle_loopback_conn(
                         tracing::warn!(error = %err, "auth: loopback code exchange failed");
                         (
                             "502 Bad Gateway",
-                            page("Sign-in failed during token exchange — check the OpenAgents logs."),
+                            page(
+                                "Sign-in failed during token exchange — check the OpenAgents logs.",
+                            ),
                         )
                     }
                 },
@@ -1533,8 +1537,12 @@ mod tests {
             })
         );
         // The proto type itself round-trips the emitted value.
-        let parsed: openagents_proto::AuthState = serde_json::from_value(value).expect("proto parse");
-        assert!(matches!(parsed, openagents_proto::AuthState::SignedIn { .. }));
+        let parsed: openagents_proto::AuthState =
+            serde_json::from_value(value).expect("proto parse");
+        assert!(matches!(
+            parsed,
+            openagents_proto::AuthState::SignedIn { .. }
+        ));
         assert_eq!(
             serde_json::to_value(AuthState::SignedOut).expect("json"),
             serde_json::json!({"state": "signedOut"})

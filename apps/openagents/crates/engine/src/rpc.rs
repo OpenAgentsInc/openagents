@@ -512,9 +512,12 @@ struct ReadAttachmentChunkParams {
 
 const _: () = assert!(openagents_proto::VISUAL_MAX_BYTES == openagents_visual::MAX_SCRIPT_BYTES);
 const _: () = assert!(openagents_proto::VISUAL_MAX_ASSETS == openagents_visual::assets::MAX_ASSETS);
-const _: () = assert!(openagents_proto::VISUAL_MAX_ASSET_BYTES == openagents_visual::assets::MAX_ASSET_BYTES);
 const _: () =
-    assert!(openagents_proto::VISUAL_MAX_TOTAL_ASSET_BYTES == openagents_visual::assets::MAX_TOTAL_ASSET_BYTES);
+    assert!(openagents_proto::VISUAL_MAX_ASSET_BYTES == openagents_visual::assets::MAX_ASSET_BYTES);
+const _: () = assert!(
+    openagents_proto::VISUAL_MAX_TOTAL_ASSET_BYTES
+        == openagents_visual::assets::MAX_TOTAL_ASSET_BYTES
+);
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -529,7 +532,8 @@ struct PublishVisualParams {
 
 fn no_turn_for_visual() -> RpcError {
     RpcError::Failed(
-        "This chat has no running turn on this device; show_visual only works from inside a turn.".into(),
+        "This chat has no running turn on this device; show_visual only works from inside a turn."
+            .into(),
     )
 }
 
@@ -538,7 +542,9 @@ fn decode_visual_assets(
     assets: &std::collections::BTreeMap<String, String>,
 ) -> Result<Vec<(String, Vec<u8>)>, RpcError> {
     use base64::Engine as _;
-    use openagents_visual::assets::{MAX_ASSET_BYTES, MAX_ASSETS, MAX_TOTAL_ASSET_BYTES, valid_name};
+    use openagents_visual::assets::{
+        MAX_ASSET_BYTES, MAX_ASSETS, MAX_TOTAL_ASSET_BYTES, valid_name,
+    };
     if assets.len() > MAX_ASSETS {
         return Err(RpcError::BadParams(format!(
             "a visual takes at most {MAX_ASSETS} assets"
@@ -1455,8 +1461,9 @@ async fn run_requested_install(
     cancel: openagents_harness::CancellationToken,
 ) -> Result<(), openagents_harness::HarnessError> {
     #[cfg(test)]
-    if let Ok(script) = openagents_brand::env_var(format!("OPENAGENTS_INSTALLER_COMMAND_{harness:?}").to_uppercase())
-    {
+    if let Ok(script) = openagents_brand::env_var(
+        format!("OPENAGENTS_INSTALLER_COMMAND_{harness:?}").to_uppercase(),
+    ) {
         return openagents_harness::install::install_with_command(harness, &script, cancel).await;
     }
     openagents_harness::install::install_harness(harness, cancel).await
@@ -1706,7 +1713,8 @@ fn doc_messages_stream(
                 };
                 let replay_baseline = match prev.as_ref() {
                     None => {
-                        opening_baseline = openagents_doc::TranscriptBaseline::capture(&current.entries);
+                        opening_baseline =
+                            openagents_doc::TranscriptBaseline::capture(&current.entries);
                         Some(opening_baseline.clone())
                     }
                     Some(prev)
@@ -2092,7 +2100,8 @@ impl RpcService for EngineRpc {
                 RpcReply::value(&serde_json::json!({ "outcome": outcome }))
             }
             methods::FORK_CHAT => {
-                let chat = crate::chat_fork::fork(&self.workspace, &self.doc_host, parse_params(params)?)?;
+                let chat =
+                    crate::chat_fork::fork(&self.workspace, &self.doc_host, parse_params(params)?)?;
                 RpcReply::value(&chat)
             }
             methods::FOCUS_CHAT => {
@@ -2614,11 +2623,10 @@ impl RpcService for EngineRpc {
                             if !emitted || previous != next {
                                 emitted = true;
                                 previous = next.clone();
-                                let value =
-                                    serde_json::to_value(openagents_proto::WorkspaceGitStatusFrame {
-                                        status: next,
-                                    })
-                                    .ok()?;
+                                let value = serde_json::to_value(
+                                    openagents_proto::WorkspaceGitStatusFrame { status: next },
+                                )
+                                .ok()?;
                                 return Some((value, (rx, checkout_id, previous, emitted)));
                             }
                         }
@@ -3386,7 +3394,8 @@ impl RpcService for EngineRpc {
                 RpcReply::value(&matches)
             }
             methods::LIST_WORKSPACE_DIRECTORY => {
-                let request: openagents_proto::ListWorkspaceDirectoryRequest = parse_params(params)?;
+                let request: openagents_proto::ListWorkspaceDirectoryRequest =
+                    parse_params(params)?;
                 let page = tokio::time::timeout(
                     crate::workspace_files::WORKSPACE_FILE_RPC_TIMEOUT,
                     self.workspace_files.list_directory(request),
@@ -3408,7 +3417,8 @@ impl RpcService for EngineRpc {
                 RpcReply::value(&matches)
             }
             methods::SEARCH_WORKSPACE_CONTENT => {
-                let request: openagents_proto::SearchWorkspaceContentRequest = parse_params(params)?;
+                let request: openagents_proto::SearchWorkspaceContentRequest =
+                    parse_params(params)?;
                 let result = tokio::time::timeout(
                     crate::workspace_files::WORKSPACE_FILE_RPC_TIMEOUT,
                     self.workspace_files.search_content(request),
@@ -3861,7 +3871,8 @@ impl RpcService for EngineRpc {
                 if title.is_empty() {
                     return Err(RpcError::BadParams("title is empty".into()));
                 }
-                if p.script.trim().is_empty() || p.script.len() > openagents_proto::VISUAL_MAX_BYTES {
+                if p.script.trim().is_empty() || p.script.len() > openagents_proto::VISUAL_MAX_BYTES
+                {
                     return Err(RpcError::BadParams(format!(
                         "script must be 1 to {} bytes",
                         openagents_proto::VISUAL_MAX_BYTES
@@ -4109,8 +4120,9 @@ mod tests {
             println!("{}", String::from_utf8_lossy(&output.stdout));
             return;
         }
-        let root =
-            std::path::PathBuf::from(openagents_brand::env_var_os("OPENAGENTS_INSTALL_FIXTURE_CHILD").unwrap());
+        let root = std::path::PathBuf::from(
+            openagents_brand::env_var_os("OPENAGENTS_INSTALL_FIXTURE_CHILD").unwrap(),
+        );
         let registry = Arc::new(HarnessRegistry::new());
         registry.register(Arc::new(openagents_harness::CodexHarness::new()));
         let core = crate::EngineCore::assemble(
@@ -4215,10 +4227,10 @@ mod tests {
 
     #[tokio::test]
     async fn explicit_install_rpc_verifies_archive_and_refreshes_descriptors() {
+        use openagents_harness::archive_install::{ArchivePin, ensure_installed, installed_entry};
         use sha2::{Digest, Sha512};
         use std::io::Write;
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        use openagents_harness::archive_install::{ArchivePin, ensure_installed, installed_entry};
         if openagents_brand::env_var_os("OPENAGENTS_INSTALL_RPC_TEST").is_none() {
             let root = tempfile::tempdir().unwrap();
             let output = tokio::process::Command::new(std::env::current_exe().unwrap())

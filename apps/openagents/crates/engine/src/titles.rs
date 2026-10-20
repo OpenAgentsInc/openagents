@@ -419,7 +419,10 @@ mod tests {
             _: RunRequest,
             _: RunControls,
         ) -> Result<
-            futures::stream::BoxStream<'static, Result<AgentEvent, openagents_harness::HarnessError>>,
+            futures::stream::BoxStream<
+                'static,
+                Result<AgentEvent, openagents_harness::HarnessError>,
+            >,
             openagents_harness::HarnessError,
         > {
             panic!("title generation must never call the coding entry point")
@@ -429,7 +432,10 @@ mod tests {
             request: RunRequest,
             _: RunControls,
         ) -> Result<
-            futures::stream::BoxStream<'static, Result<AgentEvent, openagents_harness::HarnessError>>,
+            futures::stream::BoxStream<
+                'static,
+                Result<AgentEvent, openagents_harness::HarnessError>,
+            >,
             openagents_harness::HarnessError,
         > {
             assert!(std::path::Path::new(&request.cwd).is_dir());

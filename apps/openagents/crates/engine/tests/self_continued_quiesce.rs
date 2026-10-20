@@ -41,7 +41,10 @@ fn init_env() {
         // exists in this test process.
         unsafe {
             std::env::set_var("OPENAGENTS_TURN_QUIESCE_MS", QUIESCE_MS.to_string());
-            std::env::set_var("OPENAGENTS_SELF_TURN_QUIESCE_MS", SELF_QUIESCE_MS.to_string());
+            std::env::set_var(
+                "OPENAGENTS_SELF_TURN_QUIESCE_MS",
+                SELF_QUIESCE_MS.to_string(),
+            );
         }
     });
 }

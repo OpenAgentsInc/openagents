@@ -10,9 +10,6 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, Instant};
 
-use sha2::{Digest, Sha256};
-use tokio::sync::{Notify, broadcast, mpsc};
-use tokio_util::sync::CancellationToken;
 use openagents_proto::{
     ListWorkspaceDirectoryRequest, ReadWorkspaceFileRequest, SearchWorkspaceContentRequest,
     SearchWorkspaceFilesRequest, WarmWorkspaceSearchRequest, WarmWorkspaceSearchResult,
@@ -25,6 +22,9 @@ use openagents_proto::{
     WriteWorkspaceFileRequest,
 };
 use openagents_rpc::RpcError;
+use sha2::{Digest, Sha256};
+use tokio::sync::{Notify, broadcast, mpsc};
+use tokio_util::sync::CancellationToken;
 
 use crate::workspace_search::{IndexState, NameKinds, normalize_name_query};
 use crate::{Repos, WorkspaceHost, WorkspaceSearch};
@@ -1552,8 +1552,8 @@ fn read_image_blocking(
     request: &openagents_proto::ReadWorkspaceImageRequest,
 ) -> Result<openagents_proto::WorkspaceImageChunk, WorkspaceFilesError> {
     use base64::Engine as _;
-    use std::io::Read;
     use openagents_proto::{MAX_WORKSPACE_IMAGE_BYTES, WORKSPACE_IMAGE_CHUNK_BYTES};
+    use std::io::Read;
     let mime = match relative
         .as_path()
         .extension()
@@ -3791,7 +3791,9 @@ mod tests {
 #[cfg(test)]
 mod image_tests {
     use super::*;
-    use openagents_proto::{ReadWorkspaceImageRequest, WORKSPACE_IMAGE_CHUNK_BYTES, WorkspaceTarget};
+    use openagents_proto::{
+        ReadWorkspaceImageRequest, WORKSPACE_IMAGE_CHUNK_BYTES, WorkspaceTarget,
+    };
     fn request() -> ReadWorkspaceImageRequest {
         ReadWorkspaceImageRequest {
             target: WorkspaceTarget {

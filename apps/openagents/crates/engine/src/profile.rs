@@ -7,9 +7,9 @@
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use openagents_proto::WorkspaceScope;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use openagents_proto::WorkspaceScope;
 
 use crate::EngineError;
 
@@ -428,7 +428,9 @@ mod tests {
         assert_eq!(core.workspace_scope(), WorkspaceScope::Development);
         assert_eq!(core.uploads.dir(), expected.store_root().join("uploads"));
         assert!(expected.store_root().is_dir());
-        if openagents_brand::env_var("OPENAGENTS_ORG_ID").is_err() && openagents_brand::env_var("OPENAGENTS_USER_ID").is_err() {
+        if openagents_brand::env_var("OPENAGENTS_ORG_ID").is_err()
+            && openagents_brand::env_var("OPENAGENTS_USER_ID").is_err()
+        {
             assert_eq!(
                 expected.store_root(),
                 dir.path().join("orgs/dev-org/dev-user")

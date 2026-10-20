@@ -210,7 +210,9 @@ mod tests {
         assert!(keepers_survive_in(shell, unasked));
         // The daemon unit stops every process in it when it restarts, unless
         // it is installed with KillMode=process.
-        assert!(!keepers_survive_in(&daemon, || Some("control-group".into())));
+        assert!(!keepers_survive_in(&daemon, || Some(
+            "control-group".into()
+        )));
         assert!(!keepers_survive_in(&daemon, || None));
         assert!(keepers_survive_in(&daemon, || Some("process\n".into())));
         assert!(keepers_survive_in(&daemon, || Some("none".into())));

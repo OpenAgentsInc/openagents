@@ -407,7 +407,8 @@ async fn agent_process_survives_sends_and_cancel() {
 #[tokio::test]
 #[ignore = "uses real model quota; select harness and inexpensive model explicitly"]
 async fn resume_after_killed_background_work_is_not_done_early() {
-    let name = openagents_brand::env_var("OPENAGENTS_TEST_HARNESS").unwrap_or_else(|_| "claude".into());
+    let name =
+        openagents_brand::env_var("OPENAGENTS_TEST_HARNESS").unwrap_or_else(|_| "claude".into());
     let model = openagents_brand::env_var("OPENAGENTS_TEST_MODEL").ok();
     let id = match name.as_str() {
         "claude" => openagents_proto::HarnessId::ClaudeCode,
@@ -568,14 +569,18 @@ async fn resume_after_killed_background_work_is_not_done_early() {
 #[tokio::test]
 #[ignore = "uses real model quota; select harness and inexpensive model explicitly"]
 async fn stop_tears_down_all_agent_work() {
-    let name = openagents_brand::env_var("OPENAGENTS_TEST_HARNESS").unwrap_or_else(|_| "claude".into());
+    let name =
+        openagents_brand::env_var("OPENAGENTS_TEST_HARNESS").unwrap_or_else(|_| "claude".into());
     let model = openagents_brand::env_var("OPENAGENTS_TEST_MODEL").ok();
     let (id, harness): (openagents_proto::HarnessId, Arc<dyn Harness>) = match name.as_str() {
         "claude" => (
             openagents_proto::HarnessId::ClaudeCode,
             Arc::new(ClaudeHarness::new()),
         ),
-        "codex" => (openagents_proto::HarnessId::Codex, Arc::new(CodexHarness::new())),
+        "codex" => (
+            openagents_proto::HarnessId::Codex,
+            Arc::new(CodexHarness::new()),
+        ),
         _ => panic!("claude or codex"),
     };
     let alive = || {

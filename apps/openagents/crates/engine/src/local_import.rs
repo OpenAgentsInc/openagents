@@ -25,9 +25,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
 use openagents_doc::{REGISTRY_DOC_ID, RegistryDoc};
 use openagents_sync::DocsStore;
+use serde::{Deserialize, Serialize};
 
 use crate::EngineError;
 use crate::chat2_host::CHAT2_DOC_EPOCH;

@@ -59,8 +59,22 @@ const ADJECTIVES: &[&str] = &[
     "sharp", "gentle", "vivid", "amber", "cobalt",
 ];
 const NOUNS: &[&str] = &[
-    "otter", "harbor", "falcon", "cedar", "meadow", "openagents", "delta", "ember", "lynx", "maple",
-    "onyx", "quartz", "raven", "summit", "willow", "aspen",
+    "otter",
+    "harbor",
+    "falcon",
+    "cedar",
+    "meadow",
+    "openagents",
+    "delta",
+    "ember",
+    "lynx",
+    "maple",
+    "onyx",
+    "quartz",
+    "raven",
+    "summit",
+    "willow",
+    "aspen",
 ];
 
 /// Canonical identity shared by every chat operating in this exact worktree.
@@ -1391,7 +1405,8 @@ impl Repos {
                 ADJECTIVES[(seed % ADJECTIVES.len() as u64) as usize],
                 NOUNS[((seed / 31) % NOUNS.len() as u64) as usize]
             );
-            if !base.join(&candidate).exists() && !existing.contains(&format!("openagents/{candidate}"))
+            if !base.join(&candidate).exists()
+                && !existing.contains(&format!("openagents/{candidate}"))
             {
                 name = Some(candidate);
                 break;
@@ -1764,9 +1779,9 @@ async fn disposable_worker<T: Send + 'static>(
 /// existence probe per directory entry.
 fn list_folders_blocking(target: &Path) -> Result<FolderListing, EngineError> {
     let read = std::fs::read_dir(target).map_err(|e| match e.kind() {
-        std::io::ErrorKind::PermissionDenied => {
-            EngineError::Other("OpenAgents doesn't have access to this folder on the device.".into())
-        }
+        std::io::ErrorKind::PermissionDenied => EngineError::Other(
+            "OpenAgents doesn't have access to this folder on the device.".into(),
+        ),
         _ => EngineError::Other(format!("could not read that folder: {e}")),
     })?;
     let mut entries: Vec<FolderEntry> = Vec::new();
@@ -2354,7 +2369,10 @@ pub fn worktree_branch_from_title(title: &str) -> String {
     }
     slug.truncate(48);
     let slug = slug.trim_matches('-');
-    format!("openagents/{}", if slug.is_empty() { "update" } else { slug })
+    format!(
+        "openagents/{}",
+        if slug.is_empty() { "update" } else { slug }
+    )
 }
 
 fn bounded_field(value: &str, max_chars: usize) -> String {

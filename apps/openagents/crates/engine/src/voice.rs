@@ -1,13 +1,13 @@
 //! Exclusive, local, ephemeral voice ownership. Native media remains in Codex's helper.
 pub(crate) mod remote;
+use openagents_harness::codex::realtime::{RealtimeHandle, VoiceCommand};
+use openagents_proto::{SessionStatus, voice::*};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
-use openagents_harness::codex::realtime::{RealtimeHandle, VoiceCommand};
-use openagents_proto::{SessionStatus, voice::*};
 
 #[derive(Clone, Default)]
 pub struct VoiceManager {
@@ -16,8 +16,9 @@ pub struct VoiceManager {
 #[derive(Default)]
 struct Inner {
     slot: Mutex<Option<Slot>>,
-    attempts:
-        Mutex<std::collections::HashMap<openagents_proto::voice::remote::AttemptKey, remote::Attempt>>,
+    attempts: Mutex<
+        std::collections::HashMap<openagents_proto::voice::remote::AttemptKey, remote::Attempt>,
+    >,
     generation: AtomicU64,
     identity_epoch: AtomicU64,
     // A successor waits until the old native stop completes, even after its owner is dropped.

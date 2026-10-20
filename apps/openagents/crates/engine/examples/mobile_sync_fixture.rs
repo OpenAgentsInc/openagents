@@ -7,6 +7,7 @@ use axum::{
     routing::{get, post},
 };
 use openagents_account::openagents::{Client, Deployment};
+use openagents_rpc::{RpcClient, methods};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -16,7 +17,6 @@ use std::{
     time::Duration,
 };
 use tokio::sync::Mutex;
-use openagents_rpc::{RpcClient, methods};
 
 #[path = "custom_agent_fixture/mod.rs"]
 mod custom_agent_fixture;

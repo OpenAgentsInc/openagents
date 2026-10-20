@@ -136,8 +136,8 @@ impl TranscriptHistory {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
     use openagents_doc::{MessagePart, MessageRole, MessageStatus, SegmentWriter, SessionDoc};
+    use std::sync::Mutex;
 
     fn entry(id: &str) -> SessionMessageEntry {
         SessionMessageEntry {

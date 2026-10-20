@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use chrono::{TimeZone, Utc};
-use rusqlite::{Connection, OptionalExtension, params};
 use openagents_proto::{ChangeRequestFilter, ChangeRequestListItem, ChangeRequestPage};
+use rusqlite::{Connection, OptionalExtension, params};
 
 const FILE_NAME: &str = "pull-requests.sqlite3";
 /// The schema below; older files are rebuilt (it's a cache).

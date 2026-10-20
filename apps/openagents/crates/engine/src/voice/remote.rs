@@ -1,7 +1,7 @@
 //! Client-owned media: host state contains signaling and canonical text only.
 use super::*;
-use tokio::sync::watch;
 use openagents_proto::voice::remote as wire;
+use tokio::sync::watch;
 
 type PreparedResult = Option<Result<wire::Prepared, VoiceRejection>>;
 pub(crate) struct Attempt {

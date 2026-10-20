@@ -1574,7 +1574,9 @@ impl AgentAccounts {
                 &format!(
                     "<!doctype html><title>Sign-in failed</title><p>{}</p>\
                      <p>Return to OpenAgents to try again.</p>",
-                    html_escape(&openagents_harness::redact::redact_output(&error.to_string()))
+                    html_escape(&openagents_harness::redact::redact_output(
+                        &error.to_string()
+                    ))
                 ),
             ),
         };

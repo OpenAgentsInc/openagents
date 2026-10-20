@@ -8,6 +8,7 @@ use std::os::windows::ffi::OsStrExt;
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
 use std::sync::{Arc, Mutex};
 
+use openagents_harness::windows_process::{Attributes, Job};
 use portable_pty::{Child, ChildKiller, CommandBuilder, ExitStatus, MasterPty, PtySize};
 use windows_sys::Win32::Foundation::{INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows_sys::Win32::System::Console::{
@@ -19,7 +20,6 @@ use windows_sys::Win32::System::Threading::{
     GetExitCodeProcess, INFINITE, PROCESS_INFORMATION, ResumeThread, STARTF_USESTDHANDLES,
     STARTUPINFOEXW, WaitForSingleObject,
 };
-use openagents_harness::windows_process::{Attributes, Job};
 
 /// One teardown operation shared by natural exit, close, and shutdown. Empty
 /// resource slots mean ownership moved, not that ConPTY and its reader closed.
