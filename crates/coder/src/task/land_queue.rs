@@ -168,9 +168,13 @@ pub struct Record {
     pub lane: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub slot: String,
-    /// Generated files the worker wrote again and folded into the change.
+    /// Generated files the worker wrote again and committed on the change.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub regenerated: Vec<String>,
+    /// Generators the worker could not run (`NAME: needs ...`), such as the
+    /// Android bindings without the Android toolchain (#12208).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub regenerate_skipped: Vec<String>,
 }
 
 /// The worker's heartbeat, so submitters and the status view know whether
@@ -985,84 +989,98 @@ struct Hooks<'a, 'b> {
 }
 
 impl Hooks<'_, '_> {
-    /// Writes the generated files the change is due again and folds them
-    /// into its last commit.
+    /// Writes the generated files the change is due again with
+    /// `scripts/dev/regenerate.sh` and commits what it rewrote on top of the
+    /// change as "Regenerate generated files" (#12208).
     fn regenerate(&mut self) {
         let w = self.worktree.clone();
+        if !w.join(REGENERATE_SCRIPT).is_file() {
+            return;
+        }
         let generators = land_plan::generators(&w);
-        if generators.is_empty() {
-            return;
-        }
-        let files: Vec<String> = git(&w, &["diff", "--name-only", &self.target, "HEAD"])
-            .unwrap_or_default()
-            .lines()
-            .map(str::to_owned)
-            .collect();
-        let read = |file: &str| std::fs::read_to_string(w.join(file)).ok();
-        let due = land_plan::due(&generators, &files, &read);
-        if due.is_empty() {
-            return;
-        }
         // The regenerating build takes a build slot as the checks do, so
         // it shares their warm target folders and the slot budget.
         let gate = super::issue_run::Gate {
             jev: None,
             store: Some(super::local::default_store()),
         };
-        let lease = gate.slot(&w).ok().flatten();
-        let mut rewritten = Vec::new();
-        for generator in due {
-            let mut command = Command::new("bash");
-            command
-                .args(["-c", &generator.regenerate])
-                .current_dir(&w)
-                .stdin(Stdio::null());
-            if let Some(lease) = &lease {
-                command.env("CARGO_TARGET_DIR", &lease.path);
-            }
-            match command.output() {
-                Ok(out) if out.status.success() => {}
-                Ok(out) => {
-                    let tail: String = String::from_utf8_lossy(&out.stderr)
-                        .lines()
-                        .rev()
-                        .take(6)
-                        .collect::<Vec<_>>()
-                        .join(" / ");
-                    landing::Hooks::note(
-                        self,
-                        &format!("Could not write {} again: {tail}", generator.name),
-                    );
-                    continue;
-                }
-                Err(error) => {
-                    landing::Hooks::note(
-                        self,
-                        &format!("Could not run {}'s command: {error}", generator.name),
-                    );
-                    continue;
-                }
-            }
-            let mut args = vec!["status", "--porcelain", "--"];
-            args.extend(generator.files.iter().map(String::as_str));
-            if !git(&w, &args).unwrap_or_default().is_empty() {
-                let mut add = vec!["add", "--"];
-                add.extend(generator.files.iter().map(String::as_str));
-                if git(&w, &add).is_ok() {
-                    rewritten.extend(generator.files.iter().cloned());
-                }
-            }
+        // Tests never reach the real task store's build slots.
+        let lease = if cfg!(test) {
+            None
+        } else {
+            gate.slot(&w).ok().flatten()
+        };
+        let mut command = Command::new("bash");
+        command
+            .arg(REGENERATE_SCRIPT)
+            .args(["--changed", &self.target])
+            .current_dir(&w)
+            .stdin(Stdio::null());
+        if !self.also.is_empty() {
+            command.args(["--packages", &self.also.join(",")]);
         }
+        if let Some(lease) = &lease {
+            command.env("CARGO_TARGET_DIR", &lease.path);
+        }
+        let out = command.output();
         drop(lease);
+        let out = match out {
+            Ok(out) => out,
+            Err(error) => {
+                landing::Hooks::note(self, &format!("Could not run {REGENERATE_SCRIPT}: {error}"));
+                return;
+            }
+        };
+        let report = regenerate_report(&String::from_utf8_lossy(&out.stdout));
+        for line in &report.failed {
+            landing::Hooks::note(self, &format!("Could not write {line}"));
+        }
+        if !report.skipped.is_empty() {
+            landing::Hooks::note(
+                self,
+                &format!("Generators not run here: {}.", report.skipped.join("; ")),
+            );
+            self.record.regenerate_skipped.extend(report.skipped);
+        }
+        // Only the registry's files are committed, never other build output.
+        let files: Vec<&str> = generators
+            .iter()
+            .flat_map(|g| g.files.iter().map(String::as_str))
+            .collect();
+        if files.is_empty() {
+            return;
+        }
+        let mut listed = vec![
+            "ls-files",
+            "--modified",
+            "--others",
+            "--exclude-standard",
+            "--",
+        ];
+        listed.extend(&files);
+        let mut rewritten: Vec<String> = git(&w, &listed)
+            .unwrap_or_default()
+            .lines()
+            .map(str::to_owned)
+            .collect();
+        rewritten.dedup();
         if rewritten.is_empty() {
             return;
         }
-        match git(&w, &["commit", "-q", "--amend", "--no-edit", "--no-verify"]) {
+        let mut add = vec!["add", "--"];
+        add.extend(rewritten.iter().map(String::as_str));
+        let committed = git(&w, &add).and_then(|_| {
+            git(
+                &w,
+                &["commit", "-q", "--no-verify", "-m", REGENERATE_COMMIT],
+            )
+        });
+        match committed {
             Ok(_) => {
                 landing::Hooks::note(
                     self,
                     &format!(
-                        "Wrote {} again from the change's sources and folded it into the change.",
+                        "Wrote {} again from the change's sources and committed it as \"{REGENERATE_COMMIT}\".",
                         rewritten.join(", ")
                     ),
                 );
@@ -1072,11 +1090,44 @@ impl Hooks<'_, '_> {
                 let _ = git(&w, &["reset", "-q"]);
                 landing::Hooks::note(
                     self,
-                    &format!("Could not fold in the generated files: {why}"),
+                    &format!("Could not commit the generated files: {why}"),
                 );
             }
         }
     }
+}
+
+/// The one script that writes every checked-in generated file again.
+pub const REGENERATE_SCRIPT: &str = "scripts/dev/regenerate.sh";
+
+/// The commit the integrator adds when the script rewrote a file.
+pub const REGENERATE_COMMIT: &str = "Regenerate generated files";
+
+/// What a run of [`REGENERATE_SCRIPT`] reported.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct RegenerateReport {
+    /// `NAME: FILE...` for each generator that rewrote files.
+    pub regenerated: Vec<String>,
+    /// `NAME: WHY` for each generator not run here.
+    pub skipped: Vec<String>,
+    /// `NAME: WHY` for each generator whose command failed.
+    pub failed: Vec<String>,
+}
+
+/// Reads the script's one line per generator.
+#[must_use]
+pub fn regenerate_report(stdout: &str) -> RegenerateReport {
+    let mut report = RegenerateReport::default();
+    for line in stdout.lines() {
+        if let Some(rest) = line.strip_prefix("regenerated ") {
+            report.regenerated.push(rest.to_owned());
+        } else if let Some(rest) = line.strip_prefix("skipped ") {
+            report.skipped.push(rest.to_owned());
+        } else if let Some(rest) = line.strip_prefix("failed ") {
+            report.failed.push(rest.to_owned());
+        }
+    }
+    report
 }
 
 impl landing::Hooks for Hooks<'_, '_> {
@@ -1218,8 +1269,14 @@ fn landed_text(entry: &Entry, commit: &str, record: &Record) -> String {
     }
     if !record.regenerated.is_empty() {
         text.push_str(&format!(
-            "Generated files written again and folded in: {}.\n\n",
+            "Generated files written again and committed as \"{REGENERATE_COMMIT}\": {}.\n\n",
             record.regenerated.join(", ")
+        ));
+    }
+    if !record.regenerate_skipped.is_empty() {
+        text.push_str(&format!(
+            "Generators not run on the integrator: {}.\n\n",
+            record.regenerate_skipped.join("; ")
         ));
     }
     if !record.checks.is_empty() {

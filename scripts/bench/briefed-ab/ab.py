@@ -677,7 +677,7 @@ def grade_kinds(task: dict, diff: str, slot: int = 0, hidden_only: bool = False)
         if not hidden_only:
             files = [f for f in diff_files(diff) if (root / f).exists()]
             checks = [c for c in kinds.plan(files, kinds.Tree(root), task["parent"], rust=False)
-                      if not c["id"].startswith(("check:", "fmt:"))]
+                      if not c["id"].startswith(("build:", "check:", "fmt:"))]
             res = [kinds.run_check(c, root, str(SHIM / "remote-exec"), timeout=1500, env=env) for c in checks]
             g["kind_checks"] = res
             g["kind_checks_ok"] = all(r["ok"] is not False for r in res)

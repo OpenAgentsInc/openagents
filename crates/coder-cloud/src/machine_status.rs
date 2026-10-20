@@ -172,11 +172,33 @@ pub fn landing_facts(
         .as_ref()
         .and_then(|w| w["at"].as_u64())
         .is_some_and(|at| now.saturating_sub(at) < 300);
+    // Changes that wait on an integrator nobody has seen for five minutes
+    // (#12206): said where every status reader shows it.
+    let alert = (count > 0 && !worker_alive).then(|| {
+        let seen = worker.as_ref().and_then(|w| w["at"].as_u64()).map_or_else(
+            || "has never run".to_owned(),
+            |at| format!("was last seen {} minutes ago", now.saturating_sub(at) / 60),
+        );
+        let instance = worker.as_ref().map(|w| &w["instance"]);
+        let name = worker
+            .as_ref()
+            .and_then(|w| w["instance"]["name"].as_str().or(w["machine"].as_str()))
+            .unwrap_or("not known");
+        let start = match instance.and_then(|i| {
+            Some((i["name"].as_str()?, i["zone"].as_str()?, i["project"].as_str()?))
+        }) {
+            Some((name, zone, project)) => format!(
+                " Start it: `gcloud compute instances start {name} --zone {zone} --project {project}`."
+            ),
+            None => String::new(),
+        };
+        format!("{count} change(s) wait and the integrator ({name}) {seen}.{start}")
+    });
     if !all {
         entries.retain(open);
     }
     json!({"queue": root, "now": now, "worker": worker, "worker_alive": worker_alive,
-        "open": count, "entries": entries, "recent_failures": failed})
+        "open": count, "alert": alert, "entries": entries, "recent_failures": failed})
 }
 
 /// The same pool record and host list used by `openagents cloud status`.
@@ -308,6 +330,12 @@ mod tests {
             .unwrap();
         assert_eq!(all["entries"][0], landed);
         assert_eq!(all["worker_alive"], false);
+        // A change waits on an integrator unseen for five minutes (#12206).
+        assert_eq!(facts["alert"], Value::Null);
+        assert_eq!(
+            all["alert"],
+            "1 change(s) wait and the integrator (not known) was last seen 5 minutes ago."
+        );
         assert_eq!(
             std::fs::read_to_string(dir.path().join("worker.json")).unwrap(),
             r#"{"at":100}"#

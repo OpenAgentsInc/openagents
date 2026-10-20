@@ -732,10 +732,15 @@ impl Verify {
             .flat_map(|package| ["-p".to_owned(), package.clone()])
             .collect();
         if fast {
-            let mut argv: Vec<&str> = vec!["cargo", "check"];
-            argv.extend(selectors.iter().map(String::as_str));
-            argv.extend(["--tests", "--keep-going", "--message-format", "short"]);
-            let outcome = self.exec(&argv).await;
+            // The shipped build (no `cfg(test)`), then the tests' build
+            // (#12210): code that compiles only under test passes the
+            // second and fails the first.
+            let check = format!("cargo check {}", selectors.join(" "));
+            let script = format!(
+                "{check} --keep-going --message-format short && \
+                 {check} --tests --keep-going --message-format short"
+            );
+            let outcome = self.exec(&["sh", "-c", &script]).await;
             let (errors, preexisting) = self.compile_errors(&outcome.text);
             verdict["preexisting_errors"] = json!(preexisting);
             verdict["exit"] = json!(outcome.code);
@@ -903,14 +908,20 @@ impl Verify {
         (out, preexisting)
     }
 
-    /// Runs the tests, then `cargo fmt`, in one build-host call, and reads
-    /// both exit codes from markers the script prints.
+    /// Runs `cargo check` (lib and bins), the tests when it passes, then
+    /// `cargo fmt`, in one build-host call, and reads the exit codes from
+    /// markers the script prints.
     async fn test_and_fmt(
         &self,
         selectors: &[String],
         words: &[String],
         targets: &[&str],
     ) -> TestRun {
+        // The shipped build first: the cheap failure, and the one the
+        // tests' build cannot see (#12210). Its failure skips the tests.
+        let mut check = vec!["cargo".to_owned(), "check".to_owned()];
+        check.extend(selectors.iter().cloned());
+        check.extend(["--message-format", "short"].map(str::to_owned));
         let mut test = vec!["cargo".to_owned(), "test".to_owned()];
         test.extend(selectors.iter().cloned());
         test.extend(targets.iter().map(|t| (*t).to_owned()));
@@ -922,7 +933,9 @@ impl Verify {
         let mut fmt = vec!["cargo".to_owned(), "fmt".to_owned()];
         fmt.extend(selectors.iter().cloned());
         let script = format!(
-            "{}; t=$?; {}; f=$?; echo \"@@test_exit=$t\"; echo \"@@fmt_exit=$f\"; exit $t",
+            "{}; t=$?; if [ $t -eq 0 ]; then {}; t=$?; fi; {}; f=$?; \
+             echo \"@@test_exit=$t\"; echo \"@@fmt_exit=$f\"; exit $t",
+            check.join(" "),
             test.join(" "),
             fmt.join(" ")
         );

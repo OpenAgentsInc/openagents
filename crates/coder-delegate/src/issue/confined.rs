@@ -272,7 +272,14 @@ pub enum Suite {
     /// through a nested workspace's manifest. `--all-features` pulled large
     /// optional stacks into every check (#12162).
     Tests,
+    /// `cargo fmt -p PACKAGE -- --check`, the first fail-fast step (#12198).
     Format,
+    /// `cargo check -q -p PACKAGE`: the library and binaries as they ship,
+    /// without `cfg(test)`. A change can pass its tests and still break
+    /// this build (#12210), so it runs before the test build.
+    Build,
+    /// `cargo check -q -p PACKAGE --tests`, which compiles the tests
+    /// without running them (#12198).
     Check,
     /// `cargo clippy -q -p PACKAGE --all-targets -- -D warnings`, which
     /// builds the package's build scripts and macros, so it runs inside
@@ -289,6 +296,7 @@ impl Suite {
         let mut words: Vec<&str> = match self {
             Suite::Tests => vec!["test", "-q", "-p", package],
             Suite::Format => vec!["fmt", "-p", package],
+            Suite::Build => vec!["check", "-q", "-p", package],
             Suite::Check => vec!["check", "-q", "-p", package, "--tests"],
             Suite::Clippy => vec!["clippy", "-q", "-p", package, "--all-targets"],
         };
@@ -310,6 +318,7 @@ impl Suite {
         match self {
             Suite::Tests => "tests",
             Suite::Format => "formatting",
+            Suite::Build => "builds",
             Suite::Check => "compile checks",
             Suite::Clippy => "Clippy lints",
         }
@@ -432,7 +441,7 @@ async fn run_commands(
     // directory, until the last test command is reaped.
     let mut failures = Vec::new();
     let stages: &[Suite] = if suite == Suite::Tests && selected.is_none() {
-        &[Suite::Format, Suite::Check, Suite::Tests]
+        &[Suite::Format, Suite::Build, Suite::Check, Suite::Tests]
     } else {
         std::slice::from_ref(&suite)
     };
@@ -500,7 +509,7 @@ async fn run_commands(
             let failed = match suite {
                 Suite::Tests => failure(package, &args, &ended),
                 Suite::Clippy => lint_failure(package, &args, &ended),
-                Suite::Format | Suite::Check => failure(package, &args, &ended),
+                Suite::Format | Suite::Build | Suite::Check => failure(package, &args, &ended),
             };
             // A missing or ignored test is not evidence that it passes.
             let failed = if selected.is_some() && failed.is_none() && !ran_test(&ended) {
@@ -868,13 +877,20 @@ esac
                 .unwrap()
                 .contains("fmt -p example -- --check")
         );
+        // The shipped build is checked before the tests compile (#12210).
         assert!(
             runs.lines()
                 .nth(1)
                 .unwrap()
+                .contains("check -q -p example|")
+        );
+        assert!(
+            runs.lines()
+                .nth(2)
+                .unwrap()
                 .contains("check -q -p example --tests")
         );
-        let runs = runs.lines().skip(2).collect::<Vec<_>>().join("\n");
+        let runs = runs.lines().skip(3).collect::<Vec<_>>().join("\n");
         let lines: Vec<_> = runs.lines().collect();
         assert_eq!(
             lines.len(),
@@ -969,6 +985,42 @@ esac
                     .any(|n| n.starts_with("already failing"))
             );
         }
+    }
+
+    /// A library that compiles only under `cfg(test)` passes the test
+    /// build and fails the shipped build the gate now checks first (#12210).
+    #[test]
+    fn the_build_check_fails_code_that_compiles_only_under_test() {
+        let dir = tempfile::tempdir().unwrap();
+        let crate_dir = dir.path().join("only-under-test");
+        std::fs::create_dir_all(crate_dir.join("src")).unwrap();
+        std::fs::write(
+            crate_dir.join("Cargo.toml"),
+            "[package]\nname = \"only-under-test\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\
+             [workspace]\n",
+        )
+        .unwrap();
+        std::fs::write(
+            crate_dir.join("src/lib.rs"),
+            "#[cfg(test)]\nfn helper() -> u8 { 1 }\npub fn shipped() -> u8 { helper() }\n",
+        )
+        .unwrap();
+        let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+        let run = |suite: Suite| {
+            let mut args = suite.args("only-under-test", None);
+            args.push("--offline".into());
+            std::process::Command::new(&cargo)
+                .args(&args)
+                .current_dir(&crate_dir)
+                .env("CARGO_TARGET_DIR", dir.path().join("target"))
+                .env_remove("RUSTC_WRAPPER")
+                .output()
+                .unwrap()
+        };
+        assert!(run(Suite::Check).status.success(), "the test build passes");
+        let shipped = run(Suite::Build);
+        assert!(!shipped.status.success(), "the shipped build fails");
+        assert!(String::from_utf8_lossy(&shipped.stderr).contains("helper"));
     }
 
     #[test]

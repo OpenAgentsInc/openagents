@@ -570,3 +570,47 @@ fn files_named_reads_tracebacks_compilers_and_shell_errors() {
         ]
     );
 }
+
+/// The shipped build is checked before the tests, and its failure stops
+/// them: code that compiles only under `cfg(test)` is a compile error, not a
+/// pass (#12210).
+#[tokio::test]
+async fn a_change_that_compiles_only_under_test_fails_the_shipped_build() {
+    let fx = fixture();
+    fx.add_test();
+    let bin = fx.calls.with_file_name("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    let log = fx.calls.with_file_name("cargo-runs");
+    let cargo = format!(
+        "#!/bin/sh\necho \"$*\" >> '{}'\ncase \"$*\" in\n  check*--tests*) exit 0 ;;\n  \
+         check*) echo 'crates/x/src/lib.rs:2:5: error[E0425]: cannot find function `helper` in this scope'; exit 101 ;;\n  \
+         test*) echo 'test result: ok. 1 passed; 0 failed'; exit 0 ;;\n  *) exit 0 ;;\nesac\n",
+        log.display()
+    );
+    let exec = fx.calls.with_file_name("exec.sh");
+    for (path, text) in [
+        (bin.join("cargo"), cargo),
+        (
+            exec.clone(),
+            format!("#!/bin/sh\nPATH='{}':$PATH exec \"$@\"\n", bin.display()),
+        ),
+    ] {
+        std::fs::write(&path, text).unwrap();
+        let mut perms = std::fs::metadata(&path).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+        std::fs::set_permissions(&path, perms).unwrap();
+    }
+    let verify = fx.verify_with(exec);
+    let verdict = verify.run("", false).await;
+    assert_eq!(status(&verdict), "compile_error", "{verdict}");
+    assert_eq!(verdict["compile_errors"][0]["file"], "crates/x/src/lib.rs");
+    let runs = std::fs::read_to_string(&log).unwrap();
+    assert!(
+        runs.lines().next().unwrap().starts_with("check -p x"),
+        "{runs}"
+    );
+    assert!(!runs.contains("test -p x"), "the tests did not run: {runs}");
+    // `fast` checks the shipped build too, before the tests' build.
+    let fast = verify.run("", true).await;
+    assert_eq!(status(&fast), "compile_error", "{fast}");
+}

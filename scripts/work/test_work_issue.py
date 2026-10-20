@@ -1,6 +1,7 @@
 """Landing instructions for briefed and bare issue runs."""
 
 import importlib.util
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -207,7 +208,7 @@ class PreexistingFailureTests(unittest.TestCase):
             kinds.nested_root.return_value = None
 
             def cargo(_root, args, _timeout):
-                if args[0] == "fmt":
+                if args[0] in ("fmt", "check"):
                     return Mock(returncode=0, stdout="", stderr="")
                 return Mock(returncode=101, stdout=LIBTEST_OUT, stderr=CARGO_ERR)
             with patch.object(work, "changed_files", return_value=["crates/x/src/lib.rs"]), \
@@ -306,6 +307,52 @@ class BinaryFileBriefingTests(unittest.TestCase):
             with patch.object(common, "REPO", repo), patch.object(briefing, "REPO", repo):
                 self.assertEqual(briefing.excerpt("HEAD", "lander_gl_bg.wasm", [], levers), "(binary file)")
                 self.assertIn("fn main", briefing.excerpt("HEAD", "lib.rs", [], levers))
+
+
+class ReplayChecksTests(unittest.TestCase):
+    def replay(self, build_code):
+        calls = []
+
+        def cargo(root, args, timeout):
+            calls.append(args[0])
+            code = build_code if args[0] == "check" else 0
+            return Mock(returncode=code, stdout="", stderr="error[E0425]: helper" if code else "")
+
+        kinds = Mock()
+        kinds.plan.return_value = []
+        kinds.nested_root.return_value = None
+        with patch.object(work, "kinds_mod", return_value=kinds), \
+                patch.object(work, "changed_files", return_value=["crates/x/src/lib.rs"]), \
+                patch.object(work, "package_of", return_value="x"), \
+                patch.object(work, "cargo", side_effect=cargo), \
+                patch.object(Path, "exists", return_value=True):
+            checks = work.replay_checks(Mock(), Path("/repo"), "base")
+        return calls, checks
+
+    def test_the_shipped_build_runs_before_the_tests(self):
+        calls, checks = self.replay(0)
+        self.assertEqual(calls, ["fmt", "check", "test"])
+        self.assertEqual([c["name"] for c in checks],
+                         ["cargo fmt -p x", "cargo check -p x", "cargo test -p x"])
+
+    def test_a_failed_build_fails_the_replay_and_skips_the_tests(self):
+        calls, checks = self.replay(101)
+        self.assertEqual(calls, ["fmt", "check"])
+        self.assertFalse(work.checks_pass(checks))
+        self.assertIn("E0425", checks[1]["tail"])
+
+
+class QueueSubmitTests(unittest.TestCase):
+    def test_a_stopped_integrator_is_said_in_the_run_result(self):
+        down = "The integrator (oa-dev-env-1) was last seen 2h ago and could not be started."
+        out = Mock(returncode=0, stdout=json.dumps({"entry": {"id": "e1"}, "integrator_down": down}),
+                   stderr="")
+        run = Mock()
+        with patch.object(work, "sh", return_value=out), patch.object(work, "comment") as said:
+            landed = work.land(run, Path("/repo"), "o/r", {"number": 5}, "queue", "run1", "briefed", [])
+        self.assertEqual(landed["integrator_down"], down)
+        self.assertIn(down, said.call_args.args[2])
+        self.assertTrue(any("WARNING" in c.args[1] for c in run.say.call_args_list))
 
 
 if __name__ == "__main__":

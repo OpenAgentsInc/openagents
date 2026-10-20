@@ -1,6 +1,6 @@
 {
   "schema": "openagents.generated.v1",
-  "note": "Committed files generated from sources. The landing queue (docs/cloud/land-queue.md) runs `regenerate` before the checks when a change touches one of `sources` (holding one of `markers`, when given) and folds the rewritten files into the change; a rebase conflict only in these files takes the target's copy and writes it again. Commands run at the top of the repository with CARGO_TARGET_DIR set to a build slot.",
+  "note": "Committed files generated from sources. `scripts/dev/regenerate.sh` runs each `regenerate` command (all of them, or with --changed BASE those a change is due); `check` is the test that fails when the file is stale, in `package`. A change is due a generator when it touches one of `sources` (holding one of `markers`, when given) or a file of `package`. The landing queue (docs/cloud/land-queue.md) runs the script on each rebased code entry before its checks and commits what it rewrote as \"Regenerate generated files\"; a rebase conflict only in these files takes the target's copy and writes it again. A generator whose `requires` (environment variables, commands) is missing here is skipped and named. Commands run at the top of the repository with CARGO_TARGET_DIR set.",
   "generated": [
     {
       "name": "cli-tree",
@@ -14,13 +14,50 @@
         "crates/coder-new/src/programmatic.rs"
       ],
       "markers": ["USAGE", "EFFECTS", "Declared::", "fn build", "fn help"],
+      "package": "openagents-cli",
+      "check": "cargo test -p openagents-cli --bin openagents tree::tests::the_bundled_tree_is_generated_from_this_help",
       "regenerate": "OPENAGENTS_WRITE_CLI_TREE=1 cargo test -q -p openagents-cli --bin openagents tree::tests::the_bundled_tree_is_generated_from_this_help"
     },
     {
       "name": "first-party-openapi",
       "files": ["docs/api/openapi.first-party.json"],
       "sources": ["crates/gateway/src/audience.rs"],
+      "package": "gateway",
+      "check": "cargo test -p gateway --lib audience::tests::the_committed_first_party_document_is_current",
       "regenerate": "OPENAGENTS_WRITE_OPENAPI=1 cargo test -q -p gateway --lib audience::tests::the_committed_first_party_document_is_current"
+    },
+    {
+      "name": "sdk-reference",
+      "files": ["docs/sdk/sdk-reference.json"],
+      "sources": ["crates/openagents-sdk/"],
+      "package": "openagents-sdk",
+      "check": "cargo test -p openagents-sdk --test reference the_committed_reference_matches_the_source_and_every_public_item_is_described",
+      "regenerate": "SDK_REFERENCE_WRITE=1 cargo test -q -p openagents-sdk --test reference the_committed_reference_matches_the_source_and_every_public_item_is_described"
+    },
+    {
+      "name": "app-openapi",
+      "files": ["docs/sdk/openapi.app.json"],
+      "sources": ["crates/openagents-web/src/"],
+      "package": "openagents-web",
+      "check": "cargo test -p openagents-web --lib app_openapi::tests::committed_schema_matches_implemented_contract",
+      "regenerate": "OPENAGENTS_APP_OPENAPI_WRITE=1 cargo test -q -p openagents-web --lib app_openapi::tests::committed_schema_matches_implemented_contract"
+    },
+    {
+      "name": "route-map-sources",
+      "files": ["crates/openagents-chat-app/src/route_map/sources.json"],
+      "sources": ["crates/coder/", "knowledge/", "packages/coder-defaults/", "plugins/"],
+      "package": "coder",
+      "check": "cargo test -p coder --test route_map_sources the_route_map_sources_match_the_router",
+      "regenerate": "ROUTE_MAP_WRITE=1 cargo test -q -p coder --test route_map_sources the_route_map_sources_match_the_router"
+    },
+    {
+      "name": "android-core-binding",
+      "files": ["apps/openagents/apps/android/app/src/main/java/uniffi/openagents_core/openagents_core.kt"],
+      "sources": ["apps/openagents/crates/mobile/"],
+      "package": "openagents-mobile",
+      "check": "apps/openagents/scripts/android/build-core.sh leaves the committed binding unchanged",
+      "requires": {"env": ["ANDROID_NDK_HOME"], "commands": ["cargo-ndk"]},
+      "regenerate": "CARGO_TARGET_DIR=\"${OPENAGENTS_APP_TARGET_DIR:-${CARGO_TARGET_DIR:?}-app}\" apps/openagents/scripts/android/build-core.sh"
     }
   ]
 }

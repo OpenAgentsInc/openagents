@@ -335,8 +335,9 @@ def named_in(name: str, text: str) -> bool:
 
 
 def replay_checks(run: Run, root: Path, base: str, issue_text: str = "") -> list[dict]:
-    """fmt, then the tests of every root-workspace Rust package the diff
-    touches, then every other changed file's checks by kind (#11310).
+    """fmt, then `cargo check` and the tests of every root-workspace Rust
+    package the diff touches (a failed build skips its tests), then every
+    other changed file's checks by kind (#11310).
     Tests that fail at `base` too are reported, not counted against the
     change, unless the issue names them (it asks for them to be fixed)."""
     kinds = kinds_mod()
@@ -359,6 +360,16 @@ def replay_checks(run: Run, root: Path, base: str, issue_text: str = "") -> list
         checks.append({"name": f"cargo fmt -p {pkg}", "ok": fmt.returncode == 0,
                        "tail": (fmt.stdout + fmt.stderr)[-600:] if fmt.returncode else ""})
     for pkg in packages:
+        # The shipped build first (lib and bins, no `cfg(test)`): the cheap
+        # failure, and one `cargo test` cannot see (#12210).
+        run.say("checks", f"building {pkg}")
+        t0 = time.time()
+        build = cargo(root, ["check", "-p", pkg, "--message-format", "short"], 1200)
+        checks.append({"name": f"cargo check -p {pkg}", "ok": build.returncode == 0,
+                       "secs": round(time.time() - t0, 1),
+                       "tail": test_report(build.stdout, build.stderr)[0] if build.returncode else ""})
+        if build.returncode:
+            continue
         run.say("checks", f"running {pkg}'s tests")
         t0 = time.time()
         test = cargo(root, ["test", "-p", pkg, "--no-fail-fast", "--message-format", "short"], 2400)
@@ -380,7 +391,7 @@ def replay_checks(run: Run, root: Path, base: str, issue_text: str = "") -> list
         checks.append(check)
     for c in planned:
         if c["kind"] == "rust" or c["id"].startswith("check:"):
-            continue
+            continue  # a nested crate's `build:` check still runs
         run.say("checks", f"{c['what']}" if c.get("available", True) else f"no checker here: {c['what']}")
         secs = NESTED_SECS if c["kind"] == "rust-nested" else kinds.CHECK_SECS
         r = kinds.run_check(c, root, str(LOCAL_EXEC), timeout=secs,
@@ -704,13 +715,20 @@ def land(run: Run, root: Path, repo: str, issue: dict, how: str, run_id: str, en
         proc = sh([oa, "--json", "land", "submit", "--issue", str(issue["number"]),
                    "--summary", f"{engine} engine, run {run_id}"], cwd=root, check=False, timeout=600)
         try:
-            entry = json.loads(proc.stdout).get("entry")
+            submitted = json.loads(proc.stdout)
+            entry, down = submitted.get("entry"), submitted.get("integrator_down")
         except (json.JSONDecodeError, AttributeError):
-            entry = None
+            entry, down = None, None
         if proc.returncode != 0:
             raise RuntimeError(f"the landing queue refused it: {(proc.stderr or proc.stdout)[-400:]}")
         run.say("land", "handed to the landing queue", entry=(entry or {}).get("id"))
-        return {"how": "queue", "entry": entry}
+        landed = {"how": "queue", "entry": entry}
+        if down:
+            # Loudly (#12206): the entry waits on an integrator nobody started.
+            run.say("land", f"WARNING: {down}", warning=True)
+            comment(repo, issue["number"], f"The change is queued, but it can't land yet: {down}")
+            landed["integrator_down"] = down
+        return landed
     branch = f"work/issue-{issue['number']}-{run_id[:8]}"
     sh(["git", "-C", str(root), "push", "-q", "origin", f"HEAD:refs/heads/{branch}"], timeout=600)
     lines = [f"Fixes #{issue['number']}.", "",

@@ -159,11 +159,14 @@ fn land_branch(
                     String::from_utf8_lossy(&output.stderr).trim()
                 ));
             }
-            let entry = serde_json::from_slice::<Value>(&output.stdout)
-                .ok()
-                .map(|v| v["entry"].clone())
-                .unwrap_or(Value::Null);
-            Ok(json!({"how": "queue", "branch": branch, "entry": entry}))
+            let submitted = serde_json::from_slice::<Value>(&output.stdout).unwrap_or(Value::Null);
+            let mut landed = json!({"how": "queue", "branch": branch, "entry": submitted["entry"]});
+            // A stopped integrator nobody here could start (#12206).
+            if let Some(down) = submitted["integrator_down"].as_str() {
+                eprintln!("warning: {down}");
+                landed["integrator_down"] = json!(down);
+            }
+            Ok(landed)
         }
     }
 }

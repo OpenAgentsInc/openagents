@@ -233,27 +233,84 @@ fn submit(queue: &Queue<'_>, args: &Args) -> Result<Value, String> {
         .iter()
         .filter(|e| e.state.open() && e.id < entry.id)
         .count();
-    let woke = if args.switch("no-wake") {
-        None
-    } else {
-        wake(queue)
-    };
+    let wake = wake(queue, args.switch("no-wake"));
+    if let Some(down) = &wake.down {
+        // Loudly (#12206): a pool host may not start the integrator, and
+        // an entry then waited 15 minutes with nothing said.
+        eprintln!("warning: {down}");
+    }
     Ok(json!({
         "entry": entry,
         "ahead": ahead,
         "queue": queue.store.location(),
-        "woke": woke,
+        "woke": wake.woke,
+        "integrator_down": wake.down,
     }))
 }
 
-/// Starts the integrator's instance when its heartbeat is stale; what was
-/// done, in a sentence.
-fn wake(queue: &Queue<'_>) -> Option<String> {
-    let beat = queue.worker().ok().flatten()?;
-    if land_queue::now().saturating_sub(beat.at) < land_queue::WORKER_STALE_SECS {
-        return None;
+/// What `submit` did about a stopped integrator.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Wake {
+    /// It was stopped and this computer started it.
+    woke: Option<String>,
+    /// It is not running and nobody here started it: why, and what to run.
+    down: Option<String>,
+}
+
+/// Starts the integrator's instance when its heartbeat is stale (unless
+/// `no_wake`), and says so loudly when it cannot.
+fn wake(queue: &Queue<'_>, no_wake: bool) -> Wake {
+    let beat = match queue.worker() {
+        Ok(Some(beat)) => beat,
+        Ok(None) => {
+            return Wake {
+                woke: None,
+                down: Some(
+                    "No integrator has ever taken this queue; the change waits until one \
+                     runs `openagents land work`."
+                        .into(),
+                ),
+            };
+        }
+        Err(why) => {
+            return Wake {
+                woke: None,
+                down: Some(format!(
+                    "The integrator's heartbeat could not be read: {why}"
+                )),
+            };
+        }
+    };
+    let age = land_queue::now().saturating_sub(beat.at);
+    if age < land_queue::WORKER_STALE_SECS {
+        return Wake::default();
     }
-    let instance = beat.instance?;
+    let Some(instance) = beat.instance else {
+        return Wake {
+            woke: None,
+            down: Some(format!(
+                "The integrator ({}) was last seen {} ago and names no machine to start; the \
+                 change waits until it runs again.",
+                beat.machine,
+                secs(age)
+            )),
+        };
+    };
+    let start = format!(
+        "gcloud compute instances start {} --zone {} --project {}",
+        instance.name, instance.zone, instance.project
+    );
+    if no_wake {
+        return Wake {
+            woke: None,
+            down: Some(format!(
+                "The integrator ({}) was last seen {} ago and --no-wake left it stopped; start \
+                 it with `{start}`.",
+                instance.name,
+                secs(age)
+            )),
+        };
+    }
     let out = Command::new("gcloud")
         .args([
             "compute",
@@ -269,16 +326,41 @@ fn wake(queue: &Queue<'_>) -> Option<String> {
         ])
         .stdin(Stdio::null())
         .output();
-    Some(match out {
-        Ok(out) if out.status.success() => format!(
-            "The integrator ({}) was not running; started it.",
-            instance.name
-        ),
-        _ => format!(
-            "The integrator ({}) is not running and could not be started from here.",
-            instance.name
-        ),
-    })
+    match out {
+        Ok(out) if out.status.success() => Wake {
+            woke: Some(format!(
+                "The integrator ({}) was not running; started it.",
+                instance.name
+            )),
+            down: None,
+        },
+        Ok(out) => Wake {
+            woke: None,
+            down: Some(not_started(
+                &instance.name,
+                age,
+                &clip(String::from_utf8_lossy(&out.stderr).trim(), 200),
+                &start,
+            )),
+        },
+        Err(error) => Wake {
+            woke: None,
+            down: Some(not_started(
+                &instance.name,
+                age,
+                &format!("gcloud did not run: {error}"),
+                &start,
+            )),
+        },
+    }
+}
+
+fn not_started(name: &str, age: u64, why: &str, start: &str) -> String {
+    format!(
+        "The integrator ({name}) was last seen {} ago and could not be started from this \
+         computer ({why}). The change waits in the queue until someone runs `{start}`.",
+        secs(age)
+    )
 }
 
 fn status(queue: &Queue<'_>, all: bool) -> Result<Value, String> {
@@ -343,6 +425,9 @@ fn render(command: &str, value: &Value) -> String {
     match command {
         "status" => {
             let mut text = format!("queue: {}\n", value["queue"].as_str().unwrap_or(""));
+            if let Some(alert) = value["alert"].as_str() {
+                text.push_str(&format!("ALERT: {alert}\n"));
+            }
             match value["worker"].as_object() {
                 Some(w) => {
                     let slots = w.get("slots").and_then(Value::as_array);
@@ -485,7 +570,13 @@ fn render(command: &str, value: &Value) -> String {
                         ""
                     }
                 ));
-                for key in ["checks", "regenerated", "landing", "problems"] {
+                for key in [
+                    "checks",
+                    "regenerated",
+                    "regenerate_skipped",
+                    "landing",
+                    "problems",
+                ] {
                     for line in r[key].as_array().cloned().unwrap_or_default() {
                         text.push_str(&format!("  {key}: {}\n", line.as_str().unwrap_or("")));
                     }
@@ -504,6 +595,9 @@ fn render(command: &str, value: &Value) -> String {
             );
             if let Some(w) = value["woke"].as_str() {
                 text.push_str(&format!("\n{w}"));
+            }
+            if let Some(down) = value["integrator_down"].as_str() {
+                text.push_str(&format!("\nWARNING: {down}"));
             }
             text
         }
@@ -549,7 +643,7 @@ fn instance() -> Option<Instance> {
 }
 
 /// The marker the environment's idle stop reads: present with this
-/// process's id while an entry is being landed.
+/// process's id while an entry is being landed or waits in the queue.
 fn busy_marker() -> PathBuf {
     user_home::home_os()
         .map(PathBuf::from)
@@ -603,6 +697,48 @@ fn slots(args: &Args) -> Result<usize, String> {
 /// the whole machine.
 fn default_slots(cores: usize) -> usize {
     (cores / 8).clamp(2, 4)
+}
+
+#[cfg(test)]
+mod wake_tests {
+    use coder::task::land_queue::{Dir, Heartbeat, Instance, Queue};
+
+    /// A submit that cannot start the integrator says so, with what to
+    /// run (#12206); a fresh heartbeat says nothing.
+    #[test]
+    fn a_stopped_integrator_nobody_started_is_said_loudly() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Dir(dir.path().to_path_buf());
+        let queue = Queue { store: &store };
+        let never = super::wake(&queue, false);
+        assert!(never.down.unwrap().contains("No integrator has ever"));
+
+        let now = coder::task::land_queue::now();
+        let mut beat = Heartbeat {
+            machine: "oa-dev-env-1".into(),
+            at: now,
+            ..Heartbeat::default()
+        };
+        queue.beat(&beat).unwrap();
+        assert_eq!(super::wake(&queue, false), super::Wake::default());
+
+        beat.at = now - 7200;
+        queue.beat(&beat).unwrap();
+        let unnamed = super::wake(&queue, false).down.unwrap();
+        assert!(unnamed.contains("names no machine to start"), "{unnamed}");
+
+        beat.instance = Some(Instance {
+            project: "p".into(),
+            zone: "z".into(),
+            name: "oa-dev-env-1".into(),
+        });
+        queue.beat(&beat).unwrap();
+        let left = super::wake(&queue, true).down.unwrap();
+        assert!(
+            left.contains("`gcloud compute instances start oa-dev-env-1 --zone z --project p`"),
+            "{left}"
+        );
+    }
 }
 
 #[cfg(test)]

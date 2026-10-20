@@ -369,11 +369,13 @@ fn a_worker_that_cannot_build_takes_nothing() {
     };
     let mut ran = Vec::new();
     let mut done = |entry: &Entry, _: &Outcome| ran.push(entry.id.clone());
+    let told = Mutex::new(Vec::new());
+    let busy = |busy: bool| told.lock().unwrap().push(busy);
     lanes
         .run(&mut Control {
             once: true,
             draining: &|| false,
-            busy: &|_| {},
+            busy: &busy,
             done: &mut done,
             ready: &|| Some("cargo is not on PATH".into()),
         })
@@ -385,5 +387,11 @@ fn a_worker_that_cannot_build_takes_nothing() {
     assert!(
         queue.worker().unwrap().is_some(),
         "the heartbeat still beats"
+    );
+    // The waiting entry keeps the idle stop from powering off (#12206).
+    let told = told.into_inner().unwrap();
+    assert!(
+        !told.is_empty() && told.iter().all(|&busy| busy),
+        "{told:?}"
     );
 }

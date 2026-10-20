@@ -9,7 +9,8 @@
 #
 # - oa-dev-env-idle.timer: every minute, is anything running? A job (cargo,
 #   rustc, claude, codex, microcoder, a Coder run, the landing queue's busy
-#   marker), an ssh session running a shell or command, or
+#   marker, which the integrator holds while an entry lands or waits in the
+#   queue), an ssh session running a shell or command, or
 #   ~/.openagents/keep-awake. After
 #   `oa-dev-env-idle-minutes` (instance metadata, default 30; 0 never stops)
 #   with none of them, the VM powers itself off: a stopped GCE instance
@@ -42,7 +43,7 @@ check() {
   pgrep -f 'openagents .*(chat work|task execute|cloud up)' >/dev/null 2>&1 && why+=("job: a Coder run")
   local marker=$home/.openagents/land-queue/busy
   if [[ -f $marker ]] && kill -0 "$(cat "$marker" 2>/dev/null)" 2>/dev/null; then
-    why+=("job: the landing queue is landing an entry")
+    why+=("job: the landing queue has an entry landing or waiting")
   fi
   # An ssh session counts while it runs something (a shell or a command).
   # IAP leaves dead connections open with nothing under them; those do not

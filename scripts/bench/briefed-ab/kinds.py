@@ -331,6 +331,10 @@ def checks_for(pkg: dict, tree: Tree, base: str | None = None) -> list[dict]:
                   "filter": filter, "required": required, "runner": runner, "available": available})
 
     if kind == "rust":
+        # The shipped build (no `cfg(test)`) first: a change can pass its
+        # tests and still break it (#12210).
+        add("build", ["cargo", "check", "-p", pid, "--message-format", "short"],
+            f"compile {pid} as it ships", runner="exec")
         add("check", ["cargo", "check", "-p", pid, "--tests", "--message-format", "short"],
             f"compile {pid} and its tests", runner="exec")
         add("test", ["cargo", "test", "-p", pid], f"run {pid}'s tests (pass a test-name filter to run fewer)",
@@ -338,6 +342,8 @@ def checks_for(pkg: dict, tree: Tree, base: str | None = None) -> list[dict]:
         add("fmt", ["cargo", "fmt", "-p", pid], f"format {pid}", runner="exec")
     elif kind == "rust-nested":
         m = pkg["manifest"]
+        add("build", ["cargo", "check", "--manifest-path", m, "-p", pid, "--message-format", "short"],
+            f"compile {pid} as it ships (its own workspace, {m})", runner="exec")
         add("check", ["cargo", "check", "--manifest-path", m, "-p", pid, "--tests", "--message-format", "short"],
             f"compile {pid} (its own workspace, {m})", runner="exec")
         add("test", ["cargo", "test", "--manifest-path", m, "-p", pid],

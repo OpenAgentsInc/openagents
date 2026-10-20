@@ -574,3 +574,79 @@ fn a_test_main_already_fails_bounces_neither_the_first_check_nor_the_recheck() {
         other => panic!("{other:?}"),
     }
 }
+
+#[test]
+fn the_integrator_regenerates_due_files_and_commits_them_before_the_checks() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let remote = origin(root);
+    let store = Dir(root.join("queue"));
+    let queue = Queue { store: &store };
+    // Main declares two generators: one due on `src/`, one that needs a
+    // toolchain this computer lacks.
+    let seed = clone(root, &remote, "seeder");
+    let script = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../scripts/dev/regenerate.sh"),
+    )
+    .unwrap();
+    write(&seed, REGENERATE_SCRIPT, &script);
+    write(
+        &seed,
+        land_plan::GENERATED_FILE,
+        r#"{"generated": [
+  {"name": "listing", "files": ["gen/list.txt"], "sources": ["src/"],
+   "regenerate": "ls src > gen/list.txt"},
+  {"name": "android", "files": ["gen/android.txt"], "sources": ["src/"],
+   "requires": {"env": ["LAND_TEST_NO_SUCH_NDK"]}, "regenerate": "echo x > gen/android.txt"}
+]}"#,
+    );
+    write(&seed, "gen/list.txt", "");
+    write(&seed, "gen/android.txt", "");
+    run(&seed, &["add", "-A"]);
+    run(&seed, &["commit", "-q", "-m", "generators"]);
+    run(&seed, &["push", "-q", "origin", "HEAD:main"]);
+
+    let mac = clone(root, &remote, "mac");
+    let entry = submit(&queue, &mac, "mac", 100, "src/new.rs", "fn main() {}\n");
+    let top = clone(root, &remote, "env");
+    let mut seen = Seen::default();
+    let mut worker = integrator(&store, &top, root, &mut seen);
+    worker.regenerate = true;
+    let (_, outcome) = worker.step().unwrap().unwrap();
+    assert!(matches!(outcome, Outcome::Landed(_)), "{outcome:?}");
+
+    run(&top, &["fetch", "-q", "origin"]);
+    let log = run(&top, &["log", "--format=%s", "-3", "origin/main"]);
+    assert_eq!(
+        log.lines().collect::<Vec<_>>(),
+        [REGENERATE_COMMIT, "mac changes src/new.rs", "generators"]
+    );
+    assert_eq!(run(&top, &["show", "origin/main:gen/list.txt"]), "new.rs");
+    let records = queue.records(&entry.id).unwrap();
+    assert_eq!(records[0].regenerated, ["gen/list.txt"]);
+    assert_eq!(
+        records[0].regenerate_skipped,
+        ["android: needs $LAND_TEST_NO_SUCH_NDK"]
+    );
+    assert!(
+        seen.landed[0]
+            .1
+            .contains("Generators not run on the integrator: android")
+    );
+}
+
+#[test]
+fn the_regenerate_report_reads_each_generator_line() {
+    let report = regenerate_report(
+        "regenerated cli-tree: crates/coder/src/cli_route/tree.json\ncurrent sdk-reference\n\
+         skipped android-core-binding: needs $ANDROID_NDK_HOME\nfailed app-openapi: exit 101: x\n",
+    );
+    assert_eq!(
+        report,
+        RegenerateReport {
+            regenerated: vec!["cli-tree: crates/coder/src/cli_route/tree.json".into()],
+            skipped: vec!["android-core-binding: needs $ANDROID_NDK_HOME".into()],
+            failed: vec!["app-openapi: exit 101: x".into()],
+        }
+    );
+}

@@ -26,7 +26,12 @@ openagents land withdraw <id>                # take a queued entry out
 `--issue N` closes issue N once the change lands and moves the project board
 to Done (through `scripts/dev/issue-board.sh`); `--no-close` only comments.
 When the integrator's environment is stopped, `submit` starts it
-(`--no-wake` skips that).
+(`--no-wake` skips that). When it can't (a pool host's account may not
+start other instances), `submit` still queues the change, prints a
+`warning:` line, and sets `integrator_down` in its JSON with the
+`gcloud compute instances start` command to run. The briefed engine's run
+result and an issue comment carry the same warning
+([#12206](https://github.com/OpenAgentsInc/openagents/issues/12206)).
 
 ## App and SDK access
 
@@ -73,6 +78,14 @@ a worktree of its own (`~/.openagents/land-queue/plan`):
   `work-code-2`, ...) and its own build slot of the task store (its own
   `CARGO_TARGET_DIR`), sharing the build cache through
   `~/.cargo/config.toml`'s wrapper.
+- **Checks fail fast.** Each touched package runs `cargo fmt --check`,
+  then `cargo check -q -p PACKAGE` (the library and binaries as they ship,
+  without `cfg(test)`;
+  [#12210](https://github.com/OpenAgentsInc/openagents/issues/12210)), then
+  `cargo check --tests` ([#12198](https://github.com/OpenAgentsInc/openagents/issues/12198)),
+  then the tests. A failed step skips the rest. The briefed agent's
+  `verify` tool and the replayed checks in `scripts/work/work_issue.py`
+  run the same shipped-build check before the tests.
 - **Checks test default features.** Each touched package runs `cargo test
   -q -p PACKAGE` with its default features, never `--all-features`, which
   pulled the Verse stack and other optional crates into most checks
@@ -128,8 +141,9 @@ in the entry's slot:
 1. Marks the entry `landing` with its lane, slot and start time.
 2. Fetches `main` and the entry's branch into the slot's worktree and
    rebases the branch onto `main`.
-3. Code lane: writes known generated files again when the change touches
-   their sources (below) and folds them into the change's last commit.
+3. Code lane: runs `scripts/dev/regenerate.sh --changed origin/main`
+   (below) and commits what it rewrote on top of the change as
+   "Regenerate generated files".
 4. Runs the checks. Code lane: the issue flow's gate
    (`coder::task::issue_run::Gate`), the tests of each touched package in a
    leased build slot with sccache on GCS, the diff checks, and
@@ -158,15 +172,29 @@ in the entry's slot:
 
 ## Generated files
 
-`.openagents/generated.json` lists committed files generated from sources:
-today the CLI tree (`crates/coder/src/cli_route/tree.json`, from the
-`openagents` help text) and the first-party OpenAPI document
-(`docs/api/openapi.first-party.json`, from the gateway's routes). When a
-code entry changes one of a generator's sources (holding one of its
-markers, such as `USAGE` for the CLI tree), the integrator runs its
-command before the checks and folds the result into the entry. A new
-`--flag` no longer turns `main` red because nobody ran
-`OPENAGENTS_WRITE_CLI_TREE=1`.
+`.openagents/generated.json` lists committed files generated from sources,
+each with the test that fails when the file is stale (`check`) beside the
+command that writes it again (`regenerate`): the CLI tree, the first-party
+OpenAPI document, the SDK reference, the app API contract, the route-map
+sources, and the Android core binding
+([#12208](https://github.com/OpenAgentsInc/openagents/issues/12208)).
+`scripts/dev/regenerate.sh` runs them:
+
+```sh
+scripts/dev/regenerate.sh                        # every generator
+scripts/dev/regenerate.sh --changed origin/main  # those the change is due
+scripts/dev/regenerate.sh --list                 # each check beside its command
+```
+
+A change is due a generator when it touches one of its `sources` (holding
+one of its `markers`, when given) or any file of the package whose test
+checks it. The integrator runs the script with `--changed` on each rebased
+code entry before the checks (adding `--packages` for the packages the
+change reaches without touching them) and commits what it rewrote as
+"Regenerate generated files". A generator whose `requires` is missing is
+skipped and named in the entry's result (`regenerate_skipped` in `land
+show`): the Android binding needs `ANDROID_NDK_HOME` and `cargo-ndk`, which
+the integrator lacks. Agents run the same script before they push.
 
 Making `tree.json` a build output instead was considered and left out: the
 tree comes from `openagents-cli`'s help strings, `coder` bundles it, and
@@ -185,6 +213,11 @@ integrator: oa-dev-env-1 (running, seen 3s ago, fast lane + 2 code slot(s))
   code-2 (code): 20261010T231610Z-... for 11m
 ID  STATE  LANE  SLOT  ELAPSED  FROM  ISSUE  AGE  TRIES  RESULT
 ```
+
+When changes wait and the integrator's heartbeat is more than five minutes
+old, `land status` (and the status API) starts with an `ALERT:` line that
+names the integrator, how long ago it was seen, and the command that starts
+it ([#12206](https://github.com/OpenAgentsInc/openagents/issues/12206)).
 
 `LANE` is `fast` or `code`; `SLOT` the slot that has or had it; `ELAPSED`
 how long the current try has run (or the last one took). `land show <id>`
@@ -242,7 +275,8 @@ phone fleet view (#11228) reads the same objects.
 
 - `oa-dev-env-idle.timer`, every minute. The environment is busy while any of
   these exist: a job (`cargo`, `rustc`, `claude`, `codex`, `microcoder`, a
-  Coder run, the queue's busy marker), an ssh session, or
+  Coder run, the queue's busy marker, which the integrator holds while an
+  entry lands or waits in the queue), an ssh session, or
   `~/.openagents/keep-awake`. After `oa-dev-env-idle-minutes` (instance
   metadata, default 30, `0` never stops) with none of them, it powers off.
   A stopped instance bills only its 300 GB disk, about $0.04 an hour.

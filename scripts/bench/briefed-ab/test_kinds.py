@@ -97,14 +97,15 @@ class KindsTests(unittest.TestCase):
         self.assertIn("scripts/test-run-thing.sh", " ".join(" ".join(c["argv"]) for c in plan.values()))
 
     def test_a_file_inside_a_crate_is_checked_by_the_crate(self):
-        self.assertEqual(self.ids(["crates/ui/static/shell.css"]), ["check:ui", "test:ui", "fmt:ui"])
+        self.assertEqual(self.ids(["crates/ui/static/shell.css"]), ["build:ui", "check:ui", "test:ui", "fmt:ui"])
 
     def test_root_workspace_rust_can_be_left_to_verify(self):
         self.assertEqual(self.ids(["crates/ui/src/lib.rs"], rust=False), [])
 
     def test_a_nested_workspace_crate_uses_its_manifest(self):
         plan = kinds.plan(["crates/openagents-mobile/src/lib.rs"], self.tree, rust=False)
-        self.assertEqual([c["kind"] for c in plan], ["rust-nested"] * 3)
+        self.assertEqual([c["kind"] for c in plan], ["rust-nested"] * 4)
+        self.assertNotIn("--tests", plan[0]["argv"])  # the shipped build (#12210)
         self.assertIn("--manifest-path", plan[1]["argv"])
 
     def test_the_apps_workspace_is_nested(self):
@@ -127,18 +128,18 @@ class KindsTests(unittest.TestCase):
                  "apps/openagents/apps/openagents/src/main.rs", "crates/ui/src/lib.rs"]
         for tree in (self.tree, kinds.Tree(self.repo.root, "HEAD")):
             plan = kinds.plan(paths, tree)
-            self.assertEqual([c["id"] for c in plan[:3]],
-                             ["check:openagents-web-agent-graph", "test:openagents-web-agent-graph",
-                              "fmt:openagents-web-agent-graph"])
-            for check in plan[:3]:
+            self.assertEqual([c["id"] for c in plan[:4]],
+                             ["build:openagents-web-agent-graph", "check:openagents-web-agent-graph",
+                              "test:openagents-web-agent-graph", "fmt:openagents-web-agent-graph"])
+            for check in plan[:4]:
                 argv = check["argv"]
                 self.assertEqual(argv[argv.index("--manifest-path") + 1],
                                  "apps/openagents/web/Cargo.toml")
-            for check in plan[3:6]:
+            for check in plan[4:8]:
                 argv = check["argv"]
                 self.assertEqual(argv[argv.index("--manifest-path") + 1],
                                  "apps/openagents/Cargo.toml")
-            for check in plan[6:]:
+            for check in plan[8:]:
                 self.assertNotIn("--manifest-path", check["argv"])
 
     def test_an_embedded_document_brings_its_consumer_crate(self):

@@ -115,7 +115,8 @@ pub struct Control<'a> {
     pub once: bool,
     /// While true, take nothing new and finish what runs.
     pub draining: &'a dyn Fn() -> bool,
-    /// Told whether any slot is busy, for the idle stop's marker.
+    /// Told whether any slot is busy or any entry waits, for the idle
+    /// stop's marker.
     pub busy: &'a dyn Fn(bool),
     /// Told each landing's end.
     pub done: &'a mut dyn FnMut(&Entry, &Outcome),
@@ -286,7 +287,10 @@ impl Lanes<'_> {
                         })
                     })
                     .collect();
-                (control.busy)(!busy.is_empty());
+                // A queued entry keeps the environment awake as a landing
+                // does: the idle stop once powered off with work about to
+                // be taken (#12206).
+                (control.busy)(!busy.is_empty() || !open.is_empty());
                 let due = last_beat.as_ref().is_none_or(|(at, was, drained)| {
                     at.elapsed() >= Duration::from_secs(15) || *was != busy || *drained != draining
                 });

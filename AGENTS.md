@@ -230,8 +230,9 @@ Verify in a browser through `openagents browser run -- CMD`, which gives each
 check its own Chrome profile and port (`OPENAGENTS_CHROME_PORT`), never a
 fixed port or a shared profile; `docs/coder/guides/browser.md`.
 
-When a test fails only because a checked-in generated file is stale, run its
-regenerate command and commit the result; don't investigate further.
+When a test fails only because a checked-in generated file is stale, run
+`scripts/dev/regenerate.sh` (or `--only NAME`) and commit the result; don't
+investigate further. The landing queue runs it on each entry too.
 
 Documentation-only changes do not require the Rust verification gate, including
 before a push. Check links, paths, and retained artifacts for documentation
