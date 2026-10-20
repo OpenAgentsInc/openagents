@@ -117,12 +117,12 @@ fn call(
 
 const TRIAGE: &str = "Here's today's triage:
 
-| Issue | Label | Priority |
-| --- | --- | --- |
-| #212 Safari login | bug | high |
-| #213 Blank on wake | bug | high |
-| #214 CSV export | question | medium |
-| #215 Dark mode | feature | low |";
+| Issue | Label |
+| --- | --- |
+| #212 Safari login | bug, high |
+| #213 Blank on wake | bug, high |
+| #214 CSV export | question |
+| #215 Dark mode | feature, low |";
 
 const DRAFT: &str = "I drafted the summary in Gmail for team@example.com, with the two bugs first, the web results on #213, and a 30-minute triage call tomorrow at 10:30.";
 
@@ -294,16 +294,16 @@ pub fn compact(line: &'static str) -> &'static str {
         "Reading new issues" => "Reading",
         "Read 4 new issues" => "4 issues",
         "Searching your files" | "Searching" => "Searching",
-        "Read Triage guide" => "Read guide",
+        "Read Triage guide" => "Guide",
         "Carrying a job" => "Carrying",
         "Carried 1 job" => "1 job",
         "Asks 21 sats" => "21 sats",
         "Labeling 4 issues" => "Labeling",
         "Labeled 4 issues, 21 sats" => "4 labels",
         "Finding free time" => "Looking",
-        "Free tomorrow 10:30" => "10:30 free",
+        "Free tomorrow 10:30" => "10:30",
         "Writing a draft" => "Writing",
-        "Draft waits for you" => "Draft ready",
+        "Draft waits for you" => "Drafted",
         "relay.openagents.com" => "Nostr",
         "Decision model" => "Model",
         other => other,
@@ -396,7 +396,7 @@ mod tests {
             }
         }
         for line in lines {
-            assert!(compact(line).chars().count() <= 11, "{line}");
+            assert!(compact(line).chars().count() <= 9, "{line}");
         }
     }
 
