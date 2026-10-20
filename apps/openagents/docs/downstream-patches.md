@@ -1516,3 +1516,5 @@ master delegation audit.
   off, set the update policy of, check, apply, and cancel agents and their
   updates, and add, switch, and remove agent accounts. A browser's
   `StartAgentLogin` never names another device to serve its callback.
+
+- #12346: Saved agents carry a bounded handoff when switching runtimes, with complete conversation and decision-log archives. Agent Lab and the desktop chat header offer explicit runtime choices over the existing revision-checked agent API.

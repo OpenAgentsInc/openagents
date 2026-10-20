@@ -323,6 +323,25 @@ impl Lab {
         if let Command::Session(id) = command {
             return Ok(Effect::Session { id });
         }
+        if let Command::SwitchRuntime { agent, runtime } = command {
+            let saved = crate::agent_runtime::switch(&lease, &agent, &runtime).await?;
+            let label = if runtime == "codex" {
+                "Codex"
+            } else {
+                "Claude Code"
+            };
+            let mut state = self.state.lock().unwrap();
+            state.agents.retain(|a| a.id != agent);
+            state.notice = Some(format!(
+                "{} will run on {label} on its next turn. Its saved work goes with it.",
+                saved.spec.name
+            ));
+            state.agents.push(saved);
+            state.bump();
+            drop(state);
+            self.publish();
+            return Ok(Effect::None);
+        }
         if let Command::Refresh = command {
             self.refresh().await?;
             return Ok(Effect::None);

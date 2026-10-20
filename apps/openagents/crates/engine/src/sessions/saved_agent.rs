@@ -1,7 +1,4 @@
-//! OpenAgents (#11966): a saved agent's runtime can change between turns. The
-//! next run resumes the new runtime's own last session in this chat (#12205),
-//! or, when it has none, starts a fresh provider session that is given the
-//! conversation so far. It never resumes the previous runtime's session.
+//! Saved agents start each runtime change with a bounded handoff (#12346).
 use super::SessionsEngine;
 use crate::EngineError;
 use openagents_doc::SessionDoc;
@@ -10,21 +7,15 @@ use openagents_proto::HarnessId;
 const CHANGED: &str = "openagentsRuntimeChanged";
 
 impl SessionsEngine {
-    /// Point the chat at `harness`'s own last session (the tombstone
-    /// `resume_for` honours when it has none) and mark its document so a
-    /// fresh session receives the conversation as context.
+    /// Keep earlier provider sessions as history and start a fresh one.
+    /// The workspace tombstone survives a restart; old slots remain readable.
     pub(crate) fn switch_runtime(
         &self,
         chat_id: &str,
         harness: HarnessId,
         doc: &SessionDoc,
     ) -> Result<(), EngineError> {
-        let (session, cwd) = self
-            .inner
-            .runtime_session(chat_id, harness, None)
-            .unwrap_or_default();
-        self.inner
-            .set_chat_session(chat_id, harness, &session, &cwd);
+        self.inner.set_chat_session(chat_id, harness, "", "");
         mark_changed(doc)
     }
 

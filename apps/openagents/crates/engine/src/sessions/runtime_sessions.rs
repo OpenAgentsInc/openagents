@@ -1,6 +1,6 @@
 //! Each runtime's own provider session in a chat (#12205). A saved agent
 //! can move between runtimes (Claude Code, Codex, ...). Every runtime keeps
-//! its own last session: switching back resumes it, a report from a runtime
+//! its own last session for history. Switching starts fresh; a report from a runtime
 //! that is no longer the chat's never becomes the chat's session, and a
 //! session its provider no longer has gives way to the runtime's last good
 //! one, else a fresh session that receives the conversation.
@@ -91,7 +91,7 @@ pub(super) fn missing_session(error: &str) -> bool {
 }
 
 impl Inner {
-    fn chat_doc(&self, chat_id: &str) -> Option<Arc<ChatDocHandle>> {
+    pub(super) fn chat_doc(&self, chat_id: &str) -> Option<Arc<ChatDocHandle>> {
         self.doc_host()?.open(chat_id).ok()
     }
 
@@ -354,7 +354,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn claude_codex_claude_keeps_each_runtime_session() {
+    async fn claude_codex_claude_keeps_history_but_starts_fresh() {
         let f = fixture(crate::HarnessRegistry::new());
         f.runs_on(HarnessId::ClaudeCode);
         let inner = &f.sessions().inner;
@@ -370,15 +370,20 @@ mod tests {
         inner.report_harness_session("a", HarnessId::Codex, "codex-1", "/tmp");
         assert_eq!(f.resume(HarnessId::Codex).as_deref(), Some("codex-1"));
 
-        // Back to Claude Code: its own session, never the Codex thread.
+        // Back to Claude Code: fresh, since its old session lacks Codex's turns.
         f.switch(HarnessId::ClaudeCode);
-        assert_eq!(f.resume(HarnessId::ClaudeCode).as_deref(), Some("claude-1"));
+        assert_eq!(f.resume(HarnessId::ClaudeCode), None);
+        assert_eq!(f.core.workspace.chat_harness_session("a").unwrap().0, "");
+        f.switch(HarnessId::Codex);
+        assert_eq!(f.resume(HarnessId::Codex), None);
         assert_eq!(
-            f.core.workspace.chat_harness_session("a").unwrap().0,
+            test_slot(handle.doc(), HarnessId::ClaudeCode).unwrap().0,
             "claude-1"
         );
-        f.switch(HarnessId::Codex);
-        assert_eq!(f.resume(HarnessId::Codex).as_deref(), Some("codex-1"));
+        assert_eq!(
+            test_slot(handle.doc(), HarnessId::Codex).unwrap().0,
+            "codex-1"
+        );
     }
 
     #[tokio::test]
@@ -392,11 +397,8 @@ mod tests {
         f.switch(HarnessId::ClaudeCode);
         // The Codex run's Done lands after the switch back.
         inner.report_harness_session("a", HarnessId::Codex, "codex-2", "/tmp");
-        assert_eq!(f.resume(HarnessId::ClaudeCode).as_deref(), Some("claude-1"));
-        assert_eq!(
-            f.core.workspace.chat_harness_session("a").unwrap().0,
-            "claude-1"
-        );
+        assert_eq!(f.resume(HarnessId::ClaudeCode), None);
+        assert_eq!(f.core.workspace.chat_harness_session("a").unwrap().0, "");
         let handle = f.core.doc_host.open("a").unwrap();
         assert_eq!(
             test_slot(handle.doc(), HarnessId::Codex).unwrap().0,

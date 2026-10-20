@@ -48,7 +48,7 @@ enum Area {
 /// Presentation grouping only. All controls and their enabled states come from Rust Native.
 fn area(key: &str) -> Area {
     if matches!(key, "heading" | "refresh" | "new")
-        || ["template:", "open:", "agent:", "publish:"]
+        || ["template:", "open:", "agent:", "publish:", "run-on:"]
             .iter()
             .any(|p| key.starts_with(p))
     {

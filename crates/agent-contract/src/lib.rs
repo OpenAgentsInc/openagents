@@ -316,6 +316,20 @@ impl AgentSpec {
         Ok(())
     }
 
+    /// Choose an interactive runtime without changing identity or powers.
+    /// A model belongs to its runtime; a new runtime uses its default model.
+    pub fn select_runtime(&mut self, runtime: &str) -> Result<(), &'static str> {
+        if !matches!(runtime, "codex" | "claude-code") {
+            return Err("Choose Codex or Claude Code.");
+        }
+        if self.runtime != runtime {
+            self.runtime = runtime.into();
+            self.model = None;
+            self.fallbacks.retain(|f| f.runtime != runtime);
+        }
+        self.validate()
+    }
+
     /// The runtimes to try, in order. Empty when the agent leaves it to the
     /// host (`runtime: "any"` and no fallbacks).
     pub fn runtime_order(&self) -> Vec<RuntimeChoice> {

@@ -85,6 +85,22 @@ impl State {
                 .ok_or_else(|| "Save this experiment first.".to_owned())
         };
         let (method, path, body) = match &command {
+            Command::SwitchRuntime { agent, runtime } => {
+                let definition = s
+                    .agents
+                    .iter()
+                    .find(|a| &a.id == agent && !a.deleted)
+                    .ok_or("This agent is no longer available.")?;
+                let mut spec = definition.spec.clone();
+                spec.select_runtime(runtime).map_err(str::to_owned)?;
+                (
+                    "PUT",
+                    format!("/v1/agent-definitions/{agent}"),
+                    json!({
+                        "request_id": request_id, "expected_revision": definition.revision, "spec": spec,
+                    }),
+                )
+            }
             Command::Save => {
                 s.draft.validate().map_err(|e| e.message)?;
                 let body = SaveDocument {
@@ -182,6 +198,24 @@ impl State {
         let pending = self.pending.as_ref().ok_or("There is no saved change.")?;
         let s = &mut self.workbench;
         match &pending.command {
+            Command::SwitchRuntime { agent, runtime } => {
+                let saved: agent_contract::AgentDefinition = serde_json::from_value(value)
+                    .map_err(|_| "Couldn't read the saved agent. Retry this change.")?;
+                if &saved.id != agent {
+                    return Err("This reply belongs to another agent.".into());
+                }
+                let label = if runtime == "codex" {
+                    "Codex"
+                } else {
+                    "Claude Code"
+                };
+                s.notice = Some(format!(
+                    "{} will run on {label} on its next turn. Its saved work goes with it.",
+                    saved.spec.name
+                ));
+                s.agents.retain(|a| &a.id != agent);
+                s.agents.push(saved);
+            }
             Command::Save => {
                 let d: Document = serde_json::from_value(value)
                     .map_err(|_| "Couldn't read the saved experiment. Retry this change.")?;
@@ -256,7 +290,7 @@ pub enum Area {
 /// Group the shared controls into the desktop's three workbench tabs.
 pub fn area(key: &str) -> Area {
     if matches!(key, "heading" | "refresh" | "new")
-        || ["template:", "open:", "agent:"]
+        || ["template:", "open:", "agent:", "run-on:"]
             .iter()
             .any(|p| key.starts_with(p))
     {

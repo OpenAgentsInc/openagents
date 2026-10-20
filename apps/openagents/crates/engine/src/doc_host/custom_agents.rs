@@ -251,6 +251,33 @@ impl DocHost {
         config.harness = resolved.harness;
         config.model = resolved.model.clone();
         stamp_agent(&mut config.model_options, agent, spec);
+        if changed {
+            let handle = self.open(&chat.id)?;
+            let wake = self.agent_wakes().and_then(|w| w.engine(agent));
+            let state = serde_json::json!({
+                "working": self.working_state(&chat.id),
+                "check_ins": wake.as_ref().map(|w| w.state()),
+                "recent_decisions": wake.as_ref().map(|w| w.read(crate::agent_wakes::STATUS_ENTRIES)),
+                "decision_log": wake.as_ref().map(|w| w.decision_log()),
+            });
+            let root = &self
+                .inner
+                .custom_agents
+                .get()
+                .ok_or_else(|| error("This computer is not ready."))?
+                .lab_root;
+            crate::sessions::runtime_handoff::capture(
+                &handle.writer(),
+                root,
+                &chat.id,
+                spec,
+                &state,
+                wake.as_ref().map(|w| w.decision_log()).as_deref(),
+            )?;
+            // Save the handoff before the workspace can advertise the new
+            // runtime. A crash between the two must not lose its context.
+            self.persist_fork(&handle)?;
+        }
         if chat.config.as_ref() != Some(&config) {
             workspace.set_chat_config(&chat.id, &config)?;
         }
@@ -261,7 +288,10 @@ impl DocHost {
                 .ok_or_else(|| error("This computer is not ready."))?
                 .switch_runtime(&chat.id, resolved.harness, &writer)?;
         }
-        if let Some(text) = runtime::note(&spec.name, resolved, previous) {
+        if let Some(mut text) = runtime::note(&spec.name, resolved, previous) {
+            if changed {
+                text.push_str(" Its instructions, saved work, and recent messages go with it; full history stays available.");
+            }
             self.runtime_note(&chat.id, text)?;
         }
         Ok(())

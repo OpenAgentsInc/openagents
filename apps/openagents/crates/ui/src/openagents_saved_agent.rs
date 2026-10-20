@@ -54,6 +54,32 @@ impl Identity {
     }
 }
 
+/// Runtime choices belong only to saved agents. The current runtime is
+/// already named beside the title; offer the other interactive runtimes.
+pub(crate) fn runtime_choices(chat: Option<&Chat>) -> Vec<(String, &'static str, &'static str)> {
+    let Some(config) = chat
+        .and_then(|c| c.config.as_ref())
+        .filter(|c| saved_agent::is_agent_chat(Some(c)))
+    else {
+        return Vec::new();
+    };
+    let Some(agent) = config
+        .model_options
+        .get(saved_agent::AGENT)
+        .and_then(|v| v.as_str())
+    else {
+        return Vec::new();
+    };
+    [
+        (HarnessId::Codex, "codex", "Run on Codex"),
+        (HarnessId::ClaudeCode, "claude-code", "Run on Claude Code"),
+    ]
+    .into_iter()
+    .filter(|(h, _, _)| *h != config.harness)
+    .map(|(_, runtime, label)| (agent.to_owned(), runtime, label))
+    .collect()
+}
+
 /// The composer's placeholder for an ordinary chat.
 pub(crate) const DEFAULT_PLACEHOLDER: &str = "Do anything…";
 
@@ -69,6 +95,29 @@ mod tests {
                 "modelOptions": options, "sandbox": "danger-full-access"}
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn runtime_switches_are_available_only_for_saved_agents() {
+        assert!(runtime_choices(None).is_empty());
+        assert!(runtime_choices(Some(&chat(serde_json::json!({})))).is_empty());
+        let mut agent = chat(serde_json::json!({"openagentsAssignment":"a"}));
+        // Use the contract's key rather than depending on its wire spelling.
+        agent
+            .config
+            .as_mut()
+            .unwrap()
+            .model_options
+            .insert(saved_agent::AGENT.into(), "saved-agent".into());
+        assert_eq!(
+            runtime_choices(Some(&agent)),
+            vec![("saved-agent".into(), "codex", "Run on Codex")]
+        );
+        agent.config.as_mut().unwrap().harness = HarnessId::Codex;
+        assert_eq!(
+            runtime_choices(Some(&agent)),
+            vec![("saved-agent".into(), "claude-code", "Run on Claude Code")]
+        );
     }
 
     #[test]

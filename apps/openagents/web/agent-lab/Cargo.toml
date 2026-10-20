@@ -15,6 +15,7 @@ license = "MIT"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+agent-contract = { path = "../../../../crates/agent-contract" }
 gpui.workspace = true
 anyhow.workspace = true
 futures.workspace = true

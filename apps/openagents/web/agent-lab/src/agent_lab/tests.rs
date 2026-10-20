@@ -181,3 +181,48 @@ fn templates_and_result_notes_stay_in_their_tabs() {
     s.workbench.draft = starter();
     assert!(!s.workbench.signs_owner);
 }
+
+#[test]
+fn runtime_switch_keeps_a_retryable_revision_checked_request_and_identity() {
+    let mut state = State::new("switch".into());
+    let id = "b".repeat(64);
+    let mut spec = starter().draft.spec;
+    spec.runtime = "claude-code".into();
+    spec.model = Some("opus".into());
+    let original = spec.clone();
+    state
+        .workbench
+        .agents
+        .push(agent_contract::AgentDefinition {
+            id: id.clone(),
+            revision: 7,
+            spec,
+            deleted: false,
+        });
+    let command = act(&mut state, &format!("run-on:{id}:codex")).unwrap();
+    state.prepare(command, "c".repeat(64)).unwrap();
+    let pending = state.pending.as_ref().unwrap();
+    assert_eq!(pending.method, "PUT");
+    assert_eq!(pending.path, format!("/v1/agent-definitions/{id}"));
+    assert_eq!(pending.body["expected_revision"], 7);
+    let saved: agent_contract::AgentSpec =
+        serde_json::from_value(pending.body["spec"].clone()).unwrap();
+    assert!(saved.same_identity(&original));
+    assert_eq!(saved.runtime, "codex");
+    assert_eq!(saved.model, None);
+    let body = pending.body.clone();
+    state.prepare(Command::Retry, "d".repeat(64)).unwrap();
+    assert_eq!(state.pending.as_ref().unwrap().body, body);
+    state
+        .complete(json!({"id":id,"revision":8,"spec":saved,"deleted":false}))
+        .unwrap();
+    assert!(
+        state
+            .workbench
+            .notice
+            .as_deref()
+            .unwrap()
+            .contains("next turn")
+    );
+    assert_eq!(state.workbench.agents[0].revision, 8);
+}

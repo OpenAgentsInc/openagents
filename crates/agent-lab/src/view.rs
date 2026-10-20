@@ -38,6 +38,10 @@ pub enum Command {
     Refresh,
     Load(String),
     Save,
+    SwitchRuntime {
+        agent: String,
+        runtime: String,
+    },
     Start,
     Promote,
     Stop(String),
@@ -219,6 +223,17 @@ impl Workbench {
                 format!("Start from {}", a.spec.name),
                 enabled,
             ));
+        }
+        for a in &self.agents {
+            for (runtime, label) in [("codex", "Codex"), ("claude-code", "Claude Code")] {
+                if a.spec.runtime != runtime {
+                    n.push(button(
+                        format!("run-on:{}:{runtime}", a.id),
+                        format!("{}: Run on {label}", a.spec.name),
+                        enabled,
+                    ));
+                }
+            }
         }
         if self.signs_owner {
             for a in &self.agents {
@@ -863,6 +878,21 @@ impl Workbench {
     }
     pub fn action(&mut self, key: &str) -> Result<Option<Command>, String> {
         let mut command = None;
+        if let Some(choice) = key.strip_prefix("run-on:") {
+            let (agent, runtime) = choice
+                .rsplit_once(':')
+                .ok_or("Choose an agent and runtime.")?;
+            if !self.agents.iter().any(|a| a.id == agent)
+                || !matches!(runtime, "codex" | "claude-code")
+            {
+                return Err("Choose an agent and runtime.".into());
+            }
+            self.bump();
+            return Ok(Some(Command::SwitchRuntime {
+                agent: agent.into(),
+                runtime: runtime.into(),
+            }));
+        }
         match key {
             "retry" => command = Some(Command::Retry),
             "refresh" => command = Some(Command::Refresh),

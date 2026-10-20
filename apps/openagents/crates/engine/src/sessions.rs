@@ -44,6 +44,7 @@ mod runtime_sessions;
 pub(crate) use keepers::keeper_launch;
 pub use keepers::{HANDOFF_LEASE, HANDOFF_REFUSAL, set_keeper_launch};
 pub mod move_cloud;
+pub(crate) mod runtime_handoff;
 mod saved_agent;
 
 /// One journaled event: the durable seq plus the event, as broadcast to subscribers.
@@ -847,12 +848,20 @@ impl SessionsEngine {
         // problem now (`session/load` falls back to `session/new` internally),
         // and starting the retry fresh silently dropped a good conversation.
         let mut resume_injected = false;
+        if request
+            .resume
+            .as_deref()
+            .is_some_and(|id| !runtime_handoff::can_resume(handle.doc(), id))
+        {
+            request.resume = None;
+        }
         if request.resume.is_none() {
             request.resume = self.inner.resume_for(chat_id, &request.cwd, harness_id);
             resume_injected = request.resume.is_some();
         }
         // A fork's first run forks its source's session natively (#11963).
         if request.resume.is_none()
+            && !runtime_handoff::has_handoff(handle.doc())
             && let Some(session) = crate::chat_fork::native_source(
                 handle.doc(),
                 harness_id,
@@ -1829,6 +1838,16 @@ impl Inner {
     /// to another runtime, or one its provider said it no longer has, gives
     /// way to this runtime's own newest session in the chat.
     fn resume_for(&self, chat_id: &str, cwd: &str, harness: HarnessId) -> Option<String> {
+        let session = self.resume_candidate(chat_id, cwd, harness)?;
+        if let Some(handle) = self.chat_doc(chat_id)
+            && !runtime_handoff::can_resume(handle.doc(), &session)
+        {
+            return None;
+        }
+        Some(session)
+    }
+
+    fn resume_candidate(&self, chat_id: &str, cwd: &str, harness: HarnessId) -> Option<String> {
         let cached = lock(&self.harness_sessions).get(chat_id).cloned();
         if let Some(known) = cached.as_ref()
             && known.harness.is_none_or(|owner| owner == harness)
@@ -1975,8 +1994,16 @@ enum ProviderSession<'a> {
 
 /// A run's provider session now holds the fork history its own prompt
 /// carried (steers record theirs when confirmed, not here).
-fn note_fork_history_session(doc: &SessionDoc, carried: bool, session_id: &str) {
-    if carried && !session_id.is_empty() {
+fn note_fork_history_session(
+    doc: &SessionDoc,
+    carried: bool,
+    session_id: &str,
+    generation: Option<&str>,
+) {
+    if carried
+        && !session_id.is_empty()
+        && runtime_handoff::generation(doc).as_deref() == generation
+    {
         let _ = doc.set_fork_history_session(session_id);
     }
 }
@@ -1995,6 +2022,17 @@ impl Inner {
         current: Option<&str>,
         provider: ProviderSession<'_>,
     ) -> Option<String> {
+        if runtime_handoff::has_handoff(doc) {
+            let received = matches!(provider, ProviderSession::Continued(Some(session))
+                if runtime_handoff::can_resume(doc, session));
+            return if received || native_command(prompt, harness_id) {
+                None
+            } else {
+                // A prewarmed child has a session ID before its first user
+                // message. It still needs the handoff on that first send.
+                runtime_handoff::prompt(doc, current, prompt)
+            };
+        }
         if let Some(stored) = openagents_doc::continuation::get(doc) {
             if native_command(prompt, harness_id) {
                 return None;
@@ -2497,6 +2535,7 @@ async fn drive_run(
         && request
             .model_options
             .contains_key(openagents_proto::FORK_SESSION_OPTION);
+    let handoff_generation = runtime_handoff::generation(&doc);
     let mut carried_history = native_fork;
     let provider = match request.resume.as_deref() {
         None => ProviderSession::Fresh,
@@ -3522,6 +3561,7 @@ async fn drive_run(
             // Consumed: a steer carrying the fork history delivered it to
             // this runtime's provider session.
             if confirmed.is_some_and(|steer| steer.fork_history)
+                && runtime_handoff::generation(&doc) == handoff_generation
                 && let Some(session) = lock(&inner.harness_sessions)
                     .get(&chat_id)
                     .map(|known| known.session_id.clone())
@@ -3540,7 +3580,12 @@ async fn drive_run(
                 // The event's own cwd (where the harness actually created the
                 // session) scopes the stored id, not the request's.
                 inner.report_harness_session(&chat_id, harness_id, session_id, cwd);
-                note_fork_history_session(&doc, carried_history, session_id);
+                note_fork_history_session(
+                    &doc,
+                    carried_history,
+                    session_id,
+                    handoff_generation.as_deref(),
+                );
                 if native_fork {
                     let _ = openagents_doc::native_fork::clear(&doc);
                 }
@@ -3553,7 +3598,12 @@ async fn drive_run(
                 ..
             } if saw_session_started || *status != DoneStatus::Errored => {
                 inner.report_harness_session(&chat_id, harness_id, session_id, &run_cwd);
-                note_fork_history_session(&doc, carried_history, session_id);
+                note_fork_history_session(
+                    &doc,
+                    carried_history,
+                    session_id,
+                    handoff_generation.as_deref(),
+                );
             }
             AgentEvent::InputRequested { .. } => {
                 // Known-id guaranteed: the unknown-id twin was dropped above,

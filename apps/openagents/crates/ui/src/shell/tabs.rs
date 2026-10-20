@@ -386,6 +386,59 @@ impl Shell {
         }
     }
 
+    /// Save a runtime choice for the saved agent's next turn.
+    fn switch_saved_agent_runtime(
+        &mut self,
+        agent: String,
+        runtime: &'static str,
+        cx: &mut Context<Self>,
+    ) {
+        if self.agent_runtime_task.is_some() {
+            return;
+        }
+        let lease = crate::openagents_account::AppAccount::global(cx)
+            .and_then(|a| a.read(cx).controller.clone())
+            .and_then(|c| c.lease());
+        let Some(lease) = lease else {
+            self.show_notice(
+                crate::toast::ToastKind::Error,
+                "Connecting to your account…",
+                cx,
+            );
+            return;
+        };
+        let job = gpui_tokio::Tokio::spawn(cx, async move {
+            openagents_account::agent_runtime::switch(&lease, &agent, runtime).await
+        });
+        self.agent_runtime_task = Some(cx.spawn(async move |this, cx| {
+            let result = job.await;
+            let _ = this.update(cx, |this, cx| {
+                this.agent_runtime_task = None;
+                let (kind, text) = match result {
+                    Ok(Ok(agent)) => (
+                        crate::toast::ToastKind::Info,
+                        format!(
+                            "{} will run on {} on its next turn. Its saved work goes with it.",
+                            agent.spec.name,
+                            if runtime == "codex" {
+                                "Codex"
+                            } else {
+                                "Claude Code"
+                            }
+                        ),
+                    ),
+                    Ok(Err(message)) => (crate::toast::ToastKind::Error, message),
+                    Err(_) => (
+                        crate::toast::ToastKind::Error,
+                        "Couldn't change this agent. Try again.".into(),
+                    ),
+                };
+                this.show_notice(kind, text, cx);
+                cx.notify();
+            });
+        }));
+    }
+
     /// The unified titlebar in chat mode:
     /// `[new-session +] [harness icon + session title] … [toggle-changes]`.
     /// Replaces the tab strip; inherits its titlebar duties (drag region,
@@ -624,6 +677,12 @@ impl Shell {
             )
             .when(open, |button| button.bg(crate::theme::wash(0.09)))
         });
+        let runtime_choices = crate::openagents_saved_agent::runtime_choices(
+            self.state
+                .read(cx)
+                .selected_chat_row()
+                .filter(|_| !takeover && !on_canvas),
+        );
         let inner = div()
             .size_full()
             .flex()
@@ -678,6 +737,21 @@ impl Shell {
                 )
             })
             .child(div().flex_1())
+            .children(runtime_choices.into_iter().map(|(agent, runtime, label)| {
+                div()
+                    .id(format!("agent-run-on-{runtime}"))
+                    .role(gpui::Role::Button)
+                    .aria_label(label)
+                    .tab_index(0)
+                    .text_size(crate::typography::ui_rems(11.0))
+                    .text_color(theme.text_muted)
+                    .px(px(6.0))
+                    .cursor_pointer()
+                    .child(label)
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.switch_saved_agent_runtime(agent.clone(), runtime, cx);
+                    }))
+            }))
             .children(session_info_toggle)
             .children(trailing);
 

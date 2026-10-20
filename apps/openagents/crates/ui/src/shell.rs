@@ -1996,6 +1996,7 @@ enum PendingExit {
 pub struct Shell {
     saved_reader: Option<Entity<crate::openagents_reader::SavedReader>>,
     agent_lab: Option<gpui::WindowHandle<crate::agent_lab::AgentLab>>,
+    agent_runtime_task: Option<Task<()>>,
     _saved_reader_events: Option<Subscription>,
     saved_history: Option<Entity<crate::openagents_history::HistoryPanel>>,
     _saved_history_events: Option<Subscription>,
@@ -2601,6 +2602,7 @@ impl Shell {
         Self {
             saved_reader,
             agent_lab: None,
+            agent_runtime_task: None,
             _saved_reader_events: saved_reader_events,
             saved_history,
             _saved_history_events: saved_history_events,

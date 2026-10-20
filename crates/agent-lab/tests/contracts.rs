@@ -733,3 +733,29 @@ fn publish_shows_only_where_the_owner_tag_can_be_signed() {
     assert!(matches!(s.action(&key).unwrap(), Some(Command::Publish(p)) if p == id));
     assert!(s.action(&format!("publish:{}", "c".repeat(64))).is_err());
 }
+
+#[cfg(feature = "views")]
+#[test]
+fn saved_agents_offer_explicit_runtime_switches() {
+    use agent_lab::view::{Command, Workbench};
+    let mut state = Workbench::new("runtime-switch".into());
+    let id = "b".repeat(64);
+    let mut spec = starter().draft.spec;
+    spec.runtime = "claude-code".into();
+    spec.model = None;
+    state.agents.push(agent_contract::AgentDefinition {
+        id: id.clone(),
+        revision: 1,
+        spec,
+        deleted: false,
+    });
+    let key = format!("run-on:{id}:codex");
+    let view = serde_json::to_string(&state.view()).unwrap();
+    assert!(view.contains(&key));
+    assert!(view.contains("Run on Codex"));
+    assert!(
+        matches!(state.action(&key).unwrap(), Some(Command::SwitchRuntime { agent, runtime }) if agent == id && runtime == "codex")
+    );
+    assert!(state.action("run-on:unknown:codex").is_err());
+    assert!(state.action(&format!("run-on:{id}:unknown")).is_err());
+}

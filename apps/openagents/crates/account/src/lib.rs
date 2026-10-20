@@ -12,6 +12,7 @@ use std::{
 };
 use tokio::sync::watch;
 pub mod agent_lab;
+pub mod agent_runtime;
 pub mod chat_entries;
 pub mod cloud_chat;
 pub mod cloud_chat_demo;

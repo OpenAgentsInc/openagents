@@ -4720,6 +4720,7 @@ dependencies = [
 name = "openagents-web-agent-lab"
 version = "1.0.0"
 dependencies = [
+ "agent-contract",
  "agent-lab",
  "anyhow",
  "console_error_panic_hook",
