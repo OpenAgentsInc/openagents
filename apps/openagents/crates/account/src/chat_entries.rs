@@ -220,6 +220,8 @@ fn make_entries(
                     openagents_doc::MessageRole::Assistant
                 },
                 parts,
+                // Saved messages carry no time: 0 means unknown, and the
+                // transcript's working timer shows none for it (#12204).
                 created_at: 0,
                 device_id: String::new(),
                 status: Some(MessageStatus::Complete),

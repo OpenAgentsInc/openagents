@@ -2291,6 +2291,23 @@ pub fn sending_bridge(
     }
 }
 
+/// Seconds the current turn has run, or `None` when its start isn't known
+/// (#12204). A start at or before the Unix epoch is a missing timestamp read
+/// as zero (an account chat's saved messages carry no time), and a start
+/// before the chat existed can't be this chat's turn, so neither gets a
+/// timer.
+pub fn turn_elapsed_secs(
+    started_ms: Option<i64>,
+    chat_created_ms: Option<i64>,
+    now_ms: i64,
+) -> Option<i64> {
+    let started = started_ms.filter(|ms| *ms > 0)?;
+    if chat_created_ms.is_some_and(|created| created > 0 && started < created) {
+        return None;
+    }
+    Some((now_ms - started).max(0) / 1000)
+}
+
 /// Compact elapsed formatting, using at most two units up to days.
 pub fn format_elapsed(secs: i64) -> String {
     let secs = secs.max(0);
@@ -7083,7 +7100,7 @@ impl Transcript {
             if !live {
                 return None;
             }
-            let elapsed = ((now.timestamp_millis() - last.created_at).max(0) / 1000) as i64;
+            let elapsed = turn_elapsed_secs(Some(last.created_at), None, now.timestamp_millis());
             (false, false, elapsed, last.created_at)
         } else {
             let chat_id = self.chat_id.clone()?;
@@ -7126,9 +7143,16 @@ impl Transcript {
                 // progress. (The overlay holds while degraded, so this line
                 // owns the surface until the ack or the failed state.)
                 let queued = sending && state.chat_delivery_degraded(&chat_id);
-                let elapsed = turn_started
-                    .map(|t| now.signed_duration_since(t).num_seconds().max(0))
-                    .unwrap_or(0);
+                let chat_created = state
+                    .chats
+                    .iter()
+                    .find(|c| c.id == chat_id)
+                    .map(|c| c.created_at.timestamp_millis());
+                let elapsed = turn_elapsed_secs(
+                    turn_started.map(|t| t.timestamp_millis()),
+                    chat_created,
+                    now.timestamp_millis(),
+                );
                 // While sending, the session row still carries the PREVIOUS
                 // turn: the bridge keys on its own send instead, so it never
                 // rolls out of that turn's word or an earlier send's.
@@ -7138,7 +7162,11 @@ impl Transcript {
             };
             (sending, queued, elapsed, turn)
         };
-        if self.compact_mode && !sending && !queued && elapsed_secs > 0 {
+        if self.compact_mode
+            && !sending
+            && !queued
+            && let Some(elapsed_secs) = elapsed_secs.filter(|secs| *secs > 0)
+        {
             let entry_id = if let Some(doc_id) = &self.doc_override {
                 self.state
                     .read(cx)
@@ -7165,7 +7193,9 @@ impl Transcript {
                 crate::tool_progress::running(&state.transcript, &state.chats, chrono::Utc::now())
             })
             .flatten();
-        let elapsed_secs = tool.as_ref().map_or(elapsed_secs, |tool| tool.elapsed_secs);
+        let elapsed_secs = tool
+            .as_ref()
+            .map_or(elapsed_secs, |tool| Some(tool.elapsed_secs));
         let word = if queued {
             "Queued — will send automatically"
         } else if sending {
@@ -7210,7 +7240,7 @@ impl Transcript {
                             cx.reduce_motion(),
                         )),
                 )
-                .when(!sending, |el| {
+                .when_some(elapsed_secs.filter(|_| !sending), |el, elapsed_secs| {
                     // The timer ticks every second; its digits roll in place
                     // (the unit suffix holds).
                     el.child(
@@ -16115,6 +16145,35 @@ mod tests {
         ] {
             assert_eq!(format_elapsed(secs), expected, "elapsed seconds: {secs}");
         }
+    }
+
+    /// #12204: an account chat answered on another device showed
+    /// "Working… 20745d 20h": its messages carry no time, read as 0, and the
+    /// timer counted from 1970. An unknown start shows no timer, and neither
+    /// does a start from before the chat existed.
+    #[test]
+    fn turn_timer_never_counts_from_before_the_chat() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-10-19T20:00:00Z")
+            .unwrap()
+            .timestamp_millis();
+        let created = now - 3_600_000;
+        assert_eq!(turn_elapsed_secs(Some(0), None, now), None);
+        assert_eq!(turn_elapsed_secs(Some(-5), None, now), None);
+        assert_eq!(turn_elapsed_secs(None, Some(created), now), None);
+        assert_eq!(
+            turn_elapsed_secs(Some(created - 1), Some(created), now),
+            None
+        );
+        assert_eq!(turn_elapsed_secs(Some(now - 95_000), None, now), Some(95));
+        assert_eq!(
+            turn_elapsed_secs(Some(created), Some(created), now),
+            Some(3_600)
+        );
+        // A start a moment ahead of this clock reads as 0s, not negative.
+        assert_eq!(
+            turn_elapsed_secs(Some(now + 2_000), Some(created), now),
+            Some(0)
+        );
     }
 
     #[test]
