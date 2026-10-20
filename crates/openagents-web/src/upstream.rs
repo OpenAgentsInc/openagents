@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 83] = [
+const OWNED_EXACT: [&str; 84] = [
     "/",
     // The GPUI web chat (crate::pages::gpui_chat).
     "/gpui",
@@ -75,6 +75,8 @@ const OWNED_EXACT: [&str; 83] = [
     // The Grid at twilight, a Shader Skills background (crate::pages::lander5).
     "/lander5",
     "/lander4",
+    // /lander5 with an agent demo card (crate::pages::lander6).
+    "/lander6",
     "/games/grow-little-bunny",
     "/games/the-ice-cream-man",
     "/games/snap-station",
@@ -136,7 +138,7 @@ const OWNED_EXACT: [&str; 83] = [
 /// `/coder/memory`), so a shipped app still calling them is served here
 /// and its `Bearer sess_...` never reaches the upstream. Current apps ask
 /// the `/v1` paths first (#11158).
-const OWNED_PREFIXES: [&str; 42] = [
+const OWNED_PREFIXES: [&str; 43] = [
     "/landing/",
     // The GPUI web chat's chats and build files (crate::pages::gpui_chat).
     "/gpui/",
@@ -160,6 +162,7 @@ const OWNED_PREFIXES: [&str; 42] = [
     "/everglade/",
     // The overhead Grid in three.js (crate::pages::lander3).
     "/lander3/",
+    "/lander6/",
     "/games/grow-little-bunny/",
     "/games/the-ice-cream-man/",
     "/games/snap-station/",

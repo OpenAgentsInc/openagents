@@ -1266,6 +1266,27 @@ OUTDIR` serves it at `/demo/gpui`. The website image builds it in the
 `gpuiweb` stages of `crates/openagents-web/Dockerfile` (Rust 1.98.1) and
 copies it to `/srv/gpui-demo`, which the server uses without a flag.
 
+## The agent demo card (`/lander6`)
+
+- `web/gpui-web` honours the window's background appearance: a window
+  opened with a transparent (or blurred) background switches its renderer
+  to a transparent surface (`update_transparency`), so a canvas in a box
+  shows the page behind it. Windows stay opaque by default.
+- `web/card` (`openagents-web-card`) draws one demo chat with the shared
+  chat views and plays the desktop demo's scripted reply
+  (`crates/client/src/demo/transcripts.rs`, compiled by `#[path]`) in a
+  loop, read-only, in the page's `#gpui-mount` box. It bundles Geist
+  (regular, medium, semibold) and Geist Mono only.
+- `web/card/webgpu` is its WebGPU-only build (#12237): its own workspace,
+  patching wgpu with a copy of the crates.io release that
+  `scripts/build-web-card.sh` writes with the default features cut to
+  `std`, `parking_lot`, `wgsl`, and `webgpu`, and with the WebGPU surface
+  also listing a premultiplied canvas (wgpu lists only an opaque one there,
+  though it configures either).
+
+Build with `scripts/build-web-card.sh OUTDIR`; `openagents-web --lander6
+OUTDIR` serves both builds under `/lander6/card/`.
+
 ## AgentGraph on the web (`/agent/foreman`)
 
 - `web/gpui-web` puts its canvas in the page's `#gpui-mount` element when

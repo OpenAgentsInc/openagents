@@ -25,6 +25,7 @@
 /apps/openagents/scripts/*
 !/apps/openagents/scripts/build-web-demo.sh
 !/apps/openagents/scripts/build-web-chat.sh
+!/apps/openagents/scripts/build-web-card.sh
 !/migrations/
 !/nips/
 !/tests/

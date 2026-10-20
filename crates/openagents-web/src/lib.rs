@@ -438,6 +438,10 @@ pub struct Config {
     /// when it exists), inlined into the page. Without it, `/lander5` shows
     /// its title and link over a still background.
     pub lander5: Option<PathBuf>,
+    /// `/lander6`'s agent demo card (`--lander6 DIR`, default `/srv/lander6`
+    /// when it exists): its WebGPU-only and WebGL2 builds, served under
+    /// `/lander6/card/`. Without it, `/lander6` is `/lander5` with no card.
+    pub lander6: Option<PathBuf>,
     /// The Snap Station web build (`--snap DIR`, default `/srv/snap` when
     /// it exists), served under `/games/snap-station/`. Without it, the
     /// game's page says it can't be played here.
@@ -569,6 +573,7 @@ impl Config {
             icecream: None,
             layertree: None,
             lander5: None,
+            lander6: None,
             snap: None,
             att: None,
             cad: None,

@@ -62,6 +62,9 @@ pub(crate) struct WebWindowInner {
     pending_physical_size: Cell<Option<(u32, u32)>>,
     /// Whether the first frame at the canvas's size has been drawn.
     presented: Cell<bool>,
+    /// What the app asked to show behind its drawing: a transparent window
+    /// lets the page show through, for a canvas in a box on a page.
+    background: Cell<WindowBackgroundAppearance>,
 }
 
 pub struct WebWindow {
@@ -199,6 +202,7 @@ impl WebWindow {
             mql_handle: RefCell::new(None),
             pending_physical_size: Cell::new(None),
             presented: Cell::new(false),
+            background: Cell::new(WindowBackgroundAppearance::Opaque),
         });
 
         let raf_closure = inner.create_raf_closure();
@@ -626,7 +630,7 @@ impl PlatformWindow for WebWindow {
     }
 
     fn background_appearance(&self) -> WindowBackgroundAppearance {
-        WindowBackgroundAppearance::Opaque
+        self.inner.background.get()
     }
 
     fn set_title(&mut self, title: &str) {
@@ -636,7 +640,14 @@ impl PlatformWindow for WebWindow {
         }
     }
 
-    fn set_background_appearance(&self, _background: WindowBackgroundAppearance) {}
+    fn set_background_appearance(&self, background: WindowBackgroundAppearance) {
+        self.inner.background.set(background);
+        self.inner
+            .state
+            .borrow_mut()
+            .renderer
+            .update_transparency(background != WindowBackgroundAppearance::Opaque);
+    }
 
     fn minimize(&self) {
         log::warn!("WebWindow::minimize is not supported in the browser");

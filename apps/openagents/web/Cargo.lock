@@ -3418,6 +3418,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-web-card"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "console_error_panic_hook",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "gpui",
+ "js-sys",
+ "openagents-brand",
+ "openagents-doc",
+ "openagents-gpui-web",
+ "openagents-proto",
+ "openagents-web-chat-view",
+ "serde",
+ "serde_json",
+ "uuid",
+ "wasm-bindgen",
+ "web-sys",
+ "web-time",
+]
+
+[[package]]
 name = "openagents-web-chat"
 version = "1.0.0"
 dependencies = [

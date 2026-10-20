@@ -75,15 +75,15 @@ stroke='%23ededed' stroke-width='5' stroke-linecap='round'/%3E%3Cpath d='M32 10v
 stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E";
 
 /// A page, ready to send.
-struct Document {
-    html: String,
+pub(super) struct Document {
+    pub(super) html: String,
     brotli: Vec<u8>,
     gzip: Vec<u8>,
-    policy: HeaderValue,
+    pub(super) policy: HeaderValue,
 }
 
 /// Which build a kept document was made from.
-type BuildKey = Option<(PathBuf, SystemTime, SystemTime)>;
+pub(super) type BuildKey = Option<(PathBuf, SystemTime, SystemTime)>;
 
 /// The last document made, and the build it came from.
 static KEPT: Mutex<Option<(BuildKey, Arc<Document>)>> = Mutex::new(None);
@@ -97,6 +97,11 @@ async fn page(State(app): State<App>, request: HeaderMap) -> Response {
     let document = tokio::task::spawn_blocking(move || document(directory.as_deref()))
         .await
         .unwrap_or_else(|_| Arc::new(assemble(None)));
+    send(&document, &request)
+}
+
+/// `document` as the response to `request`: brotli or gzip when accepted.
+pub(super) fn send(document: &Document, request: &HeaderMap) -> Response {
     let (body, coding) = if accepts(&request, "br") {
         (document.brotli.clone(), Some("br"))
     } else if accepts_gzip(&request) {
@@ -115,16 +120,16 @@ async fn page(State(app): State<App>, request: HeaderMap) -> Response {
 }
 
 /// The build's glue and module.
-fn build(directory: Option<&Path>) -> Option<(String, Vec<u8>)> {
+pub(super) fn build(directory: Option<&Path>) -> Option<(String, Vec<u8>)> {
     let directory = directory?;
     let glue = std::fs::read_to_string(directory.join(LANDER5_GLUE)).ok()?;
     let wasm = std::fs::read(directory.join(LANDER5_WASM)).ok()?;
     Some((glue, wasm))
 }
 
-/// The document for the build in `directory`, made once per build.
-fn document(directory: Option<&Path>) -> Arc<Document> {
-    let key: BuildKey = directory.and_then(|directory| {
+/// Which build is in `directory` now.
+pub(super) fn build_key(directory: Option<&Path>) -> BuildKey {
+    directory.and_then(|directory| {
         let modified = |file: &str| {
             std::fs::metadata(directory.join(file))
                 .and_then(|m| m.modified())
@@ -135,7 +140,12 @@ fn document(directory: Option<&Path>) -> Arc<Document> {
             modified(LANDER5_GLUE)?,
             modified(LANDER5_WASM)?,
         ))
-    });
+    })
+}
+
+/// The document for the build in `directory`, made once per build.
+fn document(directory: Option<&Path>) -> Arc<Document> {
+    let key = build_key(directory);
     if let Ok(kept) = KEPT.lock()
         && let Some((kept_key, document)) = kept.as_ref()
         && *kept_key == key
@@ -164,7 +174,7 @@ fn inline_glue(glue: &str) -> String {
 }
 
 /// `'sha256-…'` for a policy, over `text` exactly as the page carries it.
-fn source_hash(text: &str) -> String {
+pub(super) fn source_hash(text: &str) -> String {
     format!(
         "'sha256-{}'",
         STANDARD.encode(Sha256::digest(text.as_bytes()))
@@ -172,12 +182,31 @@ fn source_hash(text: &str) -> String {
 }
 
 /// Whether `text` can sit inside a `<script>` element unchanged.
-fn fits_in_script(text: &str) -> bool {
+pub(super) fn fits_in_script(text: &str) -> bool {
     !text.to_ascii_lowercase().contains("</script")
+}
+
+/// What another page adds to this one (`/lander6`'s demo card): its own
+/// stylesheet, markup after the Download link, and a module script that
+/// runs after the runner's, loading files from this site.
+pub(super) struct Addition {
+    pub style: &'static str,
+    pub in_main: &'static str,
+    pub script: &'static str,
 }
 
 /// The page, with the runner when a build is given.
 fn assemble(build: Option<(String, Vec<u8>)>) -> Document {
+    assemble_with(build, None)
+}
+
+/// [`assemble`], with another page's [`Addition`].
+pub(super) fn assemble_with(
+    build: Option<(String, Vec<u8>)>,
+    addition: Option<&Addition>,
+) -> Document {
+    let style = addition.map_or(STYLE, |addition| addition.style);
+    let in_main = addition.map_or("", |addition| addition.in_main);
     let scene = build.and_then(|(glue, wasm)| {
         let sky = lander5_web::shaders::minify(&lander5_web::shaders::sky_source());
         let grid = lander5_web::shaders::minify(&lander5_web::shaders::grid_source());
@@ -198,9 +227,9 @@ for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);__wbg_init({{module_or_path:b}})
 <meta name=\"color-scheme\" content=\"dark\"><title>{TITLE}</title>\
 <meta name=\"description\" content=\"{DESCRIPTION}\">\
 <link rel=\"icon\" type=\"image/svg+xml\" href=\"{ICON}\">\
-<style>{STYLE}</style></head><body>\
+<style>{style}</style></head><body>\
 <canvas id=\"{canvas}\" aria-hidden=\"true\"></canvas>\
-<main><h1>{TITLE}</h1><a href=\"{DOWNLOAD}\">Download</a></main>",
+<main><h1>{TITLE}</h1><a href=\"{DOWNLOAD}\">Download</a>{in_main}</main>",
         canvas = lander5_web::shaders::CANVAS_ID,
     );
     let mut script_hash = None;
@@ -216,16 +245,31 @@ for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);__wbg_init({{module_or_path:b}})
         ));
         script_hash = Some(source_hash(script));
     }
+    let mut connect = String::new();
+    let script_src = match (addition, &script_hash) {
+        (Some(addition), _) if fits_in_script(addition.script) => {
+            html.push_str(&format!(
+                "<script type=\"module\">{}</script>",
+                addition.script
+            ));
+            connect = "connect-src 'self'; ".to_owned();
+            let runner = script_hash.as_deref().unwrap_or_default();
+            format!(
+                "{runner} {} 'self' 'wasm-unsafe-eval'",
+                source_hash(addition.script)
+            )
+            .trim_start()
+            .to_owned()
+        }
+        (_, Some(hash)) => format!("{hash} 'wasm-unsafe-eval'"),
+        (_, None) => "'none'".to_owned(),
+    };
     html.push_str("</body></html>");
 
-    let script_src = match &script_hash {
-        Some(hash) => format!("{hash} 'wasm-unsafe-eval'"),
-        None => "'none'".to_owned(),
-    };
     let policy = format!(
-        "default-src 'none'; style-src {style}; script-src {script_src}; img-src data:; \
+        "default-src 'none'; style-src {style}; script-src {script_src}; {connect}img-src data:; \
 base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-        style = source_hash(STYLE),
+        style = source_hash(style),
     );
     let policy = HeaderValue::from_str(&policy)
         .unwrap_or_else(|_| HeaderValue::from_static("default-src 'none'"));
