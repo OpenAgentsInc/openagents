@@ -1487,3 +1487,7 @@ master delegation audit.
   `QueueCommand`, `QueueMessage`). `browser_devices::sanitize` drops what
   only this computer's app may set: `targetDeviceId`, `originChatId`,
   attachment transfers and paths, and a run's OpenAgents tools (`mcp`).
+- #12282 lets a browser plan, approve, start, discard, and bring back a
+  move (`PlanMove`, `ApproveMove`, `StartMove`, `DiscardMove`, `BringBack`)
+  under its run right, and read `MoveStatus`. The person at the browser is
+  the person approving, as on the desktop's move sheet.
