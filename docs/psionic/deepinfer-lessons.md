@@ -286,6 +286,13 @@ implementation and makes no new throughput claim. Native R1-distill work
 (DS0) remains a separate implementation; a working external engine does not
 qualify a native Psionic decoder.
 
+The owner's subsequent priority is [reliable personal serving, one generation
+at a time](deepseek-support-plan.md#personal-serving-first-one-generation-at-a-time).
+That implementation order supersedes the first-worker production scope below:
+start with a pinned small model, serial execution and failure recovery, then
+one private cloud worker. Gateway integration, multiuser scheduling and replicas
+are later work, not prerequisites for the first answer.
+
 ### What the deployment Q&A changes
 
 The useful lesson is to budget the whole service: scheduling, cache placement,
@@ -427,10 +434,12 @@ for a general long-context streaming hosted API. Its gateway registration also
 requires the earnings ledger and exchange-rate configuration. Do not bypass
 those conditions or relabel an operator worker as local to route around them.
 
-For the first worker, admit by estimated KV bytes, prefill cost, output cap
-and queue delay, not just request count. Use bounded queues and real device
-batching, then overlap preparation/readback. Preserve the existing cancellation
-and sampler/cache identity rules. Scale whole-request replicas on queue-inclusive
+For the first personal worker, permit one active generation, no waiting
+generation queue, and tested context/output bounds. Hold its slot through
+actual completion or confirmed process exit after a timeout. For later shared
+serving, admit by estimated KV bytes, prefill cost, output cap and queue delay,
+then add real device batching and overlap preparation/readback. Preserve
+cancellation and sampler/cache identity rules. Scale replicas on queue-inclusive
 TTFT, inter-token latency and actual completed-token throughput. Pending
 requests can fail over after a spot loss; a stream already started must fail
 visibly unless an independently qualified exact-state handoff exists.

@@ -85,6 +85,9 @@ criteria grounded in Psionic's current serving and cluster code.
 The [DeepSeek support plan](deepseek-support-plan.md) surveys DeepSeek's public
 infrastructure and defines specific targets for R1 distills, native MLA/MoE,
 V3.2 sparse attention, and V4.1, with pinned model and kernel compatibility.
+Its [personal serving plan](deepseek-support-plan.md#personal-serving-first-one-generation-at-a-time)
+prioritizes one reliable generation, recovery and a private cloud worker,
+with DS0 ownership and prerequisites explicit; multiuser scaling comes later.
 
 The [DeepInfer review](deepinfer-lessons.md) compares its released inference
 engine with Psionic's serving paths and recommends focused work on device

@@ -14,7 +14,102 @@ revisions. No model weights, dependencies, vendor submodules, or device runs
 were needed. All support targets below are proposed; this change implements
 no decoder and qualifies no new model.
 
-## Recommended support sequence
+## Personal serving first: one generation at a time
+
+Owner direction, 2026-10-20: get DeepSeek working reliably for our own use
+before building a multiuser service. This order takes precedence over the
+broader [GCP proposal](deepinfer-lessons.md#gcp-deployment-proposal-2026-10-20)
+and its initial gateway/replica scope. This section is a plan, not a claim
+that a worker has been deployed or full-model execution has passed.
+
+The first useful result is one pinned model, one process, and one request
+that returns a complete final answer. Begin with the existing
+`deepseek-r1-distill-qwen-1.5b` Q4_K_M catalog entry: approximately 1.12 GB,
+2,048 output tokens for qualification, and its pinned tokenizer/template.
+Keep native CPU and explicitly selected llama.cpp GPU results separate.
+Native Qwen2 CUDA support is not implied by DS0 or by native Qwen3.5 support.
+Larger distills and a new native GPU decoder follow a working baseline.
+
+### Work split and dependencies
+
+| Owner | Work | Dependency on the other work |
+| --- | --- | --- |
+| DS0 agent | Pinned artifact/tokenizer/template, reasoning/final parsing, numerical/full-model qualification, and the existing catalog/runner's DeepSeek checks | Its first text implementation landed as `ad9a289fc7`. Token/artifact checks pass; full-model CPU and external GPU results remain pending. |
+| Serving work in this chat | Serial execution, bounded requests, completion/error handling, timeout recovery, then a reproducible private worker launch and smoke check | Consume the landed DS0 profile and its qualification results. Do not rewrite tokenizer, prompt rendering, reasoning parsing, decoder math, or duplicate its qualification runner. |
+
+The first serving changes can be developed with synthetic model-server
+fixtures while DS0 qualification continues. Promotion of **native R1**
+depends on DS0's full-model CPU answer, continuation, reasoning/final and
+truncation results; fixtures alone are insufficient. The compatible GPU
+path instead needs its own pinned engine/template/artifact qualification.
+It can accelerate a usable GPU endpoint without waiting for a native
+Qwen2 CUDA implementation. No new native decoder is a prerequisite for
+that path. If DS0 finds an artifact/template/parser defect, keep its fix
+with that agent and block native promotion on the resulting commit.
+
+Keep serving policy in a separate module where possible. Any necessary
+hooks in `psionic-serve/src/openai_http.rs` should be small and outside
+DS0's rendering/parser changes. Pylon client changes belong in
+`crates/pylon/src/engine.rs`; launch/recovery settings reuse its existing
+supervisor. Extend the current model runner rather than creating a second
+catalog or benchmark framework.
+
+### Implementation order and acceptance checks
+
+| Step | Change | Done when |
+| --- | --- | --- |
+| S0: Establish the baseline | Reuse DS0's pinned artifact and direct HTTP checks. Start one model only, initially on CPU; qualify the compatible GPU engine separately. | Arithmetic and continuation produce separate reasoning and the expected final answer; a one-token limit reports truncation. Record artifact, runtime, device and settings. DS0 owns these model checks. |
+| S1: Make serial serving reliable | Add an explicit single-generation mode at the Psionic worker boundary and use one Pylon text slot. Reject a second generation promptly while busy; keep no waiting generation queue. Bound input, output, request size and execution time. | A second request cannot execute alongside the first. Busy, invalid/oversized input, model failure, reasoning-only output and token-limit termination have explicit outcomes. A truncated response is never reported as a completed answer. |
+| S2: Prove recovery | Keep the execution slot until actual worker completion, including after HTTP disconnect or caller timeout. Add bounded stop/restart recovery for a worker that cannot stop cooperatively. Reuse the supervisor and health checks. | Timeout/disconnect tests show no overlapping generation or stale queued work. Killing our isolated test worker produces a visible failure; restart reaches readiness and the next request succeeds. Idle HTTP health alone must not declare a stuck generation recovered. |
+| S3: Move the same setup to one private GCE worker | Pin the runtime and model, reuse the launch/health patterns, and access loopback HTTP through an authenticated SSH/IAP tunnel. Start with a small-model L4 candidate; choose an A100 only if the qualified model's memory or measured speed warrants it. | The same serial request/recovery checks pass from our computer through the tunnel, after a cold start and after a worker restart. Record the actual GPU allocation, memory, timings and running cost. No public model-server port is needed. |
+| S4: Increase usefulness | Compare larger distills one at a time on an independently budgeted worker. Select by complete answers, context requirements, memory and latency. | The larger candidate passes the same checks and has measured improvement on our prompts. Retain a known working small-model configuration for recovery. |
+
+The existing generic Psionic worker uses an unbounded command channel and
+can collect generation commands into a batch. Pylon defaults to two slots;
+its provider deadline is 90 seconds, while the HTTP engine's timeout is
+120 seconds. A caller timing out does not prove that decoding stopped.
+Serial mode must enforce its limit inside the execution lifecycle, rather
+than releasing a semaphore merely because an HTTP future was dropped.
+If cooperative cancellation is unavailable, stay busy until completion;
+on an expired execution deadline, stop the isolated worker, confirm exit,
+restart, and wait for readiness before admitting another generation.
+
+Start with non-streamed direct requests and explicit token/context caps.
+R1's output allowance includes thinking; use the existing 2,048-token
+qualification setting as a starting point, then record the measured bound
+that produces a complete final answer. A budget exhausted during thinking
+must be a clear incomplete result. For Pylon, explicitly set `--slots 1`
+and the tested output cap, and require completion within its provider
+deadline with recovery time left over. A slower successful direct request
+does not qualify the Pylon route. If it needs a longer deadline, treat that
+as a separate transport-contract change rather than silently raising one
+client's timeout. Do not retry a failed generation invisibly.
+
+For serving changes, use private loopback fixtures for overlap, timeout,
+disconnect, overload and restart cases, plus the affected Rust tests and
+formatting. Then reuse DS0's real-model checks and record ten sequential
+warm requests plus a cold start: pass/fail, complete final answers, end-to-end
+latency, actual output tokens/second, memory, and restart time. Label small
+samples as observations, not p95/p99 service guarantees. No shared-host
+quiet lease or production Clef GPU takeover; `/home` builds remain first.
+
+Before creating a cloud worker, make its exact VM/model/runtime, cost bound,
+expiry/cleanup and private access commands concrete. Existing quota and
+production GPU VMs are not spare serving capacity. Stop the experimental
+worker when the bounded test ends. A deployment must not replace Clef,
+the network Pylon, or a newer running build.
+
+### Later, after personal serving works
+
+Streaming, the explicit hosted gateway upstream, shared access and workload
+identity, accounting, tenant policy, request scheduling, batching, replicas,
+spot failover and autoscaling belong after S0–S3. Keep the gateway's
+`local/*` opt-in/privacy/cost meaning intact when that hosted upstream is
+added. Remote KV, prefill/decode separation and multi-node expert execution
+remain later measured optimizations. None is required to return our first
+reliable DeepSeek answer.
+
+## Model architecture support sequence
 
 1. Qualify an R1 distill through existing Qwen/Llama execution and add its
    actual DeepSeek prompt and reasoning contract. Use the existing explicit

@@ -75,16 +75,20 @@ The RTX 4080 is outside the primary optimized FlashMLA/DeepGEMM targets.
 
 ## GCP rollout alongside the runtime work
 
+The owner prioritized [personal, single-generation serving](deepseek-support-plan.md#personal-serving-first-one-generation-at-a-time)
+on 2026-10-20. Implement that plan before multiuser gateway or replica work.
 The [GCP deployment proposal](deepinfer-lessons.md#gcp-deployment-proposal-2026-10-20)
-uses the current project inventory, rather than assuming the local GPU or
-DeepSeek's production topology. These are proposed serving milestones; the
+supplies inventory and later options, rather than prerequisites for a first
+working answer. These are proposed serving milestones; the
 [2026-10-20 snapshot](assets/gcp-inventory-2026-10-20.json) is read-only evidence,
 not an allocation or device qualification.
 
 | Milestone | Existing boundary | Completion evidence |
 | --- | --- | --- |
-| C0: One private hosted worker | Gateway `Upstream`/Chat Completions transport; model registry and current GCE health/deployment patterns | Explicit hosted identity, pinned model/runtime, actual end-to-end final answer and capability/cost/cancellation checks. Preserve opt-in `local/*` semantics. |
-| C1: Efficient replicas | R0/R1/R2, bounded admission, existing accounting and fallback | Real device batches, queue-inclusive latency, overload and spot-loss behavior; compare A100 with a qualified G4/H100 candidate at the same quality floor. |
+| C0a: One reliable local generation (S0–S2) | Landed DS0 text profile plus pending model qualification; existing Psionic worker, Pylon client and supervisor | One active generation, no waiting generation queue, complete final answer, explicit truncation/failure, and demonstrated timeout/disconnect/restart recovery. Use one Pylon slot and qualify its deadline separately. |
+| C0b: The same worker on private GCE (S3) | Pinned runtime/model, existing launch/health patterns and authenticated SSH/IAP access | One independently budgeted worker passes the same cold/warm/recovery checks remotely. Keep model HTTP on loopback; record real latency, memory and cost. |
+| C0c: Shared hosted access, later | Gateway `Upstream`/Chat Completions transport, authentication, accounting and model registry | Explicit hosted identity and capability/cost/cancellation checks. Preserve opt-in `local/*` semantics. |
+| C1: Efficient replicas, later | R0/R1/R2, bounded admission, existing accounting and fallback | Real device batches, queue-inclusive latency, overload and spot-loss behavior, justified by actual shared load. |
 | C2: Native DeepSeek or an isolated Blackwell experiment | DS0–DS4 for native support; separately qualified external engine for an EP8 B200 experiment | Exact model/device/format results. The current DeepInfer release is SM100/V4.1-specific; no native or multi-node claim from a successful external-engine run. |
 | C3: Optional P/D and persistent KV | R3–R8, measured transfer and restore contracts | A serving gain after transfer, storage, failure and idle-capacity costs. Local cache affinity stays until any worker can really access shared cache. |
 
