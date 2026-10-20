@@ -2,8 +2,8 @@
 use crate::markdown::render::LinkUi;
 use gpui::AppContext as _;
 use gpui::{
-    Context, EventEmitter, IntoElement, ParentElement, Render, SharedString, Styled, Task, Window,
-    div,
+    Context, EventEmitter, InteractiveElement, IntoElement, ParentElement, Render, SharedString,
+    StatefulInteractiveElement, Styled, Task, Window, div,
 };
 pub use openagents_chat_view::visuals::VisualLayoutChanged;
 use std::collections::HashMap;
@@ -205,21 +205,36 @@ impl VisualFrame {
     }
 }
 impl Render for VisualFrame {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        let mut frame = div().w_full();
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The shared visual owns its group; Lab cards and load states keep
+        // the desktop frame's existing label and appearance here.
+        if let Some(visual) = &self.visual {
+            return div().w_full().child(visual.clone()).into_any_element();
+        }
+        let frame = div()
+            .id(SharedString::from(format!("{}:frame", self.id)))
+            .w_full()
+            .role(gpui::Role::Group)
+            .aria_label(self.title.clone());
         if let Some(row) = &self.lab_row {
-            return frame.child(row.clone());
+            return frame.child(row.clone()).into_any_element();
         }
         if let Some(lab) = &self.lab {
-            return frame.child(lab.clone());
+            return frame.child(lab.clone()).into_any_element();
         }
-        if let Some(visual) = &self.visual {
-            return frame.child(visual.clone());
-        }
-        frame = frame.child(match &self.load {
-            Load::Failed(message) => message.clone(),
-            _ => "Loading visual…".into(),
-        });
+        let theme = crate::theme::Theme::of(cx);
+        let (message, color) = match &self.load {
+            Load::Failed(message) => (message.clone(), theme.text_muted),
+            _ => ("Loading visual…".into(), theme.text_faint),
+        };
         frame
+            .child(
+                div()
+                    .text_size(crate::typography::ui_rems(12.0))
+                    .line_height(crate::typography::ui_rems(18.0))
+                    .text_color(color)
+                    .child(message),
+            )
+            .into_any_element()
     }
 }
