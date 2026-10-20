@@ -619,7 +619,7 @@ impl LanderChat {
             .w_full()
             .rounded(px(16.))
             .overflow_hidden()
-            .bg(gpui::hsla(0., 0., 0.035, 0.92))
+            .bg(gpui::hsla(0., 0., 0.035, model::card_alpha(base())))
             .border_1()
             .border_color(theme::border_strong())
             .child(

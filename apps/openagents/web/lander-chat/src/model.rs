@@ -12,7 +12,11 @@ use serde::Deserialize;
 /// The pages the chat is on: `/lander8`, and `/lander10` with the live
 /// pylons around it.
 pub const BASE: &str = "/lander8";
-pub const BASES: [&str; 2] = ["/lander8", "/lander10"];
+pub const BASES: [&str; 3] = ["/lander8", "/lander10", "/lander11"];
+/// `/lander10`: the pylons share the page.
+pub const PYLONS_BASE: &str = "/lander10";
+/// `/lander11`: Verse's Grid draws behind the chat.
+pub const VERSE_BASE: &str = "/lander11";
 /// What the chat reads before it sends anything (`pages/lander8.rs`).
 pub const SESSION: &str = "/lander8/session";
 /// The composer's longest message, as the site takes it.
@@ -54,6 +58,12 @@ pub fn path_for(base: &str, chat: Option<&str>) -> String {
     }
 }
 
+/// How opaque the card is: on `/lander11` it is glass, so the Grid shows
+/// through it faintly.
+pub fn card_alpha(base: &str) -> f32 {
+    if base == VERSE_BASE { 0.72 } else { 0.92 }
+}
+
 /// Which of [`BASES`] the address `path` is under (`/lander8` when none).
 pub fn base_of(path: &str) -> &'static str {
     BASES
@@ -66,7 +76,7 @@ pub fn base_of(path: &str) -> &'static str {
 }
 
 /// Whether the page says something over the composer before the first
-/// message: `/lander10` shows only the composer.
+/// message: `/lander10` and `/lander11` show only the composer.
 pub fn welcomes(base: &str) -> bool {
     base == BASE
 }
@@ -239,7 +249,7 @@ pub fn card_top(base: &str, w: f32, h: f32) -> f32 {
     } else {
         PYLONS_SHARE
     };
-    if welcomes(base) {
+    if base != PYLONS_BASE {
         TOP
     } else {
         (h * share).max(TOP)
@@ -305,7 +315,11 @@ mod tests {
         assert_eq!(base_of("/lander10/chat/x"), "/lander10");
         assert_eq!(base_of("/lander8/chat/x"), "/lander8");
         assert_eq!(path_for("/lander10", Some("x")), "/lander10/chat/x");
-        assert!(welcomes("/lander8") && !welcomes("/lander10"));
+        assert!(welcomes("/lander8") && !welcomes("/lander10") && !welcomes("/lander11"));
+        assert_eq!(base_of("/lander11/chat/x"), "/lander11");
+        assert_eq!(chat_of("/lander11/chat/x"), Some("x".into()));
+        assert!(card_alpha("/lander11") < card_alpha("/lander8"));
+        assert_eq!(card_top("/lander11", 1440., 900.), 60.);
     }
 
     #[test]

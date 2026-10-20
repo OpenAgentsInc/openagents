@@ -34,6 +34,32 @@ const MAX_STEP: f32 = 0.1;
 thread_local! {
     /// Opt-in hand input on /verse (#12309).
     static HANDS: RefCell<crate::hand_input::HandInput> = RefCell::default();
+    /// `/lander11`: the Grid behind the site's chat. The camera drifts round
+    /// the plaza by itself, the page joins no one, and the keyboard is the
+    /// chat's until the page hands it over with [`verse_walk`].
+    static AMBIENT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static WALK: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// How fast the ambient camera circles the plaza, in orbit-drag CSS pixels
+/// a second.
+const AMBIENT_ORBIT: f32 = 9.0;
+
+/// Whether the page is `/lander11` (or one of its chats).
+fn ambient_path(path: &str) -> bool {
+    path == "/lander11" || path.starts_with("/lander11/")
+}
+
+/// On `/lander11`, whether Verse takes the keyboard and mouse now.
+fn walking() -> bool {
+    !AMBIENT.with(std::cell::Cell::get) || WALK.with(std::cell::Cell::get)
+}
+
+/// `/lander11`'s Walk toggle: `true` hands the keyboard and mouse to Verse,
+/// `false` gives them back to the chat and lets the camera drift again.
+#[wasm_bindgen]
+pub fn verse_walk(on: bool) {
+    WALK.with(|walk| walk.set(on));
 }
 
 /// The page turned hand input on or off.
@@ -432,8 +458,15 @@ async fn run() -> Result<(), String> {
             .any(|part| part.eq_ignore_ascii_case("zone=grid"))
     }) || window.location().pathname().is_ok_and(|path| {
         let path = path.trim_end_matches('/');
-        path.ends_with("/grid") || path.ends_with("/verse")
+        path.ends_with("/grid") || path.ends_with("/verse") || ambient_path(path)
     });
+    if window
+        .location()
+        .pathname()
+        .is_ok_and(|path| ambient_path(path.trim_end_matches('/')))
+    {
+        AMBIENT.with(|ambient| ambient.set(true));
+    }
     if grid {
         return run_grid(window, document, canvas).await;
     }
@@ -640,7 +673,11 @@ async fn run_grid(
             let _ = runtime.set_spawn(glam::Vec3::new(x, 0.0, z), yaw);
         }
     }
-    let scale = (window.device_pixel_ratio() as f32).clamp(1.0, 3.0);
+    let ambient = AMBIENT.with(std::cell::Cell::get);
+    // Behind the chat the Grid draws at no more than 1.5 device pixels a
+    // CSS pixel, leaving the GPU room for the chat's own canvas.
+    let most = if ambient { 1.5 } else { 3.0 };
+    let scale = (window.device_pixel_ratio() as f32).clamp(1.0, most);
     let (width, height) = drawing_size(&canvas, scale);
     canvas.set_width(width);
     canvas.set_height(height);
@@ -668,7 +705,12 @@ async fn run_grid(
     // Presence over the browser's WebSocket; a page that cannot join still
     // shows the Grid.
     let options = grid::Options::parse(&window.location().search().unwrap_or_default());
-    let presence = Presence::open(&window, &options).unwrap_or_else(|error| {
+    let presence = if ambient {
+        Ok(None)
+    } else {
+        Presence::open(&window, &options)
+    }
+    .unwrap_or_else(|error| {
         web_sys::console::error_1(&JsValue::from_str(&format!(
             "Grid: presence is off: {error}"
         )));
@@ -1027,6 +1069,14 @@ impl Page {
             });
         }
         input.forward |= walking;
+        if !self::walking() {
+            // Behind the chat: no keys or drags, and the camera circles.
+            input = verse::controller::InputState::default();
+            let _ = self.runtime.apply(Action::Orbit {
+                dx: AMBIENT_ORBIT * dt,
+                dy: 0.0,
+            });
+        }
         let dt = self
             .runtime
             .tick_with_mode(&input, dt, self.input.orbit, true);
@@ -1471,6 +1521,9 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
     let key = |down: bool| {
         let page = page.clone();
         move |event: KeyboardEvent| {
+            if !walking() {
+                return;
+            }
             if super::terminal::active() {
                 if super::terminal::key(&event, down) {
                     event.prevent_default();

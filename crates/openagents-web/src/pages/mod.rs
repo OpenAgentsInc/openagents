@@ -26,6 +26,7 @@ pub(crate) mod home;
 mod icecream;
 mod icecream_guide;
 mod lander10;
+mod lander11;
 mod lander3;
 pub(crate) mod lander4;
 mod lander5;
@@ -131,6 +132,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(pylons::routes())
         .merge(lander8::routes())
         .merge(lander10::routes())
+        .merge(lander11::routes())
         .merge(lander9::routes())
         .merge(bunny::routes())
         .merge(gpui_demo::routes())

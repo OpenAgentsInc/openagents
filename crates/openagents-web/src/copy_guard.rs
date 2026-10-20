@@ -150,6 +150,8 @@ const ALLOW_IN: &[(&str, &[&str])] = &[
     ("pages/pylons.rs", &["cursor"]),
     // /lander10's stylesheet uses the CSS `cursor` property.
     ("pages/lander10.rs", &["cursor"]),
+    // /lander11's stylesheet uses the CSS `cursor` property.
+    ("pages/lander11.rs", &["cursor"]),
 ];
 
 /// #11031: no string in this site's sources that reads like words, and no

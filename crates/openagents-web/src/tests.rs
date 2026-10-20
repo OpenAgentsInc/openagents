@@ -2164,6 +2164,29 @@ async fn the_lander10_page_has_the_chat_and_the_pylons() {
     }
 }
 
+/// `/lander11`: one response with Verse's canvas behind the chat's box,
+/// the same page at a chat's address. It loads `/lander8`'s chat build and
+/// `/verse`'s Verse build.
+#[tokio::test]
+async fn the_lander11_page_has_the_chat_over_verse() {
+    let root = tempfile::tempdir().unwrap();
+    let config = config(root.path().join("tasks"));
+    let (status, headers, html) = get_with(router(config.clone()), "/lander11", LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("<canvas id=\"everglade-canvas\""), "{html}");
+    assert!(html.contains("/lander8/build/") && html.contains("/everglade/everglade_web_bg.wasm"));
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"), "{policy}");
+    crate::copy_guard::assert_plain("/lander11", &html);
+    let chat = "/lander11/chat/5e1f0c3a-7d2b-4c4e-9a1b-000000000001";
+    let (status, _, same) = get_with(router(config.clone()), chat, LOCAL).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(same, html);
+    for path in ["/lander11", chat] {
+        assert!(crate::upstream::owned(path), "{path}");
+    }
+}
+
 /// A server started with `--layertree DIR` holding a stand-in LayerTree
 /// demo build.
 fn with_layertree(root: &std::path::Path) -> Config {
