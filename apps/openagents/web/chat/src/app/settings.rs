@@ -255,35 +255,85 @@ impl ChatApp {
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
         root.on_action(cx.listener(|this, _: &CommandPalette, window, cx| {
-            this.toggle_palette(window, cx);
+            this.run_shortcut(Shortcut::CommandPalette, window, cx)
         }))
         .on_action(cx.listener(|this, _: &ToggleSidebar, window, cx| {
-            if window.viewport_size().width > px(820.) {
-                this.settings.sidebar_hidden = !this.settings.sidebar_hidden;
-            } else {
-                this.sidebar_open = !this.sidebar_open;
-            }
-            cx.notify();
+            this.run_shortcut(Shortcut::ToggleSidebar, window, cx)
         }))
-        .on_action(|_: &ToggleFiles, _, _| crate::compose::page_event("oa-files-toggle", ""))
+        .on_action(cx.listener(|this, _: &ToggleFiles, window, cx| {
+            this.run_shortcut(Shortcut::ToggleFiles, window, cx)
+        }))
         .on_action(cx.listener(|this, _: &NewSession, window, cx| {
-            this.settings.page = None;
-            this.open(None, window, cx);
+            this.run_shortcut(Shortcut::NewSession, window, cx)
         }))
-        .on_action(cx.listener(|this, _: &NextSession, window, cx| this.step_chat(1, window, cx)))
-        .on_action(cx.listener(|this, _: &PrevSession, window, cx| this.step_chat(-1, window, cx)))
-        .on_action(cx.listener(|this, _: &ArchiveSession, _, cx| {
-            if let Some(id) = this.current.clone() {
-                this.change(
-                    id,
-                    Change {
-                        archived: Some(true),
-                        ..Default::default()
+        .on_action(cx.listener(|this, _: &NextSession, window, cx| {
+            this.run_shortcut(Shortcut::NextSession, window, cx)
+        }))
+        .on_action(cx.listener(|this, _: &PrevSession, window, cx| {
+            this.run_shortcut(Shortcut::PrevSession, window, cx)
+        }))
+        .on_action(cx.listener(|this, _: &ArchiveSession, window, cx| {
+            this.run_shortcut(Shortcut::ArchiveSession, window, cx)
+        }))
+    }
+
+    /// Main-canvas keys, forwarded keys, and palette actions use the same handler.
+    pub(super) fn run_shortcut(
+        &mut self,
+        shortcut: Shortcut,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if shortcut == Shortcut::CommandPalette {
+            self.toggle_palette(window, cx);
+            return;
+        }
+        self.close_palette(window, cx);
+        if self.settings.page.is_some() {
+            self.close_settings(cx);
+        }
+        match shortcut {
+            Shortcut::ToggleSidebar => {
+                if window.viewport_size().width > px(820.) {
+                    self.settings.sidebar_hidden = !self.settings.sidebar_hidden;
+                } else {
+                    self.sidebar_open = !self.sidebar_open;
+                }
+            }
+            Shortcut::ToggleFiles => crate::compose::page_event("oa-files-toggle", ""),
+            Shortcut::NewSession => {
+                self.show_computers = false;
+                self.open(None, window, cx);
+            }
+            Shortcut::NextSession | Shortcut::PrevSession => {
+                self.show_computers = false;
+                self.step_chat(
+                    if shortcut == Shortcut::NextSession {
+                        1
+                    } else {
+                        -1
                     },
+                    window,
                     cx,
                 );
             }
-        }))
+            Shortcut::ArchiveSession => {
+                if let Some(id) = self.current.clone() {
+                    self.change(
+                        id,
+                        Change {
+                            archived: Some(true),
+                            ..Default::default()
+                        },
+                        cx,
+                    );
+                }
+            }
+            Shortcut::CommandPalette => unreachable!(),
+        }
+        // A hidden panel's DOM input must not keep the keyboard after a command.
+        crate::compose::page_event("oa-chat-focus", "");
+        cx.notify();
     }
 
     /// Open the chat `by` rows below the open one in the sidebar's order.
