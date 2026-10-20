@@ -65,7 +65,7 @@ rustPlatform.buildRustPackage {
   # path and a git checkout), and its vendor directory has one slot per
   # name and version. After a `Cargo.lock` change, set this to
   # `lib.fakeHash`, build, and paste the hash the error prints.
-  cargoHash = "sha256-aYn7JwSP0QmbNzpaY7iCG5jQjbY6j8ObvELbT7bytSA=";
+  cargoHash = "sha256-HHUTnPM165MBs9VRd0Ulp0WnsZL2b9qu2bm9SfPgTD8=";
 
   # The workspace pins Rust 1.97.1; this package builds with the `rustc` the
   # flake's `nixpkgs` carries, which can be older. The daemon uses nothing
