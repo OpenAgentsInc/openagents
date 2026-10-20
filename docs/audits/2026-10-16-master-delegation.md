@@ -485,6 +485,12 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12374: after the #12307 website deployment, repeat the funded browser wallet
+  send, forget, and seed-only restore. Refresh must sync the SDK and show the
+  received amount minus completed sends and their quoted fees. The isolated
+  mainnet check passed with 100 sats received, two 5-sat sends, and two 2-sat
+  fees: the restored balance was 86 sats.
+
 - #12366: after `27e05e78cf` is deployed to staging, open `/home` signed out in a
   fresh browser profile, walk to the terminal, and send one message. The answer
   shows a live pylon's name and model over it, and the website log has one

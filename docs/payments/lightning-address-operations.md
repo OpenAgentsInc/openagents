@@ -168,3 +168,11 @@ To activate receiving in a production candidate, set
 normal candidate checks and traffic shift. Later promotions preserve the
 configuration. Staging receiving stays off because staging accounts must not
 register names in the production payment namespace.
+
+For a change confined to `spark-wallet`'s browser module or `spark-wallet-web`,
+`crates/spark-wallet-web/cloudbuild.yaml` can replace the complete wallet asset
+set over a verified website digest. Pass that digest as `_BASE_IMAGE`, and the
+wallet source commit as `_COMMIT`. The website's native release identifier stays
+that of the base image; the image's `com.openagents.wallet.commit` label records
+the wallet revision. Keep both revisions and the final digest in the deployment
+record. This path does not replace native server changes.

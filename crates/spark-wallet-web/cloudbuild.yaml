@@ -1,0 +1,24 @@
+# Build a wallet-only update over an immutable, previously verified website.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -ceu
+      - |
+        case '${_BASE_IMAGE}' in *@sha256:*) ;; *) echo 'Use an immutable website digest.' >&2; exit 2;; esac
+        docker buildx create --name oa-wallet --driver docker-container \
+          --driver-opt network=cloudbuild --buildkitd-flags '--allow-insecure-entitlement network.host' --use
+        docker buildx build --progress=plain --allow network.host \
+          -f crates/spark-wallet-web/Dockerfile --provenance=false --sbom=false \
+          --build-arg 'WEB_BASE=${_BASE_IMAGE}' \
+          --label 'com.openagents.wallet.commit=${_COMMIT}' \
+          -t 'us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}' --push .
+substitutions:
+  _BASE_IMAGE: unused
+  _COMMIT: unknown
+  _TAG: wallet
+options:
+  machineType: E2_HIGHCPU_32
+  diskSizeGb: 100
+  logging: CLOUD_LOGGING_ONLY
+timeout: 3600s

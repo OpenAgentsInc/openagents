@@ -39,9 +39,20 @@ impl BrowserWallet {
         })
     }
     pub async fn balance(&self) -> Result<u64, String> {
+        // Breez's flag waits for initial sync; Refresh must request a new sync.
         self.sdk
             .get_info(GetInfoRequest {
                 ensure_synced: Some(true),
+            })
+            .await
+            .map_err(|_| "We couldn't refresh your wallet.".to_owned())?;
+        self.sdk
+            .sync_wallet(SyncWalletRequest {})
+            .await
+            .map_err(|_| "We couldn't refresh your wallet.".to_owned())?;
+        self.sdk
+            .get_info(GetInfoRequest {
+                ensure_synced: Some(false),
             })
             .await
             .map(|r| r.balance_sats)
