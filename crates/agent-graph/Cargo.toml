@@ -22,6 +22,8 @@ agent-lab = { path = "../agent-lab", optional = true }
 agent-contract = { path = "../agent-contract", optional = true }
 
 [dev-dependencies]
+rust-native = { path = "../rust-native", default-features = false }
+agent-lab = { path = "../agent-lab", features = ["views"] }
 oa-copy = { path = "../oa-copy" }
 
 [lints]

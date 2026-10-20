@@ -267,6 +267,7 @@ dependencies = [
  "agent-lab",
  "oa-copy",
  "openagents-workspace-hack",
+ "rust-native",
  "serde",
  "serde_json",
 ]

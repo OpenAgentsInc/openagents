@@ -343,6 +343,61 @@ impl Workbench {
                 enabled,
             ));
         }
+        // How the agent runs on its own (#12029): check-ins, standing
+        // authority, and the stall window. AgentGraph edits these too.
+        let autonomy = self.draft.draft.spec.autonomy.clone().unwrap_or_default();
+        n.push(button(
+            "check-ins",
+            if autonomy.check_ins {
+                "✓ Check in on a schedule"
+            } else {
+                "Check in on a schedule"
+            },
+            enabled,
+        ));
+        if autonomy.check_ins {
+            n.push(field(
+                "every-minutes",
+                "Minutes between check-ins (blank for the computer's schedule)",
+                self.inputs
+                    .get("every-minutes")
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        autonomy
+                            .every_minutes
+                            .map(|m| m.to_string())
+                            .unwrap_or_default()
+                    }),
+                8,
+                false,
+                enabled,
+            ));
+        }
+        n.push(button(
+            "authority",
+            if autonomy.authority {
+                "✓ Ask for standing authority"
+            } else {
+                "Ask for standing authority"
+            },
+            enabled,
+        ));
+        n.push(field(
+            "stall-minutes",
+            "Minutes before work counts as stalled (blank for 20)",
+            self.inputs
+                .get("stall-minutes")
+                .cloned()
+                .unwrap_or_else(|| {
+                    autonomy
+                        .stall_minutes
+                        .map(|m| m.to_string())
+                        .unwrap_or_default()
+                }),
+            8,
+            false,
+            enabled,
+        ));
         for (i, c) in self.draft.draft.components.iter().enumerate() {
             let label = match c {
                 Component::Skill { name, text, .. } | Component::Memory { name, text, .. } => {
@@ -701,6 +756,27 @@ impl Workbench {
                 self.inputs.insert(key.into(), value.clone());
                 self.draft.max_seconds = value.parse().unwrap_or(0);
             }
+            "every-minutes" | "stall-minutes" => {
+                let minutes = match value.trim() {
+                    "" => None,
+                    v => Some(
+                        v.parse::<u32>()
+                            .map_err(|_| "Enter the minutes as a whole number.")?,
+                    ),
+                };
+                self.inputs.insert(key.into(), value.clone());
+                let autonomy = self
+                    .draft
+                    .draft
+                    .spec
+                    .autonomy
+                    .get_or_insert_with(Default::default);
+                if key == "every-minutes" {
+                    autonomy.every_minutes = minutes;
+                } else {
+                    autonomy.stall_minutes = minutes;
+                }
+            }
             _ if key.starts_with("component:") => {
                 let i: usize = key[10..].parse().map_err(|_| "Choose a reference.")?;
                 let c = self
@@ -807,6 +883,20 @@ impl Workbench {
                     Component::Memory { name, text, sha256 }
                 });
                 self.dirty = true;
+            }
+            "check-ins" | "authority" => {
+                let autonomy = self
+                    .draft
+                    .draft
+                    .spec
+                    .autonomy
+                    .get_or_insert_with(Default::default);
+                if key == "check-ins" {
+                    autonomy.check_ins = !autonomy.check_ins;
+                } else {
+                    autonomy.authority = !autonomy.authority;
+                }
+                self.dirty = true
             }
             "access-read" => {
                 self.draft.draft.spec.access = agent_contract::Access::ReadOnly;
