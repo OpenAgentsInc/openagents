@@ -1,0 +1,29 @@
+{
+  "schema": "psionic.deepseek_v41.chunk_memory.v1",
+  "max_context_tokens": 32768,
+  "max_step_tokens": 2048,
+  "source": "measured:psionic-v41-stage/1+cuda@6e59f4de54:context 32768:step 2048:provisional",
+  "measurement_status": "provisional",
+  "stages": [
+    {
+      "first_layer": 0,
+      "end_layer": 10,
+      "runtime_bytes": 1575534992
+    },
+    {
+      "first_layer": 10,
+      "end_layer": 20,
+      "runtime_bytes": 1575526800
+    },
+    {
+      "first_layer": 20,
+      "end_layer": 30,
+      "runtime_bytes": 1575603344
+    },
+    {
+      "first_layer": 30,
+      "end_layer": 40,
+      "runtime_bytes": 1575599248
+    }
+  ]
+}

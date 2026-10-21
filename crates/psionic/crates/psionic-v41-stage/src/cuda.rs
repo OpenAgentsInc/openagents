@@ -103,6 +103,7 @@ pub struct V41CudaStageExecutor {
     next: Option<StageContract>,
     sampling: Cell<V41Sampling>,
     sampled: Cell<Option<u32>>,
+    emit: Cell<bool>,
     /// Qualification: step with per-layer observations.
     observe: bool,
     /// Qualification: the stale-cache negative control continues each new
@@ -132,6 +133,7 @@ impl V41CudaStageExecutor {
             next,
             sampling: Cell::new(V41Sampling::greedy()),
             sampled: Cell::new(None),
+            emit: Cell::new(true),
             observe,
             stale_cache: false,
             reached: 0,
@@ -344,9 +346,10 @@ impl StageExecutor for V41CudaStageExecutor {
         };
         let out = self
             .stage
-            .step(&self.backend, &input, self.observe)
+            .step_with_output(&self.backend, &input, self.observe, self.emit.get())
             .map_err(|e| fail(format!("the CUDA stage failed: {e}")))?;
-        if self.next.is_none() {
+        self.sampled.set(None);
+        if self.next.is_none() && self.emit.get() {
             let token = out
                 .token
                 .ok_or_else(|| fail("the last stage sampled no token"))?;
@@ -367,6 +370,7 @@ impl StageBackend for V41CudaStageExecutor {
     }
 
     fn prepare(&self, sampling: Sampling, _step: u64) {
+        self.emit.set(true);
         // The device draw is seeded by the seed and the token's position.
         self.sampling.set(V41Sampling {
             temperature: sampling.temperature as f32,
@@ -377,6 +381,11 @@ impl StageBackend for V41CudaStageExecutor {
 
     fn sampled(&self) -> Option<u32> {
         self.sampled.get()
+    }
+
+    fn prepare_output(&self, sampling: Sampling, step: u64, emit: bool) {
+        self.prepare(sampling, step);
+        self.emit.set(emit);
     }
 
     fn logits(&self) -> Option<Vec<f32>> {
@@ -775,15 +784,26 @@ pub fn run_stage(
             "--observe and --control are qualification options and need --record".into(),
         ));
     }
-    let worker = cuda_worker_for(
-        model,
-        manifest,
-        entry,
+    let mut backend = cuda_backend()?;
+    let loaded = model.stage_with(
+        &mut backend,
+        entry.first_layer as usize..entry.end_layer as usize,
         options.max_context,
-        options.generation,
+        options.max_step_tokens,
         options.observe,
         options.control,
     )?;
+    let mut executor = V41CudaStageExecutor::new(backend, loaded, entry.stage);
+    if options.control == Some(Control::StaleCache) {
+        executor = executor.with_stale_cache();
+    }
+    let inbox = StageInbox::new(
+        manifest.digest(),
+        options.generation,
+        executor.contract(),
+        CodecLimits::default(),
+    );
+    let worker = StageWorker::new(inbox, executor);
     let stage = serve::Stage {
         name: options.stage.clone(),
         token: options.token.clone(),
@@ -802,6 +822,8 @@ pub fn run_stage(
         events: options.events.clone(),
         record: options.record.clone(),
         max_context: options.max_context,
+        max_step_tokens: options.max_step_tokens,
+        prefill_chunk: options.prefill_chunk,
         max_input: options.max_input,
         inbox: serve::InboxBounds::default(),
     };

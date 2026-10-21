@@ -21,10 +21,9 @@
 //! token ids and its reasoning and final text as the #12372 adapter splits
 //! them.
 //!
-//! The front of a group sends a prompt as one step. `--prefill-chunk N`
-//! sends it in steps of at most N tokens instead, which a group doesn't do;
-//! it exists to reach long contexts within the codec's message limit, and
-//! the report labels it.
+//! `--prefill-chunk N` uses the group's optional serial chunk schedule,
+//! with independent step buffers. Intermediate chunks update state without
+//! sampling; the report records the schedule.
 
 use std::{
     fmt::Write as _,
@@ -347,6 +346,7 @@ enum Command {
         bytes: Vec<u8>,
         sampling: Option<Sampling>,
         step: u64,
+        emit: bool,
     },
     Report,
 }
@@ -441,9 +441,10 @@ fn stage_thread(
                 bytes,
                 sampling,
                 step,
+                emit,
             } => {
                 if let Some(sampling) = sampling {
-                    worker.executor().prepare(sampling, step);
+                    worker.executor().prepare_output(sampling, step, emit);
                 }
                 let started = Instant::now();
                 let result = worker.step_bytes(&bytes);
@@ -647,6 +648,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                         bytes,
                         sampling: (k == last).then_some(options.sampling),
                         step,
+                        emit: !prefill_part,
                     });
                     let Reply::Stepped {
                         sections,
@@ -668,7 +670,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                 position += input.len() as u64;
                 step += 1;
                 if prefill_part {
-                    // A chunk short of the whole prompt samples nothing to keep.
+                    // Intermediate chunks update state without running the head.
                     prefill_ms += ms;
                     continue;
                 }
@@ -736,7 +738,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
     if options.prefill_chunk.is_some() {
         let _ = write!(
             note,
-            "the prompt went in chunks of {} tokens, which a group's front doesn't do; ",
+            "serial prefill chunks of at most {} tokens; ",
             options.prefill_chunk.unwrap_or_default()
         );
     }

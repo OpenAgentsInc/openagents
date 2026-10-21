@@ -809,8 +809,7 @@ pub struct MeasuredMemoryFile {
 }
 
 /// Placement memory from W3's measurements of the original-weight CUDA
-/// runtime, at one context and step size. A group's front sends a prompt
-/// in one step, so a serving stage's step size equals its context.
+/// runtime, with independent context and step capacities.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MeasuredMemory {
     file: MeasuredMemoryFile,
@@ -884,6 +883,11 @@ impl MeasuredMemory {
         Self::from_json(FLASH_MEASURED, max_context, max_context)
     }
 
+    /// Measured placement inputs for a bounded-chunk serving profile.
+    pub fn flash_sized(max_context: u64, max_step_tokens: u64) -> Result<Self, ManifestError> {
+        Self::from_json(FLASH_MEASURED, max_context, max_step_tokens)
+    }
+
     /// The measurements.
     #[must_use]
     pub fn file(&self) -> &MeasuredMemoryFile {
@@ -931,9 +935,18 @@ impl MeasuredMemory {
 
 impl PlacementMemory for MeasuredMemory {
     fn source(&self) -> String {
+        let step = if self.max_step_tokens == self.max_context {
+            String::new()
+        } else {
+            format!(":step {}", self.max_step_tokens)
+        };
         format!(
-            "measured:{}@{}:context {}:{}",
-            self.file.runtime.name, self.file.runtime.commit, self.max_context, self.file.status
+            "measured:{}@{}:context {}{}:{}",
+            self.file.runtime.name,
+            self.file.runtime.commit,
+            self.max_context,
+            step,
+            self.file.status
         )
     }
     fn layer_gpu_bytes(&self, layer: u32) -> u64 {

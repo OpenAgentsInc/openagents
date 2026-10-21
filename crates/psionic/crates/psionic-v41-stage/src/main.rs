@@ -4,6 +4,7 @@
 //! psionic-v41-stage --weights DIR --layers A-B --gpu N --manifest D [--embeddings] [--head]
 //!     --stage NAME --generation G --front ADDR --token T
 //!     [--backend cpu|cuda] [--arithmetic f32|bf16|bf16-tp8|device] [--max-context N]
+//!     [--max-step-tokens N] [--prefill-chunk N]
 //!     [--max-input-tokens N] [--listen ADDR] [--data-listen ADDR [--data-advertise ADDR]]
 //!     [--events FILE]
 //! psionic-v41-stage reference --weights DIR [--prompt JSON] [--mode thinking|chat] [--steps N]
@@ -14,6 +15,7 @@
 //! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR [...]
 //! psionic-v41-stage qualify-derive --reference R[,R] --control C[,C] --out FILE
 //! psionic-v41-stage build-info
+//! psionic-v41-stage chunk-memory
 //! psionic-v41-stage chain --weights DIR [--split A-B,...] [--gpus N,...]
 //!     [--max-context N] [--max-step-tokens N] [--prompt JSON | --prompt-file F]
 //!     [--mode thinking|chat] [--max-tokens N] [--prefill-chunk N] [--load-only]
@@ -41,6 +43,9 @@ fn main() -> ExitCode {
         Some("qualify-derive") => psionic_v41_stage::qualify::run_derive(&args[1..]),
         Some("build-info") => run_build_info(),
         Some("chain") => run_chain(&args[1..]),
+        Some("chunk-memory") if args.len() == 1 => {
+            psionic_v41_stage::chunk_memory_profile().map(|v| println!("{v}"))
+        }
         _ => run_stage(&args),
     };
     match result {

@@ -5,6 +5,7 @@
 //! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR
 //!     [--backend cuda|cpu] [--arithmetic A] [--gpus 0,1,2,3] [--cases ID,...]
 //!     [--observe] [--control NAME] [--policy FILE] [--max-context N]
+//!     [--max-step-tokens N] [--prefill-chunk N]
 //!     [--step-secs S] (--worker-build SHA256 | --development)
 //! ```
 //!
@@ -17,16 +18,16 @@
 //! worker per manifest stage, each on its own GPU and with `--record`, and
 //! drives them over the front transport exactly as Pylon's front does: the
 //! state between stages is W9's encoded message on each stage's listener.
-//! For each oracle case it sends the oracle's prompt token IDs as one step
-//! and then the oracle's generated tokens one step at a time, so the runtime
+//! For each oracle case it sends the complete prompt, optionally in bounded
+//! serial chunks, then the oracle's generated tokens one step at a time. The runtime
 //! and the oracle see the same prefix at every position. The last stage
-//! writes its full-vocabulary logits after every step; with `--observe`,
+//! writes its full-vocabulary logits after each output step; with `--observe`,
 //! every stage writes its router and index selections.
 //!
 //! The runtime runs one graph per token for prompt and decode tokens alike,
 //! so its replay of the fixed sequence and its forced decode compute the
 //! same values. The harness checks that: it replays the fixed sequence as
-//! one prompt and requires its last logits to equal the forced decode's
+//! a prompt under the same chunk schedule and requires its last logits to equal the forced decode's
 //! bit for bit. The forced logits are then compared with the oracle's
 //! decode logits (decode against decode) and its replay logits (replay
 //! against replay) under the policy in [`psionic_models::deepseek_v41_qualify`].
@@ -81,6 +82,8 @@ pub struct QualifyOptions {
     pub control: Option<Control>,
     pub policy: Option<PathBuf>,
     pub max_context: usize,
+    pub max_step_tokens: Option<usize>,
+    pub prefill_chunk: Option<usize>,
     pub step_timeout: Duration,
     /// The bundle hash every stage must announce (#12410); `None` only with
     /// `development`.
@@ -118,6 +121,8 @@ impl QualifyOptions {
                 "--control",
                 "--policy",
                 "--max-context",
+                "--max-step-tokens",
+                "--prefill-chunk",
                 "--step-secs",
                 "--worker-build",
             ]
@@ -177,7 +182,7 @@ impl QualifyOptions {
                     .map_err(|_| refused(format!("{flag} takes a number")))
             })
         };
-        Ok(Self {
+        let options = Self {
             weights,
             manifest,
             oracle,
@@ -197,6 +202,20 @@ impl QualifyOptions {
                 .transpose()?,
             policy: values.remove("--policy").map(PathBuf::from),
             max_context: number(values.remove("--max-context"), "--max-context", 32_768)? as usize,
+            max_step_tokens: values
+                .remove("--max-step-tokens")
+                .map(|v| {
+                    v.parse()
+                        .map_err(|_| refused("--max-step-tokens takes a number"))
+                })
+                .transpose()?,
+            prefill_chunk: values
+                .remove("--prefill-chunk")
+                .map(|v| {
+                    v.parse()
+                        .map_err(|_| refused("--prefill-chunk takes a number"))
+                })
+                .transpose()?,
             step_timeout: Duration::from_secs(number(
                 values.remove("--step-secs"),
                 "--step-secs",
@@ -204,7 +223,21 @@ impl QualifyOptions {
             )?),
             worker_build: worker_build.map(|p| p.to_ascii_lowercase()),
             development,
-        })
+        };
+        let step = options
+            .max_step_tokens
+            .or(options.prefill_chunk)
+            .unwrap_or(options.max_context);
+        if options.max_context < 2
+            || step == 0
+            || step > options.max_context
+            || options.prefill_chunk.is_some_and(|n| n == 0 || n > step)
+        {
+            return Err(refused(
+                "context must be at least two positions, and chunk and step capacities must be positive and fit the context",
+            ));
+        }
+        Ok(options)
     }
 }
 
@@ -358,6 +391,8 @@ impl OracleDump {
 
 /// The workers and the front's connections to them.
 struct Group {
+    wire_step: u64,
+    limits: Vec<Value>,
     children: Vec<Child>,
     writers: Vec<TcpStream>,
     listens: Vec<Option<String>>,
@@ -438,6 +473,12 @@ impl Group {
             if entry.embeddings {
                 args.push("--embeddings".into());
             }
+            if let Some(n) = opts.max_step_tokens {
+                args.extend(["--max-step-tokens".into(), n.to_string()]);
+            }
+            if let Some(n) = opts.prefill_chunk {
+                args.extend(["--prefill-chunk".into(), n.to_string()]);
+            }
             if entry.head {
                 args.push("--head".into());
             }
@@ -476,6 +517,8 @@ impl Group {
         // Loading the model can take most of an hour on cold disks.
         let deadline = Instant::now() + Duration::from_secs(7_200);
         let mut group = Self {
+            wire_step: 0,
+            limits: vec![Value::Null; stages],
             children,
             writers: Vec::new(),
             listens: Vec::new(),
@@ -537,6 +580,7 @@ impl Group {
                             .to_owned(),
                     ));
                     listens[i] = hello["listen"].as_str().map(str::to_owned);
+                    group.limits[i] = hello["limits"].clone();
                     let send = send.clone();
                     std::thread::spawn(move || {
                         for line in reader.lines() {
@@ -594,76 +638,82 @@ impl Group {
         prompt_ids: Option<&[u32]>,
         token: Option<u32>,
     ) -> Result<Value, Refused> {
-        let stages = self.writers.len();
-        for i in 0..stages {
-            let mut message = json!({
-                "kind": "step",
-                "generation": self.generation,
-                "request_id": request,
-                "attempt": 0,
-                "stage": i,
-                "step": step,
-                "sampling": Sampling::GREEDY,
-                "final": false,
-            });
-            if let Some(next) = self.listens.get(i + 1).cloned().flatten() {
-                message["next"] = json!(next);
-            }
-            if i == 0 {
-                if let Some(ids) = prompt_ids {
-                    message["prompt_ids"] = json!(ids);
-                }
-                if let Some(token) = token {
-                    message["token"] = json!(token);
-                }
-            }
-            writeln!(self.writers[i], "{message}")
-                .map_err(|e| refused(format!("stage {i}: {e}")))?;
+        if step == 0 {
+            self.wire_step = 0;
         }
-        let mut acked = BTreeSet::new();
         let mut records = Vec::new();
-        let mut last = Value::Null;
-        let deadline = Instant::now() + self.timeout;
-        while acked.len() < stages {
-            let left = deadline.saturating_duration_since(Instant::now());
-            if let Some(reason) = self.refusal(request, step) {
-                // A stage refused the step's state: it will never answer.
-                return Err(refused(format!("step {step} of {request}: {reason}")));
-            }
-            let wait = left
-                .min(Duration::from_secs(5))
-                .max(Duration::from_millis(1));
-            match self.events.recv_timeout(wait) {
-                Ok((i, v)) => {
-                    if v["kind"] == "ack"
-                        && v["request_id"].as_str() == Some(request)
-                        && v["step"].as_u64() == Some(step)
+        loop {
+            let wire_step = self.wire_step;
+            let mut phase = (false, false);
+            let mut last = Value::Null;
+            // Use the same serial schedule as the serving front: stage 0
+            // chooses the chunk; downstream stages receive its phase.
+            for i in 0..self.writers.len() {
+                let mut message = json!({
+                    "kind": "step", "generation": self.generation,
+                    "request_id": request, "attempt": 0, "stage": i,
+                    "step": wire_step, "output_step": step,
+                    "prefill": phase.0, "prefill_pending": phase.1,
+                    "sampling": Sampling::GREEDY, "final": false,
+                });
+                if let Some(next) = self.listens.get(i + 1).cloned().flatten() {
+                    message["next"] = json!(next);
+                }
+                if i == 0 {
+                    if wire_step == 0
+                        && let Some(ids) = prompt_ids
                     {
-                        acked.insert(i);
-                        records.extend(record_files(&v));
-                        if i + 1 == stages {
+                        message["prompt_ids"] = json!(ids);
+                    }
+                    if let Some(token) = token {
+                        message["token"] = json!(token);
+                    }
+                }
+                writeln!(self.writers[i], "{message}")
+                    .map_err(|e| refused(format!("stage {i}: {e}")))?;
+                let deadline = Instant::now() + self.timeout;
+                loop {
+                    if let Some(reason) = self.refusal(request, wire_step) {
+                        return Err(refused(format!("step {wire_step} of {request}: {reason}")));
+                    }
+                    let left = deadline.saturating_duration_since(Instant::now());
+                    match self.events.recv_timeout(
+                        left.min(Duration::from_secs(5))
+                            .max(Duration::from_millis(1)),
+                    ) {
+                        Ok((stage, v))
+                            if stage == i
+                                && v["kind"] == "ack"
+                                && v["request_id"].as_str() == Some(request)
+                                && v["step"].as_u64() == Some(wire_step) =>
+                        {
+                            phase = (
+                                v["prefill"].as_bool().unwrap_or(false),
+                                v["prefill_pending"].as_bool().unwrap_or(false),
+                            );
+                            records.extend(record_files(&v));
                             last = v;
+                            break;
+                        }
+                        Ok(_) => {}
+                        Err(RecvTimeoutError::Timeout) if Instant::now() < deadline => {}
+                        Err(e) => {
+                            return Err(refused(format!(
+                                "step {wire_step} of {request}, stage {i}: {e}"
+                            )));
                         }
                     }
                 }
-                Err(RecvTimeoutError::Timeout) if Instant::now() < deadline => {}
-                Err(RecvTimeoutError::Timeout) => {
-                    return Err(refused(format!(
-                        "step {step} of {request}: stages {:?} didn't answer in {:?}",
-                        (0..stages)
-                            .filter(|i| !acked.contains(i))
-                            .collect::<Vec<_>>(),
-                        self.timeout
-                    )));
-                }
-                Err(RecvTimeoutError::Disconnected) => {
-                    return Err(refused("the stages closed their connections"));
-                }
+            }
+            self.wire_step += 1;
+            if !phase.1 {
+                last["records"] = json!(records);
+                return Ok(last);
+            }
+            if !phase.0 || last.get("token").is_some() {
+                return Err(refused("an intermediate prefill chunk produced output"));
             }
         }
-        // Every stage's files: the last stage's logits, every stage's observations.
-        last["records"] = json!(records);
-        Ok(last)
     }
 }
 
@@ -1211,9 +1261,13 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         "oracle_manifest_sha256": sha256_file(&opts.oracle.join("manifest.json")),
         "backend": match opts.backend { Backend::Cpu => "cpu", Backend::Cuda => "cuda" },
         "arithmetic": opts.arithmetic,
+        "schedule": {"kind": "serial", "max_context": opts.max_context,
+            "max_step_tokens": opts.max_step_tokens.or(opts.prefill_chunk).unwrap_or(opts.max_context),
+            "prefill_chunk": opts.prefill_chunk},
+        "stage_limits": group.limits,
         "control": opts.control.map(Control::name),
         "observe": opts.observe,
-        "schedule": "one prompt step, then one step per oracle token; the runtime runs one graph per token",
+        "arithmetic_schedule": "one graph per token; the head runs only after the last prompt chunk and each forced decode token",
         "cases": reports,
         "passed": passed,
     });

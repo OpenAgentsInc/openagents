@@ -384,12 +384,27 @@ fn a_head_beacon_carries_its_request_limits_and_a_stage_never_does() {
         max_context_tokens: 8192,
         max_input_tokens: 2872,
         max_prefill_tokens: 2872,
+        max_step_tokens: 8192,
+        prefill_chunk_tokens: None,
         modes: vec![PromptMode::Thinking, PromptMode::Chat],
     };
     let mut head = head_beacon(&base(&key, "v41-head", "x"), &spec, &ready(2), false);
     set_request_limits(&mut head, Some(&limits));
     let event = beacon_event(key.signer(), &head).unwrap();
-    assert_eq!(request_limits(&parse_beacon(&event).unwrap()), Some(limits));
+    assert_eq!(
+        request_limits(&parse_beacon(&event).unwrap()),
+        Some(limits.clone())
+    );
+    let long = StageLimits {
+        max_context_tokens: 32768,
+        max_input_tokens: 20480,
+        max_step_tokens: 2048,
+        prefill_chunk_tokens: Some(2048),
+        ..limits
+    };
+    set_request_limits(&mut head, Some(&long));
+    let event = beacon_event(key.signer(), &head).unwrap();
+    assert_eq!(request_limits(&parse_beacon(&event).unwrap()), Some(long));
     let stage = stage_beacon(&head, &spec, 2, Layers { from: 0, to: 10 });
     assert_eq!(request_limits(&stage), None);
     assert_eq!(stage.meta, None);

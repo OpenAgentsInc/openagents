@@ -1099,6 +1099,53 @@ fn a_cloud_group_runs_cuda_stages_unless_told_otherwise() {
     assert!(parse(&["two-dual", "--backend", "rocm"]).is_err());
 }
 
+#[test]
+fn chunk_capacities_reach_stages_and_must_fit_the_measured_memory_profile() {
+    let words: Vec<String> = [
+        "four-single",
+        "--max-context",
+        "32768",
+        "--max-step-tokens",
+        "2048",
+        "--prefill-chunk",
+        "2048",
+        "--max-input-tokens",
+        "24576",
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .collect();
+    let (mut up, _) = cloud::parse_up(
+        &words,
+        &repo(),
+        Path::new("/home/me"),
+        "wss://relay.example",
+    )
+    .unwrap();
+    for placement in ["four-single", "two-dual", "one-quad"] {
+        up.placement = placement.into();
+        let plan = cloud::plan(&up).unwrap();
+        let lane = cloud::group_lane(&up, &plan);
+        for stage in lane.stages {
+            for (flag, value) in [
+                ("--max-context", "32768"),
+                ("--max-step-tokens", "2048"),
+                ("--prefill-chunk", "2048"),
+                ("--max-input-tokens", "24576"),
+            ] {
+                assert!(stage.args.windows(2).any(|a| a == [flag, value]));
+            }
+        }
+    }
+    up.max_context = 131072;
+    assert!(cloud::plan(&up).unwrap_err().contains("memory profile"));
+    up.max_context = 32768;
+    up.max_step_tokens = Some(8192);
+    assert!(cloud::plan(&up).is_err());
+    up.max_step_tokens = Some(0);
+    assert!(cloud::plan(&up).is_err());
+}
+
 /// A launch can pin the worker and pylon builds; every machine's metadata
 /// then carries the pins its startup script checks (#12407).
 #[test]

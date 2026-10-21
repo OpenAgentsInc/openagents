@@ -55,7 +55,7 @@ use tokenizers::Tokenizer;
 
 use crate::{
     AnswerParser, Budget, PROTOCOL, PromptMode, Refused, RequestLimit, Sampling, StageBackend,
-    TextStream, Vocabulary, budget, sample,
+    TextStream, Vocabulary, budget_sized, sample,
 };
 
 /// Decoded frames from earlier stages kept while their step hasn't come; their
@@ -126,6 +126,8 @@ pub struct Stage<'a> {
     pub record: Option<PathBuf>,
     /// Positions one request may use, as the executor was built with.
     pub max_context: usize,
+    pub max_step_tokens: usize,
+    pub prefill_chunk: Option<usize>,
     /// The operator's cap on prompt tokens.
     pub max_input: Option<usize>,
     /// How much stage state may wait for the worker.
@@ -384,6 +386,10 @@ struct Step {
     mode: PromptMode,
     /// The most answer tokens the front may ask for (step 0 only).
     max_tokens: Option<u64>,
+    prefill: bool,
+    prefill_pending: bool,
+    output_step: u64,
+    group_limits: Option<Budget>,
 }
 
 impl Step {
@@ -414,6 +420,14 @@ impl Step {
             last: message["final"].as_bool().unwrap_or(false),
             mode: PromptMode::of(message).ok()?,
             max_tokens: message["max_tokens"].as_u64(),
+            prefill: message["prefill"].as_bool().unwrap_or(false),
+            prefill_pending: message["prefill_pending"].as_bool().unwrap_or(false),
+            output_step: message["output_step"]
+                .as_u64()
+                .unwrap_or(message["step"].as_u64()?),
+            group_limits: message
+                .get("limits")
+                .and_then(|v| serde_json::from_value(v.clone()).ok()),
         })
     }
 
@@ -423,6 +437,9 @@ impl Step {
             "sampling": self.sampling,
             "final": self.last,
             "mode": self.mode.as_str(),
+            "prefill": self.prefill,
+            "prefill_pending": self.prefill_pending,
+            "output_step": self.output_step,
         }))
         .unwrap_or_default()
     }
@@ -641,6 +658,7 @@ struct Server<'a, E: StageExecutor> {
     budget: Budget,
     /// Bounds on decoded frames kept in `frames`.
     bounds: InboxBounds,
+    prompt: Option<(String, u32, Vec<u32>, usize, usize)>,
 }
 
 /// Connects to the front and serves steps until the front closes the
@@ -656,11 +674,13 @@ where
 {
     let bounds = stage.inbox;
     let events = Events::new(bounds);
-    let budget = budget(
+    let budget = budget_sized(
         &stage.manifest,
         &worker.executor().geometry(),
         stage.max_context,
+        stage.max_step_tokens,
         stage.max_input,
+        stage.prefill_chunk,
     );
     let first = stage.index == 0;
     let direct = match &stage.data_listen {
@@ -719,6 +739,7 @@ where
         direct,
         budget,
         bounds,
+        prompt: None,
     };
     server.log.record("spawn", generation, json!({}));
     server.hello();
@@ -791,6 +812,8 @@ where
                 "max_context_tokens": self.budget.max_context_tokens,
                 "max_input_tokens": self.budget.max_input_tokens,
                 "max_prefill_tokens": self.budget.max_prefill_tokens,
+                "max_step_tokens": self.budget.max_step_tokens,
+                "prefill_chunk_tokens": self.budget.prefill_chunk_tokens,
                 "modes": PromptMode::ALL.map(PromptMode::as_str),
             },
         });
@@ -848,6 +871,13 @@ where
 
     fn cancel(&mut self, request: &str, attempt: u32) {
         if self
+            .prompt
+            .as_ref()
+            .is_some_and(|p| p.0 == request && p.1 == attempt)
+        {
+            self.prompt = None;
+        }
+        if self
             .pending
             .as_ref()
             .is_some_and(|p| p.request == request && p.attempt == attempt)
@@ -870,6 +900,7 @@ where
     }
 
     fn fence(&mut self, generation: u64) {
+        self.prompt = None;
         if generation > self.generation {
             if let Err(refusal) = self.worker.advance_generation(generation) {
                 self.refused(refusal, json!({}));
@@ -935,7 +966,7 @@ where
         self.frames.push_back(message);
     }
 
-    fn step(&mut self, step: Step) {
+    fn step(&mut self, mut step: Step) {
         if step.generation != self.generation {
             return self.refused(
                 format!(
@@ -973,7 +1004,7 @@ where
             self.worker.reset(&request, attempt);
         }
         if self.stage.index == 0 {
-            match self.first_message(&step) {
+            match self.first_message(&mut step) {
                 Ok(message) => self.run_step(&step, message),
                 Err(Rejected::Limit(limit)) => self.reject(
                     &step,
@@ -1032,8 +1063,19 @@ where
         );
     }
 
-    fn first_message(&self, step: &Step) -> Result<StageMessage, Rejected> {
-        let (tokens, position) = if step.step == 0 {
+    fn first_message(&mut self, step: &mut Step) -> Result<StageMessage, Rejected> {
+        if step.step == 0 {
+            if self
+                .worker
+                .inbox()
+                .summary()
+                .active
+                .is_some_and(|(id, attempt, next, _)| {
+                    id == step.request && attempt == step.attempt && next > 0
+                })
+            {
+                return Err(Refused("the request already consumed its first chunk".into()).into());
+            }
             let tokens = match &step.prompt_ids {
                 Some(_) if self.stage.record.is_none() => {
                     return Err(Rejected::Invalid(Refused(
@@ -1053,29 +1095,72 @@ where
                 )?,
             };
             // Checked before any stage runs the request.
-            self.budget
+            let mut admitted = self.budget;
+            if let Some(group) = step.group_limits {
+                admitted.max_input_tokens = admitted.max_input_tokens.min(group.max_input_tokens);
+                admitted.max_context_tokens =
+                    admitted.max_context_tokens.min(group.max_context_tokens);
+                if let (Some(local), Some(remote)) =
+                    (admitted.prefill_chunk_tokens, group.prefill_chunk_tokens)
+                {
+                    admitted.prefill_chunk_tokens = Some(local.min(remote));
+                }
+            }
+            admitted
                 .check(tokens.len() as u64, step.max_tokens.unwrap_or(1))
                 .map_err(Rejected::Limit)?;
-            (tokens, 0)
+            // Admission precedes the first GPU step and all chunk slicing.
+            let chunk = admitted
+                .prefill_chunk_tokens
+                .unwrap_or(admitted.max_input_tokens) as usize;
+            self.prompt = Some((step.request.clone(), step.attempt, tokens, 0, chunk));
+            if let Some(chunk) = admitted.prefill_chunk_tokens {
+                step.group_limits = Some(Budget {
+                    prefill_chunk_tokens: Some(chunk),
+                    ..admitted
+                });
+            }
+        }
+        let position = if step.step == 0 {
+            0
+        } else {
+            match self.worker.inbox().summary().active {
+                Some((request, attempt, next, position))
+                    if request == step.request && attempt == step.attempt && next == step.step =>
+                {
+                    position
+                }
+                _ => {
+                    return Err(Refused(
+                        "the step does not follow the request's committed state".into(),
+                    )
+                    .into());
+                }
+            }
+        };
+        let (tokens, kind) = if let Some((request, attempt, ids, offset, chunk)) = &mut self.prompt
+            && *request == step.request
+            && *attempt == step.attempt
+            && *offset < ids.len()
+        {
+            if *offset as u64 != position {
+                return Err(Refused("the prompt chunk starts at the wrong position".into()).into());
+            }
+            if *chunk == 0 {
+                return Err(Refused("the prompt chunk capacity is zero".into()).into());
+            }
+            let end = offset.saturating_add(*chunk).min(ids.len());
+            let tokens = ids[*offset..end].to_vec();
+            *offset = end;
+            step.prefill = true;
+            step.prefill_pending = end < ids.len();
+            (tokens, StepKind::Prefill)
         } else {
             let Some(token) = step.token else {
                 return Err(Rejected::Invalid(Refused(format!(
                     "step {} came without the previous token",
                     step.step
                 ))));
-            };
-            let position = match self.worker.inbox().summary().active {
-                Some((request, attempt, _, position))
-                    if request == step.request && attempt == step.attempt =>
-                {
-                    position
-                }
-                _ => {
-                    return Err(Rejected::Invalid(Refused(format!(
-                        "step {} of request {} came before its first step",
-                        step.step, step.request
-                    ))));
-                }
             };
             if position >= self.budget.max_context_tokens {
                 return Err(Rejected::Limit(RequestLimit {
@@ -1087,7 +1172,9 @@ where
                     actual: position + 1,
                 }));
             }
-            (vec![token], position)
+            step.prefill = false;
+            step.prefill_pending = false;
+            (vec![token], StepKind::Decode)
         };
         let entry = &self.stage.manifest.stages[0];
         Ok(StageMessage {
@@ -1098,11 +1185,7 @@ where
             stage: 0,
             layers: entry.layers(),
             step: step.step,
-            kind: if tokens.len() > 1 {
-                StepKind::Prefill
-            } else {
-                StepKind::Decode
-            },
+            kind,
             position,
             tokens,
             sections: Vec::new(),
@@ -1111,15 +1194,39 @@ where
 
     fn run_step(&mut self, step: &Step, message: StageMessage) {
         self.pending = None;
+        if message.tokens.len() > self.stage.max_step_tokens {
+            return self.reject(
+                step,
+                "request_limit",
+                "the step exceeds this stage's chunk capacity",
+                Some((
+                    self.stage.max_step_tokens as u64,
+                    message.tokens.len() as u64,
+                )),
+            );
+        }
+        if step.prefill_pending && (!step.prefill || message.kind != StepKind::Prefill) {
+            return self.reject(
+                step,
+                "invalid_request",
+                "an intermediate chunk must be prefill",
+                None,
+            );
+        }
         // The step's own time on this stage, which the front subtracts from
         // a token's time to find what the links between stages cost.
         let started = Instant::now();
         let request = (step.request.clone(), step.attempt);
         if self.last() {
-            self.worker
-                .executor()
-                .prepare(step.sampling.unwrap_or(Sampling::GREEDY), step.step);
+            self.worker.executor().prepare_output(
+                step.sampling.unwrap_or(Sampling::GREEDY),
+                step.output_step,
+                !step.prefill_pending,
+            );
         }
+        self.log.record("execute", self.generation, json!({"request":step.request,
+            "step":step.step,"position":message.position,"tokens":message.tokens.len(),
+            "prefill":step.prefill,"prefill_pending":step.prefill_pending,"output_step":step.output_step}));
         let sections = match self.worker.step(message.clone()) {
             Ok(sections) => sections,
             Err(WorkerError::Refused(refusal)) if self.direct.is_some() => {
@@ -1155,6 +1262,8 @@ where
             "request_id": step.request,
             "attempt": step.attempt,
             "step": step.step,
+            "prefill": step.prefill,
+            "prefill_pending": step.prefill_pending,
         });
         if self.stage.record.is_some() {
             match self.record(step, &message, &sections) {
@@ -1168,6 +1277,11 @@ where
             }
         }
         if self.last() {
+            if step.prefill_pending {
+                ack["compute_us"] = json!(micros(started));
+                self.writer.send(&ack);
+                return;
+            }
             let token = if let Some(token) = self.worker.executor().sampled() {
                 // The backend sampled on its device with the step's settings.
                 token
@@ -1182,7 +1296,7 @@ where
                 match sample(
                     &logits,
                     step.sampling.unwrap_or(Sampling::GREEDY),
-                    step.step,
+                    step.output_step,
                 ) {
                     Ok(token) => token,
                     Err(refusal) => return self.refused(refusal, json!({})),
@@ -1266,7 +1380,7 @@ where
             files.push(name);
             Ok(())
         };
-        if self.last() {
+        if self.last() && !step.prefill_pending {
             let logits = self.worker.executor().logits().or_else(|| {
                 sections
                     .iter()
@@ -1473,6 +1587,7 @@ where
                     "step": step.step,
                     "bytes": bytes,
                     "compute_us": compute_us,
+                    "prefill": step.prefill,
                 }));
             }
             Err(reason) => self.link_failed(generation, "next", &reason),
@@ -1572,6 +1687,10 @@ where
             last: meta["final"].as_bool().unwrap_or(false),
             mode,
             max_tokens: None,
+            prefill: meta["prefill"].as_bool().unwrap_or(false),
+            prefill_pending: meta["prefill_pending"].as_bool().unwrap_or(false),
+            output_step: meta["output_step"].as_u64().unwrap_or(frame.step),
+            group_limits: None,
         };
         self.log.record(
             "step",

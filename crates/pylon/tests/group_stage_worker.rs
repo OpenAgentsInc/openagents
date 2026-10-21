@@ -678,12 +678,204 @@ fn with_args(config: &mut StageGroupConfig, extra: &[&str]) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn chunked_prefill_matches_reference_without_delivering_intermediate_tokens() {
+    let (bin, _ran) =
+        worker_or_skip!("chunked_prefill_matches_reference_without_delivering_intermediate_tokens");
+    for transport in [Transport::Front, Transport::Direct] {
+        for chunk in [1, 3, 127, 128, 129] {
+            let chunk_arg = chunk.to_string();
+            let rig = Rig::with(bin.clone(), &[(0, 14), (14, 40)], |config, _| {
+                with_args(
+                    config,
+                    &[
+                        "--max-context",
+                        "512",
+                        "--max-step-tokens",
+                        &chunk_arg,
+                        "--prefill-chunk",
+                        &chunk_arg,
+                    ],
+                );
+                if transport == Transport::Direct {
+                    direct(config);
+                }
+            })
+            .await;
+            let limits = rig.ready(1).await.limits.unwrap();
+            assert_eq!(limits.max_input_tokens, 511);
+            assert_eq!(limits.prefill_chunk_tokens, Some(chunk));
+            let prompt = serde_json::json!([{"role":"user", "content": (0..131).map(|i| format!("tok{}", 3 + i % 5)).collect::<Vec<_>>().join(" ")}]);
+            for settings in [(0.0, 1.0, 0), (0.9, 0.95, 11)] {
+                let expected = rig.reference(&prompt, 4, settings);
+                let answer = rig
+                    .answer(
+                        Some(prompt.clone()),
+                        4,
+                        Sampling::new(settings.0, settings.1, settings.2).unwrap(),
+                    )
+                    .await;
+                assert_eq!(answer, expected, "{transport:?}, chunk {chunk}");
+            }
+            let events = rig.events();
+            let executed: Vec<_> = events.iter().filter(|v| v["event"] == "execute").collect();
+            assert!(executed.iter().any(|v| v["prefill_pending"] == true));
+            assert!(
+                executed
+                    .iter()
+                    .all(|v| v["tokens"].as_u64().unwrap() <= chunk)
+            );
+            // Every worker sees the same contiguous absolute positions.
+            for stage in ["s0", "s1"] {
+                let mut position = 0;
+                for event in executed.iter().filter(|v| v["stage"] == stage) {
+                    if event["step"] == 0 {
+                        position = 0;
+                    }
+                    assert_eq!(event["position"].as_u64().unwrap(), position);
+                    position += event["tokens"].as_u64().unwrap();
+                    if event["prefill_pending"] == true {
+                        assert_eq!(event["output_step"], 0);
+                    }
+                }
+            }
+            rig.close().await;
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn cancelling_or_losing_a_link_during_prefill_never_delivers_a_token() {
+    let (bin, _ran) =
+        worker_or_skip!("cancelling_or_losing_a_link_during_prefill_never_delivers_a_token");
+    for transport in [Transport::Front, Transport::Direct] {
+        for crash in [false, true] {
+            let rig = Rig::with(bin.clone(), &[(0, 14), (14, 40)], |config, _| {
+                with_args(config, &["--max-context", "512", "--prefill-chunk", "3"]);
+                if transport == Transport::Direct {
+                    direct(config);
+                }
+            })
+            .await;
+            rig.ready(1).await;
+            let pid = rig.pids()[1];
+            unsafe { libc::kill(pid as i32, libc::SIGSTOP) };
+            let long = serde_json::json!([{"role":"user", "content":"tok3 ".repeat(131)}]);
+            let mut run = rig
+                .group()
+                .generate_prompt(long, 4, greedy())
+                .await
+                .unwrap();
+            rig.until("an intermediate chunk", |_| {
+                rig.events()
+                    .iter()
+                    .any(|e| e["event"] == "execute" && e["prefill_pending"] == true)
+            })
+            .await;
+            assert!(run.tokens.try_recv().is_err());
+            if crash {
+                unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+                let failure = run.done.await.unwrap().unwrap_err();
+                assert_eq!(failure.delivered, 0);
+                rig.ready(2).await;
+            } else {
+                drop(run.tokens);
+                let failure = run.done.await.unwrap().unwrap_err();
+                assert!(failure.cancelled && failure.delivered == 0);
+                // The stopped process has not drained; a second generation
+                // must wait for its cancellation acknowledgment.
+                assert!(rig.status().busy);
+                assert!(rig.group().generate(1, greedy()).await.is_err());
+                unsafe { libc::kill(pid as i32, libc::SIGCONT) };
+                rig.until("the cancellation drained", |s| !s.busy).await;
+            }
+            let expected = rig.reference(&prompt(), 3, (0.0, 1.0, 0));
+            assert_eq!(rig.answer(Some(prompt()), 3, greedy()).await, expected);
+            rig.close().await;
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn full_2k_and_19989_token_prompts_cross_the_group_in_bounded_chunks() {
+    let (bin, _ran) =
+        worker_or_skip!("full_2k_and_19989_token_prompts_cross_the_group_in_bounded_chunks");
+    let rig = Rig::with(
+        bin,
+        &[(0, 10), (10, 20), (20, 30), (30, 40)],
+        |config, _| {
+            with_args(
+                config,
+                &[
+                    "--max-context",
+                    "32768",
+                    "--prefill-chunk",
+                    "2048",
+                    "--max-step-tokens",
+                    "2048",
+                ],
+            );
+            config.step_timeout = Duration::from_secs(75);
+            direct(config);
+        },
+    )
+    .await;
+    rig.ready(1).await;
+    for count in [2048, 19989] {
+        let prompt = serde_json::json!([{"role":"user", "content": "tok3 ".repeat(count)}]);
+        let mut run = rig
+            .group()
+            .generate_prompt(prompt, 2, greedy())
+            .await
+            .unwrap();
+        let done = tokio::time::timeout(Duration::from_secs(600), &mut run.done)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(done.tokens, 2);
+        assert_eq!(done.profile.decode_steps, vec![1; 4]);
+        let events = rig.events();
+        for stage in ["s0", "s1", "s2", "s3"] {
+            let chunks: Vec<_> = events
+                .iter()
+                .filter(|e| {
+                    e["event"] == "execute"
+                        && e["stage"] == stage
+                        && e["request"] == run.request
+                        && e["prefill"] == true
+                })
+                .collect();
+            assert_eq!(
+                chunks
+                    .iter()
+                    .map(|e| e["tokens"].as_u64().unwrap())
+                    .sum::<u64>(),
+                count as u64
+            );
+            assert_eq!(chunks.len(), count.div_ceil(2048));
+            assert!(chunks.iter().all(|e| e["tokens"].as_u64().unwrap() <= 2048));
+        }
+    }
+    rig.close().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn an_oversized_request_fails_alone_and_the_group_stays_ready() {
     let (bin, _ran) = worker_or_skip!("an_oversized_request_fails_alone_and_the_group_stays_ready");
     let split = [(0, 10), (10, 25), (25, 40)];
     for transport in [Transport::Front, Transport::Direct] {
         let rig = Rig::with(bin.clone(), &split, |config, _| {
-            with_args(config, &["--max-context", "64", "--max-input-tokens", "4"]);
+            with_args(
+                config,
+                &[
+                    "--max-context",
+                    "64",
+                    "--max-input-tokens",
+                    "4",
+                    "--prefill-chunk",
+                    "3",
+                ],
+            );
             if transport == Transport::Direct {
                 direct(config);
             }
@@ -715,6 +907,7 @@ async fn an_oversized_request_fails_alone_and_the_group_stays_ready() {
         assert!(reason.contains("at most 4"), "{reason}");
         // The stages stop the request before the slot frees.
         rig.until("a free slot", |s| !s.busy).await;
+        assert!(rig.events().iter().all(|e| e["event"] != "execute"));
         // An answer longer than the context is refused at admission.
         let refused = rig
             .group()

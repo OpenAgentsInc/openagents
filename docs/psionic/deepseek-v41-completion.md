@@ -888,3 +888,62 @@ Keep the serial profile and current gates. The narrower context release now
 has that explicit revision (see "Launch scope revision" under the gates). Multiuser batching, expert
 parallelism, and prefill/decode disaggregation remain workload-driven
 follow-ups. The reading introduces no new benchmark result or passing gate.
+
+
+## Serial long-prompt implementation (#12414, 2026-10-21)
+
+The stage worker and Pylon front support opt-in serial chunked prefill on
+both transports. Each chunk has a physical step number and an absolute token
+position. The generated-token index advances only when the last stage returns
+an answer token. Intermediate chunks update the transformer, cache, and Engram
+history; the CUDA head and sampler do not run. Cancellation keeps the group
+busy until every stage stops, and a failed link fences the whole request.
+
+The worker derives the chunk ceiling from every boundary's encoded message,
+section, and token limits, reserving the worst compression phase for appended
+rows. Stage 0 checks the complete rendered prompt plus the output allowance
+before running the first chunk. Chunks and single-token decode steps share the
+existing duplicate, ordering, request, and generation checks. Prefill timing
+sums all chunks; decode counts exclude every prompt chunk.
+
+`--max-context`, `--max-step-tokens`, `--prefill-chunk`, and
+`--max-input-tokens` reach each worker through `pylon cloud up`. Workers announce
+both capacities and the effective chunk limit; the head carries them in
+`request_limits`, including on its beacon. Defaults retain the short launch
+profile. To prepare a separate long-prompt development profile, add:
+
+```text
+--max-context 32768 --max-step-tokens 2048 --prefill-chunk 2048
+--max-input-tokens 20480 --max-output-tokens 4096
+--deadline-secs 1800 --step-secs 75
+```
+
+The 1,800-second deadline is a proposed measurement profile, not a W14 pass.
+Do not advertise this as qualified until the original-weight checks below
+pass. The 2,872-token launch and its 600-second deadline remain independent.
+
+`MeasuredMemory::flash_sized` separates context-dependent cache storage from
+step buffers. Psionic generates
+`crates/pylon/placements/deepseek-v41-chunked-32k-memory.json` for 32,768 context
+positions and 2,048 step tokens. Its four runtime estimates are approximately
+1.576 GB each and fit the existing 11 GB runtime reserve in all three named
+placements. These estimates derive from W3's provisional measurements; they
+are not new device peak measurements. Pylon checks this envelope before cloud
+allocation and refuses larger capacities. Regenerate it with
+`PSIONIC_REGENERATE_CHUNK_MEMORY=1 cargo test -p psionic-v41-stage --test budget`
+in the Psionic workspace. The test also checks each placement's reserved bytes.
+
+`psionic-v41-stage qualify` accepts the same chunk and step flags. It drives
+physical chunks in order, retains observations from every chunk and full logits
+from output steps, and records requested schedule, announced limits, worker
+bundle, and executable hashes. Logical oracle positions remain unchanged.
+The thread-based `chain` measurement command also skips intermediate heads.
+Batching and cross-stage overlap remain separate later experiments.
+
+Local checks pass on the synthetic model: full 2,048-token and 19,989-token
+prompts through four real worker processes; greedy and sampled answers against
+the unsplit CPU reference with chunks 1, 3, 127, 128, and 129 on both transports;
+cancellation and link loss during prefill; refusal before execution; codec and
+memory bounds; and strict-policy qualification with three-token chunks. These
+checks establish implementation behavior, not original-weight G1 acceptance.
+GPU and original-weight evidence is recorded separately when available.

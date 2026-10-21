@@ -111,6 +111,12 @@ pub struct StepAck {
     pub request_id: String,
     pub attempt: u32,
     pub step: u64,
+    /// This physical step processed prompt tokens, not decode output.
+    #[serde(default)]
+    pub prefill: bool,
+    /// More prompt chunks follow. The last stage returns no sampled token.
+    #[serde(default)]
+    pub prefill_pending: bool,
     /// The sampled token id. Only the last stage sends one, and it must.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<u32>,
@@ -392,6 +398,10 @@ pub struct StageLimits {
     /// The largest prefill the stages' wire carries in one step.
     #[serde(default)]
     pub max_prefill_tokens: u64,
+    #[serde(default)]
+    pub max_step_tokens: u64,
+    #[serde(default)]
+    pub prefill_chunk_tokens: Option<u64>,
     /// The prompt modes it renders.
     #[serde(default)]
     pub modes: Vec<PromptMode>,
@@ -405,6 +415,11 @@ impl StageLimits {
             max_context_tokens: self.max_context_tokens.min(other.max_context_tokens),
             max_input_tokens: self.max_input_tokens.min(other.max_input_tokens),
             max_prefill_tokens: self.max_prefill_tokens.min(other.max_prefill_tokens),
+            max_step_tokens: self.max_step_tokens.min(other.max_step_tokens),
+            prefill_chunk_tokens: self
+                .prefill_chunk_tokens
+                .zip(other.prefill_chunk_tokens)
+                .map(|(a, b)| a.min(b)),
             modes: self
                 .modes
                 .iter()
@@ -681,7 +696,7 @@ pub struct Done {
 pub struct StepProfile {
     /// The first step's (the prompt's) compute on each stage, µs.
     pub prefill_compute_us: Vec<u64>,
-    /// Decode steps (every step after the first) each stage reported.
+    /// Decode steps each stage reported, excluding every prompt chunk.
     pub decode_steps: Vec<u64>,
     /// Their summed compute on each stage, µs.
     pub decode_compute_us: Vec<u64>,
@@ -701,14 +716,19 @@ impl StepProfile {
     }
 
     /// Count one step that `stage` finished.
+    #[cfg(test)]
     fn note(&mut self, stage: usize, step: u64, compute_us: Option<u64>, bytes: u64) {
+        self.note_phase(stage, step == 0, compute_us, bytes);
+    }
+
+    fn note_phase(&mut self, stage: usize, prefill: bool, compute_us: Option<u64>, bytes: u64) {
         let Some(compute) = compute_us else {
             return;
         };
         if stage >= self.decode_steps.len() {
             return;
         }
-        if step == 0 {
+        if prefill {
             self.prefill_compute_us[stage] += compute;
         } else {
             self.decode_steps[stage] += 1;
@@ -859,6 +879,8 @@ mod runtime {
             bytes: u64,
             #[serde(default)]
             compute_us: Option<u64>,
+            #[serde(default)]
+            prefill: bool,
         },
         /// The stage refused a frame from the previous stage.
         Refused {
@@ -1195,6 +1217,8 @@ mod runtime {
         steps: u64,
         sampling: Sampling,
         delivered: u64,
+        prefill: bool,
+        prefill_pending: bool,
         /// The last token delivered, which the first stage embeds next.
         last_token: Option<u32>,
         tokens: mpsc::UnboundedSender<u32>,
@@ -1439,6 +1463,8 @@ mod runtime {
                         steps,
                         sampling,
                         delivered: 0,
+                        prefill: true,
+                        prefill_pending: false,
                         last_token: None,
                         tokens,
                         text,
@@ -1495,12 +1521,15 @@ mod runtime {
                 "stage": index,
                 "step": step,
                 "mode": active.mode,
+                "output_step": active.delivered,
+                "prefill": active.prefill,
+                "prefill_pending": active.prefill_pending,
             });
             if index + 1 == self.slots.len() || self.config.transport == Transport::Direct {
                 // The last stage samples with the front's settings; under
                 // the direct transport the first stage passes them along.
                 message["sampling"] = serde_json::json!(active.sampling);
-                if step + 1 >= active.steps {
+                if active.delivered + 1 >= active.steps {
                     // The output limit ends the answer after this token.
                     message["final"] = serde_json::json!(true);
                 }
@@ -1525,6 +1554,9 @@ mod runtime {
                 // It checks the prompt and this many answer tokens against
                 // the group's limits before any stage runs them.
                 message["max_tokens"] = serde_json::json!(active.steps);
+                if let Some(limits) = self.limits() {
+                    message["limits"] = serde_json::json!(limits);
+                }
             }
             self.send(index, message).await;
         }
@@ -1729,7 +1761,24 @@ mod runtime {
                         ));
                         return;
                     }
-                    if last != ack.token.is_some() {
+                    if ack.prefill_pending
+                        && (!ack.prefill || ack.token.is_some() || ack.end || ack.finish.is_some())
+                    {
+                        self.refuse(format!(
+                            "stage {name} returned output for an intermediate prompt chunk"
+                        ));
+                        return;
+                    }
+                    if !self.direct()
+                        && index > 0
+                        && self.active.as_ref().is_some_and(|a| {
+                            (a.prefill, a.prefill_pending) != (ack.prefill, ack.prefill_pending)
+                        })
+                    {
+                        self.refuse(format!("stage {name} changed the prompt chunk phase"));
+                        return;
+                    }
+                    if (last && !ack.prefill_pending) != ack.token.is_some() {
                         self.refuse(format!(
                             "stage {name} {} a token",
                             if last { "did not return" } else { "returned" }
@@ -1740,11 +1789,22 @@ mod runtime {
                     if accepted.is_ok()
                         && let Some(active) = &mut self.active
                     {
-                        active.profile.note(index, ack.step, ack.compute_us, 0);
+                        active.profile.note_phase(
+                            index,
+                            ack.prefill || ack.step == 0,
+                            ack.compute_us,
+                            0,
+                        );
+                        active.prefill = ack.prefill;
+                        active.prefill_pending = ack.prefill_pending;
                     }
                     match accepted {
                         Ok(Accepted::Next(next)) => self.send_step(next, ack.step).await,
                         Ok(Accepted::StepDone(step)) => {
+                            if ack.prefill_pending {
+                                self.send_step(0, step + 1).await;
+                                return;
+                            }
                             let token = ack.token.unwrap_or_default();
                             self.deliver(step, token, ack).await;
                         }
@@ -1807,6 +1867,7 @@ mod runtime {
                     step,
                     bytes,
                     compute_us,
+                    prefill,
                 } => {
                     let current = self.active.as_ref().is_some_and(|a| {
                         a.id == request_id
@@ -1824,7 +1885,9 @@ mod runtime {
                     slot.forwarded += 1;
                     slot.forwarded_bytes += bytes;
                     if let Some(active) = &mut self.active {
-                        active.profile.note(index, step, compute_us, bytes);
+                        active
+                            .profile
+                            .note_phase(index, prefill || step == 0, compute_us, bytes);
                     }
                 }
                 Incoming::Refused { reason } => {
@@ -2310,6 +2373,8 @@ mod tests {
             attempt,
             step,
             token: None,
+            prefill: false,
+            prefill_pending: false,
             text: None,
             end: false,
             reasoning: None,
@@ -2340,6 +2405,22 @@ mod tests {
         assert_eq!(profile.decode_steps, vec![4, 4]);
         assert_eq!(profile.decode_ms(), Some(vec![8.0, 9.0]));
         assert_eq!(profile.bytes_per_token(), Some(44_000.0));
+    }
+
+    #[test]
+    fn multiple_prompt_chunks_do_not_count_as_decode() {
+        let mut profile = StepProfile::new(2);
+        for _ in 0..10 {
+            profile.note_phase(0, true, Some(100), 200);
+            profile.note_phase(1, true, Some(120), 0);
+        }
+        assert_eq!(profile.prefill_compute_us, vec![1000, 1200]);
+        assert_eq!(profile.decode_steps, vec![0, 0]);
+        assert_eq!(profile.decode_ms(), None);
+        profile.note_phase(0, false, Some(100), 200);
+        profile.note_phase(1, false, Some(120), 0);
+        assert_eq!(profile.decode_steps, vec![1, 1]);
+        assert_eq!(profile.bytes_per_token(), Some(200.0));
     }
 
     #[test]

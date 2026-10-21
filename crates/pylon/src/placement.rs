@@ -198,6 +198,42 @@ pub fn named(name: &str, machine_type: Option<&str>) -> Result<Placement, String
     place(name, machine_type, json.as_bytes())
 }
 
+/// Refuses context growth outside the retained measured memory envelope,
+/// before a cloud allocation. Psionic generates and tests this file; Pylon
+/// compares capacities and reserves without duplicating its memory model.
+pub fn check_capacities(placement: &Placement, context: usize, step: usize) -> Result<(), String> {
+    if context <= 8192 && step <= 8192 {
+        return Ok(());
+    }
+    let profile: serde_json::Value = serde_json::from_str(include_str!(
+        "../placements/deepseek-v41-chunked-32k-memory.json"
+    ))
+    .map_err(|e| format!("chunk memory profile: {e}"))?;
+    if context as u64 > profile["max_context_tokens"].as_u64().unwrap_or(0)
+        || step as u64 > profile["max_step_tokens"].as_u64().unwrap_or(0)
+    {
+        return Err("the larger context needs at most 32,768 positions and 2,048 tokens per step; measure another memory profile before raising these limits".into());
+    }
+    for stage in &placement.manifest.stages {
+        let required = profile["stages"]
+            .as_array()
+            .and_then(|stages| {
+                stages.iter().find(|p| {
+                    p["first_layer"] == stage.first_layer && p["end_layer"] == stage.end_layer
+                })
+            })
+            .and_then(|p| p["runtime_bytes"].as_u64())
+            .ok_or("the measured memory profile has no matching layer range")?;
+        if stage.gpu_runtime_bytes < required {
+            return Err(format!(
+                "stage {} reserves {} runtime bytes but this context needs {required}",
+                stage.stage, stage.gpu_runtime_bytes
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Place a manifest's stages on machines of `machine_type`.
 ///
 /// # Errors

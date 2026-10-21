@@ -247,6 +247,10 @@ pub struct Up {
     pub development: bool,
     pub deadline_secs: u64,
     pub max_output_tokens: u32,
+    pub max_context: usize,
+    pub max_step_tokens: Option<usize>,
+    pub prefill_chunk: Option<usize>,
+    pub max_input_tokens: Option<usize>,
     pub sampling: Sampling,
     /// How the stages render prompts and parse answers (`--mode`).
     pub mode: crate::stage_group::PromptMode,
@@ -309,6 +313,10 @@ impl Up {
             development: false,
             deadline_secs: 90,
             max_output_tokens: 1_024,
+            max_context: 8192,
+            max_step_tokens: None,
+            prefill_chunk: None,
+            max_input_tokens: None,
             sampling: Sampling::new(0.6, 0.95, 0).unwrap_or_else(|_| unreachable!()),
             mode: crate::stage_group::PromptMode::default(),
             relay: DEFAULT_RELAY.into(),
@@ -397,7 +405,19 @@ fn layer_list(stages: &[StagePlan]) -> String {
 /// When the placement is unknown or doesn't fit its machines, the group
 /// slug is invalid, or the hours aren't positive.
 pub fn plan(up: &Up) -> Result<Plan, String> {
+    let step = up
+        .max_step_tokens
+        .or(up.prefill_chunk)
+        .unwrap_or(up.max_context);
+    if up.max_context < 2
+        || step == 0
+        || step > up.max_context
+        || up.prefill_chunk.is_some_and(|n| n == 0 || n > step)
+    {
+        return Err("the chunk and step capacities must be positive and fit the context".into());
+    }
     let placement = placement::named(&up.placement, up.machine_type.as_deref())?;
+    placement::check_capacities(&placement, up.max_context, step)?;
     if up.group.is_empty()
         || up.group.len() > 40
         || !up
@@ -861,6 +881,16 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
                     "--manifest".into(),
                     format!("sha256:{}", plan.placement.digest),
                 ];
+                extra.extend(["--max-context".into(), up.max_context.to_string()]);
+                if let Some(n) = up.max_step_tokens {
+                    extra.extend(["--max-step-tokens".into(), n.to_string()]);
+                }
+                if let Some(n) = up.prefill_chunk {
+                    extra.extend(["--prefill-chunk".into(), n.to_string()]);
+                }
+                if let Some(n) = up.max_input_tokens {
+                    extra.extend(["--max-input-tokens".into(), n.to_string()]);
+                }
                 if let Some(backend) = &up.stage_backend {
                     extra.extend(["--backend".into(), backend.clone()]);
                 }
@@ -1237,6 +1267,11 @@ pub async fn launch(up: &Up) -> Result<Launched, String> {
             "generation": generation,
             "deadline_secs": up.deadline_secs,
             "max_output_tokens": up.max_output_tokens,
+            "schedule": {
+                "kind": "serial", "max_context_tokens": up.max_context,
+                "max_step_tokens": up.max_step_tokens.or(up.prefill_chunk).unwrap_or(up.max_context),
+                "prefill_chunk_tokens": up.prefill_chunk, "max_input_tokens": up.max_input_tokens,
+            },
         },
         "placement": record.placement,
         "machine_type": record.machine_type,
@@ -1586,6 +1621,11 @@ checkout on the one host that allocates for the budget.
                             at most 3600; past 90 it takes only
                             pylon.deadline.v1 jobs).
       --max-output-tokens N The output limit it declares (default 1024).
+      --max-context N       Prompt and answer positions (default 8192).
+      --max-step-tokens N   Step-buffer capacity, independent of context.
+      --prefill-chunk N     Process prompts in bounded chunks; defaults the
+                            step capacity to N. No overlap between chunks.
+      --max-input-tokens N  Cap prompt admission below context capacity.
       --temperature T       The head's sampling temperature (default 0.6;
                             0 samples greedily).
       --top-p P             The head's top-p (default 0.95).
@@ -1658,6 +1698,10 @@ pub fn parse_up(
     let development = take_flag(&mut words, "--development");
     let worker_build = value(&mut words, "--worker-build")?;
     let pylon_build = value(&mut words, "--pylon-build")?;
+    let max_context = value(&mut words, "--max-context")?;
+    let max_step_tokens = value(&mut words, "--max-step-tokens")?;
+    let prefill_chunk = value(&mut words, "--prefill-chunk")?;
+    let max_input_tokens = value(&mut words, "--max-input-tokens")?;
     let hours = value(&mut words, "--hours")?;
     let zone = value(&mut words, "--zone")?;
     let machine_type = value(&mut words, "--machine-type")?;
@@ -1700,6 +1744,17 @@ pub fn parse_up(
     }
     up.worker_build = worker_build.map(|p| p.to_ascii_lowercase());
     up.pylon_build = pylon_build.map(|p| p.to_ascii_lowercase());
+    let size = |name: &str, text: Option<String>| -> Result<Option<usize>, String> {
+        text.map(|s| {
+            s.parse()
+                .map_err(|_| format!("{name} takes a positive number"))
+        })
+        .transpose()
+    };
+    up.max_context = size("--max-context", max_context)?.unwrap_or(8192);
+    up.max_step_tokens = size("--max-step-tokens", max_step_tokens)?;
+    up.prefill_chunk = size("--prefill-chunk", prefill_chunk)?;
+    up.max_input_tokens = size("--max-input-tokens", max_input_tokens)?;
     up.development = development;
     if let Some(head) = head {
         up.head = HeadPlacement::parse(&head)?;

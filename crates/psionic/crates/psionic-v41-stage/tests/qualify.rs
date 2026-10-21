@@ -231,6 +231,30 @@ fn the_harness_passes_its_own_run_and_fails_a_changed_one_on_the_cpu() {
             GENERATED.len() + 1
         );
     }
+    let chunked = qualify(
+        root.path(),
+        &manifest,
+        &same,
+        "chunked",
+        &[
+            "--backend",
+            "cpu",
+            "--policy",
+            &policy,
+            "--prefill-chunk",
+            "3",
+            "--max-step-tokens",
+            "3",
+        ],
+    );
+    assert_eq!(chunked["schedule"]["prefill_chunk"], 3);
+    assert_eq!(
+        chunked["cases"][0]["replay_equals_forced_decode"], true,
+        "{chunked:#}"
+    );
+    for mode in chunked["cases"][0]["modes"].as_array().unwrap() {
+        assert_eq!(mode["passed"], true, "{mode:#}");
+    }
     let changed = root.path().join("changed");
     dump_from(&changed, &logits, &[], true);
     let report = qualify(

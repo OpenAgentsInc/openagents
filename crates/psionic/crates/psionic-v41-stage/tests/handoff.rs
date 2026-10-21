@@ -273,6 +273,8 @@ fn a_stalled_executor_holds_the_link_to_its_bounds_and_recovers() {
         ),
         events: Some(dir.join("events.jsonl")),
         max_context: 64,
+        max_step_tokens: 64,
+        prefill_chunk: None,
         max_input: None,
         inbox: bounds,
         record: None,

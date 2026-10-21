@@ -945,8 +945,7 @@ impl StageContract {
 
     /// Bytes of one step's message under this contract, for `tokens` tokens
     /// starting at `position` of a new request, and the bytes of its largest
-    /// section. A prefill step at position 0 is the largest message a request
-    /// sends across this boundary.
+    /// section. Appended rows depend on the compression phase at `position`.
     #[must_use]
     pub fn step_bytes(
         &self,
@@ -976,8 +975,34 @@ impl StageContract {
     /// the message, its largest section, and its token count all fit.
     #[must_use]
     pub fn max_step_tokens(&self, limits: &CodecLimits, request_id_bytes: usize) -> u64 {
+        self.max_tokens_fitting(limits, |tokens| {
+            self.step_bytes(request_id_bytes, tokens, 0)
+        })
+    }
+
+    /// The largest chunk that fits at every compression phase. Each
+    /// appended section reserves the ceiling of tokens divided by ratio,
+    /// even when different sections reach their maxima at different phases.
+    #[must_use]
+    pub fn max_chunk_tokens(&self, limits: &CodecLimits, request_id_bytes: usize) -> u64 {
+        self.max_tokens_fitting(limits, |tokens| {
+            let mut worst = self.clone();
+            for section in &mut worst.sections {
+                if let RowRule::Append { ratio } = section.rows {
+                    section.rows = RowRule::Fixed(tokens.div_ceil(u64::from(ratio.max(1))) as u32);
+                }
+            }
+            worst.step_bytes(request_id_bytes, tokens, 0)
+        })
+    }
+
+    fn max_tokens_fitting(
+        &self,
+        limits: &CodecLimits,
+        bytes: impl Fn(u64) -> (usize, usize),
+    ) -> u64 {
         let fits = |tokens: u64| {
-            let (total, largest) = self.step_bytes(request_id_bytes, tokens, 0);
+            let (total, largest) = bytes(tokens);
             total <= limits.max_message_bytes && largest <= limits.max_section_bytes
         };
         let (mut low, mut high) = (0, limits.max_tokens as u64);

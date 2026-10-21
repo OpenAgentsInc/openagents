@@ -2524,6 +2524,18 @@ impl V41Stage {
         input: &V41StepInput<'_>,
         observe: bool,
     ) -> Result<V41StepOutput, RuntimeError> {
+        self.step_with_output(backend, input, observe, true)
+    }
+
+    /// Updates state for a chunk, omitting the vocabulary head and sampler
+    /// when more prompt chunks follow. State arithmetic stays unchanged.
+    pub fn step_with_output(
+        &mut self,
+        backend: &CudaBackend,
+        input: &V41StepInput<'_>,
+        observe: bool,
+        emit: bool,
+    ) -> Result<V41StepOutput, RuntimeError> {
         let started = Instant::now();
         let c = self.config.clone();
         let shape = c.shape;
@@ -2648,7 +2660,7 @@ impl V41Stage {
                 _ => return Err(invalid("the boundary's candidates")),
             }
         }
-        if c.samples() {
+        if c.samples() && emit {
             let s = input.sampling;
             let mut settings = s.temperature.to_le_bytes().to_vec();
             settings.extend_from_slice(&s.top_p.to_le_bytes());
@@ -2689,7 +2701,7 @@ impl V41Stage {
             graph.launch_enqueued()?;
             stats.graph_launches += 1;
         }
-        if c.samples() {
+        if c.samples() && emit {
             if self.tail.is_none() {
                 let mut submission = backend.begin_captured_submission()?;
                 self.record_tail(&mut submission)?;
@@ -2728,9 +2740,11 @@ impl V41Stage {
         let keep = self.history.len().saturating_sub(3);
         self.history.drain(..keep);
         if c.samples() {
-            let bytes = read(&mut stats, &self.work.token, 4)?;
-            let token = i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-            out.token = Some(u32::try_from(token).map_err(|_| invalid("nonfinite logits"))?);
+            if emit {
+                let bytes = read(&mut stats, &self.work.token, 4)?;
+                let token = i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+                out.token = Some(u32::try_from(token).map_err(|_| invalid("nonfinite logits"))?);
+            }
         } else {
             let to_f32 = |b: Vec<u8>| -> Vec<f32> {
                 b.chunks_exact(4)

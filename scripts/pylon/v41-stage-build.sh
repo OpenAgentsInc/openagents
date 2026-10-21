@@ -105,7 +105,7 @@ esac
 dest="$bucket/$short/$arch"
 # The root workspace's source and target stay apart from Psionic's.
 src_dir=src
-paths=(crates/psionic crates/stage-link Cargo.toml rust-toolchain.toml scripts/dev/cargo-build-env.sh)
+paths=(crates/psionic crates/stage-link crates/pylon/placements Cargo.toml rust-toolchain.toml scripts/dev/cargo-build-env.sh)
 if [[ $mode == pylon ]]; then
   arch=
   dest=gs://openagents-psionic-models/bin/pylon/$short
@@ -186,6 +186,7 @@ export CUDAARCHS=$ARCH PSI_CUDA_ARCH=$ARCH
 export RUSTFLAGS='-C link-arg=-Wl,-rpath,$ORIGIN/lib'
 
 if [ "$MODE" = test ]; then
+  PSIONIC_REQUIRE_CUDA=1 cargo test --locked -p psionic-backend-cuda --lib intermediate_prompt_chunks -- --test-threads=1
   PSIONIC_REQUIRE_CUDA=1 cargo test --locked -p psionic-v41-stage --features cuda -- --test-threads=1
   exit 0
 fi

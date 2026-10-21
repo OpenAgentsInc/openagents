@@ -979,6 +979,46 @@ fn split_stages_equal_the_whole() -> TestResult {
 /// A decode step is one graph launch per stage graph and one wait, with
 /// only the step's input and output crossing the bus.
 #[test]
+fn intermediate_prompt_chunks_skip_the_head_and_preserve_the_answer() -> TestResult {
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let store = synthetic_store(13);
+    let mut whole = load_stage(&mut backend, &store, 0..40, false)?;
+    let mut chunks = load_stage(&mut backend, &store, 0..40, false)?;
+    let (prompt, _) = tokens();
+    let input = |position, tokens| V41StepInput {
+        position,
+        tokens,
+        residual: None,
+        pre_mix: None,
+        source_rows: None,
+        selection: None,
+        candidates: None,
+        sampling: V41Sampling::greedy(),
+    };
+    let expected = whole.step(&backend, &input(0, &prompt), false)?;
+    let logits = whole.logits()?;
+    let mut position = 0;
+    for chunk in prompt.chunks(3) {
+        let emit = position + chunk.len() == prompt.len();
+        let out = chunks.step_with_output(&backend, &input(position, chunk), false, emit)?;
+        assert_eq!(out.stats.graph_launches, chunk.len() + usize::from(emit));
+        if emit {
+            assert_eq!(out.token, expected.token);
+            assert_eq!(chunks.logits()?, logits);
+        } else {
+            assert!(out.token.is_none());
+            assert_eq!(out.stats.device_to_host_bytes, 0);
+        }
+        position += chunk.len();
+    }
+    Ok(())
+}
+
+/// A decode step is one graph launch per stage graph and one wait, with
+/// only the step's input and output crossing the bus.
+#[test]
 fn decode_steps_stay_on_the_device() -> TestResult {
     let Some(mut backend) = cuda() else {
         return Ok(());

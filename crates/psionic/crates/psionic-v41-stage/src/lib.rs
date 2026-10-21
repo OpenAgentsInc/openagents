@@ -219,14 +219,16 @@ impl PromptMode {
 pub struct Budget {
     /// Positions one request may fill: its prompt and its answer together.
     pub max_context_tokens: u64,
-    /// The most prompt tokens one request may send. The prompt is one
-    /// prefill step, so this is the largest prefill every boundary of the
-    /// group carries under the codec's limits, below the context and the
-    /// operator's `--max-input-tokens`.
+    /// The most prompt tokens one request may send, after the context,
+    /// wire schedule, and operator's `--max-input-tokens` limits.
     pub max_input_tokens: u64,
     /// The largest prefill the wire alone carries, before the context and
     /// the operator's cap.
     pub max_prefill_tokens: u64,
+    /// Tokens allocated in the step buffers, independently of context.
+    pub max_step_tokens: u64,
+    /// A bounded prompt chunk; `None` retains the single-step profile.
+    pub prefill_chunk_tokens: Option<u64>,
 }
 
 /// Request IDs the budget allows for: the codec's longest.
@@ -242,6 +244,26 @@ pub fn budget(
     max_context: usize,
     max_input: Option<usize>,
 ) -> Budget {
+    budget_sized(
+        manifest,
+        geometry,
+        max_context,
+        max_context,
+        max_input,
+        None,
+    )
+}
+
+/// Computes request and chunk limits from the wire and separate capacities.
+#[must_use]
+pub fn budget_sized(
+    manifest: &V41GroupManifest,
+    geometry: &V41StageGeometry,
+    max_context: usize,
+    max_step: usize,
+    max_input: Option<usize>,
+    chunk: Option<usize>,
+) -> Budget {
     let limits = CodecLimits::default();
     let request_id = BUDGET_REQUEST_ID_BYTES.min(limits.max_request_id_bytes);
     let prefill = manifest
@@ -252,7 +274,21 @@ pub fn budget(
         .fold(limits.max_tokens as u64, u64::min);
     let context = max_context as u64;
     // One position stays free for the answer's first token.
-    let mut input = prefill.min(context.saturating_sub(1));
+    let chunk = chunk.map(|n| {
+        manifest
+            .stages
+            .iter()
+            .skip(1)
+            .map(|s| {
+                stage_contract(geometry, s.stage, s.layers()).max_chunk_tokens(&limits, request_id)
+            })
+            .fold((n as u64).min(max_step as u64), u64::min)
+    });
+    let mut input = if chunk.is_some() {
+        context.saturating_sub(1)
+    } else {
+        prefill.min(max_step as u64).min(context.saturating_sub(1))
+    };
     if let Some(cap) = max_input {
         input = input.min(cap as u64);
     }
@@ -260,7 +296,27 @@ pub fn budget(
         max_context_tokens: context,
         max_input_tokens: input,
         max_prefill_tokens: prefill,
+        max_step_tokens: max_step as u64,
+        prefill_chunk_tokens: chunk,
     }
+}
+
+/// The measured runtime budget for the opt-in 32k context profile. The
+/// three cloud placements use the same four layer ranges.
+pub fn chunk_memory_profile() -> Result<Value, Refused> {
+    use psionic_models::deepseek_v41_stage::{MeasuredMemory, PlacementMemory};
+    let memory = MeasuredMemory::flash_sized(32768, 2048).map_err(|e| Refused(e.to_string()))?;
+    Ok(serde_json::json!({
+        "schema": "psionic.deepseek_v41.chunk_memory.v1",
+        "max_context_tokens": 32768,
+        "max_step_tokens": 2048,
+        "source": memory.source(),
+        "measurement_status": memory.file().status,
+        "stages": (0..4).map(|i| serde_json::json!({
+            "first_layer": i*10, "end_layer": (i+1)*10,
+            "runtime_bytes": memory.stage_runtime_bytes(i*10..(i+1)*10),
+        })).collect::<Vec<_>>(),
+    }))
 }
 
 /// Why a request is larger than the group serves. Stage 0 refuses such a
@@ -319,6 +375,11 @@ pub trait StageBackend: StageExecutor {
     /// The last stage's sampling settings for the next step.
     fn prepare(&self, _sampling: Sampling, _step: u64) {}
 
+    /// Intermediate prompt chunks update state without sampling.
+    fn prepare_output(&self, sampling: Sampling, step: u64, _emit: bool) {
+        self.prepare(sampling, step);
+    }
+
     /// The token the last step sampled, when the backend samples itself.
     fn sampled(&self) -> Option<u32> {
         None
@@ -361,6 +422,8 @@ pub struct Options {
     /// arithmetic is [`CUDA_PROFILE`].
     pub arithmetic: Option<Arithmetic>,
     pub max_context: usize,
+    pub max_step_tokens: usize,
+    pub prefill_chunk: Option<usize>,
     /// An operator's cap on prompt tokens, below what the wire and the
     /// context allow (`--max-input-tokens`).
     pub max_input: Option<usize>,
@@ -682,7 +745,7 @@ impl Options {
                 "--weights" | "--layers" | "--gpu" | "--manifest" | "--stage" | "--generation"
                 | "--front" | "--token" | "--backend" | "--arithmetic" | "--max-context"
                 | "--listen" | "--events" | "--data-listen" | "--data-advertise" | "--record"
-                | "--control" | "--max-input-tokens" => {
+                | "--control" | "--max-input-tokens" | "--max-step-tokens" | "--prefill-chunk" => {
                     let Some(value) = args.get(i + 1) else {
                         return refuse(format!("{flag} needs a value"));
                     };
@@ -734,6 +797,27 @@ impl Options {
                     .map_err(|_| Refused("--max-input-tokens must be a number".into()))
             })
             .transpose()?;
+        let mut size = |flag: &str| -> Result<Option<usize>, Refused> {
+            values
+                .remove(flag)
+                .map(|s| {
+                    s.parse()
+                        .map_err(|_| Refused(format!("{flag} must be a number")))
+                })
+                .transpose()
+        };
+        let prefill_chunk = size("--prefill-chunk")?;
+        let max_step_tokens =
+            size("--max-step-tokens")?.unwrap_or(prefill_chunk.unwrap_or(max_context));
+        if max_context < 2
+            || max_step_tokens == 0
+            || max_step_tokens > max_context
+            || prefill_chunk.is_some_and(|n| n == 0 || n > max_step_tokens)
+        {
+            return refuse(
+                "context must be at least two positions, and chunk and step capacities must be positive and fit the context",
+            );
+        }
         Ok(Self {
             weights,
             layers,
@@ -748,6 +832,8 @@ impl Options {
             backend,
             arithmetic,
             max_context,
+            max_step_tokens,
+            prefill_chunk,
             max_input,
             listen: values
                 .remove("--listen")
@@ -1175,6 +1261,8 @@ pub fn stage_info<'a>(
         events: options.events.clone(),
         record: options.record.clone(),
         max_context: options.max_context,
+        max_step_tokens: options.max_step_tokens,
+        prefill_chunk: options.prefill_chunk,
         max_input: options.max_input,
         inbox: serve::InboxBounds::default(),
     }
