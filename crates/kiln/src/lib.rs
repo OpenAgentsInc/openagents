@@ -13,6 +13,7 @@
 
 pub mod agent;
 pub mod cj;
+pub mod remote;
 pub mod vfs;
 pub mod wasi;
 

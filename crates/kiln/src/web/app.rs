@@ -21,11 +21,16 @@ use web_sys::{
 
 use super::relay::Relay;
 use super::util::{get, now_ms, random32, set, sleep, text};
-use crate::agent::{Agent, Command, INSTRUCTIONS};
+use crate::agent::{Agent, Command};
 use crate::cj::{self, Key};
 use crate::vfs::Vfs;
 
 const SNAPSHOT: &str = "kiln-workspace-v1.bin";
+const BASE_SNAPSHOT: &str = "kiln-base-v1.bin";
+const REPO: &str = "OpenAgentsInc/openagents";
+/// Where the base snapshot keeps what was loaded.
+const REPO_META: &str = ".kiln/repo.json";
+const REMOTE_WAIT_SECS: u64 = 900;
 const MAX_STEPS: usize = 16;
 const TOOL_TIMEOUT_MS: i32 = 30_000;
 
@@ -48,6 +53,11 @@ struct App {
     vfs: RefCell<Vfs>,
     tools: RefCell<BTreeMap<String, Tool>>,
     opfs: RefCell<Option<FileSystemFileHandle>>,
+    /// The workspace as loaded from the repository, for the remote diff.
+    base: RefCell<Vfs>,
+    opfs_base: RefCell<Option<FileSystemFileHandle>>,
+    /// The connection remote Cargo runs use.
+    runner_relay: RefCell<Option<Relay>>,
     key: Key,
     worker: RefCell<Option<Worker>>,
     busy: Cell<bool>,
@@ -80,6 +90,9 @@ pub async fn run() {
         vfs: RefCell::new(Vfs::default()),
         tools: RefCell::new(BTreeMap::new()),
         opfs: RefCell::new(None),
+        base: RefCell::new(Vfs::default()),
+        opfs_base: RefCell::new(None),
+        runner_relay: RefCell::new(None),
         key,
         worker: RefCell::new(None),
         busy: Cell::new(false),
@@ -101,6 +114,27 @@ pub async fn run() {
         web_sys::UrlSearchParams::new_with_str(&window.location().search().unwrap_or_default())
             .ok();
     let param = |name: &str| params.as_ref().and_then(|p| p.get(name));
+    if let Ok(bytes) = fetch_bytes("config.json").await
+        && let Ok(config) = serde_json::from_slice::<Value>(&bytes)
+        && let Some(runner) = config["runner"].as_str()
+    {
+        let input: HtmlInputElement = el(&app.doc, "runner").unchecked_into();
+        input.set_value(runner);
+    }
+    if let Some(runner) = param("runner") {
+        let input: HtmlInputElement = el(&app.doc, "runner").unchecked_into();
+        input.set_value(&runner);
+    }
+    if let Some(slice) = param("load") {
+        app.clone()
+            .load_repo(slice, param("ref").unwrap_or_else(|| "main".into()))
+            .await;
+    }
+    if let Some(line) = param("cargo") {
+        // Run one remote Cargo command without the model, for checks.
+        let run = app.run_command(&Command::Run(line)).await;
+        set(&window, "kilnCargo", run.map_or(-1, |r| r.code));
+    }
     if param("selftest").is_some() {
         app.clone().selftest().await;
     }
@@ -157,6 +191,19 @@ impl App {
         on("stop", Box::new(move |_| app.stop.set(true)));
         let app = self.clone();
         on(
+            "load",
+            Box::new(move |_| {
+                if app.busy.get() {
+                    return;
+                }
+                let slice: HtmlInputElement = el(&app.doc, "slice").unchecked_into();
+                let reference: HtmlInputElement = el(&app.doc, "ref").unchecked_into();
+                let (slice, reference) = (slice.value(), reference.value());
+                wasm_bindgen_futures::spawn_local(app.clone().load_repo(slice, reference));
+            }),
+        );
+        let app = self.clone();
+        on(
             "reset",
             Box::new(move |_| {
                 if app.busy.get() {
@@ -165,7 +212,9 @@ impl App {
                 let app = app.clone();
                 wasm_bindgen_futures::spawn_local(async move {
                     *app.vfs.borrow_mut() = Vfs::default();
+                    *app.base.borrow_mut() = Vfs::default();
                     app.persist().await;
+                    app.persist_base().await;
                     app.render_files();
                     el(&app.doc, "viewer").set_text_content(Some(""));
                     app.log("info", "Cleared the workspace.");
@@ -211,6 +260,16 @@ impl App {
                     .dyn_into()?;
             let file: web_sys::File = JsFuture::from(handle.get_file()).await?.dyn_into()?;
             let bytes = Uint8Array::new(&JsFuture::from(file.array_buffer()).await?).to_vec();
+            let base: FileSystemFileHandle =
+                JsFuture::from(dir.get_file_handle_with_options(BASE_SNAPSHOT, &options))
+                    .await?
+                    .dyn_into()?;
+            let file: web_sys::File = JsFuture::from(base.get_file()).await?.dyn_into()?;
+            let base_bytes = Uint8Array::new(&JsFuture::from(file.array_buffer()).await?).to_vec();
+            if let Ok(vfs) = Vfs::decode(&base_bytes) {
+                *self.base.borrow_mut() = vfs;
+            }
+            *self.opfs_base.borrow_mut() = Some(base);
             Ok((handle, bytes))
         }
         .await;
@@ -252,6 +311,28 @@ impl App {
                 );
                 "workspace: memory only".into()
             }
+        }
+    }
+
+    /// Write the base snapshot to OPFS.
+    async fn persist_base(&self) {
+        let Some(handle) = self.opfs_base.borrow().clone() else {
+            return;
+        };
+        let bytes = self.base.borrow().encode();
+        let result: Result<(), JsValue> = async {
+            let stream: FileSystemWritableFileStream =
+                JsFuture::from(handle.create_writable()).await?.dyn_into()?;
+            JsFuture::from(stream.write_with_u8_array(&bytes)?).await?;
+            JsFuture::from(stream.close()).await?;
+            Ok(())
+        }
+        .await;
+        if let Err(error) = result {
+            self.log(
+                "error",
+                &format!("Saving the base to OPFS failed: {}", text(&error)),
+            );
         }
     }
 
@@ -621,7 +702,11 @@ impl App {
         match command.call() {
             Ok(Some(call)) => {
                 self.log("cmd", &format!("$ {}", command.label()));
-                let run = self.run_tool(&call.argv, &call.stdin).await;
+                let run = if call.argv[0] == "cargo" {
+                    self.remote_cargo(&call.argv).await
+                } else {
+                    self.run_tool(&call.argv, &call.stdin).await
+                };
                 let shown = crate::agent::clip(run.output.trim_end(), 4000);
                 if !shown.is_empty() {
                     self.log(if run.code == 0 { "out" } else { "err" }, &shown);
@@ -714,10 +799,25 @@ impl App {
         let relay_url = relay_url.value();
         self.log("task", &format!("Task: {task}"));
         let mut agent = Agent::new(&task, cj::LEGACY_MAX_INPUT_BYTES);
+        if let Some(repo) = self.repo() {
+            let crates: Vec<String> = repo["crates"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|c| c.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            agent.instructions =
+                crate::agent::RUST_INSTRUCTIONS.replace("{crates}", &crates.join(", "));
+        }
+        let instructions = agent.instructions.clone();
         let mut relay: Option<Relay> = None;
         let mut book = BeaconBook::default();
         let mut book_at = f64::NEG_INFINITY;
         let mut failing = BTreeSet::new();
+        // A tighter prompt budget after a pylon refused one as too long.
+        let mut cap: Option<usize> = None;
         let run_started = now_ms();
         for step in 1..=MAX_STEPS {
             if self.stop.get() {
@@ -807,15 +907,32 @@ impl App {
                     want,
                     fallback,
                     &failing,
-                    INSTRUCTIONS,
+                    &instructions,
                     &prompt,
                     &feedback,
+                    cap,
                 )
                 .await;
             let asked = match asked {
                 Ok(asked) => asked,
                 Err(error) => {
                     self.log("error", &error.message);
+                    if error.message.contains("limit_exceeded") && error.message.contains("tokens")
+                    {
+                        // Too long a prompt, not a bad pylon: ask again with
+                        // less, at the limit it named.
+                        let tokens = cj::refused_token_limit(&error.message).unwrap_or(2_000);
+                        let bytes = (tokens * 5 / 2) as usize;
+                        cap = Some(cap.map_or(bytes, |c| c.min(bytes) * 4 / 5));
+                        self.log(
+                            "info",
+                            &format!(
+                                "Asking again with a prompt under {} KiB.",
+                                cap.unwrap_or(0) / 1024
+                            ),
+                        );
+                        continue;
+                    }
                     if let Some(pylon) = error.pylon {
                         failing.insert(pylon);
                     }
@@ -903,6 +1020,265 @@ impl App {
         }
         self.busy.set(false);
     }
+}
+
+impl App {
+    /// What the base snapshot says was loaded from the repository.
+    fn repo(&self) -> Option<Value> {
+        let base = self.base.borrow();
+        let bytes = base.read(REPO_META).ok()?;
+        serde_json::from_slice(bytes).ok()
+    }
+
+    /// Replace the workspace with one directory of the repository at a
+    /// commit: resolve `reference` to a commit, list the directory's tree,
+    /// and fetch each file from raw.githubusercontent.com. Public reads
+    /// only; no token.
+    async fn load_repo(self: Rc<Self>, slice: String, reference: String) {
+        self.busy.set(true);
+        let started = now_ms();
+        let slice = slice.trim().trim_matches('/').to_string();
+        self.log(
+            "step",
+            &format!("Loading {slice} from {REPO} at {reference}"),
+        );
+        let result: Result<(String, Vfs, usize, f64), String> = async {
+            let commit: Value = serde_json::from_slice(
+                &fetch_bytes(&format!(
+                    "https://api.github.com/repos/{REPO}/commits/{reference}"
+                ))
+                .await?,
+            )
+            .map_err(|e| e.to_string())?;
+            let sha = commit["sha"]
+                .as_str()
+                .ok_or("the commit has no sha")?
+                .to_string();
+            let tree: Value = serde_json::from_slice(
+                &fetch_bytes(&format!(
+                    "https://api.github.com/repos/{REPO}/git/trees/{sha}:{slice}?recursive=1"
+                ))
+                .await?,
+            )
+            .map_err(|e| e.to_string())?;
+            let listed_ms = now_ms() - started;
+            let entries = tree["tree"].as_array().ok_or("the tree has no entries")?;
+            let mut vfs = Vfs::default();
+            let mut bytes = 0;
+            for entry in entries {
+                if entry["type"] != "blob" {
+                    continue;
+                }
+                let path = entry["path"].as_str().unwrap_or_default();
+                if entry["size"].as_u64().unwrap_or(0) > 512 * 1024 {
+                    continue;
+                }
+                let full = format!("{slice}/{path}");
+                let data = fetch_bytes(&format!(
+                    "https://raw.githubusercontent.com/{REPO}/{sha}/{full}"
+                ))
+                .await?;
+                bytes += data.len();
+                vfs.put(&full, &data, 0).map_err(String::from)?;
+            }
+            Ok((sha, vfs, bytes, listed_ms))
+        }
+        .await;
+        match result {
+            Ok((sha, vfs, bytes, listed_ms)) => {
+                let name = vfs
+                    .read(&format!("{slice}/Cargo.toml"))
+                    .ok()
+                    .and_then(|t| crate_name(&String::from_utf8_lossy(t)));
+                let crates: Vec<String> = name.into_iter().collect();
+                let (files, _) = vfs.usage();
+                let mut base = vfs.clone();
+                let meta = json!({"repo": REPO, "commit": sha, "slice": slice, "crates": crates});
+                let _ = base.put(REPO_META, meta.to_string().as_bytes(), 0);
+                *self.vfs.borrow_mut() = vfs;
+                *self.base.borrow_mut() = base;
+                self.persist().await;
+                self.persist_base().await;
+                self.render_files();
+                let ms = now_ms() - started;
+                self.log(
+                    "info",
+                    &format!(
+                        "Loaded {files} files ({} KiB) of {slice} at {} in {ms:.0} ms (commit and tree {listed_ms:.0} ms). Crate: {}.",
+                        bytes / 1024,
+                        &sha[..10],
+                        crates.join(", ")
+                    ),
+                );
+                self.metrics.borrow_mut().page["repo_load"] = json!({"slice": slice, "commit": sha, "files": files, "bytes": bytes, "ms": ms, "listing_ms": listed_ms});
+                self.render_metrics();
+                if let Some(krate) = crates.first() {
+                    let area: HtmlTextAreaElement = el(&self.doc, "task").unchecked_into();
+                    if krate == "memory-stream" {
+                        area.set_value(MEMORY_STREAM_TASK);
+                    } else {
+                        area.set_value(&format!(
+                            "In {slice}, add a small public helper function with a doc comment and a unit test for it, then run `cargo test -p {krate}` until it passes."
+                        ));
+                    }
+                }
+            }
+            Err(e) => self.log("error", &format!("Could not load {slice}: {e}")),
+        }
+        if let Some(window) = web_sys::window() {
+            set(&window, "kilnLoaded", true);
+        }
+        self.busy.set(false);
+    }
+
+    /// Run `cargo ...` on the runner: send the files that differ from the
+    /// base, wait for the result, and show progress as it comes.
+    async fn remote_cargo(&self, argv: &[String]) -> ToolRun {
+        let started = now_ms();
+        let fail = |output: String| ToolRun { code: 127, output };
+        let Some(repo) = self.repo() else {
+            return fail("cargo runs only on a crate loaded from the repository".into());
+        };
+        let crates: Vec<String> = repo["crates"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|c| c.as_str().map(str::to_string))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let args = match crate::remote::parse_command(argv, &crates) {
+            Ok(args) => args,
+            Err(e) => return fail(e),
+        };
+        let runner: HtmlInputElement = el(&self.doc, "runner").unchecked_into();
+        let runner = runner.value().trim().to_string();
+        let Some(runner) = nostr_hex(&runner) else {
+            return fail("no test runner is set; start kiln-runner and enter its key".into());
+        };
+        let (files, deleted) = {
+            let vfs = self.vfs.borrow();
+            let base = self.base.borrow();
+            let slice = repo["slice"].as_str().unwrap_or_default().to_string();
+            let inside = |p: &str| p.starts_with(&format!("{slice}/"));
+            let mut files = std::collections::BTreeMap::new();
+            for (path, node) in vfs.iter() {
+                if node.is_dir() || !inside(path) {
+                    continue;
+                }
+                let current = vfs.read(path).unwrap_or_default();
+                if base.read(path).ok() != Some(current) {
+                    files.insert(path.clone(), String::from_utf8_lossy(current).into_owned());
+                }
+            }
+            let deleted: Vec<String> = base
+                .iter()
+                .filter(|(p, n)| !n.is_dir() && inside(p) && vfs.get(p).is_none())
+                .map(|(p, _)| p.clone())
+                .collect();
+            (files, deleted)
+        };
+        let job = crate::remote::Job {
+            v: crate::remote::JOB_V.into(),
+            base: repo["commit"].as_str().unwrap_or_default().to_string(),
+            args,
+            files,
+            deleted,
+        };
+        if let Err(e) = job.check(&crates) {
+            return fail(e);
+        }
+        let changed = job.files.len() + job.deleted.len();
+        let relay_url: HtmlInputElement = el(&self.doc, "relay").unchecked_into();
+        let relay_url = relay_url.value();
+        let mut relay = match self.runner_relay.borrow_mut().take() {
+            Some(relay) if !relay.closed => relay,
+            _ => match Relay::connect(&relay_url, &self.key).await {
+                Ok(relay) => relay,
+                Err(e) => return fail(e),
+            },
+        };
+        let body = json!({
+            "v": 1,
+            "requires": [],
+            "task": serde_json::to_string(&job).unwrap_or_default(),
+            "transcript": [],
+            "client": concat!("kiln ", env!("CARGO_PKG_VERSION")),
+        });
+        let line = self.doc.create_element("div").ok();
+        if let Some(line) = &line {
+            line.set_class_name("info");
+            line.set_text_content(Some(&format!("sent {changed} changed files to the runner")));
+            let _ = el(&self.doc, "log").append_child(line);
+        }
+        let progress = |note: Option<&str>| {
+            if let (Some(line), Some(note)) = (&line, note) {
+                line.set_text_content(Some(&format!(
+                    "runner, {:.0} s: {note}",
+                    (now_ms() - started) / 1000.0
+                )));
+            }
+        };
+        let result = relay
+            .exchange(&self.key, &runner, &body, REMOTE_WAIT_SECS, &progress)
+            .await;
+        *self.runner_relay.borrow_mut() = Some(relay);
+        let got = match result {
+            Ok(got) => got,
+            Err(e) => return fail(format!("the runner did not answer: {e}")),
+        };
+        let Ok(outcome) = serde_json::from_str::<crate::remote::Outcome>(&got.text) else {
+            return fail("the runner's answer is not a result".into());
+        };
+        let wall = now_ms() - started;
+        self.metrics.borrow_mut().runs.push(json!({
+            "tool": format!("cargo {}", argv.get(1).map_or("", String::as_str)),
+            "wall_ms": wall,
+            "runner_ms": outcome.ms,
+            "contact_ms": got.contact_ms,
+            "changed_files": changed,
+            "summary": outcome.summary,
+            "remote": true,
+        }));
+        self.render_metrics();
+        ToolRun {
+            code: outcome.code.unwrap_or(124),
+            output: format!(
+                "{} ({:.1} s on the runner)\n{}",
+                outcome.summary,
+                outcome.ms as f64 / 1000.0,
+                outcome.log
+            ),
+        }
+    }
+}
+
+const MEMORY_STREAM_TASK: &str = "In crates/memory-stream/src/lib.rs, add a public function `half_life_hours() -> f64` with a doc comment: the number of hours after which `recency` falls to 0.5 under RECENCY_DECAY. Add a unit test in the existing tests module that checks `recency(half_life_hours())` is within 1e-9 of 0.5 and that the half-life is between 68 and 70 hours. Run `cargo test -p memory-stream` until it passes.";
+
+/// The package name in a `Cargo.toml`.
+fn crate_name(manifest: &str) -> Option<String> {
+    let mut in_package = false;
+    for line in manifest.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_package = line == "[package]";
+        } else if in_package
+            && let Some(rest) = line.strip_prefix("name")
+            && let Some(value) = rest.trim().strip_prefix('=')
+        {
+            return Some(value.trim().trim_matches('"').to_string());
+        }
+    }
+    None
+}
+
+/// A runner key as 64 hex characters, from hex or `npub`.
+fn nostr_hex(text: &str) -> Option<String> {
+    if text.len() == 64 && text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Some(text.to_lowercase());
+    }
+    let bytes = nostr::nip19::decode_npub(text).ok()?;
+    Some(bytes.iter().map(|b| format!("{b:02x}")).collect())
 }
 
 async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {

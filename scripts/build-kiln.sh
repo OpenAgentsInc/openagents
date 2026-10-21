@@ -48,7 +48,7 @@ cp crates/kiln/www/index.html crates/kiln/www/worker.js "$out/"
 # Each tool is served as tools/<sha256>.wasm; the manifest names them.
 manifest="{\"tools\": {"
 sep=""
-for tool in cat grep ls patch rhai test write; do
+for tool in cat grep ls patch rhai test view write; do
   file="$CARGO_TARGET_DIR/wasm32-wasip1/guest/$tool.wasm"
   hash=$(shasum -a 256 "$file" | awk '{print $1}')
   bytes=$(wc -c < "$file" | tr -d ' ')

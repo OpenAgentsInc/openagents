@@ -54,6 +54,13 @@
       <button id="selftest">Sandbox self-test</button>
       <button id="reset">Clear workspace</button>
     </div>
+    <h2>Rust crate from the repository</h2>
+    <div class="row">
+      <input type="text" id="slice" value="crates/memory-stream" style="flex: 2">
+      <input type="text" id="ref" value="main" style="flex: 1">
+      <button id="load">Load</button>
+    </div>
+    <label>Test runner key (hex or npub) <input type="text" id="runner" placeholder="from kiln-runner"></label>
     <label>Model <input type="text" id="model" value="deepseek-v4.1-flash"></label>
     <label><input type="checkbox" id="fallback" checked> Fall back to any Pylon when no pylon serves this model</label>
     <label>Relay <input type="text" id="relay" value="wss://relay.openagents.com"></label>

@@ -11,7 +11,9 @@ use serde::Deserialize;
 use serde_json::Value;
 
 /// The tools a command may name.
-pub const TOOLS: &[&str] = &["ls", "cat", "grep", "write", "patch", "rhai", "test"];
+pub const TOOLS: &[&str] = &[
+    "ls", "cat", "view", "grep", "write", "patch", "rhai", "test", "cargo",
+];
 
 /// The system turn for every step.
 pub const INSTRUCTIONS: &str = r#"You are Kiln, a coding agent working in a sandboxed workspace inside a web browser. You change files and run programs only through commands, and you see only what they print.
@@ -35,6 +37,29 @@ Each command is one of:
 {"done": "what you did, in one sentence"}
 
 Work in small steps: write the code and a test, run the test, read the output, fix what failed. Say done only after the tests pass."#;
+
+/// The system turn when the workspace is a crate from this repository and
+/// `cargo` runs on a remote runner. `{crates}` names the crates.
+pub const RUST_INSTRUCTIONS: &str = r#"You are Kiln, a coding agent working on a Rust crate from the OpenAgents repository. The crate's files are in a sandboxed workspace inside a web browser, at their repository paths. You change files and run programs only through commands, and you see only what they print.
+
+Tools:
+- ls [-R] [PATH]          list files
+- view PATH START END     print lines START to END with their numbers (at most 80)
+- grep [-i] TEXT [PATH]   find lines; prints path:line:text (TEXT may be a\|b)
+- cargo test -p CRATE [-- FILTER]   build and run the crate's tests on a remote runner (takes 10 s to a few minutes)
+- cargo check -p CRATE              type-check the crate on the remote runner
+The crates you can test: {crates}. The runner applies your changed files to the repository at the loaded commit, with no network. You can't change Cargo.toml or build.rs, and you can only change files inside the crate.
+
+Reply with ONLY one JSON object, no prose and no code fences:
+{"thought": "one short sentence", "commands": [ ... ]}
+
+Each command is one of:
+{"run": "cargo test -p CRATE"}                     run a tool command line
+{"write": "PATH", "content": "full file text"}     create or replace a file (use the full repository path)
+{"patch": "PATH", "search": "exact old text", "replace": "new text"}
+{"done": "what you did, in one sentence"}
+
+You see only a small window: never cat a whole source file. Find places with grep, then read around them with view. Prefer patch for edits to existing files (don't include view's line numbers in the search text): copy the search text exactly from view's output, including indentation, and make it long enough to be unique. Read the code you change first. Keep the crate's style and documentation comments. Work in small steps, run the tests after each change, read the failures, and fix them. Say done only after `cargo test` passes."#;
 
 /// One command, as the model wrote it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +116,8 @@ pub struct Agent {
     pub done: Option<String>,
     /// The most request text the model's Pylon accepts, in bytes.
     pub budget: usize,
+    /// The system turn.
+    pub instructions: String,
 }
 
 /// Split a command line into words, honoring single and double quotes.
@@ -279,6 +306,7 @@ impl Agent {
             steps: Vec::new(),
             done: None,
             budget,
+            instructions: INSTRUCTIONS.to_string(),
         }
     }
 
@@ -288,8 +316,9 @@ impl Agent {
     pub fn prompt(&self, files: &str) -> String {
         let room = self
             .budget
-            .saturating_sub(INSTRUCTIONS.len() + self.task.len() + 600);
+            .saturating_sub(self.instructions.len() + self.task.len() + 600);
         let files = clip(files, room / 4);
+        let output_cap = if self.budget > 32 * 1024 { 6000 } else { 1500 };
         let mut history = Vec::new();
         let mut used = files.len();
         for (n, step) in self.steps.iter().enumerate().rev() {
@@ -302,7 +331,7 @@ impl Agent {
                     "$ {} (exit {})\n{}\n",
                     o.command,
                     o.code,
-                    clip(o.output.trim_end(), 1500)
+                    clip(o.output.trim_end(), output_cap)
                 ));
             }
             if used + block.len() > room {
@@ -398,6 +427,7 @@ mod tests {
         );
         assert_eq!(plan.commands[3].call().unwrap(), None);
         assert!(Command::Run("bash -c x".into()).call().is_err());
+        assert!(Command::Run("cargo test -p x".into()).call().is_ok());
     }
 
     #[test]

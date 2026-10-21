@@ -206,6 +206,7 @@ impl Relay {
         instructions: &str,
         prompt: &dyn Fn(usize) -> String,
         on_feedback: &dyn Fn(&str),
+        cap: Option<usize>,
     ) -> Result<Asked, AskError> {
         let started = now_ms();
         let mut usable = BeaconBook::default();
@@ -226,12 +227,52 @@ impl Relay {
             pylon: Some(beacon.provider.clone()),
             message: format!("{}: {message}", beacon.label),
         };
-        let budget = cj::input_limit(&beacon);
+        let budget = cj::input_limit(&beacon).min(cap.unwrap_or(usize::MAX));
         let prompt = prompt(budget);
         let (body, wait_secs) = cj::request_body(&beacon, instructions, &prompt, 300);
-        let request = key
-            .seal_request(&beacon.provider, &body, random32(), unix())
+        on_feedback(&format!(
+            "asking {} for {} ({} KiB prompt, wait up to {} s)",
+            beacon.label,
+            service.model,
+            prompt.len() / 1024,
+            wait_secs
+        ));
+        let discover_ms = now_ms() - started;
+        let heartbeats = std::cell::Cell::new(0_u32);
+        let progress = |_: Option<&str>| {
+            heartbeats.set(heartbeats.get() + 1);
+            if heartbeats.get() == 1 {
+                on_feedback("the pylon is working");
+            }
+        };
+        let got = self
+            .exchange(key, &beacon.provider, &body, wait_secs, &progress)
+            .await
             .map_err(fail)?;
+        Ok(Asked {
+            text: cj::clean(&got.text),
+            label: beacon.label.clone(),
+            model: got.model.unwrap_or_else(|| service.model.clone()),
+            pylon: beacon.provider.clone(),
+            discover_ms,
+            contact_ms: got.contact_ms,
+            answer_ms: got.answer_ms,
+            usage: got.usage,
+        })
+    }
+
+    /// Send one sealed conversation request to `provider` and wait up to
+    /// `wait_secs` (plus a grace) for its result. `on_progress` sees each
+    /// `processing` feedback.
+    pub async fn exchange(
+        &mut self,
+        key: &Key,
+        provider: &str,
+        body: &Value,
+        wait_secs: u64,
+        on_progress: &dyn Fn(Option<&str>),
+    ) -> Result<Exchanged, String> {
+        let request = key.seal_request(provider, body, random32(), unix())?;
         self.send(&json!([
             "REQ",
             "answer",
@@ -239,16 +280,7 @@ impl Relay {
         ]));
         self.send(&json!(["EVENT", request]));
         let sent = now_ms();
-        on_feedback(&format!(
-            "asked {} for {} ({} KiB prompt, wait up to {} s)",
-            beacon.label,
-            service.model,
-            prompt.len() / 1024,
-            wait_secs
-        ));
-        let discover_ms = sent - started;
         let mut contact_ms = None;
-        let mut heartbeats = 0_u32;
         let until = sent + (wait_secs as f64 + 10.0) * 1000.0;
         let result = loop {
             let left = (until - now_ms()) as i32;
@@ -265,7 +297,7 @@ impl Relay {
                     let Ok(event) = serde_json::from_value::<Event>(frame[2].clone()) else {
                         continue;
                     };
-                    if !cj::answers(&event, &request.id, &beacon.provider, key.pubkey()) {
+                    if !cj::answers(&event, &request.id, provider, key.pubkey()) {
                         continue;
                     }
                     contact_ms.get_or_insert(now_ms() - sent);
@@ -274,24 +306,16 @@ impl Relay {
                     };
                     match cj::read(event.kind, &plain) {
                         Answer::Result { text, model, usage } => {
-                            break Ok(Asked {
-                                text: cj::clean(&text),
-                                label: beacon.label.clone(),
-                                model: model.unwrap_or_else(|| service.model.clone()),
-                                pylon: beacon.provider.clone(),
-                                discover_ms,
+                            break Ok(Exchanged {
+                                text,
+                                model,
+                                usage,
                                 contact_ms,
                                 answer_ms: now_ms() - sent,
-                                usage,
                             });
                         }
                         Answer::Error(error) => break Err(error),
-                        Answer::Processing => {
-                            heartbeats += 1;
-                            if heartbeats == 1 {
-                                on_feedback("the pylon is working");
-                            }
-                        }
+                        Answer::Processing(note) => on_progress(note.as_deref()),
                         Answer::Other => {}
                     }
                 }
@@ -299,6 +323,15 @@ impl Relay {
             }
         };
         self.send(&json!(["CLOSE", "answer"]));
-        result.map_err(fail)
+        result
     }
+}
+
+/// What [`Relay::exchange`] returned.
+pub struct Exchanged {
+    pub text: String,
+    pub model: Option<String>,
+    pub usage: Option<Value>,
+    pub contact_ms: Option<f64>,
+    pub answer_ms: f64,
 }

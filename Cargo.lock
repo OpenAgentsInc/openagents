@@ -9897,6 +9897,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kiln-runner"
+version = "1.0.0"
+dependencies = [
+ "coder-boundary",
+ "kiln",
+ "libc",
+ "nostr",
+ "nostr-transport",
+ "openagents-workspace-hack",
+ "secp256k1 0.31.1",
+ "serde_json",
+ "supervise",
+ "tokio",
+]
+
+[[package]]
 name = "kiln-tools"
 version = "1.0.0"
 dependencies = [

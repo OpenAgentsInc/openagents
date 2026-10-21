@@ -1,5 +1,7 @@
-//! `kiln-dev [--port N] [--dir DIR]`: serve the Kiln page and its assets on
-//! `127.0.0.1` with the cross-origin isolation headers (COOP and COEP).
+//! `kiln-dev [--port N] [--dir DIR] [--runner KEY]`: serve the Kiln page and
+//! its assets on `127.0.0.1` with the cross-origin isolation headers (COOP
+//! and COEP). `/config.json` names the `kiln-runner` key the page sends
+//! remote `cargo` runs to.
 //!
 //! Standard library only. `scripts/build-kiln.sh` builds `DIR`.
 
@@ -29,7 +31,7 @@ mod serve {
         }
     }
 
-    fn respond(stream: &mut TcpStream, root: &Path) -> std::io::Result<()> {
+    fn respond(stream: &mut TcpStream, root: &Path, config: &str) -> std::io::Result<()> {
         let mut reader = BufReader::new(stream.try_clone()?);
         let mut line = String::new();
         reader.read_line(&mut line)?;
@@ -54,7 +56,12 @@ mod serve {
         if file.is_dir() {
             file.push("index.html");
         }
-        let (status, body, kind) = match (method, safe, std::fs::read(&file)) {
+        let read = if path == "/config.json" {
+            Ok(config.as_bytes().to_vec())
+        } else {
+            std::fs::read(&file)
+        };
+        let (status, body, kind) = match (method, safe, read) {
             ("GET" | "HEAD", true, Ok(body)) => ("200 OK", body, content_type(&file)),
             ("GET" | "HEAD", _, _) => ("404 Not Found", b"not found\n".to_vec(), "text/plain"),
             _ => (
@@ -82,13 +89,15 @@ mod serve {
     pub fn main() {
         let mut port = 8787_u16;
         let mut dir = std::env::var("KILN_WEB").unwrap_or_else(|_| "dist".into());
+        let mut runner = String::new();
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--port" => port = args.next().and_then(|p| p.parse().ok()).unwrap_or(port),
                 "--dir" => dir = args.next().unwrap_or(dir),
+                "--runner" => runner = args.next().unwrap_or_default(),
                 _ => {
-                    eprintln!("usage: kiln-dev [--port N] [--dir DIR]");
+                    eprintln!("usage: kiln-dev [--port N] [--dir DIR] [--runner KEY]");
                     std::process::exit(2);
                 }
             }
@@ -104,11 +113,14 @@ mod serve {
         });
         let port = listener.local_addr().map(|a| a.port()).unwrap_or(port);
         println!("Kiln is at http://127.0.0.1:{port}/ (serving {dir})");
+        // The page reads the runner's key from here; it is public.
+        let config = format!("{{\"runner\": \"{}\"}}", runner.replace('"', ""));
         for stream in listener.incoming().flatten() {
             let root = root.clone();
+            let config = config.clone();
             std::thread::spawn(move || {
                 let mut stream = stream;
-                let _ = respond(&mut stream, &root);
+                let _ = respond(&mut stream, &root, &config);
             });
         }
     }

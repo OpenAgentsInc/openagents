@@ -56,3 +56,24 @@ fn a_test_imports_its_module_and_fails_then_passes() {
     assert_eq!(String::from_utf8_lossy(&main.stdout).trim(), "144");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn grep_takes_common_flags_and_alternatives() {
+    let dir = scratch("grep");
+    std::fs::write(dir.join("a.rs"), "fn recency() {}\nmod tests {}\nother\n").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_grep"))
+        .args(["-n", "mod tests\\|fn recency", "a.rs"])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{text}");
+    assert_eq!(text, "a.rs:1:fn recency() {}\na.rs:2:mod tests {}\n");
+    let extended = Command::new(env!("CARGO_BIN_EXE_grep"))
+        .args(["-rnE", "other|nothing", "."])
+        .current_dir(&dir)
+        .output()
+        .unwrap();
+    assert_eq!(String::from_utf8_lossy(&extended.stdout), "a.rs:3:other\n");
+    let _ = std::fs::remove_dir_all(&dir);
+}

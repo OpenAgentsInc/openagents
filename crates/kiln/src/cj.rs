@@ -105,6 +105,25 @@ impl Key {
         ))
     }
 
+    /// Encrypt `body` to `peer` and sign it as `kind` with `tags`.
+    ///
+    /// # Errors
+    ///
+    /// When the peer key is invalid or the body is too large.
+    pub fn seal(
+        &self,
+        peer: &str,
+        kind: u16,
+        tags: Vec<Tag>,
+        body: &Value,
+        nonce: [u8; 32],
+        now: u64,
+    ) -> Result<Event, String> {
+        let key = self.conversation_key(peer)?;
+        let content = nip44::encrypt(&body.to_string(), &key, nonce)?;
+        Ok(self.signer.sign(now, kind, tags, content))
+    }
+
     /// Decrypt an answer from its signer.
     ///
     /// # Errors
@@ -217,17 +236,27 @@ pub fn describe(book: &BeaconBook, at: u64) -> Vec<String> {
         .collect()
 }
 
-/// The most request text the pylon behind `beacon` accepts.
+/// Bytes of request text a prompt token stands for, conservatively: code and
+/// JSON run about 3 to 4 bytes a token.
+pub const BYTES_PER_TOKEN: u64 = 3;
+
+/// The most request text the pylon behind `beacon` accepts: its byte limit,
+/// and for a group head also its prompt-token limit at
+/// [`BYTES_PER_TOKEN`].
 #[must_use]
 pub fn input_limit(beacon: &Beacon) -> usize {
     let meta = beacon.meta.as_ref();
     let named = if beacon.group.is_some() {
-        Some(
-            meta.and_then(|m| m.get("request_limits"))
-                .and_then(|l| l.get("max_input_bytes"))
-                .and_then(Value::as_u64)
-                .unwrap_or(MAX_INPUT_BYTES as u64),
-        )
+        let limits = meta.and_then(|m| m.get("request_limits"));
+        let bytes = limits
+            .and_then(|l| l.get("max_input_bytes"))
+            .and_then(Value::as_u64)
+            .unwrap_or(MAX_INPUT_BYTES as u64);
+        let tokens = limits
+            .and_then(|l| l.get("max_input_tokens"))
+            .and_then(Value::as_u64)
+            .map_or(u64::MAX, |t| t.saturating_mul(BYTES_PER_TOKEN));
+        Some(bytes.min(tokens))
     } else {
         meta.and_then(|m| m.get("max_input_bytes"))
             .and_then(Value::as_u64)
@@ -235,6 +264,17 @@ pub fn input_limit(beacon: &Beacon) -> usize {
     named.map_or(LEGACY_MAX_INPUT_BYTES, |b| {
         usize::try_from(b).map_or(MAX_INPUT_BYTES, |b| b.min(MAX_INPUT_BYTES))
     })
+}
+
+/// The token limit in a pylon's `limit_exceeded` refusal ("this group takes
+/// at most N"), when it names one.
+#[must_use]
+pub fn refused_token_limit(message: &str) -> Option<u64> {
+    let rest = message.split("takes at most ").nth(1)?;
+    rest.split(|c: char| !c.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()
 }
 
 /// The deadline the beacon declares, past the ordinary 90 seconds.
@@ -292,7 +332,8 @@ pub fn answer_filter(me: &str, request: &str) -> Value {
 /// What one answer event says.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Answer {
-    Processing,
+    /// `processing` feedback, with a progress line when the worker sent one.
+    Processing(Option<String>),
     Result {
         text: String,
         model: Option<String>,
@@ -341,7 +382,7 @@ pub fn read(kind: u16, plain: &str) -> Answer {
         ));
     }
     if value["status"] == "processing" {
-        return Answer::Processing;
+        return Answer::Processing(value["progress"].as_str().map(str::to_string));
     }
     Answer::Other
 }
@@ -422,6 +463,12 @@ mod tests {
         assert_eq!(wait, 300);
         assert_eq!(body["requires"][0], deadline::FEATURE);
         assert_eq!(input_limit(&b), MAX_INPUT_BYTES);
+        assert_eq!(
+            refused_token_limit(
+                "limit_exceeded: the prompt is 4216 tokens; this group takes at most 2872"
+            ),
+            Some(2872)
+        );
         assert!(serves_somewhere(&book, at, PREFERRED_MODEL));
         assert!(!serves_somewhere(&book, at, "other"));
         assert!(choose(&book, at + 1_000, None, true).is_none());
@@ -456,6 +503,6 @@ mod tests {
             Answer::Error("busy: full".into())
         );
         let busy = r#"{"v":1,"requires":[],"type":"status","status":"processing"}"#;
-        assert_eq!(read(FEEDBACK_KIND, busy), Answer::Processing);
+        assert_eq!(read(FEEDBACK_KIND, busy), Answer::Processing(None));
     }
 }
