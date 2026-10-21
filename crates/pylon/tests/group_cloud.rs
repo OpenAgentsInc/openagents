@@ -1337,3 +1337,26 @@ fn a_cloud_group_head_takes_its_prompt_mode() {
     assert_eq!(serde_json::to_value(&lane).unwrap()["mode"], "chat");
     assert!(parse(&["one-quad", "--mode", "terse"]).is_err());
 }
+
+/// `--weights` points every stage machine at a copy of the checkpoint in
+/// the zone's region (W16, #12403); the default stays the original.
+#[test]
+fn a_cloud_group_takes_a_regional_weights_copy() {
+    let parse = |words: &[&str]| {
+        let words: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
+        cloud::parse_up(
+            &words,
+            &repo(),
+            Path::new("/home/me"),
+            "wss://relay.example",
+        )
+    };
+    let (up, _) = parse(&["one-quad"]).unwrap();
+    assert_eq!(up.weights, pylon::placement::WEIGHTS);
+    let (up, _) = parse(&["one-quad", "--weights", "gs://copy/v41/1bae0e1"]).unwrap();
+    assert_eq!(up.weights, "gs://copy/v41/1bae0e1/");
+    let plan = cloud::plan(&up).unwrap();
+    let args = serde_json::to_string(&cloud::dry_run(&up, &plan).unwrap()).unwrap();
+    assert!(args.contains("oa-weights=gs://copy/v41/1bae0e1/"), "{args}");
+    assert!(parse(&["one-quad", "--weights", "/local/dir"]).is_err());
+}

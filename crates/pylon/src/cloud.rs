@@ -1602,6 +1602,10 @@ checkout on the one host that allocates for the budget.
                             and the budget total; create nothing.
       --worker GS_URL       The stage worker binary in a bucket (required to
                             launch).
+      --weights GS_PREFIX   The checkpoint's bucket prefix, such as a copy
+                            in the zone's region (default the us-central1
+                            original). Stages still check every shard's
+                            hash against the pin.
       --worker-build SHA256 The SHA-256 of the qualified worker's
                             BUILD.json (required); each stage machine
                             refuses any other build, and the head any
@@ -1695,6 +1699,7 @@ pub fn parse_up(
         Ok(take_values(words, name)?.pop())
     };
     let worker = value(&mut words, "--worker")?;
+    let weights = value(&mut words, "--weights")?;
     let development = take_flag(&mut words, "--development");
     let worker_build = value(&mut words, "--worker-build")?;
     let pylon_build = value(&mut words, "--pylon-build")?;
@@ -1731,6 +1736,17 @@ pub fn parse_up(
     up.relay = relay.into();
     up.worker = worker;
     up.pylon = pylon;
+    if let Some(weights) = weights {
+        if !weights.starts_with("gs://") {
+            return Err("--weights takes a gs:// prefix".into());
+        }
+        // The startup script appends shard names to the prefix.
+        up.weights = if weights.ends_with('/') {
+            weights
+        } else {
+            format!("{weights}/")
+        };
+    }
     for (name, pin) in [
         ("--worker-build", &worker_build),
         ("--pylon-build", &pylon_build),
