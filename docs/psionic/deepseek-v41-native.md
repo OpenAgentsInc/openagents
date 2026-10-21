@@ -1811,3 +1811,10 @@ an actual-bill reconciliation remains separate. For prefill, compare batching
 within a stage before overlapping bounded chunks across stages, preserving
 request-owned state order. Any changed schedule needs its own qualification;
 use the measured W14 context range and deadline to decide launch priority.
+
+The review also compiled and ran the one-machine receipt's generated Fibonacci
+function. It returns `None` for input 186 even though F(186) fits in `u128`,
+because it checks F(187) first. The
+[retained local check](verification/deepseek-v41-code-answer-review-2026-10-21.json)
+records the defect. Add executable boundary assertions to G2; this answer
+failure does not by itself identify a GPU arithmetic cause.

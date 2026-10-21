@@ -520,6 +520,18 @@ a defect nor acceptable numerical drift. The one-machine code answer used
 thinking mode whereas the oracle's p2 used chat mode, so that answer is not
 paired p2 qualification evidence.
 
+There is also a concrete code-quality failure in that receipt. Compiling and
+running its generated Fibonacci function gives `fib(186) == None`, although
+`F(186) = 332825110087067562321196029789634457848` fits in `u128`. The loop
+attempts to compute F(187) before returning F(186). The local check confirms
+that `fib(185)` succeeds and `fib(186)` fails; an independent integer recurrence
+confirms the representable boundary. See the
+[code-answer review](verification/deepseek-v41-code-answer-review-2026-10-21.json).
+Add inputs 0, 1, 185, 186, and 187 to the answer checks, requiring the correct
+value whenever F(n) fits. This is a generated-answer defect, not a demonstrated
+GPU arithmetic defect. Agreement with an oracle answer would not excuse a
+failed must-pass task assertion.
+
 The current CUDA path's 180/625 failed v1 stage checks and CPU's 191/625 failures
 also remain evidence to investigate. Similar failure counts do not prove equal
 quality. Run direct, identical-input stage checks to locate arithmetic defects,
