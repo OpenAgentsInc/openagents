@@ -900,10 +900,10 @@ cargo run --release -p psionic-models --example deepseek_v41_cpu_generate -- \
   "$V41_CHECKPOINT" --check-only --verify-sha256
 cargo run --release -p psionic-models --example deepseek_v41_cpu_generate -- \
   "$V41_CHECKPOINT" --prompt 'Write a short Rust function that adds two integers.' \
-  --context 4096 --max-tokens 32 --prefill-chunk 128 --verify-sha256
+  --context 4096 --max-tokens 32 --prefill-chunk 128 --oracle-tp8 --verify-sha256
 cargo run --release -p psionic-models --example deepseek_v41_cpu_generate -- \
   "$V41_CHECKPOINT" --prompt-tokens "$V41_PROMPT_IDS" \
-  --context 32768 --max-tokens 32 --prefill-chunk 128 --verify-sha256
+  --context 32768 --max-tokens 32 --prefill-chunk 128 --oracle-tp8 --verify-sha256
 ```
 
 `--prompt` uses the existing DS1 single-user chat renderer and special-token
@@ -1182,3 +1182,31 @@ math. On the RTX PRO 6000, confirm:
   checkpoint file instead (`cudaHostRegister`) is W7 work.
 - Float32 subnormals aren't flushed (Engram rows with small scales rely on
   them).
+
+## W1 isolated checks and attention blocks (2026-10-20)
+
+Isolated mixing checks compare all 3,360 recorded pre/post/comb tensors with
+identical oracle residuals; all pass the original float32 bounds. The connected
+chat prefill still fails at `decode.last.layers.1.hc.attn.pre` after the reduction
+fix, with maximum absolute error `0.0011644363403320312` and no layer-0 router
+set mismatch. This distinguishes upstream state differences from the mixing
+operation's own arithmetic. The failure remains a failure under the frozen policy.
+
+An isolated SwiGLU check covers 160 recorded experts. Matching PyTorch's explicit
+`gate / (1 + exp(-gate))` order removes one BF16 intermediate mismatch; both
+forms yield the same FP8 codes on these cases. The TP8 profile adopts that order.
+The comparator also aligns combine weights by expert ID before comparing them,
+and its first-failure option now applies to router and integer mismatches.
+`deepseek_v41_cpu_generate --oracle-tp8` selects this same profile for later free
+greedy runs; metadata-only checks reject that irrelevant generation option.
+
+The TP8 attention profile preserves masked window and compressed-index slots.
+The reference's 64-entry online-softmax blocks round their unnormalized weights
+to BF16; removing masked slots can move valid entries across block boundaries
+and change that rounding. Prefill keeps its fixed index width, and decode keeps
+the ring's slot order even before the ring fills. A regression demonstrates the
+resulting numerical difference. The profile also uses a padded float32 tree
+sum of weights per block before updating the running denominator. These changes
+still require original-weight comparisons; they do not assert exact CPU
+reproduction of Tensor Core accumulation or CUDA transcendental instructions.
+Local verification passes 63 CPU tests.

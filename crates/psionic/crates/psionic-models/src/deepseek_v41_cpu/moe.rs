@@ -127,7 +127,12 @@ pub fn expert_with_arithmetic(
                 g = g.min(limit);
                 u = u.clamp(-limit, limit);
             }
-            (g * sigmoid(g) * u) * route_weight
+            let activation = if arithmetic == super::quantization::Arithmetic::ReferenceBf16Tp8 {
+                g / (1.0 + (-g).exp())
+            } else {
+                g * sigmoid(g)
+            };
+            (activation * u) * route_weight
         })
         .collect();
     let hidden = if arithmetic.is_bf16() {

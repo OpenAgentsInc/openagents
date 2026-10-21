@@ -30,6 +30,7 @@ Options:
   --max-tokens N       Output token limit, including EOS (default: 32)
   --context N          Prompt plus output token capacity (default: 4096)
   --prefill-chunk N    Tokens per prefill call (default: 128)
+  --oracle-tp8         Match the eight-rank oracle arithmetic profile
   --verify-sha256      Hash all 48 shards, reading about 510 GB
   --check-only         Check checkpoint metadata and pinned tokenizer; do not generate
   --help              Show this help without opening a checkpoint
@@ -47,6 +48,7 @@ struct Args {
     context: usize,
     prefill_chunk: usize,
     verify_sha256: bool,
+    oracle_tp8: bool,
     check_only: bool,
 }
 #[derive(Debug, PartialEq, Eq)]
@@ -70,6 +72,7 @@ fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> {
         context: 4096,
         prefill_chunk: 128,
         verify_sha256: false,
+        oracle_tp8: false,
         check_only: false,
     };
     let mut seen = BTreeSet::new();
@@ -89,6 +92,7 @@ fn parse(args: impl IntoIterator<Item = String>) -> Result<Command, String> {
             "--context" => result.context = number(value()?)?,
             "--prefill-chunk" => result.prefill_chunk = number(value()?)?,
             "--verify-sha256" => result.verify_sha256 = true,
+            "--oracle-tp8" => result.oracle_tp8 = true,
             "--check-only" => result.check_only = true,
             other if !other.starts_with('-') && dir.is_none() => dir = Some(PathBuf::from(other)),
             other => return Err(format!("unknown or misplaced argument: {other}")),
@@ -130,7 +134,7 @@ fn run(args: Args) -> Result<Value, Box<dyn std::error::Error>> {
         "checkpoint":identity,
         "tokenizer":protocol.identity(),
         "all_shard_hashes_verified":args.verify_sha256,
-        "arithmetic":"reference_bf16_cpu",
+        "arithmetic":if args.oracle_tp8 {"reference_bf16_tp8_cpu"}else{"reference_bf16_cpu"},
         "qualification":{"original_weight_numerics_compared":false,"device_parity_compared":false},
         "timing_ms":{"open_and_optional_hashing":open_ms},
     });
@@ -155,7 +159,11 @@ fn run(args: Args) -> Result<Value, Box<dyn std::error::Error>> {
         TransformerConfig::flash()?,
         map,
         args.context,
-        Arithmetic::ReferenceBf16,
+        if args.oracle_tp8 {
+            Arithmetic::ReferenceBf16Tp8
+        } else {
+            Arithmetic::ReferenceBf16
+        },
     )?;
     let prepare_ms = started.elapsed().as_secs_f64() * 1000.0;
     let started = Instant::now();
@@ -226,7 +234,7 @@ mod tests {
         assert_eq!(parsed.context, 8);
         assert_eq!(parsed.prefill_chunk, 2);
         assert!(parsed.verify_sha256);
-        assert!(args(&["DIR", "--prompt-tokens", "tokens.json"]).is_ok());
+        assert!(args(&["DIR", "--prompt-tokens", "tokens.json", "--oracle-tp8"]).is_ok());
         assert!(args(&["DIR", "--check-only", "--verify-sha256"]).is_ok());
         Ok(())
     }

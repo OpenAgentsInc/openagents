@@ -54,7 +54,7 @@ impl HyperConnections {
     ) -> Result<Mixes, CpuError> {
         self.mixes_impl(residual, projection, scale, base, None)
     }
-    pub(crate) fn mixes_reference(
+    pub fn mixes_reference(
         &self,
         residual: &[f32],
         projection: &dyn MatrixRows,

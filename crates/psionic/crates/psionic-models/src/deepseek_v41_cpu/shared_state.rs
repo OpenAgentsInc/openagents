@@ -49,6 +49,35 @@ struct Window {
     rows: VecDeque<Arc<[f32]>>,
     next_position: usize,
 }
+
+/// Keep masked slots in the reference's index order: they determine the
+/// 64-index online-softmax blocks even though they contribute no value.
+fn reference_window_indices(
+    start: usize,
+    count: usize,
+    position: usize,
+    window: usize,
+) -> Vec<i32> {
+    let rows = (position + 1).min(window);
+    if start == 0 {
+        (0..count.min(window))
+            .map(|i| if i < rows { i as i32 } else { -1 })
+            .collect()
+    } else {
+        let oldest_slot = (position + 1) % window;
+        (0..window)
+            .map(|i| {
+                let slot = (oldest_slot + i) % window;
+                if position + 1 < window {
+                    if slot <= position { slot as i32 } else { -1 }
+                } else {
+                    // The CPU stores rows oldest first, rather than in a ring.
+                    i as i32
+                }
+            })
+            .collect()
+    }
+}
 impl Window {
     fn push(&mut self, position: usize, value: Vec<f32>, limit: usize) -> Result<(), CpuError> {
         if position != self.next_position {
@@ -298,7 +327,11 @@ impl<'a> AttentionRuntime<'a> {
                 .flat_map(|r| r.iter().copied())
                 .collect();
             let window_rows = kv.len() / g.head_dim;
-            let mut indices: Vec<i32> = (0..window_rows).map(|i| i as i32).collect();
+            let mut indices: Vec<i32> = if self.arithmetic == Arithmetic::ReferenceBf16Tp8 {
+                reference_window_indices(start, input.len() / g.hidden, position, g.window)
+            } else {
+                (0..window_rows).map(|i| i as i32).collect()
+            };
             if let Some(owner) = owners.kv {
                 let visible = (position + 1) / ratio;
                 let source = self
@@ -312,7 +345,7 @@ impl<'a> AttentionRuntime<'a> {
                         "shared KV source has not produced this position",
                     ));
                 }
-                let selected = if owners.index == Some(layer) {
+                let mut selected = if owners.index == Some(layer) {
                     let mut query = p.index_query(&q.low_rank)?;
                     rope.apply_tail(&mut query, g.index_dim, position, false)?;
                     let query = self.cache_form(&p.finish(query)?, Quantization::IndexFp4)?;
@@ -361,6 +394,12 @@ impl<'a> AttentionRuntime<'a> {
                         .ok_or(CpuError::Invalid("missing shared index selection"))?
                         .clone()
                 };
+                if self.arithmetic == Arithmetic::ReferenceBf16Tp8 {
+                    selected.resize(
+                        ((start + input.len() / g.hidden) / ratio).min(g.index_top_k),
+                        -1,
+                    );
+                }
                 for id in selected {
                     if id < -1 || (id >= 0 && id as usize >= visible) {
                         return Err(CpuError::Invalid("shared selection points past causal KV"));
@@ -383,6 +422,16 @@ impl<'a> AttentionRuntime<'a> {
                     &indices,
                     &sinks,
                     (g.head_dim as f32).sqrt().recip(),
+                )?
+            } else if self.arithmetic == Arithmetic::ReferenceBf16Tp8 {
+                quantization::sparse_attention_bf16_tp8(
+                    &q.heads,
+                    g.heads,
+                    g.head_dim,
+                    &kv,
+                    &indices,
+                    &sinks,
+                    (g.head_dim as f64).powf(-0.5) as f32,
                 )?
             } else {
                 quantization::sparse_attention_bf16(
@@ -449,6 +498,27 @@ mod tests {
     use super::*;
     use serde::Deserialize;
     use std::cell::{Cell, RefCell};
+
+    #[test]
+    fn reference_window_masks_keep_prefill_and_decode_block_boundaries() {
+        assert_eq!(reference_window_indices(0, 41, 2, 128), {
+            let mut expected = vec![0, 1, 2];
+            expected.resize(41, -1);
+            expected
+        });
+        let decode = reference_window_indices(41, 1, 41, 128);
+        assert_eq!(decode.len(), 128);
+        assert_eq!(&decode[..86], &[-1; 86]);
+        assert_eq!(&decode[86..], &(0..42).collect::<Vec<_>>());
+        assert_eq!(
+            reference_window_indices(256, 1, 256, 128),
+            (0..128).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            reference_window_indices(0, 300, 256, 128),
+            (0..128).collect::<Vec<_>>()
+        );
+    }
 
     fn weights() -> Result<Store, Box<dyn std::error::Error>> {
         let (base, _, _) = load()?;

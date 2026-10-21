@@ -189,6 +189,22 @@ fn differences(a: &[f32], b: &[f32], atol: f64, rtol: f64) -> Value {
     }
     json!({"passed":bad==0,"actual_elements":a.len(),"reference_elements":b.len(),"bad_elements":bad,"max_abs_error":max_abs,"first_bad":first})
 }
+fn route_weight_order(actual: &[u64], reference: &[f32]) -> Result<Vec<usize>, CpuError> {
+    if actual.len() != reference.len()
+        || actual.iter().collect::<BTreeSet<_>>().len() != actual.len()
+    {
+        return Err(CpuError::Invalid("route weight IDs"));
+    }
+    reference
+        .iter()
+        .map(|id| {
+            actual
+                .iter()
+                .position(|v| *v == *id as u64)
+                .ok_or(CpuError::Invalid("route weight mapping"))
+        })
+        .collect()
+}
 struct Compare<'a> {
     oracle: &'a Oracle,
     run: &'a Value,
@@ -197,6 +213,9 @@ struct Compare<'a> {
     policy: Value,
     checked: BTreeSet<String>,
     failed: usize,
+    failed_names: BTreeSet<String>,
+    router_failed_positions: BTreeSet<usize>,
+    router_seen: BTreeMap<usize, usize>,
     router_rows: usize,
     router_failed: usize,
     exact_ties: usize,
@@ -206,6 +225,7 @@ struct Compare<'a> {
     log: File,
     first_failure: Option<Value>,
     stop_on_first_failure: bool,
+    weight_order: BTreeMap<(usize, usize), Vec<usize>>,
 }
 impl Compare<'_> {
     fn write(&mut self, v: &Value) -> Result<(), CpuError> {
@@ -248,6 +268,7 @@ impl Compare<'_> {
         row["actual_f32_sha256"] = json!(float_sha(values));
         if row["passed"] != true {
             self.failed += 1;
+            self.failed_names.insert(name.to_string());
             if self.first_failure.is_none() {
                 self.first_failure = Some(row.clone());
             }
@@ -303,6 +324,25 @@ impl ModelObserver for Compare<'_> {
             }
         }
         if let Some(name) = self.name(site, pos) {
+            if site.ends_with(".ffn.gate.weights") {
+                let layer = site
+                    .split('.')
+                    .nth(1)
+                    .and_then(|x| x.parse::<usize>().ok())
+                    .ok_or(CpuError::Invalid("weight layer"))?;
+                if let Some(order) = self.weight_order.get(&(layer, pos)) {
+                    let aligned: Vec<_> = order
+                        .iter()
+                        .map(|i| {
+                            values
+                                .get(*i)
+                                .copied()
+                                .ok_or(CpuError::Invalid("route weight order"))
+                        })
+                        .collect::<Result<_, _>>()?;
+                    return self.compare(&name, site, &aligned);
+                }
+            }
             self.compare(&name, site, values)?;
         }
         Ok(())
@@ -331,18 +371,34 @@ impl ModelObserver for Compare<'_> {
                 expected.sort_unstable();
                 let mut actual = values.to_vec();
                 actual.sort_unstable();
+                if actual == expected && self.labels.contains_key(&pos) {
+                    let order = route_weight_order(values, row)?;
+                    self.weight_order.insert((layer, pos), order);
+                }
                 self.router_rows += 1;
+                *self.router_seen.entry(layer).or_default() += 1;
+                if let Some(name) = self.name(site, pos) {
+                    if self.oracle.entries.contains_key(&name) {
+                        self.checked.insert(name);
+                    }
+                }
                 let tied = self.tied(layer, pos, "gate");
                 if tied {
                     self.exact_ties += 1;
                 }
                 if actual != expected && !tied {
                     self.router_failed += 1;
+                    self.router_failed_positions.insert(pos);
                     let v = json!({"kind":"router_set_mismatch","layer":layer,"position":pos,"step":self.step,"actual":actual,"reference":expected});
                     if self.first_failure.is_none() {
                         self.first_failure = Some(v.clone());
                     }
                     self.write(&v)?;
+                    if self.stop_on_first_failure {
+                        return Err(CpuError::Invalid(
+                            "qualification stopped at first router mismatch",
+                        ));
+                    }
                 }
             }
         } else if let Some(name) = self.name(site, pos) {
@@ -354,12 +410,18 @@ impl ModelObserver for Compare<'_> {
                 let result = json!({"passed":values==expected,"tensor":name,"family":"integer_and_hash","actual":values,"reference":expected});
                 if result["passed"] != true {
                     self.failed += 1;
+                    self.failed_names.insert(name.clone());
                     if self.first_failure.is_none() {
                         self.first_failure = Some(result.clone());
                     }
                 }
                 self.checked.insert(name);
                 self.write(&result)?;
+                if self.stop_on_first_failure && result["passed"] != true {
+                    return Err(CpuError::Invalid(
+                        "qualification stopped at first integer mismatch",
+                    ));
+                }
             }
         }
         Ok(())
@@ -484,7 +546,156 @@ fn norm_checks(
     fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
     Ok(report)
 }
+fn swiglu_checks(oracle: &Oracle, out: &Path) -> Result<Value, Box<dyn std::error::Error>> {
+    use psionic_models::deepseek_v41_cpu::quantization::{Quantization, quantize, round_bf16};
+    let mut checked = 0;
+    let mut old_bad = 0;
+    let mut new_bad = 0;
+    let mut old_codes = 0;
+    let mut new_codes = 0;
+    let mut log = File::create(out.join("swiglu.jsonl"))?;
+    for e in oracle
+        .entries
+        .values()
+        .filter(|e| e.name.ends_with(".ffn.expert.w1_out"))
+    {
+        let prefix = e
+            .name
+            .strip_suffix("w1_out")
+            .ok_or("SwiGLU suffix missing")?;
+        let gate = oracle.tensor(&e.name)?;
+        let up = oracle.tensor(&(prefix.to_string() + "w3_out"))?;
+        let weight = oracle.tensor(&(prefix.to_string() + "combine_weight"))?;
+        let reference = oracle.tensor(&(prefix.to_string() + "w2_in"))?;
+        let mut old = Vec::new();
+        let mut new = Vec::new();
+        for (g, u) in gate.iter().zip(up) {
+            let g = g.min(10.0);
+            let u = u.clamp(-10.0, 10.0);
+            let sig = if g >= 0.0 {
+                1.0 / (1.0 + (-g).exp())
+            } else {
+                let v = g.exp();
+                v / (1.0 + v)
+            };
+            old.push(((g * sig) * u) * weight[0]);
+            new.push(((g / (1.0 + (-g).exp())) * u) * weight[0]);
+        }
+        let old = round_bf16(&old)?;
+        let new = round_bf16(&new)?;
+        let a = old.iter().zip(&reference).filter(|(a, b)| a != b).count();
+        let b = new.iter().zip(&reference).filter(|(a, b)| a != b).count();
+        let codes = oracle.raw(&(prefix.to_string() + "w2_in_fp8"))?;
+        let qa = quantize(&old, Quantization::Fp8)?;
+        let qb = quantize(&new, Quantization::Fp8)?;
+        let ac = qa
+            .codes()
+            .iter()
+            .zip(&codes)
+            .filter(|(a, b)| a != b)
+            .count();
+        let bc = qb
+            .codes()
+            .iter()
+            .zip(&codes)
+            .filter(|(a, b)| a != b)
+            .count();
+        checked += 1;
+        old_bad += a;
+        new_bad += b;
+        old_codes += ac;
+        new_codes += bc;
+        serde_json::to_writer(
+            &mut log,
+            &json!({"tensor":e.name,"old_bf16_mismatches":a,"new_bf16_mismatches":b,"old_fp8_mismatches":ac,"new_fp8_mismatches":bc}),
+        )?;
+        writeln!(log)?;
+    }
+    let report = json!({"schema":"psionic.deepseek_v41.cpu_swiglu_probe.v1","checked":checked,"old_bf16_mismatches":old_bad,"new_bf16_mismatches":new_bad,"old_fp8_mismatches":old_codes,"new_fp8_mismatches":new_codes,"model_qualification_passed":false});
+    fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
+    Ok(report)
+}
+fn mixing_checks(
+    oracle: &Oracle,
+    checkpoint: &DeepSeekV41Checkpoint,
+    out: &Path,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    use psionic_models::deepseek_v41_cpu::{
+        hyperconnections::HyperConnections, projection::WeightSource,
+    };
+    let source = resident::ResidentCheckpoint::new(checkpoint);
+    let mut log = File::create(out.join("mixing.jsonl"))?;
+    let mut checked = 0;
+    let mut failed = 0;
+    let mut runs = BTreeMap::new();
+    for e in oracle
+        .entries
+        .values()
+        .filter(|e| e.name.ends_with(".hc.in") || e.name.ends_with(".hc.attn.expanded"))
+    {
+        let parts: Vec<_> = e.name.split('.').collect();
+        let id = parts[0];
+        let mode = parts[1];
+        let label = parts[2];
+        let layer = parts[4];
+        if !["decode", "replay"].contains(&mode) {
+            continue;
+        }
+        if !runs.contains_key(id) {
+            runs.insert(
+                id.to_string(),
+                serde_json::from_slice::<Value>(&fs::read(oracle.root.join(id).join("run.json"))?)?,
+            );
+        }
+        let run = &runs[id];
+        let rows = if mode == "replay" {
+            run["prompt_tokens"].as_u64().ok_or("prompt length")?
+                + run["n_gen"].as_u64().ok_or("generation length")?
+        } else if label == "first" || label == "last" {
+            run["prompt_tokens"].as_u64().ok_or("prompt length")?
+        } else {
+            1
+        } as usize;
+        let part = if e.name.ends_with(".hc.in") {
+            "attn"
+        } else {
+            "ffn"
+        };
+        let prefix = format!("layers.{layer}");
+        let input = oracle.tensor(&e.name)?;
+        let projection = source.matrix(&format!("{prefix}.hc_{part}_fn"))?;
+        let scale = source.vector(&format!("{prefix}.hc_{part}_scale"))?;
+        let base = source.vector(&format!("{prefix}.hc_{part}_base"))?;
+        let mixes = HyperConnections::flash().mixes_reference(
+            &input,
+            projection.as_ref(),
+            &scale,
+            &base,
+            rows,
+        )?;
+        for (name, values) in [
+            ("pre", mixes.pre),
+            ("post", mixes.post),
+            ("comb", mixes.comb),
+        ] {
+            let target = format!("{id}.{mode}.{label}.{prefix}.hc.{part}.{name}");
+            let reference = oracle.tensor(&target)?;
+            let mut result = differences(&values, &reference, 0.0002, 0.0002);
+            result["tensor"] = json!(target);
+            result["scope"] = json!("identical_oracle_input");
+            checked += 1;
+            failed += usize::from(result["passed"] != true);
+            serde_json::to_writer(&mut log, &result)?;
+            writeln!(log)?;
+        }
+    }
+    let report = json!({"schema":"psionic.deepseek_v41.cpu_mixing_probe.v1","checked":checked,"failed":failed,"model_qualification_passed":false});
+    fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
+    Ok(report)
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut mixing_only = false;
+    let mut swiglu_only = false;
     let mut norms_only = false;
     let mut conversions_only = false;
     let mut stop_on_first_failure = false;
@@ -503,6 +714,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--identity-only" => identity_only = true,
             "--conversions-only" => conversions_only = true,
             "--norms-only" => norms_only = true,
+            "--swiglu-only" => swiglu_only = true,
+            "--mixing-only" => mixing_only = true,
             "--stop-on-first-failure" => stop_on_first_failure = true,
             _ => return Err(format!("Unknown argument {arg}").into()),
         }
@@ -522,6 +735,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::to_vec_pretty(&identity)?,
     )?;
     if identity_only {
+        return Ok(());
+    }
+    if mixing_only {
+        mixing_checks(&Oracle::open(&oracle_dir)?, &checkpoint, &out)?;
+        return Ok(());
+    }
+    if swiglu_only {
+        swiglu_checks(&Oracle::open(&oracle_dir)?, &out)?;
         return Ok(());
     }
     if norms_only {
@@ -590,6 +811,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 policy: policy.clone(),
                 checked: BTreeSet::new(),
                 failed: 0,
+                failed_names: BTreeSet::new(),
+                router_failed_positions: BTreeSet::new(),
+                router_seen: BTreeMap::new(),
                 router_rows: 0,
                 router_failed: 0,
                 exact_ties: 0,
@@ -599,6 +823,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 log: File::create(out.join(format!("{prefix}.jsonl")))?,
                 first_failure: None,
                 stop_on_first_failure,
+                weight_order: BTreeMap::new(),
             };
             let mut model = CpuTransformer::new(
                 &resident,
@@ -607,12 +832,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 prompt.len() + generated.len() + 1,
                 Arithmetic::ReferenceBf16Tp8,
             )?;
+            let mut attempted_tokens = 0usize;
             let mut steps = Vec::new();
             let mut error = None;
             let result = (|| -> Result<(), CpuError> {
                 if current == "replay" {
                     let mut fixed = prompt.clone();
                     fixed.extend(&generated);
+                    attempted_tokens += fixed.len();
                     let output = model.forward_observed(&fixed, &mut compare)?;
                     steps.push(
                         json!({"position":output.position-1,"argmax":argmax(&output.logits)?}),
@@ -627,6 +854,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             &generated[k - 1..k]
                         };
+                        attempted_tokens += input.len();
                         let output = model.forward_observed(input, &mut compare)?;
                         let actual = argmax(&output.logits)?;
                         steps.push(json!({"step":k,"position":output.position-1,"argmax":actual,"reference_argmax":run["steps"][k]["argmax"],"equal":run["steps"][k]["argmax"]==actual}));
@@ -638,6 +866,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             if let Err(e) = result {
                 error = Some(e.to_string());
             }
+            for (layer, seen) in &compare.router_seen {
+                let name = format!("{prefix}.router_ids.layers.{layer}");
+                if oracle
+                    .entries
+                    .get(&name)
+                    .is_some_and(|e| e.shape.first() == Some(seen))
+                {
+                    compare.checked.insert(name);
+                }
+            }
+            let coverage:Vec<_>=compare.labels.iter().map(|(position,label)|{
+                let prefix=format!("{prefix}.{label}.");
+                let expected=oracle.entries.keys().filter(|n|n.starts_with(&prefix)).count();
+                let checked=compare.checked.iter().filter(|n|n.starts_with(&prefix)).count();
+                let failed=compare.failed_names.iter().filter(|n|n.starts_with(&prefix)).count();
+                let route_failed=compare.router_failed_positions.contains(position);
+                let status=if failed>0||route_failed {"failed"}else if checked==0 {"not_reached"}else if checked<expected {"partial"}else{"passed"};
+                json!({"position":position,"label":label,"status":status,"expected_tensors":expected,"checked_tensors":checked,"failed_tensors":failed,"router_failed":route_failed})
+            }).collect();
             let all: Vec<_> = oracle
                 .entries
                 .keys()
@@ -649,7 +896,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .filter(|n| !compare.checked.contains(*n))
                 .cloned()
                 .collect();
-            let summary = json!({"prompt":id,"mode":current,"seconds":start.elapsed().as_secs_f64(),"peak_decoded_matrix_bytes":resident.peak_decoded_matrix_bytes(),"processed_tokens":model.position(),"checked_tensors":compare.checked.len(),"failed_tensors":compare.failed,"router_rows":compare.router_rows,"router_failed":compare.router_failed,"exact_tie_rows":compare.exact_ties,"first_failure":compare.first_failure,"error":error,"steps":steps,"unobserved_tensors":missing,"coverage_complete":missing.is_empty(),"passed":compare.failed==0&&compare.router_failed==0&&error.is_none()&&missing.is_empty()});
+            let summary = json!({"prompt":id,"mode":current,"seconds":start.elapsed().as_secs_f64(),"peak_decoded_matrix_bytes":resident.peak_decoded_matrix_bytes(),"processed_tokens":model.position(),"committed_tokens":model.position(),"forward_tokens_requested":attempted_tokens,"position_coverage":coverage,"checked_tensors":compare.checked.len(),"failed_tensors":compare.failed,"router_rows":compare.router_rows,"router_failed":compare.router_failed,"exact_tie_rows":compare.exact_ties,"first_failure":compare.first_failure,"error":error,"steps":steps,"unobserved_tensors":missing,"coverage_complete":missing.is_empty(),"passed":compare.failed==0&&compare.router_failed==0&&error.is_none()&&missing.is_empty()});
             report["runs"]
                 .as_array_mut()
                 .ok_or("runs invalid")?
@@ -668,6 +915,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn combine_weights_follow_expert_ids_instead_of_topk_order() -> Result<(), CpuError> {
+        let order = route_weight_order(&[7, 2, 3], &[2.0, 7.0, 3.0])?;
+        let weights = [0.1, 0.2, 0.3];
+        assert_eq!(
+            order.iter().map(|i| weights[*i]).collect::<Vec<_>>(),
+            vec![0.2, 0.1, 0.3]
+        );
+        assert!(route_weight_order(&[7, 2], &[7.0, 3.0]).is_err());
+        assert!(route_weight_order(&[7, 7], &[7.0, 7.0]).is_err());
+        Ok(())
+    }
     #[test]
     fn large_hash_addresses_are_compared_without_float_rounding()
     -> Result<(), Box<dyn std::error::Error>> {

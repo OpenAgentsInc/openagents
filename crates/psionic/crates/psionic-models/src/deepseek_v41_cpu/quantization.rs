@@ -240,6 +240,33 @@ pub fn sparse_attention_bf16(
     sinks: &[f32],
     scale: f32,
 ) -> Result<Vec<f32>, CpuError> {
+    sparse_attention_impl(query, heads, width, kv, indices, sinks, scale, false)
+}
+
+/// Uses one padded 64-way weight reduction per block, as in the TP8 kernel.
+pub fn sparse_attention_bf16_tp8(
+    query: &[f32],
+    heads: usize,
+    width: usize,
+    kv: &[f32],
+    indices: &[i32],
+    sinks: &[f32],
+    scale: f32,
+) -> Result<Vec<f32>, CpuError> {
+    sparse_attention_impl(query, heads, width, kv, indices, sinks, scale, true)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn sparse_attention_impl(
+    query: &[f32],
+    heads: usize,
+    width: usize,
+    kv: &[f32],
+    indices: &[i32],
+    sinks: &[f32],
+    scale: f32,
+    block_reduction: bool,
+) -> Result<Vec<f32>, CpuError> {
     if heads == 0 || width == 0 || !kv.len().is_multiple_of(width) || !super::positive(scale) {
         return Err(CpuError::Invalid("BF16 attention dimensions"));
     }
@@ -260,7 +287,7 @@ pub fn sparse_attention_bf16(
         for chunk in indices.chunks(64) {
             let mut scores = Vec::new();
             let previous = max;
-            for id in chunk.iter().copied().filter(|i| *i >= 0) {
+            for (slot, id) in chunk.iter().copied().enumerate().filter(|(_, i)| *i >= 0) {
                 let id = id as usize;
                 let score = query[h * width..(h + 1) * width]
                     .iter()
@@ -272,19 +299,33 @@ pub fn sparse_attention_bf16(
                     return Err(CpuError::NonFinite("BF16 attention score"));
                 }
                 max = max.max(score);
-                scores.push((id, score));
+                scores.push((slot, id, score));
             }
             let rescale = (previous - max).exp();
-            sum *= rescale;
+            if !block_reduction {
+                sum *= rescale;
+            }
             for x in &mut out[h * width..(h + 1) * width] {
                 *x *= rescale;
             }
-            for (id, score) in scores {
+            let mut weights = [0.0_f32; 64];
+            for (slot, id, score) in scores {
                 let weight = (score - max).exp();
-                sum += weight;
+                weights[slot] = weight;
+                if !block_reduction {
+                    sum += weight;
+                }
                 for d in 0..width {
                     out[h * width + d] += bf16(weight) * kv[id * width + d];
                 }
+            }
+            if block_reduction {
+                for stride in [32, 16, 8, 4, 2, 1] {
+                    for i in 0..stride {
+                        weights[i] += weights[i + stride];
+                    }
+                }
+                sum = sum.mul_add(rescale, weights[0]);
             }
         }
         sum += (sinks[h] - max).exp();
@@ -299,6 +340,20 @@ pub fn sparse_attention_bf16(
 mod tests {
     use super::*;
     use serde::Deserialize;
+
+    #[test]
+    fn masked_slots_change_online_softmax_bf16_rounding() -> Result<(), CpuError> {
+        let mut padded = vec![0];
+        padded.resize(64, -1);
+        padded.push(1);
+        let args = (&[0.0, 1.0][..], &[10.0, 0.0, 1.0, 1.0][..]);
+        let a = sparse_attention_bf16_tp8(args.0, 1, 2, args.1, &padded, &[0.0], 1.0)?;
+        let b = sparse_attention_bf16_tp8(args.0, 1, 2, args.1, &[0, 1], &[0.0], 1.0)?;
+        assert_ne!(a, b, "removing masked slots changes BF16 weight rounding");
+        let expected = (10.0 * (-1.0_f32).exp() + 1.0) / (1.0 + 2.0 * (-1.0_f32).exp());
+        assert_eq!(a[0], bf16(expected));
+        Ok(())
+    }
     #[derive(Deserialize)]
     struct Case {
         kind: String,
