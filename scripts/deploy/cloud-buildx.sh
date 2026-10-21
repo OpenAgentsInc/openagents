@@ -10,10 +10,10 @@
 # us-central1-docker.pkg.dev/openagentsgemini/build-cache/CACHE:deps, a
 # repository with mutable tags whose old untagged layers expire after a week.
 #
-# The `deps` target builds against that cache and exports its layers back
-# (mode=max, so the intermediate stages are kept, not only the last one),
-# while the full image builds beside it on the same builder, reusing them,
-# and is pushed to IMAGE. Only the dependency layers are exported, never the
+# The `deps` target builds against that cache first. Its layers are then
+# exported back (mode=max, so the intermediate stages are kept, not only the
+# last one) while the full image builds beside the export on the same
+# builder, reusing them, and is pushed to IMAGE. Only the dependency layers are exported, never the
 # source or the compiled workspace crates, which change on every commit. A
 # cache that can't be read or written makes the build slower, never fail.
 set -euo pipefail
@@ -30,11 +30,17 @@ docker buildx create --name oa-deploy --driver docker-container \
     --driver-opt network=cloudbuild \
     --buildkitd-flags '--allow-insecure-entitlement network.host' --use > /dev/null
 started=$(date +%s)
-# The dependency layers build and export in the background while the image
-# builds in the foreground on the same builder, which shares the work both
-# builds name. Compressing the multi-gigabyte target directories for the
-# export took 400 to 800 s with gzip (#12417); zstd is several times faster,
-# and the image no longer waits for it.
+# First the dependency layers, from the registry cache or compiled. The
+# image's stages start from them, so nothing waits that wouldn't anyway.
+docker buildx build --progress=plain --allow network.host -f "$dockerfile" --target deps \
+    --cache-from "type=registry,ref=$cache" .
+echo "cloud-buildx: dependency layers took $(( $(date +%s) - started )) s"
+# Then the export, in the background while the image builds: every layer it
+# names is now local, so it only compresses and uploads. Compressing the
+# multi-gigabyte target directories took 400 to 800 s with gzip before the
+# image could start (#12417); zstd is several times faster, and the image
+# no longer waits for it. (Started together with the dependency build, the
+# export raced it and sometimes left the compiled layers out.)
 log=$(mktemp)
 docker buildx build --progress=plain --allow network.host -f "$dockerfile" --target deps \
     --cache-from "type=registry,ref=$cache" \
