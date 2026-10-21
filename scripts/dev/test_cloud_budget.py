@@ -39,7 +39,10 @@ if args[:3] == ["compute", "instances", "describe"]:
         sys.stderr.write("ERROR: The resource 'projects/p/zones/z/instances/x' was not found\n")
         sys.exit(1)
     created = os.environ.get("FAKE_CREATED", "2027-01-15T08:00:00Z")
-    print(json.dumps({"status": state, "creationTimestamp": created}))
+    info = {"status": state, "creationTimestamp": created}
+    if os.environ.get("FAKE_STARTED"):
+        info["lastStartTimestamp"] = os.environ["FAKE_STARTED"]
+    print(json.dumps(info))
     sys.exit(0)
 if args[:3] == ["compute", "operations", "list"]:
     print(os.environ.get("FAKE_OPS", "[]"))
@@ -152,6 +155,18 @@ class CloudBudgetTests(unittest.TestCase):
         refused = self.create("oa-dsv41-flex-2", "--flex-start", "--spot", hours="1", spot=False)
         self.assertNotEqual(refused.returncode, 0)
         self.assertIn("choose one", refused.stderr)
+
+    def test_flex_start_bills_from_its_start_and_never_for_a_queued_request(self):
+        self.assertEqual(self.create("flex-q", "--flex-start", hours="2", spot=False).returncode, 0)
+        r = self.run_guard("stop", "flex-q", "--budget", "test", at=T0 + 1800, FAKE_DESCRIBE="PENDING")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.records()[-1]["reason"], "never-started")
+        self.assertEqual(self.report(T0 + 3600)["spent"], 0)
+        self.assertEqual(self.create("flex-r", "--flex-start", hours="2", spot=False, at=T0 + 3600).returncode, 0)
+        r = self.run_guard("stop", "flex-r", "--budget", "test", at=T0 + 3 * 3600,
+                           FAKE_DESCRIBE="RUNNING", FAKE_STARTED="2027-01-15T10:00:00Z")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertAlmostEqual(self.report(T0 + 4 * 3600)["spent"], 64.44, places=4)
 
     def test_create_records_start_labels_the_run_and_prints_the_vm(self):
         r = self.create("oa-dsv41-oracle-1", "--on-expiry", "stop")

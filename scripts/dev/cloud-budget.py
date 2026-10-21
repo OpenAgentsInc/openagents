@@ -291,6 +291,8 @@ def machines(records: list[dict]) -> list[dict]:
         elif r.get("event") == "stop" and r.get("id") in by_id:
             m = by_id[r["id"]]
             m["stop_epoch"], m["stop"], m["reason"] = r["stop_epoch"], r.get("stop"), r.get("reason")
+            if r.get("run_start_epoch") is not None:
+                m["run_start_epoch"] = r["run_start_epoch"]
     return list(by_id.values())
 
 
@@ -308,12 +310,14 @@ def cost(m: dict, at: float) -> float:
     deleted it late. A running machine costs until `at`; once past its expiry it keeps counting
     until `sync` settles it from Google's records.
     """
-    if m.get("reason") == "create-failed":
+    if m.get("reason") in ("create-failed", "never-started"):
         return 0.0
     end = m.get("stop_epoch")
     if end is None:
         end = at
-    seconds = max(end - m["start_epoch"], MIN_BILLED_SECONDS)
+    # A flex-start machine bills from when it started running, not from its queued request.
+    start = max(m["start_epoch"], m.get("run_start_epoch") or m["start_epoch"])
+    seconds = max(end - start, MIN_BILLED_SECONDS)
     return round(m["price_per_hour"] * seconds / 3600, 6)
 
 
@@ -731,6 +735,18 @@ def cmd_stop(a: argparse.Namespace) -> int:
     if not live:
         raise Refused(f"{a.name} is not running in budget {a.budget}")
     m = live[-1]
+    run_start, never_started = None, False
+    if m.get("provisioning") == "flex-start":
+        # A queued flex-start request costs nothing until Google starts the machine.
+        r = gcloud("compute", "instances", "describe", m["vm"], f"--project={m['project']}",
+                   f"--zone={m['zone']}", "--format=json(status,lastStartTimestamp)")
+        if r.returncode == 0:
+            info = _json(r.stdout or "{}") or {}
+            started = info.get("lastStartTimestamp") if isinstance(info, dict) else None
+            if started:
+                run_start = parse_time(started)
+            elif isinstance(info, dict) and info.get("status") in ("PENDING", "PROVISIONING"):
+                never_started = True
     if not a.keep_machine:
         r = gcloud("compute", "instances", "delete", m["vm"], f"--project={m['project']}",
                    f"--zone={m['zone']}", "--quiet")
@@ -738,10 +754,14 @@ def cmd_stop(a: argparse.Namespace) -> int:
             print(r.stderr.strip()[-2000:], file=sys.stderr)
             return 1
     at = min(now(), m["expires_epoch"])
+    reason = "never-started" if never_started else ("kept" if a.keep_machine else "deleted")
     with locked(a.budget) as path:
-        c = cost({**m, "stop_epoch": at}, at)
-        append(path, {"event": "stop", "id": m["id"], "vm": m["vm"], "stop_epoch": at, "stop": iso(at),
-                      "reason": "kept" if a.keep_machine else "deleted", "cost": c})
+        c = cost({**m, "stop_epoch": at, "reason": reason, "run_start_epoch": run_start}, at)
+        record = {"event": "stop", "id": m["id"], "vm": m["vm"], "stop_epoch": at, "stop": iso(at),
+                  "reason": reason, "cost": c}
+        if run_start is not None:
+            record["run_start_epoch"] = run_start
+        append(path, record)
     print(f"{m['vm']}: stopped at {iso(at)}, cost {money(c)}")
     return 0
 
