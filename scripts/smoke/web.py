@@ -197,6 +197,8 @@ def cleanup_accounts():
 GATEWAY_HELD = {
     "openapi.json",
     "alias: GET /api/v1/models answers",
+    # /login reads the account store to offer sign-in.
+    "sign-in: /login offers GitHub",
     "sign-in: GitHub authorization uses this site's callback",
     "sign-in: WorkOS sends GitHub authorization to GitHub",
     "sign-in: GitHub answers the authorize request",
@@ -876,7 +878,7 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
         login = site.get("/login")
         workos = "/auth/workos/github" in login.text
         record("sign-in: /login offers GitHub", login.status == 200
-               and (workos or "/auth/github" in login.text))
+               and (workos or "/auth/github" in login.text), f"{login.status}")
         if invite_only:
             record("sign-in: /login says sign-in is invite-only",
                    "invite-only for now" in login.text)
