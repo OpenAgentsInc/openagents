@@ -1,0 +1,433 @@
+//! The agent loop, Microcoder-style and portable: each step the model sees
+//! the task, the workspace's files, and what the last commands printed, and
+//! returns one JSON object with its next commands. The host runs each
+//! command as a WASI tool in the sandbox and records what it printed.
+//!
+//! This holds no I/O. The page drives it: [`Agent::prompt`], then the
+//! model, then [`Agent::plan`], then each [`Call`] through a worker, then
+//! [`Agent::observe`].
+
+use serde::Deserialize;
+use serde_json::Value;
+
+/// The tools a command may name.
+pub const TOOLS: &[&str] = &["ls", "cat", "grep", "write", "patch", "rhai", "test"];
+
+/// The system turn for every step.
+pub const INSTRUCTIONS: &str = r#"You are Kiln, a coding agent working in a sandboxed workspace inside a web browser. You change files and run programs only through commands, and you see only what they print.
+
+Tools (each runs as a WebAssembly program):
+- ls [-R] [PATH]          list files
+- cat PATH...             print files
+- grep [-i] TEXT [PATH]   search lines
+- rhai FILE               run a Rhai script (Rhai is a small Rust-like scripting language)
+- test [DIR]              run every *_test.rhai file; each fn test_*() is one test
+
+Rhai notes: `fn fib(n) { if n < 2 { return n; } fib(n - 1) + fib(n - 2) }`, `let x = 5;`, `print(x);`, `for i in 0..10 { }`, arrays `[1, 2]`, strings "a" + "b". Functions can't read variables outside them. A test file imports code with `import "fib" as f;` (no .rhai extension, path relative to the test file) and calls `f::fib(10)`. Assertions: assert(cond), assert(cond, "msg"), assert_eq(left, right).
+
+Reply with ONLY one JSON object, no prose and no code fences:
+{"thought": "one short sentence", "commands": [ ... ]}
+
+Each command is one of:
+{"run": "test"}                                   run a tool command line
+{"write": "PATH", "content": "full file text"}     create or replace a file
+{"patch": "PATH", "search": "exact old text", "replace": "new text"}
+{"done": "what you did, in one sentence"}
+
+Work in small steps: write the code and a test, run the test, read the output, fix what failed. Say done only after the tests pass."#;
+
+/// One command, as the model wrote it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Command {
+    Run(String),
+    Write {
+        path: String,
+        content: String,
+    },
+    Patch {
+        path: String,
+        search: String,
+        replace: String,
+    },
+    Done(String),
+}
+
+/// A tool run: the argument vector (tool first) and standard input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Call {
+    pub argv: Vec<String>,
+    pub stdin: Vec<u8>,
+}
+
+/// What the model returned for one step.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Plan {
+    pub thought: String,
+    pub commands: Vec<Command>,
+}
+
+/// One finished command and what it printed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Observation {
+    pub command: String,
+    pub code: i32,
+    pub output: String,
+}
+
+/// One step of the loop.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Step {
+    pub thought: String,
+    pub observations: Vec<Observation>,
+    /// Why the reply could not be used, when it couldn't.
+    pub problem: Option<String>,
+}
+
+/// The loop's state.
+#[derive(Debug, Clone)]
+pub struct Agent {
+    pub task: String,
+    pub steps: Vec<Step>,
+    pub done: Option<String>,
+    /// The most request text the model's Pylon accepts, in bytes.
+    pub budget: usize,
+}
+
+/// Split a command line into words, honoring single and double quotes.
+///
+/// # Errors
+///
+/// When a quote is not closed.
+pub fn split(line: &str) -> Result<Vec<String>, String> {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut quote = None;
+    let mut started = false;
+    for c in line.chars() {
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), c) => word.push(c),
+            (None, '\'' | '"') => {
+                quote = Some(c);
+                started = true;
+            }
+            (None, c) if c.is_whitespace() => {
+                if started {
+                    words.push(std::mem::take(&mut word));
+                    started = false;
+                }
+            }
+            (None, c) => {
+                word.push(c);
+                started = true;
+            }
+        }
+    }
+    if quote.is_some() {
+        return Err("a quote is not closed".into());
+    }
+    if started {
+        words.push(word);
+    }
+    Ok(words)
+}
+
+/// The JSON object in a model reply: the whole text, or the text inside a
+/// code fence, or the span from the first `{` to the last `}`.
+fn json_object(text: &str) -> Option<Value> {
+    let text = text.trim();
+    if let Ok(value) = serde_json::from_str::<Value>(text) {
+        return value.is_object().then_some(value);
+    }
+    let start = text.find('{')?;
+    let end = text.rfind('}')?;
+    serde_json::from_str::<Value>(&text[start..=end])
+        .ok()
+        .filter(Value::is_object)
+}
+
+#[derive(Deserialize)]
+struct RawPlan {
+    #[serde(default)]
+    thought: String,
+    #[serde(default)]
+    commands: Vec<Value>,
+}
+
+fn text(value: &Value, key: &str) -> Option<String> {
+    value.get(key).and_then(Value::as_str).map(str::to_string)
+}
+
+/// Parse a model reply into a [`Plan`].
+///
+/// # Errors
+///
+/// When the reply holds no JSON object, or a command has no known shape.
+pub fn parse(reply: &str) -> Result<Plan, String> {
+    let value = json_object(reply).ok_or("the reply is not a JSON object")?;
+    let raw: RawPlan =
+        serde_json::from_value(value).map_err(|e| format!("the reply's shape: {e}"))?;
+    let mut commands = Vec::new();
+    for c in raw.commands {
+        let command = if let Some(line) = text(&c, "run") {
+            Command::Run(line)
+        } else if let Some(path) = text(&c, "write") {
+            Command::Write {
+                path,
+                content: text(&c, "content").unwrap_or_default(),
+            }
+        } else if let Some(path) = text(&c, "patch") {
+            Command::Patch {
+                path,
+                search: text(&c, "search").ok_or("a patch has no \"search\"")?,
+                replace: text(&c, "replace").unwrap_or_default(),
+            }
+        } else if let Some(summary) = text(&c, "done") {
+            Command::Done(summary)
+        } else {
+            return Err(format!("unknown command {c}"));
+        };
+        commands.push(command);
+    }
+    if commands.is_empty() {
+        return Err("the reply has no commands".into());
+    }
+    Ok(Plan {
+        thought: raw.thought,
+        commands,
+    })
+}
+
+impl Command {
+    /// The command as one line for the log.
+    #[must_use]
+    pub fn label(&self) -> String {
+        match self {
+            Self::Run(line) => line.clone(),
+            Self::Write { path, content } => format!("write {path} ({} bytes)", content.len()),
+            Self::Patch { path, .. } => format!("patch {path}"),
+            Self::Done(summary) => format!("done: {summary}"),
+        }
+    }
+
+    /// The tool run this command is, or `None` for `done`.
+    ///
+    /// # Errors
+    ///
+    /// When a command line doesn't parse or names an unknown tool.
+    pub fn call(&self) -> Result<Option<Call>, String> {
+        match self {
+            Self::Run(line) => {
+                let argv = split(line)?;
+                let tool = argv.first().ok_or("an empty command")?;
+                if !TOOLS.contains(&tool.as_str()) {
+                    return Err(format!(
+                        "no tool named {tool}; the tools are {}",
+                        TOOLS.join(", ")
+                    ));
+                }
+                Ok(Some(Call {
+                    argv,
+                    stdin: Vec::new(),
+                }))
+            }
+            Self::Write { path, content } => Ok(Some(Call {
+                argv: vec!["write".into(), path.clone()],
+                stdin: content.clone().into_bytes(),
+            })),
+            Self::Patch {
+                path,
+                search,
+                replace,
+            } => Ok(Some(Call {
+                argv: vec!["patch".into(), path.clone()],
+                stdin: format!("<<<<<<< SEARCH\n{search}\n=======\n{replace}\n>>>>>>> REPLACE\n")
+                    .into_bytes(),
+            })),
+            Self::Done(_) => Ok(None),
+        }
+    }
+}
+
+/// Keep the head and tail of `text` within `max` bytes.
+#[must_use]
+pub fn clip(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let mut head = max * 2 / 3;
+    while !text.is_char_boundary(head) {
+        head -= 1;
+    }
+    let mut tail = text.len() - (max - head);
+    while !text.is_char_boundary(tail) {
+        tail += 1;
+    }
+    format!(
+        "{}\n[... {} bytes cut ...]\n{}",
+        &text[..head],
+        tail - head,
+        &text[tail..]
+    )
+}
+
+impl Agent {
+    #[must_use]
+    pub fn new(task: &str, budget: usize) -> Self {
+        Self {
+            task: task.trim().to_string(),
+            steps: Vec::new(),
+            done: None,
+            budget,
+        }
+    }
+
+    /// The user turn for the next step: the task, the files, and the
+    /// recent steps, within the budget less the instructions.
+    #[must_use]
+    pub fn prompt(&self, files: &str) -> String {
+        let room = self
+            .budget
+            .saturating_sub(INSTRUCTIONS.len() + self.task.len() + 600);
+        let files = clip(files, room / 4);
+        let mut history = Vec::new();
+        let mut used = files.len();
+        for (n, step) in self.steps.iter().enumerate().rev() {
+            let mut block = format!("Step {}: {}\n", n + 1, step.thought);
+            if let Some(problem) = &step.problem {
+                block.push_str(&format!("Your reply could not be used: {problem}\n"));
+            }
+            for o in &step.observations {
+                block.push_str(&format!(
+                    "$ {} (exit {})\n{}\n",
+                    o.command,
+                    o.code,
+                    clip(o.output.trim_end(), 1500)
+                ));
+            }
+            if used + block.len() > room {
+                history.push(format!("[{} earlier steps omitted]\n", n + 1));
+                break;
+            }
+            used += block.len();
+            history.push(block);
+        }
+        history.reverse();
+        let history = if history.is_empty() {
+            "No steps yet.".to_string()
+        } else {
+            history.concat()
+        };
+        format!(
+            "Task: {}\n\nFiles in the workspace:\n{}\n\nWhat happened so far:\n{}\nReply with the JSON object for your next step.",
+            self.task,
+            if files.trim().is_empty() {
+                "(none)"
+            } else {
+                files.trim_end()
+            },
+            history
+        )
+    }
+
+    /// Start a step from the model's reply. Returns the plan's commands, or
+    /// none when the reply was unusable (recorded for the next prompt).
+    pub fn plan(&mut self, reply: &str) -> Vec<Command> {
+        match parse(reply) {
+            Ok(plan) => {
+                self.steps.push(Step {
+                    thought: plan.thought,
+                    ..Step::default()
+                });
+                plan.commands
+            }
+            Err(problem) => {
+                self.steps.push(Step {
+                    thought: "(unusable reply)".into(),
+                    problem: Some(format!("{problem}. Reply with only the JSON object.")),
+                    ..Step::default()
+                });
+                Vec::new()
+            }
+        }
+    }
+
+    /// Record a command's result in the current step.
+    pub fn observe(&mut self, command: &Command, code: i32, output: String) {
+        if let Command::Done(summary) = command {
+            self.done = Some(summary.clone());
+            return;
+        }
+        if let Some(step) = self.steps.last_mut() {
+            step.observations.push(Observation {
+                command: command.label(),
+                code,
+                output,
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_lines_split_with_quotes() {
+        assert_eq!(
+            split("grep -i 'fn fib' src").unwrap(),
+            ["grep", "-i", "fn fib", "src"]
+        );
+        assert_eq!(split("ls \"\"").unwrap(), ["ls", ""]);
+        assert!(split("cat 'x").is_err());
+    }
+
+    #[test]
+    fn a_fenced_reply_parses_into_calls() {
+        let reply = "Sure!\n```json\n{\"thought\":\"t\",\"commands\":[{\"write\":\"a.rhai\",\"content\":\"print(1);\"},{\"run\":\"rhai a.rhai\"},{\"patch\":\"a.rhai\",\"search\":\"1\",\"replace\":\"2\"},{\"done\":\"ok\"}]}\n```";
+        let plan = parse(reply).unwrap();
+        assert_eq!(plan.commands.len(), 4);
+        let write = plan.commands[0].call().unwrap().unwrap();
+        assert_eq!(write.argv, ["write", "a.rhai"]);
+        assert_eq!(write.stdin, b"print(1);");
+        let patch = plan.commands[2].call().unwrap().unwrap();
+        assert!(
+            String::from_utf8(patch.stdin)
+                .unwrap()
+                .starts_with("<<<<<<< SEARCH\n1\n")
+        );
+        assert_eq!(plan.commands[3].call().unwrap(), None);
+        assert!(Command::Run("bash -c x".into()).call().is_err());
+    }
+
+    #[test]
+    fn the_loop_records_steps_and_bad_replies() {
+        let mut agent = Agent::new("make fib", 16 * 1024);
+        assert!(agent.plan("no json here").is_empty());
+        let commands =
+            agent.plan(r#"{"thought":"run","commands":[{"run":"test"},{"done":"fine"}]}"#);
+        agent.observe(&commands[0], 1, "FAIL x".into());
+        agent.observe(&commands[1], 0, String::new());
+        assert_eq!(agent.done.as_deref(), Some("fine"));
+        let prompt = agent.prompt("fib.rhai  10\n");
+        assert!(prompt.contains("could not be used"));
+        assert!(prompt.contains("$ test (exit 1)\nFAIL x"));
+    }
+
+    #[test]
+    fn the_prompt_stays_within_the_budget() {
+        let mut agent = Agent::new("t", 8 * 1024);
+        for _ in 0..40 {
+            let commands = agent.plan(r#"{"thought":"x","commands":[{"run":"cat big"}]}"#);
+            agent.observe(&commands[0], 0, "y".repeat(5000));
+        }
+        let prompt = agent.prompt(&"f\n".repeat(5000));
+        assert!(
+            prompt.len() + INSTRUCTIONS.len() < 8 * 1024,
+            "{}",
+            prompt.len()
+        );
+        assert!(prompt.contains("earlier steps omitted"));
+        assert!(clip("ééééé", 4).len() < 40);
+    }
+}

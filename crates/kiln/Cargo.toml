@@ -1,0 +1,67 @@
+[package]
+name = "kiln"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Kiln tech demo: a coding agent in the browser with a WASI sandbox, OPFS persistence, and Pylon inference over NIP-CJ"
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# The page's core and its worker (`src/web`) build for
+# `wasm32-unknown-unknown` with `scripts/build-kiln.sh`. The portable parts
+# (filesystem, WASI host, agent loop, NIP-CJ buyer) and `kiln-dev`, the
+# local server, build natively and carry the tests.
+[dependencies]
+nostr = { path = "../nostr" }
+secp256k1 = "0.31.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+futures-channel = "0.3.34"
+futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
+getrandom = { version = "0.3", features = ["wasm_js"] }
+js-sys = "0.3.105"
+wasm-bindgen = "0.2.128"
+wasm-bindgen-futures = "0.4.78"
+web-sys = { version = "0.3.105", features = [
+    "console",
+    "Document",
+    "DomTokenList",
+    "Element",
+    "Event",
+    "File",
+    "FileSystemDirectoryHandle",
+    "FileSystemFileHandle",
+    "FileSystemGetFileOptions",
+    "FileSystemWritableFileStream",
+    "HtmlButtonElement",
+    "HtmlElement",
+    "HtmlInputElement",
+    "HtmlTextAreaElement",
+    "KeyboardEvent",
+    "Location",
+    "MessageEvent",
+    "Navigator",
+    "Performance",
+    "Response",
+    "StorageManager",
+    "Url",
+    "UrlSearchParams",
+    "WebSocket",
+    "Window",
+    "Worker",
+    "WorkerOptions",
+    "WorkerType",
+    "ErrorEvent",
+    "CloseEvent",
+] }
+
+[lints]
+workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

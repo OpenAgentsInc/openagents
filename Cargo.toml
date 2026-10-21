@@ -239,6 +239,17 @@ panic = "abort"
 strip = true
 debug = false
 
+# Kiln's page module (scripts/build-kiln.sh, docs/kiln/README.md): small,
+# since every page load and every tool worker downloads it.
+[profile.kiln-web]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false
+
 # breez/boltz-client, a git dependency of breez-sdk-spark, is no longer
 # published (404 on 2026-10-04); build its pinned revision from the vendored
 # copy. See vendor/boltz-client/VENDORED.md.
