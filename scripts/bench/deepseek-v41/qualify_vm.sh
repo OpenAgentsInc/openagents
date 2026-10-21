@@ -19,7 +19,7 @@
 set -euo pipefail
 
 ROOT=/mnt/stage
-MODELS=gs://openagents-psionic-models/deepseek-ai/DeepSeek-V4.1-Flash-1017/1bae0e1
+MODELS=${MODELS:-gs://openagents-psionic-models/deepseek-ai/DeepSeek-V4.1-Flash-1017/1bae0e1}
 ORACLE=gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/dump
 BIN=$ROOT/bin/psionic-v41-stage
 export LD_LIBRARY_PATH=$ROOT/bin/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
