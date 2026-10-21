@@ -1268,3 +1268,18 @@ as the new-chat page at `/chat`; `/new` and `/home/classic` answer only for
 saved addresses. The `OPENAGENTS_WEB_FRONT_DOOR` switch (#12260) is removed:
 `/` no longer depends on it, and the variable is ignored if a spec still
 sets it.
+
+Staging (2026-10-21 19:48 UTC): revision `openagents-web-1-staging-7846c0b3e4-194815`
+serves 100% of [staging](https://staging.openagents.com), built from main
+`7846c0b3e4` by `scripts/deploy/web.sh stage`. Web image
+`openagents-web@sha256:b4c017e0708b88f1861ccb07209cfd8d17a8f16a633a638e7703f127eb05a68d`.
+Two earlier web builds timed out at Cloud Build's former 3600 s limit and
+deployed nothing. The staging smoke, updated for `/` and `/chat`, passed
+108 checks (2 skipped), and the signed-out GPUI startup check passed on
+`/chat`. In a browser, `/` drew the Grid overview with the pylons and the
+walk hint (first frame at 1532 ms; Everglade's brotli module is 7,534,067
+bytes), and `/home?chat=abc-1` landed on `/?chat=abc-1`. Signed-out
+terminal turns on `/` were answered by the Mac M5 Max Pylon (web log:
+`answered by 30200:…`) and, with `X-OpenAgents-Pylon-Model:
+deepseek-v4.1-flash`, by the DeepSeek-V4.1 group `w16-g5b`; the test chats
+were deleted. Production is unchanged.

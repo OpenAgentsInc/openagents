@@ -582,7 +582,7 @@ def environments(base, key, repo):
         if not session:
             return
         work.cookies["oa_cloud_session"] = session
-    home = work.get("/", headers=HTML)
+    home = work.get("/chat?ui=html", headers=HTML)
     record("environments: the left panel links Environments",
            bool(re.search(r'href="/environments"', home.text)), f"{home.status}")
     index = work.get("/environments", headers=HTML)

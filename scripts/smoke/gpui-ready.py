@@ -107,7 +107,8 @@ def main():
         browser.call("Emulation.setDeviceMetricsOverride", {
             "width": 1440, "height": 1000, "deviceScaleFactor": 1, "mobile": False,
         })
-        browser.call("Page.navigate", {"url": args.base.rstrip("/") + "/"})
+        # The new chat, at /chat since / became the Grid homepage (#12413).
+        browser.call("Page.navigate", {"url": args.base.rstrip("/") + "/chat"})
         deadline = time.monotonic() + args.timeout
         while time.monotonic() < deadline:
             state = browser.state()
