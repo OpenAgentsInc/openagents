@@ -485,6 +485,11 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12436: after the next web deploy, with a Flint Pylon online, run
+  `openagents browser run -- python3 scripts/dev/check-grid-flint.py --out
+  DIR --click-pick --pin sha256:ARTIFACT` with the Mac Pylon's INT4 Metal
+  artifact, and confirm the turn sends `flint@sha256:...` and the Mac
+  Pylon answers it.
 - #12440: after the next web deploy, confirm the image log builds or
   reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
   `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test
