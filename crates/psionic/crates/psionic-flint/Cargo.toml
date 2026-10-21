@@ -1,5 +1,6 @@
 [package]
 name = "psionic-flint"
+default-run = "psionic-flint"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
