@@ -21,8 +21,65 @@ use psionic_flint::{
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+/// The original BF16 checkpoint on Candle, or the MLX INT4 checkpoint on Metal.
+enum Engine {
+    Candle(Model),
+    #[cfg(all(feature = "metal", target_os = "macos"))]
+    Metal(psionic_flint::metal::MetalModel),
+}
+
+/// What `/v1/models` and each answer report about the served weights.
+struct Identity {
+    model_id: &'static str,
+    revision: &'static str,
+    artifact: String,
+    profile: &'static str,
+    engine: &'static str,
+}
+
+impl Engine {
+    fn identity(&self) -> Identity {
+        use sha2::Digest;
+        match self {
+            Self::Candle(_) => Identity {
+                model_id: MODEL_ID,
+                revision: REVISION,
+                artifact: format!(
+                    "sha256:{:x}",
+                    sha2::Sha256::digest(include_bytes!("../testdata/artifact.json"))
+                ),
+                profile: PROFILE,
+                engine: "rust_candle_flint",
+            },
+            #[cfg(all(feature = "metal", target_os = "macos"))]
+            Self::Metal(_) => Identity {
+                model_id: psionic_flint::metal::INT4_MODEL_ID,
+                revision: psionic_flint::metal::INT4_REVISION,
+                artifact: psionic_flint::metal::artifact_digest(),
+                profile: psionic_flint::metal::PROFILE,
+                engine: "rust_metal_flint",
+            },
+        }
+    }
+    fn backend(&self) -> &'static str {
+        match self {
+            Self::Candle(model) if model.device.is_cpu() => "cpu",
+            Self::Candle(_) => "cuda",
+            #[cfg(all(feature = "metal", target_os = "macos"))]
+            Self::Metal(_) => "metal",
+        }
+    }
+    fn max_output(&self) -> usize {
+        match self {
+            Self::Candle(_) => 8192,
+            #[cfg(all(feature = "metal", target_os = "macos"))]
+            Self::Metal(_) => 32768,
+        }
+    }
+}
+
 struct Runtime {
-    model: Model,
+    model: Engine,
     tokenizer: tokenizers::Tokenizer,
     context: usize,
 }
@@ -31,6 +88,7 @@ struct Serving {
     context: usize,
     active_since: AtomicU64,
     backend: &'static str,
+    identity: Identity,
 }
 type Shared = Arc<Serving>;
 
@@ -79,14 +137,10 @@ impl std::fmt::Display for ContextExceeded {
 impl std::error::Error for ContextExceeded {}
 
 async fn models(State(state): State<Shared>) -> Json<Value> {
-    use sha2::Digest;
-    let artifact = format!(
-        "sha256:{:x}",
-        sha2::Sha256::digest(include_bytes!("../testdata/artifact.json"))
-    );
+    let id = &state.identity;
     Json(
-        json!({"object":"list", "data":[{"id":MODEL_ID,"object":"model","owned_by":"Recursive"}],
-        "psionic":{"revision":REVISION,"artifact":artifact,"numerical_profile":PROFILE,"backend":state.backend,
+        json!({"object":"list", "data":[{"id":id.model_id,"object":"model","owned_by":"Recursive"}],
+        "psionic":{"revision":id.revision,"artifact":id.artifact,"numerical_profile":id.profile,"backend":state.backend,
             "max_context_tokens":state.context,"busy":state.active_since.load(Ordering::Acquire) != 0}}),
     )
 }
@@ -111,8 +165,9 @@ fn default_tokens() -> usize {
 }
 
 fn run(runtime: &Runtime, request: Request) -> Result<Value> {
+    let identity = runtime.model.identity();
     ensure!(
-        request.model == MODEL_ID || request.model == "flint",
+        request.model == identity.model_id || request.model == MODEL_ID || request.model == "flint",
         "unknown model"
     );
     ensure!(
@@ -123,9 +178,10 @@ fn run(runtime: &Runtime, request: Request) -> Result<Value> {
         request.tools.is_none(),
         "tool requests are not available on this endpoint"
     );
+    let limit = runtime.model.max_output();
     ensure!(
-        request.max_tokens <= 8192,
-        "max_tokens must be at most 8192"
+        request.max_tokens <= limit,
+        "max_tokens must be at most {limit}"
     );
     let prompt = render(&request.messages)?;
     let encoding = runtime
@@ -148,15 +204,34 @@ fn run(runtime: &Runtime, request: Request) -> Result<Value> {
     if let Some(v) = request.seed {
         sampling.seed = v;
     }
-    let result = generate(
-        &runtime.model,
-        &runtime.tokenizer,
-        encoding.get_ids(),
-        request.max_tokens,
-        runtime.context,
-        &sampling,
-        900.0,
-    )?;
+    let (result, timing) = match &runtime.model {
+        Engine::Candle(model) => (
+            generate(
+                model,
+                &runtime.tokenizer,
+                encoding.get_ids(),
+                request.max_tokens,
+                runtime.context,
+                &sampling,
+                900.0,
+            )?,
+            Value::Null,
+        ),
+        #[cfg(all(feature = "metal", target_os = "macos"))]
+        Engine::Metal(model) => {
+            let (result, timing) = psionic_flint::metal::generate(
+                model,
+                &runtime.tokenizer,
+                encoding.get_ids(),
+                request.max_tokens,
+                runtime.context,
+                &sampling,
+                900.0,
+                |_| {},
+            )?;
+            (result, serde_json::to_value(timing)?)
+        }
+    };
     static REQUEST_ID: AtomicU64 = AtomicU64::new(0);
     let created = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     let id = format!(
@@ -164,14 +239,14 @@ fn run(runtime: &Runtime, request: Request) -> Result<Value> {
         REQUEST_ID.fetch_add(1, Ordering::Relaxed)
     );
     Ok(json!({
-        "id": id, "created": created, "object": "chat.completion", "model": MODEL_ID,
+        "id": id, "created": created, "object": "chat.completion", "model": identity.model_id,
         "choices": [{"index": 0, "message": {"role": "assistant", "content": result.answer.content,
             "reasoning_content": result.answer.reasoning_content}, "finish_reason": result.finish_reason}],
         "usage": {"prompt_tokens": result.prompt_tokens, "completion_tokens": result.token_ids.len(), "total_tokens": result.prompt_tokens + result.token_ids.len()},
-        "psionic": {"engine": "rust_candle_flint", "backend": if runtime.model.device.is_cpu() { "cpu" } else { "cuda" },
-            "revision": REVISION, "config_sha256": runtime.model.config_sha256, "numerical_profile":PROFILE,
+        "psionic": {"engine": identity.engine, "backend": runtime.model.backend(),
+            "revision": identity.revision, "artifact": identity.artifact, "numerical_profile": identity.profile,
             "elapsed_seconds": result.elapsed_seconds, "prefill_seconds": result.prefill_seconds,
-            "token_ids": result.token_ids}
+            "timing": timing, "token_ids": result.token_ids}
     }))
 }
 
@@ -215,7 +290,7 @@ async fn main() -> Result<()> {
     let mode = args.next().unwrap_or_default();
     if mode == "--help" || mode.is_empty() {
         println!(
-            "psionic-flint (serve|generate|logits|tokenize) --weights DIR [--backend cpu|cuda] [--context 8192] [--listen 127.0.0.1:8080] [--request FILE]"
+            "psionic-flint (serve|generate|logits|tokenize) --weights DIR [--backend cpu|cuda|metal] [--context 8192] [--listen 127.0.0.1:8080] [--request FILE]"
         );
         return Ok(());
     }
@@ -239,13 +314,15 @@ async fn main() -> Result<()> {
             _ => bail!("unknown option {key}"),
         }
     }
+    let root = weights.context("--weights is required")?;
     let device = match backend.as_str() {
-        "cpu" => Device::Cpu,
+        "cpu" => Some(Device::Cpu),
         #[cfg(feature = "cuda")]
-        "cuda" => Device::new_cuda(0)?,
+        "cuda" => Some(Device::new_cuda(0)?),
+        #[cfg(all(feature = "metal", target_os = "macos"))]
+        "metal" => None,
         _ => bail!("backend is unavailable in this build"),
     };
-    let root = weights.context("--weights is required")?;
     let tokenizer = load_tokenizer(&root.join("tokenizer.json"))?;
     if mode == "tokenize" {
         let req: Request =
@@ -257,9 +334,20 @@ async fn main() -> Result<()> {
         println!("{}", json!({"rendered":rendered,"token_ids":ids.get_ids()}));
         return Ok(());
     }
-    let model = Model::load(&root, device)?;
+    let model = match device {
+        Some(device) => Engine::Candle(Model::load(&root, device)?),
+        #[cfg(all(feature = "metal", target_os = "macos"))]
+        None => Engine::Metal(psionic_flint::metal::MetalModel::load(&root, true)?),
+        #[cfg(not(all(feature = "metal", target_os = "macos")))]
+        None => unreachable!("only the Metal backend loads without a Candle device"),
+    };
+    let limit = match &model {
+        Engine::Candle(model) => model.config.max_position_embeddings,
+        #[cfg(all(feature = "metal", target_os = "macos"))]
+        Engine::Metal(model) => model.config.max_position_embeddings,
+    };
     ensure!(
-        context > 0 && context <= model.config.max_position_embeddings,
+        context > 0 && context <= limit,
         "context exceeds the checkpoint limit"
     );
     let runtime = Runtime {
@@ -275,9 +363,14 @@ async fn main() -> Result<()> {
             !ids.is_empty() && ids.len() <= context,
             "invalid token input"
         );
-        let mut state = runtime.model.session(context)?;
+        let model = match &runtime.model {
+            Engine::Candle(model) => model,
+            #[cfg(all(feature = "metal", target_os = "macos"))]
+            Engine::Metal(_) => bail!("use psionic-flint-metal-bench logits for the Metal backend"),
+        };
+        let mut state = model.session(context)?;
         for (position, token) in ids.iter().enumerate() {
-            let logits = runtime.model.forward(*token, &mut state)?;
+            let logits = model.forward(*token, &mut state)?;
             println!(
                 "{}",
                 json!({"position":position,"token":token,"logits":logits})
@@ -290,11 +383,8 @@ async fn main() -> Result<()> {
     } else {
         let state = Arc::new(Serving {
             context,
-            backend: if runtime.model.device.is_cpu() {
-                "cpu"
-            } else {
-                "cuda"
-            },
+            backend: runtime.model.backend(),
+            identity: runtime.model.identity(),
             runtime: Mutex::new(runtime),
             active_since: AtomicU64::new(0),
         });

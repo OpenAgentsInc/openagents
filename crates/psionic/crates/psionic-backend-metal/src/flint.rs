@@ -32,6 +32,16 @@ pub const DENSE_FF: usize = 6144;
 pub const WINDOW: usize = 513;
 /// Largest prefill chunk; longer prompts run in several chunks.
 pub const MAX_CHUNK: usize = 2048;
+/// Largest top-k the GPU ranks; larger requests read every logit back.
+pub const MAX_TOP_K: usize = 32;
+
+/// The result of one step: the greedy token and, when asked for, the
+/// leading `k` candidates (highest logit first, lower ID first on ties).
+#[derive(Clone, Debug, Default)]
+pub struct Step {
+    pub greedy: u32,
+    pub ranked: Vec<(usize, f32)>,
+}
 
 /// A tensor inside a loaded shard: shard index and byte offset from the file start.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -107,6 +117,13 @@ struct Scratch {
     act: Buffer,
     logits: Buffer,
     choice: Buffer,
+    cand_v: Buffer,
+    cand_i: Buffer,
+    top_v: Buffer,
+    top_i: Buffer,
+    bad: Buffer,
+    /// Two token slots, so the next step can be encoded before its token is known.
+    token_slots: Buffer,
 }
 
 struct ChunkScratch {
@@ -139,6 +156,7 @@ pub struct FlintMetal {
     weights: FlintWeights,
     scratch: Scratch,
     chunk: ChunkScratch,
+    gpu_seconds: Cell<f64>,
 }
 
 /// Request-owned KV cache and position.
@@ -161,7 +179,6 @@ impl FlintSession {
 #[repr(C)]
 #[derive(Clone, Copy)]
 struct DecodeParams {
-    token: u32,
     position: u32,
     cap: u32,
     rotary: u32,
@@ -216,6 +233,8 @@ const PIPELINES: &[&str] = &[
     "flint_dense_gateup",
     "flint_head",
     "flint_argmax",
+    "flint_topk_partial",
+    "flint_topk_merge",
     "flint_rms_rows",
     "flint_gemm_q4",
     "flint_rows_head_norm",
@@ -440,6 +459,12 @@ impl FlintMetal {
             act: shared_buffer(&device, DENSE_FF * 2),
             logits: shared_buffer(&device, weights.vocab * 4),
             choice: shared_buffer(&device, 16),
+            cand_v: shared_buffer(&device, weights.vocab.div_ceil(2048) * MAX_TOP_K * 4),
+            cand_i: shared_buffer(&device, weights.vocab.div_ceil(2048) * MAX_TOP_K * 4),
+            top_v: shared_buffer(&device, MAX_TOP_K * 4),
+            top_i: shared_buffer(&device, MAX_TOP_K * 4),
+            bad: shared_buffer(&device, 16),
+            token_slots: shared_buffer(&device, 16),
         };
         let c = MAX_CHUNK;
         let slots = c * TOP_K;
@@ -471,6 +496,7 @@ impl FlintMetal {
             weights,
             scratch,
             chunk,
+            gpu_seconds: Cell::new(0.0),
         })
     }
 
@@ -525,6 +551,11 @@ impl FlintMetal {
 
     pub fn device_name(&self) -> &str {
         self.device.name()
+    }
+
+    /// GPU busy time of the commands run since the last call.
+    pub fn take_gpu_seconds(&self) -> f64 {
+        self.gpu_seconds.replace(0.0)
     }
 
     pub fn vocab(&self) -> usize {
@@ -611,6 +642,8 @@ impl FlintMetal {
                     eprintln!("  {name:28} {:9.3} ms {calls:5} calls", seconds * 1e3);
                 }
             }
+            self.gpu_seconds
+                .set(self.gpu_seconds.get() + gpu_seconds(&command));
             match command.status() {
                 metal::MTLCommandBufferStatus::Completed => Ok(()),
                 status => Err(format!("Metal command failed: {status:?}")),
@@ -618,22 +651,25 @@ impl FlintMetal {
         })
     }
 
-    fn encode_decode(&self, pass: &Pass<'_>, session: &FlintSession, token: u32) {
+    fn set_token(&self, slot: usize, token: u32) {
+        // SAFETY: two u32 slots in a shared buffer; the step reading this slot is not yet committed.
+        unsafe { *self.scratch.token_slots.contents().cast::<u32>().add(slot) = token };
+    }
+
+    /// Encode one token at `position`; the token is read from `slot` when the step runs.
+    fn encode_decode(&self, pass: &Pass<'_>, session: &FlintSession, position: usize, slot: usize) {
         let s = &self.scratch;
         let w = &self.weights;
-        let position = session.position;
-        let tokens = [token];
         pass.kernel("flint_embed8");
         self.bind_quant(pass, 0, &w.embed);
         pass.buf(3, &s.h, 0)
-            .val(4, &tokens)
+            .buf(4, &s.token_slots, (slot * 4) as u64)
             .val(5, &1u32)
             .threads((HIDDEN, 1), 256);
         for (index, layer) in w.layers.iter().enumerate() {
             let cap = session.caps[index];
             let kv = &session.kv[index];
             let params = DecodeParams {
-                token,
                 position: position as u32,
                 cap: cap as u32,
                 rotary: layer.rotary as u32,
@@ -769,16 +805,144 @@ impl FlintMetal {
         }
     }
 
-    /// Run one token; returns the greedy choice. Logits stay readable with `logits`.
-    pub fn decode(&self, session: &mut FlintSession, token: u32) -> Result<u32, String> {
+    /// Run one token; ranks the next token's top `k` candidates on the GPU
+    /// when `k` is at most [`MAX_TOP_K`]. Logits stay readable with `logits`.
+    pub fn decode(&self, session: &mut FlintSession, token: u32, k: usize) -> Result<Step, String> {
         self.check_room(session, 1)?;
         if token as usize >= self.weights.vocab {
             return Err("token outside the vocabulary".into());
         }
-        self.run(|pass| self.encode_decode(pass, session, token))?;
+        self.reset_flag();
+        self.set_token(0, token);
+        self.run(|pass| {
+            self.encode_decode(pass, session, session.position, 0);
+            self.encode_top_k(pass, k);
+        })?;
         session.position += 1;
-        // SAFETY: the command completed; the shared buffer holds one u32.
-        Ok(unsafe { *self.scratch.choice.contents().cast::<u32>() })
+        self.step(k)
+    }
+
+    /// Decode up to `steps` tokens starting with `first`. Each step's command
+    /// buffer is encoded while the previous one runs; `next` sees each step's
+    /// result and returns the following token, or `None` to stop.
+    pub fn decode_stream(
+        &self,
+        session: &mut FlintSession,
+        first: u32,
+        steps: usize,
+        k: usize,
+        mut next: impl FnMut(&Step) -> Result<Option<u32>, String>,
+    ) -> Result<(), String> {
+        if steps == 0 {
+            return Ok(());
+        }
+        self.check_room(session, steps)?;
+        let start = session.position;
+        let session_ref: &FlintSession = session;
+        let encode = |position: usize, slot: usize| {
+            objc::rc::autoreleasepool(|| {
+                let command = self.queue.new_command_buffer().to_owned();
+                let encoder = command.new_compute_command_encoder();
+                let pass = Pass::new(encoder, &self.pipelines);
+                self.encode_decode(&pass, session_ref, position, slot);
+                self.encode_top_k(&pass, k);
+                pass.encoder.borrow().end_encoding();
+                command
+            })
+        };
+        let check = |token: u32| {
+            if token as usize >= self.weights.vocab {
+                Err("token outside the vocabulary".to_string())
+            } else {
+                Ok(token)
+            }
+        };
+        // Steps that finished on the GPU; the session advances by this many.
+        let mut done = 0;
+        let outcome = (|| {
+            self.reset_flag();
+            self.set_token(0, check(first)?);
+            let mut running = encode(start, 0);
+            running.commit();
+            for step in 1..=steps {
+                let following = (step < steps).then(|| encode(start + step, step % 2));
+                running.wait_until_completed();
+                self.gpu_seconds
+                    .set(self.gpu_seconds.get() + gpu_seconds(&running));
+                if running.status() != metal::MTLCommandBufferStatus::Completed {
+                    return Err(format!("Metal command failed: {:?}", running.status()));
+                }
+                done = step;
+                let result = self.step(k)?;
+                let Some(token) = next(&result)? else {
+                    return Ok(());
+                };
+                let Some(command) = following else {
+                    return Ok(());
+                };
+                self.set_token(step % 2, check(token)?);
+                self.reset_flag();
+                command.commit();
+                running = command;
+            }
+            Ok(())
+        })();
+        session.position = start + done;
+        outcome
+    }
+
+    fn reset_flag(&self) {
+        // SAFETY: the shared flag is idle between commands.
+        unsafe { *self.scratch.bad.contents().cast::<u32>() = 0 };
+    }
+
+    fn encode_top_k(&self, pass: &Pass<'_>, k: usize) {
+        if k == 0 || k > MAX_TOP_K {
+            return;
+        }
+        let s = &self.scratch;
+        let vocab = self.weights.vocab as u32;
+        let slices = self.weights.vocab.div_ceil(2048);
+        let (k32, count) = (k as u32, (slices * k) as u32);
+        pass.kernel("flint_topk_partial")
+            .buf(0, &s.logits, 0)
+            .buf(1, &s.cand_v, 0)
+            .buf(2, &s.cand_i, 0)
+            .buf(3, &s.bad, 0)
+            .val(4, &vocab)
+            .val(5, &k32)
+            .groups((slices, 1), 256);
+        pass.kernel("flint_topk_merge")
+            .buf(0, &s.cand_v, 0)
+            .buf(1, &s.cand_i, 0)
+            .buf(2, &s.top_v, 0)
+            .buf(3, &s.top_i, 0)
+            .val(4, &count)
+            .val(5, &k32)
+            .groups((1, 1), 256);
+    }
+
+    fn step(&self, k: usize) -> Result<Step, String> {
+        let s = &self.scratch;
+        // SAFETY: the command completed; these shared buffers hold the values read.
+        unsafe {
+            let greedy = *s.choice.contents().cast::<u32>();
+            if k == 0 || k > MAX_TOP_K {
+                return Ok(Step {
+                    greedy,
+                    ranked: Vec::new(),
+                });
+            }
+            if *s.bad.contents().cast::<u32>() != 0 {
+                return Err("the model produced non-finite logits".into());
+            }
+            let v = std::slice::from_raw_parts(s.top_v.contents().cast::<f32>(), k);
+            let i = std::slice::from_raw_parts(s.top_i.contents().cast::<u32>(), k);
+            Ok(Step {
+                greedy,
+                ranked: i.iter().zip(v).map(|(i, v)| (*i as usize, *v)).collect(),
+            })
+        }
     }
 
     /// Logits of the last decoded or prefilled token (BF16 values as FP32).
@@ -793,8 +957,13 @@ impl FlintMetal {
         });
     }
 
-    /// Prefill `tokens` in chunks; returns the greedy choice after the last one.
-    pub fn prefill(&self, session: &mut FlintSession, tokens: &[u32]) -> Result<u32, String> {
+    /// Prefill `tokens` in chunks; returns the next-token step after the last one.
+    pub fn prefill(
+        &self,
+        session: &mut FlintSession,
+        tokens: &[u32],
+        k: usize,
+    ) -> Result<Step, String> {
         if tokens.is_empty() {
             return Err("an empty prompt".into());
         }
@@ -802,9 +971,16 @@ impl FlintMetal {
         if tokens.iter().any(|t| *t as usize >= self.weights.vocab) {
             return Err("token outside the vocabulary".into());
         }
-        for chunk in tokens.chunks(MAX_CHUNK) {
+        self.reset_flag();
+        let chunks = tokens.chunks(MAX_CHUNK).count();
+        for (index, chunk) in tokens.chunks(MAX_CHUNK).enumerate() {
+            let rank = if index + 1 == chunks { k } else { 0 };
             if chunk.len() == 1 {
-                self.run(|pass| self.encode_decode(pass, session, chunk[0]))?;
+                self.set_token(0, chunk[0]);
+                self.run(|pass| {
+                    self.encode_decode(pass, session, session.position, 0);
+                    self.encode_top_k(pass, rank);
+                })?;
             } else {
                 // SAFETY: the shared buffer holds MAX_CHUNK u32 values and is idle.
                 unsafe {
@@ -814,12 +990,14 @@ impl FlintMetal {
                         chunk.len(),
                     );
                 }
-                self.run(|pass| self.encode_chunk(pass, session, chunk.len()))?;
+                self.run(|pass| {
+                    self.encode_chunk(pass, session, chunk.len());
+                    self.encode_top_k(pass, rank);
+                })?;
             }
             session.position += chunk.len();
         }
-        // SAFETY: the command completed; the shared buffer holds one u32.
-        Ok(unsafe { *self.scratch.choice.contents().cast::<u32>() })
+        self.step(k)
     }
 
     #[allow(clippy::too_many_arguments)]

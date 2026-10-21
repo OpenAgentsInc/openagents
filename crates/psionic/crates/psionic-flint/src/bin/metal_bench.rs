@@ -83,9 +83,9 @@ fn main() -> Result<()> {
             let mut logits = Vec::new();
             for (position, token) in request.token_ids.iter().enumerate() {
                 if position == 0 {
-                    model.prefill(&mut session, &[*token])?;
+                    model.prefill(&mut session, &[*token], 0)?;
                 } else {
-                    model.decode(&mut session, *token)?;
+                    model.decode(&mut session, *token, 0)?;
                 }
                 model.logits(&mut logits);
                 println!(
@@ -108,11 +108,11 @@ fn main() -> Result<()> {
             };
             let (mut chunked, mut stepped) = (Vec::new(), Vec::new());
             let mut session = model.session(context)?;
-            model.prefill(&mut session, &prompt)?;
+            model.prefill(&mut session, &prompt, 0)?;
             model.logits(&mut chunked);
             let mut session = model.session(context)?;
             for token in &prompt {
-                model.prefill(&mut session, &[*token])?;
+                model.prefill(&mut session, &[*token], 0)?;
             }
             model.logits(&mut stepped);
             let top = |v: &[f32]| {
@@ -150,10 +150,10 @@ fn main() -> Result<()> {
             let mut session = model.session(context)?;
             if request.stepped {
                 for token in &prompt {
-                    model.prefill(&mut session, &[*token])?;
+                    model.prefill(&mut session, &[*token], 0)?;
                 }
             } else {
-                model.prefill(&mut session, &prompt)?;
+                model.prefill(&mut session, &prompt, 0)?;
             }
             let mut logits = Vec::new();
             let mut rows = Vec::new();
@@ -169,7 +169,7 @@ fn main() -> Result<()> {
                     json!({"i": i, "top": top, "token": token, "logprob": logprob,
                     "reference": request.reference_logprobs.get(i)}),
                 );
-                model.decode(&mut session, *token)?;
+                model.decode(&mut session, *token, 0)?;
             }
             println!(
                 "{}",

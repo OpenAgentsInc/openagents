@@ -335,6 +335,58 @@ fn router_product_applies_sigmoid() {
 }
 
 #[test]
+fn top_k_ranks_with_lower_index_ties_and_flags_non_finite() {
+    let Some(gpu) = Gpu::new() else { return };
+    let mut rng = Rng(37);
+    let vocab = 150_144usize;
+    let mut logits: Vec<f32> = (0..vocab).map(|_| round(rng.unit() * 8.0)).collect();
+    for i in [77usize, 9_000, 149_999] {
+        logits[i] = 12.0; // a three-way tie at the top
+    }
+    let slices = vocab.div_ceil(2048);
+    let k = 20usize;
+    for poison in [false, true] {
+        let mut values = logits.clone();
+        if poison {
+            values[5_000] = f32::NAN;
+        }
+        let lb = gpu.f32s(&values);
+        let (cv, ci) = (gpu.zeros(slices * 32 * 4), gpu.zeros(slices * 32 * 4));
+        let (tv, ti, bad) = (gpu.zeros(32 * 4), gpu.zeros(32 * 4), gpu.zeros(16));
+        gpu.run(|p| {
+            p.kernel("flint_topk_partial")
+                .buf(0, &lb, 0)
+                .buf(1, &cv, 0)
+                .buf(2, &ci, 0)
+                .buf(3, &bad, 0)
+                .val(4, &(vocab as u32))
+                .val(5, &(k as u32))
+                .groups((slices, 1), 256);
+            p.kernel("flint_topk_merge")
+                .buf(0, &cv, 0)
+                .buf(1, &ci, 0)
+                .buf(2, &tv, 0)
+                .buf(3, &ti, 0)
+                .val(4, &((slices * k) as u32))
+                .val(5, &(k as u32))
+                .groups((1, 1), 256);
+        });
+        let flag: Vec<u32> = read(&bad, 1);
+        assert_eq!(flag[0] != 0, poison);
+        if poison {
+            continue;
+        }
+        let mut order: Vec<(usize, f32)> = logits.iter().copied().enumerate().collect();
+        order.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+        let ids: Vec<u32> = read(&ti, k);
+        let vals: Vec<f32> = read(&tv, k);
+        for r in 0..k {
+            assert_eq!((ids[r] as usize, vals[r]), order[r], "rank {r}");
+        }
+    }
+}
+
+#[test]
 fn embedding_dequantizes_int8_rows() {
     let Some(gpu) = Gpu::new() else { return };
     let mut rng = Rng(3);

@@ -188,3 +188,35 @@ fn released_tokenizer_matches_python_fixtures() -> Result<()> {
     }
     Ok(())
 }
+
+#[test]
+fn ranked_choice_matches_the_full_vocabulary_choice() {
+    use rand::{SeedableRng, rngs::StdRng};
+    let mut state = 0x9e37_79b9_7f4a_7c15u64;
+    let logits: Vec<f32> = (0..5000)
+        .map(|i| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            // Coarse values force ties, as BF16 logits do.
+            ((state >> 40) % 64) as f32 / 4.0 + if i % 997 == 0 { 20.0 } else { 0.0 }
+        })
+        .collect();
+    let mut ranked: Vec<(usize, f32)> = logits.iter().copied().enumerate().collect();
+    ranked.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    for (temperature, top_p, top_k) in [(1.0, 0.95, 20), (0.7, 1.0, 5), (0.0, 0.95, 20)] {
+        let sampling = Sampling {
+            temperature,
+            top_p,
+            top_k,
+            seed: 7,
+        };
+        let (mut a, mut b) = (StdRng::seed_from_u64(7), StdRng::seed_from_u64(7));
+        for _ in 0..200 {
+            assert_eq!(
+                sampling.choose(&logits, &mut a).unwrap(),
+                sampling.choose_ranked(&ranked[..top_k], &mut b).unwrap()
+            );
+        }
+    }
+}

@@ -667,6 +667,15 @@ impl Sampling {
         );
         let mut order: Vec<_> = logits.iter().copied().enumerate().collect();
         order.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+        self.choose_ranked(&order, rng)
+    }
+
+    /// The same choice from the leading candidates of the ranked vocabulary
+    /// (highest logit first, lower ID first on ties). `ranked` must hold at
+    /// least `top_k` entries, or the whole vocabulary.
+    pub fn choose_ranked(&self, ranked: &[(usize, f32)], rng: &mut StdRng) -> Result<u32> {
+        ensure!(!ranked.is_empty(), "invalid vocabulary logits");
+        let mut order = ranked.to_vec();
         if self.temperature == 0.0 {
             return Ok(order[0].0 as u32);
         }

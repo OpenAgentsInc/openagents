@@ -161,7 +161,6 @@ inline void route_top6(const device float* probs, threadgroup uint* ids, threadg
 // Decode: one token through one layer per few dispatches.
 
 struct DecodeParams {
-    uint token;
     uint position;
     uint cap;      // KV capacity of this layer (513 for sliding layers)
     uint rotary;   // 1 on sliding layers
@@ -549,6 +548,89 @@ kernel void flint_argmax(const device float* logits [[buffer(0)]],
         float top = simd_max(v);
         uint pick = simd_min(v == top ? i : 0xffffffffu);
         if (lane == 0) choice[0] = pick;
+    }
+}
+
+
+// Top-k over the vocabulary in two stages, k <= 32. Stage one: each
+// threadgroup ranks a 2048-entry slice by repeated argmax (highest logit,
+// lower index on ties) and flags non-finite logits.
+inline void argmax_tg(threadgroup float* v, threadgroup uint* ix, uint n, uint tid, uint lane, uint sg,
+                      threadgroup float* bv, threadgroup uint* bi, thread float& best, thread uint& index) {
+    best = -INFINITY; index = 0xffffffffu;
+    for (uint i = tid; i < n; i += 256) {
+        float x = v[i]; uint j = ix[i];
+        if (x > best || (x == best && j < index)) { best = x; index = j; }
+    }
+    float peak = simd_max(best);
+    uint first = simd_min(best == peak ? index : 0xffffffffu);
+    if (lane == 0) { bv[sg] = peak; bi[sg] = first; }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    float x = lane < 8 ? bv[lane] : -INFINITY;
+    uint j = lane < 8 ? bi[lane] : 0xffffffffu;
+    float top = simd_max(x);
+    index = simd_min(x == top ? j : 0xffffffffu);
+    best = top;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+}
+
+kernel void flint_topk_partial(const device float* logits [[buffer(0)]],
+                               device float* cand_v [[buffer(1)]],
+                               device uint* cand_i [[buffer(2)]],
+                               device atomic_uint* bad [[buffer(3)]],
+                               constant uint& vocab [[buffer(4)]],
+                               constant uint& k [[buffer(5)]],
+                               uint group [[threadgroup_position_in_grid]],
+                               uint tid [[thread_index_in_threadgroup]],
+                               uint lane [[thread_index_in_simdgroup]],
+                               uint sg [[simdgroup_index_in_threadgroup]]) {
+    threadgroup float v[2048];
+    threadgroup uint ix[2048];
+    threadgroup float bv[8];
+    threadgroup uint bi[8];
+    uint base = group * 2048;
+    bool finite = true;
+    for (uint i = tid; i < 2048; i += 256) {
+        uint j = base + i;
+        float x = j < vocab ? logits[j] : -INFINITY;
+        if (j < vocab && !isfinite(x)) finite = false;
+        v[i] = isfinite(x) ? x : -INFINITY;
+        ix[i] = j < vocab ? j : 0xffffffffu;
+    }
+    if (!finite) atomic_fetch_or_explicit(bad, 1u, memory_order_relaxed);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint r = 0; r < k; ++r) {
+        float best; uint index;
+        argmax_tg(v, ix, 2048, tid, lane, sg, bv, bi, best, index);
+        if (tid == 0) { cand_v[group * k + r] = best; cand_i[group * k + r] = index; }
+        if (index != 0xffffffffu && index >= base && index - base < 2048 && tid == (index - base) % 256)
+            v[index - base] = -INFINITY;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+}
+
+// Stage two: one threadgroup ranks every slice's candidates.
+kernel void flint_topk_merge(const device float* cand_v [[buffer(0)]],
+                             const device uint* cand_i [[buffer(1)]],
+                             device float* out_v [[buffer(2)]],
+                             device uint* out_i [[buffer(3)]],
+                             constant uint& count [[buffer(4)]],
+                             constant uint& k [[buffer(5)]],
+                             uint tid [[thread_index_in_threadgroup]],
+                             uint lane [[thread_index_in_simdgroup]],
+                             uint sg [[simdgroup_index_in_threadgroup]]) {
+    threadgroup float v[2560];
+    threadgroup uint ix[2560];
+    threadgroup float bv[8];
+    threadgroup uint bi[8];
+    for (uint i = tid; i < count; i += 256) { v[i] = cand_v[i]; ix[i] = cand_i[i]; }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint r = 0; r < k; ++r) {
+        float best; uint index;
+        argmax_tg(v, ix, count, tid, lane, sg, bv, bi, best, index);
+        if (tid == 0) { out_v[r] = best; out_i[r] = index; }
+        for (uint i = tid; i < count; i += 256) if (ix[i] == index) v[i] = -INFINITY;
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
 }
 

@@ -13,9 +13,10 @@ use std::{
     time::Instant,
 };
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use psionic_backend_metal::flint::{
     FlintLayer, FlintMetal, FlintMlp, FlintQuant, FlintSession, FlintTensor, FlintWeights,
+    MAX_TOP_K, Step,
 };
 use rand::{SeedableRng, rngs::StdRng};
 use serde::Deserialize;
@@ -25,6 +26,16 @@ use crate::{Config, Generation, STOP_IDS, Sampling, split_answer};
 
 pub const INT4_MODEL_ID: &str = "RecursiveSI/flint-int4";
 pub const INT4_REVISION: &str = "3b93f9053b530488405ae9fca51d4900d6ce21f0";
+/// MLX affine INT4 weights (INT8 embeddings), BF16 activations and KV, FP32 accumulation.
+pub const PROFILE: &str = "mlx_int4_metal_v1";
+
+/// SHA-256 of the pinned manifest, which binds every checkpoint file's digest.
+pub fn artifact_digest() -> String {
+    format!(
+        "sha256:{:x}",
+        Sha256::digest(include_bytes!("../testdata/mlx-int4-artifact.json"))
+    )
+}
 
 #[derive(Deserialize)]
 struct PinnedFile {
@@ -349,22 +360,43 @@ impl MetalModel {
             .map_err(|e| anyhow::anyhow!(e))
     }
 
-    /// Prefill a prompt; returns the greedy next token. Logits via [`Self::logits`].
-    pub fn prefill(&self, session: &mut FlintSession, tokens: &[u32]) -> Result<u32> {
+    /// Prefill a prompt; returns the next-token step with its top `k`
+    /// candidates ranked on the GPU. Logits via [`Self::logits`].
+    pub fn prefill(&self, session: &mut FlintSession, tokens: &[u32], k: usize) -> Result<Step> {
         self.engine
-            .prefill(session, tokens)
+            .prefill(session, tokens, k)
             .map_err(|e| anyhow::anyhow!(e))
     }
 
-    /// Run one token; returns the greedy next token.
-    pub fn decode(&self, session: &mut FlintSession, token: u32) -> Result<u32> {
+    /// Run one token; returns the next-token step.
+    pub fn decode(&self, session: &mut FlintSession, token: u32, k: usize) -> Result<Step> {
         self.engine
-            .decode(session, token)
+            .decode(session, token, k)
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+
+    /// Decode up to `steps` tokens, encoding each step while the previous runs.
+    /// `next` returns the following token, or `None` to stop.
+    pub fn decode_stream(
+        &self,
+        session: &mut FlintSession,
+        first: u32,
+        steps: usize,
+        k: usize,
+        next: impl FnMut(&Step) -> std::result::Result<Option<u32>, String>,
+    ) -> Result<()> {
+        self.engine
+            .decode_stream(session, first, steps, k, next)
             .map_err(|e| anyhow::anyhow!(e))
     }
 
     pub fn logits(&self, out: &mut Vec<f32>) {
         self.engine.logits(out)
+    }
+
+    /// GPU busy time since the last call.
+    pub fn take_gpu_seconds(&self) -> f64 {
+        self.engine.take_gpu_seconds()
     }
 }
 
@@ -375,6 +407,8 @@ pub struct Timing {
     pub decode_seconds: f64,
     pub decode_tokens_per_second: f64,
     pub prefill_tokens_per_second: f64,
+    /// GPU busy time during decode; the rest of `decode_seconds` is host work.
+    pub decode_gpu_seconds: f64,
 }
 
 /// Generate with the Metal path. Greedy when `temperature` is zero.
@@ -406,39 +440,63 @@ pub fn generate(
     let start = Instant::now();
     let mut session = model.session(capacity)?;
     let greedy = sampling.temperature == 0.0;
+    // Rank the top-k on the GPU when it fits; otherwise read every logit.
+    let k = if greedy || sampling.top_k > MAX_TOP_K {
+        0
+    } else {
+        sampling.top_k
+    };
     let mut rng = StdRng::seed_from_u64(sampling.seed);
     let mut logits = Vec::new();
-    let mut choose = |gpu_choice: u32, logits: &mut Vec<f32>| -> Result<u32> {
+    let mut choose = |step: Step, logits: &mut Vec<f32>| -> Result<u32> {
         if greedy {
-            return Ok(gpu_choice);
+            return Ok(step.greedy);
+        }
+        if k > 0 {
+            return sampling.choose_ranked(&step.ranked, &mut rng);
         }
         model.logits(logits);
         sampling.choose(logits, &mut rng)
     };
-    let mut token = choose(model.prefill(&mut session, prompt)?, &mut logits)?;
+    let token = choose(model.prefill(&mut session, prompt, k)?, &mut logits)?;
     let prefill_seconds = start.elapsed().as_secs_f64();
-    let mut first = None;
+    model.take_gpu_seconds();
+    // The first token is chosen once prefill ends.
+    let first = Some(prefill_seconds);
     let mut ids = Vec::new();
     let mut finish = "length";
-    for step in 0..max_tokens {
-        if first.is_none() {
-            first = Some(start.elapsed().as_secs_f64());
-        }
-        if STOP_IDS.contains(&token) {
-            finish = "stop";
-            break;
-        }
+    if STOP_IDS.contains(&token) {
+        finish = "stop";
+    } else {
         ids.push(token);
         on_token(token);
-        if step + 1 == max_tokens {
-            break;
+        // Each decode step reads the previous token and proposes the next.
+        let mut failure = None;
+        model.decode_stream(&mut session, token, max_tokens - 1, k, |step| {
+            if start.elapsed().as_secs_f64() >= deadline_seconds {
+                return Err("request timed out".into());
+            }
+            let next = match choose(step.clone(), &mut logits) {
+                Ok(next) => next,
+                Err(error) => {
+                    failure = Some(error);
+                    return Ok(None);
+                }
+            };
+            if STOP_IDS.contains(&next) {
+                finish = "stop";
+                return Ok(None);
+            }
+            ids.push(next);
+            on_token(next);
+            Ok((ids.len() < max_tokens).then_some(next))
+        })?;
+        if let Some(error) = failure {
+            return Err(error);
         }
-        if start.elapsed().as_secs_f64() >= deadline_seconds {
-            bail!("request timed out");
-        }
-        token = choose(model.decode(&mut session, token)?, &mut logits)?;
     }
     let elapsed = start.elapsed().as_secs_f64();
+    let decode_gpu_seconds = model.take_gpu_seconds();
     let first = first.unwrap_or(elapsed);
     let decode_seconds = elapsed - first;
     let text = tokenizer
@@ -453,6 +511,7 @@ pub fn generate(
             0.0
         },
         prefill_tokens_per_second: prompt.len() as f64 / prefill_seconds.max(1e-9),
+        decode_gpu_seconds,
     };
     Ok((
         Generation {
