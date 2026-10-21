@@ -501,6 +501,9 @@ pub struct V41StageConfig {
     pub token_map: Option<V41TokenMap>,
     /// Keep per-layer observations of each token for parity checks.
     pub observe: bool,
+    /// A negative control for G1 v2 (#12405): window layers rotate with the
+    /// compressed layers' frequencies and the reverse. Never set to serve.
+    pub swap_rope_tables: bool,
 }
 
 impl V41StageConfig {
@@ -1427,11 +1430,14 @@ impl V41Stage {
                 }
             }
         }
-        let rope_window =
+        let mut rope_window =
             loader.floats(&v41_rope_frequencies(V41RopeConfig::window(g.rope_dim))?)?;
-        let rope_compressed = loader.floats(&v41_rope_frequencies(V41RopeConfig::compressed(
-            g.rope_dim,
-        ))?)?;
+        let mut rope_compressed = loader.floats(&v41_rope_frequencies(
+            V41RopeConfig::compressed(g.rope_dim),
+        )?)?;
+        if config.swap_rope_tables {
+            std::mem::swap(&mut rope_window, &mut rope_compressed);
+        }
         let (engram_map, engram_params) = if engram_layers.is_empty() {
             (None, None)
         } else {

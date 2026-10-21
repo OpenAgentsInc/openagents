@@ -638,6 +638,7 @@ fn load_stage(
                 pad: map.get(2)?,
             }),
             observe,
+            swap_rope_tables: false,
         },
         store,
         tables,

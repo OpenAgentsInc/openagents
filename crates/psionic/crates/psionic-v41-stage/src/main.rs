@@ -10,6 +10,7 @@
 //!     [--backend cpu|cuda]
 //! psionic-v41-stage manifest --split 0-10,10-20,20-30,30-40
 //! psionic-v41-stage synthetic DIR [NAME]
+//! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR [...]
 //! ```
 
 use std::{io::Write, path::Path, process::ExitCode};
@@ -25,6 +26,7 @@ fn main() -> ExitCode {
         Some("reference") => run_reference(&args[1..]),
         Some("manifest") => run_manifest(&args[1..]),
         Some("synthetic") => run_synthetic(&args[1..]),
+        Some("qualify") => run_qualify(&args[1..]),
         _ => run_stage(&args),
     };
     match result {
@@ -44,6 +46,11 @@ fn run_stage(args: &[String]) -> Result<(), Refused> {
     #[cfg(feature = "cuda")]
     if options.backend == Backend::Cuda {
         return psionic_v41_stage::cuda::run_stage(&options, &manifest, &entry, selection.as_ref());
+    }
+    if options.observe || options.control.is_some() {
+        return Err(Refused(
+            "--observe and --control run only on the CUDA backend".into(),
+        ));
     }
     let model: &'static _ = Box::leak(Box::new(load_model_for(
         &options.weights,
@@ -144,4 +151,15 @@ fn run_synthetic(args: &[String]) -> Result<(), Refused> {
         args.get(1).map_or("synthetic", String::as_str),
     )
     .map_err(|e| Refused(format!("can't write {dir}: {e}")))
+}
+
+fn run_qualify(args: &[String]) -> Result<(), Refused> {
+    let options = psionic_v41_stage::qualify::QualifyOptions::parse(args)?;
+    let report = psionic_v41_stage::qualify::run(&options)?;
+    let _ = writeln!(
+        std::io::stdout(),
+        "{}",
+        serde_json::json!({"passed": report["passed"], "out": options.out.display().to_string()})
+    );
+    Ok(())
 }

@@ -769,6 +769,7 @@ fn main() -> Result<()> {
                 pad,
             }),
             observe: true,
+            swap_rope_tables: false,
         },
         &source,
         tables,

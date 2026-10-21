@@ -11,6 +11,7 @@ mod deepseek_r1;
 pub mod deepseek_v41;
 pub mod deepseek_v41_cpu;
 pub mod deepseek_v41_oracle;
+pub mod deepseek_v41_qualify;
 pub mod deepseek_v41_stage;
 pub mod deepseek_v41_stage_cpu;
 pub mod deepseek_v41_weights;

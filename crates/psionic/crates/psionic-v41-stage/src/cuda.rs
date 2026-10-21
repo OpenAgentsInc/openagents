@@ -50,8 +50,8 @@ use serde_json::Value;
 use tokenizers::Tokenizer;
 
 use crate::{
-    Backend, Options, ReferenceAnswer, Refused, SYNTHETIC_FILE, Sampling, StageBackend, TextStream,
-    Vocabulary, Weights, check_weights, load_model_for, serve,
+    Backend, Control, Options, ReferenceAnswer, Refused, SYNTHETIC_FILE, Sampling, StageBackend,
+    TextStream, Vocabulary, Weights, check_weights, load_model_for, serve,
 };
 
 /// The longest Engram n-gram; the history carries one fewer token.
@@ -102,6 +102,15 @@ pub struct V41CudaStageExecutor {
     next: Option<StageContract>,
     sampling: Cell<V41Sampling>,
     sampled: Cell<Option<u32>>,
+    /// Qualification: step with per-layer observations.
+    observe: bool,
+    /// Qualification: the stale-cache negative control continues each new
+    /// request after the previous one's positions.
+    stale_cache: bool,
+    /// The end position of the previous request, and the current request's
+    /// offset, for the stale-cache control.
+    reached: usize,
+    offset: usize,
 }
 
 impl V41CudaStageExecutor {
@@ -109,6 +118,7 @@ impl V41CudaStageExecutor {
     #[must_use]
     pub fn new(backend: CudaBackend, stage: V41Stage, index: u16) -> Self {
         let geometry = wire_geometry(&stage.config().shape);
+        let observe = stage_observes(&stage);
         let layers = stage.config().layers.start as u32..stage.config().layers.end as u32;
         let next = (!stage.config().samples())
             .then(|| stage_contract(&geometry, index + 1, layers.end..layers.end + 1));
@@ -121,7 +131,18 @@ impl V41CudaStageExecutor {
             next,
             sampling: Cell::new(V41Sampling::greedy()),
             sampled: Cell::new(None),
+            observe,
+            stale_cache: false,
+            reached: 0,
+            offset: 0,
         }
+    }
+
+    /// Turns on the stale-cache negative control (#12405).
+    #[must_use]
+    pub fn with_stale_cache(mut self) -> Self {
+        self.stale_cache = true;
+        self
     }
 
     /// This stage's inbound contract.
@@ -294,8 +315,16 @@ impl StageExecutor for V41CudaStageExecutor {
                 | SectionKind::Logits => {}
             }
         }
-        let position =
+        let mut position =
             usize::try_from(message.position).map_err(|_| fail("position out of range"))?;
+        if self.stale_cache {
+            // The deliberate defect: a new request keeps the last one's cache.
+            if position == 0 {
+                self.offset = self.reached;
+            }
+            position += self.offset;
+            self.reached = position + message.tokens.len();
+        }
         let input = V41StepInput {
             position,
             tokens: &message.tokens,
@@ -308,7 +337,7 @@ impl StageExecutor for V41CudaStageExecutor {
         };
         let out = self
             .stage
-            .step(&self.backend, &input, false)
+            .step(&self.backend, &input, self.observe)
             .map_err(|e| fail(format!("the CUDA stage failed: {e}")))?;
         if self.next.is_none() {
             let token = out
@@ -337,6 +366,61 @@ impl StageBackend for V41CudaStageExecutor {
 
     fn sampled(&self) -> Option<u32> {
         self.sampled.get()
+    }
+
+    fn logits(&self) -> Option<Vec<f32>> {
+        self.next
+            .is_none()
+            .then(|| self.stage.logits().ok())
+            .flatten()
+    }
+
+    fn observations(&self, tokens: usize) -> Option<Vec<(String, Vec<u32>)>> {
+        if !self.observe {
+            return None;
+        }
+        let observed = self.stage.observations(tokens).ok()?;
+        Some(
+            observed
+                .into_iter()
+                .flat_map(|(layer, sites)| {
+                    sites
+                        .into_iter()
+                        .map(move |(site, words)| (format!("L{layer}.{site:?}"), words))
+                })
+                .collect(),
+        )
+    }
+}
+
+fn stage_observes(stage: &V41Stage) -> bool {
+    stage.config().observe
+}
+
+/// A tensor source with one of the G1 v2 negative controls' weight defects
+/// (#12405): layer 3's query projection read from layer 4, or layer 3's
+/// router bias rotated by one expert.
+struct Controlled<'a> {
+    inner: &'a dyn V41TensorSource,
+    control: Option<Control>,
+}
+
+impl V41TensorSource for Controlled<'_> {
+    fn tensor(&self, name: &str) -> Result<V41HostTensor, RuntimeError> {
+        match self.control {
+            Some(Control::WrongWeights)
+                if name == "layers.3.attn.wq_b.weight" || name == "layers.3.attn.wq_b.scale" =>
+            {
+                self.inner.tensor(&name.replace("layers.3.", "layers.4."))
+            }
+            Some(Control::WrongRouting) if name == "layers.3.ffn.gate.bias" => {
+                let mut tensor = self.inner.tensor(name)?;
+                let width = tensor.bytes.len() / tensor.shape.iter().product::<usize>().max(1);
+                tensor.bytes.rotate_left(width);
+                Ok(tensor)
+            }
+            _ => self.inner.tensor(name),
+        }
     }
 }
 
@@ -497,6 +581,23 @@ impl CudaModel {
         layers: Range<usize>,
         max_context: usize,
     ) -> Result<V41Stage, Refused> {
+        self.stage_for(backend, layers, max_context, false, None)
+    }
+
+    /// Loads `layers` for qualification (#12405): with per-layer
+    /// observations, or with a negative control's defect.
+    ///
+    /// # Errors
+    ///
+    /// Refuses missing tensors and device failures.
+    pub fn stage_for(
+        &self,
+        backend: &mut CudaBackend,
+        layers: Range<usize>,
+        max_context: usize,
+        observe: bool,
+        control: Option<Control>,
+    ) -> Result<V41Stage, Refused> {
         let bad = |e: RuntimeError| Refused(format!("layers {layers:?} can't load: {e}"));
         match &self.kind {
             CudaWeights::Synthetic(store) => {
@@ -510,9 +611,13 @@ impl CudaModel {
                         max_step_tokens: max_context,
                         engram: engram_hashes(&synthetic::layout()),
                         token_map: Some(token_map(&synthetic::token_map()?, self.pad)?),
-                        observe: false,
+                        observe,
+                        swap_rope_tables: control == Some(Control::WrongRope),
                     },
-                    store.as_ref(),
+                    &Controlled {
+                        inner: store.as_ref(),
+                        control,
+                    },
                     tables,
                 )
                 .map_err(bad)
@@ -532,9 +637,13 @@ impl CudaModel {
                         max_step_tokens: max_context,
                         engram: engram_hashes(&layout),
                         token_map: Some(token_map(map, self.pad)?),
-                        observe: false,
+                        observe,
+                        swap_rope_tables: control == Some(Control::WrongRope),
                     },
-                    &CheckpointSource(checkpoint),
+                    &Controlled {
+                        inner: &CheckpointSource(checkpoint),
+                        control,
+                    },
                     tables,
                 )
                 .map_err(bad)
@@ -555,13 +664,36 @@ pub fn cuda_worker(
     max_context: usize,
     generation: u64,
 ) -> Result<StageWorker<V41CudaStageExecutor>, Refused> {
+    cuda_worker_for(model, manifest, entry, max_context, generation, false, None)
+}
+
+/// [`cuda_worker`] for qualification (#12405): observations and a negative
+/// control.
+///
+/// # Errors
+///
+/// Refuses a missing device and weights the layers can't load from.
+pub fn cuda_worker_for(
+    model: &CudaModel,
+    manifest: &V41GroupManifest,
+    entry: &V41StageEntry,
+    max_context: usize,
+    generation: u64,
+    observe: bool,
+    control: Option<Control>,
+) -> Result<StageWorker<V41CudaStageExecutor>, Refused> {
     let mut backend = cuda_backend()?;
-    let stage = model.stage(
+    let stage = model.stage_for(
         &mut backend,
         entry.first_layer as usize..entry.end_layer as usize,
         max_context,
+        observe,
+        control,
     )?;
-    let executor = V41CudaStageExecutor::new(backend, stage, entry.stage);
+    let mut executor = V41CudaStageExecutor::new(backend, stage, entry.stage);
+    if control == Some(Control::StaleCache) {
+        executor = executor.with_stale_cache();
+    }
     let inbox = StageInbox::new(
         manifest.digest(),
         generation,
@@ -590,12 +722,19 @@ pub fn run_stage(
     let model: &'static CudaModel =
         Box::leak(Box::new(CudaModel::load(&options.weights, selection)?));
     check_weights(manifest, &model.digest)?;
-    let worker = cuda_worker(
+    if (options.observe || options.control.is_some()) && options.record.is_none() {
+        return Err(Refused(
+            "--observe and --control are qualification options and need --record".into(),
+        ));
+    }
+    let worker = cuda_worker_for(
         model,
         manifest,
         entry,
         options.max_context,
         options.generation,
+        options.observe,
+        options.control,
     )?;
     let stage = serve::Stage {
         name: options.stage.clone(),
@@ -612,6 +751,7 @@ pub fn run_stage(
         data_advertise: options.data_advertise.clone(),
         runtime: Backend::Cuda.runtime(),
         events: options.events.clone(),
+        record: options.record.clone(),
     };
     serve::serve(stage, worker, options.generation)
 }

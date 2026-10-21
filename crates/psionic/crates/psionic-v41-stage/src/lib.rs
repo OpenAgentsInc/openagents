@@ -34,6 +34,7 @@
 
 #[cfg(feature = "cuda")]
 pub mod cuda;
+pub mod qualify;
 pub mod serve;
 
 use std::{
@@ -162,6 +163,18 @@ pub trait StageBackend: StageExecutor {
     fn sampled(&self) -> Option<u32> {
         None
     }
+
+    /// The last stage's full-vocabulary logits of the last step's last
+    /// token, when the backend keeps them on its device.
+    fn logits(&self) -> Option<Vec<f32>> {
+        None
+    }
+
+    /// Per-layer observations of the last step's tokens (G1 v2 routing
+    /// checks), as named 32-bit words, when the stage was loaded to keep them.
+    fn observations(&self, _tokens: usize) -> Option<Vec<(String, Vec<u32>)>> {
+        None
+    }
 }
 
 impl StageBackend for V41CpuStageExecutor<'_> {}
@@ -191,6 +204,57 @@ pub struct Options {
     pub data_listen: Option<String>,
     /// The link address to announce, such as the machine's internal name.
     pub data_advertise: Option<String>,
+    /// Qualification (#12405): where each step's logits and observations
+    /// are written. Serving never sets it.
+    pub record: Option<PathBuf>,
+    /// Qualification: keep per-layer observations of every token.
+    pub observe: bool,
+    /// Qualification: a deliberate defect the harness must detect.
+    pub control: Option<Control>,
+}
+
+/// A deliberate defect for the G1 v2 harness's negative controls (#12405).
+/// Each must fail the frozen policy; none is reachable without `--control`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Control {
+    /// One layer's attention query projection reads the next layer's.
+    WrongWeights,
+    /// One layer's router bias is rotated by one expert.
+    WrongRouting,
+    /// Window layers use the compressed layers' RoPE frequencies.
+    WrongRope,
+    /// A request continues on the previous request's cache.
+    StaleCache,
+}
+
+impl Control {
+    /// Parses `--control`.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an unknown control.
+    pub fn parse(value: &str) -> Result<Self, Refused> {
+        match value {
+            "wrong-weights" => Ok(Self::WrongWeights),
+            "wrong-routing" => Ok(Self::WrongRouting),
+            "wrong-rope" => Ok(Self::WrongRope),
+            "stale-cache" => Ok(Self::StaleCache),
+            other => refuse(format!(
+                "--control {other} is not wrong-weights, wrong-routing, wrong-rope, or stale-cache"
+            )),
+        }
+    }
+
+    /// The name `--control` takes.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::WrongWeights => "wrong-weights",
+            Self::WrongRouting => "wrong-routing",
+            Self::WrongRope => "wrong-rope",
+            Self::StaleCache => "stale-cache",
+        }
+    }
 }
 
 /// Parses `A-B`, end exclusive, as Pylon writes a layer range.
@@ -234,16 +298,18 @@ impl Options {
     /// Names the missing or invalid argument.
     pub fn parse(args: &[String]) -> Result<Self, Refused> {
         let mut values: BTreeMap<&str, String> = BTreeMap::new();
-        let (mut embeddings, mut head) = (false, false);
+        let (mut embeddings, mut head, mut observe) = (false, false, false);
         let mut i = 0;
         while i < args.len() {
             let flag = args[i].as_str();
             match flag {
                 "--embeddings" => embeddings = true,
                 "--head" => head = true,
+                "--observe" => observe = true,
                 "--weights" | "--layers" | "--gpu" | "--manifest" | "--stage" | "--generation"
                 | "--front" | "--token" | "--backend" | "--arithmetic" | "--max-context"
-                | "--listen" | "--events" | "--data-listen" | "--data-advertise" => {
+                | "--listen" | "--events" | "--data-listen" | "--data-advertise" | "--record"
+                | "--control" => {
                     let Some(value) = args.get(i + 1) else {
                         return refuse(format!("{flag} needs a value"));
                     };
@@ -308,6 +374,12 @@ impl Options {
             events: values.remove("--events").map(PathBuf::from),
             data_listen: values.remove("--data-listen"),
             data_advertise: values.remove("--data-advertise"),
+            record: values.remove("--record").map(PathBuf::from),
+            observe,
+            control: values
+                .remove("--control")
+                .map(|v| Control::parse(&v))
+                .transpose()?,
         })
     }
 }
@@ -706,6 +778,7 @@ pub fn stage_info<'a>(
         data_advertise: options.data_advertise.clone(),
         runtime: backend.runtime(),
         events: options.events.clone(),
+        record: options.record.clone(),
     }
 }
 

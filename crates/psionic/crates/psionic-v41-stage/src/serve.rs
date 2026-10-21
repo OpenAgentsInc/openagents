@@ -83,6 +83,9 @@ pub struct Stage<'a> {
     pub runtime: &'static str,
     /// Where to record what the stage does.
     pub events: Option<PathBuf>,
+    /// Qualification (#12405): where each step's logits (last stage) and
+    /// observations are written; the ack names the files.
+    pub record: Option<PathBuf>,
 }
 
 enum Event {
@@ -188,6 +191,8 @@ struct Step {
     stage: u16,
     step: u64,
     prompt: Option<Value>,
+    /// Qualification: the prompt's token IDs, instead of messages.
+    prompt_ids: Option<Vec<u32>>,
     token: Option<u32>,
     sampling: Option<Sampling>,
     next: Option<String>,
@@ -204,6 +209,15 @@ impl Step {
             stage: u16::try_from(message["stage"].as_u64()?).ok()?,
             step: message["step"].as_u64()?,
             prompt: message.get("prompt").cloned(),
+            prompt_ids: match message.get("prompt_ids") {
+                None => None,
+                Some(ids) => Some(
+                    ids.as_array()?
+                        .iter()
+                        .map(|t| t.as_u64().and_then(|t| u32::try_from(t).ok()))
+                        .collect::<Option<Vec<u32>>>()?,
+                ),
+            },
             token: message["token"]
                 .as_u64()
                 .and_then(|t| u32::try_from(t).ok()),
@@ -745,10 +759,21 @@ where
 
     fn first_message(&self, step: &Step) -> Result<StageMessage, Refused> {
         let (tokens, position) = if step.step == 0 {
-            let tokens = self
-                .stage
-                .vocabulary
-                .encode(step.prompt.as_ref(), self.stage.default_token)?;
+            let tokens = match &step.prompt_ids {
+                Some(_) if self.stage.record.is_none() => {
+                    return Err(Refused(
+                        "prompt token IDs are taken only by a recording stage".into(),
+                    ));
+                }
+                Some(ids) if ids.is_empty() => {
+                    return Err(Refused("the prompt has no token IDs".into()));
+                }
+                Some(ids) => ids.clone(),
+                None => self
+                    .stage
+                    .vocabulary
+                    .encode(step.prompt.as_ref(), self.stage.default_token)?,
+            };
             (tokens, 0)
         } else {
             let Some(token) = step.token else {
@@ -836,6 +861,17 @@ where
             "attempt": step.attempt,
             "step": step.step,
         });
+        if self.stage.record.is_some() {
+            match self.record(step, &message, &sections) {
+                Ok(files) => ack["records"] = json!(files),
+                Err(error) => {
+                    return self.refused(
+                        format!("can't record the step: {error}"),
+                        json!({"request": step.request, "step": step.step}),
+                    );
+                }
+            }
+        }
         if self.last() {
             let token = if let Some(token) = self.worker.executor().sampled() {
                 // The backend sampled on its device with the step's settings.
@@ -912,6 +948,51 @@ where
             }
         }
         self.writer.send(&ack);
+    }
+
+    /// Qualification (#12405): writes the last stage's logits and every
+    /// stage's observations of this step as little-endian files in the
+    /// record folder, and returns their names.
+    fn record(
+        &self,
+        step: &Step,
+        message: &StageMessage,
+        sections: &[psionic_models::stage_state::Section],
+    ) -> std::io::Result<Vec<String>> {
+        let Some(dir) = &self.stage.record else {
+            return Ok(Vec::new());
+        };
+        let stem = format!("{}-{}-{}", step.request, step.attempt, step.step);
+        let mut files = Vec::new();
+        let mut write = |name: String, bytes: Vec<u8>| -> std::io::Result<()> {
+            std::fs::write(dir.join(&name), bytes)?;
+            files.push(name);
+            Ok(())
+        };
+        if self.last() {
+            let logits = self.worker.executor().logits().or_else(|| {
+                sections
+                    .iter()
+                    .find(|s| s.kind == SectionKind::Logits)
+                    .and_then(|s| s.to_f32().ok())
+            });
+            let Some(logits) = logits else {
+                return Err(std::io::Error::other("the last stage kept no logits"));
+            };
+            write(
+                format!("{stem}.logits.f32"),
+                logits.iter().flat_map(|x| x.to_le_bytes()).collect(),
+            )?;
+        }
+        if let Some(observed) = self.worker.executor().observations(message.tokens.len()) {
+            for (site, words) in observed {
+                write(
+                    format!("{stem}.stage{}.{site}.u32", self.stage.index),
+                    words.iter().flat_map(|w| w.to_le_bytes()).collect(),
+                )?;
+            }
+        }
+        Ok(files)
     }
 
     // -----------------------------------------------------------------------
@@ -1135,6 +1216,7 @@ where
             stage: self.stage.index,
             step: frame.step,
             prompt: None,
+            prompt_ids: None,
             token: None,
             sampling: meta
                 .get("sampling")
