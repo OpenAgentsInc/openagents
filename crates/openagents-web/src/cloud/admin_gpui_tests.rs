@@ -48,8 +48,11 @@ async fn api(
 
 #[tokio::test]
 async fn admin_pages_authorize_before_redirect_and_cookie_api_checks_every_action() {
-    let root = tempfile::tempdir().unwrap();
-    let build = root.path().join("gpui");
+    let dir = tempfile::tempdir().unwrap();
+    // The connections store refuses a root reached through a symlink, and
+    // macOS's temporary directory is under /var, a link to /private/var.
+    let root = dir.path().canonicalize().unwrap();
+    let build = root.join("gpui");
     std::fs::create_dir(&build).unwrap();
     for name in [
         "openagents_web_chat.js",
@@ -60,7 +63,7 @@ async fn admin_pages_authorize_before_redirect_and_cookie_api_checks_every_actio
     }
     let access = Arc::new(
         crate::cloud::connections::Store::open(
-            &root.path().join("connections"),
+            &root.join("connections"),
             oa_seal::Keyring::scratch("test").unwrap().0,
         )
         .unwrap(),

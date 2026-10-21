@@ -3063,13 +3063,13 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/oauth/authorize",
         "/oauth/token",
         "/oauth/register",
+        "/logout",
     ] {
         assert!(upstream::owned(path), "{path}");
     }
     for path in [
         "/v1/token",
         "/api/v1/chat",
-        "/logout",
         "/stripe/webhook",
         "/mcp",
         "/releases/coder-latest.tar.gz",
