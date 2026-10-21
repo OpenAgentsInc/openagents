@@ -515,7 +515,7 @@ impl Group {
     }
 
     /// Sends one step to every stage and waits for every stage's ack;
-    /// returns the last stage's.
+    /// returns the last stage's, with every stage's recorded files.
     fn step(
         &mut self,
         request: &str,
@@ -550,6 +550,7 @@ impl Group {
                 .map_err(|e| refused(format!("stage {i}: {e}")))?;
         }
         let mut acked = BTreeSet::new();
+        let mut records = Vec::new();
         let mut last = Value::Null;
         let deadline = Instant::now() + self.timeout;
         while acked.len() < stages {
@@ -561,6 +562,7 @@ impl Group {
                         && v["step"].as_u64() == Some(step)
                     {
                         acked.insert(i);
+                        records.extend(record_files(&v));
                         if i + 1 == stages {
                             last = v;
                         }
@@ -580,6 +582,8 @@ impl Group {
                 }
             }
         }
+        // Every stage's files: the last stage's logits, every stage's observations.
+        last["records"] = json!(records);
         Ok(last)
     }
 }
