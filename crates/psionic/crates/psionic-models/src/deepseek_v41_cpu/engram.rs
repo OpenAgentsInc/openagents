@@ -3,7 +3,7 @@
 //! Table rows and projections stay float32 in this reference. The official
 //! BF16 lookup/projection boundaries still need full-checkpoint qualification.
 
-use super::{CpuError, MatrixRows, finite, matvec, positive, product, shape, sigmoid};
+use super::{CpuError, MatrixRows, finite, positive, product, shape, sigmoid};
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
@@ -408,15 +408,15 @@ impl EngramGate {
             let key = &keys[start..start + self.width];
             let xvar = x.iter().map(|v| v * v).sum::<f32>() / self.width as f32;
             let kvar = key.iter().map(|v| v * v).sum::<f32>() / self.width as f32;
+            let rstd = (xvar + self.epsilon).sqrt().recip() * (kvar + self.epsilon).sqrt().recip();
             let dot = x
                 .iter()
                 .zip(key)
                 .enumerate()
                 .map(|(d, (x, k))| x * (q_weight[start + d] * k_weight[start + d]) * k)
                 .sum::<f32>()
-                * (xvar + self.epsilon).sqrt().recip()
-                * (kvar + self.epsilon).sqrt().recip()
-                * (self.width as f32).sqrt().recip();
+                * rstd
+                * (self.width as f64).powf(-0.5) as f32;
             if !xvar.is_finite() || !kvar.is_finite() || !dot.is_finite() {
                 return Err(CpuError::NonFinite("Engram normalized dot product"));
             }
@@ -441,6 +441,30 @@ impl EngramGate {
         k_weight: &[f32],
         enabled: bool,
     ) -> Result<Vec<f32>, CpuError> {
+        self.lookup_and_apply_with_arithmetic(
+            residual,
+            hash_ids,
+            table,
+            projection,
+            q_weight,
+            k_weight,
+            enabled,
+            super::quantization::Arithmetic::Float32,
+        )
+    }
+
+    pub fn lookup_and_apply_with_arithmetic(
+        &self,
+        residual: &[f32],
+        hash_ids: &[u64],
+        table: &dyn MatrixRows,
+        projection: &dyn MatrixRows,
+        q_weight: &[f32],
+        k_weight: &[f32],
+        enabled: bool,
+        arithmetic: super::quantization::Arithmetic,
+    ) -> Result<Vec<f32>, CpuError> {
+        use super::quantization::{self, Arithmetic};
         let count = self.validate(residual)?;
         shape("Engram query weight", q_weight, count)?;
         shape("Engram key weight", k_weight, count)?;
@@ -462,17 +486,26 @@ impl EngramGate {
         for id in hash_ids {
             let row = table.row(*id as usize)?;
             shape("Engram table row", &row, width)?;
-            embedding.extend(row);
+            embedding.extend(if arithmetic == Arithmetic::ReferenceBf16 {
+                quantization::round_bf16(&row)?
+            } else {
+                row
+            });
         }
-        let projected = matvec(projection, &embedding)?;
-        self.apply(
+        let projected = quantization::linear(projection, &embedding, arithmetic)?;
+        let output = self.apply(
             residual,
             &projected[..count],
             &projected[count..],
             q_weight,
             k_weight,
             true,
-        )
+        )?;
+        if arithmetic == Arithmetic::ReferenceBf16 {
+            quantization::round_bf16(&output)
+        } else {
+            Ok(output)
+        }
     }
 }
 
@@ -694,6 +727,49 @@ mod tests {
             gate.apply(&[f32::NAN], &[0.0], &[1.0], &[1.0], &[1.0], true)
                 .is_err()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn bf16_lookup_projection_and_residual_boundaries_are_connected() -> Result<(), CpuError> {
+        use super::super::quantization::{Arithmetic, MatrixPrecision, round_bf16};
+        struct Matrix {
+            projection: bool,
+        }
+        impl MatrixRows for Matrix {
+            fn dimensions(&self) -> (usize, usize) {
+                if self.projection { (160, 96) } else { (64, 4) }
+            }
+            fn precision(&self) -> MatrixPrecision {
+                MatrixPrecision::Fp8
+            }
+            fn row(&self, _: usize) -> Result<Vec<f32>, CpuError> {
+                Ok(if self.projection {
+                    vec![0.03125; 96]
+                } else {
+                    vec![0.125, 0.25, 0.5, 1.0]
+                })
+            }
+        }
+        let gate = EngramGate {
+            streams: 4,
+            width: 32,
+            epsilon: 1e-20,
+        };
+        let residual: Vec<_> = (0..4).flat_map(|h| vec![(h + 1) as f32; 32]).collect();
+        let output = gate.lookup_and_apply_with_arithmetic(
+            &residual,
+            &[0; 24],
+            &Matrix { projection: false },
+            &Matrix { projection: true },
+            &[1.0; 128],
+            &[1.0; 128],
+            true,
+            Arithmetic::ReferenceBf16,
+        )?;
+        let g = super::sigmoid((32_f64.powf(0.25)) as f32);
+        let expected = round_bf16(&residual.iter().map(|x| x + g * 1.40625).collect::<Vec<_>>())?;
+        assert_eq!(output, expected);
         Ok(())
     }
 }

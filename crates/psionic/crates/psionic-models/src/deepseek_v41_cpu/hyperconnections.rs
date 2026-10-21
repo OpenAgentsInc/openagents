@@ -12,6 +12,9 @@ pub struct HyperConnections {
 }
 
 impl HyperConnections {
+    pub fn validate(&self) -> Result<(), CpuError> {
+        self.dimensions().map(|_| ())
+    }
     pub fn flash() -> Self {
         Self {
             streams: 4,

@@ -820,3 +820,25 @@ transformer. The next CPU integration must compose Engram, hyper-connections,
 attention norms, MoE, final logits, and generation with consistent numerical
 boundaries, then compare original-weight activations and complete answers with
 #12371. Native V4.1 CUDA, stage transport, and Pylon recovery remain separate.
+
+## Full CPU transformer implementation phase (2026-10-20)
+
+The owner requested full text-transformer composition and greedy decoding as
+independent implementation work. The next children of #12369 are:
+
+| Issue | Scope | Local implementation |
+| --- | --- | --- |
+| [#12385](https://github.com/OpenAgentsInc/openagents/issues/12385) | Complete text-block wiring | Named mHC projections and pre-mix propagation, collapse/norm/expand, routed/shared experts, and Engram lookup/gating with explicit arithmetic modes. Independent nonuniform block fixtures check intermediate residuals, attention input/mixes, router choices/weights, and output. |
+| [#12386](https://github.com/OpenAgentsInc/openagents/issues/12386) | Full 40-layer CPU transformer | Filed; follows #12385. |
+| [#12387](https://github.com/OpenAgentsInc/openagents/issues/12387) | Greedy decoding and pinned checkpoint runner | Filed; follows #12386. |
+
+The [transformer fixture generator](../../scripts/dev/deepseek-v41-transformer-fixtures.py)
+uses independent NumPy equations from the pinned public reference. Block
+intermediates use `5e-6` absolute tolerance. Reference arithmetic rounds Engram
+rows, projection output, and residual output to BF16; mHC coefficients and the
+router projection remain float32. Experts use FP8 activations with their stored
+FP4/FP8 matrices, and route weighting precedes the down-projection boundary.
+All 48 accumulated CPU tests pass, including a connected BF16 Engram check.
+Only selected experts and requested Engram rows are read. The local fixtures
+qualify composition; the original checkpoint and device comparisons remain
+with #12371's oracle and the after-close checks.

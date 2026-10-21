@@ -534,6 +534,15 @@ The status lines below summarize each issue and its comments. Open the issue for
   oracle. Pin device conversion/tie rules and reduction tolerances. Local
   equation/state tests do not qualify a full CPU decoder or V4.1 CUDA serving.
 
+- #12385–#12387: on the original pinned V4.1 checkpoint, compare the complete
+  CPU transformer's selected block residuals, router/hash choices, full logits,
+  greedy token IDs, and complete final answers with #12371's teacher-forced
+  oracle. Check prefill/chunk/replay and reset behavior at numerical boundaries,
+  retain hashes and timings, and report any divergence. Tiny synthetic models
+  qualify composition only; they do not qualify original-weight CPU or CUDA
+  serving. The checkpoint runner's full-hash option must pass before treating
+  its output as original-weight qualification evidence.
+
 - #12373: on the #12371 oracle VM with the V4.1-Flash weights, from
   `crates/psionic`, run `cargo run --release -p psionic-models --example
   deepseek_v41_weights_check -- CHECKPOINT_DIR --verify-sha256 --oracle

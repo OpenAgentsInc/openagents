@@ -197,3 +197,9 @@ KV/indexer state. This chat implements them serially, with targeted tests and
 one push/closure before the next claim. See the
 [integration status](../psionic/deepseek-v41-native.md#independent-cpu-integration-phase-2026-10-20).
 The existing #12371 oracle claim remains separate.
+
+Full CPU composition and generation are filed as #12385–#12387: text-block
+numerical wiring, complete 40-layer text-transformer execution, and bounded
+greedy decoding with a pinned checkpoint runner. They are implemented serially
+without taking #12371's oracle claim. See the
+[CPU transformer status](../psionic/deepseek-v41-native.md#full-cpu-transformer-implementation-phase-2026-10-20).

@@ -9,6 +9,7 @@
 //! checkpoint in memory.
 
 pub mod attention;
+pub mod block;
 pub mod engram;
 pub mod hyperconnections;
 pub mod moe;
