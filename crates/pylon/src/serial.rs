@@ -309,9 +309,57 @@ impl Engine for SerialEngine {
     }
 }
 
+/// The consecutive-failure budget shared by managed workers and stage groups.
+///
+/// A completed request resets it; readiness alone does not. Each failure
+/// waits twice as long as the last, up to the cap, and the budget is spent
+/// once failures exceed `max`.
+pub(crate) struct RestartBudget {
+    max: u32,
+    failures: u32,
+    base: Duration,
+    delay: Duration,
+    cap: Duration,
+}
+
+impl RestartBudget {
+    pub(crate) fn new(max: u32, base: Duration, cap: Duration) -> Self {
+        Self {
+            max,
+            failures: 0,
+            base,
+            delay: base,
+            cap,
+        }
+    }
+
+    /// A request completed, so the worker works again.
+    pub(crate) fn succeeded(&mut self) {
+        self.failures = 0;
+        self.delay = self.base;
+    }
+
+    /// Count one failure. Returns the wait before the next restart, or
+    /// `None` when the budget is spent.
+    pub(crate) fn failed(&mut self) -> Option<Duration> {
+        self.failures += 1;
+        if self.failures > self.max {
+            return None;
+        }
+        let wait = self.delay;
+        self.delay = (self.delay * 2).min(self.cap);
+        Some(wait)
+    }
+
+    pub(crate) fn failures(&self) -> u32 {
+        self.failures
+    }
+}
+
+/// A child process that leads a process group this supervisor created.
 #[cfg(unix)]
-struct OwnedChild {
-    child: tokio::process::Child,
+pub(crate) struct OwnedChild {
+    pub(crate) child: tokio::process::Child,
     group: i32,
 }
 
@@ -328,7 +376,29 @@ impl Drop for OwnedChild {
 
 #[cfg(unix)]
 impl OwnedChild {
-    async fn stop(&mut self, limit: Duration) -> Result<(), String> {
+    /// Start `command` as the leader of a new process group.
+    pub(crate) fn spawn(mut command: tokio::process::Command) -> Result<Self, String> {
+        use std::os::unix::process::CommandExt;
+        command.as_std_mut().process_group(0);
+        let child = command
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| format!("model worker did not start: {e}"))?;
+        let pid = child
+            .id()
+            .ok_or("model worker exited before it could be owned")?;
+        Ok(Self {
+            child,
+            group: pid as i32,
+        })
+    }
+
+    pub(crate) fn pid(&self) -> u32 {
+        self.group as u32
+    }
+
+    /// Kill the whole group, reap the leader, and confirm the group is gone.
+    pub(crate) async fn stop(&mut self, limit: Duration) -> Result<(), String> {
         unsafe {
             libc::kill(-self.group, libc::SIGKILL);
         }
@@ -361,10 +431,8 @@ pub(crate) async fn supervise(
     log: Arc<dyn Fn(String) + Send + Sync>,
     mut kill: watch::Receiver<bool>,
 ) {
-    use std::os::unix::process::CommandExt;
     let config = lane.serial.as_ref().expect("serial configuration");
-    let mut failures = 0;
-    let mut delay = options.backoff;
+    let mut budget = RestartBudget::new(config.max_restarts, options.backoff, options.max_backoff);
     loop {
         if *kill.borrow() {
             control.block("worker stopped", false);
@@ -379,24 +447,16 @@ pub(crate) async fn supervise(
             let _ = kill.changed().await;
             return;
         }
-        let command = options.engines.command(&home, &lane);
-        let spawned = command.and_then(|mut command| {
-            command.as_std_mut().process_group(0);
-            command
-                .kill_on_drop(true)
-                .spawn()
-                .map_err(|e| format!("model worker did not start: {e}"))
-        });
+        let spawned = options
+            .engines
+            .command(&home, &lane)
+            .and_then(OwnedChild::spawn);
         let started = Instant::now();
         let completed = control.completed();
         let reason;
         match spawned {
-            Ok(child) => {
-                let pid = child.id().expect("new child process");
-                let mut owned = OwnedChild {
-                    child,
-                    group: pid as i32,
-                };
+            Ok(mut owned) => {
+                let pid = owned.pid();
                 record(Some(pid), false, None, false);
                 log(format!(
                     "serial model started (process {pid}); waiting for readiness"
@@ -475,12 +535,10 @@ pub(crate) async fn supervise(
             }
         }
         if control.completed() > completed {
-            failures = 0;
-            delay = options.backoff;
+            budget.succeeded();
         }
-        failures += 1;
         record(None, false, Some(reason.clone()), false);
-        if failures > config.max_restarts {
+        let Some(delay) = budget.failed() else {
             let reason = format!(
                 "model stopped after repeated failures: {reason}; restart the pylon after fixing the worker"
             );
@@ -488,7 +546,7 @@ pub(crate) async fn supervise(
             record(None, false, Some(reason), false);
             let _ = kill.changed().await;
             return;
-        }
+        };
         record(None, false, None, true);
         log(format!(
             "serial model stopped: {reason}; restarting in {}s",
@@ -498,7 +556,6 @@ pub(crate) async fn supervise(
             _ = kill.changed() => { control.block("worker stopped", false); return; }
             _ = tokio::time::sleep(delay) => {}
         }
-        delay = (delay * 2).min(options.max_backoff);
     }
 }
 

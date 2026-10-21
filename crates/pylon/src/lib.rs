@@ -38,6 +38,7 @@ pub mod earnings;
 pub mod engine;
 pub mod envelope;
 pub mod field;
+pub mod stage_group;
 #[cfg(feature = "fixture")]
 pub mod fixture;
 pub mod group;

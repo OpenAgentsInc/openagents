@@ -46,9 +46,10 @@ Gate progress (2026-10-21):
   row every other token), 41,124 at 20 (the residual only), and 52,772 at
   30. The four-stage forward path is 138,196 bytes per token; eight stages
   are 332,300. Returning full F32 logits to the front adds 517,280 bytes
-  per token, more than every forward hop together, so W10 or W11 should
-  decide whether the last stage returns logits, a top-k, or the token. The
-  synthetic geometry's numbers are in the W9 test output.
+  per token, more than every forward hop together, so W10 (#12397) decided
+  that the last stage samples with the front's settings and returns the
+  token ID, 4 bytes. The synthetic geometry's numbers are in the W9 test
+  output.
 - **Placement from header bytes.** Layers 0–9, 10–19, 20–29, and 30–39
   need 75.41, 74.07, 73.92, and 75.23 GB of GPU weights, as the plan's
   table says, and the Engram tables (101.38 GB each) go to host memory on
@@ -143,7 +144,7 @@ spend guard from the one budget host.
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
 | W9 | **Done (#12396).** Stage-state codec and group manifest: `psionic_models::stage_state` (message, codec, `StageInbox` admission, `StageWorker`) and `psionic_models::deepseek_v41_stage` (V4.1 boundary contracts, wire sizes, `V41GroupManifest`, `plan_group`); `psionic_serve::pipeline_stage` adapts the Gemma 4 step to the same message. Placement reads header-derived bytes through the `PlacementMemory` trait until W3's measured input implements it. | M | W3 for measured placement only | Codec fault tests (duplicate, stale, missing, reordered, cross-request, malformed, oversize) pass with a synthetic 40-layer executor; every split matches the unsplit run bit for bit. |
-| W10 | **Group lifecycle.** Stage processes as managed Pylon workers, readiness before advertising, generation fencing, per-stage crash and freeze recovery, cancellation that holds the group until work stops. Prototype on the native R1 worker first. | L | W9, #12364 | G7's fault checks pass on a local or synthetic group. |
+| W10 | **Group lifecycle.** Done (#12397) on synthetic stages: `pylon::stage_group` runs each stage as a managed worker under the serial supervisor's process-group owner and restart budget. A group is ready only when every stage agrees on weights, runtime, protocol, and generation and passes a check. A replacement bumps the generation and fences the survivors; failures and cancellation hold admission until every stage stops or is reaped. The front's control identity is W9's (generation, request ID, attempt, stage, step). `StageGroup` implements W13's `GroupReadiness`. The last stage samples with the front's settings and returns token IDs, not logits. `crates/pylon/tests/group_lifecycle.rs` covers G7's fault list; G7 still needs it on a real group (W11, W12). | L | W9, #12364 | G7's fault checks pass on a local or synthetic group. |
 | W11 | **A full group on one machine.** All stages on one 4- or 8-GPU machine over loopback. | M, cloud (G4 spot, about 20 h) | W7, W10 | G5 passes. |
 | W12 | **A group across machines.** Two placements across separate machines in one zone. | M, cloud | W11 | G6 passes; G7's fault checks repeat on the cross-machine group. |
 
