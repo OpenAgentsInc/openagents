@@ -86,6 +86,7 @@ struct Args {
     chunk: usize,
     max_context: usize,
     skip_hashes: bool,
+    timing_only: bool,
 }
 
 fn args() -> Result<Args> {
@@ -100,6 +101,7 @@ fn args() -> Result<Args> {
         chunk: 64,
         max_context: 4096,
         skip_hashes: false,
+        timing_only: false,
     };
     while let Some(flag) = a.next() {
         let mut value = || a.next().ok_or_else(|| format!("{flag} needs a value"));
@@ -117,6 +119,7 @@ fn args() -> Result<Args> {
             "--chunk" => out.chunk = value()?.parse()?,
             "--max-context" => out.max_context = value()?.parse()?,
             "--skip-hashes" => out.skip_hashes = true,
+            "--timing-only" => out.timing_only = true,
             other => return Err(format!("unknown argument {other}").into()),
         }
     }
@@ -558,7 +561,14 @@ fn compare_with_oracle(
                 oracle.entries.contains_key(&sel_name),
             ) {
                 let reference = oracle.values(&sel_name)?;
-                let offset = if position == 0 { tokens } else { window } as f64;
+                // The oracle prefilled the whole prompt in one forward, whose KV
+                // array starts after the prompt; decode steps start after the
+                // window.
+                let offset = if p < case.prompt.len() {
+                    case.prompt.len()
+                } else {
+                    window
+                } as f64;
                 let actual: Vec<f64> = sel
                     .iter()
                     .take(reference.len())
@@ -809,6 +819,12 @@ fn main() -> Result<()> {
             "decode_min_seconds": decode_steady.iter().map(|x| x["seconds"].as_f64().unwrap_or(0.0)).fold(f64::INFINITY, f64::min),
             "decode_max_seconds": decode_steady.iter().map(|x| x["seconds"].as_f64().unwrap_or(0.0)).fold(0.0, f64::max),
         });
+        if a.timing_only {
+            runs.push(json!({"prompt": id, "timing": summary, "steps": timing}));
+            report["runs"] = json!(runs);
+            write(&a.out, &report)?;
+            continue;
+        }
         // Observed run for the comparisons.
         let mut observed = Vec::new();
         for (position, tokens) in &steps {

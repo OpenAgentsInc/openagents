@@ -1456,3 +1456,149 @@ raw comparisons, and cleanup evidence are retained under
 Validation: 64 CPU library tests, six qualifier tests, changed-file formatting,
 Python compilation, and shell syntax checks passed. W2 and W3 remain blocked
 on #12404 and complete same-mode qualification.
+
+## Device-resident stage (W7, 2026-10-21)
+
+[#12394](https://github.com/OpenAgentsInc/openagents/issues/12394) adds
+`psionic_backend_cuda::v41_stage::V41Stage`, one stage's whole step on one
+GPU. **G4 does not pass:** the stage runs device-resident at the expected
+speed, but its connected comparison with the CPU stage fails the frozen W1
+policy from layer 1 on, and both the GPU and the CPU in the same order fail
+against the oracle the way #12404 describes.
+
+**The stage.** `V41Stage::load(backend, V41StageConfig, &dyn
+V41TensorSource, Vec<V41EngramHostTable>)` uploads a contiguous layer range
+in checkpoint form (FP8 and FP4 stay packed) and allocates all request state
+on the device: each layer's window ring, the compressed KV and index keys
+of every source the stage reads, the compressors' pending groups, the index
+selections, layer 20's candidate flags, the mixes of every sub-block, and
+the Engram n-gram history. `V41Stage::step(backend, &V41StepInput,
+observe)` runs a prefill chunk or one decode token:
+
+1. The step's input is uploaded once: token ids, the first position, a
+   token counter, and from a previous stage the residual streams, the
+   pre-mix, and the boundary's KV rows, index keys, selection, and
+   candidate block ids.
+2. One captured CUDA graph runs per token. It reads the token's index and
+   position from device counters, so the same graph serves every decode
+   position and every prefill token. Per token: the embedding (layer 0) or
+   the input row, the Engram hash on the device, then per layer the Engram
+   gather and gate (layers 1 and 14), the attention sub-block's mixes,
+   collapse, and norm, W5's attention around W4's projections, the
+   expansion, the FFN sub-block's mixes, collapse, and norm, W6's router,
+   routed and shared experts and sum, and the expansion. The last stage
+   runs a second graph once per step: the final collapse and norm, the
+   head, and sampling (greedy, or temperature, top-p, and seed).
+3. The host waits once and reads the next stage's state, or the token id.
+
+New kernels in `v41_stage.cu`: the step input, the Engram hash (equal to
+`NgramHashState` across steps and new requests), indexed row copies, the
+counter, sampling, and candidate flags from block ids. `step` returns
+`V41StepOutput` with the residual, the pre-mix, the KV source rows, the
+selection, the candidates, the Engram history, and the token, which map
+one to one onto W9's sections; `V41Boundary::at` mirrors
+`boundary_sections`, and a test keeps them equal.
+
+**The stage contract gains the pre-mix.** A layer's attention collapses
+its streams with the previous layer's FFN pre-mix, which W9's contract
+didn't carry. `SectionKind::PreMix` (F32 `[tokens, streams]`) now crosses
+every boundary, 48 bytes per token; the G6 numbers in the completion doc
+include it.
+
+**Decisions,** recorded before the first GPU run:
+
+- **Summation order: the default `ReferenceBf16`, not
+  `ReferenceBf16Tp8`.** W4–W6's kernels are qualified against the default
+  order, and TP8 is still being corrected on #12404 without passing G1. In
+  the default order a chunk equals its tokens one at a time, so prefill can
+  replay the decode graph. TP8 changes `wo_b` into eight BF16 rank
+  partials, reduces norms, mixes, and the Engram gate in ATen's layouts
+  (which depend on the forward's row count), keeps masked window slots in
+  ring order with tree-summed block weights, and computes SwiGLU with an
+  explicit division. Adopting it is a contained kernel change, but prefill
+  would then need the real chunk's row count, not per-token replays.
+- **Dense products keep the CPU's sequential order** (no bounded faster
+  sum), so their parity stays exact. Measured cost below: it's the largest
+  item in a decode step.
+- **Engram tables live in page-locked RAM** (`cudaMallocHost`), filled
+  from the shard file in 256 MiB reads, rather than `cudaHostRegister` on
+  a memory-mapped checkpoint. Every row can be hit, so all 101 GB stay
+  resident either way; long-term pinning of file-backed pages through the
+  driver depends on the kernel and file system; and the startup cost is the
+  same 101 GB read. Filling one table took 115 s from a hyperdisk.
+- **Prefill replays the per-token graph.** W4's kernel reads the weights
+  once per slot either way, and W6's mixing and routing kernels take one
+  token. Batched prefill needs a tensor-core GEMM path and is separate work.
+
+**Checks on the RTX 4080 (SM89)**, a synthetic model with V4.1's 40-layer
+layout and small shapes (`v41_stage_tests.rs`; tolerances in its header):
+the CPU stage used for parity, composed from the CPU path's components,
+equals the CPU transformer bit for bit; the GPU stage matches it within
+0.015 of the policy with 98.5% of values bit-equal and the same greedy
+tokens; splits at 5, 13, 21, and 30 (every section kind) equal the unsplit
+stage bit for bit; decode waits once per step. A real layer didn't fit: the
+4080 had 5.1 GB free beside production, and a layer with all 384 experts
+needs about 8 GB.
+
+**Checks on one RTX PRO 6000 (SM120)**, a `g4-standard-48` spot machine,
+CUDA 12.9, layers 0–4 (embeddings, the layer-1 Engram, layer 2's ratio-2
+source and indexer, and layers 3–4 reading them) and layers 0–9 (adding
+layer 8's source). Layers 20–24 can't be checked from the oracle, which
+records layer 20's input at five positions only, not the whole prompt.
+`scripts/bench/deepseek-v41/stage_vm.sh` copied only the stage's shards;
+the others are sparse stand-ins with their real headers. Results:
+[`sm120-2026-10-21.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_stage/sm120-2026-10-21.json),
+raw logs in `gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/w7/run-20261021-050705/`.
+
+| | Layers 0–4 | Layers 0–9 |
+| --- | --- | --- |
+| Decode, chat prompt, mean of 31 steps | 4.13 ms per token | 8.06 ms |
+| Decode after the 2,124-token prompt | 4.21 ms | 8.36 ms |
+| Prefill, 2,124 tokens | 242 tokens/s | 122 tokens/s |
+| Device memory in use | 39.5 GB (38.6 GB weights) | 76.6 GB (75.6 GB weights) |
+| Engram table fill, stage load | 115 s, 63 s | 197 s, 118 s |
+| Wire bytes at the boundary | 44,348 (43,324 on even positions) | 44,348 |
+
+**Round trips.** `nsys` on the layers 0–4 decode: each step is one
+`cudaGraphLaunch`, one `cudaStreamSynchronize`, and about six small
+`cudaMemcpy` calls (the token, position, and counter in; the residual,
+pre-mix, selection, and on odd positions a KV row out). No kernel is
+launched outside the graph. Kernel time is 4.06 ms of the 4.3 ms between
+launches. The sequential dense products take 1.70 ms of it (`wo_a` on every
+layer, the compressor and index weights on layer 2) and the RMS norms 0.43
+ms; W4's projections take 1.31 ms. A bounded parallel sum for those two
+kernels, as W4 and W6 already use, is the first speedup.
+
+**Parity.** The chat prompt, prefill and 32 teacher-forced decode steps,
+layers 0–4:
+
+- **GPU against the CPU stage, same `ReferenceBf16` order:** layer 0 and
+  every token's Engram ids and rows and layer 2's selections are within the
+  policy (selections and ids exact). From layer 1, token 1, the connected
+  run fails: a float32 attention mix differs by 3.8e-4 against a 3.5e-4
+  limit, then router sets differ (25 of 438 ids at layer 1) and the
+  differences grow. Layer 0's output already differs from the CPU's in 14%
+  of its BF16 values, within the policy; W4's and W6's reordered sums
+  (bounded per kernel) start it, and the mixes amplify it.
+- **Against the oracle:** the GPU fails 180 of 625 checks and the CPU stage
+  in the same order 191, with the same first failure (layer 1's router set
+  at position 0) and nearly the same pattern per label and layer. Layer 0's
+  router sets differ at 3 of 73 positions on both, where #12404's TP8 CPU
+  has none, so the default order itself is part of the gap.
+
+G4 is therefore failed for the connected comparison and pending on #12404:
+the stage's arithmetic should move to whatever order #12404 qualifies, and
+an isolated per-layer check (the CPU fed the GPU's layer inputs and state)
+is needed to separate amplification from a defect.
+
+**For W11.** Run each stage process with one `V41Stage`; it holds one
+request at a time, and a request starts at position 0 (which resets the
+n-gram history). Chunk the prompt to `max_step_tokens`. Map W9's sections
+to `V41StepInput` and `V41StepOutput` (BF16 residual on the wire, F32 in
+the executor; candidate ids as `u32` with `u32::MAX` for -1). The last
+stage returns `token`, which W10's `StepAck` carries. A stage with an
+Engram layer needs 101 GB of host RAM for the table, and the CUDA 12.9 image
+needs an include shim for CCCL (see W8's comment).
+
+**Cost:** one `g4-standard-48` spot machine for 0.47 h, $0.79 in the
+guard's ledger, deleted.

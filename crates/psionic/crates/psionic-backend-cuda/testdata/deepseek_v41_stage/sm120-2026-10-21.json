@@ -1,0 +1,1150 @@
+{
+ "schema": "psionic.deepseek_v41.stage_evidence.v1",
+ "issue": 12394,
+ "date": "2026-10-21",
+ "machine": "g4-standard-48 spot, us-central1-c",
+ "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition (SM120, 97,887 MiB)",
+ "driver": "580.178.04",
+ "cuda": "12.9 (image common-cu129-ubuntu-2404-nvidia-580)",
+ "source_commit": "ac62ed94f918091342f08d3fa8d452731fa36658",
+ "bucket": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/w7/run-20261021-050705/out/",
+ "arithmetic": "ReferenceBf16, default order (not ReferenceBf16Tp8)",
+ "policy": "cpu_qualification/tolerance-policy.json, sha256 38ac6a059ae1385838d0188506912850bc29ba4ffc29f28dea592365deb036c5",
+ "stage_0_5": {
+  "load": {
+   "engram_host_seconds": 115.480574715,
+   "stage_seconds": 63.224958329,
+   "weight_bytes": 38568278776,
+   "state_bytes": 16166536,
+   "memory_before": {
+    "free": 101375934464,
+    "total": 101973819392,
+    "used": 597884928
+   },
+   "memory_loaded": {
+    "free": 62513610752,
+    "total": 101973819392,
+    "used": 39460208640
+   }
+  },
+  "shard_hashes": {
+   "verified": [
+    "model-00002-of-00048.safetensors",
+    "model-00003-of-00048.safetensors",
+    "model-00004-of-00048.safetensors",
+    "model-00005-of-00048.safetensors",
+    "model-00006-of-00048.safetensors",
+    "model-00007-of-00048.safetensors",
+    "model-00047-of-00048.safetensors"
+   ],
+   "seconds": 53.615538238
+  },
+  "boundary_wire_bytes": [
+   {
+    "position": 40,
+    "bytes": 43324,
+    "sections": [
+     [
+      "residual",
+      40996
+     ],
+     [
+      "pre-mix",
+      48
+     ],
+     [
+      "layer 2 KV",
+      32
+     ],
+     [
+      "layer 2 index selection",
+      2080
+     ],
+     [
+      "Engram history",
+      40
+     ]
+    ]
+   },
+   {
+    "position": 41,
+    "bytes": 44348,
+    "sections": [
+     [
+      "residual",
+      40996
+     ],
+     [
+      "pre-mix",
+      48
+     ],
+     [
+      "layer 2 KV",
+      1056
+     ],
+     [
+      "layer 2 index selection",
+      2080
+     ],
+     [
+      "Engram history",
+      40
+     ]
+    ]
+   }
+  ],
+  "token_return_bytes": 4,
+  "runs": [
+   {
+    "prompt": "p1-chat-thinking",
+    "timing": {
+     "prompt_tokens": 41,
+     "prefill_seconds": 0.173308853,
+     "prefill_tokens_per_second": 236.5718732210408,
+     "decode_steps": 32,
+     "decode_mean_seconds": 0.004127317032258065,
+     "decode_mean_device_seconds": 0.0040643696129032255,
+     "decode_min_seconds": 0.004086209,
+     "decode_max_seconds": 0.00415996
+    },
+    "gpu_vs_oracle": {
+     "checked": 625,
+     "failed": 180,
+     "first_failure": {
+      "kind": "router_set",
+      "layer": 1,
+      "position": 0,
+      "passed": false,
+      "exact_tie_waiver": false,
+      "actual": [
+       49,
+       80,
+       334,
+       349,
+       369,
+       382
+      ],
+      "reference": [
+       1,
+       49,
+       334,
+       349,
+       369,
+       382
+      ],
+      "tensor": "p1-chat-thinking.decode.router_ids.layers.1"
+     }
+    },
+    "decode_step_example": {
+     "tokens": 1,
+     "seconds": 0.00411347,
+     "device_seconds": 0.00406102,
+     "graph_launches": 1,
+     "graph_captures": 0,
+     "host_to_device_copies": 3,
+     "host_to_device_bytes": 12,
+     "device_to_host_copies": 3,
+     "device_to_host_bytes": 83984,
+     "synchronizations": 1
+    },
+    "prefill_step_example": {
+     "tokens": 41,
+     "seconds": 0.173308853,
+     "device_seconds": 0.172830673,
+     "graph_launches": 41,
+     "graph_captures": 1,
+     "host_to_device_copies": 3,
+     "host_to_device_bytes": 172,
+     "device_to_host_copies": 4,
+     "device_to_host_bytes": 3463824,
+     "synchronizations": 2
+    }
+   },
+   {
+    "prompt": "p3-2k",
+    "timing": {
+     "prompt_tokens": 2124,
+     "prefill_seconds": 8.770593099000003,
+     "prefill_tokens_per_second": 242.17290393305012,
+     "decode_steps": 32,
+     "decode_mean_seconds": 0.004211826064516129,
+     "decode_mean_device_seconds": 0.004148591548387097,
+     "decode_min_seconds": 0.00417919,
+     "decode_max_seconds": 0.00424354
+    },
+    "gpu_vs_oracle": {
+     "checked": 11040,
+     "failed": 1913,
+     "first_failure": {
+      "kind": "router_set",
+      "layer": 1,
+      "position": 0,
+      "passed": false,
+      "exact_tie_waiver": false,
+      "actual": [
+       49,
+       80,
+       334,
+       349,
+       369,
+       382
+      ],
+      "reference": [
+       1,
+       49,
+       334,
+       349,
+       369,
+       382
+      ],
+      "tensor": "p3-2k.decode.router_ids.layers.1"
+     }
+    },
+    "decode_step_example": {
+     "tokens": 1,
+     "seconds": 0.00423662,
+     "device_seconds": 0.0041687,
+     "graph_launches": 1,
+     "graph_captures": 0,
+     "host_to_device_copies": 3,
+     "host_to_device_bytes": 12,
+     "device_to_host_copies": 4,
+     "device_to_host_bytes": 85008,
+     "synchronizations": 1
+    },
+    "prefill_step_example": {
+     "tokens": 64,
+     "seconds": 0.260611245,
+     "device_seconds": 0.258354065,
+     "graph_launches": 64,
+     "graph_captures": 0,
+     "host_to_device_copies": 3,
+     "host_to_device_bytes": 264,
+     "device_to_host_copies": 4,
+     "device_to_host_bytes": 5407744,
+     "synchronizations": 1
+    }
+   }
+  ],
+  "gpu_vs_cpu": {
+   "prompt": "p1-chat-thinking",
+   "steps": 33,
+   "cpu_seconds": 49.663599853,
+   "failed_site_steps": 950,
+   "per_layer_site": {
+    "0:AttnExpanded": {
+     "worst_over_limit": 0.1658,
+     "bad": 0,
+     "unequal": 1604,
+     "elements": 1495040
+    },
+    "0:AttnIn": {
+     "worst_over_limit": 0.0,
+     "bad": 0,
+     "unequal": 0,
+     "elements": 373760
+    },
+    "0:AttnMixes": {
+     "worst_over_limit": 0.029,
+     "bad": 0,
+     "unequal": 1689,
+     "elements": 1752
+    },
+    "0:AttnOut": {
+     "worst_over_limit": 0.0,
+     "bad": 0,
+     "unequal": 0,
+     "elements": 373760
+    },
+    "0:ExpertIds": {
+     "worst_over_limit": 0.0,
+     "bad": 0,
+     "unequal": 0,
+     "elements": 438
+    },
+    "0:FfnIn": {
+     "worst_over_limit": 0.1101,
+     "bad": 0,
+     "unequal": 1581,
+     "elements": 373760
+    },
+    "0:FfnMixes": {
+     "worst_over_limit": 0.126,
+     "bad": 0,
+     "unequal": 1687,
+     "elements": 1752
+    },
+    "0:FfnOut": {
+     "worst_over_limit": 0.3743,
+     "bad": 0,
+     "unequal": 105820,
+     "elements": 373760
+    },
+    "0:HcIn": {
+     "worst_over_limit": 0.0,
+     "bad": 0,
+     "unequal": 0,
+     "elements": 1495040
+    },
+    "0:HcOut": {
+     "worst_over_limit": 0.3575,
+     "bad": 0,
+     "unequal": 205052,
+     "elements": 1495040
+    },
+    "0:RouteWeights": {
+     "worst_over_limit": 0.2061,
+     "bad": 0,
+     "unequal": 424,
+     "elements": 438
+    },
+    "1:AttnExpanded": {
+     "worst_over_limit": 1.3097,
+     "bad": 12,
+     "unequal": 515264,
+     "elements": 1495040,
+     "first_bad": {
+      "step": 0,
+      "index": 20676,
+      "actual": 0.0517578125,
+      "reference": 0.07373046875,
+      "abs_error": 0.02197265625
+     }
+    },
+    "1:AttnIn": {
+     "worst_over_limit": 0.0577,
+     "bad": 0,
+     "unequal": 71010,
+     "elements": 373760
+    },
+    "1:AttnMixes": {
+     "worst_over_limit": 6.759,
+     "bad": 29,
+     "unequal": 1735,
+     "elements": 1752,
+     "first_bad": {
+      "step": 0,
+      "index": 24,
+      "actual": 0.7307403087615967,
+      "reference": 0.7303645610809326,
+      "abs_error": 0.0003757476806640625
+     }
+    },
+    "1:AttnOut": {
+     "worst_over_limit": 4.2383,
+     "bad": 42206,
+     "unequal": 343914,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 5131,
+      "actual": -0.04833984375,
+      "reference": -0.03125,
+      "abs_error": 0.01708984375
+     }
+    },
+    "1:EngramIds": {
+     "worst_over_limit": 0.0,
+     "bad": 0,
+     "unequal": 0,
+     "elements": 1752
+    },
+    "1:EngramOut": {
+     "worst_over_limit": 0.3575,
+     "bad": 0,
+     "unequal": 189561,
+     "elements": 1495040
+    },
+    "1:EngramRows": {
+     "worst_over_limit": 0.0,
+     "bad": 0,
+     "unequal": 0,
+     "elements": 448512
+    },
+    "1:ExpertIds": {
+     "worst_over_limit": 0.0,
+     "bad": 25,
+     "unequal": 25,
+     "elements": 438,
+     "first_bad": {
+      "step": 0,
+      "index": 8,
+      "actual": 121.0,
+      "reference": 165.0,
+      "abs_error": 44.0
+     }
+    },
+    "1:FfnIn": {
+     "worst_over_limit": 1.0385,
+     "bad": 1,
+     "unequal": 319024,
+     "elements": 373760,
+     "first_bad": {
+      "step": 11,
+      "index": 5071,
+      "actual": -0.04736328125,
+      "reference": -0.0306396484375,
+      "abs_error": 0.0167236328125
+     }
+    },
+    "1:FfnMixes": {
+     "worst_over_limit": 36.886,
+     "bad": 594,
+     "unequal": 1751,
+     "elements": 1752,
+     "first_bad": {
+      "step": 0,
+      "index": 24,
+      "actual": 0.44561895728111267,
+      "reference": 0.4444863200187683,
+      "abs_error": 0.0011326372623443604
+     }
+    },
+    "1:FfnOut": {
+     "worst_over_limit": 22.2087,
+     "bad": 9100,
+     "unequal": 351070,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 5120,
+      "actual": 9.0,
+      "reference": 9.1875,
+      "abs_error": 0.1875
+     }
+    },
+    "1:HcIn": {
+     "worst_over_limit": 0.3575,
+     "bad": 0,
+     "unequal": 189561,
+     "elements": 1495040
+    },
+    "1:HcOut": {
+     "worst_over_limit": 33.3913,
+     "bad": 6470,
+     "unequal": 972641,
+     "elements": 1495040,
+     "first_bad": {
+      "step": 0,
+      "index": 20480,
+      "actual": 13.3125,
+      "reference": 13.625,
+      "abs_error": 0.3125
+     }
+    },
+    "1:RouteWeights": {
+     "worst_over_limit": 1430.7096,
+     "bad": 341,
+     "unequal": 438,
+     "elements": 438,
+     "first_bad": {
+      "step": 0,
+      "index": 9,
+      "actual": 0.046102091670036316,
+      "reference": 0.04423744976520538,
+      "abs_error": 0.0018646419048309326
+     }
+    },
+    "2:AttnExpanded": {
+     "worst_over_limit": 32.4756,
+     "bad": 14713,
+     "unequal": 1026397,
+     "elements": 1495040,
+     "first_bad": {
+      "step": 0,
+      "index": 71,
+      "actual": -0.042724609375,
+      "reference": -0.06005859375,
+      "abs_error": 0.017333984375
+     }
+    },
+    "2:AttnIn": {
+     "worst_over_limit": 1.6941,
+     "bad": 7,
+     "unequal": 334358,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 53176,
+      "actual": -0.98046875,
+      "reference": -0.9453125,
+      "abs_error": 0.03515625
+     }
+    },
+    "2:AttnMixes": {
+     "worst_over_limit": 71.2688,
+     "bad": 496,
+     "unequal": 1752,
+     "elements": 1752,
+     "first_bad": {
+      "step": 0,
+      "index": 25,
+      "actual": 0.14639559388160706,
+      "reference": 0.14845982193946838,
+      "abs_error": 0.002064228057861328
+     }
+    },
+    "2:AttnOut": {
+     "worst_over_limit": 8.6315,
+     "bad": 178344,
+     "unequal": 363650,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 7,
+      "actual": 0.10546875,
+      "reference": 0.0869140625,
+      "abs_error": 0.0185546875
+     }
+    },
+    "2:ExpertIds": {
+     "worst_over_limit": 0.0,
+     "bad": 26,
+     "unequal": 26,
+     "elements": 438,
+     "first_bad": {
+      "step": 0,
+      "index": 56,
+      "actual": 181.0,
+      "reference": 184.0,
+      "abs_error": 3.0
+     }
+    },
+    "2:FfnIn": {
+     "worst_over_limit": 3.455,
+     "bad": 5890,
+     "unequal": 352256,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 15440,
+      "actual": 0.1630859375,
+      "reference": 0.1826171875,
+      "abs_error": 0.01953125
+     }
+    },
+    "2:FfnMixes": {
+     "worst_over_limit": 183.2439,
+     "bad": 885,
+     "unequal": 1752,
+     "elements": 1752,
+     "first_bad": {
+      "step": 0,
+      "index": 25,
+      "actual": 0.7899960279464722,
+      "reference": 0.7941024303436279,
+      "abs_error": 0.004106402397155762
+     }
+    },
+    "2:FfnOut": {
+     "worst_over_limit": 4.0623,
+     "bad": 14671,
+     "unequal": 358527,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 5145,
+      "actual": -0.09765625,
+      "reference": -0.115234375,
+      "abs_error": 0.017578125
+     }
+    },
+    "2:HcIn": {
+     "worst_over_limit": 33.3913,
+     "bad": 6470,
+     "unequal": 972641,
+     "elements": 1495040,
+     "first_bad": {
+      "step": 0,
+      "index": 20480,
+      "actual": 13.3125,
+      "reference": 13.625,
+      "abs_error": 0.3125
+     }
+    },
+    "2:HcOut": {
+     "worst_over_limit": 30.9326,
+     "bad": 16459,
+     "unequal": 1170827,
+     "elements": 1495040,
+     "first_bad": {
+      "step": 0,
+      "index": 810,
+      "actual": -0.384765625,
+      "reference": -0.416015625,
+      "abs_error": 0.03125
+     }
+    },
+    "2:RouteWeights": {
+     "worst_over_limit": 1583.6073,
+     "bad": 385,
+     "unequal": 438,
+     "elements": 438,
+     "first_bad": {
+      "step": 0,
+      "index": 6,
+      "actual": 0.337319016456604,
+      "reference": 0.3380904197692871,
+      "abs_error": 0.0007714033126831055
+     }
+    },
+    "2:Selection": {
+     "worst_over_limit": 0.0,
+     "bad": 0,
+     "unequal": 0,
+     "elements": 37376
+    },
+    "3:AttnExpanded": {
+     "worst_over_limit": 29.0702,
+     "bad": 22704,
+     "unequal": 1188125,
+     "elements": 1495040,
+     "first_bad": {
+      "step": 0,
+      "index": 27,
+      "actual": 0.6875,
+      "reference": 0.65234375,
+      "abs_error": 0.03515625
+     }
+    },
+    "3:AttnIn": {
+     "worst_over_limit": 0.7421,
+     "bad": 0,
+     "unequal": 353397,
+     "elements": 373760
+    },
+    "3:AttnMixes": {
+     "worst_over_limit": 113.6565,
+     "bad": 773,
+     "unequal": 1752,
+     "elements": 1752,
+     "first_bad": {
+      "step": 0,
+      "index": 25,
+      "actual": 0.08421351760625839,
+      "reference": 0.0844702199101448,
+      "abs_error": 0.0002567023038864136
+     }
+    },
+    "3:AttnOut": {
+     "worst_over_limit": 9.7307,
+     "bad": 184610,
+     "unequal": 365086,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 34,
+      "actual": 0.0263671875,
+      "reference": 0.046142578125,
+      "abs_error": 0.019775390625
+     }
+    },
+    "3:ExpertIds": {
+     "worst_over_limit": 0.0,
+     "bad": 22,
+     "unequal": 22,
+     "elements": 438,
+     "first_bad": {
+      "step": 0,
+      "index": 45,
+      "actual": 293.0,
+      "reference": 309.0,
+      "abs_error": 16.0
+     }
+    },
+    "3:FfnIn": {
+     "worst_over_limit": 4.761,
+     "bad": 22428,
+     "unequal": 357972,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 10631,
+      "actual": 0.05224609375,
+      "reference": 0.033203125,
+      "abs_error": 0.01904296875
+     }
+    },
+    "3:FfnMixes": {
+     "worst_over_limit": 80.5634,
+     "bad": 952,
+     "unequal": 1752,
+     "elements": 1752,
+     "first_bad": {
+      "step": 0,
+      "index": 26,
+      "actual": 0.27489909529685974,
+      "reference": 0.276006281375885,
+      "abs_error": 0.0011071860790252686
+     }
+    },
+    "3:FfnOut": {
+     "worst_over_limit": 6.8054,
+     "bad": 19472,
+     "unequal": 359998,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 15837,
+      "actual": 0.08056640625,
+      "reference": 0.0986328125,
+      "abs_error": 0.01806640625
+     }
+    },
+    "3:HcIn": {
+     "worst_over_limit": 30.9326,
+     "bad": 16459,
+     "unequal": 1170827,
+     "elements": 1495040,
+     "first_bad": {
+      "step": 0,
+      "index": 810,
+      "actual": -0.384765625,
+      "reference": -0.416015625,
+      "abs_error": 0.03125
+     }
+    },
+    "3:HcOut": {
+     "worst_over_limit": 27.4111,
+     "bad": 42671,
+     "unequal": 1288508,
+     "elements": 1495040,
+     "first_bad": {
+      "step": 0,
+      "index": 27,
+      "actual": 0.58984375,
+      "reference": 0.5546875,
+      "abs_error": 0.03515625
+     }
+    },
+    "3:RouteWeights": {
+     "worst_over_limit": 1591.8308,
+     "bad": 402,
+     "unequal": 438,
+     "elements": 438,
+     "first_bad": {
+      "step": 0,
+      "index": 6,
+      "actual": 0.3531613349914551,
+      "reference": 0.35389381647109985,
+      "abs_error": 0.0007324814796447754
+     }
+    },
+    "4:AttnExpanded": {
+     "worst_over_limit": 25.6879,
+     "bad": 59025,
+     "unequal": 1298359,
+     "elements": 1495040,
+     "first_bad": {
+      "step": 0,
+      "index": 0,
+      "actual": -1.84375,
+      "reference": -1.8984375,
+      "abs_error": 0.0546875
+     }
+    },
+    "4:AttnIn": {
+     "worst_over_limit": 1.1498,
+     "bad": 1,
+     "unequal": 356702,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 37139,
+      "actual": 0.005889892578125,
+      "reference": 0.0242919921875,
+      "abs_error": 0.018402099609375
+     }
+    },
+    "4:AttnMixes": {
+     "worst_over_limit": 279.5304,
+     "bad": 846,
+     "unequal": 1752,
+     "elements": 1752,
+     "first_bad": {
+      "step": 0,
+      "index": 26,
+      "actual": 0.3547404408454895,
+      "reference": 0.3571318984031677,
+      "abs_error": 0.0023914575576782227
+     }
+    },
+    "4:AttnOut": {
+     "worst_over_limit": 15.8548,
+     "bad": 210698,
+     "unequal": 366160,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 0,
+      "actual": -0.44140625,
+      "reference": -0.486328125,
+      "abs_error": 0.044921875
+     }
+    },
+    "4:ExpertIds": {
+     "worst_over_limit": 0.0,
+     "bad": 39,
+     "unequal": 39,
+     "elements": 438,
+     "first_bad": {
+      "step": 0,
+      "index": 19,
+      "actual": 210.0,
+      "reference": 100.0,
+      "abs_error": 110.0
+     }
+    },
+    "4:FfnIn": {
+     "worst_over_limit": 6.5148,
+     "bad": 39252,
+     "unequal": 360548,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 5145,
+      "actual": 0.0859375,
+      "reference": 0.06884765625,
+      "abs_error": 0.01708984375
+     }
+    },
+    "4:FfnMixes": {
+     "worst_over_limit": 138.6266,
+     "bad": 929,
+     "unequal": 1752,
+     "elements": 1752,
+     "first_bad": {
+      "step": 0,
+      "index": 25,
+      "actual": 0.11199171096086502,
+      "reference": 0.11307711154222488,
+      "abs_error": 0.0010854005813598633
+     }
+    },
+    "4:FfnOut": {
+     "worst_over_limit": 7.0272,
+     "bad": 28977,
+     "unequal": 360632,
+     "elements": 373760,
+     "first_bad": {
+      "step": 0,
+      "index": 5122,
+      "actual": 0.37109375,
+      "reference": 0.39453125,
+      "abs_error": 0.0234375
+     }
+    },
+    "4:HcIn": {
+     "worst_over_limit": 27.4111,
+     "bad": 42671,
+     "unequal": 1288508,
+     "elements": 1495040,
+     "first_bad": {
+      "step": 0,
+      "index": 27,
+      "actual": 0.58984375,
+      "reference": 0.5546875,
+      "abs_error": 0.03515625
+     }
+    },
+    "4:HcOut": {
+     "worst_over_limit": 23.9022,
+     "bad": 84860,
+     "unequal": 1319607,
+     "elements": 1495040,
+     "first_bad": {
+      "step": 0,
+      "index": 1,
+      "actual": 0.279296875,
+      "reference": 0.228515625,
+      "abs_error": 0.05078125
+     }
+    },
+    "4:RouteWeights": {
+     "worst_over_limit": 1490.4582,
+     "bad": 403,
+     "unequal": 438,
+     "elements": 438,
+     "first_bad": {
+      "step": 0,
+      "index": 6,
+      "actual": 0.6932046413421631,
+      "reference": 0.6921327114105225,
+      "abs_error": 0.001071929931640625
+     }
+    }
+   }
+  },
+  "cpu_vs_oracle": {
+   "checked": 625,
+   "failed": 191,
+   "first_failure": {
+    "kind": "router_set",
+    "layer": 1,
+    "position": 0,
+    "passed": false,
+    "exact_tie_waiver": false,
+    "actual": [
+     49,
+     80,
+     334,
+     349,
+     369,
+     382
+    ],
+    "reference": [
+     1,
+     49,
+     334,
+     349,
+     369,
+     382
+    ],
+    "tensor": "p1-chat-thinking.decode.router_ids.layers.1"
+   }
+  }
+ },
+ "stage_0_10": {
+  "load": {
+   "engram_host_seconds": 197.183591931,
+   "stage_seconds": 118.425630734,
+   "weight_bytes": 75648298480,
+   "state_bytes": 18799496,
+   "memory_before": {
+    "free": 101375934464,
+    "total": 101973819392,
+    "used": 597884928
+   },
+   "memory_loaded": {
+    "free": 25352077312,
+    "total": 101973819392,
+    "used": 76621742080
+   }
+  },
+  "shard_hashes": null,
+  "boundary_wire_bytes": [
+   {
+    "position": 40,
+    "bytes": 43324,
+    "sections": [
+     [
+      "residual",
+      40996
+     ],
+     [
+      "pre-mix",
+      48
+     ],
+     [
+      "layer 8 KV",
+      32
+     ],
+     [
+      "layer 8 index selection",
+      2080
+     ],
+     [
+      "Engram history",
+      40
+     ]
+    ]
+   },
+   {
+    "position": 41,
+    "bytes": 44348,
+    "sections": [
+     [
+      "residual",
+      40996
+     ],
+     [
+      "pre-mix",
+      48
+     ],
+     [
+      "layer 8 KV",
+      1056
+     ],
+     [
+      "layer 8 index selection",
+      2080
+     ],
+     [
+      "Engram history",
+      40
+     ]
+    ]
+   }
+  ],
+  "token_return_bytes": 4,
+  "runs": [
+   {
+    "prompt": "p1-chat-thinking",
+    "timing": {
+     "prompt_tokens": 41,
+     "prefill_seconds": 0.326669388,
+     "prefill_tokens_per_second": 125.5091585134999,
+     "decode_steps": 32,
+     "decode_mean_seconds": 0.00805513016129032,
+     "decode_mean_device_seconds": 0.007991710483870968,
+     "decode_min_seconds": 0.00798739,
+     "decode_max_seconds": 0.008134579
+    },
+    "gpu_vs_oracle": {
+     "checked": 1015,
+     "failed": 292,
+     "first_failure": {
+      "kind": "router_set",
+      "layer": 1,
+      "position": 0,
+      "passed": false,
+      "exact_tie_waiver": false,
+      "actual": [
+       49,
+       80,
+       334,
+       349,
+       369,
+       382
+      ],
+      "reference": [
+       1,
+       49,
+       334,
+       349,
+       369,
+       382
+      ],
+      "tensor": "p1-chat-thinking.decode.router_ids.layers.1"
+     }
+    },
+    "decode_step_example": {
+     "tokens": 1,
+     "seconds": 0.008043289,
+     "device_seconds": 0.007985419,
+     "graph_launches": 1,
+     "graph_captures": 0,
+     "host_to_device_copies": 3,
+     "host_to_device_bytes": 12,
+     "device_to_host_copies": 3,
+     "device_to_host_bytes": 83984,
+     "synchronizations": 1
+    },
+    "prefill_step_example": {
+     "tokens": 41,
+     "seconds": 0.326669388,
+     "device_seconds": 0.326216708,
+     "graph_launches": 41,
+     "graph_captures": 1,
+     "host_to_device_copies": 3,
+     "host_to_device_bytes": 172,
+     "device_to_host_copies": 4,
+     "device_to_host_bytes": 3463824,
+     "synchronizations": 2
+    }
+   },
+   {
+    "prompt": "p3-2k",
+    "timing": {
+     "prompt_tokens": 2124,
+     "prefill_seconds": 17.398974159,
+     "prefill_tokens_per_second": 122.07616268579342,
+     "decode_steps": 32,
+     "decode_mean_seconds": 0.008355174032258064,
+     "decode_mean_device_seconds": 0.008291730806451611,
+     "decode_min_seconds": 0.008300969,
+     "decode_max_seconds": 0.0084114
+    },
+    "gpu_vs_oracle": {
+     "checked": 21845,
+     "failed": 4823,
+     "first_failure": {
+      "kind": "router_set",
+      "layer": 1,
+      "position": 0,
+      "passed": false,
+      "exact_tie_waiver": false,
+      "actual": [
+       49,
+       80,
+       334,
+       349,
+       369,
+       382
+      ],
+      "reference": [
+       1,
+       49,
+       334,
+       349,
+       369,
+       382
+      ],
+      "tensor": "p3-2k.decode.router_ids.layers.1"
+     }
+    },
+    "decode_step_example": {
+     "tokens": 1,
+     "seconds": 0.0084114,
+     "device_seconds": 0.00834261,
+     "graph_launches": 1,
+     "graph_captures": 0,
+     "host_to_device_copies": 3,
+     "host_to_device_bytes": 12,
+     "device_to_host_copies": 4,
+     "device_to_host_bytes": 85008,
+     "synchronizations": 1
+    },
+    "prefill_step_example": {
+     "tokens": 64,
+     "seconds": 0.51058185,
+     "device_seconds": 0.50826892,
+     "graph_launches": 64,
+     "graph_captures": 0,
+     "host_to_device_copies": 3,
+     "host_to_device_bytes": 264,
+     "device_to_host_copies": 4,
+     "device_to_host_bytes": 5407744,
+     "synchronizations": 1
+    }
+   }
+  ]
+ },
+ "sm120_kernel_suites": {
+  "v41_matvec": "test result: ok. 9 passed; 0 failed; 1 ignored; 0 measured; 163 filtered out; finished in 7.74s",
+  "v41_mix": "test result: ok. 15 passed; 0 failed; 1 ignored; 0 measured; 157 filtered out; finished in 1.47s",
+  "v41_attention": "test result: ok. 14 passed; 0 failed; 1 ignored; 0 measured; 158 filtered out; finished in 4.70s",
+  "v41_stage": "test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 166 filtered out; finished in 10.75s"
+ },
+ "nsys_decode_p1_0_5": {
+  "graph_launches_per_decode_step": 1,
+  "stream_synchronizations_per_decode_step": 1,
+  "memcpy_calls_per_decode_step": "about 6 (3 input uploads, 3-4 output reads)",
+  "kernel_launches_outside_graphs_during_decode": 0,
+  "kernel_time_per_step_us": 4058.6,
+  "graph_launch_interval_ms": [
+   4.35,
+   4.28,
+   4.33
+  ],
+  "top_kernels_us_per_step": {
+   "v41_dense (wo_a x5, compressor x2, index weights)": 1695.8,
+   "v41_block_matvec": 1312.5,
+   "v41_rms_norm (20)": 434.6,
+   "v41_sparse_attention": 105.7,
+   "v41_hc_finish": 92.7,
+   "v41_route": 62.7,
+   "v41_rope": 55.7
+  }
+ },
+ "synthetic_stage": {
+  "machines": "RTX 4080 (SM89, coderos-4080, CUDA 13.2) and the RTX PRO 6000 above",
+  "test": "v41_stage::tests (7 tests)",
+  "gpu_vs_cpu_worst_over_policy": 0.0148,
+  "bit_equal_fraction": 0.985,
+  "logits_worst_over_policy": 1.3e-05,
+  "greedy_tokens_equal": true,
+  "splits": "0..5, 5..13, 13..21, 21..30, 30..40 equal the unsplit stage bit for bit (logits and sampled tokens)",
+  "cpu_stage_vs_cpu_transformer": "equal bit for bit over 40 layers, prefill and decode"
+ }
+}

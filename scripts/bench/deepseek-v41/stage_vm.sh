@@ -22,6 +22,9 @@ CKPT=$ROOT/checkpoint
 SRCDIR=$ROOT/src
 export PATH="$HOME/.cargo/bin:/usr/local/cuda/bin:$PATH"
 export CARGO_TARGET_DIR=$ROOT/target CARGO_INCREMENTAL=0 PSI_CUDA_ARCH=sm_120
+# The image's CUDA 12.9 keeps CCCL at include/cub; Psionic's kernels include
+# CUDA 13's include/cccl/cub layout.
+export NVCC_PREPEND_FLAGS="-I$ROOT/cccl-shim"
 log() { printf '%s %s\n' "$(date -u +%H:%M:%SZ)" "$*" | tee -a "$OUT/log.txt"; }
 
 setup() {
@@ -35,6 +38,8 @@ setup() {
   if ! [ -x "$HOME/.cargo/bin/rustup" ]; then
     curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --default-toolchain 1.97.1
   fi
+  mkdir -p "$ROOT/cccl-shim"
+  ln -sfn /usr/local/cuda/include "$ROOT/cccl-shim/cccl"
   rustc -vV > "$OUT/machine.txt"
   nvcc --version >> "$OUT/machine.txt"
   nvidia-smi >> "$OUT/machine.txt"
