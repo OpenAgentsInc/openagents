@@ -627,3 +627,13 @@ arithmetic it ran:
 - **GPU numbering.** `--gpu N` counts the devices the process may see: the
   physical index without `CUDA_VISIBLE_DEVICES`, and the Nth entry of an
   inherited mask otherwise.
+
+Checks on `coderos-4080` (RTX 4080, `sm_89`): three `build --no-upload` runs of
+`a12ffcb141` on one cache, `sm_89`, then `sm_120`, then `sm_89`, each
+recompiled the kernels, and `cuobjdump` found exactly the requested
+architecture each time. The worker's bytes differ between the two `sm_89`
+builds, so compare builds by `BUILD.json`, not by expecting a bit-identical
+rebuild. `v41-stage-build.sh test` passed every CUDA test on the 4080
+(`PSIONIC_REQUIRE_CUDA=1`), including the synthetic split-against-unsplit
+comparisons with the corrected generator. Running the `sm_120` build on an
+RTX PRO 6000 is an after-close check.
