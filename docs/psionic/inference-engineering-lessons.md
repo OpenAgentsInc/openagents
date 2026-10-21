@@ -1,7 +1,7 @@
 # Inference Engineering: lessons for DeepSeek and Pylon
 
 Written 2026-10-21. Repository baseline:
-`af238b40188f7ecd5e36ae70e322493605e5f807`.
+`9117fd3db9` (including the W2/W3 results that landed during this reading).
 These are proposed adaptations, not new performance or qualification results.
 
 **Recommendation:** finish qualification of the pinned serial V4.1 runtime,
@@ -73,12 +73,20 @@ Keep the distinction between implemented mechanisms and accepted model results:
   tokens/s on short prompts. Cross-machine receipts include both required
   placements and faults, but predate the latest fixes. Those results are
   historical measurements of an unqualified runtime, not current guarantees.
+- **New W2/W3 evidence:** the measurement-only
+  [`chain` command](../../crates/psionic/crates/psionic-v41-stage/src/cuda/chain.rs) runs one
+  executor per GPU with the real state codec and configurable prefill chunks.
+  It supplies measured placement inputs and complete p1/p2 answers. The
+  [receipt](verification/deepseek-v41-w3-w2-2026-10-21.json) labels its builds
+  unqualified development runs. This is useful implementation and measurement
+  evidence; it does not add chunking to the Pylon front or pass G1/G2.
 
 The current four/eight-stage CUDA admission bound is **2,872 prompt tokens**,
 with an 8,192-position default context and a separate output budget. It is
 limited by encoded state size, not the checkpoint's advertised context.
-The W14 receipt's 3,022-token label is disputed. The 19,989-token oracle
-prompt remains outside this unchunked profile. See the
+The W2 recount corrected W14's 3,022-token label to **1,526 rendered tokens**:
+the buyer sent a truncated prefix of the retained prompt file. The 19,989-token
+oracle prompt remains outside this unchunked profile. See the
 [budget tests](../../crates/psionic/crates/psionic-v41-stage/tests/budget.rs),
 [one-machine receipt](verification/deepseek-v41-g5-one-quad-2026-10-21.json),
 and [cross-machine receipt](verification/deepseek-v41-g6-g7-cross-machine-2026-10-21.json).
@@ -149,6 +157,9 @@ Then make three independently reviewable changes:
    message's token count. Derive the chunk limit from every boundary's
    encoded bytes, including candidates, selections, KV rows, pre-mix, and
    metadata. Begin without overlap, retaining the existing token arithmetic.
+   Reuse the measurement chain's `--prefill-chunk` and `--max-step-tokens`
+   prototype as the reference, then integrate its state sequencing into
+   Pylon's control, deadline, and recovery path.
 2. **Batched computation within a stage.** Replace suitable repeated
    projections with batched GEMM; group MoE work only where routing makes
    it compatible. Keep causal attention, compressor completion, index reuse,
@@ -171,6 +182,17 @@ and Engram history, plus cancellation between chunks, duplicates, stale
 frames, and link failure. Requalify each changed arithmetic or overlap
 schedule. Chunking removes a wire obstacle; reaching 20k also requires a
 larger context allocation, measured memory, and corresponding qualification.
+
+The new W3 measurement makes a second change particularly concrete:
+**size step buffers by chunk capacity, separately from context capacity.**
+It records 184,356 step-buffer bytes per step token: about 1.51 GB per stage
+at 8,192 tokens and 24.2 GB at 131,072, before the remaining allocations.
+At that larger context, the stage's KV/index allocation is about 0.168 GB.
+The current whole-prompt buffer policy dominates this memory growth, despite
+the book's general emphasis on KV size. The chain already exposes the two
+capacities separately; bring that distinction into the served profile and
+placement inputs. These are reported provisional measurements, not a new
+run or a claim that the long-context served profile is qualified.
 
 ## 3. Keep pipeline stages for capacity; measure latency separately
 
@@ -249,6 +271,13 @@ answer is not by itself a numerical failure.
 The book's discussion of evaluation noise does not derive arithmetic
 tolerances; a deterministic oracle rerun neither sets them to zero nor
 permits relaxing them after observing candidate failures.
+
+The new W2 result is a concrete example: the chat-mode p2 answer reaches
+EOS, matches the requested template mode, and compiles, but its Fibonacci
+loop still fails the largest-representable-value assertion at F(186).
+The oracle's code fails the same assertion. Matching an oracle's mistake
+does not satisfy the task-quality gate; retain executable boundary tests
+alongside numerical comparisons.
 
 Do not adopt the book's blanket dismissal of integer formats or its generic
 precision speedup estimates as acceptance rules. Psionic already serves
@@ -330,8 +359,8 @@ device evidence remain separate.
 | Order | Work | Existing home and completion criterion |
 | --- | --- | --- |
 | Now | Finish the pinned numerical and task-quality baseline | [#12405](https://github.com/OpenAgentsInc/openagents/issues/12405), open; [W2 #12389](https://github.com/OpenAgentsInc/openagents/issues/12389), open. Retain missing 20k coverage explicitly. Do not replace the pending run with a book-based tolerance. |
-| Now | Separate internal token timing, final text, and buyer completion; retain representative prompt IDs | W2 and W14 after-close measurements; extend `GroupEngine`, `StepProfile`, and the existing harness. Include failures, exact modes, warm/cold runs, and sample counts. Recount the disputed long prompt before using it. |
-| Next, for the checklist's full context scope | Bounded non-overlapped prefill chunks | New follow-up to W11/W12 and roadmap R0/R4. Pass codec/state/position and cancellation tests, then original-weight chunk-versus-baseline qualification. Deferral requires an explicitly approved narrower release contract. |
+| Now | Separate internal token timing, final text, and buyer completion; retain representative prompt IDs | W2 and W14 after-close measurements; extend `GroupEngine`, `StepProfile`, and the existing harness. Include failures, exact modes, warm/cold runs, and sample counts. Use the corrected 1,526-token long-prompt count. |
+| Next, for the checklist's full context scope | Bring the chain's bounded prefill chunks and separate step/context capacities into serving | New follow-up to W11/W12 and roadmap R0/R4. Pass codec/state/position and cancellation tests, then original-weight chunk-versus-baseline qualification. Deferral requires an explicitly approved narrower release contract. |
 | Next performance work | Batched stage prefill, then chunk overlap | Follow roadmap R1/R3 with the V4.1-specific state contract. Profile first; change one mechanism at a time. Retain TTFT, complete-answer latency, memory peak, and accuracy for each schedule. |
 | Alongside measurements | Refine placement and cold-start accounting | [W3 #12390](https://github.com/OpenAgentsInc/openagents/issues/12390), code-complete; W12/W14 after-close checks. Extend measured inputs and repeat affected results rather than reopening the original task by default. |
 | After the baseline | Local prefix snapshots, then fixed-length speculation | Roadmap R8/R9. Require complete state restoration and measured end-to-end savings; qualify each separately. |
@@ -354,7 +383,8 @@ authorizes no cloud allocation and adds no production shadow traffic.
    driver/device, placement, context/output limits, and schedule. Run the
    required baseline numerical, answer, and recovery checks first.
 2. Use retained inputs covering short chat, chat-mode code, thinking-mode
-   code, the 1,072-token case, the 2,124-token oracle case, and the checked
+   code, the 1,072-token case, the corrected 1,526-token case, the 2,124-token
+   oracle case, and the checked
    prompt/context limits. Test rejection just above the limit separately.
    A future chunked profile adds its own longer-context corpus.
 3. Keep cold start, warm first execution, warm repeated requests, and any
