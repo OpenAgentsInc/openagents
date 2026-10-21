@@ -349,7 +349,7 @@ def read_events(site, chat, seconds=60):
 # Traces (#11109)
 
 
-def traces(base, session):
+def traces(base, session, cookies=None):
     site = Site(base)
     anon = site.get("/api/traces")
     if anon.status == 404:
@@ -407,7 +407,10 @@ def traces(base, session):
     record("traces: stop sharing makes /trace/{id} 404", off.status == 200 and gone.status == 404,
            f"{off.status}/{gone.status}")
     page = Site(base)
-    page.cookies["oa_cloud_session"] = session
+    if cookies:
+        page.cookies.update(cookies)
+    else:
+        page.cookies["oa_cloud_session"] = session
     settings = page.follow("/settings/traces")
     record("traces: Settings > Traces lists it", settings.status == 200 and tid in settings.text,
            f"{settings.status}")
@@ -948,7 +951,7 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
 
     # Use a disposable operator account in legacy/dual mode, or supplied
     # WorkOS browser credentials when the legacy issuer is disabled.
-    session = key = None
+    session = key = credentials = None
     account = Site(base)
     if not production and (want("accounts") or want("signed-in") or want("gateway") or want("traces")):
         credentials = workos_credentials("SMOKE_WORKOS_CREDENTIAL_FILE", base)
@@ -1035,7 +1038,7 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
             else:
                 record("gateway: one /v1/responses call on the free model", None, "no test account")
         if want("traces"):
-            traces(base, session)
+            traces(base, session, credentials["cookies"] if credentials else None)
 
     # Agent work (#11162): the fixed staging test account that may use it
     # (OPENAGENTS_WEB_AGENT_ACCOUNTS) signs in with its key and opens
