@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# G1 v2 calibration on one g4-standard-192 (four RTX PRO 6000) started through
+# G1 v2 calibration on one g4-standard-192 (four RTX PRO 6000) and the CPU
+# reference control on a CPU machine, each started through
 # scripts/dev/cloud-budget.py (#12405). Weights and the oracle come from their
 # buckets, never from a workstation.
 #
 #   qualify_vm.sh setup   stripe the local SSDs, copy the checkpoint, the oracle
 #                         dump, and the worker build; verify the GPU architecture
-#   qualify_vm.sh run     calibration (the eight cases with observations), the
-#                         four negative controls, and the CPU reference control;
-#                         upload everything under RESULTS
+#   qualify_vm.sh run-gpu calibration (the eight cases with observations) and
+#                         the four negative controls, on a g4-standard-192
+#   qualify_vm.sh run-cpu the CPU reference control, on a CPU machine with
+#                         local SSDs; both upload everything under RESULTS
 #
 # Environment: WORKER (the build's gs:// folder, .../COMMIT/sm_120),
 # MANIFEST (the one-quad group manifest's SHA-256), RESULTS (gs:// folder).
@@ -22,6 +24,7 @@ log() { printf '%s %s\n' "$(date -u +%H:%M:%SZ)" "$*"; }
 
 setup() {
   : "${WORKER:?}" "${MANIFEST:?}"
+  command -v mdadm >/dev/null || { sudo apt-get -qq update && sudo apt-get -qq install -y mdadm >/dev/null; }
   if ! mountpoint -q $ROOT; then
     mapfile -t disks < <(ls /dev/disk/by-id/google-local-nvme-ssd-*)
     sudo mdadm --create /dev/md0 --level=0 --raid-devices=${#disks[@]} "${disks[@]}" --force --run
@@ -55,24 +58,28 @@ qualify() {
   timeout 21600 $BIN qualify --weights $ROOT/weights --manifest "sha256:$MANIFEST" \
     --oracle $ROOT/oracle --out "$out" --max-context 20608 "$@" > "$out.log" 2>&1 \
     || log "qualify $out exited $?"
-  gcloud storage rsync -q -r -x 'record/.*\.f32$|record/.*\.u32$' $ROOT/out "$RESULTS" || true
+  gcloud storage rsync -q -r -x 'record/.*\.u32$' $ROOT/out "$RESULTS" || true
 }
 
-run() {
+# GPU calibration: the eight cases with observations, then the four
+# negative controls on the chat prompt.
+run-gpu() {
   : "${MANIFEST:?}" "${RESULTS:?}"
-  local main=p1-chat-thinking,p2-code,e-window-127,e-window-128,e-window-129,e-engram
-  # The CPU reference control runs beside the GPU work: it uses the cores,
-  # the GPU runs use the devices.
-  (RAYON_NUM_THREADS=180 qualify $ROOT/out/reference-cpu --backend cpu --arithmetic bf16-tp8 \
-    --cases $main --step-secs 36000) &
-  local cpu=$!
-  qualify $ROOT/out/calibration --observe --gpus 0,1,2,3 --cases $main,p3-2k,p4-20k
+  qualify $ROOT/out/calibration --observe --gpus 0,1,2,3 \
+    --cases p1-chat-thinking,p2-code,e-window-127,e-window-128,e-window-129,e-engram,p3-2k,p4-20k
   for control in wrong-weights wrong-routing wrong-rope stale-cache; do
     qualify $ROOT/out/control-$control --gpus 0,1,2,3 --cases p1-chat-thinking --control $control
   done
-  log "GPU runs done; waiting for the CPU reference"
-  wait $cpu || true
-  log "run done"
+  log "GPU runs done"
+}
+
+# The CPU reference control (the CPU port, bf16-tp8 profile) on the six
+# shorter cases; the 2k and 20k prompts take more than a day on CPU.
+run-cpu() {
+  : "${MANIFEST:?}" "${RESULTS:?}"
+  qualify $ROOT/out/reference-cpu --backend cpu --arithmetic bf16-tp8 --step-secs 36000 \
+    --cases p1-chat-thinking,p2-code,e-window-127,e-window-128,e-window-129,e-engram
+  log "CPU reference done"
 }
 
 "$@"
