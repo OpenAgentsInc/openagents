@@ -1639,3 +1639,130 @@ part 2b.
 
 **Cost:** one `g4-standard-48` spot machine for 0.47 h, $0.79 in the
 guard's ledger, deleted.
+
+## #12404: B200 capture, device arithmetic, and the next divergence (2026-10-21 UTC)
+
+**G1 still fails, with a new first cause.** G1 qualifies the
+`ReferenceBf16Tp8` profile: the eight-B200 TP8 oracle's arithmetic, including
+reductions whose layout depends on how many rows a forward processes. The
+default and single-rank BF16 orders stay available but are not what G1 checks;
+GPU stages that must match G1 follow `ReferenceBf16Tp8`.
+
+### Capacity
+
+The previous session's 16 guarded B200 requests had failed. This session swept
+`a4-highgpu-8g` spot through the spend guard, starting with the zones that list
+the machine type: us-central1-b refused with `ZONE_RESOURCE_POOL_EXHAUSTED`
+(STOCKOUT) at 04:44:48Z, and us-east1-b granted capacity at 04:45:02Z on the
+second attempt. Flex-start, Vertex AI, and other GPUs were not needed. For a
+later shortage, the guard now takes `--flex-start --queue-hours H`: it queues
+the request through the Dynamic Workload Scheduler and counts the queue time
+plus the run at the A4 flex-start price ($64.44/h, Billing Catalog
+2026-10-21). The spot machine ran 0.67 h for **$26.55** and was deleted.
+
+### Capture and repeatability
+
+`oracle_vm.sh capture` reran all eight cases on the same driver (580.178.04),
+CUDA 12.9, and package versions as #12371, with `--attention-diagnostics`
+(query/KV normalization, projections, RoPE, quantized KV, heads, the `wo_b`
+input, and every rank's `wo_b` and indexer partial), every row of the chat
+prompt, rows 419–423 of the 2k prompt and 189–193 of the 20k prompt, and
+NCCL tuning logs. Uploaded to
+`gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/w12404-capture/`
+(554,839 tensors, 4.98 GB, with a manifest).
+
+**Same-mode repeatability is exact.** `oracle_repeat.py` compares the rerun
+with the #12371 dump: all 18,000 shared tensors, every per-layer residual hash
+(1,360 per main prompt, 400 per edge case), every decode logit hash, and every
+generated token are equal. The oracle grants no repeatability allowance; the
+frozen limits stay as they are. NCCL used ring LL over ranks 0..7 below
+2.76 MB and NVLS (switch reduction) above.
+
+### Device arithmetic, measured
+
+Probes on the same B200 (`probe/` beside the capture) pinned what the oracle's
+kernels compute:
+
+| Operation | Finding | Evidence |
+| --- | --- | --- |
+| Legacy BF16 `mma.sync.m16n8k16`, F32 accumulate | 16 exact products plus the accumulator, aligned on the largest exponent where a product's exponent is the sum of its factors' exponents, truncated toward zero 25 bits below it, summed exactly, rounded toward zero | 0 of 10,240,000 random outputs differ; handcrafted tests |
+| `MUFU.EX2` on [0, 1) | Reads the input as a 23-bit fixed-point fraction; 2^23 distinct results, 39% differ from round-to-nearest `2^x` | Full table; 0 of 2,000,000 random inputs differ |
+| `expf` (no fast math) | `FFMA.SAT`, `FFMA.RM`, two FMAs, `MUFU.EX2`, and an exponent shift, from `sm_100` SASS | Generated code |
+| TileLang `sparse_attn` | One MMA chain per 16 keys or dims, CUDA `expf`, butterfly sums across warps then quad lanes, FMA for the running denominator, IEEE division | Kernel source from the TileLang cache |
+| FP8 `mma.sync.m16n8k32` | One fused sum per 32-wide block from zero; the model above matches captured GEMMs, but random probes differ in 90 of 384,000 outputs, so it is not exact | Probe data |
+| cuBLAS BF16 `wo_a` einsum | Prefill chunks match tensor-core order over K; one-row decode steps match the exact sum rounded once | Capture, identical inputs |
+
+### Fixes (b390516b13)
+
+The TP8 profile now uses these models (`deepseek_v41_cpu::sm100`): sparse
+attention follows the TileLang kernel, FP8 projections sum each 32-wide block
+in one fused step, and the `wo_a` einsum follows the chunk shape. The `MUFU.EX2`
+table ships as 100 KB of gzipped two-bit increments and is checked against its
+SHA-256 when loaded. Regressions use original-weight oracle values where the
+earlier sequential sums differ: a layer-0 window-attention row (one BF16 value),
+a `wq_b` row, and a `wo_a` row. The qualifier observes each rank's `wo_b`
+partial and caches parsed safetensors headers, which made diagnostic captures
+practical to compare. Float32 and single-rank BF16 APIs are unchanged; the
+earlier TP8 attention remains as `sparse_attention_bf16_tp8_sequential`.
+
+**First unequal values, before and after, on the chat prompt's decode prefill
+against the capture.** Before the fix, the first unequal BF16 value was a
+`wq_b` output (position 0, rank 6), followed by `wo_a` outputs and attention
+heads; `wo_b` rank partials then differed in up to 60 values. After it, layer
+0's query, KV, heads, `wo_a` output, rank partials, and attention output equal
+the oracle at all 41 positions. The remaining layer-0 difference is the
+hyper-connection mix: `pre`, `post`, and `comb` differ by about one F32 ulp
+(at most 2.4e-6) on identical inputs, so the expanded stream flips BF16
+values, and the FFN's FP8 inputs change. The first limit failure moves to
+`decode.p6.layers.1.hc.attn.pre` (8.8e-4), and router sets differ from layer 1
+on (621 of 1,640 rows). One RMSNorm output (`p22.layers.0.attn.in`) also
+differs in two values; CUDA `rsqrtf` is unmeasured.
+
+The mix uses torch `rsqrt`, a cuBLAS F32 GEMM (K = 20,480, N = 24), and the
+TileLang Sinkhorn kernel. Emulating that kernel from its source, with the
+projection's exact sum and a correctly rounded `rsqrt`, reproduces only about
+12% of captured rows, so the GEMM order and `MUFU.RSQ` need measurements.
+[#12405](https://github.com/OpenAgentsInc/openagents/issues/12405) owns that
+work, followed by the FFN (gate GEMM, `softplus`, the MoE all-reduce order),
+Engram, the compressor, the indexer, and the head.
+
+### Rerun (Part C) and cost
+
+Against the #12371 dump, with `fdd4db7794`'s qualifier (`b3`) and the frozen
+policy. The chat, code, and four edge cases ran completely in both modes, with
+every recorded position and full logits; the 2k and 20k prompts ran to their
+first failure in both modes, as W1 did. The
+[report](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/w12404b-2026-10-21.json)
+keeps every run.
+
+| Case | Mode | Failed tensors | Router rows failed | Max logit error | Next tokens equal | First failure |
+| --- | --- | --- | --- | --- | --- | --- |
+| p1-chat-thinking | decode | 696 of 1,139 | 936 of 2,920 | 3.96 | 30 of 33 | layer 1 |
+| p1-chat-thinking | replay | 696 of 1,134 | 981 of 2,920 | 4.03 | — | layer 1 |
+| p2-code | decode | 695 of 1,141 | 886 of 2,880 | 4.97 | 33 of 33 | layer 1 |
+| p2-code | replay | 698 of 1,134 | 921 of 2,880 | 3.80 | — | layer 1 |
+| e-window-127 | decode / replay | 684 / 678 | 1,771 / 1,811 of 5,400 | 2.76 / 1.91 | 8 of 9 | layer 1 |
+| e-window-128 | decode / replay | 666 / 656 | 1,809 / 1,831 of 5,440 | 3.91 / 6.42 | 8 of 9 | layer-0 router scores |
+| e-window-129 | decode / replay | 660 / 653 | 1,838 / 1,842 of 5,480 | 2.40 / 6.42 | 9 of 9 | layer 1 |
+| e-engram | decode / replay | 682 / 677 | 1,246 / 1,154 of 3,040 | 4.31 / 4.68 | 9 of 9 | layer 1 |
+| p3-2k | both, to first failure | 0 of 32 / 56 | layer-0 router, position 1199 | — | — | was position 421 |
+| p4-20k | both, to first failure | 0 of 32 / 56 | layer-0 router, position 191 | — | — | unchanged |
+
+Every complete run observes every oracle tensor, including the connected
+expert FP8 codes and scales, which are compared exactly. Exact-tie waivers
+apply only to oracle rows with a zero margin. The 20k prompt's position 191 has
+an oracle margin of 1.1e-4, which is not a tie. End-to-end errors are about as
+large as W1's because the mix difference still compounds through 40 layers;
+the fix shows in the layer-0 boundaries, not yet in the logits.
+
+Cost: the A4 spot machine $26.55 (0.67 h) and the `n2d-highmem-96` CPU machine
+$22.23 (4.06 h), both deleted with their disks; storage stays within the
+reserve. Evidence: the capture and probes under `w12404-capture/`, and runs,
+binaries, source, and fitting scripts under
+`gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/cpu-qualification/w12404/claude-12404-20261021/`.
+
+**For the CUDA stages (W7, W8):** match `ReferenceBf16Tp8`. Its attention now
+follows `sm100::sparse_attention`, FP8 projections use one fused sum per 32
+inputs, and `wo_a` depends on whether the chunk has one row; the API is
+additive, and the earlier TP8 attention remains as
+`sparse_attention_bf16_tp8_sequential`.

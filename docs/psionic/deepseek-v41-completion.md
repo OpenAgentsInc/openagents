@@ -33,14 +33,16 @@ listed as an after-close check.
 
 Gate progress (2026-10-21):
 
-- **G1, original-weight CPU parity (W1, #12388): failed.** The fixed same-mode
-  policy replaces the earlier cross-mode tolerance rule. Both complete chat
-  comparisons reach all 40 layers and the full vocabulary head, but logits and
-  router sets differ. The first numerical limit failure is the last prompt
-  token's layer-1 attention pre-mix; the 2k and 20k cases also show layer-0 router
-  differences. [#12404](https://github.com/OpenAgentsInc/openagents/issues/12404)
-  owns the remaining divergence and missing observations. W2 and W3 stay
-  blocked on it. Isolated component and CUDA-kernel checks do not pass G1.
+- **G1, original-weight CPU parity (W1, #12388; #12404): failed.** G1
+  qualifies the `ReferenceBf16Tp8` profile, the eight-B200 TP8 oracle's
+  arithmetic; GPU stages that must match G1 follow that order. #12404 got a
+  new B200 capture, showed that same-mode oracle reruns are bit-identical,
+  measured the tensor-core, `MUFU.EX2`, and `expf` arithmetic on the device,
+  and made layer-0 attention equal the oracle bit for bit. The first limit
+  failure is now the layer-1 attention pre-mix, caused by layer-0
+  hyper-connection mix values that differ by about one F32 ulp.
+  [#12405](https://github.com/OpenAgentsInc/openagents/issues/12405) owns the
+  remaining device arithmetic. W2 and W3 stay blocked on it.
 - **G5–G7, stage contract (W9, #12396).** One message type carries the
   manifest digest, group generation, request, attempt, stage and layers,
   step, position, tokens, and typed sections. A stage refuses duplicate,
@@ -190,7 +192,7 @@ speculation, vision, and paid jobs.
 
 | Area | Issues | What it gives the epic |
 | --- | --- | --- |
-| Spend guard | #12370, #12376 | `scripts/dev/cloud-budget.py`: $3,000 cap, expiry, one budget host, reserve, refusal on a damaged ledger. Billing alerts at $1,500 and $2,500. Spent so far: $36.85 compute plus a $200 reserve. |
+| Spend guard | #12370, #12376 | `scripts/dev/cloud-budget.py`: $3,000 cap, expiry, one budget host, reserve, refusal on a damaged ledger. Billing alerts at $1,500 and $2,500. Spent so far (2026-10-21 09:00Z): $102.18 compute plus a $200 reserve. |
 | Protocol | #12372 | V4.1 prompt rendering, token encoding, and streaming reasoning/tool parsing from the vendored `deepseek-recipe`, byte-exact against the checkpoint's tests. Protocol only. |
 | Weights | #12373 | `psionic_models::deepseek_v41_weights`: exact FP8/FP4/E8M0 views, layer-range selection, identity. On the real checkpoint: 96,085 tensors open, 48 shard hashes match, 19 of 19 dequantization cases bit-exact. |
 | Oracle | #12371 | 18,177 reference tensors for four prompts plus edge cases, in decode, replay, and chunked modes, with full logits, precision notes, tie rules, and complete answers. Slices in `testdata/deepseek_v41/oracle/`, read by `psionic_models::deepseek_v41_oracle`; the rest in `gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/`. Weights in `gs://openagents-psionic-models/`. |
@@ -251,8 +253,8 @@ spend guard from the one budget host.
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
 | W1 | **Original-weight CPU parity report.** Compared original weights with the frozen policy. Complete chat diagnostics and first-failure runs report every case, mode, and recorded position, including untested positions. G1 fails; #12404 tracks the divergence and missing observations. | M, cloud | #12385–#12387 | Report retained; closing W1 does not pass G1. |
-| W2 | **Complete answers on CPU.** Greedy to EOS for prompts 1 and 2 with the #12372 parser. | S, a later cost-capped run | W1, #12404 | G2 passes; wall time per token is recorded. |
-| W3 | **Measure the model.** Peak memory per layer range, KV and indexer bytes per token at each compression ratio, Engram lookup cost from RAM, and active parameters per token. | S, a later cost-capped run | W1, #12404 | Numbers replace the estimates in the plan; placement inputs for W9 exist. |
+| W2 | **Complete answers on CPU.** Greedy to EOS for prompts 1 and 2 with the #12372 parser. | S, a later cost-capped run | W1, #12404, #12405 | G2 passes; wall time per token is recorded. |
+| W3 | **Measure the model.** Peak memory per layer range, KV and indexer bytes per token at each compression ratio, Engram lookup cost from RAM, and active parameters per token. | S, a later cost-capped run | W1, #12404, #12405 | Numbers replace the estimates in the plan; placement inputs for W9 exist. |
 
 ### Phase 3: CUDA (G3, G4)
 
@@ -313,7 +315,7 @@ started first.
 | Phase | Estimate |
 | --- | --- |
 | Spent: oracle and weights | $36.85, plus a $200 reserve for storage and transfer |
-| W1–W3 CPU parity and measurements | W1 used $12.46 in compute. Re-estimate the remaining runs after #12404; the earlier under-$60 estimate is unverified for complete long-prompt runs. |
+| W1–W3 CPU parity and measurements | W1 used $12.46 and #12404 $3.30 plus $48.78 (one A4 spot capture and probe session, one CPU machine) in compute. A complete 20k-prompt run needs more than a day of one CPU machine (more than $130 per mode); #12405 budgets it. |
 | W8 target GPU check | under $50 |
 | W11 one-machine group development and runs | about $300 (a `g4-standard-384` at $13.31/h spot, about 20 h) |
 | W12 cross-machine placements | about $200 |
@@ -348,22 +350,35 @@ started first.
 
 ## CPU follow-up status (2026-10-21 UTC)
 
-[#12404](https://github.com/OpenAgentsInc/openagents/issues/12404) remains open.
-Its [retained report](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/w12404-2026-10-21.json)
-records a normalization fix, expanded observations, and failed connected
-qualification. Unequal BF16 normalization values fall from 17 to 3 across 560
-identical-input captures. All 800 isolated router-score comparisons and 320
-conversion comparisons pass the original policy.
+[#12404](https://github.com/OpenAgentsInc/openagents/issues/12404) found and
+fixed the first divergence; G1 still fails on the next one, which
+[#12405](https://github.com/OpenAgentsInc/openagents/issues/12405) owns. The
+[native plan](deepseek-v41-native.md#12404-b200-capture-device-arithmetic-and-the-next-divergence-2026-10-21-utc)
+has the capture, measurements, and causes; the
+[retained report](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/w12404b-2026-10-21.json)
+has every run.
 
-The full chat replay reaches all 40 layers and checks 33 full-vocabulary logits,
-but 638 tensor comparisons and 926 router rows fail. Seventy captures remain
-unobserved in that run; 30 have a subsequent trace-name correction that still
-needs an original-weight rerun. Complete coverage and the other seven cases
-remain required. W2 (#12389), W3 (#12390), and connected GPU qualification stay
-blocked on G1.
+- **Capacity.** A4 spot capacity came back in us-east1-b on the second guarded
+  attempt (us-central1-b was stocked out). The spend guard now also takes
+  `--flex-start`.
+- **Oracle repeatability.** A full rerun on the same B200 setup equals the
+  #12371 dump in all 18,000 shared tensors, every residual hash, and every
+  logit hash. Same-mode repeatability grants no tolerance.
+- **Fixed.** Layer-0 attention now equals the oracle bit for bit: the TP8
+  profile reproduces the B200's BF16 tensor-core sums, `MUFU.EX2`, CUDA `expf`,
+  TileLang's reductions, FP8 GEMM blocks, and the `wo_a` einsum (b390516b13).
+  The 2k prompt's layer-0 router mismatch at position 421 is gone.
+- **Next divergence.** Hyper-connection mix values differ by about one F32
+  ulp at layer 0 (cuBLAS F32 GEMM order and CUDA `rsqrtf` are unmeasured), so
+  BF16 values flip and the difference grows; router sets differ from layer 1.
+  The 2k prompt's first router mismatch is now position 1199 and the 20k
+  prompt's stays at position 191 (oracle margin 1.1e-4, not a tie).
+- **Coverage.** The chat and code prompts and the four edge cases ran completely in both modes with full
+  logits and no unobserved tensor; the connected expert FP8 codes and scales
+  are now compared. The 2k and 20k prompts ran to their first failure in both
+  modes. A complete 20k run is estimated at more than a day on one CPU
+  machine; #12405 budgets it after the next fix.
 
-The immediate next step is the extended same-mode TP8 oracle capture to locate
-the first attention difference and measure the indexer's precision boundaries.
-B200 allocation attempts failed in this session; no new GPU capture was obtained.
-The dedicated CPU VM and its disks were deleted after retaining the evidence.
-Compute cost was $3.302949, within the existing spend cap and noncompute reserve.
+W2 (#12389) and W3 (#12390) stay blocked on #12405. Cost for this session:
+$26.55 for the A4 spot machine (0.67 h) and $22.23 for the
+`n2d-highmem-96` CPU machine (4.06 h), both deleted.
