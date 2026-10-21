@@ -14,7 +14,9 @@
 //! Without it, each test says so and passes.
 
 use pylon::engine::Sampling;
-use pylon::stage_group::{PROTOCOL, StageGroup, StageGroupConfig, StageGroupStatus, StageSpec};
+use pylon::stage_group::{
+    LinkPolicy, PROTOCOL, StageGroup, StageGroupConfig, StageGroupStatus, StageSpec, Transport,
+};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -133,6 +135,8 @@ impl Rig {
                     args: stage_args(&dir, &manifest, i, split),
                 })
                 .collect(),
+            transport: Transport::Front,
+            links: LinkPolicy::default(),
             step_timeout: Duration::from_secs(10),
             health_timeout: Duration::from_millis(800),
             startup_timeout: Duration::from_secs(20),

@@ -10,7 +10,8 @@ use nostr::pylon::Readiness;
 use pylon::engine::Sampling;
 use pylon::group::GroupReadiness;
 use pylon::stage_group::{
-    Failure, PROTOCOL, StageGroup, StageGroupConfig, StageGroupStatus, StageSpec,
+    Failure, LinkPolicy, PROTOCOL, StageGroup, StageGroupConfig, StageGroupStatus, StageSpec,
+    Transport,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -72,6 +73,8 @@ impl Rig {
                     args: vec!["--root".into(), root.path().display().to_string()],
                 })
                 .collect(),
+            transport: Transport::Front,
+            links: LinkPolicy::default(),
             step_timeout: Duration::from_millis(1500),
             health_timeout: Duration::from_millis(600),
             startup_timeout: Duration::from_secs(5),

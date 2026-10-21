@@ -41,6 +41,20 @@
 //! its `StageInbox` refuses stale stage state by the same rules this fence
 //! applies to acknowledgments.
 //!
+//! **Where stage state travels.** Under [`Transport::Front`] (W10) every
+//! stage acknowledges every step to the front, and the front starts the
+//! next stage. Under [`Transport::Direct`] (W12, #12399) the front sends
+//! each step only to the first stage; each stage sends its stage state
+//! straight to the next over an authenticated `stage_link` connection, and
+//! only the last stage answers the front, with the token. The front still
+//! owns admission, sampling, cancellation, generation fencing, and
+//! readiness: it gives every stage a fresh link key for each generation
+//! (`link`), the group is ready only once every stage has linked to the
+//! next (`linked`), a stage that loses a link says so (`link_failed`) and
+//! the front replaces the stage it names, and each stage reports the steps
+//! it passed on (`forwarded`), so a step that stops between two stages
+//! fails the stage that holds it.
+//!
 //! **What the last stage returns.** It samples and returns the token id, not
 //! logits or a top-k. W9 measured full F32 logits at 517,280 bytes per token,
 //! more than every forward hop together; a token id is four bytes. The front
@@ -212,6 +226,8 @@ pub enum Accepted {
 pub struct Fence {
     generation: u64,
     stages: u16,
+    /// Only the last stage acknowledges (W12's direct transport).
+    direct: bool,
     request: Option<(String, u32)>,
     step: u64,
     stage: u16,
@@ -222,9 +238,19 @@ impl Fence {
         Self {
             generation,
             stages,
+            direct: false,
             request: None,
             step: 0,
             stage: 0,
+        }
+    }
+
+    /// A fence for a direct transport: stages pass each step to the next
+    /// themselves, and only the last stage acknowledges it.
+    pub fn direct(generation: u64, stages: u16) -> Self {
+        Self {
+            direct: true,
+            ..Self::new(generation, stages)
         }
     }
 
@@ -243,7 +269,7 @@ impl Fence {
     pub fn begin(&mut self, request_id: &str, attempt: u32) {
         self.request = Some((request_id.into(), attempt));
         self.step = 0;
-        self.stage = 0;
+        self.stage = if self.direct { self.stages - 1 } else { 0 };
     }
 
     /// Forget the request; every later message for it is refused.
@@ -306,13 +332,48 @@ impl Fence {
                 expected_step: self.step,
             });
         }
-        self.stage += 1;
-        if self.stage < self.stages {
-            return Ok(Accepted::Next(usize::from(self.stage)));
+        if !self.direct {
+            self.stage += 1;
+            if self.stage < self.stages {
+                return Ok(Accepted::Next(usize::from(self.stage)));
+            }
+            self.stage = 0;
         }
-        self.stage = 0;
         self.step += 1;
         Ok(Accepted::StepDone(self.step - 1))
+    }
+}
+
+/// Where stage state travels between stages.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Transport {
+    /// Every stage acknowledges every step to the front, and the front
+    /// starts the next stage (W10).
+    #[default]
+    Front,
+    /// Each stage sends its state straight to the next over a
+    /// `stage_link` connection; only the last stage answers the front
+    /// (W12).
+    Direct,
+}
+
+/// How the stages' direct links are bounded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LinkPolicy {
+    /// Frames a stage may queue for the next before it stops and fails
+    /// the link.
+    pub queue: u32,
+    /// How long a stage waits for room in that queue.
+    pub send_timeout_ms: u64,
+}
+
+impl Default for LinkPolicy {
+    fn default() -> Self {
+        Self {
+            queue: 4,
+            send_timeout_ms: 10_000,
+        }
     }
 }
 
@@ -339,7 +400,12 @@ pub struct StageGroupConfig {
     pub protocol: u32,
     /// The stages, in step order.
     pub stages: Vec<StageSpec>,
-    /// How long one stage may take to acknowledge one step.
+    /// Where stage state travels.
+    pub transport: Transport,
+    /// The direct links' bounds; unused by [`Transport::Front`].
+    pub links: LinkPolicy,
+    /// How long one stage may take to acknowledge one step; under
+    /// [`Transport::Direct`], how long the whole chain may take.
     pub step_timeout: Duration,
     /// How long a stage may take to answer a health ping.
     pub health_timeout: Duration,
@@ -388,6 +454,11 @@ impl StageGroupConfig {
         {
             return Err("use step limits up to 75 seconds, health limits up to 30 seconds, startup limits up to 900 seconds, stop limits up to 5 seconds, and 1–10 restarts".into());
         }
+        if !(1..=64).contains(&self.links.queue)
+            || !(10..=60_000).contains(&self.links.send_timeout_ms)
+        {
+            return Err("a stage link queues 1–64 frames and waits 10 ms to 60 seconds".into());
+        }
         if self.weights.is_empty() || self.runtime.is_empty() {
             return Err("a stage group needs its weights digest and runtime".into());
         }
@@ -405,6 +476,12 @@ pub struct StageStatus {
     pub ready: bool,
     /// Times this stage was replaced.
     pub replacements: u32,
+    /// Steps this stage passed straight to the next stage, and their bytes
+    /// on the wire (direct transport only).
+    #[serde(default)]
+    pub forwarded: u64,
+    #[serde(default)]
+    pub forwarded_bytes: u64,
 }
 
 /// The one readiness and generation status a beacon or router reads.
@@ -417,6 +494,9 @@ pub struct StageGroupStatus {
     pub weights: String,
     pub runtime: String,
     pub protocol: u32,
+    /// Where stage state travels.
+    #[serde(default)]
+    pub transport: Transport,
     /// Bumped whenever a stage is replaced.
     pub generation: u64,
     /// Every stage is loaded, checked, and agrees at `generation`.
@@ -534,16 +614,51 @@ mod runtime {
         /// passes it to that stage with each step.
         #[serde(default)]
         listen: Option<String>,
+        /// Where the previous stage reaches this one's link listener
+        /// (direct transport).
+        #[serde(default)]
+        data: Option<String>,
     }
 
     #[derive(Debug, Clone, Deserialize)]
     #[serde(tag = "kind", rename_all = "snake_case")]
     enum Incoming {
         Hello(Hello),
-        Pong { nonce: u64 },
-        Checked { nonce: u64, output: u64 },
+        Pong {
+            nonce: u64,
+        },
+        Checked {
+            nonce: u64,
+            output: u64,
+        },
         Ack(StepAck),
-        Stopped { request_id: String, attempt: u32 },
+        Stopped {
+            request_id: String,
+            attempt: u32,
+        },
+        /// The stage's link to the next stage is open at `generation`.
+        Linked {
+            generation: u64,
+        },
+        /// A link broke; `peer` is `next`, `prev`, or `self`.
+        LinkFailed {
+            generation: u64,
+            peer: String,
+            reason: String,
+        },
+        /// The stage passed `step` to the next stage in `bytes` bytes.
+        Forwarded {
+            generation: u64,
+            request_id: String,
+            attempt: u32,
+            step: u64,
+            #[serde(default)]
+            bytes: u64,
+        },
+        /// The stage refused a frame from the previous stage.
+        Refused {
+            reason: String,
+        },
     }
 
     enum Event {
@@ -779,13 +894,33 @@ mod runtime {
         replacements: u32,
         /// The address the joined instance announced for incoming state.
         listen: Option<String>,
+        /// Its link listener's address, from its announcement.
+        data: Option<String>,
+        /// It was sent this generation's link key.
+        link_sent: bool,
+        /// Its link to the next stage is open (always true under the
+        /// front transport).
+        linked: bool,
+        /// The last step of the running request it passed on.
+        progress: Option<u64>,
+        forwarded: u64,
+        forwarded_bytes: u64,
     }
 
     impl Slot {
         fn ready(&self) -> bool {
-            self.child.is_some() && self.conn.is_some() && self.joined && self.checked
+            self.child.is_some()
+                && self.conn.is_some()
+                && self.joined
+                && self.checked
+                && self.linked
         }
-        fn detach(&mut self) {
+        fn unlink(&mut self, direct: bool) {
+            self.link_sent = false;
+            self.linked = !direct;
+            self.progress = None;
+        }
+        fn detach(&mut self, direct: bool) {
             self.conn = None;
             self.writer = None;
             self.joined = false;
@@ -793,6 +928,8 @@ mod runtime {
             self.check = None;
             self.ping = None;
             self.listen = None;
+            self.data = None;
+            self.unlink(direct);
         }
     }
 
@@ -839,9 +976,15 @@ mod runtime {
         next_request: u64,
         nonce: u64,
         was_ready: bool,
+        /// The link key for the current generation (direct transport).
+        key: Option<(u64, stage_link::Key)>,
     }
 
     impl Front {
+        fn direct(&self) -> bool {
+            self.config.transport == Transport::Direct
+        }
+
         fn new(config: StageGroupConfig, address: String, log: Log) -> Self {
             let now = Instant::now();
             let slots = config
@@ -865,16 +1008,26 @@ mod runtime {
                     exited: None,
                     replacements: 0,
                     listen: None,
+                    data: None,
+                    link_sent: false,
+                    linked: config.transport == Transport::Front,
+                    progress: None,
+                    forwarded: 0,
+                    forwarded_bytes: 0,
                 })
                 .collect();
             let stages = u16::try_from(config.stages.len()).expect("at most 16 stages");
+            let fence = match config.transport {
+                Transport::Front => Fence::new(1, stages),
+                Transport::Direct => Fence::direct(1, stages),
+            };
             Self {
                 budget: RestartBudget::new(config.max_restarts, config.backoff, config.max_backoff),
                 config,
                 address,
                 log,
                 slots,
-                fence: Fence::new(1, stages),
+                fence,
                 active: None,
                 failed: None,
                 reason: "stages are starting".into(),
@@ -884,6 +1037,7 @@ mod runtime {
                 next_request: 0,
                 nonce: 0,
                 was_ready: false,
+                key: None,
             }
         }
 
@@ -899,6 +1053,7 @@ mod runtime {
                 weights: self.config.weights.clone(),
                 runtime: self.config.runtime.clone(),
                 protocol: self.config.protocol,
+                transport: self.config.transport,
                 generation: self.fence.generation(),
                 ready,
                 busy: self.active.is_some(),
@@ -920,6 +1075,8 @@ mod runtime {
                         pid: s.child.as_ref().map(OwnedChild::pid),
                         ready: s.ready(),
                         replacements: s.replacements,
+                        forwarded: s.forwarded,
+                        forwarded_bytes: s.forwarded_bytes,
                     })
                     .collect(),
             }
@@ -993,6 +1150,9 @@ mod runtime {
                     let (answer, answer_rx) = mpsc::unbounded_channel();
                     let (done, done_rx) = oneshot::channel();
                     self.fence.begin(&id, 1);
+                    for slot in &mut self.slots {
+                        slot.progress = None;
+                    }
                     self.active = Some(Active {
                         id: id.clone(),
                         attempt: 1,
@@ -1055,8 +1215,9 @@ mod runtime {
                 "stage": index,
                 "step": step,
             });
-            if index + 1 == self.slots.len() {
-                // The last stage samples with the front's settings.
+            if index + 1 == self.slots.len() || self.config.transport == Transport::Direct {
+                // The last stage samples with the front's settings; under
+                // the direct transport the first stage passes them along.
                 message["sampling"] = serde_json::json!(active.sampling);
                 if step + 1 >= active.steps {
                     // The output limit ends the answer after this token.
@@ -1165,6 +1326,10 @@ mod runtime {
                     "stage {name} speaks protocol {}; the group needs {}",
                     hello.protocol, config.protocol
                 ))
+            } else if config.transport == Transport::Direct && hello.data.is_none() {
+                Some(format!(
+                    "stage {name} has no link address; the group sends stage state directly"
+                ))
             } else {
                 None
             };
@@ -1173,10 +1338,13 @@ mod runtime {
                 self.reason = reason;
                 return;
             }
+            let direct = self.direct();
             let slot = &mut self.slots[index];
             slot.joined = true;
             slot.listen = hello.listen;
             slot.checked = false;
+            slot.data = hello.data;
+            slot.unlink(direct);
             self.nonce += 1;
             let (nonce, input) = (self.nonce, self.nonce.wrapping_mul(7919) % 1_000_003);
             self.slots[index].check = Some((nonce, input));
@@ -1235,6 +1403,13 @@ mod runtime {
                         return;
                     }
                     let last = index + 1 == self.slots.len();
+                    if self.direct() && !last {
+                        self.refuse(format!(
+                            "stage {name} acknowledged step {} that it should pass to the next stage",
+                            ack.step
+                        ));
+                        return;
+                    }
                     if last != ack.token.is_some() {
                         self.refuse(format!(
                             "stage {name} {} a token",
@@ -1267,6 +1442,115 @@ mod runtime {
                         waiting.remove(&index);
                     }
                 }
+                Incoming::Linked { generation } => {
+                    let slot = &mut self.slots[index];
+                    if generation == self.fence.generation() && slot.link_sent && slot.joined {
+                        slot.linked = true;
+                    } else {
+                        let name = slot.spec.name.clone();
+                        self.refuse(format!(
+                            "stage {name} linked at generation {generation}, which it was not sent"
+                        ));
+                    }
+                }
+                Incoming::LinkFailed {
+                    generation,
+                    peer,
+                    reason,
+                } => {
+                    let name = self.slots[index].spec.name.clone();
+                    if generation != self.fence.generation() {
+                        return self.refuse(format!(
+                            "stage {name} reported a generation {generation} link: {reason}"
+                        ));
+                    }
+                    // Replace the stage the report names: a stage that
+                    // can't reach the next blames the next, and one whose
+                    // inbound link broke blames the previous.
+                    let blamed = match peer.as_str() {
+                        "next" => (index + 1).min(self.slots.len() - 1),
+                        "prev" => index.saturating_sub(1),
+                        _ => index,
+                    };
+                    let why = format!("stage {name} lost its link: {reason}");
+                    self.fail_stage(blamed, &why).await;
+                }
+                Incoming::Forwarded {
+                    generation,
+                    request_id,
+                    attempt,
+                    step,
+                    bytes,
+                } => {
+                    let current = self.active.as_ref().is_some_and(|a| {
+                        a.id == request_id
+                            && a.attempt == attempt
+                            && matches!(a.phase, Phase::Running { .. })
+                    });
+                    if generation != self.fence.generation() || !current {
+                        let name = self.slots[index].spec.name.clone();
+                        return self.refuse(format!(
+                            "stage {name} passed on step {step} of request {request_id} at generation {generation}, which is not running"
+                        ));
+                    }
+                    let slot = &mut self.slots[index];
+                    slot.progress = Some(slot.progress.map_or(step, |p| p.max(step)));
+                    slot.forwarded += 1;
+                    slot.forwarded_bytes += bytes;
+                }
+                Incoming::Refused { reason } => {
+                    let name = self.slots[index].spec.name.clone();
+                    self.refuse(format!("stage {name}: {reason}"));
+                }
+            }
+        }
+
+        /// Give every stage this generation's link key and the next
+        /// stage's address, once every stage has joined and passed its
+        /// check (direct transport).
+        async fn link(&mut self) {
+            if !self.direct()
+                || self.failed.is_some()
+                || !self.slots.iter().all(|s| s.joined && s.checked)
+                || self.slots.iter().all(|s| s.link_sent)
+            {
+                return;
+            }
+            let generation = self.fence.generation();
+            if self.key.as_ref().is_none_or(|(g, _)| *g != generation) {
+                match stage_link::Key::generate() {
+                    Ok(key) => self.key = Some((generation, key)),
+                    Err(error) => {
+                        return self
+                            .give_up(format!("cannot make a link key: {error}"))
+                            .await;
+                    }
+                }
+            }
+            let key = self
+                .key
+                .as_ref()
+                .map(|(_, k)| k.to_hex())
+                .unwrap_or_default();
+            let stages = self.slots.len();
+            for index in 0..stages {
+                if self.slots[index].link_sent {
+                    continue;
+                }
+                let next = self.slots.get(index + 1).and_then(|s| s.data.clone());
+                self.slots[index].link_sent = true;
+                let message = serde_json::json!({
+                    "kind": "link",
+                    "generation": generation,
+                    "key": key,
+                    "group": self.config.model,
+                    "stage": index,
+                    "stages": stages,
+                    "next": next,
+                    "queue": self.config.links.queue,
+                    "send_timeout_ms": self.config.links.send_timeout_ms,
+                });
+                self.send(index, message).await;
             }
         }
 
@@ -1381,11 +1665,14 @@ mod runtime {
                 }
             }
             let now = Instant::now();
+            let direct = self.direct();
+            self.key = None;
             for &i in &survivors {
                 let slot = &mut self.slots[i];
                 slot.joined = false;
                 slot.checked = false;
                 slot.check = None;
+                slot.unlink(direct);
                 slot.since = now;
                 self.send(
                     i,
@@ -1394,7 +1681,7 @@ mod runtime {
                 .await;
             }
             let slot = &mut self.slots[index];
-            slot.detach();
+            slot.detach(direct);
             slot.broken = None;
             slot.exited = None;
             slot.replacements += 1;
@@ -1436,8 +1723,9 @@ mod runtime {
         async fn shutdown(&mut self, reason: &str) {
             self.reason = reason.into();
             self.fence.end();
+            let direct = self.direct();
             for slot in &mut self.slots {
-                slot.detach();
+                slot.detach(direct);
                 slot.restart_at = None;
                 if let Some(mut child) = slot.child.take()
                     && let Err(error) = child.stop(self.config.stop_timeout).await
@@ -1572,6 +1860,7 @@ mod runtime {
                         .await;
                 }
             }
+            self.link().await;
             self.deadlines().await;
             let ready = self.ready();
             if ready && !self.was_ready {
@@ -1597,7 +1886,17 @@ mod runtime {
                         return self.cancel().await;
                     }
                     if sent.elapsed() >= self.config.step_timeout {
-                        let (index, step) = self.fence.expected().unwrap_or((0, 0));
+                        let (mut index, step) = self.fence.expected().unwrap_or((0, 0));
+                        if self.direct() {
+                            // The step stopped at the first stage that
+                            // hasn't passed it on.
+                            index = self
+                                .slots
+                                .iter()
+                                .position(|s| s.progress.is_none_or(|p| p < step))
+                                .unwrap_or(index)
+                                .min(index);
+                        }
                         self.fail_stage(
                             index,
                             &format!("step {step} made no progress before its deadline"),
@@ -1742,6 +2041,8 @@ mod tests {
             runtime: "r".into(),
             protocol: PROTOCOL,
             stages,
+            transport: Transport::Front,
+            links: LinkPolicy::default(),
             step_timeout: Duration::from_secs(1),
             health_timeout: Duration::from_secs(1),
             startup_timeout: Duration::from_secs(5),
@@ -1760,6 +2061,7 @@ mod tests {
             weights: "w".into(),
             runtime: "r".into(),
             protocol: PROTOCOL,
+            transport: Transport::Front,
             generation: 1,
             ready: false,
             busy: false,

@@ -1008,6 +1008,11 @@ uses, and marks which are implemented and which are only specified.
   `nostr::pylon`. `openagents pylon` is its command;
   `scripts/pylon-psionic.sh` runs a pylon. Read `docs/compute/pylon.md`
   before changing admission or what a beacon carries.
+- `crates/stage-link` — direct stage-to-stage links for a model group
+  (W12, #12399): one authenticated, bounded, one-way TCP link per hop and
+  group generation, carrying W9's stage-state bytes. `pylon::stage_group`'s
+  `direct` transport uses it; its crate documentation holds the wire
+  format.
 - `crates/psionic` — Psionic's serving path (30 crates), imported from
   OpenAgentsInc/psionic, as its own Cargo workspace excluded from the
   root. Build it with `--manifest-path crates/psionic/Cargo.toml`, and

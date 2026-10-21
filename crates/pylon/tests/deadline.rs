@@ -23,7 +23,9 @@ use pylon::job;
 use pylon::provider::{Config, HeadGroup, Provider};
 use pylon::relay::{self, Frame, LIFETIME};
 use pylon::router::{self, Decide, Deciding, Outcome, Question, Settings};
-use pylon::stage_group::{PROTOCOL, StageGroup, StageGroupConfig, StageSpec};
+use pylon::stage_group::{
+    LinkPolicy, PROTOCOL, StageGroup, StageGroupConfig, StageSpec, Transport,
+};
 use serde_json::{Value, json};
 use tokio::sync::oneshot;
 
@@ -576,6 +578,8 @@ fn stage_group(root: &std::path::Path) -> StageGroupConfig {
                 args: vec!["--root".into(), root.display().to_string()],
             })
             .collect(),
+        transport: Transport::Front,
+        links: LinkPolicy::default(),
         step_timeout: Duration::from_millis(1_500),
         health_timeout: Duration::from_millis(600),
         startup_timeout: Duration::from_secs(5),

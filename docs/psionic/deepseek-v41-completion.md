@@ -104,9 +104,25 @@ Gate progress (2026-10-21):
   Each dry run plans two g4-standard-96 or four g4-standard-48 spot machines
   at $26.62 for four hours. Placements are Psionic manifests shared as
   JSON (`crates/pylon/placements/deepseek-v41/`). G8 still needs a real
-  cold launch (W16, #12403), which needs W11's stage worker in a bucket,
-  W12's stage-to-stage transport, and W14's qualified deadline (its
-  transport, `pylon.deadline.v1`, landed in #12401).
+  cold launch (W16, #12403), which needs W11's stage worker in a bucket
+  (speaking W12's direct transport across machines), W12's cross-machine
+  run, and W14's qualified deadline (its transport, `pylon.deadline.v1`,
+  landed in #12401).
+- **G6 and G7, stage-to-stage transport (W12 part 1, #12399), loopback
+  only.** With the direct transport a decode hop at layer 10 carries
+  44,389 bytes (44,300 of stage state, 74 of framing and MAC, and the
+  request ID), about 44,460 with the head's sampling settings. A release
+  build moves three such hops plus the token back in about 0.6 ms on
+  loopback (about 150 µs per hop). Every hop is authenticated with a key
+  the head makes for each generation, so a stage from an older
+  generation is refused at the handshake. On fake stages, a dropped link,
+  a partitioned middle stage, and a stalled stage behind a full queue
+  each fail the request visibly with the tokens already delivered and
+  never replay it, and the group relinks under a new generation. With
+  W15's head on the budget host each token crossed the wide-area network
+  twice per stage; `--head stage0` leaves the first stage's step and the
+  last stage's token as the only hops through the head, both inside the
+  zone. G6 and G7 still need the real cross-machine run (W12 part 2).
 - **G3, attention kernels (W5, #12392), RTX 4080 only.** Checked against
   the CPU path's default `ReferenceBf16` order (window rows oldest first);
   the `ReferenceBf16Tp8` order is W7's choice. Tolerances were fixed before
@@ -227,7 +243,7 @@ spend guard from the one budget host.
 | W9 | **Done (#12396).** Stage-state codec and group manifest: `psionic_models::stage_state` (message, codec, `StageInbox` admission, `StageWorker`) and `psionic_models::deepseek_v41_stage` (V4.1 boundary contracts, wire sizes, `V41GroupManifest`, `plan_group`); `psionic_serve::pipeline_stage` adapts the Gemma 4 step to the same message. Placement reads header-derived bytes through the `PlacementMemory` trait until W3's measured input implements it. | M | W3 for measured placement only | Codec fault tests (duplicate, stale, missing, reordered, cross-request, malformed, oversize) pass with a synthetic 40-layer executor; every split matches the unsplit run bit for bit. |
 | W10 | **Group lifecycle.** Done (#12397) on synthetic stages: `pylon::stage_group` runs each stage as a managed worker under the serial supervisor's process-group owner and restart budget. A group is ready only when every stage agrees on weights, runtime, protocol, and generation and passes a check. A replacement bumps the generation and fences the survivors; failures and cancellation hold admission until every stage stops or is reaped. The front's control identity is W9's (generation, request ID, attempt, stage, step). `StageGroup` implements W13's `GroupReadiness`. The last stage samples with the front's settings and returns token IDs, not logits. `crates/pylon/tests/group_lifecycle.rs` covers G7's fault list; G7 still needs it on a real group (W11, W12). | L | W9, #12364 | G7's fault checks pass on a local or synthetic group. |
 | W11 | **A full group on one machine.** All stages on one 4- or 8-GPU machine over loopback. **Part 1 done (#12398): the stage worker.** `psionic-v41-stage` (`crates/psionic/crates/psionic-v41-stage`) takes `pylon cloud up`'s arguments (`--weights DIR --layers A-B --gpu N --manifest D [--embeddings] [--head]`, then `--stage --generation --front --token`), speaks W10's control protocol, and announces `psionic-v41-stage/1`. Stage state is W9's message, sent as length-prefixed frames to the next stage's loopback listener, whose `listen` address the front now passes as `next` with each step; the front also passes the previous token to stage 0. Stage 0 encodes the conversation with the #12372 adapter; the last stage samples greedily or with the front's temperature, top-p, and seed, and returns the token, its text, the end flag, and (W14) reasoning and final text from the adapter's streaming parser with a `stop` or `length` finish. The executor is W9's `StageExecutor`; `--backend cpu` runs `psionic_models::deepseek_v41_stage_cpu`, the CPU port cut at a layer range. Tests: Psionic process groups of 2–4 stages and Pylon's real front over loopback match the unsplit model's tokens; W10's lifecycle faults (kill, stop, cancel, other weights) pass against it; refusals cover wrong generation, stale state, missing weights, and a layer range that doesn't match the manifest. **Part 2 needs:** W7's CUDA stage executor behind `--backend cuda` (`psionic_backend_cuda::v41_stage::V41Stage` landed in part 1 of #12394; its step input and output map onto the W9 sections, it samples on the device, and it sends KV rows as BF16 and candidates as `i32`, while the CPU executor sends `F32` and `u32`, so a group runs one backend); opening only a stage's shards (the checkpoint opener reads every shard, while `v41-stage-startup.sh` copies a stage's own, plus `tokenizer.json`, `tokenizer_config.json`, and the manifest file into the weights folder); and the one-machine cloud group run that passes G5. | M, cloud (G4 spot, about 20 h) | W7, W10 | G5 passes. |
-| W12 | **A group across machines.** Two placements across separate machines in one zone. | M, cloud | W11 | G6 passes; G7's fault checks repeat on the cross-machine group. |
+| W12 | **A group across machines.** Two placements across separate machines in one zone. **Part 1 done (#12399), locally:** `crates/stage-link` sends W9's stage-state bytes straight from stage to stage over an authenticated, bounded TCP link keyed per group generation, and `pylon::stage_group`'s `direct` transport uses it: the head sends each step to the first stage only and hears only the last stage's token, while it keeps admission, sampling, cancellation, fencing, and readiness. `pylon cloud up --head stage0\|vm --transport direct` runs the head on the stage-0 machine or a small machine in the zone, with the budget host keeping the spend guard and talking only to the head. `tests/group_transport.rs` covers a dropped link, an old generation's link, a duplicated frame, a partitioned middle stage, a slow stage behind a bounded queue, a stalled stage, and cancellation down the chain on fake stages in separate processes. **Part 2 needs:** W11's worker (#12398) to speak `stage_link` in place of its unauthenticated loopback state listener and to take `--data-listen` and `--data-advertise`, then the real run of both placements in one zone, recording per-hop latency and stage-state bytes per token and repeating G7's faults. | M, cloud | W11 | G6 passes; G7's fault checks repeat on the cross-machine group. |
 
 ### Phase 5: launch and visibility (G8)
 

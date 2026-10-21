@@ -833,10 +833,71 @@ It keeps its buyer key under `DIR` and publishes no receipts.
 `tests/deadline.rs` runs it against W10's synthetic stages, once slow but
 within the deadline and once past it.
 
+### Send stage state from stage to stage (#12399)
+
+A group lane's `transport` says where stage state travels. With `front`
+(the default, W10) every stage acknowledges every step to the head, and
+the head starts the next stage. With `direct` the head sends each step to
+the first stage only. Each stage sends its stage state (W9's
+`StageMessage` bytes) straight to the next over one `stage_link`
+connection, and only the last stage answers the head, with the token.
+
+The head keeps the control plane: admission, the sampling settings,
+cancellation, generation fencing, and readiness. W11's stage worker
+(`psionic-v41-stage`, #12398) speaks the front transport: it sends its
+state to the next stage's announced `listen` address on loopback, and
+every stage still acknowledges each step to the head. It needs the link
+below to serve a `direct` group.
+
+- **Stage worker.** A worker for the direct transport takes
+  `--data-listen HOST:PORT` (where it listens for the previous stage) and
+  `--data-advertise HOST:PORT` (the address it announces). The first stage's
+  `step` carries the head's sampling settings, which travel down the chain
+  in each frame, and from step one on the token the last stage sampled
+  (`token`).
+- **Links.** For each generation the head makes a fresh 32-byte link key
+  and sends every stage a `link` message: the key, the group, the stage's
+  index, the next stage's address, and the link's bounds (`links.queue`
+  frames, `links.send_timeout_ms`). A stage announces its listener's
+  address in its `hello` (`data`), opens its link to the next stage, and
+  answers `linked`. The group is ready only when every stage has linked.
+- **Authentication.** Both ends prove they hold the generation's key with
+  a challenge-response over two nonces, and every frame carries an
+  HMAC-SHA256 over its sequence number and contents. A link from another
+  generation, group, or pair of stages is refused at the handshake; a
+  replayed, reordered, or altered frame is refused when it arrives. Links
+  are authenticated but not encrypted, so keep them inside one VPC and
+  zone.
+- **Bounds.** A receiver refuses a frame over its size limit from the
+  length alone. A sender queues at most `links.queue` frames; when the
+  next stage stops reading for `links.send_timeout_ms`, the link fails.
+- **Faults.** A stage that loses a link sends `link_failed` and names the
+  peer (`next` or `prev`); the head replaces that stage under a new
+  generation, so every survivor drops its links and relinks with a new
+  key. Each stage reports each step it passed on (`forwarded`, with its
+  bytes), so a step that stops between two stages fails the stage that
+  holds it. A stage refuses a duplicate or out-of-order frame and tells
+  the head (`refused`). On cancellation the head tells every stage, and the
+  first stage also sends a cancel frame down the chain. As under W10, a
+  request is never replayed after its tokens reached the caller.
+
+The wire format is in `crates/stage-link`'s crate documentation. The fake
+stages in `crates/pylon/tests/fixtures/` speak it from Python
+(`stage_link.py`), and `tests/stage_link_interop.rs` checks that both
+sides agree.
+
+On loopback, a V4.1 decode step at a boundary of layer 10 is 44,389
+bytes per hop: 44,300 bytes of stage state, 74 bytes of framing and MAC,
+and the request ID. With the head's sampling settings in each frame it's
+about 44,460 bytes. A release build carries three such hops plus the
+token back in about 0.6 ms (about 150 µs per hop). Cross-machine numbers
+are W12's second part.
+
 ### Launch a DeepSeek-V4.1 group in the cloud
 
 `pylon cloud up PLACEMENT` launches a V4.1 group on rented machines,
-heads it from this computer, and stops it. Run it from an OpenAgents
+heads it from this computer or from a machine in the group's zone, and
+stops it. Run it from an OpenAgents
 checkout on the one host that allocates for the `deepseek-v41` budget
 ([spend guard](../psionic/deepseek-v41-native.md#how-to-use-the-cloud-spend-guard)).
 
@@ -867,6 +928,40 @@ pylon cloud up two-dual --hours 4 --worker gs://BUCKET/v41-stage-worker
 
 `up` does the following:
 
+Two options change where the work happens (#12399):
+
+- `--transport direct` sends stage state from stage to stage inside the
+  zone. Stage `i` listens on port `47200 + i` and announces its machine's
+  internal name, such as
+  `oa-v41-two-dual-m1.us-east1-b.c.openagentsgemini.internal:47201`. The
+  zone's network must allow traffic between the machines, as the default
+  network's `default-allow-internal` rule does.
+- `--head stage0` runs the group head on the machine that runs stage 0, and
+  `--head vm` runs it on a small on-demand machine of its own
+  (`--head-machine-type`, default `e2-small`). Either needs the pylon
+  binary in a bucket (`--pylon gs://BUCKET/pylon`). This computer keeps
+  the spend guard: it creates and deletes every machine, and talks only
+  to the head, over one session
+  (`scripts/pylon/v41-head-ssh.sh`, which runs `pylon cloud head` on the
+  head's machine). The session carries the head's settings and a fresh
+  ssh key for the group; the stage machines get the key's public half as
+  `ssh-keys` metadata for the user `oa-stage`, and the head starts each
+  stage on the other machines with `v41-stage-ssh.sh --ssh`. A dry run
+  prints where the head runs, the session's command, and how the head
+  starts each stage.
+
+```sh
+pylon cloud up four-single --dry-run --head stage0 --transport direct
+pylon cloud up four-single --hours 4 --head stage0 --transport direct \
+  --worker gs://BUCKET/v41-stage-worker --pylon gs://BUCKET/pylon
+```
+
+When the head's session ends, because its machine was lost or the head
+stopped, `up` ends the group and deletes every machine. A head machine
+lost without a word can't take its beacons offline; they stay until
+their expiration passes. Instance `ssh-keys` metadata works only where OS
+Login is off for the project.
+
 1. Refuses a placement that doesn't fit its machine type, then asks the
    guard (`create --dry-run`) about each machine and refuses when the
    guard refuses one (no price, over the cap) or the machines together
@@ -878,9 +973,10 @@ pylon cloud up two-dual --hours 4 --worker gs://BUCKET/v41-stage-worker
 3. Each machine boots `scripts/pylon/v41-stage-startup.sh`, which copies the
    shards its stages read from the weights bucket and installs the stage
    worker.
-4. Turns this computer into the group head and starts each stage with
-   `scripts/pylon/v41-stage-ssh.sh`, which runs the worker over `gcloud
-   compute ssh` and tunnels its control connection back to the head.
+4. Starts the group head: by default this computer, which starts each
+   stage with `scripts/pylon/v41-stage-ssh.sh` over `gcloud compute ssh`
+   and tunnels its control connection back to the head; with `--head
+   stage0|vm`, the head's machine, as described above.
 5. Waits until every stage is ready, publishes the group, and prints the
    launch receipt: the machines, their ledger entries, the head's address,
    the artifact, the manifest, and the generation.

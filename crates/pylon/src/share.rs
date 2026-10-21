@@ -82,6 +82,14 @@ pub struct GroupLane {
     /// The front's sampling settings, sent to the last stage each step.
     pub sampling: crate::engine::Sampling,
     pub stages: Vec<GroupStage>,
+    /// Where stage state travels: through the head (`front`, W10) or
+    /// straight from stage to stage (`direct`, W12). Left out when `front`,
+    /// so W15's hosts still read the file.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub transport: crate::stage_group::Transport,
+    /// The direct links' bounds.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub links: crate::stage_group::LinkPolicy,
     pub step_timeout_ms: u64,
     pub health_timeout_ms: u64,
     pub startup_timeout_ms: u64,
@@ -89,6 +97,10 @@ pub struct GroupLane {
     pub max_restarts: u32,
     pub backoff_ms: u64,
     pub max_backoff_ms: u64,
+}
+
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
 }
 
 impl GroupLane {
@@ -110,6 +122,8 @@ impl GroupLane {
                     args: s.args.clone(),
                 })
                 .collect(),
+            transport: self.transport,
+            links: self.links,
             step_timeout: ms(self.step_timeout_ms),
             health_timeout: ms(self.health_timeout_ms),
             startup_timeout: ms(self.startup_timeout_ms),

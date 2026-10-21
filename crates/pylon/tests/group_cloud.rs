@@ -14,10 +14,12 @@ use std::time::{Duration, Instant};
 
 use nostr::pylon::{Beacon, GroupRole, Readiness, Status, parse_beacon};
 use pylon::cloud::{self, Guard, Up};
+use pylon::cloud_head::HeadPlacement;
 use pylon::engine::{Sampling, Turn};
 use pylon::group::Want;
 use pylon::identity::Identity;
 use pylon::router::{self, Decide, Deciding, Outcome, Question};
+use pylon::stage_group::Transport;
 use serde_json::Value;
 
 fn repo() -> PathBuf {
@@ -49,6 +51,11 @@ impl Rig {
         }
         let script = path("stage.py");
         std::fs::write(&script, include_bytes!("fixtures/stage_worker.py")).unwrap();
+        std::fs::write(
+            path("stage_link.py"),
+            include_bytes!("fixtures/stage_link.py"),
+        )
+        .unwrap();
         std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
         let mut guard = Guard::new(&repo());
         guard.budget = "pylon-test".into();
@@ -644,4 +651,387 @@ fn a_group_profile_is_version_6_settings_that_older_versions_refuse() {
     assert!(deadline.validate().is_ok());
     deadline.deadline_secs = 3_601;
     assert!(deadline.validate().unwrap_err().contains("3600 seconds"));
+}
+
+/// The head's ssh session, run on this computer: a wrapper that records its
+/// process and starts `pylon cloud head` with a private home, as
+/// `/opt/openagents/head-run` does on the head's machine.
+fn in_zone_head(rig: &Rig) -> (PathBuf, Vec<String>) {
+    use std::os::unix::fs::PermissionsExt;
+    let script = rig.path("head-session.sh");
+    std::fs::create_dir_all(rig.path("head-home")).unwrap();
+    std::fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\necho $$ >'{}'\nexec env HOME='{}' '{}' cloud head --home '{}'\n",
+            rig.path("head.pid").display(),
+            rig.path("head-home").display(),
+            env!("CARGO_BIN_EXE_pylon"),
+            rig.path("remote-head").display(),
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (script, vec![])
+}
+
+/// The create call the fake gcloud got for `name`.
+fn created(rig: &Rig, name: &str) -> Vec<String> {
+    std::fs::read_to_string(rig.path("gcloud/calls.jsonl"))
+        .unwrap()
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Vec<String>>(l).ok())
+        .find(|args| args.get(2).map(String::as_str) == Some("create") && args[3] == name)
+        .unwrap()
+}
+
+#[test]
+fn dry_runs_plan_a_head_in_the_zone_and_direct_links() {
+    // The head on the stage-0 machine, with direct links.
+    let rig = Rig::new("four-single", "wss://relay.example");
+    let mut up = rig.up.clone();
+    up.worker = None;
+    up.local_stages = None;
+    up.head = HeadPlacement::Stage0;
+    up.transport = Transport::Direct;
+    up.pylon = Some("gs://pylon-test/pylon".into());
+    let plan = cloud::plan(&up).unwrap();
+    let value = cloud::dry_run(&up, &plan).unwrap();
+    eprintln!(
+        "dry run four-single, head on stage 0: {}",
+        serde_json::to_string_pretty(&value).unwrap()
+    );
+    let rows = value["machines"].as_array().unwrap();
+    assert_eq!(rows.len(), 4);
+    for (i, row) in rows.iter().enumerate() {
+        let gcloud = row["gcloud"].as_str().unwrap();
+        assert_eq!(row["head"], i == 0);
+        assert!(gcloud.contains("ssh-keys="), "{gcloud}");
+        assert_eq!(gcloud.contains("oa-group-head=1"), i == 0, "{gcloud}");
+        assert_eq!(gcloud.contains("oa-pylon=gs://pylon-test/pylon"), i == 0);
+        assert_eq!(gcloud.contains("v41-stage-ssh.sh"), i == 0);
+    }
+    let head = &value["head"];
+    assert_eq!(head["placement"], "stage0");
+    assert_eq!(head["machine"], "oa-v41-four-single-m0");
+    assert_eq!(head["transport"], "direct");
+    assert!(head["session"].as_str().unwrap().ends_with(
+        "scripts/pylon/v41-head-ssh.sh oa-v41-four-single-m0 us-east1-b openagentsgemini"
+    ));
+    let launches: Vec<&str> = head["stages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["launch"].as_str().unwrap())
+        .collect();
+    let host = |i: usize| format!("oa-v41-four-single-m{i}.us-east1-b.c.openagentsgemini.internal");
+    assert!(launches[0].starts_with("/opt/openagents/stage-run --layers 0-10"));
+    assert!(launches[0].ends_with(&format!(
+        "--data-listen 0.0.0.0:47200 --data-advertise {}:47200",
+        host(0)
+    )));
+    for (i, launch) in launches.iter().enumerate().skip(1) {
+        assert!(
+            launch.starts_with(&format!(
+                "/opt/openagents/stage-ssh --ssh '{{head}}/group-ssh' oa-stage@{} {} --",
+                host(i),
+                47_100 + i
+            )),
+            "{launch}"
+        );
+        assert!(launch.ends_with(&format!(
+            "--data-listen 0.0.0.0:{} --data-advertise {}:{}",
+            47_200 + i,
+            host(i),
+            47_200 + i
+        )));
+    }
+
+    // A small head machine of its own: on demand, no GPU, no weights.
+    let rig = Rig::new("two-dual", "wss://relay.example");
+    let mut up = rig.up.clone();
+    up.worker = None;
+    up.local_stages = None;
+    up.head = HeadPlacement::Vm;
+    let plan = cloud::plan(&up).unwrap();
+    let value = cloud::dry_run(&up, &plan).unwrap();
+    eprintln!(
+        "dry run two-dual, head on its own machine: {}",
+        serde_json::to_string_pretty(&value).unwrap()
+    );
+    let rows = value["machines"].as_array().unwrap();
+    assert_eq!(rows.len(), 3);
+    let head = &rows[2];
+    assert_eq!(head["name"], "oa-v41-two-dual-head");
+    assert_eq!(head["machine_type"], "e2-small");
+    assert_eq!(head["head"], true);
+    let gcloud = head["gcloud"].as_str().unwrap();
+    for flag in [
+        "--machine-type=e2-small",
+        "oa-role=head",
+        "oa-group-head=1",
+        "--image-family=debian-12",
+        "--boot-disk-size=20GB",
+    ] {
+        assert!(gcloud.contains(flag), "{flag} not in {gcloud}");
+    }
+    assert!(!gcloud.contains("SPOT"), "{gcloud}");
+    assert!(!gcloud.contains("--accelerator"), "{gcloud}");
+    assert!(head["cost_to_expiry"].as_f64().unwrap() < 1.0);
+    let total: f64 = rows
+        .iter()
+        .map(|r| r["cost_to_expiry"].as_f64().unwrap())
+        .sum();
+    assert!((value["total_after"].as_f64().unwrap() - total).abs() < 0.02);
+    assert_eq!(value["head"]["machine"], "oa-v41-two-dual-head");
+    assert_eq!(value["head"]["transport"], "front");
+    // Every stage is on another machine, so each goes over ssh.
+    for stage in value["head"]["stages"].as_array().unwrap() {
+        assert!(
+            stage["launch"]
+                .as_str()
+                .unwrap()
+                .starts_with("/opt/openagents/stage-ssh --ssh")
+        );
+    }
+    assert!(rig.gcloud("create").is_empty());
+    assert!(rig.ledger("start").is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_head_on_the_stage_zero_machine_serves_with_direct_links_and_stops_on_down() {
+    let (relay, hub) = pylon::fixture::relay().await.unwrap();
+    let mut rig = Rig::new("four-single", &relay);
+    rig.up.head = HeadPlacement::Stage0;
+    rig.up.transport = Transport::Direct;
+    rig.up.pylon = Some("gs://pylon-test/pylon".into());
+    rig.up.local_head = Some(in_zone_head(&rig));
+    let launched = cloud::launch(&rig.up).await.unwrap();
+    let receipt = launched.receipt.clone();
+    eprintln!(
+        "launch receipt: {}",
+        serde_json::to_string_pretty(&receipt).unwrap()
+    );
+    assert_eq!(receipt["group"]["head_placement"], "stage0");
+    assert_eq!(receipt["group"]["head_machine"], "oa-v41-four-single-m0");
+    assert_eq!(receipt["group"]["transport"], "direct");
+    assert_eq!(rig.gcloud("create").len(), 4);
+    // The stage machines carry the group key's public half.
+    let keys = std::fs::read_to_string(rig.home().join("cloud-v41-four-single/ssh-keys")).unwrap();
+    assert!(keys.starts_with("oa-stage:ssh-ed25519 "), "{keys}");
+    assert!(
+        created(&rig, "oa-v41-four-single-m2")
+            .iter()
+            .any(|a| a.contains("ssh-keys=") && a.contains("cloud-v41-four-single/ssh-keys"))
+    );
+    // This computer runs no pylon of its own; the head in the zone holds
+    // the group key and publishes under its own identity.
+    assert!(pylon::share::load(&rig.home()).unwrap().is_none());
+    let key = rig.path("remote-head/group-ssh");
+    assert!(
+        std::fs::read_to_string(&key)
+            .unwrap()
+            .contains("PRIVATE KEY")
+    );
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(&key).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    let remote = Identity::load_or_create(&rig.path("remote-head/provider.key")).unwrap();
+    let (head, _) = group(&hub, 4, |head, stages| {
+        head.group_head().unwrap().readiness == Some(Readiness::Ready)
+            && stages.iter().all(|s| s.status == Status::Online)
+    })
+    .await;
+    assert_eq!(head.provider, remote.pubkey());
+    assert_eq!(receipt["group"]["head"].as_str().unwrap(), head.address());
+
+    let artifact = receipt["group"]["artifact"].as_str().unwrap().to_string();
+    let asker = tempfile::tempdir().unwrap();
+    let routed = ask(&relay, asker.path(), &artifact).await;
+    let Outcome::Answered(answer) = &routed.outcome else {
+        panic!("no answer: {:?} {:?}", routed.outcome, routed.failed);
+    };
+    assert_eq!(
+        answer.text.as_deref(),
+        Some("<7000><7001><7002><7003><7004><7005>")
+    );
+    // The steps reached only the first stage; the others got stage state
+    // from the stage before them.
+    assert!(rig.stage_events("step").iter().all(|e| e["stage"] == "s0"));
+    for stage in ["s1", "s2", "s3"] {
+        assert_eq!(
+            rig.stage_events("data")
+                .iter()
+                .filter(|e| e["stage"] == stage)
+                .count(),
+            6,
+            "{stage}"
+        );
+    }
+
+    let home = rig.home();
+    let up = rig.up.clone();
+    let serving = tokio::spawn(async move {
+        launched
+            .serve(&home, &up, std::future::pending::<()>())
+            .await
+    });
+    let down = cloud::down_at(&rig.home(), Duration::from_secs(60))
+        .await
+        .unwrap();
+    let ended = serving.await.unwrap();
+    assert_eq!(ended["reason"], "pylon cloud down");
+    assert_eq!(down["ended"]["reason"], "pylon cloud down");
+    assert_eq!(rig.gcloud("delete").len(), 4);
+    group(&hub, 4, |head, stages| {
+        head.status == Status::Offline && stages.iter().all(|s| s.status == Status::Offline)
+    })
+    .await;
+    let pid: i32 = std::fs::read_to_string(rig.path("head.pid"))
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    assert!(!alive(pid as u32), "the head's session is over");
+    let (_, text) = cloud::status_at(&rig.home()).unwrap();
+    assert!(
+        text.contains("on oa-v41-four-single-m0, direct transport"),
+        "{text}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_lost_head_ends_the_group_and_deletes_every_machine() {
+    let (relay, hub) = pylon::fixture::relay().await.unwrap();
+    let mut rig = Rig::new("two-dual", &relay);
+    rig.up.head = HeadPlacement::Vm;
+    rig.up.local_head = Some(in_zone_head(&rig));
+    let launched = cloud::launch(&rig.up).await.unwrap();
+    assert_eq!(rig.gcloud("create").len(), 3);
+    assert_eq!(
+        launched.receipt["group"]["head_machine"],
+        "oa-v41-two-dual-head"
+    );
+    group(&hub, 4, |head, _| {
+        head.group_head().unwrap().readiness == Some(Readiness::Ready)
+    })
+    .await;
+    let home = rig.home();
+    let up = rig.up.clone();
+    let serving = tokio::spawn(async move {
+        launched
+            .serve(&home, &up, std::future::pending::<()>())
+            .await
+    });
+    // The head's machine is gone: its session ends without a word.
+    let pid: i32 = std::fs::read_to_string(rig.path("head.pid"))
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
+    unsafe { libc::kill(pid, libc::SIGKILL) };
+    let ended = tokio::time::timeout(Duration::from_secs(30), serving)
+        .await
+        .unwrap()
+        .unwrap();
+    eprintln!("lost head: {ended}");
+    assert!(
+        ended["reason"]
+            .as_str()
+            .unwrap()
+            .starts_with("the group was lost: the head's session ended"),
+        "{ended}"
+    );
+    assert_eq!(rig.gcloud("delete").len(), 3);
+    assert_eq!(rig.ledger("stop").len(), 3);
+    // Its stages lose their front and exit.
+    until("the stages to exit", 10, async || {
+        let left = rig.stage_events("front-closed").len();
+        (left == 4).then_some(())
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn a_head_in_the_zone_needs_the_pylon_binary() {
+    let (relay, _hub) = pylon::fixture::relay().await.unwrap();
+    let mut rig = Rig::new("two-dual", &relay);
+    rig.up.head = HeadPlacement::Stage0;
+    let Err(why) = cloud::launch(&rig.up).await else {
+        panic!("launched");
+    };
+    assert!(why.contains("--pylon"), "{why}");
+    assert!(rig.gcloud("create").is_empty());
+}
+
+#[test]
+fn the_launchers_reach_stages_and_the_head_inside_the_zone() {
+    // A head in the zone starts a stage over plain ssh with the group key.
+    let dir = tempfile::tempdir().unwrap();
+    let output = std::process::Command::new(repo().join("scripts/pylon/v41-stage-ssh.sh"))
+        .args([
+            "--ssh",
+            "/home/me/.openagents/v41-head/group-ssh",
+            "oa-stage@oa-v41-two-dual-m1.us-east1-b.c.openagentsgemini.internal",
+            "47102",
+            "--",
+            "--layers",
+            "20-30",
+            "--front",
+            "127.0.0.1:53111",
+        ])
+        .env("OA_SSH", fixture("fake_gcloud.py"))
+        .env("FAKE_GCLOUD_ROOT", dir.path())
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "the fake refuses ssh");
+    let calls = std::fs::read_to_string(dir.path().join("calls.jsonl")).unwrap();
+    let args: Vec<String> = serde_json::from_str(calls.lines().next().unwrap()).unwrap();
+    assert_eq!(
+        args[..3],
+        ["-i", "/home/me/.openagents/v41-head/group-ssh", "-tt"]
+    );
+    assert!(args.contains(&"BatchMode=yes".into()));
+    assert!(args.contains(&"127.0.0.1:47102:127.0.0.1:53111".into()));
+    assert_eq!(
+        args[args.len() - 2],
+        "oa-stage@oa-v41-two-dual-m1.us-east1-b.c.openagentsgemini.internal"
+    );
+    assert_eq!(
+        args.last().unwrap(),
+        "/opt/openagents/stage-run '--layers' '20-30' '--front' '127.0.0.1:47102'"
+    );
+
+    // The budget host starts the head over gcloud ssh, with its input and
+    // output as the session's.
+    let dir = tempfile::tempdir().unwrap();
+    let output = std::process::Command::new(repo().join("scripts/pylon/v41-head-ssh.sh"))
+        .args(["oa-v41-two-dual-head", "us-east1-b", "openagentsgemini"])
+        .env("OA_GCLOUD", fixture("fake_gcloud.py"))
+        .env("FAKE_GCLOUD_ROOT", dir.path())
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    let calls = std::fs::read_to_string(dir.path().join("calls.jsonl")).unwrap();
+    let args: Vec<String> = serde_json::from_str(calls.lines().next().unwrap()).unwrap();
+    assert_eq!(
+        args[..9],
+        [
+            "compute",
+            "ssh",
+            "oa-v41-two-dual-head",
+            "--zone",
+            "us-east1-b",
+            "--project",
+            "openagentsgemini",
+            "--quiet",
+            "--"
+        ]
+    );
+    assert!(args.contains(&"-T".into()));
+    assert_eq!(args.last().unwrap(), "/opt/openagents/head-run");
 }

@@ -12,13 +12,18 @@
 //! - **Machines.** A machine boots `scripts/pylon/v41-stage-startup.sh`,
 //!   which copies the shards its stages need from the weights bucket and
 //!   installs the stage worker.
-//! - **Group.** This computer becomes the group head (group mode,
-//!   [`crate::group_serve`]). Each stage is a managed worker that
-//!   `scripts/pylon/v41-stage-ssh.sh` starts over `gcloud compute ssh`, with
-//!   the stage's control connection forwarded back to the head. Killing the
-//!   worker ends the ssh session and the remote stage; a lost machine ends
-//!   the session, so spot loss shows as a stage failing, the group going
-//!   unready, and its beacons dropping, never as a hang.
+//! - **Group.** A pylon heads the group (group mode,
+//!   [`crate::group_serve`]): this computer by default, or, with `--head
+//!   stage0|vm` (#12399), the stage-0 machine or a small machine in the
+//!   same zone ([`crate::cloud_head`]), which this computer starts and
+//!   stops over one ssh session. Each stage is a managed worker that
+//!   `scripts/pylon/v41-stage-ssh.sh` starts over ssh, with the stage's
+//!   control connection forwarded back to the head. Killing the worker
+//!   ends the ssh session and the remote stage; a lost machine ends the
+//!   session, so spot loss shows as a stage failing, the group going
+//!   unready, and its beacons dropping, never as a hang. With `--transport
+//!   direct` the stages send stage state straight to each other over
+//!   `stage_link` on [`DATA_PORT`] and up, inside the zone.
 //! - **End.** The head drains, publishes its beacons offline, and every
 //!   machine is deleted through the guard, which records its cost.
 
@@ -31,12 +36,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::oneshot;
 
+use crate::cloud_head::{self, HeadPlacement, RemoteHead};
 use crate::engine::Sampling;
 use crate::identity::Identity;
 use crate::lease::Dedicated;
 use crate::online::{Options, load_live};
 use crate::placement::{self, Placement};
 use crate::share::{self, GroupLane, GroupStage, Settings};
+use crate::stage_group::Transport;
 use crate::{DEFAULT_RELAY, now};
 
 /// `cloud.json`'s schema.
@@ -51,6 +58,14 @@ pub const IMAGE_PROJECT: &str = "deeplearning-platform-release";
 /// The first loopback port a stage's control connection is forwarded to on
 /// its machine; stage `i` uses this plus `i`.
 pub const REMOTE_PORT: u16 = 47_100;
+/// The first port a stage's link listener uses on its machine under the
+/// direct transport; stage `i` uses this plus `i`.
+pub const DATA_PORT: u16 = 47_200;
+/// The image a head-only machine boots.
+pub const HEAD_IMAGE_FAMILY: &str = "debian-12";
+pub const HEAD_IMAGE_PROJECT: &str = "debian-cloud";
+/// The file `pylon cloud down` leaves for a running `up`.
+const DOWN: &str = "cloud.down";
 
 /// The spend guard and how to run it.
 #[derive(Debug, Clone)]
@@ -222,6 +237,17 @@ pub struct Up {
     pub step_timeout: Duration,
     pub startup_timeout: Duration,
     pub max_restarts: u32,
+    /// Where stage state travels between stages.
+    pub transport: Transport,
+    /// Where the group head runs.
+    pub head: HeadPlacement,
+    /// The machine type of a head-only machine (`--head vm`).
+    pub head_machine_type: String,
+    /// The pylon binary in a bucket, for a head in the zone.
+    pub pylon: Option<String>,
+    /// Run the head's session on this computer with this program and
+    /// arguments instead of over ssh: tests' in-zone head.
+    pub local_head: Option<(PathBuf, Vec<String>)>,
 }
 
 impl Up {
@@ -256,6 +282,11 @@ impl Up {
             step_timeout: Duration::from_secs(30),
             startup_timeout: Duration::from_secs(900),
             max_restarts: 3,
+            transport: Transport::Front,
+            head: HeadPlacement::Local,
+            head_machine_type: "e2-small".into(),
+            pylon: None,
+            local_head: None,
         }
     }
 }
@@ -280,6 +311,9 @@ pub struct MachinePlan {
     pub machine_type: String,
     pub zone: String,
     pub stages: Vec<StagePlan>,
+    /// The group head runs here.
+    #[serde(default)]
+    pub head: bool,
     /// The guard command, without `--dry-run`.
     pub guard: Vec<String>,
 }
@@ -289,6 +323,18 @@ pub struct MachinePlan {
 pub struct Plan {
     pub placement: Placement,
     pub machines: Vec<MachinePlan>,
+}
+
+/// Where a launch keeps the group's ssh key for a head in the zone.
+#[must_use]
+pub fn key_dir(up: &Up) -> PathBuf {
+    up.home.join(format!("cloud-{}", up.group))
+}
+
+/// A machine's name inside the zone's network.
+#[must_use]
+pub fn internal(up: &Up, machine: &str) -> String {
+    format!("{machine}.{}.c.{}.internal", up.zone, up.project)
 }
 
 fn layer_list(stages: &[StagePlan]) -> String {
@@ -320,8 +366,11 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
         return Err("--hours must be more than zero".into());
     }
     let startup = up.repo.join("scripts/pylon/v41-stage-startup.sh");
+    let stage_ssh = up.repo.join("scripts/pylon/v41-stage-ssh.sh");
+    let keys = key_dir(up).join("ssh-keys");
     let disk_gb = |stages: usize| 100 + 250 * stages;
-    let machines = placement
+    let pylon = up.pylon.clone().unwrap_or_else(|| "unset".into());
+    let mut machines: Vec<MachinePlan> = placement
         .hosts
         .iter()
         .map(|host| {
@@ -339,7 +388,8 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
                     head: s.head,
                 })
                 .collect();
-            let metadata = [
+            let head = up.head == HeadPlacement::Stage0 && stages.iter().any(|s| s.stage == 0);
+            let mut metadata = vec![
                 ("oa-group", up.group.clone()),
                 ("oa-manifest", placement.digest.clone()),
                 ("oa-weights", up.weights.clone()),
@@ -356,11 +406,23 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
                     "oa-worker",
                     up.worker.clone().unwrap_or_else(|| "unset".into()),
                 ),
-            ]
-            .iter()
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join(",");
+            ];
+            let mut files = vec![format!("startup-script={}", startup.display())];
+            if up.head.remote() {
+                // The head starts this machine's stages with the group's
+                // own key.
+                files.push(format!("ssh-keys={}", keys.display()));
+            }
+            if head {
+                metadata.push(("oa-group-head", "1".into()));
+                metadata.push(("oa-pylon", pylon.clone()));
+                files.push(format!("oa-stage-ssh={}", stage_ssh.display()));
+            }
+            let metadata = metadata
+                .iter()
+                .map(|(k, v)| format!("{k}={v}"))
+                .collect::<Vec<_>>()
+                .join(",");
             let mut guard = vec![
                 "create".to_string(),
                 name.clone(),
@@ -383,7 +445,7 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
             }
             guard.extend([
                 "--".into(),
-                format!("--metadata-from-file=startup-script={}", startup.display()),
+                format!("--metadata-from-file={}", files.join(",")),
                 format!("--metadata={metadata}"),
                 format!("--boot-disk-size={}GB", disk_gb(stages.len())),
                 "--boot-disk-type=hyperdisk-balanced".into(),
@@ -397,10 +459,62 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
                 machine_type: placement.machine_type.clone(),
                 zone: up.zone.clone(),
                 stages,
+                head,
                 guard,
             }
         })
         .collect();
+    if up.head == HeadPlacement::Vm {
+        // A small on-demand machine that only heads the group: losing a
+        // spot head would lose the group.
+        let name = format!("oa-{}-head", up.group);
+        let metadata = [
+            ("oa-group", up.group.clone()),
+            ("oa-role", "head".into()),
+            ("oa-group-head", "1".into()),
+            ("oa-pylon", pylon),
+        ]
+        .iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect::<Vec<_>>()
+        .join(",");
+        machines.push(MachinePlan {
+            guard: vec![
+                "create".into(),
+                name.clone(),
+                "--machine-type".into(),
+                up.head_machine_type.clone(),
+                "--zone".into(),
+                up.zone.clone(),
+                "--hours".into(),
+                format!("{}", up.hours),
+                "--project".into(),
+                up.project.clone(),
+                "--label".into(),
+                "issue=12399".into(),
+                "--label".into(),
+                format!("pylon-group={}", up.group),
+                "--json".into(),
+                "--".into(),
+                format!(
+                    "--metadata-from-file=startup-script={},oa-stage-ssh={}",
+                    startup.display(),
+                    stage_ssh.display()
+                ),
+                format!("--metadata={metadata}"),
+                "--boot-disk-size=20GB".into(),
+                format!("--image-family={HEAD_IMAGE_FAMILY}"),
+                format!("--image-project={HEAD_IMAGE_PROJECT}"),
+                "--scopes=storage-ro".into(),
+            ],
+            name,
+            host: "head".into(),
+            machine_type: up.head_machine_type.clone(),
+            zone: up.zone.clone(),
+            stages: Vec::new(),
+            head: true,
+        });
+    }
     Ok(Plan {
         placement,
         machines,
@@ -462,6 +576,7 @@ pub fn dry_run(up: &Up, plan: &Plan) -> Result<Value, String> {
             "machine_type": machine.machine_type,
             "zone": machine.zone,
             "stages": machine.stages,
+            "head": machine.head,
             "guard": shell(&up.guard.argv(&machine.guard)),
             "gcloud": shell(&gcloud),
             "price_per_hour": summary["price_per_hour"],
@@ -487,7 +602,79 @@ pub fn dry_run(up: &Up, plan: &Plan) -> Result<Value, String> {
         "cap": cap,
         "total_after": (total * 100.0).round() / 100.0,
         "machines": machines,
+        "head": head_plan(up, plan),
     }))
+}
+
+/// Where the head runs, how this computer reaches it, and how the head
+/// starts each stage.
+fn head_plan(up: &Up, plan: &Plan) -> Value {
+    let lane = group_lane(up, plan);
+    let session = up
+        .head
+        .remote()
+        .then(|| head_session(up, plan))
+        .flatten()
+        .map(|(program, args)| {
+            shell(
+                &std::iter::once(program.display().to_string())
+                    .chain(args)
+                    .collect::<Vec<_>>(),
+            )
+        });
+    json!({
+        "placement": up.head.word(),
+        "machine": plan.machines.iter().find(|m| m.head).map(|m| m.name.clone()),
+        "transport": up.transport,
+        "session": session,
+        "stages": lane.stages.iter().map(|s| json!({
+            "name": s.name,
+            "launch": shell(
+                &std::iter::once(s.program.display().to_string())
+                    .chain(s.args.iter().cloned())
+                    .collect::<Vec<_>>(),
+            ),
+        })).collect::<Vec<_>>(),
+    })
+}
+
+/// The program and arguments of a remote head's session: ssh to its
+/// machine, or the tests' local stand-in.
+fn head_session(up: &Up, plan: &Plan) -> Option<(PathBuf, Vec<String>)> {
+    if let Some(local) = &up.local_head {
+        return Some(local.clone());
+    }
+    let machine = plan.machines.iter().find(|m| m.head)?;
+    Some((
+        up.repo.join("scripts/pylon/v41-head-ssh.sh"),
+        vec![
+            machine.name.clone(),
+            machine.zone.clone(),
+            up.project.clone(),
+        ],
+    ))
+}
+
+/// The head's version 6 settings for `lane`, on top of `base`.
+fn head_settings(up: &Up, lane: GroupLane, base: Settings) -> Settings {
+    let mut settings = base;
+    settings.pylon = format!("{}-head", up.group);
+    settings.label = format!("DeepSeek-V4.1 {}", up.group)
+        .chars()
+        .take(64)
+        .collect();
+    settings.relay = up.relay.clone();
+    settings.allow = up.allow.clone();
+    settings.slots = 1;
+    settings.max_tokens = up.max_output_tokens;
+    settings.decide = None;
+    settings.text = None;
+    settings.dedicated = true;
+    settings.vram_gb = 96;
+    settings.group = Some(lane);
+    settings.on = true;
+    settings.changed_at = now();
+    settings
 }
 
 /// One machine as `cloud.json` records it.
@@ -520,6 +707,13 @@ pub struct Record {
     pub guard_env: Vec<(String, String)>,
     pub relay: String,
     pub head: Option<String>,
+    /// Where the head runs, and on which machine when it is in the zone.
+    #[serde(default)]
+    pub head_placement: HeadPlacement,
+    #[serde(default)]
+    pub head_machine: Option<String>,
+    #[serde(default)]
+    pub transport: Transport,
     pub generation: Option<u64>,
     pub started_at: u64,
     /// When the group ends ahead of the first expiry.
@@ -566,8 +760,20 @@ pub struct Launched {
     pub receipt: Value,
     record: Record,
     guard: Guard,
-    supervisor: tokio::task::JoinHandle<()>,
+    /// The head this computer runs.
+    supervisor: Option<tokio::task::JoinHandle<()>>,
     halt: Option<oneshot::Sender<()>>,
+    /// The head in the zone, over its ssh session.
+    remote: Option<RemoteHead>,
+}
+
+/// The group as the head reports it.
+struct Observed {
+    ready: bool,
+    generation: u64,
+    failed: Option<String>,
+    reason: String,
+    head: Option<String>,
 }
 
 /// The stage group lane for `plan`.
@@ -592,10 +798,42 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
                 if stage.head {
                     extra.push("--head".into());
                 }
+                let port = DATA_PORT + stage.stage;
+                if up.transport == Transport::Direct {
+                    // Each stage listens for the previous stage's link.
+                    match &up.local_stages {
+                        Some(_) => extra.extend(["--data-listen".into(), "127.0.0.1:0".into()]),
+                        None => extra.extend([
+                            "--data-listen".into(),
+                            format!("0.0.0.0:{port}"),
+                            "--data-advertise".into(),
+                            format!("{}:{port}", internal(up, &machine.name)),
+                        ]),
+                    }
+                }
                 let (program, args) = match &up.local_stages {
                     Some((program, args)) => {
                         (program.clone(), args.iter().cloned().chain(extra).collect())
                     }
+                    // The head runs on this machine: start the stage here.
+                    None if up.head.remote() && machine.head => {
+                        (PathBuf::from("/opt/openagents/stage-run"), extra)
+                    }
+                    // The head runs in the zone: plain ssh with the
+                    // group's key to the machine's internal name.
+                    None if up.head.remote() => (
+                        PathBuf::from("/opt/openagents/stage-ssh"),
+                        [
+                            "--ssh".to_string(),
+                            format!("{}/{}", cloud_head::HOME_TOKEN, cloud_head::SSH_KEY),
+                            format!("{}@{}", cloud_head::SSH_USER, internal(up, &machine.name)),
+                            (REMOTE_PORT + stage.stage).to_string(),
+                            "--".into(),
+                        ]
+                        .into_iter()
+                        .chain(extra)
+                        .collect(),
+                    ),
                     None => (
                         up.repo.join("scripts/pylon/v41-stage-ssh.sh"),
                         [
@@ -633,6 +871,8 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
         max_output_tokens: up.max_output_tokens,
         sampling: up.sampling,
         stages,
+        transport: up.transport,
+        links: crate::stage_group::LinkPolicy::default(),
         step_timeout_ms: millis(up.step_timeout),
         health_timeout_ms: 10_000.min(millis(up.step_timeout)),
         startup_timeout_ms: millis(up.startup_timeout),
@@ -662,9 +902,9 @@ fn starts(guard: &Guard, names: &[String]) -> Vec<Value> {
         .collect()
 }
 
-/// Launch `up`: create every machine through the guard, head the group
-/// from this computer, and wait until every stage is ready and the group
-/// is published.
+/// Launch `up`: create every machine through the guard, start the group
+/// head (on this computer, or in the zone with `--head stage0|vm`), and
+/// wait until every stage is ready and the group is published.
 ///
 /// # Errors
 ///
@@ -685,12 +925,24 @@ pub async fn launch(up: &Up) -> Result<Launched, String> {
             "name the stage worker in its bucket with --worker gs://… (W11 builds it)".into(),
         );
     }
+    if up.head.remote() && up.pylon.is_none() && up.local_head.is_none() {
+        return Err(
+            "name the pylon binary in its bucket with --pylon gs://… for a head in the zone".into(),
+        );
+    }
     let plan = plan(up)?;
     let lane = group_lane(up, &plan);
     lane.validate()?;
     // Every refusal the guard can give for the set comes before anything
     // is created.
     dry_run(up, &plan)?;
+    // The stage machines carry the group key's public half from birth.
+    let key = if up.head.remote() {
+        Some(cloud_head::make_key(&key_dir(up), &up.group)?)
+    } else {
+        None
+    };
+    let _ = std::fs::remove_file(up.home.join(DOWN));
     let mut created: Vec<String> = Vec::new();
     for machine in &plan.machines {
         if let Err(why) = up.guard.run(&machine.guard) {
@@ -741,6 +993,13 @@ pub async fn launch(up: &Up) -> Result<Launched, String> {
         guard_env: up.guard.env.clone(),
         relay: up.relay.clone(),
         head: None,
+        head_placement: up.head,
+        head_machine: plan
+            .machines
+            .iter()
+            .find(|m| m.head)
+            .map(|m| m.name.clone()),
+        transport: up.transport,
         generation: None,
         started_at: now(),
         ends_at,
@@ -749,51 +1008,54 @@ pub async fn launch(up: &Up) -> Result<Launched, String> {
     };
     save(&up.home, &record)?;
 
-    // This computer heads the group: version 6 settings with the lane.
-    let mut settings =
-        share::load(&up.home)?.unwrap_or_else(|| Settings::off(&format!("{}-head", up.group)));
-    settings.pylon = format!("{}-head", up.group);
-    settings.label = format!("DeepSeek-V4.1 {}", up.group)
-        .chars()
-        .take(64)
-        .collect();
-    settings.relay = up.relay.clone();
-    settings.allow = up.allow.clone();
-    settings.slots = 1;
-    settings.max_tokens = up.max_output_tokens;
-    settings.decide = None;
-    settings.text = None;
-    settings.dedicated = true;
-    settings.vram_gb = 96;
-    settings.group = Some(lane);
-    settings.on = true;
-    settings.changed_at = now();
-    share::save(&up.home, &settings)?;
-    let identity = Identity::load_or_create(&up.home.join("provider.key"))?;
-    let head = format!("30200:{}:{}", identity.pubkey(), settings.pylon);
-
-    let (halt, halted) = oneshot::channel::<()>();
-    let mut options = Options::foreground();
-    options.every = up.every;
-    let supervisor = tokio::spawn(crate::online::supervise(
-        up.home.clone(),
-        Arc::new(Dedicated),
-        options,
-        Arc::new(|line| eprintln!("pylon: {line}")),
-        async {
-            let _ = halted.await;
-        },
-    ));
     let mut launched = Launched {
         receipt: Value::Null,
         record: record.clone(),
         guard: up.guard.clone(),
-        supervisor,
-        halt: Some(halt),
+        supervisor: None,
+        halt: None,
+        remote: None,
     };
+    if let Some(key) = key {
+        // The head runs in the zone: its settings and the group's key go
+        // over its session, and this computer only talks to it.
+        let settings = head_settings(up, lane, Settings::off(&format!("{}-head", up.group)));
+        let Some((program, args)) = head_session(up, &plan) else {
+            let why = "no machine in the plan runs the head".to_string();
+            launched.end(&up.home, &why).await;
+            return Err(why);
+        };
+        let start = json!({"settings": settings, "ssh_key": key.private});
+        match RemoteHead::start(&program, &args, &start).await {
+            Ok(remote) => launched.remote = Some(remote),
+            Err(why) => {
+                launched.end(&up.home, &why).await;
+                return Err(why);
+            }
+        }
+    } else {
+        // This computer heads the group: version 6 settings with the lane.
+        let base =
+            share::load(&up.home)?.unwrap_or_else(|| Settings::off(&format!("{}-head", up.group)));
+        let settings = head_settings(up, lane, base);
+        share::save(&up.home, &settings)?;
+        let (halt, halted) = oneshot::channel::<()>();
+        let mut options = Options::foreground();
+        options.every = up.every;
+        launched.supervisor = Some(tokio::spawn(crate::online::supervise(
+            up.home.clone(),
+            Arc::new(Dedicated),
+            options,
+            Arc::new(|line| eprintln!("pylon: {line}")),
+            async {
+                let _ = halted.await;
+            },
+        )));
+        launched.halt = Some(halt);
+    }
     let started = Instant::now();
-    let generation = loop {
-        let group = load_live(&up.home).and_then(|l| l.group);
+    let (generation, head) = loop {
+        let group = launched.observe(&up.home, &up.group);
         if let Some(group) = &group {
             if let Some(failed) = &group.failed {
                 let why = format!("the group stopped while starting: {failed}");
@@ -801,7 +1063,7 @@ pub async fn launch(up: &Up) -> Result<Launched, String> {
                 return Err(why);
             }
             if group.ready {
-                break group.generation;
+                break (group.generation, group.head.clone().unwrap_or_default());
             }
         }
         if started.elapsed() > up.ready_timeout {
@@ -825,6 +1087,9 @@ pub async fn launch(up: &Up) -> Result<Launched, String> {
         "group": {
             "id": up.group,
             "head": head,
+            "head_placement": up.head.word(),
+            "head_machine": record.head_machine,
+            "transport": up.transport,
             "model": format!("{}@{}", placement::MODEL, record.artifact),
             "artifact": record.artifact,
             "manifest": record.manifest,
@@ -848,28 +1113,66 @@ impl Launched {
         &self.record
     }
 
+    /// The group as its head reports it: this computer's live file, or
+    /// the remote head's latest status line.
+    fn observe(&self, home: &Path, group: &str) -> Option<Observed> {
+        if let Some(remote) = &self.remote {
+            let state = remote.state();
+            let failed = state.failed.clone().or_else(|| {
+                state
+                    .ended
+                    .clone()
+                    .or_else(|| state.stopped.then(|| "the head stopped".to_string()))
+            });
+            return Some(Observed {
+                ready: state.ready && failed.is_none(),
+                generation: state.generation,
+                failed,
+                reason: state.reason,
+                head: state.head,
+            });
+        }
+        let live = load_live(home)?.group?;
+        let head = Identity::load_or_create(&home.join("provider.key"))
+            .ok()
+            .map(|identity| format!("30200:{}:{group}-head", identity.pubkey()));
+        Some(Observed {
+            ready: live.ready,
+            generation: live.generation,
+            failed: live.failed,
+            reason: live.reason,
+            head,
+        })
+    }
+
     /// Stop the head (it drains and publishes its beacons offline), then
     /// delete every machine through the guard, and record why.
     async fn end(&mut self, home: &Path, reason: &str) -> Value {
         self.record.state = "stopping".into();
         let _ = save(home, &self.record);
-        if let Ok(Some(mut settings)) = share::load(home)
-            && settings.on
-        {
-            settings.on = false;
-            settings.changed_at = now();
-            let _ = share::save(home, &settings);
+        let drain = crate::provider::DRAIN + Duration::from_secs(30);
+        if let Some(remote) = self.remote.as_mut() {
+            remote.stop(drain).await;
         }
-        // The supervisor ends once it sees `on: false`; the halt is the
-        // backstop.
-        let deadline = Instant::now() + crate::provider::DRAIN + Duration::from_secs(30);
-        while !self.supervisor.is_finished() && Instant::now() < deadline {
-            tokio::time::sleep(Duration::from_millis(100)).await;
+        if let Some(supervisor) = self.supervisor.as_mut() {
+            if let Ok(Some(mut settings)) = share::load(home)
+                && settings.on
+            {
+                settings.on = false;
+                settings.changed_at = now();
+                let _ = share::save(home, &settings);
+            }
+            // The supervisor ends once it sees `on: false`; the halt is the
+            // backstop.
+            let deadline = Instant::now() + drain;
+            while !supervisor.is_finished() && Instant::now() < deadline {
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            if let Some(halt) = self.halt.take() {
+                let _ = halt.send(());
+            }
+            let _ = supervisor.await;
         }
-        if let Some(halt) = self.halt.take() {
-            let _ = halt.send(());
-        }
-        let _ = (&mut self.supervisor).await;
         let ended = delete(&self.guard, &mut self.record, reason);
         let _ = save(home, &self.record);
         ended
@@ -890,10 +1193,13 @@ impl Launched {
             if now() >= self.record.ends_at {
                 break "the machines reached their expiry".to_string();
             }
-            if share::load(home).ok().flatten().is_some_and(|s| !s.on) {
+            let turned_off = self.supervisor.is_some()
+                && share::load(home).ok().flatten().is_some_and(|s| !s.on);
+            if turned_off || home.join(DOWN).exists() {
                 break "pylon cloud down".to_string();
             }
-            if let Some(failed) = load_live(home).and_then(|l| l.group).and_then(|g| g.failed) {
+            let group = self.observe(home, &self.record.group);
+            if let Some(failed) = group.as_ref().and_then(|g| g.failed.clone()) {
                 break format!("the group was lost: {failed}");
             }
             if budget_checked.elapsed() >= up.budget_every {
@@ -908,7 +1214,8 @@ impl Launched {
                     );
                 }
             }
-            if let Some(group) = load_live(home).and_then(|l| l.group)
+            if let Some(group) = group
+                && group.generation > 0
                 && self.record.generation != Some(group.generation)
             {
                 self.record.generation = Some(group.generation);
@@ -920,7 +1227,9 @@ impl Launched {
             }
         };
         eprintln!("pylon cloud: ending group {}: {reason}", self.record.group);
-        self.end(home, &reason).await
+        let ended = self.end(home, &reason).await;
+        let _ = std::fs::remove_file(home.join(DOWN));
+        ended
     }
 }
 
@@ -978,7 +1287,12 @@ pub async fn down_at(home: &Path, wait: Duration) -> Result<Value, String> {
         return Ok(json!({"stopped": true, "already": true, "ended": record.ended}));
     }
     if running(&record) {
-        if let Ok(Some(mut settings)) = share::load(home) {
+        // A running `up` ends the group when it sees this file; one whose
+        // head runs on this computer also sees its pylon turned off.
+        std::fs::write(home.join(DOWN), b"").map_err(|e| e.to_string())?;
+        if record.head_placement == HeadPlacement::Local
+            && let Ok(Some(mut settings)) = share::load(home)
+        {
             settings.on = false;
             settings.changed_at = now();
             share::save(home, &settings)?;
@@ -1024,12 +1338,17 @@ pub fn status_at(home: &Path) -> Result<(Value, String), String> {
         record.state.clone()
     };
     let mut text = format!(
-        "group    {} ({}, {} on {})\nstate    {state}\nhead     {}\n",
+        "group    {} ({}, {} on {})\nstate    {state}\nhead     {} on {}, {} transport\n",
         record.group,
         record.placement,
         record.machines.len(),
         record.machine_type,
         record.head.as_deref().unwrap_or("not published"),
+        record.head_machine.as_deref().unwrap_or("this computer"),
+        match record.transport {
+            Transport::Front => "front",
+            Transport::Direct => "direct",
+        },
     );
     if let Some(g) = &group {
         text.push_str(&format!(
@@ -1086,7 +1405,7 @@ pub const USAGE: &str = "\
 usage: openagents pylon cloud up|down|status [options]
 
 Launch a DeepSeek-V4.1 group on rented machines through the spend guard,
-head it from this computer, and stop it. Run it from an OpenAgents
+head it from this computer or from a machine in its zone, and stop it. Run it from an OpenAgents
 checkout on the one host that allocates for the budget.
 
   up PLACEMENT              Create the placement's machines through
@@ -1114,10 +1433,24 @@ checkout on the one host that allocates for the budget.
       --allow NPUB          A key that may send jobs (repeatable); default
                             any key.
       --relay URL           The relay (default wss://relay.openagents.com).
+      --head WHERE          Where the group head runs: local (this
+                            computer, the default), stage0 (the machine
+                            that runs stage 0), or vm (a small machine of
+                            its own in the zone). This computer keeps the
+                            spend guard and talks only to the head.
+      --head-machine-type T The head machine's type with --head vm
+                            (default e2-small).
+      --pylon GS_URL        The pylon binary in a bucket, for a head in the
+                            zone (required to launch one).
+      --transport HOW       How stage state travels: front (through the
+                            head, the default) or direct (stage to stage
+                            over authenticated links inside the zone).
   down                      Drain the group, publish its beacons offline,
                             and delete its machines through the guard.
   status                    The group, its stages, its machines, and the
                             budget.
+  head --home DIR           Head a group on a machine in its zone for the
+                            budget host's `up` (its ssh session runs this).
   --json                    One JSON document on standard output.";
 
 /// The OpenAgents checkout holding the guard, found from the current
@@ -1165,6 +1498,10 @@ pub fn parse_up(
     let deadline = take_number(&mut words, "--deadline-secs")?;
     let max_output = take_number(&mut words, "--max-output-tokens")?;
     let allow = take_values(&mut words, "--allow")?;
+    let head = value(&mut words, "--head")?;
+    let head_machine_type = value(&mut words, "--head-machine-type")?;
+    let pylon = value(&mut words, "--pylon")?;
+    let transport = value(&mut words, "--transport")?;
     let Some(placement) = words.first().cloned() else {
         return Err("name a placement: four-single or two-dual".into());
     };
@@ -1174,6 +1511,23 @@ pub fn parse_up(
     let mut up = Up::new(&placement, repo, home);
     up.relay = relay.into();
     up.worker = worker;
+    up.pylon = pylon;
+    if let Some(head) = head {
+        up.head = HeadPlacement::parse(&head)?;
+    }
+    if let Some(machine_type) = head_machine_type {
+        if up.head != HeadPlacement::Vm {
+            return Err("--head-machine-type goes with --head vm".into());
+        }
+        up.head_machine_type = machine_type;
+    }
+    if let Some(transport) = transport {
+        up.transport = match transport.as_str() {
+            "front" => Transport::Front,
+            "direct" => Transport::Direct,
+            _ => return Err("--transport takes front or direct".into()),
+        };
+    }
     up.spot = !on_demand;
     up.machine_type = machine_type;
     if let Some(hours) = hours {
@@ -1266,6 +1620,23 @@ pub async fn command(json_out: bool, words: &[String], relay: &str) -> Result<()
                         m["gcloud"].as_str().unwrap_or(""),
                     ));
                 }
+                let head = &value["head"];
+                text.push_str(&format!(
+                    "\nhead on {} ({}), {} transport\n",
+                    head["machine"].as_str().unwrap_or("this computer"),
+                    head["placement"].as_str().unwrap_or(""),
+                    head["transport"].as_str().unwrap_or(""),
+                ));
+                if let Some(session) = head["session"].as_str() {
+                    text.push_str(&format!("  session: {session}\n"));
+                }
+                for stage in head["stages"].as_array().into_iter().flatten() {
+                    text.push_str(&format!(
+                        "  {}: {}\n",
+                        stage["name"].as_str().unwrap_or(""),
+                        stage["launch"].as_str().unwrap_or("")
+                    ));
+                }
                 emit(json_out, &value, text.trim_end());
                 return Ok(());
             }
@@ -1315,6 +1686,16 @@ pub async fn command(json_out: bool, words: &[String], relay: &str) -> Result<()
             let (value, text) = status_at(&home)?;
             emit(json_out, &value, &text);
             Ok(())
+        }
+        Some("head") => {
+            let mut rest = words[1..].to_vec();
+            let dir = crate::share::take_values(&mut rest, "--home")?
+                .pop()
+                .map_or(home, PathBuf::from);
+            if let Some(extra) = rest.first() {
+                return Err(format!("unexpected argument `{extra}`"));
+            }
+            cloud_head::serve(&dir, Duration::from_secs(1)).await
         }
         Some("help" | "--help") | None => {
             emit(json_out, &json!({"usage": USAGE}), USAGE);

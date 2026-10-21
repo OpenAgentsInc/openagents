@@ -6,9 +6,15 @@
 #   oa-embeddings  1 when a stage here holds the embeddings
 #   oa-head        1 when a stage here holds the final norm and head
 #   oa-worker      the stage worker binary's gs:// URL (W11)
+# and, when the group head runs in the zone (#12399, `--head stage0|vm`):
+#   oa-role        `head` on a machine that only heads the group
+#   oa-group-head  1 on the machine the head runs on
+#   oa-pylon       the pylon binary's gs:// URL, for that machine
+#   oa-stage-ssh   scripts/pylon/v41-stage-ssh.sh, for that machine
 # It copies only the shards those stages read (W9's stage selection), then
 # installs /opt/openagents/stage-run, which the group head starts over ssh
-# for each stage, so the head owns every worker's lifetime.
+# for each stage, so the head owns every worker's lifetime. On the head's
+# machine it also installs /opt/openagents/head-run and stage-ssh.
 set -eu
 root=/mnt/stage
 mkdir -p "$root/weights" /opt/openagents
@@ -17,6 +23,25 @@ md() {
   curl -fsS -H 'Metadata-Flavor: Google' \
     "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1"
 }
+optional() { md "$1" 2>/dev/null || true; }
+if [ "$(optional oa-group-head)" = 1 ]; then
+  gcloud storage cp "$(md oa-pylon)" /opt/openagents/pylon
+  chmod 755 /opt/openagents/pylon
+  md oa-stage-ssh >/opt/openagents/stage-ssh
+  chmod 755 /opt/openagents/stage-ssh
+  cat >/opt/openagents/head-run <<'RUN'
+#!/bin/sh
+# Head the group in the foreground of the budget host's ssh session; the
+# launch arrives on standard input, and the session ending stops the head.
+exec /opt/openagents/pylon cloud head --home "$HOME/.openagents/v41-head"
+RUN
+  chmod 755 /opt/openagents/head-run
+  echo "oa-stage: the group head can start here"
+fi
+if [ "$(optional oa-role)" = head ]; then
+  touch "$root/ready"
+  exit 0
+fi
 weights=$(md oa-weights)
 layers=$(md oa-layers)
 embeddings=$(md oa-embeddings)

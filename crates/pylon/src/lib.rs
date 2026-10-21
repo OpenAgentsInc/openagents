@@ -33,6 +33,7 @@ pub mod checkup;
 pub mod cli;
 pub mod client;
 pub mod cloud;
+pub mod cloud_head;
 pub mod decide;
 pub mod decide_client;
 pub mod earnings;
