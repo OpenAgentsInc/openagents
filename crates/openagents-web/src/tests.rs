@@ -1845,7 +1845,7 @@ async fn the_grid_homepage_is_at_the_root_and_the_new_chat_at_chat() {
     off.features = crate::features::Features::none();
     let (status, _, no_features) = get_with(router(off), "/", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(!no_features.contains("/login?") && !no_features.contains("/signup?"));
+    assert!(!no_features.contains(">Log in</a>") && !no_features.contains(">Sign up</a>"));
     assert!(no_features.contains("<nav id=\"home-account\" aria-label=\"Account\"></nav>"));
     assert!(no_features.contains("data-ambient"));
     assert!(!html.contains("<input") && !html.contains("<textarea"));

@@ -107,6 +107,7 @@ pub(crate) async fn manifest_here() -> Option<crate::labs::Lab> {
             tools,
             documents,
             hosted: None,
+            game: None,
             platform: None,
         }),
         Err(why) => {
@@ -147,6 +148,7 @@ pub(crate) async fn manifest_for(
         tools: tools?,
         documents,
         hosted: Some(scope),
+        game: None,
         platform: None,
     })
 }

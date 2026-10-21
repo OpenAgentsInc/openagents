@@ -59,6 +59,9 @@ pub struct LanderChat {
 
     /// The open chat; `None` before the first message.
     current: Option<String>,
+    game_mode: bool,
+    game_chat: Option<String>,
+    grid_chat: Option<String>,
     title: String,
     entries: Vec<SessionMessageEntry>,
     live: Option<Live>,
@@ -88,16 +91,7 @@ pub struct LanderChat {
 
 impl LanderChat {
     pub fn new(still: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let composer = cx.new(|cx| {
-            TextInput::new(
-                if base() == model::HOME_BASE {
-                    "Message the pylons"
-                } else {
-                    model::PLACEHOLDER
-                },
-                cx,
-            )
-        });
+        let composer = cx.new(|cx| TextInput::new(model::PLACEHOLDER, cx));
         cx.subscribe_in(
             &composer,
             window,
@@ -132,6 +126,9 @@ impl LanderChat {
             client: None,
             session: None,
             current: route_chat(),
+            game_mode: is_game_lab(),
+            game_chat: None,
+            grid_chat: None,
             title: String::new(),
             entries: Vec::new(),
             live: None,
@@ -208,6 +205,26 @@ impl LanderChat {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
+        let game = is_game_lab();
+        if game != self.game_mode && self.live.is_none() && !self.sending {
+            if self.game_mode {
+                self.game_chat = self.current.clone();
+            } else {
+                self.grid_chat = self.current.clone();
+            }
+            self.new_chat(cx);
+            self.game_mode = game;
+            let chat = if game {
+                self.game_chat.clone()
+            } else {
+                self.grid_chat.clone()
+            };
+            if let Some(chat) = chat {
+                self.current = Some(chat.clone());
+                push_path(Some(&chat));
+                self.load(chat, cx);
+            }
+        }
         if base() == model::HOME_BASE {
             let ready = js_sys::Reflect::get(&js_sys::global(), &model::GROUP_READY_GLOBAL.into())
                 .ok()
@@ -393,7 +410,9 @@ impl LanderChat {
     /// [`model::GROUP_MODEL`] on each turn while DeepSeek V4.1 is chosen and
     /// a ready group is online.
     fn sync_pick(&self) {
-        let value = if self.ask_flint {
+        let value = if is_game_lab() {
+            JsValue::UNDEFINED
+        } else if self.ask_flint {
             JsValue::from_str(model::FLINT_MODEL)
         } else if self.group_ready && self.ask_group {
             JsValue::from_str(model::GROUP_MODEL)
@@ -519,7 +538,16 @@ impl LanderChat {
                     slot.1.push_str(&text);
                 }
             }
-            Event::Cards { .. } => {}
+            Event::Cards { cards, .. } => {
+                if let Ok(callback) =
+                    js_sys::Reflect::get(&js_sys::global(), &"homeGameCards".into())
+                {
+                    if let Some(callback) = callback.dyn_ref::<js_sys::Function>() {
+                        let _ = callback
+                            .call1(&JsValue::UNDEFINED, &JsValue::from_str(&cards.to_string()));
+                    }
+                }
+            }
             Event::Done { outcome, .. } => self.finish(outcome == "stopped", None),
             Event::Error { error, .. } => self.finish(false, Some(error.message)),
         }
@@ -851,6 +879,9 @@ impl LanderChat {
     /// DeepSeek V4.1 or any Pylon, beside the send button: on the Grid
     /// terminal while a ready V4.1 group is online (#12421).
     fn render_pick(&self, layout: &Layout, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if is_game_lab() {
+            return None;
+        }
         if base() != model::HOME_BASE || !(self.group_ready || self.flint_ready || self.ask_flint) {
             return None;
         }
@@ -1071,13 +1102,20 @@ fn push_path(chat: Option<&str>) {
         return;
     };
     let mut path = model::path_for(base(), chat);
+    if is_game_lab() {
+        path.push_str(if path.contains('?') {
+            "&lab=game"
+        } else {
+            "?lab=game"
+        });
+    }
     if base() == model::HOME_BASE
         && window
             .location()
             .search()
             .is_ok_and(|q| q.trim_start_matches('?').split('&').any(|p| p == "gl"))
     {
-        path.push_str(if chat.is_some() { "&gl" } else { "?gl" });
+        path.push_str(if path.contains('?') { "&gl" } else { "?gl" });
     }
     if window.location().pathname().ok().as_deref() == Some(path.as_str()) {
         return;
@@ -1155,4 +1193,12 @@ fn mark(name: &str) {
     if let Some(performance) = web_sys::window().and_then(|w| w.performance()) {
         let _ = performance.mark(name);
     }
+}
+
+fn is_game_lab() -> bool {
+    js_sys::Reflect::get(&js_sys::global(), &"openagentsLab".into())
+        .ok()
+        .and_then(|v| v.as_string())
+        .as_deref()
+        == Some("game")
 }

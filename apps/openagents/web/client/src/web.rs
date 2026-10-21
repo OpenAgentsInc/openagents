@@ -348,6 +348,14 @@ impl Client {
                 // The Grid terminal's model pick (#12403): the page sets
                 // `openagentsPylonModel` while a person asks the V4.1 group,
                 // and the site routes the turn to it (#12416).
+                if js_sys::Reflect::get(&js_sys::global(), &"openagentsLab".into())
+                    .ok()
+                    .and_then(|v| v.as_string())
+                    .as_deref()
+                    == Some("game")
+                {
+                    headers.set("x-openagents-lab", "game").map_err(js_error)?;
+                }
                 if let Some(model) =
                     js_sys::Reflect::get(&js_sys::global(), &"openagentsPylonModel".into())
                         .ok()

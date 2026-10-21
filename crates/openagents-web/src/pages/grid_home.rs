@@ -148,7 +148,7 @@ to{opacity:0;transform:translate(-50%,50%) scale(4.5)}\
 #lander-chat-keep{position:fixed;pointer-events:none;display:none}\
 @media(prefers-reduced-motion:reduce){#pylon-composer{transition:none}\
 }\
-\
+[hidden]{display:none!important}#game-lab-panel{position:fixed;z-index:7;top:70px;right:20px;width:min(560px,45vw);max-height:calc(100vh - 230px);overflow:auto;padding:16px;border:1px solid #333;border-radius:16px;background:#101010;box-sizing:border-box}.game-lab-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}#game-lab-panel button,#game-lab-back{border:1px solid #555;border-radius:8px;background:#222;color:#eee;padding:8px 12px;cursor:pointer}#game-lab-status{font-size:13px;color:#aaa}#game-lab-card{border:0;width:100%;height:460px;background:#101010}#game-lab-signin{color:#fff}#game-lab-play{position:fixed;inset:0;z-index:20;background:#000}#game-lab-play-frame{width:100%;height:100%;border:0}#game-lab-back{position:absolute;z-index:21;top:16px;left:16px}@media(max-width:760px){#game-lab-panel{left:12px;right:12px;width:auto;top:60px;max-height:48vh}#game-lab-card{height:320px}}
 ";
 
 /// The mark and the name as the page's heading, and the account links
@@ -166,14 +166,15 @@ fn heading(account: bool) -> String {
     format!(
         "<header data-pylons-keep><h1><svg viewBox=\"0 0 386 386\" fill=\"currentColor\" aria-hidden=\"true\">\
 <path d=\"M292.64 54.39A181 181 0 1 1 93.36 54.39A21 21 0 0 1 116.48 89.46A139 139 0 1 0 269.52 89.46A21 21 0 0 1 292.64 54.39ZM172 21A21 21 0 0 1 214 21V165.5A21 21 0 0 1 172 165.5Z\"/>\
-</svg>OpenAgents</h1><nav id=\"home-account\" aria-label=\"Account\">\
+</svg>OpenAgents</h1><nav aria-label=\"Game Lab\"><a id=\"game-lab-open\" href=\"/?lab=game\">Game Lab</a></nav><nav id=\"home-account\" aria-label=\"Account\">\
 {links}</nav></header>"
     )
 }
 
 /// After the list: Verse's canvas and status line, the pillars, the live
 /// announcements, and the pylon card.
-const AFTER_LIST: &str = "\
+const AFTER_LIST: &str = concat!(
+    "\
 <canvas id=\"everglade-canvas\" data-ambient tabindex=\"-1\" aria-label=\"The Grid, where people, agents, and pylons meet\">\
 </canvas>\
 <p id=\"everglade-status\" class=\"sr\" aria-live=\"polite\">\
@@ -203,13 +204,16 @@ const AFTER_LIST: &str = "\
 &times;</button>\
 </div>\
 \
-";
+",
+    r#"<section id="game-lab-panel" aria-label="Game Lab" hidden><div class="game-lab-heading"><strong>Game Lab</strong><button id="game-lab-close" type="button">Back to the Grid</button></div><p id="game-lab-status" role="status"></p><a id="game-lab-signin" href="/login?return_to=%2F%3Flab%3Dgame" hidden>Sign in</a><iframe id="game-lab-card" title="Your game" allow="fullscreen" hidden></iframe></section><section id="game-lab-play" aria-label="Play your game" hidden><button id="game-lab-back" type="button">Back to Game Lab</button><iframe id="game-lab-play-frame" title="Play your game" allow="fullscreen"></iframe></section>"#
+);
 
 /// Loads the pylons, Verse, and GPUI chat as separate modules. The pylon
 /// card loads on click. Only the focused GPUI chat input pauses world
 /// controls: the card has nothing to type into, so a click on it hands the
 /// keyboard straight back to the world (#12415).
-const LOADER: &str = "\
+const LOADER: &str = concat!(
+    "\
 const still=matchMedia(\"(prefers-reduced-motion: reduce)\").matches;\
 const idle=t=>new Promise(r=>(window.requestIdleCallback||(f=>setTimeout(f,1)))(r,{timeout:t}));\
 const account=()=>fetch(\"/home/me\").then(r=>r.ok?r.json():null).then(me=>{if(!me||!me.signed_in)return;\
@@ -257,16 +261,16 @@ const prepareChat=()=>chatAssets||(chatAssets=(async()=>{const dir=\"/lander8/bu
 return Promise.all([WebAssembly.compileStreaming(fetch(dir+\"openagents_web_lander_chat_bg.wasm\",{priority:\"low\"})),import(dir+\"openagents_web_lander_chat.js\")])})());\n\
 const loadChat=()=>chatLoad||(chatLoad=(async()=>{performance.mark(\"home-chat-start\");\n\
 if(terminalNear)chatStatus.textContent=\"Opening chat…\";\n\
-const [module,glue]=await prepareChat();\n\
+const [module,glue]=await prepareChat();performance.mark(\"home-chat-compiled\");\n\
 await idle(300);\n\
-await glue.default({module_or_path:module});\n\
+await glue.default({module_or_path:module});performance.mark(\"home-chat-instantiated\");\n\
 await onMount(()=>new Promise((ok,no)=>{const fields=new Set(document.querySelectorAll(\"body>input\")),before=document.activeElement;\n\
 const captureField=()=>{if(chatField)return;\n\
 chatField=Array.from(document.querySelectorAll(\"body>input\")).find(f=>!fields.has(f));\n\
 if(!chatField)return;\n\
 const tookFocus=document.activeElement===chatField;\n\
 chatField.id=\"pylon-message\";\n\
-chatField.setAttribute(\"aria-label\",\"Message the pylons\");\n\
+chatField.setAttribute(\"aria-label\",globalThis.openagentsLab===\"game\"?\"Describe your game change\":\"Message OpenAgents\");\n\
 chatField.disabled=true;\n\
 chatField.addEventListener(\"focus\",syncFocus);\n\
 chatField.addEventListener(\"blur\",syncFocus);\n\
@@ -282,16 +286,16 @@ captureField();observer.disconnect();chatReady=true;\n\
 chatStatus.textContent=\"\";\n\
 performance.mark(\"home-chat-ready\");\n\
 syncChat();ok()},{once:true});\n\
-glue.mount(still)}));\n\
+performance.mark(\"home-chat-mounting\");glue.mount(still)}));\n\
 return glue})().catch(error=>{chatStatus.textContent=\"Chat couldn't open. Reload to try again.\";\n\
 console.warn(error);focusPending=false;syncFocus();throw error}));\n\
-globalThis.homeTerminal=near=>{near=near&&world.classList.contains(\"ready\");terminalNear=near;focusPending=near;\n\
+globalThis.homeTerminal=near=>{near=(globalThis.openagentsLab===\"game\"||near)&&world.classList.contains(\"ready\");terminalNear=near;focusPending=near;\n\
 syncChat();\n\
 if(near)loadChat().catch(()=>{})};\n\
 world.addEventListener(\"pointerdown\",()=>{focusPending=false;\n\
 if(chatField&&document.activeElement===chatField)chatField.blur();\n\
 world.focus({preventScroll:true});syncFocus()},true);\n\
-addEventListener(\"keydown\",e=>{if(e.key===\"Escape\"&&terminalNear){e.preventDefault();\n\
+addEventListener(\"keydown\",e=>{if(e.key===\"Escape\"&&terminalNear){if(globalThis.openagentsLab===\"game\")return;e.preventDefault();\n\
 e.stopImmediatePropagation();homeTerminal(false);world.focus();return}\n\
 if(blocked.has(e.code)&&document.activeElement===chatField){e.preventDefault();e.stopImmediatePropagation();return}\n\
 held.add(e.code)},true);\n\
@@ -346,7 +350,9 @@ idle(1200).then(()=>loadChat()).catch(()=>{});\
 addEventListener(\"verse-stopped\",()=>{canvas.classList.remove(\"ready\");document.documentElement.classList.remove(\"world-ready\");homeTerminal(false)},{once:true})}catch(e){}};\
 account();\
 loadLayer().then(verse);\
-";
+",
+    include_str!("grid_game_lab.js")
+);
 
 /// The relay the Grid's players meet on, which the page's policy admits
 /// (#12406).
@@ -442,6 +448,17 @@ async fn page(State(app): State<App>, request: HeaderMap) -> Response {
             ))
         });
     let mut response = send(&document, &request);
+    if let Some(policy) = response
+        .headers()
+        .get(header::CONTENT_SECURITY_POLICY)
+        .and_then(|v| v.to_str().ok())
+    {
+        if let Ok(policy) = HeaderValue::from_str(&format!("{policy}; frame-src 'self'")) {
+            response
+                .headers_mut()
+                .insert(header::CONTENT_SECURITY_POLICY, policy);
+        }
+    }
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
@@ -504,7 +521,8 @@ mod tests {
     fn production_hides_the_account_links_but_keeps_the_nav() {
         let html = main_html("<ul></ul>", false);
         assert!(html.contains("<nav id=\"home-account\" aria-label=\"Account\"></nav>"));
-        assert!(!html.contains("/login") && !html.contains("/signup"));
+        assert!(!html.contains(">Log in</a>") && !html.contains(">Sign up</a>"));
+        assert!(html.contains("id=\"game-lab-signin\""));
         assert!(!crate::features::Features::default().on(crate::features::Feature::HomeAccount));
     }
 
@@ -520,8 +538,10 @@ mod tests {
         );
         let html = &document.html;
         assert!(
-            html.contains("</svg>OpenAgents</h1><nav id=\"home-account\" aria-label=\"Account\">")
+            html.contains("</svg>OpenAgents</h1>")
+                && html.contains("<nav id=\"home-account\" aria-label=\"Account\">")
         );
+        assert!(html.contains("id=\"game-lab-open\" href=\"/?lab=game\""));
         assert!(html.contains("href=\"/login?return_to=%2F\">Log in</a>"));
         assert!(html.contains("href=\"/signup?return_to=%2F\">Sign up</a>"));
         // `/` carries the site's metadata: its preview, canonical address,
@@ -563,7 +583,11 @@ mod tests {
         assert!(LOADER.contains("loadLayer().then(verse)"));
         assert!(!LOADER.contains("lander5Runner"));
         assert!(!LOADER.contains("transferControlToOffscreen"));
-        assert!(!document(UNAVAILABLE.to_owned(), true).html.contains("x-shader"));
+        assert!(
+            !document(UNAVAILABLE.to_owned(), true)
+                .html
+                .contains("x-shader")
+        );
         assert!(LOADER.contains("globalThis.pylonsCard"));
         assert!(LOADER.contains(super::super::pylons::CARD_WASM));
         assert!(LOADER.contains("/home/me"));

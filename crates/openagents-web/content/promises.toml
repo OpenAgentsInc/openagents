@@ -1589,3 +1589,13 @@ surfaces = ["web", "terminal", "mobile", "desktop"]
 status = "dropped"
 note = "Domain experiments with no follow-up."
 episodes = [43, 44, 146, 154]
+
+[[promise]]
+id = "M8"
+group = "M"
+statement = "Walk into Game Lab to change, play, and compare your own games."
+surfaces = ["web", "verse"]
+status = "shipped"
+link = "/?lab=game"
+issues = [12433]
+evidence = [{ test = "crates/openagents-web/src/game_lab/hosted/tests.rs::creators_get_separate_versions_and_persist_after_reopening" }, { test = "crates/openagents-web/src/game_lab/hosted/tests.rs::five_creators_can_check_edits_without_a_worker_or_compiler" }]

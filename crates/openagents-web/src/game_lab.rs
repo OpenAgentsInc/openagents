@@ -15,6 +15,8 @@
 //! the game itself in a frame (`/chat/{id}/game/play`), a Play button,
 //! Compare, and a note at the time and place in the run.
 
+pub(crate) mod hosted;
+
 use std::time::Duration;
 
 use axum::Router;
@@ -103,6 +105,7 @@ pub(crate) async fn manifest_here() -> Option<crate::labs::Lab> {
             tools,
             documents,
             hosted: None,
+            game: None,
             platform: None,
         }),
         Err(why) => {
@@ -115,10 +118,10 @@ pub(crate) async fn manifest_here() -> Option<crate::labs::Lab> {
 /// What the model is told about Game Lab.
 pub(crate) fn guidance(documents: &[Value]) -> String {
     let mut out = String::from(
-        "\n\nThis chat can play and change the owner's games in Game Lab, on this Mac, with the game_* tools. \
+        "\n\nThis chat can play and change the creator's games in Game Lab, with the game_* tools. \
 When the message is about one of these games (open it, play it, change how it plays, its rules, items, the Ice Cream Man's \
 behaviour, its layout or its words, compare versions, notes), use the game_* tools, always naming the game. The chat shows a card with the game under your answer, so don't paste links or fragments; say in a sentence or \
-two, as \"I\", what you did and what changed. \
+two, as \"we\", what you did and what changed. \
 To change a game, read its document first (game_open), then call game_edit with a JSON Patch on the document and a \
 one-line summary in plain words. Paths are /SECTION/NAME, e.g. /man/man_chase. Speeds are in man_wander, \
 man_investigate, man_search and man_chase; hiding spots are closets, added with /layout/extra_closets. Some things are switched on by a number: the earned weapons \
@@ -178,6 +181,12 @@ fn clean_fragment(fragment: &str) -> String {
 /// Where a version plays: the game's page in this chat, with the
 /// version's numbers and words after the `#`.
 fn play_src(chat: &str, version: u64, fragment: &str, extra: &str) -> String {
+    if chat.is_empty() {
+        return format!(
+            "/games/the-ice-cream-man#{}{extra}",
+            clean_fragment(fragment)
+        );
+    }
     format!(
         "/chat/{chat}/game/play?v={version}#{}{extra}",
         clean_fragment(fragment)
@@ -238,6 +247,7 @@ fn building(card: &Value) -> bool {
 /// side by side), Play, the bot-run stats, Compare, and a note at a time
 /// and place.
 pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
+    let chat = if card["_hosted"] == true { "" } else { chat };
     let waiting = building(card);
     let version = card["version"].as_u64().unwrap_or(1);
     let compare = card["compare"].is_object().then_some(&card["compare"]);
@@ -295,15 +305,20 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
                         title={ (s(card, "title")) ", version " (version) } data-game-frame allow="fullscreen" {}
                 }
                 div.oa-game-actions {
-                    button.oa-game-button type="button" data-game-play
-                        data-src=(play_src(chat, version, s(card, "fragment"), "&skip")) { "Play" }
+                    @if chat.is_empty() {
+                        button.oa-game-button type="button" data-game-full data-src=(play_src(chat,version,s(card,"fragment"),"&skip")) { "Play" }
+                    } @else {
+                        button.oa-game-button type="button" data-game-play
+                            data-src=(play_src(chat, version, s(card, "fragment"), "&skip")) { "Play" }
+                    }
                     @if version > 1 {
                         button.oa-game-button type="button"
-                            hx-get=(format!("/chat/{chat}/game/card?doc={}&v={version}&a=1", clean_fragment(doc)))
+                            hx-get=(if chat.is_empty() { format!("/labs/game/card?v={version}&a=1") } else { format!("/chat/{chat}/game/card?doc={}&v={version}&a=1", clean_fragment(doc)) })
                             hx-target="closest .oa-game-card" hx-swap="outerHTML" { "Compare with the original" }
                     }
                 }
                 p.oa-game-meta { (stats_line(&card["stats"])) }
+                @if !chat.is_empty() {
                 form.oa-game-note hx-post=(format!("/chat/{chat}/game/note")) hx-swap="outerHTML" data-game-note {
                     input type="hidden" name="doc" value=(doc);
                     input type="hidden" name="v" value=(version);
@@ -313,8 +328,9 @@ pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
                     button.oa-game-button type="submit" { "Note at this time and place" }
                 }
             }
+            }
             p.oa-game-meta {
-                @if let Some(player) = card["player"].as_str().filter(|p| loopback(p).is_some()) {
+                @if let Some(player) = card["player"].as_str().filter(|p| loopback(p).is_some() || p.starts_with("/games/the-ice-cream-man#")) {
                     a href=(player) target="_blank" rel="noopener" { "Play in its own window" }
                     " · "
                 }
@@ -348,7 +364,7 @@ pub(crate) fn thread_entry(chat: &str, reply: Option<&openagents_chat::router::M
 const ASSET_CSS: &str = "/chat/game/card.css";
 pub(crate) const ASSET_JS: &str = "/chat/game/card.js";
 
-const CSS: &str = r".oa-game-card{margin:12px 0;padding:12px;border:1px solid rgba(127,127,127,.28);border-radius:12px;max-width:960px}
+const CSS: &str = r".oa-game-host{margin:0;background:#101010;color:#eee;font:14px system-ui,sans-serif}.oa-game-host a{color:#ddd}.oa-game-card{margin:12px 0;padding:12px;border:1px solid rgba(127,127,127,.28);border-radius:12px;max-width:960px}
 .oa-game-frame{position:relative;width:100%;aspect-ratio:16/10;border-radius:8px;overflow:hidden;background:#000}
 .oa-game-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block}
 .oa-game-title{margin:0 0 8px}.oa-game-dim{opacity:.7}
@@ -366,6 +382,10 @@ const CSS: &str = r".oa-game-card{margin:12px 0;padding:12px;border:1px solid rg
 
 const JS: &str = r"(function () {
   if (window.__oaGame) return;
+  document.addEventListener('click', function(e) {
+    const button = e.target.closest('[data-game-full]');
+    if (button && parent !== window) parent.postMessage({type:'game-fullscreen',src:button.getAttribute('data-src')}, location.origin);
+  });
   window.__oaGame = 1;
   var plays = 0;
   document.addEventListener('click', function (e) {
@@ -394,6 +414,7 @@ const JS: &str = r"(function () {
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .merge(hosted::routes())
         .route("/chat/{id}/game/card", get(card))
         .route("/chat/{id}/game/note", post(note))
         .route("/chat/{id}/game/play", get(play))
@@ -416,7 +437,7 @@ pub(crate) fn routes() -> Router<App> {
 /// The game page a card frames: The Ice Cream Man's page, its build from
 /// the Lab, framed only by this site.
 pub(crate) const PLAY_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
-img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; \
+img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; frame-src 'self'; \
 base-uri 'none'; form-action 'self'; frame-ancestors 'self'";
 
 fn play_body() -> String {

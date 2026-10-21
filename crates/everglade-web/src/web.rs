@@ -886,6 +886,12 @@ async fn run_grid(
 ) -> Result<(), String> {
     status("Opening the Grid…");
     let mut runtime = WorldRuntime::bare();
+    if query_value(&window, "lab").as_deref() == Some("game") {
+        let _ = runtime.set_spawn(
+            zones::game_place::POSITION + glam::Vec3::new(0.0, 0.0, -2.0),
+            0.0,
+        );
+    }
     // The page opens a portal's zone itself: it says what loads first, and
     // refuses a zone this build can't open ([`crate::transit`]).
     runtime.defer_grid_portals(true);
@@ -1245,6 +1251,20 @@ impl Page {
             .and_then(|w| w.performance())
             .map_or(now, |p| p.now());
         self.draw_frame(now);
+        if HOME.with(|home| home.get()) {
+            thread_local! { static GAME_NEAR: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
+            let near = GAME_NEAR.with(|old| {
+                let near = zones::game_place::in_reach(self.runtime.player.pos, old.get());
+                (old.replace(near) != near).then_some(near)
+            });
+            if let Some(near) = near {
+                if let Ok(callback) = Reflect::get(&js_sys::global(), &"homeGameLab".into()) {
+                    if let Some(callback) = callback.dyn_ref::<js_sys::Function>() {
+                        let _ = callback.call1(&JsValue::UNDEFINED, &JsValue::from_bool(near));
+                    }
+                }
+            }
+        }
         if let Some(frames) = &mut self.frames {
             let ended = web_sys::window()
                 .and_then(|w| w.performance())

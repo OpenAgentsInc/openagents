@@ -2824,7 +2824,9 @@ async fn answer(
     // The Grid terminal on /home asks the live pylons first; the hosted
     // chat answers when none does (#12366).
     let pylons = match (&door, parts.is_empty()) {
-        (Some(_), true) => crate::pylon_door::door(&app, &headers, &payer),
+        (Some(_), true) if !headers.get("x-openagents-lab").is_some_and(|v| v == "game") => {
+            crate::pylon_door::door(&app, &headers, &payer)
+        }
         _ => None,
     };
     // Images or PDFs go to the door that takes them; the hosted chat

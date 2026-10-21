@@ -232,7 +232,16 @@ pub fn compile(dir: &Path) -> Result<Pack, String> {
             crate::grid_robot::model(dir, white, variant, name)?,
         );
     }
-    for model in [FLOOR, GYM, BOARDS] {
+    pack.models.insert(
+        crate::zones::game_place::MODEL.into(),
+        mesh_model(
+            crate::zones::game_place::MODEL,
+            &crate::zones::game_place::mesh(),
+            white,
+            5.2,
+        ),
+    );
+    for model in [FLOOR, GYM, BOARDS, crate::zones::game_place::MODEL] {
         pack.placements.push(Placement {
             model: model.into(),
             position: [0.0; 3],
@@ -803,13 +812,14 @@ mod tests {
             ARCH_RITUAL,
             FIGURE,
             BOARDS,
+            crate::zones::game_place::MODEL,
             SPADE,
             crate::grid_robot::ROBOT,
             crate::grid_robot::ROBOT_FAR,
         ] {
             assert!(pack.models.contains_key(name), "{name}");
         }
-        assert_eq!(pack.placements.len(), 3);
+        assert_eq!(pack.placements.len(), 4);
         verse_engine::loading::Prepared::load(pack, &pinned_dir(), Default::default()).unwrap();
     }
 

@@ -142,6 +142,7 @@ pub(crate) struct Lab {
     /// of a Lab on a Mac.
     pub hosted: Option<crate::cad_web::Scope>,
     pub platform: Option<Platform>,
+    pub game: Option<Arc<crate::game_lab::hosted::Hosted>>,
 }
 
 impl Lab {
@@ -256,6 +257,7 @@ async fn platform_labs(
             kind: Kind::Registered(manifest.kind.clone()), url: String::new(), tools,
             documents: documents.data.into_iter().map(|doc| json!({"id":doc.id,"title":doc.title,"kind":doc.schema,"versions":doc.latest})).collect(),
             hosted: None,
+            game: None,
             platform: Some(Platform { manifest, client: client.clone(), space: space.clone(), owner: owner.clone() }),
         });
     }
@@ -370,15 +372,25 @@ pub(crate) async fn door(
         crate::ship_lab::manifest_here(),
         platform_labs(app, headers, project)
     );
-    let mut labs: Vec<Lab> = [video, game, robot, cad, ship]
+    let hosted_game = crate::game_lab::hosted::Hosted::manifest(app, headers, owner).await;
+    let mut labs: Vec<Lab> = [video, hosted_game.clone().or(game), robot, cad, ship]
         .into_iter()
         .flatten()
         .collect();
     match platform {
         Ok(platform) => {
-            labs = with_platform(labs, platform);
+            labs = with_platform(
+                labs,
+                platform
+                    .into_iter()
+                    .filter(|lab| hosted_game.is_none() || lab.kind.id() != "game")
+                    .collect(),
+            );
         }
         Err(_) => eprintln!("openagents-web: Labs registry is unavailable"),
+    }
+    if headers.get("x-openagents-lab").is_some_and(|v| v == "game") {
+        labs.retain(|lab| lab.kind.id() == "game" && lab.game.is_some());
     }
     if labs.is_empty() {
         return None;
@@ -519,6 +531,12 @@ async fn run_tool(
         .iter()
         .find(|lab| lab.tools.iter().any(|tool| tool["name"] == name))
         .ok_or("no Lab")?;
+    if let Some(game) = &lab.game {
+        return game
+            .run(name, arguments)
+            .await
+            .map_err(|error| error.to_string());
+    }
     if let Some(platform) = &lab.platform {
         return platform.invoke(name, arguments).await;
     }
@@ -715,6 +733,7 @@ mod tests {
                     json!({"id": "episode-290", "title": "Episode 290", "kind": "cut.v1", "versions": 15}),
                 ],
                 hosted: None,
+                game: None,
                 platform: None,
             },
             Lab {
@@ -725,6 +744,7 @@ mod tests {
                     json!({"id": "the-ice-cream-man", "title": "The Ice Cream Man", "kind": "game.v1", "versions": 3}),
                 ],
                 hosted: None,
+                game: None,
                 platform: None,
             },
             Lab {
@@ -735,6 +755,7 @@ mod tests {
                     json!({"id":"robot-table","title":"SO-101 table","kind":"robot-scene.v1","versions":2}),
                 ],
                 hosted: None,
+                game: None,
                 platform: None,
             },
         ]

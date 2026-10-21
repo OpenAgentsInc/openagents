@@ -11,6 +11,7 @@ pub use verse_zone_everglade::zones::everglade;
 pub use verse_zone_everglade::zones::everglade_pack;
 pub use verse_zone_handduel as hand_duel;
 pub use verse_zone_water as water;
+pub mod game_place;
 pub mod gate;
 pub use verse_zone_grove::zones::grove;
 pub mod hud;

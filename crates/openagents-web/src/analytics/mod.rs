@@ -61,7 +61,10 @@ pub const SCRIPT: &str = "/static/a.js";
 pub const DASHBOARD: &str = "/admin/analytics";
 
 /// Every product event name a row may carry.
-pub const EVENTS: [&str; 20] = [
+pub const EVENTS: [&str; 23] = [
+    "lab_entered",
+    "lab_version_saved",
+    "lab_edit_refused",
     "chat_sent",
     "answer_shown",
     "answer_failed",

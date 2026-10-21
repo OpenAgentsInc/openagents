@@ -3,6 +3,22 @@
   "note": "Committed files generated from sources. `scripts/dev/regenerate.sh` runs each `regenerate` command (all of them, or with --changed BASE those a change is due); `check` is the test that fails when the file is stale, in `package`. A change is due a generator when it touches one of `sources` (holding one of `markers`, when given) or a file of `package`. The landing queue (docs/cloud/land-queue.md) runs the script on each rebased code entry before its checks and commits what it rewrote as \"Regenerate generated files\"; a rebase conflict only in these files takes the target's copy and writes it again. A generator whose `requires` (environment variables, commands) is missing here is skipped and named. Commands run at the top of the repository with CARGO_TARGET_DIR set.",
   "generated": [
     {
+      "name": "grid-pack",
+      "files": ["assets/verse/grid/pack.json"],
+      "sources": ["crates/verse/src/grid_pack.rs", "crates/verse/src/zones/game_place.rs"],
+      "package": "verse",
+      "check": "cargo test -p verse --no-default-features --lib grid_pack::tests::the_pinned_pack_is_what_the_sources_compile_to",
+      "regenerate": ". ./scripts/dev/cargo-build-env.sh; cargo run -q -p verse --no-default-features --example grid_pack"
+    },
+    {
+      "name": "grid-scene",
+      "files": ["assets/verse/grid/lander3-scene.json"],
+      "sources": ["assets/verse/grid/pack.json", "crates/verse/src/grid_scene.rs"],
+      "package": "verse",
+      "check": "cargo test -p verse --no-default-features --lib grid_scene::tests::the_baked_scene_is_current",
+      "regenerate": ". ./scripts/dev/cargo-build-env.sh; UPDATE_FIXTURES=1 cargo test -q -p verse --no-default-features --lib grid_scene::tests::the_baked_scene_is_current"
+    },
+    {
       "name": "cli-tree",
       "files": ["crates/coder-router/src/cli_route/tree.json"],
       "sources": [

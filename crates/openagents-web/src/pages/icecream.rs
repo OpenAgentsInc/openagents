@@ -70,7 +70,7 @@ pub(crate) const ICECREAM_CANVAS: &str = "icecream-canvas";
 pub(crate) const ICECREAM_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
 img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; \
 connect-src 'self' wss://relay.openagents.com; manifest-src 'self'; worker-src 'self'; \
-base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+base-uri 'none'; form-action 'self'; frame-ancestors 'self'";
 
 /// The service worker's own policy: it reads this site's files and runs
 /// nothing else.
