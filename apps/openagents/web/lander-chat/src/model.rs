@@ -33,6 +33,9 @@ pub const DRAFT_KEY: &str = "openagents.lander8.draft";
 /// V4.1 while a ready group of pylons serves it, else any Pylon. The site
 /// routes a turn that names [`GROUP_MODEL`] to that group.
 pub const GROUP_MODEL: &str = "deepseek-v4.1-flash";
+pub const FLINT_MODEL: &str = "flint";
+pub const PICK_FLINT: &str = "Flint";
+pub const FLINT_READY_GLOBAL: &str = "openagentsPylonFlintReady";
 pub const PICK_GROUP: &str = "DeepSeek V4.1";
 pub const PICK_GROUP_SHORT: &str = "DeepSeek";
 pub const PICK_ANY: &str = "Any Pylon";
@@ -47,12 +50,22 @@ pub const PICK_KEY: &str = "openagents.grid.pick.";
 
 /// A chat's kept choice: DeepSeek V4.1 unless it chose any Pylon.
 pub fn asks_group(kept: Option<&str>) -> bool {
-    kept != Some("any")
+    !matches!(kept, Some("any" | "flint"))
 }
 
 /// What [`asks_group`] reads back.
-pub fn kept_pick(group: bool) -> &'static str {
-    if group { "group" } else { "any" }
+pub fn kept_pick(group: bool, flint: bool) -> &'static str {
+    if flint {
+        "flint"
+    } else if group {
+        "group"
+    } else {
+        "any"
+    }
+}
+
+pub fn asks_flint(kept: Option<&str>) -> bool {
+    kept == Some("flint")
 }
 
 /// The line over the composer before the first message.
@@ -467,7 +480,10 @@ mod tests {
     #[test]
     fn a_chat_asks_deepseek_unless_it_chose_any_pylon() {
         assert!(asks_group(None));
-        assert!(asks_group(Some(kept_pick(true))));
-        assert!(!asks_group(Some(kept_pick(false))));
+        assert!(asks_flint(Some(kept_pick(false, true))));
+        assert!(!asks_group(Some("flint")));
+        assert!(!asks_flint(Some("group")));
+        assert!(asks_group(Some(kept_pick(true, false))));
+        assert!(!asks_group(Some(kept_pick(false, false))));
     }
 }

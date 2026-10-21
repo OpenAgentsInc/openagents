@@ -163,8 +163,7 @@ pub struct Answer {
 pub struct Declared {
     /// The buyer's budget, s.
     pub budget_secs: u64,
-    /// The ceiling the pylon's beacon declares, s; `None` for a complete
-    /// pylon, whose ceiling is 90 seconds.
+    /// The ceiling the pylon's beacon declares, s; `None` defaults to 90 seconds.
     pub ceiling_secs: Option<u64>,
     /// The deadline the buyer sent and waited for: the smaller of the two.
     pub deadline_secs: u64,
@@ -397,7 +396,7 @@ async fn ask_for(
     // An extended job's deadline: the buyer's budget, held to the ceiling
     // the beacon declares, sent as the budget and waited for.
     let mut declared = within.map(|within| {
-        let ceiling_secs = beacon.group_head().and_then(|g| g.deadline_secs);
+        let ceiling_secs = crate::flint::deadline(&beacon);
         Declared {
             budget_secs: within.budget.as_secs().max(1),
             ceiling_secs,

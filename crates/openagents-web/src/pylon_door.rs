@@ -61,6 +61,9 @@ const GROUP_INSTRUCTIONS: &str = "You are DeepSeek V4.1 Flash, running on a grou
 computers on the OpenAgents network that each hold part of the model. Someone chose you at the \
 terminal on the OpenAgents Grid. Answer directly, in plain words, in a few sentences unless they \
 ask for more.";
+const FLINT_INSTRUCTIONS: &str = "You are Flint, a language model by Recursive, answering \
+from the OpenAgents network. Answer directly, in plain words, in a few sentences unless \
+the person asks for more.";
 
 /// The key a person's pylon jobs are sent as: derived from the server's
 /// secret and the payer, apart from their worker key, so a pylon's rate
@@ -150,9 +153,14 @@ pub(crate) fn door(app: &App, headers: &HeaderMap, payer: &str) -> Option<PylonD
             PathBuf::from,
         ),
     );
+    // Complete reasoning models also use the declared-deadline profile.
+    settings.deadline = Some(pylon::flint::DEADLINE);
     if asks_for_group(headers) {
         settings.want = Some(pylon::group::Want::Model(GROUP_MODEL.into()));
         settings.deadline = Some(GROUP_DEADLINE);
+    } else if asks_for_flint(headers) {
+        let model = headers.get(MODEL_HEADER)?.to_str().ok()?.trim();
+        settings.want = Some(pylon::group::Want::Model(model.into()));
     }
     settings.checkers = std::env::var("OPENAGENTS_PYLON_CHECKERS")
         .unwrap_or_default()
@@ -179,11 +187,21 @@ fn asks_for_group(headers: &HeaderMap) -> bool {
         .is_some_and(|v| v.trim() == GROUP_MODEL)
 }
 
+fn asks_for_flint(headers: &HeaderMap) -> bool {
+    headers
+        .get(MODEL_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.trim() == pylon::flint::MODEL || v.trim().starts_with("flint@sha256:"))
+}
+
 impl PylonDoor {
-    /// Whether this door asks a model group, whose answer may take
-    /// [`GROUP_TURN`].
-    pub(crate) fn asks_group(&self) -> bool {
-        self.settings.want.is_some()
+    /// The model's deadline plus discovery and relay delivery time.
+    pub(crate) fn turn_timeout(&self) -> Duration {
+        match self.settings.deadline {
+            Some(deadline) if deadline == GROUP_DEADLINE => GROUP_TURN,
+            Some(deadline) => deadline + pylon::client::GRACE + Duration::from_secs(20),
+            None => Duration::from_secs(130),
+        }
     }
 }
 
@@ -191,6 +209,11 @@ impl PylonDoor {
 /// A V4.1 group reads "DeepSeek V4.1 · group w16-g5 (4 parts)"; any other
 /// pylon reads its name and its model, exactly as its beacon gives them.
 fn shown(label: &str, model: &str, group: Option<&router::AnsweredGroup>, text: &str) -> String {
+    let model = if model.split('@').next() == Some(pylon::flint::MODEL) {
+        "Flint"
+    } else {
+        model
+    };
     let source = match group {
         Some(group) => format!(
             "**{GROUP_NAME}** · group {}{}",
@@ -317,6 +340,7 @@ impl Door for PylonDoor {
         let fallback = self
             .fallback
             .as_ref()
+            .filter(|_| self.settings.want.is_none())
             .map(|door| door.ask(turns.clone(), context, reply.clone()));
         let (settings, buyer, decide) = (
             self.settings.clone(),
@@ -341,10 +365,16 @@ impl Door for PylonDoor {
                 })
                 .filter(|turn| !turn.content.trim().is_empty())
                 .collect();
-            let instructions = if settings.want.is_some() {
-                GROUP_INSTRUCTIONS
-            } else {
-                INSTRUCTIONS
+            let instructions = match &settings.want {
+                Some(pylon::group::Want::Model(model)) if model == GROUP_MODEL => {
+                    GROUP_INSTRUCTIONS
+                }
+                Some(pylon::group::Want::Model(model))
+                    if model.split('@').next() == Some(pylon::flint::MODEL) =>
+                {
+                    FLINT_INSTRUCTIONS
+                }
+                _ => INSTRUCTIONS,
             };
             let started = Instant::now();
             let mut routed = router::route(
@@ -396,8 +426,9 @@ impl Door for PylonDoor {
             match fallback {
                 Some(job) => job.await,
                 None => {
-                    basic_coder::lock(&reply).failure =
-                        Some(Failure::Transport("no pylon answered".into()));
+                    basic_coder::lock(&reply).failure = Some(Failure::Transport(
+                        "The chosen Pylon is unavailable. Try again shortly.".into(),
+                    ));
                 }
             }
         })

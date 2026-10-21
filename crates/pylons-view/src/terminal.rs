@@ -6,6 +6,19 @@ pub const ENTER_RANGE: f64 = 3.0;
 /// served by a model group of pylons (#12403). The site sends it as
 /// `X-OpenAgents-Pylon-Model` (#12416).
 pub const GROUP_MODEL: &str = "deepseek-v4.1-flash";
+pub const FLINT_MODEL: &str = "flint";
+
+/// Whether the snapshot contains a live complete Flint model.
+#[must_use]
+pub fn flint_ready(snapshot: &crate::Snapshot) -> bool {
+    snapshot.pylons.iter().any(|p| {
+        matches!(p.status.as_str(), "online" | "draining")
+            && p.group.is_none()
+            && p.services
+                .iter()
+                .any(|s| s.model.split('@').next() == Some(FLINT_MODEL))
+    })
+}
 
 /// Whether `snapshot` holds an online, ready group head serving
 /// [`GROUP_MODEL`]: only then does the terminal's chat offer it.
@@ -98,6 +111,14 @@ mod tests {
         }))
         .unwrap();
         assert!(group_ready(&snapshot));
+        let mut flint = snapshot.clone();
+        flint.pylons[0].group = None;
+        flint.pylons[0].services[0].model = "flint@sha256:ab".into();
+        assert!(flint_ready(&flint));
+        flint.pylons[0].status = "draining".into();
+        assert!(flint_ready(&flint));
+        flint.pylons[0].status = "offline".into();
+        assert!(!flint_ready(&flint));
         let mut starting = snapshot.clone();
         starting.pylons[0].group.as_mut().unwrap().state = Some("starting".into());
         assert!(!group_ready(&starting));

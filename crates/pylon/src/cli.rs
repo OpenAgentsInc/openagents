@@ -192,6 +192,8 @@ Commands:
                             pins (pylon-release.v1).
   serve                     Publish beacons and answer jobs from a local Psionic server.
       --engine URL          The Psionic server (default http://127.0.0.1:18080).
+      --text-profile flint  Serve the pinned native CUDA Flint worker on loopback,
+                            with one slot, 6144 output tokens, and a 15-minute budget.
       --model NAME          The served model (default qwen3.5-0.8b-q8_0).
       --decide URL          Also answer NIP-DEC decision jobs with the System
                             One server at URL (Psionic's Clef lane), free;
@@ -723,9 +725,19 @@ async fn serve(
     let engine_url = args
         .value("--engine")?
         .unwrap_or_else(|| "http://127.0.0.1:18080".into());
-    let model = args
-        .value("--model")?
-        .unwrap_or_else(|| "qwen3.5-0.8b-q8_0".into());
+    let text_profile = args.value("--text-profile")?;
+    let flint = match text_profile.as_deref() {
+        None => false,
+        Some("flint") => true,
+        Some(_) => return Err("serve --text-profile takes flint".into()),
+    };
+    let model = args.value("--model")?.unwrap_or_else(|| {
+        if flint {
+            crate::flint::advertised()
+        } else {
+            "qwen3.5-0.8b-q8_0".into()
+        }
+    });
     if args.flag("--attested") {
         return serve_attested(json_out, args, relay).await;
     }
@@ -759,7 +771,11 @@ async fn serve(
     let slug = args.value("--pylon")?.unwrap_or_else(host_slug);
     let mut config = Config::new(relay, &slug, home());
     config.label = args.value("--label")?.unwrap_or_else(|| slug.clone());
-    config.slots = u32::try_from(args.number("--slots", 2)?.clamp(1, 64)).unwrap_or(2);
+    config.slots = u32::try_from(
+        args.number("--slots", if flint { 1 } else { 2 })?
+            .clamp(1, 64),
+    )
+    .unwrap_or(2);
     config.rate_per_minute = u32::try_from(args.number("--rate", 10)?.clamp(1, 600)).unwrap_or(10);
     if let Some(total) = args.value("--total-rate")? {
         let total: u32 = total
@@ -767,9 +783,27 @@ async fn serve(
             .map_err(|_| "--total-rate takes jobs per minute from all callers")?;
         config.total_per_minute = Some(total.clamp(1, 6_000));
     }
-    config.max_tokens =
-        u32::try_from(args.number("--max-tokens", 512)?.clamp(1, 4_096)).unwrap_or(512);
-    let vram = u32::try_from(args.number("--vram-gb", 16)?).unwrap_or(16);
+    let output = args.number(
+        "--max-tokens",
+        if flint {
+            u64::from(crate::flint::OUTPUT)
+        } else {
+            512
+        },
+    )?;
+    if flint && output != u64::from(crate::flint::OUTPUT) {
+        return Err("The Flint profile uses 6144 output tokens.".into());
+    }
+    config.max_tokens = u32::try_from(output.clamp(
+        1,
+        if flint {
+            u64::from(crate::flint::OUTPUT)
+        } else {
+            4096
+        },
+    ))
+    .unwrap_or(512);
+    let vram = u32::try_from(args.number("--vram-gb", if flint { 96 } else { 16 })?).unwrap_or(16);
     config.class.tier = Tier::for_gpu(vram);
     config.class.memory_gb = [512, 256, 128, 64, 32, 16, 8]
         .into_iter()
@@ -795,6 +829,21 @@ async fn serve(
         config.allow = Some(allow);
     }
     let price_msat = args.number("--price-msat", 0)?;
+    if flint {
+        if config.slots != 1
+            || config.max_tokens != crate::flint::OUTPUT
+            || model != crate::flint::advertised()
+            || managed.is_some()
+            || decide_url.is_some()
+            || decisions_only
+            || price_msat != 0
+            || sampling.is_some()
+            || !stops.is_empty()
+        {
+            return Err("the Flint profile needs its default model, one slot, and 6144 output tokens; drop model, sampling, stop, decision, and managed-worker overrides".into());
+        }
+        crate::flint::configure(&mut config);
+    }
     let net = network(args)?;
     let dedicated = args.flag("--dedicated");
     let inner: Arc<dyn Machine> = if dedicated {
@@ -922,7 +971,11 @@ async fn serve(
     if let Some(sampling) = sampling {
         engine = engine.with_sampling(sampling);
     }
-    let engine = Arc::new(engine);
+    let engine: Arc<dyn crate::engine::Engine> = if flint {
+        crate::flint::Native::connect(&engine_url)?
+    } else {
+        Arc::new(engine)
+    };
     let identity = key("provider")?;
     let provider = if let Some(url) = &decide_url {
         if price_msat > 0 {

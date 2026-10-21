@@ -16,11 +16,16 @@ Description=Psionic native Flint
 After=network-online.target
 
 [Service]
+Type=notify
 User=$user
 Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64
 ExecStart=$destination serve --weights $HOME/flint-weights --backend cuda --context 8192 --listen 127.0.0.1:8080
 Restart=on-failure
 RestartSec=5
+TimeoutStartSec=600
+WatchdogSec=960
+WatchdogSignal=SIGKILL
+LimitCORE=0
 TimeoutStopSec=30
 KillMode=control-group
 NoNewPrivileges=true
@@ -29,5 +34,6 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 EOF
 sudo systemctl daemon-reload
-sudo systemctl enable --now psionic-flint
-echo "Installed Flint from $commit; GPU capacity and VM expiry are managed by cloud-budget.py."
+sudo systemctl enable psionic-flint
+sudo systemctl restart psionic-flint
+echo "Installed Flint from $commit. The VM's scheduling and billing are separate from this service."

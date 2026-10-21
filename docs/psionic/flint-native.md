@@ -30,8 +30,8 @@ The HTTP endpoint accepts text messages, `max_tokens`, temperature, top-p,
 top-k, and seed. Defaults are Recursive's temperature 1, top-p 0.95, and
 top-k 20, with seed 42. Temperature zero is available for diagnostics.
 Streaming, tools, and other request fields are refused. This is a separate
-binary from the GGUF server; it does not add a Flint GGUF decoder or Pylon
-catalog entry.
+binary from the GGUF server. Pylon's `serve --text-profile flint` connects
+to this native endpoint; it does not use a GGUF decoder.
 
 The initial service uses an 8,192-token context. Prompt and output allowance
 must fit together. Each request has a 900-second deadline checked between
@@ -149,3 +149,77 @@ The longest full-checkpoint smoke prompt has 27 tokens. Long contexts, sustained
 performance, quantized formats, Metal, streaming, tools, and public Pylon
 routing need separate work. The native text smoke does not establish
 Recursive's published coding benchmark scores.
+
+## Pylon and app integration (#12425)
+
+The CUDA profile advertises `flint@sha256:e2e253557466548339ec3ba3d866ef6cd60440dfc895de7717b81f3ba320f58f`.
+That hash binds the release manifest, including every checkpoint file's
+SHA-256. Pylon checks the worker's revision, manifest hash, CUDA backend,
+FP32 computation profile, context, and idle state before taking work.
+
+The initial public profile has one slot, an 8,192-token context, a
+6,144-token output allowance, and up to 2,048 prompt tokens after applying
+the template. Pylon advertises an 8,192-byte request limit; the router keeps
+recent history within it, and the worker checks the final token count.
+Oversized prompts fail as request limits. Sampling is temperature 1,
+top-p 0.95, top-k 20, and seed 42. A complete answer must stop normally;
+truncated output, unfinished reasoning, and tool requests fail the job.
+
+Flint uses `pylon.deadline.v1` with a 900-second deadline and processing
+heartbeats. The buyer reads the complete model's ceiling from beacon
+metadata. The HTTP client allows the full deadline. A timed-out job keeps
+its Pylon slot until the worker finishes or restarts. The worker's
+930-second process watchdog handles a stuck generation; systemd's
+960-second watchdog also handles a frozen process. Both destroy the old
+CUDA process before starting its replacement.
+
+Install both commit-named executables on the GPU host:
+
+```sh
+bash scripts/psionic/flint-service.sh COMMIT /path/to/psionic-flint
+bash scripts/psionic/flint-pylon-service.sh COMMIT /path/to/pylon
+systemctl status psionic-flint pylon-flint
+```
+
+The Pylon is named **Flint on GCP**, with slug `flint-gcp`, and publishes
+its signed beacon to `wss://relay.openagents.com`. Its local HTTP endpoint
+stays on loopback. The homepage's existing live Pylon list draws that beacon.
+At the shared terminal, choose **Flint** beside the composer to send `X-OpenAgents-Pylon-Model: flint`.
+That request reaches only Flint; an unavailable Flint does not hand it to
+hosted chat. Default terminal routing can also choose Flint, under the
+extended deadline. Reasoning stays out of the displayed final answer.
+
+The GPU VM's scheduling has no maximum run duration or termination time,
+and preemption stops it while preserving its disk. An on-demand CPU VM,
+`oa-flint-control-12425` in `us-central1-a`, runs the Rust
+`pylon-vm-recovery` service. Every minute it checks the GPU VM and restarts
+it only when its numeric instance ID matches, its labels say
+`service=psionic-flint,lifecycle=maintained,desired=running`, and it has no
+agent-run, budget, or expiry labels or scheduled expiry. It never creates
+a replacement VM. The controller's service account has Compute access
+only on this GPU instance and uses short-lived metadata credentials.
+
+The on-demand RTX PRO 6000 quota is currently zero. Request
+`flint-12425-rtx-pro6000-tokyo` for one was denied; preemption recovery
+depends on available spot capacity. Current Tokyo list prices
+are about $2.225/hour for the GPU VM and $0.0084/hour for its CPU
+controller: about $53.60/day before disks and network. On-demand GPU
+capacity would cost about $5.85/hour. These ongoing service costs are
+separate from the original $150 development budget.
+
+To stop the service deliberately, stop the controller first so no restart
+request remains in flight, then change the GPU VM's desired state and stop it:
+
+```sh
+gcloud compute instances stop oa-flint-control-12425 --project openagentsgemini --zone us-central1-a
+gcloud compute instances add-labels oa-flint-12419 --project openagentsgemini --zone asia-northeast1-b --labels desired=stopped
+gcloud compute instances stop oa-flint-12419 --project openagentsgemini --zone asia-northeast1-b
+```
+
+To resume, set `desired=running` and start the controller. Disks remain
+available for restart; removing them ends their storage charges. Use
+`CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config` with these commands.
+
+The maintained handoff, deployed commits, context/load checks, and app
+chat receipt are recorded below after deployment. The expiry in the
+initial qualification section describes the earlier development service.

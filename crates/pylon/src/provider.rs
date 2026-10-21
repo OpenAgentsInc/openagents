@@ -59,7 +59,7 @@ pub struct Config {
     /// Where the pylon keeps its generation counter.
     pub home: PathBuf,
     /// How long one job may run: the ceiling a group head's beacon declares
-    /// (`deadline_secs`), and 90 seconds for a complete pylon. An ordinary
+    /// (`deadline_secs`), or a complete model's profile (90 seconds by default). An ordinary
     /// request gets it when it is at most 90 seconds; a `pylon.deadline.v1`
     /// request gets the smaller of it and the buyer's budget.
     pub job_timeout: Duration,
@@ -75,6 +75,8 @@ pub struct Config {
     /// The model group this pylon heads (#12402): its beacon becomes the
     /// group's v2 head beacon, and it publishes a beacon for each stage.
     pub group: Option<HeadGroup>,
+    /// A complete native model profile, separately from a distributed group.
+    pub text_profile: Option<String>,
 }
 
 /// What a group head publishes: its group, the readiness the lifecycle
@@ -124,6 +126,7 @@ impl Config {
             owner: None,
             price: None,
             group: None,
+            text_profile: None,
         }
     }
 
@@ -411,7 +414,7 @@ impl Provider {
         });
         let busy = state.free == 0;
         let observed_at = now();
-        let beacon = Beacon {
+        let mut beacon = Beacon {
             v: BEACON_V.into(),
             requires: Vec::new(),
             // Inert: the attested endpoint this pylon's key serves. The
@@ -452,6 +455,9 @@ impl Provider {
             pools: self.config.pools.clone(),
             group: None,
         };
+        if self.config.text_profile.as_deref() == Some(crate::flint::MODEL) {
+            crate::flint::describe(&mut beacon);
+        }
         match &self.config.group {
             Some(group) => {
                 let mut head = head_beacon(&beacon, &group.spec, group.readiness.as_ref(), busy);
@@ -828,6 +834,15 @@ impl Provider {
         // The job's deadline: refused before any work when an ordinary
         // request reaches a model that takes longer than 90 seconds.
         let request = request.and_then(|request| {
+            if self.config.text_profile.as_deref() == Some(crate::flint::MODEL)
+                && request.turns.iter().map(|t| t.content.len()).sum::<usize>()
+                    > crate::flint::INPUT_BYTES
+            {
+                return Err(Refusal::new(
+                    "limit_exceeded",
+                    "Flint accepts at most 8 KiB of conversation text",
+                ));
+            }
             deadline::admit(request.profile, self.config.job_timeout.as_secs())
                 .map(|secs| (request, Duration::from_secs(secs)))
                 .map_err(|refusal| Refusal::new(refusal.code, refusal.message))

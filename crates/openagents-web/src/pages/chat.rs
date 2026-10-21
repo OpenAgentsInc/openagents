@@ -2838,7 +2838,7 @@ async fn answer(
     // Whether a saved agent may answer: it works for minutes (#11934).
     let mut agents_door = false;
     // Whether a V4.1 model group may answer: up to its 600 s deadline.
-    let pylons_group = pylons.as_ref().is_some_and(|p| p.asks_group());
+    let pylons_timeout = pylons.as_ref().map(|p| p.turn_timeout());
     let door: Option<Box<dyn openagents_chat::basic_coder::Door>> = match (door, vision) {
         (Some(door), Some(doors)) if !parts.is_empty() => {
             Some(Box::new(crate::chat_vision::VisionDoor {
@@ -2946,8 +2946,8 @@ async fn answer(
             crate::connections::chat::DRIVE_DEADLINE
         } else if labs_door {
             crate::labs::DEADLINE
-        } else if pylons_group {
-            crate::pylon_door::GROUP_TURN
+        } else if let Some(timeout) = pylons_timeout {
+            timeout
         } else {
             Duration::from_secs(130)
         };

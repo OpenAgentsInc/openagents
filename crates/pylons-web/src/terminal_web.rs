@@ -10,11 +10,13 @@ use crate::world_camera::WorldCamera;
 /// composer: `true` while a ready V4.1 group is online (#12421). The chat
 /// draws the choice and sends it as `X-OpenAgents-Pylon-Model`.
 const GROUP_READY_GLOBAL: &str = "openagentsPylonGroupReady";
+const FLINT_READY_GLOBAL: &str = "openagentsPylonFlintReady";
 
 pub struct Terminal {
     hint: HtmlElement,
     near: bool,
     group: bool,
+    flint: bool,
 }
 
 impl Terminal {
@@ -40,6 +42,7 @@ impl Terminal {
             hint,
             near: false,
             group: false,
+            flint: false,
         })
     }
 
@@ -53,6 +56,19 @@ impl Terminal {
         let _ = js_sys::Reflect::set(
             &js_sys::global(),
             &GROUP_READY_GLOBAL.into(),
+            &JsValue::from_bool(ready),
+        );
+    }
+
+    /// Whether a complete Flint model is present, including while its slot is busy.
+    pub fn flint(&mut self, ready: bool) {
+        if ready == self.flint {
+            return;
+        }
+        self.flint = ready;
+        let _ = js_sys::Reflect::set(
+            &js_sys::global(),
+            &FLINT_READY_GLOBAL.into(),
             &JsValue::from_bool(ready),
         );
     }

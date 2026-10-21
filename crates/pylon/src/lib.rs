@@ -42,6 +42,7 @@ pub mod envelope;
 pub mod field;
 #[cfg(feature = "fixture")]
 pub mod fixture;
+pub mod flint;
 pub mod group;
 pub mod group_serve;
 pub mod harden;
@@ -71,6 +72,7 @@ pub mod setup;
 pub mod share;
 pub mod stage_group;
 pub mod verify;
+pub mod vm_recovery;
 
 /// The production relay.
 pub const DEFAULT_RELAY: &str = "wss://relay.openagents.com";

@@ -139,6 +139,8 @@ pub struct Psionic {
     served: tokio::sync::OnceCell<String>,
     stop: Vec<String>,
     sampling: Option<Sampling>,
+    top_k: Option<u32>,
+    request_timeout: Duration,
     uncertain: std::sync::atomic::AtomicBool,
 }
 
@@ -183,6 +185,8 @@ impl Psionic {
             served: tokio::sync::OnceCell::new(),
             stop: Vec::new(),
             sampling: None,
+            top_k: None,
+            request_timeout: Duration::from_secs(120),
             uncertain: std::sync::atomic::AtomicBool::new(false),
         })
     }
@@ -201,8 +205,25 @@ impl Psionic {
         self
     }
 
+    /// Bound one HTTP generation independently of the connection timeout.
+    #[must_use]
+    pub fn with_request_timeout(mut self, timeout: Duration) -> Self {
+        self.request_timeout = timeout;
+        self
+    }
+
+    /// Restrict sampling to the most likely `k` tokens.
+    #[must_use]
+    pub fn with_top_k(mut self, k: u32) -> Self {
+        self.top_k = Some(k);
+        self
+    }
+
     fn request_body(&self, model: &str, messages: Vec<Value>, max_tokens: u32) -> Value {
-        let mut body = json!({"model": model, "messages": messages, "max_tokens": max_tokens, "stream": false, "n": 1});
+        let mut body = json!({"model": model, "messages": messages, "max_tokens": max_tokens, "stream": false});
+        if let Some(k) = self.top_k {
+            body["top_k"] = json!(k);
+        }
         if !self.stop.is_empty() {
             body["stop"] = json!(self.stop);
         }
@@ -272,6 +293,7 @@ impl Engine for Psionic {
             let response = self
                 .client
                 .post(format!("{}/v1/chat/completions", self.base))
+                .timeout(self.request_timeout)
                 .json(&self.request_body(&request, messages, max_tokens))
                 .send()
                 .await
@@ -282,6 +304,12 @@ impl Engine for Psionic {
                     status.is_server_error() || status.as_u16() == 429,
                     std::sync::atomic::Ordering::Release,
                 );
+                let body: Value = response.json().await.unwrap_or(Value::Null);
+                if status.as_u16() == 400 && body["error"]["code"] == "context_length_exceeded" {
+                    return Err(request_limit(
+                        "the prompt and answer exceed this model's context",
+                    ));
+                }
                 return Err(format!("model server refused with {status}"));
             }
             let body: Value = response
@@ -481,7 +509,7 @@ mod tests {
                     assert_eq!(request["model"], "actual.gguf");
                     assert_eq!(request["max_tokens"], 32);
                     assert_eq!(request["stream"], false);
-                    assert_eq!(request["n"], 1);
+                    assert!(request.get("n").is_none());
                     assert_eq!(request["temperature"], 0.6);
                     assert_eq!(request["top_p"], 0.95);
                     assert_eq!(request["seed"], 1);

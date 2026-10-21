@@ -200,6 +200,12 @@ model that needs longer, such as a group whose head declares
 `deadline_secs` over 90, takes jobs under the `pylon.deadline.v1` request
 feature. A buyer opts in; nothing changes for a request that doesn't.
 
+A complete model may declare `meta.deadline_secs` (1 to 3,600 seconds),
+`meta.max_output_tokens`, and `meta.request_limits` while keeping its v1
+beacon. These are provider claims about its served limits. A reader that
+doesn't know them continues using the ordinary request profile, which a
+provider requiring a longer deadline refuses immediately.
+
 A request names the feature in `requires` and carries `budget_secs`, the
 buyer's budget, 1 to 3,600 whole seconds:
 
@@ -211,8 +217,9 @@ buyer's budget, 1 to 3,600 whole seconds:
 Rules:
 
 - The job's deadline is the smaller of the buyer's budget and the
-  provider's ceiling: the head's `deadline_secs`, or 90 seconds for a
-  complete pylon. The buyer computes it from the beacon and sends it as
+  provider's ceiling: the head's `deadline_secs`, a complete model's
+  `meta.deadline_secs`, or 90 seconds when neither is declared. The buyer
+  computes it from the beacon and sends it as
   `budget_secs`; the provider applies the smaller again.
 - The provider measures the deadline from admission and enforces it inside
   execution. When it passes, the provider stops the work, refuses the job

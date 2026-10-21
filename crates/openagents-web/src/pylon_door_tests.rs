@@ -455,6 +455,33 @@ fn only_the_v41_model_header_asks_for_the_group() {
     assert!(GROUP_TURN > GROUP_DEADLINE + pylon::client::GRACE);
 }
 
+#[test]
+fn flint_is_a_separate_explicit_model_choice() {
+    let mut headers = HeaderMap::new();
+    headers.insert(MODEL_HEADER, "flint".parse().unwrap());
+    assert!(asks_for_flint(&headers));
+    assert!(!asks_for_group(&headers));
+    headers.insert(MODEL_HEADER, pylon::flint::advertised().parse().unwrap());
+    assert!(asks_for_flint(&headers));
+    headers.insert(MODEL_HEADER, "flint@sha256:other".parse().unwrap());
+    // An unavailable artifact stays an explicit request, with no fallback.
+    assert!(asks_for_flint(&headers));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unavailable_flint_never_uses_hosted_chat_or_another_model() {
+    let (relay, _pylon) = relay(true).await;
+    let world = world(relay).await;
+    for (number, model) in [(7, "flint"), (8, "flint@sha256:other")] {
+        let events = ask_for(&world, number, "hello", true, Some(model)).await;
+        assert!(
+            !events.contains("Answer to hello") && !events.contains("echo:"),
+            "{events}"
+        );
+        assert!(events.contains("unavailable"), "{events}");
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn other_pages_never_ask_the_pylons() {
     let (relay, _pylon) = relay(true).await;
