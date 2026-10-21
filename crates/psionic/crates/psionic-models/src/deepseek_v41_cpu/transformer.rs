@@ -287,11 +287,19 @@ impl<'a> CpuTransformer<'a> {
                             &hashes[i].layers[slot],
                         )?;
                     }
-                    *residual = block.apply_engram(
+                    *residual = block.apply_engram_observed(
                         residual,
                         &hashes[i].layers[slot],
                         c.engram.layers[slot].table_rows,
                         c.engram.head_dim,
+                        &mut |rows| {
+                            observe(
+                                &mut observer,
+                                &format!("layers.{layer}.engram.rows"),
+                                self.position + i,
+                                rows,
+                            )
+                        },
                     )?;
                     observe(
                         &mut observer,
@@ -349,9 +357,17 @@ impl<'a> CpuTransformer<'a> {
                 normalized.extend(input.normalized);
                 mixes.push(input.mixes);
             }
-            let attention = self
-                .attention
-                .forward_chunk(layer, self.position, &normalized)?;
+            let attention = match &mut observer {
+                Some(o) => self.attention.forward_chunk_observed(
+                    layer,
+                    self.position,
+                    &normalized,
+                    Some(&mut **o),
+                )?,
+                None => self
+                    .attention
+                    .forward_chunk(layer, self.position, &normalized)?,
+            };
             let mut expert_ids = Vec::new();
             let mut route_weights = Vec::new();
             for i in 0..tokens.len() {
@@ -373,13 +389,35 @@ impl<'a> CpuTransformer<'a> {
                     pos,
                     &attended,
                 )?;
-                let output = block.feed_forward(&attended, &mixes[i].pre)?;
+                let output = block.feed_forward_observed(
+                    &attended,
+                    &mixes[i].pre,
+                    &mut |site, values| {
+                        observe(
+                            &mut observer,
+                            &format!("layers.{layer}.ffn.{site}"),
+                            pos,
+                            values,
+                        )
+                    },
+                )?;
                 observe(
                     &mut observer,
                     &format!("layers.{layer}.ffn.gate.in"),
                     pos,
                     &output.normalized_input,
                 )?;
+                for (site, values) in [
+                    ("scores", &output.routing.scores),
+                    ("biased_scores", &output.routing.biased_scores),
+                ] {
+                    observe(
+                        &mut observer,
+                        &format!("layers.{layer}.ffn.gate.{site}"),
+                        pos,
+                        values,
+                    )?;
+                }
                 observe(
                     &mut observer,
                     &format!("layers.{layer}.ffn.out"),
@@ -682,8 +720,9 @@ pub(crate) mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         struct Observe {
             count: usize,
-            fail: bool,
+            fail: Option<&'static str>,
             logits: Vec<Vec<f32>>,
+            attention_sites: BTreeSet<String>,
         }
         impl ModelObserver for Observe {
             fn final_position(&self, _: usize) -> bool {
@@ -694,11 +733,14 @@ pub(crate) mod tests {
             }
             fn floats(&mut self, site: &str, _: usize, values: &[f32]) -> Result<(), CpuError> {
                 self.count += 1;
-                if self.fail && site == "layers.39.hc.out" {
+                if self.fail == Some(site) {
                     return Err(CpuError::Invalid("injected observer failure"));
                 }
                 if site == "logits" {
                     self.logits.push(values.to_vec());
+                }
+                if site.starts_with("layers.0.attn.") {
+                    self.attention_sites.insert(site.to_string());
                 }
                 Ok(())
             }
@@ -709,18 +751,50 @@ pub(crate) mod tests {
         let expected = a.forward_tokens(&[0, 3, 4])?;
         let mut observer = Observe {
             count: 0,
-            fail: false,
+            fail: None,
             logits: Vec::new(),
+            attention_sites: BTreeSet::new(),
         };
         let observed = b.forward_observed(&[0, 3, 4], &mut observer)?;
         assert_eq!(expected.logits, observed.logits);
         assert_eq!(a.summary(), b.summary());
         assert_eq!(observer.logits.len(), 3);
         assert!(observer.count > 40 * 3);
+        for site in [
+            "q.normalized",
+            "q.projected",
+            "q.rotated",
+            "kv.normalized",
+            "kv.rotated",
+            "kv.quantized",
+            "heads",
+            "heads.unrotated",
+            "output.low_rank",
+        ] {
+            assert!(
+                observer
+                    .attention_sites
+                    .contains(&format!("layers.0.attn.{site}"))
+            );
+        }
         let before = b.summary();
-        observer.fail = true;
-        assert!(b.forward_observed(&[5], &mut observer).is_err());
-        assert_eq!(b.summary(), before);
+        for site in [
+            "layers.0.attn.q.normalized",
+            "layers.1.engram.rows",
+            "layers.2.attn.heads",
+            "layers.2.ffn.shared.out",
+            "layers.39.hc.out",
+        ] {
+            observer.fail = Some(site);
+            assert!(b.forward_observed(&[5], &mut observer).is_err());
+            assert_eq!(b.summary(), before);
+        }
+        observer.fail = None;
+        assert_eq!(
+            a.forward_tokens(&[5])?.logits,
+            b.forward_observed(&[5], &mut observer)?.logits
+        );
+        assert_eq!(a.summary(), b.summary());
         Ok(())
     }
     struct Fail<'a> {

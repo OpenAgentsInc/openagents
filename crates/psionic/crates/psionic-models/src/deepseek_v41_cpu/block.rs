@@ -179,6 +179,14 @@ impl<'a> TextBlock<'a> {
         residual: &[f32],
         attention_pre: &[f32],
     ) -> Result<FeedForwardOutput, CpuError> {
+        self.feed_forward_observed(residual, attention_pre, &mut |_, _| Ok(()))
+    }
+    pub fn feed_forward_observed(
+        &self,
+        residual: &[f32],
+        attention_pre: &[f32],
+        observer: &mut dyn FnMut(&str, &[f32]) -> Result<(), CpuError>,
+    ) -> Result<FeedForwardOutput, CpuError> {
         let mixes = self.mixes("ffn", residual)?;
         let collapsed = self.finish(self.config.hyper.collapse(residual, attention_pre)?)?;
         let input = self.norm("ffn_norm.weight", &collapsed)?;
@@ -188,13 +196,14 @@ impl<'a> TextBlock<'a> {
         }
         let bias = self.weights.vector(&self.name("ffn.gate.bias"))?;
         // Gate.forward promotes both input and BF16 router weights to F32.
-        let (routing, output) = moe::forward(
+        let (routing, output) = moe::forward_observed(
             &input,
             gate.as_ref(),
             &bias,
             self.config.router,
             &NamedExperts { block: self },
             self.config.swiglu_limit,
+            observer,
         )?;
         let output = self.finish(output)?;
         let residual = self.finish(self.config.hyper.expand(&output, residual, &mixes)?)?;
@@ -214,6 +223,16 @@ impl<'a> TextBlock<'a> {
         hash_ids: &[u64],
         table_rows: u64,
         head_dim: usize,
+    ) -> Result<Vec<f32>, CpuError> {
+        self.apply_engram_observed(residual, hash_ids, table_rows, head_dim, &mut |_| Ok(()))
+    }
+    pub fn apply_engram_observed(
+        &self,
+        residual: &[f32],
+        hash_ids: &[u64],
+        table_rows: u64,
+        head_dim: usize,
+        observer: &mut dyn FnMut(&[f32]) -> Result<(), CpuError>,
     ) -> Result<Vec<f32>, CpuError> {
         if ![1, 14].contains(&self.layer) || hash_ids.len() != 24 {
             return Err(CpuError::Invalid("Engram layer or hash columns"));
@@ -248,7 +267,7 @@ impl<'a> TextBlock<'a> {
             width: h.width,
             epsilon: self.config.geometry.norm_epsilon,
         }
-        .lookup_and_apply_with_reference_rows(
+        .lookup_and_apply_with_row_observer(
             residual,
             hash_ids,
             table.as_ref(),
@@ -258,6 +277,7 @@ impl<'a> TextBlock<'a> {
             true,
             self.arithmetic,
             self.reference_rows,
+            observer,
         )
     }
 }

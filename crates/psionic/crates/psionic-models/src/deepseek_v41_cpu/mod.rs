@@ -431,7 +431,9 @@ pub fn rms_norm_reference(
     }
     let squares: Vec<_> = input.iter().map(|x| x * x).collect();
     let variance = reference_row_mean(&squares, rows)?;
-    let scale = (variance + epsilon).sqrt().recip();
+    // CUDA rsqrt is one operation. Rounding sqrt to F32 before its reciprocal
+    // introduces a second rounding boundary, which can flip a later BF16 tie.
+    let scale = reference_rsqrt(variance + epsilon)?;
     let out: Vec<_> = input
         .iter()
         .zip(weight)
@@ -439,6 +441,13 @@ pub fn rms_norm_reference(
         .collect();
     finite("reference RMS output", &out)?;
     Ok(out)
+}
+
+fn reference_rsqrt(value: f32) -> Result<f32, CpuError> {
+    if !positive(value) {
+        return Err(CpuError::Invalid("reference reciprocal square root"));
+    }
+    Ok((1.0 / (value as f64).sqrt()) as f32)
 }
 
 /// Per-vector RMS normalization; the checkpoint uses epsilon `1e-20`.
@@ -465,6 +474,31 @@ pub fn rms_norm(input: &[f32], weight: &[f32], epsilon: f32) -> Result<Vec<f32>,
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn oracle_bf16_ties_use_one_reciprocal_sqrt_rounding() -> Result<(), CpuError> {
+        // Original-weight #12371 observations: p1 replay g2 layer 39, and
+        // p3 decode g2 layer 14. Variances use the recorded CUDA row layout.
+        for (bits, input, weight, expected) in [
+            (
+                1092534930,
+                -3.65625_f32,
+                0.02392578125_f32,
+                -0.0277099609375_f32,
+            ),
+            (1041155562, -0.478515625, 0.029052734375, -0.037109375),
+        ] {
+            let variance = f32::from_bits(bits);
+            let scale = reference_rsqrt(variance)?;
+            assert_eq!(quantization::bf16(weight * (input * scale)), expected);
+            assert_ne!(
+                quantization::bf16(weight * (input * variance.sqrt().recip())),
+                expected
+            );
+        }
+        assert!(reference_rsqrt(0.0).is_err());
+        assert!(reference_rsqrt(f32::NAN).is_err());
+        Ok(())
+    }
     use crate::deepseek_v41_weights::{CheckpointOpenOptions, DeepSeekV41Checkpoint};
 
     #[test]

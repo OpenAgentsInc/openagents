@@ -49,9 +49,12 @@ setup() {
   }
   command -v uv >/dev/null || curl -LsSf https://astral.sh/uv/install.sh | sh
   [ -x $PY ] || uv venv -q -p 3.12 $VENV
-  uv pip install -q -p $PY --index-url https://download.pytorch.org/whl/cu129 "torch>=2.10.0"
-  # inference/requirements.txt at the pinned revision
-  uv pip install -q -p $PY transformers tokenizers "safetensors>=0.7.0" numpy sympy Pillow "tilelang==0.1.12" tqdm
+  # Preserve the versions that produced #12371's retained oracle. Updating a
+  # package creates a different comparison environment, even on the same GPU.
+  uv pip install -q -p $PY --index-url https://download.pytorch.org/whl/cu129 "torch==2.13.0+cu129"
+  uv pip install -q -p $PY "transformers==5.20.2" "tokenizers==0.23.3" \
+    "safetensors==0.8.0" "numpy==2.5.4" "sympy==1.14.0" \
+    "triton==3.7.1" Pillow "tilelang==0.1.12" tqdm
   $PY -c 'import torch, tilelang; print("torch", torch.__version__, "cuda", torch.version.cuda, "tilelang", tilelang.__version__, torch.cuda.get_device_name(0), torch.cuda.get_device_capability(0))'
   nvidia-smi --query-gpu=name,driver_version --format=csv,noheader | head -1
 }

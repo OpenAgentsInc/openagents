@@ -65,7 +65,12 @@ impl Router {
             *w *= self.route_scale;
         }
         finite("routing weights", &weights)?;
-        Ok(Routing { indices, weights })
+        Ok(Routing {
+            indices,
+            weights,
+            scores,
+            biased_scores: ranked,
+        })
     }
 }
 
@@ -73,6 +78,8 @@ impl Router {
 pub struct Routing {
     pub indices: Vec<usize>,
     pub weights: Vec<f32>,
+    pub scores: Vec<f32>,
+    pub biased_scores: Vec<f32>,
 }
 
 /// Evaluate one expert. The route weight multiplies the intermediate activation
@@ -189,6 +196,27 @@ pub fn forward(
     experts: &dyn ExpertProvider,
     limit: f32,
 ) -> Result<(Routing, Vec<f32>), CpuError> {
+    forward_observed(
+        input,
+        gate_weight,
+        bias,
+        router,
+        experts,
+        limit,
+        &mut |_, _| Ok(()),
+    )
+}
+
+/// Borrows the shared expert output before it joins the routed sum.
+pub fn forward_observed(
+    input: &[f32],
+    gate_weight: &dyn MatrixRows,
+    bias: &[f32],
+    router: Router,
+    experts: &dyn ExpertProvider,
+    limit: f32,
+    observer: &mut dyn FnMut(&str, &[f32]) -> Result<(), CpuError>,
+) -> Result<(Routing, Vec<f32>), CpuError> {
     if !limit.is_finite() || limit < 0.0 {
         return Err(CpuError::Invalid("expert clamp"));
     }
@@ -208,6 +236,9 @@ pub fn forward(
     {
         let y = experts.forward(id, input, weight, limit)?;
         shape("expert output", &y, out.len())?;
+        if id.is_none() {
+            observer("shared.out", &y)?;
+        }
         for (a, b) in out.iter_mut().zip(y) {
             *a += b;
         }

@@ -283,6 +283,11 @@ impl<'a> AttentionProjections<'a> {
     }
     /// wo_a is block-diagonal: each group sees only its own attention heads.
     pub fn output(&self, heads: &[f32]) -> Result<Vec<f32>, CpuError> {
+        let low_rank = self.output_low_rank(heads)?;
+        self.output_from_low_rank(&low_rank)
+    }
+    /// Grouped projection boundary before the TP8 row-parallel projection.
+    pub fn output_low_rank(&self, heads: &[f32]) -> Result<Vec<f32>, CpuError> {
         let g = self.geometry;
         let width = product(g.heads, g.head_dim)? / g.o_groups;
         shape("attention heads", heads, product(g.heads, g.head_dim)?)?;
@@ -297,12 +302,20 @@ impl<'a> AttentionProjections<'a> {
         }
         let low_rank = weight.multiply_grouped(&heads, g.o_groups, self.arithmetic.is_bf16())?;
         finite("grouped output", &low_rank)?;
-        let low_rank = self.finish(low_rank)?;
+        self.finish(low_rank)
+    }
+    pub fn output_from_low_rank(&self, low_rank: &[f32]) -> Result<Vec<f32>, CpuError> {
+        let g = self.geometry;
+        shape(
+            "attention output low rank",
+            low_rank,
+            product(g.o_groups, g.o_rank)?,
+        )?;
         let weight = self.weights.matrix(&self.name("wo_b.weight"))?;
         if weight.dimensions() != (g.hidden, product(g.o_groups, g.o_rank)?) {
             return Err(CpuError::Invalid("wo_b dimensions"));
         }
-        quantization::linear_row_parallel(weight.as_ref(), &low_rank, self.arithmetic)
+        quantization::linear_row_parallel(weight.as_ref(), low_rank, self.arithmetic)
     }
 }
 

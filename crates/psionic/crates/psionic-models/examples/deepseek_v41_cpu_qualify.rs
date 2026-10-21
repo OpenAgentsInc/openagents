@@ -211,7 +211,15 @@ fn differences(a: &[f32], b: &[f32], atol: f64, rtol: f64) -> Value {
     let mut bad = 0;
     let mut max_abs = 0f64;
     let mut first = None;
+    let mut unequal = 0;
+    let mut first_unequal = None;
     for (i, (a, b)) in a.iter().zip(b).enumerate() {
+        if a.to_bits() != b.to_bits() {
+            unequal += 1;
+            if first_unequal.is_none() {
+                first_unequal = Some(json!({"index":i,"actual":a,"reference":b}));
+            }
+        }
         let delta = (*a as f64 - *b as f64).abs();
         max_abs = max_abs.max(delta);
         if !a.is_finite() || !b.is_finite() || delta > atol + rtol * (*b as f64).abs() {
@@ -224,7 +232,7 @@ fn differences(a: &[f32], b: &[f32], atol: f64, rtol: f64) -> Value {
     if a.len() != b.len() {
         bad += a.len().abs_diff(b.len());
     }
-    json!({"passed":bad==0,"actual_elements":a.len(),"reference_elements":b.len(),"bad_elements":bad,"max_abs_error":max_abs,"first_bad":first})
+    json!({"passed":bad==0,"actual_elements":a.len(),"reference_elements":b.len(),"bad_elements":bad,"unequal_elements":unequal,"first_unequal":first_unequal,"max_abs_error":max_abs,"first_bad":first})
 }
 fn route_weight_order(actual: &[u64], reference: &[f32]) -> Result<Vec<usize>, CpuError> {
     if actual.len() != reference.len()
@@ -281,6 +289,18 @@ impl Compare<'_> {
     }
     fn compare(&mut self, name: &str, site: &str, values: &[f32]) -> Result<(), CpuError> {
         if !self.oracle.entries.contains_key(name) {
+            if self.oracle.entries.contains_key(&format!("{name}.rank0")) {
+                if values.is_empty() || !values.len().is_multiple_of(8) {
+                    return Err(CpuError::Invalid("TP8 observation width"));
+                }
+                for (rank, partial) in values.chunks_exact(values.len() / 8).enumerate() {
+                    let rank_name = format!("{name}.rank{rank}");
+                    if !self.oracle.entries.contains_key(&rank_name) {
+                        return Err(CpuError::Invalid("missing TP8 observation rank"));
+                    }
+                    self.compare(&rank_name, site, partial)?;
+                }
+            }
             return Ok(());
         }
         let expected = self
@@ -529,6 +549,7 @@ fn norm_checks(
     let mut checked = 0;
     let mut old_mismatches = 0;
     let mut new_mismatches = 0;
+    let mut rsqrt_mismatches = 0;
     let mut runs = BTreeMap::new();
     for e in oracle
         .entries
@@ -568,18 +589,46 @@ fn norm_checks(
         let weights = checkpoint.vector(&format!("layers.{layer}.attn_norm.weight"))?;
         let old = round_bf16(&rms_norm(&input, &weights, 1e-20)?)?;
         let new = round_bf16(&rms_norm_reference(&input, &weights, 1e-20, rows)?)?;
+        let variance = psionic_models::deepseek_v41_cpu::reference_row_mean(
+            &input.iter().map(|x| x * x).collect::<Vec<_>>(),
+            rows,
+        )? + 1e-20;
+        let direct_scale = (1.0 / (variance as f64).sqrt()) as f32;
+        let direct = round_bf16(
+            &input
+                .iter()
+                .zip(&weights)
+                .map(|(x, w)| w * (x * direct_scale))
+                .collect::<Vec<_>>(),
+        )?;
         let old_bad = old.iter().zip(&expected).filter(|(a, b)| a != b).count();
         let new_bad = new.iter().zip(&expected).filter(|(a, b)| a != b).count();
         checked += 1;
         old_mismatches += old_bad;
         new_mismatches += new_bad;
+        let direct_bad = direct.iter().zip(&expected).filter(|(a, b)| a != b).count();
+        rsqrt_mismatches += direct_bad;
+        let regression = new
+            .iter()
+            .zip(&direct)
+            .zip(&expected)
+            .enumerate()
+            .find(|(_, ((old, new), expected))| old != expected && new == expected)
+            .map(|(index, ((old, new), expected))| {
+                json!({"index":index,
+                "input":input[index],"weight":weights[index],"old":old,
+                "direct":new,"reference":expected,"variance_bits":variance.to_bits()})
+            });
         serde_json::to_writer(
             &mut log,
-            &json!({"tensor":target,"rows":rows,"scope":"identical_oracle_input","old_bf16_mismatches":old_bad,"new_bf16_mismatches":new_bad}),
+            &json!({"tensor":target,"rows":rows,"scope":"identical_oracle_input","old_bf16_mismatches":old_bad,"new_bf16_mismatches":new_bad,
+                "direct_rsqrt_bf16_mismatches":direct_bad,"variance":variance,
+                "sqrt_recip_scale":variance.sqrt().recip(),"direct_rsqrt_scale":direct_scale,
+                "regression":regression}),
         )?;
         writeln!(log)?;
     }
-    let report = json!({"schema":"psionic.deepseek_v41.cpu_norm_probe.v1","checked":checked,"old_bf16_mismatches":old_mismatches,"new_bf16_mismatches":new_mismatches,"model_qualification_passed":false});
+    let report = json!({"schema":"psionic.deepseek_v41.cpu_norm_probe.v1","checked":checked,"old_bf16_mismatches":old_mismatches,"new_bf16_mismatches":new_mismatches,"direct_rsqrt_bf16_mismatches":rsqrt_mismatches,"model_qualification_passed":false});
     fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
     Ok(report)
 }
@@ -1229,6 +1278,11 @@ mod tests {
     fn fixed_bounds_and_missing_elements_cannot_pass() {
         assert_eq!(differences(&[1.0], &[1.01], 0.001, 0.0)["passed"], false);
         assert_eq!(differences(&[1.0], &[1.01], 0.02, 0.0)["passed"], true);
+        assert_eq!(
+            differences(&[1.0], &[1.01], 0.02, 0.0)["unequal_elements"],
+            1
+        );
+        assert_eq!(differences(&[1.0], &[1.01], 0.02, 0.0)["bad_elements"], 0);
         assert_eq!(differences(&[f32::NAN], &[0.0], 1.0, 1.0)["passed"], false);
         assert_eq!(differences(&[], &[0.0], 0.0, 0.0)["passed"], false);
         assert_eq!(

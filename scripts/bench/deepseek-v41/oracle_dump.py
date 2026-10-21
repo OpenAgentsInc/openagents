@@ -567,6 +567,65 @@ def load_reference(reference: Path, out: Path, rank: int):
     return model, kernel, generate
 
 
+def install_attention_diagnostics(model, rec: Recorder, model_mod):
+    """Copy the first attention stages before in-place RoPE and quantization.
+
+    Rank-local head tensors retain their rank suffix. The reference's forward
+    and kernels run unchanged; no diagnostic recomputation replaces an output.
+    """
+    active = {"layer": None}
+    for i, block in enumerate(model.layers):
+        attn = block.attn
+        prefix = f"layers.{i}.attn"
+
+        def enter(m, a, i=i):
+            active["layer"] = i
+
+        attn.register_forward_pre_hook(enter)
+        attn.register_forward_hook(lambda m, a, out: active.update(layer=None))
+        for member, site, local in [
+            ("q_norm", "q.normalized", False),
+            ("wq_b", "q.projected", True),
+            ("kv_norm", "kv.normalized", False),
+        ]:
+            suffix = f".rank{rec.rank}" if local else ""
+            getattr(attn, member).register_forward_hook(
+                lambda m, a, out, site=f"{prefix}.{site}{suffix}", local=local:
+                    rec.put_rows(site, out, replicated=not local)
+            )
+        attn.wo_b.register_forward_pre_hook(
+            lambda m, a, prefix=prefix:
+                rec.put_rows(f"{prefix}.output.low_rank.rank{rec.rank}", a[0], replicated=False)
+        )
+
+    sparse = model_mod.sparse_attn
+
+    def observed_sparse(q, kv, sinks, indices, scale):
+        prefix = f"layers.{active['layer']}.attn"
+        rec.put_rows(f"{prefix}.q.rotated.rank{rec.rank}", q, replicated=False)
+        # In prefill, window KV rows coincide with query rows. Decode has a ring.
+        if rec.step == 0:
+            rec.put_rows(f"{prefix}.kv.quantized", kv)
+        out = sparse(q, kv, sinks, indices, scale)
+        rec.put_rows(f"{prefix}.heads.rank{rec.rank}", out, replicated=False)
+        return out
+
+    model_mod.sparse_attn = observed_sparse
+    quantize = model_mod.act_quant
+
+    def observed_quantize(x, *args, **kwargs):
+        layer = active["layer"]
+        if layer is not None:
+            prefix = f"layers.{layer}.attn"
+            if x.dim() == 3 and x.size(-1) == model.layers[layer].attn.head_dim:
+                rec.put_rows(f"{prefix}.kv.rotated", x)
+            if x.dim() == 4:
+                rec.put_rows(f"{prefix}.heads.unrotated.rank{rec.rank}", x, replicated=False)
+        return quantize(x, *args, **kwargs)
+
+    model_mod.act_quant = observed_quantize
+
+
 def environment(reference: Path) -> dict:
     import torch
 
@@ -615,6 +674,10 @@ def main() -> int:
     parser.add_argument("--max-seq-len", type=int, default=32768)
     parser.add_argument("--only", default="", help="comma-separated prompt ids to run")
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--attention-diagnostics", action="store_true",
+                        help="capture query, KV, and sparse output boundaries on every rank")
+    parser.add_argument("--captures-only", action="store_true",
+                        help="omit completion-to-EOS and the separate chunked mode")
     parser.add_argument("--upload", default="", help="gs:// prefix to copy each finished prompt to")
     opts = parser.parse_args()
 
@@ -661,6 +724,8 @@ def main() -> int:
 
     rec = Recorder(rank)
     install_hooks(model, rec, kernel, args, model_mod.shared_attn)
+    if opts.attention_diagnostics:
+        install_attention_diagnostics(model, rec, model_mod)
 
     env = environment(opts.reference) if rank == 0 else {}
     if rank == 0:
@@ -693,6 +758,9 @@ def main() -> int:
         cases = build_cases(opts.reference, generate, tokenizer, args)
     if opts.only:
         cases = [c for c in cases if c["id"] in opts.only.split(",")]
+    if opts.captures_only:
+        for case in cases:
+            case.update(complete=False, chunked=False)
 
     for case in cases:
         pid = case["id"]

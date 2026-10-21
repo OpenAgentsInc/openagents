@@ -506,6 +506,33 @@ impl EngramGate {
         arithmetic: super::quantization::Arithmetic,
         reference_rows: usize,
     ) -> Result<Vec<f32>, CpuError> {
+        self.lookup_and_apply_with_row_observer(
+            residual,
+            hash_ids,
+            table,
+            projection,
+            q_weight,
+            k_weight,
+            enabled,
+            arithmetic,
+            reference_rows,
+            &mut |_| Ok(()),
+        )
+    }
+    /// Borrows the dequantized table rows before their projection.
+    pub fn lookup_and_apply_with_row_observer(
+        &self,
+        residual: &[f32],
+        hash_ids: &[u64],
+        table: &dyn MatrixRows,
+        projection: &dyn MatrixRows,
+        q_weight: &[f32],
+        k_weight: &[f32],
+        enabled: bool,
+        arithmetic: super::quantization::Arithmetic,
+        reference_rows: usize,
+        observer: &mut dyn FnMut(&[f32]) -> Result<(), CpuError>,
+    ) -> Result<Vec<f32>, CpuError> {
         use super::quantization;
         let count = self.validate(residual)?;
         shape("Engram query weight", q_weight, count)?;
@@ -534,6 +561,7 @@ impl EngramGate {
                 row
             });
         }
+        observer(&embedding)?;
         let projected = quantization::linear(projection, &embedding, arithmetic)?;
         let output = self.apply_impl(
             residual,

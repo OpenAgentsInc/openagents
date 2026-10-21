@@ -201,6 +201,17 @@ impl<'a> AttentionRuntime<'a> {
         start: usize,
         input: &[f32],
     ) -> Result<Vec<f32>, CpuError> {
+        self.forward_chunk_observed(layer, start, input, None)
+    }
+
+    /// Observes intermediate values without committing state after an observer error.
+    pub fn forward_chunk_observed(
+        &mut self,
+        layer: usize,
+        start: usize,
+        input: &[f32],
+        mut observer: Option<&mut dyn super::transformer::ModelObserver>,
+    ) -> Result<Vec<f32>, CpuError> {
         if layer >= 40 || input.is_empty() || !input.len().is_multiple_of(self.geometry.hidden) {
             return Err(CpuError::Invalid("attention layer or input dimensions"));
         }
@@ -233,7 +244,7 @@ impl<'a> AttentionRuntime<'a> {
                 candidates: None,
             });
         }
-        let output = next.run_layer(layer, start, input)?;
+        let output = next.run_layer(layer, start, input, &mut observer)?;
         if layer == 39 {
             next.chunk = None;
             next.next_position = end;
@@ -258,6 +269,7 @@ impl<'a> AttentionRuntime<'a> {
         layer: usize,
         start: usize,
         input: &[f32],
+        observer: &mut Option<&mut dyn super::transformer::ModelObserver>,
     ) -> Result<Vec<f32>, CpuError> {
         let g = self.geometry;
         let ratio = compress_ratio(layer)?;
@@ -291,11 +303,25 @@ impl<'a> AttentionRuntime<'a> {
             } else {
                 x.to_vec()
             };
-            let q = p.rotated_query(&x, position, &rope)?;
-            let window = self.cache_form(
-                &p.rotated_window_kv(&x, position, &rope)?,
-                Quantization::Fp8,
-            )?;
+            let mut q = p.query(&x)?;
+            let mut window = p.window_kv(&x)?;
+            let mut emit = |site: &str, values: &[f32]| -> Result<(), CpuError> {
+                if let Some(o) = observer {
+                    o.floats(&format!("layers.{layer}.attn.{site}"), position, values)?;
+                }
+                Ok(())
+            };
+            emit("q.normalized", &q.low_rank)?;
+            emit("q.projected", &q.heads)?;
+            emit("kv.normalized", &window)?;
+            rope.apply_tail(&mut q.heads, g.head_dim, position, false)?;
+            q.heads = p.finish(q.heads)?;
+            rope.apply_tail(&mut window, g.head_dim, position, false)?;
+            window = p.finish(window)?;
+            emit("q.rotated", &q.heads)?;
+            emit("kv.rotated", &window)?;
+            let window = self.cache_form(&window, Quantization::Fp8)?;
+            emit("kv.quantized", &window)?;
             self.windows[layer].push(position, window, g.window)?;
             if let Some(norm) = &norm {
                 let (value, gate) = p.compressor_inputs(&x)?;
@@ -444,7 +470,14 @@ impl<'a> AttentionRuntime<'a> {
                     (g.head_dim as f64).powf(-0.5) as f32,
                 )?
             };
-            outputs.extend(p.rotated_output(&heads, position, &rope)?);
+            emit("heads", &heads)?;
+            let mut heads = heads;
+            rope.apply_tail(&mut heads, g.head_dim, position, true)?;
+            let heads = p.finish(heads)?;
+            emit("heads.unrotated", &heads)?;
+            let low_rank = p.output_low_rank(&heads)?;
+            emit("output.low_rank", &low_rank)?;
+            outputs.extend(p.output_from_low_rank(&low_rank)?);
         }
         let chunk = self
             .chunk
