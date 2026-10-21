@@ -128,6 +128,32 @@ spend guard from the one budget host.
 | W15 | **`pylon cloud up` for a group.** One command starts a group in a named placement through the spend guard, waits for readiness, publishes it, and stops it on expiry, cap, or `down`. Spot loss shows as Pylons leaving. | M | W12, W13 | A cold launch to a first answer, then a clean stop, with costs in the ledger. |
 | W16 | **Show it.** Run the launched group with the `/home` Pylon layer open and record the transcript, router log, and capture. | S, cloud | W15 | G8's evidence is committed and the epic can close. |
 
+
+## Issues
+
+Filed 2026-10-21 as children of #12369, with blockers recorded on the
+board. W9 (#12396), W10 (#12397), and W13 (#12400) have no blockers and
+started first.
+
+| Item | Issue |
+| --- | --- |
+| W1 | [#12388](https://github.com/OpenAgentsInc/openagents/issues/12388) |
+| W2 | [#12389](https://github.com/OpenAgentsInc/openagents/issues/12389) |
+| W3 | [#12390](https://github.com/OpenAgentsInc/openagents/issues/12390) |
+| W4 | [#12391](https://github.com/OpenAgentsInc/openagents/issues/12391) |
+| W5 | [#12392](https://github.com/OpenAgentsInc/openagents/issues/12392) |
+| W6 | [#12393](https://github.com/OpenAgentsInc/openagents/issues/12393) |
+| W7 | [#12394](https://github.com/OpenAgentsInc/openagents/issues/12394) |
+| W8 | [#12395](https://github.com/OpenAgentsInc/openagents/issues/12395) |
+| W9 | [#12396](https://github.com/OpenAgentsInc/openagents/issues/12396) |
+| W10 | [#12397](https://github.com/OpenAgentsInc/openagents/issues/12397) |
+| W11 | [#12398](https://github.com/OpenAgentsInc/openagents/issues/12398) |
+| W12 | [#12399](https://github.com/OpenAgentsInc/openagents/issues/12399) |
+| W13 | [#12400](https://github.com/OpenAgentsInc/openagents/issues/12400) |
+| W14 | [#12401](https://github.com/OpenAgentsInc/openagents/issues/12401) |
+| W15 | [#12402](https://github.com/OpenAgentsInc/openagents/issues/12402) |
+| W16 | [#12403](https://github.com/OpenAgentsInc/openagents/issues/12403) |
+
 ## Budget
 
 | Phase | Estimate |
