@@ -1654,6 +1654,7 @@ async fn routed(
             format!("answered by {} ({})", answer.label, answer.pylon_npub)
         }
         Outcome::Declined => "handed back".to_string(),
+        Outcome::Busy => "every pylon serving the model is busy".to_string(),
         Outcome::Unavailable(why) => format!("no pylon answered: {why}"),
     };
     let how = match &routed.how {
@@ -1673,6 +1674,7 @@ async fn routed(
     match routed.outcome {
         Outcome::Answered(answer) => Ok(*answer),
         Outcome::Declined => Err("the router handed the message back".into()),
+        Outcome::Busy => Err("every pylon serving the model is busy; try again shortly".into()),
         Outcome::Unavailable(why) => {
             let tried = routed
                 .failed

@@ -61,11 +61,26 @@ pub fn serves_want<'a>(
     lane: Lane,
     want: &Want,
 ) -> Option<&'a Service> {
+    if beacon.slots.free == 0 {
+        return None;
+    }
+    serves_want_when_free(beacon, at, failing, lane, want)
+}
+
+/// As [`serves_want`], whether or not a slot is free now: what a busy
+/// group would serve once its turn ends.
+#[must_use]
+pub fn serves_want_when_free<'a>(
+    beacon: &'a Beacon,
+    at: u64,
+    failing: &BTreeSet<String>,
+    lane: Lane,
+    want: &Want,
+) -> Option<&'a Service> {
     if beacon.is_stage()
         || failing.contains(&beacon.address())
         || pylon::freshness(beacon, at) != Freshness::Fresh
         || beacon.status != Status::Online
-        || beacon.slots.free == 0
         || beacon
             .group_head()
             .is_some_and(|g| g.readiness != Some(Readiness::Ready))

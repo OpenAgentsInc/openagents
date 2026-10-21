@@ -63,6 +63,14 @@ const DECIDE_TURN: usize = 400;
 /// The room a job leaves under a pylon's request-text limit for the
 /// instructions.
 const INSTRUCTIONS_ROOM: usize = 4 * 1024;
+/// The bytes of text one token covers in [`estimate_tokens`]: about four
+/// for English prose, fewer for code and other scripts.
+const BYTES_PER_TOKEN: usize = 4;
+/// The tokens a chat template adds around each turn.
+const TURN_TOKENS: usize = 4;
+/// The share, in percent, of a pylon's advertised `max_input_tokens` a job
+/// fills by [`estimate_tokens`], so a rough estimate stays under the limit.
+const ADVERTISED_SHARE: usize = 85;
 
 /// One pylon that can answer now.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,6 +90,9 @@ pub struct Candidate {
     pub observed_at: u64,
     /// The most request text it accepts ([`crate::job::input_limit`]).
     pub max_input_bytes: usize,
+    /// The most prompt tokens it accepts, when its beacon's
+    /// `request_limits` say ([`crate::group::request_limits`]).
+    pub max_input_tokens: Option<usize>,
 }
 
 impl Candidate {
@@ -98,6 +109,9 @@ impl Candidate {
             total: beacon.slots.total,
             observed_at: beacon.observed_at,
             max_input_bytes: crate::job::input_limit(beacon),
+            max_input_tokens: crate::group::request_limits(beacon)
+                .and_then(|l| usize::try_from(l.max_input_tokens).ok())
+                .filter(|&n| n > 0),
         }
     }
 
@@ -194,6 +208,16 @@ pub fn candidates_for(
     });
     found.truncate(MAX_CANDIDATES);
     found
+}
+
+/// Whether a pylon or ready group serves `want` at `at` but has no free
+/// slot: the model is busy, not missing.
+#[must_use]
+pub fn busy_for(book: &BeaconBook, at: u64, failing: &BTreeSet<String>, want: &Want) -> bool {
+    book.iter()
+        .map(|(_, beacon)| beacon)
+        .filter(|b| b.settlement.iter().any(|s| s == FREE) && b.slots.free == 0)
+        .any(|b| group::serves_want_when_free(b, at, failing, Lane::CjConversation, want).is_some())
 }
 
 /// How many live pylons serve decisions (a Clef model) at `at`.
@@ -362,6 +386,11 @@ pub struct Settings {
     /// The caller's budget for one answer under `pylon.deadline.v1`; `None`
     /// keeps the ordinary 90-second profile.
     pub deadline: Option<Duration>,
+    /// The most prompt tokens, by [`estimate_tokens`], a job carries: the
+    /// instructions, the latest message, and the newest earlier turns that
+    /// fit. A slow model answers sooner with less to read. `None` sends as
+    /// much as the pylon accepts.
+    pub prompt_tokens: Option<usize>,
     /// Whether each try publishes a job receipt ([`Ask::publish_receipt`]).
     pub publish_receipt: bool,
 }
@@ -380,6 +409,7 @@ impl Settings {
             tries: 3,
             want: None,
             deadline: None,
+            prompt_tokens: None,
             publish_receipt: true,
         }
     }
@@ -407,6 +437,9 @@ pub enum Outcome {
     Answered(Box<Answer>),
     /// The decision handed the message to the caller's own chat.
     Declined,
+    /// A pylon or group serves the requested model, but each one is busy
+    /// with another request: the person may wait or ask again.
+    Busy,
     /// No pylon could answer: none admitted, the relay unreachable, or
     /// every try failed.
     Unavailable(String),
@@ -477,6 +510,15 @@ fn encoded_len(text: &str) -> usize {
     serde_json::to_string(text).map_or(text.len() * 6, |s| s.len())
 }
 
+/// A fast estimate of the tokens `text` takes as one turn of a prompt:
+/// [`BYTES_PER_TOKEN`] bytes a token, plus the chat template's
+/// [`TURN_TOKENS`]. Bytes, not characters, so text in other scripts counts
+/// higher.
+#[must_use]
+pub fn estimate_tokens(text: &str) -> usize {
+    text.len().div_ceil(BYTES_PER_TOKEN) + TURN_TOKENS
+}
+
 /// The job's text from `turns` for a pylon that accepts `limit` bytes of
 /// request text: the last user turn as the prompt, and the newest earlier
 /// turns that fit the limit, less room for the instructions, and NIP-CJ's
@@ -484,6 +526,20 @@ fn encoded_len(text: &str) -> usize {
 /// question is never cut, so that pylon is skipped.
 #[must_use]
 pub fn job_text_within(turns: &[Turn], limit: usize) -> Option<(Vec<Turn>, String)> {
+    job_text_fitting(turns, limit, None, "")
+}
+
+/// As [`job_text_within`], with the earlier turns also held to `tokens` by
+/// [`estimate_tokens`], counting `instructions` and the prompt: the newest
+/// turns that fit are kept, older ones are dropped first, and the prompt is
+/// kept whole even when it alone is past `tokens`.
+#[must_use]
+pub fn job_text_fitting(
+    turns: &[Turn],
+    limit: usize,
+    tokens: Option<usize>,
+    instructions: &str,
+) -> Option<(Vec<Turn>, String)> {
     let Some(last) = turns.iter().rposition(|t| t.role == "user") else {
         return Some((Vec::new(), String::new()));
     };
@@ -493,17 +549,43 @@ pub fn job_text_within(turns: &[Turn], limit: usize) -> Option<(Vec<Turn>, Strin
     let mut room = limit
         .saturating_sub(INSTRUCTIONS_ROOM)
         .checked_sub(encoded_len(&prompt))?;
+    let mut tokens_left = tokens.map_or(usize::MAX, |tokens| {
+        tokens
+            .saturating_sub(estimate_tokens(instructions))
+            .saturating_sub(estimate_tokens(&prompt))
+    });
     let mut history = Vec::new();
     for turn in turns[..last].iter().rev() {
         let size = encoded_len(&turn.content);
-        if history.len() + 2 > crate::job::MAX_TURNS || size > room {
+        let cost = estimate_tokens(&turn.content);
+        if history.len() + 2 > crate::job::MAX_TURNS || size > room || cost > tokens_left {
             break;
         }
         room -= size;
+        tokens_left -= cost;
         history.push(turn.clone());
     }
     history.reverse();
     Some((history, prompt))
+}
+
+/// The most prompt tokens a job to `candidate` carries: the caller's
+/// budget, held under the share of the candidate's advertised limit that
+/// [`ADVERTISED_SHARE`] allows.
+fn token_budget(settings: &Settings, candidate: &Candidate) -> Option<usize> {
+    let advertised = candidate
+        .max_input_tokens
+        .map(|n| n.saturating_mul(ADVERTISED_SHARE) / 100);
+    match (settings.prompt_tokens, advertised) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
+    }
+}
+
+/// Whether a pylon's reason for not answering is that it was busy: its
+/// `busy` refusal, as [`client`] words it.
+fn refused_busy(why: &str) -> bool {
+    why.starts_with("busy:")
 }
 
 /// The order to try `candidates` in, and how it was chosen: the decision
@@ -633,6 +715,14 @@ pub async fn route(
     let deciders = deciders(&book, at, &failing);
     let admitted = found.len();
     if found.is_empty() {
+        if let Some(want) = want
+            && busy_for(&book, at, &failing, want)
+        {
+            let mut routed = Routed::unavailable(String::new(), ranked("every one is busy"));
+            routed.outcome = Outcome::Busy;
+            routed.deciders = deciders;
+            return routed;
+        }
         let mut routed = Routed::unavailable(
             if want.is_some() {
                 "no live pylon serves the requested model".into()
@@ -673,7 +763,12 @@ pub async fn route(
             break;
         }
         // Sized to what this pylon accepts: an older pylon takes less.
-        let Some((history, prompt)) = job_text_within(turns, candidate.max_input_bytes) else {
+        let Some((history, prompt)) = job_text_fitting(
+            turns,
+            candidate.max_input_bytes,
+            token_budget(settings, &candidate),
+            instructions.unwrap_or_default(),
+        ) else {
             failed.push((
                 candidate.address(),
                 format!(
@@ -726,8 +821,16 @@ pub async fn route(
             Err(why) => failed.push((candidate.address(), why)),
         }
     }
+    // A model asked for by name whose every try was refused as busy is
+    // busy, not missing.
+    let busy =
+        want.is_some() && !failed.is_empty() && failed.iter().all(|(_, why)| refused_busy(why));
     Routed {
-        outcome: Outcome::Unavailable("no pylon answered".into()),
+        outcome: if busy {
+            Outcome::Busy
+        } else {
+            Outcome::Unavailable("no pylon answered".into())
+        },
         how,
         candidates: admitted,
         deciders,
@@ -991,6 +1094,93 @@ mod tests {
         let long = vec![text("user", "q".repeat(legacy))];
         assert_eq!(job_text_within(&long, legacy), None);
         assert!(job_text_within(&long, crate::job::MAX_INPUT_BYTES).is_some());
+    }
+
+    #[test]
+    fn a_token_budget_keeps_the_latest_message_whole_and_drops_older_turns() {
+        let text = |role: &str, content: String| Turn {
+            role: role.into(),
+            content,
+        };
+        // Twenty earlier turns of about 400 tokens each: 8,000 tokens.
+        let mut turns: Vec<Turn> = (0..20)
+            .map(|i| {
+                text(
+                    if i % 2 == 0 { "user" } else { "assistant" },
+                    format!("{i:02} {}", "w".repeat(1_600)),
+                )
+            })
+            .collect();
+        let latest = "q".repeat(1_200);
+        turns.push(text("user", latest.clone()));
+        let instructions = "Answer briefly.";
+        let budget = 1_000;
+        let (history, prompt) = job_text_fitting(
+            &turns,
+            crate::job::MAX_INPUT_BYTES,
+            Some(budget),
+            instructions,
+        )
+        .unwrap();
+        assert_eq!(prompt, latest, "the latest message goes whole");
+        let sent = estimate_tokens(instructions)
+            + estimate_tokens(&prompt)
+            + history
+                .iter()
+                .map(|t| estimate_tokens(&t.content))
+                .sum::<usize>();
+        assert!(sent <= budget, "{sent} tokens");
+        assert_eq!(history.len(), 1, "only the newest earlier turn fits");
+        assert!(history[0].content.starts_with("19 "));
+        // A latest message past the budget still goes, with no history.
+        let long = vec![
+            text("user", "a".repeat(400)),
+            text("user", "b".repeat(8_000)),
+        ];
+        let (history, prompt) =
+            job_text_fitting(&long, crate::job::MAX_INPUT_BYTES, Some(budget), "").unwrap();
+        assert!(history.is_empty());
+        assert_eq!(prompt, long[1].content);
+        // No budget sends what the byte limit allows.
+        let (history, _) =
+            job_text_fitting(&turns, crate::job::MAX_INPUT_BYTES, None, instructions).unwrap();
+        assert!(history.len() > 1);
+    }
+
+    #[test]
+    fn a_job_stays_under_the_advertised_token_limit() {
+        let (book, _) = book(vec![spec("v41", Tier::Xl, 1)]);
+        let (_, beacon) = book.iter().next().unwrap();
+        let mut beacon = beacon.clone();
+        beacon.meta = Some(serde_json::json!({
+            "request_limits": {"max_context_tokens": 4_096, "max_input_tokens": 2_872}
+        }));
+        let candidate = Candidate::from_beacon(&beacon, &beacon.services[0]);
+        assert_eq!(candidate.max_input_tokens, Some(2_872));
+        let mut settings = Settings::new("ws://127.0.0.1:9", PathBuf::new());
+        assert_eq!(token_budget(&settings, &candidate), Some(2_872 * 85 / 100));
+        settings.prompt_tokens = Some(1_000);
+        assert_eq!(token_budget(&settings, &candidate), Some(1_000));
+        settings.prompt_tokens = Some(9_000);
+        assert!(token_budget(&settings, &candidate).unwrap() < 2_872);
+    }
+
+    #[test]
+    fn a_busy_model_reads_as_busy_not_missing() {
+        let (book, _) = book(vec![spec("v41", Tier::Xl, 0), spec("rig", Tier::Small, 1)]);
+        let failing = BTreeSet::new();
+        let want = Want::Model("model-v41".into());
+        // Its one slot is taken: no candidate, but busy.
+        assert!(candidates_for(&book, AT, &failing, Some(&want)).is_empty());
+        assert!(busy_for(&book, AT, &failing, &want));
+        // A model nobody serves is missing, not busy.
+        let missing = Want::Model("model-gone".into());
+        assert!(!busy_for(&book, AT, &failing, &missing));
+        // A free pylon is a candidate, not busy.
+        let free = Want::Model("model-rig".into());
+        assert!(!busy_for(&book, AT, &failing, &free));
+        assert!(refused_busy("busy: no free slot"));
+        assert!(!refused_busy("rate_limited: too many jobs"));
     }
 
     #[test]
