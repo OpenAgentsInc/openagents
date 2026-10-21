@@ -615,6 +615,92 @@ fn swiglu_checks(oracle: &Oracle, out: &Path) -> Result<Value, Box<dyn std::erro
     fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
     Ok(report)
 }
+fn expert_checks(
+    oracle: &Oracle,
+    checkpoint: &DeepSeekV41Checkpoint,
+    out: &Path,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    use psionic_models::deepseek_v41_cpu::{
+        moe::expert_with_arithmetic, projection::WeightSource, quantization::linear,
+    };
+    let resident = resident::ResidentCheckpoint::new(checkpoint);
+    let policy: Value = serde_json::from_str(POLICY)?;
+    let limits = &policy["families"]["bf16_activation_and_residual"];
+    let atol = limits["atol"]
+        .as_f64()
+        .ok_or("Expert absolute bound missing")?;
+    let rtol = limits["rtol"]
+        .as_f64()
+        .ok_or("Expert relative bound missing")?;
+    let mut log = File::create(out.join("experts.jsonl"))?;
+    let mut checked = 0;
+    let mut failed = 0;
+    let mut differing = 0;
+    let mut first_failure = None;
+    for e in oracle
+        .entries
+        .values()
+        .filter(|e| e.name.ends_with(".ffn.expert.id"))
+    {
+        let prefix = e.name.strip_suffix("id").ok_or("Expert suffix missing")?;
+        let layer = e.name.split('.').nth(4).ok_or("Expert layer missing")?;
+        let id = oracle.integers(&e.name)?;
+        let stem = format!(
+            "layers.{layer}.ffn.experts.{}",
+            id.first().ok_or("Expert ID missing")?
+        );
+        let input = oracle.tensor(&format!("{prefix}in"))?;
+        let hidden = oracle.tensor(&format!("{prefix}w2_in"))?;
+        let weight = oracle.tensor(&format!("{prefix}combine_weight"))?;
+        let w1 = resident.matrix(&format!("{stem}.w1.weight"))?;
+        let w2 = resident.matrix(&format!("{stem}.w2.weight"))?;
+        let w3 = resident.matrix(&format!("{stem}.w3.weight"))?;
+        let mode = Arithmetic::ReferenceBf16Tp8;
+        for (suffix, actual) in [
+            ("w1_out", linear(w1.as_ref(), &input, mode)?),
+            ("w3_out", linear(w3.as_ref(), &input, mode)?),
+            ("w2_out", linear(w2.as_ref(), &hidden, mode)?),
+            (
+                "out",
+                expert_with_arithmetic(
+                    &input,
+                    w1.as_ref(),
+                    w2.as_ref(),
+                    w3.as_ref(),
+                    weight[0],
+                    10.0,
+                    mode,
+                )?,
+            ),
+        ] {
+            let name = format!("{prefix}{suffix}");
+            let expected = oracle.tensor(&name)?;
+            let mut row = differences(&actual, &expected, atol, rtol);
+            let unequal = actual.iter().zip(&expected).filter(|(a, b)| a != b).count();
+            differing += unequal;
+            row["tensor"] = json!(name);
+            row["bf16_mismatches"] = json!(unequal);
+            row["scope"] = json!(if suffix == "out" {
+                "identical_oracle_expert_input"
+            } else {
+                "identical_oracle_projection_input"
+            });
+            checked += 1;
+            if row["passed"] != true {
+                failed += 1;
+                if first_failure.is_none() {
+                    first_failure = Some(row.clone());
+                }
+            }
+            serde_json::to_writer(&mut log, &row)?;
+            writeln!(log)?;
+            log.flush()?;
+        }
+    }
+    let report = json!({"schema":"psionic.deepseek_v41.cpu_expert_probe.v1","source_commit":env::var("V41_SOURCE_COMMIT").ok(),"policy_sha256":hex::encode(Sha256::digest(POLICY.as_bytes())),"checked":checked,"failed":failed,"bf16_mismatches":differing,"first_failure":first_failure,"model_qualification_passed":false});
+    fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
+    Ok(report)
+}
 fn mixing_checks(
     oracle: &Oracle,
     checkpoint: &DeepSeekV41Checkpoint,
@@ -694,6 +780,7 @@ fn mixing_checks(
     Ok(report)
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut experts_only = false;
     let mut mixing_only = false;
     let mut swiglu_only = false;
     let mut norms_only = false;
@@ -716,6 +803,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--norms-only" => norms_only = true,
             "--swiglu-only" => swiglu_only = true,
             "--mixing-only" => mixing_only = true,
+            "--experts-only" => experts_only = true,
             "--stop-on-first-failure" => stop_on_first_failure = true,
             _ => return Err(format!("Unknown argument {arg}").into()),
         }
@@ -735,6 +823,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::to_vec_pretty(&identity)?,
     )?;
     if identity_only {
+        return Ok(());
+    }
+    if experts_only {
+        expert_checks(&Oracle::open(&oracle_dir)?, &checkpoint, &out)?;
         return Ok(());
     }
     if mixing_only {

@@ -900,10 +900,10 @@ cargo run --release -p psionic-models --example deepseek_v41_cpu_generate -- \
   "$V41_CHECKPOINT" --check-only --verify-sha256
 cargo run --release -p psionic-models --example deepseek_v41_cpu_generate -- \
   "$V41_CHECKPOINT" --prompt 'Write a short Rust function that adds two integers.' \
-  --context 4096 --max-tokens 32 --prefill-chunk 128 --oracle-tp8 --verify-sha256
+  --context 4096 --max-tokens 32 --prefill-chunk 4096 --oracle-tp8 --verify-sha256
 cargo run --release -p psionic-models --example deepseek_v41_cpu_generate -- \
   "$V41_CHECKPOINT" --prompt-tokens "$V41_PROMPT_IDS" \
-  --context 32768 --max-tokens 32 --prefill-chunk 128 --oracle-tp8 --verify-sha256
+  --context 32768 --max-tokens 32 --prefill-chunk 32768 --oracle-tp8 --verify-sha256
 ```
 
 `--prompt` uses the existing DS1 single-user chat renderer and special-token
@@ -1210,3 +1210,10 @@ sum of weights per block before updating the running denominator. These changes
 still require original-weight comparisons; they do not assert exact CPU
 reproduction of Tensor Core accumulation or CUDA transcendental instructions.
 Local verification passes 63 CPU tests.
+
+`deepseek_v41_cpu_qualify --experts-only` checks each captured expert's up, gate,
+and down projections with identical oracle inputs, then its complete output
+with the recorded combine weight. This diagnostic uses the frozen BF16 limits
+and separately counts unequal BF16 values; it cannot pass G1 by itself.
+The generation examples above use a whole prompt prefill to match the oracle;
+chunking is a separately labeled comparison.
