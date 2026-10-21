@@ -18,6 +18,7 @@ pub mod projection;
 pub mod quantization;
 pub mod rope;
 pub mod shared_state;
+pub mod sm100;
 pub mod transformer;
 
 use thiserror::Error;
@@ -115,6 +116,33 @@ pub trait MatrixRows {
             })
             .collect()
     }
+    /// Row products with a caller-supplied reduction, such as a measured
+    /// device accumulation order. `groups` splits the input as in
+    /// [`MatrixRows::multiply_grouped`]; 1 uses the whole input for every row.
+    fn multiply_reduced(
+        &self,
+        input: &[f32],
+        groups: usize,
+        bf16_weights: bool,
+        reduce: &(dyn Fn(&[f32], &[f32]) -> f32 + Sync),
+    ) -> Result<Vec<f32>, CpuError> {
+        let (rows, cols) = self.dimensions();
+        validate_groups(rows, cols, input.len(), groups)?;
+        let out = (0..rows)
+            .map(|i| {
+                let row = self.row(i)?;
+                let row = if bf16_weights {
+                    quantization::round_bf16(&row)?
+                } else {
+                    row
+                };
+                let group = i / (rows / groups);
+                Ok(reduce(&row, &input[group * cols..(group + 1) * cols]))
+            })
+            .collect::<Result<Vec<_>, CpuError>>()?;
+        finite("reduced matrix output", &out)?;
+        Ok(out)
+    }
     fn dimensions(&self) -> (usize, usize);
     fn row(&self, index: usize) -> Result<Vec<f32>, CpuError>;
     fn precision(&self) -> quantization::MatrixPrecision {
@@ -205,6 +233,32 @@ impl MatrixRows for CheckpointMatrix<'_> {
             .collect();
         let out = out?;
         finite("checkpoint matrix output", &out)?;
+        Ok(out)
+    }
+    fn multiply_reduced(
+        &self,
+        input: &[f32],
+        groups: usize,
+        bf16_weights: bool,
+        reduce: &(dyn Fn(&[f32], &[f32]) -> f32 + Sync),
+    ) -> Result<Vec<f32>, CpuError> {
+        use rayon::prelude::*;
+        let (rows, cols) = self.dimensions;
+        validate_groups(rows, cols, input.len(), groups)?;
+        let out = (0..rows)
+            .into_par_iter()
+            .map(|i| {
+                let row = self.row(i)?;
+                let row = if bf16_weights && self.precision != quantization::MatrixPrecision::Bf16 {
+                    quantization::round_bf16(&row)?
+                } else {
+                    row
+                };
+                let group = i / (rows / groups);
+                Ok(reduce(&row, &input[group * cols..(group + 1) * cols]))
+            })
+            .collect::<Result<Vec<_>, CpuError>>()?;
+        finite("reduced matrix output", &out)?;
         Ok(out)
     }
     fn multiply_grouped(

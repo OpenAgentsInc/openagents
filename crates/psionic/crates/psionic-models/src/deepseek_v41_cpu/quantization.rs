@@ -215,6 +215,15 @@ fn linear_with_shards(
     } else {
         input
     };
+    if arithmetic == Arithmetic::ReferenceBf16Tp8 && matrix.precision() == MatrixPrecision::Fp8 {
+        let (_, cols) = matrix.dimensions();
+        if cols != activation.len() || !cols.is_multiple_of(shards * 32) {
+            return Err(CpuError::Invalid("TP8 FP8 reduction shape"));
+        }
+        let out =
+            matrix.multiply_reduced(&activation, 1, false, &|w, x| fp8_gemm_row(w, x, shards))?;
+        return round_bf16(&out);
+    }
     let block = matches!(
         matrix.precision(),
         MatrixPrecision::Fp8 | MatrixPrecision::Fp4
@@ -227,6 +236,25 @@ fn linear_with_shards(
         shards,
     )?;
     round_bf16(&out)
+}
+
+/// The oracle's TileLang `fp8_gemm` on B200: one tensor-core instruction per
+/// 32-wide K block from a zero accumulator, block results added in K order,
+/// and each TP8 rank's partial rounded to BF16 before the F32 sum over ranks.
+/// Scales are powers of two, so dequantized values give the same block sums.
+fn fp8_gemm_row(weights: &[f32], input: &[f32], shards: usize) -> f32 {
+    let width = weights.len() / shards;
+    let mut total = 0.0f32;
+    for (w, x) in weights.chunks_exact(width).zip(input.chunks_exact(width)) {
+        let part = w
+            .chunks_exact(32)
+            .zip(x.chunks_exact(32))
+            .fold(0.0f32, |acc, (w, x)| {
+                acc + super::sm100::fused_dot(0.0, w, x)
+            });
+        total += if shards > 1 { bf16(part) } else { part };
+    }
+    total
 }
 
 /// The device kernel rounds unnormalized softmax weights to BF16 before the
@@ -243,8 +271,36 @@ pub fn sparse_attention_bf16(
     sparse_attention_impl(query, heads, width, kv, indices, sinks, scale, false)
 }
 
-/// Uses one padded 64-way weight reduction per block, as in the TP8 kernel.
+/// The TP8 oracle's B200 `sparse_attn` kernel: tensor-core BF16 products,
+/// CUDA `expf`, and TileLang's block reductions (see [`super::sm100`]).
 pub fn sparse_attention_bf16_tp8(
+    query: &[f32],
+    heads: usize,
+    width: usize,
+    kv: &[f32],
+    indices: &[i32],
+    sinks: &[f32],
+    scale: f32,
+) -> Result<Vec<f32>, CpuError> {
+    if heads == 0 || width == 0 || !kv.len().is_multiple_of(width) || !super::positive(scale) {
+        return Err(CpuError::Invalid("BF16 attention dimensions"));
+    }
+    shape("BF16 attention query", query, product(heads, width)?)?;
+    shape("BF16 sinks", sinks, heads)?;
+    super::sm100::sparse_attention(
+        &round_bf16(query)?,
+        heads,
+        width,
+        &round_bf16(kv)?,
+        indices,
+        sinks,
+        scale,
+    )
+}
+
+/// The earlier TP8 approximation: sequential float32 products and one
+/// padded 64-way weight reduction per block. Kept for comparison.
+pub fn sparse_attention_bf16_tp8_sequential(
     query: &[f32],
     heads: usize,
     width: usize,
@@ -341,14 +397,52 @@ mod tests {
     use super::*;
     use serde::Deserialize;
 
+    fn bf16_hex(text: &serde_json::Value) -> Vec<f32> {
+        hex::decode(text.as_str().expect("fixture hex"))
+            .expect("fixture hex")
+            .chunks_exact(2)
+            .map(|b| half::bf16::from_le_bytes([b[0], b[1]]).to_f32())
+            .collect()
+    }
+
+    /// Original-weight rows from the B200 capture (chat prompt, layer 0,
+    /// position 0) where the earlier sequential float32 sums round differently.
+    #[test]
+    fn tp8_gemms_reproduce_b200_rows_where_sequential_sums_differ() -> Result<(), CpuError> {
+        let f: serde_json::Value =
+            serde_json::from_str(include_str!("../testdata/deepseek_v41_cpu/sm100_gemm.json"))
+                .expect("fixture json");
+        // wq_b: TileLang fp8_gemm, one tensor-core block per 32 inputs.
+        let q = &f["wq_b"];
+        let input =
+            quantize(&round_bf16(&bf16_hex(&q["input_bf16"]))?, Quantization::Fp8)?.dequantize()?;
+        let weights = bf16_hex(&q["weights_bf16"]);
+        let expected = q["expected"].as_f64().expect("expected") as f32;
+        assert_eq!(bf16(fp8_gemm_row(&weights, &input, 1)), expected);
+        let sequential = super::super::multiply_row(&weights, &input, false, Some(32), 1)?;
+        assert_ne!(bf16(sequential), expected);
+        // wo_a: cuBLAS BF16 einsum over a 41-row prefill chunk.
+        let o = &f["wo_a"];
+        let heads = inplace_bf16(&bf16_hex(&o["heads_bf16"]), Quantization::Fp8)?;
+        let weights = bf16_hex(&o["weights_bf16"]);
+        let expected = o["expected"].as_f64().expect("expected") as f32;
+        assert_eq!(
+            bf16(super::super::sm100::mma_bf16_dot(0.0, &weights, &heads)),
+            expected
+        );
+        let sequential = super::super::multiply_row(&weights, &heads, false, None, 1)?;
+        assert_ne!(bf16(sequential), expected);
+        Ok(())
+    }
+
     #[test]
     fn masked_slots_change_online_softmax_bf16_rounding() -> Result<(), CpuError> {
         let mut padded = vec![0];
         padded.resize(64, -1);
         padded.push(1);
         let args = (&[0.0, 1.0][..], &[10.0, 0.0, 1.0, 1.0][..]);
-        let a = sparse_attention_bf16_tp8(args.0, 1, 2, args.1, &padded, &[0.0], 1.0)?;
-        let b = sparse_attention_bf16_tp8(args.0, 1, 2, args.1, &[0, 1], &[0.0], 1.0)?;
+        let a = sparse_attention_bf16_tp8_sequential(args.0, 1, 2, args.1, &padded, &[0.0], 1.0)?;
+        let b = sparse_attention_bf16_tp8_sequential(args.0, 1, 2, args.1, &[0, 1], &[0.0], 1.0)?;
         assert_ne!(a, b, "removing masked slots changes BF16 weight rounding");
         let expected = (10.0 * (-1.0_f32).exp() + 1.0) / (1.0 + 2.0 * (-1.0_f32).exp());
         assert_eq!(a[0], bf16(expected));

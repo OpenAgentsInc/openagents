@@ -130,7 +130,8 @@ capture() {
     DUMP_TOOL_COMMIT=${DUMP_TOOL_COMMIT:-} $VENV/bin/torchrun --nproc-per-node 8 $SCRIPTS/oracle_dump.py \
     --ckpt $TP8 --reference $REF --out $OUT/$CAPTURE --upload $ORACLE/$CAPTURE \
     --attention-diagnostics --captures-only --only "${ONLY:-}" --extra-rows "${EXTRA_ROWS:-}"
-  $PY -I $SCRIPTS/oracle_manifest.py --dump $OUT/$CAPTURE --out $OUT/$CAPTURE/manifest.json --fixtures $OUT/$CAPTURE-fixtures
+  # No fixtures: a diagnostic capture is far larger than the repository fixture budget.
+  $PY -I $SCRIPTS/oracle_manifest.py --dump $OUT/$CAPTURE --out $OUT/$CAPTURE/manifest.json
   gcloud storage rsync -r -x '^patched/__pycache__/' $OUT/$CAPTURE $ORACLE/$CAPTURE
   log "capture done"
 }

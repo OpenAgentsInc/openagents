@@ -57,6 +57,39 @@ impl MatrixRows for Dense {
             .map(|row| multiply_row(row, input, cast, block, shards))
             .collect()
     }
+    fn multiply_reduced(
+        &self,
+        input: &[f32],
+        groups: usize,
+        bf16_weights: bool,
+        reduce: &(dyn Fn(&[f32], &[f32]) -> f32 + Sync),
+    ) -> Result<Vec<f32>, CpuError> {
+        if groups == 0
+            || !self.rows.is_multiple_of(groups)
+            || self.cols.checked_mul(groups) != Some(input.len())
+        {
+            return Err(CpuError::Invalid("resident reduced input"));
+        }
+        let values = if bf16_weights {
+            self.bf16.as_ref().unwrap_or(&self.values)
+        } else {
+            &self.values
+        };
+        let cast = bf16_weights && self.precision != MatrixPrecision::Bf16 && self.bf16.is_none();
+        values
+            .par_chunks_exact(self.cols)
+            .enumerate()
+            .map(|(i, row)| {
+                let g = i / (self.rows / groups);
+                let x = &input[g * self.cols..(g + 1) * self.cols];
+                if cast {
+                    Ok(reduce(&round_bf16(row)?, x))
+                } else {
+                    Ok(reduce(row, x))
+                }
+            })
+            .collect()
+    }
     fn multiply_grouped(
         &self,
         input: &[f32],

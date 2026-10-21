@@ -303,6 +303,9 @@ impl<'a> AttentionRuntime<'a> {
             } else {
                 x.to_vec()
             };
+            let observed = observer
+                .as_ref()
+                .is_some_and(|o| o.final_position(position));
             let mut q = p.query(&x)?;
             let mut window = p.window_kv(&x)?;
             let mut emit = |site: &str, values: &[f32]| -> Result<(), CpuError> {
@@ -519,6 +522,11 @@ impl<'a> AttentionRuntime<'a> {
             emit("heads.unrotated", &heads)?;
             let low_rank = p.output_low_rank(&heads)?;
             emit("output.low_rank", &low_rank)?;
+            if observed {
+                if let Some(partials) = p.output_rank_partials(&low_rank)? {
+                    emit("output.rank_partial", &partials)?;
+                }
+            }
             outputs.extend(p.output_from_low_rank(&low_rank)?);
         }
         let chunk = self

@@ -22,7 +22,7 @@ def main():
         name=re.search(r'^name = "([^"]+)"',part,re.M)
         version=re.search(r'^version = "([^"]+)"',part,re.M)
         if name and version:packages.append((name[1],version[1]))
-    families={'serde':'1.','serde_json':'1.','sha2':'0.10.','thiserror':'2.','half':'2.','hex':'0.4.','tokenizers':'0.23.','rayon':'1.'}
+    families={'serde':'1.','serde_json':'1.','sha2':'0.10.','thiserror':'2.','half':'2.','hex':'0.4.','tokenizers':'0.23.','rayon':'1.','flate2':'1.'}
     manifest='[package]\nname="v41-cpu-qualification"\nversion="0.0.0"\nedition="2024"\n[workspace]\n[lib]\nname="psionic_models"\npath="lib.rs"\n[[bin]]\nname="deepseek_v41_cpu_qualify"\npath='+json.dumps(str(root/'crates/psionic/crates/psionic-models/examples/deepseek_v41_cpu_qualify.rs'))+'\n[dependencies]\n'
     for name,prefix in families.items():
         version=next(v for n,v in packages if n==name and v.startswith(prefix))

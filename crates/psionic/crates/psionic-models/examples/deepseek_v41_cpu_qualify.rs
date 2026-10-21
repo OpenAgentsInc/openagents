@@ -79,6 +79,8 @@ struct Oracle {
     entries: BTreeMap<String, Entry>,
     cache: RefCell<BTreeMap<String, Vec<f32>>>,
     raw_cache: RefCell<BTreeMap<String, Vec<u8>>>,
+    /// Parsed safetensors headers: diagnostic captures hold ~10^5 tensors per file.
+    headers: RefCell<BTreeMap<String, (u64, std::rc::Rc<Value>)>>,
 }
 impl Oracle {
     fn open(root: &Path) -> Result<Self, Box<dyn std::error::Error>> {
@@ -92,6 +94,7 @@ impl Oracle {
             entries: entries.into_iter().map(|e| (e.name.clone(), e)).collect(),
             cache: RefCell::new(BTreeMap::new()),
             raw_cache: RefCell::new(BTreeMap::new()),
+            headers: RefCell::new(BTreeMap::new()),
         })
     }
     fn tensor(&self, name: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
@@ -116,15 +119,25 @@ impl Oracle {
             .get(name)
             .ok_or_else(|| format!("No oracle tensor {name}"))?;
         let mut file = File::open(self.root.join(&e.file))?;
-        let mut size = [0; 8];
-        file.read_exact(&mut size)?;
-        let size = u64::from_le_bytes(size);
-        if size > 16_000_000 {
-            return Err("Oracle header too large".into());
-        }
-        let mut header = vec![0; size as usize];
-        file.read_exact(&mut header)?;
-        let h: Value = serde_json::from_slice(&header)?;
+        let cached = self.headers.borrow().get(&e.file).cloned();
+        let (size, h) = match cached {
+            Some(v) => v,
+            None => {
+                let mut size = [0; 8];
+                file.read_exact(&mut size)?;
+                let size = u64::from_le_bytes(size);
+                if size > 64_000_000 {
+                    return Err("Oracle header too large".into());
+                }
+                let mut header = vec![0; size as usize];
+                file.read_exact(&mut header)?;
+                let h = std::rc::Rc::new(serde_json::from_slice::<Value>(&header)?);
+                self.headers
+                    .borrow_mut()
+                    .insert(e.file.clone(), (size, h.clone()));
+                (size, h)
+            }
+        };
         let t = &h[name];
         let range = t["data_offsets"]
             .as_array()

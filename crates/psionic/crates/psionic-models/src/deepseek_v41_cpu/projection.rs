@@ -300,7 +300,24 @@ impl<'a> AttentionProjections<'a> {
         if weight.dimensions() != (product(g.o_groups, g.o_rank)?, width) {
             return Err(CpuError::Invalid("grouped output projection shape"));
         }
-        let low_rank = weight.multiply_grouped(&heads, g.o_groups, self.arithmetic.is_bf16())?;
+        let low_rank = if self.arithmetic == Arithmetic::ReferenceBf16Tp8 {
+            // cuBLAS BF16 einsum on B200: a prefill chunk matched tensor-core
+            // instructions over K in order; a one-row decode step matched the
+            // F32 rounding of the exact sum (#12404 capture).
+            let rows = self.reference_rows;
+            weight.multiply_reduced(&heads, g.o_groups, true, &move |w, x| {
+                if rows > 1 {
+                    super::sm100::mma_bf16_dot(0.0, w, x)
+                } else {
+                    w.iter()
+                        .zip(x)
+                        .map(|(w, x)| f64::from(*w) * f64::from(*x))
+                        .sum::<f64>() as f32
+                }
+            })?
+        } else {
+            weight.multiply_grouped(&heads, g.o_groups, self.arithmetic.is_bf16())?
+        };
         finite("grouped output", &low_rank)?;
         self.finish(low_rank)
     }
@@ -316,6 +333,37 @@ impl<'a> AttentionProjections<'a> {
             return Err(CpuError::Invalid("wo_b dimensions"));
         }
         quantization::linear_row_parallel(weight.as_ref(), low_rank, self.arithmetic)
+    }
+    /// Each TP8 rank's BF16 `wo_b` partial before the float32 all-reduce,
+    /// rank-major. Returns `None` outside the TP8 profile. Diagnostic only:
+    /// `output_from_low_rank` computes the same partials inside its rows.
+    pub fn output_rank_partials(&self, low_rank: &[f32]) -> Result<Option<Vec<f32>>, CpuError> {
+        let g = self.geometry;
+        let shards = self.arithmetic.reference_shards();
+        if shards == 1 {
+            return Ok(None);
+        }
+        let width = product(g.o_groups, g.o_rank)?;
+        shape("attention output low rank", low_rank, width)?;
+        if !width.is_multiple_of(shards) {
+            return Err(CpuError::Invalid("row-parallel shard width"));
+        }
+        let weight = self.weights.matrix(&self.name("wo_b.weight"))?;
+        let part = width / shards;
+        let mut out = Vec::with_capacity(g.hidden * shards);
+        for rank in 0..shards {
+            // Zero blocks quantize to zero and add exact zeros, so each rank's
+            // block sums keep their order; the output rounds to BF16 once.
+            let mut masked = vec![0.0; width];
+            masked[rank * part..(rank + 1) * part]
+                .copy_from_slice(&low_rank[rank * part..(rank + 1) * part]);
+            out.extend(quantization::linear(
+                weight.as_ref(),
+                &masked,
+                self.arithmetic,
+            )?);
+        }
+        Ok(Some(out))
     }
 }
 
