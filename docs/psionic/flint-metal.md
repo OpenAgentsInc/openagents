@@ -75,8 +75,13 @@ What makes `rec` faster than llama.cpp on this Mac, as read in its source:
     to BF16 simdgroup matrices;
   - a GPU expert plan (count, offsets, 64-row tiles, scatter), so routed
     experts run as grouped products without a host round trip;
-  - flash attention whose threadgroup owns one KV head and eight positions,
-    sharing each K and V block across that head's eight query heads.
+  - flash attention. Up to 4,096 keys, a threadgroup owns one KV head and
+    eight positions and shares each K and V block across that head's eight
+    query heads. Past 4,096 keys, a Metal 4 tensor-operation kernel takes
+    over: a threadgroup owns one query head and 64 positions and runs
+    S = QKᵀ and O += PV on the matrix units. It is 3.6 times faster at 16K,
+    and the shorter contexts keep the arithmetic that tracks `rec` most
+    closely.
 - **Sampling** ranks the top 20 candidates on the GPU in two stages, which
   take about 0.18 ms. A test checks the GPU choice against
   `Sampling::choose_ranked`, shared with the CUDA path. Another test checks
@@ -165,13 +170,17 @@ those limits ([report](verification/flint-metal-2026-10-21/int4-vs-bf16-six-posi
   much flatter than BF16: entropy 5.0 against 2.3 at position 2, and total
   variation 0.42 to 0.97.
 
-The Metal path agrees with `rec` on the same checkpoint, so this measures the
-INT4 checkpoint, not the kernels. Recursive distilled the INT4 weights from
-the BF16 model, and the distillation evidently didn't keep predictions of
-user text. A fairer request,
-[`int4-reference-request.json`](../../crates/psionic/crates/psionic-flint/testdata/int4-reference-request.json),
-holds a prompt and 64 assistant tokens. It awaits BF16 reference logits from
-the CUDA host and is listed in the after-close checks.
+This is a property of the INT4 checkpoint, not of the kernels. The Metal path
+agrees with `rec` on the same weights (the teacher-forced table above), and
+Recursive distilled those weights from the BF16 model, which evidently didn't
+keep predictions of user text. The limits stay as declared; this result is
+recorded as a failure on these positions.
+
+Serving depends on assistant positions. The request
+[`int4-reference-request.json`](../../crates/psionic/crates/psionic-flint/testdata/int4-reference-request.json)
+holds a prompt and the 64 assistant tokens both engines produce. Comparing it
+needs BF16 reference logits from the CUDA host, so it's listed in the
+after-close checks with the same limits.
 
 ## Speed on the M5 Max
 
@@ -188,28 +197,26 @@ The method is the research note's
 [`flint-rec-compare.py`](../../scripts/psionic/flint-rec-compare.py) is the
 client. The Metal numbers come from the server's own timers, which use those
 definitions. The `rec` column is the research note's recorded run on the same
-Mac. The owner had `rec` stopped and the Mac stayed busy, so the two ran
-under **different conditions**. The Metal run (source `c81f660308`) had a
-load average of 19 to 25, and Chrome was using part of the GPU
-([rows](verification/flint-metal-2026-10-21/speed.json)).
+Mac. The owner had `rec` stopped, so the two ran under **different
+conditions**. The Metal run (source `70013c3fa4`) had a load average of 7 to
+8 ([rows](verification/flint-metal-2026-10-21/speed.json)).
 
 | Prompt | Engine | Time to first token | Prompt tokens/s | Decode tokens/s |
 | --- | --- | --- | --- | --- |
-| Short (20; 32 for `rec`) | Psionic Metal | 0.20 s | 99 | **135** |
+| Short (18; 32 for `rec`) | Psionic Metal | **0.14 s** | 130 | **179** |
 | | `rec` | 0.35 s | 92 | 125 |
-| Medium (1,610; 1,641 for `rec`) | Psionic Metal | 1.14 s | 1,414 | **154** |
+| Medium (1,610; 1,641 for `rec`) | Psionic Metal | **0.92 s** | 1,755 | **183** |
 | | `rec` | 1.11 s | 1,481 | 140 |
-| Long (15,881; 14,950 for `rec`) | Psionic Metal | 16.0 s | 992 | **119** |
+| Long (15,880; 14,950 for `rec`) | Psionic Metal | 9.69 s | 1,639 | **137** |
 | | `rec` | 8.82 s | 1,695 | 109 |
 
-- **Decode beats `rec`'s numbers** at every size, by 8 to 10%. With
-  sampling on the GPU, wall time per token equals GPU time. GPU time was
-  6.5 to 8.4 ms per token here and 4.2 ms on a quiet GPU, where greedy
-  decoding reached 239 tokens per second.
-- **Prefill matches `rec` up to 2K tokens, but is 1.7 times slower at 16K.**
-  Full-attention prefill dominates there. The flash kernel uses simdgroup
-  matrices, not Metal 4 tensor operations; moving attention to tensor
-  operations is the next step.
+- **Decode beats `rec`'s numbers** by 25 to 43%. Sampling runs on the GPU, so
+  wall time per token equals GPU time.
+- **Prefill beats `rec` up to 2K tokens and matches it at 16K.** At 16K, the
+  prompt rate is within 3% of `rec`'s, and separate runs gave 1,667 to 1,755
+  tokens per second. The long prompt here is also 930 tokens longer. The
+  INT4 matrix product and full-attention layers dominate: about 0.5 s and up
+  to 0.7 s per 2,048-token chunk.
 - **Peak memory:** a 23 GB physical footprint, against `rec`'s 28 GB.
 - A same-conditions run against `rec` on a quiet Mac is listed in the
   after-close checks.
