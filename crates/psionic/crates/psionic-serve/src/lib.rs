@@ -24,6 +24,7 @@ mod csm_speech;
 mod gguf;
 mod gpt_oss;
 mod openai_http;
+pub mod pipeline_stage;
 mod psion_capability_matrix;
 mod psion_capability_withdrawal;
 mod psion_family_serve_vocabulary;

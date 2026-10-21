@@ -31,6 +31,31 @@ listed as an after-close check.
 | **G7. Lifecycle and recovery** | A group is advertised only when every stage is loaded and checked. Killing or freezing any stage fails the request visibly, never replays it after tokens reached the caller, and the group recovers under a new generation. A restarted stage can't serve a stale request. Caller cancellation keeps the group busy until work stops. | Fault-injection results on a real group |
 | **G8. Visible as a Pylon group** | One launch command starts a cost-capped, expiring group and publishes it. The router sends a V4.1 request to it through Pylon, and the answer comes back complete within the group's declared deadline. The `/home` Pylon layer shows the group's Pylons. | A Pylon transcript, the router log, and a capture of `/home` |
 
+Gate progress (2026-10-21):
+
+- **G5–G7, stage contract (W9, #12396).** One message type carries the
+  manifest digest, group generation, request, attempt, stage and layers,
+  step, position, tokens, and typed sections. A stage refuses duplicate,
+  stale, missing, reordered, cross-request, malformed, and oversize
+  messages before it consumes any state. With a synthetic executor that
+  keeps V4.1's 40-layer sharing layout, four-stage, eight-stage, uneven, and
+  one-layer-per-stage splits match the unsplit run bit for bit.
+- **G6, stage-state bytes per decode token,** from encoded messages of the
+  real shapes (BF16 residual and cache rows, a 36-byte request ID): 44,300
+  bytes at a boundary of 10 (43,788 on average, since layer 8's KV adds a
+  row every other token), 41,124 at 20 (the residual only), and 52,772 at
+  30. The four-stage forward path is 138,196 bytes per token; eight stages
+  are 332,300. Returning full F32 logits to the front adds 517,280 bytes
+  per token, more than every forward hop together, so W10 or W11 should
+  decide whether the last stage returns logits, a top-k, or the token. The
+  synthetic geometry's numbers are in the W9 test output.
+- **Placement from header bytes.** Layers 0–9, 10–19, 20–29, and 30–39
+  need 75.41, 74.07, 73.92, and 75.23 GB of GPU weights, as the plan's
+  table says, and the Engram tables (101.38 GB each) go to host memory on
+  the stages that run layers 1 and 14. Four stages are tried before eight,
+  and a plan that fits neither is refused. The runtime reserve is a fixed
+  input until W3 measures it.
+
 Out of scope for the epic, tracked in the [Enter the Verse
 roadmap](../roadmap/2026-10-20-enter-the-verse.md): streamed tokens and the
 public flag, longer job inputs, the Grid's group visuals beyond the existing
@@ -117,7 +142,7 @@ spend guard from the one budget host.
 
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
-| W9 | **Stage-state codec and group manifest.** One typed message carrying the four residual streams, shared KV and indexer state, layer-20 candidates, Engram history, position, request, attempt, and group generation, generalizing the Gemma 4 step/reset path. A manifest names each stage's layers, GPU, and Engram location; placement fits stages to measured memory from W3 and evaluates four stages before eight. | M | W3 | Codec fault tests (duplicate, stale, missing, reordered, cross-request) pass with a synthetic executor before any rental. |
+| W9 | **Done (#12396).** Stage-state codec and group manifest: `psionic_models::stage_state` (message, codec, `StageInbox` admission, `StageWorker`) and `psionic_models::deepseek_v41_stage` (V4.1 boundary contracts, wire sizes, `V41GroupManifest`, `plan_group`); `psionic_serve::pipeline_stage` adapts the Gemma 4 step to the same message. Placement reads header-derived bytes through the `PlacementMemory` trait until W3's measured input implements it. | M | W3 for measured placement only | Codec fault tests (duplicate, stale, missing, reordered, cross-request, malformed, oversize) pass with a synthetic 40-layer executor; every split matches the unsplit run bit for bit. |
 | W10 | **Group lifecycle.** Stage processes as managed Pylon workers, readiness before advertising, generation fencing, per-stage crash and freeze recovery, cancellation that holds the group until work stops. Prototype on the native R1 worker first. | L | W9, #12364 | G7's fault checks pass on a local or synthetic group. |
 | W11 | **A full group on one machine.** All stages on one 4- or 8-GPU machine over loopback. | M, cloud (G4 spot, about 20 h) | W7, W10 | G5 passes. |
 | W12 | **A group across machines.** Two placements across separate machines in one zone. | M, cloud | W11 | G6 passes; G7's fault checks repeat on the cross-machine group. |
@@ -172,8 +197,8 @@ started first.
 ## Who can do what in parallel
 
 - **Codex (DeepSeek chat)** holds the CPU lane: #12385–#12387, then W1–W3.
-- **A second lane** can start W9's codec and fault fixtures and W10's
-  lifecycle on the R1 native worker now; neither needs V4.1 weights.
+- **A second lane** can start W10's lifecycle on the R1 native worker now,
+  on top of W9's `StageWorker` and `StageInbox`; it needs no V4.1 weights.
 - **A third lane** can start W13's beacon and router tests with fixtures.
 - **CUDA (W4–W7)** starts after W1, because kernel parity is checked against
   a CPU path that already matches the real model.
