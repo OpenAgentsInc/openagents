@@ -154,6 +154,7 @@ impl Config {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Message {
     pub role: String,
     pub content: String,

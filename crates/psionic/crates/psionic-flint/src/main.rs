@@ -2,7 +2,9 @@
 use std::{
     net::SocketAddr,
     path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
     sync::{Arc, Mutex},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result, bail, ensure};
@@ -27,6 +29,7 @@ struct Runtime {
 type Shared = Arc<Mutex<Runtime>>;
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Request {
     model: String,
     messages: Vec<Message>,
@@ -88,8 +91,14 @@ fn run(runtime: &Runtime, request: Request) -> Result<Value> {
         &sampling,
         900.0,
     )?;
+    static REQUEST_ID: AtomicU64 = AtomicU64::new(0);
+    let created = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    let id = format!(
+        "chatcmpl-flint-{created}-{}",
+        REQUEST_ID.fetch_add(1, Ordering::Relaxed)
+    );
     Ok(json!({
-        "id": "psionic-flint", "object": "chat.completion", "model": MODEL_ID,
+        "id": id, "created": created, "object": "chat.completion", "model": MODEL_ID,
         "choices": [{"index": 0, "message": {"role": "assistant", "content": result.answer.content,
             "reasoning_content": result.answer.reasoning_content}, "finish_reason": result.finish_reason}],
         "usage": {"prompt_tokens": result.prompt_tokens, "completion_tokens": result.token_ids.len(), "total_tokens": result.prompt_tokens + result.token_ids.len()},
