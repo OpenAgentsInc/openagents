@@ -1,3 +1,25 @@
+## Sign in at /admin and give Kiln a lasting runner (#12440) (2026-10-21)
+
+`openagents.com/admin` is the staff entrance, and Kiln opens from it and
+from the Grid terminal's **Kiln** control. Details:
+[`docs/deployment/kiln-admin.md`](docs/deployment/kiln-admin.md).
+
+1. **Sign in without GitHub.** GitHub sign-in fails until the WorkOS GitHub
+   secret is fixed in the WorkOS dashboard. Until then, open
+   `https://openagents.com/login?return_to=%2Fadmin`, choose **Email me a
+   code**, and enter the email on your GitHub account (likely
+   `chris@openagents.com`). The WorkOS move linked your existing account by
+   that verified email, so the code signs you in to the same account, and
+   you stay a site admin. A password works too once you
+   set one with **Forgot your password?**.
+2. **Start a runner that lasts.** Kiln's `cargo test` needs a `kiln-runner`
+   on the relay. Start one on this Mac (or a small VM), with its own state
+   directory, as the doc shows, and keep it running.
+3. **Point production at it.** Set `OPENAGENTS_KILN_RUNNER` (the runner's
+   `pubkey` file) and `OPENAGENTS_KILN_REPO` (its `repository` file) on the
+   production web service at the next deploy. Both are public keys. Without
+   them Kiln still runs; it asks for a runner key before `cargo test`.
+
 ## Decide whether this Mac serves Flint permanently (#12422) (2026-10-21)
 
 Psionic now serves Flint on the Mac's GPU from Recursive's MLX INT4 weights
