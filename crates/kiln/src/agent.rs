@@ -193,6 +193,40 @@ fn text(value: &Value, key: &str) -> Option<String> {
     value.get(key).and_then(Value::as_str).map(str::to_string)
 }
 
+/// A command written as a tool object, such as
+/// `{"view": "src/lib.rs", "start": 10, "end": 40}` or
+/// `{"grep": "fn x", "path": "src"}`: the command line it means.
+fn tool_object(c: &Value) -> Option<String> {
+    let object = c.as_object()?;
+    let tool = TOOLS
+        .iter()
+        .find(|t| object.contains_key(**t) && !matches!(**t, "write" | "patch"))?;
+    let quote = |s: &str| {
+        if s.is_empty() || s.contains(char::is_whitespace) || s.contains('"') {
+            format!("'{}'", s.replace('\'', ""))
+        } else {
+            s.to_string()
+        }
+    };
+    let word = |v: &Value| match v {
+        Value::String(s) => Some(quote(s)),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    };
+    let mut line = vec![(*tool).to_string()];
+    // A cargo or test value is a whole argument string.
+    match (&object[*tool], *tool) {
+        (Value::String(s), "cargo") => line.push(s.clone()),
+        (v, _) => line.extend(word(v)),
+    }
+    for key in ["pattern", "path", "file", "start", "end", "dir"] {
+        if let Some(v) = object.get(key) {
+            line.extend(word(v));
+        }
+    }
+    Some(line.join(" "))
+}
+
 /// Parse a model reply into a [`Plan`].
 ///
 /// # Errors
@@ -224,6 +258,8 @@ pub fn parse(reply: &str) -> Result<Plan, String> {
             }
         } else if let Some(summary) = text(&c, "done") {
             Command::Done(summary)
+        } else if let Some(line) = tool_object(&c) {
+            Command::Run(line)
         } else {
             return Err(format!("unknown command {c}"));
         };
@@ -444,6 +480,14 @@ mod tests {
         assert!(Command::Run("cargo test -p x".into()).call().is_ok());
         let two = "{\"thought\":\"a\",\"commands\":[{\"run\":\"ls\"}]}\n{\"thought\":\"b\",\"commands\":[{\"run\":\"test\"}]}";
         assert_eq!(parse(two).unwrap().thought, "a");
+        let tools = r#"{"thought":"t","commands":[{"view":"src/lib.rs","start":28,"end":45},{"grep":"fn a","path":"src"},{"cargo":"test -p x"}]}"#;
+        let plan = parse(tools).unwrap();
+        assert_eq!(
+            plan.commands[0],
+            Command::Run("view src/lib.rs 28 45".into())
+        );
+        assert_eq!(plan.commands[1], Command::Run("grep 'fn a' src".into()));
+        assert_eq!(plan.commands[2], Command::Run("cargo test -p x".into()));
     }
 
     #[test]

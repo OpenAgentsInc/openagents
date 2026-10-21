@@ -98,3 +98,33 @@ open "http://127.0.0.1:8787/?load=crates/memory-stream"
   home for this once it graduates, but too much for the demo. There's no
   `crates/coder-worker`; the `coder-worker` binary in `crates/coder` answers
   conversation jobs through a model door.
+
+## Publishing the change (phase 2)
+
+When `cargo test` passes, the agent sends
+`{"publish": "summary", "body": "why"}`. The page:
+
+1. refuses unless the crate's files are exactly those of the last passing
+   `cargo test`;
+2. builds `git format-patch` text from the untouched copy and the
+   workspace (`kiln::patch`), and refuses it if it holds a key-shaped
+   string or passes NIP-34's 60 KB patch size;
+3. signs a kind `1617` patch with the page's key, with `a` naming the
+   repository, `p` its owner, `t` `root` and `crate:NAME`, and
+   `parent-commit` the base, and publishes it;
+4. sends the runner a job that carries the signed patch instead of files.
+   The runner checks the signature and that the patch names its
+   repository and touches only the allowed crate, applies the text with
+   `git apply`, runs `cargo test`, and publishes a NIP-22 comment (`1111`)
+   on the patch: pass or fail, the summary, the base, and the patch's
+   SHA-256.
+
+`review.html` reads the patches to the repository back from the relay and
+shows each one's subject, author, diff, the runner's check, comments, and
+status. It counts checks and status only from the repository's
+maintainers: the announcement's author and its `maintainers` tag.
+
+For the demo, the runner publishes a kind `30617` announcement under its
+own key with `d` = `openagents-kiln-demo`, so demo patches don't land on
+the owner's future `openagents` announcement. `kiln-dev --repo ADDRESS`
+tells the page and the viewer which repository to use.
