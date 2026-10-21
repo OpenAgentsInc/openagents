@@ -113,7 +113,8 @@ Its [personal serving plan](deepseek-support-plan.md#personal-serving-first-one-
 prioritizes one reliable generation, recovery and a private cloud worker,
 with DS0 ownership and prerequisites explicit; multiuser scaling comes later.
 
-The [native DeepSeek-V4.1-Flash plan](deepseek-v41-native.md) sizes the
+[Completing #12369](deepseek-v41-completion.md) is the definitive checklist
+for native V4.1 on stage Pylons. The [native DeepSeek-V4.1-Flash plan](deepseek-v41-native.md) sizes the
 current checkpoint, chooses hardware, and orders the work from golden
 reference activations to multi-GPU and multi-Pylon stages, with Psionic as
 the only engine in the serving path. The product roadmap that consumes it is

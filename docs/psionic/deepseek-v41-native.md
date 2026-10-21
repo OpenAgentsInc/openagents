@@ -14,6 +14,11 @@ Owner direction (2026-10-20): Psionic only, no external inference engines in
 the serving path. Adapt DeepSeek's open-source code where it helps. Split the
 model across devices or machines if one GPU can't hold it.
 
+
+The one checklist for finishing #12369 is
+[Completing #12369](deepseek-v41-completion.md); this plan keeps the
+reasoning and the evidence.
+
 ## Summary
 
 - V4.1-Flash is about 510 GB of weights: FP4 routed experts, FP8 dense
