@@ -430,19 +430,30 @@ impl StageGroupConfig {
         if !cfg!(unix) {
             return Err("stage groups require a Unix host".into());
         }
-        if !(1..=16).contains(&self.stages.len()) {
-            return Err("a stage group needs 1–16 stages".into());
-        }
-        let names: BTreeSet<_> = self.stages.iter().map(|s| s.name.as_str()).collect();
-        if names.len() != self.stages.len() || names.contains("") {
-            return Err("every stage needs its own non-empty name".into());
-        }
         if let Some(stage) = self.stages.iter().find(|s| !s.program.is_file()) {
             return Err(format!(
                 "stage {} is missing its program at {}",
                 stage.name,
                 stage.program.display()
             ));
+        }
+        self.validate_settings()
+    }
+
+    /// As [`Self::validate`], for a group another machine heads: its
+    /// stage programs are on that machine, so only the settings are checked
+    /// here.
+    ///
+    /// # Errors
+    ///
+    /// Says which setting is wrong.
+    pub fn validate_settings(&self) -> Result<(), String> {
+        if !(1..=16).contains(&self.stages.len()) {
+            return Err("a stage group needs 1–16 stages".into());
+        }
+        let names: BTreeSet<_> = self.stages.iter().map(|s| s.name.as_str()).collect();
+        if names.len() != self.stages.len() || names.contains("") {
+            return Err("every stage needs its own non-empty name".into());
         }
         let ms = Duration::from_millis;
         let secs = Duration::from_secs;

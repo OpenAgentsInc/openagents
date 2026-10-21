@@ -940,7 +940,12 @@ pub async fn launch(up: &Up) -> Result<Launched, String> {
     }
     let plan = plan(up)?;
     let lane = group_lane(up, &plan);
-    lane.validate()?;
+    // A head in the zone runs the stage programs on its own machines.
+    if up.head.remote() && up.local_stages.is_none() {
+        lane.validate_elsewhere()?;
+    } else {
+        lane.validate()?;
+    }
     // Every refusal the guard can give for the set comes before anything
     // is created.
     dry_run(up, &plan)?;

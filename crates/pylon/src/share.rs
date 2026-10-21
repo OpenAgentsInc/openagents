@@ -152,6 +152,22 @@ impl GroupLane {
     ///
     /// Says what is wrong.
     pub fn validate(&self) -> Result<(), String> {
+        self.validate_lane()?;
+        self.stage_config().validate()
+    }
+
+    /// As [`Self::validate`], for a lane another machine heads, where the
+    /// stage programs live.
+    ///
+    /// # Errors
+    ///
+    /// Says which setting is wrong.
+    pub fn validate_elsewhere(&self) -> Result<(), String> {
+        self.validate_lane()?;
+        self.stage_config().validate_settings()
+    }
+
+    fn validate_lane(&self) -> Result<(), String> {
         let ok_slug = |v: &str| {
             !v.is_empty()
                 && v.len() <= 48
@@ -183,7 +199,7 @@ impl GroupLane {
             }
             next = stage.to;
         }
-        self.stage_config().validate()
+        Ok(())
     }
 }
 

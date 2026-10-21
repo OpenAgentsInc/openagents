@@ -1072,3 +1072,60 @@ fn a_cloud_group_runs_cuda_stages_unless_told_otherwise() {
     assert_eq!(up.stage_runtime, cloud::RUNTIME);
     assert!(parse(&["two-dual", "--backend", "rocm"]).is_err());
 }
+
+/// The one-machine placement with its head on that machine (W11, #12398):
+/// the stage programs live there, so the budget host checks only the
+/// lane's settings; the flags set the head's limits and sampling.
+#[test]
+fn a_one_machine_group_heads_itself_and_takes_its_limits() {
+    let words: Vec<String> = [
+        "one-quad",
+        "--head",
+        "stage0",
+        "--transport",
+        "direct",
+        "--temperature",
+        "0",
+        "--ready-secs",
+        "3600",
+        "--step-secs",
+        "75",
+    ]
+    .iter()
+    .map(|w| (*w).to_owned())
+    .collect();
+    let (up, _) = cloud::parse_up(
+        &words,
+        &repo(),
+        Path::new("/home/me"),
+        "wss://relay.example",
+    )
+    .unwrap();
+    assert_eq!(up.ready_timeout, Duration::from_secs(3600));
+    assert_eq!(up.step_timeout, Duration::from_secs(75));
+    assert_eq!(up.sampling, Sampling::new(0.0, 0.95, 0).unwrap());
+    let plan = cloud::plan(&up).unwrap();
+    assert_eq!(plan.machines.len(), 1);
+    assert_eq!(plan.machines[0].machine_type, "g4-standard-192");
+    let lane = cloud::group_lane(&up, &plan);
+    assert!(
+        lane.stages
+            .iter()
+            .all(|s| s.program == Path::new("/opt/openagents/stage-run"))
+    );
+    assert!(lane.validate().unwrap_err().contains("missing its program"));
+    lane.validate_elsewhere().unwrap();
+    let step = |secs: &str| {
+        let words: Vec<String> = ["one-quad", "--step-secs", secs]
+            .iter()
+            .map(|w| (*w).to_owned())
+            .collect();
+        cloud::parse_up(
+            &words,
+            &repo(),
+            Path::new("/home/me"),
+            "wss://relay.example",
+        )
+    };
+    assert!(step("76").is_err());
+}
