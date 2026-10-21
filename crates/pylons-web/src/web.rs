@@ -7,6 +7,9 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
+use std::cell::Cell;
+
+use pylons_view::bay::{self, Bay, Layout, Tier};
 use pylons_view::{Pylon, Shown, Snapshot, rows};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -14,7 +17,7 @@ use web_sys::{Document, Element, EventSource, HtmlElement, KeyboardEvent, Messag
 
 use crate::camera::{Keep, Placed, hides, spots};
 use crate::terminal_web::Terminal;
-use crate::world_camera::{WorldCamera, anchor};
+use crate::world_camera::WorldCamera;
 
 /// The page's event stream.
 const LIVE: &str = "/pylons/live";
@@ -22,14 +25,27 @@ const LIVE: &str = "/pylons/live";
 const LEAVE_MS: i32 = 900;
 /// The corner name's bottom: tags stay below it, CSS px.
 const TOP: f64 = 52.0;
+/// The global Verse reads the Bay from ([`bay::encode`]).
+const BAY_GLOBAL: &str = "pylonsBay";
+/// A machine's width for its click target, m.
+const MACHINE_WIDTH: f64 = 1.5;
+/// How far over a machine's top its label stands, m.
+const TAG_LIFT: f64 = 0.35;
 
 struct Entry {
     pillar: HtmlElement,
     item: Element,
     view: Pylon,
     slot: usize,
-    anchor: [f64; 3],
+    /// Its spot in the Pylon Bay; `None` when its section or every lane
+    /// is full, and then only the list shows it.
+    anchor: Option<[f64; 3]>,
+    shape: bay::Shape,
     flip: bool,
+    /// When its last job receipt arrived, page ms; negative for none.
+    pulse_at: f64,
+    /// The label's tier last set on the pillar.
+    tier: Cell<Option<Tier>>,
 }
 
 struct Layer {
@@ -47,6 +63,14 @@ struct Layer {
     /// The exact camera of the last Verse frame; absent over the shader.
     world: Option<WorldCamera>,
     terminal: Option<Terminal>,
+    /// Who stands where in the Pylon Bay, and this snapshot's layout.
+    bay: Bay,
+    layout: Layout,
+    /// Verse draws the Bay's machines (`data-pylon-bay` on its canvas):
+    /// the layer only labels them.
+    bay_mode: bool,
+    /// The pillar under the pointer.
+    hover: Option<String>,
     /// Boxes pylons stay out of: the list panel and anything the page marks
     /// `data-pylons-keep` (`/lander10`'s chat).
     keep: Vec<Keep>,
@@ -91,6 +115,10 @@ fn run() -> Option<()> {
         spots: Vec::new(),
         world: None,
         terminal: Terminal::new(&document),
+        bay: Bay::new(),
+        layout: Layout::default(),
+        bay_mode: false,
+        hover: None,
         keep: Vec::new(),
         leaving: Vec::new(),
         offset: 0.0,
@@ -119,6 +147,10 @@ fn run() -> Option<()> {
                     };
                     let mut layer = layer.borrow_mut();
                     layer.world = Some(camera);
+                    if !layer.bay_mode && layer.verse_draws_bay() {
+                        layer.bay_mode = true;
+                        let _ = layer.field.class_list().add_1("bay");
+                    }
                     layer.place_all();
                     if let Some(terminal) = &mut layer.terminal {
                         let position = (player.length() == 3).then(|| {
@@ -215,6 +247,31 @@ fn run() -> Option<()> {
             .add_event_listener_with_callback("mousedown", on_down.as_ref().unchecked_ref())
             .ok()?;
         on_down.forget();
+    }
+
+    // The pillar under the pointer: Verse marks its machine, and its label
+    // says everything.
+    for kind in ["pointerover", "pointerout"] {
+        let layer = layer.clone();
+        let over = kind == "pointerover";
+        let on_hover = Closure::<dyn FnMut(web_sys::Event)>::new(move |event: web_sys::Event| {
+            let id = event
+                .target()
+                .and_then(|t| t.dyn_into::<Element>().ok())
+                .and_then(|t| t.closest(".pylon").ok().flatten())
+                .and_then(|p| p.get_attribute("data-pylon"));
+            let mut l = layer.borrow_mut();
+            let hover = if over { id } else { None };
+            if l.hover != hover {
+                l.hover = hover;
+                l.publish();
+                l.place_all();
+            }
+        });
+        document
+            .add_event_listener_with_callback(kind, on_hover.as_ref().unchecked_ref())
+            .ok()?;
+        on_hover.forget();
     }
 
     // Clicks on a pillar or a list entry open its card; a click anywhere
@@ -322,6 +379,11 @@ fn apply(layer: &Shared, snapshot: Snapshot) {
         terminal.flint(flint);
     }
     let ids: Vec<String> = snapshot.pylons.iter().map(|p| p.id.clone()).collect();
+    {
+        let mut l = layer.borrow_mut();
+        let layout = l.bay.sync(&snapshot.pylons);
+        l.layout = layout;
+    }
     let gone: Vec<String> = layer
         .borrow()
         .entries
@@ -345,6 +407,7 @@ fn apply(layer: &Shared, snapshot: Snapshot) {
         }
     }
     let l = layer.borrow();
+    l.publish();
     l.order_list(&ids);
     l.heading();
     if !arrived.is_empty() {
@@ -396,6 +459,7 @@ fn leave(layer: &Shared, id: &str, announce: bool) {
         l.say(&format!("{} went offline.", entry.view.name));
     }
     l.heading();
+    l.publish();
     if l.open.as_deref() == Some(id) {
         let shown = Shown {
             pylon: entry.view.clone(),
@@ -426,6 +490,7 @@ fn open(layer: &Shared, id: &str, opener: Option<HtmlElement>) {
         let _ = entry.pillar.class_list().add_1("sel");
     }
     l.open = Some(id.to_owned());
+    l.publish();
     // Opened from the keyboard, focus moves to the card and returns to the
     // opener when it closes. A click leaves focus where it was, so the
     // movement keys keep working with the card open.
@@ -449,6 +514,7 @@ fn close(layer: &Shared) {
     {
         let _ = entry.pillar.class_list().remove_1("sel");
     }
+    l.publish();
     call_card("hide", None);
     if let Some(opener) = l.opener.take() {
         let _ = opener.focus();
@@ -525,21 +591,110 @@ impl Layer {
         self.keep = keep;
     }
 
+    /// Whether Verse draws the Bay's machines on this page.
+    fn verse_draws_bay(&self) -> bool {
+        self.document
+            .get_element_by_id("everglade-canvas")
+            .and_then(|canvas| canvas.get_attribute("data-pylon-bay"))
+            .as_deref()
+            == Some("world")
+    }
+
+    /// Hands Verse the Bay: every placed pylon's spot, shape, load, last
+    /// pulse, and focus, and each group's pipe.
+    fn publish(&self) {
+        let focused =
+            |id: &str| self.open.as_deref() == Some(id) || self.hover.as_deref() == Some(id);
+        let stands: Vec<bay::Drawn> = self
+            .layout
+            .stands
+            .iter()
+            .filter_map(|stand| {
+                let entry = self.entries.get(&stand.id)?;
+                Some(bay::Drawn {
+                    x: stand.at[0],
+                    z: stand.at[2],
+                    shape: stand.shape,
+                    load: stand.load,
+                    pulse_at: entry.pulse_at,
+                    focused: focused(&stand.id),
+                })
+            })
+            .collect();
+        let pipes: Vec<bay::DrawnPipe> = self
+            .layout
+            .pipes
+            .iter()
+            .map(|pipe| bay::DrawnPipe {
+                x: pipe.at[0],
+                z: pipe.at[2],
+                parts: pipe.parts,
+                lit: pipe.lit,
+            })
+            .collect();
+        let numbers = bay::encode(&stands, &pipes);
+        let array = js_sys::Float64Array::from(numbers.as_slice());
+        let _ = js_sys::Reflect::set(&js_sys::global(), &BAY_GLOBAL.into(), &array);
+    }
+
     fn place_all(&self) {
-        for entry in self.entries.values().chain(self.leaving.iter()) {
+        let mut labels: Vec<(&Entry, Placed, bool)> = Vec::new();
+        for entry in self.entries.values() {
+            if let Some(spot) = self.place(entry) {
+                let focused = self.open.as_deref() == Some(entry.view.id.as_str())
+                    || self.hover.as_deref() == Some(entry.view.id.as_str());
+                labels.push((entry, spot, focused));
+            }
+        }
+        for entry in &self.leaving {
             self.place(entry);
+        }
+        if !(self.bay_mode && self.world.is_some()) {
+            return;
+        }
+        // Nearest first, and the focused one before all: a label that would
+        // cover one already shown says nothing this frame.
+        labels.sort_by(|a, b| b.2.cmp(&a.2).then(a.1.depth.total_cmp(&b.1.depth)));
+        let mut shown: Vec<Keep> = Vec::new();
+        for (entry, spot, focused) in labels {
+            let mut tier = bay::tier(entry.shape, spot.depth, focused);
+            if tier != Tier::Hidden {
+                let tag = tag_box(&entry.view, &spot, tier);
+                if !focused && shown.iter().any(|other| overlaps(tag, *other)) {
+                    tier = Tier::Hidden;
+                } else {
+                    shown.push(tag);
+                }
+            }
+            if entry.tier.get() != Some(tier) {
+                entry.tier.set(Some(tier));
+                let classes = entry.pillar.class_list();
+                let _ = classes.toggle_with_force("t1", tier == Tier::Name);
+                let _ = classes.toggle_with_force("t2", tier == Tier::Full);
+            }
         }
     }
 
-    fn place(&self, entry: &Entry) {
-        let placed = match self.world {
-            Some(camera) => camera.place(entry.anchor),
-            None => self.spots.get(entry.slot).copied(),
+    /// Stands the pillar where its anchor is in this frame, or on its
+    /// shader-floor spot; hides it when it is off the screen. Returns where
+    /// it stands.
+    fn place(&self, entry: &Entry) -> Option<Placed> {
+        let placed = match (self.world, entry.anchor) {
+            (Some(camera), Some(anchor)) if self.bay_mode => camera
+                .place_box(anchor, entry.shape.top() + TAG_LIFT, MACHINE_WIDTH)
+                .map(|mut spot| {
+                    spot.width = spot.width.max(18.0);
+                    spot
+                }),
+            (Some(camera), Some(anchor)) => camera.place(anchor),
+            (Some(_), None) => None,
+            (None, _) => self.spots.get(entry.slot).copied(),
         };
         let Some(spot) = placed else {
-            // Outside the world camera's view, or no clear shader-floor spot.
+            // Outside the world camera's view, no spot in the Bay, or no
+            // clear shader-floor spot.
             let _ = entry.pillar.class_list().add_1("hid");
-            return;
+            return None;
         };
         // On the shader floor, a spot the page's own content now covers
         // (the chat card grew over it before the pillars moved) hides its
@@ -560,12 +715,19 @@ impl Layer {
         let _ = style.set_property("--y", &format!("{:.1}px", spot.y));
         let _ = style.set_property("--h", &format!("{:.1}px", spot.height));
         let _ = style.set_property("--bw", &format!("{:.2}px", spot.width));
-        let _ = style.set_property("--hw", &format!("{:.1}px", (spot.width * 8.0).max(30.0)));
+        let hit = if self.bay_mode && self.world.is_some() {
+            spot.width
+        } else {
+            (spot.width * 8.0).max(30.0)
+        };
+        let _ = style.set_property("--hw", &format!("{hit:.1}px"));
         let _ = style.set_property("--s", &format!("{:.3}", spot.scale));
+        let _ = style.set_property("--lean", &format!("{:.1}px", spot.lean));
         let _ = style.set_property(
             "z-index",
             &format!("{}", 10_000 - spot.depth.round() as i32),
         );
+        Some(spot)
     }
 
     fn take_slot(&mut self, id: &str) -> usize {
@@ -599,18 +761,20 @@ impl Layer {
         };
         let _ = item.set_attribute("data-id", &pylon.id);
         let slot = self.take_slot(&pylon.id);
-        let anchor = self.group_anchor(&pylon).unwrap_or_else(|| anchor(slot));
-        let _ = pillar.set_attribute(
-            "data-world-anchor",
-            &format!("{},{},{}", anchor[0], anchor[1], anchor[2]),
-        );
+        let stand = self.layout.stand(&pylon.id);
+        let anchor = stand.map(|s| s.at);
+        let shape = stand.map_or(bay::Shape::Gpu, |s| s.shape);
+        mark_anchor(&pillar, anchor);
         let entry = Entry {
             pillar,
             item,
             view: pylon,
             slot,
             anchor,
+            shape,
             flip: false,
+            pulse_at: -1.0,
+            tier: Cell::new(None),
         };
         self.draw(&entry);
         self.place(&entry);
@@ -622,40 +786,19 @@ impl Layer {
         self.entries.insert(entry.view.id.clone(), entry);
     }
 
-    /// A model group's part stands in a row behind its head, so the Grid
-    /// shows the group as one: `None` for a head, a pylon on its own, or a
-    /// part whose head hasn't arrived yet.
-    fn group_anchor(&self, pylon: &Pylon) -> Option<[f64; 3]> {
-        let group = pylon.group.as_ref()?;
-        let part = group.part?;
-        let head = self.entries.values().find(|entry| {
-            entry
-                .view
-                .group
-                .as_ref()
-                .is_some_and(|g| g.id == group.id && g.role == "head")
-        })?;
-        let offset = (f64::from(part) - (f64::from(group.parts) + 1.0) / 2.0) * 4.5;
-        Some([
-            head.anchor[0] + offset,
-            head.anchor[1],
-            head.anchor[2] - 4.5,
-        ])
-    }
-
     fn update(&mut self, pylon: Pylon) {
         let Some(mut entry) = self.entries.remove(&pylon.id) else {
             return;
         };
-        if let Some(anchor) = self.group_anchor(&pylon)
-            && anchor != entry.anchor
-        {
-            // The head arrived after this part, or the group changed.
+        let stand = self.layout.stand(&pylon.id);
+        let anchor = stand.map(|s| s.at);
+        if let Some(stand) = stand {
+            entry.shape = stand.shape;
+        }
+        if anchor != entry.anchor {
+            // A part whose group's lane changed, or a spot freed up.
             entry.anchor = anchor;
-            let _ = entry.pillar.set_attribute(
-                "data-world-anchor",
-                &format!("{},{},{}", anchor[0], anchor[1], anchor[2]),
-            );
+            mark_anchor(&entry.pillar, anchor);
             self.place(&entry);
         }
         let before = entry.view.jobs.map(|jobs| jobs.receipts);
@@ -678,6 +821,7 @@ impl Layer {
             let _ = classes.remove_1(off);
             let _ = classes.add_1(on);
             entry.flip = !entry.flip;
+            entry.pulse_at = page_now();
         }
         self.entries.insert(entry.view.id.clone(), entry);
     }
@@ -699,41 +843,29 @@ impl Layer {
             .pillar
             .class_list()
             .toggle_with_force("group-part", role == Some("part"));
-        let slots: String = (0..pylon.total.min(16))
-            .map(|i| {
-                if i < pylon.busy {
-                    "<i class=\"b\"></i>"
-                } else {
-                    "<i></i>"
-                }
-            })
-            .collect();
-        // A part's tag is short, so a row of them stays readable.
-        let (title, small) = match &pylon.group {
-            Some(group) if group.role == "head" => (
-                pylon.name.clone(),
-                format!("{} · {}", group.words(), pylon.slots_words()),
-            ),
-            Some(group) => (
-                group.part.map_or_else(
-                    || group.words(),
-                    |part| format!("Part {part} of {}", group.parts),
-                ),
-                group.layers.map_or_else(
-                    || pylon.class_words().to_owned(),
-                    |[from, to]| format!("Layers {from}–{to}"),
-                ),
-            ),
-            None => (
-                pylon.name.clone(),
-                format!("{} · {}", pylon.class_words(), pylon.slots_words()),
-            ),
+        let slots: String = if role == Some("part") {
+            String::new()
+        } else {
+            (0..pylon.total.min(16))
+                .map(|i| {
+                    if i < pylon.busy {
+                        "<i class=\"b\"></i>"
+                    } else {
+                        "<i></i>"
+                    }
+                })
+                .collect()
         };
+        let tag = bay::tag(pylon);
+        let lines: String = tag
+            .lines
+            .iter()
+            .map(|line| format!("<small>{}</small>", escape(line)))
+            .collect();
         entry.pillar.set_inner_html(&format!(
             "<span class=\"ring\"></span><span class=\"base\"></span><span class=\"beam\"></span>\
-<span class=\"tag\"><b>{}</b><small>{}</small><span class=\"slots\">{slots}</span></span>",
-            escape(&title),
-            escape(&small),
+<span class=\"tag\"><b>{}</b>{lines}<span class=\"slots\">{slots}</span></span>",
+            escape(&tag.title),
         ));
         entry.item.set_inner_html(&format!(
             "<button type=\"button\" class=\"n\" data-pylon=\"{}\" aria-haspopup=\"dialog\">{}</button> \
@@ -818,6 +950,56 @@ impl Layer {
         }
         list.set_inner_html(&html);
     }
+}
+
+/// Writes a pillar's Bay spot where checks read it, or removes it.
+fn mark_anchor(pillar: &HtmlElement, anchor: Option<[f64; 3]>) {
+    match anchor {
+        Some([x, y, z]) => {
+            let _ = pillar.set_attribute("data-world-anchor", &format!("{x},{y},{z}"));
+        }
+        None => {
+            let _ = pillar.remove_attribute("data-world-anchor");
+        }
+    }
+}
+
+/// The page's clock, ms: the one Verse draws its frames by.
+fn page_now() -> f64 {
+    web_sys::window()
+        .and_then(|w| w.performance())
+        .map_or(0.0, |p| p.now())
+}
+
+/// Roughly where a pillar's label lands at `tier`, to keep labels from
+/// covering each other: about 7 px a character, and a line of 15 px for
+/// each line under the title.
+fn tag_box(pylon: &Pylon, spot: &Placed, tier: Tier) -> Keep {
+    let tag = bay::tag(pylon);
+    let chars = |text: &str| text.chars().count() as f64;
+    let (width, height) = match tier {
+        Tier::Hidden => (0.0, 0.0),
+        Tier::Name => ((chars(&tag.title) * 6.6).min(156.0) + 6.0, 17.0),
+        Tier::Full => {
+            let longest = tag
+                .lines
+                .iter()
+                .map(|l| chars(l) * 6.0)
+                .fold(chars(&tag.title) * 7.0, f64::max);
+            (
+                longest.min(240.0) + 20.0,
+                17.0 + 15.0 * tag.lines.len() as f64 + 24.0,
+            )
+        }
+    };
+    let (width, height) = (width * spot.scale, height * spot.scale);
+    let bottom = spot.y - spot.height - 8.0;
+    let x = spot.x + spot.lean;
+    (x - width / 2.0, bottom - height, x + width / 2.0, bottom)
+}
+
+fn overlaps(a: Keep, b: Keep) -> bool {
+    a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3
 }
 
 fn escape(text: &str) -> String {

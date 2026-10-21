@@ -11,6 +11,7 @@
 //! The words here are what a person reads ("Online", "1 of 2 busy", "Jobs,
 //! last 24 h"), never the protocol's.
 
+pub mod bay;
 pub mod terminal;
 
 use serde::{Deserialize, Serialize};

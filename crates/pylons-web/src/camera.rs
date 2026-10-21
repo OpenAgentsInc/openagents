@@ -66,6 +66,9 @@ pub struct Placed {
     /// The tag's scale, smaller further away.
     pub scale: f64,
     pub depth: f64,
+    /// How far the top stands right of the foot on the screen, CSS px: a
+    /// near machine leans as the camera looks down on it.
+    pub lean: f64,
 }
 
 /// The pillar standing at floor point (`x`, `z`), on a `width` ×
@@ -82,6 +85,7 @@ pub fn place(x: f64, z: f64, width: f64, height: f64) -> Option<Placed> {
         width: (PILLAR_WIDTH * px_per_m).clamp(2.0, 9.0),
         scale: (22.0 / depth).clamp(0.62, 1.0),
         depth,
+        lean: 0.0,
     })
 }
 

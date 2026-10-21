@@ -28,6 +28,8 @@ mod input;
 mod overview;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod presence_ui;
+#[cfg(target_arch = "wasm32")]
+mod pylon_bay;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod transit;
 #[cfg(target_arch = "wasm32")]

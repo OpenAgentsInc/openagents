@@ -334,6 +334,9 @@ async fn open_grid(
     mark("verse-grid-engine");
     if HOME.with(std::cell::Cell::get) {
         let _ = canvas.set_attribute("data-pylon-terminal", "world");
+        // The pylons layer labels the machines Verse draws instead of
+        // drawing its own pillars (#12423).
+        let _ = canvas.set_attribute("data-pylon-bay", "world");
     }
     Ok(engine)
 }
@@ -1451,7 +1454,10 @@ impl Page {
                 let players = presence.players(&self.runtime).to_string();
                 PLAYERS.with(|p| *p.borrow_mut() = players);
             }
-            let dynamic = grid_frame::dynamic(&self.runtime, &peers, &[]);
+            let mut dynamic = grid_frame::dynamic(&self.runtime, &peers, &[]);
+            if HOME.with(std::cell::Cell::get) && self.runtime.is_plaza() {
+                crate::pylon_bay::instances(self.now, &mut dynamic);
+            }
             let lighting = grid_frame::lighting(&self.runtime.atmosphere());
             // Name tags, the connection line, and a player's card, laid
             // out in CSS pixels and drawn in device pixels.

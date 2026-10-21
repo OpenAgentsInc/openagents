@@ -105,6 +105,16 @@ to{opacity:0;transform:translate(-50%,50%) scale(4.5)}\
 .pylon:hover .tag,.pylon.sel .tag{color:#fff}\
 .pylon.sel .base{filter:brightness(1.4)}\
 .pylon:focus-visible{outline:2px solid #fff;outline-offset:4px}\
+#pylons-field.bay .pylon .beam,#pylons-field.bay .pylon .base,#pylons-field.bay .pylon .ring{display:none}\
+#pylons-field.bay .pylon .tag{left:calc(50% + var(--lean,0px));bottom:calc(100% + 4px);opacity:0;transition:opacity .2s ease;pointer-events:none}\
+#pylons-field.bay .pylon.t1 .tag,#pylons-field.bay .pylon.t2 .tag,#pylons-field.bay .pylon:hover .tag{opacity:1}\
+#pylons-field.bay .pylon .tag small,#pylons-field.bay .pylon .tag .slots{display:none}\
+#pylons-field.bay .pylon.t1 .tag b{font-size:11px;font-weight:500;line-height:14px;color:#d4d4d4}\
+#pylons-field.bay .pylon.t2 .tag,#pylons-field.bay .pylon:hover .tag{padding:6px 10px 7px;border-radius:8px;background:rgba(8,8,8,.8);border:1px solid rgba(255,255,255,.14);text-shadow:none}\
+#pylons-field.bay .pylon.t2 .tag b,#pylons-field.bay .pylon:hover .tag b{font-size:12px;line-height:16px;color:#fff}\
+#pylons-field.bay .pylon.t2 .tag small,#pylons-field.bay .pylon:hover .tag small{display:block;line-height:15px}\
+#pylons-field.bay .pylon.t2 .tag .slots,#pylons-field.bay .pylon:hover .tag .slots{display:flex;margin-top:4px}\
+#pylons-field.bay .pylon:hover{z-index:20000!important}\
 #pylon-card{position:fixed;z-index:5;top:calc(60px + env(safe-area-inset-top));right:calc(16px + env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));width:min(400px,calc(100vw - 32px));max-height:600px;border-radius:16px;overflow:hidden;background:rgba(8,8,8,.82);border:1px solid rgba(255,255,255,.12);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 24px 90px rgba(0,0,0,.65);opacity:0;visibility:hidden;transform:translateX(14px);transition:opacity .3s cubic-bezier(.22,.8,.3,1),transform .3s cubic-bezier(.22,.8,.3,1),visibility 0s .3s}\
 #pylon-card.open{opacity:1;visibility:visible;transform:none;transition-delay:0s}\
 .pylon-card-mount{position:absolute;inset:0;opacity:0;transition:opacity .25s}\

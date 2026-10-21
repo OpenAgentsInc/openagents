@@ -1,4 +1,5 @@
-//! The shared pylon computer in the Grid's depth-tested world pass.
+//! The shared pylon computer and the Pylon Bay in the Grid's
+//! depth-tested world pass.
 
 use glam::Vec3;
 use verse::{
@@ -43,6 +44,7 @@ pub fn content() -> Result<Content, String> {
         .ok_or("The Grid's white texture is not listed")?
         .id
         .clone();
+    let white_id = texture.as_str().to_owned();
     inventory.assets.push(Asset {
         id: verse::imported::inventory::id("verse:model:home/pylons-terminal")?,
         binding: Binding::Model { key: MODEL.into() },
@@ -57,6 +59,7 @@ pub fn content() -> Result<Content, String> {
         rotation: [0., 0., 0., 1.],
         scale: 1.,
     });
+    crate::pylon_bay::add(&mut pack, white, &white_id)?;
     let statics = grid_frame::statics(&pack);
     let prepared = Prepared::from_bytes(
         pack,

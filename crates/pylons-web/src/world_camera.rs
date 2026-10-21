@@ -1,15 +1,7 @@
 //! Fixed Grid positions, projected by the camera that drew the current frame.
+//! The positions themselves are the Pylon Bay's (`pylons_view::bay`).
 
 use crate::camera::{PILLAR_HEIGHT, PILLAR_WIDTH, Placed};
-
-/// A stable place on the Grid floor. Camera motion and viewport size never
-/// enter the placement: each ring holds twelve pylons around the plaza.
-#[must_use]
-pub fn anchor(slot: usize) -> [f64; 3] {
-    let angle = (slot % 12) as f64 * std::f64::consts::TAU / 12.0;
-    let radius = 18.0 + (slot / 12) as f64 * 12.0;
-    [radius * angle.sin(), 0.0, -10.0 + radius * angle.cos()]
-}
 
 /// Verse's column-major view-projection matrix and viewport in CSS pixels.
 #[derive(Clone, Copy, Debug)]
@@ -57,17 +49,26 @@ impl WorldCamera {
     /// foot is the projection of the fixed floor point, never a screen slot.
     #[must_use]
     pub fn place(&self, point: [f64; 3]) -> Option<Placed> {
+        let mut placed = self.place_box(point, PILLAR_HEIGHT, PILLAR_WIDTH)?;
+        placed.width = placed.width.clamp(2.0, 9.0);
+        Some(placed)
+    }
+
+    /// Something `height` meters tall and `width` wide standing on the floor
+    /// at `point`, in this frame: where its foot is, and how tall and wide
+    /// it looks, in CSS pixels. `None` behind the eye or well off screen.
+    #[must_use]
+    pub fn place_box(&self, point: [f64; 3], height: f64, width: f64) -> Option<Placed> {
         let (x, y, depth) = self.project(point)?;
-        let (_, top, _) = self.project([point[0], point[1] + PILLAR_HEIGHT, point[2]])?;
+        let (top_x, top, _) = self.project([point[0], point[1] + height, point[2]])?;
         // Row zero gives the camera's right direction, scaled by its lens.
         let right = [self.matrix[0], self.matrix[4], self.matrix[8]];
         let length = right.iter().map(|v| v * v).sum::<f64>().sqrt();
         if length <= f64::EPSILON || y <= top {
             return None;
         }
-        let edge = std::array::from_fn(|i| point[i] + right[i] / length * PILLAR_WIDTH);
+        let edge = std::array::from_fn(|i| point[i] + right[i] / length * width);
         let (edge_x, _, _) = self.project(edge)?;
-        let width = (edge_x - x).abs().clamp(2.0, 9.0);
         if x < -80.0 || x > self.width + 80.0 || y < 0.0 || top > self.height {
             return None;
         }
@@ -75,9 +76,10 @@ impl WorldCamera {
             x,
             y,
             height: y - top,
-            width,
+            width: (edge_x - x).abs(),
             scale: (22.0 / depth).clamp(0.62, 1.0),
             depth,
+            lean: top_x - x,
         })
     }
 }
@@ -98,7 +100,7 @@ mod tests {
 
     #[test]
     fn the_foot_tracks_its_world_landmark_during_orbit_and_translation() {
-        let point = anchor(0);
+        let point = [0.0, 0.0, 8.0];
         let landmark = Vec3::from_array(point.map(|v| v as f32));
         let mut positions = Vec::new();
         for eye in [
@@ -114,12 +116,11 @@ mod tests {
             positions.push((placed.x, placed.y));
         }
         assert!(positions.windows(2).all(|p| (p[0].0 - p[1].0).abs() > 10.0));
-        assert_eq!(point, anchor(0));
     }
 
     #[test]
     fn resize_changes_pixels_without_moving_the_anchor() {
-        let point = anchor(1);
+        let point = [9.0, 0.0, 5.6];
         let eye = Vec3::new(0.0, 6.0, -22.0);
         let target = Vec3::new(0.0, 1.6, -10.0);
         let full = camera(eye, target, 1200.0, 800.0).0.place(point).unwrap();
