@@ -1415,3 +1415,79 @@ async fn requested_login_codes_limit_email_and_ip_before_creating_or_sending_mor
     );
     assert!(w.fake.inbox().is_empty(), "WorkOS automatic mail is off");
 }
+
+/// `/admin` sends a signed-out browser to sign in, and every production
+/// method comes back to it (#12440). Nobody here is a site admin, so each
+/// lands on the page for staff.
+#[tokio::test]
+async fn the_admin_entrance_returns_through_every_workos_method() {
+    let w = workos_world(Mode::Dual, PRODUCTION).await;
+    let mut browser = Browser::default();
+    let away = browser.get(&w.world, "/admin").await;
+    assert_eq!(away.status, StatusCode::SEE_OTHER);
+    assert_eq!(away.location(), "/login?return_to=%2Fadmin");
+    let login = browser.get(&w.world, away.location()).await;
+    assert_eq!(login.status, StatusCode::OK, "{}", login.body);
+    // The password and code forms carry the page, and so does GitHub.
+    assert_eq!(
+        login
+            .body
+            .matches("name=\"return_to\" value=\"/admin\"")
+            .count(),
+        2,
+        "{}",
+        login.body
+    );
+    assert!(
+        login
+            .body
+            .contains("/auth/workos/github?return_to=%2Fadmin")
+    );
+
+    // An emailed code.
+    let sent = browser
+        .post(
+            &w.world,
+            "/login/code",
+            &[
+                ("csrf", &csrf(&login.body)),
+                ("email", "staff@example.com"),
+                ("return_to", "/admin"),
+            ],
+        )
+        .await;
+    assert_eq!(sent.status, StatusCode::SEE_OTHER, "{}", sent.body);
+    let verify = browser.get(&w.world, "/login/verify").await;
+    let code = w.mail.code("staff@example.com");
+    let done = browser
+        .post(
+            &w.world,
+            "/login/verify",
+            &[("csrf", &csrf(&verify.body)), ("code", &code)],
+        )
+        .await;
+    assert_eq!(done.status, StatusCode::SEE_OTHER, "{}", done.body);
+    assert_eq!(done.location(), "/admin");
+    let staff = browser.get(&w.world, "/admin").await;
+    assert_eq!(staff.status, StatusCode::FORBIDDEN, "{}", staff.body);
+    assert!(staff.body.contains("This page is for OpenAgents staff."));
+    crate::copy_guard::assert_plain("/admin", &staff.body);
+
+    // GitHub through WorkOS.
+    let mut other = Browser::default();
+    w.fake
+        .queue_sign_in("GitHubOAuth", "octo@example.com", "583231", Some("Octo"));
+    let start = other
+        .get(&w.world, "/auth/workos/github?return_to=%2Fadmin")
+        .await;
+    let at_workos = w.world.github.get(start.location()).send().await.unwrap();
+    let back = at_workos.headers()["location"]
+        .to_str()
+        .unwrap()
+        .strip_prefix(ORIGIN)
+        .unwrap()
+        .to_string();
+    let done = other.get(&w.world, &back).await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert!(done.body.contains("url=/admin"), "{}", done.body);
+}

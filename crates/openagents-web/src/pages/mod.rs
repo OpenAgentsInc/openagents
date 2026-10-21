@@ -1,5 +1,6 @@
 //! The public pages, one module per section.
 
+pub mod admin;
 pub mod affiliates;
 pub mod agent_docs;
 pub mod api_docs;
@@ -79,6 +80,7 @@ pub(crate) use icecream::{
 };
 #[cfg(test)]
 pub(crate) use icecream_guide::ICECREAM_GUIDE_PATH;
+
 #[cfg(test)]
 pub(crate) use lander8::{LANDER8_GLUE, LANDER8_SESSION, LANDER8_WASM};
 #[cfg(test)]
@@ -101,6 +103,7 @@ pub(crate) use stats::utc;
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .merge(home::routes())
+        .merge(admin::routes())
         .merge(retired::routes())
         .merge(verse_hands::routes())
         .merge(contact::routes())

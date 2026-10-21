@@ -262,6 +262,8 @@ pub fn owned(path: &str) -> bool {
         || OWNED_EXACT.contains(&path)
         || crate::agent_ready::owns(path)
         || crate::attribution::owns(path)
+        // The staff entrance and Kiln (crate::pages::admin).
+        || crate::pages::admin::owns(path)
         || crate::oauth::owns(path)
         || crate::phone_api::owns(path)
         || path == "/v1/agent-assignments"

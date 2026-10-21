@@ -76,7 +76,8 @@ globalThis.homeGameCards = data => {
     }
   } catch (_) {}
 };
-document.getElementById('game-lab-open').addEventListener('click',event => {
+// Production hides the Game Lab link with the account links.
+document.getElementById('game-lab-open')?.addEventListener('click',event => {
   event.preventDefault(); gameSuppressed = false; setGameOpen(true);
 });
 document.getElementById('game-lab-close').addEventListener('click',() => {

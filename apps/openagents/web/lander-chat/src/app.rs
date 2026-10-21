@@ -88,6 +88,8 @@ pub struct LanderChat {
     group_ready: bool,
     ask_group: bool,
     flint_ready: bool,
+    /// The visitor is a site admin, so the Grid terminal offers Kiln.
+    admin: bool,
     ask_flint: bool,
     /// When the last message was sent, and how many this page has sent,
     /// for the visit's events.
@@ -152,6 +154,7 @@ impl LanderChat {
             group_ready: false,
             ask_group: true,
             flint_ready: false,
+            admin: false,
             ask_flint: false,
             sent_at: None,
             sent_count: 0,
@@ -243,6 +246,14 @@ impl LanderChat {
                 .ok()
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
+            let admin = js_sys::Reflect::get(&js_sys::global(), &model::ADMIN_GLOBAL.into())
+                .ok()
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if admin != self.admin {
+                self.admin = admin;
+                cx.notify();
+            }
             if flint != self.flint_ready {
                 self.flint_ready = flint;
                 self.sync_pick();
@@ -937,9 +948,45 @@ impl LanderChat {
             .border_color(theme::border_strong())
             .bg(gpui::hsla(0., 0., 0.055, 0.94))
             .child(self.composer.clone())
+            .when_some(self.render_kiln(layout), |row, kiln| row.child(kiln))
             .when_some(self.render_pick(layout, cx), |row, pick| row.child(pick))
             .child(send)
             .into_any_element()
+    }
+
+    /// Kiln, beside the model choice, for a site admin on the Grid (#12440):
+    /// it opens Kiln's panel over the Grid.
+    fn render_kiln(&self, layout: &Layout) -> Option<AnyElement> {
+        if !model::offers_kiln(base(), is_game_lab(), self.admin) {
+            return None;
+        }
+        Some(
+            div()
+                .id("open-kiln")
+                .flex_none()
+                .flex()
+                .items_center()
+                .h(px(32.))
+                .px(px(if layout.narrow { 10. } else { 12. }))
+                .rounded(px(16.))
+                .border_1()
+                .border_color(theme::border_strong())
+                .text_size(px(12.5))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(theme::text())
+                .cursor_pointer()
+                .hover(|s| s.bg(gpui::hsla(0., 0., 1., 0.08)))
+                .on_click(|_: &ClickEvent, _, _| {
+                    if let Ok(open) =
+                        js_sys::Reflect::get(&js_sys::global(), &model::OPEN_KILN.into())
+                        && let Some(open) = open.dyn_ref::<js_sys::Function>()
+                    {
+                        let _ = open.call1(&JsValue::UNDEFINED, &JsValue::TRUE);
+                    }
+                })
+                .child(model::KILN)
+                .into_any_element(),
+        )
     }
 
     /// DeepSeek V4.1 or any Pylon, beside the send button: on the Grid

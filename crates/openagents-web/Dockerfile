@@ -229,6 +229,16 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
     && test -s /build/pylons-layer/pylons_web.js \
     && test -s /build/pylons-layer/pylons_web_bg.wasm.br
 
+# Kiln (#12440), which /admin/kiln/ serves to site admins, found at
+# /srv/kiln without a flag. Its tools build for wasm32-wasip1, which only
+# this build uses, so the target is added here rather than in wasm-base.
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    rustup target add wasm32-wasip1 \
+    && sh scripts/deploy/oa-module-cache.sh kiln /build/kiln -- oa-kache run scripts/build-kiln-web.sh /build/kiln \
+    && test -s /build/kiln/index.html \
+    && test -s /build/kiln/tools/manifest.json \
+    && test -s /build/kiln/pkg/kiln_bg.wasm.br
+
 # The CAD engine for the browser (crates/cad-wasm), which /cad loads
 # (#11649): its own stage, so it builds beside the others. wasm-opt
 # (binaryen) shrinks it; brotli and gzip copies ride beside each file.
@@ -382,6 +392,7 @@ COPY --from=gpuiweb-graph /build/agent-graph /srv/agent-graph
 COPY --from=gpuiweb /build/gpui-fonts /srv/gpui-fonts
 COPY --from=gpuiweb-chat /build/gpui-chat /srv/gpui-chat
 COPY --from=everglade /build/pylons-layer /srv/pylons/layer
+COPY --from=everglade /build/kiln /srv/kiln
 COPY --from=gpuiweb-graph /build/pylons-card /srv/pylons/card
 COPY --from=gpuiweb-graph /build/lander8 /srv/lander8
 COPY --from=gpuiweb /build/lander9 /srv/lander9

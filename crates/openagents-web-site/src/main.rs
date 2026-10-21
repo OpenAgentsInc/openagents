@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--inference http://HOST:PORT] [--public-host HOST]... [--api-host HOST] [--studio-host HOST]... [--upstream http://HOST:PORT] \
-[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--agent-graph DIRECTORY] [--gpui-fonts DIRECTORY] [--gpui-chat DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--lander5 DIRECTORY] [--lander6 DIRECTORY] [--lander7 DIRECTORY] [--lander8 DIRECTORY] [--lander9 DIRECTORY] [--pylons DIRECTORY] [--pylons-relay URL|off] [--profile-relay URL|off] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--agent-graph DIRECTORY] [--gpui-fonts DIRECTORY] [--gpui-chat DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--kiln DIRECTORY] [--lander5 DIRECTORY] [--lander6 DIRECTORY] [--lander7 DIRECTORY] [--lander8 DIRECTORY] [--lander9 DIRECTORY] [--pylons DIRECTORY] [--pylons-relay URL|off] [--profile-relay URL|off] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
 [--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE] [--local-downloads ~/Downloads] \
@@ -86,6 +86,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--icecream" => config.icecream = Some(PathBuf::from(value)),
             "--snap" => config.snap = Some(PathBuf::from(value)),
             "--layertree" => config.layertree = Some(PathBuf::from(value)),
+            "--kiln" => {
+                config.kiln = Some(std::sync::Arc::new(
+                    openagents_web::pages::admin::Kiln::from_env(PathBuf::from(value)),
+                ));
+            }
             "--lander5" => config.lander5 = Some(PathBuf::from(value)),
             "--lander6" => config.lander6 = Some(PathBuf::from(value)),
             "--lander7" => config.lander7 = Some(PathBuf::from(value)),
@@ -208,6 +213,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Snap Station's build ships at /srv/snap in the image.
     if config.snap.is_none() && std::path::Path::new("/srv/snap/start.js").is_file() {
         config.snap = Some(PathBuf::from("/srv/snap"));
+    }
+    // Kiln's build ships at /srv/kiln in the image; only site admins reach it.
+    if config.kiln.is_none() && std::path::Path::new("/srv/kiln/index.html").is_file() {
+        config.kiln = Some(std::sync::Arc::new(
+            openagents_web::pages::admin::Kiln::from_env(PathBuf::from("/srv/kiln")),
+        ));
     }
     // The LayerTree demo's build ships at /srv/layertree in the image.
     if config.layertree.is_none() && std::path::Path::new("/srv/layertree/start.js").is_file() {

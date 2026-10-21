@@ -122,6 +122,22 @@ pub fn failure_word(code: Option<&str>) -> &'static str {
     }
 }
 
+/// The Kiln control beside the model choice (#12440), for site admins:
+/// it opens Kiln, the in-browser coding agent, in a panel over the Grid.
+pub const KILN: &str = "Kiln";
+/// The page global the Grid sets to `true` when `/home/me` says the
+/// visitor is a site admin.
+pub const ADMIN_GLOBAL: &str = "openagentsAdmin";
+/// The page function that opens Kiln's panel.
+pub const OPEN_KILN: &str = "homeKiln";
+
+/// Whether the terminal offers Kiln: on the Grid homepage, outside Game
+/// Lab, and only to a site admin. The server refuses Kiln to everyone else
+/// too; this only keeps the control from showing.
+pub fn offers_kiln(base: &str, game: bool, admin: bool) -> bool {
+    admin && !game && base == HOME_BASE
+}
+
 /// The line over the composer before the first message.
 pub const WELCOME: &str = "What can we help with?";
 pub const PLACEHOLDER: &str = "Message OpenAgents";
@@ -415,6 +431,17 @@ mod tests {
 
     fn message(role: &str, text: &str) -> ThreadMessage {
         serde_json::from_value(serde_json::json!({"role": role, "text": text})).unwrap()
+    }
+
+    #[test]
+    fn only_a_site_admin_on_the_grid_is_offered_kiln() {
+        assert!(offers_kiln(HOME_BASE, false, true));
+        assert!(!offers_kiln(HOME_BASE, false, false));
+        assert!(!offers_kiln(HOME_BASE, true, true));
+        for base in BASES {
+            assert!(!offers_kiln(base, false, true), "{base}");
+        }
+        assert!(oa_copy::violations(KILN, &[]).is_empty());
     }
 
     #[test]

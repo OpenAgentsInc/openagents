@@ -150,7 +150,7 @@ to{opacity:0;transform:translate(-50%,50%) scale(4.5)}\
 #lander-chat-keep{position:fixed;pointer-events:none;display:none}\
 @media(prefers-reduced-motion:reduce){#pylon-composer{transition:none}\
 }\
-[hidden]{display:none!important}#game-lab-panel{position:fixed;z-index:7;top:70px;right:20px;width:min(560px,45vw);max-height:calc(100vh - 230px);overflow:auto;padding:16px;border:1px solid #333;border-radius:16px;background:#101010;box-sizing:border-box}.game-lab-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}#game-lab-panel button,#game-lab-back{border:1px solid #555;border-radius:8px;background:#222;color:#eee;padding:8px 12px;cursor:pointer}#game-lab-status{font-size:13px;color:#aaa}#game-lab-card{border:0;width:100%;height:460px;background:#101010}#game-lab-signin{color:#fff}#game-lab-play{position:fixed;inset:0;z-index:20;background:#000}#game-lab-play-frame{width:100%;height:100%;border:0}#game-lab-back{position:absolute;z-index:21;top:16px;left:16px}@media(max-width:760px){#game-lab-panel{left:12px;right:12px;width:auto;top:60px;max-height:48vh}#game-lab-card{height:320px}}
+[hidden]{display:none!important}#game-lab-panel{position:fixed;z-index:7;top:70px;right:20px;width:min(560px,45vw);max-height:calc(100vh - 230px);overflow:auto;padding:16px;border:1px solid #333;border-radius:16px;background:#101010;box-sizing:border-box}.game-lab-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}#game-lab-panel button,#game-lab-back{border:1px solid #555;border-radius:8px;background:#222;color:#eee;padding:8px 12px;cursor:pointer}#game-lab-status{font-size:13px;color:#aaa}#game-lab-card{border:0;width:100%;height:460px;background:#101010}#game-lab-signin{color:#fff}#game-lab-play{position:fixed;inset:0;z-index:20;background:#000}#game-lab-play-frame{width:100%;height:100%;border:0}#game-lab-back{position:absolute;z-index:21;top:16px;left:16px}#kiln-panel{position:fixed;z-index:8;top:calc(60px + env(safe-area-inset-top));left:calc(16px + env(safe-area-inset-left));right:calc(16px + env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;overflow:hidden;border:1px solid #333;border-radius:16px;background:#0b0a08}.kiln-heading{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #2b261d}.kiln-heading strong{flex:1}.kiln-heading a,#kiln-close{border:1px solid #555;border-radius:8px;background:#222;color:#eee;padding:8px 12px;cursor:pointer;font:inherit;font-size:13px;text-decoration:none}#kiln-frame{flex:1;width:100%;border:0;background:#0b0a08}html:has(#kiln-panel:not([hidden])) :is(#pylons-field,#grid-controls,#pylon-card){visibility:hidden!important}@media(max-width:760px){#game-lab-panel{left:12px;right:12px;width:auto;top:60px;max-height:48vh}#game-lab-card{height:320px}}
 ";
 
 /// The mark and the name as the page's heading, and the account links
@@ -214,7 +214,8 @@ const AFTER_LIST: &str = concat!(
 </div>\
 \
 ",
-    r#"<section id="game-lab-panel" aria-label="Game Lab" hidden><div class="game-lab-heading"><strong>Game Lab</strong><button id="game-lab-close" type="button">Back to the Grid</button></div><p id="game-lab-status" role="status"></p><a id="game-lab-signin" href="/login?return_to=%2F%3Flab%3Dgame" hidden>Sign in</a><iframe id="game-lab-card" title="Your game" allow="fullscreen" hidden></iframe></section><section id="game-lab-play" aria-label="Play your game" hidden><button id="game-lab-back" type="button">Back to Game Lab</button><iframe id="game-lab-play-frame" title="Play your game" allow="fullscreen"></iframe></section>"#
+    r#"<section id="game-lab-panel" aria-label="Game Lab" hidden><div class="game-lab-heading"><strong>Game Lab</strong><button id="game-lab-close" type="button">Back to the Grid</button></div><p id="game-lab-status" role="status"></p><a id="game-lab-signin" href="/login?return_to=%2F%3Flab%3Dgame" hidden>Sign in</a><iframe id="game-lab-card" title="Your game" allow="fullscreen" hidden></iframe></section><section id="game-lab-play" aria-label="Play your game" hidden><button id="game-lab-back" type="button">Back to Game Lab</button><iframe id="game-lab-play-frame" title="Play your game" allow="fullscreen"></iframe></section>"#,
+    r#"<section id="kiln-panel" aria-label="Kiln" hidden><div class="kiln-heading"><strong>Kiln</strong><a href="/admin/kiln/" target="_blank" rel="noopener">Open in a new tab</a><button id="kiln-close" type="button">Back to the Grid</button></div><iframe id="kiln-frame" title="Kiln"></iframe></section>"#
 );
 
 /// Loads the pylons, Verse, and GPUI chat as separate modules. The pylon
@@ -260,6 +261,7 @@ const still=matchMedia(\"(prefers-reduced-motion: reduce)\").matches;\
 const idle=t=>new Promise(r=>(window.requestIdleCallback||(f=>setTimeout(f,1)))(r,{timeout:t}));\
 const account=()=>fetch(\"/home/me\").then(r=>r.ok?r.json():null).then(me=>{if(!me||!me.signed_in)return;\
 globalThis.oaSignedIn&&oaSignedIn();\
+if(me.admin===true)globalThis.openagentsAdmin=true;\
 const grid=document.getElementById(\"everglade-canvas\");\
 if(me.verse_name)grid.dataset.name=me.verse_name;\
 if(me.csrf)grid.dataset.csrf=me.csrf;\
@@ -402,6 +404,7 @@ addEventListener(\"verse-stopped\",()=>{canvas.classList.remove(\"ready\");docum
 account();\
 loadLayer().then(verse);\
 ",
+    include_str!("grid_kiln.js"),
     include_str!("grid_game_lab.js")
 );
 
@@ -533,7 +536,7 @@ async fn page(State(app): State<App>, request: HeaderMap) -> Response {
     response
 }
 
-/// `{signed_in, name, profile, chat, verse_name, csrf}` for the top bar
+/// `{signed_in, name, profile, chat, verse_name, csrf, admin}` for the top bar
 /// and the Grid's avatar: who is
 /// signed in, where their profile is (their key's page, or their GitHub
 /// login's, which moves to the key's), and the chat. Signed out (or on a
@@ -568,6 +571,8 @@ async fn me(State(app): State<App>, headers: HeaderMap) -> Response {
             "profile": profile,
             "chat": CHAT,
             "csrf": csrf,
+            // A site admin's terminal offers Kiln (#12440).
+            "admin": viewer.admin,
         });
     }
     let mut response = (
@@ -643,6 +648,31 @@ mod tests {
         ] {
             assert!(oa_copy::violations(copy, &[]).is_empty(), "{copy}");
         }
+    }
+
+    #[test]
+    fn kiln_opens_in_a_panel_only_for_a_site_admin() {
+        // The panel is in every copy of the cached page, hidden; only a
+        // `/home/me` that says admin lets the terminal's control open it,
+        // and the server refuses `/admin/kiln/` to everyone else (#12440).
+        for account in [true, false] {
+            let html = main_html("<ul></ul>", account);
+            assert!(html.contains("<section id=\"kiln-panel\" aria-label=\"Kiln\" hidden>"));
+            assert!(
+                html.contains(
+                    "<button id=\"kiln-close\" type=\"button\">Back to the Grid</button>"
+                )
+            );
+            assert!(html.contains("<iframe id=\"kiln-frame\" title=\"Kiln\"></iframe>"));
+            assert!(!html.contains("src=\"/admin/kiln/\""));
+        }
+        assert!(LOADER.contains("if(me.admin===true)globalThis.openagentsAdmin=true;"));
+        assert!(LOADER.contains("globalThis.homeKiln"));
+        assert!(LOADER.contains("if (globalThis.openagentsAdmin !== true) return;"));
+        assert!(STYLE.contains(
+            "html:has(#kiln-panel:not([hidden])) \
+             :is(#pylons-field,#grid-controls,#pylon-card){visibility:hidden!important}"
+        ));
     }
 
     #[test]

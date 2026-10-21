@@ -43,6 +43,7 @@
 !/scripts/build-layertree-web.sh
 !/scripts/build-lander5-web.sh
 !/scripts/build-pylons-web.sh
+!/scripts/build-kiln-web.sh
 !/scripts/film/
 /scripts/film/*
 !/scripts/film/lab_words.json

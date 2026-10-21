@@ -770,6 +770,75 @@ async fn only_a_signed_in_admin_opens_the_analytics_dashboard() {
     assert!(settings.body.contains(&link) && settings.body.contains(">Analytics<"));
 }
 
+/// `/admin` (#12440): signed out it sends the browser to sign in and back;
+/// a member gets the page for staff; the owner, a site admin, gets the
+/// hub.
+#[tokio::test]
+async fn the_admin_entrance_lets_in_only_a_site_admin() {
+    let invite: oa_auth::InviteOnly = serde_json::from_value(json!({"github": [
+        {"id": 583231, "admin": true},
+        {"login": "quiet-local"}
+    ]}))
+    .unwrap();
+    let world = world_with(true, Some(invite.clone()), Some(invite)).await;
+
+    let mut visitor = Browser::default();
+    let away = visitor.get(&world, "/admin").await;
+    assert_eq!(away.status, StatusCode::SEE_OTHER);
+    assert_eq!(away.location(), "/login?return_to=%2Fadmin");
+    let login = visitor.get(&world, away.location()).await;
+    assert!(
+        login
+            .body
+            .contains("href=\"/auth/github?return_to=%2Fadmin\"")
+    );
+    let kiln = visitor.get(&world, "/admin/kiln/").await;
+    assert_eq!(kiln.location(), "/login?return_to=%2Fadmin%2Fkiln%2F");
+    assert_eq!(
+        visitor.get(&world, "/admin/kiln/config.json").await.status,
+        StatusCode::NOT_FOUND
+    );
+
+    let mut member = Browser::default();
+    let done = member
+        .through_github(&world, "%2Fadmin", "login=quiet-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert!(done.body.contains("url=/admin"), "{}", done.body);
+    let staff = member.get(&world, "/admin").await;
+    assert_eq!(staff.status, StatusCode::FORBIDDEN);
+    assert!(staff.body.contains("This page is for OpenAgents staff."));
+    assert!(!staff.body.contains("href=\"/admin/kiln/\""));
+    crate::copy_guard::assert_plain("/admin", &staff.body);
+    assert_eq!(
+        member.get(&world, "/admin/kiln/").await.status,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        member.get(&world, "/admin/kiln/config.json").await.status,
+        StatusCode::NOT_FOUND
+    );
+
+    let mut owner = Browser::default();
+    let done = owner
+        .through_github(&world, "%2Fadmin", "login=octo-local")
+        .await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    let hub = owner.get(&world, "/admin").await;
+    assert_eq!(hub.status, StatusCode::OK, "{}", hub.body);
+    for link in ["/admin/kiln/", "/admin/analytics", "/admin/attribution"] {
+        assert!(hub.body.contains(&format!("href=\"{link}\"")), "{link}");
+    }
+    assert!(
+        hub.headers[header::CACHE_CONTROL]
+            .to_str()
+            .unwrap()
+            .contains("no-store")
+    );
+    assert!(!hub.headers.contains_key("cross-origin-embedder-policy"));
+    crate::copy_guard::assert_plain("/admin", &hub.body);
+}
+
 #[tokio::test]
 async fn an_email_less_github_user_signs_in_under_the_login() {
     let world = world(true).await;

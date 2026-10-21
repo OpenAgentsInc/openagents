@@ -505,6 +505,9 @@ pub struct Config {
     /// `/srv/layertree` when it exists), served under `/layertree/`.
     /// Without it, `/layertree` says the demo is unavailable.
     pub layertree: Option<PathBuf>,
+    /// Kiln's build for site admins (`--kiln DIR`, default `/srv/kiln`
+    /// when it exists), served under `/admin/kiln/` ([`pages::admin`]).
+    pub kiln: Option<Arc<pages::admin::Kiln>>,
     /// The shared Grid runner (`--lander5 DIR`, default `/srv/lander5`)
     /// for /home, /pylons, /lander10, and /lander11.
     pub lander5: Option<PathBuf>,
@@ -687,6 +690,7 @@ impl Config {
             gpui_chat: None,
             icecream: None,
             layertree: None,
+            kiln: None,
             lander5: None,
             lander6: None,
             lander7: None,
