@@ -723,6 +723,7 @@ pub(crate) mod tests {
             fail: Option<&'static str>,
             logits: Vec<Vec<f32>>,
             attention_sites: BTreeSet<String>,
+            expert_suffixes: BTreeSet<String>,
         }
         impl ModelObserver for Observe {
             fn final_position(&self, _: usize) -> bool {
@@ -742,6 +743,12 @@ pub(crate) mod tests {
                 if site.starts_with("layers.0.attn.") {
                     self.attention_sites.insert(site.to_string());
                 }
+                if let Some((_, tail)) = site.split_once(".ffn.expert.") {
+                    let (_, suffix) = tail
+                        .split_once('.')
+                        .ok_or(CpuError::Invalid("expert trace name"))?;
+                    self.expert_suffixes.insert(suffix.to_string());
+                }
                 Ok(())
             }
         }
@@ -754,12 +761,25 @@ pub(crate) mod tests {
             fail: None,
             logits: Vec::new(),
             attention_sites: BTreeSet::new(),
+            expert_suffixes: BTreeSet::new(),
         };
         let observed = b.forward_observed(&[0, 3, 4], &mut observer)?;
         assert_eq!(expected.logits, observed.logits);
         assert_eq!(a.summary(), b.summary());
         assert_eq!(observer.logits.len(), 3);
         assert!(observer.count > 40 * 3);
+        // These names match #12371's retained expert hook contract.
+        for suffix in [
+            "in",
+            "combine_weight",
+            "w1_out",
+            "w3_out",
+            "w2_in",
+            "w2_out",
+            "out",
+        ] {
+            assert!(observer.expert_suffixes.contains(suffix));
+        }
         for site in [
             "q.normalized",
             "q.projected",

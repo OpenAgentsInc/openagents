@@ -151,8 +151,8 @@ pub fn expert_observed(
     observer("combine_weight", &[route_weight])?;
     let gate = quantization::linear(w1, input, arithmetic)?;
     let up = quantization::linear(w3, input, arithmetic)?;
-    observer("w1", &gate)?;
-    observer("w3", &up)?;
+    observer("w1_out", &gate)?;
+    observer("w3_out", &up)?;
     let hidden: Vec<_> = gate
         .into_iter()
         .zip(up)
@@ -176,7 +176,7 @@ pub fn expert_observed(
     };
     observer("w2_in", &hidden)?;
     let output = quantization::linear(w2, &hidden, arithmetic)?;
-    observer("w2", &output)?;
+    observer("w2_out", &output)?;
     observer("out", &output)?;
     Ok(output)
 }
