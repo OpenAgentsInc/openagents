@@ -184,6 +184,7 @@ impl Engine for Oracle {
                 input_tokens: Some(4),
                 output_tokens: Some(1),
                 model: "oracle".into(),
+                finish: crate::engine::Finish::Stop,
             })
         })
     }

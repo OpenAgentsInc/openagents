@@ -151,10 +151,10 @@ impl GroupLane {
         if !self.artifact.strip_prefix("sha256:").is_some_and(hex) {
             return Err("a group artifact is sha256:<64 hex>".into());
         }
-        if !(1..=90).contains(&self.deadline_secs) {
-            return Err(
-                "a group deadline is 1 to 90 seconds until W14 qualifies a longer one".into(),
-            );
+        // Past 90 seconds, the head takes only `pylon.deadline.v1` jobs and
+        // refuses ordinary ones at once (W14, #12401).
+        if !(1..=nostr::pylon::deadline::MAX_SECS).contains(&self.deadline_secs) {
+            return Err("a group deadline is 1 to 3600 seconds".into());
         }
         if !(1..=4_096).contains(&self.max_output_tokens) {
             return Err("a group answers with 1 to 4096 tokens".into());

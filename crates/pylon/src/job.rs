@@ -1,9 +1,13 @@
 //! The NIP-CJ conversation lane as a pylon speaks it: a `25900` request
 //! NIP-44 encrypted to the pylon, `27000` feedback, and a `26900` result
 //! encrypted back to the buyer, each bound to the request by its `e` tag.
+//!
+//! A request may name `pylon.deadline.v1` ([`nostr::pylon::deadline`]) with
+//! the buyer's budget; any other feature is refused.
 
 use nostr::domain::{Event, Tag};
 use nostr::nip44;
+use nostr::pylon::deadline::{self, Profile};
 use secp256k1::XOnlyPublicKey;
 use serde_json::{Value, json};
 
@@ -27,6 +31,8 @@ pub const MAX_INPUT_BYTES: usize = 16 * 1024;
 pub struct Request {
     pub version: u64,
     pub turns: Vec<Turn>,
+    /// Ordinary, or the declared-deadline extension with the buyer's budget.
+    pub profile: Profile,
 }
 
 /// A refusal a pylon sends as `status: error` feedback.
@@ -119,16 +125,11 @@ pub fn parse_request(plaintext: &str) -> Result<Request, Refusal> {
             "conversation version 1 or 2 only",
         ));
     }
-    match body["requires"].as_array() {
-        Some(requires) if requires.is_empty() => {}
-        Some(_) => {
-            return Err(Refusal::new(
-                "unsupported_feature",
-                "this pylon requires no features",
-            ));
-        }
-        None => return Err(Refusal::new("malformed", "requires is missing")),
-    }
+    let profile = deadline::request_profile(&body, true).map_err(|refusal| Refusal {
+        code: refusal.code,
+        message: refusal.message,
+        retry_after_ms: None,
+    })?;
     let task = body["task"]
         .as_str()
         .ok_or_else(|| Refusal::new("malformed", "task is missing"))?;
@@ -180,7 +181,20 @@ pub fn parse_request(plaintext: &str) -> Result<Request, Refusal> {
             "request text is empty or over 16 KiB",
         ));
     }
-    Ok(Request { version, turns })
+    Ok(Request {
+        version,
+        turns,
+        profile,
+    })
+}
+
+/// [`request_body`] with the declared-deadline extension: the buyer's own
+/// budget of `budget_secs`.
+#[must_use]
+pub fn request_body_within(prompt: &str, history: &[Turn], budget_secs: u64) -> Value {
+    let mut body = request_body(prompt, history);
+    deadline::declare(&mut body, budget_secs);
+    body
 }
 
 /// The `e` and `p` tags of a response to `request`.

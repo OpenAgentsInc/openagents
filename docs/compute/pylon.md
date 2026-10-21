@@ -68,7 +68,8 @@ limit (`--rate`, default 10 jobs a minute), a free slot (`--slots`, default
 refusal is `status: error` feedback with a NIP-CJ code: `not_admitted`,
 `rate_limited` with `retry_after_ms`, `malformed`, or `limit_exceeded`.
 Output is bounded by `--max-tokens` (default 512) and each job by 90
-seconds. The provider logs no job content.
+seconds, unless the buyer asks for a declared deadline (below). The
+provider logs no job content.
 
 For serial personal serving, start `psionic-openai-server` with
 `--single-generation` and use `pylon serve --slots 1` with a tested output
@@ -766,8 +767,8 @@ itself. Its settings carry a `group` lane (version 6 settings,
 `openagents.pylon.share.v6`, which older hosts refuse): the stages, each
 with its program and layer range, the exact artifact, the manifest digest,
 the weights and runtime every stage must announce, the declared deadline
-(at most 90 seconds until W14 qualifies a longer one) and output limit,
-and the sampling settings.
+(1 to 3,600 seconds; past 90 the head takes only declared-deadline jobs)
+and output limit, and the sampling settings.
 
 `pylon::group_serve` runs the lane:
 
@@ -784,6 +785,53 @@ and the sampling settings.
   early. Every token reaches the caller through the head.
 - When the group stops for good (its restarts run out), the head publishes
   every beacon offline and stops publishing.
+
+### Declared deadlines (#12401)
+
+A job that may run past Pylon's 90 seconds, such as a DeepSeek-V4.1
+reasoning answer through a group, goes out under `pylon.deadline.v1`
+([NIP-PYLON, Declared
+deadlines](../../nips/openagents/NIP-PYLON.md#declared-deadlines)). The
+buyer states its budget; the job runs for the smaller of that and the
+ceiling the beacon declares (90 seconds for a complete pylon).
+
+- **Buyer.** `pylon ask --deadline SECS` sends the extension, and `--model
+  NAME|sha256:HEX` routes through the router with `Settings::want`. In code,
+  `client::ask_within` and `client::ask_model_within` take a
+  `client::Within`, and `router::Settings::deadline` sets the budget for a
+  routed request. The buyer waits for the deadline plus 10 seconds for the
+  relay, and opens its next relay connection every 90 seconds so the
+  answer subscription outlives each connection's 120-second lifetime.
+  `Answer::declared` records the budget, the ceiling, the deadline the
+  pylon admitted, its heartbeats, the finish, and the connections used.
+- **Provider.** The deadline runs from admission. `processing` feedback
+  names it and repeats every 30 seconds (`Config::heartbeat`); a heartbeat
+  never extends it. When it passes, the provider drops the work, waits
+  until the engine has stopped (`Engine::settled`; a group's stages, even
+  one that ignores the cancellation, are stopped or reaped first), refuses
+  the job `limit_exceeded`, and only then frees the slot. An extended job
+  gets only a complete answer: one cut off by the output limit is refused.
+- **Old peers.** A provider whose ceiling is over 90 seconds refuses an
+  ordinary request at once (`unsupported_feature`), and a provider from
+  before the extension refuses the extended form at once, as it refuses any
+  feature. Ordinary jobs are unchanged.
+
+Fixtures: `crates/nostr/src/pylon/fixtures/job-*.json` and
+`crates/pylon/tests/deadline.rs`.
+
+The qualification harness sends `run.py`'s prompts through a running group
+and checks each complete answer: finish `stop`, inside the declared
+deadline and the budget, reasoning and final answer split as the #12372
+adapter starts a V4.1 thinking-mode answer, and a final answer that scores:
+
+```
+python3 scripts/bench/pylon-models/run.py --v41-group --pylon-bin PYLON \
+  --relay URL --output DIR [--v41-want sha256:ARTIFACT] [--v41-budget SECS]
+```
+
+It keeps its buyer key under `DIR` and publishes no receipts.
+`tests/deadline.rs` runs it against W10's synthetic stages, once slow but
+within the deadline and once past it.
 
 ### Launch a DeepSeek-V4.1 group in the cloud
 

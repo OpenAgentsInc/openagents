@@ -70,6 +70,17 @@ pub struct Generation {
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     pub model: String,
+    /// Why the answer ended.
+    pub finish: Finish,
+}
+
+/// Why an answer ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Finish {
+    /// The model ended its answer.
+    Stop,
+    /// The output limit cut the answer off.
+    Length,
 }
 
 /// A boxed future, so the trait stays object safe.
@@ -91,6 +102,12 @@ pub trait Engine: Send + Sync {
         turns: &'a [Turn],
         max_tokens: u32,
     ) -> Pending<'a, Result<Generation, String>>;
+    /// Resolves once the work of a dropped [`Engine::generate`] has stopped,
+    /// so the provider frees its slot only then. Immediate unless the engine
+    /// stops asynchronously, as a model group does.
+    fn settled(&self) -> Pending<'_, ()> {
+        Box::pin(async {})
+    }
 }
 
 /// A Psionic model server's OpenAI-compatible `/v1/chat/completions`, built
@@ -261,6 +278,8 @@ impl Engine for Psionic {
                 input_tokens: body["usage"]["prompt_tokens"].as_u64(),
                 output_tokens: body["usage"]["completion_tokens"].as_u64(),
                 model: self.model.clone(),
+                // `finished_text` refuses every answer that didn't stop.
+                finish: Finish::Stop,
             })
         })
     }
@@ -342,6 +361,7 @@ impl Engine for Echo {
                 input_tokens: Some(last.content.len() as u64),
                 output_tokens: Some(last.content.len() as u64),
                 model: "echo".into(),
+                finish: Finish::Stop,
             })
         })
     }

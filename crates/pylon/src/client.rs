@@ -1,7 +1,13 @@
 //! The buyer side: find a pylon by its beacon, send it one encrypted job,
 //! wait for the answer, and publish a receipt.
+//!
+//! A job for a model that declares a deadline past 90 seconds goes out under
+//! `pylon.deadline.v1` ([`Within`]): the buyer states its budget, waits for
+//! the smaller of that and the beacon's ceiling, and keeps its answer
+//! subscription on a fresh relay connection before the old one's lifetime
+//! ends. Feedback never extends the wait.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,6 +15,7 @@ use std::time::{Duration, Instant};
 
 use nostr::domain::Event;
 use nostr::domain::Tag;
+use nostr::pylon::deadline::{self, Response};
 use nostr::pylon::{
     self, BEACON_MARKER, Beacon, BeaconBook, Freshness, GROUP_BEACON_MARKER, Lane, Outcome,
     RECEIPT_V, Receipt, Status, UnitKind, Units, parse_beacon, receipt_event, sha256_hex,
@@ -145,6 +152,59 @@ pub struct Answer {
     pub receipt_event: Option<Event>,
     /// What the job's receipt says was paid, msat; `None` for free work.
     pub paid_msat: Option<u64>,
+    /// How an extended (`pylon.deadline.v1`) job was timed; `None` for an
+    /// ordinary job.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub declared: Option<Declared>,
+}
+
+/// How an extended job was timed, as the buyer saw it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Declared {
+    /// The buyer's budget, s.
+    pub budget_secs: u64,
+    /// The ceiling the pylon's beacon declares, s; `None` for a complete
+    /// pylon, whose ceiling is 90 seconds.
+    pub ceiling_secs: Option<u64>,
+    /// The deadline the buyer sent and waited for: the smaller of the two.
+    pub deadline_secs: u64,
+    /// The deadline the pylon's `processing` feedback said it enforces.
+    pub admitted_secs: Option<u64>,
+    /// `processing` feedback after the first, each a heartbeat.
+    pub heartbeats: u32,
+    /// The result's finish, `stop` for a complete answer.
+    pub finish: Option<String>,
+    /// Relay connections the answer subscription used.
+    pub connections: u32,
+}
+
+/// How long the buyer keeps listening after a deadline, for the pylon's
+/// answer or refusal to cross the relay.
+pub const GRACE: Duration = Duration::from_secs(10);
+/// How often a waiting buyer opens its next relay connection. A connection
+/// lives at most [`LIFETIME`], and answers are ephemeral events a relay
+/// only forwards to live subscriptions, so the next one subscribes before
+/// the old one ends.
+pub const ROTATE: Duration = Duration::from_secs(90);
+
+/// A buyer's budget for one job under `pylon.deadline.v1`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Within {
+    /// The most time the buyer gives the job.
+    pub budget: Duration,
+    /// How often to open the next relay connection while waiting
+    /// ([`ROTATE`]).
+    pub rotate: Duration,
+}
+
+impl Within {
+    #[must_use]
+    pub fn new(budget: Duration) -> Self {
+        Self {
+            budget,
+            rotate: ROTATE,
+        }
+    }
 }
 
 /// How to ask.
@@ -212,7 +272,41 @@ pub async fn ask_conversation(
     history: &[crate::engine::Turn],
     instructions: Option<&str>,
 ) -> Result<Answer, String> {
-    ask_for(buyer, ask, None, history, instructions).await
+    ask_for(buyer, ask, None, None, history, instructions).await
+}
+
+/// [`ask_conversation`] under `pylon.deadline.v1` with the buyer's budget
+/// `within`, for a pylon whose deadline may pass 90 seconds.
+///
+/// # Errors
+///
+/// As [`ask`].
+pub async fn ask_within(
+    buyer: &Identity,
+    ask: &Ask,
+    within: &Within,
+    history: &[crate::engine::Turn],
+    instructions: Option<&str>,
+) -> Result<Answer, String> {
+    ask_for(buyer, ask, None, Some(within), history, instructions).await
+}
+
+/// [`ask_model`] under `pylon.deadline.v1` with the buyer's budget `within`:
+/// how a request reaches a model group whose beacon declares a deadline
+/// past 90 seconds.
+///
+/// # Errors
+///
+/// As [`ask`].
+pub async fn ask_model_within(
+    buyer: &Identity,
+    ask: &Ask,
+    want: &Want,
+    within: &Within,
+    history: &[crate::engine::Turn],
+    instructions: Option<&str>,
+) -> Result<Answer, String> {
+    ask_for(buyer, ask, Some(want), Some(within), history, instructions).await
 }
 
 /// [`ask_conversation`] for a request that asks for one model: only a
@@ -228,18 +322,20 @@ pub async fn ask_model(
     history: &[crate::engine::Turn],
     instructions: Option<&str>,
 ) -> Result<Answer, String> {
-    ask_for(buyer, ask, Some(want), history, instructions).await
+    ask_for(buyer, ask, Some(want), None, history, instructions).await
 }
 
 async fn ask_for(
     buyer: &Identity,
     ask: &Ask,
     want: Option<&Want>,
+    within: Option<&Within>,
     history: &[crate::engine::Turn],
     instructions: Option<&str>,
 ) -> Result<Answer, String> {
     let started = Instant::now();
     let mut conn = relay::connect(&ask.relay, buyer, LIFETIME).await?;
+    let mut opened = Instant::now();
     let authors = ask.pylon.as_ref().map(|p| vec![p.clone()]);
     let fetch = async |conn: &mut nostr_transport::Connection| match want {
         Some(_) => all_beacons(conn, authors.as_deref()).await,
@@ -298,7 +394,21 @@ async fn ask_for(
         .clone();
     let discover_ms = started.elapsed().as_millis() as u64;
 
-    let mut body = job::request_body(&ask.prompt, history);
+    // An extended job's deadline: the buyer's budget, held to the ceiling
+    // the beacon declares, sent as the budget and waited for.
+    let mut declared = within.map(|within| {
+        let ceiling_secs = beacon.group_head().and_then(|g| g.deadline_secs);
+        Declared {
+            budget_secs: within.budget.as_secs().max(1),
+            ceiling_secs,
+            deadline_secs: deadline::effective(within.budget.as_secs().max(1), ceiling_secs),
+            ..Declared::default()
+        }
+    });
+    let mut body = match &declared {
+        Some(d) => job::request_body_within(&ask.prompt, history, d.deadline_secs),
+        None => job::request_body(&ask.prompt, history),
+    };
     if let Some(instructions) = instructions.filter(|text| !text.is_empty()) {
         body["instructions"] = json!(instructions);
     }
@@ -371,16 +481,79 @@ async fn ask_for(
         }
         None => {}
     }
-    let deadline = tokio::time::Instant::now() + ask.wait;
+    let wait = declared
+        .as_ref()
+        .map_or(ask.wait, |d| Duration::from_secs(d.deadline_secs) + GRACE);
+    let deadline = tokio::time::Instant::now() + wait;
+    let rotate = within.map(|w| w.rotate.max(Duration::from_millis(200)));
+    // The connection before the newest, read until its lifetime ends so
+    // nothing sent while the next one subscribed is missed.
+    let mut old: Option<nostr_transport::Connection> = None;
+    let mut seen = HashSet::new();
+    let mut connections = 1_u32;
+    let mut processing = 0_u32;
     while text.is_none() && error.is_none() {
-        let frame = match tokio::time::timeout_at(deadline, conn.next()).await {
-            Err(_) => break,
-            Ok(Err(e)) => {
+        if let Some(rotate) = rotate
+            && opened.elapsed() >= rotate
+        {
+            let next = match relay::connect(&ask.relay, buyer, LIFETIME).await {
+                Ok(mut next) => match next.send(json!(["REQ", "answer", filter])).await {
+                    Ok(()) => Some(next),
+                    Err(_) => None,
+                },
+                Err(_) => None,
+            };
+            match next {
+                Some(next) => {
+                    // At most two connections: the oldest goes.
+                    old = Some(std::mem::replace(&mut conn, next));
+                    connections += 1;
+                    opened = Instant::now();
+                }
+                // Try again shortly; the current connection still listens.
+                None => opened += Duration::from_secs(3).min(rotate),
+            }
+        }
+        let wake = rotate.map_or(deadline, |rotate| {
+            deadline.min(tokio::time::Instant::from_std(opened + rotate))
+        });
+        let read = tokio::select! {
+            frame = conn.next() => Some(frame),
+            frame = async {
+                match old.as_mut() {
+                    Some(old) => old.next().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                match frame {
+                    Ok(frame) => Some(Ok(frame)),
+                    // The old connection's lifetime ended.
+                    Err(_) => {
+                        old = None;
+                        None
+                    }
+                }
+            }
+            () = tokio::time::sleep_until(wake) => {
+                if wake >= deadline {
+                    break;
+                }
+                None
+            }
+        };
+        let frame = match read {
+            None => continue,
+            Some(Err(e)) => {
                 error = Some(format!("relay: {e}"));
                 break;
             }
-            Ok(Ok(frame)) => Frame::parse(frame),
+            Some(Ok(frame)) => Frame::parse(frame),
         };
+        if let Frame::Event { event, .. } = &frame
+            && !seen.insert(event.id.clone())
+        {
+            continue;
+        }
         match frame {
             Frame::Ok {
                 id,
@@ -402,6 +575,24 @@ async fn ask_for(
                 let Ok(value) = serde_json::from_str::<Value>(&plain) else {
                     continue;
                 };
+                if let Some(declared) = declared.as_mut() {
+                    match deadline::read_response(&value, true) {
+                        Ok(Response::Processing { deadline_secs }) => {
+                            processing += 1;
+                            declared.heartbeats = processing.saturating_sub(1);
+                            if deadline_secs.is_some() {
+                                declared.admitted_secs = deadline_secs;
+                            }
+                        }
+                        Ok(Response::Result { finish, .. }) => declared.finish = finish,
+                        Ok(Response::Other) => {}
+                        Err(refusal) => {
+                            error = Some(format!("{}: {}", refusal.code, refusal.message));
+                            outcome = Outcome::Failed;
+                            continue;
+                        }
+                    }
+                }
                 if event.kind == job::RESULT_KIND && value["type"] == "result" {
                     if let Some(t) = value["text"].as_str().filter(|t| !t.is_empty()) {
                         text = Some(t.to_string());
@@ -426,7 +617,11 @@ async fn ask_for(
         }
     }
     if text.is_none() && error.is_none() {
-        error = Some(format!("no answer within {} s", ask.wait.as_secs()));
+        error = Some(format!("no answer within {} s", wait.as_secs()));
+    }
+    drop(old);
+    if let Some(declared) = declared.as_mut() {
+        declared.connections = connections;
     }
     drop(in_flight);
 
@@ -523,6 +718,7 @@ async fn ask_for(
         receipt_error,
         receipt_event: signed,
         paid_msat: payment.as_ref().map(|p| p.amount_msat),
+        declared,
     })
 }
 

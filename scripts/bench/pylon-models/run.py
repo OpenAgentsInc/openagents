@@ -667,7 +667,21 @@ def main():
                         help="Defaults to greedy for the native reference, recommended sampling for llama.cpp")
     parser.add_argument("--download-reserve-gib",type=int,default=30,help="Free space to leave after download (default 30 GiB; smaller RAM-backed caches may need less)")
     parser.add_argument("--pause-unit",help="Temporarily stop this systemd user unit and restore it on exit")
+    parser.add_argument("--v41-group", action="store_true",
+                        help="Send the prompts through a running V4.1 Pylon group with the router and pylon.deadline.v1 (W14)")
+    parser.add_argument("--v41-want", default="deepseek-v4.1-flash",
+                        help="The model the requests ask for: a name or sha256:<artifact> (default deepseek-v4.1-flash)")
+    parser.add_argument("--v41-budget", type=int, default=3600,
+                        help="The buyer's budget in seconds (1 to 3600; default 3600, so the group's declared deadline governs)")
     args=parser.parse_args()
+    if args.v41_group:
+        if args.pylon_bin is None:
+            parser.error("--v41-group needs --pylon-bin")
+        if not 1 <= args.v41_budget <= 3600:
+            parser.error("--v41-budget is 1 to 3600 seconds")
+        import v41_group
+        result = v41_group.qualify(args, CASES, score, cli)
+        return 0 if result["qualified"] else 1
     if args.native_serial_checks and (args.engine != "psionic" or args.native_backend != "cuda" or not args.direct_only):
         parser.error("--native-serial-checks needs --engine psionic --native-backend cuda --direct-only")
     if args.serial_managed_llama_bin and (not args.serial_pylon_api or args.serial_engine_control):

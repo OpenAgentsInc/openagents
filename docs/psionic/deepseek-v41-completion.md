@@ -98,7 +98,8 @@ Gate progress (2026-10-21):
   at $26.62 for four hours. Placements are Psionic manifests shared as
   JSON (`crates/pylon/placements/deepseek-v41/`). G8 still needs a real
   cold launch (W16, #12403), which needs W11's stage worker in a bucket,
-  W12's stage-to-stage transport, and W14's deadline.
+  W12's stage-to-stage transport, and W14's qualified deadline (its
+  transport, `pylon.deadline.v1`, landed in #12401).
 - **G3, attention kernels (W5, #12392), RTX 4080 only.** Checked against
   the CPU path's default `ReferenceBf16` order (window rows oldest first);
   the `ReferenceBf16Tp8` order is W7's choice. Tolerances were fixed before
@@ -226,7 +227,7 @@ spend guard from the one budget host.
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
 | W13 | **Group beacon and routing.** Done (#12400): the group publishes one routable beacon (one serial slot, the exact model artifact, its declared deadline and output limit); stage beacons are visible but not routable. The router matches requested model and group readiness. W10 feeds readiness through `pylon::group::GroupReadiness`, and W15 publishes the beacons. | M | W10 | Router tests pick the group only for V4.1 requests and only when it's ready. |
-| W14 | **Deadline and answer profile.** Qualify a V4.1 reasoning profile (output cap, deadline) that finishes complete answers within the deadline the beacon declares. Changing Pylon's 90-second default is a versioned transport change with old-client refusal. | M | W11, W13 | Complete answers for the qualification prompts through Pylon within the declared deadline. |
+| W14 | **Deadline and answer profile.** Part 1, the transport, is done (#12401): `pylon.deadline.v1` in NIP-PYLON. The buyer states its budget; the job runs for the smaller of that and the beacon's ceiling, enforced inside execution from admission; heartbeats renew nothing; a missed deadline holds a group's slot until its stages stop; old providers and long models refuse the other side's form at once, with recorded fixtures both ways; ordinary jobs keep 90 seconds; group mode declares up to 3,600 seconds. The harness (`run.py --v41-group`, through the router's `Settings::want`) passes a slow synthetic group and fails one past its deadline. Part 2 is open: qualify a V4.1 reasoning profile (output cap, deadline) whose real answers finish within the declared deadline, after W11. | M | W11, W13 | Complete answers for the qualification prompts through Pylon within the declared deadline. |
 | W15 | **Built (#12402) on synthetic stages; the cold launch is an after-close check that W16 runs.** `pylon cloud up four-single\|two-dual` plans the machines from Psionic's manifest file, creates each through `scripts/dev/cloud-budget.py` with an expiry and labels, heads the group from the allocating host in group mode (`pylon::group_serve`: W10's `StageGroup`, one W13 head beacon, a beacon per stage, NIP-CJ jobs driven through the stages), and ends it on `cloud down`, expiry, the budget's cap, or a lost machine, deleting every machine through the guard. Stages run over `gcloud compute ssh` with the control connection tunneled back; `scripts/pylon/v41-stage-startup.sh` copies a machine's shards. `tests/group_cloud.rs` covers launch to answer to `down`, dry-run plans, guard refusals, spot loss, expiry, and the cap. | M | W12, W13 | A cold launch to a first answer, then a clean stop, with costs in the ledger. |
 | W16 | **Show it.** Run the launched group with the `/home` Pylon layer open and record the transcript, router log, and capture. | S, cloud | W15 | G8's evidence is committed and the epic can close. |
 

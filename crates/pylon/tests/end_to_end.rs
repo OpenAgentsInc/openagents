@@ -651,6 +651,7 @@ impl pylon::engine::Engine for Oracle {
                 input_tokens: Some(4),
                 output_tokens: Some(1),
                 model: "oracle".into(),
+                finish: pylon::engine::Finish::Stop,
             })
         })
     }

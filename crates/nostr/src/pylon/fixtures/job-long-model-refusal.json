@@ -1,0 +1,8 @@
+{
+  "v": 1,
+  "requires": [],
+  "type": "status",
+  "status": "error",
+  "code": "unsupported_feature",
+  "message": "this model takes up to 600 s; ask with pylon.deadline.v1 and a budget"
+}

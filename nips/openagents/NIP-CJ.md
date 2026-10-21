@@ -182,6 +182,10 @@ A worker that answers callers it has not admitted by name meters them and
 refuses with `rate_limited` or `quota_exhausted` (each with `retry_after_ms`)
 or `limit_exceeded`; a metered caller's refusal is not an outage.
 
+Added 2026-10-21: a request to a Pylon MAY name `pylon.deadline.v1` in
+`requires` with the caller's `budget_secs`, so a model that declares a
+deadline past Pylon's 90 seconds can take it ([PYLON](NIP-PYLON.md#declared-deadlines)).
+
 Conversation jobs have no durable retransmission identity. Another request is
 a new invocation. A dropped socket does not stop remote work. Effects requiring
 recovery, cancellation, or exact implementation attribution use execution jobs.

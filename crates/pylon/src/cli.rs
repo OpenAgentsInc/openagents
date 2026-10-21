@@ -282,6 +282,14 @@ Commands:
                             objects with role and content, kept as written.
       --pylon NPUB          Use this pylon instead of the best fresh one.
       --wait SECS           How long to wait for the answer (default 90).
+      --model NAME|sha256:HEX
+                            Ask for this model only: the router sends the job
+                            to a pylon or a ready model group serving it, and
+                            never to another model.
+      --deadline SECS       Your budget for the answer (1 to 3600). The job
+                            goes out under pylon.deadline.v1, so a model
+                            whose deadline passes 90 seconds takes it; it
+                            runs for the smaller of this and that deadline.
       --no-receipt          Do not publish a receipt.
       --max-msat N          Pay a priced pylon up to N msat for the job,
                             from this computer's wallet (see `openagents
@@ -1445,6 +1453,24 @@ async fn ask(
         None => None,
     };
     let wait = Duration::from_secs(args.number("--wait", 90)?.clamp(1, 600));
+    let want = args.value("--model")?.map(|model| {
+        if model.starts_with("sha256:") {
+            crate::group::Want::Artifact(model)
+        } else {
+            crate::group::Want::Model(model)
+        }
+    });
+    let within = match args.value("--deadline")? {
+        Some(secs) => {
+            let secs: u64 = secs
+                .parse()
+                .ok()
+                .filter(|secs| (1..=nostr::pylon::deadline::MAX_SECS).contains(secs))
+                .ok_or("--deadline is 1 to 3600 seconds")?;
+            Some(client::Within::new(Duration::from_secs(secs)))
+        }
+        None => None,
+    };
     let publish_receipt = !args.flag("--no-receipt");
     let history_path = args.value("--history")?;
     let max_msat = args.number("--max-msat", 0)?;
@@ -1469,22 +1495,31 @@ async fn ask(
     } else {
         None
     };
-    let answer = client::ask_conversation(
-        &buyer,
-        &Ask {
-            relay: relay.into(),
-            pylon,
-            prompt,
-            wait,
-            publish_receipt,
-            home: home(),
-            checkers,
-            pay,
-        },
-        &history,
-        None,
-    )
-    .await?;
+    if want.is_some() && pay.is_some() {
+        return Err("--model routes free jobs only; drop --max-msat".into());
+    }
+    let ask = Ask {
+        relay: relay.into(),
+        pylon,
+        prompt,
+        wait,
+        publish_receipt,
+        home: home(),
+        checkers,
+        pay,
+    };
+    let answer = match (&want, &within) {
+        // A named model without a pinned pylon goes through the router.
+        (Some(want), _) if ask.pylon.is_none() => {
+            routed(&buyer, &ask, want.clone(), within, &history).await?
+        }
+        (Some(want), Some(within)) => {
+            client::ask_model_within(&buyer, &ask, want, within, &history, None).await?
+        }
+        (Some(want), None) => client::ask_model(&buyer, &ask, want, &history, None).await?,
+        (None, Some(within)) => client::ask_within(&buyer, &ask, within, &history, None).await?,
+        (None, None) => client::ask_conversation(&buyer, &ask, &history, None).await?,
+    };
     let value = serde_json::to_value(&answer).map_err(|e| e.to_string())?;
     let mut text = format!(
         "pylon   {} ({})\nmodel   {}\n",
@@ -1515,6 +1550,56 @@ async fn ask(
         Ok(())
     } else {
         Err(answer.error.unwrap_or_default())
+    }
+}
+
+/// The router never asks a decision for a request that names a model.
+struct NoDecision;
+
+impl crate::router::Decide for NoDecision {
+    fn decide<'a>(&'a self, _question: &'a crate::router::Question) -> crate::router::Deciding<'a> {
+        Box::pin(async { Err("a named model takes no decision".to_string()) })
+    }
+}
+
+/// `ask --model`: route the job with [`crate::router::Settings::want`] and
+/// the buyer's budget, as the hosted chat does.
+async fn routed(
+    buyer: &crate::identity::Identity,
+    ask: &Ask,
+    want: crate::group::Want,
+    within: Option<client::Within>,
+    history: &[Turn],
+) -> Result<client::Answer, String> {
+    use crate::router::{Outcome, Settings, route};
+    let mut settings = Settings::new(ask.relay.clone(), ask.home.clone());
+    settings.checkers.clone_from(&ask.checkers);
+    settings.try_wait = ask.wait;
+    settings.budget = ask.wait;
+    settings.want = Some(want);
+    settings.deadline = within.map(|w| w.budget);
+    let mut turns = history.to_vec();
+    turns.push(Turn {
+        role: "user".into(),
+        content: ask.prompt.clone(),
+    });
+    let routed = route(buyer, &settings, &NoDecision, &turns, None).await;
+    match routed.outcome {
+        Outcome::Answered(answer) => Ok(*answer),
+        Outcome::Declined => Err("the router handed the message back".into()),
+        Outcome::Unavailable(why) => {
+            let tried = routed
+                .failed
+                .iter()
+                .map(|(pylon, why)| format!("{pylon}: {why}"))
+                .collect::<Vec<_>>()
+                .join("; ");
+            Err(if tried.is_empty() {
+                why
+            } else {
+                format!("{why} ({tried})")
+            })
+        }
     }
 }
 

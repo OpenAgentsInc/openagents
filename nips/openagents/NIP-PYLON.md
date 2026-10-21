@@ -1,7 +1,8 @@
 # NIP-PYLON — Compute Pylons and Pools
 
 `draft` `optional` — receipts, pool aggregates, and pool policies v2,
-2026-10-15. Beacons are v1; a model group's beacons are v2, 2026-10-20. **Partly implemented**:
+2026-10-15. Beacons are v1; a model group's beacons are v2, 2026-10-20. Declared
+deadlines (`pylon.deadline.v1`), 2026-10-21. **Partly implemented**:
 see [Implementation status](#implementation-status). The [shared contracts](contracts.md) are
 normative. The [Verse compute vision and spec](../../docs/compute/verse-compute.md)
 is the design this profile serves.
@@ -170,6 +171,49 @@ Rules:
 - A v1 reader fetches beacons by the v1 marker, so it never sees a group
   beacon; one that arrives anyway is refused for its marker, version, and
   field. Group beacons need no change to v1 beacons.
+
+### Declared deadlines
+
+An ordinary CJ conversation job to a pylon runs for at most 90 seconds. A
+model that needs longer, such as a group whose head declares
+`deadline_secs` over 90, takes jobs under the `pylon.deadline.v1` request
+feature. A buyer opts in; nothing changes for a request that doesn't.
+
+A request names the feature in `requires` and carries `budget_secs`, the
+buyer's budget, 1 to 3,600 whole seconds:
+
+```json
+{"v": 1, "requires": ["pylon.deadline.v1"], "budget_secs": 300,
+ "task": "...", "transcript": [...]}
+```
+
+Rules:
+
+- The job's deadline is the smaller of the buyer's budget and the
+  provider's ceiling: the head's `deadline_secs`, or 90 seconds for a
+  complete pylon. The buyer computes it from the beacon and sends it as
+  `budget_secs`; the provider applies the smaller again.
+- The provider measures the deadline from admission and enforces it inside
+  execution. When it passes, the provider stops the work, refuses the job
+  `limit_exceeded`, and frees its slot only once the work has stopped; a
+  group holds its one slot until every stage has.
+- Admission feedback is `status: processing` with `requires:
+  ["pylon.deadline.v1"]` and `deadline_secs`, the deadline it enforces. The
+  provider repeats it about every 30 seconds as a heartbeat. A heartbeat
+  never extends the deadline, on either side.
+- The result names the feature in `requires`, repeats `deadline_secs`, and
+  carries `finish: "stop"`. The provider sends only a complete answer: one
+  that its output limit cut off is refused `limit_exceeded`.
+- The buyer waits for the deadline plus a short allowance for the relay,
+  then stops. Responses are ephemeral, and a relay connection lives at most
+  120 seconds, so a buyer that waits longer subscribes on a fresh
+  connection before the old one ends.
+- A provider whose ceiling is over 90 seconds refuses an ordinary request
+  at once, `unsupported_feature`, rather than running it past an old
+  buyer's wait.
+- A provider without the feature refuses the request at once,
+  `unsupported_feature`, as it refuses any feature. A buyer that doesn't
+  know the feature refuses a response that names it.
 
 ### Relay list
 
@@ -435,6 +479,11 @@ A reader refuses:
   with the body, or whose payment acknowledgment is missing, forged, or bound to another receipt.
 - An aggregate whose recomputed digests or totals differ, or whose window
   breaks the bounds.
+- A conversation request with `budget_secs` but without
+  `pylon.deadline.v1`, with the feature but without a whole-second budget
+  from 1 to 3,600, or with another feature beside it; and a response
+  naming the feature without `deadline_secs`, or a result naming it whose
+  `finish` isn't `stop`.
 - Any event whose `x` tag does not match its content.
 
 ## Abuse
@@ -527,6 +576,16 @@ only to a pylon or ready group serving it (`router::Settings::want`,
 `client::choose_model`). Nothing publishes group beacons yet; the group
 lifecycle (#12397) will.
 
+Declared deadlines (2026-10-21, #12401): `nostr::pylon::deadline` reads
+and builds `pylon.deadline.v1` requests and responses and computes the
+effective deadline. `crates/pylon`'s provider enforces it from admission
+with heartbeats that renew nothing, waits for a group's stages to stop
+before freeing the slot, and refuses ordinary jobs to a model whose ceiling
+passes 90 seconds; its buyer (`client::ask_within`, `ask_model_within`) and
+router (`router::Settings::deadline`) send the extension and keep the
+answer subscription across relay connections. Group mode accepts a
+declared deadline up to 3,600 seconds.
+
 Not implemented: mainnet paid receipts, a `wellspring` projection from an
 aggregate, and the `nip-pylon-v2` relay extension. A service's `capability` is a qualified ID
 (`<pylon key>:pylon/text-generation`) rather than a full DefinitionRef.
@@ -543,7 +602,9 @@ not recompute; test-network amounts kept apart from `bitcoin`; and the
 world projection of each fixture to its `pylon` or `wellspring` state;
 and a recorded v1 beacon that still verifies, recorded group head and stage
 beacons that a v1 reader refuses, each group rule, and an aggregate that
-counts one slot per group.
+counts one slot per group; and recorded `pylon.deadline.v1` requests and
+responses, the refusal an old provider sends the extended form, the
+refusal a long model sends an ordinary request, and each malformed body.
 
 Advertise `nip-pylon-v2` in NIP-11 `supported_extensions` only for a relay
 that stores `30200`, `30201`, and `3201` and applies the beacon rate limit.

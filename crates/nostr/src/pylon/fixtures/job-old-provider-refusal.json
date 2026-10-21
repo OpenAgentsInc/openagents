@@ -1,0 +1,8 @@
+{
+  "v": 1,
+  "requires": [],
+  "type": "status",
+  "status": "error",
+  "code": "unsupported_feature",
+  "message": "this pylon requires no features"
+}

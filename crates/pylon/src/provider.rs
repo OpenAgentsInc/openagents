@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use nostr::decision::{self, Admitted, RequestWindow, Resolution, Seal};
 use nostr::domain::{Event, MintedOwnerAttestation};
+use nostr::pylon::deadline::{self, Profile};
 use nostr::pylon::{
     BEACON_V, Beacon, Class, Family, Lane, Layers, Service, Slots, Status, Tier, owned_beacon_event,
 };
@@ -24,7 +25,7 @@ use tokio::sync::{Mutex, mpsc};
 use tokio::time::timeout;
 
 use crate::decide::Decider;
-use crate::engine::Engine;
+use crate::engine::{Engine, Finish};
 use crate::group::{GroupReadiness, GroupSpec, head_beacon, stage_beacon};
 use crate::identity::Identity;
 use crate::job::{self, Refusal};
@@ -55,8 +56,14 @@ pub struct Config {
     pub pools: Vec<String>,
     /// Where the pylon keeps its generation counter.
     pub home: PathBuf,
-    /// How long one job may run.
+    /// How long one job may run: the ceiling a group head's beacon declares
+    /// (`deadline_secs`), and 90 seconds for a complete pylon. An ordinary
+    /// request gets it when it is at most 90 seconds; a `pylon.deadline.v1`
+    /// request gets the smaller of it and the buyer's budget.
     pub job_timeout: Duration,
+    /// How often an extended job repeats its `processing` feedback. A
+    /// heartbeat never extends the job's deadline.
+    pub heartbeat: Duration,
     /// The NIP-OA credential by which the owner authorized this pylon key;
     /// every beacon carries it.
     pub owner: Option<MintedOwnerAttestation>,
@@ -107,7 +114,8 @@ impl Config {
             },
             pools: vec!["everglade".into()],
             home,
-            job_timeout: Duration::from_secs(90),
+            job_timeout: Duration::from_secs(deadline::ORDINARY_SECS),
+            heartbeat: Duration::from_secs(deadline::HEARTBEAT_SECS),
             owner: None,
             price: None,
             group: None,
@@ -798,8 +806,15 @@ impl Provider {
                 }
             },
         };
-        let request = match request {
-            Ok(request) => request,
+        // The job's deadline: refused before any work when an ordinary
+        // request reaches a model that takes longer than 90 seconds.
+        let request = request.and_then(|request| {
+            deadline::admit(request.profile, self.config.job_timeout.as_secs())
+                .map(|secs| (request, Duration::from_secs(secs)))
+                .map_err(|refusal| Refusal::new(refusal.code, refusal.message))
+        });
+        let (request, limit) = match request {
+            Ok(admitted) => admitted,
             Err(refusal) => {
                 let mut state = self.state.lock().await;
                 state.counters.refused += 1;
@@ -829,17 +844,52 @@ impl Provider {
                 return;
             }
         };
-        self.answer(
-            &event,
-            job::FEEDBACK_KIND,
-            &job::status_body(request.version, "processing"),
+        let extended = matches!(request.profile, Profile::Declared { .. });
+        let processing = if extended {
+            deadline::processing_body(request.version, limit.as_secs())
+        } else {
+            job::status_body(request.version, "processing")
+        };
+        self.answer(&event, job::FEEDBACK_KIND, &processing);
+        // The deadline runs from admission. Heartbeats repeat `processing`
+        // for an extended job and never move the deadline.
+        let ends = tokio::time::Instant::now() + limit;
+        let mut work = engine.generate(&request.turns, self.config.max_tokens);
+        let mut beat = tokio::time::interval_at(
+            tokio::time::Instant::now() + self.config.heartbeat,
+            self.config.heartbeat.max(Duration::from_millis(100)),
         );
-        let outcome = timeout(
-            self.config.job_timeout,
-            engine.generate(&request.turns, self.config.max_tokens),
-        )
-        .await;
+        let outcome = loop {
+            tokio::select! {
+                done = &mut work => break Ok(done),
+                () = tokio::time::sleep_until(ends) => break Err(()),
+                _ = beat.tick(), if extended => {
+                    self.answer(&event, job::FEEDBACK_KIND, &processing);
+                }
+            }
+        };
+        // Dropping the work cancels it; a model group holds its slot until
+        // every stage has stopped (W10).
+        drop(work);
+        if outcome.is_err() {
+            engine.settled().await;
+        }
         let body = match outcome {
+            Ok(Ok(generation)) if extended && generation.finish != Finish::Stop => {
+                self.state.lock().await.counters.failed += 1;
+                self.answer(
+                    &event,
+                    job::FEEDBACK_KIND,
+                    &job::refusal_body(
+                        request.version,
+                        &Refusal::new(
+                            "limit_exceeded",
+                            "the answer reached its output limit before it finished",
+                        ),
+                    ),
+                );
+                Err("worker_failed")
+            }
             Ok(Ok(generation)) => {
                 self.state.lock().await.counters.served += 1;
                 let mut body = json!({
@@ -853,6 +903,9 @@ impl Provider {
                     (generation.input_tokens, generation.output_tokens)
                 {
                     body["usage"] = json!({"input": input, "output": output});
+                }
+                if extended {
+                    deadline::mark_result(&mut body, limit.as_secs());
                 }
                 Ok(body)
             }

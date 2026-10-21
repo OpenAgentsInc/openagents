@@ -637,8 +637,11 @@ fn a_group_profile_is_version_6_settings_that_older_versions_refuse() {
         std::fs::write(share::path(&home), serde_json::to_vec(&file).unwrap()).unwrap();
         assert!(share::load(&home).is_err(), "{schema} {slots}");
     }
-    // A deadline past 90 seconds waits for W14 (#12401).
+    // Past 90 seconds the head takes only pylon.deadline.v1 jobs (W14,
+    // #12401); a beacon's deadline is at most 3600 seconds.
     let mut deadline = lane.clone();
-    deadline.deadline_secs = 91;
-    assert!(deadline.validate().unwrap_err().contains("90 seconds"));
+    deadline.deadline_secs = 600;
+    assert!(deadline.validate().is_ok());
+    deadline.deadline_secs = 3_601;
+    assert!(deadline.validate().unwrap_err().contains("3600 seconds"));
 }

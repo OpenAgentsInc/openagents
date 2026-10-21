@@ -1108,7 +1108,8 @@ checkout on the one host that allocates for the budget.
       --budget NAME         Default deepseek-v41.
       --cap DOLLARS         The cap a new budget opens with.
       --deadline-secs N     The deadline the head declares (default 90,
-                            at most 90).
+                            at most 3600; past 90 it takes only
+                            pylon.deadline.v1 jobs).
       --max-output-tokens N The output limit it declares (default 1024).
       --allow NPUB          A key that may send jobs (repeatable); default
                             any key.

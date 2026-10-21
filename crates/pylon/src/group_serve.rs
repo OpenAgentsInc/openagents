@@ -18,7 +18,7 @@ use nostr::pylon::Layers;
 use serde_json::json;
 use tokio::sync::oneshot;
 
-use crate::engine::{Engine, Generation, Pending, Sampling, Turn};
+use crate::engine::{Engine, Finish, Generation, Pending, Sampling, Turn};
 use crate::identity::{Identity, load_owner, npub};
 use crate::lease::{Dedicated, Machine};
 use crate::now;
@@ -104,7 +104,31 @@ impl Engine for GroupEngine {
                 input_tokens: None,
                 output_tokens: Some(done.tokens),
                 model: self.model.clone(),
+                // Fewer tokens than asked for means the last stage sampled
+                // the end of the answer.
+                finish: if done.tokens < u64::from(steps) {
+                    Finish::Stop
+                } else {
+                    Finish::Length
+                },
             })
+        })
+    }
+
+    /// A dropped request cancels the group's run; the group holds admission
+    /// until every stage has stopped (W10), and so does the head's slot.
+    fn settled(&self) -> Pending<'_, ()> {
+        let mut changes = self.group.watch();
+        Box::pin(async move {
+            loop {
+                let status = changes.borrow_and_update().clone();
+                if !status.busy || status.failed.is_some() {
+                    return;
+                }
+                if changes.changed().await.is_err() {
+                    return;
+                }
+            }
         })
     }
 }

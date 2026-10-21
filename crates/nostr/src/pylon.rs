@@ -23,6 +23,7 @@ use crate::contracts::jcs;
 use crate::domain::{Event, MintedOwnerAttestation, RelaySigner, Tag, verify_owner_attestation};
 
 pub mod check;
+pub mod deadline;
 mod payment;
 pub use check::{
     CHECK_KIND, CHECK_NAMESPACE, Check, Record, Standing, Verdict, bind_check, check_event,

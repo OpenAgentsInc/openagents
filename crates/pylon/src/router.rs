@@ -17,6 +17,12 @@
 //! by another model. A request that names no model never goes to a group,
 //! and nothing routes to a group's stage.
 //!
+//! A request with [`Settings::deadline`] goes out under `pylon.deadline.v1`
+//! with that budget, so a model whose beacon declares a deadline past 90
+//! seconds can take it; the budget then also bounds the tries together.
+//! Without it, jobs keep the 90-second profile, and a model that needs
+//! longer refuses them at once.
+//!
 //! Each [`Routed`] says how the choice was made and what was tried, for the
 //! caller's log. It never carries the message.
 
@@ -350,6 +356,9 @@ pub struct Settings {
     /// The model the request asks for, when it names one: only a pylon or
     /// a ready group serving exactly it answers, and nothing else does.
     pub want: Option<Want>,
+    /// The caller's budget for one answer under `pylon.deadline.v1`; `None`
+    /// keeps the ordinary 90-second profile.
+    pub deadline: Option<Duration>,
 }
 
 impl Settings {
@@ -365,6 +374,7 @@ impl Settings {
             budget: Duration::from_secs(50),
             tries: 3,
             want: None,
+            deadline: None,
         }
     }
 }
@@ -607,8 +617,12 @@ pub async fn route(
     let (history, prompt) = job_text(turns);
     let started = Instant::now();
     let mut failed = Vec::new();
+    // An extended request may take its whole budget on one try.
+    let budget = settings.deadline.map_or(settings.budget, |deadline| {
+        settings.budget.max(deadline + client::GRACE)
+    });
     for candidate in ordered.into_iter().take(settings.tries) {
-        let left = settings.budget.saturating_sub(started.elapsed());
+        let left = budget.saturating_sub(started.elapsed());
         if left.is_zero() {
             break;
         }
@@ -622,9 +636,20 @@ pub async fn route(
             checkers: settings.checkers.clone(),
             pay: None,
         };
-        let asked = match want {
-            Some(want) => client::ask_model(buyer, &ask, want, &history, instructions).await,
-            None => client::ask_conversation(buyer, &ask, &history, instructions).await,
+        let within = settings
+            .deadline
+            .map(|deadline| client::Within::new(deadline.min(left)));
+        let asked = match (want, &within) {
+            (Some(want), Some(within)) => {
+                client::ask_model_within(buyer, &ask, want, within, &history, instructions).await
+            }
+            (Some(want), None) => {
+                client::ask_model(buyer, &ask, want, &history, instructions).await
+            }
+            (None, Some(within)) => {
+                client::ask_within(buyer, &ask, within, &history, instructions).await
+            }
+            (None, None) => client::ask_conversation(buyer, &ask, &history, instructions).await,
         };
         match asked {
             Ok(answer) if answer.text.as_deref().is_some_and(|t| !t.trim().is_empty()) => {

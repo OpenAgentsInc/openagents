@@ -1,0 +1,8 @@
+{
+  "v": 1,
+  "requires": ["pylon.deadline.v1"],
+  "budget_secs": 300,
+  "task": "What is 2 + 2?",
+  "transcript": [{"role": "user", "content": "What is 2 + 2?"}],
+  "client": "openagents-pylon 0.1.0"
+}

@@ -6,8 +6,9 @@ checks, steps, cancellations, and fences as line-delimited JSON. Faults are
 files in --root named KIND-STAGE. A file holding a step number fires once at
 that step and is then removed; "slow", "ignore-cancel", "always-die", and
 "weights" stay until the test removes them. A file "end-STAGE" makes the
-last stage end the answer at that step. Every observation goes to
-events.jsonl in --root.
+last stage end the answer at that step; "answer-STAGE", a JSON array of
+strings, makes it answer with those pieces, one a step, and end at the last.
+Every observation goes to events.jsonl in --root.
 """
 
 import argparse
@@ -177,6 +178,12 @@ def worker():
             # the token id, seed * 1000 + step, and its text.
             ack["token"] = message["sampling"]["seed"] * 1000 + step
             ack["text"] = f"<{ack['token']}>"
+            pieces = json.loads(text("answer") or "null")
+            if pieces is not None and step < len(pieces):
+                # A scripted answer: each step's text, ending at the last.
+                ack["text"] = pieces[step]
+                if step == len(pieces) - 1:
+                    ack["end"] = True
             if at_step("end", step):
                 ack["end"] = True
         if at_step("old-ack", step):
