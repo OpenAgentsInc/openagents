@@ -254,13 +254,29 @@ report_modules() { # LOG
     say "  browser modules: $reused reused; built: ${built:-none}"
 }
 
-# Deploy the modules tarball TAG, with CTX's content, through livehost.
+# Deploy the modules indexed as TAG (web-modules/sets/TAG.index), with
+# CTX's content, through livehost. Files come from a local store of blobs
+# by SHA-256, so only files this machine hasn't seen are downloaded.
 publish_modules() { # TAG CTX
     t=$(now)
+    blobs=$STATE/module-blobs
+    mkdir -p "$blobs"
     modules=$(mktemp -d)
-    g storage cp "$MODULE_INPUTS/sets/$1.tar" "$modules/set.tar" > /dev/null 2>&1 ||
-        { say "No modules tarball for $1"; rm -rf "$modules"; return 1; }
-    mkdir "$modules/tree" && tar -xf "$modules/set.tar" -C "$modules/tree" && rm "$modules/set.tar"
+    g storage cat "$MODULE_INPUTS/sets/$1.index" > "$modules/index" 2> /dev/null && [ -s "$modules/index" ] ||
+        { say "No modules index for $1"; rm -rf "$modules"; return 1; }
+    awk '{ print $1 }' "$modules/index" | sort -u | while IFS= read -r sum; do
+        [ -f "$blobs/$sum" ] || echo "$MODULE_INPUTS/blobs/$sum"
+    done > "$modules/missing"
+    if [ -s "$modules/missing" ]; then
+        g storage cp -I "$blobs/" < "$modules/missing" > /dev/null 2>&1 ||
+            { say "Downloading the modules failed"; rm -rf "$modules"; return 1; }
+    fi
+    while read -r sum bytes mode path; do
+        mkdir -p "$modules/tree/$(dirname "$path")"
+        cp "$blobs/$sum" "$modules/tree/$path"
+        if [ "$mode" = x ]; then chmod 755 "$modules/tree/$path"; else chmod 644 "$modules/tree/$path"; fi
+    done < "$modules/index"
+    say "  modules: $(wc -l < "$modules/index" | tr -d ' ') files, $(wc -l < "$modules/missing" | tr -d ' ') downloaded"
     LIVEHOST_MODULES_DIR=$modules/tree WEB_CONTENT_SOURCE=$2 "$ROOT/scripts/deploy/livehost.sh" deploy >&2
     rm -rf "$modules"
     took "livehost deploy (modules and content)" "$t"

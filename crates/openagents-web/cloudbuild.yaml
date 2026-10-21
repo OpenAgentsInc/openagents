@@ -97,29 +97,52 @@ steps:
         exec bash scripts/deploy/cloud-buildx.sh crates/openagents-web/Dockerfile \
           us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG} \
           openagents-web --build-arg OPENAGENTS_COMMIT=${_COMMIT}
-  # The browser modules as the image's /srv lays them out (the Dockerfile's
-  # `modules` target), for livehost: on the same builder, so after an image
-  # build every layer is already there.
+  # The browser modules as the image's /srv lays them out, for livehost
+  # (scripts/deploy/web.sh, #12427): the Dockerfile's `modules` target for a
+  # modules-only build, or else /srv from the image just pushed. (BuildKit's
+  # cache can't be trusted to still hold the image build's module layers.)
   - name: gcr.io/cloud-builders/docker
     entrypoint: bash
     args:
-      - scripts/deploy/cloud-buildx.sh
-      - crates/openagents-web/Dockerfile
-      - type=tar,dest=/workspace/modules.tar
-      - openagents-web
-      - --target
-      - modules
-      - --build-arg
-      - OA_STAGING_BUILD=${_STAGING_FAST}
+      - -c
+      - |
+        set -euo pipefail
+        started=$$(date +%s)
+        if [ "${_MODULES_ONLY}" = 1 ]; then
+          bash scripts/deploy/cloud-buildx.sh crates/openagents-web/Dockerfile \
+            type=local,dest=/workspace/modules openagents-web \
+            --target modules --build-arg OA_STAGING_BUILD=${_STAGING_FAST}
+        else
+          image=us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
+          docker pull -q "$$image" > /dev/null
+          container=$$(docker create "$$image")
+          docker cp "$$container:/srv" /workspace/modules
+          docker rm "$$container" > /dev/null
+        fi
+        echo "modules: /srv in $$(( $$(date +%s) - started )) s"
+  # Each file once by its SHA-256 under web-modules/blobs/, and an index
+  # (`SHA256 BYTES MODE PATH` a line) at web-modules/sets/TAG.index, so a
+  # deploy downloads only files it doesn't have.
   - name: gcr.io/cloud-builders/gcloud
     entrypoint: bash
     args:
       - -c
       - |
-        set -e
-        gcloud storage cp /workspace/modules.tar \
-          "gs://openagentsgemini-rust-build-cache/web-modules/sets/${_TAG}.tar"
-        echo "modules: $$(du -h /workspace/modules.tar | cut -f1) at web-modules/sets/${_TAG}.tar"
+        set -euo pipefail
+        started=$$(date +%s)
+        mkdir -p /workspace/blobs
+        cd /workspace/modules
+        find . -type f -print0 | xargs -0 sha256sum | sed 's|  \./| |' | LC_ALL=C sort -k2 > /tmp/sums
+        : > /workspace/index.txt
+        while read -r sum path; do
+          ln -f "$$path" "/workspace/blobs/$$sum"
+          mode=-
+          if [ -x "$$path" ]; then mode=x; fi
+          printf '%s %s %s %s\n' "$$sum" "$$(stat -c %s "$$path")" "$$mode" "$$path" >> /workspace/index.txt
+        done < /tmp/sums
+        gcloud storage rsync --no-clobber /workspace/blobs gs://openagentsgemini-rust-build-cache/web-modules/blobs
+        gcloud storage cp /workspace/index.txt "gs://openagentsgemini-rust-build-cache/web-modules/sets/${_TAG}.index"
+        echo "modules: $$(wc -l < /workspace/index.txt) files, $$(du -sh /workspace/modules | cut -f1), indexed as web-modules/sets/${_TAG}.index in $$(( $$(date +%s) - started )) s"
 substitutions:
   _TAG: latest
   # A commit on GitHub to fetch the source from; empty to use the upload.

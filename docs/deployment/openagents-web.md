@@ -1368,9 +1368,33 @@ in its serving revision) to REF:
   `crates/openagents-ui/static/`). `web.sh` runs `livehost.sh deploy` with
   REF's content (`WEB_CONTENT_SOURCE`), waits until staging serves a changed
   guide, and runs the smoke. No image is built and no revision is made.
+- **Modules:** every change is in a browser module's inputs or the content
+  tier, and none is in the server's. Each build records its inputs as
+  `web-modules/NAME/inputs-latest` (the server's too, as `server`), and a
+  change in neither, such as `Cargo.lock` or a build script, needs the
+  image. `web.sh` submits `cloudbuild.yaml` with `_MODULES_ONLY=1`, which
+  builds only the Dockerfile's `modules` target (the image's `/srv` layout)
+  with the staging-only settings (`_STAGING_FAST=1`,
+  `scripts/deploy/staging-build-env.sh`; `WEB_MODULES_FAST=0` keeps the
+  production settings), and indexes it as `web-modules/sets/mod-SHA.index`.
+  It then runs `livehost.sh deploy` with those modules
+  (`LIVEHOST_MODULES_DIR`) and REF's content, and smokes. Staging's server
+  reads `modules/<path under /srv>/` from the manifest first.
 - **Image:** anything else. Unchanged modules come from the module cache and
   an unchanged server from kache, and `web.sh` prints which modules were
-  rebuilt. `WEB_PATH=image` always takes this path.
+  rebuilt. Every image build also indexes its `/srv` as
+  `web-modules/sets/stg-SHA.index`, and after the staging deploy `web.sh`
+  publishes them with the content, so the manifest never hides the image's
+  newer copies. `WEB_PATH=image` always takes this path.
+
+A modules index lists `SHA256 BYTES MODE PATH` for every file under `/srv`;
+each file is stored once as `web-modules/blobs/SHA256`. `web.sh` keeps the
+blobs it has downloaded in its state directory
+(`~/.local/state/openagents-deploy/module-blobs`), so a deploy downloads
+only new files (about 1 GB for the first one).
+
+The modules and content paths never touch production: production follows
+no livehost pointer, and `promote` takes an image digest as before.
 
 ## 2026-10-21: content deploys from livehost on staging (#12435)
 
