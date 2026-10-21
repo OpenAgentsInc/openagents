@@ -30,7 +30,8 @@ No existing result becomes a pass through this revision.
 **Launch scope revision, 2026-10-21 (owner decision):** the launch uses the
 short served profile: prompts of up to **2,872 tokens** (the checked
 four-stage CUDA budget, #12408), an 8,192-position context, a 4,096-token
-output cap, a 75 s step limit, and a 600 s deadline (W14). For G1 and G2,
+output cap, a 75 s step limit (150 s for the prompt's step, a correction
+recorded under the gate progress below), and a 600 s deadline (W14). For G1 and G2,
 "complete declared coverage" means coverage of that profile: the oracle's
 chat, code and 2k prompts (p1–p3, all within 2,872 tokens), the edge cases,
 and the holdout, each within the profile. The 19,989-token p4 prompt and
@@ -203,6 +204,21 @@ Gate progress (2026-10-21):
   `answer_profile` in its inert `meta`. These are thinking-mode answers, so
   none pairs with the oracle's chat-mode p2. Receipt:
   [`deepseek-v41-w14-answer-profile-2026-10-21.json`](verification/deepseek-v41-w14-answer-profile-2026-10-21.json).
+- **Correction to W14's frozen profile (W16, #12403, 2026-10-21): the
+  prompt step gets its own 150 s limit.** On the pinned one-quad group
+  (worker bundle `185eb68c…`), an exact 2,872-token thinking-mode prompt
+  failed after 79.8 s: "step 0 made no progress before its deadline",
+  with no token delivered, and the head replaced the last stage. An exact
+  2,873-token prompt was refused before any stage ran, as specified. The
+  prompt is one step that the four stages prefill in turn, at about 33 ms
+  a prompt token in all, so 2,872 tokens need about 95 s, while the step
+  limit is 75 s. `pylon cloud up --prefill-secs N` (1 to 300, at least the
+  step limit) now bounds the steps before the first answer token
+  separately; decode steps keep 75 s. The launch uses 150 s. The worst
+  case, about 95 s of prompt plus 4,096 tokens at about 27 tokens/s, is
+  about 250 s, inside the 600 s deadline. The prompt bound (2,872 tokens),
+  the output bound (4,096 tokens), and the deadline (600 s) are unchanged.
+  This correction precedes the qualified W14 rerun.
 - **G3, attention kernels (W5, #12392), RTX 4080; SM120 below.** Checked against
   the CPU path's default `ReferenceBf16` order (window rows oldest first);
   the `ReferenceBf16Tp8` order is W7's choice. Tolerances were fixed before

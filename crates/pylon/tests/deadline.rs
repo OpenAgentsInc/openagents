@@ -631,6 +631,7 @@ fn stage_group(root: &std::path::Path) -> StageGroupConfig {
         transport: Transport::Front,
         links: LinkPolicy::default(),
         step_timeout: Duration::from_millis(1_500),
+        prefill_timeout: None,
         health_timeout: Duration::from_millis(600),
         startup_timeout: Duration::from_secs(5),
         stop_timeout: Duration::from_millis(800),

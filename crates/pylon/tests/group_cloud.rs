@@ -1406,3 +1406,34 @@ fn the_stage_launcher_waits_for_its_machine() {
         );
     }
 }
+
+/// `--prefill-secs` gives the prompt's steps their own limit (W16, #12403),
+/// from the step limit up to 300 s, and the lane carries it to the head.
+#[test]
+fn a_cloud_group_takes_a_prompt_step_limit() {
+    let parse = |words: &[&str]| {
+        let words: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
+        cloud::parse_up(
+            &words,
+            &repo(),
+            Path::new("/home/me"),
+            "wss://relay.example",
+        )
+    };
+    let (up, _) = parse(&["one-quad", "--step-secs", "75"]).unwrap();
+    let lane = cloud::group_lane(&up, &cloud::plan(&up).unwrap());
+    assert!(
+        serde_json::to_value(&lane)
+            .unwrap()
+            .get("prefill_timeout_ms")
+            .is_none()
+    );
+    let (up, _) = parse(&["one-quad", "--step-secs", "75", "--prefill-secs", "150"]).unwrap();
+    let lane = cloud::group_lane(&up, &cloud::plan(&up).unwrap());
+    assert_eq!(lane.prefill_timeout_ms, Some(150_000));
+    let config = lane.stage_config();
+    assert_eq!(config.prefill_timeout, Some(Duration::from_secs(150)));
+    config.validate_settings().unwrap();
+    assert!(parse(&["one-quad", "--step-secs", "75", "--prefill-secs", "60"]).is_err());
+    assert!(parse(&["one-quad", "--prefill-secs", "301"]).is_err());
+}

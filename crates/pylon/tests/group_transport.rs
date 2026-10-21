@@ -76,6 +76,7 @@ impl Rig {
             transport,
             links: LinkPolicy::default(),
             step_timeout: Duration::from_millis(1500),
+            prefill_timeout: None,
             health_timeout: Duration::from_millis(800),
             startup_timeout: Duration::from_secs(8),
             stop_timeout: Duration::from_millis(800),

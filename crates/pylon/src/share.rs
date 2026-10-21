@@ -105,6 +105,10 @@ pub struct GroupLane {
     #[serde(default, skip_serializing_if = "is_default")]
     pub links: crate::stage_group::LinkPolicy,
     pub step_timeout_ms: u64,
+    /// The prompt's step limit, when it differs from `step_timeout_ms`
+    /// (W16, #12403). Left out otherwise, so older heads still read the file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefill_timeout_ms: Option<u64>,
     pub health_timeout_ms: u64,
     pub startup_timeout_ms: u64,
     pub stop_timeout_ms: u64,
@@ -141,6 +145,7 @@ impl GroupLane {
             transport: self.transport,
             links: self.links,
             step_timeout: ms(self.step_timeout_ms),
+            prefill_timeout: self.prefill_timeout_ms.map(ms),
             health_timeout: ms(self.health_timeout_ms),
             startup_timeout: ms(self.startup_timeout_ms),
             stop_timeout: ms(self.stop_timeout_ms),

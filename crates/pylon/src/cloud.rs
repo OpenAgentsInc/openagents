@@ -279,6 +279,9 @@ pub struct Up {
     /// How often the budget is checked against its cap.
     pub budget_every: Duration,
     pub step_timeout: Duration,
+    /// The prompt's step limit (`--prefill-secs`); `None` uses the step
+    /// limit.
+    pub prefill_timeout: Option<Duration>,
     pub startup_timeout: Duration,
     pub max_restarts: u32,
     /// Where stage state travels between stages.
@@ -333,6 +336,7 @@ impl Up {
             every: Duration::from_secs(1),
             budget_every: Duration::from_secs(60),
             step_timeout: Duration::from_secs(30),
+            prefill_timeout: None,
             startup_timeout: Duration::from_secs(900),
             max_restarts: 3,
             transport: Transport::Front,
@@ -986,6 +990,7 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
         transport: up.transport,
         links: crate::stage_group::LinkPolicy::default(),
         step_timeout_ms: millis(up.step_timeout),
+        prefill_timeout_ms: up.prefill_timeout.map(millis),
         health_timeout_ms: 10_000.min(millis(up.step_timeout)),
         startup_timeout_ms: millis(up.startup_timeout),
         // A killed CUDA stage frees about 75 GB of device memory before
@@ -1645,8 +1650,13 @@ checkout on the one host that allocates for the budget.
                             (the default) or its chat mode (chat).
       --ready-secs N        How long the launch waits for every stage to
                             load, weights copy included (default 1800).
-      --step-secs N         How long one step may take, a long prompt's
-                            prefill included (default 30, at most 75).
+      --step-secs N         How long one step may take (default 30, at
+                            most 75).
+      --prefill-secs N      How long the prompt's steps may take, before
+                            the first answer token (default the step
+                            limit, at most 300): every stage prefills in
+                            turn, about 33 ms a prompt token on four
+                            RTX PRO 6000 stages.
       --allow NPUB          A key that may send jobs (repeatable); default
                             any key.
       --relay URL           The relay (default wss://relay.openagents.com).
@@ -1725,6 +1735,7 @@ pub fn parse_up(
     let max_output = take_number(&mut words, "--max-output-tokens")?;
     let ready = take_number(&mut words, "--ready-secs")?;
     let step = take_number(&mut words, "--step-secs")?;
+    let prefill = take_number(&mut words, "--prefill-secs")?;
     let temperature = value(&mut words, "--temperature")?;
     let top_p = value(&mut words, "--top-p")?;
     let mode = value(&mut words, "--mode")?;
@@ -1858,6 +1869,15 @@ pub fn parse_up(
             return Err("--step-secs takes 1 to 75".into());
         }
         up.step_timeout = Duration::from_secs(u64::from(step));
+    }
+    if let Some(prefill) = prefill {
+        // The prompt's steps, which every stage prefills in turn (W16).
+        if !(1..=300).contains(&prefill)
+            || Duration::from_secs(u64::from(prefill)) < up.step_timeout
+        {
+            return Err("--prefill-secs takes the step limit up to 300".into());
+        }
+        up.prefill_timeout = Some(Duration::from_secs(u64::from(prefill)));
     }
     if !allow_any && !allow.is_empty() {
         let mut keys = BTreeSet::new();

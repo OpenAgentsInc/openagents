@@ -21,7 +21,8 @@ frame twice, "partition" stops reading the inbound link at a step while
 control stays up, "late-link" (milliseconds) has a forked copy reconnect to
 the next stage with the old generation's key, "chunks" (on the first stage)
 splits step zero into that many frames, and "link-slow" (milliseconds)
-delays each inbound frame.
+delays each inbound frame. "prefill-slow" (milliseconds) delays only step
+zero, the prompt's step.
 """
 
 import argparse
@@ -409,7 +410,10 @@ def worker():
             connection.shutdown(socket.SHUT_RDWR)
             while True:
                 time.sleep(1)
-        until = time.monotonic() + int(text("slow") or 0) / 1000
+        slow = int(text("slow") or 0)
+        if step == 0:
+            slow += int(text("prefill-slow") or 0)
+        until = time.monotonic() + slow / 1000
         while time.monotonic() < until and not stop_requested(request):
             time.sleep(0.005)
         if stop_requested(request):

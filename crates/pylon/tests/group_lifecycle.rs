@@ -78,6 +78,7 @@ impl Rig {
             transport: Transport::Front,
             links: LinkPolicy::default(),
             step_timeout: Duration::from_millis(1500),
+            prefill_timeout: None,
             health_timeout: Duration::from_millis(600),
             startup_timeout: Duration::from_secs(5),
             stop_timeout: Duration::from_millis(600),
@@ -864,5 +865,43 @@ async fn the_prompt_reaches_the_first_stage_and_the_last_stage_can_end_the_answe
     assert_eq!(prompts[0]["prompt"], prompt);
     // The group takes the next request.
     assert_eq!(rig.complete(2).await, toks(0..2));
+    rig.close().await;
+}
+
+/// The prompt's step has its own limit (W16, #12403): every stage prefills
+/// in turn, so a long prompt takes longer than a decode step. Without it the
+/// slow prompt fails a stage; with it the answer completes, and the decode
+/// steps keep the step limit.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_slow_prompt_step_has_its_own_limit() {
+    let rig = Rig::start(&[("prefill-slow-s1", "2500")]).await;
+    rig.ready(1).await;
+    let run = rig.group().generate(3, sampling()).await.unwrap();
+    let failure = run.done.await.unwrap().unwrap_err();
+    assert!(
+        failure.reason.contains("step 0 made no progress"),
+        "{failure:?}"
+    );
+    assert_eq!(failure.delivered, 0);
+    rig.close().await;
+
+    let rig = Rig::with(&[("prefill-slow-s1", "2500")], |config| {
+        config.prefill_timeout = Some(Duration::from_secs(5));
+    })
+    .await;
+    rig.ready(1).await;
+    assert_eq!(rig.complete(3).await, toks(0..3));
+    assert_eq!(rig.status().generation, 1, "no stage was replaced");
+    rig.close().await;
+
+    // The prompt limit never stretches a decode step.
+    let rig = Rig::with(&[("slow-s1", "2000")], |config| {
+        config.prefill_timeout = Some(Duration::from_secs(5));
+    })
+    .await;
+    rig.ready(1).await;
+    let run = rig.group().generate(3, sampling()).await.unwrap();
+    let failure = run.done.await.unwrap().unwrap_err();
+    assert!(failure.reason.contains("made no progress"), "{failure:?}");
     rig.close().await;
 }

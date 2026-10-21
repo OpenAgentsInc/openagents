@@ -543,6 +543,10 @@ pub struct StageGroupConfig {
     /// How long one stage may take to acknowledge one step; under
     /// [`Transport::Direct`], how long the whole chain may take.
     pub step_timeout: Duration,
+    /// How long the prompt's steps may take, before the first answer token
+    /// (W16, #12403): the stages prefill one after another, so a long prompt
+    /// takes longer than a decode step. `None` uses `step_timeout`.
+    pub prefill_timeout: Option<Duration>,
     /// How long a stage may take to answer a health ping.
     pub health_timeout: Duration,
     /// How long a started or fenced stage may take to become ready.
@@ -609,6 +613,12 @@ impl StageGroupConfig {
         }
         let ms = Duration::from_millis;
         let secs = Duration::from_secs;
+        if self
+            .prefill_timeout
+            .is_some_and(|p| !(self.step_timeout..=secs(300)).contains(&p))
+        {
+            return Err("use a prompt step limit from the step limit up to 300 seconds".into());
+        }
         if !(ms(10)..=secs(75)).contains(&self.step_timeout)
             || !(ms(10)..=secs(30)).contains(&self.health_timeout)
             || !(ms(10)..=secs(900)).contains(&self.startup_timeout)
@@ -2499,7 +2509,16 @@ mod runtime {
                     if active.tokens.is_closed() {
                         return self.cancel().await;
                     }
-                    if sent.elapsed() >= self.config.step_timeout {
+                    // A step before the first answer token is part of the
+                    // prompt, which every stage prefills in turn.
+                    let limit = if active.delivered == 0 {
+                        self.config
+                            .prefill_timeout
+                            .unwrap_or(self.config.step_timeout)
+                    } else {
+                        self.config.step_timeout
+                    };
+                    if sent.elapsed() >= limit {
                         let (mut index, step) = self.fence.expected().unwrap_or((0, 0));
                         if self.direct() {
                             // The step stopped at the first stage that
@@ -2697,6 +2716,7 @@ mod tests {
             transport: Transport::Front,
             links: LinkPolicy::default(),
             step_timeout: Duration::from_secs(1),
+            prefill_timeout: None,
             health_timeout: Duration::from_secs(1),
             startup_timeout: Duration::from_secs(5),
             stop_timeout: Duration::from_secs(1),

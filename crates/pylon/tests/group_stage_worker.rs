@@ -251,6 +251,7 @@ impl Rig {
             transport: Transport::Front,
             links: LinkPolicy::default(),
             step_timeout: Duration::from_secs(10),
+            prefill_timeout: None,
             health_timeout: Duration::from_millis(800),
             startup_timeout: Duration::from_secs(20),
             stop_timeout: Duration::from_millis(800),
