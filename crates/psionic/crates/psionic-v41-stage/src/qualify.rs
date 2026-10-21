@@ -372,6 +372,8 @@ struct Group {
     profile: String,
     build: String,
     executable: String,
+    /// Where the stages write their event logs.
+    record: PathBuf,
 }
 
 impl Drop for Group {
@@ -485,6 +487,7 @@ impl Group {
             profile: String::new(),
             build: String::new(),
             executable: String::new(),
+            record: record.to_owned(),
         };
         while writers.iter().any(Option::is_none) {
             if Instant::now() > deadline {
@@ -623,7 +626,14 @@ impl Group {
         let deadline = Instant::now() + self.timeout;
         while acked.len() < stages {
             let left = deadline.saturating_duration_since(Instant::now());
-            match self.events.recv_timeout(left.max(Duration::from_millis(1))) {
+            if let Some(reason) = self.refusal(request, step) {
+                // A stage refused the step's state: it will never answer.
+                return Err(refused(format!("step {step} of {request}: {reason}")));
+            }
+            let wait = left
+                .min(Duration::from_secs(5))
+                .max(Duration::from_millis(1));
+            match self.events.recv_timeout(wait) {
                 Ok((i, v)) => {
                     if v["kind"] == "ack"
                         && v["request_id"].as_str() == Some(request)
@@ -636,6 +646,7 @@ impl Group {
                         }
                     }
                 }
+                Err(RecvTimeoutError::Timeout) if Instant::now() < deadline => {}
                 Err(RecvTimeoutError::Timeout) => {
                     return Err(refused(format!(
                         "step {step} of {request}: stages {:?} didn't answer in {:?}",
@@ -653,6 +664,23 @@ impl Group {
         // Every stage's files: the last stage's logits, every stage's observations.
         last["records"] = json!(records);
         Ok(last)
+    }
+}
+
+impl Group {
+    /// The reason a stage refused this step, from its event log.
+    fn refusal(&self, request: &str, step: u64) -> Option<String> {
+        (0..self.writers.len()).find_map(|i| {
+            let path = self.record.join(format!("s{i}.events.jsonl"));
+            let text = std::fs::read_to_string(path).ok()?;
+            text.lines().find_map(|line| {
+                let v: Value = serde_json::from_str(line).ok()?;
+                (v["event"] == "refused"
+                    && v["request"].as_str() == Some(request)
+                    && v["step"].as_u64() == Some(step))
+                .then(|| format!("stage {i} refused: {}", v["reason"].as_str().unwrap_or("")))
+            })
+        })
     }
 }
 
@@ -1090,7 +1118,15 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         if opts.control == Some(Control::StaleCache) {
             group.step(&format!("{case}-warm"), 0, Some(&prompt), None)?;
         }
-        let rec = run_case(&mut group, &record, case, &prompt, &generated, "")?;
+        let rec = match run_case(&mut group, &record, case, &prompt, &generated, "") {
+            Ok(rec) => rec,
+            // A negative control that the stages refuse is detected, not an error.
+            Err(refusal) if opts.control.is_some() => {
+                reports.push(json!({"case": case, "refused": refusal.to_string()}));
+                break;
+            }
+            Err(refusal) => return Err(refusal),
+        };
         // The token each recorded position continues with.
         let mut next_tokens = BTreeMap::new();
         next_tokens.insert("last".to_owned(), generated[0]);
@@ -1304,6 +1340,10 @@ pub fn derive_policy(reference: &[Value], controls: &[Value]) -> Result<(Policy,
         let control = report["control"].as_str().unwrap_or("unnamed").to_owned();
         let mut failures = 0usize;
         for case in report["cases"].as_array().into_iter().flatten() {
+            if case["refused"].is_string() {
+                // The stages' exact checks refused the defect's state.
+                failures += 1;
+            }
             for mode in case["modes"].as_array().into_iter().flatten() {
                 let ps: Vec<PositionResult> = mode["positions"]
                     .as_array()
