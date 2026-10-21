@@ -9,6 +9,7 @@ import shutil
 from pathlib import Path
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 BUDGET = 1_500_000
 
@@ -100,7 +101,12 @@ def package(directory, name, *later):
     content."""
     directory = Path(directory)
     wasm = name + "_bg.wasm"
-    measured = [measure(directory, module + "_bg.wasm") for module in (name, *later)]
+    # brotli -q 11 takes about 12 s a module on one core; a page has dozens
+    # (#12417), so measure them side by side.
+    modules = [module + "_bg.wasm" for module in (name, *later)]
+    workers = int(os.environ.get("WEB_BUILD_JOBS") or os.cpu_count() or 4)
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        measured = list(pool.map(lambda module: measure(directory, module), modules))
     report = {"commit": commit(), **measured[0], "budget_bytes": budget(measured[0]["module"])}
     if later:
         report["later"] = measured[1:]

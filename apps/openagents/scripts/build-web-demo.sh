@@ -81,6 +81,7 @@ cp "$crate/start.js" "$out/start.js"
 if [ "$app_name" = demo ]; then
   cp "$crate/assets/fonts/"*.otf "$crate/assets/fonts/"*.ttf "$out/"
 fi
+wait_renderers
 python3 "$app/scripts/package-web-build.py" "$out" "$name" "${name}_webgl"
 if [ "$app_name" = agent-graph ]; then
   first="$out/first-frame"
