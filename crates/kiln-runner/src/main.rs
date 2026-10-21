@@ -49,6 +49,7 @@ struct Config {
     repo_url: String,
     timeout: Duration,
     jobs: u32,
+    announce: bool,
 }
 
 fn unix() -> u64 {
@@ -177,6 +178,15 @@ fn stage(config: &Config, job: &Job) -> Result<(), String> {
         &["checkout", "--quiet", "--detach", "--force", &job.base],
     )?;
     git(&work, &["clean", "-fdxq"])?;
+    if let Some(patch) = &job.patch {
+        // Apply the signed patch itself, so the check is of what reviewers read.
+        let file = config.state.join("apply.patch");
+        std::fs::write(&file, &patch.content).map_err(|e| e.to_string())?;
+        git(
+            &work,
+            &["apply", "--whitespace=nowarn", &file.to_string_lossy()],
+        )?;
+    }
     for (path, content) in &job.files {
         let file = work.join(path);
         if let Some(parent) = file.parent() {
@@ -220,6 +230,7 @@ fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
         summary,
         log: String::new(),
         ms: started.elapsed().as_millis() as u64,
+        check: None,
     };
     if let Err(e) = stage(config, job) {
         return stopped(format!("could not prepare the workspace: {e}"));
@@ -351,6 +362,7 @@ fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
         summary,
         log: remote::trim_log(&text, remote::MAX_LOG_BYTES),
         ms: started.elapsed().as_millis() as u64,
+        check: None,
     }
 }
 
@@ -377,6 +389,7 @@ async fn main() {
         repo_url: "https://github.com/OpenAgentsInc/openagents.git".into(),
         timeout: Duration::from_secs(600),
         jobs: 4,
+        announce: true,
     };
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -389,9 +402,10 @@ async fn main() {
             "--repo" => config.repo_url = value(),
             "--timeout" => config.timeout = Duration::from_secs(value().parse().unwrap_or(600)),
             "--jobs" => config.jobs = value().parse().unwrap_or(4).clamp(1, 6),
+            "--no-announce" => config.announce = false,
             _ => {
                 eprintln!(
-                    "usage: kiln-runner --state DIR [--relay URL] [--crates a,b] [--reference CHECKOUT] [--timeout SECS] [--jobs N]"
+                    "usage: kiln-runner --state DIR [--relay URL] [--crates a,b] [--reference CHECKOUT] [--timeout SECS] [--jobs N] [--no-announce]"
                 );
                 std::process::exit(2);
             }
@@ -421,6 +435,14 @@ async fn main() {
         config.crates.join(", "),
         config.relay
     );
+    let repo = format!(
+        "{}:{}:{}",
+        kiln::patch::REPO_KIND,
+        key.pubkey(),
+        kiln::patch::DEMO_REPO_ID
+    );
+    println!("repository {repo}");
+    let _ = std::fs::write(config.state.join("repository"), format!("{repo}\n"));
     let config = Arc::new(config);
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Event>();
     let busy = Arc::new(AtomicBool::new(false));
@@ -453,6 +475,13 @@ async fn main() {
         for event in pending.drain(..) {
             let _ = conn.send(json!(["EVENT", event])).await;
         }
+        if config.announce {
+            // The demo's NIP-34 repository announcement, under this runner's
+            // key; the owner's `openagents` announcement is the owner's.
+            let tags = kiln::patch::announcement_tags(&[key.pubkey()], &config.relay);
+            let announcement = key.sign(kiln::patch::REPO_KIND, tags, String::new(), unix());
+            let _ = conn.send(json!(["EVENT", announcement])).await;
+        }
         loop {
             tokio::select! {
                 frame = conn.next() => {
@@ -474,7 +503,13 @@ async fn main() {
                         .and_then(|body| body["task"].as_str().map(str::to_string))
                         .ok_or_else(|| "the request does not open".to_string())
                         .and_then(|task| serde_json::from_str::<Job>(&task).map_err(|e| format!("the task is not a job: {e}")))
-                        .and_then(|job| job.check(&config.crates).map(|()| job));
+                        .and_then(|job| job.check(&config.crates).map(|()| job))
+                        .and_then(|job| match &job.patch {
+                            Some(patch) if nostr::domain::open_patch(patch).ok().as_deref() != Some(repo.as_str()) => {
+                                Err("the patch names another repository".to_string())
+                            }
+                            _ => Ok(job),
+                        });
                     let job = match job {
                         Ok(job) => job,
                         Err(why) => {
@@ -493,6 +528,7 @@ async fn main() {
                     }
                     println!("job {} from {}: cargo {} with {} files at {}", &request.id[..8], &request.pubkey[..8], job.args.join(" "), job.files.len(), &job.base[..10]);
                     let (key, config, out, busy) = (key.clone(), config.clone(), out_tx.clone(), busy.clone());
+                    let relay_url = config.relay.clone();
                     std::thread::spawn(move || {
                         let feedback = |note: Option<String>| {
                             let mut body = json!({"v": 1, "requires": [], "type": "status", "status": "processing"});
@@ -504,7 +540,25 @@ async fn main() {
                             }
                         };
                         feedback(Some("starting".into()));
-                        let outcome = run_cargo(&config, &job, &|line| feedback(Some(line)));
+                        let mut outcome = run_cargo(&config, &job, &|line| feedback(Some(line)));
+                        if let Some(patch) = &job.patch {
+                            let passed = outcome.code == Some(0);
+                            let digest = kiln::sha256_hex(patch.content.as_bytes());
+                            let mut tags = kiln::patch::check_tags(&patch.id, &patch.pubkey, &relay_url, passed);
+                            tags.push(Tag::new(vec!["kiln-base".into(), job.base.clone()]));
+                            tags.push(Tag::new(vec!["kiln-patch-sha256".into(), digest.clone()]));
+                            let content = format!(
+                                "{} `cargo {}`: {}\n\nApplied this patch (sha256 {digest}) with `git apply` at {} and ran it offline in a sandbox on kiln-runner, in {:.1} s.",
+                                if passed { "Passed" } else { "Failed" },
+                                job.args.join(" "),
+                                outcome.summary,
+                                job.base,
+                                outcome.ms as f64 / 1000.0
+                            );
+                            let comment = key.sign(kiln::patch::COMMENT_KIND, tags, content, unix());
+                            outcome.check = Some(comment.id.clone());
+                            let _ = out.send(comment);
+                        }
                         println!("job {}: {} in {} ms", &request.id[..8], outcome.summary, outcome.ms);
                         let text = serde_json::to_string(&outcome).unwrap_or_default();
                         let body = json!({"v": 1, "requires": [], "type": "result", "text": text, "model": "kiln/cargo"});

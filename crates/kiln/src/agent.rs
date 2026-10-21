@@ -59,7 +59,7 @@ Each command is one of:
 {"patch": "PATH", "search": "exact old text", "replace": "new text"}
 {"done": "what you did, in one sentence"}
 
-You see only a small window: never cat a whole source file. Find places with grep, then read around them with view. Prefer patch for edits to existing files (don't include view's line numbers in the search text): copy the search text exactly from view's output, including indentation, and make it long enough to be unique. Read the code you change first. Keep the crate's style and documentation comments. Work in small steps, run the tests after each change, read the failures, and fix them. Say done only after `cargo test` passes."#;
+You see only a small window: never cat a whole source file. Find places with grep, then read around them with view. Prefer patch for edits to existing files (don't include view's line numbers in the search text): copy the search text exactly from view's output, including indentation, and make it long enough to be unique. Read the code you change first. Keep the crate's style and documentation comments. Work in small steps, run the tests after each change, read the failures, and fix them. When `cargo test` passes, publish the change, then say done."#;
 
 /// One command, as the model wrote it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +75,11 @@ pub enum Command {
         replace: String,
     },
     Done(String),
+    /// Publish the workspace's change as a NIP-34 patch.
+    Publish {
+        subject: String,
+        body: String,
+    },
 }
 
 /// A tool run: the argument vector (tool first) and standard input.
@@ -166,9 +171,12 @@ fn json_object(text: &str) -> Option<Value> {
     if let Ok(value) = serde_json::from_str::<Value>(text) {
         return value.is_object().then_some(value);
     }
+    // The first complete object; a model sometimes writes its next step's
+    // object after this one.
     let start = text.find('{')?;
-    let end = text.rfind('}')?;
-    serde_json::from_str::<Value>(&text[start..=end])
+    serde_json::Deserializer::from_str(&text[start..])
+        .into_iter::<Value>()
+        .next()?
         .ok()
         .filter(Value::is_object)
 }
@@ -209,6 +217,11 @@ pub fn parse(reply: &str) -> Result<Plan, String> {
                 search: text(&c, "search").ok_or("a patch has no \"search\"")?,
                 replace: text(&c, "replace").unwrap_or_default(),
             }
+        } else if let Some(subject) = text(&c, "publish") {
+            Command::Publish {
+                subject,
+                body: text(&c, "body").unwrap_or_default(),
+            }
         } else if let Some(summary) = text(&c, "done") {
             Command::Done(summary)
         } else {
@@ -234,6 +247,7 @@ impl Command {
             Self::Write { path, content } => format!("write {path} ({} bytes)", content.len()),
             Self::Patch { path, .. } => format!("patch {path}"),
             Self::Done(summary) => format!("done: {summary}"),
+            Self::Publish { subject, .. } => format!("publish patch: {subject}"),
         }
     }
 
@@ -271,7 +285,7 @@ impl Command {
                 stdin: format!("<<<<<<< SEARCH\n{search}\n=======\n{replace}\n>>>>>>> REPLACE\n")
                     .into_bytes(),
             })),
-            Self::Done(_) => Ok(None),
+            Self::Done(_) | Self::Publish { .. } => Ok(None),
         }
     }
 }
@@ -428,6 +442,8 @@ mod tests {
         assert_eq!(plan.commands[3].call().unwrap(), None);
         assert!(Command::Run("bash -c x".into()).call().is_err());
         assert!(Command::Run("cargo test -p x".into()).call().is_ok());
+        let two = "{\"thought\":\"a\",\"commands\":[{\"run\":\"ls\"}]}\n{\"thought\":\"b\",\"commands\":[{\"run\":\"test\"}]}";
+        assert_eq!(parse(two).unwrap().thought, "a");
     }
 
     #[test]

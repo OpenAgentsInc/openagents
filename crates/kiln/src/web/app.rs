@@ -58,6 +58,10 @@ struct App {
     opfs_base: RefCell<Option<FileSystemFileHandle>>,
     /// The connection remote Cargo runs use.
     runner_relay: RefCell<Option<Relay>>,
+    /// The digest of the crate's files at the last passing `cargo test`.
+    green: RefCell<Option<String>>,
+    /// The NIP-34 repository address patches go to, from `config.json`.
+    repo_address: RefCell<String>,
     key: Key,
     worker: RefCell<Option<Worker>>,
     busy: Cell<bool>,
@@ -93,6 +97,8 @@ pub async fn run() {
         base: RefCell::new(Vfs::default()),
         opfs_base: RefCell::new(None),
         runner_relay: RefCell::new(None),
+        green: RefCell::new(None),
+        repo_address: RefCell::new(String::new()),
         key,
         worker: RefCell::new(None),
         busy: Cell::new(false),
@@ -120,6 +126,9 @@ pub async fn run() {
     {
         let input: HtmlInputElement = el(&app.doc, "runner").unchecked_into();
         input.set_value(runner);
+        if let Some(repo) = config["repo"].as_str() {
+            *app.repo_address.borrow_mut() = repo.to_string();
+        }
     }
     if let Some(runner) = param("runner") {
         let input: HtmlInputElement = el(&app.doc, "runner").unchecked_into();
@@ -933,6 +942,12 @@ impl App {
                         );
                         continue;
                     }
+                    if error.message.contains("rate_limited") || error.message.contains("busy") {
+                        // The pylon is full, not broken: wait and ask again.
+                        sleep(5_000).await;
+                        book_at = f64::NEG_INFINITY;
+                        continue;
+                    }
                     if let Some(pylon) = error.pylon {
                         failing.insert(pylon);
                     }
@@ -983,6 +998,13 @@ impl App {
                     agent.observe(command, 0, String::new());
                     self.log("done", &format!("Done: {summary}"));
                     break;
+                }
+                if let Command::Publish { subject, body } = command {
+                    self.log("cmd", &format!("$ {}", command.label()));
+                    let run = self.publish(subject, body).await;
+                    self.log(if run.code == 0 { "done" } else { "err" }, &run.output);
+                    agent.observe(command, run.code, run.output);
+                    continue;
                 }
                 if let Some(run) = self.run_command(command).await {
                     agent.observe(command, run.code, run.output);
@@ -1184,6 +1206,7 @@ impl App {
             args,
             files,
             deleted,
+            patch: None,
         };
         if let Err(e) = job.check(&crates) {
             return fail(e);
@@ -1231,6 +1254,9 @@ impl App {
             return fail("the runner's answer is not a result".into());
         };
         let wall = now_ms() - started;
+        if outcome.code == Some(0) && job.args[0] == "test" {
+            *self.green.borrow_mut() = Some(self.slice_digest(&repo));
+        }
         self.metrics.borrow_mut().runs.push(json!({
             "tool": format!("cargo {}", argv.get(1).map_or("", String::as_str)),
             "wall_ms": wall,
@@ -1253,7 +1279,165 @@ impl App {
     }
 }
 
-const MEMORY_STREAM_TASK: &str = "In crates/memory-stream/src/lib.rs, add a public function `half_life_hours() -> f64` with a doc comment: the number of hours after which `recency` falls to 0.5 under RECENCY_DECAY. Add a unit test in the existing tests module that checks `recency(half_life_hours())` is within 1e-9 of 0.5 and that the half-life is between 68 and 70 hours. Run `cargo test -p memory-stream` until it passes.";
+impl App {
+    /// The crate's files, by path: the workspace's, or with `base` the
+    /// untouched copy's.
+    fn slice_files(&self, repo: &Value, base: bool) -> std::collections::BTreeMap<String, String> {
+        let slice = format!("{}/", repo["slice"].as_str().unwrap_or_default());
+        let vfs = if base {
+            self.base.borrow()
+        } else {
+            self.vfs.borrow()
+        };
+        vfs.iter()
+            .filter(|(p, n)| !n.is_dir() && p.starts_with(&slice))
+            .map(|(p, _)| {
+                (
+                    p.clone(),
+                    String::from_utf8_lossy(vfs.read(p).unwrap_or_default()).into_owned(),
+                )
+            })
+            .collect()
+    }
+
+    fn slice_digest(&self, repo: &Value) -> String {
+        let files = self.slice_files(repo, false);
+        crate::sha256_hex(serde_json::to_string(&files).unwrap_or_default().as_bytes())
+    }
+
+    /// Publish the crate's change as a NIP-34 patch (`1617`) signed by the
+    /// page's key, then have the runner apply that exact patch, test it, and
+    /// publish its check comment.
+    async fn publish(&self, subject: &str, body: &str) -> ToolRun {
+        let fail = |output: String| ToolRun { code: 1, output };
+        let Some(repo) = self.repo() else {
+            return fail("publish needs a crate loaded from the repository".into());
+        };
+        let address = self.repo_address.borrow().clone();
+        let Some(owner) = address.split(':').nth(1).map(str::to_string) else {
+            return fail("no repository to publish to; kiln-dev names it with --repo".into());
+        };
+        if self.green.borrow().as_deref() != Some(self.slice_digest(&repo).as_str()) {
+            return fail(
+                "run `cargo test` first: publish only a change whose tests just passed".into(),
+            );
+        }
+        let krate = repo["crates"][0].as_str().unwrap_or_default().to_string();
+        let commit = repo["commit"].as_str().unwrap_or_default().to_string();
+        let base = self.slice_files(&repo, true);
+        let current = self.slice_files(&repo, false);
+        let changes = crate::patch::changes(&base, &current);
+        if changes.is_empty() {
+            return fail("nothing changed, so there's nothing to publish".into());
+        }
+        let email = format!("{}@nostr", self.key.npub());
+        let text = crate::patch::format_patch(
+            &crate::patch::Header {
+                author: "Kiln agent",
+                email: &email,
+                subject,
+                body,
+                date: super::util::unix(),
+            },
+            &changes,
+        );
+        let found = crate::patch::secret_findings(&text);
+        if !found.is_empty() {
+            return fail(format!(
+                "not published: the patch seems to hold {}",
+                found.join(", ")
+            ));
+        }
+        if text.len() > crate::patch::MAX_PATCH_BYTES {
+            return fail("the patch is over 60 KB; NIP-34 wants a pull request for that".into());
+        }
+        let tags = crate::patch::patch_tags(&address, &owner, &commit, &krate);
+        let event = self
+            .key
+            .sign(crate::patch::PATCH_KIND, tags, text, super::util::unix());
+        let relay_url: HtmlInputElement = el(&self.doc, "relay").unchecked_into();
+        let relay_url = relay_url.value();
+        let mut relay = match self.runner_relay.borrow_mut().take() {
+            Some(relay) if !relay.closed => relay,
+            _ => match Relay::connect(&relay_url, &self.key).await {
+                Ok(relay) => relay,
+                Err(e) => return fail(e),
+            },
+        };
+        if let Err(e) = relay.publish(&event).await {
+            *self.runner_relay.borrow_mut() = Some(relay);
+            return fail(format!("not published: {e}"));
+        }
+        self.log(
+            "info",
+            &format!(
+                "Published patch {} to {relay_url}; the runner is checking it.",
+                &event.id[..12]
+            ),
+        );
+        let runner: HtmlInputElement = el(&self.doc, "runner").unchecked_into();
+        let runner = nostr_hex(runner.value().trim()).unwrap_or_default();
+        let job = crate::remote::Job {
+            v: crate::remote::JOB_V.into(),
+            base: commit,
+            args: vec!["test".into(), "-p".into(), krate],
+            files: std::collections::BTreeMap::new(),
+            deleted: Vec::new(),
+            patch: Some(event.clone()),
+        };
+        let body = json!({
+            "v": 1,
+            "requires": [],
+            "task": serde_json::to_string(&job).unwrap_or_default(),
+            "transcript": [],
+            "client": concat!("kiln ", env!("CARGO_PKG_VERSION")),
+        });
+        let line = self.doc.create_element("div").ok();
+        if let Some(line) = &line {
+            line.set_class_name("info");
+            let _ = el(&self.doc, "log").append_child(line);
+        }
+        let started = now_ms();
+        let progress = |note: Option<&str>| {
+            if let (Some(line), Some(note)) = (&line, note) {
+                line.set_text_content(Some(&format!(
+                    "runner check, {:.0} s: {note}",
+                    (now_ms() - started) / 1000.0
+                )));
+            }
+        };
+        let checked = relay
+            .exchange(&self.key, &runner, &body, REMOTE_WAIT_SECS, &progress)
+            .await;
+        *self.runner_relay.borrow_mut() = Some(relay);
+        let check = checked
+            .ok()
+            .and_then(|got| serde_json::from_str::<crate::remote::Outcome>(&got.text).ok());
+        let review = format!("review.html#{}", event.id);
+        if let Some(window) = web_sys::window() {
+            set(&window, "kilnPatch", event.id.clone());
+        }
+        if let Some(log) = self.doc.get_element_by_id("log")
+            && let Ok(link) = self.doc.create_element("a")
+        {
+            let _ = link.set_attribute("href", &review);
+            let _ = link.set_attribute("target", "_blank");
+            link.set_text_content(Some(&format!("Review patch {}", &event.id[..12])));
+            let _ = log.append_child(&link);
+        }
+        ToolRun {
+            code: 0,
+            output: format!(
+                "published patch {} ({} changed files); the runner's check: {}",
+                &event.id[..12],
+                changes.len(),
+                check.map_or_else(|| "no answer yet".to_string(), |c| c.summary)
+            ),
+        }
+    }
+}
+
+const MEMORY_STREAM_TASK: &str = "In crates/memory-stream/src/lib.rs, add a public function `half_life_hours() -> f64` with a doc comment: the number of hours after which `recency` falls to 0.5 under RECENCY_DECAY. Add a unit test in the existing tests module that checks `recency(half_life_hours())` is within 1e-9 of 0.5 and that the half-life is between 68 and 70 hours. Run `cargo test -p memory-stream` until it passes, then publish the change.";
 
 /// The package name in a `Cargo.toml`.
 fn crate_name(manifest: &str) -> Option<String> {
@@ -1279,6 +1463,12 @@ fn nostr_hex(text: &str) -> Option<String> {
     }
     let bytes = nostr::nip19::decode_npub(text).ok()?;
     Some(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// Fetch and parse a JSON document.
+pub(super) async fn fetch_json(url: &str) -> Result<Value, String> {
+    let bytes = fetch_bytes(url).await?;
+    serde_json::from_slice(&bytes).map_err(|e| e.to_string())
 }
 
 async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {

@@ -43,7 +43,7 @@ rm -rf "$out"
 mkdir -p "$out/tools" "$out/pkg"
 wasm-bindgen --target web --no-typescript --out-dir "$out/pkg" \
   "$CARGO_TARGET_DIR/wasm32-unknown-unknown/kiln-web/kiln.wasm"
-cp crates/kiln/www/index.html crates/kiln/www/worker.js "$out/"
+cp crates/kiln/www/index.html crates/kiln/www/review.html crates/kiln/www/worker.js "$out/"
 
 # Each tool is served as tools/<sha256>.wasm; the manifest names them.
 manifest="{\"tools\": {"

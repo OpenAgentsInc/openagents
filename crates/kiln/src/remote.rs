@@ -35,6 +35,11 @@ pub struct Job {
     /// Removed files, by repository path.
     #[serde(default)]
     pub deleted: Vec<String>,
+    /// A signed NIP-34 patch (`1617`) to apply instead of `files`: the
+    /// runner applies its text with `git apply`, runs the command, and
+    /// publishes a NIP-22 check comment on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub patch: Option<nostr::domain::Event>,
 }
 
 /// What a run produced.
@@ -49,6 +54,27 @@ pub struct Outcome {
     pub log: String,
     /// Wall time of the Cargo run.
     pub ms: u64,
+    /// The check comment the runner published, for a patch job.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub check: Option<String>,
+}
+
+/// The repository paths a format-patch text touches (`diff --git a/X b/Y`).
+#[must_use]
+pub fn patch_paths(text: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    for line in text.lines() {
+        if let Some(rest) = line.strip_prefix("diff --git a/")
+            && let Some((a, b)) = rest.split_once(" b/")
+        {
+            for p in [a, b] {
+                if !paths.iter().any(|q| q == p) {
+                    paths.push(p.to_string());
+                }
+            }
+        }
+    }
+    paths
 }
 
 /// Parse a `cargo` command line from the agent into its arguments.
@@ -114,7 +140,23 @@ impl Job {
         if bytes > MAX_FILE_BYTES {
             return Err(format!("the files are over {} KiB", MAX_FILE_BYTES / 1024));
         }
-        for path in self.files.keys().chain(&self.deleted) {
+        let mut touched: Vec<String> = self.files.keys().chain(&self.deleted).cloned().collect();
+        if let Some(patch) = &self.patch {
+            if !self.files.is_empty() || !self.deleted.is_empty() {
+                return Err("a patch job carries no other files".into());
+            }
+            if patch.kind != crate::patch::PATCH_KIND || patch.validate_crypto().is_err() {
+                return Err("the patch is not a signed kind 1617 event".into());
+            }
+            if patch.content.len() > crate::patch::MAX_PATCH_BYTES {
+                return Err("the patch is over 60 KB".into());
+            }
+            touched = patch_paths(&patch.content);
+            if touched.is_empty() {
+                return Err("the patch changes no files".into());
+            }
+        }
+        for path in &touched {
             let inside = crates
                 .iter()
                 .any(|c| path.starts_with(&format!("crates/{c}/")));
@@ -227,6 +269,7 @@ mod tests {
             args: words("test -p memory-stream"),
             files: BTreeMap::from([("crates/memory-stream/src/lib.rs".into(), "x".into())]),
             deleted: vec![],
+            patch: None,
         };
         assert!(job.check(&crates()).is_ok());
         job.files.insert(
@@ -254,6 +297,8 @@ mod tests {
         assert_eq!(summarize(Some(0), ok), "tests passed: 5 passed, 0 failed");
         let broken = "error[E0425]: cannot find value `x`\nerror: could not compile\n";
         assert_eq!(summarize(Some(101), broken), "did not compile: 2 errors");
+        let patch = "diff --git a/crates/x/src/lib.rs b/crates/x/src/lib.rs\n--- a\n";
+        assert_eq!(patch_paths(patch), vec!["crates/x/src/lib.rs"]);
         let trimmed = trim_log("   Compiling a v1\ntest a ... ok\ntest b ... FAILED\n", 100);
         assert_eq!(trimmed, "test b ... FAILED");
     }

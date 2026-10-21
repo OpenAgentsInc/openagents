@@ -124,6 +124,12 @@ impl Key {
         Ok(self.signer.sign(now, kind, tags, content))
     }
 
+    /// Sign a plain (unencrypted) event.
+    #[must_use]
+    pub fn sign(&self, kind: u16, tags: Vec<Tag>, content: String, now: u64) -> Event {
+        self.signer.sign(now, kind, tags, content)
+    }
+
     /// Decrypt an answer from its signer.
     ///
     /// # Errors

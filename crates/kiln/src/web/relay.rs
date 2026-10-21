@@ -167,6 +167,54 @@ impl Relay {
         let _ = self.ws.send_with_str(&value.to_string());
     }
 
+    /// Publish `event` and wait for the relay's `OK`.
+    pub async fn publish(&mut self, event: &Event) -> Result<(), String> {
+        self.send(&json!(["EVENT", event]));
+        let until = now_ms() + 10_000.0;
+        loop {
+            let left = (until - now_ms()) as i32;
+            let Some(frame) = self.next(left).await? else {
+                return Err("the relay did not confirm the event".into());
+            };
+            if frame[0] == "OK" && frame[1] == event.id.as_str() {
+                return if frame[2] == true {
+                    Ok(())
+                } else {
+                    Err(format!("the relay refused the event: {}", frame[3]))
+                };
+            }
+        }
+    }
+
+    /// Run one query and return the events up to `EOSE`.
+    pub async fn query(&mut self, sub: &str, filter: &Value) -> Result<Vec<Event>, String> {
+        self.send(&json!(["REQ", sub, filter]));
+        let mut events = Vec::new();
+        let until = now_ms() + 10_000.0;
+        loop {
+            let left = (until - now_ms()) as i32;
+            let Some(frame) = self.next(left).await? else {
+                break;
+            };
+            match frame[0].as_str() {
+                Some("EVENT") if frame[1] == sub => {
+                    if let Ok(event) = serde_json::from_value::<Event>(frame[2].clone())
+                        && event.validate_crypto().is_ok()
+                    {
+                        events.push(event);
+                    }
+                }
+                Some("EOSE") if frame[1] == sub => break,
+                Some("CLOSED") if frame[1] == sub => {
+                    return Err(format!("the relay closed the query: {}", frame[2]));
+                }
+                _ => {}
+            }
+        }
+        self.send(&json!(["CLOSE", sub]));
+        Ok(events)
+    }
+
     /// Read every beacon up to `EOSE`.
     pub async fn beacons(&mut self) -> Result<BeaconBook, String> {
         self.send(&json!(["REQ", "beacons", cj::beacon_filter()]));

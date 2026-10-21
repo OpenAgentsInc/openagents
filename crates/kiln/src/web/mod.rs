@@ -3,6 +3,7 @@
 
 mod app;
 mod relay;
+mod review;
 mod util;
 mod worker;
 
@@ -12,6 +13,12 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub fn start() {
     wasm_bindgen_futures::spawn_local(app::run());
+}
+
+/// Start the patch viewer (`review.html`).
+#[wasm_bindgen]
+pub fn start_review() {
+    wasm_bindgen_futures::spawn_local(review::run());
 }
 
 /// Run one tool in this worker. `message` holds `module` (a compiled
