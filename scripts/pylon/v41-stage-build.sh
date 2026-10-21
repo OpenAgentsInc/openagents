@@ -5,6 +5,7 @@
 #
 #   v41-stage-build.sh [build] [--host HOST] [--arch sm_NN] [--commit REV] [--dry-run]
 #   v41-stage-build.sh test [--host HOST] [--arch sm_NN] [--commit REV]
+#   v41-stage-build.sh pylon [--host HOST] [--commit REV]
 #
 # `build` (the default) builds the release binary for --arch (default
 # sm_120, the RTX PRO 6000 of a G4 machine) and uploads it with the group
@@ -17,6 +18,12 @@
 #
 # `test` runs the crate's tests with CUDA on the host's own GPU (--arch
 # defaults to the host's) and uploads nothing.
+#
+# `pylon` builds the `pylon` binary from the root workspace in the same
+# image, for a group head in the zone (`pylon cloud up --head stage0|vm
+# --pylon URL`), and uploads it as
+#
+#   gs://openagents-psionic-models/bin/pylon/COMMIT/pylon
 #
 # The build runs on HOST (default coderos-4080) over ssh, inside the
 # nvidia/cuda Ubuntu 24.04 image with CUDA 13.0, so the binary links the
@@ -40,7 +47,7 @@ host=coderos-4080
 arch=
 commit=HEAD
 dry=0
-if [[ ${1:-} == build || ${1:-} == test ]]; then
+if [[ ${1:-} == build || ${1:-} == test || ${1:-} == pylon ]]; then
   mode=$1
   shift
 fi
@@ -70,12 +77,23 @@ case ${arch:-sm_89} in
   *) echo "--arch takes sm_NN, such as sm_120" >&2; exit 2 ;;
 esac
 dest="$bucket/$short/$arch"
+# The root workspace's source and target stay apart from Psionic's.
+src_dir=src
+paths=(crates/psionic crates/stage-link Cargo.toml rust-toolchain.toml)
+if [[ $mode == pylon ]]; then
+  arch=
+  dest=gs://openagents-psionic-models/bin/pylon/$short
+  src_dir=src-pylon
+  paths=(Cargo.toml Cargo.lock rust-toolchain.toml crates ':!crates/psionic' vendor apps
+    support scripts nips)
+fi
 
 if [[ $dry == 1 ]]; then
   echo "commit  $sha"
   echo "host    $host ($image)"
-  echo "mode    $mode for ${arch:-the host GPU}"
+  [[ $mode == pylon ]] && echo "mode    pylon" || echo "mode    $mode for ${arch:-the host GPU}"
   [[ $mode == build ]] && echo "upload  $dest/psionic-v41-stage"
+  [[ $mode == pylon ]] && echo "upload  $dest/pylon"
   exit 0
 fi
 
@@ -91,9 +109,8 @@ echo "v41-stage-build: $mode of $short on $host"
 rhome=$(ssh "$host" 'printf %s "$HOME"')
 remote_cache=${remote_cache/#\~/$rhome}
 remote_src=${remote_src/#\~/$rhome}
-git -C "$repo" archive --format=tar.gz -o "$scratch/src.tar.gz" "$sha" \
-  crates/psionic crates/stage-link Cargo.toml rust-toolchain.toml
-ssh "$host" "mkdir -p $remote_src/work $remote_cache/src"
+git -C "$repo" archive --format=tar.gz -o "$scratch/src.tar.gz" "$sha" "${paths[@]}"
+ssh "$host" "mkdir -p $remote_src/work $remote_cache/$src_dir"
 scp -q "$scratch/src.tar.gz" "$host:$remote_src/src.tar.gz"
 # `git archive` stamps every file with the commit's time, which would make
 # Cargo rebuild every crate. Copy only files whose bytes changed into the
@@ -101,7 +118,7 @@ scp -q "$scratch/src.tar.gz" "$host:$remote_src/src.tar.gz"
 # time), under the host's build lock.
 lock="$remote_cache/build.lock"
 sync_src="tar -xzf $remote_src/src.tar.gz -C $remote_src/work && \
-  rsync -rlc --delete $remote_src/work/ $remote_cache/src/"
+  rsync -rlc --delete $remote_src/work/ $remote_cache/$src_dir/"
 
 # Runs inside the container: /src is the source, /cache the caches.
 inner=$(cat <<'INNER'
@@ -109,6 +126,14 @@ set -euo pipefail
 export RUSTUP_HOME=/cache/rustup CARGO_HOME=/cache/cargo PATH=/cache/cargo/bin:$PATH
 if ! [ -x /cache/cargo/bin/rustup ]; then
   curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --default-toolchain none
+fi
+if [ "$MODE" = pylon ]; then
+  cd /cache/src-pylon
+  CARGO_TARGET_DIR=/cache/target-pylon CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=4 \
+    cargo build --locked --release -p pylon
+  cp /cache/target-pylon/release/pylon /src/pylon
+  rustc -V >/src/rustc.txt
+  exit 0
 fi
 cd /cache/src/crates/psionic
 export CARGO_TARGET_DIR=/cache/target CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=4
@@ -153,6 +178,14 @@ if [[ $mode == test ]]; then
   echo "v41-stage-build: tests passed on $host"
   exit 0
 fi
+export CLOUDSDK_CONFIG=${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
+if [[ $mode == pylon ]]; then
+  scp -q "$host:$remote_src/pylon" "$scratch/"
+  gcloud storage cp -q "$scratch/pylon" "$dest/pylon"
+  echo "v41-stage-build: uploaded $dest/pylon (sha256 $(shasum -a 256 "$scratch/pylon" | cut -d ' ' -f 1))"
+  echo "pylon cloud up ... --head stage0 --pylon $dest/pylon"
+  exit 0
+fi
 
 scp -q "$host:$remote_src/psionic-v41-stage" "$host:$remote_src/rustc.txt" \
   "$host:$remote_src/nvcc.txt" "$scratch/"
@@ -175,7 +208,6 @@ cat >"$scratch/BUILD.json" <<JSON
   "sha256": "$binary_sha"
 }
 JSON
-export CLOUDSDK_CONFIG=${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
 gcloud storage cp -q "$scratch/psionic-v41-stage" "$scratch/BUILD.json" "$dest/"
 gcloud storage cp -q "$scratch"/manifests/*.json "$dest/manifests/"
 gcloud storage cp -q "$scratch"/lib/* "$dest/lib/"

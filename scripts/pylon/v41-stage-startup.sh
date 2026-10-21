@@ -32,6 +32,27 @@ set -eu
 root=${OA_STAGE_ROOT:-/mnt/stage}
 opt=${OA_STAGE_OPT:-/opt/openagents}
 gcloud=${OA_GCLOUD:-gcloud}
+# A G4 machine's Titanium SSDs read far faster than its boot disk: stripe
+# them into one volume at $root before copying any weights. A restart
+# remounts the existing array.
+if [ -z "${OA_STAGE_METADATA:-}" ] && ! mountpoint -q "$root"; then
+  set -- /dev/disk/by-id/google-local-nvme-ssd-*
+  if [ -e "$1" ]; then
+    mkdir -p "$root"
+    if [ "$#" -eq 1 ]; then
+      dev=$1
+    else
+      dev=/dev/md/oa-stage
+      mdadm --assemble --scan >/dev/null 2>&1 || true
+      [ -e "$dev" ] || mdadm --create "$dev" --name=oa-stage --level=0 --force \
+        --raid-devices="$#" "$@" --run >/dev/null 2>&1
+    fi
+    blkid "$dev" >/dev/null 2>&1 ||
+      mkfs.ext4 -q -F -E lazy_itable_init=1,lazy_journal_init=1 "$dev"
+    mount -o noatime "$dev" "$root"
+    chmod 755 "$root"
+  fi
+fi
 mkdir -p "$root/weights" "$opt"
 exec >>"$root/startup.log" 2>&1
 md() {
