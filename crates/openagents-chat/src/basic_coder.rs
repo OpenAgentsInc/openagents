@@ -241,6 +241,16 @@ pub const UNANSWERED: &str = "We couldn't answer this time. Try again.";
 /// What the chat shows while a slow answer is still coming.
 pub const STILL_WORKING: &str = "Still working on it…";
 
+/// What the Grid terminal says when the DeepSeek V4.1 group the person
+/// chose stayed busy with another request (`deepseek_busy`, #12434).
+pub const DEEPSEEK_BUSY: &str =
+    "DeepSeek is busy with another request. Try again in a minute, or choose Any Pylon.";
+
+/// What the Grid terminal says when no pylon serving the model the person
+/// chose is online (`pylon_unavailable`).
+pub const PYLON_UNAVAILABLE: &str =
+    "The model you chose isn't online right now. Try again shortly, or choose Any Pylon.";
+
 impl Failure {
     /// What the chat says, from the refusal's code, never its words: a
     /// worker's own message can name a provider's or an old quota's limit,
@@ -256,6 +266,8 @@ impl Failure {
                     "This conversation is too long for us to answer here. Start a new chat.".into()
                 }
                 "busy" => "We're busy right now. Try again in a moment.".into(),
+                "deepseek_busy" => DEEPSEEK_BUSY.into(),
+                "pylon_unavailable" => PYLON_UNAVAILABLE.into(),
                 // A job on the person's own keys (BYOK): the worker's line
                 // is shown only when it is one of the fixed lines, which
                 // carry no provider's words.
@@ -1180,6 +1192,8 @@ mod tests {
             "unsupported_feature",
             "limit_exceeded",
             "busy",
+            "deepseek_busy",
+            "pylon_unavailable",
             "rate_limited",
             "quota_exhausted",
             "something_new_and_unknown",

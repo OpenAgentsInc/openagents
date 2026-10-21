@@ -15,6 +15,13 @@
 //! ([`GROUP_MODEL`]) goes only to a ready model group serving it, with no
 //! decision, under `pylon.deadline.v1` with W14's 600-second budget
 //! ([`GROUP_DEADLINE`]). Every other turn routes as above.
+//!
+//! A V4.1 group reads its whole prompt, stage after stage, before its first
+//! token, so a V4.1 turn carries at most [`GROUP_PROMPT_TOKENS`]: the
+//! instructions, the latest message whole, and the newest earlier turns
+//! that fit (#12434). While the group answers someone else, the turn shows
+//! [`WAITING`] and waits up to [`GROUP_QUEUE`] for it, then says DeepSeek
+//! is busy. It is never answered by another model.
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -47,8 +54,21 @@ pub(crate) const GROUP_MODEL: &str = pylon::placement::MODEL;
 /// The budget for one V4.1 answer: W14's frozen deadline.
 pub(crate) const GROUP_DEADLINE: Duration = Duration::from_secs(600);
 /// How long a turn that asks for V4.1 may take in all: the deadline, the
-/// grace for the answer to cross the relay, and finding the group.
-pub(crate) const GROUP_TURN: Duration = Duration::from_secs(600 + 10 + 20);
+/// grace for the answer to cross the relay, finding the group, and waiting
+/// for it while it is busy ([`GROUP_QUEUE`]).
+pub(crate) const GROUP_TURN: Duration = Duration::from_secs(600 + 10 + 20 + 60);
+/// The most prompt tokens a V4.1 turn sends, by
+/// [`pylon::router::estimate_tokens`]. The live group reads a prompt at
+/// about 33 ms a token across its stages, so 1,000 tokens reaches the first
+/// token in about 35 s. It stays under the group's advertised
+/// `max_input_tokens` either way.
+pub(crate) const GROUP_PROMPT_TOKENS: usize = 1_000;
+/// How long a V4.1 turn waits while the group answers another request.
+pub(crate) const GROUP_QUEUE: Duration = Duration::from_secs(60);
+/// How often a waiting turn looks for the group again.
+const QUEUE_POLL: Duration = Duration::from_secs(2);
+/// What a V4.1 turn shows while it waits for the group.
+pub(crate) const WAITING: &str = "Waiting for DeepSeek…";
 /// Our decision model: Clef first.
 const MODEL: &str = "openagents/decide";
 /// What a pylon is told about the turn it answers.
@@ -135,6 +155,8 @@ pub(crate) struct PylonDoor {
     pub buyer: Identity,
     pub decide: Arc<dyn Decide>,
     pub fallback: Option<Box<dyn Door>>,
+    /// How long a V4.1 turn waits while the group is busy.
+    pub queue: Duration,
 }
 
 /// The pylon door for a turn, when it came from the Grid terminal, this
@@ -158,6 +180,7 @@ pub(crate) fn door(app: &App, headers: &HeaderMap, payer: &str) -> Option<PylonD
     if asks_for_group(headers) {
         settings.want = Some(pylon::group::Want::Model(GROUP_MODEL.into()));
         settings.deadline = Some(GROUP_DEADLINE);
+        settings.prompt_tokens = Some(GROUP_PROMPT_TOKENS);
     } else if asks_for_flint(headers) {
         let model = headers.get(MODEL_HEADER)?.to_str().ok()?.trim();
         settings.want = Some(pylon::group::Want::Model(model.into()));
@@ -175,6 +198,7 @@ pub(crate) fn door(app: &App, headers: &HeaderMap, payer: &str) -> Option<PylonD
         settings,
         decide: Arc::new(Api { client }),
         fallback: None,
+        queue: GROUP_QUEUE,
     })
 }
 
@@ -283,8 +307,20 @@ fn repeats(turns: &[pylon::engine::Turn], answer: &str) -> bool {
 /// How routing went, for the log: never the message or the answer.
 fn log_line(routed: &router::Routed, ms: u128) -> String {
     let outcome = match &routed.outcome {
-        Outcome::Answered(answer) => format!("answered by {}", answer.pylon),
+        // How long the answer took and how many prompt tokens the pylon
+        // read, to size V4.1 turns (#12434).
+        Outcome::Answered(answer) => format!(
+            "answered by {} in {} ms, {} prompt tokens",
+            answer.pylon,
+            answer.answer_ms.unwrap_or_default(),
+            answer
+                .usage
+                .as_ref()
+                .and_then(|u| u["input"].as_u64())
+                .map_or_else(|| "unknown".into(), |n| n.to_string())
+        ),
         Outcome::Declined => "handed to the hosted chat".into(),
+        Outcome::Busy => "every pylon serving the model is busy".into(),
         Outcome::Unavailable(why) if why == "no pylon answered" => why.clone(),
         Outcome::Unavailable(why) => format!("no pylon answered ({why})"),
     };
@@ -342,11 +378,14 @@ impl Door for PylonDoor {
             .as_ref()
             .filter(|_| self.settings.want.is_none())
             .map(|door| door.ask(turns.clone(), context, reply.clone()));
-        let (settings, buyer, decide) = (
+        let (settings, buyer, decide, queue) = (
             self.settings.clone(),
             self.buyer.clone(),
             self.decide.clone(),
+            self.queue,
         );
+        let wants_group =
+            matches!(&settings.want, Some(pylon::group::Want::Model(m)) if m == GROUP_MODEL);
         Box::pin(async move {
             // Earlier answers go without the line naming who answered, which
             // a small model otherwise copies, with its answer, into the next
@@ -386,6 +425,35 @@ impl Door for PylonDoor {
             )
             .await;
             eprintln!("{}", log_line(&routed, started.elapsed().as_millis()));
+            // The group is answering someone else: show that this turn
+            // waits, and look again until it is free or the wait is over.
+            let queued = Instant::now();
+            while wants_group
+                && matches!(routed.outcome, Outcome::Busy)
+                && queued.elapsed() + QUEUE_POLL <= queue
+            {
+                {
+                    let mut reply = basic_coder::lock(&reply);
+                    if reply.text != WAITING {
+                        reply.text = WAITING.into();
+                    }
+                }
+                tokio::time::sleep(QUEUE_POLL).await;
+                let again = Instant::now();
+                routed = router::route(
+                    &buyer,
+                    &settings,
+                    decide.as_ref(),
+                    &jobs,
+                    Some(instructions),
+                )
+                .await;
+                eprintln!(
+                    "{} (waited {} ms for a busy group)",
+                    log_line(&routed, again.elapsed().as_millis()),
+                    queued.elapsed().as_millis()
+                );
+            }
             // A small model can answer a new message with its last answer,
             // word for word. Ask once more with only what the person wrote,
             // which it doesn't copy.
@@ -426,9 +494,21 @@ impl Door for PylonDoor {
             match fallback {
                 Some(job) => job.await,
                 None => {
-                    basic_coder::lock(&reply).failure = Some(Failure::Transport(
-                        "The chosen Pylon is unavailable. Try again shortly.".into(),
-                    ));
+                    // The person chose this model: say why it didn't
+                    // answer, and never answer from another one.
+                    let busy = matches!(routed.outcome, Outcome::Busy);
+                    let code = match (busy, wants_group) {
+                        (true, true) => "deepseek_busy",
+                        (true, false) => "busy",
+                        (false, _) => "pylon_unavailable",
+                    };
+                    let mut reply = basic_coder::lock(&reply);
+                    reply.text.clear();
+                    reply.failure = Some(Failure::Refused {
+                        code: code.into(),
+                        message: String::new(),
+                        retry_after_ms: busy.then_some(60_000),
+                    });
                 }
             }
         })

@@ -183,58 +183,67 @@ async fn relay_with_group() -> (
     let (url, hub) = pylon::fixture::relay().await.unwrap();
     let mut running = Vec::new();
     for slug in ["rig", "v41-head"] {
-        let home = tempfile::tempdir().unwrap();
-        let mut config = pylon::provider::Config::new(&url, slug, home.path().to_path_buf());
-        config.label = if slug == "rig" { "Rig" } else { "V41 group" }.into();
-        config.allow = None;
-        config.rate_per_minute = 600;
-        if slug == "v41-head" {
-            config.slots = 1;
-            config.job_timeout = GROUP_DEADLINE;
-            let readiness = pylon::group::SharedReadiness::default();
-            readiness.set(pylon::group::GroupStatus {
-                readiness: nostr::pylon::Readiness::Ready,
-                generation: 1,
-            });
-            config.group = Some(pylon::provider::HeadGroup {
-                spec: pylon::group::GroupSpec {
-                    id: "v41-a".into(),
-                    model: GROUP_MODEL.into(),
-                    artifact: format!("sha256:{}", "4c".repeat(32)),
-                    deadline_secs: GROUP_DEADLINE.as_secs(),
-                    max_output_tokens: 4_096,
-                },
-                readiness: Arc::new(readiness),
-                stages: vec![("s0".into(), nostr::pylon::Layers { from: 0, to: 43 })],
-                answers: None,
-            });
-        }
-        let key = Identity::generate();
-        let provider =
-            pylon::provider::Provider::new(config, key.clone(), Arc::new(pylon::engine::Echo))
-                .unwrap();
-        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
-        tokio::spawn(provider.run(async {
-            let _ = stopped.await;
-        }));
-        for _ in 0..400 {
-            let up = hub.lock().await.stored.iter().any(|e| {
-                e.kind == 30_200
-                    && e.pubkey == key.pubkey()
-                    && nostr::pylon::parse_beacon(e).is_ok_and(|b| {
-                        b.slots.free > 0
-                            && b.group_head()
-                                .is_none_or(|g| g.readiness == Some(nostr::pylon::Readiness::Ready))
-                    })
-            });
-            if up {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
-        running.push((stop, home));
+        running.push(start_pylon(&url, &hub, slug, Arc::new(pylon::engine::Echo)).await);
     }
     (url, running)
+}
+
+/// Starts pylon `slug` on `engine` at the relay `url`, and waits for its
+/// beacon. `v41-head` heads a ready V4.1 model group with one slot.
+async fn start_pylon(
+    url: &str,
+    hub: &Arc<tokio::sync::Mutex<pylon::fixture::Hub>>,
+    slug: &str,
+    engine: Arc<dyn pylon::engine::Engine>,
+) -> (tokio::sync::oneshot::Sender<()>, tempfile::TempDir) {
+    let home = tempfile::tempdir().unwrap();
+    let mut config = pylon::provider::Config::new(url, slug, home.path().to_path_buf());
+    config.label = if slug == "rig" { "Rig" } else { "V41 group" }.into();
+    config.allow = None;
+    config.rate_per_minute = 600;
+    if slug == "v41-head" {
+        config.slots = 1;
+        config.job_timeout = GROUP_DEADLINE;
+        let readiness = pylon::group::SharedReadiness::default();
+        readiness.set(pylon::group::GroupStatus {
+            readiness: nostr::pylon::Readiness::Ready,
+            generation: 1,
+        });
+        config.group = Some(pylon::provider::HeadGroup {
+            spec: pylon::group::GroupSpec {
+                id: "v41-a".into(),
+                model: GROUP_MODEL.into(),
+                artifact: format!("sha256:{}", "4c".repeat(32)),
+                deadline_secs: GROUP_DEADLINE.as_secs(),
+                max_output_tokens: 4_096,
+            },
+            readiness: Arc::new(readiness),
+            stages: vec![("s0".into(), nostr::pylon::Layers { from: 0, to: 43 })],
+            answers: None,
+        });
+    }
+    let key = Identity::generate();
+    let provider = pylon::provider::Provider::new(config, key.clone(), engine).unwrap();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(provider.run(async {
+        let _ = stopped.await;
+    }));
+    for _ in 0..400 {
+        let up = hub.lock().await.stored.iter().any(|e| {
+            e.kind == 30_200
+                && e.pubkey == key.pubkey()
+                && nostr::pylon::parse_beacon(e).is_ok_and(|b| {
+                    b.slots.free > 0
+                        && b.group_head()
+                            .is_none_or(|g| g.readiness == Some(nostr::pylon::Readiness::Ready))
+                })
+        });
+        if up {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    (stop, home)
 }
 
 async fn world(relay: String) -> World {
@@ -615,4 +624,241 @@ fn each_person_sends_as_their_own_buyer_key() {
     assert_eq!(buyer(&salt, "a"), buyer(&salt, "a"));
     assert_ne!(buyer(&salt, "a"), buyer(&salt, "b"));
     assert_ne!(buyer(&salt, "a"), crate::ask::key(&salt, "a"));
+}
+
+/// A V4.1 head's model: records what it was sent, and answers once the
+/// test lets it through `open`.
+struct Held {
+    sent: Arc<Mutex<Vec<Vec<pylon::engine::Turn>>>>,
+    open: Arc<tokio::sync::Semaphore>,
+}
+
+impl pylon::engine::Engine for Held {
+    fn model(&self) -> &str {
+        "held"
+    }
+
+    fn healthy(&self) -> pylon::engine::Pending<'_, bool> {
+        Box::pin(async { true })
+    }
+
+    fn generate<'a>(
+        &'a self,
+        turns: &'a [pylon::engine::Turn],
+        _: u32,
+    ) -> pylon::engine::Pending<'a, Result<pylon::engine::Generation, String>> {
+        self.sent.lock().unwrap().push(turns.to_vec());
+        let text = format!("Answer to {}", turns.last().unwrap().content);
+        Box::pin(async move {
+            self.open.acquire().await.unwrap().forget();
+            Ok(pylon::engine::Generation {
+                text,
+                input_tokens: Some(1),
+                output_tokens: Some(1),
+                model: "held".into(),
+                finish: pylon::engine::Finish::Stop,
+            })
+        })
+    }
+}
+
+/// Never asked: a V4.1 turn takes no decision.
+struct NoDecision;
+impl Decide for NoDecision {
+    fn decide<'a>(&'a self, _: &'a Question) -> Deciding<'a> {
+        Box::pin(async { Err("not asked".to_owned()) })
+    }
+}
+
+/// The door a V4.1 terminal turn gets, on the relay `url`, waiting up to
+/// `queue` while the group is busy.
+fn group_door(url: &str, home: &std::path::Path, queue: Duration) -> PylonDoor {
+    let mut settings = Settings::new(url, home.to_path_buf());
+    settings.want = Some(pylon::group::Want::Model(GROUP_MODEL.into()));
+    settings.deadline = Some(GROUP_DEADLINE);
+    settings.prompt_tokens = Some(GROUP_PROMPT_TOKENS);
+    settings.publish_receipt = false;
+    PylonDoor {
+        settings,
+        buyer: Identity::generate(),
+        decide: Arc::new(NoDecision),
+        fallback: Some(Box::new(Hosted)),
+        queue,
+    }
+}
+
+fn said(role: Role, text: String) -> Turn {
+    Turn {
+        role,
+        text,
+        meta: None,
+        request: None,
+        stopped: false,
+        at: None,
+        model: None,
+    }
+}
+
+/// A started V4.1 group with a held model, and what it was sent.
+async fn held_group() -> (
+    String,
+    Arc<Mutex<Vec<Vec<pylon::engine::Turn>>>>,
+    Arc<tokio::sync::Semaphore>,
+    (tokio::sync::oneshot::Sender<()>, tempfile::TempDir),
+) {
+    let (url, hub) = pylon::fixture::relay().await.unwrap();
+    let sent = Arc::new(Mutex::new(Vec::new()));
+    let open = Arc::new(tokio::sync::Semaphore::new(0));
+    let head = start_pylon(
+        &url,
+        &hub,
+        "v41-head",
+        Arc::new(Held {
+            sent: sent.clone(),
+            open: open.clone(),
+        }),
+    )
+    .await;
+    (url, sent, open, head)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_v41_turn_sends_about_a_thousand_tokens_with_the_latest_message_whole() {
+    let (url, sent, open, _head) = held_group().await;
+    open.add_permits(8);
+    let home = tempfile::tempdir().unwrap();
+    let door = group_door(&url, home.path(), Duration::ZERO);
+    // Twenty long earlier turns, about 8,000 tokens, then a new question.
+    let mut turns: Vec<Turn> = (0..20)
+        .map(|i| {
+            said(
+                if i % 2 == 0 {
+                    Role::User
+                } else {
+                    Role::Assistant
+                },
+                format!("{i:02} {}", "w".repeat(1_600)),
+            )
+        })
+        .collect();
+    let latest = format!("What about this? {}", "q".repeat(1_200));
+    turns.push(said(Role::User, latest.clone()));
+    let reply = Arc::new(Mutex::new(Reply::default()));
+    door.ask(turns, Context::default(), reply.clone()).await;
+    let reply = basic_coder::lock(&reply).clone();
+    assert!(reply.done, "{:?}", reply.failure);
+    assert!(reply.text.starts_with("**DeepSeek V4.1** · group v41-a"));
+    let sent = sent.lock().unwrap().clone();
+    let job = sent.last().unwrap();
+    assert_eq!(job.last().unwrap().content, latest, "the latest goes whole");
+    let tokens: usize = job
+        .iter()
+        .map(|t| pylon::router::estimate_tokens(&t.content))
+        .sum();
+    assert!(tokens <= GROUP_PROMPT_TOKENS, "{tokens} tokens");
+    // The newest earlier turn is kept, the oldest are dropped.
+    let earlier: Vec<&str> = job
+        .iter()
+        .filter(|t| t.role != "system")
+        .map(|t| t.content.as_str())
+        .collect();
+    assert!(
+        earlier.len() >= 2 && earlier.len() < 21,
+        "{}",
+        earlier.len()
+    );
+    assert!(earlier[earlier.len() - 2].starts_with("19 "));
+    assert!(!earlier.iter().any(|t| t.starts_with("00 ")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_busy_v41_group_is_waited_for_then_named_busy_never_answered_by_another_model() {
+    let (url, _sent, open, _head) = held_group().await;
+    let home = tempfile::tempdir().unwrap();
+    // The first turn holds the group's one slot.
+    let first = group_door(&url, home.path(), Duration::ZERO);
+    let first_reply = Arc::new(Mutex::new(Reply::default()));
+    let holding = tokio::spawn(first.ask(
+        vec![said(Role::User, "first".into())],
+        Context::default(),
+        first_reply.clone(),
+    ));
+    // Wait for the group's beacon to say it is busy.
+    let mut busy = false;
+    for _ in 0..200 {
+        let found = {
+            let mut conn =
+                pylon::relay::connect(&url, &Identity::generate(), pylon::relay::LIFETIME)
+                    .await
+                    .unwrap();
+            let book = pylon::client::all_beacons(&mut conn, None).await.unwrap();
+            let want = pylon::group::Want::Model(GROUP_MODEL.into());
+            pylon::router::busy_for(&book, pylon::now(), &Default::default(), &want)
+        };
+        if found {
+            busy = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(busy, "the group never read as busy");
+
+    // A second turn waits, showing so, and then says DeepSeek is busy.
+    let second = group_door(&url, home.path(), Duration::from_secs(5));
+    let reply = Arc::new(Mutex::new(Reply::default()));
+    let asking = tokio::spawn(second.ask(
+        vec![said(Role::User, "second".into())],
+        Context::default(),
+        reply.clone(),
+    ));
+    let mut waited = false;
+    for _ in 0..100 {
+        if basic_coder::lock(&reply).text == WAITING {
+            waited = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(waited, "no waiting line");
+    asking.await.unwrap();
+    let ended = basic_coder::lock(&reply).clone();
+    assert!(!ended.done);
+    assert!(ended.text.is_empty(), "{}", ended.text);
+    let failure = ended.failure.unwrap();
+    assert!(
+        matches!(&failure, Failure::Refused { code, .. } if code == "deepseek_busy"),
+        "{failure:?}"
+    );
+    let line = failure.describe();
+    assert_eq!(line, basic_coder::DEEPSEEK_BUSY);
+    assert!(line.contains("DeepSeek is busy") && line.contains("Any Pylon"));
+    assert!(oa_copy::violations(&line, &[]).is_empty(), "{line}");
+    assert!(oa_copy::violations(WAITING, &[]).is_empty());
+
+    // A turn that waits while the group frees up is answered by it.
+    let third = group_door(&url, home.path(), Duration::from_secs(30));
+    let reply = Arc::new(Mutex::new(Reply::default()));
+    let asking = tokio::spawn(third.ask(
+        vec![said(Role::User, "third".into())],
+        Context::default(),
+        reply.clone(),
+    ));
+    for _ in 0..100 {
+        if basic_coder::lock(&reply).text == WAITING {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    open.add_permits(2);
+    holding.await.unwrap();
+    assert!(basic_coder::lock(&first_reply).done);
+    asking.await.unwrap();
+    let ended = basic_coder::lock(&reply).clone();
+    assert!(ended.done, "{:?}", ended.failure);
+    assert!(
+        ended.text.starts_with("**DeepSeek V4.1** · group v41-a")
+            && ended.text.contains("Answer to third"),
+        "{}",
+        ended.text
+    );
 }
