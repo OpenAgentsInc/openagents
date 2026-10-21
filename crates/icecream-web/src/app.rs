@@ -23,6 +23,7 @@ use web_sys::{
 use crate::camera::{Boom, Camera, Space, View, ray_to_height};
 use crate::copy;
 use crate::hud::{Action, Card, Hold, Hud, css, element};
+use crate::live::{self, Live, Ready};
 use crate::mesh::{Mesh, STRIDE, rgb};
 use crate::options::Options;
 use crate::scene;
@@ -298,8 +299,10 @@ impl Gpu {
 }
 
 struct Meshes {
-    rooms: Vec<GpuMesh>,
-    lights: Vec<GpuMesh>,
+    /// Each room's walls and furniture, and its ceiling lights. In live
+    /// mode a room is `None` until its chunk streams in.
+    rooms: Vec<Option<GpuMesh>>,
+    lights: Vec<Option<GpuMesh>>,
     torso: GpuMesh,
     head: GpuMesh,
     arm: GpuMesh,
@@ -433,6 +436,10 @@ struct App {
     swing: f32,
     /// Minions' strides, by their place in the list.
     minion_stride: f32,
+    /// The hosted zone this page plays, in live mode.
+    live: Option<Live>,
+    /// Whether live mode reported its first play.
+    first_play_acked: bool,
 }
 
 fn yaw_of(dir: V2) -> f32 {
@@ -501,11 +508,28 @@ impl App {
                 stored(&self.window, &settings::best_key(self.difficulty)).as_deref(),
             );
         }
-        self.game = Game::tuned(
-            self.seed,
-            self.rule_options(),
-            self.options.tuning(self.difficulty),
-        );
+        self.game = match &mut self.live {
+            // The zone's house and numbers, through its logic module.
+            Some(live) => {
+                self.seed = live.zone.seed;
+                let tuning = live.tuning;
+                match live
+                    .logic
+                    .new_game(live.zone.seed, &tuning, &mut live.cache)
+                {
+                    Ok(game) => game,
+                    Err(error) => {
+                        live.broken = Some(error);
+                        Game::tuned(live.zone.seed, self.rule_options(), tuning)
+                    }
+                }
+            }
+            None => Game::tuned(
+                self.seed,
+                self.rule_options(),
+                self.options.tuning(self.difficulty),
+            ),
+        };
         if self.options.no_farts {
             self.game.player.farts = 0;
         }
@@ -562,10 +586,15 @@ impl App {
         let house = &self.game.house;
         let t = self.game.tuning;
         let yellow = t.yellow;
+        // In live mode the rooms are the zone's chunks; they keep what has
+        // streamed in, since every run plays the zone's one house.
+        let built = self.live.is_none();
         let rooms: Vec<Mesh> = (0..house.rooms.len())
+            .filter(|_| built)
             .map(|i| scene::room(house, i, yellow))
             .collect();
         let lights: Vec<Mesh> = (0..house.rooms.len())
+            .filter(|_| built)
             .map(|i| scene::lights(house, i, yellow))
             .collect();
         let blend = |a: [f32; 3], b: [f32; 3]| [0, 1, 2].map(|k| a[k] + (b[k] - a[k]) * yellow);
@@ -575,8 +604,172 @@ impl App {
             t.fog_far.max(t.fog_near + 0.5),
             0.82 + 0.14 * yellow,
         ];
-        self.meshes.rooms = rooms.iter().map(|m| self.gpu.upload(m)).collect();
-        self.meshes.lights = lights.iter().map(|m| self.gpu.upload(m)).collect();
+        if built {
+            self.meshes.rooms = rooms.iter().map(|m| Some(self.gpu.upload(m))).collect();
+            self.meshes.lights = lights.iter().map(|m| Some(self.gpu.upload(m))).collect();
+        } else {
+            let count = self.game.house.rooms.len();
+            self.meshes.rooms.resize_with(count, || None);
+            self.meshes.lights.resize_with(count, || None);
+        }
+    }
+
+    /// Uploads a chunk's meshes in place of the ones it names: a room, the
+    /// Ice Cream Man, or the kid.
+    fn install_chunk(&mut self, path: &str, parts: Vec<icecream_zone::chunk::Part>) {
+        let room = self
+            .live
+            .as_ref()
+            .and_then(|live| live.zone.chunks.iter().find(|c| c.path == path))
+            .and_then(|c| c.room);
+        for part in parts {
+            let mesh = self.gpu.upload(&Mesh { data: part.data });
+            let m = &mut self.meshes;
+            match (room, path, part.name.as_str()) {
+                (Some(i), _, "room") if i < m.rooms.len() => m.rooms[i] = Some(mesh),
+                (Some(i), _, "lights") if i < m.lights.len() => m.lights[i] = Some(mesh),
+                (None, "chunks/man.bin", "body") => m.man_body = mesh,
+                (None, "chunks/man.bin", "leg") => m.man_leg = mesh,
+                (None, "chunks/man.bin", "arm") => m.man_arm = mesh,
+                (None, "chunks/man.bin", "head") => m.man_head = mesh,
+                (None, "chunks/man.bin", "forehead") => m.man_forehead = mesh,
+                (None, "chunks/kid.bin", "torso") => m.torso = mesh,
+                (None, "chunks/kid.bin", "head") => m.head = mesh,
+                (None, "chunks/kid.bin", "arm") => m.arm = mesh,
+                (None, "chunks/kid.bin", "leg") => m.leg = mesh,
+                _ => {}
+            }
+        }
+    }
+
+    /// One step of the run: by the zone's logic module in live mode. A
+    /// module that fails leaves the run as it was, waiting for a fix or a
+    /// rollback.
+    fn step_game(&mut self, input: Input) -> bool {
+        let Some(live) = &mut self.live else {
+            self.game.step(input);
+            return true;
+        };
+        if live.broken.is_some() {
+            return false;
+        }
+        match live.logic.step(&self.game, input, &mut live.cache) {
+            Ok(game) => {
+                self.game = game;
+                true
+            }
+            Err(error) => {
+                web_sys::console::error_1(&format!("the game's logic failed: {error}").into());
+                live.broken = Some(error);
+                self.hud.toast(copy::LIVE_BROKEN, self.now());
+                false
+            }
+        }
+    }
+
+    /// The live zone's work for this frame, before any step: start fetching
+    /// what changed, upload rooms that streamed in, and apply a version that
+    /// is ready. Applying here, between two steps, is the safe point.
+    fn pump_live(&mut self) {
+        let at = [self.game.player.pos.x, self.game.player.pos.z];
+        let Some(live) = &mut self.live else {
+            return;
+        };
+        live.pump(at);
+        let rooms = live.take_rooms();
+        let ready = live.take_ready();
+        for (index, parts) in rooms {
+            let path = format!("chunks/room-{index}.bin");
+            self.install_chunk(&path, parts);
+        }
+        match ready {
+            Some(Ok(ready)) => self.apply_version(ready),
+            Some(Err(error)) => {
+                web_sys::console::warn_1(&format!("a new version didn't load: {error}").into());
+            }
+            None => {}
+        }
+        if !self.first_play_acked && self.frames > 0 {
+            self.first_play_acked = true;
+            let (bytes, files) = live::transferred(&[], 0.0);
+            if let Some(live) = &self.live {
+                live.ack(
+                    "first_play",
+                    serde_json::json!({
+                        "first_play_ms": live::since_navigation().round(),
+                        "budget_ms": live.zone.budget.first_play_ms,
+                        "bytes": bytes,
+                        "files": files,
+                        "rooms_loaded": self.meshes.rooms.iter().filter(|r| r.is_some()).count(),
+                        "rooms": self.meshes.rooms.len(),
+                    }),
+                );
+            }
+        }
+    }
+
+    fn apply_version(&mut self, mut ready: Ready) {
+        let Some(live) = &mut self.live else {
+            return;
+        };
+        if ready.update.shell {
+            // A new page: carry the run across the reload.
+            live.reload_keeping(&self.game);
+            return;
+        }
+        let tick = self.game.tick;
+        let was_paused = live.broken.is_some();
+        live.adopt(&mut ready);
+        let mut next_run = None;
+        if ready.update.tuning {
+            let tuning = live.tuning;
+            match live.logic.retune(&self.game, &tuning, &mut live.cache) {
+                Ok((game, note)) => {
+                    self.game = game;
+                    if note["applied"] == false {
+                        next_run = note["why"].as_str().map(str::to_owned);
+                    }
+                }
+                Err(error) => live.broken = Some(error),
+            }
+        }
+        let chunks = ready.chunks.len();
+        for (path, parts) in std::mem::take(&mut ready.chunks) {
+            self.install_chunk(&path, parts);
+        }
+        let count = self.game.house.rooms.len();
+        self.meshes.rooms.resize_with(count, || None);
+        self.meshes.lights.resize_with(count, || None);
+        let (bytes, files) = live::transferred(&ready.urls, ready.since);
+        let prepare_ms = live::since_navigation() - ready.since;
+        let now = self.now();
+        let words = if next_run.is_some() {
+            copy::LIVE_NEXT_RUN
+        } else {
+            copy::LIVE_UPDATED
+        };
+        self.hud.toast(words, now);
+        if let Some(live) = &self.live {
+            live.ack(
+                "swap",
+                serde_json::json!({
+                    "tick": tick,
+                    "same_run": self.game.tick == tick,
+                    "logic": ready.update.logic,
+                    "tuning": ready.update.tuning,
+                    "chunks": chunks,
+                    "bytes": bytes,
+                    "files": files,
+                    "prepare_ms": prepare_ms.round(),
+                    "next_run": next_run,
+                    "player": [self.game.player.pos.x, self.game.player.pos.z],
+                    "keys": self.game.player.keys,
+                    "health": self.game.player.health,
+                    "was_paused": was_paused,
+                    "paused": live.broken.is_some(),
+                }),
+            );
+        }
     }
 
     fn start_playing(&mut self) {
@@ -916,6 +1109,7 @@ impl App {
         for action in self.hud.take_actions() {
             self.act(action);
         }
+        self.pump_live();
         let running = self.phase == Phase::Playing && self.tour.is_none() && !self.options.portrait;
         if running {
             self.carry += dt * f64::from(self.options.speed);
@@ -927,7 +1121,10 @@ impl App {
                 if input.fire && !self.camera.aims() && input.aim != V2::ZERO {
                     self.yaw = yaw_of(input.aim);
                 }
-                self.game.step(input);
+                if !self.step_game(input) {
+                    self.carry = 0.0;
+                    break;
+                }
                 self.taps.clear();
                 let events = self.game.events.clone();
                 for event in events {
@@ -1363,9 +1560,13 @@ impl App {
 
         for (i, mesh) in m.rooms.iter().enumerate() {
             let light = self.room_light(i);
-            gpu.draw(mesh, &Mat4::IDENTITY, WHITE, light, 0.0, false);
+            if let Some(mesh) = mesh {
+                gpu.draw(mesh, &Mat4::IDENTITY, WHITE, light, 0.0, false);
+            }
             let glow = light.map(|c| (c * 1.05).min(1.0));
-            gpu.draw_flat(&m.lights[i], &Mat4::IDENTITY, glow);
+            if let Some(Some(lights)) = m.lights.get(i) {
+                gpu.draw_flat(lights, &Mat4::IDENTITY, glow);
+            }
         }
         let light_at = |p: V2| self.room_light(game.house.room_of(p));
 
@@ -2158,6 +2359,21 @@ impl App {
             ("data-phase", phase.to_owned()),
             ("data-status", status.to_owned()),
             ("data-seed", self.seed.to_string()),
+            ("data-tick", game.tick.to_string()),
+            (
+                "data-live",
+                self.live.as_ref().map_or_else(String::new, |live| {
+                    format!(
+                        "{} {}",
+                        live.manifest.get(..12).unwrap_or_default(),
+                        if live.broken.is_some() {
+                            "paused"
+                        } else {
+                            "running"
+                        }
+                    )
+                }),
+            ),
             ("data-tour", self.tour.is_some().to_string()),
             (
                 "data-player",
@@ -2304,6 +2520,33 @@ fn key_name(event: &KeyboardEvent) -> String {
 }
 
 pub fn start() {
+    let window = web_sys::window().expect("a window");
+    let tenant = window
+        .document()
+        .and_then(|d| d.get_element_by_id("icecream-canvas"))
+        .and_then(|c| c.get_attribute("data-live-tenant"));
+    let Some(tenant) = tenant else {
+        launch(None);
+        return;
+    };
+    // Live mode: the zone's first play loads before the game starts.
+    wasm_bindgen_futures::spawn_local(async move {
+        match Live::boot(tenant).await {
+            Ok(boot) => launch(Some(boot)),
+            Err(error) => {
+                web_sys::console::error_1(&error.into());
+                if let Some(status) = web_sys::window()
+                    .and_then(|w| w.document())
+                    .and_then(|d| d.get_element_by_id("icecream-status"))
+                {
+                    status.set_text_content(Some(copy::LIVE_FAILED));
+                }
+            }
+        }
+    });
+}
+
+fn launch(boot: Option<(Live, Ready)>) {
     let window = web_sys::window().expect("a window");
     let document = window.document().expect("a document");
     let canvas: HtmlCanvasElement = match document.get_element_by_id("icecream-canvas") {
@@ -2489,8 +2732,24 @@ pub fn start() {
         spotted: 0,
         swing: 0.0,
         minion_stride: 0.0,
+        live: None,
+        first_play_acked: false,
     };
+    let mut first = Vec::new();
+    if let Some((live, ready)) = boot {
+        app.live = Some(live);
+        first = ready.chunks;
+    }
     app.new_run();
+    for (path, parts) in first {
+        app.install_chunk(&path, parts);
+    }
+    if let Some(game) = app.live.as_mut().and_then(Live::take_carry) {
+        // The page reloaded for a new shell: the run carries on.
+        app.game = game;
+        app.rebuild_house();
+        app.phase = Phase::Playing;
+    }
     if app.options.skip {
         app.phase = Phase::Playing;
     } else if tutorial::opens_by_itself(tutorial_seen(&window).as_deref(), false) {

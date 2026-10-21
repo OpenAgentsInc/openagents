@@ -26,6 +26,8 @@ mod app;
 #[cfg(target_arch = "wasm32")]
 mod hud;
 #[cfg(target_arch = "wasm32")]
+mod live;
+#[cfg(target_arch = "wasm32")]
 mod sound;
 
 /// Starts the game when the module loads.

@@ -16,6 +16,16 @@ pub const TRY_AGAIN: &str = "Try again";
 pub const PLAY_AGAIN: &str = "Play again";
 /// The link home, to openagents.com.
 pub const HOME: &str = "OpenAgents home";
+/// Live mode (`docs/verse/ice-cream-man-live.md`): a new version arrived
+/// and the run carries on with it.
+pub const LIVE_UPDATED: &str = "The game just got an update.";
+/// A new version changes the house; it starts with the next run.
+pub const LIVE_NEXT_RUN: &str = "Some of the new changes start with your next run.";
+/// The game's rules hit a problem; the run waits where it is.
+pub const LIVE_BROKEN: &str = "The game hit a problem. Your run is paused until it's fixed.";
+/// The zone didn't load.
+pub const LIVE_FAILED: &str = "The game couldn't load. Reload the page to try again.";
+
 pub const NO_WEBGL: &str =
     "This browser can't show the game. Try a recent Chrome, Safari, or Firefox.";
 pub const HEALTH: &str = "Health";
@@ -293,6 +303,10 @@ mod tests {
     #[test]
     fn the_words_are_plain() {
         let mut all: Vec<String> = [
+            LIVE_UPDATED,
+            LIVE_NEXT_RUN,
+            LIVE_BROKEN,
+            LIVE_FAILED,
             TITLE,
             TAGLINE,
             NOTE,

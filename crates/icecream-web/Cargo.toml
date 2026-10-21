@@ -11,6 +11,9 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 icecream-rules = { path = "../icecream-rules" }
+icecream-zone = { path = "../icecream-zone" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 glam = "0.30.10"
 
 # The page itself is browser-only; natively only the meshes, the camera,
@@ -19,6 +22,7 @@ glam = "0.30.10"
 # The `wasm-bindgen` CLI that `scripts/build-icecream-web.sh` runs must be
 # the version Cargo.lock resolves here; the script checks.
 wasm-bindgen = "0.2.128"
+wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 console_error_panic_hook = "0.1.7"
 web-sys = { version = "0.3", features = [
@@ -39,6 +43,7 @@ web-sys = { version = "0.3", features = [
     "DomRect",
     "Element",
     "Event",
+    "EventSource",
     "EventTarget",
     "GainNode",
     "HtmlButtonElement",
@@ -47,12 +52,15 @@ web-sys = { version = "0.3", features = [
     "KeyboardEvent",
     "Location",
     "MediaQueryList",
+    "MessageEvent",
     "MouseEvent",
     "Node",
     "OscillatorNode",
     "OscillatorType",
     "Performance",
     "PointerEvent",
+    "RequestInit",
+    "Response",
     "Storage",
     "WebGl2RenderingContext",
     "WebGlBuffer",
