@@ -1,0 +1,208 @@
+{
+ "schema": "psionic.deepseek_v41.attention_evidence.v1",
+ "issue": 12392,
+ "date": "2026-10-20",
+ "machine": "coderos-4080",
+ "gpu": "NVIDIA GeForce RTX 4080 (SM89)",
+ "driver": "595.71.05",
+ "cuda": "13.2 (nvcc 13.2.51)",
+ "command": "PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_ -- --test-threads=1",
+ "tests": {
+  "passed": 38,
+  "failed": 0,
+  "ignored": 3,
+  "note": "14 W5 tests plus W4's 9 and W6's 15"
+ },
+ "cpu_order": "ReferenceBf16 in its default order (sparse_attention_bf16 with the window rows oldest first); ReferenceBf16Tp8 is not modeled",
+ "parity": {
+  "rope_and_yarn": {
+   "cases": 20952,
+   "real_latents": 21,
+   "max_error_over_bound": 0.4704994976205826,
+   "bf16_boundary_values": 1
+  },
+  "window_attention": {
+   "tokens_checked": 316,
+   "bf16_boundary_values": 0
+  },
+  "compressor_synthetic": {
+   "latents": 16,
+   "ratio2_fallback_bounds": 1,
+   "ratio2_latents_differing": 0
+  },
+  "compressor_real": {
+   "layers": [
+    {
+     "layer": 2,
+     "ratio": 2,
+     "groups": 7,
+     "oracle_policy_ratio": 0.0,
+     "fallback_bounds": 1,
+     "latents_differing": 0,
+     "index_key_blocks_at_rope_boundary": 0,
+     "kv_blocks_at_rope_boundary": 0
+    },
+    {
+     "layer": 20,
+     "ratio": 1,
+     "groups": 21,
+     "oracle_policy_ratio": 0.43537414965986393,
+     "fallback_bounds": 0,
+     "latents_differing": 0,
+     "index_key_blocks_at_rope_boundary": 1,
+     "kv_blocks_at_rope_boundary": 2
+    }
+   ]
+  },
+  "compressed_attention": {
+   "tokens_checked": 26,
+   "bf16_boundary_values": 0
+  },
+  "indexer": {
+   "score_cases": 13,
+   "index_query_blocks_at_rope_boundary": 4
+  },
+  "selection_and_candidates_oracle": {
+   "steps": 28,
+   "selections": 224,
+   "largest_visible": 20021,
+   "selection_tied_indices_differing": 0,
+   "candidate_tied_blocks_differing": 0
+  },
+  "cpu_and_host_on_real_inputs": {
+   "latents": 28,
+   "latent_policy_ratio": 0.43537414965986393,
+   "selections": 224,
+   "tied_differences": 0
+  },
+  "shared_sources": {
+   "sources": [
+    {
+     "source": 2,
+     "ratio": 2,
+     "consumers": [
+      2,
+      3
+     ],
+     "tokens": 600,
+     "latent_fallback_bounds": 141,
+     "latents_differing": 0,
+     "attention_bf16_boundary_values": 0
+    },
+    {
+     "source": 20,
+     "ratio": 1,
+     "consumers": [
+      20,
+      21,
+      24
+     ],
+     "tokens": 600,
+     "latent_fallback_bounds": 0,
+     "latents_differing": 0,
+     "attention_bf16_boundary_values": 0
+    }
+   ]
+  },
+  "exact": "cache quantizers, window store, dense products, RMS norms, ratio-1 latents, index scores, top-512 selection, and candidate blocks equal the CPU; every kernel equals its host model bit for bit"
+ },
+ "decode_latency_us": [
+  {
+   "kernel": "RoPE (query, 64x512)",
+   "microseconds": 2.99
+  },
+  {
+   "kernel": "window store (512, FP8 form)",
+   "microseconds": 3.68
+  },
+  {
+   "kernel": "dense 512x5120 F32 (ratio-2 compressor)",
+   "microseconds": 44.63
+  },
+  {
+   "kernel": "dense 512x5120 BF16 (ratio-1 compressor)",
+   "microseconds": 64.84
+  },
+  {
+   "kernel": "dense 32x5120 BF16 (index weights)",
+   "microseconds": 64.8
+  },
+  {
+   "kernel": "RMS norm (1280)",
+   "microseconds": 6.23
+  },
+  {
+   "kernel": "compressor (ratio 2, completing)",
+   "microseconds": 15.58
+  },
+  {
+   "kernel": "index cache form (32x128 FP4)",
+   "microseconds": 1.9
+  },
+  {
+   "kernel": "compressed store (2048 rows)",
+   "microseconds": 12.41
+  },
+  {
+   "kernel": "index scores (2048 keys)",
+   "microseconds": 14.71
+  },
+  {
+   "kernel": "candidate blocks (2048 keys)",
+   "microseconds": 21.03
+  },
+  {
+   "kernel": "top-512 selection (2048 keys)",
+   "microseconds": 24.98
+  },
+  {
+   "kernel": "attention, 128 window + 512 selected (2048 rows)",
+   "microseconds": 81.87
+  },
+  {
+   "kernel": "compressed store (20001 rows)",
+   "microseconds": 12.41
+  },
+  {
+   "kernel": "index scores (20001 keys)",
+   "microseconds": 80.74
+  },
+  {
+   "kernel": "candidate blocks (20001 keys)",
+   "microseconds": 24.28
+  },
+  {
+   "kernel": "top-512 selection (20001 keys)",
+   "microseconds": 70.3
+  },
+  {
+   "kernel": "attention, 128 window + 512 selected (20001 rows)",
+   "microseconds": 83.44
+  },
+  {
+   "kernel": "compressed store (65536 rows)",
+   "microseconds": 12.4
+  },
+  {
+   "kernel": "index scores (65536 keys)",
+   "microseconds": 228.15
+  },
+  {
+   "kernel": "candidate blocks (65536 keys)",
+   "microseconds": 33.84
+  },
+  {
+   "kernel": "top-512 selection (65536 keys)",
+   "microseconds": 194.65
+  },
+  {
+   "kernel": "attention, 128 window + 512 selected (65536 rows)",
+   "microseconds": 83.77
+  },
+  {
+   "kernel": "attention, window only (128)",
+   "microseconds": 21.63
+  }
+ ],
+ "latency_note": "one token, mean over 100 launches in one submission, enqueue included, on a GPU shared with the Clef and Pylon services"
+}

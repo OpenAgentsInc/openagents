@@ -250,3 +250,7 @@ bench/terminal-bench/traces/try--coder-one-tunable-v7--targets-9568b/wal-recover
 # Real DeepSeek-V4.1 weights and oracle activations the W6 kernel parity
 # tests read (#12393); regenerate with the deepseek_v41_mix_rows example.
 crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_mix/rows.bin
+# Real DeepSeek-V4.1 compressor and indexer weights and oracle activations the
+# attention parity tests read (#12392); regenerate with the
+# deepseek_v41_attention_rows example.
+crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_attention/rows.bin

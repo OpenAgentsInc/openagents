@@ -1183,6 +1183,140 @@ math. On the RTX PRO 6000, confirm:
 - Float32 subnormals aren't flushed (Engram rows with small scales rely on
   them).
 
+## Attention kernels (W5, 2026-10-20)
+
+[#12392](https://github.com/OpenAgentsInc/openagents/issues/12392) adds
+`psionic_backend_cuda::v41_attention`, the attention half of a layer around
+W4's FP8 projections. As in W4 and W6, every call only enqueues work: none
+allocates or synchronizes, so W7 can record them into a CUDA graph. Callers
+own every buffer, including the window rings, the source caches, the
+compressor state, and the candidate scratch. Positions are device `i32`
+values, one per token, so one recorded graph serves every decode position;
+the tokens of a multi-token call have consecutive positions.
+
+| Call | What it does |
+| --- | --- |
+| `v41_rope(V41RopeTable, values, V41Steps, heads, head_width, back, inverse, output)` | Adjacent-pair rotation of each head's last 64 values at `p - back`, as `Rope::apply_tail`; `v41_rope_frequencies(V41RopeConfig::window(64))` (base 10,000) or `::compressed(64)` (base 160,000 with YaRN) makes the table. `back = ratio - 1` places a completed group at its first token; `inverse` rotates the attention output back. |
+| `v41_cache_quant(kind, input, out, rows, width)` | `inplace_bf16`: per-32 FP8/UE8M0 (`Fp8`), per-32 FP4/UE8M0 (`IndexFp4`), or per-16 FP4/E4M3 (`CompressedFp4`). |
+| `v41_window_store(geometry, input, steps, V41Ring)` | The rotated window KV in its FP8 form into the layer's ring at `p % rows`, as BF16 words. Every layer has its own ring. |
+| `v41_dense(V41Dense, input, out, tokens, round_input, output)` | F32, BF16, or FP8 32×32-block weights times an input, each row summed in the CPU's order; `groups` makes it block-diagonal (`wo_a`). |
+| `v41_rms_norm(input, weight, out, tokens, width, epsilon, output)` | The CPU's `rms_norm` with the BF16-rounded weight. |
+| `v41_compress(V41Compressor, values, gates, norm, state, steps, latents)` | The gated softmax pool of each completed group (ratio 2, layers 2–19) or the value (ratio 1, layers 20–39), rounded to BF16, then the RMS norm. The trailing incomplete group stays in `state`, so any chunking gives the same latents. |
+| `v41_compressed_store(geometry, ratio, V41IndexKeyWeights, rope, latents, steps, V41Source)` | For each completed group, source row `(p + 1) / ratio - 1`: the index key from the unrotated latent (`wk`, `k_norm`, RoPE at the group's first position, FP4/UE8M0) and the compressed KV (RoPE, FP4/E4M3). |
+| `v41_index_scores(geometry, query, weights, V41Source, ratio, steps, scores)` | `sum_h max(q_h . k, 0) * bf16(w_h * scale)` for every visible key of the KV source, as the CPU's reference scores. |
+| `v41_candidate_blocks(scores, ratio, steps, V41Candidates, 2048, 8)` | Layer 20's 2,048 best 8-position blocks by maximum score, the newest pinned in: a flag per block and the kept ids in ascending order. |
+| `v41_select_indices(scores, ratio, steps, candidates, 512, out)` | The top 512 visible scores (from layer 20's flags on layers 24–36), ties to the lower position, in ascending order with -1 after them. |
+| `v41_sparse_attention(geometry, query, sinks, V41Ring, V41Compressed, steps, out)` | The window rows oldest first, then the selected compressed rows of the source, in the CPU's 64-slot online softmax with BF16 weights and the sink in the denominator only. |
+
+`V41LayerOwners::for_layer` gives each layer's KV owner (2, 8, 14, or 20),
+selection owner (2, 8, 14, 20, 24, 28, 32, or 36), and candidate owner (20 for
+layers 20–39), as `shared_state::LayerOwners`. A layer's decode step for W7:
+
+1. W4's FP8 projections give the low-rank query, the heads, the window KV,
+   and on index layers the index query; `v41_rms_norm` gives the norms and
+   `v41_dense` the index weights (`weights_proj`, BF16 in and out).
+2. `v41_rope` rotates the heads, the window KV, and the index query; then
+   `v41_window_store` writes the window row, and `v41_cache_quant(IndexFp4)`
+   forms the index query.
+3. On a KV source layer: `v41_dense` for the compressor's values (and gates
+   at ratio 2; `convert.py` promotes those to F32, and the CPU skips the
+   BF16 rounding there), `v41_compress`, and `v41_compressed_store`.
+4. On an index layer: `v41_index_scores`, on layer 20 also
+   `v41_candidate_blocks`, then `v41_select_indices`. Other layers reuse
+   their owner's selection buffer.
+5. `v41_sparse_attention`, `v41_rope` with `inverse`, `v41_cache_quant(Fp8)`,
+   `v41_dense` for the grouped FP8 `wo_a`, then W4's `wo_b`.
+
+Each kernel repeats the CPU's `ReferenceBf16` arithmetic in the CPU's default
+order: dot products, matrix rows, and RMS sums are sequential sums from
+element 0; attention keeps the 64-slot blocks of `sparse_attention_bf16`
+with the window rows oldest first; selection follows `select_indices` and
+`candidate_mask`. W1's `ReferenceBf16Tp8` order keeps masked window slots in
+the ring's order and sums each block's weights in a padded tree; switching to
+it changes the slot list and the denominator update in
+`v41_sparse_attention_kernel` and is left to W7. `exp`, `cos`, and `sin` run
+in double precision and are rounded once. The `*_host` functions repeat the
+device arithmetic and match it bit for bit. Nonfinite input writes NaN where
+the CPU path refuses it, and a refused selection writes `i32::MIN`, which the
+attention turns into NaN rather than reading.
+
+**Tolerances,** fixed before the first GPU run (the test file's header has
+the derivation, u = 2^-24):
+
+- Exact: every kernel against its host model, and against the CPU for the
+  cache quantizers, window store, dense products, RMS norms, ratio-1
+  latents, index scores, selection, and candidate blocks.
+- RoPE: `(|a| + |b|) 4u + 2u |out|` per rotated value (the trigonometry
+  differs by at most 2u, and both sides round three times).
+- The ratio-2 pool: `17u sum |v_r q_r|`. Where that reaches no BF16 rounding
+  boundary, the latent must equal the CPU's; otherwise a fallback bound
+  carries one BF16 step through the RMS scale.
+- Attention: weight flips at BF16 boundaries plus `4Ku` of rescale error
+  and the summation bound over the output and the denominator.
+- Chains through RoPE (index keys and queries, compressed KV): each
+  quantization block must equal the CPU's unless a value's RoPE bound reaches
+  a BF16 boundary; such blocks are counted.
+- Oracle selections must equal its `topk_idxs` (minus the window or prompt
+  offset the reference adds) and `candidate_blocks`, except among values
+  equal to the last selected one.
+
+**Results on the RTX 4080 (SM89).** The `deepseek_v41_attention_rows` example
+fetched the fixture with ranged reads (18.7 MB, allowlisted): the compressor,
+index-key, and index-weight matrices of layers 2 and 20, four layers' sinks,
+and from the oracle the attention inputs, compressor latents, scores,
+selections, and candidate blocks of the four main prompts and the 127/128/129
+prompts at their last prompt position and three decode steps. All 14 W5 tests
+pass, and W4's 9 and W6's 15 still pass:
+
+| Mode | Check | Result |
+| --- | --- | --- |
+| 1. RoPE and YaRN | 20,952 head cases (64×512, 1×512, 32×128) at positions 0–2, 127–129, 4,095, 16,383–16,384, 20,000, 65,535–65,537, and 2^20 - 1, both bases, forward and inverse, group positions; 21 real layer-20 latents | 0.47 of the bound; 1 BF16 value at a boundary; positions past 2^20 - 1 and NaN give NaN |
+| 2. Window attention | Prefill of 301 positions in one launch, and decode through a 128-row ring past two wraps (positions 0–2, 63–65, 126–129, 200, 255–257, 300) | BF16 output equals the CPU's at all 316 tokens; ring rows equal the CPU's FP8 form |
+| 3. Compression | Ratios 1 and 2 over 11 tokens in four chunkings (whole, by token, `3,1,2,1,4`, `2,5,4`), odd tails, NaN | Every chunking equals the host model and the others; latents equal the CPU's |
+| 3. Compression | Real inputs: 7 ratio-2 groups (layer 2) and 21 ratio-1 groups (layer 20) from the oracle's attention inputs and real weights | Projections and latents equal the CPU's; latents within 0.44 of the W1 policy of the oracle's; 1 index-key and 2 KV blocks have a RoPE boundary in reach |
+| 3. Compressed attention | Ratios 1 and 2, 0 to 700 rows, every 5th position masked, a bad index | BF16 output equals the CPU's in 26 cases; the bad index gives NaN |
+| 4. Indexer | Index query RoPE and FP4 at 4 positions; scores and top 512 at 13 positions to 20,001 rows, ties, NaN, +inf, empty, all -inf | Scores and selections equal the CPU's; 4 query blocks have a RoPE boundary in reach |
+| 4–5. Oracle selection | The oracle's scores at all 8 index sources and 28 steps (224 selections, up to 20,021 positions), with layer 20's device candidates for layers 24–36 | Equal to the CPU and to the oracle's `topk_idxs` and `candidate_blocks`; no tied index differs |
+| 5. Candidates | 20,001 synthetic positions with ties, and a later indexer reading the flags | Equal to `candidate_mask` and `select_indices` |
+| 6. Shared sources | One submission: 600 prefill tokens through sources 2 and 20, layers 2 and 20 indexing, layer 20's candidates, layer 24 indexing source 20's keys, and layers 3, 21, and 24 attending through the sources | Every stage equals its host model on the device's own inputs and the CPU components; nothing crosses to the host before the end |
+
+The oracle records no query, window KV, compressed-KV history, `wkv` output,
+or attention intermediate, so attention outputs can't be checked against it
+directly: they're checked against the CPU component on synthetic and
+device-produced rows, and the oracle checks the compressor, the scores'
+selections, and the candidates. The oracle's selected indices address its KV
+array: they carry an offset of the window (128) in decode and of the prompt
+length in the prefill forward.
+
+One decode step's latency on the shared 4080, mean over 100 launches with
+enqueue overhead, in µs: RoPE of the query 3.0, window store 3.7, the
+ratio-2 compressor 15.6, index FP4 form 1.9, compressed store 12.4, RMS norm
+(1,280) 6.2, dense 512×5120 at 44.6 (F32) and 64.8 (BF16), and the 32×5120
+index weights 64.8. With 2,048, 20,001, and 65,536 visible keys: index scores
+14.7, 80.7, and 228; candidate blocks 21.0, 24.3, and 33.8; top-512
+selection 25.0, 70.3, and 195; attention over 128 window and 512 selected
+rows 82–84; window-only attention 21.6. The CPU's sequential order costs
+time: a 5,120-long dot product is one dependent chain, and selection runs in
+one block per token. W7 can trade the order for a summation tolerance (as W4
+and W6 do) in the dense products and the attention scores if the step needs
+it. Evidence:
+[`sm89-2026-10-20.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_attention/sm89-2026-10-20.json).
+
+**For SM120 (W8).** The kernels use no tensor cores, FP8 conversion
+instructions, or architecture-specific features, and build without fast
+math. On the RTX PRO 6000, confirm:
+
+- `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib
+  v41_attention` passes with `PSI_CUDA_ARCH=sm_120` and CUDA 12.8 or later,
+  and the ignored `v41_attention_decode_latency`.
+- Double-precision `exp`, `cos`, and `sin` still round to the host model's
+  values, and the reduced FP64 rate doesn't dominate attention (about 2,600
+  `exp` calls per attention block).
+- Every kernel's shared memory (at most 39 KB per block) fits without an
+  opt-in.
+- Float32 subnormals aren't flushed (FP4/E4M3 scales and E4M3 decoding rely
+  on them).
+
 ## W1 isolated checks and attention blocks (2026-10-20)
 
 Isolated mixing checks compare all 3,360 recorded pre/post/comb tensors with

@@ -99,6 +99,26 @@ Gate progress (2026-10-21):
   JSON (`crates/pylon/placements/deepseek-v41/`). G8 still needs a real
   cold launch (W16, #12403), which needs W11's stage worker in a bucket,
   W12's stage-to-stage transport, and W14's deadline.
+- **G3, attention kernels (W5, #12392), RTX 4080 only.** Checked against
+  the CPU path's default `ReferenceBf16` order (window rows oldest first);
+  the `ReferenceBf16Tp8` order is W7's choice. Tolerances were fixed before
+  the first GPU run. Kernels without a transcendental repeat the CPU's
+  sequential sums and equal it: the cache quantizers, window store, dense
+  products, RMS norms, index scores, top-512 selection, and candidate
+  blocks. RoPE differs only through `cos` and `sin` (`(|a| + |b|) 4u +
+  2u |out|`, u = 2^-24), the ratio-2 pool and the attention only through
+  `exp`, and every kernel equals a host model bit for bit. Results: RoPE at 20,952
+  head cases reaches 0.47 of its bound; 316 window tokens (prefill and a
+  wrapping 128-row ring) and 26 compressed cases (ratios 1 and 2, 0 to 700
+  rows, masked slots) equal the CPU's BF16 output; real compressor latents
+  at layers 2 and 20 (28 groups from the oracle's inputs and real weights)
+  equal the CPU and sit within 0.44 of the W1 policy of the oracle's;
+  selections from the oracle's own scores equal its `topk_idxs` at all
+  eight index sources and its layer-20 candidate blocks at 28 steps, up to
+  20,021 positions, with no tied index differing; a 600-token prefill
+  through sources 2 and 20 and consumers 3, 21, and 24 reads the sources on
+  the device and equals the CPU components stage by stage. Results:
+  [`sm89-2026-10-20.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_attention/sm89-2026-10-20.json).
 - **Placement from header bytes.** Layers 0–9, 10–19, 20–29, and 30–39
   need 75.41, 74.07, 73.92, and 75.23 GB of GPU weights, as the plan's
   table says, and the Engram tables (101.38 GB each) go to host memory on
@@ -187,10 +207,10 @@ spend guard from the one budget host.
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
 | W4 | **Done on SM89 (#12391).** `psionic_backend_cuda::v41_matvec`: `v41_act_quant_fp8` and `v41_block_matvec` over packed FP8 32×32-block and FP4 per-32 weights, with device-selected matrices from a stack for routed experts and no host round trip. Parity on the RTX 4080 against the CPU path on committed real rows; decode reads 409–591 GB/s (57–82% of the 4080's 717 GB/s). SM120 parity moves to W8. | M | — (checked against the CPU path, which is bit-exact against the reference's dequantization) | Parity with the CPU path on real rows on the 4080 and the target GPU. |
-| W5 | **Attention kernels.** Window attention with sink, compressed attention at ratios 1 and 2, the indexer, candidate selection, and the shared-source reads. | L (split per mode) | W1 | Per-kernel parity on both GPUs, including the 127/128/129 cases. |
+| W5 | **Done on SM89 (#12392).** `psionic_backend_cuda::v41_attention`: tail RoPE and YaRN, the window ring and cache quantizers, window and compressed latent attention with the sink, the ratio-1 and ratio-2 compressor and compressed-row store, dense products in the CPU's order, index scores, top-512 selection, and layer-20 candidate blocks, with consumers reading the KV sources on the device. Parity on the RTX 4080 against the CPU path's default `ReferenceBf16` order, including the 127/128/129 prompts and 20,021 positions; selections equal the oracle's at all eight index sources. One decode step's attention takes 82–84 µs on a layer with 512 selected rows. SM120 parity moves to W8. | L (split per mode) | W1 | Per-kernel parity on both GPUs, including the 127/128/129 cases. |
 | W6 | **Done on SM89 (#12393).** `psionic_backend_cuda::v41_mix`: hyper-connection mixes (joint RMS projection, pre/post, 20-iteration Sinkhorn), collapse, and expand; the Engram gather from page-locked host memory and the Engram gate; router logits, routing with ties to the lower id written as `V41Slots` ids, clamped SwiGLU, and the expert sum. Parity with the CPU path on real weights and oracle inputs on the RTX 4080; one decode step's kernels take 1.8–12.7 µs each. SM120 parity moves to W8. | M | — (checked against the CPU components, as W4) | Per-kernel parity on both GPUs. |
 | W7 | **Device-resident step.** One stage's whole decode step on the GPU, with embeddings, norms, rotation, and sampling on the device, and CUDA graphs for decode. | L | W4–W6 | G4 passes for a 5- or 10-layer stage on the target GPU; per-token latency and peak memory are recorded. |
-| W8 | **Target GPU choice.** Confirm the kernels on the RTX PRO 6000 (SM120, G4 machines) and decide whether B200 (SM100) needs a separate profile. W4's SM120 run: build with `PSI_CUDA_ARCH=sm_120` and run `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_matvec`, then the ignored `v41_decode_bandwidth`; W6's SM120 run: `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_mix`, then the ignored `v41_mix_decode_latency`. | S, cloud | W7 | A recorded decision with parity on the chosen GPU. |
+| W8 | **Target GPU choice.** Confirm the kernels on the RTX PRO 6000 (SM120, G4 machines) and decide whether B200 (SM100) needs a separate profile. W4's SM120 run: build with `PSI_CUDA_ARCH=sm_120` and run `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_matvec`, then the ignored `v41_decode_bandwidth`; W6's SM120 run: `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_mix`, then the ignored `v41_mix_decode_latency`; W5's: `--lib v41_attention`, then the ignored `v41_attention_decode_latency`. | S, cloud | W7 | A recorded decision with parity on the chosen GPU. |
 
 ### Phase 4: stage Pylons (G5, G6, G7)
 

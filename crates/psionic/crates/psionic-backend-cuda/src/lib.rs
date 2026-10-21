@@ -19244,6 +19244,7 @@ mod platform {
 pub mod clef_prefill;
 pub mod digit;
 pub mod encoder;
+pub mod v41_attention;
 pub mod v41_matvec;
 pub mod v41_mix;
 

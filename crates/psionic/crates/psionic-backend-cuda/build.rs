@@ -22,6 +22,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=src/kernels/v41_block_matvec_stub.c");
     println!("cargo:rerun-if-changed=src/kernels/v41_mix.cu");
     println!("cargo:rerun-if-changed=src/kernels/v41_mix_stub.c");
+    println!("cargo:rerun-if-changed=src/kernels/v41_attention.cu");
+    println!("cargo:rerun-if-changed=src/kernels/v41_attention_stub.c");
     println!("cargo:rerun-if-env-changed=NVCC");
     println!("cargo:rerun-if-env-changed=PSIONIC_CUDA");
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
@@ -39,6 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .file("src/kernels/digit_stub.c")
             .file("src/kernels/v41_block_matvec_stub.c")
             .file("src/kernels/v41_mix_stub.c")
+            .file("src/kernels/v41_attention_stub.c")
             .file("src/kernels/clef_hopper_stub.c")
             .compile("psionic_cuda_quantized_kernels");
     }
@@ -124,6 +127,14 @@ fn compile_cuda_kernels(nvcc: &Path, out_dir: &Path) -> Result<(), Box<dyn Error
     // and keep IEEE division and square roots: no fast math either.
     let v41_mix_object = out_dir.join("v41_mix.o");
     compile_cuda_object(nvcc, "src/kernels/v41_mix.cu", &v41_mix_object, false)?;
+    // The attention kernels follow the same rules.
+    let v41_attention_object = out_dir.join("v41_attention.o");
+    compile_cuda_object(
+        nvcc,
+        "src/kernels/v41_attention.cu",
+        &v41_attention_object,
+        false,
+    )?;
     let mut build = cc::Build::new();
     build
         .cpp(true)
@@ -132,7 +143,8 @@ fn compile_cuda_kernels(nvcc: &Path, out_dir: &Path) -> Result<(), Box<dyn Error
         .object(&encoder_object)
         .object(&digit_object)
         .object(&v41_object)
-        .object(&v41_mix_object);
+        .object(&v41_mix_object)
+        .object(&v41_attention_object);
     // The Hopper projection GEMM (#11443) is wgmma/TMA code for sm_90a;
     // other targets link its stub and keep the fused and cuBLAS paths.
     if find_cuda_arch().is_some_and(|arch| arch == "sm_90" || arch == "sm_90a") {
