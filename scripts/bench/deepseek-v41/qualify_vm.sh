@@ -15,7 +15,9 @@
 # BUILD (the BUILD.json SHA-256 v41-stage-build.sh printed: the independent
 # pin, never read from the bucket), MANIFEST (the one-quad group manifest's
 # SHA-256), RESULTS (gs:// folder). v41-build-check.py from scripts/pylon/
-# sits beside this script on the machine.
+# sits beside this script on the machine. FRONT (optional) is a newer
+# psionic-v41-stage that drives the pinned worker with --worker; POLICY is the
+# frozen policy file for run-holdout.
 set -euo pipefail
 
 ROOT=/mnt/stage
@@ -63,8 +65,15 @@ setup() {
 
 qualify() {
   local out=$1; shift
-  timeout 21600 $BIN qualify --weights $ROOT/weights --manifest "sha256:$MANIFEST" --worker-build "$BUILD" \
-    --oracle $ROOT/oracle --out "$out" --max-context 2560 "$@" > "$out.log" 2>&1 \
+  local front=$BIN extra=()
+  if [ -n "${FRONT:-}" ]; then
+    mkdir -p $ROOT/front
+    [ -x $ROOT/front/psionic-v41-stage ] || { gcloud storage cp -q "$FRONT" $ROOT/front/psionic-v41-stage && chmod 755 $ROOT/front/psionic-v41-stage; }
+    front=$ROOT/front/psionic-v41-stage
+    extra=(--worker $BIN)
+  fi
+  timeout 21600 $front qualify "${extra[@]}" --weights $ROOT/weights --manifest "sha256:$MANIFEST" --worker-build "$BUILD" \
+    --oracle ${ORACLE_DIR:-$ROOT/oracle} --out "$out" --max-context ${MAX_CONTEXT:-2560} "$@" > "$out.log" 2>&1 \
     || log "qualify $out exited $?"
   gcloud storage rsync -q -r -x 'record/.*\.u32$' $ROOT/out "$RESULTS" || true
 }
@@ -98,6 +107,22 @@ run-cpu() {
   qualify $ROOT/out/reference-cpu --backend cpu --arithmetic bf16-tp8 --observe --step-secs 36000 \
     --cases p1-chat-thinking,p2-code,e-window-127,e-window-128,e-window-129,e-engram
   log "CPU reference done"
+}
+
+# The frozen policy on the holdout (G1 v2's verdict), then the G2 v2 suite's
+# complete answers, both on the launch profile.
+run-holdout() {
+  : "${MANIFEST:?}" "${RESULTS:?}" "${POLICY:?}"
+  local oracle=gs://openagents-psionic-oracle/deepseek-v41/1bae0e1 cases
+  mkdir -p $ROOT/holdout $ROOT/g2-oracle
+  gcloud storage rsync -q -r $oracle/g1-v2/holdout $ROOT/holdout
+  gcloud storage rsync -q -r $oracle/g2-v2/oracle $ROOT/g2-oracle
+  gcloud storage cp -q "$POLICY" $ROOT/policy.json
+  cases=$(python3 -c 'import json,sys; print(",".join(c["id"] for c in json.load(open(sys.argv[1]))["cases"]))' $ROOT/holdout/holdout-corpus.json)
+  ORACLE_DIR=$ROOT/holdout qualify $ROOT/out/holdout --observe --gpus 0,1,2,3 --policy $ROOT/policy.json --cases "$cases"
+  cases=$(python3 -c 'import json,sys; print(",".join(c["id"] for c in json.load(open(sys.argv[1]))["cases"]))' $ROOT/g2-oracle/task-suite.json)
+  ORACLE_DIR=$ROOT/g2-oracle MAX_CONTEXT=8192 qualify $ROOT/out/g2-answers --gpus 0,1,2,3 --answers 4096 --cases "$cases"
+  log "holdout runs done"
 }
 
 "$@"

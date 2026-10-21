@@ -332,3 +332,50 @@ fn cuda_observations_match_and_every_negative_control_fails() {
     }
     assert!(passed.is_empty(), "controls that passed: {passed:?}");
 }
+
+#[test]
+fn answers_run_greedily_from_the_oracle_prompt_to_the_cap() {
+    let root = tempfile::tempdir().unwrap();
+    let manifest = weights(root.path(), &[(0, 20), (20, 40)])
+        .display()
+        .to_string();
+    let dump = root.path().join("dump");
+    oracle(&dump, &[]);
+    let mut args = vec![
+        "qualify".to_owned(),
+        "--weights".into(),
+        root.path().display().to_string(),
+        "--manifest".into(),
+        manifest,
+        "--oracle".into(),
+        dump.display().to_string(),
+        "--out".into(),
+        root.path().join("answers").display().to_string(),
+        "--cases".into(),
+        CASE.into(),
+        "--max-context".into(),
+        "64".into(),
+        "--backend".into(),
+        "cpu".into(),
+        "--development".into(),
+        "--answers".into(),
+        "5".into(),
+    ];
+    args.push("--step-secs".into());
+    args.push("120".into());
+    let output = run_bounded(std::process::Command::new(BIN).args(&args), LIMIT);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: Value = serde_json::from_slice(
+        &std::fs::read(root.path().join("answers").join("answers.json")).unwrap(),
+    )
+    .unwrap();
+    let answer = &report["answers"][0];
+    let n = answer["tokens"].as_u64().unwrap();
+    assert!((1..=5).contains(&n), "{answer:#}");
+    assert_eq!(answer["ids"].as_array().unwrap().len() as u64, n);
+    assert_eq!(report["launch"], "development");
+}

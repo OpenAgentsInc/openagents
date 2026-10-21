@@ -90,6 +90,12 @@ pub struct QualifyOptions {
     pub worker_build: Option<String>,
     /// A run without a build pin, labelled as one in the report.
     pub development: bool,
+    /// The stage worker to start, when it isn't this executable: a pinned
+    /// bundle's worker driven by a newer front.
+    pub worker: Option<PathBuf>,
+    /// G2 v2 (#12405): instead of the forced comparison, answer each case
+    /// greedily from the oracle's prompt IDs to the end token or this cap.
+    pub answers: Option<usize>,
 }
 
 impl QualifyOptions {
@@ -125,6 +131,8 @@ impl QualifyOptions {
                 "--prefill-chunk",
                 "--step-secs",
                 "--worker-build",
+                "--answers",
+                "--worker",
             ]
             .contains(&flag)
             {
@@ -223,6 +231,14 @@ impl QualifyOptions {
             )?),
             worker_build: worker_build.map(|p| p.to_ascii_lowercase()),
             development,
+            worker: values.remove("--worker").map(PathBuf::from),
+            answers: values
+                .remove("--answers")
+                .map(|v| {
+                    v.parse()
+                        .map_err(|_| refused("--answers takes a token cap"))
+                })
+                .transpose()?,
         };
         let step = options
             .max_step_tokens
@@ -428,7 +444,10 @@ impl Group {
             .local_addr()
             .map_err(|e| refused(e.to_string()))?
             .to_string();
-        let exe = std::env::current_exe().map_err(|e| refused(e.to_string()))?;
+        let exe = match &opts.worker {
+            Some(worker) => worker.clone(),
+            None => std::env::current_exe().map_err(|e| refused(e.to_string()))?,
+        };
         let token = hex::encode(Sha256::digest(format!("{front}{:?}", Instant::now())));
         let generation = 1;
         let mut children = Vec::new();
@@ -1162,6 +1181,94 @@ fn sha256_file(path: &Path) -> String {
         .unwrap_or_default()
 }
 
+/// G2 v2 (#12405): each case's complete greedy answer on the served runtime,
+/// from the oracle's own prompt IDs to the end token or `cap` tokens, with
+/// the #12372 parser's reasoning and final text from the last stage's acks.
+/// Writes `answers.json`; the frozen suite's assertions are checked
+/// separately on these texts and the oracle's.
+///
+/// # Errors
+///
+/// Any refusal of the oracle, the stages, or the files.
+pub fn run_answers(opts: &QualifyOptions, cap: usize) -> Result<Value, Refused> {
+    let record = opts.out.join("record");
+    std::fs::create_dir_all(&record).map_err(|e| refused(e.to_string()))?;
+    let oracle = OracleDump::open(&opts.oracle)?;
+    let cases = opts
+        .cases
+        .clone()
+        .ok_or_else(|| refused("--answers needs --cases"))?;
+    let mut group = Group::start(opts, &record)?;
+    let mut answers = Vec::new();
+    for case in &cases {
+        let run = oracle.run(case)?;
+        let prompt = ids(&run["prompt_token_ids"]);
+        if prompt.is_empty() {
+            return Err(refused(format!("{case}: the oracle run has no prompt")));
+        }
+        let started = Instant::now();
+        let request = format!("{case}-answer");
+        let (mut tokens, mut reasoning, mut content) = (Vec::new(), String::new(), String::new());
+        let mut finish = Value::Null;
+        let mut ack = group.step(&request, 0, Some(&prompt), None)?;
+        loop {
+            let token = ack["token"]
+                .as_u64()
+                .ok_or_else(|| refused(format!("{case}: the last stage returned no token")))?
+                as u32;
+            tokens.push(token);
+            reasoning.push_str(ack["reasoning"].as_str().unwrap_or_default());
+            content.push_str(ack["content"].as_str().unwrap_or_default());
+            if !ack["finish"].is_null() {
+                finish = ack["finish"].clone();
+            }
+            if ack["end"] == json!(true) || tokens.len() >= cap {
+                break;
+            }
+            ack = group.step(&request, tokens.len() as u64, None, Some(token))?;
+        }
+        let oracle_answer = &run["complete_answer"];
+        answers.push(json!({
+            "case": case,
+            "prompt_tokens": prompt.len(),
+            "tokens": tokens.len(),
+            "ended": ack["end"] == json!(true),
+            "finish": finish,
+            "ids": tokens,
+            "reasoning": reasoning,
+            "content": content,
+            "seconds": started.elapsed().as_secs_f64(),
+            "oracle": {"tokens": oracle_answer["tokens"], "finished": oracle_answer["finished"],
+                "ids": oracle_answer["ids"], "parsed": oracle_answer["parsed"]},
+            "same_ids_as_oracle": oracle_answer["ids"] == json!(tokens),
+        }));
+        let _ = std::fs::write(
+            opts.out.join("answers.partial.json"),
+            serde_json::to_vec_pretty(&answers).unwrap_or_default(),
+        );
+    }
+    let report = json!({
+        "schema": "psionic.deepseek_v41.g2_v2_answers.v1",
+        "issue": 12405,
+        "runtime": group.runtime,
+        "profile": group.profile,
+        "stage_bundle_sha256": group.build,
+        "stage_executable_sha256": group.executable,
+        "expected_bundle_sha256": opts.worker_build,
+        "launch": if opts.development { "development" } else { "pinned" },
+        "manifest": opts.manifest,
+        "oracle_manifest_sha256": sha256_file(&opts.oracle.join("manifest.json")),
+        "cap": cap,
+        "answers": answers,
+    });
+    std::fs::write(
+        opts.out.join("answers.json"),
+        serde_json::to_vec_pretty(&report).map_err(|e| refused(e.to_string()))?,
+    )
+    .map_err(|e| refused(e.to_string()))?;
+    Ok(json!({"passed": Value::Null, "answers": cases.len()}))
+}
+
 /// A policy with every limit pending, for runs before the policy is frozen.
 #[must_use]
 pub fn pending_policy() -> Policy {
@@ -1187,6 +1294,9 @@ pub fn pending_policy() -> Policy {
 ///
 /// Any refusal of the oracle, the stages, or the files.
 pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
+    if let Some(cap) = opts.answers {
+        return run_answers(opts, cap);
+    }
     let record = opts.out.join("record");
     std::fs::create_dir_all(&record).map_err(|e| refused(e.to_string()))?;
     let (policy, policy_sha) = match &opts.policy {
