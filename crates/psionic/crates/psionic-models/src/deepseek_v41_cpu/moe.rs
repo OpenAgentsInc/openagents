@@ -125,6 +125,21 @@ pub fn expert_with_arithmetic(
 }
 
 /// Borrows the values used by this expert's projections and activation.
+/// The FP8 codes and E8M0 scales a projection feeds its GEMM, as decoded values.
+fn observe_fp8(
+    site: &str,
+    input: &[f32],
+    observer: &mut dyn FnMut(&str, &[f32]) -> Result<(), CpuError>,
+) -> Result<(), CpuError> {
+    use super::quantization::{Quantization, quantize, round_bf16};
+    use crate::deepseek_v41_weights::{decode_f8_e4m3fn, decode_f8_e8m0fnu};
+    let q = quantize(&round_bf16(input)?, Quantization::Fp8)?;
+    let codes: Vec<f32> = q.codes().iter().map(|c| decode_f8_e4m3fn(*c)).collect();
+    let scales: Vec<f32> = q.scales().iter().map(|s| decode_f8_e8m0fnu(*s)).collect();
+    observer(&format!("{site}_fp8"), &codes)?;
+    observer(&format!("{site}_fp8_scale"), &scales)
+}
+
 pub fn expert_observed(
     input: &[f32],
     w1: &dyn MatrixRows,
@@ -149,6 +164,9 @@ pub fn expert_observed(
     shape("expert input", input, width)?;
     observer("in", input)?;
     observer("combine_weight", &[route_weight])?;
+    if arithmetic.is_bf16() {
+        observe_fp8("in", input, observer)?;
+    }
     let gate = quantization::linear(w1, input, arithmetic)?;
     let up = quantization::linear(w3, input, arithmetic)?;
     observer("w1_out", &gate)?;
@@ -175,6 +193,9 @@ pub fn expert_observed(
         hidden
     };
     observer("w2_in", &hidden)?;
+    if arithmetic.is_bf16() {
+        observe_fp8("w2_in", &hidden, observer)?;
+    }
     let output = quantization::linear(w2, &hidden, arithmetic)?;
     observer("w2_out", &output)?;
     observer("out", &output)?;

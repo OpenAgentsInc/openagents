@@ -203,6 +203,9 @@ fn family(site: &str) -> &'static str {
         || site.ends_with(".expert.id")
     {
         "integer_and_hash"
+    } else if site.ends_with("_fp8") || site.ends_with("_fp8_scale") {
+        // Connected inputs are not identical; exact equality is the strictest reading.
+        "quantized_codes_and_scales_with_identical_input"
     } else if site == "embed.out" {
         "embedding"
     } else if site == "logits" {
@@ -365,7 +368,9 @@ impl Compare<'_> {
             .map_err(|_| CpuError::Invalid("oracle tensor read or hash failed"))?;
         let f = family(site);
         let p = &self.policy["families"][f];
-        let (atol, rtol) = if p["exact"] == true {
+        let (atol, rtol) = if f == "quantized_codes_and_scales_with_identical_input" {
+            (0.0, 0.0)
+        } else if p["exact"] == true {
             // Signed cache positions are below RoPE's 2^20 limit; F32 stores
             // them exactly. Engram addresses keep their separate U64 path.
             if values
@@ -1486,6 +1491,7 @@ mod tests {
             entries: BTreeMap::from([("ids".into(), entry)]),
             cache: RefCell::new(BTreeMap::new()),
             raw_cache: RefCell::new(BTreeMap::from([("ids".into(), bytes)])),
+            headers: RefCell::new(BTreeMap::new()),
         };
         let actual = oracle.integers("ids")?;
         assert_eq!(actual, values.iter().map(|x| *x as u64).collect::<Vec<_>>());
