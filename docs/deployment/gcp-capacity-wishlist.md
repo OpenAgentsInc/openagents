@@ -4,6 +4,39 @@ Written 2026-10-21 for quota increase requests and for the owner's Google
 account team. Project: `openagentsgemini`. Every machine we start goes
 through the spend guard (`scripts/dev/cloud-budget.py`).
 
+## Heads-up for the Google team (2026-10-21)
+
+Short version, ready to paste:
+
+> Hi [name], a heads-up on capacity for OpenAgents (project
+> `openagentsgemini`). This morning we filed nine GPU quota requests
+> through the Cloud Quotas API. All nine were denied automatically within
+> about a minute:
+>
+> - On-demand RTX PRO 6000 (G4), 8 GPUs each in us-central1, us-west3,
+>   us-east4, europe-west4 and asia-southeast1. Our on-demand limit for
+>   this family is 0, so every run is spot and gets reclaimed mid-request.
+> - On-demand B200 (A4), 8 GPUs each in us-central1, us-east1 and
+>   europe-west4. Also 0 today.
+> - Preemptible RTX PRO 6000 in us-central1, 32 instead of the default 16.
+>
+> Our earlier TPU requests are still stuck. Ironwood (TPU7x), 8 spot chips
+> in us-central1, has been pending since 2026-10-13, and the same request
+> for us-east5 was denied. On-demand v6e is refused in us-central1-b and
+> us-east1-d with "User does not have permission to submit requests for
+> accelerator type v6e-1". Our v6e request for us-east4-a (64 spot,
+> 16 on-demand) was denied on 2026-10-13.
+>
+> What we're building: DeepSeek-V4.1-Flash served natively across RTX PRO
+> 6000 machines as a network of compute providers (it already runs on spot
+> G4 at about 29 tokens/s per user, on one machine and split across
+> several), plus our Clef decision models on TPU v6e. Could you help us get
+> these reviewed by a person rather than the automatic check? The details
+> and the full list are below. Thanks!
+
+The trace IDs and current state of every request are in
+[Requests filed and their status](#requests-filed-and-their-status).
+
 ## Why we're asking
 
 The DeepSeek-V4.1 work (#12369) serves the full 510 GB model natively in
@@ -27,11 +60,11 @@ stockouts:
   no capacity during one session. Ten US zones were exhausted before
   us-west3-a granted a machine.
 
-Quota still matters once capacity exists. Through the API, our service
-account sees the per-family GPU quotas (`NVIDIA_RTX_PRO_6000`,
-`NVIDIA_B200`, `NVIDIA_H100`, `NVIDIA_H200`) with no regional values.
-Check the actual limits in the console (IAM & Admin > Quotas, filtered on
-"GPUs per GPU family") before filing a request.
+On-demand is a quota problem: our on-demand limit for both RTX PRO 6000
+and B200 is 0, and the requests we filed on 2026-10-21 were denied
+automatically. Spot quota is generous (16 RTX PRO 6000 and 64 B200 per
+region by default). See
+[Requests filed and their status](#requests-filed-and-their-status).
 
 ## What we've used, for scale
 
@@ -126,7 +159,7 @@ offers a type can still be stocked out.
 | `a3-megagpu-8g` | 8 × H100 | us-central1-a/b/c, us-east4-a/b/c, us-east5-a, us-west1-a/b, us-west4-a; europe-west1-b/c, europe-west3-c, europe-west4-b/c, europe-north1-c; asia-east1-c, asia-northeast1-b, asia-southeast1-b/c; australia-southeast1-c |
 | `a3-highgpu-8g` | 8 × H100 | Most of the a3-megagpu zones, plus asia-northeast1-c, asia-northeast3-c, asia-south1-b/c, asia-south2-b, australia-southeast2-b, europe-west2-b/c, europe-west3-a, europe-west9-c |
 
-## Email to the Google account team (draft)
+## Longer email to the Google account team (draft)
 
 > Subject: GPU capacity for OpenAgents (RTX PRO 6000 and B200)
 >
@@ -154,6 +187,55 @@ offers a type can still be stocked out.
 >
 > Thanks,
 > Chris
+
+## Requests filed and their status
+
+Checked through the Cloud Quotas API on 2026-10-21. A preference that is
+denied keeps its preferred value with a granted value of 0 (or the
+default), so it can be re-submitted with more justification.
+
+### GPUs, filed 2026-10-21 at 15:42 UTC, contact chris@openagents.com
+
+| Quota | Region | Asked | Result |
+| --- | --- | --- | --- |
+| `GPUS-PER-GPU-FAMILY-per-project-region`, `NVIDIA_RTX_PRO_6000` | us-central1 | 8 | Denied (trace `c41b1faa`) |
+| Same | us-west3 | 8 | Denied (trace `cdb726a7`) |
+| Same | us-east4 | 8 | Denied (trace `605714c3`) |
+| Same | europe-west4 | 8 | Denied (trace `837d3ec6`) |
+| Same | asia-southeast1 | 8 | Denied (trace `4d9a0f67`) |
+| `GPUS-PER-GPU-FAMILY-per-project-region`, `NVIDIA_B200` | us-central1 | 8 | Denied (trace `bb80162d`) |
+| Same | us-east1 | 8 | Denied (trace `84c87c39`) |
+| Same | europe-west4 | 8 | Denied (trace `bf421095`) |
+| `PREEMPTIBLE-NVIDIA-RTX-PRO-6000-GPUS-per-project-region` | us-central1 | 32 | Denied; stays at the default 16 (trace `5311d6bd`) |
+
+### TPUs, filed 2026-10-13 for the Clef decision models
+
+See [Clef on Cloud TPU: brief for the Google meeting](../inference/clef-tpu-google-brief.md).
+
+| Quota | Location | Asked | Result |
+| --- | --- | --- | --- |
+| `PREEMPTIBLE-TPU7X-per-project-region` (Ironwood) | us-central1 | 8 | **Still pending** since 2026-10-13 |
+| Same | us-east5 | 8 | Denied |
+| `TPUV6EPreemptiblePerProjectPerZoneForTPUAPI` | us-east4-a | 64 | Denied (2026-10-13) |
+| `TPUV6EPerProjectPerZoneForTPUAPI` | us-east4-a | 16 | Denied (2026-10-13) |
+
+### What we already have
+
+| Quota | Value |
+| --- | --- |
+| Preemptible RTX PRO 6000 | 16 per region (default) |
+| Preemptible B200 | 64 per region (default) |
+| On-demand RTX PRO 6000 and B200 | 0 ("Limit: 0.0 in region us-west4" on a launch) |
+| All GPUs, global | 3,000 |
+| TPU v6e per zone, TPU API | 512 on-demand, 1,536 preemptible (defaults); 0 in us-east4-a |
+| Preemptible TPU v6e per region, Compute API | 1,536 in asia-east1, asia-northeast1, asia-south1, asia-southeast1, europe-west4, southamerica-east1, and others |
+| Preemptible TPU7x (Ironwood) | None granted |
+| On-demand v6e in us-central1-b and us-east1-d | Refused as a permission setting, not a quota |
+
+So spot quota is generous and isn't what stops us. Spot capacity is
+scarce, and on-demand access is 0 for both GPU families we need. That's
+the ask for the account team: a person to review on-demand GPU access and
+the Ironwood request, plus a reservation or capacity commitment.
 
 ## Filing quota requests
 

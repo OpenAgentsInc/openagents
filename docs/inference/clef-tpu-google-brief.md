@@ -92,7 +92,9 @@ campaign. Between 23:20 on 2026-10-12 and 01:30 UTC on 2026-10-13 (EIDs in
   region, $0.243/chip-h) and in us-east5-c; **Ironwood (TPU7x) has no quota
   at all**. We filed requests at 01:05 UTC: **v6e in us-east4-a (64 spot,
   16 on-demand) was denied within 9 minutes** (01:14 UTC, trace IDs ee8a1273-c8da-4605-baed-aeda04c6c5dd and 3701d69a-a05c-430e-983e-49f37425c90d); Ironwood (8 spot chips in
-  us-central1 and us-east5) is still pending.
+  us-central1 and us-east5): as of 2026-10-21, us-east5 was denied and
+  us-central1 is still pending. Current status of every request is in
+  [the capacity wishlist](../deployment/gcp-capacity-wishlist.md#requests-filed-and-their-status).
 - v5e and v5p were easier: spot v5e-8 came up at once in us-east1-c,
   us-west1-c, us-west4-a, us-south1-a and europe-west4-b; spot v5p-8 in
   us-east5-a and europe-west4-b. But v5e/v5p cost 3–10x more per token
