@@ -185,6 +185,20 @@ pub fn choose(
     })
 }
 
+/// Whether a fresh pylon serves `want` at all, busy or not: the reason to
+/// wait for a slot rather than fall back to another model.
+#[must_use]
+pub fn serves_somewhere(book: &BeaconBook, at: u64, want: &str) -> bool {
+    book.iter().map(|(_, b)| b).any(|b| {
+        !b.is_stage()
+            && pylon::freshness(b, at) == Freshness::Fresh
+            && matches!(b.status, Status::Online | Status::Draining)
+            && b.services
+                .iter()
+                .any(|s| s.lanes.contains(&Lane::CjConversation) && serves_model(s, want))
+    })
+}
+
 /// A summary of the book for the page: each usable pylon's label and models.
 #[must_use]
 pub fn describe(book: &BeaconBook, at: u64) -> Vec<String> {
@@ -408,6 +422,8 @@ mod tests {
         assert_eq!(wait, 300);
         assert_eq!(body["requires"][0], deadline::FEATURE);
         assert_eq!(input_limit(&b), MAX_INPUT_BYTES);
+        assert!(serves_somewhere(&book, at, PREFERRED_MODEL));
+        assert!(!serves_somewhere(&book, at, "other"));
         assert!(choose(&book, at + 1_000, None, true).is_none());
     }
 

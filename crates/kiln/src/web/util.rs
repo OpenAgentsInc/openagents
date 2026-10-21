@@ -1,8 +1,7 @@
 //! Small browser helpers: time, sleep, random bytes, and property access.
 
-use js_sys::{Promise, Reflect};
+use js_sys::Reflect;
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::JsFuture;
 
 /// Milliseconds on the page's monotonic clock.
 pub fn now_ms() -> f64 {
@@ -17,17 +16,55 @@ pub fn unix() -> u64 {
     (js_sys::Date::now() / 1000.0) as u64
 }
 
-/// Wait `ms` milliseconds.
-pub async fn sleep(ms: i32) {
-    let promise = Promise::new(&mut |resolve, _| {
+/// A timer that clears its `setTimeout` when dropped, so a timer that
+/// loses a race never calls into a dropped closure.
+pub struct Sleep {
+    rx: futures_channel::oneshot::Receiver<()>,
+    id: JsValue,
+    _callback: Closure<dyn FnMut()>,
+}
+
+impl Drop for Sleep {
+    fn drop(&mut self) {
         let global = js_sys::global();
-        if let Ok(set) = Reflect::get(&global, &"setTimeout".into())
-            && let Ok(set) = set.dyn_into::<js_sys::Function>()
+        if let Ok(clear) = Reflect::get(&global, &"clearTimeout".into())
+            && let Ok(clear) = clear.dyn_into::<js_sys::Function>()
         {
-            let _ = set.call2(&global, &resolve, &JsValue::from(ms));
+            let _ = clear.call1(&global, &self.id);
+        }
+    }
+}
+
+impl std::future::Future for Sleep {
+    type Output = ();
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<()> {
+        std::pin::Pin::new(&mut self.rx).poll(cx).map(|_| ())
+    }
+}
+
+/// Wait `ms` milliseconds.
+pub fn sleep(ms: i32) -> Sleep {
+    let (tx, rx) = futures_channel::oneshot::channel();
+    let mut tx = Some(tx);
+    let callback = Closure::<dyn FnMut()>::new(move || {
+        if let Some(tx) = tx.take() {
+            let _ = tx.send(());
         }
     });
-    let _ = JsFuture::from(promise).await;
+    let global = js_sys::global();
+    let id = Reflect::get(&global, &"setTimeout".into())
+        .ok()
+        .and_then(|f| f.dyn_into::<js_sys::Function>().ok())
+        .and_then(|f| f.call2(&global, callback.as_ref(), &JsValue::from(ms)).ok())
+        .unwrap_or(JsValue::UNDEFINED);
+    Sleep {
+        rx,
+        id,
+        _callback: callback,
+    }
 }
 
 /// 32 random bytes from the browser.

@@ -129,7 +129,7 @@ impl Relay {
 
     async fn raw(&mut self, timeout_ms: i32) -> Option<Msg> {
         let next = self.rx.next();
-        let timer = Box::pin(sleep(timeout_ms.max(0)));
+        let timer = sleep(timeout_ms.max(0));
         match select(next, timer).await {
             Either::Left((msg, _)) => msg,
             Either::Right(_) => None,
@@ -248,6 +248,7 @@ impl Relay {
         ));
         let discover_ms = sent - started;
         let mut contact_ms = None;
+        let mut heartbeats = 0_u32;
         let until = sent + (wait_secs as f64 + 10.0) * 1000.0;
         let result = loop {
             let left = (until - now_ms()) as i32;
@@ -285,7 +286,12 @@ impl Relay {
                             });
                         }
                         Answer::Error(error) => break Err(error),
-                        Answer::Processing => on_feedback("the pylon is working"),
+                        Answer::Processing => {
+                            heartbeats += 1;
+                            if heartbeats == 1 {
+                                on_feedback("the pylon is working");
+                            }
+                        }
                         Answer::Other => {}
                     }
                 }

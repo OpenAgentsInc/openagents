@@ -556,7 +556,7 @@ impl App {
                 output: format!("could not post to the worker: {}", text(&e)),
             };
         }
-        let reply = match select(rx.next(), Box::pin(sleep(TOOL_TIMEOUT_MS))).await {
+        let reply = match select(rx.next(), sleep(TOOL_TIMEOUT_MS)).await {
             Either::Left((Some(reply), _)) => reply,
             Either::Left((None, _)) => Err("the worker went away".into()),
             Either::Right(_) => {
@@ -768,6 +768,25 @@ impl App {
                         self.log("error", &e);
                         relay = None;
                         continue;
+                    }
+                }
+            }
+            // The preferred model's pylon may be busy with the previous
+            // step; wait for its slot before settling for another model.
+            if let Some(want) = want
+                && cj::choose(&book, super::util::unix(), Some(want), false).is_none()
+                && cj::serves_somewhere(&book, super::util::unix(), want)
+            {
+                self.log("info", &format!("Waiting for a free {want} slot."));
+                let until = now_ms() + 90_000.0;
+                while now_ms() < until && !self.stop.get() {
+                    sleep(3_000).await;
+                    if let Ok(b) = conn.beacons().await {
+                        book = b;
+                        book_at = now_ms();
+                    }
+                    if cj::choose(&book, super::util::unix(), Some(want), false).is_some() {
+                        break;
                     }
                 }
             }
