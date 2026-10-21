@@ -93,6 +93,7 @@ steps:
       - -c
       - |
         if [ "${_MODULES_ONLY}" = 1 ]; then exit 0; fi
+        if [ "${_STAGING_FAST}" = 1 ]; then echo "_STAGING_FAST needs _MODULES_ONLY=1" >&2; exit 1; fi
         exec bash scripts/deploy/cloud-buildx.sh crates/openagents-web/Dockerfile \
           us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG} \
           openagents-web --build-arg OPENAGENTS_COMMIT=${_COMMIT}
@@ -108,6 +109,8 @@ steps:
       - openagents-web
       - --target
       - modules
+      - --build-arg
+      - OA_STAGING_BUILD=${_STAGING_FAST}
   - name: gcr.io/cloud-builders/gcloud
     entrypoint: bash
     args:
@@ -123,6 +126,9 @@ substitutions:
   _SOURCE_COMMIT: ""
   # 1 builds only the browser modules' tarball, not the image.
   _MODULES_ONLY: "0"
+  # 1 builds the modules with staging-only settings (no LTO, quick
+  # compression); only with _MODULES_ONLY=1, never for an image.
+  _STAGING_FAST: "0"
   # The full commit the context was exported from (scripts/deploy/web.sh).
   _COMMIT: unknown
 options:

@@ -64,6 +64,8 @@
 !/scripts/deploy/cloud-buildx.sh
 !/scripts/deploy/oa-kache.sh
 !/scripts/deploy/oa-module-cache.sh
+!/scripts/deploy/staging-build-env.sh
+!/scripts/deploy/staging-shims/
 !/programs/
 !/questions/
 !/plugins/

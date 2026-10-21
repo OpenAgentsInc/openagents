@@ -225,8 +225,9 @@ change_kind() { # FROM TO
 }
 
 # The modules path: build only the browser modules (unchanged ones come
-# from the module cache), then deploy them with REF's content to the
-# livehost staging pointer, which the staging server follows.
+# from the module cache), with staging-only settings unless
+# WEB_MODULES_FAST=0, then deploy them with REF's content to the livehost
+# staging pointer, which the staging server follows.
 stage_modules() { # FULL SHA CTX
     t=$(now)
     set -- "$1" "$2" "$3" "mod-$2"
@@ -234,12 +235,12 @@ stage_modules() { # FULL SHA CTX
     if fetch_source "$1"; then
         g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
             --config "$3/crates/openagents-web/cloudbuild.yaml" --no-source \
-            --substitutions "_TAG=$4,_COMMIT=$1,_SOURCE_COMMIT=$1,_MODULES_ONLY=1" > "$STATE/build-modules-$2.log" 2>&1
+            --substitutions "_TAG=$4,_COMMIT=$1,_SOURCE_COMMIT=$1,_MODULES_ONLY=1,_STAGING_FAST=${WEB_MODULES_FAST:-1}" > "$STATE/build-modules-$2.log" 2>&1
     else
         (cd "$3" && g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
             --config crates/openagents-web/cloudbuild.yaml \
             --ignore-file crates/openagents-web/web.gcloudignore \
-            --substitutions "_TAG=$4,_COMMIT=$1,_MODULES_ONLY=1" . > "$STATE/build-modules-$2.log" 2>&1)
+            --substitutions "_TAG=$4,_COMMIT=$1,_MODULES_ONLY=1,_STAGING_FAST=${WEB_MODULES_FAST:-1}" . > "$STATE/build-modules-$2.log" 2>&1)
     fi || { say "The modules build failed; see the log."; exit 1; }
     report_modules "$STATE/build-modules-$2.log"
     took "modules build" "$t"

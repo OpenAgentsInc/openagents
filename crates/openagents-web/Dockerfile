@@ -110,6 +110,9 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
 # bucket into crates/openagents-web/kit/, under kit/.
 FROM everglade-deps AS everglade
 COPY . .
+# 1 for staging-only module settings (scripts/deploy/oa-module-cache.sh).
+ARG OA_STAGING_BUILD=0
+ENV OA_STAGING_BUILD=${OA_STAGING_BUILD}
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -exec touch -c {} + \
     && sh scripts/deploy/oa-module-cache.sh everglade /build/everglade -- sh -c '\
         oa-kache run scripts/build-everglade-web.sh /build/everglade \
@@ -252,6 +255,9 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
 
 FROM cadweb-deps AS cadweb
 COPY . .
+# 1 for staging-only module settings (scripts/deploy/oa-module-cache.sh).
+ARG OA_STAGING_BUILD=0
+ENV OA_STAGING_BUILD=${OA_STAGING_BUILD}
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -exec touch -c {} + \
     && sh scripts/deploy/oa-module-cache.sh cad /build/cad -- oa-kache run scripts/build-cad-web.sh /build/cad \
     && test -s /build/cad/cad_wasm.js \
@@ -317,6 +323,9 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
 # by side: the chat alone builds about 50 modules (#12417).
 FROM gpuiweb-deps AS gpuiweb
 COPY . .
+# 1 for staging-only module settings (scripts/deploy/oa-module-cache.sh).
+ARG OA_STAGING_BUILD=0
+ENV OA_STAGING_BUILD=${OA_STAGING_BUILD}
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -exec touch -c {} + \
     && apps/openagents/scripts/build-web-fonts.sh /build/gpui-fonts \
     && test -s /build/gpui-fonts/fonts.json \
@@ -330,6 +339,9 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
 
 FROM gpuiweb-deps AS gpuiweb-graph
 COPY . .
+# 1 for staging-only module settings (scripts/deploy/oa-module-cache.sh).
+ARG OA_STAGING_BUILD=0
+ENV OA_STAGING_BUILD=${OA_STAGING_BUILD}
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -exec touch -c {} + \
     && sh scripts/deploy/oa-module-cache.sh agent-graph /build/agent-graph -- oa-kache run apps/openagents/scripts/build-web-demo.sh --app agent-graph /build/agent-graph \
     && test -s /build/agent-graph/openagents_web_agent_graph.js \
@@ -348,6 +360,9 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
 
 FROM gpuiweb-deps AS gpuiweb-chat
 COPY . .
+# 1 for staging-only module settings (scripts/deploy/oa-module-cache.sh).
+ARG OA_STAGING_BUILD=0
+ENV OA_STAGING_BUILD=${OA_STAGING_BUILD}
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -exec touch -c {} + \
     && sh scripts/deploy/oa-module-cache.sh gpui-chat /build/gpui-chat -- oa-kache run apps/openagents/scripts/build-web-chat.sh /build/gpui-chat \
     && test -s /build/gpui-chat/openagents_web_chat.js \

@@ -19,6 +19,9 @@
 # web-modules/NAME/inputs-latest. OA_MODULE_RECORD=1 runs CMD and stores
 # only that list, for a build that is never reused (the server's).
 #
+# OA_STAGING_BUILD=1 builds with scripts/deploy/staging-build-env.sh's
+# staging-only settings, under a recipe of their own.
+#
 # Builds are stored in the shared compile cache's bucket under
 # web-modules/NAME/, through the Cloud Build machine's metadata server
 # (the RUN needs --network=host, as for scripts/deploy/oa-kache.sh). Any
@@ -84,6 +87,7 @@ store() { # FILE OBJECT
     printf 'name %s\n' "$name"
     printf 'outdirs %s\n' "$outdirs"
     printf 'arg %s\n' "$@"
+    printf 'staging %s\n' "${OA_STAGING_BUILD:-0}"
     for tool in rustc cargo wasm-bindgen wasm-opt brotli gzip clang; do
         if command -v "$tool" > /dev/null 2>&1; then
             printf 'tool %s %s\n' "$tool" "$("$tool" --version 2>&1 | head -n 3 | tr '\n' ' ')"
@@ -171,7 +175,14 @@ fi
     sed 's|^\./||' | LC_ALL=C sort) > "$work/before"
 : > "$work/stamp"
 sleep 1
-"$@"
+if [ "${OA_STAGING_BUILD:-0}" = 1 ]; then
+    # Staging-only settings (scripts/deploy/staging-build-env.sh, #12435):
+    # no LTO, quick compression. Their recipe differs, so these builds never
+    # stand in for a production one.
+    bash -c '. "$1" && shift && exec "$@"' _ "$ROOT/scripts/deploy/staging-build-env.sh" "$@"
+else
+    "$@"
+fi
 built=$(date +%s)
 find "$ROOT" ${CARGO_TARGET_DIR:+"$CARGO_TARGET_DIR"} -name '*.d' -type f -newer "$work/stamp" 2> /dev/null |
     awk -F/ '{ p = $(NF-1); if (p == "release" || p == "debug" || p == "verse-web" || p == "guest" || p == "wasm-tiny" || p == "cad-web" || p == "capture") print }' \
