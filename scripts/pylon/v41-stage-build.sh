@@ -5,6 +5,7 @@
 #
 #   v41-stage-build.sh [build] [--host HOST] [--arch sm_NN] [--commit REV] [--dry-run|--no-upload]
 #   v41-stage-build.sh test [--host HOST] [--arch sm_NN] [--commit REV]
+#   v41-stage-build.sh tests --arch sm_NN [--host HOST] [--commit REV]
 #   v41-stage-build.sh pylon [--host HOST] [--commit REV]
 #
 # `build` (the default) builds the release binary for --arch (default
@@ -40,6 +41,23 @@
 # passed explicitly, so a test build never depends on what the build script
 # guesses.
 #
+# `tests` builds the same GPU tests for --arch without running them, for a
+# machine with that GPU and no build tools, such as an A100 (sm_80) or an
+# H100 (sm_90) (#12418). It uploads one archive,
+#
+#   gs://openagents-psionic-models/bin/psionic-v41-tests/COMMIT/sm_NN/tests.tar.gz
+#
+# holding the test executables, the CUDA libraries, the test data they read
+# (under the same absolute paths the build used), and run.sh, which runs
+# every V4.1 kernel parity suite (W4 matvec, W5 attention, W6 mix, W7
+# stage) and the stage worker's CUDA tests with PSIONIC_REQUIRE_CUDA=1 and
+# refuses a GPU of another architecture. On the machine:
+#
+#   gcloud storage cp URL . && tar -xzf tests.tar.gz && sudo ./v41-tests/run.sh
+#
+# A sm_90 build also embeds the Hopper projection kernels, which nvcc
+# compiles for sm_90a, so its fatbinary holds sm_90 and sm_90a.
+#
 # `pylon` builds the `pylon` binary from the root workspace in the same
 # image, for a group head in the zone (`pylon cloud up --head stage0|vm
 # --pylon URL`), and uploads it as
@@ -72,7 +90,7 @@ arch=
 commit=HEAD
 dry=0
 upload=1
-if [[ ${1:-} == build || ${1:-} == test || ${1:-} == pylon ]]; then
+if [[ ${1:-} == build || ${1:-} == test || ${1:-} == tests || ${1:-} == pylon ]]; then
   mode=$1
   shift
 fi
@@ -98,11 +116,18 @@ remote_src="~/work/v41-stage-build-$short-$$"
 if [[ $mode == build && -z $arch ]]; then
   arch=sm_120
 fi
+if [[ $mode == tests && -z $arch ]]; then
+  echo "tests needs --arch, the GPU the tests will run on" >&2
+  exit 2
+fi
 case ${arch:-sm_89} in
   sm_[0-9]*) ;;
   *) echo "--arch takes sm_NN, such as sm_120" >&2; exit 2 ;;
 esac
 dest="$bucket/$short/$arch"
+if [[ $mode == tests ]]; then
+  dest="gs://openagents-psionic-models/bin/psionic-v41-tests/$short/$arch"
+fi
 # The root workspace's source and target stay apart from Psionic's.
 src_dir=src
 paths=(crates/psionic crates/stage-link crates/pylon/placements Cargo.toml rust-toolchain.toml scripts/dev/cargo-build-env.sh)
@@ -188,16 +213,52 @@ export CUDAARCHS=$ARCH PSI_CUDA_ARCH=$ARCH
 export RUSTFLAGS='-C link-arg=-Wl,-rpath,$ORIGIN/lib'
 
 if [ "$MODE" = test ]; then
-  PSIONIC_REQUIRE_CUDA=1 cargo test --locked -p psionic-backend-cuda --lib intermediate_prompt_chunks -- --test-threads=1
+  PSIONIC_REQUIRE_CUDA=1 cargo test --locked -p psionic-backend-cuda --lib v41_ -- --test-threads=1
   PSIONIC_REQUIRE_CUDA=1 cargo test --locked -p psionic-v41-stage --features cuda -- --test-threads=1
+  exit 0
+fi
+if [ "$MODE" = tests ]; then
+  # Test executables for a machine without build tools: Cargo prints each
+  # one it builds. The stage worker's process tests start the worker
+  # binary, so it is built and packed too.
+  cargo test --locked --no-run --message-format=json -p psionic-backend-cuda --lib >/src/cuda.json
+  cargo test --locked --no-run --message-format=json -p psionic-v41-stage --features cuda >/src/stage.json
+  mkdir -p /src/pack/v41-tests/bin /src/pack/v41-tests/lib
+  # Every executable goes back to its build path on the test machine, where
+  # the tests' CARGO_BIN_EXE paths point; only the test ones run.
+  cat /src/cuda.json /src/stage.json | grep '"executable":"/' >/src/artifacts.json
+  sed -n 's/.*"executable":"\([^"]*\)".*/\1/p' /src/artifacts.json | sort -u >/src/pack/v41-tests/paths.txt
+  grep '"test":true' /src/artifacts.json | sed -n 's/.*"executable":"\([^"]*\)".*/\1/p' | sort -u >/src/pack/v41-tests/tests.txt
+  while read -r exe; do
+    mkdir -p "/src/pack/v41-tests/bin$(dirname "$exe")"
+    cp "$exe" "/src/pack/v41-tests/bin$exe"
+  done </src/pack/v41-tests/paths.txt
+  for lib in libcudart.so.13 libcublas.so.13 libcublasLt.so.13; do
+    cp -L "/usr/local/cuda/lib64/$lib" /src/pack/v41-tests/lib/
+  done
+  # Tests read their data through CARGO_MANIFEST_DIR, a path in this
+  # container; run.sh puts the data back there.
+  mkdir -p /src/pack/v41-tests/data
+  tar -C / -cf /src/pack/v41-tests/data/manifest-dirs.tar \
+    cache/src/crates/psionic/crates/psionic-backend-cuda/testdata \
+    cache/src/crates/psionic/crates/psionic-models/src/testdata \
+    cache/src/crates/psionic/crates/psionic-v41-stage/tests \
+    cache/src/crates/pylon/placements
+  printf '%s\n' "$ARCH" >/src/pack/v41-tests/arch.txt
+  nvcc --version | tail -n 1 >/src/pack/v41-tests/nvcc.txt
   exit 0
 fi
 cargo build --locked --release -p psionic-v41-stage --features cuda
 bin=/cache/target/release/psionic-v41-stage
 "$bin" manifest --split 0-20,20-40 >/dev/null
-# What the fatbinary holds, not what was asked for: exactly $ARCH.
+# What the fatbinary holds, not what was asked for: exactly $ARCH, and for
+# sm_90 the Hopper projection kernels' sm_90a too.
 cuobjdump --list-elf "$bin" | sed -n 's/.*\.\(sm_[0-9]*a\{0,1\}\)\..*/\1/p' | sort -u >/src/elf.txt
-if [ "$(cat /src/elf.txt)" != "$ARCH" ]; then
+want=$ARCH
+if [ "$ARCH" = sm_90 ]; then
+  want=$(printf 'sm_90\nsm_90a')
+fi
+if [ "$(cat /src/elf.txt)" != "$want" ]; then
   echo "the worker's kernels are for $(tr '\n' ' ' </src/elf.txt), not $ARCH" >&2
   exit 1
 fi
@@ -237,6 +298,45 @@ scp -q "$scratch/inner.sh" "$scratch/host.sh" "$host:$remote_src/"
 ssh "$host" "flock $lock sh $remote_src/host.sh"
 if [[ $mode == test ]]; then
   echo "v41-stage-build: tests passed on $host"
+  exit 0
+fi
+if [[ $mode == tests ]]; then
+  cat >"$scratch/run.sh" <<'RUN'
+#!/bin/sh
+# Runs the V4.1 CUDA tests packed by v41-stage-build.sh tests (#12418) on
+# this machine's GPU. Needs root once, to put the test data back under the
+# build's /cache path.
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+want=$(cat "$here/arch.txt")
+have=sm_$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n 1 | tr -d '. ')
+[ "$have" = "$want" ] || { echo "these tests are built for $want; this GPU is $have" >&2; exit 1; }
+mkdir -p /cache && tar -C / -xf "$here/data/manifest-dirs.tar"
+export LD_LIBRARY_PATH="$here/lib" PSIONIC_REQUIRE_CUDA=1
+nvidia-smi --query-gpu=name,driver_version,compute_cap,memory.total --format=csv,noheader
+status=0
+# Each executable at the path it was built at.
+while read -r exe; do
+  mkdir -p "$(dirname "$exe")" && cp "$here/bin$exe" "$exe"
+done <"$here/paths.txt"
+while read -r exe; do
+  case ${exe##*/} in
+    psionic_backend_cuda-*) filter=v41_ ;;
+    *) filter= ;;
+  esac
+  echo "== ${exe##*/} $filter"
+  "$exe" $filter --test-threads=1 || status=1
+done <"$here/tests.txt"
+exit $status
+RUN
+  chmod +x "$scratch/run.sh"
+  scp -q "$scratch/run.sh" "$host:$remote_src/pack/v41-tests/run.sh"
+  # shellcheck disable=SC2029
+  ssh "$host" "tar -C $remote_src/pack -czf $remote_src/tests.tar.gz v41-tests"
+  scp -q "$host:$remote_src/tests.tar.gz" "$scratch/"
+  export CLOUDSDK_CONFIG=${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
+  gcloud storage cp -q "$scratch/tests.tar.gz" "$dest/"
+  echo "v41-stage-build: uploaded $dest/tests.tar.gz (sha256 $(shasum -a 256 "$scratch/tests.tar.gz" | cut -d ' ' -f 1))"
   exit 0
 fi
 export CLOUDSDK_CONFIG=${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}

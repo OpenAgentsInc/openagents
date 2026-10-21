@@ -271,6 +271,7 @@ fn a_stalled_executor_holds_the_link_to_its_bounds_and_recovers() {
             psionic_v41_stage::Backend::Cpu,
             Some(model.arithmetic),
         ),
+        device: serde_json::json!({"class": "cpu-test"}),
         events: Some(dir.join("events.jsonl")),
         max_context: 64,
         max_step_tokens: 64,

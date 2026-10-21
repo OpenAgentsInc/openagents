@@ -152,6 +152,93 @@ impl Backend {
     }
 }
 
+/// Where a CUDA stage keeps its routed experts (#12418).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Experts {
+    /// In device memory, as every stage did before.
+    #[default]
+    Device,
+    /// In page-locked host memory, which the kernels read over the bus, so a
+    /// layer fits a GPU smaller than its weights, such as a 16 GB card.
+    Host,
+}
+
+impl Experts {
+    /// Parses `device` or `host`.
+    ///
+    /// # Errors
+    ///
+    /// Refuses other names.
+    pub fn parse(value: &str) -> Result<Self, Refused> {
+        match value {
+            "device" => Ok(Self::Device),
+            "host" => Ok(Self::Host),
+            other => refuse(format!("--experts {other} is not device or host")),
+        }
+    }
+
+    /// The name on the command line and in the stage's `hello`.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Device => "device",
+            Self::Host => "host",
+        }
+    }
+}
+
+/// The stage-state format a stage sends and expects (#12418). Every stage
+/// of a group must use the same one, whatever backend it runs.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Wire {
+    /// The backend's own format: `F32` everywhere on the CPU, `F32`
+    /// residuals and BF16 cache rows on CUDA.
+    #[default]
+    Native,
+    /// The CUDA stages' format, so a CPU stage can sit between CUDA stages:
+    /// `F32` residuals and BF16 KV and indexer-key rows.
+    Cuda,
+}
+
+impl Wire {
+    /// Parses `native` or `cuda`.
+    ///
+    /// # Errors
+    ///
+    /// Refuses other names.
+    pub fn parse(value: &str) -> Result<Self, Refused> {
+        match value {
+            "native" => Ok(Self::Native),
+            "cuda" => Ok(Self::Cuda),
+            other => refuse(format!("--wire {other} is not native or cuda")),
+        }
+    }
+}
+
+/// The wire dtypes of `geometry`, as a stage announces them.
+#[must_use]
+pub fn wire_json(geometry: &V41StageGeometry) -> Value {
+    let name = |d: psionic_models::stage_state::WireDtype| format!("{d:?}").to_ascii_lowercase();
+    serde_json::json!({
+        "residual": name(geometry.residual_dtype),
+        "cache": name(geometry.cache_dtype),
+    })
+}
+
+/// The device class a stage on `backend` announces (#12418): `cuda-sm_NN`
+/// from the architecture its kernels were compiled for, or `cpu-` and the
+/// machine's architecture.
+#[must_use]
+pub fn device_class(backend: Backend) -> String {
+    match backend {
+        Backend::Cuda => match cuda_arch() {
+            Some(arch) => format!("cuda-{arch}"),
+            None => "cuda".into(),
+        },
+        Backend::Cpu => format!("cpu-{}", std::env::consts::ARCH),
+    }
+}
+
 /// How stage 0 renders a conversation and the last stage parses the answer:
 /// the V4.1 template's thinking mode, which opens the assistant turn in
 /// reasoning, or its chat mode, which closes the reasoning at once and
@@ -454,6 +541,10 @@ pub struct Options {
     pub observe: bool,
     /// Qualification: a deliberate defect the harness must detect.
     pub control: Option<Control>,
+    /// Where a CUDA stage keeps its routed experts (`--experts`).
+    pub experts: Experts,
+    /// The stage-state format a CPU stage uses (`--wire`).
+    pub wire: Wire,
 }
 
 /// A deliberate defect for the G1 v2 harness's negative controls (#12405).
@@ -756,7 +847,8 @@ impl Options {
                 "--weights" | "--layers" | "--gpu" | "--manifest" | "--stage" | "--generation"
                 | "--front" | "--token" | "--backend" | "--arithmetic" | "--max-context"
                 | "--listen" | "--events" | "--data-listen" | "--data-advertise" | "--record"
-                | "--control" | "--max-input-tokens" | "--max-step-tokens" | "--prefill-chunk" => {
+                | "--control" | "--max-input-tokens" | "--max-step-tokens" | "--prefill-chunk"
+                | "--experts" | "--wire" => {
                     let Some(value) = args.get(i + 1) else {
                         return refuse(format!("{flag} needs a value"));
                     };
@@ -795,6 +887,22 @@ impl Options {
             Some(v) => parse_profile(backend, &v)?,
             None => None,
         };
+        let experts = values
+            .remove("--experts")
+            .map(|v| Experts::parse(&v))
+            .transpose()?
+            .unwrap_or_default();
+        if experts == Experts::Host && backend != Backend::Cuda {
+            return refuse("--experts host is for the CUDA backend");
+        }
+        let wire = values
+            .remove("--wire")
+            .map(|v| Wire::parse(&v))
+            .transpose()?
+            .unwrap_or_default();
+        if wire == Wire::Cuda && backend != Backend::Cpu {
+            return refuse("--wire cuda is for the CPU backend; CUDA stages already use it");
+        }
         let max_context = match values.remove("--max-context") {
             Some(v) => v
                 .parse()
@@ -858,6 +966,8 @@ impl Options {
                 .remove("--control")
                 .map(|v| Control::parse(&v))
                 .transpose()?,
+            experts,
+            wire,
         })
     }
 }
@@ -1132,6 +1242,7 @@ pub fn synthetic_manifest(split: &[Range<u32>]) -> Result<V41GroupManifest, Refu
                         bytes: 0,
                     })
                     .collect(),
+                device: None,
             })
             .collect(),
     };
@@ -1224,6 +1335,27 @@ pub fn find_stage(
             if entry.head { "holds" } else { "doesn't hold" },
         ));
     }
+    // A mixed-device manifest plans each stage for one device class
+    // (#12418); a stage on another class, or with its experts elsewhere,
+    // would break the plan's memory.
+    if let Some(device) = &entry.device {
+        let class = device_class(options.backend);
+        if device.class != class {
+            return refuse(format!(
+                "stage {} of the manifest is planned for {}, but this stage runs on {class}",
+                entry.stage, device.class
+            ));
+        }
+        let host = device.experts == psionic_models::deepseek_v41_stage::ExpertMemory::Host;
+        if host != (options.experts == Experts::Host) {
+            return refuse(format!(
+                "stage {} of the manifest keeps its routed experts in {} memory; pass --experts {}",
+                entry.stage,
+                if host { "host" } else { "device" },
+                if host { "host" } else { "device" },
+            ));
+        }
+    }
     Ok(entry.clone())
 }
 
@@ -1269,6 +1401,7 @@ pub fn stage_info<'a>(
             backend,
             Some(options.arithmetic.unwrap_or(model.arithmetic)),
         ),
+        device: serde_json::json!({ "class": device_class(backend) }),
         events: options.events.clone(),
         record: options.record.clone(),
         max_context: options.max_context,
@@ -1292,6 +1425,32 @@ pub fn cpu_worker(
     max_context: usize,
     generation: u64,
 ) -> Result<StageWorker<V41CpuStageExecutor<'static>>, Refused> {
+    cpu_worker_wired(
+        model,
+        manifest,
+        entry,
+        arithmetic,
+        max_context,
+        generation,
+        Wire::Native,
+    )
+}
+
+/// [`cpu_worker`] sending and taking stage state in `wire`'s format, so a
+/// CPU stage can join CUDA stages (#12418).
+///
+/// # Errors
+///
+/// Refuses weights the layer range can't run on.
+pub fn cpu_worker_wired(
+    model: &'static Model,
+    manifest: &V41GroupManifest,
+    entry: &V41StageEntry,
+    arithmetic: Arithmetic,
+    max_context: usize,
+    generation: u64,
+    wire: Wire,
+) -> Result<StageWorker<V41CpuStageExecutor<'static>>, Refused> {
     let runtime = LayerRangeRuntime::new(
         model.weights.source(),
         RangeConfig {
@@ -1303,7 +1462,10 @@ pub fn cpu_worker(
         Arc::clone(&model.map),
     )
     .map_err(|e| Refused(format!("layers {:?} can't run: {e}", entry.layers())))?;
-    let executor = V41CpuStageExecutor::new(runtime, entry.stage);
+    let mut executor = V41CpuStageExecutor::new(runtime, entry.stage);
+    if wire == Wire::Cuda {
+        executor = executor.with_cache_dtype(psionic_models::stage_state::WireDtype::Bf16);
+    }
     let inbox = StageInbox::new(
         manifest.digest(),
         generation,

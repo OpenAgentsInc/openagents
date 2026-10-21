@@ -439,6 +439,48 @@ pub struct V41StageEntry {
     pub gpu_runtime_bytes: u64,
     /// Engram tables this stage reads.
     pub engram: Vec<V41EngramPlacement>,
+    /// The device this stage was planned for, in a group that mixes device
+    /// types (#12418). Left out for a group of one GPU type, so manifests
+    /// written before it keep their digests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<V41StageDevice>,
+}
+
+/// Where a stage's routed experts live.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExpertMemory {
+    /// In the device's own memory.
+    #[default]
+    Device,
+    /// In page-locked host memory the device reads over the bus.
+    Host,
+}
+
+/// What kind of device runs a stage, for placement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceKind {
+    /// A GPU: weights and request state in its memory.
+    Gpu,
+    /// The CPU port: weights read from the checkpoint through the page
+    /// cache, and request state, in host memory.
+    Cpu,
+}
+
+/// The device a stage was planned for (#12418).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct V41StageDevice {
+    /// The class a stage on it announces: `cuda-sm_NN` or `cpu-ARCH`.
+    pub class: String,
+    pub kind: DeviceKind,
+    /// Where the routed experts live.
+    #[serde(default)]
+    pub experts: ExpertMemory,
+    /// Page-locked host bytes the plan counted for routed experts kept on
+    /// the host.
+    #[serde(default)]
+    pub expert_host_bytes: u64,
 }
 
 impl V41StageEntry {
@@ -1191,6 +1233,7 @@ pub fn evaluate_split(
             gpu_weight_bytes: weights,
             gpu_runtime_bytes: runtime,
             engram,
+            device: None,
         });
     }
     if outcome == CandidateOutcome::Fits {
@@ -1265,6 +1308,232 @@ pub fn plan_group(
         }
     }
     Err(PlacementRefused { candidates })
+}
+
+// ---------------------------------------------------------------------------
+// Placement across device types (#12418)
+// ---------------------------------------------------------------------------
+
+/// Routed-expert bytes of one V4.1-Flash decoder layer: 384 experts, each
+/// three FP4 E2M1 matrices of 2,304 × 5,120 with one UE8M0 scale per 32
+/// values.
+pub const FLASH_ROUTED_EXPERT_BYTES: u64 = 384 * 3 * (2304 * 5120 / 2 + 2304 * 5120 / 32);
+
+/// One device a mixed group may use.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceSlot {
+    /// The machine.
+    pub host: String,
+    /// The GPU ordinal; 0 for a CPU stage.
+    pub gpu: u32,
+    /// The class a stage on it announces, such as `cuda-sm_89`.
+    pub class: String,
+    pub kind: DeviceKind,
+    /// Usable memory: the GPU's free memory, or for a CPU stage the host
+    /// memory left for its weights and state.
+    pub bytes: u64,
+    /// Keep routed experts in page-locked host memory (GPU only).
+    #[serde(default)]
+    pub experts: ExpertMemory,
+    /// The class's measured fixed cost per stage, such as its CUDA context
+    /// and kernels, when it differs from the measured runtime's.
+    #[serde(default)]
+    pub per_stage_bytes: Option<u64>,
+}
+
+/// What a stage on `slot` needs for `layers`: device bytes for weights and
+/// for runtime, and page-locked host bytes for experts kept on the host.
+fn slot_need(
+    memory: &dyn PlacementMemory,
+    slot: &DeviceSlot,
+    layers: &Range<u32>,
+    first: bool,
+    last: bool,
+) -> (u64, u64, u64) {
+    let mut weights = stage_weight_bytes(memory, layers, first, last);
+    let mut runtime = memory.stage_runtime_bytes(layers.clone());
+    if let Some(fixed) = slot.per_stage_bytes {
+        let measured = memory.stage_runtime_bytes(layers.start..layers.start);
+        runtime = runtime.saturating_sub(measured.min(runtime)) + fixed;
+    }
+    let mut host = 0;
+    if slot.kind == DeviceKind::Gpu && slot.experts == ExpertMemory::Host {
+        let experts = (layers.end - layers.start) as u64 * FLASH_ROUTED_EXPERT_BYTES;
+        let experts = experts.min(weights);
+        weights -= experts;
+        host = experts;
+    }
+    (weights, runtime, host)
+}
+
+/// Splits the layers across `slots` in order, minimizing the largest share
+/// of a device used, from each device class's own memory. A stage's host
+/// share, its Engram tables and host-resident experts against its machine's
+/// memory, counts too.
+fn balanced_split_devices(
+    memory: &dyn PlacementMemory,
+    slots: &[DeviceSlot],
+    hosts: &[HostRam],
+) -> Vec<Range<u32>> {
+    let n = slots.len();
+    let layers = V41_LAYERS as usize;
+    if n == 0 || n > layers {
+        return Vec::new();
+    }
+    let cost = |k: usize, start: usize, end: usize| {
+        let range = start as u32..end as u32;
+        let slot = &slots[k];
+        let (w, r, experts) = slot_need(memory, slot, &range, k == 0, k == n - 1);
+        let engram: u64 = range.clone().map(|l| memory.layer_engram_bytes(l)).sum();
+        let ram = hosts
+            .iter()
+            .find(|h| h.host == slot.host)
+            .map_or(0, |h| h.bytes);
+        let device = (w + r) as f64 / slot.bytes.max(1) as f64;
+        let host = (experts + engram) as f64 / ram.max(1) as f64;
+        device.max(host)
+    };
+    let mut best = vec![vec![f64::INFINITY; layers + 1]; n + 1];
+    let mut cut = vec![vec![0usize; layers + 1]; n + 1];
+    best[0][0] = 0.0;
+    for k in 1..=n {
+        for end in k..=layers {
+            for start in (k - 1)..end {
+                let value = best[k - 1][start].max(cost(k - 1, start, end));
+                if value < best[k][end] {
+                    best[k][end] = value;
+                    cut[k][end] = start;
+                }
+            }
+        }
+    }
+    let mut ranges = Vec::with_capacity(n);
+    let mut end = layers;
+    for k in (1..=n).rev() {
+        let start = cut[k][end];
+        ranges.push(start as u32..end as u32);
+        end = start;
+    }
+    ranges.reverse();
+    ranges
+}
+
+/// Plans a group over devices of different types (#12418): GPUs of any
+/// architecture, GPUs that keep routed experts in host memory, and CPU
+/// stages. Each stage's need comes from `memory` (W3's measurements),
+/// adjusted for its device: experts on the host move to the host's tally,
+/// and a class's own measured fixed cost replaces the measured runtime's.
+/// With `split`, that split is checked; without it, the layers are
+/// balanced across the devices.
+///
+/// # Errors
+///
+/// Refuses when a stage doesn't fit its device or a machine lacks the host
+/// memory for its Engram tables and host-resident experts.
+pub fn plan_devices(
+    memory: &dyn PlacementMemory,
+    slots: &[DeviceSlot],
+    hosts: &[HostRam],
+    split: Option<&[Range<u32>]>,
+) -> Result<V41GroupManifest, PlacementRefused> {
+    let balanced;
+    let split = match split {
+        Some(split) => split,
+        None => {
+            balanced = balanced_split_devices(memory, slots, hosts);
+            &balanced
+        }
+    };
+    let n = split.len();
+    let mut candidate = PlacementCandidate {
+        stages: n,
+        layers: split.to_vec(),
+        gpu_bytes: Vec::new(),
+        outcome: CandidateOutcome::Fits,
+    };
+    if n == 0 || slots.len() != n {
+        candidate.outcome = CandidateOutcome::NotEnoughGpus {
+            have: slots.len(),
+            need: n.max(1),
+        };
+        return Err(PlacementRefused {
+            candidates: vec![candidate],
+        });
+    }
+    let mut stages = Vec::with_capacity(n);
+    let mut host_need: BTreeMap<&str, u64> = BTreeMap::new();
+    for (k, (layers, slot)) in split.iter().zip(slots).enumerate() {
+        let (weights, runtime, expert_host) = slot_need(memory, slot, layers, k == 0, k == n - 1);
+        candidate.gpu_bytes.push(weights + runtime);
+        if weights + runtime > slot.bytes && candidate.outcome == CandidateOutcome::Fits {
+            candidate.outcome = CandidateOutcome::GpuShort {
+                stage: k,
+                need: weights + runtime,
+                have: slot.bytes,
+            };
+        }
+        let engram: Vec<V41EngramPlacement> = ENGRAM_LAYERS
+            .iter()
+            .filter(|l| layers.contains(l))
+            .map(|&layer| V41EngramPlacement {
+                layer,
+                location: EngramLocation::HostMemory,
+                host: slot.host.clone(),
+                bytes: memory.layer_engram_bytes(layer),
+            })
+            .collect();
+        let host = host_need.entry(slot.host.as_str()).or_default();
+        *host += engram.iter().map(|e| e.bytes).sum::<u64>() + expert_host;
+        stages.push(V41StageEntry {
+            stage: k as u16,
+            first_layer: layers.start,
+            end_layer: layers.end,
+            embeddings: k == 0,
+            head: k == n - 1,
+            host: slot.host.clone(),
+            gpu: slot.gpu,
+            gpu_capacity_bytes: slot.bytes,
+            gpu_weight_bytes: weights,
+            gpu_runtime_bytes: runtime,
+            engram,
+            device: Some(V41StageDevice {
+                class: slot.class.clone(),
+                kind: slot.kind,
+                experts: slot.experts,
+                expert_host_bytes: expert_host,
+            }),
+        });
+    }
+    if candidate.outcome == CandidateOutcome::Fits {
+        for (host, need) in &host_need {
+            let have = hosts
+                .iter()
+                .find(|h| h.host == *host)
+                .map_or(0, |h| h.bytes);
+            if *need > have {
+                candidate.outcome = CandidateOutcome::HostShort {
+                    host: (*host).to_owned(),
+                    need: *need,
+                    have,
+                };
+                break;
+            }
+        }
+    }
+    if candidate.outcome != CandidateOutcome::Fits {
+        return Err(PlacementRefused {
+            candidates: vec![candidate],
+        });
+    }
+    Ok(V41GroupManifest {
+        schema: GROUP_MANIFEST_SCHEMA.to_owned(),
+        repo: DEEPSEEK_V41_FLASH_REPO.to_owned(),
+        revision: DEEPSEEK_V41_FLASH_REVISION.to_owned(),
+        index_sha256: DEEPSEEK_V41_FLASH_INDEX_SHA256.to_owned(),
+        protocol_version: V41_STAGE_PROTOCOL,
+        memory_source: format!("{}:devices", memory.source()),
+        stages,
+    })
 }
 
 #[cfg(test)]

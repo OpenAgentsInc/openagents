@@ -6,7 +6,7 @@
 //!     [--backend cpu|cuda] [--arithmetic f32|bf16|bf16-tp8|device] [--max-context N]
 //!     [--max-step-tokens N] [--prefill-chunk N]
 //!     [--max-input-tokens N] [--listen ADDR] [--data-listen ADDR [--data-advertise ADDR]]
-//!     [--events FILE]
+//!     [--experts device|host] [--wire native|cuda] [--events FILE]
 //! psionic-v41-stage reference --weights DIR [--prompt JSON] [--mode thinking|chat] [--steps N]
 //!     [--temperature T --top-p P --seed S] [--arithmetic A] [--max-context N]
 //!     [--backend cpu|cuda]
@@ -76,13 +76,14 @@ fn run_stage(args: &[String]) -> Result<(), Refused> {
     psionic_v41_stage::check_weights(&manifest, &model.digest)?;
     let arithmetic = options.arithmetic.unwrap_or(model.arithmetic);
     let stage = psionic_v41_stage::stage_info(&options, &manifest, &entry, model, Backend::Cpu);
-    let worker = psionic_v41_stage::cpu_worker(
+    let worker = psionic_v41_stage::cpu_worker_wired(
         model,
         &manifest,
         &entry,
         arithmetic,
         options.max_context,
         options.generation,
+        options.wire,
     )?;
     serve::serve(stage, worker, options.generation)
 }

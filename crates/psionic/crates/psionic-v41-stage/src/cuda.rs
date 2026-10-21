@@ -542,6 +542,19 @@ fn token_map(map: &CompressedTokenMap, pad: u32) -> Result<V41TokenMap, Refused>
     })
 }
 
+/// What a CUDA stage announces about its device (#12418): its class
+/// (`cuda-sm_NN`, from the architecture the kernels were compiled for), the
+/// GPU's name and memory, and where the routed experts live.
+fn device_info(backend: &CudaBackend, experts: crate::Experts) -> Value {
+    let gpu = backend.selected_device();
+    serde_json::json!({
+        "class": crate::device_class(Backend::Cuda),
+        "name": gpu.and_then(|d| d.device_name.clone()),
+        "memory_bytes": gpu.and_then(|d| d.memory_capacity_bytes),
+        "experts": experts.as_str(),
+    })
+}
+
 fn cuda_backend() -> Result<CudaBackend, Refused> {
     let backend = CudaBackend::new();
     if backend.selected_device().is_none() || !backend.quantized_kernels_available() {
@@ -560,6 +573,9 @@ pub struct CudaModel {
     pub eos: u32,
     pub pad: u32,
     kind: CudaWeights,
+    /// Keep routed experts in page-locked host memory (`--experts host`,
+    /// #12418).
+    pub experts_on_host: bool,
 }
 
 enum CudaWeights {
@@ -583,6 +599,7 @@ impl CudaModel {
                 eos: synthetic::EOS,
                 pad: synthetic::PAD,
                 kind: CudaWeights::Synthetic(Box::new(synthetic::store(synthetic::SEED))),
+                experts_on_host: false,
             });
         }
         let model = load_model_for(dir, selection)?;
@@ -595,6 +612,7 @@ impl CudaModel {
             eos: model.config.eos_token,
             pad: model.config.pad_token,
             kind: CudaWeights::Checkpoint(checkpoint, model.map),
+            experts_on_host: false,
         })
     }
 
@@ -670,6 +688,7 @@ impl CudaModel {
                         token_map: Some(token_map(&synthetic::token_map()?, self.pad)?),
                         observe,
                         swap_rope_tables: control == Some(Control::WrongRope),
+                        experts_on_host: self.experts_on_host,
                     },
                     &Controlled {
                         inner: store.as_ref(),
@@ -696,6 +715,7 @@ impl CudaModel {
                         token_map: Some(token_map(map, self.pad)?),
                         observe,
                         swap_rope_tables: control == Some(Control::WrongRope),
+                        experts_on_host: self.experts_on_host,
                     },
                     &Controlled {
                         inner: &CheckpointSource(checkpoint),
@@ -776,8 +796,9 @@ pub fn run_stage(
     let mask = std::env::var("CUDA_VISIBLE_DEVICES").ok();
     let device = crate::select_device(mask.as_deref(), options.gpu)?;
     unsafe { std::env::set_var("CUDA_VISIBLE_DEVICES", device) };
-    let model: &'static CudaModel =
-        Box::leak(Box::new(CudaModel::load(&options.weights, selection)?));
+    let mut model = CudaModel::load(&options.weights, selection)?;
+    model.experts_on_host = options.experts == crate::Experts::Host;
+    let model: &'static CudaModel = Box::leak(Box::new(model));
     check_weights(manifest, &model.digest)?;
     if (options.observe || options.control.is_some()) && options.record.is_none() {
         return Err(Refused(
@@ -793,6 +814,7 @@ pub fn run_stage(
         options.observe,
         options.control,
     )?;
+    let device = device_info(&backend, options.experts);
     let mut executor = V41CudaStageExecutor::new(backend, loaded, entry.stage);
     if options.control == Some(Control::StaleCache) {
         executor = executor.with_stale_cache();
@@ -819,6 +841,7 @@ pub fn run_stage(
         data_advertise: options.data_advertise.clone(),
         runtime: Backend::Cuda.runtime(),
         profile: crate::profile_name(Backend::Cuda, None),
+        device,
         events: options.events.clone(),
         record: options.record.clone(),
         max_context: options.max_context,

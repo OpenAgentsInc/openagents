@@ -770,6 +770,7 @@ fn main() -> Result<()> {
             }),
             observe: true,
             swap_rope_tables: false,
+            experts_on_host: false,
         },
         &source,
         tables,

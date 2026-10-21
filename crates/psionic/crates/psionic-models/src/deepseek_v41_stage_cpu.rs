@@ -893,6 +893,24 @@ impl<'a> V41CpuStageExecutor<'a> {
         }
     }
 
+    /// The executor sending and taking KV and indexer-key rows as `dtype`
+    /// instead of `F32`, such as BF16 to sit between CUDA stages, whose
+    /// wire carries cache rows in BF16 (#12418). Values are converted at the
+    /// boundary; residuals stay `F32`.
+    #[must_use]
+    pub fn with_cache_dtype(mut self, dtype: WireDtype) -> Self {
+        self.geometry.cache_dtype = dtype;
+        let layers = self.runtime.config.layers.clone();
+        self.next = (!self.runtime.config.head()).then(|| {
+            stage_contract(
+                &self.geometry,
+                self.stage + 1,
+                layers.end as u32..layers.end as u32 + 1,
+            )
+        });
+        self
+    }
+
     /// This stage's inbound contract.
     #[must_use]
     pub fn contract(&self) -> StageContract {

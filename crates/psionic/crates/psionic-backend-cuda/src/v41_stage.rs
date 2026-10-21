@@ -504,6 +504,11 @@ pub struct V41StageConfig {
     /// A negative control for G1 v2 (#12405): window layers rotate with the
     /// compressed layers' frequencies and the reverse. Never set to serve.
     pub swap_rope_tables: bool,
+    /// Keep the routed experts in page-locked host memory, which kernels
+    /// read over the bus, so a layer fits a GPU smaller than its weights
+    /// (#12418). The arithmetic is unchanged; a decode token reads its
+    /// selected experts across the bus.
+    pub experts_on_host: bool,
 }
 
 impl V41StageConfig {
@@ -757,6 +762,9 @@ pub struct V41StageMemory {
     pub work_step_bytes: usize,
     /// Page-locked host bytes of the stage's Engram tables.
     pub engram_host_bytes: usize,
+    /// Page-locked host bytes of routed experts kept on the host
+    /// ([`V41StageConfig::experts_on_host`]).
+    pub expert_host_bytes: usize,
 }
 
 impl V41StageMemory {
@@ -1047,7 +1055,10 @@ impl std::fmt::Debug for V41Stage {
 struct Loader<'a> {
     backend: &'a mut CudaBackend,
     source: &'a dyn V41TensorSource,
+    /// Device bytes.
     bytes: usize,
+    /// Page-locked host bytes that kernels read through unified addressing.
+    host_bytes: usize,
     /// Parameters loaded: logical weight elements, scales excluded.
     params: u64,
     /// Bytes of request state and scratch among `bytes`.
@@ -1166,6 +1177,57 @@ impl Loader<'_> {
         cols: usize,
     ) -> Result<Packed, RuntimeError> {
         self.stack(&[stem.to_owned()], format, rows, cols)
+    }
+
+    /// Matrices of one shape laid out one after another, in page-locked
+    /// host memory when `on_host`.
+    fn stack_on(
+        &mut self,
+        stems: &[String],
+        format: V41MatvecFormat,
+        rows: usize,
+        cols: usize,
+        on_host: bool,
+    ) -> Result<Packed, RuntimeError> {
+        if !on_host {
+            return self.stack(stems, format, rows, cols);
+        }
+        let weight_bytes = format.weight_bytes(rows, cols);
+        let scale_bytes = format.scale_bytes(rows, cols);
+        let (weight_dtype, weight_shape, scale_shape) = match format {
+            V41MatvecFormat::Fp8Block32x32 => (
+                V41TensorDtype::F8E4M3,
+                [rows, cols],
+                [rows.div_ceil(V41_BLOCK), cols / V41_BLOCK],
+            ),
+            V41MatvecFormat::Fp4E2M1Row32 => (
+                V41TensorDtype::I8,
+                [rows, cols / 2],
+                [rows, cols / V41_BLOCK],
+            ),
+        };
+        let mut weights = self.backend.host_buffer(weight_bytes * stems.len())?;
+        let mut scales = self.backend.host_buffer(scale_bytes * stems.len())?;
+        self.params += (rows * cols * stems.len()) as u64;
+        for (i, stem) in stems.iter().enumerate() {
+            let w = self.tensor(&format!("{stem}.weight"), weight_dtype, &weight_shape)?;
+            let s = self.tensor(
+                &format!("{stem}.scale"),
+                V41TensorDtype::F8E8M0,
+                &scale_shape,
+            )?;
+            weights.write_bytes_at_offset(i * weight_bytes, &w.bytes)?;
+            scales.write_bytes_at_offset(i * scale_bytes, &s.bytes)?;
+        }
+        self.host_bytes += (weight_bytes + scale_bytes) * stems.len();
+        Ok(Packed {
+            format,
+            weights: self.backend.mapped_buffer(weights)?,
+            scales: self.backend.mapped_buffer(scales)?,
+            rows,
+            cols,
+            matrices: stems.len(),
+        })
     }
 
     /// Matrices of one shape laid out one after another.
@@ -1298,6 +1360,7 @@ impl V41Stage {
             backend,
             source,
             bytes: 0,
+            host_bytes: 0,
             params: 0,
             state: 0,
         };
@@ -1416,9 +1479,10 @@ impl V41Stage {
                 experts.iter().map(|e| format!("{e}.{part}")).collect()
             };
             let (routed_bytes, routed_params) = (loader.bytes, loader.params);
-            let w1 = loader.stack(&w("w1"), fp4, shape.expert_width, h)?;
-            let w2 = loader.stack(&w("w2"), fp4, h, shape.expert_width)?;
-            let w3 = loader.stack(&w("w3"), fp4, shape.expert_width, h)?;
+            let host = config.experts_on_host;
+            let w1 = loader.stack_on(&w("w1"), fp4, shape.expert_width, h, host)?;
+            let w2 = loader.stack_on(&w("w2"), fp4, h, shape.expert_width, host)?;
+            let w3 = loader.stack_on(&w("w3"), fp4, shape.expert_width, h, host)?;
             let (routed_bytes, routed_params) =
                 (loader.bytes - routed_bytes, loader.params - routed_params);
             let mut observed = Vec::new();
@@ -1694,6 +1758,7 @@ impl V41Stage {
             .iter()
             .map(|t| t.codes.byte_len() + t.scales.byte_len())
             .sum();
+        memory.expert_host_bytes = loader.host_bytes;
         Ok(Self {
             config,
             layers,

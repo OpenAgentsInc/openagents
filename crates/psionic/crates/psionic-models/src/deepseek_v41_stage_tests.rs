@@ -1751,3 +1751,110 @@ fn measured_memory_refuses_another_file() {
     assert!(MeasuredMemory::from_json(FLASH_MEASURED, 8192, 16_384).is_err());
     assert!(MeasuredMemory::from_json(FLASH_MEASURED, 0, 0).is_err());
 }
+
+fn slot(host: &str, gpu: u32, class: &str, kind: DeviceKind, bytes: u64) -> DeviceSlot {
+    DeviceSlot {
+        host: host.into(),
+        gpu,
+        class: class.into(),
+        kind,
+        bytes,
+        experts: ExpertMemory::Device,
+        per_stage_bytes: None,
+    }
+}
+
+#[test]
+fn routed_experts_are_nearly_all_of_a_layer() {
+    let memory = MeasuredMemory::flash(8192).unwrap();
+    for layer in 0..V41_LAYERS {
+        let bytes = memory.layer_gpu_bytes(layer);
+        assert!(FLASH_ROUTED_EXPERT_BYTES < bytes, "layer {layer}");
+        // Attention, the router, and the shared expert stay under 400 MB.
+        assert!(
+            bytes - FLASH_ROUTED_EXPERT_BYTES < 400 * GB / 1000,
+            "layer {layer}"
+        );
+    }
+}
+
+#[test]
+fn a_mixed_group_places_layers_by_each_device_class() {
+    let memory = MeasuredMemory::flash(8192).unwrap();
+    let mut small = slot("home", 0, "cuda-sm_89", DeviceKind::Gpu, 5 * GB);
+    small.experts = ExpertMemory::Host;
+    small.per_stage_bytes = Some(GB / 2);
+    let slots = vec![
+        slot("g4", 0, "cuda-sm_120", DeviceKind::Gpu, RTX_PRO_6000),
+        slot("g4", 1, "cuda-sm_120", DeviceKind::Gpu, RTX_PRO_6000),
+        small.clone(),
+        slot("cpu", 0, "cpu-x86_64", DeviceKind::Cpu, 64 * GB),
+        slot("g4b", 0, "cuda-sm_120", DeviceKind::Gpu, RTX_PRO_6000),
+        slot("g4b", 1, "cuda-sm_120", DeviceKind::Gpu, RTX_PRO_6000),
+    ];
+    let hosts = vec![
+        HostRam {
+            host: "g4".into(),
+            bytes: 300 * GB,
+        },
+        HostRam {
+            host: "home".into(),
+            bytes: 40 * GB,
+        },
+        HostRam {
+            host: "cpu".into(),
+            bytes: 200 * GB,
+        },
+        HostRam {
+            host: "g4b".into(),
+            bytes: 300 * GB,
+        },
+    ];
+    let m = plan_devices(&memory, &slots, &hosts, None).unwrap();
+    m.validate().unwrap();
+    assert!(m.memory_source.ends_with(":devices"));
+    assert_eq!(m.stages.len(), 6);
+    for (s, slot) in m.stages.iter().zip(&slots) {
+        let device = s.device.as_ref().unwrap();
+        assert_eq!(device.class, slot.class);
+        assert!(s.gpu_weight_bytes + s.gpu_runtime_bytes <= slot.bytes);
+    }
+    // The 16 GB card holds a layer only with its experts on the host.
+    let home = &m.stages[2];
+    assert!(home.layers().len() >= 1);
+    let experts = home.layers().len() as u64 * FLASH_ROUTED_EXPERT_BYTES;
+    assert_eq!(home.device.as_ref().unwrap().expert_host_bytes, experts);
+    // An explicit split is checked as given.
+    let split = m.split();
+    assert_eq!(
+        plan_devices(&memory, &slots, &hosts, Some(&split)).unwrap(),
+        m
+    );
+    // The same card with its experts on the device can't hold one layer.
+    let mut slots_on_device = slots.clone();
+    slots_on_device[2].experts = ExpertMemory::Device;
+    let refused = plan_devices(&memory, &slots_on_device, &hosts, Some(&split)).unwrap_err();
+    assert!(matches!(
+        refused.candidates[0].outcome,
+        CandidateOutcome::GpuShort { stage: 2, .. }
+    ));
+    // And without host memory for those experts the plan is refused.
+    let mut tight = hosts.clone();
+    tight[1].bytes = GB;
+    let refused = plan_devices(&memory, &slots, &tight, Some(&split)).unwrap_err();
+    assert!(matches!(
+        refused.candidates[0].outcome,
+        CandidateOutcome::HostShort { .. }
+    ));
+}
+
+#[test]
+fn manifests_without_devices_keep_their_bytes() {
+    let memory = MeasuredMemory::flash(8192).unwrap();
+    let request = PlacementRequest::new(gpus(&["m0"], 4, RTX_PRO_6000), ram(&["m0"], 700 * GB));
+    let m = plan_group(&memory, &request).unwrap().manifest;
+    let json = serde_json::to_string(&m).unwrap();
+    assert!(!json.contains("\"device\""));
+    let back: V41GroupManifest = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.digest(), m.digest());
+}

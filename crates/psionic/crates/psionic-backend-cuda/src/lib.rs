@@ -462,6 +462,9 @@ struct NvidiaQueryError {
 pub enum CudaMemorySpace {
     /// Ordinary device-only memory allocated by the CUDA runtime.
     Device,
+    /// Page-locked host memory that kernels read through unified
+    /// addressing, over the bus (#12418).
+    MappedHost,
 }
 
 /// How long Psionic should wait after a CUDA submission.
@@ -4397,6 +4400,29 @@ impl CudaBackend {
     #[must_use]
     pub fn quantized_kernels_available(&self) -> bool {
         platform::quantized_kernels_compiled()
+    }
+
+    /// A device buffer that reads `host`'s page-locked memory through
+    /// unified addressing instead of device memory (#12418). Kernels read
+    /// it over the bus, so it suits weights a step reads only in part, such
+    /// as routed experts on a GPU too small to hold them. Fill `host` first.
+    pub fn mapped_buffer(&mut self, host: CudaHostBuffer) -> Result<CudaBuffer, RuntimeError> {
+        let Some(device) = self
+            .selected_device()
+            .map(|descriptor| descriptor.device.clone())
+        else {
+            return Err(RuntimeError::Backend(String::from(
+                "cuda backend unavailable: no selected execution device",
+            )));
+        };
+        let byte_len = host.byte_len;
+        Ok(CudaBuffer {
+            spec: TensorSpec::new(Shape::new(vec![byte_len]), DType::I8, device),
+            byte_len,
+            memory_space: CudaMemorySpace::MappedHost,
+            host_visible: true,
+            platform: host.platform.device_view()?,
+        })
     }
 
     /// Uploads raw bytes into device memory for backend-owned quantized storage.
@@ -11272,6 +11298,9 @@ mod platform {
         device_ptr: *mut c_void,
         allocation_owner: Option<Arc<PlatformBufferInner>>,
         pool_return: Option<PoolReturnToken>,
+        /// The page-locked host allocation a mapped view reads; it frees
+        /// the memory, so the view never does.
+        host_owner: Option<Arc<PlatformHostBufferInner>>,
     }
 
     struct PlatformHostBufferInner {
@@ -11390,6 +11419,7 @@ mod platform {
                         cache_key,
                         byte_len: allocation_len,
                     }),
+                    host_owner: None,
                 }),
             })
         }
@@ -11484,6 +11514,7 @@ mod platform {
                         .cast(),
                     allocation_owner: Some(Arc::clone(&self.inner)),
                     pool_return: None,
+                    host_owner: None,
                 }),
             })
         }
@@ -11653,6 +11684,7 @@ mod platform {
                     device_ptr,
                     allocation_owner: None,
                     pool_return: None,
+                    host_owner: None,
                 }),
             })
         }
@@ -16450,7 +16482,7 @@ mod platform {
 
     impl Drop for PlatformBufferInner {
         fn drop(&mut self) {
-            if self.allocation_owner.is_some() {
+            if self.allocation_owner.is_some() || self.host_owner.is_some() {
                 return;
             }
             if !self.device_ptr.is_null() {
@@ -17314,6 +17346,21 @@ mod platform {
         pub(super) fn raw_host_ptr(&self) -> *mut c_void {
             self.inner.host_ptr
         }
+
+        /// A device buffer over this page-locked allocation: with unified
+        /// addressing the host address is also the device's, and kernels
+        /// read it over the bus. The view keeps the allocation alive.
+        pub(super) fn device_view(&self) -> Result<PlatformBuffer, RuntimeError> {
+            Ok(PlatformBuffer {
+                inner: Arc::new(PlatformBufferInner {
+                    runtime: Arc::clone(&self.inner.runtime),
+                    device_ptr: self.inner.host_ptr,
+                    allocation_owner: None,
+                    pool_return: None,
+                    host_owner: Some(Arc::clone(&self.inner)),
+                }),
+            })
+        }
     }
 
     impl PlatformSubmission {
@@ -17539,6 +17586,12 @@ mod platform {
     impl PlatformHostBuffer {
         pub(super) fn raw_host_ptr(&self) -> *mut std::ffi::c_void {
             std::ptr::null_mut()
+        }
+
+        pub(super) fn device_view(&self) -> Result<PlatformBuffer, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
         }
     }
 

@@ -39,6 +39,42 @@ fn groups_of_two_to_four_processes_answer_like_the_unsplit_model() {
     }
 }
 
+/// CPU stages that speak the CUDA stages' wire (#12418) announce it, their
+/// device class, and answer: BF16 cache rows cross every boundary.
+#[test]
+fn cpu_stages_on_the_cuda_wire_announce_it_and_answer() {
+    let prompt = json!([{"role": "user", "content": "tok3 tok5 tok0 tok6 tok4 tok7"}]);
+    let split = [(0, 2), (2, 21), (21, 40)];
+    let root = tempfile::tempdir().unwrap();
+    let manifest = weights(root.path(), &split).display().to_string();
+    let mut front = Front::start_with(
+        root.path(),
+        &manifest,
+        &split,
+        None,
+        &["--wire", "cuda"],
+        "psionic-v41-stage/1",
+    );
+    for stage in &front.stages {
+        assert_eq!(
+            stage.hello["wire"],
+            json!({"residual": "f32", "cache": "bf16"})
+        );
+        assert_eq!(
+            stage.hello["device"]["class"],
+            format!("cpu-{}", std::env::consts::ARCH)
+        );
+    }
+    let (tokens, _) = front.run(&prompt, 10);
+    assert!(!tokens.is_empty());
+    let mut native = Front::start(root.path(), &manifest, &split, None);
+    assert_eq!(
+        native.stages[0].hello["wire"],
+        json!({"residual": "f32", "cache": "f32"})
+    );
+    let _ = native.run(&prompt, 10);
+}
+
 fn refusal(args: &[String]) -> String {
     let out = run_bounded(Command::new(BIN).args(args), LIMIT);
     assert_eq!(out.status.code(), Some(2));

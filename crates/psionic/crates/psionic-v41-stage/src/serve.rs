@@ -119,6 +119,9 @@ pub struct Stage<'a> {
     pub runtime: &'static str,
     /// The numerical profile it runs ([`crate::profile_name`]).
     pub profile: String,
+    /// The device it runs on, as its `hello` announces it (#12418): at least
+    /// its `class`, such as `cuda-sm_89` or `cpu-x86_64`.
+    pub device: Value,
     /// Where to record what the stage does.
     pub events: Option<PathBuf>,
     /// Qualification (#12405): where each step's logits (last stage) and
@@ -808,6 +811,8 @@ where
             "protocol": PROTOCOL,
             "build": crate::build_identity(),
             "profile": self.stage.profile,
+            "device": self.stage.device,
+            "wire": crate::wire_json(&self.worker.executor().geometry()),
             "limits": {
                 "max_context_tokens": self.budget.max_context_tokens,
                 "max_input_tokens": self.budget.max_input_tokens,

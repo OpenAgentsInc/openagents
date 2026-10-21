@@ -623,6 +623,16 @@ fn load_stage(
     layers: Range<usize>,
     observe: bool,
 ) -> Result<V41Stage, Box<dyn Error>> {
+    load_stage_with(backend, store, layers, observe, false)
+}
+
+fn load_stage_with(
+    backend: &mut CudaBackend,
+    store: &Store,
+    layers: Range<usize>,
+    observe: bool,
+    experts_on_host: bool,
+) -> Result<V41Stage, Box<dyn Error>> {
     let map = token_map()?;
     let tables = engram_tables(backend, store, &layers)?;
     Ok(V41Stage::load(
@@ -639,6 +649,7 @@ fn load_stage(
             }),
             observe,
             swap_rope_tables: false,
+            experts_on_host,
         },
         store,
         tables,
@@ -970,6 +981,56 @@ fn split_stages_equal_the_whole() -> TestResult {
                 .zip(&expected_logits)
                 .all(|(a, b)| a.to_bits() == b.to_bits()),
             "split logits differ"
+        );
+        position += step.len();
+    }
+    Ok(())
+}
+
+/// Routed experts kept in page-locked host memory (#12418) give the same
+/// tokens and logits, bit for bit, as experts in device memory, and leave
+/// only the rest of each layer on the device.
+#[test]
+fn host_experts_equal_device_experts() -> TestResult {
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let store = synthetic_store(11);
+    let mut device = load_stage_with(&mut backend, &store, 0..40, false, false)?;
+    let mut host = load_stage_with(&mut backend, &store, 0..40, false, true)?;
+    let (d, h) = (device.memory().clone(), host.memory().clone());
+    assert_eq!(d.expert_host_bytes, 0);
+    let routed: usize = d.layers.iter().map(|l| l.routed_expert_bytes).sum();
+    assert!(routed > 0);
+    assert_eq!(h.expert_host_bytes, routed);
+    assert_eq!(h.device_total() + routed, d.device_total());
+    let (prompt, decode) = tokens();
+    let mut steps = vec![prompt];
+    steps.extend(decode.iter().map(|t| vec![*t]));
+    let mut position = 0;
+    let sampling = V41Sampling {
+        temperature: 0.8,
+        top_p: 0.9,
+        seed: 1234,
+    };
+    for step in &steps {
+        let input = V41StepInput {
+            position,
+            tokens: step,
+            residual: None,
+            pre_mix: None,
+            source_rows: None,
+            selection: None,
+            candidates: None,
+            sampling,
+        };
+        let a = device.step(&backend, &input, false)?;
+        let b = host.step(&backend, &input, false)?;
+        assert_eq!(a.token, b.token);
+        let (la, lb) = (device.logits()?, host.logits()?);
+        assert!(
+            la.iter().zip(&lb).all(|(x, y)| x.to_bits() == y.to_bits()),
+            "host-expert logits differ"
         );
         position += step.len();
     }
