@@ -175,6 +175,12 @@ Rules:
   `max_tokens`, and `max_answer_ms`. It helps a buyer choose a budget
   against the declared deadline. Nothing routes on it, and a stage beacon
   carries none.
+- A head may also state its group's checked request sizes in its inert
+  `meta` as `request_limits`: `max_context_tokens` (prompt and answer
+  together), `max_input_tokens` (the longest prompt it takes),
+  `max_prefill_tokens` (the longest prompt its stages' wire carries), and
+  `modes` (`thinking`, `chat`). A larger request is refused with
+  `limit_exceeded`. Nothing routes on it, and a stage beacon carries none.
 - A v1 reader fetches beacons by the v1 marker, so it never sees a group
   beacon; one that arrives anyway is refused for its marker, version, and
   field. Group beacons need no change to v1 beacons.

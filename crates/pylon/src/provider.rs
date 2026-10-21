@@ -450,6 +450,7 @@ impl Provider {
                 let mut head = head_beacon(&beacon, &group.spec, group.readiness.as_ref(), busy);
                 let profile = group.answers.as_ref().and_then(|a| a.profile());
                 set_answer_profile(&mut head, profile.as_ref());
+                crate::group::set_request_limits(&mut head, group.readiness.limits().as_ref());
                 if status != Status::Online {
                     head.slots.free = 0;
                 }

@@ -38,7 +38,9 @@ fn parse_in(mode: PromptMode, ids: &[u32], last: bool) -> (String, String, Optio
 fn the_end_of_thinking_token_splits_reasoning_from_the_answer() {
     let (reasoning, content, finish, finishes) =
         parse(&fixture::stream_case("reasoning_then_final"), false);
-    assert_eq!(reasoning, "One plus one is two.\n");
+    // As when the whole answer is parsed at once, the whitespace before the
+    // end of thinking isn't reasoning.
+    assert_eq!(reasoning, "One plus one is two.");
     assert!(content.contains("The answer is 2."), "{content:?}");
     assert!(!content.contains("</think>"));
     assert_eq!((finish.as_deref(), finishes), (Some("stop"), 1));

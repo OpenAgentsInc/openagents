@@ -51,7 +51,7 @@ use psionic_models::{
         DeepSeekV41Protocol,
         deepseek_recipe::stream::{
             ChunkGenerator, FinishReason, InferenceChunk, InferenceFinishReason, OutputChunk,
-            PromptUsage, StreamProcessor,
+            PromptUsage, StreamError, StreamProcessor,
         },
         deepseek_recipe_core::conversation::Conversation,
         deepseek_recipe_core::messages::InputMessage,
@@ -1343,17 +1343,43 @@ fn ready_items<S: Stream>(stream: S) -> Result<Vec<S::Item>, Refused> {
 /// own piece, so only the model's `</think>` token ends the reasoning; the
 /// same characters written as text stay text.
 ///
-/// Each push parses the whole answer again and returns what it adds, so the
-/// parser's held-back text (a partial character or marker) comes out when
-/// it completes. That is quadratic in the answer's length, and small next to
-/// a model step.
+/// One parser runs for the whole answer and takes each token as it comes,
+/// so a push costs the same at the first token and the 4,096th. Text the
+/// parser holds back, such as a partial character or a possible marker,
+/// comes out with the token that completes it, or at the end.
 pub struct AnswerParser {
-    tokenizer: Arc<Tokenizer>,
     eos: u32,
-    mode: PromptMode,
-    ids: Vec<u32>,
-    reasoning: String,
-    content: String,
+    input: Arc<std::sync::Mutex<Fed>>,
+    output: std::pin::Pin<Box<dyn Stream<Item = Result<OutputChunk, StreamError>> + Send>>,
+    ended: bool,
+}
+
+/// Chunks pushed to the parser and not yet read, and whether the answer
+/// ended.
+#[derive(Default)]
+struct Fed {
+    chunks: std::collections::VecDeque<InferenceChunk>,
+    closed: bool,
+}
+
+/// The parser's input: what was pushed so far. Polled with no more input,
+/// it is pending until the next push.
+struct Feed(Arc<std::sync::Mutex<Fed>>);
+
+impl Stream for Feed {
+    type Item = InferenceChunk;
+
+    fn poll_next(self: std::pin::Pin<&mut Self>, _: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut fed = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        match fed.chunks.pop_front() {
+            Some(chunk) => Poll::Ready(Some(chunk)),
+            None if fed.closed => Poll::Ready(None),
+            None => Poll::Pending,
+        }
+    }
 }
 
 impl AnswerParser {
@@ -1362,13 +1388,26 @@ impl AnswerParser {
     /// already closed the reasoning, so every token is answer text.
     #[must_use]
     pub fn new(tokenizer: Arc<Tokenizer>, eos: u32, mode: PromptMode) -> Self {
+        let conversation = Conversation {
+            thinking_mode: mode.thinking(),
+            ..Conversation::default()
+        };
+        let options = deepseek_v41_parsing_options(&conversation, Vec::new());
+        let input = Arc::new(std::sync::Mutex::new(Fed::default()));
+        if let Ok(mut fed) = input.lock() {
+            fed.chunks.push_back(InferenceChunk::Ready {
+                system_fingerprint: None,
+                prompt_usage: PromptUsage::default(),
+            });
+        }
+        let output = StreamProcessor::new(Collect, options)
+            .with_tokenizer(tokenizer)
+            .into_protocol_stream(Feed(Arc::clone(&input)));
         Self {
-            tokenizer,
             eos,
-            mode,
-            ids: Vec::new(),
-            reasoning: String::new(),
-            content: String::new(),
+            input,
+            output: Box::pin(output),
+            ended: false,
         }
     }
 
@@ -1377,20 +1416,97 @@ impl AnswerParser {
     ///
     /// # Errors
     ///
-    /// Refuses tokens the tokenizer can't decode.
+    /// Refuses tokens the tokenizer can't decode, and a token after the
+    /// answer ended.
     pub fn push(&mut self, token: u32, last: bool) -> Result<AnswerPiece, Refused> {
-        let end = token == self.eos;
-        if !end {
-            // The end-of-sentence token is the finish, not text.
-            self.ids.push(token);
+        if self.ended {
+            return refuse("the answer already ended");
         }
+        let end = token == self.eos;
+        {
+            let mut fed = self
+                .input
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if !end {
+                // The end-of-sentence token is the finish, not text.
+                fed.chunks.push_back(InferenceChunk::Tokens {
+                    token_ids: vec![token],
+                    logprobs: None,
+                });
+            }
+            if end || last {
+                fed.chunks.push_back(InferenceChunk::Finish {
+                    finish_reason: if end {
+                        InferenceFinishReason::Stop
+                    } else {
+                        InferenceFinishReason::Length
+                    },
+                });
+                fed.closed = true;
+            }
+        }
+        self.ended = end || last;
+        let mut piece = AnswerPiece::default();
+        let mut cx = Context::from_waker(Waker::noop());
+        loop {
+            match self.output.as_mut().poll_next(&mut cx) {
+                Poll::Ready(Some(chunk)) => {
+                    match chunk.map_err(|e| Refused(format!("the answer can't be parsed: {e}")))? {
+                        OutputChunk::Reasoning { content, .. } => {
+                            piece.reasoning.push_str(&content)
+                        }
+                        OutputChunk::Content { content, .. } => piece.content.push_str(&content),
+                        OutputChunk::Finish { finish_reason, .. } => {
+                            piece.finish = Some(finish_name(finish_reason).to_owned());
+                        }
+                        _ => {}
+                    }
+                }
+                // The parser has used every pushed token.
+                Poll::Ready(None) | Poll::Pending => return Ok(piece),
+            }
+        }
+    }
+}
+
+fn finish_name(reason: FinishReason) -> &'static str {
+    match reason {
+        FinishReason::Stop | FinishReason::StopSequence => "stop",
+        FinishReason::Length => "length",
+        FinishReason::ToolCalls => "tool_calls",
+        FinishReason::ContentFilter => "content_filter",
+        FinishReason::EndOfStream => "end_of_stream",
+    }
+}
+
+#[cfg(test)]
+mod parser_tests {
+    //! Incremental parsing against parsing the whole answer at once.
+
+    use psionic_models::deepseek_v41::fixture;
+
+    use super::*;
+
+    const EOS: u32 = 1;
+    const END_THINKING: u32 = 128_822;
+
+    /// The whole answer in one input, as the parser read it before #12408.
+    fn whole(mode: PromptMode, ids: &[u32], last: bool) -> AnswerPiece {
+        let tokenizer = fixture::protocol().tokenizer();
+        let conversation = Conversation {
+            thinking_mode: mode.thinking(),
+            ..Conversation::default()
+        };
+        let end = ids.last() == Some(&EOS);
+        let text: Vec<u32> = ids.iter().copied().filter(|id| *id != EOS).collect();
         let mut input = vec![
             InferenceChunk::Ready {
                 system_fingerprint: None,
                 prompt_usage: PromptUsage::default(),
             },
             InferenceChunk::Tokens {
-                token_ids: self.ids.clone(),
+                token_ids: text,
                 logprobs: None,
             },
         ];
@@ -1403,50 +1519,84 @@ impl AnswerParser {
                 },
             });
         }
-        let conversation = Conversation {
-            thinking_mode: self.mode.thinking(),
-            ..Conversation::default()
-        };
-        let options = deepseek_v41_parsing_options(&conversation, Vec::new());
-        let stream = StreamProcessor::new(Collect, options)
-            .with_tokenizer(Arc::clone(&self.tokenizer))
-            .into_protocol_stream(tokio_stream::iter(input));
-        let (mut reasoning, mut content, mut finish) = (String::new(), String::new(), None);
-        for chunk in ready_items(stream)? {
-            match chunk.map_err(|e| Refused(format!("the answer can't be parsed: {e}")))? {
-                OutputChunk::Reasoning { content: piece, .. } => reasoning.push_str(&piece),
-                OutputChunk::Content { content: piece, .. } => content.push_str(&piece),
-                // Without a finish in the input, the processor still ends its
-                // stream with one; only the answer's last token has a finish.
+        let stream = StreamProcessor::new(
+            Collect,
+            deepseek_v41_parsing_options(&conversation, Vec::new()),
+        )
+        .with_tokenizer(tokenizer)
+        .into_protocol_stream(tokio_stream::iter(input));
+        let mut piece = AnswerPiece::default();
+        for chunk in ready_items(stream).unwrap() {
+            match chunk.unwrap() {
+                OutputChunk::Reasoning { content, .. } => piece.reasoning.push_str(&content),
+                OutputChunk::Content { content, .. } => piece.content.push_str(&content),
                 OutputChunk::Finish { finish_reason, .. } if end || last => {
-                    finish = Some(
-                        match finish_reason {
-                            FinishReason::Stop | FinishReason::StopSequence => "stop",
-                            FinishReason::Length => "length",
-                            FinishReason::ToolCalls => "tool_calls",
-                            FinishReason::ContentFilter => "content_filter",
-                            FinishReason::EndOfStream => "end_of_stream",
-                        }
-                        .to_owned(),
-                    );
+                    piece.finish = Some(finish_name(finish_reason).to_owned());
                 }
                 _ => {}
             }
         }
-        let added = |all: String, before: &mut String| {
-            let piece = all
-                .strip_prefix(before.as_str())
-                .map(str::to_owned)
-                .unwrap_or_default();
-            if all.starts_with(before.as_str()) {
-                *before = all;
+        piece
+    }
+
+    /// The same answer one token at a time.
+    fn incremental(mode: PromptMode, ids: &[u32], last: bool) -> AnswerPiece {
+        let mut parser = AnswerParser::new(fixture::protocol().tokenizer(), EOS, mode);
+        let mut all = AnswerPiece::default();
+        for (i, id) in ids.iter().enumerate() {
+            let piece = parser.push(*id, last && i + 1 == ids.len()).unwrap();
+            all.reasoning.push_str(&piece.reasoning);
+            all.content.push_str(&piece.content);
+            if piece.finish.is_some() {
+                assert!(all.finish.is_none(), "two finishes");
+                all.finish = piece.finish;
             }
-            piece
-        };
-        Ok(AnswerPiece {
-            reasoning: added(reasoning, &mut self.reasoning),
-            content: added(content, &mut self.content),
-            finish,
-        })
+        }
+        all
+    }
+
+    #[test]
+    fn incremental_parsing_matches_the_whole_answer() {
+        let mut cases: Vec<(&str, Vec<u32>, bool)> = [
+            ("reasoning_then_final", false),
+            ("literal_markers_in_text", false),
+            ("split_utf8", false),
+            ("truncated_reasoning", true),
+            ("no_finish", false),
+            ("tool_call_long_arguments", false),
+        ]
+        .into_iter()
+        .map(|(name, last)| (name, fixture::stream_case(name), last))
+        .collect();
+        // A split character right before the end-of-thinking token, and an
+        // answer the output limit cuts inside a character.
+        let crab = fixture::stream_case("split_utf8");
+        let mut split_then_end = crab[..crab.len() - 1].to_vec();
+        split_then_end.push(END_THINKING);
+        split_then_end.extend(fixture::stream_case("reasoning_then_final"));
+        cases.push(("split_then_end_of_thinking", split_then_end, false));
+        cases.push(("cut_inside_a_character", crab[..3].to_vec(), true));
+        for mode in PromptMode::ALL {
+            for (name, ids, last) in &cases {
+                let expected = whole(mode, ids, *last);
+                let got = incremental(mode, ids, *last);
+                assert_eq!(got, expected, "{name} in {mode:?}");
+            }
+        }
+        // The cases cover both outputs in both modes.
+        let thinking = whole(PromptMode::Thinking, &cases[0].1, false);
+        assert!(!thinking.reasoning.is_empty() && !thinking.content.is_empty());
+        let chat = whole(PromptMode::Chat, &cases[0].1, false);
+        assert!(chat.reasoning.is_empty() && !chat.content.is_empty());
+    }
+
+    #[test]
+    fn a_token_after_the_end_is_refused() {
+        let mut parser = AnswerParser::new(fixture::protocol().tokenizer(), EOS, PromptMode::Chat);
+        assert_eq!(
+            parser.push(EOS, false).unwrap().finish.as_deref(),
+            Some("stop")
+        );
+        assert!(parser.push(5, false).is_err());
     }
 }

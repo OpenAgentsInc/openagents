@@ -170,10 +170,13 @@ Gate progress (2026-10-21):
 - **G8, the deadline and answer profile (W14 part 2, #12401): frozen and
   met on the unqualified runtime.** The head declares a 600 s deadline and
   a 4,096-token output limit, needs `--step-secs 75` (it times the whole
-  prompt step), and supports prompts of up to 3,022 tokens, the longest
-  measured, below the 256 MiB stage-state codec's limit of about 3,277
-  (#12408 replaces this with a checked budget); the 20k case is not
-  claimed. All nine qualification prompts passed in both placements:
+  prompt step), and supports prompts of up to 2,872 tokens, the checked
+  budget of #12408 for `four-single` and `two-dual`, which the stages
+  announce and the head's beacon carries as `request_limits`; the 20k
+  case is not claimed. The receipt records a 3,022-token prompt, but a
+  3,022-token prefill can't cross the boundary at layer 30 under the
+  256 MiB codec (282 MB), so recount that prompt with the checkpoint
+  tokenizer before relying on it. All nine qualification prompts passed in both placements:
   extended, `stop`, a final answer split off at the model's own token, and
   complete in 3.1–9.2 s against the 600 s deadline. A 1,072-token prompt
   took 36 s to the first token and 64 s in all; a 3,022-token prompt took
@@ -360,7 +363,7 @@ spend guard from the one budget host.
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
 | W13 | **Group beacon and routing.** Done (#12400): the group publishes one routable beacon (one serial slot, the exact model artifact, its declared deadline and output limit); stage beacons are visible but not routable. The router matches requested model and group readiness. W10 feeds readiness through `pylon::group::GroupReadiness`, and W15 publishes the beacons. | M | W10 | Router tests pick the group only for V4.1 requests and only when it's ready. |
-| W14 | **Deadline and answer profile.** Part 1, the transport, is done (#12401): `pylon.deadline.v1` in NIP-PYLON. The buyer states its budget; the job runs for the smaller of that and the beacon's ceiling, enforced inside execution from admission; heartbeats renew nothing; a missed deadline holds a group's slot until its stages stop; old providers and long models refuse the other side's form at once, with recorded fixtures both ways; ordinary jobs keep 90 seconds; group mode declares up to 3,600 seconds. The harness (`run.py --v41-group`, through the router's `Settings::want`) passes a slow synthetic group and fails one past its deadline. **Part 2 done (#12401):** the frozen profile is a 600 s deadline, a 4,096-token output limit, a 75 s step limit, and prompts of up to 3,022 tokens; every qualification prompt answered completely within it in both cross-machine placements (G8 above). The head publishes its measured `answer_profile` in its beacon's `meta` and counts complete answers only. Requalify it on the G1 v2 runtime or after any arithmetic or prefill change. | M | W11, W13 | Complete answers for the qualification prompts through Pylon within the declared deadline. |
+| W14 | **Deadline and answer profile.** Part 1, the transport, is done (#12401): `pylon.deadline.v1` in NIP-PYLON. The buyer states its budget; the job runs for the smaller of that and the beacon's ceiling, enforced inside execution from admission; heartbeats renew nothing; a missed deadline holds a group's slot until its stages stop; old providers and long models refuse the other side's form at once, with recorded fixtures both ways; ordinary jobs keep 90 seconds; group mode declares up to 3,600 seconds. The harness (`run.py --v41-group`, through the router's `Settings::want`) passes a slow synthetic group and fails one past its deadline. **Part 2 done (#12401):** the frozen profile is a 600 s deadline, a 4,096-token output limit, a 75 s step limit, and prompts of up to 2,872 tokens (#12408's checked budget; the receipt's 3,022-token prompt needs recounting); every qualification prompt answered completely within it in both cross-machine placements (G8 above). The head publishes its measured `answer_profile` in its beacon's `meta` and counts complete answers only. Requalify it on the G1 v2 runtime or after any arithmetic or prefill change. | M | W11, W13 | Complete answers for the qualification prompts through Pylon within the declared deadline. |
 | W15 | **Built (#12402) on synthetic stages; the cold launch is an after-close check that W16 runs.** `pylon cloud up four-single\|two-dual` plans the machines from Psionic's manifest file, creates each through `scripts/dev/cloud-budget.py` with an expiry and labels, heads the group from the allocating host in group mode (`pylon::group_serve`: W10's `StageGroup`, one W13 head beacon, a beacon per stage, NIP-CJ jobs driven through the stages), and ends it on `cloud down`, expiry, the budget's cap, or a lost machine, deleting every machine through the guard. Stages run over `gcloud compute ssh` with the control connection tunneled back; `scripts/pylon/v41-stage-startup.sh` copies a machine's shards. `tests/group_cloud.rs` covers launch to answer to `down`, dry-run plans, guard refusals, spot loss, expiry, and the cap. | M | W12, W13 | A cold launch to a first answer, then a clean stop, with costs in the ledger. |
 | W16 | **Show it.** Run the launched group with the `/home` Pylon layer open and record the transcript, router log, and capture. | S, cloud | W15 | G8's evidence is committed and the epic can close. |
 
@@ -429,7 +432,7 @@ started first.
 - Redistribution terms of the checkpoint's license for stage packages
   derived from it, before any stage package leaves our buckets.
 - The deadline a V4.1 reasoning answer actually needs through Pylon:
-  W14's frozen profile (600 s, 4,096 tokens, prompts up to 3,022 tokens)
+  W14's frozen profile (600 s, 4,096 tokens, prompts up to 2,872 tokens)
   holds on the current runtime, and the G1 v2 runtime must requalify it.
 
 ## CPU follow-up status (2026-10-21 UTC)
@@ -726,12 +729,12 @@ A stage serves a request when:
   default).
 
 With the default context, the four-stage CUDA profile takes prompts up to
-2,872 tokens. The oracle's p3 prompt (2,124 tokens) fits; its p4 prompt
+2,872 tokens, and W14's frozen profile uses that bound. The oracle's p3 prompt (2,124 tokens) fits; its p4 prompt
 (19,989 tokens) does not, and the served profile does not cover it. This is
-a wire bound, not a deadline bound: at the one-machine receipt's 35.6 s for
-1,072 prompt tokens, a 2,872-token prefill would exceed the 75 s step limit.
-W14 (#12401) sets `--max-input-tokens` to the length it qualifies against
-its deadline.
+a wire bound, not a deadline bound. W14 measured a prompt step of 52 s for
+its longest prompt, inside the 75 s step limit; a later runtime or
+placement that prefills more slowly sets `--max-input-tokens` to the
+length it qualifies.
 
 Chunked prefill isn't implemented. Each front step is one inbox step today,
 so a chunk schedule needs a step mapping between the front and the stages,
@@ -743,9 +746,8 @@ work for a profile that needs longer prompts.
 - Every stage announces `limits` in its `hello`: `max_context_tokens`,
   `max_input_tokens`, `max_prefill_tokens`, and `modes`. The front reports
   the tightest limits of its stages in `StageGroupStatus::limits`, which the
-  group head's status and `live.json` carry. The NIP-PYLON head beacon
-  declares only `max_output_tokens`; declaring the input and context limits
-  there is W14's decision.
+  group head's status and `live.json` carry, and the head's beacon carries
+  them in its inert `meta` as `request_limits` beside `answer_profile`.
 - The front sends the answer limit with step 0 (`max_tokens`). Stage 0
   encodes the prompt and checks the budget before any stage runs the
   request. A request over a limit, or a prompt the stage can't read, ends
@@ -766,7 +768,7 @@ fails within its send deadline; the reader drops its own link after 30 s.
 Front messages, link cancellations, and link reports skip the bound and go
 before queued state, so a cancellation or fence runs next. Decoded frames
 the stage keeps for a later step are bounded by the same bytes.
-`serve::tests::a_stalled_executor_holds_the_link_to_its_bounds_and_recovers`
+`tests/handoff.rs`
 stalls the real CPU executor, floods its authenticated link with valid
 690 KB frames, and checks that the sender fails within its 1 s deadline,
 that fewer than 40 frames are accepted, that the process grows less than

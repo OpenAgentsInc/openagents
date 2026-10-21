@@ -1025,6 +1025,10 @@ mod runtime {
         fn stopped(&self) -> Option<String> {
             self.status.borrow().failed.clone()
         }
+
+        fn limits(&self) -> Option<StageLimits> {
+            self.status.borrow().limits.clone()
+        }
     }
 
     impl Drop for StageGroup {

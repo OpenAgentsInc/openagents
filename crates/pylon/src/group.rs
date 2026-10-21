@@ -113,6 +113,12 @@ pub trait GroupReadiness: Send + Sync {
     fn stopped(&self) -> Option<String> {
         None
     }
+
+    /// The request sizes and prompt modes every stage serves, once every
+    /// stage has announced them (#12408).
+    fn limits(&self) -> Option<crate::stage_group::StageLimits> {
+        None
+    }
 }
 
 impl GroupReadiness for GroupStatus {
@@ -297,6 +303,38 @@ pub fn set_answer_profile(beacon: &mut Beacon, profile: Option<&AnswerProfile>) 
     beacon.meta = (!meta.is_empty()).then_some(serde_json::Value::Object(meta));
 }
 
+/// The key a head beacon's inert `meta` carries its request limits under.
+pub const REQUEST_LIMITS: &str = "request_limits";
+
+/// `beacon` with the group's checked request `limits` in its `meta` under
+/// [`REQUEST_LIMITS`], keeping any other `meta`; without limits, with that
+/// key removed.
+pub fn set_request_limits(beacon: &mut Beacon, limits: Option<&crate::stage_group::StageLimits>) {
+    let mut meta = match beacon.meta.take() {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(other) => {
+            beacon.meta = Some(other);
+            return;
+        }
+        None => serde_json::Map::new(),
+    };
+    match limits.and_then(|l| serde_json::to_value(l).ok()) {
+        Some(value) => {
+            meta.insert(REQUEST_LIMITS.into(), value);
+        }
+        None => {
+            meta.remove(REQUEST_LIMITS);
+        }
+    }
+    beacon.meta = (!meta.is_empty()).then_some(serde_json::Value::Object(meta));
+}
+
+/// The request limits a head beacon carries, if any.
+#[must_use]
+pub fn request_limits(beacon: &Beacon) -> Option<crate::stage_group::StageLimits> {
+    serde_json::from_value(beacon.meta.as_ref()?.get(REQUEST_LIMITS)?.clone()).ok()
+}
+
 /// The answer profile a head beacon carries, if any.
 #[must_use]
 pub fn answer_profile(beacon: &Beacon) -> Option<AnswerProfile> {
@@ -311,6 +349,7 @@ pub fn stage_beacon(base: &Beacon, spec: &GroupSpec, generation: u64, layers: La
     beacon.v = BEACON_V2.into();
     // A stage takes no jobs, so it has no answer profile of its own.
     set_answer_profile(&mut beacon, None);
+    set_request_limits(&mut beacon, None);
     beacon.slots = Slots { total: 0, free: 0 };
     beacon.services = Vec::new();
     beacon.group = Some(Group {
