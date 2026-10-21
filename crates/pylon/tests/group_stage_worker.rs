@@ -405,7 +405,8 @@ fn greedy() -> Sampling {
 
 fn prompt() -> serde_json::Value {
     let prefix = if cuda() { "t" } else { "tok" };
-    serde_json::json!([{"role": "user", "content": [3,5,0,6,4,7].map(|i| format!("{prefix}{i}")).join(" ")}])
+    let content = [3, 5, 0, 6, 4, 7].map(|i| format!("{prefix}{i}")).join(" ");
+    serde_json::json!([{"role": "user", "content": content}])
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

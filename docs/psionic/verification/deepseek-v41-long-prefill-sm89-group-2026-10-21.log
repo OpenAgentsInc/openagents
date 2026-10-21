@@ -1,0 +1,107 @@
+
+==========
+== CUDA ==
+==========
+
+CUDA Version 13.0.1
+
+Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+This container image and its contents are governed by the NVIDIA Deep Learning Container License.
+By pulling and using the container, you accept the terms and conditions of this license:
+https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
+
+A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
+
+   Compiling pylon v1.0.0 (/cache/src-pylon/crates/pylon)
+
+running 1 test
+test chunked_prefill_matches_reference_without_delivering_intermediate_tokens ...     Finished `test` profile [unoptimized + debuginfo] target(s) in 4.19s
+     Running tests/group_stage_worker.rs (/cache/target-pylon/worktrees/6a/8fe3aa4c4830ad6251e4b6d8cdb13cb4842e47a14d1db50056a08fdc50357c/debug/deps/group_stage_worker-49a97aaf995a08d5)
+group: stage s0 started (process 153) at generation 1
+group: stage s1 started (process 154) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage s0 started (process 195) at generation 1
+group: stage s1 started (process 196) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage s0 started (process 237) at generation 1
+group: stage s1 started (process 238) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage s0 started (process 279) at generation 1
+group: stage s1 started (process 280) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage s0 started (process 321) at generation 1
+group: stage s1 started (process 322) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage s0 started (process 363) at generation 1
+group: stage s1 started (process 364) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage s0 started (process 406) at generation 1
+group: stage s1 started (process 407) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage s0 started (process 449) at generation 1
+group: stage s1 started (process 450) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage s0 started (process 492) at generation 1
+group: stage s1 started (process 493) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage s0 started (process 535) at generation 1
+group: stage s1 started (process 536) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 42.19s
+
+group_stage_worker: chunked_prefill_matches_reference_without_delivering_intermediate_tokens executed; executed 1, skipped 0, failed 0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.59s
+
+running 1 test
+test cancelling_or_losing_a_link_during_prefill_never_delivers_a_token ...      Running tests/group_stage_worker.rs (/cache/target-pylon/worktrees/6a/8fe3aa4c4830ad6251e4b6d8cdb13cb4842e47a14d1db50056a08fdc50357c/debug/deps/group_stage_worker-49a97aaf995a08d5)
+group: stage s0 started (process 597) at generation 1
+group: stage s1 started (process 598) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage group request 1 ended (the caller cancelled the request); waiting for 2 stages to stop
+group: stage group request 1 has stopped on every stage
+psionic-v41-stage s1: {"event":"refused","stage":"s1","pid":598,"generation":1,"request":"1","step":0,"reason":"attempt 1 of 1 has ended"}
+group: stage s0 started (process 630) at generation 1
+group: stage s1 started (process 631) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage s1 failed: its connection to the front closed
+group: stage group moves to generation 2; restarting stage s1 in 0.02s
+group: stage group request 1 has stopped on every stage
+group: stage s1 started (process 651) at generation 2
+group: stage group ready at generation 2 with 2 stages
+group: stage s0 started (process 674) at generation 1
+group: stage s1 started (process 675) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage group request 1 ended (the caller cancelled the request); waiting for 2 stages to stop
+group: stage group request 1 has stopped on every stage
+psionic-v41-stage s1: {"event":"refused","stage":"s1","pid":675,"generation":1,"request":"1","step":0,"reason":"attempt 1 of 1 has ended"}
+group: stage group refused a message: stage s1: attempt 1 of 1 has ended
+group: stage s0 started (process 708) at generation 1
+group: stage s1 started (process 709) at generation 1
+group: stage group runs build unbundled executable 3a50cb211855f53652294f31647d4ed649b73345b9a6942b11b539efa02e7f54 (sm_89) with profile cuda-device-sm_89; development group: no build pin
+group: stage group ready at generation 1 with 2 stages
+group: stage s1 failed: its connection to the front closed
+group: stage group moves to generation 2; restarting stage s1 in 0.02s
+group: stage group request 1 has stopped on every stage
+group: stage s1 started (process 730) at generation 2
+group: stage group ready at generation 2 with 2 stages
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 12 filtered out; finished in 9.18s
+
+group_stage_worker: cancelling_or_losing_a_link_during_prefill_never_delivers_a_token executed; executed 1, skipped 0, failed 0

@@ -979,3 +979,18 @@ measurements still need capacity and the frozen G1 v2 policy. Five guarded
 four-GPU spot attempts (us-west3-a, us-east1-b, us-central1-b, us-east4-c, and
 us-west4-c) failed with stockouts; an on-demand us-west3-a attempt hit the
 project's zero quota. No machine started and the guard recorded zero cost.
+
+
+The final SM89 run (`41c07961ad`) also compares chunked CUDA qualification
+observations against an unchunked synthetic oracle under the strict test
+policy. All chunk files contribute router rows, and exact captured rows are
+read at their absolute prompt position without loading the full observation
+into memory. The stage/backend run passes 37 checks (one unrelated ignored
+test). Two additional real Pylon group tests pass on CUDA for both transports:
+chunked greedy/sampled parity, cancellation during prefill, and link-loss
+recovery. They run with a required worker and CUDA backend, with zero skips.
+
+[Retained results and raw GPU logs](verification/deepseek-v41-long-prefill-2026-10-21.json)
+distinguish these development checks from the still-pending original-weight
+p3/p4, long holdout, fresh device peaks, and larger W14 deadline. Those live
+checks are listed in the master delegation document's After-close checks.
