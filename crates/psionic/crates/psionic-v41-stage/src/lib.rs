@@ -217,7 +217,7 @@ pub struct Options {
 /// Each must fail the frozen policy; none is reachable without `--control`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Control {
-    /// One layer's attention query projection reads the next layer's.
+    /// One layer's attention query projection has its output rows rotated.
     WrongWeights,
     /// One layer's router bias is rotated by one expert.
     WrongRouting,

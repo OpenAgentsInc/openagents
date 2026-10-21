@@ -398,8 +398,8 @@ fn stage_observes(stage: &V41Stage) -> bool {
 }
 
 /// A tensor source with one of the G1 v2 negative controls' weight defects
-/// (#12405): layer 3's query projection read from layer 4, or layer 3's
-/// router bias rotated by one expert.
+/// (#12405): layer 3's query projection with its output rows rotated by one
+/// 32-row block, or layer 3's router bias rotated by one expert.
 struct Controlled<'a> {
     inner: &'a dyn V41TensorSource,
     control: Option<Control>,
@@ -411,7 +411,14 @@ impl V41TensorSource for Controlled<'_> {
             Some(Control::WrongWeights)
                 if name == "layers.3.attn.wq_b.weight" || name == "layers.3.attn.wq_b.scale" =>
             {
-                self.inner.tensor(&name.replace("layers.3.", "layers.4."))
+                // Rotate the output rows by one 32-row block, with their scales.
+                let mut tensor = self.inner.tensor(name)?;
+                let rows = tensor.shape.first().copied().unwrap_or(1).max(1);
+                let row_bytes = tensor.bytes.len() / rows;
+                let block = if name.ends_with(".weight") { 32 } else { 1 };
+                let shift = (row_bytes * block) % tensor.bytes.len().max(1);
+                tensor.bytes.rotate_left(shift);
+                Ok(tensor)
             }
             Some(Control::WrongRouting) if name == "layers.3.ffn.gate.bias" => {
                 let mut tensor = self.inner.tensor(name)?;
