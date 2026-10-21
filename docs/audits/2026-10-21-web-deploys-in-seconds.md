@@ -355,3 +355,91 @@ openagents browser run --timeout 60 -- "$CARGO_TARGET_DIR/release/livehost" benc
   seconds, so a deploy stamps one second past the previous pointer.
   Several deploys a second run the stamp ahead of the clock. A sequence
   tag would fix it.
+
+## Phase 2: openagents.com on livehost
+
+Phase 2 is #12435. Its first step measured real code against the tier
+targets; the content tier then moved onto livehost for staging.
+
+### Rebuild times for real code
+
+One-line edits on the owner's Mac with a warm shared target, under other
+agents' load, timed through everything a deploy needs: cargo,
+`wasm-bindgen`, `wasm-opt`, and compression. Median / worst of three to five
+runs.
+
+| Module | Production settings (LTO, codegen-units=1, `wasm-opt`, brotli 11) | Staging settings (no LTO, codegen-units=16, incremental, no `wasm-opt`, brotli 5) |
+| --- | --- | --- |
+| `pylons-web`, the /pylons Grid layer (212 KB) | 2.9 / 3.0 s | 0.90 / 0.96 s |
+| `coder-chat-web` (73 KB) | 1.7 / 1.7 s | 0.93 / 0.98 s |
+| `everglade-web`, the 3D Grid (25 MB), edit in its own crate | 146 / 157 s | 5.5 / 5.6 s |
+| `everglade-web`, edit in the shared `verse-core` | not measured | 7.8 / 8.2 s |
+
+For `everglade-web` under production settings, cargo took 42–64 s,
+`wasm-opt -O2` 13–17 s, and brotli 11 with gzip 9 59–85 s. The first build
+under staging settings is cold (183 s for `everglade-web`), and the staging
+module is larger (29 MB against 25 MB).
+
+A real route as a component: /pylons' list rendering over the shared
+`pylons-view` crate, built for `wasm32-wasip2`
+(`crates/livehost/guests/pylons-route`, 162 KB), rebuilt in 0.25 / 0.39 s
+after an edit to the route and 0.39 / 0.43 s after an edit to
+`pylons-view`. The host compiled it in 23 ms. For comparison, the same edit
+to `pages/pylons_field.rs` rebuilt the native `openagents-web` server in
+10.4 s median (102 s worst), before an image or a revision.
+
+So the module and handler targets (10–40 s and 15–30 s) hold with room to
+spare once staging builds with its own settings. Production keeps LTO and
+brotli 11 on the promotion path. The open questions are the GPUI modules
+(`apps/openagents/web`, on their own toolchain), which aren't measured,
+and a host interface for live data, which a real route needs and which
+`openagents-web`'s routes can't use until they are extracted from the
+server crate.
+
+### The content tier
+
+- **What moved.** `openagents-web` reads the docs, the legal text, the API
+  docs, `fonts.css`, `legacy-demo.css`, and the `openagents-ui` stylesheet
+  and script from the `openagents` tenant's manifest
+  (`crates/openagents-web/src/live_content.rs`). The compiled-in copies stay:
+  a path the manifest lacks, or a server without the follower, serves them.
+  The blog isn't moved: its posts are parsed into borrowed `'static` data.
+- **How a server follows.** `OPENAGENTS_LIVE_RELAY`, `_STORE`, and `_PUBKEY`
+  (and `_CHANNEL`, default `staging`) start `livehost::follow`, the
+  follower half of the crate, without wasmtime. It verifies each pointer,
+  takes the manifest from the pointer itself when it fits (under 48 KiB),
+  and fetches every new object at once.
+- **Deploy.** `scripts/deploy/livehost.sh deploy` assembles the tier
+  (`scripts/deploy/web-content.sh`, which runs `openagents-ui-bundle` for
+  the same stylesheet bytes the build compiles in), uploads new objects and
+  the manifest in parallel to `gs://openagentsgemini-livehost`, and signs
+  the staging pointer on `wss://relay.openagents.com`. `rollback` and
+  `status` work the same way. The tools build in a target of their own: in
+  the shared target a content deploy waited minutes on other builds'
+  artifact lock.
+- **Promotion.** `livehost.sh promote HASH` points `live` at staging's
+  manifest with a separate live key, and refuses unless staging serves
+  exactly HASH. No production server follows `live`.
+
+### On staging
+
+Staging follows the staging pointer since revision
+`openagents-web-1-staging-837c2346c4-223046` (setup in
+[the deployment log](../deployment/openagents-web.md#2026-10-21-content-deploys-from-livehost-on-staging-12435)).
+A docs edit was visible on staging.openagents.com 3.8 s median and 8.5 s
+worst after the file changed (5 runs, three matching responses in a row),
+and a rollback 3.1 s median, against roughly 7 to 60 minutes through an image
+and a revision. The deploy command itself took about 1 s: 0.3–1.0 s to read
+the current pointer from the relay, 0.15–0.7 s to upload, and 0.1–0.2 s to
+publish. A server swaps 0–58 ms after the pointer arrives and waits up to
+3 s for the first manifest when it starts.
+
+### What's left
+
+- **Handlers and modules on the real site.** The host interface for live
+  data, extracting a route from `openagents-web`, serving modules by hash,
+  and staging build settings in the deploy script.
+- **`web.sh` calls `livehost.sh`** once #12417's changes to `web.sh` land.
+- **Faster script.** Calling the built tools directly instead of through
+  `cargo run` would remove about 2 s from each content deploy.
+- **The blog**, whose posts are parsed into `'static` data.

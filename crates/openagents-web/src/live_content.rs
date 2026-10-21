@@ -49,6 +49,19 @@ pub fn start_from_env() -> Result<bool, String> {
     Ok(true)
 }
 
+/// Waits up to `limit` for the first manifest, so a new instance doesn't
+/// answer its first requests from the compiled-in copies. Returns whether
+/// one loaded; without a follower it returns at once.
+pub async fn ready(limit: std::time::Duration) -> bool {
+    let Some(follower) = follower() else {
+        return false;
+    };
+    let mut changes = follower.changes();
+    tokio::time::timeout(limit, changes.wait_for(Option::is_some))
+        .await
+        .is_ok_and(|changed| changed.is_ok())
+}
+
 /// Uses `follower` for live content. The first call wins.
 pub fn install(follower: Arc<Follower>) {
     let _ = FOLLOWER.set(follower);

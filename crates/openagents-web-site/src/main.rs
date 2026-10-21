@@ -519,7 +519,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Docs, legal text, and the design-language bundle from the content
     // tier's livehost manifest, when OPENAGENTS_LIVE_* name one (#12435).
     match openagents_web::live_content::start_from_env() {
-        Ok(true) => println!("Following live content"),
+        Ok(true) => {
+            // Serve the live copy from the first request when it loads in time.
+            let loaded =
+                openagents_web::live_content::ready(std::time::Duration::from_secs(3)).await;
+            println!(
+                "Following live content ({})",
+                if loaded { "loaded" } else { "not loaded yet" }
+            );
+        }
         Ok(false) => {}
         Err(error) => eprintln!("openagents-web: {error}; serving compiled-in content"),
     }

@@ -1352,3 +1352,43 @@ Before, a build spent 1,900 to 2,800 s in the GPUI stage, which built about
 A deploy also uploads the build context from the machine that runs
 `web.sh` (about 330 MB compressed), which takes 1 to 10 minutes on a home
 connection and isn't counted above.
+
+## 2026-10-21: content deploys from livehost on staging (#12435)
+
+Staging reads its docs, legal text, API docs, `fonts.css`,
+`legacy-demo.css`, and the `openagents-ui` stylesheet and script from the
+`openagents` tenant's livehost manifest, so a change to them reaches
+staging in seconds without a new revision. Any path the manifest lacks
+comes from the binary, as before.
+
+- **Deploy:** `scripts/deploy/livehost.sh deploy` (then `rollback` or
+  `status`). It assembles the content tier with
+  `scripts/deploy/web-content.sh`, uploads new objects, and signs the
+  staging pointer.
+- **Bucket:** `gs://openagentsgemini-livehost` (us-central1, uniform access,
+  public access prevented), created 2026-10-21. The staging runtime account
+  `oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com` has
+  `roles/storage.objectViewer` on it.
+- **Key:** `~/work/.secrets/livehost-openagents-staging.key` (mode 600),
+  public key `9db9a1549ef4af943371415ee6c388e2b4a225b1f046cdcbeb8ceb2875ccd014`.
+  Pointers go to `wss://relay.openagents.com` as kind 30440 events tagged
+  `d` = `openagents/staging`.
+- **Service:** `openagents-web-1-staging`'s web container has
+  `OPENAGENTS_LIVE_RELAY`, `OPENAGENTS_LIVE_STORE`, and
+  `OPENAGENTS_LIVE_PUBKEY` from `deploy/staging/render.py`, first applied
+  with `web.sh stage --keep-spec 837c2346c4` (revision
+  `openagents-web-1-staging-837c2346c4-223046`).
+- **Fallback:** checked on 2026-10-21 with a revision that lacked the three
+  variables (`openagents-web-1-staging-00371-raj`, briefly given staging's
+  traffic): a marker published to the manifest didn't appear, and the
+  stylesheet version was the compiled one. The variables are back in the
+  service template (`00255-gvg`, no traffic), and the test tag is removed.
+- **Production** has none of the variables and serves the compiled-in
+  content. `livehost.sh promote HASH` signs a `live` pointer with a separate
+  key, but no production server follows it.
+
+Measured on staging (5 runs, a docs edit to `/docs/mac`): edit to visible
+on staging.openagents.com in 3.8 s median, 8.5 s worst; rollback visible in
+3.1 s median. The deploy command takes about 1 s; most of the rest is the
+script's Cargo freshness checks. The server swaps 0–58 ms after the pointer
+arrives.
