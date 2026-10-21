@@ -126,6 +126,11 @@ Its [GCP deployment proposal](deepinfer-lessons.md#gcp-deployment-proposal-2026-
 adds current GPU/quota observations, small-model hosting candidates, and a
 staged path from private workers to optional P/D and persistent KV.
 
+The [V4.1-Flash inference system note](../research/deepseek/2026-10-20-v41-flash-inference-system.md)
+summarizes DeepSeek's description of its production service (wide-EP decode,
+shared KV-cache storage, bounded replay, and DSpark) and what it means for
+our serial stage Pylons.
+
 The [Mesh-LLM review](mesh-llm-lessons.md) compares distributed placement,
 stage packages, activation transport, readiness, and cache-aware routing with
 Psionic's cluster and serving contracts.

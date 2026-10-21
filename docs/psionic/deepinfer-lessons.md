@@ -54,6 +54,10 @@ benchmarks were run. The public benchmark plots use four SM100 GPUs for prefill
 and 64 for decode within a scale-up domain. They do not establish a speedup on
 our RTX 4080 or Apple devices. [D1]
 
+DeepSeek's own description of the production service around DeepInfer,
+including the cache storage and load balancers the release omits, is
+summarized in the [V4.1-Flash inference system note](../research/deepseek/2026-10-20-v41-flash-inference-system.md).
+
 ## Start from Psionic's actual execution paths
 
 The [Psionic overview](README.md) describes the imported serving workspace.
