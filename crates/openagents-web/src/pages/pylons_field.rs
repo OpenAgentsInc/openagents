@@ -21,7 +21,9 @@ use std::time::Duration;
 
 use nostr::pylon::{Family, Lane, Standing};
 use pylon::field::{Live, RelayField};
-use pylons_view::{Checks, Jobs, Pylon as PylonView, Service as ServiceView, Snapshot};
+use pylons_view::{
+    Checks, Group as GroupView, Jobs, Pylon as PylonView, Service as ServiceView, Snapshot,
+};
 use tokio::sync::watch;
 
 /// The most pylons the page draws, as NIP-PYLON's world projection allows.
@@ -133,7 +135,116 @@ pub(crate) fn snapshot(live: &Live, now: u64) -> Snapshot {
             },
             paid_msat: (paid.bitcoin > 0).then_some(paid.bitcoin),
             test_paid_msat: (test_paid > 0).then_some(test_paid),
+            group: None,
         });
+    }
+    for group in live.groups(now) {
+        let Some(head) = &group.head else { continue };
+        if !matches!(head.status.as_str(), "online" | "draining") {
+            continue;
+        }
+        let stages: Vec<_> = group
+            .stages
+            .iter()
+            .filter(|stage| {
+                stage.current && matches!(stage.pylon.status.as_str(), "online" | "draining")
+            })
+            .collect();
+        let parts = u32::try_from(stages.len()).unwrap_or(u32::MAX);
+        let state = group.readiness.map(|readiness| {
+            match readiness {
+                nostr::pylon::Readiness::Ready => "ready",
+                nostr::pylon::Readiness::Starting => "starting",
+                nostr::pylon::Readiness::Recovering => "recovering",
+            }
+            .to_owned()
+        });
+        let mut members = vec![(
+            head,
+            GroupView {
+                id: group.id.clone(),
+                role: "head".into(),
+                part: None,
+                parts,
+                layers: None,
+                state,
+                deadline_secs: group.deadline_secs,
+            },
+        )];
+        for (i, stage) in stages.iter().enumerate() {
+            members.push((
+                &stage.pylon,
+                GroupView {
+                    id: group.id.clone(),
+                    role: "part".into(),
+                    part: Some(u32::try_from(i + 1).unwrap_or(u32::MAX)),
+                    parts,
+                    layers: Some([stage.layers.from, stage.layers.to]),
+                    state: None,
+                    deadline_secs: None,
+                },
+            ));
+        }
+        for (state, view) in members {
+            let Some(beacon) = live.group_beacon(&state.pylon) else {
+                continue;
+            };
+            if pylons.len() >= MAX_DRAWN {
+                more += 1;
+                continue;
+            }
+            let jobs = live.synced.then(|| {
+                let seen = activity.get(&state.pylon).copied().unwrap_or_default();
+                Jobs {
+                    receipts: seen.receipts,
+                    done: seen.accepted,
+                    avg_ms: (seen.accepted > 0).then(|| seen.job_secs * 1000 / seen.accepted),
+                    last_at: seen.last_finished_at,
+                }
+            });
+            let status = if state.status == "draining" {
+                "draining"
+            } else {
+                "online"
+            };
+            pylons.push(PylonView {
+                id: state.pylon.clone(),
+                name: beacon.label.clone(),
+                slug: beacon.pylon.clone(),
+                npub: npub(&beacon.provider),
+                owner_npub: live.group_owner(&state.pylon).map(|owner| npub(&owner)),
+                status: status.to_owned(),
+                family: family(beacon.class.family).to_owned(),
+                memory_gb: beacon.class.memory_gb,
+                busy: state.busy,
+                total: state.total,
+                since: beacon.since,
+                observed_at: beacon.observed_at,
+                expires_at: beacon
+                    .valid_until
+                    .min(beacon.observed_at + nostr::pylon::MAX_VALIDITY_SECS),
+                services: beacon
+                    .services
+                    .iter()
+                    .map(|service| ServiceView {
+                        model: service.model.clone(),
+                        kinds: service
+                            .lanes
+                            .iter()
+                            .map(|lane| kind(*lane).to_owned())
+                            .collect(),
+                        price_hint_msat: service.price_hint_msat,
+                    })
+                    .collect(),
+                free: beacon.settlement == ["free-v1"],
+                pools: beacon.pools.clone(),
+                jobs,
+                checks: None,
+                paid_msat: None,
+                test_paid_msat: None,
+                group: Some(view),
+            });
+        }
     }
     Snapshot {
         now,
@@ -429,5 +540,103 @@ mod tests {
         assert!(html.contains("&lt;b&gt;Mine&lt;/b&gt;"));
         assert!(html.contains("Online · GPU · 1 of 2 busy"));
         assert!(oa_copy::violations(&html, &[]).is_empty());
+    }
+
+    /// A model group's head and its parts (NIP-PYLON v2) show together,
+    /// head first, each saying its place; a part of an old generation and
+    /// a group without a fresh head are left out (W16, #12403).
+    #[test]
+    fn a_model_group_shows_its_head_with_its_parts() {
+        use nostr::pylon::{GROUP_BEACON_MARKER, Group, GroupRole, Layers, Readiness};
+        let provider = signer(3);
+        let artifact = format!("sha256:{}", "ab".repeat(32));
+        let member = |slug: &str, role: GroupRole, generation: u64, layers: Option<Layers>| {
+            let mut b = beacon(&provider, NOW, Status::Online);
+            b.v = nostr::pylon::BEACON_V2.into();
+            b.pylon = slug.into();
+            b.label = format!("V4.1 {slug}");
+            let head = role == GroupRole::Head;
+            b.slots = if head {
+                Slots { total: 1, free: 1 }
+            } else {
+                Slots { total: 0, free: 0 }
+            };
+            if head {
+                b.services[0].model = format!("deepseek-v4.1-flash@{artifact}");
+                b.services[0].lanes = vec![Lane::CjConversation];
+            } else {
+                b.services.clear();
+            }
+            b.group = Some(Group {
+                id: "v41".into(),
+                role,
+                generation,
+                artifact: artifact.clone(),
+                readiness: head.then_some(Readiness::Ready),
+                deadline_secs: head.then_some(600),
+                max_output_tokens: head.then_some(4096),
+                layers,
+            });
+            beacon_event(&provider, &b).unwrap()
+        };
+        let mut live = Live::new(None);
+        assert!(live.offer(
+            beacon_event(&provider, &beacon(&provider, NOW, Status::Online)).unwrap(),
+            NOW
+        ));
+        let mut events = vec![member("v41-head", GroupRole::Head, 2, None)];
+        for (i, from) in [0u32, 10, 20, 30].iter().enumerate() {
+            events.push(member(
+                &format!("v41-s{i}"),
+                GroupRole::Stage,
+                2,
+                Some(Layers {
+                    from: *from,
+                    to: from + 10,
+                }),
+            ));
+        }
+        events.push(member(
+            "v41-old",
+            GroupRole::Stage,
+            1,
+            Some(Layers { from: 0, to: 10 }),
+        ));
+        for event in events {
+            assert!(
+                event
+                    .tags
+                    .iter()
+                    .any(|t| t.0.get(1).map(String::as_str) == Some(GROUP_BEACON_MARKER))
+            );
+            assert!(live.offer(event, NOW));
+        }
+        // A stage never counts as a complete pylon.
+        assert_eq!(live.pylons(NOW).len(), 1);
+        let shown = snapshot(&live, NOW + 5);
+        assert_eq!(shown.pylons.len(), 6);
+        let head = &shown.pylons[1];
+        let group = head.group.as_ref().unwrap();
+        assert_eq!((group.role.as_str(), group.parts), ("head", 4));
+        assert_eq!(group.state.as_deref(), Some("ready"));
+        assert_eq!(
+            head.summary(),
+            "Online · Model group · 4 parts · 0 of 1 busy"
+        );
+        let parts: Vec<_> = shown.pylons[2..]
+            .iter()
+            .map(|p| {
+                let g = p.group.as_ref().unwrap();
+                assert_eq!(g.id, group.id);
+                (g.part.unwrap(), g.layers.unwrap())
+            })
+            .collect();
+        assert_eq!(
+            parts,
+            [(1, [0, 10]), (2, [10, 20]), (3, [20, 30]), (4, [30, 40])]
+        );
+        assert!(shown.pylons[0].group.is_none());
+        // Without a fresh head, nothing of the group shows.
+        assert_eq!(snapshot(&live, NOW + 241).pylons.len(), 0);
     }
 }

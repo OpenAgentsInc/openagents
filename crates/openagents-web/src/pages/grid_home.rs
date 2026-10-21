@@ -93,6 +93,8 @@ to{opacity:0;transform:translate(-50%,50%) scale(4.5)}\
 }\
 @keyframes breathe{50%{opacity:.62}\
 }\
+.pylon.group-part .beam{opacity:.6}\
+.pylon.group-part .tag b{max-width:120px}\
 .pylon.draining .beam{opacity:.42;background:repeating-linear-gradient(to top,#fff 0 6px,rgba(255,255,255,0) 6px 10px)}\
 .pylon .tag{position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%) scale(var(--s));transform-origin:50% 100%;white-space:nowrap;text-align:center;font-size:13px;font-weight:600;line-height:17px;color:#f5f5f5;text-shadow:0 1px 10px rgba(0,0,0,.85),0 0 2px rgba(0,0,0,.9)}\
 .pylon .tag b{display:block;max-width:156px;margin:0 auto;overflow:hidden;text-overflow:ellipsis;font-weight:600}\

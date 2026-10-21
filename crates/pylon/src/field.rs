@@ -15,10 +15,10 @@ use std::time::Duration;
 use nostr::domain::Event;
 use nostr::pylon::{
     self, AggregateInputs, BEACON_KIND, BEACON_MARKER, BeaconBook, CHECK_KIND, CHECK_NAMESPACE,
-    Check, Freshness, MAX_FUTURE_SKEW_SECS, MAX_WINDOW_SECS, Outcome, POOL_KIND, POOL_MARKER,
-    PoolAggregate, PoolPolicy, PylonState, RECEIPT_KIND, RECEIPT_MARKER, Receipt, Standing,
-    freshness, parse_aggregate, parse_beacon, parse_check, parse_receipt, project,
-    verify_aggregate,
+    Check, Freshness, GROUP_BEACON_MARKER, MAX_FUTURE_SKEW_SECS, MAX_WINDOW_SECS, Outcome,
+    POOL_KIND, POOL_MARKER, PoolAggregate, PoolPolicy, PylonState, RECEIPT_KIND, RECEIPT_MARKER,
+    Receipt, Standing, freshness, parse_aggregate, parse_beacon, parse_check, parse_receipt,
+    project, verify_aggregate,
 };
 use serde_json::json;
 
@@ -145,6 +145,8 @@ pub use pylon::PylonState as State;
 
 /// The most pylons a live field holds.
 pub const MAX_LIVE_PYLONS: usize = 256;
+/// The most model-group beacons (heads and stages) a live field holds.
+pub const MAX_LIVE_GROUP_BEACONS: usize = 64;
 /// The most receipts a live field remembers for its job counts.
 pub const MAX_LIVE_RECEIPTS: usize = 16_384;
 /// The most raw receipts it keeps to recompute an aggregate.
@@ -273,6 +275,10 @@ pub struct Live {
     pool: Option<String>,
     book: BeaconBook,
     pylons: usize,
+    /// Model groups' heads and stages (NIP-PYLON v2), apart from `book` so
+    /// a stage never counts as a complete pylon or toward an aggregate.
+    groups: BeaconBook,
+    group_beacons: usize,
     receipts: BTreeMap<(String, String), Counted>,
     /// Raw receipts of the last hour, for recomputing an aggregate.
     recent: Vec<Event>,
@@ -338,6 +344,24 @@ impl Live {
                 };
                 if freshness(&beacon, now) == Freshness::Future {
                     return false;
+                }
+                if beacon.group.is_some() {
+                    if self
+                        .pool
+                        .as_ref()
+                        .is_some_and(|p| !beacon.pools.contains(p))
+                    {
+                        return false;
+                    }
+                    let known = self.groups.get(&beacon.address()).is_some();
+                    if !known && self.group_beacons >= MAX_LIVE_GROUP_BEACONS {
+                        return false;
+                    }
+                    let taken = self.groups.offer(event, beacon);
+                    if taken && !known {
+                        self.group_beacons += 1;
+                    }
+                    return taken;
                 }
                 let known = self.book.get(&beacon.address()).is_some();
                 if !known && self.pylons >= MAX_LIVE_PYLONS {
@@ -571,6 +595,28 @@ impl Live {
         self.book.get(address).map(|(_, beacon)| beacon)
     }
 
+    /// The model groups at `now`, each head with its stages in layer
+    /// order ([`crate::group::field`]). Their beacons never appear in
+    /// [`Self::pylons`].
+    #[must_use]
+    pub fn groups(&self, now: u64) -> Vec<crate::group::GroupState> {
+        crate::group::field(&self.groups, now)
+    }
+
+    /// The verified beacon of a group's head or stage at `address`.
+    #[must_use]
+    pub fn group_beacon(&self, address: &str) -> Option<&pylon::Beacon> {
+        self.groups.get(address).map(|(_, beacon)| beacon)
+    }
+
+    /// The verified NIP-OA owner of a group's head or stage at `address`.
+    #[must_use]
+    pub fn group_owner(&self, address: &str) -> Option<String> {
+        self.groups
+            .get(address)
+            .and_then(|(event, _)| pylon::beacon_owner(event).ok().flatten())
+    }
+
     /// The verified NIP-OA owner of the pylon at `address`, when its
     /// beacon names one.
     #[must_use]
@@ -752,6 +798,7 @@ impl RelayField {
             "REQ",
             "field",
             {"kinds": [BEACON_KIND], "#t": [BEACON_MARKER], "limit": 500},
+            {"kinds": [BEACON_KIND], "#t": [GROUP_BEACON_MARKER], "limit": MAX_LIVE_GROUP_BEACONS},
             {"kinds": [RECEIPT_KIND], "#t": [RECEIPT_MARKER], "since": since, "limit": 2_000},
             aggregates,
             {

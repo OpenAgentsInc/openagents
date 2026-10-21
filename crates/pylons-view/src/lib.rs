@@ -74,6 +74,49 @@ pub struct Pylon {
     /// Test-network payments, msat, never added to `paid_msat`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub test_paid_msat: Option<u64>,
+    /// The model group this pylon belongs to: one model served by several
+    /// pylons, one part each. Left out for a pylon that serves on its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<Group>,
+}
+
+/// A pylon's place in a model group.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Group {
+    /// The group's key, the same for its head and every part, so the Grid
+    /// draws them together.
+    pub id: String,
+    /// `head` takes the jobs; `part` holds a slice of the model.
+    pub role: String,
+    /// A part's position, 1-based, in layer order.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub part: Option<u32>,
+    /// How many parts the group has.
+    pub parts: u32,
+    /// A part's layers, `[from, to)`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layers: Option<[u32; 2]>,
+    /// The head's state: `ready`, `starting`, or `recovering`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state: Option<String>,
+    /// The head's time limit for one answer, s.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline_secs: Option<u64>,
+}
+
+impl Group {
+    /// "Model group · 4 parts" or "Part 2 of 4 · layers 10–20".
+    #[must_use]
+    pub fn words(&self) -> String {
+        match (self.role.as_str(), self.part) {
+            ("head", _) => format!("Model group · {} parts", self.parts),
+            (_, Some(part)) => match self.layers {
+                Some([from, to]) => format!("Part {part} of {} · layers {from}–{to}", self.parts),
+                None => format!("Part {part} of {}", self.parts),
+            },
+            _ => "Model group part".to_owned(),
+        }
+    }
 }
 
 /// One service a beacon names.
@@ -151,15 +194,31 @@ impl Pylon {
         format!("{} of {} busy", self.busy, self.total)
     }
 
-    /// "Online · GPU · 1 of 2 busy", as the list and the Grid say it.
+    /// "Online · GPU · 1 of 2 busy", as the list and the Grid say it. A
+    /// model group's head and parts say their place in the group instead
+    /// of their slots: only the head takes jobs.
     #[must_use]
     pub fn summary(&self) -> String {
-        format!(
-            "{} · {} · {}",
-            self.status_words(),
-            self.class_words(),
-            self.slots_words()
-        )
+        match &self.group {
+            Some(group) if group.role == "head" => format!(
+                "{} · {} · {}",
+                self.status_words(),
+                group.words(),
+                self.slots_words()
+            ),
+            Some(group) => format!(
+                "{} · {} · {}",
+                self.status_words(),
+                self.class_words(),
+                group.words()
+            ),
+            None => format!(
+                "{} · {} · {}",
+                self.status_words(),
+                self.class_words(),
+                self.slots_words()
+            ),
+        }
     }
 
     /// The pylon's key, shortened for a tag: `npub1abcd…wxyz`.
@@ -251,6 +310,18 @@ pub fn rows(shown: &Shown) -> Vec<Row> {
         );
     } else {
         push("Hardware", pylon.class_words().to_owned());
+    }
+    if let Some(group) = &pylon.group {
+        push("Group", group.words());
+        match group.state.as_deref() {
+            Some("ready") => push("Group state", "Ready".to_owned()),
+            Some("starting") => push("Group state", "Starting".to_owned()),
+            Some("recovering") => push("Group state", "Recovering".to_owned()),
+            _ => {}
+        }
+        if let Some(secs) = group.deadline_secs {
+            push("Answer time limit", span(secs));
+        }
     }
     let mut models: Vec<&str> = Vec::new();
     let mut kinds: Vec<&str> = Vec::new();
@@ -379,6 +450,7 @@ mod tests {
             checks: None,
             paid_msat: None,
             test_paid_msat: None,
+            group: None,
         }
     }
 
@@ -522,5 +594,59 @@ mod tests {
             let line = format!("{}: {}", row.label, row.value);
             assert!(oa_copy::violations(&line, &[]).is_empty(), "{line}");
         }
+    }
+
+    #[test]
+    fn a_model_group_says_its_place_in_plain_words() {
+        let mut head = pylon();
+        head.total = 1;
+        head.busy = 0;
+        head.group = Some(Group {
+            id: "ab:v41".into(),
+            role: "head".into(),
+            part: None,
+            parts: 4,
+            layers: None,
+            state: Some("ready".into()),
+            deadline_secs: Some(600),
+        });
+        assert_eq!(
+            head.summary(),
+            "Online · Model group · 4 parts · 0 of 1 busy"
+        );
+        let mut part = pylon();
+        part.total = 0;
+        part.busy = 0;
+        part.group = Some(Group {
+            id: "ab:v41".into(),
+            role: "part".into(),
+            part: Some(2),
+            parts: 4,
+            layers: Some([10, 20]),
+            state: None,
+            deadline_secs: None,
+        });
+        assert_eq!(part.summary(), "Online · GPU · Part 2 of 4 · layers 10–20");
+        let rows = rows(&Shown {
+            pylon: head.clone(),
+            now: 4_012,
+            gone: false,
+        });
+        assert!(labels(&rows).contains(&"Group state"));
+        for pylon in [head, part] {
+            let shown = Shown {
+                pylon,
+                now: 4_012,
+                gone: false,
+            };
+            let line = shown.pylon.summary();
+            assert!(oa_copy::violations(&line, &[]).is_empty(), "{line}");
+            for row in super::rows(&shown) {
+                let line = format!("{}: {}", row.label, row.value);
+                assert!(oa_copy::violations(&line, &[]).is_empty(), "{line}");
+            }
+        }
+        let json = serde_json::to_value(&pylon()).unwrap();
+        assert!(json.get("group").is_none());
     }
 }

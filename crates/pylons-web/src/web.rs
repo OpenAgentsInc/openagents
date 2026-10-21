@@ -593,7 +593,7 @@ impl Layer {
         };
         let _ = item.set_attribute("data-id", &pylon.id);
         let slot = self.take_slot(&pylon.id);
-        let anchor = anchor(slot);
+        let anchor = self.group_anchor(&pylon).unwrap_or_else(|| anchor(slot));
         let _ = pillar.set_attribute(
             "data-world-anchor",
             &format!("{},{},{}", anchor[0], anchor[1], anchor[2]),
@@ -616,10 +616,42 @@ impl Layer {
         self.entries.insert(entry.view.id.clone(), entry);
     }
 
+    /// A model group's part stands in a row behind its head, so the Grid
+    /// shows the group as one: `None` for a head, a pylon on its own, or a
+    /// part whose head hasn't arrived yet.
+    fn group_anchor(&self, pylon: &Pylon) -> Option<[f64; 3]> {
+        let group = pylon.group.as_ref()?;
+        let part = group.part?;
+        let head = self.entries.values().find(|entry| {
+            entry
+                .view
+                .group
+                .as_ref()
+                .is_some_and(|g| g.id == group.id && g.role == "head")
+        })?;
+        let offset = (f64::from(part) - (f64::from(group.parts) + 1.0) / 2.0) * 3.2;
+        Some([
+            head.anchor[0] + offset,
+            head.anchor[1],
+            head.anchor[2] - 4.5,
+        ])
+    }
+
     fn update(&mut self, pylon: Pylon) {
         let Some(mut entry) = self.entries.remove(&pylon.id) else {
             return;
         };
+        if let Some(anchor) = self.group_anchor(&pylon)
+            && anchor != entry.anchor
+        {
+            // The head arrived after this part, or the group changed.
+            entry.anchor = anchor;
+            let _ = entry.pillar.set_attribute(
+                "data-world-anchor",
+                &format!("{},{},{}", anchor[0], anchor[1], anchor[2]),
+            );
+            self.place(&entry);
+        }
         let before = entry.view.jobs.map(|jobs| jobs.receipts);
         let after = pylon.jobs.map(|jobs| jobs.receipts);
         let changed = entry.view != pylon;
@@ -652,6 +684,15 @@ impl Layer {
             .pillar
             .class_list()
             .toggle_with_force("draining", draining);
+        let role = pylon.group.as_ref().map(|g| g.role.as_str());
+        let _ = entry
+            .pillar
+            .class_list()
+            .toggle_with_force("group-head", role == Some("head"));
+        let _ = entry
+            .pillar
+            .class_list()
+            .toggle_with_force("group-part", role == Some("part"));
         let slots: String = (0..pylon.total.min(16))
             .map(|i| {
                 if i < pylon.busy {
@@ -665,8 +706,14 @@ impl Layer {
             "<span class=\"ring\"></span><span class=\"base\"></span><span class=\"beam\"></span>\
 <span class=\"tag\"><b>{}</b><small>{} · {}</small><span class=\"slots\">{slots}</span></span>",
             escape(&pylon.name),
-            escape(pylon.class_words()),
-            escape(&pylon.slots_words()),
+            escape(&match &pylon.group {
+                Some(group) if group.role == "head" => group.words(),
+                _ => pylon.class_words().to_owned(),
+            }),
+            escape(&match &pylon.group {
+                Some(group) if group.role != "head" => group.words(),
+                _ => pylon.slots_words(),
+            }),
         ));
         entry.item.set_inner_html(&format!(
             "<button type=\"button\" class=\"n\" data-pylon=\"{}\" aria-haspopup=\"dialog\">{}</button> \
