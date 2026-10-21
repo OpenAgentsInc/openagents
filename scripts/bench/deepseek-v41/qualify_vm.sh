@@ -42,7 +42,7 @@ setup() {
   wait
   log "verify"
   {
-    nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv,noheader
+    nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv,noheader || echo "no GPU"
     sha256sum $BIN
     cat $ROOT/bin/BUILD.json
     # The kernels' architecture as built, not as requested (#12407 F1).
