@@ -668,7 +668,7 @@ The next four children of #12369 connect the earlier CPU components while
 | Issue | Scope | Local implementation |
 | --- | --- | --- |
 | [#12381](https://github.com/OpenAgentsInc/openagents/issues/12381) | Projection wiring | Named row-addressable checkpoint matrices, query/KV/compressor/indexer paths, grouped output projection, embedding, and final collapse/norm/logits. Nonuniform NumPy fixtures, group isolation, sparse embedding reads, and invalid inputs are tested. |
-| [#12382](https://github.com/OpenAgentsInc/openagents/issues/12382) | RoPE/YaRN | Filed; follows #12381. |
+| [#12382](https://github.com/OpenAgentsInc/openagents/issues/12382) | RoPE/YaRN | Adjacent-pair tail rotation and inverse, pure-window base 10000, compressed/full base 160000 with YaRN, and first-token positions for completed groups. All 33 accumulated tests pass. |
 | [#12383](https://github.com/OpenAgentsInc/openagents/issues/12383) | Activation quantization | Filed; follows #12382. |
 | [#12384](https://github.com/OpenAgentsInc/openagents/issues/12384) | Shared KV state | Filed; follows #12383. |
 
@@ -678,3 +678,11 @@ Projection fixtures use `3e-6` absolute tolerance. The first projection change
 uses float32 arithmetic; later rows add explicit numerical boundaries. Code
 closure does not qualify original-weight activations, full CPU decoding, or
 native V4.1 CUDA serving.
+
+RoPE fixture frequencies use `1e-8` absolute tolerance and rotated values use
+`2e-6`, at positions 0, 127/128/129, 65535/65536, and 1048575. Scalar powers
+are rounded to float32 before reciprocal construction, and phase products and
+rotations use float32. The public reference's device power/trigonometric
+implementations still need comparison, especially where long positions magnify
+frequency differences. The frequency helper's 1M position bound is not a
+qualified runtime context limit.

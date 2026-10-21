@@ -12,6 +12,7 @@ pub mod engram;
 pub mod hyperconnections;
 pub mod moe;
 pub mod projection;
+pub mod rope;
 
 use thiserror::Error;
 

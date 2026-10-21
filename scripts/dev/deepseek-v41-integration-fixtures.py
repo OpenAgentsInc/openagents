@@ -42,5 +42,32 @@ def projection():
     write('projection',dict(tensors=tensors,input=x.tolist(),expected=expected))
 
 
+def rope():
+    import math
+    dim=64
+    x=np.sin(np.arange(136)*.4).astype(np.float32)
+    positions=[0,127,128,129,65535,65536,1048575]
+    cases=[]
+    for compressed in [False,True]:
+        base=160000 if compressed else 10000
+        powers=np.array([math.pow(base,float(np.float32(2*i)/np.float32(dim))) for i in range(dim//2)],dtype=np.float32)
+        freqs=np.float32(1)/powers
+        if compressed:
+            correction=lambda b:dim*math.log(65536/(b*2*math.pi))/(2*math.log(base))
+            low=max(math.floor(correction(32)),0);high=min(math.ceil(correction(1)),dim-1)
+            ramp=np.clip((np.arange(dim//2,dtype=np.float32)-low)/max(high-low,1e-3),0,1)
+            smooth=1-ramp;freqs=freqs/16*(1-smooth)+freqs*smooth
+        outputs=[]
+        for pos in positions:
+            angle=np.float32(pos)*freqs
+            z=x.reshape(2,68).copy();tail=z[:,4:].reshape(2,32,2)
+            a=tail[:,:,0].copy();b=tail[:,:,1].copy()
+            tail[:,:,0]=a*np.cos(angle)-b*np.sin(angle);tail[:,:,1]=a*np.sin(angle)+b*np.cos(angle)
+            outputs.append(z.flatten().tolist())
+        cases.append(dict(compressed=compressed,frequencies=freqs.tolist(),positions=positions,outputs=outputs))
+    write('rope',dict(input=x.tolist(),cases=cases))
+
+
 if __name__ == '__main__':
     projection()
+    rope()
