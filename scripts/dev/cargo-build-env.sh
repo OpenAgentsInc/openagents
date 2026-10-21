@@ -3,6 +3,13 @@
 # The gate supplies oa_build_manifest; direct builds discover their workspace.
 [ -n "${CARGO_TARGET_DIR:-}" ] || { echo 'Set CARGO_TARGET_DIR before loading the build settings.' >&2; return 1; }
 oa_build_manifest=${oa_build_manifest:-$(cargo locate-project --workspace --message-format plain)} || return 1
+# On a Mac shared with a person and several agents, builds yield to the
+# desktop: lower this shell's priority, which every compiler it starts
+# inherits, and cap parallel jobs. OA_BUILD_FOREGROUND=1 keeps normal priority.
+if [ "$(uname -s)" = Darwin ] && [ "${OA_BUILD_FOREGROUND:-}" != 1 ]; then
+  renice 15 -p $$ >/dev/null 2>&1 || true
+  [ -n "${CARGO_BUILD_JOBS:-}" ] || { CARGO_BUILD_JOBS=6; export CARGO_BUILD_JOBS; }
+fi
 oa_build_parent=$(CDPATH= cd -- "$(dirname -- "$oa_build_manifest")" && pwd -P) || return 1
 oa_build_manifest=$oa_build_parent/$(basename -- "$oa_build_manifest")
 # OPENAGENTS_NIGHTLY=1 opts a local dev build or test into the pinned nightly
