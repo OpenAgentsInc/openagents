@@ -43,6 +43,9 @@ pub fn start_from_env() -> Result<bool, String> {
         tenant: TENANT.to_owned(),
         channel,
         pubkey,
+        // Browser modules load on first request, not with every manifest.
+        lazy_prefixes: vec!["modules/".to_owned()],
+        lazy_budget: livehost::follow::LAZY_BUDGET,
     })
     .map_err(|error| format!("live content: {error:#}"))?;
     install(follower);
@@ -263,6 +266,8 @@ mod tests {
             tenant: TENANT.into(),
             channel: "staging".into(),
             pubkey: key.pubkey().into(),
+            lazy_prefixes: vec!["modules/".to_owned()],
+            lazy_budget: livehost::follow::LAZY_BUDGET,
         })
         .unwrap();
 
