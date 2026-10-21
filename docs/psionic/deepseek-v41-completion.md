@@ -1093,3 +1093,24 @@ backend from what Psionic's Metal backend already has (MXFP4 expert
 kernels, top-k, norms, RoPE, command reuse) and estimates 15–20 agent-days;
 [#12420](https://github.com/OpenAgentsInc/openagents/issues/12420) tracks
 it.
+
+**GPU-only rerun** (development group, unqualified). Five GPU stages, each
+pinned to its own bundle, all cloud stages in one zone (asia-southeast1-c,
+the only zone with G4 spot capacity in the sweep): layers 0–12 and 12–24
+on two RTX PRO 6000s, 24–34 on an H100, 34–38 on an A100 40GB, and 38–40
+with the head on the RTX 4080 at home with `--experts host`. The split
+came from `psionic-v41-stage plan --split`, weighted by the measured time
+per layer (RTX PRO 6000 0.80 ms, H100 1.36 ms, A100 2.68 ms, RTX 4080 with
+host experts about 7 ms), so no stage dominates: 9.5, 9.8, 13.6, 10.7, and
+14.9 ms a token, 58.6 ms in all. The same three questions answered
+correctly at 2.50–2.91 tokens/s, 4.1–4.9 s to the first token, against
+1.07–1.15 tokens/s with the CPU stage and 29.1–29.7 tokens/s for the
+all-RTX PRO 6000 groups (33.9 ms a token). Of the 309–367 ms gap a token,
+about 92% is network distance: the links and head took 285–342 ms against
+0.87 ms, because each token crosses the Pacific twice (the head at home to
+stage 0, and the A100 to the home stage, about 225 ms round trip) plus
+Wi-Fi to the 4080. The RTX 4080 with host experts adds about 13 ms (4%),
+and the H100 and A100 about 13 ms more than RTX PRO 6000s would. With the
+4080's layers and the head in the zone, the same cloud stages would decode
+at about 21 tokens/s. The run cost $6.28. Receipt:
+[`deepseek-v41-gpu-mixed-2026-10-21.json`](verification/deepseek-v41-gpu-mixed-2026-10-21.json).

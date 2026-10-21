@@ -1,0 +1,232 @@
+{
+ "schema": "openagents.psionic.v41.mixed_device.v1",
+ "issue": 12418,
+ "date": "2026-10-21",
+ "label": "development group, unqualified, GPU stages only (owner rule 2026-10-21: no CPU stages in groups); every stage pinned to a verified bundle",
+ "supersedes": "deepseek-v41-mixed-device-2026-10-21.json, whose group used a CPU stage",
+ "commit": "8c0350f07c (head pylon built from b13ec37306, same group code)",
+ "bundles": {
+  "sm_120": "542e22734dcbe387af0358ae3119a243f5e06c29c5923688d51c234defd3967c",
+  "sm_90": "a3b61835ff02996f3ea70b6547e34f824ccf49106834b1e1ba47cc8902bbfae0",
+  "sm_80": "d32559a5cec5abc798b24ae1fbd5d2e01090f79afe191ce974ea1a201fd6522e (gs://openagents-psionic-models/bin/psionic-v41-stage/8c0350f07c/sm_80)",
+  "sm_89": "6331bafa6fb83efdeff62425154021d9ef3bf30808aa8eb3f35a885572dc8f8e"
+ },
+ "capacity": "G4 spot was out in us-central1 (b, c), us-west1-b, us-east4 (b, c), us-west3-a, europe-west4-b, and asia-southeast1-b; asia-southeast1-c had it, and the H100 and A100 spot machines came up in the same zone, so every cloud stage ran in one zone",
+ "group": {
+  "manifest_sha256": "78941978f00326910822df8c8da1330a67a098851708672fe1c19cb170b5d783",
+  "plan": "psionic-v41-stage plan with --split 0-12,12-24,24-34,34-38,38-40, weighted by the first run's measured decode time per layer: RTX PRO 6000 0.80 ms, H100 1.38 ms, RTX 4080 with host experts 6.9 ms; the A100 took the four layers its 40 GB holds, which leaves the 4080 two",
+  "stages": [
+   {
+    "name": "s0",
+    "layers": [
+     0,
+     12
+    ],
+    "device": {
+     "class": "cuda-sm_120",
+     "kind": "gpu",
+     "experts": "device",
+     "expert_host_bytes": 0
+    },
+    "device_bytes_planned": 92886035760
+   },
+   {
+    "name": "s1",
+    "layers": [
+     12,
+     24
+    ],
+    "device": {
+     "class": "cuda-sm_120",
+     "kind": "gpu",
+     "experts": "device",
+     "expert_host_bytes": 0
+    },
+    "device_bytes_planned": 91556983344
+   },
+   {
+    "name": "s2",
+    "layers": [
+     24,
+     34
+    ],
+    "device": {
+     "class": "cuda-sm_90",
+     "kind": "gpu",
+     "experts": "device",
+     "expert_host_bytes": 0
+    },
+    "device_bytes_planned": 76588663552
+   },
+   {
+    "name": "s3",
+    "layers": [
+     34,
+     38
+    ],
+    "device": {
+     "class": "cuda-sm_80",
+     "kind": "gpu",
+     "experts": "device",
+     "expert_host_bytes": 0
+    },
+    "device_bytes_planned": 32239584112
+   },
+   {
+    "name": "s4",
+    "layers": [
+     38,
+     40
+    ],
+    "device": {
+     "class": "cuda-sm_89",
+     "kind": "gpu",
+     "experts": "host",
+     "expert_host_bytes": 14438891520
+    },
+    "device_bytes_planned": 4339655232
+   }
+  ],
+  "machines": {
+   "s0,s1": "oa-12418r-g4: g4-standard-96 spot (2 RTX PRO 6000), asia-southeast1-c",
+   "s2": "oa-12418r-h100: a3-highgpu-1g spot (H100 80GB), asia-southeast1-c",
+   "s3": "oa-12418r-a100: a2-highgpu-1g spot (A100 40GB), asia-southeast1-c",
+   "s4": "coderos-4080 at home (RTX 4080), --experts host, about 3.3 GB of device memory beside the production services (14,723 MiB used during answers against 11,385 MiB)"
+  },
+  "head": "pylon cloud head on the budget host (a Mac at home), direct transport, deadline 600 s, thinking mode, greedy",
+  "hops_rtt_ms": {
+   "head_to_s0": "Mac to asia-southeast1-c, ICMP 217-248 (avg 225)",
+   "s0_to_s1": "loopback",
+   "s1_to_s2": "same zone, 0.68",
+   "s2_to_s3": "same zone, 0.40",
+   "s3_to_s4": "A100 to the Mac through an ssh tunnel (avg 229), then the Mac to coderos-4080 over Wi-Fi (avg 41, 5-129)",
+   "s4_to_head": "coderos-4080 to the Mac over the LAN (avg 41)"
+  },
+  "answers": [
+   {
+    "tokens": 121,
+    "reasoning_tokens": 72,
+    "first_token_ms": 4866,
+    "decode_tokens_per_s": 2.5,
+    "decode_token_ms": 400.77,
+    "stage_compute_ms": [
+     9.56,
+     9.86,
+     13.7,
+     10.77,
+     14.94
+    ],
+    "links_and_head_ms": 341.94,
+    "stage_state_bytes_per_token": 356272,
+    "prefill_stage_ms": [
+     385,
+     393,
+     557,
+     386,
+     522
+    ],
+    "prompt": "Why is the sky blue? Answer in two sentences.",
+    "answer": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red wavelengths. When you look away from the Sun, you see this scattered blue light coming from all directions.",
+    "buyer_answer_ms": 53136,
+    "receipt": "44335efe746fdde86fd5537e5739de294d6b3bef63dcfd6bc19b5803ce089ff4"
+   },
+   {
+    "tokens": 21,
+    "reasoning_tokens": 18,
+    "first_token_ms": 4528,
+    "decode_tokens_per_s": 2.74,
+    "decode_token_ms": 364.71,
+    "stage_compute_ms": [
+     9.5,
+     9.76,
+     13.59,
+     10.69,
+     14.83
+    ],
+    "links_and_head_ms": 306.34,
+    "stage_state_bytes_per_token": 356270,
+    "prefill_stage_ms": [
+     401,
+     413,
+     590,
+     418,
+     549
+    ],
+    "prompt": "What is 17 times 23? Reply with the number only.",
+    "answer": "391",
+    "buyer_answer_ms": 12033,
+    "receipt": "b320c9d39d0cdeaa1512597d47be1cea0a7db933b7dbc93f69a89678df80dfdf"
+   },
+   {
+    "tokens": 73,
+    "reasoning_tokens": 66,
+    "first_token_ms": 4067,
+    "decode_tokens_per_s": 2.91,
+    "decode_token_ms": 343.24,
+    "stage_compute_ms": [
+     9.53,
+     9.8,
+     13.64,
+     10.72,
+     14.91
+    ],
+    "links_and_head_ms": 284.65,
+    "stage_state_bytes_per_token": 356272,
+    "prefill_stage_ms": [
+     346,
+     362,
+     509,
+     371,
+     475
+    ],
+    "prompt": "Name three primary colors, comma separated.",
+    "answer": "Red, blue, yellow",
+    "buyer_answer_ms": 28969,
+    "receipt": "a6a100002ea166824881d04013ed22d3bf01d9292aa090df72761a8d607eaa6b"
+   }
+  ],
+  "summary": {
+   "decode_tokens_per_s": [
+    2.5,
+    2.74,
+    2.91
+   ],
+   "first_token_ms": [
+    4866,
+    4528,
+    4067
+   ],
+   "stage_compute_ms_per_token": 58.6,
+   "links_and_head_ms": [
+    341.94,
+    306.34,
+    284.65
+   ],
+   "measured_ms_per_layer": {
+    "cuda-sm_120": 0.8,
+    "cuda-sm_90": 1.36,
+    "cuda-sm_80": 2.68,
+    "cuda-sm_89 host experts (2 layers and the head)": 7.45
+   }
+  }
+ },
+ "comparison": {
+  "first_mixed_run_with_cpu": "1.07-1.15 tokens/s; decode token 872-933 ms, of which the CPU stage 569-577 ms and links 243-300 ms",
+  "all_rtx_pro_6000_groups": "29.1-29.7 tokens/s; decode token 33.9 ms, of which links and head 0.87 ms (deepseek-v41-g6-g7-cross-machine-2026-10-21.json)",
+  "gap_breakdown_ms_per_token": {
+   "total_gap": "343-401 ms against 33.9 ms: 309-367 ms",
+   "network_distance": "284-341 ms (links and head against 0.87 ms): about 92% of the gap. Each token crosses the Pacific twice (head to stage 0, stage 3 to the home stage through the Mac), about 225 ms round trip, plus Wi-Fi to the 4080",
+   "rtx_4080_host_experts": "about 13 ms (14.9 ms for two layers and the head, against about 1.8 ms on an RTX PRO 6000): about 4%",
+   "h100_and_a100": "about 13 ms (13.6 ms for 10 layers on the H100 and 10.7 ms for 4 on the A100, against about 11.2 ms for those 14 layers on RTX PRO 6000s): about 4%",
+   "projection": "with the 4080's layers and the head in the zone, the same cloud stages would decode in about 46 ms a token, about 21 tokens/s"
+  }
+ },
+ "cost_usd": {
+  "g4": 1.88,
+  "h100": 3.21,
+  "a100": 1.19,
+  "total": 6.28,
+  "cap": 150,
+  "note": "spend guard ledger, budget deepseek-v41; every machine deleted; home stage files removed"
+ }
+}
