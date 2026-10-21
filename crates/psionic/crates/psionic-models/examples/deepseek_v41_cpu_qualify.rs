@@ -370,7 +370,54 @@ fn float_sha(values: &[f32]) -> String {
     }
     hex::encode(hash.finalize())
 }
+fn conversion_checks(oracle: &Oracle, out: &Path) -> Result<Value, Box<dyn std::error::Error>> {
+    use psionic_models::deepseek_v41_cpu::quantization::{Quantization, quantize};
+    let mut log = File::create(out.join("conversions.jsonl"))?;
+    let mut checked = 0;
+    let mut failed = 0;
+    for e in oracle
+        .entries
+        .values()
+        .filter(|e| e.name.ends_with("_fp8") && e.name.contains(".ffn.expert."))
+    {
+        let input_name = e
+            .name
+            .strip_suffix("_fp8")
+            .ok_or("conversion suffix missing")?;
+        let input = oracle.tensor(input_name)?;
+        let actual = quantize(&input, Quantization::Fp8)?;
+        let codes = oracle.raw(&e.name)?;
+        let scales = oracle.raw(&(e.name.clone() + "_scale"))?;
+        let code_bad = actual
+            .codes()
+            .iter()
+            .zip(&codes)
+            .filter(|(a, b)| a != b)
+            .count()
+            + actual.codes().len().abs_diff(codes.len());
+        let scale_bad = actual
+            .scales()
+            .iter()
+            .zip(&scales)
+            .filter(|(a, b)| a != b)
+            .count()
+            + actual.scales().len().abs_diff(scales.len());
+        let passed = code_bad == 0 && scale_bad == 0;
+        checked += 1;
+        failed += usize::from(!passed);
+        serde_json::to_writer(
+            &mut log,
+            &json!({"tensor":e.name,"scope":"identical_oracle_input","passed":passed,"code_mismatches":code_bad,"scale_mismatches":scale_bad,"elements":input.len()}),
+        )?;
+        writeln!(log)?;
+        log.flush()?;
+    }
+    let report = json!({"schema":"psionic.deepseek_v41.cpu_conversions.v1","source_commit":env::var("V41_SOURCE_COMMIT").ok(),"policy_sha256":hex::encode(Sha256::digest(POLICY.as_bytes())),"checked":checked,"failed":failed,"passed":checked>0&&failed==0,"model_qualification_passed":false});
+    fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
+    Ok(report)
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut conversions_only = false;
     let mut stop_on_first_failure = false;
     let mut args = env::args().skip(1);
     let dir=PathBuf::from(args.next().ok_or("Usage: deepseek_v41_cpu_qualify CHECKPOINT ORACLE OUT [--only ID] [--mode decode|replay|both] [--max-steps N] [--verify-sha256] [--identity-only]")?);
@@ -385,6 +432,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--max-steps" => max_steps = args.next().ok_or("--max-steps needs N")?.parse()?,
             "--verify-sha256" => verify = true,
             "--identity-only" => identity_only = true,
+            "--conversions-only" => conversions_only = true,
             "--stop-on-first-failure" => stop_on_first_failure = true,
             _ => return Err(format!("Unknown argument {arg}").into()),
         }
@@ -404,6 +452,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::to_vec_pretty(&identity)?,
     )?;
     if identity_only {
+        return Ok(());
+    }
+    if conversions_only {
+        let report = conversion_checks(&Oracle::open(&oracle_dir)?, &out)?;
+        if report["passed"] != true {
+            return Err("Original oracle conversion check failed".into());
+        }
         return Ok(());
     }
     let policy: Value = serde_json::from_str(POLICY)?;
