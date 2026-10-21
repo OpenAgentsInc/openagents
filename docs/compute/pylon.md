@@ -727,6 +727,16 @@ hosted chat answers when none does or when the model picks `default` with
 confidence of at least 0.6. The website's door is
 `crates/openagents-web/src/pylon_door.rs`; `OPENAGENTS_WEB_PYLON_ROUTER=off`
 turns it off, and `OPENAGENTS_WEB_PYLON_HOME` sets where its receipts go.
+The website's log line names each pylon that gave no answer and its
+reason, such as `not_admitted` from a pylon that serves listed keys only.
+Each person's jobs come from a key of their own, so a pylon must run with
+`--allow-any` to answer the terminal (#12416).
+
+A terminal turn sent with `X-OpenAgents-Pylon-Model: deepseek-v4.1-flash`
+goes only to a ready DeepSeek V4.1 Flash model group, under
+`pylon.deadline.v1` with a 600-second budget (W14), and the website waits
+up to 630 seconds for it. Any other value is ignored, and the turn routes
+as above. When no group answers, the hosted chat does.
 
 A request that asks for one model sets `router::Settings::want` to
 `group::Want::Artifact("sha256:…")` or `Want::Model("name")`. The router

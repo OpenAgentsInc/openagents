@@ -72,6 +72,20 @@ async fn send(
     body: Option<Value>,
     home: bool,
 ) -> (u16, axum::http::HeaderMap, Value) {
+    send_with(world, cookie, csrf, method, path, body, home, None).await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn send_with(
+    world: &World,
+    cookie: &str,
+    csrf: Option<&str>,
+    method: &str,
+    path: &str,
+    body: Option<Value>,
+    home: bool,
+    model: Option<&str>,
+) -> (u16, axum::http::HeaderMap, Value) {
     let mut request = Request::builder()
         .method(method)
         .uri(path)
@@ -84,6 +98,9 @@ async fn send(
     }
     if home {
         request = request.header("x-openagents-chat-surface", "home");
+    }
+    if let Some(model) = model {
+        request = request.header("x-openagents-pylon-model", model);
     }
     let response = world
         .site
@@ -112,6 +129,11 @@ async fn send(
 /// A signed-out visitor sends `text`, from the Grid terminal when `home`,
 /// and reads the answer's events.
 async fn ask(world: &World, n: usize, text: &str, home: bool) -> String {
+    ask_for(world, n, text, home, None).await
+}
+
+/// As [`ask`], naming `model` in the turn's pylon model header.
+async fn ask_for(world: &World, n: usize, text: &str, home: bool, model: Option<&str>) -> String {
     let (status, headers, session) =
         send(world, "", None, "GET", "/lander8/session", None, false).await;
     assert_eq!(status, 200, "{session}");
@@ -124,7 +146,7 @@ async fn ask(world: &World, n: usize, text: &str, home: bool) -> String {
         .to_owned();
     let csrf = session["csrf"].as_str().unwrap().to_owned();
     let chat = format!("5e1f0c3a-7d2b-4c4e-9a1b-{n:012}");
-    let (status, _, started) = send(
+    let (status, _, started) = send_with(
         world,
         &cookie,
         Some(&csrf),
@@ -132,10 +154,11 @@ async fn ask(world: &World, n: usize, text: &str, home: bool) -> String {
         "/v1/threads",
         Some(json!({"request_id": chat, "text": text})),
         home,
+        model,
     )
     .await;
     assert_eq!(status, 201, "{started}");
-    let (status, _, events) = send(
+    let (status, _, events) = send_with(
         world,
         &cookie,
         None,
@@ -143,10 +166,75 @@ async fn ask(world: &World, n: usize, text: &str, home: bool) -> String {
         &format!("/v1/threads/{chat}/events?request_id={chat}"),
         None,
         home,
+        model,
     )
     .await;
     assert_eq!(status, 200);
     events.as_str().unwrap_or_default().to_owned()
+}
+
+/// An in-process relay with an open pylon `rig` and a ready V4.1 model
+/// group head `v41-head`, both echoing. They stop when what's returned
+/// drops.
+async fn relay_with_group() -> (
+    String,
+    Vec<(tokio::sync::oneshot::Sender<()>, tempfile::TempDir)>,
+) {
+    let (url, hub) = pylon::fixture::relay().await.unwrap();
+    let mut running = Vec::new();
+    for slug in ["rig", "v41-head"] {
+        let home = tempfile::tempdir().unwrap();
+        let mut config = pylon::provider::Config::new(&url, slug, home.path().to_path_buf());
+        config.label = if slug == "rig" { "Rig" } else { "V41 group" }.into();
+        config.allow = None;
+        config.rate_per_minute = 600;
+        if slug == "v41-head" {
+            config.slots = 1;
+            config.job_timeout = GROUP_DEADLINE;
+            let readiness = pylon::group::SharedReadiness::default();
+            readiness.set(pylon::group::GroupStatus {
+                readiness: nostr::pylon::Readiness::Ready,
+                generation: 1,
+            });
+            config.group = Some(pylon::provider::HeadGroup {
+                spec: pylon::group::GroupSpec {
+                    id: "v41-a".into(),
+                    model: GROUP_MODEL.into(),
+                    artifact: format!("sha256:{}", "4c".repeat(32)),
+                    deadline_secs: GROUP_DEADLINE.as_secs(),
+                    max_output_tokens: 4_096,
+                },
+                readiness: Arc::new(readiness),
+                stages: vec![("s0".into(), nostr::pylon::Layers { from: 0, to: 43 })],
+                answers: None,
+            });
+        }
+        let key = Identity::generate();
+        let provider =
+            pylon::provider::Provider::new(config, key.clone(), Arc::new(pylon::engine::Echo))
+                .unwrap();
+        let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(provider.run(async {
+            let _ = stopped.await;
+        }));
+        for _ in 0..400 {
+            let up = hub.lock().await.stored.iter().any(|e| {
+                e.kind == 30_200
+                    && e.pubkey == key.pubkey()
+                    && nostr::pylon::parse_beacon(e).is_ok_and(|b| {
+                        b.slots.free > 0
+                            && b.group_head()
+                                .is_none_or(|g| g.readiness == Some(nostr::pylon::Readiness::Ready))
+                    })
+            });
+            if up {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        running.push((stop, home));
+    }
+    (url, running)
 }
 
 async fn world(relay: String) -> World {
@@ -176,6 +264,37 @@ async fn a_home_turn_with_no_live_pylon_gets_the_hosted_chat() {
     let world = world(relay).await;
     let events = ask(&world, 2, "hello", true).await;
     assert!(events.contains("Answer to hello"), "{events}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_home_turn_that_asks_for_v41_goes_only_to_the_group() {
+    let (relay, _running) = relay_with_group().await;
+    let world = world(relay).await;
+    let events = ask_for(&world, 4, "hello", true, Some(GROUP_MODEL)).await;
+    assert!(
+        events.contains("**V41 group**") && events.contains("echo: olleh"),
+        "{events}"
+    );
+    // A default turn never reaches the group: the ordinary pylon answers.
+    let events = ask(&world, 5, "hello", true).await;
+    assert!(
+        events.contains("**Rig** · echo") && !events.contains("V41 group"),
+        "{events}"
+    );
+    // Another model name is ignored, and the turn routes as a default one.
+    let events = ask_for(&world, 6, "hello", true, Some("gpt-x")).await;
+    assert!(events.contains("**Rig** · echo"), "{events}");
+}
+
+#[test]
+fn only_the_v41_model_header_asks_for_the_group() {
+    let mut headers = HeaderMap::new();
+    assert!(!asks_for_group(&headers));
+    headers.insert(MODEL_HEADER, GROUP_MODEL.parse().unwrap());
+    assert!(asks_for_group(&headers));
+    headers.insert(MODEL_HEADER, "qwen3.5-0.8b-q8_0".parse().unwrap());
+    assert!(!asks_for_group(&headers));
+    assert!(GROUP_TURN > GROUP_DEADLINE + pylon::client::GRACE);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

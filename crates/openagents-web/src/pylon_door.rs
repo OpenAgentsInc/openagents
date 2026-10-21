@@ -10,12 +10,17 @@
 //! (`X-Decision-Order: pylon`), picks which of them answers or hands the
 //! message to the hosted chat. The chosen pylon answers over NIP-CJ, the
 //! next one when it can't, and the hosted chat answers when none does.
+//!
+//! A turn that names DeepSeek V4.1 Flash in `X-OpenAgents-Pylon-Model`
+//! ([`GROUP_MODEL`]) goes only to a ready model group serving it, with no
+//! decision, under `pylon.deadline.v1` with W14's 600-second budget
+//! ([`GROUP_DEADLINE`]). Every other turn routes as above.
 
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::http::HeaderMap;
 use jev::decisions::{DecisionAnswer, DecisionsClient, DecisionsRequest};
@@ -34,6 +39,16 @@ const SWITCH_VAR: &str = "OPENAGENTS_WEB_PYLON_ROUTER";
 const HOME_VAR: &str = "OPENAGENTS_WEB_PYLON_HOME";
 /// The Decisions API's base URL, as the decision clients read it.
 const DECISIONS_URL_VAR: &str = "OPENAGENTS_DECISIONS_URL";
+/// The header a Grid terminal turn names a group model in.
+const MODEL_HEADER: &str = "x-openagents-pylon-model";
+/// The one model a terminal turn may ask for by name: DeepSeek V4.1 Flash,
+/// which runs as a model group.
+pub(crate) const GROUP_MODEL: &str = pylon::placement::MODEL;
+/// The budget for one V4.1 answer: W14's frozen deadline.
+pub(crate) const GROUP_DEADLINE: Duration = Duration::from_secs(600);
+/// How long a turn that asks for V4.1 may take in all: the deadline, the
+/// grace for the answer to cross the relay, and finding the group.
+pub(crate) const GROUP_TURN: Duration = Duration::from_secs(600 + 10 + 20);
 /// Our decision model: Clef first.
 const MODEL: &str = "openagents/decide";
 /// What a pylon is told about the turn it answers.
@@ -129,6 +144,10 @@ pub(crate) fn door(app: &App, headers: &HeaderMap, payer: &str) -> Option<PylonD
             PathBuf::from,
         ),
     );
+    if asks_for_group(headers) {
+        settings.want = Some(pylon::group::Want::Model(GROUP_MODEL.into()));
+        settings.deadline = Some(GROUP_DEADLINE);
+    }
     settings.checkers = std::env::var("OPENAGENTS_PYLON_CHECKERS")
         .unwrap_or_default()
         .split(',')
@@ -143,6 +162,23 @@ pub(crate) fn door(app: &App, headers: &HeaderMap, payer: &str) -> Option<PylonD
         decide: Arc::new(Api { client }),
         fallback: None,
     })
+}
+
+/// Whether the turn names [`GROUP_MODEL`] in [`MODEL_HEADER`]; any other
+/// value is ignored, and the turn routes as a default one.
+fn asks_for_group(headers: &HeaderMap) -> bool {
+    headers
+        .get(MODEL_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.trim() == GROUP_MODEL)
+}
+
+impl PylonDoor {
+    /// Whether this door asks a model group, whose answer may take
+    /// [`GROUP_TURN`].
+    pub(crate) fn asks_group(&self) -> bool {
+        self.settings.want.is_some()
+    }
 }
 
 /// The reply's text: the pylon's name and model over its answer.
