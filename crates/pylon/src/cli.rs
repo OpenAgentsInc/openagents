@@ -1584,7 +1584,30 @@ async fn routed(
         role: "user".into(),
         content: ask.prompt.clone(),
     });
+    let started = std::time::Instant::now();
     let routed = route(buyer, &settings, &NoDecision, &turns, None).await;
+    // The router's own line, as the hosted chat logs it, on standard error.
+    let outcome = match &routed.outcome {
+        Outcome::Answered(answer) => {
+            format!("answered by {} ({})", answer.label, answer.pylon_npub)
+        }
+        Outcome::Declined => "handed back".to_string(),
+        Outcome::Unavailable(why) => format!("no pylon answered: {why}"),
+    };
+    let how = match &routed.how {
+        crate::router::How::Decided { choice, .. } => format!("decided {choice}"),
+        crate::router::How::Ranked { why } => format!("ranked ({why})"),
+    };
+    eprintln!(
+        "pylon router: want {}; {outcome}; {how}; {} candidates, {} failed, {} ms",
+        match &settings.want {
+            Some(crate::group::Want::Artifact(a) | crate::group::Want::Model(a)) => a.as_str(),
+            None => "",
+        },
+        routed.candidates,
+        routed.failed.len(),
+        started.elapsed().as_millis()
+    );
     match routed.outcome {
         Outcome::Answered(answer) => Ok(*answer),
         Outcome::Declined => Err("the router handed the message back".into()),
