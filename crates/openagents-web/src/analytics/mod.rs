@@ -71,7 +71,7 @@ pub const SCRIPT: &str = "/static/a.js";
 pub const DASHBOARD: &str = "/admin/analytics";
 
 /// Every product event name a row may carry.
-pub const EVENTS: [&str; 24] = [
+pub const EVENTS: [&str; 25] = [
     "lab_entered",
     "lab_version_saved",
     "lab_edit_refused",
@@ -105,6 +105,8 @@ pub const EVENTS: [&str; 24] = [
     // Who answered a message from the Grid's terminal (#12439): a pylon, a
     // model group, the hosted chat, nobody, or the chosen model was busy.
     "grid_answer",
+    // The family of the model that answered it (`visits::model_family`).
+    "grid_answer_model",
 ];
 
 /// The fixed detail of `grid_answer`.

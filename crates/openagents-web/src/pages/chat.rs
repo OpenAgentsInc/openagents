@@ -2975,8 +2975,17 @@ async fn answer(
                 // and how it was served: its tier and route, which the
                 // reply's marker carries for the chat goldens
                 // (docs/web/chat-goldens.md).
+                // Which family of model answered (#12439): a fixed word,
+                // never the model's name.
                 r.done
-                    .then(|| saved_reply_meta(&r.meta))
+                    .then(|| {
+                        let mut meta = saved_reply_meta(&r.meta);
+                        meta.family = r
+                            .model
+                            .as_deref()
+                            .map(|model| crate::analytics::visits::model_family(model).to_owned());
+                        meta
+                    })
                     .filter(|meta| !meta.is_empty()),
                 r.failure
                     .as_ref()

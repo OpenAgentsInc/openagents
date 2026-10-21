@@ -1179,6 +1179,11 @@ pub struct Meta {
     /// `model`, or a later tier).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<String>,
+    /// The family of the model that answered, one word from the site's
+    /// fixed list (`gemini`, `deepseek`, ..., `other`), never the model's
+    /// own name (#12439). Older records have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub family: Option<String>,
     /// The prepared answer that is the text, as `id@version`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub answer: Option<String>,

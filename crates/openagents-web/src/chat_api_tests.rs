@@ -55,6 +55,7 @@ impl basic_coder::Door for Worker {
             let mut r = basic_coder::lock(&reply);
             r.text.push_str(" complete");
             r.meta.judgment = Some("private-routing-canary".into());
+            r.model = Some("gemini-2.5-flash-preview-0917".into());
             r.meta
                 .cards
                 .push(json!({"card":"video_lab","title":"Synthetic result"}));
@@ -167,6 +168,18 @@ async fn existing_runtime_streams_same_chat_deduplicates_retries_and_stops_only_
     .await;
     assert!(events.iter().any(|e|e["type"]=="text" && e["text"].as_str().unwrap().contains("Answer to first")));
     assert!(events.iter().any(|e| e["type"] == "cards"));
+    // The answer's end names the model's family, never the model (#12439).
+    assert!(
+        events
+            .iter()
+            .any(|e| e["type"] == "done" && e["model_family"] == "gemini"),
+        "{events:?}"
+    );
+    assert!(
+        !serde_json::to_string(&events)
+            .unwrap()
+            .contains("2.5-flash")
+    );
     assert!(
         !serde_json::to_string(&events)
             .unwrap()

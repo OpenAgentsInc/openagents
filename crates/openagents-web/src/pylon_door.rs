@@ -24,7 +24,9 @@
 //! is busy. It is never answered by another model.
 //!
 //! Who answered each turn is counted in the site's hourly totals as
-//! `grid_answer` ([`answer_source`], #12439): never who asked or what.
+//! `grid_answer` ([`answer_source`], #12439), and the answering model's
+//! family as `grid_answer_model`: never who asked, what, or the model's
+//! own name.
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -400,9 +402,9 @@ impl Door for PylonDoor {
         );
         let wants_group =
             matches!(&settings.want, Some(pylon::group::Want::Model(m)) if m == GROUP_MODEL);
-        let count = move |source: &'static str| {
+        let count = move |event: &'static str, detail: &'static str| {
             if let Some(analytics) = &analytics {
-                analytics.event("grid_answer", source);
+                analytics.event(event, detail);
             }
         };
         Box::pin(async move {
@@ -496,7 +498,14 @@ impl Door for PylonDoor {
                 );
             }
             if let Outcome::Answered(answer) = routed.outcome {
-                count(answer_source(true, routed.group.is_some(), false));
+                count(
+                    "grid_answer",
+                    answer_source(true, routed.group.is_some(), false),
+                );
+                count(
+                    "grid_answer_model",
+                    crate::analytics::visits::model_family(&answer.model),
+                );
                 let slug = answer.pylon.rsplit(':').next().unwrap_or_default();
                 let mut reply = basic_coder::lock(&reply);
                 reply.text = shown(
@@ -513,8 +522,15 @@ impl Door for PylonDoor {
             }
             match fallback {
                 Some(job) => {
-                    count(answer_source(false, false, true));
+                    count("grid_answer", answer_source(false, false, true));
                     job.await;
+                    let model = basic_coder::lock(&reply).model.clone();
+                    if let Some(model) = model {
+                        count(
+                            "grid_answer_model",
+                            crate::analytics::visits::model_family(&model),
+                        );
+                    }
                 }
                 None => {
                     // The person chose this model: say why it didn't
@@ -525,11 +541,14 @@ impl Door for PylonDoor {
                         (true, false) => "busy",
                         (false, _) => "pylon_unavailable",
                     };
-                    count(if busy {
-                        "busy"
-                    } else {
-                        answer_source(false, false, false)
-                    });
+                    count(
+                        "grid_answer",
+                        if busy {
+                            "busy"
+                        } else {
+                            answer_source(false, false, false)
+                        },
+                    );
                     let mut reply = basic_coder::lock(&reply);
                     reply.text.clear();
                     reply.failure = Some(Failure::Refused {

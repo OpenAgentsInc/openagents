@@ -578,7 +578,11 @@ impl LanderChat {
                     }
                 }
             }
-            Event::Done { outcome, .. } => {
+            Event::Done {
+                outcome,
+                model_family,
+                ..
+            } => {
                 if outcome == "stopped" {
                     track("answer_failed", "{\"why\":\"stopped\"}");
                 } else {
@@ -587,7 +591,7 @@ impl LanderChat {
                         .values()
                         .find(|(_, text)| !text.trim().is_empty())
                         .map_or("", |(_, text)| text.as_str());
-                    let (source, family) = model::answer_source(text);
+                    let (source, family) = model::answered(text, model_family.as_deref());
                     let ms = live
                         .first_ms
                         .or_else(|| self.sent_at.map(|at| at.elapsed().as_millis()))

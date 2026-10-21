@@ -183,6 +183,10 @@ async fn do_not_track_global_privacy_control_and_bots_keep_no_visit() {
     assert!(loader.find("nav.doNotTrack===\"1\"").unwrap() < check);
     assert!(check < loader.find("crypto.getRandomValues").unwrap());
     assert!(!loader.contains("document.cookie"));
+    // Portals come from Verse's own events, the refused ones as `opened: no`.
+    assert!(loader.contains("addEventListener(\"verse-zone-load\""));
+    assert!(loader.contains("addEventListener(\"verse-zone-unavailable\""));
+    assert!(loader.contains("opened:\"no\""));
 }
 
 fn visit_row(visit: &str, minute: u64, n: u32, event: &str, detail: &[(&str, &str)]) -> VisitRow {
@@ -293,6 +297,13 @@ fn the_funnel_paths_and_time_on_the_page_come_from_each_visits_order() {
         visit_row(c, 31, 3, "game_lab_opened", &[("result", "open")]),
         visit_row(c, 31, 4, "game_lab_check", &[]),
         visit_row(c, 32, 5, "game_lab_version_saved", &[]),
+        visit_row(
+            c,
+            33,
+            6,
+            "portal_entered",
+            &[("zone", "everglade"), ("opened", "no")],
+        ),
     ];
     let all = grid::visits(&rows);
     assert_eq!(all.iter().map(|v| v.id).collect::<Vec<_>>(), [c, b, a]);
@@ -318,7 +329,7 @@ fn the_funnel_paths_and_time_on_the_page_come_from_each_visits_order() {
     );
     assert_eq!(times.iter().sum::<u64>(), 2);
     let zones = grid::zones(&rows);
-    assert_eq!(zones.len(), 1);
+    assert_eq!(zones.len(), 2);
     assert_eq!(
         (
             zones[0].0,
@@ -327,6 +338,22 @@ fn the_funnel_paths_and_time_on_the_page_come_from_each_visits_order() {
             zones[0].1.returned
         ),
         ("lagrange2", 1, 1, 1)
+    );
+    // A portal the web can't open is counted apart, and named in the path.
+    assert_eq!(
+        (
+            zones[1].0,
+            zones[1].1.entered,
+            zones[1].1.desktop_only,
+            zones[1].1.ready
+        ),
+        ("everglade", 1, 1, 0)
+    );
+    assert!(
+        paths
+            .iter()
+            .any(|(path, _)| path.ends_with("desktop_only:everglade")),
+        "{paths:?}"
     );
 
     // The dashboard reads in plain words and links each visit's timeline.
@@ -354,5 +381,65 @@ fn the_funnel_paths_and_time_on_the_page_come_from_each_visits_order() {
     assert_eq!(
         dashboard::Asked::from_query(Some("visit=../x&days=9")).days,
         7
+    );
+}
+
+#[test]
+fn models_are_kept_only_as_a_family_from_the_fixed_list() {
+    for (model, family) in [
+        ("gemini-2.5-flash", "gemini"),
+        ("google/gemini-3-pro-preview", "gemini"),
+        ("deepseek-v4.1-flash", "deepseek"),
+        ("flint@sha256:abc", "flint"),
+        ("claude-sonnet-4-5", "claude"),
+        ("gpt-5.1-codex", "gpt"),
+        ("openai/gpt-oss-120b", "gpt"),
+        ("o3-mini", "gpt"),
+        ("Qwen3-30B-A3B", "qwen"),
+        ("gemma-3-4b-it", "gemma"),
+        ("Llama-3.3-70B", "llama"),
+        ("olmo-2", "other"),
+        ("my-secret-finetune", "other"),
+        ("", "other"),
+    ] {
+        assert_eq!(visits::model_family(model), family, "{model}");
+        assert!(visits::FAMILIES.contains(&family));
+    }
+    // The visit takes a family word, never a model's name.
+    let detail = |v: serde_json::Value| v.as_object().cloned().unwrap();
+    assert!(
+        visits::admit(
+            "answered",
+            Some(&detail(
+                serde_json::json!({"source": "hosted", "family": "gemini"})
+            ))
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        visits::admit(
+            "answered",
+            Some(&detail(serde_json::json!({"family": "gemini-2.5-flash"})))
+        )
+        .unwrap_err(),
+        Refused::BadValue
+    );
+    // A portal the web can't open: by zone, `opened: no`.
+    assert!(
+        visits::admit(
+            "portal_entered",
+            Some(&detail(
+                serde_json::json!({"zone": "physics-lab", "opened": "no"})
+            ))
+        )
+        .is_ok()
+    );
+    assert_eq!(
+        visits::admit(
+            "portal_entered",
+            Some(&detail(serde_json::json!({"zone": "physics-lab-v1"})))
+        )
+        .unwrap_err(),
+        Refused::BadValue
     );
 }

@@ -1568,7 +1568,7 @@
           "kind": "enum",
           "name": "Event",
           "doc": "One event of a turn's stream: message text, tool output, cards, the end, or an error.",
-          "declaration": "pub enum Event {\n    Text {\n        request_id: String,\n        index: usize,\n        role: crate::MessageRole,\n        text: String,\n        replace: bool,\n    },\n    Tool {\n        request_id: String,\n        index: usize,\n        role: crate::MessageRole,\n        text: String,\n        replace: bool,\n    },\n    Cards { request_id: String, cards: Value },\n    Done { request_id: String, outcome: String, revision: u64 },\n    Error { request_id: String, error: Refusal },\n}",
+          "declaration": "pub enum Event {\n    Text {\n        request_id: String,\n        index: usize,\n        role: crate::MessageRole,\n        text: String,\n        replace: bool,\n    },\n    Tool {\n        request_id: String,\n        index: usize,\n        role: crate::MessageRole,\n        text: String,\n        replace: bool,\n    },\n    Cards { request_id: String, cards: Value },\n    Done {\n        request_id: String,\n        outcome: String,\n        revision: u64,\n        model_family: Option<String>,\n    },\n    Error { request_id: String, error: Refusal },\n}",
           "methods": [
             {
               "name": "request_id",

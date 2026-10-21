@@ -115,6 +115,9 @@ impl Visit<'_> {
                 continue;
             }
             let step = match row.event.as_str() {
+                "portal_entered" if row.get("opened") == "no" => {
+                    format!("desktop_only:{}", row.get("zone"))
+                }
                 "portal_entered" | "zone_ready" | "zone_failed" => {
                     format!("{}:{}", row.event, row.get("zone"))
                 }
@@ -230,6 +233,8 @@ fn by_time(rows: &[VisitRow], event: &str) -> [u64; TIME.len()] {
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct ZoneLine {
     pub entered: u64,
+    /// Portal entries this browser couldn't open: only in the desktop app.
+    pub desktop_only: u64,
     pub ready: u64,
     pub failed: u64,
     pub returned: u64,
@@ -243,7 +248,12 @@ pub fn zones(rows: &[VisitRow]) -> Vec<(&'static str, ZoneLine)> {
         let mut line = ZoneLine::default();
         for row in rows {
             match row.event.as_str() {
-                "portal_entered" if row.get("zone") == zone => line.entered += 1,
+                "portal_entered" if row.get("zone") == zone => {
+                    line.entered += 1;
+                    if row.get("opened") == "no" {
+                        line.desktop_only += 1;
+                    }
+                }
                 "zone_ready" if row.get("zone") == zone => {
                     line.ready += 1;
                     if let Some(index) = TIME.iter().position(|t| *t == row.get("time")) {
@@ -385,6 +395,7 @@ pub fn report(rows: &[VisitRow], days: u64) -> Markup {
         .header([
             "Zone",
             "Entered",
+            "Only in the desktop app",
             "Opened",
             "Couldn't open",
             "Back to the plaza",
@@ -393,12 +404,14 @@ pub fn report(rows: &[VisitRow], days: u64) -> Markup {
         .numeric(1)
         .numeric(2)
         .numeric(3)
-        .numeric(4);
+        .numeric(4)
+        .numeric(5);
     let zone_lines = zones(rows);
     for (zone, line) in &zone_lines {
         zone_table = zone_table.row([
             html! { code { (zone) } },
             html! { (number(line.entered)) },
+            html! { (number(line.desktop_only)) },
             html! { (number(line.ready)) },
             html! { (number(line.failed)) },
             html! { (number(line.returned)) },

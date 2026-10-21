@@ -98,15 +98,28 @@ pub fn answer_source(text: &str) -> (&'static str, &'static str) {
     ("pylon", family(from))
 }
 
-/// The family of a model name: one of a fixed list, or `other`.
+/// The model families the visit records, as the site lists them.
+pub const FAMILIES: [&str; 10] = [
+    "deepseek", "flint", "gemma", "qwen", "llama", "mistral", "gpt", "claude", "gemini", "other",
+];
+
+/// The family of a model name: one of [`FAMILIES`], or `other`.
 pub fn family(model: &str) -> &'static str {
     let model = model.to_ascii_lowercase();
-    [
-        "deepseek", "flint", "gemma", "qwen", "llama", "mistral", "gpt", "claude", "gemini",
-    ]
-    .into_iter()
-    .find(|family| model.contains(family))
-    .unwrap_or("other")
+    FAMILIES[..FAMILIES.len() - 1]
+        .iter()
+        .find(|family| model.contains(*family))
+        .copied()
+        .unwrap_or("other")
+}
+
+/// Who answered and the model's family: the family the site sent with
+/// the answer when it is one of [`FAMILIES`] (it knows the hosted chat's
+/// model), else what the answer's first line says.
+pub fn answered(text: &str, sent_family: Option<&str>) -> (&'static str, &'static str) {
+    let (source, family) = answer_source(text);
+    let sent = sent_family.and_then(|sent| FAMILIES.iter().find(|f| **f == sent).copied());
+    (source, sent.unwrap_or(family))
 }
 
 /// The word a refused message is recorded as: `busy`, `sign_in`,
@@ -574,6 +587,19 @@ mod tests {
             ("pylon", "other")
         );
         assert_eq!(answer_source("Hello there"), ("hosted", "other"));
+        assert_eq!(
+            answered("Hello there", Some("gemini")),
+            ("hosted", "gemini")
+        );
+        assert_eq!(
+            answered("Hello there", Some("gemini-2.5-pro")),
+            ("hosted", "other")
+        );
+        assert_eq!(answered("Hello there", None), ("hosted", "other"));
+        assert_eq!(
+            answered("**alice-mac** · gemma-3-4b-it\n\nHi", Some("gemma")),
+            ("pylon", "gemma")
+        );
         assert_eq!(pick_word(true, false), "deepseek");
         assert_eq!(pick_word(true, true), "flint");
         assert_eq!(pick_word(false, false), "any");

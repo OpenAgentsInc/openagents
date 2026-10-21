@@ -149,6 +149,9 @@ The module tells the page where the player is:
   `direction` is `enter` or `return`, and `ms` is the time since `start`.
   The screen's start and ready are also `performance` marks,
   `verse-zone-load-start` and `verse-zone-load-ready`.
+- A `verse-zone-unavailable` event, with the detail `{zone}`, when the
+  player goes through a portal to a zone this build can't open and the
+  page says it's only in the desktop app (#12439).
 
 `verse_where()` reports the place, the control scheme, the trip's step, and
 the zone panel's buttons for checks.

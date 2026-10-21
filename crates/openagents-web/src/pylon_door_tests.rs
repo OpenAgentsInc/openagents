@@ -700,6 +700,7 @@ fn who_answered_is_counted_by_a_fixed_word() {
         assert!(crate::analytics::GRID_ANSWER.contains(&word));
     }
     assert!(crate::analytics::EVENTS.contains(&"grid_answer"));
+    assert!(crate::analytics::EVENTS.contains(&"grid_answer_model"));
 }
 
 fn said(role: Role, text: String) -> Turn {

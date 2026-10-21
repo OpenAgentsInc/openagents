@@ -244,7 +244,9 @@ impl Stream {
             if matches!(request.outcome, Outcome::Failed | Outcome::Unknown) {
                 self.queue.push_back(json!({"type":"error","request_id":self.request,"error":request.turn_error.clone().unwrap_or_else(TurnError::unavailable)}));
             } else {
-                self.queue.push_back(json!({"type":"done","request_id":self.request,"outcome":request.outcome,"revision":chat.revision}));
+                // The answering model's family, a fixed word (#12439).
+                let family = request.reply.as_ref().and_then(|m| m.family.clone());
+                self.queue.push_back(json!({"type":"done","request_id":self.request,"outcome":request.outcome,"revision":chat.revision,"model_family":family}));
             }
             self.ended = true;
         }

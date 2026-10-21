@@ -147,6 +147,13 @@ impl<ZoneId: Copy + PartialEq> Transit<ZoneId> {
     }
 }
 
+/// Whether `step` is the refusal of a zone this build can't open: what the
+/// page reports as `verse-zone-unavailable` (#12439).
+#[must_use]
+pub fn refused<ZoneId>(step: &Step<ZoneId>) -> bool {
+    matches!(step, Step::Say(text) if text == DESKTOP_ONLY)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,6 +197,13 @@ mod tests {
             transit.ask(Zone::Everglade, DesktopOnly, "Everglade", 100.0),
             Step::Say(DESKTOP_ONLY.into())
         );
+        assert!(refused(&Step::<Zone>::Say(DESKTOP_ONLY.into())));
+        assert!(!refused(&transit.clone().ask(
+            Zone::Lagrange2,
+            Web,
+            "Lagrange 2",
+            101.0
+        )));
         assert!(!transit.busy());
         assert_eq!(transit.frame(100.0 + NOTICE_MS - 1.0, false), Step::Nothing);
         assert_eq!(transit.frame(100.0 + NOTICE_MS, false), Step::Clear);

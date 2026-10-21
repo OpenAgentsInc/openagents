@@ -62,15 +62,58 @@ pub fn time_bucket(ms: u64) -> &'static str {
 }
 
 /// The places a Grid portal leads to, by the names the page's Verse
-/// events give them (`verse-zone-load`, #12438); any other is `other`.
-pub const ZONES: [&str; 6] = [
+/// events give them (`verse-zone-load` and `verse-zone-unavailable`,
+/// #12438), without a `verse-` prefix or `-v1` suffix; any other is
+/// `other`.
+pub const ZONES: [&str; 17] = [
     "grid",
     "lagrange1",
     "lagrange2",
     "everglade",
     "hosted",
+    "physics-lab",
+    "robot-lab",
+    "water-lab",
+    "coast",
+    "crypt",
+    "grove",
+    "arena",
+    "duel",
+    "hand-duel",
+    "meteor-stress-test",
+    "meteor-showcase",
     "other",
 ];
+
+/// The model families an answer is recorded as.
+pub const FAMILIES: [&str; 10] = [
+    "deepseek", "flint", "gemma", "qwen", "llama", "mistral", "gpt", "claude", "gemini", "other",
+];
+
+/// The family of a model's name, from [`FAMILIES`]: the first family whose
+/// name the model's contains (`gemini-2.5-flash` is `gemini`,
+/// `deepseek-v4.1-flash` is `deepseek`), with OpenAI's `o`-series as
+/// `gpt`. Anything else is `other`; the name itself is never kept.
+pub fn model_family(model: &str) -> &'static str {
+    let model = model.trim().to_ascii_lowercase();
+    let model = model.rsplit('/').next().unwrap_or_default();
+    if let Some(family) = FAMILIES
+        .iter()
+        .take(FAMILIES.len() - 1)
+        .find(|family| model.contains(*family))
+    {
+        return family;
+    }
+    let o_series = model.strip_prefix('o').is_some_and(|rest| {
+        rest.starts_with(|c: char| c.is_ascii_digit())
+            && rest.chars().take_while(char::is_ascii_digit).count() <= 1
+    });
+    if o_series || model.contains("openai") {
+        "gpt"
+    } else {
+        "other"
+    }
+}
 
 /// What a detail's value may be.
 #[derive(Clone, Copy, Debug)]
@@ -162,9 +205,11 @@ pub const EVENTS: &[Spec] = &[
         name: "pylon_opened",
         details: &[KIND, ("from", Values::One(&["world", "list"]))],
     },
+    // A portal to a zone, and whether this browser could open it (`no`:
+    // the page said it's only in the desktop app).
     Spec {
         name: "portal_entered",
-        details: &[ZONE],
+        details: &[ZONE, ("opened", Values::One(&["yes", "no"]))],
     },
     Spec {
         name: "zone_load_start",
@@ -203,13 +248,7 @@ pub const EVENTS: &[Spec] = &[
         name: "answered",
         details: &[
             ("source", Values::One(&["pylon", "group", "hosted"])),
-            (
-                "family",
-                Values::One(&[
-                    "deepseek", "flint", "gemma", "qwen", "llama", "mistral", "gpt", "claude",
-                    "gemini", "other",
-                ]),
-            ),
+            ("family", Values::One(&FAMILIES)),
             TOOK,
         ],
     },

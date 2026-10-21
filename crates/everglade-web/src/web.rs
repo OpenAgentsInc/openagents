@@ -1547,6 +1547,13 @@ impl Page {
             .filter(|zone| self.runtime.grid_portal_zones().contains(zone));
         if let Some(zone) = asked {
             let step = self.transit.ask(zone, web_support(zone), zone.label(), now);
+            if crate::transit::refused(&step) {
+                // A portal this build can't open, for analytics (#12439).
+                custom_event(
+                    "verse-zone-unavailable",
+                    &serde_json::json!({"zone": zone_name(zone)}).to_string(),
+                );
+            }
             if self.transit.busy() {
                 // The load screen says what loads, rather than a line.
                 self.begin_load(Way::In, zone_name(zone), zone.label(), now);

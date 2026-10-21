@@ -246,9 +246,11 @@ setInterval(()=>{if(next<marks.length&&seen()>=marks[next]){while(next<marks.len
 document.addEventListener(\"visibilitychange\",()=>{if(document.hidden){if(since!==null)shown+=performance.now()-since;since=null;send(\"tab_hidden\",{time:seen()});flush()}else since=performance.now()});\n\
 addEventListener(\"pagehide\",()=>{send(\"tab_left\",{time:seen()});flush()});\n\
 let zoneFrom=\"grid\";\n\
-addEventListener(\"verse-zone-load\",e=>{const d=e.detail||{},z=[\"grid\",\"lagrange1\",\"lagrange2\",\"everglade\",\"hosted\"].includes(d.zone)?d.zone:\"other\",time=Math.round(+d.ms||0);\n\
+const zoneWord=z=>{z=String(z||\"\").replace(/^verse-/,\"\").replace(/-v1$/,\"\");return [\"grid\",\"lagrange1\",\"lagrange2\",\"everglade\",\"hosted\",\"physics-lab\",\"robot-lab\",\"water-lab\",\"coast\",\"crypt\",\"grove\",\"arena\",\"duel\",\"hand-duel\",\"meteor-stress-test\",\"meteor-showcase\"].includes(z)?z:\"other\"};\n\
+addEventListener(\"verse-zone-unavailable\",e=>send(\"portal_entered\",{zone:zoneWord((e.detail||{}).zone),opened:\"no\"}));\n\
+addEventListener(\"verse-zone-load\",e=>{const d=e.detail||{},z=zoneWord(d.zone),time=Math.round(+d.ms||0);\n\
 if(d.direction===\"return\"){if(d.phase===\"ready\")send(\"plaza_returned\",{from:zoneFrom});else if(d.phase===\"failed\")send(\"zone_failed\",{zone:zoneFrom,reason:\"return\"});return}\n\
-if(d.phase===\"start\"){zoneFrom=z;send(\"portal_entered\",{zone:z});send(\"zone_load_start\",{zone:z})}\n\
+if(d.phase===\"start\"){zoneFrom=z;send(\"portal_entered\",{zone:z,opened:\"yes\"});send(\"zone_load_start\",{zone:z})}\n\
 else if(d.phase===\"ready\")send(\"zone_ready\",{zone:z,time});else if(d.phase===\"failed\")send(\"zone_failed\",{zone:z,reason:\"load\"})});\n\
 globalThis.oaTrack=(name,detail)=>{try{send(String(name),typeof detail===\"string\"?JSON.parse(detail||\"{}\"):detail)}catch(e){}};\n\
 document.getElementById(\"home-account\").addEventListener(\"click\",e=>{const a=e.target.closest&&e.target.closest(\"a[href]\");\n\

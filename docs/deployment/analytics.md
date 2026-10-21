@@ -38,7 +38,13 @@ address, account, cookie, message text, key, or Pylon name is kept, and
 Pylons layer (`pylons-web`), the terminal chat, and Game Lab send theirs
 through the page's `globalThis.oaTrack`. The terminal's answers are also
 counted server-side, without a visit id, as `grid_answer` (`pylon`,
-`group`, `hosted`, or `unavailable`).
+`group`, `hosted`, `unavailable`, or `busy`) and `grid_answer_model` (the
+answering model's family). A model's name is never kept: the server maps it
+to a family from a fixed list (`visits::model_family`), stores that word
+with the answer, and the chat stream's `done` event carries it as
+`model_family`, which the page's `answered` event uses. A portal to a zone
+the web can't open is `portal_entered` with `opened: no`, from Verse's
+`verse-zone-unavailable` event.
 
 Each instance rewrites `visits/YYYY-MM-DD/HH/INSTANCE.json` (that hour's
 rows) every minute. The hourly task deletes days older than 30 days; also

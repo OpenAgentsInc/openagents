@@ -63,6 +63,11 @@ pub enum Event {
         request_id: String,
         outcome: String,
         revision: u64,
+        /// The answering model's family, one word from the site's fixed
+        /// list (`gemini`, `deepseek`, ..., `other`); absent from older
+        /// servers and from answers with no named model (#12439).
+        #[serde(default)]
+        model_family: Option<String>,
     },
     Error {
         request_id: String,
