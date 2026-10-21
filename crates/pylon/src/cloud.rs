@@ -1439,6 +1439,9 @@ checkout on the one host that allocates for the budget.
                             at most 3600; past 90 it takes only
                             pylon.deadline.v1 jobs).
       --max-output-tokens N The output limit it declares (default 1024).
+      --temperature T       The head's sampling temperature (default 0.6;
+                            0 samples greedily).
+      --top-p P             The head's top-p (default 0.95).
       --ready-secs N        How long the launch waits for every stage to
                             load, weights copy included (default 1800).
       --step-secs N         How long one step may take, a long prompt's
@@ -1513,6 +1516,8 @@ pub fn parse_up(
     let max_output = take_number(&mut words, "--max-output-tokens")?;
     let ready = take_number(&mut words, "--ready-secs")?;
     let step = take_number(&mut words, "--step-secs")?;
+    let temperature = value(&mut words, "--temperature")?;
+    let top_p = value(&mut words, "--top-p")?;
     let allow = take_values(&mut words, "--allow")?;
     let head = value(&mut words, "--head")?;
     let head_machine_type = value(&mut words, "--head-machine-type")?;
@@ -1576,6 +1581,18 @@ pub fn parse_up(
     }
     if let Some(max_output) = max_output {
         up.max_output_tokens = max_output;
+    }
+    if temperature.is_some() || top_p.is_some() {
+        let number = |v: Option<String>, name: &str, default: f64| -> Result<f64, String> {
+            v.map_or(Ok(default), |v| {
+                v.parse().map_err(|_| format!("{name} takes a number"))
+            })
+        };
+        up.sampling = Sampling::new(
+            number(temperature, "--temperature", 0.6)?,
+            number(top_p, "--top-p", 0.95)?,
+            0,
+        )?;
     }
     if let Some(ready) = ready {
         if ready == 0 {
