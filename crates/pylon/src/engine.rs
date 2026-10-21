@@ -86,6 +86,24 @@ pub enum Finish {
 /// A boxed future, so the trait stays object safe.
 pub type Pending<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
+/// The marker an engine's error starts with when the request is larger than
+/// the engine serves: a longer prompt or answer than its context, or state
+/// too large for its stages. The provider answers the buyer with
+/// `limit_exceeded` and the rest of the error, and the engine stays healthy.
+const REQUEST_LIMIT: &str = "request_limit: ";
+
+/// An engine error that says the request exceeds what the engine serves.
+#[must_use]
+pub fn request_limit(reason: &str) -> String {
+    format!("{REQUEST_LIMIT}{reason}")
+}
+
+/// Why the request was too large, when an engine error says so.
+#[must_use]
+pub fn request_limit_reason(error: &str) -> Option<&str> {
+    error.strip_prefix(REQUEST_LIMIT)
+}
+
 /// A model a pylon can run jobs on.
 pub trait Engine: Send + Sync {
     /// Whether the last request ended without confirming worker completion.
@@ -370,6 +388,16 @@ impl Engine for Echo {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_request_limit_is_marked_and_read_back() {
+        let error = request_limit("the prompt is 9 tokens; this group takes at most 4");
+        assert_eq!(
+            request_limit_reason(&error),
+            Some("the prompt is 9 tokens; this group takes at most 4")
+        );
+        assert_eq!(request_limit_reason("the model failed"), None);
+    }
 
     #[test]
     fn only_a_finished_final_answer_is_deliverable() {

@@ -26,7 +26,7 @@ use crate::now;
 use crate::online::{Log, Phase, Shared, add, set};
 use crate::provider::{Counters, HeadGroup, Provider};
 use crate::share::Settings;
-use crate::stage_group::{StageGroup, StepProfile};
+use crate::stage_group::{PromptMode, StageGroup, StepProfile};
 
 /// The engine a group head runs jobs on: one request at a time through
 /// the stage group.
@@ -36,6 +36,8 @@ pub struct GroupEngine {
     model: String,
     sampling: Sampling,
     max_output: u32,
+    /// How the stages render each conversation and parse its answer.
+    mode: PromptMode,
     /// Where each answer's timing goes: first-token time and decode rate.
     log: Option<Log>,
     /// The recent answers the head beacon's answer profile summarizes.
@@ -50,6 +52,7 @@ impl GroupEngine {
             model,
             sampling,
             max_output,
+            mode: PromptMode::default(),
             log: None,
             answers: None,
         }
@@ -59,6 +62,13 @@ impl GroupEngine {
     #[must_use]
     pub fn with_answers(mut self, answers: Arc<AnswerBook>) -> Self {
         self.answers = Some(answers);
+        self
+    }
+
+    /// Render each conversation and parse each answer in `mode`.
+    #[must_use]
+    pub fn with_mode(mut self, mode: PromptMode) -> Self {
+        self.mode = mode;
         self
     }
 
@@ -97,7 +107,7 @@ impl Engine for GroupEngine {
             let mut first: Option<std::time::Instant> = None;
             let mut run = self
                 .group
-                .generate_prompt(prompt, u64::from(steps), self.sampling)
+                .generate_prompt_in(prompt, self.mode, u64::from(steps), self.sampling)
                 .await?;
             let (mut ids, mut text) = (Vec::new(), String::new());
             let (mut reasoning, mut content, mut parsed) = (String::new(), String::new(), false);
@@ -131,7 +141,14 @@ impl Engine for GroupEngine {
                 .done
                 .await
                 .map_err(|_| "the stage group stopped".to_string())?
-                .map_err(|failure| failure.to_string())?;
+                .map_err(|failure| {
+                    if failure.request_limit {
+                        // Already marked: the buyer hears `limit_exceeded`.
+                        failure.reason
+                    } else {
+                        failure.to_string()
+                    }
+                })?;
             let mut timed = None;
             if let Some(first) = first {
                 let decode = first.elapsed().as_secs_f64();
@@ -335,6 +352,7 @@ pub(crate) async fn run(
                 lane.sampling,
                 lane.max_output_tokens,
             )
+            .with_mode(lane.mode)
             .with_log(Arc::clone(&log))
             .with_answers(Arc::clone(&answers)),
         );

@@ -11,36 +11,142 @@
 //! PSIONIC_V41_STAGE=$CARGO_TARGET_DIR/debug/psionic-v41-stage cargo test -p pylon --test group_stage_worker
 //! ```
 //!
-//! Without it, each test says so and passes.
+//! Without it, each test says so and passes. A qualification run sets
+//! `PSIONIC_V41_STAGE_REQUIRED=1`, and then a missing or broken worker fails
+//! every test instead:
+//!
+//! - `PSIONIC_V41_STAGE_SHA256` pins the exact binary under test;
+//! - `PSIONIC_V41_STAGE_BACKEND=cuda` runs every stage and the reference on
+//!   the GPU, and a machine with no GPU fails;
+//! - `PSIONIC_V41_STAGE_REPORT=FILE` appends one JSON line per test, and
+//!   each test prints the executed, skipped, and failed counts so far.
 
-use pylon::engine::Sampling;
+use pylon::engine::{Sampling, request_limit_reason};
 use pylon::stage_group::{
-    LinkPolicy, PROTOCOL, StageGroup, StageGroupConfig, StageGroupStatus, StageSpec, Transport,
+    LinkPolicy, PROTOCOL, PromptMode, StageGroup, StageGroupConfig, StageGroupStatus, StageSpec,
+    Transport,
 };
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
-const RUNTIME: &str = "psionic-v41-stage/1";
+fn env(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|v| !v.is_empty())
+}
 
-fn worker() -> Option<PathBuf> {
-    let path = PathBuf::from(std::env::var_os("PSIONIC_V41_STAGE")?);
-    if path.is_file() {
-        Some(path)
+/// A qualification run: missing prerequisites fail instead of skipping.
+fn required() -> bool {
+    env("PSIONIC_V41_STAGE_REQUIRED").as_deref() == Some("1")
+}
+
+/// The stages run on the GPU.
+fn cuda() -> bool {
+    env("PSIONIC_V41_STAGE_BACKEND").as_deref() == Some("cuda")
+}
+
+fn runtime() -> &'static str {
+    if cuda() {
+        "psionic-v41-stage/1+cuda"
     } else {
-        eprintln!("PSIONIC_V41_STAGE={} is not a file", path.display());
-        None
+        "psionic-v41-stage/1"
+    }
+}
+
+/// The worker under test, or why it can't run here.
+fn worker() -> Result<PathBuf, String> {
+    let path = PathBuf::from(
+        env("PSIONIC_V41_STAGE")
+            .ok_or("PSIONIC_V41_STAGE is not set to a built psionic-v41-stage")?,
+    );
+    let bytes = std::fs::read(&path)
+        .map_err(|e| format!("PSIONIC_V41_STAGE={} can't be read: {e}", path.display()))?;
+    if let Some(pin) = env("PSIONIC_V41_STAGE_SHA256") {
+        let actual = format!("{:x}", Sha256::digest(&bytes));
+        if actual != pin.trim_start_matches("sha256:") {
+            return Err(format!(
+                "{} has SHA-256 {actual}; the run pins {pin}",
+                path.display()
+            ));
+        }
+    }
+    if cuda() {
+        let gpus = Command::new("nvidia-smi").arg("-L").output();
+        match gpus {
+            Ok(out) if out.status.success() && !out.stdout.is_empty() => {}
+            _ => {
+                return Err("PSIONIC_V41_STAGE_BACKEND=cuda, but no GPU answers nvidia-smi".into());
+            }
+        }
+    }
+    Ok(path)
+}
+
+static EXECUTED: AtomicUsize = AtomicUsize::new(0);
+static SKIPPED: AtomicUsize = AtomicUsize::new(0);
+static FAILED: AtomicUsize = AtomicUsize::new(0);
+
+fn report(test: &str, outcome: &str, detail: &str) {
+    let counter = match outcome {
+        "executed" => &EXECUTED,
+        "skipped" => &SKIPPED,
+        _ => &FAILED,
+    };
+    counter.fetch_add(1, Ordering::SeqCst);
+    let (executed, skipped, failed) = (
+        EXECUTED.load(Ordering::SeqCst),
+        SKIPPED.load(Ordering::SeqCst),
+        FAILED.load(Ordering::SeqCst),
+    );
+    eprintln!(
+        "group_stage_worker: {test} {outcome}{}{detail}; executed {executed}, skipped {skipped}, failed {failed}",
+        if detail.is_empty() { "" } else { ": " }
+    );
+    if let Some(path) = env("PSIONIC_V41_STAGE_REPORT") {
+        use std::io::Write;
+        let line = serde_json::json!({
+            "test": test,
+            "outcome": outcome,
+            "detail": detail,
+            "backend": if cuda() { "cuda" } else { "cpu" },
+            "required": required(),
+        });
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path);
+        if let Ok(mut file) = file {
+            let _ = file.write_all(format!("{line}\n").as_bytes());
+        }
+    }
+}
+
+/// Reports a test that ran: executed, or failed when it panicked.
+struct Ran(&'static str);
+
+impl Drop for Ran {
+    fn drop(&mut self) {
+        let outcome = if std::thread::panicking() {
+            "failed"
+        } else {
+            "executed"
+        };
+        report(self.0, outcome, "");
     }
 }
 
 macro_rules! worker_or_skip {
-    () => {
+    ($test:literal) => {
         match worker() {
-            Some(path) => path,
-            None => {
-                eprintln!("skipped: PSIONIC_V41_STAGE is not set to a built psionic-v41-stage");
+            Ok(path) => (path, Ran($test)),
+            Err(why) if required() => {
+                report($test, "failed", &why);
+                panic!("PSIONIC_V41_STAGE_REQUIRED=1, but {why}");
+            }
+            Err(why) => {
+                report($test, "skipped", &why);
                 return;
             }
         }
@@ -82,13 +188,15 @@ fn weights(bin: &Path, dir: &Path, name: &str, split: &[(u32, u32)]) -> (String,
 
 fn stage_args(dir: &Path, manifest: &str, index: usize, split: &[(u32, u32)]) -> Vec<String> {
     let (a, b) = split[index];
+    // A test machine may have one GPU: every CUDA stage shares the first.
+    let gpu = if cuda() { 0 } else { index };
     let mut args = vec![
         "--weights".into(),
         dir.display().to_string(),
         "--layers".into(),
         format!("{a}-{b}"),
         "--gpu".into(),
-        index.to_string(),
+        gpu.to_string(),
         "--manifest".into(),
         manifest.into(),
         "--events".into(),
@@ -99,6 +207,9 @@ fn stage_args(dir: &Path, manifest: &str, index: usize, split: &[(u32, u32)]) ->
     }
     if index + 1 == split.len() {
         args.push("--head".into());
+    }
+    if cuda() {
+        args.extend(["--backend".into(), "cuda".into()]);
     }
     args
 }
@@ -126,7 +237,7 @@ impl Rig {
         let mut config = StageGroupConfig {
             model: "deepseek-v4.1-synthetic".into(),
             weights: digest,
-            runtime: RUNTIME.into(),
+            runtime: runtime().into(),
             protocol: PROTOCOL,
             stages: (0..split.len())
                 .map(|i| StageSpec {
@@ -254,6 +365,8 @@ impl Rig {
                 &top_p.to_string(),
                 "--seed",
                 &seed.to_string(),
+                "--backend",
+                if cuda() { "cuda" } else { "cpu" },
             ],
         );
         let answer: serde_json::Value = serde_json::from_slice(&out).unwrap();
@@ -295,7 +408,8 @@ fn prompt() -> serde_json::Value {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn loopback_groups_of_two_to_four_stages_answer_like_the_unsplit_model() {
-    let bin = worker_or_skip!();
+    let (bin, _ran) =
+        worker_or_skip!("loopback_groups_of_two_to_four_stages_answer_like_the_unsplit_model");
     for split in [
         vec![(0, 20), (20, 40)],
         vec![(0, 7), (7, 21), (21, 40)],
@@ -318,7 +432,8 @@ async fn loopback_groups_of_two_to_four_stages_answer_like_the_unsplit_model() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn the_last_stage_ends_the_answer_and_its_text_reaches_the_caller() {
-    let bin = worker_or_skip!();
+    let (bin, _ran) =
+        worker_or_skip!("the_last_stage_ends_the_answer_and_its_text_reaches_the_caller");
     let split = [(0, 14), (14, 40)];
     let rig = Rig::start(bin, &split).await;
     rig.ready(1).await;
@@ -341,7 +456,8 @@ async fn the_last_stage_ends_the_answer_and_its_text_reaches_the_caller() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_killed_stage_is_replaced_fenced_and_the_group_answers_the_same() {
-    let bin = worker_or_skip!();
+    let (bin, _ran) =
+        worker_or_skip!("a_killed_stage_is_replaced_fenced_and_the_group_answers_the_same");
     let split = [(0, 10), (10, 25), (25, 40)];
     let rig = Rig::start(bin, &split).await;
     rig.ready(1).await;
@@ -371,7 +487,7 @@ async fn a_killed_stage_is_replaced_fenced_and_the_group_answers_the_same() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_stopped_stage_fails_its_health_checks_and_is_replaced() {
-    let bin = worker_or_skip!();
+    let (bin, _ran) = worker_or_skip!("a_stopped_stage_fails_its_health_checks_and_is_replaced");
     let split = [(0, 20), (20, 40)];
     let rig = Rig::start(bin, &split).await;
     rig.ready(1).await;
@@ -387,7 +503,8 @@ async fn a_stopped_stage_fails_its_health_checks_and_is_replaced() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_caller_that_goes_away_holds_the_slot_until_every_stage_stops() {
-    let bin = worker_or_skip!();
+    let (bin, _ran) =
+        worker_or_skip!("a_caller_that_goes_away_holds_the_slot_until_every_stage_stops");
     let split = [(0, 13), (13, 27), (27, 40)];
     let rig = Rig::start(bin, &split).await;
     rig.ready(1).await;
@@ -423,7 +540,7 @@ async fn a_caller_that_goes_away_holds_the_slot_until_every_stage_stops() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_stage_with_other_weights_is_never_advertised() {
-    let bin = worker_or_skip!();
+    let (bin, _ran) = worker_or_skip!("a_stage_with_other_weights_is_never_advertised");
     let split = [(0, 20), (20, 40)];
     let rig = Rig::with(bin.clone(), &split, |config, root| {
         // Stage s1 loads a different synthetic model directory.
@@ -467,7 +584,9 @@ fn direct(config: &mut StageGroupConfig) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn direct_groups_pass_state_stage_to_stage_and_answer_like_the_unsplit_model() {
-    let bin = worker_or_skip!();
+    let (bin, _ran) = worker_or_skip!(
+        "direct_groups_pass_state_stage_to_stage_and_answer_like_the_unsplit_model"
+    );
     for split in [
         vec![(0, 20), (20, 40)],
         vec![(0, 10), (10, 20), (20, 30), (30, 40)],
@@ -503,7 +622,8 @@ async fn direct_groups_pass_state_stage_to_stage_and_answer_like_the_unsplit_mod
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_direct_group_relinks_after_a_killed_stage_and_cancels_down_the_chain() {
-    let bin = worker_or_skip!();
+    let (bin, _ran) =
+        worker_or_skip!("a_direct_group_relinks_after_a_killed_stage_and_cancels_down_the_chain");
     let split = [(0, 10), (10, 25), (25, 40)];
     let rig = Rig::with(bin, &split, |config, _| direct(config)).await;
     rig.ready(1).await;
@@ -547,4 +667,114 @@ async fn a_direct_group_relinks_after_a_killed_stage_and_cancels_down_the_chain(
     );
     assert_eq!(rig.answer(Some(prompt()), 6, greedy()).await, before);
     rig.close().await;
+}
+
+/// Every stage takes `extra` arguments.
+fn with_args(config: &mut StageGroupConfig, extra: &[&str]) {
+    for stage in &mut config.stages {
+        stage.args.extend(extra.iter().map(|a| (*a).to_owned()));
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_oversized_request_fails_alone_and_the_group_stays_ready() {
+    let (bin, _ran) = worker_or_skip!("an_oversized_request_fails_alone_and_the_group_stays_ready");
+    let split = [(0, 10), (10, 25), (25, 40)];
+    for transport in [Transport::Front, Transport::Direct] {
+        let rig = Rig::with(bin.clone(), &split, |config, _| {
+            with_args(config, &["--max-context", "64", "--max-input-tokens", "4"]);
+            if transport == Transport::Direct {
+                direct(config);
+            }
+        })
+        .await;
+        let status = rig.ready(1).await;
+        let limits = status.limits.clone().expect("the stages announce limits");
+        assert_eq!(
+            (limits.max_context_tokens, limits.max_input_tokens),
+            (64, 4),
+            "{limits:?}"
+        );
+        assert_eq!(limits.modes, [PromptMode::Thinking, PromptMode::Chat]);
+        // Six prompt tokens: stage 0 rejects the request before any stage
+        // runs it, and only the request fails.
+        let run = rig
+            .group()
+            .generate_prompt(prompt(), 8, greedy())
+            .await
+            .unwrap();
+        let failure = tokio::time::timeout(Duration::from_secs(20), run.done)
+            .await
+            .expect("the request ended before its step deadline")
+            .unwrap()
+            .unwrap_err();
+        assert!(failure.request_limit, "{failure:?}");
+        assert!(!failure.cancelled && failure.delivered == 0);
+        let reason = request_limit_reason(&failure.reason).expect("a marked limit");
+        assert!(reason.contains("at most 4"), "{reason}");
+        // The stages stop the request before the slot frees.
+        rig.until("a free slot", |s| !s.busy).await;
+        // An answer longer than the context is refused at admission.
+        let refused = rig
+            .group()
+            .generate_prompt(prompt(), 64, greedy())
+            .await
+            .unwrap_err();
+        assert!(request_limit_reason(&refused).is_some(), "{refused}");
+        // The group stays at its generation with no failures, and answers.
+        let status = rig.status();
+        assert_eq!((status.generation, status.failures), (1, 0), "{status:?}");
+        assert!(status.stages.iter().all(|s| s.replacements == 0));
+        let short = serde_json::json!([{"role": "user", "content": "tok3 tok5"}]);
+        let expected = rig.reference(&short, 4, (0.0, 1.0, 0));
+        assert_eq!(rig.answer(Some(short), 4, greedy()).await, expected);
+        let events = rig.events();
+        assert!(
+            events
+                .iter()
+                .any(|e| e["event"] == "rejected" && e["stage"] == "s0"),
+            "{events:#?}"
+        );
+        rig.close().await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_prompt_mode_reaches_every_stage() {
+    let (bin, _ran) = worker_or_skip!("the_prompt_mode_reaches_every_stage");
+    let split = [(0, 10), (10, 25), (25, 40)];
+    for transport in [Transport::Front, Transport::Direct] {
+        let rig = Rig::with(bin.clone(), &split, |config, _| {
+            if transport == Transport::Direct {
+                direct(config);
+            }
+        })
+        .await;
+        rig.ready(1).await;
+        let mut run = rig
+            .group()
+            .generate_prompt_in(prompt(), PromptMode::Chat, 3, greedy())
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(60), &mut run.done)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        let steps: Vec<_> = rig
+            .events()
+            .into_iter()
+            .filter(|e| e["event"] == "step")
+            .collect();
+        for stage in ["s0", "s1", "s2"] {
+            let modes: Vec<_> = steps
+                .iter()
+                .filter(|e| e["stage"] == stage)
+                .map(|e| e["mode"].clone())
+                .collect();
+            assert!(!modes.is_empty(), "{stage}: {steps:#?}");
+            assert!(modes.iter().all(|m| m == "chat"), "{stage}: {modes:?}");
+        }
+        rig.close().await;
+    }
 }

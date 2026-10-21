@@ -81,6 +81,10 @@ pub struct GroupLane {
     pub max_output_tokens: u32,
     /// The front's sampling settings, sent to the last stage each step.
     pub sampling: crate::engine::Sampling,
+    /// How the stages render each conversation and parse its answer: the
+    /// template's `thinking` mode (the default, left out) or `chat`.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub mode: crate::stage_group::PromptMode,
     pub stages: Vec<GroupStage>,
     /// Where stage state travels: through the head (`front`, W10) or
     /// straight from stage to stage (`direct`, W12). Left out when `front`,

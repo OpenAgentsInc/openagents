@@ -55,6 +55,15 @@
 //! it passed on (`forwarded`), so a step that stops between two stages
 //! fails the stage that holds it.
 //!
+//! **Request limits and modes.** Each stage announces in its `hello` the
+//! request sizes the group serves, from its real wire sizes and context
+//! ([`StageLimits`]), and the prompt modes it renders; the group reports the
+//! tightest limits in [`StageGroupStatus::limits`]. The front sends the
+//! request's [`PromptMode`] with every step and its answer limit with step
+//! zero. A stage that can't serve a request answers `rejected` instead of
+//! running it, and the front fails only that request
+//! ([`Failure::request_limit`] for a size limit): no stage is replaced.
+//!
 //! **What the last stage returns.** It samples and returns the token id, not
 //! logits or a top-k. W9 measured full F32 logits at 517,280 bytes per token,
 //! more than every forward hop together; a token id is four bytes. The front
@@ -348,6 +357,64 @@ impl Fence {
     }
 }
 
+/// How the first stage renders the conversation and the last stage parses
+/// the answer: the model template's thinking mode, or its chat mode, which
+/// answers without a reasoning section.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptMode {
+    /// What a stage assumes when a step names no mode.
+    #[default]
+    Thinking,
+    Chat,
+}
+
+impl PromptMode {
+    /// The mode's name on the wire.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Thinking => "thinking",
+            Self::Chat => "chat",
+        }
+    }
+}
+
+/// The request sizes a stage serves, from its `hello`. Each stage derives
+/// them from the codec's message limit at the real wire sizes of every
+/// boundary, and from its context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StageLimits {
+    /// Positions one request may fill: its prompt and its answer together.
+    pub max_context_tokens: u64,
+    /// The most prompt tokens one request may send.
+    pub max_input_tokens: u64,
+    /// The largest prefill the stages' wire carries in one step.
+    #[serde(default)]
+    pub max_prefill_tokens: u64,
+    /// The prompt modes it renders.
+    #[serde(default)]
+    pub modes: Vec<PromptMode>,
+}
+
+impl StageLimits {
+    /// The limits two stages both serve.
+    #[must_use]
+    pub fn tightest(&self, other: &Self) -> Self {
+        Self {
+            max_context_tokens: self.max_context_tokens.min(other.max_context_tokens),
+            max_input_tokens: self.max_input_tokens.min(other.max_input_tokens),
+            max_prefill_tokens: self.max_prefill_tokens.min(other.max_prefill_tokens),
+            modes: self
+                .modes
+                .iter()
+                .copied()
+                .filter(|m| other.modes.contains(m))
+                .collect(),
+        }
+    }
+}
+
 /// Where stage state travels between stages.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -528,6 +595,10 @@ pub struct StageGroupStatus {
     pub last_refusal: Option<String>,
     /// Consecutive failures counted against the restart budget.
     pub failures: u32,
+    /// The request sizes and modes every stage serves, once every stage has
+    /// announced them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limits: Option<StageLimits>,
     pub stages: Vec<StageStatus>,
 }
 
@@ -566,6 +637,10 @@ pub struct Failure {
     pub delivered: u64,
     /// The caller went away.
     pub cancelled: bool,
+    /// The request is larger than the group serves: a longer prompt or
+    /// answer than its limits, or stage state too large to send. The group
+    /// stays healthy.
+    pub request_limit: bool,
 }
 
 impl std::fmt::Display for Failure {
@@ -722,6 +797,9 @@ mod runtime {
         /// The numerical profile the stage runs, such as `cuda-device-sm_120`.
         #[serde(default)]
         profile: Option<String>,
+        /// The request sizes and modes it serves.
+        #[serde(default)]
+        limits: Option<StageLimits>,
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -765,6 +843,15 @@ mod runtime {
         Refused {
             reason: String,
         },
+        /// The stage won't run a request: `request_limit` when it is
+        /// larger than the group serves. The stage stays healthy.
+        Rejected {
+            generation: u64,
+            request_id: String,
+            attempt: u32,
+            code: String,
+            reason: String,
+        },
     }
 
     enum Event {
@@ -788,6 +875,7 @@ mod runtime {
     enum Command {
         Run {
             prompt: Option<serde_json::Value>,
+            mode: PromptMode,
             steps: u64,
             sampling: Sampling,
             reply: oneshot::Sender<Result<Run, String>>,
@@ -846,7 +934,8 @@ mod runtime {
         ///
         /// When the group is not ready, is busy, or has stopped.
         pub async fn generate(&self, steps: u64, sampling: Sampling) -> Result<Run, String> {
-            self.request(None, steps, sampling).await
+            self.request(None, PromptMode::default(), steps, sampling)
+                .await
         }
 
         /// Admit one request whose `prompt` (the conversation, as JSON)
@@ -862,12 +951,31 @@ mod runtime {
             steps: u64,
             sampling: Sampling,
         ) -> Result<Run, String> {
-            self.request(Some(prompt), steps, sampling).await
+            self.request(Some(prompt), PromptMode::default(), steps, sampling)
+                .await
+        }
+
+        /// As [`StageGroup::generate_prompt`], with the conversation
+        /// rendered and the answer parsed in `mode`.
+        ///
+        /// # Errors
+        ///
+        /// As [`StageGroup::generate`], and a request the group's
+        /// [`StageLimits`] refuse, marked by [`crate::engine::request_limit`].
+        pub async fn generate_prompt_in(
+            &self,
+            prompt: serde_json::Value,
+            mode: PromptMode,
+            steps: u64,
+            sampling: Sampling,
+        ) -> Result<Run, String> {
+            self.request(Some(prompt), mode, steps, sampling).await
         }
 
         async fn request(
             &self,
             prompt: Option<serde_json::Value>,
+            mode: PromptMode,
             steps: u64,
             sampling: Sampling,
         ) -> Result<Run, String> {
@@ -875,6 +983,7 @@ mod runtime {
             self.commands
                 .send(Command::Run {
                     prompt,
+                    mode,
                     steps,
                     sampling,
                     reply,
@@ -1002,6 +1111,8 @@ mod runtime {
         listen: Option<String>,
         /// Its link listener's address, from its announcement.
         data: Option<String>,
+        /// The request sizes and modes it announced.
+        limits: Option<StageLimits>,
         /// It was sent this generation's link key.
         link_sent: bool,
         /// Its link to the next stage is open (always true under the
@@ -1035,6 +1146,7 @@ mod runtime {
             self.ping = None;
             self.listen = None;
             self.data = None;
+            self.limits = None;
             self.unlink(direct);
         }
     }
@@ -1054,6 +1166,7 @@ mod runtime {
         id: String,
         attempt: u32,
         prompt: Option<serde_json::Value>,
+        mode: PromptMode,
         steps: u64,
         sampling: Sampling,
         delivered: u64,
@@ -1120,6 +1233,7 @@ mod runtime {
                     replacements: 0,
                     listen: None,
                     data: None,
+                    limits: None,
                     link_sent: false,
                     linked: config.transport == Transport::Front,
                     progress: None,
@@ -1179,6 +1293,7 @@ mod runtime {
                 refused: self.refused,
                 last_refusal: self.last_refusal.clone(),
                 failures: self.budget.failures(),
+                limits: self.limits(),
                 stages: self
                     .slots
                     .iter()
@@ -1192,6 +1307,14 @@ mod runtime {
                     })
                     .collect(),
             }
+        }
+
+        /// The tightest limits of the stages, once every stage has
+        /// announced its own.
+        fn limits(&self) -> Option<StageLimits> {
+            let mut limits = self.slots.iter().map(|s| s.limits.as_ref());
+            let first = limits.next()??.clone();
+            limits.try_fold(first, |all, one| Some(all.tightest(one?)))
         }
 
         fn refuse(&mut self, reason: String) {
@@ -1236,10 +1359,12 @@ mod runtime {
             match command {
                 Command::Run {
                     prompt,
+                    mode,
                     steps,
                     sampling,
                     reply,
                 } => {
+                    let limits = self.limits();
                     let admitted = if let Some(failed) = &self.failed {
                         Err(format!("the stage group stopped: {failed}"))
                     } else if self.active.is_some() {
@@ -1248,6 +1373,21 @@ mod runtime {
                         Err(format!("the stage group is not ready: {}", self.reason))
                     } else if steps == 0 {
                         Err("a request needs at least one step".into())
+                    } else if let Some(limits) = &limits
+                        && steps >= limits.max_context_tokens
+                    {
+                        Err(crate::engine::request_limit(&format!(
+                            "{steps} answer tokens and a prompt don't fit the group's {} positions",
+                            limits.max_context_tokens
+                        )))
+                    } else if let Some(limits) = &limits
+                        && !limits.modes.is_empty()
+                        && !limits.modes.contains(&mode)
+                    {
+                        Err(format!(
+                            "the stage group doesn't render {} mode",
+                            mode.as_str()
+                        ))
                     } else {
                         Ok(())
                     };
@@ -1269,6 +1409,7 @@ mod runtime {
                         id: id.clone(),
                         attempt: 1,
                         prompt,
+                        mode,
                         steps,
                         sampling,
                         delivered: 0,
@@ -1327,6 +1468,7 @@ mod runtime {
                 "attempt": active.attempt,
                 "stage": index,
                 "step": step,
+                "mode": active.mode,
             });
             if index + 1 == self.slots.len() || self.config.transport == Transport::Direct {
                 // The last stage samples with the front's settings; under
@@ -1352,6 +1494,11 @@ mod runtime {
             {
                 // The first stage renders and encodes the conversation.
                 message["prompt"] = prompt.clone();
+            }
+            if index == 0 && step == 0 {
+                // It checks the prompt and this many answer tokens against
+                // the group's limits before any stage runs them.
+                message["max_tokens"] = serde_json::json!(active.steps);
             }
             self.send(index, message).await;
         }
@@ -1477,6 +1624,7 @@ mod runtime {
             slot.listen = hello.listen;
             slot.checked = false;
             slot.data = hello.data;
+            slot.limits = hello.limits;
             slot.unlink(direct);
             self.nonce += 1;
             let (nonce, input) = (self.nonce, self.nonce.wrapping_mul(7919) % 1_000_003);
@@ -1645,6 +1793,32 @@ mod runtime {
                     let name = self.slots[index].spec.name.clone();
                     self.refuse(format!("stage {name}: {reason}"));
                 }
+                Incoming::Rejected {
+                    generation,
+                    request_id,
+                    attempt,
+                    code,
+                    reason,
+                } => {
+                    let current = self.active.as_ref().is_some_and(|a| {
+                        a.id == request_id
+                            && a.attempt == attempt
+                            && matches!(a.phase, Phase::Running { .. })
+                    });
+                    if generation != self.fence.generation() || !current {
+                        let name = self.slots[index].spec.name.clone();
+                        return self.refuse(format!(
+                            "stage {name} rejected request {request_id} at generation {generation}, which is not running: {reason}"
+                        ));
+                    }
+                    let request_limit = code == "request_limit";
+                    let reason = if request_limit {
+                        crate::engine::request_limit(&reason)
+                    } else {
+                        format!("the group can't run the request: {reason}")
+                    };
+                    self.stop_request(reason, false, request_limit).await;
+                }
             }
         }
 
@@ -1738,6 +1912,13 @@ mod runtime {
 
         /// The caller went away: stop every stage before freeing the slot.
         async fn cancel(&mut self) {
+            self.stop_request("the caller cancelled the request".into(), true, false)
+                .await;
+        }
+
+        /// End the running request with `reason` and stop every stage
+        /// before freeing the slot. No stage is blamed.
+        async fn stop_request(&mut self, reason: String, cancelled: bool, request_limit: bool) {
             let Some(active) = &mut self.active else {
                 return;
             };
@@ -1746,9 +1927,10 @@ mod runtime {
             }
             self.fence.end();
             let failure = Failure {
-                reason: "the caller cancelled the request".into(),
+                reason: reason.clone(),
                 delivered: active.delivered,
-                cancelled: true,
+                cancelled,
+                request_limit,
             };
             if let Some(reply) = active.done.take() {
                 let _ = reply.send(Err(failure));
@@ -1762,7 +1944,7 @@ mod runtime {
                 waiting: waiting.clone(),
             };
             (self.log)(format!(
-                "stage group request {id} cancelled; waiting for {} stages to stop",
+                "stage group request {id} ended ({reason}); waiting for {} stages to stop",
                 waiting.len()
             ));
             for index in waiting {
@@ -1794,6 +1976,7 @@ mod runtime {
                             reason: reason.clone(),
                             delivered: active.delivered,
                             cancelled: false,
+                            request_limit: false,
                         };
                         if let Some(reply) = active.done.take() {
                             let _ = reply.send(Err(failure));
@@ -1885,6 +2068,7 @@ mod runtime {
                     reason: reason.into(),
                     delivered: active.delivered,
                     cancelled: false,
+                    request_limit: false,
                 }));
             }
         }
@@ -2235,6 +2419,7 @@ mod tests {
             refused: 0,
             last_refusal: None,
             failures: 0,
+            limits: None,
             stages: vec![],
         };
         assert_eq!(status.head().readiness, Readiness::Starting);

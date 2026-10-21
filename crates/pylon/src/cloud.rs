@@ -917,6 +917,7 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
         deadline_secs: up.deadline_secs,
         max_output_tokens: up.max_output_tokens,
         sampling: up.sampling,
+        mode: crate::stage_group::PromptMode::default(),
         stages,
         transport: up.transport,
         links: crate::stage_group::LinkPolicy::default(),

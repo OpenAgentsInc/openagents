@@ -688,3 +688,114 @@ rebuild. `v41-stage-build.sh test` passed every CUDA test on the 4080
 (`PSIONIC_REQUIRE_CUDA=1`), including the synthetic split-against-unsplit
 comparisons with the corrected generator. Running the `sm_120` build on an
 RTX PRO 6000 is an after-close check.
+
+## Supported context and mode profile (#12408)
+
+This section answers audit findings F6, F7, and F8 of the
+[six-hour review](../audits/2026-10-21-deepseek-six-hour-review.md).
+
+### Request budget
+
+The prompt is one prefill step, so the largest prompt a group serves is the
+largest prefill that every stage boundary carries under the codec's 256 MiB
+message limit. `StageContract::max_step_tokens` computes it from each
+boundary's real section sizes, with the codec's longest (128-byte) request
+ID. `psionic_v41_stage::budget` takes the smallest over the group's
+boundaries, then bounds it by the context and the operator's cap:
+
+| Wire | Split | Largest prefill (tokens) |
+| --- | --- | --- |
+| CUDA (F32 residuals, BF16 cache rows) | 0-20, 20-40 | 3,275 |
+| CUDA | four or eight even stages | 2,872 |
+| CPU (F32 everywhere) | 0-20, 20-40 | 3,275 |
+| CPU | four or eight even stages | 2,833 |
+
+The residual alone, `[tokens, 4, 5120]` in F32, passes 256 MiB at 3,277
+tokens. A boundary past layer 20 with an index source still ahead also
+carries layer 20's candidate blocks (8 KiB a token) and an index selection,
+which lower the bound to 2,872.
+`crates/psionic/crates/psionic-v41-stage/tests/budget.rs` pins these numbers,
+and `deepseek_v41_stage_tests::prefill_sizes_match_encoded_messages_and_bound_the_step`
+checks the computed sizes against encoded messages.
+
+A stage serves a request when:
+
+- the prompt has at most `max_input_tokens`, which is the smallest of the
+  largest prefill, `--max-context` minus one, and `--max-input-tokens`;
+- the prompt plus the front's answer limit fits `--max-context` (8,192 by
+  default).
+
+With the default context, the four-stage CUDA profile takes prompts up to
+2,872 tokens. The oracle's p3 prompt (2,124 tokens) fits; its p4 prompt
+(19,989 tokens) does not, and the served profile does not cover it. This is
+a wire bound, not a deadline bound: at the one-machine receipt's 35.6 s for
+1,072 prompt tokens, a 2,872-token prefill would exceed the 75 s step limit.
+W14 (#12401) sets `--max-input-tokens` to the length it qualifies against
+its deadline.
+
+Chunked prefill isn't implemented. Each front step is one inbox step today,
+so a chunk schedule needs a step mapping between the front and the stages,
+cancellation across chunks, and its own qualification; it stays follow-up
+work for a profile that needs longer prompts.
+
+### Advertising and refusing
+
+- Every stage announces `limits` in its `hello`: `max_context_tokens`,
+  `max_input_tokens`, `max_prefill_tokens`, and `modes`. The front reports
+  the tightest limits of its stages in `StageGroupStatus::limits`, which the
+  group head's status and `live.json` carry. The NIP-PYLON head beacon
+  declares only `max_output_tokens`; declaring the input and context limits
+  there is W14's decision.
+- The front sends the answer limit with step 0 (`max_tokens`). Stage 0
+  encodes the prompt and checks the budget before any stage runs the
+  request. A request over a limit, or a prompt the stage can't read, ends
+  with `rejected` (`code` `request_limit` or `invalid_request`). A stage
+  whose own state can't be encoded rejects the request the same way. The
+  front fails only that request, with `Failure::request_limit` for a size
+  limit, and replaces no stage. The front also refuses at admission an
+  answer limit that can't fit the context.
+- The group head answers the buyer with `limit_exceeded` and the reason.
+
+### Stage-state handoff
+
+A stage's readers hand stage state to its worker through one queue bounded
+by `InboxBounds`: 4 frames and 512 MiB by default (one frame may exceed the
+byte bound when nothing else waits). A reader that finds the queue full
+stops reading its connection, so the previous stage's bounded link sender
+fails within its send deadline; the reader drops its own link after 30 s.
+Front messages, link cancellations, and link reports skip the bound and go
+before queued state, so a cancellation or fence runs next. Decoded frames
+the stage keeps for a later step are bounded by the same bytes.
+`serve::tests::a_stalled_executor_holds_the_link_to_its_bounds_and_recovers`
+stalls the real CPU executor, floods its authenticated link with valid
+690 KB frames, and checks that the sender fails within its 1 s deadline,
+that fewer than 40 frames are accepted, that the process grows less than
+64 MiB, and that cancellation, a fence, and a new request then work.
+
+### Prompt modes
+
+The stage renders the conversation and parses the answer in thinking mode
+(the default, as before) or chat mode, which the oracle's p2 code prompt
+uses. The front sends `mode` with every step, and a direct link carries it
+in each frame's settings. To request chat mode:
+
+- in a stage group, call `StageGroup::generate_prompt_in(prompt,
+  PromptMode::Chat, steps, sampling)`;
+- for a group head, set `"mode": "chat"` in the share file's group lane;
+- for the unsplit reference, run
+  `psionic-v41-stage reference --weights DIR --prompt JSON --mode chat`.
+
+`tests/answer.rs` checks that chat mode renders the p2 prompt to exactly the
+oracle's 40 token IDs, and that a chat-mode continuation matches the
+checkpoint's second encoding test. The reduced tokenizer fixture now
+includes the p2 prompt's vocabulary; `refresh_deepseek_v41.py` checks the
+oracle's IDs against the full tokenizer.
+
+### Qualification runs
+
+`crates/pylon/tests/group_stage_worker.rs` skips without a worker unless
+`PSIONIC_V41_STAGE_REQUIRED=1`. In that mode a missing or unreadable worker,
+a worker whose SHA-256 differs from `PSIONIC_V41_STAGE_SHA256`, or, with
+`PSIONIC_V41_STAGE_BACKEND=cuda`, a machine without a GPU fails every test.
+Each test prints the executed, skipped, and failed counts, and
+`PSIONIC_V41_STAGE_REPORT=FILE` collects one JSON line per test.

@@ -916,6 +916,17 @@ impl Provider {
                 }
                 Ok(body)
             }
+            Ok(Err(e)) if crate::engine::request_limit_reason(&e).is_some() => {
+                // Too large for the engine: the buyer's request, not a fault.
+                let reason = crate::engine::request_limit_reason(&e).unwrap_or_default();
+                self.state.lock().await.counters.refused += 1;
+                self.answer(
+                    &event,
+                    job::FEEDBACK_KIND,
+                    &job::refusal_body(request.version, &Refusal::new("limit_exceeded", reason)),
+                );
+                Err("worker_failed")
+            }
             Ok(Err(e)) => {
                 eprintln!("pylon: job {} failed: {e}", &event.id[..12]);
                 self.state.lock().await.counters.failed += 1;
