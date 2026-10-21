@@ -1,0 +1,15 @@
+# The livehost demo's guest code: one browser module (wasm32-unknown-unknown)
+# and one handler component (wasm32-wasip2). Its own workspace, so `livehost
+# deploy` builds it without the root workspace's lock or target settings.
+[workspace]
+members = ["module", "handler"]
+resolver = "2"
+
+# Deploys build these incrementally in release mode.
+[profile.release]
+opt-level = "s"
+incremental = true
+codegen-units = 16
+debug = false
+strip = true
+panic = "abort"

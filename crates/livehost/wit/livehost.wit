@@ -1,0 +1,28 @@
+// The boundary between the livehost host and a route handler component.
+// A handler gets one request and returns one response. It has no access to
+// the host's state; the host passes what a render needs.
+package openagents:livehost@0.1.0;
+
+interface handler {
+  record request {
+    method: string,
+    path: string,
+    query: list<tuple<string, string>>,
+    // The manifest this request is pinned to.
+    manifest: string,
+    // Asset paths in the manifest mapped to their content-addressed URLs.
+    assets: list<tuple<string, string>>,
+  }
+
+  record response {
+    status: u16,
+    content-type: string,
+    body: string,
+  }
+
+  handle: func(request: request) -> response;
+}
+
+world route {
+  export handler;
+}
