@@ -88,6 +88,17 @@ Gate progress (2026-10-21):
   this step); the SwiGLU output of experts 222 and 180 equals the oracle's
   BF16 down-projection input in 2,304 of 2,304 values. Results:
   [`sm89-2026-10-20.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_mix/sm89-2026-10-20.json).
+- **G8, launch command (W15, #12402), local evidence only.** `pylon cloud
+  up` starts a cost-capped, expiring group through the spend guard and
+  publishes it; on fake stages and a fixture relay, the router's
+  `Settings::want` request for the V4.1 artifact reaches the head and the
+  last stage's tokens come back. Spot loss, expiry, the cap, and `down`
+  each drop the group's beacons and delete its machines through the guard.
+  Each dry run plans two g4-standard-96 or four g4-standard-48 spot machines
+  at $26.62 for four hours. Placements are Psionic manifests shared as
+  JSON (`crates/pylon/placements/deepseek-v41/`). G8 still needs a real
+  cold launch (W16, #12403), which needs W11's stage worker in a bucket,
+  W12's stage-to-stage transport, and W14's deadline.
 - **Placement from header bytes.** Layers 0–9, 10–19, 20–29, and 30–39
   need 75.41, 74.07, 73.92, and 75.23 GB of GPU weights, as the plan's
   table says, and the Engram tables (101.38 GB each) go to host memory on
@@ -113,7 +124,7 @@ speculation, vision, and paid jobs.
 | Oracle | #12371 | 18,177 reference tensors for four prompts plus edge cases, in decode, replay, and chunked modes, with full logits, precision notes, tie rules, and complete answers. Slices in `testdata/deepseek_v41/oracle/`, read by `psionic_models::deepseek_v41_oracle`; the rest in `gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/`. Weights in `gs://openagents-psionic-models/`. |
 | CPU components | #12377–#12384 | `deepseek_v41_cpu`: hyper-connections, routing and experts, attention primitives, Engram, projection wiring, RoPE/YaRN, activation quantization, and request-owned shared KV/indexer state across the 40-layer owner schedule. 45 tests on synthetic fixtures; the Engram token map matches the reference over all 129,280 entries. |
 | Native serving shape | #12358, #12364, #12367, #12368 | `--single-generation`, Pylon's managed worker recovery (now for native Psionic workers too), the `pylon up` text profile, and native Qwen2 CUDA for the R1 distill. |
-| Group beacon and routing | #12400 | W13: NIP-PYLON v2 group head and stage beacons (one serial slot, exact artifact, deadline, output limit, readiness, generation) with v1 fixtures in both directions; `pylon::group` readiness source for W10; the router and `client::choose_model` route a request to a group only when it names that model and the group is ready, never to a stage, never substituting. Fixtures only; nothing publishes a group yet. |
+| Group beacon and routing | #12400 | W13: NIP-PYLON v2 group head and stage beacons (one serial slot, exact artifact, deadline, output limit, readiness, generation) with v1 fixtures in both directions; `pylon::group` readiness source for W10; the router and `client::choose_model` route a request to a group only when it names that model and the group is ready, never to a stage, never substituting. `pylon cloud up` (W15, #12402) publishes them. |
 
 ### CPU assembly completed (Codex, DeepSeek chat)
 
@@ -196,7 +207,7 @@ spend guard from the one budget host.
 | --- | --- | --- | --- | --- |
 | W13 | **Group beacon and routing.** Done (#12400): the group publishes one routable beacon (one serial slot, the exact model artifact, its declared deadline and output limit); stage beacons are visible but not routable. The router matches requested model and group readiness. W10 feeds readiness through `pylon::group::GroupReadiness`, and W15 publishes the beacons. | M | W10 | Router tests pick the group only for V4.1 requests and only when it's ready. |
 | W14 | **Deadline and answer profile.** Qualify a V4.1 reasoning profile (output cap, deadline) that finishes complete answers within the deadline the beacon declares. Changing Pylon's 90-second default is a versioned transport change with old-client refusal. | M | W11, W13 | Complete answers for the qualification prompts through Pylon within the declared deadline. |
-| W15 | **`pylon cloud up` for a group.** One command starts a group in a named placement through the spend guard, waits for readiness, publishes it, and stops it on expiry, cap, or `down`. Spot loss shows as Pylons leaving. | M | W12, W13 | A cold launch to a first answer, then a clean stop, with costs in the ledger. |
+| W15 | **Built (#12402) on synthetic stages; the cold launch is an after-close check that W16 runs.** `pylon cloud up four-single\|two-dual` plans the machines from Psionic's manifest file, creates each through `scripts/dev/cloud-budget.py` with an expiry and labels, heads the group from the allocating host in group mode (`pylon::group_serve`: W10's `StageGroup`, one W13 head beacon, a beacon per stage, NIP-CJ jobs driven through the stages), and ends it on `cloud down`, expiry, the budget's cap, or a lost machine, deleting every machine through the guard. Stages run over `gcloud compute ssh` with the control connection tunneled back; `scripts/pylon/v41-stage-startup.sh` copies a machine's shards. `tests/group_cloud.rs` covers launch to answer to `down`, dry-run plans, guard refusals, spot loss, expiry, and the cap. | M | W12, W13 | A cold launch to a first answer, then a clean stop, with costs in the ledger. |
 | W16 | **Show it.** Run the launched group with the `/home` Pylon layer open and record the transcript, router log, and capture. | S, cloud | W15 | G8's evidence is committed and the epic can close. |
 
 

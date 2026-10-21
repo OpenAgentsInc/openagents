@@ -88,6 +88,14 @@ pub struct StepAck {
     /// The sampled token id. Only the last stage sends one, and it must.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<u32>,
+    /// The token's text, when the last stage decodes it. A group whose
+    /// stages send no text answers with nothing but token ids.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    /// The last stage sampled the end of the answer: the request completes
+    /// with this token.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub end: bool,
 }
 
 impl StepIdentity for StepAck {
@@ -467,6 +475,8 @@ pub struct Run {
     pub generation: u64,
     /// Token ids in order, as the last stage sampled them.
     pub tokens: tokio::sync::mpsc::UnboundedReceiver<u32>,
+    /// Each token's text, in order, when the last stage sends it.
+    pub text: tokio::sync::mpsc::UnboundedReceiver<String>,
     pub done: tokio::sync::oneshot::Receiver<Result<Done, Failure>>,
 }
 
@@ -524,6 +534,7 @@ mod runtime {
 
     enum Command {
         Run {
+            prompt: Option<serde_json::Value>,
             steps: u64,
             sampling: Sampling,
             reply: oneshot::Sender<Result<Run, String>>,
@@ -535,7 +546,7 @@ mod runtime {
         commands: mpsc::UnboundedSender<Command>,
         status: watch::Receiver<StageGroupStatus>,
         kill: watch::Sender<bool>,
-        task: Option<tokio::task::JoinHandle<()>>,
+        task: std::sync::Mutex<Option<tokio::task::JoinHandle<()>>>,
     }
 
     impl StageGroup {
@@ -562,7 +573,7 @@ mod runtime {
                 commands,
                 status,
                 kill,
-                task: Some(task),
+                task: std::sync::Mutex::new(Some(task)),
             })
         }
 
@@ -582,9 +593,35 @@ mod runtime {
         ///
         /// When the group is not ready, is busy, or has stopped.
         pub async fn generate(&self, steps: u64, sampling: Sampling) -> Result<Run, String> {
+            self.request(None, steps, sampling).await
+        }
+
+        /// Admit one request whose `prompt` (the conversation, as JSON)
+        /// goes to the first stage with step zero; at most `steps` tokens,
+        /// fewer when the last stage samples the end of the answer.
+        ///
+        /// # Errors
+        ///
+        /// As [`StageGroup::generate`].
+        pub async fn generate_prompt(
+            &self,
+            prompt: serde_json::Value,
+            steps: u64,
+            sampling: Sampling,
+        ) -> Result<Run, String> {
+            self.request(Some(prompt), steps, sampling).await
+        }
+
+        async fn request(
+            &self,
+            prompt: Option<serde_json::Value>,
+            steps: u64,
+            sampling: Sampling,
+        ) -> Result<Run, String> {
             let (reply, answer) = oneshot::channel();
             self.commands
                 .send(Command::Run {
+                    prompt,
                     steps,
                     sampling,
                     reply,
@@ -596,9 +633,14 @@ mod runtime {
         }
 
         /// Stop every stage and wait until each process group is reaped.
-        pub async fn stop(mut self) {
+        pub async fn stop(&self) {
             let _ = self.kill.send(true);
-            if let Some(task) = self.task.take() {
+            let task = self
+                .task
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .take();
+            if let Some(task) = task {
                 let _ = task.await;
             }
         }
@@ -607,6 +649,19 @@ mod runtime {
     impl crate::group::GroupReadiness for StageGroup {
         fn status(&self) -> crate::group::GroupStatus {
             self.status.borrow().head()
+        }
+
+        fn stages(&self) -> Vec<(String, bool)> {
+            self.status
+                .borrow()
+                .stages
+                .iter()
+                .map(|s| (s.name.clone(), s.ready))
+                .collect()
+        }
+
+        fn stopped(&self) -> Option<String> {
+            self.status.borrow().failed.clone()
         }
     }
 
@@ -720,10 +775,12 @@ mod runtime {
     struct Active {
         id: String,
         attempt: u32,
+        prompt: Option<serde_json::Value>,
         steps: u64,
         sampling: Sampling,
         delivered: u64,
         tokens: mpsc::UnboundedSender<u32>,
+        text: mpsc::UnboundedSender<String>,
         done: Option<oneshot::Sender<Result<Done, Failure>>>,
         phase: Phase,
     }
@@ -870,6 +927,7 @@ mod runtime {
         async fn command(&mut self, command: Command) {
             match command {
                 Command::Run {
+                    prompt,
                     steps,
                     sampling,
                     reply,
@@ -892,15 +950,18 @@ mod runtime {
                     self.next_request += 1;
                     let id = self.next_request.to_string();
                     let (tokens, token_rx) = mpsc::unbounded_channel();
+                    let (text, text_rx) = mpsc::unbounded_channel();
                     let (done, done_rx) = oneshot::channel();
                     self.fence.begin(&id, 1);
                     self.active = Some(Active {
                         id: id.clone(),
                         attempt: 1,
+                        prompt,
                         steps,
                         sampling,
                         delivered: 0,
                         tokens,
+                        text,
                         done: Some(done),
                         phase: Phase::Running {
                             sent: Instant::now(),
@@ -910,6 +971,7 @@ mod runtime {
                         request: id,
                         generation: self.fence.generation(),
                         tokens: token_rx,
+                        text: text_rx,
                         done: done_rx,
                     }));
                     self.send_step(0, 0).await;
@@ -953,6 +1015,13 @@ mod runtime {
             if index + 1 == self.slots.len() {
                 // The last stage samples with the front's settings.
                 message["sampling"] = serde_json::json!(active.sampling);
+            }
+            if index == 0
+                && step == 0
+                && let Some(prompt) = &active.prompt
+            {
+                // The first stage renders and encodes the conversation.
+                message["prompt"] = prompt.clone();
             }
             self.send(index, message).await;
         }
@@ -1119,7 +1188,8 @@ mod runtime {
                     match self.fence.accept(&ack) {
                         Ok(Accepted::Next(next)) => self.send_step(next, ack.step).await,
                         Ok(Accepted::StepDone(step)) => {
-                            self.deliver(step, ack.token.unwrap_or_default()).await;
+                            let token = ack.token.unwrap_or_default();
+                            self.deliver(step, token, ack.text, ack.end).await;
                         }
                         Err(refusal) => self.refuse(format!("stage {name}: {refusal}")),
                     }
@@ -1143,15 +1213,18 @@ mod runtime {
             }
         }
 
-        async fn deliver(&mut self, step: u64, token: u32) {
+        async fn deliver(&mut self, step: u64, token: u32, text: Option<String>, end: bool) {
             let Some(active) = &mut self.active else {
                 return;
             };
             if active.tokens.send(token).is_err() {
                 return self.cancel().await;
             }
+            if let Some(text) = text {
+                let _ = active.text.send(text);
+            }
             active.delivered += 1;
-            if active.delivered < active.steps {
+            if active.delivered < active.steps && !end {
                 return self.send_step(0, step + 1).await;
             }
             let done = Done {
@@ -1506,6 +1579,8 @@ mod tests {
             attempt,
             step,
             token: None,
+            text: None,
+            end: false,
         }
     }
 

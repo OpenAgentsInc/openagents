@@ -5,7 +5,8 @@ The stage connects to the front, announces itself, and answers health pings,
 checks, steps, cancellations, and fences as line-delimited JSON. Faults are
 files in --root named KIND-STAGE. A file holding a step number fires once at
 that step and is then removed; "slow", "ignore-cancel", "always-die", and
-"weights" stay until the test removes them. Every observation goes to
+"weights" stay until the test removes them. A file "end-STAGE" makes the
+last stage end the answer at that step. Every observation goes to
 events.jsonl in --root.
 """
 
@@ -168,10 +169,16 @@ def worker():
             continue
         ack = {"kind": "ack", "stage": message["stage"], "generation": generation,
                "request_id": request, "attempt": attempt, "step": step}
+        if "prompt" in message:
+            # The first stage gets the conversation with step zero.
+            record("prompt", prompt=message["prompt"])
         if "sampling" in message:
             # The last stage samples with the front's settings and returns
-            # only the token id; this one is seed * 1000 + step.
+            # the token id, seed * 1000 + step, and its text.
             ack["token"] = message["sampling"]["seed"] * 1000 + step
+            ack["text"] = f"<{ack['token']}>"
+            if at_step("end", step):
+                ack["end"] = True
         if at_step("old-ack", step):
             send({**ack, "step": step - 1})
         if at_step("stale-ack", step):

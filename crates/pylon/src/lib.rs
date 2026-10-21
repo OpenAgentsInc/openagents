@@ -32,16 +32,17 @@ pub mod check_decide;
 pub mod checkup;
 pub mod cli;
 pub mod client;
+pub mod cloud;
 pub mod decide;
 pub mod decide_client;
 pub mod earnings;
 pub mod engine;
 pub mod envelope;
 pub mod field;
-pub mod stage_group;
 #[cfg(feature = "fixture")]
 pub mod fixture;
 pub mod group;
+pub mod group_serve;
 pub mod harden;
 pub mod identity;
 pub mod inflight;
@@ -55,6 +56,7 @@ pub mod market;
 pub mod model_id;
 pub mod online;
 pub mod paid;
+pub mod placement;
 pub mod plan;
 pub mod pool;
 pub mod provider;
@@ -66,6 +68,7 @@ pub mod serial;
 pub mod settings;
 pub mod setup;
 pub mod share;
+pub mod stage_group;
 pub mod verify;
 
 /// The production relay.

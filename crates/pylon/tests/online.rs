@@ -319,6 +319,7 @@ fn status_reads_a_fixture_pylon() {
         refused_today: 1,
         failed_today: 0,
         serving_since: Some(at - 600),
+        group: None,
     };
     let check = Check {
         id: "label".into(),

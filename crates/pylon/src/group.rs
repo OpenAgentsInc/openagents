@@ -99,6 +99,18 @@ impl GroupStatus {
 /// it, or feeds a [`SharedReadiness`].
 pub trait GroupReadiness: Send + Sync {
     fn status(&self) -> GroupStatus;
+
+    /// Each stage by name, and whether it is loaded and checked at the
+    /// current generation. Empty when the source doesn't know its stages.
+    fn stages(&self) -> Vec<(String, bool)> {
+        Vec::new()
+    }
+
+    /// Why the group stopped for good, once it has. A stopped group
+    /// reports `Recovering` forever, so its publisher stops publishing.
+    fn stopped(&self) -> Option<String> {
+        None
+    }
 }
 
 impl GroupReadiness for GroupStatus {

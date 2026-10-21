@@ -549,6 +549,9 @@ pub struct Live {
     pub failed_today: u64,
     /// When it last started serving.
     pub serving_since: Option<u64>,
+    /// The model group this pylon heads, as its stage group last reported.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<crate::stage_group::StageGroupStatus>,
 }
 
 impl Live {
@@ -579,9 +582,9 @@ fn save_live(home: &Path, live: &Live) -> Result<(), String> {
 /// A log line sink.
 pub type Log = Arc<dyn Fn(String) + Send + Sync>;
 
-type Shared = Arc<Mutex<Live>>;
+pub(crate) type Shared = Arc<Mutex<Live>>;
 
-fn set(live: &Shared, change: impl FnOnce(&mut Live)) {
+pub(crate) fn set(live: &Shared, change: impl FnOnce(&mut Live)) {
     if let Ok(mut held) = live.lock() {
         change(&mut held);
     }
@@ -674,7 +677,9 @@ pub async fn supervise(
                     "pylon on: {} on {}{}",
                     settings.pylon,
                     settings.relay,
-                    if names.is_empty() {
+                    if let Some(group) = &settings.group {
+                        format!(", heading model group {}", group.id)
+                    } else if names.is_empty() {
                         format!(", text from {}", settings.engine)
                     } else {
                         format!(", engines: {}", names.join(", "))
@@ -741,6 +746,9 @@ async fn unit(
     log: Log,
     mut halt: oneshot::Receiver<()>,
 ) {
+    if settings.group.is_some() {
+        return crate::group_serve::run(home, settings, machine, live, log, halt).await;
+    }
     if let Err(reason) = verify_profile(&settings).await {
         set(&live, |l| {
             l.state = Phase::Paused;
@@ -1039,7 +1047,7 @@ async fn unit(
     drop(ownership);
 }
 
-fn add(live: &mut Live, seen: Counters, now: Counters) {
+pub(crate) fn add(live: &mut Live, seen: Counters, now: Counters) {
     live.jobs_today += now.served.saturating_sub(seen.served);
     live.refused_today += now.refused.saturating_sub(seen.refused);
     live.failed_today += now.failed.saturating_sub(seen.failed);
@@ -1429,6 +1437,11 @@ pub fn settings_for_up(
     text_room: Result<(), String>,
 ) -> Result<(Settings, Vec<String>), String> {
     let mut settings = held.unwrap_or_else(|| Settings::off(host));
+    // `up` makes this computer serve its own model; a group it headed
+    // through `cloud up` is no longer this pylon's.
+    if settings.group.take().is_some() {
+        settings.slots = Settings::off(host).slots;
+    }
     let mut words = up.serve.clone();
     share::apply(&mut settings, &mut words)?;
     if let Some(extra) = words.first() {
@@ -1826,7 +1839,7 @@ pub fn supervisor_running(live: &Live, at: u64) -> bool {
 
 /// Whether process `pid` exists (`kill -0`); `true` where that cannot be
 /// asked.
-fn process_alive(pid: u32) -> bool {
+pub(crate) fn process_alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
         std::process::Command::new("kill")

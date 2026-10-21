@@ -28,6 +28,12 @@
       "math": "1 RTX PRO 6000 + 48 vCPU + 180 GiB: 1.09565 + 48 x 0.04891 + 180 x 0.00587 on demand; 0.4503 + 48 x 0.01743 + 180 x 0.002092 spot",
       "source": "catalog-2026-10-20"
     },
+    "g4-standard-96": {
+      "standard": 8.9999,
+      "spot": 3.327,
+      "math": "2 RTX PRO 6000 + 96 vCPU + 360 GiB: 2 x 1.09565 + 96 x 0.04891 + 360 x 0.00587 on demand; 2 x 0.4503 + 96 x 0.01743 + 360 x 0.002092 spot",
+      "source": "catalog-2026-10-20"
+    },
     "a3-ultragpu-8g": {
       "standard": 83.4918,
       "spot": 50.0854,

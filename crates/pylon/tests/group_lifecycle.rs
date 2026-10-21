@@ -568,3 +568,43 @@ async fn restarts_are_bounded_and_a_completed_request_resets_the_budget() {
     );
     rig.close().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_prompt_reaches_the_first_stage_and_the_last_stage_can_end_the_answer() {
+    let rig = Rig::start(&[("end-s2", "2")]).await;
+    rig.ready(1).await;
+    let prompt = serde_json::json!([{"role": "user", "content": "hi"}]);
+    let mut run = rig
+        .group()
+        .generate_prompt(prompt.clone(), 5, sampling())
+        .await
+        .unwrap();
+    let done = tokio::time::timeout(Duration::from_secs(10), &mut run.done)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    // The last stage sampled the end at step 2: three tokens, not five.
+    assert_eq!(done.tokens, 3);
+    let mut tokens = vec![];
+    while let Ok(token) = run.tokens.try_recv() {
+        tokens.push(token);
+    }
+    assert_eq!(tokens, toks(0..3));
+    let mut text = String::new();
+    while let Ok(piece) = run.text.try_recv() {
+        text.push_str(&piece);
+    }
+    assert_eq!(text, "<7000><7001><7002>");
+    let prompts: Vec<_> = rig
+        .events()
+        .into_iter()
+        .filter(|e| e["event"] == "prompt")
+        .collect();
+    assert_eq!(prompts.len(), 1);
+    assert_eq!(prompts[0]["stage"], "s0");
+    assert_eq!(prompts[0]["prompt"], prompt);
+    // The group takes the next request.
+    assert_eq!(rig.complete(2).await, toks(0..2));
+    rig.close().await;
+}

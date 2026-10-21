@@ -756,8 +756,97 @@ so nothing routes to it and pool totals count one slot per group.
   `RelayField::poll_groups` reads them from a relay. A stage shows under
   the head with the same group id, artifact, and NIP-OA owner (or key).
 
-Nothing publishes group beacons yet. `client::beacons` still reads complete
-pylons only; `client::all_beacons` adds the groups.
+`client::beacons` still reads complete pylons only; `client::all_beacons`
+adds the groups.
+
+### Head a model group (#12402)
+
+In group mode a pylon heads a model group instead of serving a model
+itself. Its settings carry a `group` lane (version 6 settings,
+`openagents.pylon.share.v6`, which older hosts refuse): the stages, each
+with its program and layer range, the exact artifact, the manifest digest,
+the weights and runtime every stage must announce, the declared deadline
+(at most 90 seconds until W14 qualifies a longer one) and output limit,
+and the sampling settings.
+
+`pylon::group_serve` runs the lane:
+
+- It supervises the stage workers through `pylon::stage_group` (#12397).
+  The group is ready only when every stage is loaded, checked, and on one
+  generation.
+- It publishes the head beacon (one serial slot, readiness, generation,
+  deadline, and output limit) and one beacon per stage, `<pylon>-s0` and
+  so on, signed by the head's key. A stage that isn't ready is offline, so
+  a lost stage shows as a pylon leaving.
+- It answers NIP-CJ jobs by driving the group. The conversation goes to the
+  first stage with step zero; the last stage samples with the head's
+  settings and returns the token id and its text, and may end the answer
+  early. Every token reaches the caller through the head.
+- When the group stops for good (its restarts run out), the head publishes
+  every beacon offline and stops publishing.
+
+### Launch a DeepSeek-V4.1 group in the cloud
+
+`pylon cloud up PLACEMENT` launches a V4.1 group on rented machines,
+heads it from this computer, and stops it. Run it from an OpenAgents
+checkout on the one host that allocates for the `deepseek-v41` budget
+([spend guard](../psionic/deepseek-v41-native.md#how-to-use-the-cloud-spend-guard)).
+
+| Placement | Machines | Stages |
+| --- | --- | --- |
+| `four-single` | 4 × `g4-standard-48` (1 RTX PRO 6000, 180 GiB) | one per machine |
+| `two-dual` | 2 × `g4-standard-96` (2 RTX PRO 6000, 360 GiB) | two per machine |
+
+The placements are Psionic's group manifests
+(`psionic.deepseek_v41.group_manifest.v1`), written by `plan_group` as JSON
+under `crates/pylon/placements/deepseek-v41/`; Pylon reads the file and
+checks only layer coverage and whether the machines fit. Psionic's
+`pylon_placement_manifests_match_the_committed_files` test regenerates
+them with `PYLON_PLACEMENTS_WRITE=1`.
+
+Plan first. A dry run asks the guard about every machine and prints its
+guard and gcloud commands; it creates and records nothing:
+
+```sh
+pylon cloud up two-dual --dry-run --hours 4
+```
+
+Then launch with the stage worker's bucket URL:
+
+```sh
+pylon cloud up two-dual --hours 4 --worker gs://BUCKET/v41-stage-worker
+```
+
+`up` does the following:
+
+1. Refuses a placement that doesn't fit its machine type, then asks the
+   guard (`create --dry-run`) about each machine and refuses when the
+   guard refuses one (no price, over the cap) or the machines together
+   would pass the cap.
+2. Creates each machine with `scripts/dev/cloud-budget.py create`, spot by
+   default, with `--hours` until expiry and the labels `issue=12402` and
+   `pylon-group=GROUP`. The guard refuses a second allocating host or
+   ledger path; machines already created are then deleted.
+3. Each machine boots `scripts/pylon/v41-stage-startup.sh`, which copies the
+   shards its stages read from the weights bucket and installs the stage
+   worker.
+4. Turns this computer into the group head and starts each stage with
+   `scripts/pylon/v41-stage-ssh.sh`, which runs the worker over `gcloud
+   compute ssh` and tunnels its control connection back to the head.
+5. Waits until every stage is ready, publishes the group, and prints the
+   launch receipt: the machines, their ledger entries, the head's address,
+   the artifact, the manifest, and the generation.
+6. Serves until `pylon cloud down`, Ctrl-C, five minutes before the first
+   machine's expiry, the budget passing its cap, or the group being lost.
+   Spot loss ends the ssh session, so the stage fails, the group goes
+   unready at a new generation, and its beacons drop. When restarts run
+   out, the group ends; it never hangs.
+7. Drains, publishes the beacons offline, deletes every machine through the
+   guard, and prints the costs the ledger recorded.
+
+`pylon cloud status` shows the group, its stages, the machines, and the
+budget. `pylon cloud down` from another terminal stops it; when the `up`
+process is gone, `down` deletes the machines itself.
 
 ## Drive a pylon from an agent
 

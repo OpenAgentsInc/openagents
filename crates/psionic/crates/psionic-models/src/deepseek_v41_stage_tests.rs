@@ -1498,3 +1498,46 @@ fn a_measured_input_plugs_into_the_same_planner() {
         CandidateOutcome::GpuShort { stage: _, .. }
     ));
 }
+
+/// Pylon's named placements (#12402) read these manifests as JSON files,
+/// since Pylon can't link Psionic's workspace. Each file is the manifest's
+/// own serialization, so its SHA-256 is [`V41GroupManifest::digest`].
+/// Regenerate with `PYLON_PLACEMENTS_WRITE=1`.
+#[test]
+fn pylon_placement_manifests_match_the_committed_files() {
+    const GIB: u64 = 1 << 30;
+    let memory = HeaderBytes::flash(RESERVE).unwrap();
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../pylon/placements/deepseek-v41");
+    // RTX PRO 6000 machines: g4-standard-48 (1 GPU, 180 GiB) and
+    // g4-standard-96 (2 GPUs, 360 GiB).
+    for (name, hosts, per_host, host_ram) in [
+        ("four-single", &["m0", "m1", "m2", "m3"][..], 1, 180 * GIB),
+        ("two-dual", &["m0", "m1"][..], 2, 360 * GIB),
+    ] {
+        let request = PlacementRequest {
+            gpus: gpus(hosts, per_host, 96 * GB),
+            hosts: ram(hosts, host_ram),
+            stage_counts: vec![4],
+        };
+        let manifest = plan_group(&memory, &request).unwrap().manifest;
+        manifest.validate().unwrap();
+        let bytes = serde_json::to_vec(&manifest).unwrap();
+        assert_eq!(
+            hex::encode(Sha256::digest(&bytes)),
+            manifest.digest_hex(),
+            "{name}"
+        );
+        let path = dir.join(format!("{name}.json"));
+        if std::env::var_os("PYLON_PLACEMENTS_WRITE").is_some() {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(&path, &bytes).unwrap();
+        }
+        let committed = std::fs::read(&path).unwrap_or_default();
+        assert!(
+            committed == bytes,
+            "{} is stale; regenerate with PYLON_PLACEMENTS_WRITE=1",
+            path.display()
+        );
+    }
+}

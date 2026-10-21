@@ -36,6 +36,142 @@ pub const SERIAL_SCHEMA: &str = "openagents.pylon.share.v3";
 pub const PROFILE_SCHEMA: &str = "openagents.pylon.share.v4";
 /// Native profiles require a host that supervises native serial workers.
 pub const NATIVE_PROFILE_SCHEMA: &str = "openagents.pylon.share.v5";
+/// A model group (#12402) needs a host that runs stage groups; older hosts
+/// refuse the file rather than serve without its stages.
+pub const GROUP_SCHEMA: &str = "openagents.pylon.share.v6";
+
+/// One stage of a group lane: how the head starts it and which layers it
+/// runs. The head appends `--stage NAME --generation N --front ADDR
+/// --token T` to `args`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroupStage {
+    pub name: String,
+    pub program: PathBuf,
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// First layer.
+    pub from: u32,
+    /// One past the last layer.
+    pub to: u32,
+}
+
+/// The model group this pylon heads (#12402): the stage workers it
+/// supervises through [`crate::stage_group`], and what its head beacon
+/// declares.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroupLane {
+    /// The group's slug.
+    pub id: String,
+    /// The placement it was planned from, such as `four-single`.
+    pub placement: String,
+    /// The served model's name, before `@`.
+    pub model: String,
+    /// The exact artifact, `sha256:<64 hex>`.
+    pub artifact: String,
+    /// SHA-256 of the group manifest file the stages were planned from.
+    pub manifest: String,
+    /// The weights digest every stage must announce.
+    pub weights: String,
+    /// The runtime every stage must announce.
+    pub runtime: String,
+    pub protocol: u32,
+    pub deadline_secs: u64,
+    pub max_output_tokens: u32,
+    /// The front's sampling settings, sent to the last stage each step.
+    pub sampling: crate::engine::Sampling,
+    pub stages: Vec<GroupStage>,
+    pub step_timeout_ms: u64,
+    pub health_timeout_ms: u64,
+    pub startup_timeout_ms: u64,
+    pub stop_timeout_ms: u64,
+    pub max_restarts: u32,
+    pub backoff_ms: u64,
+    pub max_backoff_ms: u64,
+}
+
+impl GroupLane {
+    /// The stage group configuration this lane describes.
+    #[must_use]
+    pub fn stage_config(&self) -> crate::stage_group::StageGroupConfig {
+        let ms = Duration::from_millis;
+        crate::stage_group::StageGroupConfig {
+            model: format!("{}@{}", self.model, self.artifact),
+            weights: self.weights.clone(),
+            runtime: self.runtime.clone(),
+            protocol: self.protocol,
+            stages: self
+                .stages
+                .iter()
+                .map(|s| crate::stage_group::StageSpec {
+                    name: s.name.clone(),
+                    program: s.program.clone(),
+                    args: s.args.clone(),
+                })
+                .collect(),
+            step_timeout: ms(self.step_timeout_ms),
+            health_timeout: ms(self.health_timeout_ms),
+            startup_timeout: ms(self.startup_timeout_ms),
+            stop_timeout: ms(self.stop_timeout_ms),
+            max_restarts: self.max_restarts,
+            backoff: ms(self.backoff_ms),
+            max_backoff: ms(self.max_backoff_ms),
+        }
+    }
+
+    /// What the head beacon declares.
+    #[must_use]
+    pub fn spec(&self) -> crate::group::GroupSpec {
+        crate::group::GroupSpec {
+            id: self.id.clone(),
+            model: self.model.clone(),
+            artifact: self.artifact.clone(),
+            deadline_secs: self.deadline_secs,
+            max_output_tokens: self.max_output_tokens,
+        }
+    }
+
+    /// Refuse a lane the head can't publish or serve.
+    ///
+    /// # Errors
+    ///
+    /// Says what is wrong.
+    pub fn validate(&self) -> Result<(), String> {
+        let ok_slug = |v: &str| {
+            !v.is_empty()
+                && v.len() <= 48
+                && v.bytes()
+                    .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-')
+        };
+        if !ok_slug(&self.id) {
+            return Err("a group id is 1 to 48 of a-z, 0-9, and -".into());
+        }
+        let hex = |v: &str| v.len() == 64 && v.bytes().all(|b| b.is_ascii_hexdigit());
+        if !self.artifact.strip_prefix("sha256:").is_some_and(hex) {
+            return Err("a group artifact is sha256:<64 hex>".into());
+        }
+        if !(1..=90).contains(&self.deadline_secs) {
+            return Err(
+                "a group deadline is 1 to 90 seconds until W14 qualifies a longer one".into(),
+            );
+        }
+        if !(1..=4_096).contains(&self.max_output_tokens) {
+            return Err("a group answers with 1 to 4096 tokens".into());
+        }
+        let mut next = 0;
+        for stage in &self.stages {
+            if !ok_slug(&stage.name) || stage.from != next || stage.to <= stage.from {
+                return Err(format!(
+                    "stage {} must follow layer {next} with a slug name",
+                    stage.name
+                ));
+            }
+            next = stage.to;
+        }
+        self.stage_config().validate()
+    }
+}
 
 /// The decision lane: a Psionic server the supervisor runs on loopback for
 /// NIP-DEC decisions.
@@ -131,6 +267,10 @@ pub struct Settings {
     /// Ignore this computer's lease table (a box that runs no owner work).
     #[serde(default)]
     pub dedicated: bool,
+    /// A model group this pylon heads instead of serving a model itself
+    /// (#12402); needs version 6 settings.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<GroupLane>,
 }
 
 impl Settings {
@@ -155,6 +295,7 @@ impl Settings {
             decide: None,
             text: None,
             dedicated: false,
+            group: None,
         }
     }
 
@@ -219,6 +360,7 @@ pub fn load(home: &Path) -> Result<Option<Settings>, String> {
                 && settings.schema != SERIAL_SCHEMA
                 && settings.schema != PROFILE_SCHEMA
                 && settings.schema != NATIVE_PROFILE_SCHEMA
+                && settings.schema != GROUP_SCHEMA
             {
                 return Err(format!(
                     "{} is a newer settings file ({}); update openagents",
@@ -256,6 +398,14 @@ pub fn load(home: &Path) -> Result<Option<Settings>, String> {
             {
                 return Err("native text profiles need version 5 settings".into());
             }
+            if settings.group.is_some() && settings.schema != GROUP_SCHEMA {
+                return Err("model groups need version 6 settings".into());
+            }
+            if settings.group.is_some()
+                && (settings.decide.is_some() || settings.text.is_some() || settings.slots != 1)
+            {
+                return Err("a group head serves only its group, with one slot".into());
+            }
             settings.schema = settings_schema(&settings).into();
             Ok(Some(settings))
         }
@@ -265,6 +415,9 @@ pub fn load(home: &Path) -> Result<Option<Settings>, String> {
 }
 
 fn settings_schema(settings: &Settings) -> &'static str {
+    if settings.group.is_some() {
+        return GROUP_SCHEMA;
+    }
     match settings.text.as_ref() {
         Some(lane) if lane.profile.is_some() && lane.engine == TextEngine::Openai => {
             NATIVE_PROFILE_SCHEMA

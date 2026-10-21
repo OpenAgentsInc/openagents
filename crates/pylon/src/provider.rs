@@ -17,7 +17,7 @@ use std::time::{Duration, Instant};
 use nostr::decision::{self, Admitted, RequestWindow, Resolution, Seal};
 use nostr::domain::{Event, MintedOwnerAttestation};
 use nostr::pylon::{
-    BEACON_V, Beacon, Class, Family, Lane, Service, Slots, Status, Tier, owned_beacon_event,
+    BEACON_V, Beacon, Class, Family, Lane, Layers, Service, Slots, Status, Tier, owned_beacon_event,
 };
 use serde_json::json;
 use tokio::sync::{Mutex, mpsc};
@@ -25,6 +25,7 @@ use tokio::time::timeout;
 
 use crate::decide::Decider;
 use crate::engine::Engine;
+use crate::group::{GroupReadiness, GroupSpec, head_beacon, stage_beacon};
 use crate::identity::Identity;
 use crate::job::{self, Refusal};
 use crate::lease::{Dedicated, Machine};
@@ -62,6 +63,28 @@ pub struct Config {
     /// A posted price per job; `None` serves free (`free-v1`). A priced
     /// pylon sells each job under NIP-X402 ([`Provider::priced`]).
     pub price: Option<Price>,
+    /// The model group this pylon heads (#12402): its beacon becomes the
+    /// group's v2 head beacon, and it publishes a beacon for each stage.
+    pub group: Option<HeadGroup>,
+}
+
+/// What a group head publishes: its group, the readiness the lifecycle
+/// reports, and each stage's name and layers in step order.
+#[derive(Clone)]
+pub struct HeadGroup {
+    pub spec: GroupSpec,
+    pub readiness: Arc<dyn GroupReadiness>,
+    pub stages: Vec<(String, Layers)>,
+}
+
+impl std::fmt::Debug for HeadGroup {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HeadGroup")
+            .field("spec", &self.spec)
+            .field("status", &self.readiness.status())
+            .field("stages", &self.stages)
+            .finish()
+    }
 }
 
 impl Config {
@@ -87,6 +110,7 @@ impl Config {
             job_timeout: Duration::from_secs(90),
             owner: None,
             price: None,
+            group: None,
         }
     }
 
@@ -372,8 +396,9 @@ impl Provider {
         } else {
             Status::Online
         });
+        let busy = state.free == 0;
         let observed_at = now();
-        Beacon {
+        let beacon = Beacon {
             v: BEACON_V.into(),
             requires: Vec::new(),
             // Inert: the attested endpoint this pylon's key serves. The
@@ -406,7 +431,63 @@ impl Provider {
             }],
             pools: self.config.pools.clone(),
             group: None,
+        };
+        match &self.config.group {
+            Some(group) => {
+                let mut head = head_beacon(&beacon, &group.spec, group.readiness.as_ref(), busy);
+                if status != Status::Online {
+                    head.slots.free = 0;
+                }
+                head
+            }
+            None => beacon,
         }
+    }
+
+    /// Every beacon this pylon publishes as of now: its own and, for a
+    /// group head, one per stage. A stage that isn't loaded and checked at
+    /// the group's generation is offline, so a lost stage shows as a pylon
+    /// leaving.
+    pub async fn beacons(&self, status: Option<Status>) -> Vec<Beacon> {
+        let head = self.beacon(status).await;
+        let Some(group) = &self.config.group else {
+            return vec![head];
+        };
+        let generation = group.readiness.status().generation;
+        let ready: std::collections::BTreeMap<String, bool> =
+            group.readiness.stages().into_iter().collect();
+        let mut out = vec![head.clone()];
+        for (name, layers) in &group.stages {
+            let mut base = head.clone();
+            base.pylon = format!("{}-{name}", self.config.pylon);
+            base.label = format!("{} {name}", self.config.label)
+                .chars()
+                .take(64)
+                .collect();
+            base.status =
+                if head.status == Status::Offline || !ready.get(name).copied().unwrap_or(false) {
+                    Status::Offline
+                } else {
+                    Status::Online
+                };
+            out.push(stage_beacon(&base, &group.spec, generation, *layers));
+        }
+        out
+    }
+
+    /// What decides when the beacons are republished at once: each
+    /// beacon's status, the group's readiness and generation, and each
+    /// stage's status; free slots are compared separately.
+    fn beacon_key(beacons: &[Beacon]) -> (String, u32) {
+        let major = beacons
+            .iter()
+            .map(|b| {
+                let group = b.group.as_ref().map(|g| (g.readiness, g.generation));
+                format!("{}:{:?}:{group:?}", b.pylon, b.status)
+            })
+            .collect::<Vec<_>>()
+            .join(",");
+        (major, beacons.first().map_or(0, |b| b.slots.free))
     }
 
     /// The services the beacon advertises: text generation when there is an
@@ -481,15 +562,20 @@ impl Provider {
         }
         beacons.abort();
         sessions.abort();
-        let event = owned_beacon_event(
-            self.identity.signer(),
-            &self.beacon(Some(Status::Offline)).await,
-            self.config.owner.as_ref(),
-        )?;
+        let mut events = Vec::new();
+        for beacon in self.beacons(Some(Status::Offline)).await {
+            events.push(owned_beacon_event(
+                self.identity.signer(),
+                &beacon,
+                self.config.owner.as_ref(),
+            )?);
+        }
         match relay::connect(&self.config.relay, &self.identity, Duration::from_secs(10)).await {
             Ok(mut conn) => {
-                if let Err(e) = relay::publish(&mut conn, &event).await {
-                    eprintln!("pylon: offline beacon: {e}");
+                for event in &events {
+                    if let Err(e) = relay::publish(&mut conn, event).await {
+                        eprintln!("pylon: offline beacon: {e}");
+                    }
                 }
                 let _ = conn.close().await;
             }
@@ -513,7 +599,7 @@ impl Provider {
             }
             Err(e) => eprintln!("pylon: relay list: {e}"),
         }
-        let mut last: Option<(Instant, (Status, u32))> = None;
+        let mut last: Option<(Instant, (String, u32))> = None;
         let mut checked = Instant::now() - Duration::from_secs(60);
         loop {
             if checked.elapsed() >= Duration::from_secs(30) {
@@ -522,30 +608,38 @@ impl Provider {
                 checked = Instant::now();
             }
             self.refresh_machine().await;
-            let beacon = self.beacon(None).await;
-            let key = (beacon.status, beacon.slots.free);
-            let due = match last {
+            let beacons = self.beacons(None).await;
+            let key = Self::beacon_key(&beacons);
+            let due = match &last {
                 None => true,
                 Some((at, held)) => {
                     let since = at.elapsed();
                     held.0 != key.0
-                        || (held != key && since >= Duration::from_secs(10))
+                        || (*held != key && since >= Duration::from_secs(10))
                         || since >= Duration::from_secs(60)
                 }
             };
             if due {
-                match owned_beacon_event(
-                    self.identity.signer(),
-                    &beacon,
-                    self.config.owner.as_ref(),
-                ) {
-                    Ok(event) => {
-                        if self.outbound.send(event).await.is_err() {
-                            return;
+                let mut sent = true;
+                for beacon in &beacons {
+                    match owned_beacon_event(
+                        self.identity.signer(),
+                        beacon,
+                        self.config.owner.as_ref(),
+                    ) {
+                        Ok(event) => {
+                            if self.outbound.send(event).await.is_err() {
+                                return;
+                            }
                         }
-                        last = Some((Instant::now(), key));
+                        Err(e) => {
+                            eprintln!("pylon: beacon: {e}");
+                            sent = false;
+                        }
                     }
-                    Err(e) => eprintln!("pylon: beacon: {e}"),
+                }
+                if sent {
+                    last = Some((Instant::now(), key));
                 }
             }
             tokio::select! {
