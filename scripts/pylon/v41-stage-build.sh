@@ -84,8 +84,10 @@ if [[ $mode == pylon ]]; then
   arch=
   dest=gs://openagents-psionic-models/bin/pylon/$short
   src_dir=src-pylon
-  paths=(Cargo.toml Cargo.lock rust-toolchain.toml crates ':!crates/psionic' vendor apps
-    support scripts nips)
+  # Crates read registry files from across the checkout at compile time,
+  # so this sends everything but Psionic, the benchmark evidence, and
+  # binary assets.
+  paths=(. ':!crates/psionic' ':!bench' ':!assets' ':!bins')
 fi
 
 if [[ $dry == 1 ]]; then
