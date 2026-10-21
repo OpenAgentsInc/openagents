@@ -1023,13 +1023,34 @@ fn the_launchers_reach_stages_and_the_head_inside_the_zone() {
         "/opt/openagents/stage-run '--layers' '20-30' '--front' '127.0.0.1:47102'"
     );
 
-    // The budget host starts the head over gcloud ssh, with its input and
-    // output as the session's.
+    // The budget host waits for a new machine's head to answer ssh before
+    // it starts the session, and gives up after the wait.
     let dir = tempfile::tempdir().unwrap();
     let output = std::process::Command::new(repo().join("scripts/pylon/v41-head-ssh.sh"))
         .args(["oa-v41-two-dual-head", "us-east1-b", "openagentsgemini"])
         .env("OA_GCLOUD", fixture("fake_gcloud.py"))
         .env("FAKE_GCLOUD_ROOT", dir.path())
+        .env("OA_HEAD_SSH_WAIT", "1")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("did not start its head within 1 s"));
+    let calls = std::fs::read_to_string(dir.path().join("calls.jsonl")).unwrap();
+    let probe: Vec<String> = serde_json::from_str(calls.lines().next().unwrap()).unwrap();
+    assert_eq!(
+        probe[probe.len() - 3..],
+        ["test", "-x", "/opt/openagents/head-run"]
+    );
+    assert!(!calls.contains("\"-T\""));
+
+    // Then it starts the head over gcloud ssh, with its input and output as
+    // the session's.
+    let dir = tempfile::tempdir().unwrap();
+    let output = std::process::Command::new(repo().join("scripts/pylon/v41-head-ssh.sh"))
+        .args(["oa-v41-two-dual-head", "us-east1-b", "openagentsgemini"])
+        .env("OA_GCLOUD", fixture("fake_gcloud.py"))
+        .env("FAKE_GCLOUD_ROOT", dir.path())
+        .env("OA_HEAD_SSH_WAIT", "0")
         .output()
         .unwrap();
     assert!(!output.status.success());

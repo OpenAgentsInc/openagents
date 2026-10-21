@@ -145,7 +145,23 @@ impl Guard {
             .trim_start_matches("cloud-budget: ")
             .trim_start_matches("refused: ")
             .to_string();
-        Err(format!("the spend guard refused: {why}"))
+        // Keep gcloud's own error, such as a zone out of capacity, which
+        // the guard prints before its last line.
+        let gcloud: Vec<&str> = stderr
+            .lines()
+            .map(str::trim)
+            .skip_while(|l| !l.starts_with("ERROR:"))
+            .filter(|l| !l.is_empty() && !l.starts_with("cloud-budget:"))
+            .take(12)
+            .collect();
+        if gcloud.is_empty() {
+            Err(format!("the spend guard refused: {why}"))
+        } else {
+            Err(format!(
+                "the spend guard refused: {why} ({})",
+                gcloud.join(" ")
+            ))
+        }
     }
 
     /// The budget's ledger file.
