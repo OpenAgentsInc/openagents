@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Run a local nostr-relay for livehost on ws://127.0.0.1:${LIVEHOST_RELAY_PORT:-7448}.
 #
-# Postgres and the relay key live in a state directory (default: a
-# livehost-relay folder under `openagents scratch`). Ctrl-C stops both.
+# Postgres and the relay key live in a state directory (default:
+# ~/.openagents/scratch/lh-relay). Keep its path short: Postgres refuses a
+# socket path over 103 bytes. Ctrl-C stops both.
 # Build the relay first:
 #   cargo build --release -p nostr-relay
 #
@@ -11,7 +12,7 @@
 set -euo pipefail
 
 : "${CARGO_TARGET_DIR:?set CARGO_TARGET_DIR to the shared target}"
-state="${1:-$(openagents scratch 2>/dev/null || echo "$HOME/.openagents/scratch")/livehost-relay}"
+state="${1:-$HOME/.openagents/scratch/lh-relay}"
 port="${LIVEHOST_RELAY_PORT:-7448}"
 pg_port="${LIVEHOST_RELAY_PG_PORT:-55448}"
 relay="$CARGO_TARGET_DIR/release/nostr-relay"

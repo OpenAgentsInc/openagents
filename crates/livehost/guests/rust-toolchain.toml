@@ -1,0 +1,6 @@
+# The repository's toolchain, pinned here too so the guests build the same
+# when the demo copies them out of the checkout.
+[toolchain]
+channel = "1.97.1"
+profile = "minimal"
+targets = ["wasm32-unknown-unknown", "wasm32-wasip2"]

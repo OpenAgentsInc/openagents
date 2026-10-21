@@ -69,8 +69,10 @@ struct Watcher {
 }
 
 impl Watcher {
+    /// Waits for a message seen at or after `since` that `matches`.
     async fn wait(
         &self,
+        since: Instant,
         timeout: Duration,
         matches: impl Fn(&Seen) -> bool,
     ) -> Result<(Instant, Value)> {
@@ -84,7 +86,7 @@ impl Watcher {
                 .lock()
                 .expect("seen")
                 .iter()
-                .find(|seen| matches(seen))
+                .find(|seen| seen.at >= since && matches(seen))
             {
                 return Ok((seen.at, seen.value.clone()));
             }
@@ -287,6 +289,7 @@ impl Bench {
                 pages.push(format!("http://{}:{port}/", self.game_host));
             }
             let client = reqwest::Client::new();
+            let opened = Instant::now();
             for page in &pages {
                 client
                     .put(format!("http://127.0.0.1:{cdp}/json/new?{page}"))
@@ -296,7 +299,7 @@ impl Bench {
                     .context("opening a page in the browser")?;
             }
             watcher
-                .wait(wait, |seen| {
+                .wait(opened, wait, |seen| {
                     seen.kind == "ack" && seen.value["path"] == "/hello"
                 })
                 .await
@@ -384,14 +387,14 @@ impl Bench {
             .context("the edit changed nothing")?;
         let wait = Duration::from_secs(120);
         let (host_at, _) = watcher
-            .wait(wait, |seen| {
+            .wait(started, wait, |seen| {
                 seen.kind == tenant && seen.value["manifest"] == manifest.as_str()
             })
             .await
             .with_context(|| format!("{case}: the host never served {manifest}"))?;
         let browser = if self.cdp_port.is_some() {
             let (at, value) = watcher
-                .wait(wait, |seen| {
+                .wait(started, wait, |seen| {
                     seen.kind == "ack"
                         && seen.value["tenant"] == tenant
                         && seen.value["path"] == path
@@ -482,7 +485,7 @@ impl Bench {
             .await?;
             let manifest = report.manifest.clone().context("no change")?;
             watcher
-                .wait(Duration::from_secs(60), |seen| {
+                .wait(at, Duration::from_secs(60), |seen| {
                     seen.kind == "site" && seen.value["manifest"] == manifest.as_str()
                 })
                 .await?;
