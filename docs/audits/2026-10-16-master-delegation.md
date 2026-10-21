@@ -485,6 +485,11 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12394: once #12404 settles the qualified arithmetic order, move the W7
+  stage's kernels to it and rerun G4 on layers 0–4 and 0–9 with
+  `scripts/bench/deepseek-v41/stage_vm.sh`, adding an isolated per-layer
+  check (the CPU fed the GPU's layer inputs and state).
+
 - #12375: rebuild the website with its wallet builder included in the upload.
   The Cloud Build file chooser includes the executable script, and the build
   checks it before compilation. The production image and live checks continue
