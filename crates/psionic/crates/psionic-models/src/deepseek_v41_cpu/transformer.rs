@@ -266,20 +266,6 @@ impl<'a> CpuTransformer<'a> {
         let mut layers = Vec::new();
         for layer in 0..40 {
             let block = TextBlock::new(self.weights, layer, c.block, self.arithmetic)?;
-            for i in 0..tokens.len() {
-                observe(
-                    &mut observer,
-                    &format!("layers.{layer}.hc.in"),
-                    self.position + i,
-                    &residuals[i],
-                )?;
-                observe(
-                    &mut observer,
-                    &format!("layers.{layer}.hc.pre_mix_in"),
-                    self.position + i,
-                    &pre_mixes[i],
-                )?;
-            }
             let engram = c
                 .engram
                 .layers
@@ -313,6 +299,20 @@ impl<'a> CpuTransformer<'a> {
                         residual,
                     )?;
                 }
+            }
+            for i in 0..tokens.len() {
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.hc.in"),
+                    self.position + i,
+                    &residuals[i],
+                )?;
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.hc.pre_mix_in"),
+                    self.position + i,
+                    &pre_mixes[i],
+                )?;
             }
             let mut mixes = Vec::with_capacity(tokens.len());
             let mut normalized = Vec::with_capacity(product(tokens.len(), width)?);

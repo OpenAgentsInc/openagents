@@ -213,6 +213,69 @@ mod tests {
     }
 
     #[test]
+    fn collapse_and_expand_match_original_weight_oracle_activations()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::deepseek_v41_oracle::V41OracleFixtures;
+        use crate::deepseek_v41_weights::decode_bf16;
+        let oracle = V41OracleFixtures::load_checked_in()?;
+        let values = |site: &str| -> Result<Vec<f32>, Box<dyn std::error::Error>> {
+            let name = format!("p1-chat-thinking.decode.first.{site}");
+            let raw = oracle
+                .full_bytes(&name)
+                .ok_or("whole oracle tensor missing")?;
+            assert!(oracle.matches(&name, raw)?);
+            Ok(match oracle.tensor(&name)?.dtype.as_str() {
+                "bfloat16" => raw
+                    .chunks_exact(2)
+                    .map(|x| decode_bf16([x[0], x[1]]))
+                    .collect(),
+                "float32" => raw
+                    .chunks_exact(4)
+                    .map(|x| f32::from_le_bytes([x[0], x[1], x[2], x[3]]))
+                    .collect(),
+                _ => return Err("unexpected oracle dtype".into()),
+            })
+        };
+        let check = |a: Vec<f32>, b: Vec<f32>| -> Result<(), CpuError> {
+            let a = super::super::quantization::round_bf16(&a)?;
+            assert_eq!(a.len(), b.len());
+            for (a, b) in a.iter().zip(b) {
+                assert!((a - b).abs() <= 0.015625 + 0.015625 * b.abs(), "{a} != {b}");
+            }
+            Ok(())
+        };
+        let hc = HyperConnections::flash();
+        let residual = values("layers.0.hc.in")?;
+        check(
+            hc.collapse(&residual, &values("layers.0.hc.pre_mix_in")?)?,
+            values("layers.0.hc.attn.collapsed")?,
+        )?;
+        let mixes = Mixes {
+            pre: values("layers.0.hc.attn.pre")?,
+            post: values("layers.0.hc.attn.post")?,
+            comb: values("layers.0.hc.attn.comb")?,
+        };
+        check(
+            hc.expand(&values("layers.0.attn.out")?, &residual, &mixes)?,
+            values("layers.0.hc.attn.expanded")?,
+        )?;
+        let residual = values("layers.0.hc.attn.expanded")?;
+        check(
+            hc.collapse(&residual, &mixes.pre)?,
+            values("layers.0.hc.ffn.collapsed")?,
+        )?;
+        let mixes = Mixes {
+            pre: values("layers.0.hc.ffn.pre")?,
+            post: values("layers.0.hc.ffn.post")?,
+            comb: values("layers.0.hc.ffn.comb")?,
+        };
+        check(
+            hc.expand(&values("layers.0.ffn.out")?, &residual, &mixes)?,
+            values("layers.0.hc.ffn.expanded")?,
+        )?;
+        Ok(())
+    }
+    #[test]
     fn matches_nonuniform_numpy_fixture() -> Result<(), Box<dyn std::error::Error>> {
         let f: Fixture = serde_json::from_str(include_str!(
             "../testdata/deepseek_v41_cpu/hyperconnections.json"
