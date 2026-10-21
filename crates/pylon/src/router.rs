@@ -60,9 +60,9 @@ const DECIDE_LATEST: usize = 2_000;
 /// The most earlier turns, and characters of each, the decision reads.
 const DECIDE_EARLIER: usize = 3;
 const DECIDE_TURN: usize = 400;
-/// The most request text a job carries, inside NIP-CJ's
-/// [`crate::job::MAX_INPUT_BYTES`] with room for the instructions.
-const JOB_TEXT_BYTES: usize = crate::job::MAX_INPUT_BYTES - 4 * 1024;
+/// The room a job leaves under a pylon's request-text limit for the
+/// instructions.
+const INSTRUCTIONS_ROOM: usize = 4 * 1024;
 
 /// One pylon that can answer now.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -80,6 +80,8 @@ pub struct Candidate {
     pub free: u32,
     pub total: u32,
     pub observed_at: u64,
+    /// The most request text it accepts ([`crate::job::input_limit`]).
+    pub max_input_bytes: usize,
 }
 
 impl Candidate {
@@ -95,6 +97,7 @@ impl Candidate {
             free: beacon.slots.free,
             total: beacon.slots.total,
             observed_at: beacon.observed_at,
+            max_input_bytes: crate::job::input_limit(beacon),
         }
     }
 
@@ -431,28 +434,39 @@ impl Routed {
     }
 }
 
-/// The job's text from `turns`: the last user turn as the prompt, and the
-/// newest earlier turns that fit [`JOB_TEXT_BYTES`] and NIP-CJ's turn
-/// bound as history.
+/// A turn's size as a job carries it: its JSON-encoded text, so escapes
+/// count against the limit as they count against the encrypted body.
+fn encoded_len(text: &str) -> usize {
+    serde_json::to_string(text).map_or(text.len() * 6, |s| s.len())
+}
+
+/// The job's text from `turns` for a pylon that accepts `limit` bytes of
+/// request text: the last user turn as the prompt, and the newest earlier
+/// turns that fit the limit, less room for the instructions, and NIP-CJ's
+/// turn bound as history. `None` when the prompt alone doesn't fit: the
+/// question is never cut, so that pylon is skipped.
 #[must_use]
-pub fn job_text(turns: &[Turn]) -> (Vec<Turn>, String) {
+pub fn job_text_within(turns: &[Turn], limit: usize) -> Option<(Vec<Turn>, String)> {
     let Some(last) = turns.iter().rposition(|t| t.role == "user") else {
-        return (Vec::new(), String::new());
+        return Some((Vec::new(), String::new()));
     };
     // Keep the current question intact. The job admission checks refuse
     // an oversized prompt instead of silently changing what was asked.
     let prompt = turns[last].content.clone();
-    let mut room = JOB_TEXT_BYTES.saturating_sub(prompt.len());
+    let mut room = limit
+        .saturating_sub(INSTRUCTIONS_ROOM)
+        .checked_sub(encoded_len(&prompt))?;
     let mut history = Vec::new();
     for turn in turns[..last].iter().rev() {
-        if history.len() + 2 > crate::job::MAX_TURNS || turn.content.len() > room {
+        let size = encoded_len(&turn.content);
+        if history.len() + 2 > crate::job::MAX_TURNS || size > room {
             break;
         }
-        room -= turn.content.len();
+        room -= size;
         history.push(turn.clone());
     }
     history.reverse();
-    (history, prompt)
+    Some((history, prompt))
 }
 
 /// The order to try `candidates` in, and how it was chosen: the decision
@@ -609,7 +623,6 @@ pub async fn route(
             failed: Vec::new(),
         };
     };
-    let (history, prompt) = job_text(turns);
     let started = Instant::now();
     let mut failed = Vec::new();
     // An extended request may take its whole budget on one try.
@@ -621,6 +634,17 @@ pub async fn route(
         if left.is_zero() {
             break;
         }
+        // Sized to what this pylon accepts: an older pylon takes less.
+        let Some((history, prompt)) = job_text_within(turns, candidate.max_input_bytes) else {
+            failed.push((
+                candidate.address(),
+                format!(
+                    "the message is longer than this pylon accepts ({} KiB)",
+                    candidate.max_input_bytes / 1024
+                ),
+            ));
+            continue;
+        };
         let ask = Ask {
             relay: settings.relay.clone(),
             pylon: Some(candidate.provider.clone()),
@@ -876,27 +900,75 @@ mod tests {
             role: "user".into(),
             content: "last".into(),
         });
-        let (history, prompt) = job_text(&turns);
+        let max = crate::job::MAX_INPUT_BYTES;
+        let (history, prompt) = job_text_within(&turns, max).unwrap();
         assert_eq!(prompt, "last");
         assert_eq!(history.len(), crate::job::MAX_TURNS - 1);
         assert_eq!(history.last().unwrap().content, "turn 39");
 
+        // A long earlier answer is dropped; the question is never cut.
+        let text = |role: &str, content: String| Turn {
+            role: role.into(),
+            content,
+        };
         let long = vec![
-            Turn {
-                role: "user".into(),
-                content: "x".repeat(JOB_TEXT_BYTES),
-            },
-            Turn {
-                role: "assistant".into(),
-                content: "y".repeat(JOB_TEXT_BYTES),
-            },
-            Turn {
-                role: "user".into(),
-                content: "é".repeat(JOB_TEXT_BYTES),
-            },
+            text("user", "x".repeat(max / 2)),
+            text("assistant", "y".repeat(max / 2)),
+            text("user", "é".repeat(max / 4)),
         ];
-        let (history, prompt) = job_text(&long);
+        let (history, prompt) = job_text_within(&long, max).unwrap();
         assert!(history.is_empty());
         assert_eq!(prompt, long[2].content);
+        let too_long = vec![text("user", "z".repeat(max))];
+        assert_eq!(job_text_within(&too_long, max), None);
+    }
+
+    #[test]
+    fn an_older_pylon_gets_a_job_it_accepts_or_none() {
+        let legacy = crate::job::LEGACY_MAX_INPUT_BYTES;
+        let text = |role: &str, content: String| Turn {
+            role: role.into(),
+            content,
+        };
+        // 20 KiB of earlier conversation fits a new pylon but not an old one.
+        let turns = vec![
+            text("user", "a".repeat(10 * 1024)),
+            text("assistant", "b".repeat(10 * 1024)),
+            text("user", "What next?".into()),
+        ];
+        let (history, _) = job_text_within(&turns, crate::job::MAX_INPUT_BYTES).unwrap();
+        assert_eq!(history.len(), 2);
+        let (history, prompt) = job_text_within(&turns, legacy).unwrap();
+        assert_eq!(history.len(), 1);
+        assert_eq!(prompt, "What next?");
+        let sent: usize = history.iter().map(|t| t.content.len()).sum::<usize>() + prompt.len();
+        assert!(sent <= legacy);
+        // Escaped text counts at its encoded size: 4 KiB of control
+        // characters is 24 KiB of JSON, past what an old pylon opens.
+        let escaped = vec![text("user", "\u{1}".repeat(4 * 1024))];
+        assert_eq!(job_text_within(&escaped, legacy), None);
+        // A prompt past an old pylon's limit skips it, uncut.
+        let long = vec![text("user", "q".repeat(legacy))];
+        assert_eq!(job_text_within(&long, legacy), None);
+        assert!(job_text_within(&long, crate::job::MAX_INPUT_BYTES).is_some());
+    }
+
+    #[test]
+    fn a_beacon_names_its_input_limit_or_reads_as_an_older_pylon() {
+        let (book, _) = book(vec![spec("old", Tier::Large, 2)]);
+        let (_, beacon) = book.iter().next().unwrap();
+        assert!(beacon.meta.is_none());
+        assert_eq!(
+            crate::job::input_limit(beacon),
+            crate::job::LEGACY_MAX_INPUT_BYTES
+        );
+        let mut beacon = beacon.clone();
+        beacon.meta = Some(serde_json::json!({ "max_input_bytes": 98_304 }));
+        assert_eq!(crate::job::input_limit(&beacon), 98_304);
+        beacon.meta = Some(serde_json::json!({ "max_input_bytes": u64::MAX }));
+        assert_eq!(
+            crate::job::input_limit(&beacon),
+            crate::job::MAX_INPUT_BYTES
+        );
     }
 }

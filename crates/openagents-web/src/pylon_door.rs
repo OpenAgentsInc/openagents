@@ -161,6 +161,7 @@ fn log_line(routed: &router::Routed, ms: u128) -> String {
     let outcome = match &routed.outcome {
         Outcome::Answered(answer) => format!("answered by {}", answer.pylon),
         Outcome::Declined => "handed to the hosted chat".into(),
+        Outcome::Unavailable(why) if why == "no pylon answered" => why.clone(),
         Outcome::Unavailable(why) => format!("no pylon answered ({why})"),
     };
     let how = match &routed.how {
@@ -176,12 +177,24 @@ fn log_line(routed: &router::Routed, ms: u128) -> String {
         ),
         How::Ranked { why } => format!("ranked ({why})"),
     };
-    format!(
+    let mut line = format!(
         "openagents-web: pylon router: {outcome}; {how}; {} candidates, {} deciders, {} failed, {ms} ms",
         routed.candidates,
         routed.deciders,
         routed.failed.len()
-    )
+    );
+    // Each pylon that gave no answer, by its slug, and the reason it gave
+    // (#12416), one line, bounded: a pylon writes the reason.
+    for (address, why) in &routed.failed {
+        let slug = address.rsplit(':').next().unwrap_or_default();
+        let why: String = why
+            .chars()
+            .map(|c| if c.is_control() { ' ' } else { c })
+            .take(160)
+            .collect();
+        line.push_str(&format!("; {slug}: {why}"));
+    }
+    line
 }
 
 impl Door for PylonDoor {

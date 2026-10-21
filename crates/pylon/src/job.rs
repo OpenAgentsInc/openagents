@@ -28,6 +28,36 @@ pub const MAX_INPUT_BYTES: usize = 96 * 1024;
 /// The encoded JSON must also fit the encrypted transport, including
 /// duplicated task text, history, and JSON escapes.
 pub const MAX_REQUEST_BYTES: usize = nip44::MAX_CLIENT_PLAINTEXT_BYTES;
+/// The most request text a pylon built before #12414 accepts, inside a
+/// standard NIP-44 body: what a buyer assumes of a beacon that names no
+/// [`INPUT_LIMIT`].
+pub const LEGACY_MAX_INPUT_BYTES: usize = 16 * 1024;
+/// The beacon `meta` key under which a complete pylon names the most
+/// request text it accepts.
+pub const INPUT_LIMIT: &str = "max_input_bytes";
+
+/// The most request text the pylon behind `beacon` accepts, never more
+/// than [`MAX_INPUT_BYTES`]: a group head's request limits, else
+/// [`MAX_INPUT_BYTES`] (groups came after the limit was raised); a complete
+/// pylon's [`INPUT_LIMIT`], else [`LEGACY_MAX_INPUT_BYTES`].
+#[must_use]
+pub fn input_limit(beacon: &nostr::pylon::Beacon) -> usize {
+    let named = if beacon.group.is_some() {
+        Some(
+            crate::group::request_limits(beacon)
+                .map_or(MAX_INPUT_BYTES as u64, |l| l.max_input_bytes),
+        )
+    } else {
+        beacon
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.get(INPUT_LIMIT))
+            .and_then(Value::as_u64)
+    };
+    named.map_or(LEGACY_MAX_INPUT_BYTES, |bytes| {
+        usize::try_from(bytes).map_or(MAX_INPUT_BYTES, |b| b.min(MAX_INPUT_BYTES))
+    })
+}
 
 /// A decoded conversation request.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -128,6 +128,14 @@ earnings. Earnings come only from receipts, which the provider does not
 sign. Reachability is not a beacon field; a buyer reaches a pylon through
 the relays in the provider's NIP-65 list and the CJ transport.
 
+A complete pylon states in its inert `meta` as `max_input_bytes` the most
+conversation text, in bytes, that one request may carry (98304 since
+2026-10-21). A buyer sizes each request to it, keeping the newest earlier
+turns that fit, and never cuts the latest message; a message that doesn't
+fit goes to another pylon. A beacon without it is read as 16384 bytes, the
+limit of pylons released before it, which also take only standard NIP-44
+bodies of at most 65535 bytes.
+
 ### Model groups
 
 A model too large for one machine runs as a *group*: one *stage* Pylon per

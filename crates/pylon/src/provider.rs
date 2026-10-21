@@ -416,9 +416,16 @@ impl Provider {
             requires: Vec::new(),
             // Inert: the attested endpoint this pylon's key serves. The
             // level a reader shows comes only from that endpoint's evidence.
-            meta: self.attested.get().map(
-                |a| json!({"attested_endpoint": a.address, "claimed_level": a.level.as_str()}),
-            ),
+            // The request-text limit lets a buyer size each job to it
+            // (#12416); a beacon without it is read as an older pylon's.
+            meta: Some(match self.attested.get() {
+                Some(a) => json!({
+                    "attested_endpoint": a.address,
+                    "claimed_level": a.level.as_str(),
+                    (crate::job::INPUT_LIMIT): crate::job::MAX_INPUT_BYTES,
+                }),
+                None => json!({(crate::job::INPUT_LIMIT): crate::job::MAX_INPUT_BYTES}),
+            }),
             provider: self.pubkey().into(),
             pylon: self.config.pylon.clone(),
             label: self.config.label.clone(),

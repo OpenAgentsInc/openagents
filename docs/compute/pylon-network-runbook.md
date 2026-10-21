@@ -45,8 +45,13 @@ other. The CPU VM row is the pylon the L4 VM replaced.
 | `oa-pylon-gpu-1`, "GCE L4 (network lane)" | GCE `g2-standard-8` in `us-central1-a`, NVIDIA L4 24 GB, 32 GB, Ubuntu 22.04 | Psionic on CUDA 12.9 | Decisions (port 18096), text (port 18097) | `npub1g47xkl9yhhtj3tta4t6wrzut5f27k4mtaf3qw4v8gj2j09ejk09qfulsw6` | `npub1pr3yk84y7a76ptdedvfck60wqxnxywlcu8atsfyqhyk6je49avpsp29pyu` |
 | `oa-pylon-cloud-1` (deleted) | GCE `n2-standard-16` in `us-central1-a`, Debian 12, 64 GB, no GPU | Psionic on the CPU | Decisions only (port 18096) | Same as the L4 VM | Same as the L4 VM |
 
-Each pylon admits only the three buyer keys (`--allow`), so each machine can
-buy from the other two. All three serve the pinned Clef-Flash Q4_K_M file
+Each pylon admitted only the three buyer keys (`--allow`), so each machine
+could buy from the other two. That also refused the Grid terminal on `/`,
+which sends each person's jobs from a key of their own (#12416). On
+2026-10-21 the Mac and CoderOS pylons were restarted with `--allow-any`
+(rate limits still apply), which `share.json` keeps for later starts. The
+L4 VM still runs with the allowlist; replace its unit's `--allow ...` with
+`--allow-any` to open it, since `--allow` adds the keys again on each start. All three serve the pinned Clef-Flash Q4_K_M file
 (`sha256:36261166…`) and publish to `wss://relay.openagents.com` in the
 `everglade` pool. None is linked to an owner and none is paid.
 

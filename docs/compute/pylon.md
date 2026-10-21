@@ -64,7 +64,8 @@ Admission, in order: a valid signature, this pylon as the only `p`, a
 request no older than 120 seconds and not seen before, a key on the
 allowlist (`--allow`, repeatable; `--allow-any` opens it), the buyer's rate
 limit (`--rate`, default 10 jobs a minute), a free slot (`--slots`, default
-2), and the request bounds (32 transcript entries, 16 KiB of text). A
+2), and the request bounds (32 transcript entries, 96 KiB of text, which
+the beacon states as `max_input_bytes`; older pylons take 16 KiB). A
 refusal is `status: error` feedback with a NIP-CJ code: `not_admitted`,
 `rate_limited` with `retry_after_ms`, `malformed`, or `limit_exceeded`.
 Output is bounded by `--max-tokens` (default 512) and each job by 90

@@ -219,6 +219,31 @@ by pylon:clef in 40 ms; 2 candidates, 1 deciders, 0 failed, 45 ms"
 }
 
 #[test]
+fn the_log_line_names_each_failed_pylon_and_why() {
+    let routed = router::Routed {
+        outcome: Outcome::Unavailable("no pylon answered".into()),
+        how: How::Ranked {
+            why: "no decision model online".into(),
+        },
+        candidates: 2,
+        deciders: 0,
+        failed: vec![
+            (
+                "30200:aa:mac-net".into(),
+                "not_admitted: this pylon serves listed keys only".into(),
+            ),
+            ("30200:bb:rig".into(), "no answer within\n30 s".into()),
+        ],
+    };
+    assert_eq!(
+        log_line(&routed, 900),
+        "openagents-web: pylon router: no pylon answered; ranked (no decision model online); \
+2 candidates, 0 deciders, 2 failed, 900 ms; mac-net: not_admitted: this pylon serves listed \
+keys only; rig: no answer within 30 s"
+    );
+}
+
+#[test]
 fn each_person_sends_as_their_own_buyer_key() {
     let salt = [7; 32];
     assert_eq!(buyer(&salt, "a"), buyer(&salt, "a"));
