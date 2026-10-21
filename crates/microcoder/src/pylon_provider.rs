@@ -39,8 +39,8 @@ pub const DEADLINE: Duration = Duration::from_secs(300);
 pub const BUDGET: Duration = Duration::from_secs(600);
 
 /// How long to wait before asking again when no pylon serving the model
-/// is live: a group's beacon can lapse for a moment while it finishes a
-/// long job.
+/// is live or has a free slot: a group's beacon can lapse for a moment
+/// while it finishes a long job, and a group serves one job at a time.
 pub const RETRY_AFTER: Duration = Duration::from_secs(15);
 
 /// The request text a step sends, at most: the job admission's 96 KiB,
@@ -238,13 +238,20 @@ impl Generate for PylonGenerator {
                 );
                 continue;
             }
-            let none_live =
-                matches!(&routed.outcome, Outcome::Unavailable(_)) && routed.candidates == 0;
+            // No pylon serving the model is live, or every one that is had
+            // no free slot.
+            let busy = !routed.failed.is_empty()
+                && routed
+                    .failed
+                    .iter()
+                    .all(|(_, why)| why.contains("rate_limited"));
+            let none_live = matches!(&routed.outcome, Outcome::Unavailable(_))
+                && (routed.candidates == 0 || busy);
             if !none_live || started.elapsed() + RETRY_AFTER > BUDGET {
                 break routed;
             }
             eprintln!(
-                "        pylon: no live pylon serves {} yet; asking again in {} s",
+                "        pylon: no live pylon serving {} has a free slot; asking again in {} s",
                 self.model,
                 RETRY_AFTER.as_secs()
             );

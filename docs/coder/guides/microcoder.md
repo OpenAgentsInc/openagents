@@ -55,6 +55,73 @@ there (leading to the person's crate caches, which it may fill), and the
 other tools' caches under `$XDG_CACHE_HOME`. So it can copy the project
 there and run its tests (#11593).
 
+## Run a task in a directory on this computer
+
+Give Microcoder a task in words, and it works in the current directory, or
+the one `--dir` names. Its commands run inside the `coder-boundary`
+sandbox, which writes only that directory and a private temporary one
+(`$TMPDIR`). There are no acceptance tests or knowledge base in this mode;
+the run ends when the model finishes, and exit code 0 means it said it
+finished. Each run writes `events.jsonl` and `summary.json` under
+`~/.openagents/microcoder/runs/local-<time>/`.
+
+Two providers need no Codex or Claude login (#12426).
+
+**Flint on this Mac, through `rec`.** `rec` serves Flint at
+`http://127.0.0.1:11500/v1`. Keep its key in a file only you can read:
+
+```sh
+umask 077; rec auth token > ~/.openagents/rec-token
+microcoder "Make python3 -m unittest pass" \
+  --provider openai-compatible --base-url http://127.0.0.1:11500/v1 \
+  --token-file ~/.openagents/rec-token --model flint
+```
+
+`--provider openai-compatible` works with any OpenAI-compatible chat
+completions server. `--token-file` is read before every call; leave it
+out for a server without authentication. `--response-format auto`, the
+default, asks for the action under a strict `json_schema` response format
+and, when the server refuses that format or answers outside it, asks again
+for JSON in the reply's text and stays on text for the rest of the run.
+`rec` accepts the format and ignores it, so a Flint run moves to text on
+its first step; `--response-format text` skips that first try. The text
+reader drops reasoning and code fences, takes the first JSON object that
+reads as an action, and fills members a small model leaves out. A model on
+this computer bills nothing, so the model's `cost_basis` is `local` and its
+cost is $0.
+
+**DeepSeek V4.1 on the Pylon network.**
+
+```sh
+microcoder --provider pylon --model deepseek-v4.1-flash "Make python3 -m unittest pass"
+```
+
+Each step is a free conversation job, routed by the `pylon` crate's router
+to a live pylon or group that serves the model, as `openagents pylon ask
+--model` routes one. `--model` defaults to `deepseek-v4.1-flash`. The
+conversation lane carries text only, so the step's system prompt, with a
+short reply-format reminder, is the job's instructions, and the step's
+prompt is its one user turn. A step asks under `pylon.deadline.v1` with a
+300-second budget and tries for up to 600 seconds. While no pylon serving
+the model is live or has a free slot, the step asks again every 15
+seconds within that time.
+When a group refuses a prompt for its length (the DeepSeek groups take
+2,872 prompt tokens), the step is cut to fit and sent again, and later
+steps are cut before they're sent: the cut keeps the task and the files in
+view, and the latest steps. The terminal names the group that answered
+each step, and `summary.json` lists them under `pylon_answers`. The buyer
+key is new for each run; `--pylon-key home` uses the Pylon home's
+`buyer.key` instead, and receipts go to the Pylon home
+(`OPENAGENTS_PYLON_HOME`, else `~/.openagents/compute`) either way.
+`--relay` names another relay. A free job bills nothing, so the model's
+`cost_basis` is `free_network` and its cost is $0.
+
+Jev still judges each step, through the same resolver as every other run,
+so Jev's few hundredths of a cent are the run's only cost. These two
+providers aren't in the capacity book and don't fail over: a run on one
+uses only that one. Measured runs are in
+[the 2026-10-21 receipt](../measurements/2026-10-21-microcoder-flint-pylon.md).
+
 ## Run a Terminal-Bench 4 task
 
 ```sh
@@ -90,11 +157,14 @@ reward, grader output, entries used, and frozen tests), and `artifacts/`
 
 ### Cost and retrieval in `summary.json`
 
-- `provider`: `codex` or `openrouter`.
+- `provider`: `codex`, `openrouter`, `door`, `vertex`, `claude`,
+  `local`, `openai-compatible`, or `pylon`.
 - `cost_basis`: how the model cost was reached. `list_price` on the Codex
   login, which reports tokens and no dollars: the tokens are priced at
   OpenAI's list rates (`crates/codex-transport/src/price.rs`). `billed` on
-  OpenRouter, which reports what it charged. `cost_bases` gives the basis
+  OpenRouter, which reports what it charged. `local` on a server on this
+  computer (`openai-compatible`) and `free_network` on a free Pylon job,
+  which both cost $0. `cost_bases` gives the basis
   of the model, Jev (always its published rate times reported tokens), and
   embeddings.
 - `outcome.model_usd`, `outcome.jev_usd`, `outcome.embedding_usd`, and
@@ -303,6 +373,13 @@ run, and so do three replies in a row that don't match the schema.
   DeepSeek-V3.2 $0.56 and $1.68. Cached input is priced as uncached, so a
   cost can only be overstated. A model without a price leaves the cost
   unknown.
+- `--provider openai-compatible` (with `--base-url`, `--token-file`, and
+  `--response-format schema|text|auto`) and `--provider pylon` (with
+  `--relay` and `--pylon-key fresh|home`): see
+  [Run a task in a directory on this computer](#run-a-task-in-a-directory-on-this-computer).
+  Vertex runs on the same OpenAI-compatible generator,
+  `crates/microcoder-loop/src/openai_compat.rs`, with the response format
+  fixed to `schema`.
 - `--kb on|off|candidates`: the knowledge base, on by default.
   `--kb-lexical` ranks its entries by words alone.
 - `--route never|auto|always` and `--strong-model SLUG`: whether a
