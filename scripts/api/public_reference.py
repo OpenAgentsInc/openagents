@@ -27,6 +27,12 @@ def check_history_paths(paths):
             assert set(item) == sessions[path], 'Computer-session methods drift: ' + path
             for operation in item.values():
                 assert operation.get('security') == [{'appBearer': []}], 'Computer-session authority drift: ' + path
+        elif path == '/v1/history/pins':
+            # Named exception (#12087): owner-scoped compare-and-swap changes
+            # pin order only. The handler never writes saved chat content.
+            assert set(item) == {'get', 'patch'}, 'Saved pin-order methods drift'
+            for operation in item.values():
+                assert operation.get('security') == [{'appBearer': []}], 'Saved pin-order authority drift'
         elif path.startswith('/v1/history'):
             assert set(item) == {'get'}, 'Saved history must remain read-only'
 

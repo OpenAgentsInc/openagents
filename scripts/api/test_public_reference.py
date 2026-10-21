@@ -96,13 +96,47 @@ class PublicReference(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'component drift'):
             reference.check(document)
 
+    def test_saved_pin_order_is_the_named_write_exception(self):
+        pins = self.document['paths']['/v1/history/pins']
+        self.assertEqual(set(pins), {'get', 'patch'})
+        self.assertEqual(pins['patch']['operationId'], 'moveSavedPin')
+        reference.check_history_paths({'/v1/history/pins': pins})
+        for method in reference.METHODS - {'get', 'patch'}:
+            with self.subTest(method=method):
+                item = copy.deepcopy(pins)
+                item[method] = {'operationId': 'writeSavedHistory'}
+                with self.assertRaisesRegex(AssertionError, 'Saved pin-order methods drift'):
+                    reference.check_history_paths({'/v1/history/pins': item})
+
+    def test_saved_pin_order_keeps_account_authority(self):
+        for method in ('get', 'patch'):
+            for security in (None, [], [{'connectionBearer': []}]):
+                with self.subTest(method=method, security=security):
+                    item = copy.deepcopy(self.document['paths']['/v1/history/pins'])
+                    operation = item[method]
+                    if security is None:
+                        del operation['security']
+                    else:
+                        operation['security'] = security
+                    with self.assertRaisesRegex(AssertionError, 'Saved pin-order authority drift'):
+                        reference.check_history_paths({'/v1/history/pins': item})
+
     def test_saved_history_does_not_gain_write_operations(self):
-        for path in ('/v1/history', '/v1/history/{id}/messages'):
-            with self.subTest(path=path):
-                document = copy.deepcopy(self.document)
-                document['paths'][path]['post'] = {'operationId': 'writeSavedHistory'}
-                with self.assertRaisesRegex(AssertionError, 'Saved history must remain read-only'):
-                    reference.check(document)
+        paths = [path for path in self.document['paths']
+                 if path.startswith('/v1/history')
+                 and path != '/v1/history/pins'
+                 and path != '/v1/history/sessions'
+                 and not path.startswith('/v1/history/sessions/')]
+        paths.extend(('/v1/history/unknown', '/v1/history/pins/{id}', '/v1/history/pins/'))
+        for path in paths:
+            item = self.document['paths'].get(path, {'get': {}})
+            reference.check_history_paths({path: item})
+            for method in reference.METHODS - {'get'}:
+                with self.subTest(path=path, method=method):
+                    changed = copy.deepcopy(item)
+                    changed[method] = {'operationId': 'writeSavedHistory'}
+                    with self.assertRaisesRegex(AssertionError, 'Saved history must remain read-only'):
+                        reference.check_history_paths({path: changed})
 
     def test_session_controls_keep_their_methods_and_authority(self):
         controls = {
