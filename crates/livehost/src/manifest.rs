@@ -152,7 +152,7 @@ fn extension(path: &str) -> Option<&str> {
 pub fn compressible(path: &str) -> bool {
     matches!(
         extension(path),
-        Some("html" | "css" | "js" | "json" | "wasm" | "svg" | "txt" | "md" | "gltf")
+        Some("html" | "css" | "js" | "json" | "wasm" | "svg" | "txt" | "md" | "gltf" | "bin")
     )
 }
 
