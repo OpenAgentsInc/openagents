@@ -393,6 +393,18 @@ impl EngramGate {
         k_weight: &[f32],
         enabled: bool,
     ) -> Result<Vec<f32>, CpuError> {
+        self.apply_impl(residual, keys, value, q_weight, k_weight, enabled, None)
+    }
+    fn apply_impl(
+        &self,
+        residual: &[f32],
+        keys: &[f32],
+        value: &[f32],
+        q_weight: &[f32],
+        k_weight: &[f32],
+        enabled: bool,
+        reference_rows: Option<usize>,
+    ) -> Result<Vec<f32>, CpuError> {
         let count = self.validate(residual)?;
         shape("Engram keys", keys, count)?;
         shape("Engram value", value, self.width)?;
@@ -406,17 +418,31 @@ impl EngramGate {
             let start = h * self.width;
             let x = &residual[start..start + self.width];
             let key = &keys[start..start + self.width];
-            let xvar = x.iter().map(|v| v * v).sum::<f32>() / self.width as f32;
-            let kvar = key.iter().map(|v| v * v).sum::<f32>() / self.width as f32;
+            let mean = |values: &[f32]| -> Result<f32, CpuError> {
+                if let Some(rows) = reference_rows {
+                    super::reference_row_mean(
+                        &values.iter().map(|v| v * v).collect::<Vec<_>>(),
+                        rows * self.streams,
+                    )
+                } else {
+                    Ok(values.iter().map(|v| v * v).sum::<f32>() / self.width as f32)
+                }
+            };
+            let xvar = mean(x)?;
+            let kvar = mean(key)?;
             let rstd = (xvar + self.epsilon).sqrt().recip() * (kvar + self.epsilon).sqrt().recip();
-            let dot = x
+            let terms: Vec<_> = x
                 .iter()
                 .zip(key)
                 .enumerate()
                 .map(|(d, (x, k))| x * (q_weight[start + d] * k_weight[start + d]) * k)
-                .sum::<f32>()
-                * rstd
-                * (self.width as f64).powf(-0.5) as f32;
+                .collect();
+            let dot = if let Some(rows) = reference_rows {
+                super::reference_row_sum(&terms, rows * self.streams)?
+            } else {
+                terms.iter().sum::<f32>()
+            };
+            let dot = dot * rstd * (self.width as f64).powf(-0.5) as f32;
             if !xvar.is_finite() || !kvar.is_finite() || !dot.is_finite() {
                 return Err(CpuError::NonFinite("Engram normalized dot product"));
             }
@@ -464,6 +490,22 @@ impl EngramGate {
         enabled: bool,
         arithmetic: super::quantization::Arithmetic,
     ) -> Result<Vec<f32>, CpuError> {
+        self.lookup_and_apply_with_reference_rows(
+            residual, hash_ids, table, projection, q_weight, k_weight, enabled, arithmetic, 1,
+        )
+    }
+    pub fn lookup_and_apply_with_reference_rows(
+        &self,
+        residual: &[f32],
+        hash_ids: &[u64],
+        table: &dyn MatrixRows,
+        projection: &dyn MatrixRows,
+        q_weight: &[f32],
+        k_weight: &[f32],
+        enabled: bool,
+        arithmetic: super::quantization::Arithmetic,
+        reference_rows: usize,
+    ) -> Result<Vec<f32>, CpuError> {
         use super::quantization;
         let count = self.validate(residual)?;
         shape("Engram query weight", q_weight, count)?;
@@ -493,13 +535,15 @@ impl EngramGate {
             });
         }
         let projected = quantization::linear(projection, &embedding, arithmetic)?;
-        let output = self.apply(
+        let output = self.apply_impl(
             residual,
             &projected[..count],
             &projected[count..],
             q_weight,
             k_weight,
             true,
+            (arithmetic == super::quantization::Arithmetic::ReferenceBf16Tp8)
+                .then_some(reference_rows),
         )?;
         if arithmetic.is_bf16() {
             quantization::round_bf16(&output)

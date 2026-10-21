@@ -265,7 +265,8 @@ impl<'a> CpuTransformer<'a> {
         }
         let mut layers = Vec::new();
         for layer in 0..40 {
-            let block = TextBlock::new(self.weights, layer, c.block, self.arithmetic)?;
+            let block = TextBlock::new(self.weights, layer, c.block, self.arithmetic)?
+                .with_reference_rows(tokens.len());
             let engram = c
                 .engram
                 .layers
@@ -467,13 +468,14 @@ impl<'a> CpuTransformer<'a> {
             if i != last && !final_position && !want_logits {
                 continue;
             }
-            let (collapsed, normalized) = projection::final_input_with_arithmetic(
+            let (collapsed, normalized) = projection::final_input_with_reference_rows(
                 self.weights,
                 &residuals[i],
                 &pre_mixes[i],
                 width,
                 c.block.geometry.norm_epsilon,
                 self.arithmetic,
+                tokens.len(),
             )?;
             observe(
                 &mut observer,

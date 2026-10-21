@@ -418,7 +418,74 @@ fn conversion_checks(oracle: &Oracle, out: &Path) -> Result<Value, Box<dyn std::
     fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
     Ok(report)
 }
+fn norm_checks(
+    oracle: &Oracle,
+    checkpoint: &DeepSeekV41Checkpoint,
+    out: &Path,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    use psionic_models::deepseek_v41_cpu::{
+        projection::WeightSource, quantization::round_bf16, rms_norm, rms_norm_reference,
+    };
+    let mut log = File::create(out.join("norms.jsonl"))?;
+    let mut checked = 0;
+    let mut old_mismatches = 0;
+    let mut new_mismatches = 0;
+    let mut runs = BTreeMap::new();
+    for e in oracle
+        .entries
+        .values()
+        .filter(|e| e.name.ends_with(".hc.attn.collapsed"))
+    {
+        let parts: Vec<_> = e.name.split('.').collect();
+        let id = parts[0];
+        let mode = parts[1];
+        let label = parts[2];
+        let layer = parts[4];
+        if !["decode", "replay"].contains(&mode) {
+            continue;
+        }
+        if !runs.contains_key(id) {
+            runs.insert(
+                id.to_string(),
+                serde_json::from_slice::<Value>(&fs::read(oracle.root.join(id).join("run.json"))?)?,
+            );
+        }
+        let run = &runs[id];
+        let rows = if mode == "replay" {
+            run["prompt_tokens"]
+                .as_u64()
+                .ok_or("prompt length absent")?
+                + run["n_gen"].as_u64().ok_or("generation length absent")?
+        } else if label == "first" || label == "last" {
+            run["prompt_tokens"]
+                .as_u64()
+                .ok_or("prompt length absent")?
+        } else {
+            1
+        } as usize;
+        let target = e.name.replace("hc.attn.collapsed", "attn.in");
+        let input = oracle.tensor(&e.name)?;
+        let expected = oracle.tensor(&target)?;
+        let weights = checkpoint.vector(&format!("layers.{layer}.attn_norm.weight"))?;
+        let old = round_bf16(&rms_norm(&input, &weights, 1e-20)?)?;
+        let new = round_bf16(&rms_norm_reference(&input, &weights, 1e-20, rows)?)?;
+        let old_bad = old.iter().zip(&expected).filter(|(a, b)| a != b).count();
+        let new_bad = new.iter().zip(&expected).filter(|(a, b)| a != b).count();
+        checked += 1;
+        old_mismatches += old_bad;
+        new_mismatches += new_bad;
+        serde_json::to_writer(
+            &mut log,
+            &json!({"tensor":target,"rows":rows,"scope":"identical_oracle_input","old_bf16_mismatches":old_bad,"new_bf16_mismatches":new_bad}),
+        )?;
+        writeln!(log)?;
+    }
+    let report = json!({"schema":"psionic.deepseek_v41.cpu_norm_probe.v1","checked":checked,"old_bf16_mismatches":old_mismatches,"new_bf16_mismatches":new_mismatches,"model_qualification_passed":false});
+    fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
+    Ok(report)
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut norms_only = false;
     let mut conversions_only = false;
     let mut stop_on_first_failure = false;
     let mut args = env::args().skip(1);
@@ -435,6 +502,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--verify-sha256" => verify = true,
             "--identity-only" => identity_only = true,
             "--conversions-only" => conversions_only = true,
+            "--norms-only" => norms_only = true,
             "--stop-on-first-failure" => stop_on_first_failure = true,
             _ => return Err(format!("Unknown argument {arg}").into()),
         }
@@ -454,6 +522,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::to_vec_pretty(&identity)?,
     )?;
     if identity_only {
+        return Ok(());
+    }
+    if norms_only {
+        norm_checks(&Oracle::open(&oracle_dir)?, &checkpoint, &out)?;
         return Ok(());
     }
     if conversions_only {

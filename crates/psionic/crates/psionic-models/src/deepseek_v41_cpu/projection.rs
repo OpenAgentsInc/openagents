@@ -109,9 +109,14 @@ pub struct AttentionProjections<'a> {
     pub(crate) layer: usize,
     pub(crate) geometry: Geometry,
     pub(crate) arithmetic: Arithmetic,
+    reference_rows: usize,
 }
 
 impl<'a> AttentionProjections<'a> {
+    pub(crate) fn with_reference_rows(mut self, rows: usize) -> Self {
+        self.reference_rows = rows;
+        self
+    }
     pub fn with_arithmetic(mut self, arithmetic: Arithmetic) -> Result<Self, CpuError> {
         let g = self.geometry;
         if arithmetic.is_bf16()
@@ -158,6 +163,7 @@ impl<'a> AttentionProjections<'a> {
             layer,
             geometry,
             arithmetic: Arithmetic::Float32,
+            reference_rows: 1,
         })
     }
     fn name(&self, part: &str) -> String {
@@ -191,7 +197,16 @@ impl<'a> AttentionProjections<'a> {
         } else {
             weight
         };
-        self.finish(rms_norm(input, &weight, self.geometry.norm_epsilon)?)
+        self.finish(if self.arithmetic == Arithmetic::ReferenceBf16Tp8 {
+            super::rms_norm_reference(
+                input,
+                &weight,
+                self.geometry.norm_epsilon,
+                self.reference_rows,
+            )?
+        } else {
+            rms_norm(input, &weight, self.geometry.norm_epsilon)?
+        })
     }
     pub fn query(&self, input: &[f32]) -> Result<Query, CpuError> {
         let g = self.geometry;
@@ -346,6 +361,17 @@ pub fn final_input_with_arithmetic(
     epsilon: f32,
     arithmetic: Arithmetic,
 ) -> Result<(Vec<f32>, Vec<f32>), CpuError> {
+    final_input_with_reference_rows(weights, residual, pre_mix, width, epsilon, arithmetic, 1)
+}
+pub fn final_input_with_reference_rows(
+    weights: &dyn WeightSource,
+    residual: &[f32],
+    pre_mix: &[f32],
+    width: usize,
+    epsilon: f32,
+    arithmetic: Arithmetic,
+    rows: usize,
+) -> Result<(Vec<f32>, Vec<f32>), CpuError> {
     use super::hyperconnections::HyperConnections;
     let hc = HyperConnections {
         streams: pre_mix.len(),
@@ -359,7 +385,12 @@ pub fn final_input_with_arithmetic(
     } else {
         hidden
     };
-    let normalized = rms_norm(&hidden, &weights.vector("norm.weight")?, epsilon)?;
+    let norm = weights.vector("norm.weight")?;
+    let normalized = if arithmetic == Arithmetic::ReferenceBf16Tp8 {
+        super::rms_norm_reference(&hidden, &norm, epsilon, rows)?
+    } else {
+        rms_norm(&hidden, &norm, epsilon)?
+    };
     let normalized = if arithmetic.is_bf16() {
         quantization::round_bf16(&normalized)?
     } else {

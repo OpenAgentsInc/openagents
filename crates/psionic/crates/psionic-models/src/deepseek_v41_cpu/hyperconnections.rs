@@ -52,12 +52,36 @@ impl HyperConnections {
         scale: &[f32],
         base: &[f32],
     ) -> Result<Mixes, CpuError> {
+        self.mixes_impl(residual, projection, scale, base, None)
+    }
+    pub(crate) fn mixes_reference(
+        &self,
+        residual: &[f32],
+        projection: &dyn MatrixRows,
+        scale: &[f32],
+        base: &[f32],
+        rows: usize,
+    ) -> Result<Mixes, CpuError> {
+        self.mixes_impl(residual, projection, scale, base, Some(rows))
+    }
+    fn mixes_impl(
+        &self,
+        residual: &[f32],
+        projection: &dyn MatrixRows,
+        scale: &[f32],
+        base: &[f32],
+        rows: Option<usize>,
+    ) -> Result<Mixes, CpuError> {
         let (elements, count) = self.dimensions()?;
         shape("hyper-connection residual", residual, elements)?;
         if projection.dimensions() != (count, elements) {
             return Err(CpuError::Invalid("hyper-connection projection shape"));
         }
-        let variance = residual.iter().map(|x| x * x).sum::<f32>() / elements as f32;
+        let variance = if let Some(rows) = rows {
+            super::reference_row_mean(&residual.iter().map(|x| x * x).collect::<Vec<_>>(), rows)?
+        } else {
+            residual.iter().map(|x| x * x).sum::<f32>() / elements as f32
+        };
         if !variance.is_finite() {
             return Err(CpuError::NonFinite("hyper-connection variance"));
         }

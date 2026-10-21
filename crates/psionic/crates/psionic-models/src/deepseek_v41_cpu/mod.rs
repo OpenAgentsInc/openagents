@@ -367,6 +367,80 @@ fn row_product(row: &[f32], input: &[f32], block: Option<usize>, shards: usize) 
     total
 }
 
+/// Contiguous float32 row reduction from PyTorch v2.13 CUDA Reduce.cuh.
+/// Four independent vector-load accumulators and descending lane/warp trees
+/// preserve batch-shape effects. Independently reimplemented from public ATen.
+pub fn reference_row_sum(values: &[f32], rows: usize) -> Result<f32, CpuError> {
+    if values.len() < 128 || !values.len().is_multiple_of(4) || rows == 0 {
+        return Err(CpuError::Invalid("reference reduction shape"));
+    }
+    finite("reference reduction input", values)?;
+    let floor = |n: usize| 1usize << (usize::BITS - 1 - n.max(1).leading_zeros());
+    let dim0 = floor((values.len() / 4).min(512));
+    let height = floor(rows.min(512)).min(512 / dim0.min(32));
+    let width = dim0.min(512 / height);
+    let warps = if values.len().div_ceil(width) >= (height * 16).min(256) {
+        height
+    } else {
+        1
+    };
+    let lanes = width * warps;
+    let mut totals = vec![0.0f32; lanes];
+    for (lane, total) in totals.iter_mut().enumerate() {
+        let mut accum = [0.0f32; 4];
+        for group in (lane..values.len() / 4).step_by(lanes) {
+            for j in 0..4 {
+                accum[j] += values[group * 4 + j];
+            }
+        }
+        *total = ((accum[0] + accum[1]) + accum[2]) + accum[3];
+    }
+    for warp in 0..warps {
+        let mut offset = width / 2;
+        while offset > 0 {
+            for lane in 0..offset {
+                let at = warp * width + lane;
+                totals[at] += totals[at + offset];
+            }
+            offset /= 2;
+        }
+    }
+    let mut offset = warps / 2;
+    while offset > 0 {
+        for warp in 0..offset {
+            totals[warp * width] += totals[(warp + offset) * width];
+        }
+        offset /= 2;
+    }
+    Ok(totals[0])
+}
+/// Applies MeanOps' float32 reciprocal factor after the row sum.
+pub fn reference_row_mean(values: &[f32], rows: usize) -> Result<f32, CpuError> {
+    Ok(reference_row_sum(values, rows)? * (1.0 / values.len() as f32))
+}
+/// RMS normalization with the oracle's contiguous CUDA float32 reduction.
+pub fn rms_norm_reference(
+    input: &[f32],
+    weight: &[f32],
+    epsilon: f32,
+    rows: usize,
+) -> Result<Vec<f32>, CpuError> {
+    shape("reference RMS weight", weight, input.len())?;
+    if !positive(epsilon) {
+        return Err(CpuError::Invalid("reference RMS epsilon"));
+    }
+    let squares: Vec<_> = input.iter().map(|x| x * x).collect();
+    let variance = reference_row_mean(&squares, rows)?;
+    let scale = (variance + epsilon).sqrt().recip();
+    let out: Vec<_> = input
+        .iter()
+        .zip(weight)
+        .map(|(x, w)| w * (x * scale))
+        .collect();
+    finite("reference RMS output", &out)?;
+    Ok(out)
+}
+
 /// Per-vector RMS normalization; the checkpoint uses epsilon `1e-20`.
 pub fn rms_norm(input: &[f32], weight: &[f32], epsilon: f32) -> Result<Vec<f32>, CpuError> {
     if input.is_empty() || !positive(epsilon) {
@@ -393,6 +467,18 @@ mod tests {
     use super::*;
     use crate::deepseek_v41_weights::{CheckpointOpenOptions, DeepSeekV41Checkpoint};
 
+    #[test]
+    fn reference_reduction_handles_prefill_decode_and_refuses_bad_shapes() -> Result<(), CpuError> {
+        for rows in [1, 4, 41, 20000] {
+            assert_eq!(reference_row_mean(&vec![2.0; 5120], rows)?, 2.0);
+            assert_eq!(reference_row_sum(&vec![2.0; 5120], rows)?, 10240.0);
+        }
+        assert!(reference_row_mean(&[1.0; 32], 41).is_err());
+        assert!(reference_row_mean(&[1.0; 5120], 0).is_err());
+        assert!(reference_row_mean(&[f32::NAN; 5120], 41).is_err());
+        assert!(reference_row_mean(&[1.0; 129], 41).is_err());
+        Ok(())
+    }
     #[test]
     fn checkpoint_matrix_uses_logical_fp4_width_and_positioned_rows()
     -> Result<(), Box<dyn std::error::Error>> {

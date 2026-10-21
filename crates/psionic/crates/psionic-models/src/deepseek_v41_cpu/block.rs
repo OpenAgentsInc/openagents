@@ -72,6 +72,7 @@ pub struct TextBlock<'a> {
     layer: usize,
     config: BlockConfig,
     arithmetic: Arithmetic,
+    reference_rows: usize,
 }
 impl<'a> TextBlock<'a> {
     pub fn new(
@@ -94,7 +95,12 @@ impl<'a> TextBlock<'a> {
             layer,
             config,
             arithmetic,
+            reference_rows: 1,
         })
+    }
+    pub(crate) fn with_reference_rows(mut self, rows: usize) -> Self {
+        self.reference_rows = rows;
+        self
     }
     fn name(&self, part: &str) -> String {
         format!("layers.{}.{part}", self.layer)
@@ -114,25 +120,38 @@ impl<'a> TextBlock<'a> {
         } else {
             weight
         };
-        self.finish(rms_norm(
-            values,
-            &weight,
-            self.config.geometry.norm_epsilon,
-        )?)
+        self.finish(if self.arithmetic == Arithmetic::ReferenceBf16Tp8 {
+            super::rms_norm_reference(
+                values,
+                &weight,
+                self.config.geometry.norm_epsilon,
+                self.reference_rows,
+            )?
+        } else {
+            rms_norm(values, &weight, self.config.geometry.norm_epsilon)?
+        })
     }
     fn mixes(&self, part: &str, residual: &[f32]) -> Result<Mixes, CpuError> {
-        self.config.hyper.mixes(
-            residual,
-            self.weights
-                .matrix(&self.name(&format!("hc_{part}_fn")))?
-                .as_ref(),
-            &self
-                .weights
-                .vector(&self.name(&format!("hc_{part}_scale")))?,
-            &self
-                .weights
-                .vector(&self.name(&format!("hc_{part}_base")))?,
-        )
+        let projection = self.weights.matrix(&self.name(&format!("hc_{part}_fn")))?;
+        let scale = self
+            .weights
+            .vector(&self.name(&format!("hc_{part}_scale")))?;
+        let base = self
+            .weights
+            .vector(&self.name(&format!("hc_{part}_base")))?;
+        if self.arithmetic == Arithmetic::ReferenceBf16Tp8 {
+            self.config.hyper.mixes_reference(
+                residual,
+                projection.as_ref(),
+                &scale,
+                &base,
+                self.reference_rows,
+            )
+        } else {
+            self.config
+                .hyper
+                .mixes(residual, projection.as_ref(), &scale, &base)
+        }
     }
     /// Mixes computed here belong to attention's post step and the next FFN input.
     pub fn begin_attention(
@@ -229,7 +248,7 @@ impl<'a> TextBlock<'a> {
             width: h.width,
             epsilon: self.config.geometry.norm_epsilon,
         }
-        .lookup_and_apply_with_arithmetic(
+        .lookup_and_apply_with_reference_rows(
             residual,
             hash_ids,
             table.as_ref(),
@@ -238,6 +257,7 @@ impl<'a> TextBlock<'a> {
             &read_flat("engram.k_weight")?,
             true,
             self.arithmetic,
+            self.reference_rows,
         )
     }
 }

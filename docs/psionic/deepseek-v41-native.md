@@ -1063,3 +1063,16 @@ and Engram tables keep row reads. The cache and grouped projection use the same
 library reduction helpers, with row parallelism and no reassociation within a
 row. Reports include peak decoded-matrix bytes; this is not a total-process
 memory measurement or a W3 result.
+
+A further isolated check covers 560 original attention-normalization tensors.
+The initial serial float32 mean differs from the oracle in 992 BF16 elements;
+a CPU reimplementation of [PyTorch v2.13's CUDA row reduction](https://github.com/pytorch/pytorch/blob/v2.13.0/aten/src/ATen/native/cuda/Reduce.cuh)
+and [MeanOps](https://github.com/pytorch/pytorch/blob/v2.13.0/aten/src/ATen/native/SharedReduceOps.h)
+reduces that count to 17. This check supplies identical oracle inputs and reads
+the original norm weights on the CPU VM. The TP8 profile now carries the forward
+chunk's row count through attention, block, compressor, Engram, and final norms,
+because CUDA's reduction layout depends on the batch shape. Float32 and the
+single-rank BF16 equation APIs retain their previous reduction. This is a
+numerical implementation fix, not a tolerance change; same-mode full-model
+checks remain required. Local verification passes 61 CPU tests and three
+comparator/cache tests.

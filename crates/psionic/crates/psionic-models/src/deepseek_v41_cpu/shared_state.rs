@@ -233,8 +233,9 @@ impl<'a> AttentionRuntime<'a> {
         let g = self.geometry;
         let ratio = compress_ratio(layer)?;
         let owners = LayerOwners::for_layer(layer)?;
-        let p =
-            AttentionProjections::new(self.weights, layer, g)?.with_arithmetic(self.arithmetic)?;
+        let p = AttentionProjections::new(self.weights, layer, g)?
+            .with_arithmetic(self.arithmetic)?
+            .with_reference_rows(input.len() / g.hidden);
         let rope = Rope::new(if ratio == 0 {
             RopeConfig::window(g.rope_dim)
         } else {
@@ -246,6 +247,11 @@ impl<'a> AttentionRuntime<'a> {
         } else {
             None
         };
+        if let Some(source) = self.sources.get_mut(&layer) {
+            source
+                .compressor
+                .set_reference_rows((input.len() / g.hidden / ratio.max(1)).max(1));
+        }
         let mut selected_rows = Vec::new();
         let mut candidate_rows = Vec::new();
         let mut outputs = Vec::with_capacity(input.len());

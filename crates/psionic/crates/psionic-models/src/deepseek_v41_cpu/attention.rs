@@ -118,6 +118,7 @@ pub struct CompressionState {
     values: Vec<f32>,
     gates: Vec<f32>,
     arithmetic: super::quantization::Arithmetic,
+    reference_rows: usize,
 }
 
 impl CompressionState {
@@ -133,6 +134,7 @@ impl CompressionState {
             values: Vec::new(),
             gates: Vec::new(),
             arithmetic: super::quantization::Arithmetic::Float32,
+            reference_rows: 1,
         })
     }
 
@@ -142,6 +144,9 @@ impl CompressionState {
     pub fn with_arithmetic(mut self, arithmetic: super::quantization::Arithmetic) -> Self {
         self.arithmetic = arithmetic;
         self
+    }
+    pub(crate) fn set_reference_rows(&mut self, rows: usize) {
+        self.reference_rows = rows;
     }
     pub fn pending_tokens(&self) -> usize {
         self.values.len() / self.width
@@ -242,7 +247,11 @@ impl CompressionState {
             } else {
                 norm_weight.to_vec()
             };
-            let output = rms_norm(&pooled, &norm, epsilon)?;
+            let output = if self.arithmetic == super::quantization::Arithmetic::ReferenceBf16Tp8 {
+                super::rms_norm_reference(&pooled, &norm, epsilon, self.reference_rows)?
+            } else {
+                rms_norm(&pooled, &norm, epsilon)?
+            };
             Some(if reference {
                 super::quantization::round_bf16(&output)?
             } else {
