@@ -50,6 +50,19 @@ Gate progress (2026-10-21):
   that the last stage samples with the front's settings and returns the
   token ID, 4 bytes. The synthetic geometry's numbers are in the W9 test
   output.
+- **G3, block-scaled matrix-vector kernels (W4, #12391), RTX 4080 only.**
+  FP8 and FP4 weight kernels and the FP8 activation quantizer match the CPU
+  path on real rows of `layers.2.attn.wq_a`, the layer-2 shared expert's w1
+  and w2, and routed expert 222's w1 and w2. The tolerance, fixed before the
+  first GPU run, is the summation bound for the two addition orders:
+  `(gamma(K - 1) + gamma(K / 32 + 30)) * sum |w_i x_i|`. The largest real-row
+  error is 0.0074 of that bound, and every BF16 output equals the CPU's (160
+  of 160); the expert rows also equal the reference's own `fp4_gemm` outputs
+  (64 of 64). Activation codes and scales equal the reference's `act_quant`
+  output bit for bit, and the device matches a host model of its arithmetic
+  bit for bit in every case, including NaN and extreme scales. The RTX PRO
+  6000 (SM120) half of G3 is W8. Results:
+  [`sm89-2026-10-20.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_matvec/sm89-2026-10-20.json).
 - **Placement from header bytes.** Layers 0–9, 10–19, 20–29, and 30–39
   need 75.41, 74.07, 73.92, and 75.23 GB of GPU weights, as the plan's
   table says, and the Engram tables (101.38 GB each) go to host memory on
@@ -133,11 +146,11 @@ spend guard from the one budget host.
 
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
-| W4 | **Block-scaled matrix-vector kernels.** FP4 E2M1 and FP8 E4M3 weights with UE8M0 scales, FP8 activations, as the reference's numerical boundaries require. | M | W1 | Parity with the CPU path on real rows on the 4080 and the target GPU. |
+| W4 | **Done on SM89 (#12391).** `psionic_backend_cuda::v41_matvec`: `v41_act_quant_fp8` and `v41_block_matvec` over packed FP8 32×32-block and FP4 per-32 weights, with device-selected matrices from a stack for routed experts and no host round trip. Parity on the RTX 4080 against the CPU path on committed real rows; decode reads 409–591 GB/s (57–82% of the 4080's 717 GB/s). SM120 parity moves to W8. | M | — (checked against the CPU path, which is bit-exact against the reference's dequantization) | Parity with the CPU path on real rows on the 4080 and the target GPU. |
 | W5 | **Attention kernels.** Window attention with sink, compressed attention at ratios 1 and 2, the indexer, candidate selection, and the shared-source reads. | L (split per mode) | W1 | Per-kernel parity on both GPUs, including the 127/128/129 cases. |
 | W6 | **Mixing, Engram, and routing kernels.** Sinkhorn mixing, the Engram gather from host-pinned memory, the gate and top-k with the documented tie rule, SwiGLU with clamps. | M | W1 | Per-kernel parity on both GPUs. |
 | W7 | **Device-resident step.** One stage's whole decode step on the GPU, with embeddings, norms, rotation, and sampling on the device, and CUDA graphs for decode. | L | W4–W6 | G4 passes for a 5- or 10-layer stage on the target GPU; per-token latency and peak memory are recorded. |
-| W8 | **Target GPU choice.** Confirm the kernels on the RTX PRO 6000 (SM120, G4 machines) and decide whether B200 (SM100) needs a separate profile. | S, cloud | W7 | A recorded decision with parity on the chosen GPU. |
+| W8 | **Target GPU choice.** Confirm the kernels on the RTX PRO 6000 (SM120, G4 machines) and decide whether B200 (SM100) needs a separate profile. W4's SM120 run: build with `PSI_CUDA_ARCH=sm_120` and run `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_matvec`, then the ignored `v41_decode_bandwidth`. | S, cloud | W7 | A recorded decision with parity on the chosen GPU. |
 
 ### Phase 4: stage Pylons (G5, G6, G7)
 
@@ -201,8 +214,10 @@ started first.
 - **A second lane** can start W10's lifecycle on the R1 native worker now,
   on top of W9's `StageWorker` and `StageInbox`; it needs no V4.1 weights.
 - **A third lane** can start W13's beacon and router tests with fixtures.
-- **CUDA (W4–W7)** starts after W1, because kernel parity is checked against
-  a CPU path that already matches the real model.
+- **CUDA (W5–W7)** starts after W1, because kernel parity is checked against
+  a CPU path that already matches the real model. W4 started earlier: its
+  parity check needs only the CPU dequantize-and-multiply path, which already
+  matches the reference's dequantization bit for bit.
 
 ## Open questions
 

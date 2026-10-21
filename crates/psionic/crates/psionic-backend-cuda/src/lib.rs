@@ -19224,6 +19224,7 @@ mod platform {
 pub mod clef_prefill;
 pub mod digit;
 pub mod encoder;
+pub mod v41_matvec;
 
 #[cfg(test)]
 mod tests {

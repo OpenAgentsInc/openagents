@@ -1,0 +1,231 @@
+{
+  "schema": "psionic.deepseek_v41.matvec_rows.v1",
+  "revision": "1bae0e1088993b9b82de08f59de5be5a34e42170",
+  "weights": "gs://openagents-psionic-models/deepseek-ai/DeepSeek-V4.1-Flash-1017/1bae0e1",
+  "oracle": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/dump",
+  "blob": "rows.bin",
+  "blob_sha256": "ac5aba03f999822a80260f88dee5d2e1d884987e91ad8a7a22111f53c164a25c",
+  "matrices": [
+    {
+      "label": "wq_a",
+      "tensor": "layers.2.attn.wq_a.weight",
+      "shard": "model-00005-of-00048.safetensors",
+      "format": "fp8_block32x32",
+      "shape": [
+        1280,
+        5120
+      ],
+      "first_row": 1248,
+      "rows": 32,
+      "weight_file_offset": 533684984,
+      "scale_file_offset": 19184472,
+      "weight": {
+        "offset": 0,
+        "bytes": 163840,
+        "sha256": "73841cb5d7fa096e7a57a2d3475d74ccf806215c4a1a5adb2f268a149a7ef837"
+      },
+      "scale": {
+        "offset": 163840,
+        "bytes": 160,
+        "sha256": "467dea0310b90e10d10ebaebb7f56c35af13f5738147eae98c303135d1638675"
+      }
+    },
+    {
+      "label": "shared_w1",
+      "tensor": "layers.2.ffn.shared_experts.w1.weight",
+      "shard": "model-00005-of-00048.safetensors",
+      "format": "fp8_block32x32",
+      "shape": [
+        2304,
+        5120
+      ],
+      "first_row": 0,
+      "rows": 32,
+      "weight_file_offset": 575791864,
+      "scale_file_offset": 443898872,
+      "weight": {
+        "offset": 164000,
+        "bytes": 163840,
+        "sha256": "020f7d3f4536eb316c0e36845f8901304abf10610ad6aa4a42d5c760ee88e60e"
+      },
+      "scale": {
+        "offset": 327840,
+        "bytes": 160,
+        "sha256": "5c176c1b1aaa7fd9f7de843471b1390bf0796583ad754cf082929b8139214a6b"
+      }
+    },
+    {
+      "label": "shared_w2",
+      "tensor": "layers.2.ffn.shared_experts.w2.weight",
+      "shard": "model-00005-of-00048.safetensors",
+      "format": "fp8_block32x32",
+      "shape": [
+        5120,
+        2304
+      ],
+      "first_row": 5088,
+      "rows": 32,
+      "weight_file_offset": 599311096,
+      "scale_file_offset": 443921840,
+      "weight": {
+        "offset": 328000,
+        "bytes": 73728,
+        "sha256": "8b2bae55a2a9b62f86e997ebd0ce97a449cc21068ffaef62a2c90dbac56f5dfe"
+      },
+      "scale": {
+        "offset": 401728,
+        "bytes": 72,
+        "sha256": "9ab0e1e7960ce4df70e013b66341f1cb60eaae9319273872cc150576894daee5"
+      }
+    },
+    {
+      "label": "expert_w1",
+      "tensor": "layers.2.ffn.experts.222.w1.weight",
+      "shard": "model-00005-of-00048.safetensors",
+      "format": "fp4_e2m1_row32",
+      "shape": [
+        2304,
+        5120
+      ],
+      "first_row": 1120,
+      "rows": 32,
+      "weight_file_offset": 3055919864,
+      "scale_file_offset": 172021752,
+      "weight": {
+        "offset": 401808,
+        "bytes": 81920,
+        "sha256": "c389bb86062964e1b472e60e81db94c1392c045f53be911ce77452811a288073"
+      },
+      "scale": {
+        "offset": 483728,
+        "bytes": 5120,
+        "sha256": "a1b3595b51e84fe581ddc4f3e07296c4164ba8c995c1035aedd15262712e5c7c"
+      }
+    },
+    {
+      "label": "expert_w2",
+      "tensor": "layers.2.ffn.experts.222.w2.weight",
+      "shard": "model-00005-of-00048.safetensors",
+      "format": "fp4_e2m1_row32",
+      "shape": [
+        5120,
+        2304
+      ],
+      "first_row": 2048,
+      "rows": 32,
+      "weight_file_offset": 3061310200,
+      "scale_file_offset": 172358648,
+      "weight": {
+        "offset": 488848,
+        "bytes": 36864,
+        "sha256": "4458817c6338c3419baf64255a1f96f85c79d212fcca86698a91b3f6f404d9ec"
+      },
+      "scale": {
+        "offset": 525712,
+        "bytes": 2304,
+        "sha256": "91eefe0fe750a0899dde92e97194b9b558b8c780eb6506e2f8210d90075db4a1"
+      }
+    }
+  ],
+  "vectors": [
+    {
+      "offset": 528016,
+      "bytes": 10240,
+      "sha256": "7a0227c88c2d4df0b6d4836cadc3a8272975dbaf101c176fd4ae52b8c9ba16da",
+      "label": "attn_in",
+      "tensor": "p1-chat-thinking.decode.first.layers.2.attn.in",
+      "dtype": "BF16",
+      "shape": [
+        5120
+      ]
+    },
+    {
+      "offset": 538256,
+      "bytes": 10240,
+      "sha256": "51d93d14a62e66d743910733f8fc55feb0beba24ef7a22723a262203478a3618",
+      "label": "ffn_in",
+      "tensor": "p1-chat-thinking.decode.first.layers.2.ffn.expert.in",
+      "dtype": "BF16",
+      "shape": [
+        5120
+      ]
+    },
+    {
+      "offset": 548496,
+      "bytes": 5120,
+      "sha256": "1a02d35b19afb4407cb3febefada3f4184bd4c1a0de53cad3ab33fe65eb4e41b",
+      "label": "ffn_in_fp8",
+      "tensor": "p1-chat-thinking.decode.first.layers.2.ffn.expert.in_fp8",
+      "dtype": "F8_E4M3",
+      "shape": [
+        5120
+      ]
+    },
+    {
+      "offset": 553616,
+      "bytes": 160,
+      "sha256": "14a292a2dd31e75955aeabb6e9a6f15b3f0ccbea2e38774b8d10fa6b88513f2d",
+      "label": "ffn_in_fp8_scale",
+      "tensor": "p1-chat-thinking.decode.first.layers.2.ffn.expert.in_fp8_scale",
+      "dtype": "F8_E8M0",
+      "shape": [
+        160
+      ]
+    },
+    {
+      "offset": 553776,
+      "bytes": 4608,
+      "sha256": "6b6383bf2d1b704af2c8a8db9590be02d1cd94367b877b9a50fa46ae2f0c4fc3",
+      "label": "expert_w1_out",
+      "tensor": "p1-chat-thinking.decode.first.layers.2.ffn.expert.w1_out",
+      "dtype": "BF16",
+      "shape": [
+        2304
+      ]
+    },
+    {
+      "offset": 558384,
+      "bytes": 4608,
+      "sha256": "10f2035b52be39afeb151c961187af433cb61137b063d0d5b66c7f000bfdfa53",
+      "label": "w2_in",
+      "tensor": "p1-chat-thinking.decode.first.layers.2.ffn.expert.w2_in",
+      "dtype": "BF16",
+      "shape": [
+        2304
+      ]
+    },
+    {
+      "offset": 562992,
+      "bytes": 2304,
+      "sha256": "1b4a469befd473dab3de0bc8f31396fca6f7144a66052eaf46d64eb0239c5e93",
+      "label": "w2_in_fp8",
+      "tensor": "p1-chat-thinking.decode.first.layers.2.ffn.expert.w2_in_fp8",
+      "dtype": "F8_E4M3",
+      "shape": [
+        2304
+      ]
+    },
+    {
+      "offset": 565296,
+      "bytes": 72,
+      "sha256": "51232fdd84e5d97c452acb141614c801b060b770545dbd787a8a62d628ed6742",
+      "label": "w2_in_fp8_scale",
+      "tensor": "p1-chat-thinking.decode.first.layers.2.ffn.expert.w2_in_fp8_scale",
+      "dtype": "F8_E8M0",
+      "shape": [
+        72
+      ]
+    },
+    {
+      "offset": 565376,
+      "bytes": 10240,
+      "sha256": "2f3c536f2226eef63a0f6f1ee88d392a32f0cb3f8c846b310a086c901ce3d424",
+      "label": "expert_w2_out",
+      "tensor": "p1-chat-thinking.decode.first.layers.2.ffn.expert.w2_out",
+      "dtype": "BF16",
+      "shape": [
+        5120
+      ]
+    }
+  ]
+}

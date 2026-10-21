@@ -965,3 +965,77 @@ library modules by path and pins dependencies from the Psionic workspace lock;
 it avoids compiling unrelated model stacks on the CPU VM. It contains no second
 inference implementation. Local checks pass 58 CPU tests and two comparator
 checks; these are preparation for the original-weight run, not a G1 pass.
+
+## Block-scaled CUDA matrix-vector kernels (W4, 2026-10-20)
+
+[#12391](https://github.com/OpenAgentsInc/openagents/issues/12391) adds
+`psionic_backend_cuda::v41_matvec`, the first V4.1 CUDA kernels. Weights stay
+on the device in their checkpoint form: FP8 E4M3 with one UE8M0 scale per
+32×32 block, or packed FP4 E2M1 (the low nibble holds element `2i`) with one
+UE8M0 scale per 32 values along K. Nothing expands them to float32.
+
+- `CudaSubmission::v41_act_quant_fp8` quantizes float32 activations on the
+  device under the CPU rule from #12383 and the reference's
+  `act_quant(x, 32, "ue8m0")`: round to BF16, then per block of 32 a
+  power-of-two scale `2^ceil(log2(max(amax, 1e-4) / 448))` and the nearest
+  E4M3 code, ties to even, saturating at 448. A nonfinite block gets a NaN
+  scale, so its products are NaN; the CPU path refuses such input.
+- `CudaSubmission::v41_block_matvec` takes a `V41Matrix` (format, weight and
+  scale buffers, rows, cols, and a stack count), FP8 activation codes and
+  scales, and `V41Slots`. Each slot can take its matrix from the stack by a
+  device-resident `i32` id and read a shared or its own activation row, so
+  the six routed experts of a token run in one launch with no host round
+  trip. An id outside the stack writes NaN. `V41Output::Bf16` rounds outputs
+  to BF16 as the reference's GEMMs do. Both calls only enqueue work; they
+  allocate nothing and never synchronize, so W7 can record them into a CUDA
+  graph.
+- Accumulation follows `fp8_gemm_kernel` and `fp4_gemm_kernel` in
+  `inference/kernel.py`: float32 sums of code products per 32-wide K block,
+  times the activation scale and then the weight scale, added in ascending
+  block order. The reference sums inside a block on tensor cores; the kernel
+  sums sequentially from element 0 with fused multiply-adds, which give the
+  same result as separate operations because every code product is exact.
+  `v41_block_matvec_host` reproduces the device arithmetic bit for bit.
+
+**Tolerance.** Set before the first GPU run, from the arithmetic: the CPU path
+and the kernel add the same exact terms `t_i` in different orders (one
+sequential sum of K terms against 32-term block sums added in sequence), so
+`|gpu - cpu| <= (gamma(K - 1) + gamma(K / 32 + 30)) * sum |t_i|` with
+`gamma(n) = n u / (1 - n u)` and `u = 2^-24`. Exact equality is required where
+the arithmetic is identical: against the host model, for activation codes and
+scales, and for inputs whose every partial sum is exact.
+
+**Results on the RTX 4080 (SM89).** Fixtures in
+[`testdata/deepseek_v41_matvec/`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_matvec/)
+hold 32 real rows each of `layers.2.attn.wq_a`, the shared expert's w1 and w2,
+and routed expert 222's w1 and w2 (the expert the chat prompt's first decode
+step routes to at layer 2), plus that step's real activations and the
+reference's outputs. The `deepseek_v41_matvec_rows` example fetched them with
+ranged reads and the #12373 loader (576 KB). All nine tests pass:
+
+| Check | Result |
+| --- | --- |
+| Device activation codes and scales against the reference's `act_quant`, real FFN and down-projection inputs | Equal |
+| Real rows against the CPU path, largest error over the bound | 0.0074 (shared w2); BF16 outputs equal in 160 of 160 |
+| Expert 222's BF16 outputs against the reference's own `fp4_gemm` outputs | Equal in 64 of 64 |
+| Synthetic shapes (K and N of 32 to 32,768, row and block tails, both formats) | Largest error over the bound 0.021; 25 of 106,610 BF16 outputs differ, each with a rounding boundary inside the bound |
+| Exact-sum inputs, FP8 and FP4 | Equal to the CPU bit for bit |
+| Device against the host model, including scales of 2^-127, 2^127, and NaN, saturated codes, NaN codes, and device-selected stacks | Equal bit for bit |
+
+Single-row decode on the shared 4080 reads 424 GB/s for `wq_a` (6.6 MB),
+511 for the shared w1, 548 for `wq_b`, 591 for `wo_b` (42 MB), 409 for one
+FP4 expert, and 504 for six FP4 experts in one launch: 57–82% of the card's
+717 GB/s. This is an observation; launches rotate over about 320 MB of copies
+so reads miss the 64 MB L2, and the times include enqueue overhead. Small
+matrices lose the most to launch and tail effects, which W7's CUDA graphs and
+fused steps address. The full results are in
+[`sm89-2026-10-20.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_matvec/sm89-2026-10-20.json).
+
+**For SM120 (W8).** The kernels use no FP8 conversion instructions, tensor
+cores, or architecture-specific features: decoding is integer and float32
+arithmetic, and the build disables fast math because E2M1 and E4M3 decoding
+relies on float32 subnormals. On the RTX PRO 6000, confirm that the same
+tests pass with `PSI_CUDA_ARCH=sm_120` and CUDA 13 (SM120 needs CUDA 12.8 or
+later), that subnormals aren't flushed, and the decode bandwidth. Prefill
+with many tokens runs the matrix once per slot; a batched tensor-core path is
+separate work.
