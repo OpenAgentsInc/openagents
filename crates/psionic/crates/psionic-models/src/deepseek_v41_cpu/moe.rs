@@ -112,6 +112,29 @@ pub fn expert_with_arithmetic(
     limit: f32,
     arithmetic: super::quantization::Arithmetic,
 ) -> Result<Vec<f32>, CpuError> {
+    expert_observed(
+        input,
+        w1,
+        w2,
+        w3,
+        route_weight,
+        limit,
+        arithmetic,
+        &mut |_, _| Ok(()),
+    )
+}
+
+/// Borrows the values used by this expert's projections and activation.
+pub fn expert_observed(
+    input: &[f32],
+    w1: &dyn MatrixRows,
+    w2: &dyn MatrixRows,
+    w3: &dyn MatrixRows,
+    route_weight: f32,
+    limit: f32,
+    arithmetic: super::quantization::Arithmetic,
+    observer: &mut dyn FnMut(&str, &[f32]) -> Result<(), CpuError>,
+) -> Result<Vec<f32>, CpuError> {
     use super::quantization;
     let (intermediate, width) = w1.dimensions();
     if w3.dimensions() != (intermediate, width)
@@ -124,8 +147,12 @@ pub fn expert_with_arithmetic(
         return Err(CpuError::Invalid("expert dimensions, weight, or clamp"));
     }
     shape("expert input", input, width)?;
+    observer("in", input)?;
+    observer("combine_weight", &[route_weight])?;
     let gate = quantization::linear(w1, input, arithmetic)?;
     let up = quantization::linear(w3, input, arithmetic)?;
+    observer("w1", &gate)?;
+    observer("w3", &up)?;
     let hidden: Vec<_> = gate
         .into_iter()
         .zip(up)
@@ -147,7 +174,11 @@ pub fn expert_with_arithmetic(
     } else {
         hidden
     };
-    quantization::linear(w2, &hidden, arithmetic)
+    observer("w2_in", &hidden)?;
+    let output = quantization::linear(w2, &hidden, arithmetic)?;
+    observer("w2", &output)?;
+    observer("out", &output)?;
+    Ok(output)
 }
 
 /// Supplies routed experts by ID and the shared expert as `None`.

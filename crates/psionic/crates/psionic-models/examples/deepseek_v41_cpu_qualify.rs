@@ -185,7 +185,12 @@ fn decode(raw: &[u8], dtype: &str) -> Result<Vec<f32>, Box<dyn std::error::Error
     })
 }
 fn family(site: &str) -> &'static str {
-    if site == "embed.out" {
+    if site.ends_with(".topk_idxs")
+        || site.ends_with(".candidate_blocks")
+        || site.ends_with(".expert.id")
+    {
+        "integer_and_hash"
+    } else if site == "embed.out" {
         "embedding"
     } else if site == "logits" {
         "float32_logits"
@@ -198,6 +203,7 @@ fn family(site: &str) -> &'static str {
         ".gate.weights",
         ".gate.scores",
         ".gate.biased_scores",
+        ".expert.combine_weight",
     ]
     .iter()
     .any(|s| site.ends_with(s))
@@ -233,6 +239,40 @@ fn differences(a: &[f32], b: &[f32], atol: f64, rtol: f64) -> Value {
         bad += a.len().abs_diff(b.len());
     }
     json!({"passed":bad==0,"actual_elements":a.len(),"reference_elements":b.len(),"bad_elements":bad,"unequal_elements":unequal,"first_unequal":first_unequal,"max_abs_error":max_abs,"first_bad":first})
+}
+fn masked_score_differences(a: &[f32], b: &[f32], atol: f64, rtol: f64) -> Value {
+    let mut positions = Vec::new();
+    let mut actual = Vec::new();
+    let mut reference = Vec::new();
+    let mut mask_mismatches = a.len().abs_diff(b.len());
+    let mut masked = 0;
+    for (i, (a, b)) in a.iter().zip(b).enumerate() {
+        let am = *a == f32::NEG_INFINITY;
+        let bm = *b == f32::NEG_INFINITY;
+        if am != bm {
+            mask_mismatches += 1;
+        } else if am {
+            masked += 1;
+        } else {
+            positions.push(i);
+            actual.push(*a);
+            reference.push(*b);
+        }
+    }
+    let mut row = differences(&actual, &reference, atol, rtol);
+    for field in ["first_bad", "first_unequal"] {
+        if let Some(i) = row[field]["index"].as_u64() {
+            row[field]["index"] = json!(positions[i as usize]);
+        }
+    }
+    let bad = row["bad_elements"].as_u64().unwrap_or(0) + mask_mismatches as u64;
+    row["bad_elements"] = json!(bad);
+    row["passed"] = json!(bad == 0);
+    row["actual_elements"] = json!(a.len());
+    row["reference_elements"] = json!(b.len());
+    row["mask_mismatches"] = json!(mask_mismatches);
+    row["masked_elements"] = json!(masked);
+    row
 }
 fn route_weight_order(actual: &[u64], reference: &[f32]) -> Result<Vec<usize>, CpuError> {
     if actual.len() != reference.len()
@@ -283,6 +323,9 @@ impl Compare<'_> {
         Ok(())
     }
     fn name(&self, site: &str, pos: usize) -> Option<String> {
+        if site.contains(".attn.compressor.group") {
+            return Some(format!("{}.prefill.{site}", self.prefix));
+        }
         self.labels
             .get(&pos)
             .map(|label| format!("{}.{}.{}", self.prefix, label, site))
@@ -309,20 +352,65 @@ impl Compare<'_> {
             .map_err(|_| CpuError::Invalid("oracle tensor read or hash failed"))?;
         let f = family(site);
         let p = &self.policy["families"][f];
-        let mut row = differences(
-            values,
-            &expected,
-            p["atol"]
-                .as_f64()
-                .ok_or(CpuError::Invalid("tolerance missing"))?,
-            p["rtol"]
-                .as_f64()
-                .ok_or(CpuError::Invalid("tolerance missing"))?,
-        );
+        let (atol, rtol) = if p["exact"] == true {
+            // Signed cache positions are below RoPE's 2^20 limit; F32 stores
+            // them exactly. Engram addresses keep their separate U64 path.
+            if values
+                .iter()
+                .chain(&expected)
+                .any(|x| !x.is_finite() || x.fract() != 0.0 || x.abs() > 1_048_576.0)
+            {
+                return Err(CpuError::Invalid("integer observation range"));
+            }
+            (0.0, 0.0)
+        } else {
+            (
+                p["atol"]
+                    .as_f64()
+                    .ok_or(CpuError::Invalid("tolerance missing"))?,
+                p["rtol"]
+                    .as_f64()
+                    .ok_or(CpuError::Invalid("tolerance missing"))?,
+            )
+        };
+        let mut row = if site.ends_with(".indexer.score") {
+            masked_score_differences(values, &expected, atol, rtol)
+        } else {
+            differences(values, &expected, atol, rtol)
+        };
         row["tensor"] = json!(name);
         row["family"] = json!(f);
         row["step"] = json!(self.step);
         row["actual_f32_sha256"] = json!(float_sha(values));
+        if row["passed"] != true
+            && (site.ends_with(".topk_idxs") || site.ends_with(".candidate_blocks"))
+        {
+            let layer = site
+                .split('.')
+                .nth(1)
+                .and_then(|s| s.parse().ok())
+                .ok_or(CpuError::Invalid("index observation layer"))?;
+            let kind = if site.ends_with(".candidate_blocks") {
+                "candidates"
+            } else {
+                "indexer"
+            };
+            let label = name
+                .split('.')
+                .nth(2)
+                .ok_or(CpuError::Invalid("index observation label"))?;
+            let pos = self
+                .labels
+                .iter()
+                .find(|(_, value)| *value == label)
+                .map(|(pos, _)| *pos)
+                .ok_or(CpuError::Invalid("index observation position"))?;
+            if self.tied(layer, pos, kind) {
+                self.exact_ties += 1;
+                row["passed"] = json!(true);
+                row["exact_tie_waiver"] = json!(true);
+            }
+        }
         if row["passed"] != true {
             self.failed += 1;
             self.failed_names.insert(name.to_string());
@@ -369,6 +457,36 @@ impl ModelObserver for Compare<'_> {
             .is_some_and(|n| self.oracle.entries.contains_key(&n))
     }
     fn floats(&mut self, site: &str, pos: usize, values: &[f32]) -> Result<(), CpuError> {
+        let alias;
+        let site = if let Some((prefix, tail)) = site.split_once(".ffn.expert.") {
+            let (id, suffix) = tail
+                .split_once('.')
+                .ok_or(CpuError::Invalid("expert observation site"))?;
+            let id: u32 = id
+                .parse()
+                .map_err(|_| CpuError::Invalid("expert observation ID"))?;
+            let id_site = format!("{prefix}.ffn.expert.id");
+            let Some(name) = self.name(&id_site, pos) else {
+                return Ok(());
+            };
+            if !self.oracle.entries.contains_key(&name) {
+                return Ok(());
+            }
+            let expected = self
+                .oracle
+                .tensor(&name)
+                .map_err(|_| CpuError::Invalid("expert oracle ID"))?;
+            if expected.as_slice() != [id as f32] {
+                return Ok(());
+            }
+            if suffix == "in" {
+                self.compare(&name, &id_site, &[id as f32])?;
+            }
+            alias = format!("{prefix}.ffn.expert.{suffix}");
+            alias.as_str()
+        } else {
+            site
+        };
         if site.ends_with(".hc.out") {
             let layer = site
                 .split('.')
@@ -787,6 +905,56 @@ fn expert_checks(
     fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
     Ok(report)
 }
+fn router_checks(
+    oracle: &Oracle,
+    checkpoint: &DeepSeekV41Checkpoint,
+    out: &Path,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    use psionic_models::deepseek_v41_cpu::{matvec, moe::Router, projection::WeightSource};
+    let source = resident::ResidentCheckpoint::new(checkpoint);
+    let policy: Value = serde_json::from_str(POLICY)?;
+    let bounds = &policy["families"]["float32_mixing_and_router"];
+    let mut log = File::create(out.join("routers.jsonl"))?;
+    let (mut checked, mut failed) = (0, 0);
+    for entry in oracle
+        .entries
+        .values()
+        .filter(|e| e.name.ends_with(".ffn.gate.in"))
+    {
+        let prefix = entry.name.strip_suffix("in").ok_or("router suffix")?;
+        let layer = entry.name.split('.').nth(4).ok_or("router layer")?;
+        let input = oracle.tensor(&entry.name)?;
+        let weight = source.matrix(&format!("layers.{layer}.ffn.gate.weight"))?;
+        let bias = source.vector(&format!("layers.{layer}.ffn.gate.bias"))?;
+        let routing = Router::flash().select(&matvec(weight.as_ref(), &input)?, &bias)?;
+        for (suffix, actual) in [
+            ("scores", &routing.scores),
+            ("biased_scores", &routing.biased_scores),
+        ] {
+            let name = format!("{prefix}{suffix}");
+            let expected = oracle.tensor(&name)?;
+            let mut row = differences(
+                actual,
+                &expected,
+                bounds["atol"].as_f64().ok_or("router tolerance")?,
+                bounds["rtol"].as_f64().ok_or("router tolerance")?,
+            );
+            row["tensor"] = json!(name);
+            row["scope"] = json!("identical_oracle_router_input");
+            row["input_sha256"] = json!(entry.sha256);
+            checked += 1;
+            failed += usize::from(row["passed"] != true);
+            serde_json::to_writer(&mut log, &row)?;
+            writeln!(log)?;
+        }
+    }
+    let report = json!({"schema":"psionic.deepseek_v41.cpu_router_probe.v1",
+        "source_commit":env::var("V41_SOURCE_COMMIT").ok(),
+        "policy_sha256":hex::encode(Sha256::digest(POLICY.as_bytes())),
+        "checked":checked,"failed":failed,"model_qualification_passed":false});
+    fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
+    Ok(report)
+}
 fn ffn_checks(
     oracle: &Oracle,
     checkpoint: &DeepSeekV41Checkpoint,
@@ -977,6 +1145,7 @@ fn mixing_checks(
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut ffns_only = false;
+    let mut routers_only = false;
     let mut experts_only = false;
     let mut mixing_only = false;
     let mut swiglu_only = false;
@@ -1002,6 +1171,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--mixing-only" => mixing_only = true,
             "--experts-only" => experts_only = true,
             "--ffns-only" => ffns_only = true,
+            "--routers-only" => routers_only = true,
             "--stop-on-first-failure" => stop_on_first_failure = true,
             _ => return Err(format!("Unknown argument {arg}").into()),
         }
@@ -1022,6 +1192,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     if identity_only {
         return Ok(());
+    }
+    if routers_only {
+        return require_component_pass(router_checks(
+            &Oracle::open(&oracle_dir)?,
+            &checkpoint,
+            &out,
+        )?);
     }
     if ffns_only {
         return require_component_pass(ffn_checks(&Oracle::open(&oracle_dir)?, &checkpoint, &out)?);
@@ -1215,6 +1392,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn index_masks_match_exactly_and_never_hide_nonfinite_scores() {
+        let row = masked_score_differences(
+            &[f32::NEG_INFINITY, 1.0],
+            &[f32::NEG_INFINITY, 1.01],
+            0.02,
+            0.0,
+        );
+        assert_eq!(row["passed"], true);
+        assert_eq!(row["masked_elements"], 1);
+        assert_eq!(row["first_unequal"]["index"], 1);
+        assert_eq!(
+            masked_score_differences(&[0.0], &[f32::NEG_INFINITY], 1.0, 1.0)["passed"],
+            false
+        );
+        assert_eq!(
+            masked_score_differences(&[f32::NAN], &[f32::NAN], 1.0, 1.0)["passed"],
+            false
+        );
+        assert_eq!(
+            masked_score_differences(&[f32::INFINITY], &[f32::INFINITY], 1.0, 1.0)["passed"],
+            false
+        );
+        assert_eq!(
+            masked_score_differences(&[], &[f32::NEG_INFINITY], 1.0, 1.0)["passed"],
+            false
+        );
+    }
     #[test]
     fn partial_scope_and_incomplete_forward_never_qualify() {
         let runs: Vec<_> = REQUIRED_CASES

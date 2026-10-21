@@ -332,6 +332,14 @@ impl<'a> AttentionRuntime<'a> {
                     .compressor
                     .push(position, &value, gate.as_deref(), norm, g.norm_epsilon)?;
                 if let Some(mut latent) = latent {
+                    emit(
+                        &if start == 0 {
+                            format!("compressor.group{}", position / ratio)
+                        } else {
+                            "compressor.latent".to_string()
+                        },
+                        &latent,
+                    )?;
                     // Index projection consumes the unrotated latent first.
                     let group_pos = group_position(position, ratio)?;
                     let mut key = p.index_key(&latent)?;
@@ -393,8 +401,22 @@ impl<'a> AttentionRuntime<'a> {
                             &weights,
                         )?
                     };
+                    let mut observed_scores = scores.clone();
+                    observed_scores
+                        .resize((start + input.len() / g.hidden) / ratio, f32::NEG_INFINITY);
+                    emit("indexer.score", &observed_scores)?;
                     if layer == 20 {
-                        candidate_rows.push(attention::candidate_mask(&scores, visible, 2048, 8)?);
+                        let mask = attention::candidate_mask(&scores, visible, 2048, 8)?;
+                        emit(
+                            "indexer.candidate_blocks",
+                            &mask
+                                .chunks(8)
+                                .enumerate()
+                                .filter(|(_, block)| block[0])
+                                .map(|(i, _)| i as f32)
+                                .collect::<Vec<_>>(),
+                        )?;
+                        candidate_rows.push(mask);
                     }
                     let candidates = if layer > 20 {
                         Some(
@@ -425,6 +447,26 @@ impl<'a> AttentionRuntime<'a> {
                         ((start + input.len() / g.hidden) / ratio).min(g.index_top_k),
                         -1,
                     );
+                }
+                if owners.index == Some(layer) {
+                    let offset = if start == 0 {
+                        input.len() / g.hidden
+                    } else {
+                        g.window
+                    };
+                    emit(
+                        "indexer.topk_idxs",
+                        &selected
+                            .iter()
+                            .map(|id| {
+                                if *id < 0 {
+                                    -1.0
+                                } else {
+                                    *id as f32 + offset as f32
+                                }
+                            })
+                            .collect::<Vec<_>>(),
+                    )?;
                 }
                 for id in selected {
                     if id < -1 || (id >= 0 && id as usize >= visible) {

@@ -12,6 +12,7 @@ use super::{
     quantization::{self, Arithmetic},
     rms_norm, shape,
 };
+use std::cell::RefCell;
 
 #[derive(Clone, Copy, Debug)]
 pub struct BlockConfig {
@@ -196,14 +197,16 @@ impl<'a> TextBlock<'a> {
         }
         let bias = self.weights.vector(&self.name("ffn.gate.bias"))?;
         // Gate.forward promotes both input and BF16 router weights to F32.
-        let (routing, output) = moe::forward_observed(
+        let (routing, output) = moe::forward(
             &input,
             gate.as_ref(),
             &bias,
             self.config.router,
-            &NamedExperts { block: self },
+            &NamedExperts {
+                block: self,
+                observer: RefCell::new(observer),
+            },
             self.config.swiglu_limit,
-            observer,
         )?;
         let output = self.finish(output)?;
         let residual = self.finish(self.config.hyper.expand(&output, residual, &mixes)?)?;
@@ -281,10 +284,11 @@ impl<'a> TextBlock<'a> {
         )
     }
 }
-struct NamedExperts<'a, 'b> {
+struct NamedExperts<'a, 'b, 'c> {
     block: &'a TextBlock<'b>,
+    observer: RefCell<&'c mut dyn FnMut(&str, &[f32]) -> Result<(), CpuError>>,
 }
-impl ExpertProvider for NamedExperts<'_, '_> {
+impl ExpertProvider for NamedExperts<'_, '_, '_> {
     fn forward(
         &self,
         id: Option<usize>,
@@ -310,7 +314,7 @@ impl ExpertProvider for NamedExperts<'_, '_> {
         {
             return Err(CpuError::Invalid("expert checkpoint dimensions"));
         }
-        moe::expert_with_arithmetic(
+        moe::expert_observed(
             input,
             w1.as_ref(),
             w2.as_ref(),
@@ -318,6 +322,15 @@ impl ExpertProvider for NamedExperts<'_, '_> {
             route_weight,
             limit,
             b.arithmetic,
+            &mut |site, values| {
+                if let Some(id) = id {
+                    (self.observer.borrow_mut())(&format!("expert.{id}.{site}"), values)
+                } else if site == "out" {
+                    (self.observer.borrow_mut())("shared.out", values)
+                } else {
+                    Ok(())
+                }
+            },
         )
     }
 }

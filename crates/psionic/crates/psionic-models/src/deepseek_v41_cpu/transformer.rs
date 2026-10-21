@@ -782,6 +782,8 @@ pub(crate) mod tests {
             "layers.0.attn.q.normalized",
             "layers.1.engram.rows",
             "layers.2.attn.heads",
+            "layers.2.attn.compressor.latent",
+            "layers.20.attn.indexer.topk_idxs",
             "layers.2.ffn.shared.out",
             "layers.39.hc.out",
         ] {
