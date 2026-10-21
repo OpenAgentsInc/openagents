@@ -6,12 +6,9 @@ pub const ENTER_RANGE: f64 = 3.0;
 /// served by a model group of pylons (#12403). The site sends it as
 /// `X-OpenAgents-Pylon-Model` (#12416).
 pub const GROUP_MODEL: &str = "deepseek-v4.1-flash";
-/// The terminal's control for asking that group, off and on.
-pub const PICK_OFF: &str = "Ask DeepSeek V4.1";
-pub const PICK_ON: &str = "Asking DeepSeek V4.1 · answers take up to a few minutes";
 
 /// Whether `snapshot` holds an online, ready group head serving
-/// [`GROUP_MODEL`]: only then does the terminal offer it.
+/// [`GROUP_MODEL`]: only then does the terminal's chat offer it.
 #[must_use]
 pub fn group_ready(snapshot: &crate::Snapshot) -> bool {
     snapshot.pylons.iter().any(|pylon| {
@@ -107,9 +104,6 @@ mod tests {
         let mut other = snapshot.clone();
         other.pylons[0].services[0].model = "clef-flash".into();
         assert!(!group_ready(&other));
-        for line in [PICK_OFF, PICK_ON] {
-            assert!(oa_copy::violations(line, &[]).is_empty(), "{line}");
-        }
     }
 
     #[test]

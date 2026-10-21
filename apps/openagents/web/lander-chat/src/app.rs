@@ -77,6 +77,10 @@ pub struct LanderChat {
     published: Option<(Vec<(usize, usize, u8)>, (usize, usize), bool, i64)>,
     /// Bumped on each load, so a slow read for a chat left behind is dropped.
     generation: u64,
+    /// The Grid terminal (#12421): whether a ready DeepSeek V4.1 group is
+    /// online, and whether this chat asks it rather than any Pylon.
+    group_ready: bool,
+    ask_group: bool,
     _ticker: Task<()>,
 }
 
@@ -139,8 +143,11 @@ impl LanderChat {
             transcript,
             published: None,
             generation: 0,
+            group_ready: false,
+            ask_group: true,
             _ticker: ticker,
         };
+        this.ask_group = model::asks_group(kept_pick(this.current.as_deref()).as_deref());
         this.loading = this.current.is_some();
         this.connect(cx);
         this
@@ -195,6 +202,17 @@ impl LanderChat {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
+        if base() == model::HOME_BASE {
+            let ready = js_sys::Reflect::get(&js_sys::global(), &model::GROUP_READY_GLOBAL.into())
+                .ok()
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            if ready != self.group_ready {
+                self.group_ready = ready;
+                self.sync_pick();
+                cx.notify();
+            }
+        }
         if base() == model::HOME_BASE
             && let Some(panel) = web_sys::window()
                 .and_then(|w| w.document())
@@ -205,6 +223,14 @@ impl LanderChat {
                 &self.composer.read(cx).text().chars().count().to_string(),
             );
             let _ = panel.set_attribute("data-message-count", &self.entries.len().to_string());
+            let _ = panel.set_attribute(
+                "data-pylon-pick",
+                match (self.group_ready, self.ask_group) {
+                    (false, _) => "none",
+                    (true, true) => "group",
+                    (true, false) => "any",
+                },
+            );
             let _ = panel.set_attribute(
                 "data-chat-state",
                 if self.live.is_some() {
@@ -274,6 +300,8 @@ impl LanderChat {
         self.generation += 1;
         let generation = self.generation;
         self.loading = true;
+        self.ask_group = model::asks_group(kept_pick(Some(&chat)).as_deref());
+        self.sync_pick();
         cx.notify();
         cx.spawn(async move |this, cx| {
             let read = client.thread(&chat).await;
@@ -325,8 +353,33 @@ impl LanderChat {
         self.entries.clear();
         self.notice = None;
         self.loading = false;
+        // A new chat asks DeepSeek V4.1 again while a group is online.
+        self.ask_group = true;
+        self.sync_pick();
         push_path(None);
         set_title("OpenAgents");
+        cx.notify();
+    }
+
+    /// Points the chat's client at this chat's choice: it names
+    /// [`model::GROUP_MODEL`] on each turn while DeepSeek V4.1 is chosen and
+    /// a ready group is online.
+    fn sync_pick(&self) {
+        let value = if self.group_ready && self.ask_group {
+            JsValue::from_str(model::GROUP_MODEL)
+        } else {
+            JsValue::UNDEFINED
+        };
+        let _ = js_sys::Reflect::set(&js_sys::global(), &model::MODEL_GLOBAL.into(), &value);
+    }
+
+    /// Chooses DeepSeek V4.1 or any Pylon for this chat, and keeps it.
+    fn pick(&mut self, group: bool, cx: &mut Context<Self>) {
+        self.ask_group = group;
+        if let Some(chat) = &self.current {
+            keep_pick(chat, group);
+        }
+        self.sync_pick();
         cx.notify();
     }
 
@@ -508,6 +561,7 @@ impl LanderChat {
                 match sent {
                     Ok(id) => {
                         if current.is_none() {
+                            keep_pick(&id, this.ask_group);
                             push_path(Some(&id));
                             this.title = labels::truncate(text.lines().next().unwrap_or(""), 60);
                             set_title(&this.title);
@@ -758,8 +812,69 @@ impl LanderChat {
             .border_color(theme::border_strong())
             .bg(gpui::hsla(0., 0., 0.055, 0.94))
             .child(self.composer.clone())
+            .when_some(self.render_pick(layout, cx), |row, pick| row.child(pick))
             .child(send)
             .into_any_element()
+    }
+
+    /// DeepSeek V4.1 or any Pylon, beside the send button: on the Grid
+    /// terminal while a ready V4.1 group is online (#12421).
+    fn render_pick(&self, layout: &Layout, cx: &mut Context<Self>) -> Option<AnyElement> {
+        if base() != model::HOME_BASE || !self.group_ready {
+            return None;
+        }
+        let busy = self.live.is_some() || self.sending;
+        let segment = |id: &'static str, label: &'static str, on: bool, group: bool| {
+            div()
+                .id(id)
+                .flex()
+                .items_center()
+                .h_full()
+                .px(px(if layout.narrow { 10. } else { 12. }))
+                .rounded(px(14.))
+                .text_size(px(12.5))
+                .font_weight(if on {
+                    FontWeight::SEMIBOLD
+                } else {
+                    FontWeight::NORMAL
+                })
+                .when(on, |b| b.bg(theme::solid()).text_color(theme::on_solid()))
+                .when(!on, |b| {
+                    b.text_color(theme::text_muted())
+                        .when(!busy, |b| b.hover(|s| s.text_color(theme::text())))
+                })
+                .when(!busy && !on, |b| b.cursor_pointer())
+                .on_click(cx.listener(move |this, _: &ClickEvent, window, cx| {
+                    if this.live.is_none() && !this.sending {
+                        this.pick(group, cx);
+                    }
+                    window.focus(&this.composer.focus_handle(cx), cx);
+                }))
+                .child(label)
+        };
+        let (group_label, any_label) = if layout.narrow {
+            (model::PICK_GROUP_SHORT, model::PICK_ANY_SHORT)
+        } else {
+            (model::PICK_GROUP, model::PICK_ANY)
+        };
+        Some(
+            div()
+                .id("pylon-pick")
+                .flex_none()
+                .flex()
+                .flex_row()
+                .items_center()
+                .h(px(32.))
+                .p(px(2.))
+                .gap(px(2.))
+                .rounded(px(16.))
+                .border_1()
+                .border_color(theme::border_strong())
+                .when(busy, |b| b.opacity(0.5))
+                .child(segment("pick-group", group_label, self.ask_group, true))
+                .child(segment("pick-any", any_label, !self.ask_group, false))
+                .into_any_element(),
+        )
     }
 
     fn render_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
@@ -940,6 +1055,29 @@ fn sign_in(chat: Option<&str>) {
     let _ = window
         .location()
         .assign(&format!("/login?return_to={back}"));
+}
+
+/// The choice kept for `chat` in this browser, if any.
+fn kept_pick(chat: Option<&str>) -> Option<String> {
+    let chat = chat?;
+    web_sys::window()?
+        .local_storage()
+        .ok()
+        .flatten()?
+        .get_item(&format!("{}{chat}", model::PICK_KEY))
+        .ok()
+        .flatten()
+}
+
+/// Keeps `chat`'s choice in this browser, so it stays when the chat is
+/// opened again.
+fn keep_pick(chat: &str, group: bool) {
+    if let Some(storage) = web_sys::window().and_then(|w| w.local_storage().ok().flatten()) {
+        let _ = storage.set_item(
+            &format!("{}{chat}", model::PICK_KEY),
+            model::kept_pick(group),
+        );
+    }
 }
 
 fn storage() -> Option<web_sys::Storage> {

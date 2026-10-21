@@ -29,6 +29,32 @@ pub const MAX_CHARS: usize = 4_000;
 /// storage, under this key.
 pub const DRAFT_KEY: &str = "openagents.lander8.draft";
 
+/// The Grid terminal's model choice beside the composer (#12421): DeepSeek
+/// V4.1 while a ready group of pylons serves it, else any Pylon. The site
+/// routes a turn that names [`GROUP_MODEL`] to that group.
+pub const GROUP_MODEL: &str = "deepseek-v4.1-flash";
+pub const PICK_GROUP: &str = "DeepSeek V4.1";
+pub const PICK_GROUP_SHORT: &str = "DeepSeek";
+pub const PICK_ANY: &str = "Any Pylon";
+pub const PICK_ANY_SHORT: &str = "Any";
+/// The page global the Grid's pylons layer sets to `true` while a ready
+/// V4.1 group is online.
+pub const GROUP_READY_GLOBAL: &str = "openagentsPylonGroupReady";
+/// The page global the chat's client sends as `X-OpenAgents-Pylon-Model`.
+pub const MODEL_GLOBAL: &str = "openagentsPylonModel";
+/// Where a chat's choice is kept in this browser, followed by its id.
+pub const PICK_KEY: &str = "openagents.grid.pick.";
+
+/// A chat's kept choice: DeepSeek V4.1 unless it chose any Pylon.
+pub fn asks_group(kept: Option<&str>) -> bool {
+    kept != Some("any")
+}
+
+/// What [`asks_group`] reads back.
+pub fn kept_pick(group: bool) -> &'static str {
+    if group { "group" } else { "any" }
+}
+
 /// The line over the composer before the first message.
 pub const WELCOME: &str = "What can we help with?";
 pub const PLACEHOLDER: &str = "Message OpenAgents";
@@ -429,8 +455,19 @@ mod tests {
             CONNECTING,
             WENT_WRONG,
             LOST,
+            PICK_GROUP,
+            PICK_GROUP_SHORT,
+            PICK_ANY,
+            PICK_ANY_SHORT,
         ] {
             assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
         }
+    }
+
+    #[test]
+    fn a_chat_asks_deepseek_unless_it_chose_any_pylon() {
+        assert!(asks_group(None));
+        assert!(asks_group(Some(kept_pick(true))));
+        assert!(!asks_group(Some(kept_pick(false))));
     }
 }
