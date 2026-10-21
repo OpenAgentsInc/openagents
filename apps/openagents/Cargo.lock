@@ -13775,6 +13775,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "stage-link",
  "tokio",
  "user-home",
 ]
@@ -16425,6 +16426,15 @@ dependencies = [
  "proc-macro-error2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "stage-link"
+version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+ "sha2 0.10.9",
+ "tokio",
 ]
 
 [[package]]
