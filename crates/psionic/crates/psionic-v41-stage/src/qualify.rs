@@ -915,11 +915,16 @@ fn router_case(
         let reference = oracle.integers(&name)?;
         let mut candidate = Vec::new();
         for files in &rec.records {
-            let file = files
+            let matching: Vec<_> = files
                 .iter()
-                .find(|f| f.ends_with(&format!(".L{layer}.ExpertIds.u32")))
-                .ok_or_else(|| refused(format!("no router observation for layer {layer}")))?;
-            candidate.extend(read_u32(&record.join(file))?);
+                .filter(|f| f.ends_with(&format!(".L{layer}.ExpertIds.u32")))
+                .collect();
+            if matching.is_empty() {
+                return Err(refused(format!("no router observation for layer {layer}")));
+            }
+            for file in matching {
+                candidate.extend(read_u32(&record.join(file))?);
+            }
         }
         let top_k = reference.len() / row_step.len().max(1);
         if reference.len() != candidate.len()
@@ -1004,17 +1009,49 @@ fn site_row(
     token: usize,
     tokens: usize,
 ) -> Result<Option<Vec<u32>>, Refused> {
-    let Some(file) = files
+    use std::io::{Read, Seek, SeekFrom};
+    let files: Vec<_> = files
         .iter()
-        .find(|f| f.ends_with(&format!(".L{layer}.{site}.u32")))
-    else {
+        .filter(|f| f.ends_with(&format!(".L{layer}.{site}.u32")))
+        .map(|f| record.join(f))
+        .collect();
+    if files.is_empty() || token >= tokens {
         return Ok(None);
-    };
-    let words = read_u32(&record.join(file))?;
-    let per = words.len() / tokens.max(1);
-    Ok(words
-        .get(token * per..(token + 1) * per)
-        .map(<[u32]>::to_vec))
+    }
+    let lengths: Vec<_> = files
+        .iter()
+        .map(|f| std::fs::metadata(f).map(|m| m.len()))
+        .collect::<Result<_, _>>()
+        .map_err(|e| refused(e.to_string()))?;
+    let total: u64 = lengths.iter().sum();
+    if total == 0 || !total.is_multiple_of(tokens as u64 * 4) {
+        return Err(refused(format!(
+            "layer {layer} {site}: observation shape does not cover {tokens} tokens"
+        )));
+    }
+    let row = total / tokens as u64;
+    let mut offset = token as u64 * row;
+    for (path, len) in files.iter().zip(lengths) {
+        if !len.is_multiple_of(row) {
+            return Err(refused("a chunk observation ends inside a token row"));
+        }
+        if offset < len {
+            let mut file = std::fs::File::open(path).map_err(|e| refused(e.to_string()))?;
+            file.seek(SeekFrom::Start(offset))
+                .map_err(|e| refused(e.to_string()))?;
+            let mut bytes = vec![0; row as usize];
+            file.read_exact(&mut bytes)
+                .map_err(|e| refused(e.to_string()))?;
+            return Ok(Some(
+                bytes
+                    .chunks_exact(4)
+                    .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect(),
+            ));
+        }
+        offset -= len;
+    }
+    Ok(None)
 }
 
 /// Exact checks at the oracle's captured positions: Engram hash IDs and
@@ -1476,6 +1513,37 @@ pub fn run_derive(args: &[String]) -> Result<(), Refused> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn captured_rows_cover_all_chunks_in_absolute_prompt_order() {
+        let root = tempfile::tempdir().unwrap();
+        let files = vec![
+            "r-0-0.stage0.L1.EngramIds.u32".to_owned(),
+            "r-0-1.stage0.L1.EngramIds.u32".to_owned(),
+        ];
+        std::fs::write(
+            root.path().join(&files[0]),
+            (0u32..6).flat_map(u32::to_le_bytes).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        std::fs::write(
+            root.path().join(&files[1]),
+            (6u32..10).flat_map(u32::to_le_bytes).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        for token in 0..5 {
+            assert_eq!(
+                site_row(root.path(), &files, 1, "EngramIds", token, 5).unwrap(),
+                Some(vec![token as u32 * 2, token as u32 * 2 + 1])
+            );
+        }
+        assert!(
+            site_row(root.path(), &files, 1, "EngramIds", 5, 5)
+                .unwrap()
+                .is_none()
+        );
+        assert!(site_row(root.path(), &files[..1], 1, "EngramIds", 4, 5).is_err());
+    }
 
     fn report(tvs: &[(f64, u32)], control: Option<&str>) -> Value {
         let positions: Vec<Value> = tvs

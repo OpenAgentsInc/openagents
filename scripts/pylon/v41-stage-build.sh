@@ -169,6 +169,7 @@ if [ "$MODE" = pylon ]; then
   cd /cache/src-pylon
   export CARGO_TARGET_DIR=/cache/target-pylon CARGO_BUILD_JOBS=4
   . /cache/src-pylon/scripts/dev/cargo-build-env.sh
+  export CARGO_INCREMENTAL=0
   cargo build --locked --release -p pylon
   cp /cache/target-pylon/release/pylon /src/pylon
   rustc -V >/src/rustc.txt
@@ -178,6 +179,7 @@ cd /cache/src/crates/psionic
 export CARGO_TARGET_DIR=/cache/target CARGO_BUILD_JOBS=4
 # Compiler-keyed intermediate files, as for every agent build (#12071).
 . /cache/src/scripts/dev/cargo-build-env.sh
+export CARGO_INCREMENTAL=0
 export NVCC=/usr/local/cuda/bin/nvcc
 # Always explicit: psionic-backend-cuda rebuilds its kernels when these
 # change, and records the one it used.
@@ -310,6 +312,10 @@ generations() {
 if [[ $mode == pylon ]]; then
   scp -q "$host:$remote_src/pylon" "$host:$remote_src/rustc.txt" "$scratch/"
   write_build "$scratch/BUILD.json" pylon
+  if [[ $upload == 0 ]]; then
+    cat "$scratch/BUILD.json"
+    exit 0
+  fi
   gcloud storage cp -q "$scratch/pylon" "$scratch/BUILD.json" "$dest/"
   generations "$dest/pylon" "$dest/BUILD.json" >"$scratch/GENERATIONS.json"
   gcloud storage cp -q "$scratch/GENERATIONS.json" "$dest/"

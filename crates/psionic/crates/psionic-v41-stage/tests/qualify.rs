@@ -299,6 +299,10 @@ fn cuda_observations_match_and_every_negative_control_fails() {
     args.extend(["--policy", &policy]);
     let report = qualify(root.path(), &manifest, &same, "same", &args);
     assert_eq!(report["passed"], json!(true), "{report:#}");
+    let mut chunked = args.clone();
+    chunked.extend(["--prefill-chunk", "3", "--max-step-tokens", "3"]);
+    let report = qualify(root.path(), &manifest, &same, "chunked-cuda", &chunked);
+    assert_eq!(report["passed"], json!(true), "{report:#}");
     let mut passed = Vec::new();
     for control in [
         "wrong-weights",
