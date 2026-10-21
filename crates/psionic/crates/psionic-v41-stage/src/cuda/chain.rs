@@ -53,7 +53,7 @@ use serde_json::{Value, json};
 use super::{CudaModel, V41CudaStageExecutor};
 use crate::{
     AnswerParser, PromptMode, Refused, Sampling, StageBackend, TextStream, Vocabulary,
-    load_model_for, parse_layers, synthetic_manifest,
+    parse_layers, synthetic_manifest,
 };
 
 /// Report schema.
@@ -507,12 +507,9 @@ fn recv(thread: &StageThread) -> Result<Reply, Refused> {
 /// opening the shards.
 fn text_side(weights: &Path) -> Result<(Vocabulary, u32, u32), Refused> {
     if weights.join(crate::SYNTHETIC_FILE).is_file() {
-        let model = load_model_for(weights, None)?;
-        return Ok((
-            model.vocabulary,
-            model.config.eos_token,
-            model.config.pad_token,
-        ));
+        // The CUDA stages' synthetic model, with its own vocabulary.
+        let model = CudaModel::load(weights, None)?;
+        return Ok((model.vocabulary, model.eos, model.pad));
     }
     let read = |name: &str| {
         std::fs::read(weights.join(name)).map_err(|e| Refused(format!("can't read {name}: {e}")))
@@ -571,161 +568,170 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             handle,
         });
     }
-    let mut loaded = Vec::new();
-    for thread in &threads {
-        match recv(thread)? {
-            Reply::Loaded(report) => loaded.push(report),
-            _ => return Err(Refused("a stage answered out of order".into())),
+    // Whatever happens, the stage threads finish before the process does:
+    // a process that exits while they still hold their devices can crash in
+    // the CUDA teardown.
+    let driven = (|| -> Result<(Vec<Value>, Value), Refused> {
+        let mut loaded = Vec::new();
+        for thread in &threads {
+            match recv(thread)? {
+                Reply::Loaded(report) => loaded.push(report),
+                _ => return Err(Refused("a stage answered out of order".into())),
+            }
         }
-    }
-    let mut answer = Value::Null;
-    if !options.load_only {
-        let last = threads.len() - 1;
-        let digest = manifest.digest();
-        let mut parser = AnswerParser::new(std::sync::Arc::clone(&tokenizer), eos, mode);
-        let mut text = TextStream::default();
-        let (mut reasoning, mut content, mut finish) = (String::new(), String::new(), None);
-        let (mut tokens, mut raw) = (Vec::new(), String::new());
-        let mut token_ms = Vec::new();
-        let mut stage_ms: Vec<Vec<f64>> = vec![Vec::new(); threads.len()];
-        // The largest encoded message into each stage.
-        let mut hop_bytes = vec![0_usize; threads.len()];
-        let mut prefill_ms = 0.0;
-        let chunk = options.prefill_chunk.unwrap_or(prompt_ids.len()).max(1);
-        let mut pending: Vec<Vec<u32>> = prompt_ids.chunks(chunk).map(<[u32]>::to_vec).collect();
-        pending.reverse();
-        let mut position = 0_u64;
-        let mut step = 0_u64;
-        let mut produced = 0_u64;
-        while produced < options.max_tokens {
-            let Some(input) = pending.pop() else {
-                break;
-            };
-            let prefill_part = !pending.is_empty();
-            let started = Instant::now();
-            let mut message = StageMessage {
-                manifest_digest: digest,
-                generation: 1,
-                request_id: "chain".into(),
-                attempt: 0,
-                stage: 0,
-                layers: manifest.stages[0].layers(),
-                step,
-                kind: if input.len() > 1 {
-                    StepKind::Prefill
-                } else {
-                    StepKind::Decode
-                },
-                position,
-                tokens: input.clone(),
-                sections: Vec::new(),
-            };
-            let mut sampled = None;
-            for (k, thread) in threads.iter().enumerate() {
-                // Encode without the size limits to measure the message,
-                // then hold it to the codec's default limits as a group does.
-                let unbounded = CodecLimits {
-                    max_message_bytes: usize::MAX,
-                    max_section_bytes: usize::MAX,
-                    max_tokens: usize::MAX,
-                    ..CodecLimits::default()
+        let mut answer = Value::Null;
+        if !options.load_only {
+            let last = threads.len() - 1;
+            let digest = manifest.digest();
+            let mut parser = AnswerParser::new(std::sync::Arc::clone(&tokenizer), eos, mode);
+            let mut text = TextStream::default();
+            let (mut reasoning, mut content, mut finish) = (String::new(), String::new(), None);
+            let (mut tokens, mut raw) = (Vec::new(), String::new());
+            let mut token_ms = Vec::new();
+            let mut stage_ms: Vec<Vec<f64>> = vec![Vec::new(); threads.len()];
+            // The largest encoded message into each stage.
+            let mut hop_bytes = vec![0_usize; threads.len()];
+            let mut prefill_ms = 0.0;
+            let chunk = options.prefill_chunk.unwrap_or(prompt_ids.len()).max(1);
+            let mut pending: Vec<Vec<u32>> =
+                prompt_ids.chunks(chunk).map(<[u32]>::to_vec).collect();
+            pending.reverse();
+            let mut position = 0_u64;
+            let mut step = 0_u64;
+            let mut produced = 0_u64;
+            while produced < options.max_tokens {
+                let Some(input) = pending.pop() else {
+                    break;
                 };
-                let bytes = encode(&message, &unbounded)
-                    .map_err(|e| Refused(format!("hop to stage {k}: {e}")))?;
-                let largest = &mut hop_bytes[k];
-                *largest = (*largest).max(bytes.len());
-                if let Err(e) = encode(&message, &CodecLimits::default()) {
-                    return Err(Refused(format!(
-                        "hop to stage {k}: {} bytes for {} tokens: {e}",
-                        bytes.len(),
-                        message.tokens.len()
-                    )));
-                }
-                let _ = thread.commands.send(Command::Step {
-                    bytes,
-                    sampling: (k == last).then_some(options.sampling),
+                let prefill_part = !pending.is_empty();
+                let started = Instant::now();
+                let mut message = StageMessage {
+                    manifest_digest: digest,
+                    generation: 1,
+                    request_id: "chain".into(),
+                    attempt: 0,
+                    stage: 0,
+                    layers: manifest.stages[0].layers(),
                     step,
-                });
-                let Reply::Stepped {
-                    sections,
-                    token,
-                    ms,
-                } = recv(thread)?
-                else {
-                    return Err(Refused("a stage answered out of order".into()));
+                    kind: if input.len() > 1 {
+                        StepKind::Prefill
+                    } else {
+                        StepKind::Decode
+                    },
+                    position,
+                    tokens: input.clone(),
+                    sections: Vec::new(),
                 };
-                stage_ms[k].push(ms);
-                if k == last {
-                    sampled = token;
+                let mut sampled = None;
+                for (k, thread) in threads.iter().enumerate() {
+                    // Encode without the size limits to measure the message,
+                    // then hold it to the codec's default limits as a group does.
+                    let unbounded = CodecLimits {
+                        max_message_bytes: usize::MAX,
+                        max_section_bytes: usize::MAX,
+                        max_tokens: usize::MAX,
+                        ..CodecLimits::default()
+                    };
+                    let bytes = encode(&message, &unbounded)
+                        .map_err(|e| Refused(format!("hop to stage {k}: {e}")))?;
+                    let largest = &mut hop_bytes[k];
+                    *largest = (*largest).max(bytes.len());
+                    if let Err(e) = encode(&message, &CodecLimits::default()) {
+                        return Err(Refused(format!(
+                            "hop to stage {k}: {} bytes for {} tokens: {e}",
+                            bytes.len(),
+                            message.tokens.len()
+                        )));
+                    }
+                    let _ = thread.commands.send(Command::Step {
+                        bytes,
+                        sampling: (k == last).then_some(options.sampling),
+                        step,
+                    });
+                    let Reply::Stepped {
+                        sections,
+                        token,
+                        ms,
+                    } = recv(thread)?
+                    else {
+                        return Err(Refused("a stage answered out of order".into()));
+                    };
+                    stage_ms[k].push(ms);
+                    if k == last {
+                        sampled = token;
+                    } else {
+                        let next = &manifest.stages[k + 1];
+                        message = message.next_hop((k + 1) as u16, next.layers(), sections);
+                    }
+                }
+                let ms = started.elapsed().as_secs_f64() * 1e3;
+                position += input.len() as u64;
+                step += 1;
+                if prefill_part {
+                    // A chunk short of the whole prompt samples nothing to keep.
+                    prefill_ms += ms;
+                    continue;
+                }
+                let token =
+                    sampled.ok_or_else(|| Refused("the last stage sampled no token".into()))?;
+                if input.len() > 1 || produced == 0 {
+                    prefill_ms += ms;
                 } else {
-                    let next = &manifest.stages[k + 1];
-                    message = message.next_hop((k + 1) as u16, next.layers(), sections);
+                    token_ms.push(ms);
+                }
+                produced += 1;
+                tokens.push(token);
+                raw.push_str(&text.push(&tokenizer, token));
+                if matches!(vocabulary, Vocabulary::V41(_)) {
+                    let piece = parser.push(token, produced >= options.max_tokens)?;
+                    reasoning.push_str(&piece.reasoning);
+                    content.push_str(&piece.content);
+                    if piece.finish.is_some() {
+                        finish = piece.finish;
+                    }
+                }
+                if token == eos {
+                    break;
+                }
+                pending.push(vec![token]);
+            }
+            let decode_ms: f64 = token_ms.iter().sum();
+            answer = json!({
+                "mode": mode.as_str(),
+                "prompt_tokens": prompt_ids.len(),
+                "prompt_ids": prompt_ids,
+                "prefill_chunk": options.prefill_chunk,
+                "tokens": tokens.len(),
+                "ids": tokens,
+                "eos": tokens.last() == Some(&eos),
+                "finish": finish,
+                "text": raw,
+                "reasoning": reasoning,
+                "content": content,
+                "prefill_ms": prefill_ms,
+                "decode_ms_per_token": summary(&token_ms),
+                "decode_tokens_per_s": if decode_ms > 0.0 { token_ms.len() as f64 / (decode_ms / 1e3) } else { 0.0 },
+                "stage_step_ms": stage_ms.iter().map(|m| summary(m)).collect::<Vec<_>>(),
+                "largest_message_bytes_into_stage": hop_bytes,
+            });
+        }
+        let mut stages = Vec::new();
+        for (thread, mut report) in threads.iter().zip(loaded) {
+            let _ = thread.commands.send(Command::Report);
+            if let Reply::Report(run) = recv(thread)? {
+                if let Some(map) = report.as_object_mut() {
+                    map.insert("run".into(), run);
                 }
             }
-            let ms = started.elapsed().as_secs_f64() * 1e3;
-            position += input.len() as u64;
-            step += 1;
-            if prefill_part {
-                // A chunk short of the whole prompt samples nothing to keep.
-                prefill_ms += ms;
-                continue;
-            }
-            let token = sampled.ok_or_else(|| Refused("the last stage sampled no token".into()))?;
-            if input.len() > 1 || produced == 0 {
-                prefill_ms += ms;
-            } else {
-                token_ms.push(ms);
-            }
-            produced += 1;
-            tokens.push(token);
-            raw.push_str(&text.push(&tokenizer, token));
-            if matches!(vocabulary, Vocabulary::V41(_)) {
-                let piece = parser.push(token, produced >= options.max_tokens)?;
-                reasoning.push_str(&piece.reasoning);
-                content.push_str(&piece.content);
-                if piece.finish.is_some() {
-                    finish = piece.finish;
-                }
-            }
-            if token == eos {
-                break;
-            }
-            pending.push(vec![token]);
+            stages.push(report);
         }
-        let decode_ms: f64 = token_ms.iter().sum();
-        answer = json!({
-            "mode": mode.as_str(),
-            "prompt_tokens": prompt_ids.len(),
-            "prompt_ids": prompt_ids,
-            "prefill_chunk": options.prefill_chunk,
-            "tokens": tokens.len(),
-            "ids": tokens,
-            "eos": tokens.last() == Some(&eos),
-            "finish": finish,
-            "text": raw,
-            "reasoning": reasoning,
-            "content": content,
-            "prefill_ms": prefill_ms,
-            "decode_ms_per_token": summary(&token_ms),
-            "decode_tokens_per_s": if decode_ms > 0.0 { token_ms.len() as f64 / (decode_ms / 1e3) } else { 0.0 },
-            "stage_step_ms": stage_ms.iter().map(|m| summary(m)).collect::<Vec<_>>(),
-            "largest_message_bytes_into_stage": hop_bytes,
-        });
-    }
-    let mut stages = Vec::new();
-    for (thread, mut report) in threads.iter().zip(loaded) {
-        let _ = thread.commands.send(Command::Report);
-        if let Reply::Report(run) = recv(thread)? {
-            if let Some(map) = report.as_object_mut() {
-                map.insert("run".into(), run);
-            }
-        }
-        stages.push(report);
-    }
+        Ok((stages, answer))
+    })();
     for thread in threads {
         drop(thread.commands);
         let _ = thread.handle.join();
     }
+    let (stages, answer) = driven?;
     let mut note = String::new();
     if options.prefill_chunk.is_some() {
         let _ = write!(
