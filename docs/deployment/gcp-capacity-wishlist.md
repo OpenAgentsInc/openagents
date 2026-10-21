@@ -112,6 +112,20 @@ is the weights:
 - For repeated work in one region, copy the weights once to a bucket in
   that region. That costs about the same egress once, plus storage.
 
+## Where each machine type is offered
+
+Listed by `gcloud compute machine-types list` on 2026-10-21. A zone that
+offers a type can still be stocked out.
+
+| Machine type | GPUs | Zones |
+| --- | --- | --- |
+| `g4-standard-48` to `-192` | RTX PRO 6000 | us-central1-b/c/f, us-east1-b/d, us-east4-b/c, us-east5-a/b/c, us-south1-a/b, us-west1-a/b/c, us-west3-a, us-west4-a/b/c; europe-west1-b/c, europe-west2-b/c, europe-west4-a/b/c, europe-west8-b/c, europe-west10-b, europe-north1-a/b/c; asia-east1-a, asia-northeast1-b, asia-south1-c, asia-south2-a/c, asia-southeast1-a/b/c, asia-southeast2-b/c; me-central2-a; southamerica-east1-b |
+| `a4-highgpu-8g` | 8 × B200 | us-central1-b, us-east1-b/d, us-east4-b, us-south1-b, us-west2-c, us-west3-b/c; europe-west1-b, europe-west4-b, europe-north1-b/c; asia-northeast1-b, asia-south2-c, asia-southeast1-b |
+| `a4x-highgpu-4g` | GB200 | us-central1-a/b, us-east1-d, us-east4-b; europe-west4-b |
+| `a3-ultragpu-8g` | 8 × H200 | us-central1-b, us-east4-b, us-east5-a, us-south1-b, us-west1-c; europe-west1-b, europe-west4-a; asia-south1-b, asia-south2-c |
+| `a3-megagpu-8g` | 8 × H100 | us-central1-a/b/c, us-east4-a/b/c, us-east5-a, us-west1-a/b, us-west4-a; europe-west1-b/c, europe-west3-c, europe-west4-b/c, europe-north1-c; asia-east1-c, asia-northeast1-b, asia-southeast1-b/c; australia-southeast1-c |
+| `a3-highgpu-8g` | 8 × H100 | Most of the a3-megagpu zones, plus asia-northeast1-c, asia-northeast3-c, asia-south1-b/c, asia-south2-b, australia-southeast2-b, europe-west2-b/c, europe-west3-a, europe-west9-c |
+
 ## Email to the Google account team (draft)
 
 > Subject: GPU capacity for OpenAgents (RTX PRO 6000 and B200)
