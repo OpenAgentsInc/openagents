@@ -604,3 +604,263 @@ pub fn reference(
     }
     Ok(answer)
 }
+
+// ---------------------------------------------------------------------------
+// Replay
+// ---------------------------------------------------------------------------
+
+/// The report `replay` prints.
+pub const REPLAY_SCHEMA: &str = "openagents.deepseek_v41.metal_replay.v1";
+
+/// Feeds a `chain --capture` folder's last-stage messages to the Metal stage
+/// and compares its logits and tokens with the captured CUDA stage's, on the
+/// same inputs step by step (#12420). The logits limit is W1's frozen logits
+/// family, `2^-5 + 2^-6 |cuda|`.
+///
+/// ```text
+/// psionic-v41-stage replay --weights DIR --capture DIR
+/// ```
+///
+/// # Errors
+///
+/// Refuses a capture or weights the Metal stage can't run.
+#[allow(clippy::too_many_lines)]
+pub fn replay(weights: &Path, capture: &Path) -> Result<Value, Refused> {
+    let read = |name: &str| {
+        std::fs::read(capture.join(name))
+            .map_err(|e| Refused(format!("can't read the capture's {name}: {e}")))
+    };
+    let manifest: V41GroupManifest = serde_json::from_slice(&read("manifest.json")?)
+        .map_err(|e| Refused(format!("the capture's manifest: {e}")))?;
+    let last = manifest.stages.len() - 1;
+    let entry = manifest.stages[last].clone();
+    let mut steps = Vec::new();
+    while capture.join(format!("step-{}.msg", steps.len())).is_file() {
+        let k = steps.len();
+        let meta: Value = serde_json::from_slice(&read(&format!("step-{k}.json"))?)
+            .map_err(|e| Refused(format!("step {k}: {e}")))?;
+        steps.push((read(&format!("step-{k}.msg"))?, meta));
+    }
+    if steps.is_empty() {
+        return Err(Refused("the capture holds no steps".into()));
+    }
+    let max_context = steps[0].1["max_context"].as_u64().unwrap_or(8192) as usize;
+    let max_step_tokens = steps[0].1["max_step_tokens"]
+        .as_u64()
+        .unwrap_or(max_context as u64) as usize;
+    let model = MetalModel::load(weights, manifest.selection(last).as_ref())?;
+    let metal = metal_device()?;
+    let started = std::time::Instant::now();
+    let stage = model.stage(
+        &metal,
+        entry.first_layer as usize..entry.end_layer as usize,
+        max_context,
+        max_step_tokens,
+        false,
+        None,
+    )?;
+    let load_s = started.elapsed().as_secs_f64();
+    let memory = serde_json::json!({
+        "weights_and_state": stage.device_bytes(),
+        "allocated": metal.allocated_bytes(),
+    });
+    let executor = V41MetalStageExecutor::new(metal, stage, entry.stage);
+    let inbox = StageInbox::new(
+        manifest.digest(),
+        1,
+        executor.contract(),
+        CodecLimits::default(),
+    );
+    let mut worker = StageWorker::new(inbox, executor);
+    let mut report = Vec::new();
+    let (mut equal_tokens, mut compared, mut worst) = (0, 0, 0.0_f64);
+    let mut first_divergence = None;
+    for (k, (bytes, meta)) in steps.iter().enumerate() {
+        let emit = meta["emit"].as_bool().unwrap_or(true);
+        let sampling = Sampling {
+            temperature: meta["sampling"]["temperature"].as_f64().unwrap_or(0.0),
+            top_p: meta["sampling"]["top_p"].as_f64().unwrap_or(1.0),
+            seed: meta["sampling"]["seed"].as_u64().unwrap_or(0) as u32,
+        };
+        worker.executor().prepare_output(sampling, k as u64, emit);
+        let started = std::time::Instant::now();
+        worker
+            .step_bytes(bytes)
+            .map_err(|e| Refused(format!("step {k}: {e}")))?;
+        let ms = started.elapsed().as_secs_f64() * 1e3;
+        let gpu_ms = worker.executor().stage().last_gpu_seconds() * 1e3;
+        let token = worker.executor().sampled();
+        let cuda_token = meta["token"].as_u64().map(|t| t as u32);
+        let mut row = serde_json::json!({
+            "step": k,
+            "tokens": meta["tokens"],
+            "metal_token": token,
+            "cuda_token": cuda_token,
+            "metal_stage_ms": ms,
+            "metal_gpu_ms": gpu_ms,
+            "cuda_stage_ms": meta["stage_ms"],
+        });
+        if !emit {
+            report.push(row);
+            continue;
+        }
+        if token == cuda_token {
+            equal_tokens += 1;
+        } else if first_divergence.is_none() {
+            first_divergence = Some(k);
+        }
+        compared += 1;
+        if let (Some(metal), Ok(cuda)) = (
+            worker.executor().logits(),
+            read(&format!("step-{k}.logits.f32")),
+        ) {
+            let cuda: Vec<f32> = cuda
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect();
+            let (mut max_abs, mut over, mut step_worst) = (0.0_f64, 0, 0.0_f64);
+            let mut equal = 0;
+            for (a, b) in metal.iter().zip(&cuda) {
+                let (a, b) = (f64::from(*a), f64::from(*b));
+                if a.to_bits() == b.to_bits() {
+                    equal += 1;
+                }
+                let error = (a - b).abs();
+                let limit = 0.031_25 + 0.015_625 * b.abs();
+                max_abs = max_abs.max(error);
+                step_worst = step_worst.max(error / limit);
+                if !(error <= limit) {
+                    over += 1;
+                }
+            }
+            let top = |v: &[f32]| -> Vec<usize> {
+                let mut ids: Vec<usize> = (0..v.len()).collect();
+                ids.sort_by(|a, b| v[*b].total_cmp(&v[*a]).then(a.cmp(b)));
+                ids.truncate(5);
+                ids
+            };
+            let (tm, tc) = (top(&metal), top(&cuda));
+            worst = worst.max(step_worst);
+            row["logits"] = serde_json::json!({
+                "count": metal.len(),
+                "bit_equal": equal,
+                "max_abs_difference": max_abs,
+                "max_error_over_limit": step_worst,
+                "over_limit": over,
+                "top5_metal": tm,
+                "top5_cuda": tc,
+                "top5_overlap": tm.iter().filter(|i| tc.contains(i)).count(),
+            });
+        }
+        report.push(row);
+    }
+    Ok(serde_json::json!({
+        "schema": REPLAY_SCHEMA,
+        "device": {
+            "class": device_class(),
+            "name": worker.executor().metal.device_name(),
+        },
+        "layers": [entry.first_layer, entry.end_layer],
+        "load_seconds": load_s,
+        "memory": memory,
+        "limit": "|metal - cuda| <= 2^-5 + 2^-6 |cuda| per logit (W1 logits family)",
+        "tokens_compared": compared,
+        "tokens_equal": equal_tokens,
+        "first_divergence": first_divergence,
+        "max_logit_error_over_limit": worst,
+        "steps": report,
+    }))
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+    use psionic_models::stage_state::{StepKind, encode};
+
+    /// A capture made by two Metal stages replays on a third Metal stage
+    /// with equal tokens and bit-equal logits, so `replay` compares only
+    /// what the devices compute.
+    #[test]
+    fn a_metal_capture_replays_exactly() {
+        let root = tempfile::tempdir().unwrap();
+        let weights = root.path().join("weights");
+        crate::write_synthetic(&weights, "synthetic").unwrap();
+        let capture = root.path().join("capture");
+        std::fs::create_dir_all(&capture).unwrap();
+        let split = [0..21, 21..40];
+        let manifest = crate::synthetic_manifest(&split).unwrap();
+        std::fs::write(
+            capture.join("manifest.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        let model = MetalModel::load(&weights, None).unwrap();
+        let mut workers: Vec<_> = (0..2)
+            .map(|i| metal_worker(&model, &manifest, &manifest.stages[i], 64, 1).unwrap())
+            .collect();
+        let sampling = Sampling {
+            temperature: 0.0,
+            top_p: 1.0,
+            seed: 0,
+        };
+        let mut input: Vec<u32> = vec![3, 5, 0, 6, 4, 7];
+        let mut position = 0;
+        for step in 0..6_u64 {
+            let mut message = StageMessage {
+                manifest_digest: manifest.digest(),
+                generation: 1,
+                request_id: "replay".into(),
+                attempt: 0,
+                stage: 0,
+                layers: manifest.stages[0].layers(),
+                step,
+                kind: if input.len() > 1 {
+                    StepKind::Prefill
+                } else {
+                    StepKind::Decode
+                },
+                position,
+                tokens: input.clone(),
+                sections: Vec::new(),
+            };
+            for (k, worker) in workers.iter_mut().enumerate() {
+                let bytes = encode(&message, &CodecLimits::default()).unwrap();
+                worker.executor().prepare_output(sampling, step, true);
+                let sections = worker.step_bytes(&bytes).unwrap();
+                if k == 1 {
+                    std::fs::write(capture.join(format!("step-{step}.msg")), &bytes).unwrap();
+                    let logits = worker.executor().logits().unwrap();
+                    std::fs::write(
+                        capture.join(format!("step-{step}.logits.f32")),
+                        logits
+                            .iter()
+                            .flat_map(|x| x.to_le_bytes())
+                            .collect::<Vec<_>>(),
+                    )
+                    .unwrap();
+                    let token = worker.executor().sampled().unwrap();
+                    let meta = serde_json::json!({
+                        "step": step, "position": position, "tokens": input.len(),
+                        "emit": true, "token": token, "stage_ms": 0.0,
+                        "sampling": {"temperature": 0.0, "top_p": 1.0, "seed": 0},
+                        "max_context": 64, "max_step_tokens": 64,
+                    });
+                    std::fs::write(capture.join(format!("step-{step}.json")), meta.to_string())
+                        .unwrap();
+                    position += input.len() as u64;
+                    input = vec![token];
+                } else {
+                    message = message.next_hop(1, manifest.stages[1].layers(), sections);
+                }
+            }
+        }
+        let report = replay(&weights, &capture).unwrap();
+        assert_eq!(report["tokens_compared"], 6);
+        assert_eq!(report["tokens_equal"], 6);
+        assert_eq!(report["max_logit_error_over_limit"], 0.0);
+        for step in report["steps"].as_array().unwrap() {
+            assert_eq!(step["logits"]["bit_equal"], step["logits"]["count"]);
+        }
+    }
+}

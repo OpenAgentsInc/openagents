@@ -7,7 +7,7 @@
 //!     [--gpus 0,1,2,3] [--max-context N] [--max-step-tokens N]
 //!     [--prompt JSON | --prompt-file FILE [--repeat N]] [--mode thinking|chat]
 //!     [--max-tokens N] [--prefill-chunk N] [--temperature T --top-p P --seed S]
-//!     [--engram-lookups N] [--load-only] [--runtime LABEL]
+//!     [--engram-lookups N] [--load-only] [--runtime LABEL] [--capture DIR]
 //! ```
 //!
 //! Each stage runs W11's executor behind W9's stage worker on its own
@@ -20,6 +20,11 @@
 //! parameters and bytes read per decode token, and the answer with its
 //! token ids and its reasoning and final text as the #12372 adapter splits
 //! them.
+//!
+//! `--capture DIR` keeps what the last stage took and answered, for
+//! comparing another device's stage on the same inputs (#12420): the
+//! manifest, and per step the encoded message into the last stage, its
+//! logits, and its token. `psionic-v41-stage replay` reads it.
 //!
 //! `--prefill-chunk N` uses the group's optional serial chunk schedule,
 //! with independent step buffers. Intermediate chunks update state without
@@ -74,6 +79,8 @@ pub struct ChainOptions {
     pub engram_lookups: usize,
     pub load_only: bool,
     pub runtime: String,
+    /// Where to keep the last stage's inputs and outputs.
+    pub capture: Option<PathBuf>,
 }
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
@@ -160,6 +167,7 @@ impl ChainOptions {
             engram_lookups: number(args, "--engram-lookups", 2000)?,
             load_only: args.iter().any(|a| a == "--load-only"),
             runtime: flag(args, "--runtime").unwrap_or("unlabeled").to_owned(),
+            capture: flag(args, "--capture").map(PathBuf::from),
         })
     }
 }
@@ -357,6 +365,8 @@ enum Reply {
         sections: Vec<Section>,
         token: Option<u32>,
         ms: f64,
+        /// The last stage's logits, when capturing.
+        logits: Option<Vec<f32>>,
     },
     Report(Value),
     Failed(String),
@@ -452,6 +462,9 @@ fn stage_thread(
                 match result {
                     Ok(sections) => {
                         let token = worker.executor().sampled();
+                        let logits = (options.capture.is_some() && emit)
+                            .then(|| worker.executor().logits())
+                            .flatten();
                         let (now, _) = free(worker.executor().backend())?;
                         free_min = free_min.min(now);
                         steps.push(ms);
@@ -459,6 +472,7 @@ fn stage_thread(
                             sections,
                             token,
                             ms,
+                            logits,
                         });
                     }
                     Err(e) => {
@@ -537,6 +551,19 @@ fn text_side(weights: &Path) -> Result<(Vocabulary, u32, u32), Refused> {
 #[allow(clippy::too_many_lines)]
 pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
     let manifest = checkpoint_manifest(&options.split, &options.gpus)?;
+    let keep = |name: &str, bytes: &[u8]| -> Result<(), Refused> {
+        if let Some(dir) = &options.capture {
+            std::fs::write(dir.join(name), bytes)
+                .map_err(|e| Refused(format!("can't write the capture's {name}: {e}")))?;
+        }
+        Ok(())
+    };
+    if let Some(dir) = &options.capture {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| Refused(format!("can't make {}: {e}", dir.display())))?;
+        let json = serde_json::to_vec_pretty(&manifest).map_err(|e| Refused(e.to_string()))?;
+        keep("manifest.json", &json)?;
+    }
     let (vocabulary, eos, pad) = text_side(&options.weights)?;
     let tokenizer = vocabulary.tokenizer();
     let mode = options.mode;
@@ -644,6 +671,9 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                             message.tokens.len()
                         )));
                     }
+                    if k == last {
+                        keep(&format!("step-{step}.msg"), &bytes)?;
+                    }
                     let _ = thread.commands.send(Command::Step {
                         bytes,
                         sampling: (k == last).then_some(options.sampling),
@@ -654,6 +684,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                         sections,
                         token,
                         ms,
+                        logits,
                     } = recv(thread)?
                     else {
                         return Err(Refused("a stage answered out of order".into()));
@@ -661,6 +692,27 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                     stage_ms[k].push(ms);
                     if k == last {
                         sampled = token;
+                        if let Some(logits) = &logits {
+                            let bytes: Vec<u8> =
+                                logits.iter().flat_map(|x| x.to_le_bytes()).collect();
+                            keep(&format!("step-{step}.logits.f32"), &bytes)?;
+                        }
+                        let record = json!({
+                            "step": step,
+                            "position": position,
+                            "tokens": input.len(),
+                            "emit": !prefill_part,
+                            "token": token,
+                            "stage_ms": ms,
+                            "sampling": {
+                                "temperature": options.sampling.temperature,
+                                "top_p": options.sampling.top_p,
+                                "seed": options.sampling.seed,
+                            },
+                            "max_context": options.max_context,
+                            "max_step_tokens": options.max_step_tokens,
+                        });
+                        keep(&format!("step-{step}.json"), record.to_string().as_bytes())?;
                     } else {
                         let next = &manifest.stages[k + 1];
                         message = message.next_hop((k + 1) as u16, next.layers(), sections);

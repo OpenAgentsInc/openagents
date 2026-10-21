@@ -17,6 +17,7 @@
 //! psionic-v41-stage synthetic DIR [NAME]
 //! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR [...]
 //! psionic-v41-stage qualify-derive --reference R[,R] --control C[,C] --out FILE
+//! psionic-v41-stage replay --weights DIR --capture DIR
 //! psionic-v41-stage build-info
 //! psionic-v41-stage chunk-memory
 //! psionic-v41-stage chain --weights DIR [--split A-B,...] [--gpus N,...]
@@ -48,6 +49,7 @@ fn main() -> ExitCode {
         Some("qualify-derive") => psionic_v41_stage::qualify::run_derive(&args[1..]),
         Some("build-info") => run_build_info(),
         Some("chain") => run_chain(&args[1..]),
+        Some("replay") => run_replay(&args[1..]),
         Some("chunk-memory") if args.len() == 1 => {
             psionic_v41_stage::chunk_memory_profile().map(|v| println!("{v}"))
         }
@@ -194,6 +196,22 @@ fn run_build_info() -> Result<(), Refused> {
     });
     let _ = writeln!(std::io::stdout(), "{info}");
     Ok(())
+}
+
+#[cfg(all(feature = "metal", target_os = "macos"))]
+fn run_replay(args: &[String]) -> Result<(), Refused> {
+    let weights = flag(args, "--weights").ok_or_else(|| Refused("--weights is required".into()))?;
+    let capture = flag(args, "--capture").ok_or_else(|| Refused("--capture is required".into()))?;
+    let report = psionic_v41_stage::metal::replay(Path::new(weights), Path::new(capture))?;
+    let _ = writeln!(std::io::stdout(), "{report}");
+    Ok(())
+}
+
+#[cfg(not(all(feature = "metal", target_os = "macos")))]
+fn run_replay(_args: &[String]) -> Result<(), Refused> {
+    Err(Refused(
+        "replay needs a Mac build with --features metal".into(),
+    ))
 }
 
 #[cfg(feature = "cuda")]
