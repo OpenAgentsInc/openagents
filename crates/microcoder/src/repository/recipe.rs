@@ -334,14 +334,12 @@ pub(crate) fn split_prompt(prompt: &str, engine: &str) -> (String, String) {
 async fn fingerprint(workspace: &std::path::Path) -> Option<u64> {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    for args in [
-        &["status", "--porcelain=v1", "-uall"][..],
-        &["diff", "--no-ext-diff"][..],
-    ] {
-        let output = tokio::process::Command::new("git")
-            .args(args)
-            .current_dir(workspace)
-            .stdin(std::process::Stdio::null())
+    for args in [&["status", "--porcelain=v1", "-uall"][..], &["diff"][..]] {
+        // No program the workspace's Git config names runs here.
+        let command = coder_boundary::git::ReadOnlyGit::new(workspace)
+            .command(args)
+            .ok()?;
+        let output = tokio::process::Command::from(command)
             .stderr(std::process::Stdio::null())
             .output()
             .await

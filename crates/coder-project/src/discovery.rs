@@ -635,34 +635,29 @@ fn scratch_state(worktree: &Path) -> (Activity, Option<String>) {
 
 /// One bounded read of a worktree's scratch Git directory.
 fn scratch(worktree: &Path, args: &[&str]) -> Result<String, String> {
-    let mut full = vec![
-        "--git-dir=.coder-git",
-        "--work-tree=.",
-        "-c",
-        "core.fsmonitor=false",
-    ];
-    full.extend_from_slice(args);
-    git(worktree, &full)
+    git_at(worktree, &["--git-dir=.coder-git", "--work-tree=."], args)
 }
 
 /// One bounded Git observation, through the same supervised run a
 /// capability probe uses. A nonzero exit or a truncated stream is not an
 /// answer.
 fn git(directory: &Path, args: &[&str]) -> Result<String, String> {
-    let mut command = Command::new("git");
+    git_at(directory, &[], args)
+}
+
+/// [`git`] with options that choose the repository, such as a scratch
+/// Git directory. The read runs no program the repository's config names
+/// (`coder_boundary::git`).
+fn git_at(directory: &Path, location: &[&str], args: &[&str]) -> Result<String, String> {
+    let mut place = vec!["--no-replace-objects"];
+    place.extend_from_slice(location);
+    let mut command = coder_boundary::git::ReadOnlyGit::new(directory)
+        .location(&place)
+        .command(args)
+        .map_err(|refused| format!("bounded Git observation refused: {refused}"))?;
     command
-        .current_dir(directory)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .env_remove("GIT_OBJECT_DIRECTORY")
-        .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
         .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .args(["--no-pager", "--no-replace-objects"])
-        .args(["-c", "core.hooksPath=/dev/null"])
-        .args(args);
+        .env("GIT_CONFIG_GLOBAL", "/dev/null");
     let said = coder::capability::bounded::run(command, GIT_WALL)
         .map_err(|stop| format!("bounded Git observation failed: {stop}"))?;
     if said.code != Some(0) || said.truncated {

@@ -9,6 +9,7 @@ description = "Supervised project work through Coder programs."
 [dependencies]
 atif = { path = "../atif" }
 coder = { path = "../coder" }
+coder-boundary = { path = "../coder-boundary" }
 coder-access = { path = "../coder-access", default-features = false }
 coder-host = { path = "../coder-host" }
 coder-scheduler = { path = "../coder-scheduler" }

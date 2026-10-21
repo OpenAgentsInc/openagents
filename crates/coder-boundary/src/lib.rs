@@ -28,6 +28,10 @@
 //!   keeps every command out of them, so nothing OpenAgents runs makes
 //!   macOS ask the person for their music, photos, or documents.
 //!
+//! - [`git`] runs Git reads that start no program a repository's own
+//!   config names: no fsmonitor, hooks, pager, external diff, text
+//!   conversion, or filter driver.
+//!
 //! - [`source`] keeps a command that otherwise has full access out of the
 //!   checkout its worktree was made from, and out of that checkout's Git
 //!   directory.
@@ -41,6 +45,7 @@
 
 pub mod boundary;
 pub mod cmdline;
+pub mod git;
 pub mod privacy;
 pub mod snapshot;
 pub mod source;

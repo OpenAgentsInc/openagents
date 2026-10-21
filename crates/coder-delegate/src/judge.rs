@@ -1801,13 +1801,12 @@ pub fn walk(root: &std::path::Path) -> Vec<String> {
 }
 
 /// Runs Git read-only: no optional locks and no index refresh, so even
-/// `git status` leaves the index alone, and with no prompt or pager.
+/// `git status` leaves the index alone, with no prompt or pager, and with
+/// no program the repository's config names (`coder_boundary::git`).
 pub fn git(workdir: &std::path::Path, args: &[&str]) -> String {
-    let mut command = Command::new("git");
-    command
-        .args(crate::ops::READ_ONLY_GIT)
-        .args(args)
-        .current_dir(workdir);
+    let Ok(mut command) = coder_boundary::git::ReadOnlyGit::new(workdir).command(args) else {
+        return String::new();
+    };
     crate::ops::quiet_environment(&mut command);
     command
         .output()

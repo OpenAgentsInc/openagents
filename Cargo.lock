@@ -4346,6 +4346,7 @@ dependencies = [
  "capability",
  "coder",
  "coder-access",
+ "coder-boundary",
  "coder-host",
  "coder-scheduler",
  "futures-util",

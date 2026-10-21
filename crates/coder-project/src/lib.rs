@@ -92,11 +92,12 @@ pub struct DispatchReport {
 }
 
 /// Run a bounded Git observation through the shared subprocess supervisor.
+/// It runs no program the repository's config names (`coder_boundary::git`).
 pub async fn git(repository: &Path, args: &[&str]) -> Result<String, String> {
-    let result = Job::new("git")
-        .arg("--no-pager")
-        .args(args)
-        .in_directory(repository)
+    let command = coder_boundary::git::ReadOnlyGit::new(repository)
+        .command(args)
+        .map_err(|refused| format!("bounded Git observation refused: {refused}"))?;
+    let result = Job::from_command(command)
         .bounded(Limits::within(Duration::from_secs(30)).keeping(4 * 1024 * 1024))
         .run()
         .await;

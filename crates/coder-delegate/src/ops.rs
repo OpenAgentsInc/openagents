@@ -163,16 +163,12 @@ pub enum Operation {
     },
 }
 
-/// Options that keep Git from writing while it reads: no optional locks,
-/// and no index refresh from `git diff`, which `diff.autoRefreshIndex`
-/// would otherwise write back.
-pub const READ_ONLY_GIT: &[&str] = &[
-    "--no-optional-locks",
-    "-c",
-    "diff.autoRefreshIndex=false",
-    "-c",
-    "gc.auto=0",
-];
+/// Options that keep Git from writing while it reads (no optional locks,
+/// no index refresh, no automatic garbage collection) and from running any
+/// program a repository's config names. Every read goes through
+/// [`coder_boundary::git::ReadOnlyGit`], which adds these and turns off
+/// the repository's own diff and filter drivers.
+pub const READ_ONLY_GIT: &[&str] = coder_boundary::git::READ_ONLY_OPTIONS;
 
 /// The operation runner's identity and bounds, digested.
 #[must_use]
@@ -571,12 +567,8 @@ impl Scope {
                 if !dir.is_dir() {
                     return Err(Refusal::new(repo, "not a directory"));
                 }
-                let mut argv: Vec<String> = std::iter::once("git")
-                    .chain(READ_ONLY_GIT.iter().copied())
-                    .chain(["-C"])
-                    .map(ToString::to_string)
-                    .collect();
-                argv.push(dir.to_string_lossy().into_owned());
+                let git = coder_boundary::git::ReadOnlyGit::new(&self.workdir)
+                    .location(&["-C".to_string(), dir.to_string_lossy().into_owned()]);
                 let count = |count: u32| -> Result<String, Refusal> {
                     if count == 0 || count > MAX_GIT_COUNT {
                         return Err(Refusal::new(
@@ -602,7 +594,12 @@ impl Scope {
                     }
                     GitQuery::Stashes => vec!["stash".into(), "list".into()],
                 };
-                argv.extend(rest);
+                let rest: Vec<&str> = rest.iter().map(String::as_str).collect();
+                let mut argv = vec![git.program_name().to_string()];
+                argv.extend(
+                    git.args(&rest)
+                        .map_err(|refused| Refusal::new(repo, refused.to_string()))?,
+                );
                 Ok(Checked::Program {
                     argv,
                     cwd: self.workdir.clone(),
@@ -990,11 +987,8 @@ pub fn quiet_environment(command: &mut std::process::Command) {
             command.env_remove(&name);
         }
     }
+    coder_boundary::git::harden_environment(command);
     command
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_PAGER", "cat")
-        .env("PAGER", "cat")
         .env("PYTHONDONTWRITEBYTECODE", "1")
         .stdin(std::process::Stdio::null());
 }

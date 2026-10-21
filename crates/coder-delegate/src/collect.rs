@@ -108,14 +108,13 @@ impl Collection {
 }
 
 /// Runs Git read-only in `workdir`: optional locks off, no prompt, no
-/// pager. `None` when it cannot run; `accept` lists the exit codes that
+/// pager, and no program the repository's config names
+/// (`coder_boundary::git`). `None` when it cannot run; `accept` lists the exit codes that
 /// count as an answer.
 fn git(workdir: &Path, args: &[&str], accept: &[i32]) -> Option<Vec<u8>> {
-    let mut command = Command::new("git");
-    command
-        .args(crate::ops::READ_ONLY_GIT)
-        .args(args)
-        .current_dir(workdir);
+    let mut command = coder_boundary::git::ReadOnlyGit::new(workdir)
+        .command(args)
+        .ok()?;
     crate::ops::quiet_environment(&mut command);
     let output = command.output().ok()?;
     let code = output.status.code()?;

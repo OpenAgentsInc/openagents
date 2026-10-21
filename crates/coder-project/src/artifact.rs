@@ -239,28 +239,21 @@ fn owned(path: &str, allowed: &[String]) -> bool {
 }
 
 async fn observe(worktree: &Path, args: &[&str]) -> Result<String, String> {
-    let mut command = Command::new("git");
-    command
-        .current_dir(worktree)
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .env_remove("GIT_OBJECT_DIRECTORY")
-        .env_remove("GIT_ALTERNATE_OBJECT_DIRECTORIES")
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .args([
-            "--no-pager",
+    // The scratch Git directory is the agent's own work, so its config is
+    // read as data and none of the programs it could name run.
+    let mut command = coder_boundary::git::ReadOnlyGit::new(worktree)
+        .location(&[
             "--no-replace-objects",
             "--git-dir=.coder-git",
             "--work-tree=.",
-            "-c",
-            "core.fsmonitor=false",
-            "-c",
-            "core.hooksPath=/dev/null",
         ])
-        .args(args);
+        .command(args)
+        .map_err(|refused| {
+            format!("a Git command in the scratch worktree was refused: {refused}")
+        })?;
+    command
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null");
     let result = Job::from_command(command)
         .bounded(Limits::within(Duration::from_secs(30)).keeping(8 * 1024 * 1024))
         .run()
