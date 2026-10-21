@@ -398,7 +398,7 @@ fn stage_observes(stage: &V41Stage) -> bool {
 }
 
 /// A tensor source with one of the G1 v2 negative controls' weight defects
-/// (#12405): layer 3's query projection with its output rows rotated by one
+/// (#12405): layer 3's shared expert output projection with its rows rotated by one
 /// 32-row block, or layer 3's router bias rotated by one expert.
 struct Controlled<'a> {
     inner: &'a dyn V41TensorSource,
@@ -409,7 +409,8 @@ impl V41TensorSource for Controlled<'_> {
     fn tensor(&self, name: &str) -> Result<V41HostTensor, RuntimeError> {
         match self.control {
             Some(Control::WrongWeights)
-                if name == "layers.3.attn.wq_b.weight" || name == "layers.3.attn.wq_b.scale" =>
+                if name == "layers.3.ffn.shared_experts.w2.weight"
+                    || name == "layers.3.ffn.shared_experts.w2.scale" =>
             {
                 // Rotate the output rows by one 32-row block, with their scales.
                 let mut tensor = self.inner.tensor(name)?;
