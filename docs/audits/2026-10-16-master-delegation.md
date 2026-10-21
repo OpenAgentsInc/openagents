@@ -485,6 +485,10 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12426: on a quiet Mac, start `rec` briefly, run the three scratch tasks
+  in `docs/coder/measurements/2026-10-21-microcoder-flint-pylon.md` with
+  `--provider openai-compatible --model flint`, add the rows, then
+  `rec stop`. Only `implement` completed on Flint so far.
 - #12423: deploy the Pylon Bay (website, `everglade-web`, and `pylons-web`
   from the same commit) and check `/` on staging with
   `scripts/dev/check-grid-home-bay.py` and `scripts/dev/check-grid-home.py`.
