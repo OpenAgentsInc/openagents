@@ -74,11 +74,12 @@ Commands:
       --allow-slow          Serve decisions on the CPU anyway (refused by
                             default: seconds a decision).
   cloud up PLACEMENT        Launch a DeepSeek-V4.1 group (four-single,
-                            two-dual, or one-quad) on rented machines through the spend
-                            guard, head it from this computer, and stop it on
-                            `cloud down`, expiry, the budget's cap, or a lost
-                            machine. --dry-run prints the guard and gcloud
-                            commands. `cloud --help` lists the options.
+                            two-dual, or one-quad) on rented machines
+                            through the spend guard, head it from this
+                            computer, and stop it on `cloud down`, expiry,
+                            the budget's cap, or a lost machine. --dry-run
+                            prints the guard and gcloud commands. `cloud
+                            --help` lists the options.
   cloud down|status         Stop that group and delete its machines, or show
                             it.
   down                      Stop serving: tell the relay this pylon is offline,

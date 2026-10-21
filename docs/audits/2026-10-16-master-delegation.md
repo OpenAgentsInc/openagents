@@ -485,6 +485,14 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12398: once #12404 settles the qualified arithmetic order and the CUDA
+  stage adopts it, rerun the one-machine group (`pylon cloud up one-quad
+  --head stage0 --transport direct --temperature 0`, sweeping zones for
+  spot `g4-standard-192`) and finish G5: G1's decode checks and G2's
+  complete answers through the group, DS0's six runtime checks, and G7's
+  faults on the real group. Receipt for the first run:
+  `docs/psionic/verification/deepseek-v41-g5-one-quad-2026-10-21.json`.
+
 - #12394: once #12404 settles the qualified arithmetic order, move the W7
   stage's kernels to it and rerun G4 on layers 0–4 and 0–9 with
   `scripts/bench/deepseek-v41/stage_vm.sh`, adding an isolated per-layer

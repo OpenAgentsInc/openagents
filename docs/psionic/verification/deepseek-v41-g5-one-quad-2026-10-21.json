@@ -1,0 +1,132 @@
+{
+  "schema": "openagents.deepseek_v41.group_run.v1",
+  "issue": 12398,
+  "gate": "G5",
+  "date": "2026-10-21",
+  "result": "the whole model answered end to end on one machine; parity with the oracle is pending G1 (#12404)",
+  "build": {
+    "source_commit": "f7d1abe018 (pre-rebase; its crates/psionic and crates/stage-link equal main's at this receipt's commit, apart from one #12404 test fixture)",
+    "stage_worker": {
+      "url": "gs://openagents-psionic-models/bin/psionic-v41-stage/f7d1abe018/sm_120/psionic-v41-stage",
+      "sha256": "2af09c40e42638910345069da6903761dbd43ec0c52b8bf7caafe422d856bf61",
+      "features": [
+        "cuda"
+      ],
+      "arch": "sm_120",
+      "image": "nvidia/cuda:13.0.1-devel-ubuntu24.04"
+    },
+    "pylon": {
+      "url": "gs://openagents-psionic-models/bin/pylon/f7d1abe018/pylon",
+      "sha256": "30f42ed995e4b480bf2bee540ac8e41f96b7690f541346baef1b3df527166997"
+    },
+    "rebuild_seconds": {
+      "stage_worker_unchanged_source": 0.33,
+      "pylon_after_a_pylon_edit": 31.2
+    }
+  },
+  "machine": {
+    "type": "g4-standard-192",
+    "gpus": "4 x NVIDIA RTX PRO 6000 Blackwell Server Edition (96 GB)",
+    "host_memory_gib": 720,
+    "zone": "us-west3-a",
+    "provisioning": "spot",
+    "price_per_hour": 6.654,
+    "boot_disk": "1,100 GB Hyperdisk Balanced, 2,400 MiB/s and 12,000 IOPS provisioned; the machine type has no local SSD",
+    "image_family": "common-cu129-ubuntu-2404-nvidia-580",
+    "capacity": "spot g4-standard-192 was out of capacity (ZONE_RESOURCE_POOL_EXHAUSTED) in us-east1-b, us-east1-d, us-central1-b/c/f, us-east4-b/c, us-east5-a/b/c; us-west3-a had it",
+    "cost_usd": {
+      "this_run": 1.474422,
+      "all_one_quad_attempts": 2.2653
+    }
+  },
+  "launch": {
+    "command": "pylon cloud up one-quad --worker URL --pylon URL --head stage0 --transport direct --hours 3 --temperature 0 --deadline-secs 900 --max-output-tokens 1024 --ready-secs 3600 --step-secs 75 --allow BUYER --zone us-west3-a",
+    "placement": "one-quad: stages 0-10, 10-20, 20-30, 30-40 on GPUs 0-3 of one machine; Engram tables of layers 1 and 14 in host memory",
+    "manifest": "sha256:3a86d149c418f0bd82fbe928a8c1931c49ef878eb7e10ddbd96cbf9a558e220f",
+    "artifact": "sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+    "runtime": "psionic-v41-stage/1+cuda",
+    "transport": "direct (stage_link over the machine's internal address)",
+    "timeline_utc": {
+      "created": "09:26",
+      "weights_copy": "09:29:00-09:32:16, 44 shards, 467 GB, about 2.4 GB/s from the bucket",
+      "stages_started": "09:32:17",
+      "group_ready": "before 09:34:45 (first job)",
+      "deleted": "09:39:19"
+    },
+    "memory": {
+      "gpu_used_mib": [
+        74247,
+        72955,
+        72613,
+        73865
+      ],
+      "host_used_gib": 209,
+      "host_shared_gib": 188
+    }
+  },
+  "jobs": {
+    "path": "pylon ask from the budget host over wss://relay.openagents.com (NIP-CJ, pylon.deadline.v1, 900 s), to the head on the stage-0 machine; greedy sampling",
+    "rows": [
+      {
+        "id": "p1-chat-thinking (oracle prompt)",
+        "prompt_tokens": 41,
+        "tokens": 121,
+        "first_token_ms": 1311,
+        "decode_tokens_per_s": 29.73,
+        "answer_ms": 5545,
+        "finish": "stop",
+        "text": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red wavelengths. When you look away from the Sun, you see this scattered blue light coming from all directions."
+      },
+      {
+        "id": "p1 repeated",
+        "prompt_tokens": 41,
+        "tokens": 121,
+        "first_token_ms": 1287,
+        "decode_tokens_per_s": 29.74,
+        "answer_ms": 5478,
+        "finish": "stop",
+        "same_text_as_first": true
+      },
+      {
+        "id": "p2 code prompt, thinking mode (the oracle's p2 is chat mode, so not comparable)",
+        "prompt_tokens": 66,
+        "tokens": 851,
+        "first_token_ms": 2081,
+        "decode_tokens_per_s": 28.32,
+        "answer_ms": 32342,
+        "finish": "stop",
+        "text": "```rust\nfn fib(n: u32) -> Option<u128> {\n    let mut a: u128 = 0; // F(0)\n    let mut b: u128 = 1; // F(1)\n\n    for _ in 0..n {\n        let next = a.checked_add(b)?;\n        a = b;\n        b = next;\n    }\n\n    Some(a)\n}\n```\n\nThis returns `Some(F(n))` for `n = 0, 1, 2, ...`, and returns `None` as soon as the next Fibonacci number would overflow `u128`."
+      },
+      {
+        "id": "1,072-token prompt (summarize AGENTS.md's Velocity section)",
+        "prompt_tokens": 1072,
+        "tokens": 757,
+        "first_token_ms": 35589,
+        "decode_tokens_per_s": 27.7,
+        "answer_ms": 63066,
+        "finish": "stop",
+        "text_start": "- **Ship small changes fast:** Default validation is `cargo test -p` for edited crates plus `cargo fmt`; then commit and push. Do **not** run Clippy, release gates, phone suites, live engine runs, other crates’ tests, or add long docs/`INVARIANTS.md` rows unless it’s a release or the owner reported "
+      }
+    ],
+    "notes": "tokens counts the sampled ids including the end token; first_token_ms and decode rate are the head's own log (GroupEngine); answer_ms is the buyer's wall time from contact to answer. Prefill runs stage after stage, about 120 tokens/s per stage."
+  },
+  "oracle": {
+    "prompt": "the group's rendering of p1 equals the oracle's 41 prompt ids",
+    "oracle_answer_tokens": 122,
+    "group_answer_tokens": 121,
+    "final_answer": "the content diverges at its 10th token: oracle 'scattered by gas molecules', group 'scattered by molecules'; both are complete two-sentence answers with the same meaning",
+    "expected": "the CUDA stage doesn't use the TP8 arithmetic order and G1 is open (#12404); W7 recorded the same class of divergence from layer 1 (#12394)",
+    "not_run": [
+      "G1's decode checks on the group",
+      "DS0's six runtime checks",
+      "G7's faults on the real group"
+    ]
+  },
+  "fixes_found_by_the_run": [
+    "the budget host checked stage programs that live on the stage machine and refused every --head stage0|vm launch",
+    "the head started before the machine's sshd and before stage-run existed; the launcher now waits for head-run and the weights' ready mark",
+    "pylon cloud up had no one-machine placement and the guard no g4-standard-192 price",
+    "the stage worker's Docker build recompiled every crate on each commit; it now syncs into a persistent source folder by checksum",
+    "boot-disk throughput is provisioned for the weights"
+  ]
+}
