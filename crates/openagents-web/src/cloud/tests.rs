@@ -1455,3 +1455,53 @@ async fn subscribe_opens_stripe_checkout_and_settings_shows_pro_after_the_event(
         page.body
     );
 }
+
+#[tokio::test]
+async fn logout_confirmation_uses_the_existing_post_and_keeps_get_safe() {
+    let fixture = fixture().await;
+    let mut cookies = login(&fixture, "alice").await;
+    let mut csrf = String::new();
+    for path in ["/logout", "/signout", "/sign-out", "/auth/logout"] {
+        let page = request(&fixture.site, Method::GET, path, &cookies, None, None).await;
+        assert_eq!(page.status, StatusCode::OK, "{path}: {}", page.body);
+        private(&page);
+        csrf = field(form_at(&page.body, "/sign-out"), "csrf");
+        assert!(!csrf.is_empty());
+        assert_eq!(fixture.state.lock().unwrap().signouts, 0);
+    }
+    let ended = request(
+        &fixture.site,
+        Method::POST,
+        "/sign-out",
+        &cookies,
+        Some(&form(&[("csrf", &csrf)])),
+        Some(ORIGIN),
+    )
+    .await;
+    assert_eq!(ended.status, StatusCode::SEE_OTHER);
+    cookies.apply(&ended);
+    assert!(cookies.0.is_empty());
+    assert_eq!(fixture.state.lock().unwrap().signouts, 1);
+    for path in ["/logout", "/signout", "/sign-out", "/auth/logout"] {
+        let page = request(&fixture.site, Method::GET, path, &cookies, None, None).await;
+        assert_eq!(page.status, StatusCode::SEE_OTHER, "{path}");
+        assert_eq!(page.headers[header::LOCATION], "/login");
+    }
+}
+
+#[test]
+fn gpui_shell_and_lazy_settings_offer_the_shared_sign_out_control() {
+    let shell = include_str!("../../../../apps/openagents/web/chat/src/app.rs");
+    let settings = include_str!("../../../../apps/openagents/web/settings/src/app.rs");
+    for source in [shell, settings] {
+        assert!(
+            source.contains(".when(self.signed_in")
+                || source.contains(".when(self.context.signed_in")
+        );
+        assert!(source.contains("account::sign_out(||"));
+        assert!(source.contains("go(\"/logout\")"));
+    }
+    let control = include_str!("../../../../apps/openagents/web/chat-view/src/account.rs");
+    assert!(control.contains(".aria_label(\"Sign out\")"));
+    assert!(control.contains(".on_key_down("));
+}

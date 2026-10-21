@@ -1267,6 +1267,11 @@ impl ChatApp {
                 )
             })
             .child(self.render_settings_entry(cx))
+            .when(self.signed_in, |side| {
+                side.child(openagents_web_chat_view::account::sign_out(|| {
+                    route::go("/logout")
+                }))
+            })
             .child(
                 div()
                     .id("regular-chat")

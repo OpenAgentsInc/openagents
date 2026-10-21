@@ -532,7 +532,31 @@ async fn an_emailed_code_signs_in_and_sign_out_ends_the_workos_session() {
     );
     let settings = browser.get(&w.world, "/settings").await;
     assert_eq!(settings.status, StatusCode::OK, "{}", settings.body);
-    let ticket = sign_out_csrf(&settings.body);
+    assert!(
+        !sign_out_csrf(&settings.body).is_empty(),
+        "old Settings form works"
+    );
+    let cookies = browser.0.clone();
+    let mut ticket = String::new();
+    for path in ["/logout", "/signout", "/sign-out", "/auth/logout"] {
+        let confirmation = browser.get(&w.world, path).await;
+        assert_eq!(
+            confirmation.status,
+            StatusCode::OK,
+            "{path}: {}",
+            confirmation.body
+        );
+        assert!(
+            confirmation
+                .body
+                .contains("method=\"post\" action=\"/sign-out\"")
+        );
+        assert!(confirmation.body.contains(">Sign out<"));
+        ticket = sign_out_csrf(&confirmation.body);
+        assert_eq!(browser.0, cookies, "GET {path} keeps the session");
+        assert!(signed_in(&mut browser, &w.world).await);
+    }
+
     let sealed = crate::cloud::session::CloudSession::sealed_value(
         &{
             let mut headers = HeaderMap::new();
@@ -562,6 +586,12 @@ async fn an_emailed_code_signs_in_and_sign_out_ends_the_workos_session() {
     assert_eq!(out.status, StatusCode::SEE_OTHER, "{}", out.body);
     assert!(w.fake.revoked(&sid), "signing out ends the WorkOS session");
     assert!(!browser.0.contains_key("oa_cloud_session") && !browser.0.contains_key("oa_workos"));
+    assert!(!signed_in(&mut browser, &w.world).await);
+    for path in ["/logout", "/signout", "/sign-out", "/auth/logout"] {
+        let absent = browser.get(&w.world, path).await;
+        assert_eq!(absent.status, StatusCode::SEE_OTHER, "{path}");
+        assert_eq!(absent.location(), "/login", "{path}");
+    }
 }
 
 /// The password the site seals WorkOS cookies with, from the test's CSRF
@@ -936,13 +966,15 @@ async fn primary_password_and_provider_logins_use_only_the_sealed_workos_cookie(
             .await
             .unwrap()
             .sid;
-        let settings = browser.get(&w.world, "/settings").await;
-        assert_eq!(settings.status, StatusCode::OK, "{}", settings.body);
+        let confirmation = browser.get(&w.world, "/logout").await;
+        assert_eq!(confirmation.status, StatusCode::OK, "{}", confirmation.body);
+        assert!(!browser.0.contains_key("oa_cloud_session"));
+        assert!(!w.fake.revoked(&sid), "GET keeps the sealed session active");
         let done = browser
             .post(
                 &w.world,
                 "/sign-out",
-                &[("csrf", &sign_out_csrf(&settings.body))],
+                &[("csrf", &sign_out_csrf(&confirmation.body))],
             )
             .await;
         assert_eq!(done.status, StatusCode::SEE_OTHER, "{}", done.body);

@@ -1074,7 +1074,7 @@ async fn host_guard(hosts: Hosts, mut request: Request, next: Next) -> Response 
         // The OAuth authorization server (#11084).
         || path.starts_with("/oauth/")
         || path.starts_with("/v1/device/")
-        || matches!(path, "/sign-in" | "/sign-out" | "/settings" | "/projects")
+        || matches!(path, "/sign-in" | "/sign-out" | "/logout" | "/signout" | "/settings" | "/projects")
         || path.starts_with("/settings/")
         || path.starts_with("/projects/")
         // Uploaded traces (#11109), at their API path too (#11158).

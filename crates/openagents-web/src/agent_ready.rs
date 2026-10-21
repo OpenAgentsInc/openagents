@@ -752,7 +752,7 @@ pub(crate) fn auth_markdown(methods: &[crate::payments::Method]) -> String {
 
 /// The paths no crawler should fetch: sign-in, accounts, private chats,
 /// and the APIs.
-const PRIVATE: [&str; 16] = [
+const PRIVATE: [&str; 18] = [
     "/app",
     "/chat",
     "/composer/",
@@ -765,6 +765,8 @@ const PRIVATE: [&str; 16] = [
     "/signup",
     "/sign-in",
     "/sign-out",
+    "/logout",
+    "/signout",
     "/device",
     "/api/",
     "/mcp",

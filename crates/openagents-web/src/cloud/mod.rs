@@ -27,7 +27,7 @@ use axum::extract::rejection::FormRejection;
 use axum::extract::{DefaultBodyLimit, Form, OriginalUri, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 use maud::html;
 use openagents_ui::actions::{Button, ButtonType};
 use openagents_ui::forms::{Field, Input, InputType};
@@ -49,7 +49,10 @@ pub(crate) const SIGN_OUT: &str = "/sign-out";
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(SIGN_IN, get(sign_in).post(sign_in_submit))
-        .route(SIGN_OUT, post(sign_out))
+        .route(SIGN_OUT, get(logout).post(sign_out))
+        .route("/logout", get(logout))
+        .route("/signout", get(logout))
+        .route("/auth/logout", get(logout))
         .route("/cloud/sign-in", get(|| async { see_other(SIGN_IN) }))
         .route("/cloud/app", get(moved))
         .route("/cloud/app/{*rest}", get(moved))
@@ -221,6 +224,40 @@ pub(crate) fn default_workspace_cookies(
         Some(workspace) => service.workspace_cookies(&workspace.id),
         None => Ok(Vec::new()),
     }
+}
+
+/// Confirm sign-out without changing the session on a GET.
+async fn logout(State(app): State<App>, headers: HeaderMap) -> Response {
+    let Some(service) = app.config.cloud.as_deref() else {
+        return see_other("/login");
+    };
+    let viewer = match service.authenticate(&headers).await {
+        Ok(viewer) => viewer,
+        Err(SessionError::Unauthenticated) => return see_other("/login"),
+        Err(error) => return refused(error),
+    };
+    let csrf = match service.logout_csrf(&headers, &viewer) {
+        Ok(csrf) => csrf,
+        Err(error) => return refused(error),
+    };
+    let content = crate::ui_page::auth_card(
+        "Sign out",
+        None,
+        html! {
+            form id="oa-sign-out" method="post" action=(SIGN_OUT) {
+                input type="hidden" name="csrf" value=(csrf);
+                (Button::new("Sign out").kind(ButtonType::Submit))
+            }
+        },
+    );
+    protect(
+        UiPage::new("Sign out")
+            .path("/logout")
+            .account(Account::Unknown)
+            .bare()
+            .content(content)
+            .respond(&headers),
+    )
 }
 
 #[derive(Deserialize)]

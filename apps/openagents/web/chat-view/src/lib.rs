@@ -53,3 +53,5 @@ pub use icon::svg;
 pub mod lazy_visuals;
 #[cfg(feature = "visuals")]
 pub mod visuals;
+
+pub mod account;

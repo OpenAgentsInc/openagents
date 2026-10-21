@@ -1028,6 +1028,11 @@ impl Render for SettingsApp {
                             .child(p.label())
                     }),
             );
+        let nav = nav.when(self.context.signed_in, |nav| {
+            nav.child(openagents_web_chat_view::account::sign_out(|| {
+                go("/logout")
+            }))
+        });
         let header = div()
             .flex()
             .flex_row()
