@@ -108,7 +108,7 @@ kernel void v41_block_matvec(
     uint warp [[simdgroup_index_in_threadgroup]],
     uint lane [[thread_index_in_simdgroup]]) {
     threadgroup float stage[kStageBlocks * kStageStride];
-    threadgroup float stage_scale[kStageBlocks];
+    threadgroup uchar stage_scale[kStageBlocks];
     const int slot = int(group.y);
     const int row = int(group.x) * kMvWarps + int(warp);
     const int blocks = a.cols / kMvBlock;
@@ -132,7 +132,7 @@ kernel void v41_block_matvec(
                 e4m3(x_codes[long(base) * kMvBlock + i]);
         }
         for (int i = int(tid); i < count; i += kMvThreads) {
-            stage_scale[i] = e8m0(x_scales[base + i]);
+            stage_scale[i] = x_scales[base + i];
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
         if (row >= a.rows || !valid) {
@@ -167,7 +167,7 @@ kernel void v41_block_matvec(
                         }
                     }
                 }
-                scaled = (partial * stage_scale[local]) * e8m0(ws_row[b]);
+                scaled = mul_e8m0(mul_e8m0(partial, stage_scale[local]), ws_row[b]);
             }
             const int n = min(32, count - sub);
             for (int t = 0; t < n; ++t) {

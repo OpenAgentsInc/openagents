@@ -22,6 +22,7 @@
 //! a software binary64.
 
 pub mod matvec;
+pub mod mix;
 
 use metal::{
     Buffer, CompileOptions, ComputePipelineState, Device, MTLResourceOptions, MTLResourceUsage,
@@ -32,9 +33,10 @@ use psionic_runtime::RuntimeError;
 use std::{collections::BTreeMap, ffi::c_void, sync::Mutex};
 
 /// Every V4.1 kernel source, in compile order.
-const SOURCES: [&str; 3] = [
+const SOURCES: [&str; 4] = [
     include_str!("../kernels/v41/common.metal"),
     include_str!("../kernels/v41/matvec.metal"),
+    include_str!("../kernels/v41/mix.metal"),
     include_str!("../kernels/v41/checks.metal"),
 ];
 
@@ -48,6 +50,17 @@ pub fn kernel_source() -> String {
 const PIPELINES: &[&str] = &[
     "v41_act_quant",
     "v41_block_matvec",
+    "v41_hc_project",
+    "v41_hc_finish",
+    "v41_hc_split",
+    "v41_hc_collapse",
+    "v41_hc_expand",
+    "v41_engram_gather",
+    "v41_engram_gate",
+    "v41_gate_logits",
+    "v41_route",
+    "v41_swiglu",
+    "v41_moe_combine",
     "v41_check_exp",
     "v41_check_log1p",
     "v41_check_double",

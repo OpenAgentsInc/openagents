@@ -181,19 +181,18 @@ fn e2m1(code: u8) -> f32 {
     f32::from_bits(value.to_bits() | (u32::from(code & 8) << 28))
 }
 
-/// UE8M0 as the GPU decodes it: byte 0 (2^-127) is zero.
-fn e8m0_ftz(byte: u8) -> f32 {
+fn e8m0(byte: u8) -> f32 {
     match byte {
         0xff => f32::NAN,
-        0 => 0.0,
+        0 => f32::from_bits(0x0040_0000),
         exponent => f32::from_bits(u32::from(exponent) << 23),
     }
 }
 
 /// The Metal kernel's arithmetic on the host: the CUDA backend's
 /// [`v41_block_matvec_host`] with every result's subnormals flushed to zero,
-/// as an Apple GPU computes it. The two agree whenever no product or sum
-/// falls below 2^-126.
+/// as an Apple GPU computes it (a scale of 2^-127 still multiplies exactly).
+/// The two agree whenever no product or sum falls below 2^-126.
 ///
 /// # Panics
 ///
@@ -229,7 +228,7 @@ pub fn v41_block_matvec_host_ftz(
                     V41MatvecFormat::Fp8Block32x32 => weight_scales[(row / V41_BLOCK) * blocks + b],
                     V41MatvecFormat::Fp4E2M1Row32 => weight_scales[row * blocks + b],
                 };
-                let scaled = ftz(ftz(partial * e8m0_ftz(scales[b])) * e8m0_ftz(weight_scale));
+                let scaled = ftz(ftz(partial * e8m0(scales[b])) * e8m0(weight_scale));
                 acc = ftz(acc + scaled);
             }
             acc

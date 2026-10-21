@@ -105,12 +105,26 @@ inline float e2m1(uint code) {
     return (code & 8u) ? -value : value;
 }
 
-// UE8M0. Byte 0 is 2^-127, a subnormal, which the GPU flushes to zero.
+// UE8M0. Byte 0 is 2^-127, a subnormal the GPU can't hold; multiply by a
+// scale with mul_e8m0 instead.
 inline float e8m0(uint byte) {
     if (byte == 0xffu) {
         return V41_NAN;
     }
     return byte == 0 ? 0.0f : as_type<float>(byte << 23);
+}
+
+// x times the UE8M0 scale `byte`, rounded once. For byte 0 (2^-127) the
+// product is taken in two exact steps, so a normal result equals the CUDA
+// kernels' single multiplication; a subnormal one flushes to zero.
+inline float mul_e8m0(float x, uint byte) {
+    if (byte == 0xffu) {
+        return V41_NAN;
+    }
+    if (byte == 0) {
+        return (x * 0x1p-64f) * 0x1p-63f;
+    }
+    return x * as_type<float>(byte << 23);
 }
 
 // ---------------------------------------------------------------------------
