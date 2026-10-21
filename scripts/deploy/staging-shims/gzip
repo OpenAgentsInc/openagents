@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Staging builds compress at gzip level 6 (staging-build-env.sh).
+set -euo pipefail
+args=()
+for arg in "$@"; do
+  case "$arg" in
+    -9) args+=(-6) ;;
+    *) args+=("$arg") ;;
+  esac
+done
+PATH="${PATH//$OA_STAGING_SHIMS:/}" exec gzip "${args[@]}"
