@@ -424,6 +424,42 @@ impl V41Submission<'_> {
     }
 }
 
+/// The newest Apple GPU family of the system's default device, as
+/// `apple<N>`, without compiling any kernel; `None` without a Metal device.
+#[must_use]
+pub fn gpu_family() -> Option<String> {
+    let device = Device::system_default()?;
+    Some(family_of(&device))
+}
+
+/// The system's default GPU's name, such as `Apple M5 Max`.
+#[must_use]
+pub fn gpu_name() -> Option<String> {
+    Device::system_default().map(|d| d.name().to_string())
+}
+
+fn family_of(device: &Device) -> String {
+    use metal::MTLGPUFamily::{Apple5, Apple6, Apple7, Apple8, Apple9};
+    // Apple10 has no constant in metal-rs 0.33; MTLGPUFamilyApple10 = 1010.
+    // SAFETY: supportsFamily: takes an NSInteger family code.
+    let apple10: bool = unsafe { msg_send![device.as_ref(), supportsFamily: 1010_i64] };
+    if apple10 {
+        return String::from("apple10");
+    }
+    for (family, name) in [
+        (Apple9, "apple9"),
+        (Apple8, "apple8"),
+        (Apple7, "apple7"),
+        (Apple6, "apple6"),
+        (Apple5, "apple5"),
+    ] {
+        if device.supports_family(family) {
+            return String::from(name);
+        }
+    }
+    String::from("apple")
+}
+
 /// Bounds the GPU work in flight from this process: one run at a time.
 static RUN_LOCK: Mutex<()> = Mutex::new(());
 
@@ -508,25 +544,7 @@ impl V41Metal {
     /// The newest Apple GPU family the device supports, as `apple<N>`.
     #[must_use]
     pub fn gpu_family(&self) -> String {
-        use metal::MTLGPUFamily::{Apple5, Apple6, Apple7, Apple8, Apple9};
-        // Apple10 has no constant in metal-rs 0.33; MTLGPUFamilyApple10 = 1010.
-        // SAFETY: supportsFamily: takes an NSInteger family code.
-        let apple10: bool = unsafe { msg_send![self.device.as_ref(), supportsFamily: 1010_i64] };
-        if apple10 {
-            return String::from("apple10");
-        }
-        for (family, name) in [
-            (Apple9, "apple9"),
-            (Apple8, "apple8"),
-            (Apple7, "apple7"),
-            (Apple6, "apple6"),
-            (Apple5, "apple5"),
-        ] {
-            if self.device.supports_family(family) {
-                return String::from(name);
-            }
-        }
-        String::from("apple")
+        family_of(&self.device)
     }
 
     /// The memory Metal recommends a process keep resident, in bytes.

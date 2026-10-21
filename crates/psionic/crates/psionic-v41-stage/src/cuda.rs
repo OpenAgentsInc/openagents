@@ -56,7 +56,7 @@ use crate::{
 };
 
 /// The longest Engram n-gram; the history carries one fewer token.
-const MAX_NGRAM: u32 = 4;
+pub(crate) const MAX_NGRAM: u32 = 4;
 
 /// Why the CUDA executor failed a step.
 #[derive(Debug)]
@@ -172,102 +172,174 @@ impl V41CudaStageExecutor {
         position: u64,
         tokens: usize,
     ) -> Result<Vec<Section>, CudaStageError> {
-        let Some(next) = &self.next else {
-            return Ok(Vec::new());
-        };
-        let g = self.geometry;
-        let t = tokens as u32;
-        let mut sections = Vec::with_capacity(next.sections.len());
-        for spec in &next.sections {
-            let section = match spec.kind {
-                SectionKind::Residual => Section::floats(
-                    spec.kind,
-                    spec.dtype,
-                    vec![t, g.streams, g.hidden],
-                    0,
-                    &out.residual,
-                ),
-                SectionKind::PreMix => {
-                    Section::floats(spec.kind, spec.dtype, vec![t, g.streams], 0, &out.pre_mix)
-                }
-                SectionKind::SourceKv { layer } | SectionKind::SourceIndexKeys { layer } => {
-                    let keys = matches!(spec.kind, SectionKind::SourceIndexKeys { .. });
-                    let width = if keys { g.index_dim } else { g.head_dim };
-                    let rows = out
-                        .source_rows
-                        .as_ref()
-                        .filter(|r| r.layer == layer as usize);
-                    let (first_row, words): (u64, &[u16]) = match rows {
-                        Some(rows) if keys => (
-                            rows.first_row as u64,
-                            rows.index_keys.as_deref().ok_or_else(|| {
-                                fail(format!("no index keys of KV source {layer}"))
-                            })?,
-                        ),
-                        Some(rows) => (rows.first_row as u64, &rows.kv),
-                        None => {
-                            // No new rows this step.
-                            let ratio = match spec.rows {
-                                RowRule::Append { ratio } => u64::from(ratio.max(1)),
-                                _ => 1,
-                            };
-                            (position / ratio, &[])
-                        }
-                    };
-                    if spec.dtype != WireDtype::Bf16 {
-                        return Err(fail("CUDA cache rows cross as BF16"));
-                    }
-                    Ok(Section {
-                        kind: spec.kind,
-                        dtype: WireDtype::Bf16,
-                        shape: vec![(words.len() / width as usize) as u32, width],
-                        first_row,
-                        data: words.iter().flat_map(|w| w.to_le_bytes()).collect(),
-                    })
-                }
-                SectionKind::IndexSelection { layer } => {
-                    let rows = out
-                        .selection
-                        .as_ref()
-                        .filter(|(l, _)| *l == layer as usize)
-                        .ok_or_else(|| fail(format!("no selection of layer {layer}")))?;
-                    Section::i32s(spec.kind, vec![t, g.index_top_k], &rows.1)
-                }
-                SectionKind::Candidates { .. } => {
-                    let blocks = out
-                        .candidates
-                        .as_ref()
-                        .ok_or_else(|| fail("no layer-20 candidates to forward"))?;
-                    // `-1` after the kept blocks is W9's `u32::MAX` pad.
-                    let ids: Vec<u32> = blocks.iter().map(|b| *b as u32).collect();
-                    Section::u32s(spec.kind, vec![t, g.candidate_blocks], &ids)
-                }
-                SectionKind::EngramHistory => {
-                    let rows = match spec.rows {
-                        RowRule::Fixed(rows) => rows as usize,
-                        _ => (MAX_NGRAM - 1) as usize,
-                    };
-                    let history = &out.engram_history;
-                    let mut values = vec![u32::MAX; rows.saturating_sub(history.len())];
-                    values.extend(history.iter().skip(history.len().saturating_sub(rows)));
-                    Section::u32s(spec.kind, vec![rows as u32], &values)
-                }
-                SectionKind::SourceValue { .. } | SectionKind::Logits => {
-                    return Err(fail(format!("V4.1 stages don't send {}", spec.kind)));
-                }
-            };
-            sections.push(section.map_err(fail)?);
-        }
-        Ok(sections)
+        output_sections(self.next.as_ref(), self.geometry, &out, position, tokens).map_err(fail)
     }
 }
 
-fn bf16_words(section: &Section) -> Result<Vec<u16>, CudaStageError> {
+/// The sections a device stage sends the next stage, from its step output:
+/// W9's contract on the CUDA wire. Shared by the CUDA and Metal executors.
+pub(crate) fn output_sections(
+    next: Option<&StageContract>,
+    g: V41StageGeometry,
+    out: &psionic_backend_cuda::v41_stage::V41StepOutput,
+    position: u64,
+    tokens: usize,
+) -> Result<Vec<Section>, String> {
+    let Some(next) = next else {
+        return Ok(Vec::new());
+    };
+    let t = tokens as u32;
+    let mut sections = Vec::with_capacity(next.sections.len());
+    for spec in &next.sections {
+        let section = match spec.kind {
+            SectionKind::Residual => Section::floats(
+                spec.kind,
+                spec.dtype,
+                vec![t, g.streams, g.hidden],
+                0,
+                &out.residual,
+            ),
+            SectionKind::PreMix => {
+                Section::floats(spec.kind, spec.dtype, vec![t, g.streams], 0, &out.pre_mix)
+            }
+            SectionKind::SourceKv { layer } | SectionKind::SourceIndexKeys { layer } => {
+                let keys = matches!(spec.kind, SectionKind::SourceIndexKeys { .. });
+                let width = if keys { g.index_dim } else { g.head_dim };
+                let rows = out
+                    .source_rows
+                    .as_ref()
+                    .filter(|r| r.layer == layer as usize);
+                let (first_row, words): (u64, &[u16]) = match rows {
+                    Some(rows) if keys => (
+                        rows.first_row as u64,
+                        rows.index_keys
+                            .as_deref()
+                            .ok_or_else(|| format!("no index keys of KV source {layer}"))?,
+                    ),
+                    Some(rows) => (rows.first_row as u64, &rows.kv),
+                    None => {
+                        // No new rows this step.
+                        let ratio = match spec.rows {
+                            RowRule::Append { ratio } => u64::from(ratio.max(1)),
+                            _ => 1,
+                        };
+                        (position / ratio, &[])
+                    }
+                };
+                if spec.dtype != WireDtype::Bf16 {
+                    return Err("device cache rows cross as BF16".into());
+                }
+                Ok(Section {
+                    kind: spec.kind,
+                    dtype: WireDtype::Bf16,
+                    shape: vec![(words.len() / width as usize) as u32, width],
+                    first_row,
+                    data: words.iter().flat_map(|w| w.to_le_bytes()).collect(),
+                })
+            }
+            SectionKind::IndexSelection { layer } => {
+                let rows = out
+                    .selection
+                    .as_ref()
+                    .filter(|(l, _)| *l == layer as usize)
+                    .ok_or_else(|| format!("no selection of layer {layer}"))?;
+                Section::i32s(spec.kind, vec![t, g.index_top_k], &rows.1)
+            }
+            SectionKind::Candidates { .. } => {
+                let blocks = out
+                    .candidates
+                    .as_ref()
+                    .ok_or_else(|| String::from("no layer-20 candidates to forward"))?;
+                // `-1` after the kept blocks is W9's `u32::MAX` pad.
+                let ids: Vec<u32> = blocks.iter().map(|b| *b as u32).collect();
+                Section::u32s(spec.kind, vec![t, g.candidate_blocks], &ids)
+            }
+            SectionKind::EngramHistory => {
+                let rows = match spec.rows {
+                    RowRule::Fixed(rows) => rows as usize,
+                    _ => (MAX_NGRAM - 1) as usize,
+                };
+                let history = &out.engram_history;
+                let mut values = vec![u32::MAX; rows.saturating_sub(history.len())];
+                values.extend(history.iter().skip(history.len().saturating_sub(rows)));
+                Section::u32s(spec.kind, vec![rows as u32], &values)
+            }
+            SectionKind::SourceValue { .. } | SectionKind::Logits => {
+                return Err(format!("V4.1 stages don't send {}", spec.kind));
+            }
+        };
+        sections.push(section.map_err(|e| e.to_string())?);
+    }
+    Ok(sections)
+}
+
+/// What a device stage takes from an inbound message on the CUDA wire.
+pub(crate) struct Inbound {
+    pub(crate) residual: Option<Vec<f32>>,
+    pub(crate) pre_mix: Option<Vec<f32>>,
+    pub(crate) selection: Option<Vec<i32>>,
+    pub(crate) candidates: Option<Vec<i32>>,
+    pub(crate) rows: Option<V41SourceRows>,
+}
+
+/// Reads a message's sections for a device stage. Shared by the CUDA and
+/// Metal executors.
+pub(crate) fn inbound(message: &StageMessage) -> Result<Inbound, String> {
+    let (mut residual, mut pre_mix, mut selection, mut candidates) = (None, None, None, None);
+    let mut rows: Option<V41SourceRows> = None;
+    for section in &message.sections {
+        match section.kind {
+            SectionKind::Residual => residual = Some(section.to_f32().map_err(|e| e.to_string())?),
+            SectionKind::PreMix => pre_mix = Some(section.to_f32().map_err(|e| e.to_string())?),
+            SectionKind::SourceKv { layer } | SectionKind::SourceIndexKeys { layer } => {
+                let words = bf16_words(section)?;
+                let entry = rows.get_or_insert_with(|| V41SourceRows {
+                    layer: layer as usize,
+                    first_row: section.first_row as usize,
+                    kv: Vec::new(),
+                    index_keys: None,
+                });
+                if entry.layer != layer as usize || entry.first_row as u64 != section.first_row {
+                    return Err("KV rows and index keys of different sources".into());
+                }
+                if matches!(section.kind, SectionKind::SourceKv { .. }) {
+                    entry.kv = words;
+                } else {
+                    entry.index_keys = Some(words);
+                }
+            }
+            SectionKind::IndexSelection { .. } => {
+                selection = Some(section.to_i32().map_err(|e| e.to_string())?);
+            }
+            SectionKind::Candidates { .. } => {
+                candidates = Some(
+                    section
+                        .to_u32()
+                        .map_err(|e| e.to_string())?
+                        .into_iter()
+                        .map(|b| b as i32)
+                        .collect::<Vec<i32>>(),
+                );
+            }
+            // The stage keeps its own n-gram history from the tokens.
+            SectionKind::EngramHistory | SectionKind::SourceValue { .. } | SectionKind::Logits => {}
+        }
+    }
+    Ok(Inbound {
+        residual,
+        pre_mix,
+        selection,
+        candidates,
+        rows,
+    })
+}
+
+fn bf16_words(section: &Section) -> Result<Vec<u16>, String> {
     if section.dtype != WireDtype::Bf16 {
-        return Err(fail(format!(
-            "{} arrived as {:?}; a CUDA group sends BF16 cache rows",
+        return Err(format!(
+            "{} arrived as {:?}; a device group sends BF16 cache rows",
             section.kind, section.dtype
-        )));
+        ));
     }
     Ok(section
         .data
@@ -281,49 +353,13 @@ impl StageExecutor for V41CudaStageExecutor {
 
     fn step(&mut self, message: &StageMessage) -> Result<Vec<Section>, Self::Error> {
         self.sampled.set(None);
-        let (mut residual, mut pre_mix, mut selection, mut candidates) = (None, None, None, None);
-        let mut rows: Option<V41SourceRows> = None;
-        for section in &message.sections {
-            match section.kind {
-                SectionKind::Residual => residual = Some(section.to_f32().map_err(fail)?),
-                SectionKind::PreMix => pre_mix = Some(section.to_f32().map_err(fail)?),
-                SectionKind::SourceKv { layer } | SectionKind::SourceIndexKeys { layer } => {
-                    let words = bf16_words(section)?;
-                    let entry = rows.get_or_insert_with(|| V41SourceRows {
-                        layer: layer as usize,
-                        first_row: section.first_row as usize,
-                        kv: Vec::new(),
-                        index_keys: None,
-                    });
-                    if entry.layer != layer as usize || entry.first_row as u64 != section.first_row
-                    {
-                        return Err(fail("KV rows and index keys of different sources"));
-                    }
-                    if matches!(section.kind, SectionKind::SourceKv { .. }) {
-                        entry.kv = words;
-                    } else {
-                        entry.index_keys = Some(words);
-                    }
-                }
-                SectionKind::IndexSelection { .. } => {
-                    selection = Some(section.to_i32().map_err(fail)?);
-                }
-                SectionKind::Candidates { .. } => {
-                    candidates = Some(
-                        section
-                            .to_u32()
-                            .map_err(fail)?
-                            .into_iter()
-                            .map(|b| b as i32)
-                            .collect::<Vec<i32>>(),
-                    );
-                }
-                // The stage keeps its own n-gram history from the tokens.
-                SectionKind::EngramHistory
-                | SectionKind::SourceValue { .. }
-                | SectionKind::Logits => {}
-            }
-        }
+        let Inbound {
+            residual,
+            pre_mix,
+            selection,
+            candidates,
+            rows,
+        } = inbound(message).map_err(fail)?;
         let mut position =
             usize::try_from(message.position).map_err(|_| fail("position out of range"))?;
         if self.stale_cache {
@@ -420,9 +456,9 @@ fn stage_observes(stage: &V41Stage) -> bool {
 /// A tensor source with one of the G1 v2 negative controls' weight defects
 /// (#12405): layer 3's shared expert output projection with its rows rotated by one
 /// 32-row block, or layer 3's router bias rotated by one expert.
-struct Controlled<'a> {
-    inner: &'a dyn V41TensorSource,
-    control: Option<Control>,
+pub(crate) struct Controlled<'a> {
+    pub(crate) inner: &'a dyn V41TensorSource,
+    pub(crate) control: Option<Control>,
 }
 
 impl V41TensorSource for Controlled<'_> {
@@ -521,7 +557,7 @@ fn engram_table(
     })
 }
 
-fn engram_hashes(layout: &EngramLayout) -> Vec<V41EngramHash> {
+pub(crate) fn engram_hashes(layout: &EngramLayout) -> Vec<V41EngramHash> {
     layout
         .layers
         .iter()
@@ -535,7 +571,7 @@ fn engram_hashes(layout: &EngramLayout) -> Vec<V41EngramHash> {
         .collect()
 }
 
-fn token_map(map: &CompressedTokenMap, pad: u32) -> Result<V41TokenMap, Refused> {
+pub(crate) fn token_map(map: &CompressedTokenMap, pad: u32) -> Result<V41TokenMap, Refused> {
     Ok(V41TokenMap {
         ids: map.ids().to_vec(),
         pad: map.get(pad).map_err(|e| Refused(e.to_string()))?,

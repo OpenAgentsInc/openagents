@@ -5378,6 +5378,7 @@ dependencies = [
  "half",
  "hex",
  "psionic-backend-cuda",
+ "psionic-backend-metal",
  "psionic-models",
  "psionic-runtime",
  "serde",

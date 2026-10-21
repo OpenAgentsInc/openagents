@@ -32,8 +32,10 @@
 //! A checkpoint stage opens only the shards its layers read
 //! ([`load_model_for`]) and checks their SHA-256 against the pin.
 
-#[cfg(feature = "cuda")]
+#[cfg(any(feature = "cuda", feature = "metal"))]
 pub mod cuda;
+#[cfg(all(feature = "metal", target_os = "macos"))]
+pub mod metal;
 pub mod qualify;
 pub mod serve;
 
@@ -90,6 +92,10 @@ pub const RUNTIME: &str = "psionic-v41-stage/1";
 /// group runs one backend: Pylon's front makes a group ready only when every
 /// stage announces the same runtime.
 pub const RUNTIME_CUDA: &str = "psionic-v41-stage/1+cuda";
+/// The runtime a Metal stage announces (#12420). It runs the CUDA stage's
+/// kernels ported to Metal and speaks the CUDA wire, so a manifest entry may
+/// place it among CUDA stages by declaring this runtime.
+pub const RUNTIME_METAL: &str = "psionic-v41-stage/1+metal";
 /// The control protocol version, as Pylon's `stage_group::PROTOCOL`.
 pub const PROTOCOL: u32 = 1;
 /// The file that marks a synthetic weights directory.
@@ -123,6 +129,9 @@ pub enum Backend {
     /// W7's device-resident stage, `psionic_backend_cuda::v41_stage`
     /// (the `cuda` feature).
     Cuda,
+    /// The same stage on an Apple GPU,
+    /// `psionic_backend_metal::v41::stage` (the `metal` feature, #12420).
+    Metal,
 }
 
 impl Backend {
@@ -132,14 +141,26 @@ impl Backend {
         match self {
             Self::Cpu => RUNTIME,
             Self::Cuda => RUNTIME_CUDA,
+            Self::Metal => RUNTIME_METAL,
         }
     }
 
-    /// Parses `cpu` or `cuda`.
+    /// The name `--backend` takes.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Cpu => "cpu",
+            Self::Cuda => "cuda",
+            Self::Metal => "metal",
+        }
+    }
+
+    /// Parses `cpu`, `cuda`, or `metal`.
     ///
     /// # Errors
     ///
-    /// Refuses other names, and `cuda` in a build without the `cuda` feature.
+    /// Refuses other names, and `cuda` or `metal` in a build without the
+    /// feature.
     pub fn parse(value: &str) -> Result<Self, Refused> {
         match value {
             "cpu" => Ok(Self::Cpu),
@@ -147,7 +168,11 @@ impl Backend {
             "cuda" => refuse(
                 "this build has no CUDA stage executor; build psionic-v41-stage with --features cuda",
             ),
-            other => refuse(format!("--backend {other} is not cpu or cuda")),
+            "metal" if cfg!(all(feature = "metal", target_os = "macos")) => Ok(Self::Metal),
+            "metal" => refuse(
+                "this build has no Metal stage executor; build psionic-v41-stage on a Mac with --features metal",
+            ),
+            other => refuse(format!("--backend {other} is not cpu, cuda, or metal")),
         }
     }
 }
@@ -226,16 +251,28 @@ pub fn wire_json(geometry: &V41StageGeometry) -> Value {
 }
 
 /// The device class a stage on `backend` announces (#12418): `cuda-sm_NN`
-/// from the architecture its kernels were compiled for, or `cpu-` and the
-/// machine's architecture.
+/// from the architecture its kernels were compiled for, `metal-apple<N>`
+/// from the GPU family (#12420), or `cpu-` and the machine's architecture.
 #[must_use]
 pub fn device_class(backend: Backend) -> String {
     match backend {
+        Backend::Metal => metal_class(),
         Backend::Cuda => match cuda_arch() {
             Some(arch) => format!("cuda-{arch}"),
             None => "cuda".into(),
         },
         Backend::Cpu => format!("cpu-{}", std::env::consts::ARCH),
+    }
+}
+
+fn metal_class() -> String {
+    #[cfg(all(feature = "metal", target_os = "macos"))]
+    {
+        metal::device_class()
+    }
+    #[cfg(not(all(feature = "metal", target_os = "macos")))]
+    {
+        "metal".into()
     }
 }
 
@@ -660,6 +697,10 @@ pub fn parse_profile(backend: Backend, value: &str) -> Result<Option<Arithmetic>
         (Backend::Cuda, _) => refuse(format!(
             "--arithmetic {value} is not `{CUDA_PROFILE}`, the CUDA stage's arithmetic"
         )),
+        (Backend::Metal, CUDA_PROFILE) => Ok(None),
+        (Backend::Metal, _) => refuse(format!(
+            "the Metal stage runs only `{CUDA_PROFILE}`, the CUDA stage's arithmetic on an Apple GPU"
+        )),
     }
 }
 
@@ -675,6 +716,13 @@ pub fn profile_name(backend: Backend, arithmetic: Option<Arithmetic>) -> String 
             Some(arch) => format!("cuda-{CUDA_PROFILE}-{arch}"),
             None => format!("cuda-{CUDA_PROFILE}"),
         },
+        (Backend::Metal, _) => {
+            let class = metal_class();
+            match class.strip_prefix("metal-") {
+                Some(family) => format!("metal-{CUDA_PROFILE}-{family}"),
+                None => format!("metal-{CUDA_PROFILE}"),
+            }
+        }
     }
 }
 
@@ -732,6 +780,7 @@ pub fn build_identity() -> Value {
                 "version": env!("CARGO_PKG_VERSION"),
                 "cuda": cfg!(feature = "cuda"),
                 "cuda_arch": cuda_arch(),
+                "metal": cfg!(all(feature = "metal", target_os = "macos")),
             })
         })
         .clone()
@@ -892,6 +941,11 @@ impl Options {
             .map(|v| Experts::parse(&v))
             .transpose()?
             .unwrap_or_default();
+        if experts == Experts::Host && backend == Backend::Metal {
+            return refuse(
+                "--experts host doesn't apply to the Metal backend: an Apple GPU shares the machine's memory",
+            );
+        }
         if experts == Experts::Host && backend != Backend::Cuda {
             return refuse("--experts host is for the CUDA backend");
         }
@@ -901,7 +955,9 @@ impl Options {
             .transpose()?
             .unwrap_or_default();
         if wire == Wire::Cuda && backend != Backend::Cpu {
-            return refuse("--wire cuda is for the CPU backend; CUDA stages already use it");
+            return refuse(
+                "--wire cuda is for the CPU backend; CUDA and Metal stages already use it",
+            );
         }
         let max_context = match values.remove("--max-context") {
             Some(v) => v

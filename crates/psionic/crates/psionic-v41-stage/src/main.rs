@@ -3,13 +3,13 @@
 //! ```text
 //! psionic-v41-stage --weights DIR --layers A-B --gpu N --manifest D [--embeddings] [--head]
 //!     --stage NAME --generation G --front ADDR --token T
-//!     [--backend cpu|cuda] [--arithmetic f32|bf16|bf16-tp8|device] [--max-context N]
+//!     [--backend cpu|cuda|metal] [--arithmetic f32|bf16|bf16-tp8|device] [--max-context N]
 //!     [--max-step-tokens N] [--prefill-chunk N]
 //!     [--max-input-tokens N] [--listen ADDR] [--data-listen ADDR [--data-advertise ADDR]]
 //!     [--experts device|host] [--wire native|cuda] [--events FILE]
 //! psionic-v41-stage reference --weights DIR [--prompt JSON] [--mode thinking|chat] [--steps N]
 //!     [--temperature T --top-p P --seed S] [--arithmetic A] [--max-context N]
-//!     [--backend cpu|cuda]
+//!     [--backend cpu|cuda|metal]
 //! psionic-v41-stage manifest --split 0-10,10-20,20-30,30-40
 //! psionic-v41-stage plan --device HOST:GPU:CLASS:BYTES[:host-experts][:fixed=BYTES] ...
 //!     --ram HOST:BYTES ... [--split A-B,...] [--max-context N] [--max-step-tokens N]
@@ -25,7 +25,8 @@
 //! ```
 //!
 //! `--arithmetic` takes `f32`, `bf16`, or `bf16-tp8` on the CPU backend and
-//! only `device` on CUDA; anything else is refused before weights load.
+//! only `device` on CUDA and Metal; anything else is refused before weights
+//! load.
 //! `build-info` prints the executable's SHA-256, its CUDA architecture, and
 //! the profiles it runs, as `scripts/pylon/v41-stage-build.sh` records them.
 
@@ -69,6 +70,15 @@ fn run_stage(args: &[String]) -> Result<(), Refused> {
     #[cfg(feature = "cuda")]
     if options.backend == Backend::Cuda {
         return psionic_v41_stage::cuda::run_stage(&options, &manifest, &entry, selection.as_ref());
+    }
+    #[cfg(all(feature = "metal", target_os = "macos"))]
+    if options.backend == Backend::Metal {
+        return psionic_v41_stage::metal::run_stage(
+            &options,
+            &manifest,
+            &entry,
+            selection.as_ref(),
+        );
     }
     if options.control.is_some() {
         return Err(Refused("--control runs only on the CUDA backend".into()));
@@ -141,6 +151,15 @@ fn run_reference(args: &[String]) -> Result<(), Refused> {
             sampling,
             max_context,
         )?,
+        #[cfg(all(feature = "metal", target_os = "macos"))]
+        Backend::Metal => psionic_v41_stage::metal::reference(
+            Path::new(weights),
+            prompt.as_ref(),
+            mode,
+            steps,
+            sampling,
+            max_context,
+        )?,
         _ => {
             let model = load_model(Path::new(weights))?;
             let arithmetic = arithmetic.unwrap_or(model.arithmetic);
@@ -165,10 +184,13 @@ fn run_build_info() -> Result<(), Refused> {
     info["runtimes"] = serde_json::json!({
         "cpu": Backend::Cpu.runtime(),
         "cuda": cfg!(feature = "cuda").then(|| Backend::Cuda.runtime()),
+        "metal": cfg!(all(feature = "metal", target_os = "macos")).then(|| Backend::Metal.runtime()),
     });
     info["profiles"] = serde_json::json!({
         "cpu": ["cpu-f32", "cpu-bf16", "cpu-bf16-tp8"],
         "cuda": cfg!(feature = "cuda").then(|| psionic_v41_stage::profile_name(Backend::Cuda, None)),
+        "metal": cfg!(all(feature = "metal", target_os = "macos"))
+            .then(|| psionic_v41_stage::profile_name(Backend::Metal, None)),
     });
     let _ = writeln!(std::io::stdout(), "{info}");
     Ok(())
