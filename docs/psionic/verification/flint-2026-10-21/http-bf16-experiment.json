@@ -1,0 +1,335 @@
+[
+  {
+    "check": "refusal",
+    "options": {
+      "stream": true
+    },
+    "result": {
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "streaming is not available on this endpoint"
+        }
+      },
+      "seconds": 0.013134753999906934
+    }
+  },
+  {
+    "check": "refusal",
+    "options": {
+      "tools": []
+    },
+    "result": {
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "tool requests are not available on this endpoint"
+        }
+      },
+      "seconds": 0.00025913000001764885
+    }
+  },
+  {
+    "check": "refusal",
+    "options": {
+      "max_tokens": 9000
+    },
+    "result": {
+      "status": 400,
+      "body": {
+        "error": {
+          "message": "max_tokens must be at most 8192"
+        }
+      },
+      "seconds": 0.000180129999989731
+    }
+  },
+  {
+    "check": "arithmetic_and_repeat",
+    "first": {
+      "status": 200,
+      "body": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "4",
+              "reasoning_content": "User asks: \"What is 2 + 2? Reply with just the number.\" So answer should be just \"4\". No extra text.",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "psionic-flint",
+        "model": "RecursiveSI/flint",
+        "object": "chat.completion",
+        "psionic": {
+          "backend": "cuda",
+          "config_sha256": "a57c33d11f725099105b657043c113149763066d204fd472d0b2ee399abc2ba7",
+          "elapsed_seconds": 1.673383047,
+          "engine": "rust_candle_flint",
+          "prefill_seconds": 0.596648062,
+          "revision": "2a247be0c0aec895ccb0ac7ca92229ec6df37288",
+          "token_ids": [
+            150006,
+            2461,
+            14313,
+            25,
+            368,
+            2387,
+            332,
+            220,
+            17,
+            541,
+            220,
+            17,
+            30,
+            21973,
+            386,
+            950,
+            269,
+            1067,
+            1131,
+            1967,
+            3087,
+            1076,
+            356,
+            950,
+            368,
+            19,
+            3111,
+            2870,
+            4742,
+            1688,
+            13,
+            150007,
+            19
+          ]
+        },
+        "usage": {
+          "completion_tokens": 33,
+          "prompt_tokens": 16,
+          "total_tokens": 49
+        }
+      },
+      "seconds": 1.6739419870000347
+    },
+    "second": {
+      "status": 200,
+      "body": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "4",
+              "reasoning_content": "User asks: \"What is 2 + 2? Reply with just the number.\" So answer should be just \"4\". No extra text.",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "psionic-flint",
+        "model": "RecursiveSI/flint",
+        "object": "chat.completion",
+        "psionic": {
+          "backend": "cuda",
+          "config_sha256": "a57c33d11f725099105b657043c113149763066d204fd472d0b2ee399abc2ba7",
+          "elapsed_seconds": 1.502886292,
+          "engine": "rust_candle_flint",
+          "prefill_seconds": 0.427110377,
+          "revision": "2a247be0c0aec895ccb0ac7ca92229ec6df37288",
+          "token_ids": [
+            150006,
+            2461,
+            14313,
+            25,
+            368,
+            2387,
+            332,
+            220,
+            17,
+            541,
+            220,
+            17,
+            30,
+            21973,
+            386,
+            950,
+            269,
+            1067,
+            1131,
+            1967,
+            3087,
+            1076,
+            356,
+            950,
+            368,
+            19,
+            3111,
+            2870,
+            4742,
+            1688,
+            13,
+            150007,
+            19
+          ]
+        },
+        "usage": {
+          "completion_tokens": 33,
+          "prompt_tokens": 16,
+          "total_tokens": 49
+        }
+      },
+      "seconds": 1.5034070020000172
+    }
+  },
+  {
+    "check": "code_and_serial_admission",
+    "code": {
+      "status": 200,
+      "body": {
+        "choices": [
+          {
+            "finish_reason": "stop",
+            "index": 0,
+            "message": {
+              "content": "```rust\nfn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n```",
+              "reasoning_content": "We need to write a Rust function named add that takes two i32 values and returns their sum. Return only the function, without explanations.\n\nSo the answer should be just the function definition, likely with proper syntax.\n\nWe should include the function signature: fn add(a: i32, b: i32) -> i32 { a + b }\n\nNo extra text.",
+              "role": "assistant"
+            }
+          }
+        ],
+        "id": "psionic-flint",
+        "model": "RecursiveSI/flint",
+        "object": "chat.completion",
+        "psionic": {
+          "backend": "cuda",
+          "config_sha256": "a57c33d11f725099105b657043c113149763066d204fd472d0b2ee399abc2ba7",
+          "elapsed_seconds": 4.109040729,
+          "engine": "rust_candle_flint",
+          "prefill_seconds": 0.727218524,
+          "revision": "2a247be0c0aec895ccb0ac7ca92229ec6df37288",
+          "token_ids": [
+            150006,
+            1978,
+            877,
+            295,
+            3208,
+            260,
+            33017,
+            838,
+            6555,
+            836,
+            366,
+            3990,
+            1045,
+            596,
+            786,
+            2051,
+            299,
+            5111,
+            675,
+            2842,
+            13,
+            4678,
+            958,
+            269,
+            838,
+            11,
+            1829,
+            23908,
+            346,
+            3526,
+            269,
+            3087,
+            1076,
+            356,
+            950,
+            269,
+            838,
+            6718,
+            11,
+            3558,
+            386,
+            1838,
+            13172,
+            346,
+            1978,
+            1076,
+            2486,
+            269,
+            838,
+            13388,
+            25,
+            6042,
+            836,
+            3444,
+            25,
+            596,
+            786,
+            11,
+            286,
+            25,
+            596,
+            786,
+            8,
+            2132,
+            596,
+            786,
+            380,
+            260,
+            541,
+            286,
+            883,
+            2945,
+            4742,
+            1688,
+            13,
+            150007,
+            1258,
+            31582,
+            198,
+            9965,
+            836,
+            3444,
+            25,
+            596,
+            786,
+            11,
+            286,
+            25,
+            596,
+            786,
+            8,
+            2132,
+            596,
+            786,
+            439,
+            279,
+            260,
+            541,
+            286,
+            198,
+            694,
+            1258
+          ]
+        },
+        "usage": {
+          "completion_tokens": 102,
+          "prompt_tokens": 27,
+          "total_tokens": 129
+        }
+      },
+      "seconds": 4.109821448999924
+    },
+    "busy": {
+      "status": 429,
+      "body": {
+        "error": {
+          "message": "The model is busy. Try again shortly."
+        }
+      },
+      "seconds": 0.00045333999992180907
+    }
+  }
+]

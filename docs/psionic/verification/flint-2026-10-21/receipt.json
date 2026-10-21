@@ -1,0 +1,74 @@
+{
+  "schema": "openagents.psionic.flint.cuda-smoke.v1",
+  "date": "2026-10-21",
+  "issue": 12419,
+  "source_commit": "9c1128675b25223650fb004b94b0a356f5bfac17",
+  "binary_sha256": "850d5a867678c66303ef5cc6300d2d1f28d768731a3948a9d4c03ab31d3fbc14",
+  "model": "RecursiveSI/flint",
+  "revision": "2a247be0c0aec895ccb0ac7ca92229ec6df37288",
+  "numerical_profile": "bf16_weights_f32_compute_v1",
+  "engine": "Rust Candle 0.9.2",
+  "host": {
+    "name": "oa-flint-12419",
+    "project": "openagentsgemini",
+    "zone": "asia-northeast1-b",
+    "machine_type": "g4-standard-48",
+    "gpu": "RTX PRO 6000 Blackwell Server Edition",
+    "gpu_total_mib": 97887,
+    "gpu_post_smoke_used_mib": 77747,
+    "memory_measurement": "post-request snapshot; not a measured peak",
+    "listen": "127.0.0.1:8080",
+    "service": "psionic-flint",
+    "expiry_utc": "2026-10-21T21:56:08Z"
+  },
+  "tests": {
+    "cpu": 8,
+    "cuda_host": 9,
+    "cuda_ignored": 0,
+    "independent_transformer": "NumPy F32 and BF16-rounded-weight fixtures across a window boundary",
+    "official_tokenizer_and_template": true
+  },
+  "full_model_comparison": {
+    "passed": true,
+    "positions": 6,
+    "vocabulary": 150144,
+    "max_total_variation": 1.777709446218749e-06,
+    "max_centered_logit_error": 4.5146392967154725e-05,
+    "top1_agreement": "6/6",
+    "reference": "Independent eager PyTorch 2.14.1+cu130, FP32 computation on the same original weights"
+  },
+  "http": {
+    "greedy_repeat": true,
+    "arithmetic": true,
+    "rust_code_executable_cases": 4,
+    "seeded_recommended_sampling": true,
+    "busy_status": 429,
+    "unsupported_options_refused": true,
+    "context_limit": 8192,
+    "largest_tested_prompt_tokens": 27,
+    "code_completion_tokens": 102,
+    "code_seconds": 4.702751681,
+    "code_prefill_seconds": 0.862074189,
+    "code_decode_tokens_per_second": 26.55781439927266
+  },
+  "recovery": {
+    "passed": true,
+    "old_pid": "16089",
+    "new_pid": "16833",
+    "request_failure": "RemoteDisconnected",
+    "restart_count_after": 1,
+    "crash_and_followup_check_seconds": 54.89912982600026,
+    "gpu_worker_processes_after": 1
+  },
+  "raw_evidence": {
+    "uri": "gs://openagents-psionic-oracle/flint/2a247be0c0aec895ccb0ac7ca92229ec6df37288/12419/20261021-9c1128675b/evidence.tar.gz",
+    "sha256": "d4dfc0cf4469253a1cec39681b06bc041d13fe85bff46a632175e03d1f4dd2d8"
+  },
+  "limitations": [
+    "Short-prompt smoke and six-position numerical regression, not broad model-quality qualification",
+    "No measured full-context peak memory, sustained load, or coding benchmark score",
+    "GGUF quantizations, MLX/Metal, tools, streaming, and Pylon catalog/routing are outside this CUDA delivery",
+    "Initial BF16-compute profile failed; its report is retained and is not the served profile",
+    "Expiring spot VM: may be preempted before its configured expiry; compute figures are guard estimates, not billing invoices"
+  ]
+}

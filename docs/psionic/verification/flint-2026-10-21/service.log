@@ -1,0 +1,11 @@
+Oct 21 18:28:29 oa-flint-12419.asia-northeast1-b.c.openagentsgemini.internal systemd[1]: Started psionic-flint.service - Psionic native Flint.
+Oct 21 18:29:14 oa-flint-12419.asia-northeast1-b.c.openagentsgemini.internal psionic-flint[16089]: Flint ready on 127.0.0.1:8080
+Oct 21 18:31:54 oa-flint-12419.asia-northeast1-b.c.openagentsgemini.internal systemd[1]: psionic-flint.service: Sent signal SIGKILL to main process 16089 (psionic-flint) on client request.
+Oct 21 18:31:54 oa-flint-12419.asia-northeast1-b.c.openagentsgemini.internal systemd[1]: psionic-flint.service: Main process exited, code=killed, status=9/KILL
+Oct 21 18:31:54 oa-flint-12419.asia-northeast1-b.c.openagentsgemini.internal systemd[1]: psionic-flint.service: Failed with result 'signal'.
+Oct 21 18:31:54 oa-flint-12419.asia-northeast1-b.c.openagentsgemini.internal systemd[1]: psionic-flint.service: Consumed 53.672s CPU time, 476.4M memory peak, 0B memory swap peak.
+Oct 21 18:32:00 oa-flint-12419.asia-northeast1-b.c.openagentsgemini.internal systemd[1]: psionic-flint.service: Scheduled restart job, restart counter is at 1.
+Oct 21 18:32:00 oa-flint-12419.asia-northeast1-b.c.openagentsgemini.internal systemd[1]: Started psionic-flint.service - Psionic native Flint.
+Oct 21 18:32:45 oa-flint-12419.asia-northeast1-b.c.openagentsgemini.internal psionic-flint[16833]: Flint ready on 127.0.0.1:8080
+NVIDIA RTX PRO 6000 Blackwell Server Edition, 97887 MiB, 77747 MiB, 580.178.04
+850d5a867678c66303ef5cc6300d2d1f28d768731a3948a9d4c03ab31d3fbc14  /home/christopherdavid/flint-builds/9c1128675b/psionic-flint

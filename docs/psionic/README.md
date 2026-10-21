@@ -68,6 +68,11 @@ including indentation and byte fallbacks.
 `psionic-gpt-oss-server` is a separate binary for GPT-OSS; unfinished
 analysis is kept separate from the final answer.
 
+[`psionic-flint`](flint-native.md) is the native Rust safetensors path for
+Recursive Flint on GCP CUDA. It keeps the original BF16 weights resident and
+uses FP32 computation. It serves bounded text requests through its own HTTP
+endpoint; GGUF, Metal, tools, and streaming are outside this first profile.
+
 Pylon can also explicitly supervise a local llama.cpp server for families
 without a native GPU decoder. See [model selection and qualification](../compute/pylon.md#choose-another-text-model)
 for the pinned model catalog and repeatable RTX 4080 checks.

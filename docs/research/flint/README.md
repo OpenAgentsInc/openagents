@@ -695,3 +695,23 @@ Inference and estimates:
   their digests.
 - The announcement says 512k tokens, while the configuration and GGUFs say
   262,144. Which one is right?
+
+## Native CUDA implementation addendum, 2026-10-21
+
+The owner requested immediate native support in
+[#12419](https://github.com/OpenAgentsInc/openagents/issues/12419).
+[`psionic-flint`](../../psionic/flint-native.md) now implements the shared
+Rust model and configuration on main at `9c1128675b`. It runs the original
+BF16 checkpoint on a dedicated GCP RTX PRO 6000, with FP32 computation and
+weights kept in BF16 on the device. It exposes a bounded text HTTP endpoint.
+The [receipt](../../psionic/verification/flint-2026-10-21/receipt.json)
+records independent numerical comparisons, complete answers, executable Rust,
+serial admission, crash recovery, memory, and short-request timing.
+
+The initial BF16-compute experiment produced correct short answers but failed
+the full-model numerical regression. Its failure remains recorded. The
+supported FP32-compute profile passes the same limits against an independent
+FP32 reference. This first delivery covers the original safetensors checkpoint;
+the GGUF quantizations, Metal, tools, streaming, long-context qualification,
+and published coding benchmarks remain separate work. The shared model and
+configuration are available for the Metal implementation in #12422.
