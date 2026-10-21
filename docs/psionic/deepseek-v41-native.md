@@ -1217,3 +1217,47 @@ with the recorded combine weight. This diagnostic uses the frozen BF16 limits
 and separately counts unequal BF16 values; it cannot pass G1 by itself.
 The generation examples above use a whole prompt prefill to match the oracle;
 chunking is a separately labeled comparison.
+
+## W1 original-weight result (2026-10-20)
+
+**G1 fails.** The [retained report](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/w1-2026-10-20.json)
+records all eight oracle cases in both modes, including the status of every
+recorded position. First-failure runs stop without committing model state;
+later positions remain untested. Both complete chat diagnostics run all 40
+layers through prefill and 32 teacher-forced tokens. They reach the vocabulary
+head but exceed the frozen bounds: maximum logit errors are `3.668397903442383`
+in decode and `3.5332261323928833` in replay. Decode matches 31 of 33 next-token
+checks, with the first mismatch at step 20. These are not free greedy runs or
+complete-answer qualification.
+
+The first chat limit failure remains
+`decode.last.layers.1.hc.attn.pre`: two of four values fail, with maximum absolute
+error `0.0011644363403320312`. A repeat with 48 Rayon threads reproduces the
+24-thread probe's tensor hashes and failure. This measures CPU repeatability at
+that stopping point, not the oracle GPU's same-mode repeatability.
+
+Identical-input diagnostics narrow the next investigation: 640 expert
+projection/complete-output checks match BF16 values exactly; all 400 complete
+FFNs pass the frozen bounds with identical router sets, although 2,245 BF16
+values differ. All 3,360 mixing tensors pass. Connected state still diverges,
+and observations for some oracle internals remain missing.
+[#12404](https://github.com/OpenAgentsInc/openagents/issues/12404) tracks the
+remaining cause, additional oracle capture, and complete G1 comparisons.
+W2 (#12389) and W3 (#12390) depend on it. Closing W1's reporting work does not
+pass G1 or qualify V4.1 CUDA, Pylon serving, or recovery.
+
+The runner now refuses qualification for a partial prompt/mode selection or
+incomplete forward, and failed or empty component diagnostics return an error.
+Verification passes 63 CPU tests, five qualification-example tests, and two
+generation-argument tests. Original-weight timings include observations and
+concurrent diagnostics; they are not W3 performance measurements.
+
+The `n2d-highmem-96` VM in `us-central1-c` ran for 2.28 hours, from
+`2026-10-21T01:18:30Z` to `2026-10-21T03:35:06Z`. The spend guard records
+`$12.455454` in compute (`$12.46` rounded). The VM and its 100 GB boot and
+2,000 GB data disks are deleted. The compute ledger excludes storage and
+network charges; the shared budget reserves $200 for those costs. All 48
+original shard hashes passed before comparisons. Results, source, binaries,
+and cleanup records are retained under
+`gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/cpu-qualification/w1/run-20261020-201630-7f29/`.
+The committed compressed raw reports preserve every missing tensor name.

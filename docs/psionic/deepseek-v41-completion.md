@@ -33,6 +33,14 @@ listed as an after-close check.
 
 Gate progress (2026-10-21):
 
+- **G1, original-weight CPU parity (W1, #12388): failed.** The fixed same-mode
+  policy replaces the earlier cross-mode tolerance rule. Both complete chat
+  comparisons reach all 40 layers and the full vocabulary head, but logits and
+  router sets differ. The first numerical limit failure is the last prompt
+  token's layer-1 attention pre-mix; the 2k and 20k cases also show layer-0 router
+  differences. [#12404](https://github.com/OpenAgentsInc/openagents/issues/12404)
+  owns the remaining divergence and missing observations. W2 and W3 stay
+  blocked on it. Isolated component and CUDA-kernel checks do not pass G1.
 - **G5–G7, stage contract (W9, #12396).** One message type carries the
   manifest digest, group generation, request, attempt, stage and layers,
   step, position, tokens, and typed sections. A stage refuses duplicate,
@@ -117,7 +125,11 @@ speculation, vision, and paid jobs.
 
 These three issues are closed on `main` through `d912ed9392`. The complete
 model and greedy runner pass 57 CPU tests and two argument tests on synthetic
-fixtures. Original-weight comparison is W1 (#12388), now claimed by this chat.
+fixtures. W1 (#12388) now reports original-weight comparisons and numerical
+fixes; G1 still fails. [#12404](https://github.com/OpenAgentsInc/openagents/issues/12404)
+tracks the remaining connected divergence and missing observations. The
+[W1 report](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/w1-2026-10-20.json)
+distinguishes complete runs, first-failure runs, and untested positions.
 
 ## Lessons that shape the remaining work
 
@@ -155,9 +167,9 @@ spend guard from the one budget host.
 
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
-| W1 | **Original-weight CPU parity run.** On a cloud CPU machine with enough RAM (for example `n2d-highmem-96`, 768 GB, about $5.47/h), copy the checkpoint from the bucket to local SSD and run the #12387 runner against the oracle prompts. Compare decode-to-decode and replay-to-replay at every recorded position with tolerances fixed in advance. | M, cloud (about 10 h, under $60) | #12385–#12387 | G1's parity report is committed. A mismatch is reported with the first diverging layer and tensor, from the oracle's per-layer hashes. |
-| W2 | **Complete answers on CPU.** Greedy to EOS for prompts 1 and 2 with the #12372 parser. | S, same machine | W1 | G2 passes; wall time per token is recorded. |
-| W3 | **Measure the model.** Peak memory per layer range, KV and indexer bytes per token at each compression ratio, Engram lookup cost from RAM, and active parameters per token. | S, same machine | W1 | Numbers replace the estimates in the plan; placement inputs for W9 exist. |
+| W1 | **Original-weight CPU parity report.** Compared original weights with the frozen policy. Complete chat diagnostics and first-failure runs report every case, mode, and recorded position, including untested positions. G1 fails; #12404 tracks the divergence and missing observations. | M, cloud | #12385–#12387 | Report retained; closing W1 does not pass G1. |
+| W2 | **Complete answers on CPU.** Greedy to EOS for prompts 1 and 2 with the #12372 parser. | S, a later cost-capped run | W1, #12404 | G2 passes; wall time per token is recorded. |
+| W3 | **Measure the model.** Peak memory per layer range, KV and indexer bytes per token at each compression ratio, Engram lookup cost from RAM, and active parameters per token. | S, a later cost-capped run | W1, #12404 | Numbers replace the estimates in the plan; placement inputs for W9 exist. |
 
 ### Phase 3: CUDA (G3, G4)
 
@@ -218,23 +230,25 @@ started first.
 | Phase | Estimate |
 | --- | --- |
 | Spent: oracle and weights | $36.85, plus a $200 reserve for storage and transfer |
-| W1–W3 CPU parity and measurements | under $60 |
+| W1–W3 CPU parity and measurements | W1 used $12.46 in compute. Re-estimate the remaining runs after #12404; the earlier under-$60 estimate is unverified for complete long-prompt runs. |
 | W8 target GPU check | under $50 |
 | W11 one-machine group development and runs | about $300 (a `g4-standard-384` at $13.31/h spot, about 20 h) |
 | W12 cross-machine placements | about $200 |
 | W15–W16 launch and recording runs | about $150 |
-| Expected total | about $1,000, inside the $3,000 cap |
+| Expected total | Original estimate: about $1,000. CPU follow-up needs a revised estimate; the spend guard's $3,000 cap still applies. |
 
 ## Who can do what in parallel
 
-- **Codex (DeepSeek chat)** holds the CPU lane: #12385–#12387, then W1–W3.
-- **A second lane** can start W10's lifecycle on the R1 native worker now,
-  on top of W9's `StageWorker` and `StageInbox`; it needs no V4.1 weights.
-- **A third lane** can start W13's beacon and router tests with fixtures.
-- **CUDA (W5–W7)** starts after W1, because kernel parity is checked against
-  a CPU path that already matches the real model. W4 started earlier: its
-  parity check needs only the CPU dequantize-and-multiply path, which already
-  matches the reference's dequantization bit for bit.
+- **Codex (DeepSeek chat)** holds the CPU work: #12385–#12388, then #12404
+  before W2 and W3 can qualify the model.
+- **Stage work:** W9 (#12396), W10 (#12397), and W13 (#12400) are closed
+  with synthetic or fixture evidence. Their real-model integration remains
+  in W11, W12, and W15, with the blockers in the work table above.
+- **CUDA (W5–W7)** can use identical-input component checks while G1 is
+  unresolved. Each result must name its CPU/oracle inputs and numerical
+  bounds. W4 and W6 have such isolated evidence; connected stages still need
+  G1 through #12404. W1's closure cannot establish that the CPU model matches
+  the original-weight oracle.
 
 ## Open questions
 
