@@ -386,6 +386,81 @@ fn top_k_ranks_with_lower_index_ties_and_flags_non_finite() {
     }
 }
 
+/// Sampling::choose_ranked's rule over ranked candidates, in FP64.
+fn cpu_choose_ranked(values: &[f32], temperature: f64, top_p: f64, draw: f64) -> usize {
+    let max = values[0] as f64;
+    let w: Vec<f64> = values
+        .iter()
+        .map(|v| ((*v as f64 - max) / temperature).exp())
+        .collect();
+    let total: f64 = w.iter().sum();
+    let (mut cumulative, mut keep) = (0.0, 0);
+    for x in &w {
+        cumulative += x / total;
+        keep += 1;
+        if cumulative >= top_p {
+            break;
+        }
+    }
+    let mut d = draw * w[..keep].iter().sum::<f64>();
+    for (i, x) in w[..keep].iter().enumerate() {
+        d -= x;
+        if d <= 0.0 {
+            return i;
+        }
+    }
+    keep - 1
+}
+
+#[test]
+fn gpu_sampling_follows_the_ranked_choice() {
+    let Some(gpu) = Gpu::new() else { return };
+    let mut rng = Rng(41);
+    let mut agree = 0;
+    let cases = 400;
+    for case in 0..cases {
+        let k = 20;
+        let mut values: Vec<f32> = (0..k).map(|_| round(rng.unit() * 6.0)).collect();
+        values.sort_by(|a, b| b.total_cmp(a));
+        let ids: Vec<u32> = (0..k as u32).map(|i| 1000 + i).collect();
+        let draw = (rng.next() >> 11) as f64 / (1u64 << 53) as f64;
+        let (temperature, top_p) = if case % 2 == 0 {
+            (1.0, 0.95)
+        } else {
+            (0.7, 0.8)
+        };
+        let (tv, ti) = (gpu.f32s(&values), gpu.u32s(&ids));
+        let greedy = gpu.u32s(&[7]);
+        let draws = gpu.f32s(&[draw as f32]);
+        let (slot, out) = (gpu.zeros(16), gpu.zeros(16));
+        let params = SampleParams {
+            greedy: 0,
+            temperature,
+            top_p,
+            k: k as u32,
+            step: 0,
+        };
+        gpu.run(|p| {
+            p.kernel("flint_sample")
+                .buf(0, &tv, 0)
+                .buf(1, &ti, 0)
+                .buf(2, &greedy, 0)
+                .buf(3, &draws, 0)
+                .buf(4, &slot, 0)
+                .buf(5, &out, 0)
+                .val(6, &params)
+                .groups((1, 1), 32);
+        });
+        let got: Vec<u32> = read(&out, 1);
+        let next: Vec<u32> = read(&slot, 1);
+        assert_eq!(got, next, "the chosen token feeds the next step");
+        let want = 1000 + cpu_choose_ranked(&values, temperature as f64, top_p as f64, draw) as u32;
+        agree += usize::from(got[0] == want);
+    }
+    // FP32 against FP64 can differ only when a draw lands on a boundary.
+    assert!(agree >= cases - 2, "{agree} of {cases}");
+}
+
 #[test]
 fn embedding_dequantizes_int8_rows() {
     let Some(gpu) = Gpu::new() else { return };
@@ -776,6 +851,53 @@ fn attention_speed() {
             command.wait_until_completed();
             eprintln!(
                 "round {round} {kernel}: {:.1} ms",
+                gpu_seconds(command) * 1e3
+            );
+        }
+    }
+}
+
+/// Times the two top-k stages on a vocabulary of logits. Run with
+/// `cargo test --release -- --ignored top_k_speed --nocapture`.
+#[test]
+#[ignore]
+fn top_k_speed() {
+    let Some(gpu) = Gpu::new() else { return };
+    let mut rng = Rng(43);
+    let vocab = 150_144usize;
+    let logits = gpu.f32s(&(0..vocab).map(|_| rng.unit() * 8.0).collect::<Vec<_>>());
+    let slices = vocab.div_ceil(2048);
+    let (cv, ci) = (gpu.zeros(slices * 32 * 4), gpu.zeros(slices * 32 * 4));
+    let (tv, ti, bad) = (gpu.zeros(32 * 4), gpu.zeros(32 * 4), gpu.zeros(16));
+    for round in 0..3 {
+        for stage in ["flint_topk_partial", "flint_topk_merge"] {
+            let command = gpu.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            let pass = Pass::new(encoder, &gpu.pipelines);
+            if stage == "flint_topk_partial" {
+                pass.kernel(stage)
+                    .buf(0, &logits, 0)
+                    .buf(1, &cv, 0)
+                    .buf(2, &ci, 0)
+                    .buf(3, &bad, 0)
+                    .val(4, &(vocab as u32))
+                    .val(5, &20u32)
+                    .groups((slices, 1), 256);
+            } else {
+                pass.kernel(stage)
+                    .buf(0, &cv, 0)
+                    .buf(1, &ci, 0)
+                    .buf(2, &tv, 0)
+                    .buf(3, &ti, 0)
+                    .val(4, &((slices * 20) as u32))
+                    .val(5, &20u32)
+                    .groups((1, 1), 256);
+            }
+            pass.encoder.borrow().end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            eprintln!(
+                "round {round} {stage}: {:.3} ms",
                 gpu_seconds(command) * 1e3
             );
         }

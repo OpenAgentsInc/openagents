@@ -16,9 +16,9 @@ use std::{
 use anyhow::{Context, Result, ensure};
 use psionic_backend_metal::flint::{
     FlintLayer, FlintMetal, FlintMlp, FlintQuant, FlintSession, FlintTensor, FlintWeights,
-    MAX_TOP_K, Step,
+    GpuSampling, MAX_TOP_K, Step,
 };
-use rand::{SeedableRng, rngs::StdRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -375,6 +375,22 @@ impl MetalModel {
             .map_err(|e| anyhow::anyhow!(e))
     }
 
+    /// Decode up to `steps` tokens with the GPU choosing each next token; see
+    /// [`FlintMetal::decode_resident`].
+    pub fn decode_resident(
+        &self,
+        session: &mut FlintSession,
+        first: u32,
+        steps: usize,
+        sampling: GpuSampling,
+        draw: impl FnMut() -> f32,
+        block: impl FnMut(&[u32]) -> std::result::Result<bool, String>,
+    ) -> Result<()> {
+        self.engine
+            .decode_resident(session, first, steps, sampling, draw, block)
+            .map_err(|e| anyhow::anyhow!(e))
+    }
+
     /// Decode up to `steps` tokens, encoding each step while the previous runs.
     /// `next` returns the following token, or `None` to stop.
     pub fn decode_stream(
@@ -472,25 +488,65 @@ pub fn generate(
         on_token(token);
         // Each decode step reads the previous token and proposes the next.
         let mut failure = None;
-        model.decode_stream(&mut session, token, max_tokens - 1, k, |step| {
-            if start.elapsed().as_secs_f64() >= deadline_seconds {
-                return Err("request timed out".into());
+        if greedy || k > 0 {
+            // The GPU picks every token and feeds it to the next step; the host
+            // supplies Sampling's draws in order and reads tokens per block.
+            let gpu = GpuSampling {
+                greedy,
+                temperature: sampling.temperature as f32,
+                top_p: sampling.top_p as f32,
+                top_k: k,
+            };
+            let mut draws = StdRng::seed_from_u64(sampling.seed);
+            // The first token already took one draw on the host.
+            if !greedy {
+                let _: f64 = draws.random();
             }
-            let next = match choose(step.clone(), &mut logits) {
-                Ok(next) => next,
-                Err(error) => {
-                    failure = Some(error);
+            model.decode_resident(
+                &mut session,
+                token,
+                max_tokens - 1,
+                gpu,
+                || draws.random::<f64>() as f32,
+                |tokens| {
+                    for &next in tokens {
+                        if STOP_IDS.contains(&next) {
+                            finish = "stop";
+                            return Ok(false);
+                        }
+                        ids.push(next);
+                        on_token(next);
+                        if ids.len() == max_tokens {
+                            return Ok(false);
+                        }
+                    }
+                    if start.elapsed().as_secs_f64() >= deadline_seconds {
+                        return Err("request timed out".into());
+                    }
+                    Ok(true)
+                },
+            )?;
+        } else {
+            model.decode_stream(&mut session, token, max_tokens - 1, k, |step| {
+                if start.elapsed().as_secs_f64() >= deadline_seconds {
+                    return Err("request timed out".into());
+                }
+                let next = match choose(step.clone(), &mut logits) {
+                    Ok(next) => next,
+                    Err(error) => {
+                        failure = Some(error);
+                        return Ok(None);
+                    }
+                };
+                if STOP_IDS.contains(&next) {
+                    finish = "stop";
                     return Ok(None);
                 }
-            };
-            if STOP_IDS.contains(&next) {
-                finish = "stop";
-                return Ok(None);
-            }
-            ids.push(next);
-            on_token(next);
-            Ok((ids.len() < max_tokens).then_some(next))
-        })?;
+                ids.push(next);
+                on_token(next);
+                Ok((ids.len() < max_tokens).then_some(next))
+            })?;
+        }
         if let Some(error) = failure {
             return Err(error);
         }

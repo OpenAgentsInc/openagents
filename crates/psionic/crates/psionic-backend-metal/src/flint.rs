@@ -34,6 +34,19 @@ pub const WINDOW: usize = 513;
 pub const MAX_CHUNK: usize = 2048;
 /// Largest top-k the GPU ranks; larger requests read every logit back.
 pub const MAX_TOP_K: usize = 32;
+/// Decode steps per command buffer when the GPU picks each next token.
+pub const BLOCK: usize = 8;
+
+/// How the GPU picks each next token in [`FlintMetal::decode_resident`].
+#[derive(Clone, Copy, Debug)]
+pub struct GpuSampling {
+    /// Take the highest logit (lower ID on ties).
+    pub greedy: bool,
+    pub temperature: f32,
+    pub top_p: f32,
+    /// Candidates ranked on the GPU, at most [`MAX_TOP_K`].
+    pub top_k: usize,
+}
 
 /// The result of one step: the greedy token and, when asked for, the
 /// leading `k` candidates (highest logit first, lower ID first on ties).
@@ -124,6 +137,9 @@ struct Scratch {
     bad: Buffer,
     /// Two token slots, so the next step can be encoded before its token is known.
     token_slots: Buffer,
+    /// Per-step uniform draws and chosen tokens, two blocks' worth each.
+    draws: Buffer,
+    out_tokens: Buffer,
 }
 
 struct ChunkScratch {
@@ -187,6 +203,16 @@ struct DecodeParams {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
+struct SampleParams {
+    greedy: u32,
+    temperature: f32,
+    top_p: f32,
+    k: u32,
+    step: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
 struct AttentionParams {
     count: u32,
     cap: u32,
@@ -235,6 +261,7 @@ const PIPELINES: &[&str] = &[
     "flint_argmax",
     "flint_topk_partial",
     "flint_topk_merge",
+    "flint_sample",
     "flint_rms_rows",
     "flint_gemm_q4",
     "flint_rows_head_norm",
@@ -465,6 +492,8 @@ impl FlintMetal {
             top_i: shared_buffer(&device, MAX_TOP_K * 4),
             bad: shared_buffer(&device, 16),
             token_slots: shared_buffer(&device, 16),
+            draws: shared_buffer(&device, 2 * BLOCK * 4),
+            out_tokens: shared_buffer(&device, 2 * BLOCK * 4),
         };
         let c = MAX_CHUNK;
         let slots = c * TOP_K;
@@ -894,6 +923,138 @@ impl FlintMetal {
     fn reset_flag(&self) {
         // SAFETY: the shared flag is idle between commands.
         unsafe { *self.scratch.bad.contents().cast::<u32>() = 0 };
+    }
+
+    /// Decode up to `steps` tokens starting with `first`, with the GPU picking
+    /// each next token and feeding it to the following step, [`BLOCK`] steps
+    /// per command buffer and two buffers in flight. `draw` supplies one
+    /// uniform draw per sampled step, in order. `block` sees each block's
+    /// tokens and returns whether to continue; steps already running past a
+    /// stop are discarded.
+    pub fn decode_resident(
+        &self,
+        session: &mut FlintSession,
+        first: u32,
+        steps: usize,
+        sampling: GpuSampling,
+        mut draw: impl FnMut() -> f32,
+        mut block: impl FnMut(&[u32]) -> Result<bool, String>,
+    ) -> Result<(), String> {
+        if steps == 0 {
+            return Ok(());
+        }
+        self.check_room(session, steps)?;
+        if first as usize >= self.weights.vocab {
+            return Err("token outside the vocabulary".into());
+        }
+        let greedy = sampling.greedy || sampling.temperature == 0.0;
+        if !greedy && !(1..=MAX_TOP_K).contains(&sampling.top_k) {
+            return Err(format!("GPU sampling ranks at most {MAX_TOP_K} candidates"));
+        }
+        let start = session.position;
+        let session_ref: &FlintSession = session;
+        let s = &self.scratch;
+        let mut encode = |parity: usize, position: usize, count: usize| {
+            if !greedy {
+                for i in 0..count {
+                    let value = draw();
+                    // SAFETY: this parity's draws are idle until its block commits.
+                    unsafe {
+                        *s.draws.contents().cast::<f32>().add(parity * BLOCK + i) = value;
+                    }
+                }
+            }
+            objc::rc::autoreleasepool(|| {
+                let command = self.queue.new_command_buffer().to_owned();
+                let encoder = command.new_compute_command_encoder();
+                let pass = Pass::new(encoder, &self.pipelines);
+                for i in 0..count {
+                    self.encode_decode(&pass, session_ref, position + i, 0);
+                    if !greedy {
+                        self.encode_top_k(&pass, sampling.top_k);
+                    }
+                    let params = SampleParams {
+                        greedy: greedy as u32,
+                        temperature: sampling.temperature,
+                        top_p: sampling.top_p,
+                        k: sampling.top_k as u32,
+                        step: (parity * BLOCK + i) as u32,
+                    };
+                    pass.kernel("flint_sample")
+                        .buf(0, &s.top_v, 0)
+                        .buf(1, &s.top_i, 0)
+                        .buf(2, &s.choice, 0)
+                        .buf(3, &s.draws, 0)
+                        .buf(4, &s.token_slots, 0)
+                        .buf(5, &s.out_tokens, 0)
+                        .val(6, &params)
+                        .groups((1, 1), 32);
+                }
+                pass.encoder.borrow().end_encoding();
+                command.commit();
+                command
+            })
+        };
+        self.reset_flag();
+        self.set_token(0, first);
+        let mut flight = std::collections::VecDeque::new();
+        let mut scheduled = 0;
+        for parity in 0..2 {
+            if scheduled < steps {
+                let count = BLOCK.min(steps - scheduled);
+                flight.push_back((encode(parity, start + scheduled, count), parity, count));
+                scheduled += count;
+            }
+        }
+        let mut executed = 0;
+        let mut outcome = Ok(());
+        let mut stopping = false;
+        while let Some((command, parity, count)) = flight.pop_front() {
+            command.wait_until_completed();
+            self.gpu_seconds
+                .set(self.gpu_seconds.get() + gpu_seconds(&command));
+            executed += count;
+            if command.status() != metal::MTLCommandBufferStatus::Completed {
+                outcome = Err(format!("Metal command failed: {:?}", command.status()));
+                stopping = true;
+            }
+            if stopping {
+                continue;
+            }
+            // SAFETY: the shared flag and this parity's tokens were written by the completed block.
+            let tokens = unsafe {
+                if *s.bad.contents().cast::<u32>() != 0 {
+                    outcome = Err("the model produced non-finite logits".into());
+                    stopping = true;
+                    continue;
+                }
+                std::slice::from_raw_parts(
+                    s.out_tokens.contents().cast::<u32>().add(parity * BLOCK),
+                    count,
+                )
+                .to_vec()
+            };
+            match block(&tokens) {
+                Ok(true) => {}
+                Ok(false) => {
+                    stopping = true;
+                    continue;
+                }
+                Err(error) => {
+                    outcome = Err(error);
+                    stopping = true;
+                    continue;
+                }
+            }
+            if scheduled < steps {
+                let count = BLOCK.min(steps - scheduled);
+                flight.push_back((encode(parity, start + scheduled, count), parity, count));
+                scheduled += count;
+            }
+        }
+        drop(encode);
+        session.position = start + executed;
+        outcome
     }
 
     fn encode_top_k(&self, pass: &Pass<'_>, k: usize) {

@@ -634,6 +634,55 @@ kernel void flint_topk_merge(const device float* cand_v [[buffer(0)]],
     }
 }
 
+
+struct SampleParams {
+    uint greedy;       // 1: take the greedy choice
+    float temperature;
+    float top_p;
+    uint k;            // ranked candidates in top_v and top_i
+    uint step;         // index into draws and out_tokens
+};
+
+// Choose the next token on the GPU and hand it to the next step: the greedy
+// choice, or Sampling::choose_ranked's rule (top-k, temperature, top-p, one
+// uniform draw per step from the host's seeded generator) in FP32.
+kernel void flint_sample(const device float* top_v [[buffer(0)]],
+                         const device uint* top_i [[buffer(1)]],
+                         const device uint* greedy_choice [[buffer(2)]],
+                         const device float* draws [[buffer(3)]],
+                         device uint* token_slot [[buffer(4)]],
+                         device uint* out_tokens [[buffer(5)]],
+                         constant SampleParams& P [[buffer(6)]],
+                         uint tid [[thread_index_in_threadgroup]]) {
+    if (tid != 0) return;
+    uint token;
+    if (P.greedy || P.temperature == 0.0f) {
+        token = greedy_choice[0];
+    } else {
+        float top = top_v[0];
+        float w[32];
+        float total = 0.0f;
+        for (uint i = 0; i < P.k; ++i) { w[i] = metal::precise::exp((top_v[i] - top) / P.temperature); total += w[i]; }
+        float cumulative = 0.0f;
+        uint keep = 0;
+        for (uint i = 0; i < P.k; ++i) {
+            cumulative += w[i] / total;
+            keep += 1;
+            if (cumulative >= P.top_p) break;
+        }
+        float kept = 0.0f;
+        for (uint i = 0; i < keep; ++i) kept += w[i];
+        float draw = draws[P.step] * kept;
+        token = top_i[keep - 1];
+        for (uint i = 0; i < keep; ++i) {
+            draw -= w[i];
+            if (draw <= 0.0f) { token = top_i[i]; break; }
+        }
+    }
+    token_slot[0] = token;
+    out_tokens[P.step] = token;
+}
+
 // ---------------------------------------------------------------------------
 // Prefill: a chunk of T tokens at once.
 
