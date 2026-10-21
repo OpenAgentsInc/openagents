@@ -120,6 +120,9 @@ run-holdout() {
   gcloud storage cp -q "$POLICY" $ROOT/policy.json
   cases=$(python3 -c 'import json,sys; print(",".join(c["id"] for c in json.load(open(sys.argv[1]))["cases"]))' $ROOT/holdout/holdout-corpus.json)
   ORACLE_DIR=$ROOT/holdout qualify $ROOT/out/holdout --observe --gpus 0,1,2,3 --policy $ROOT/policy.json --cases "$cases"
+  # The calibration cases under the same frozen policy, for the per-check record
+  qualify $ROOT/out/qualified-calibration --observe --gpus 0,1,2,3 --policy $ROOT/policy.json \
+    --cases p1-chat-thinking,p2-code,e-window-127,e-window-128,e-window-129,e-engram,p3-2k
   cases=$(python3 -c 'import json,sys; print(",".join(c["id"] for c in json.load(open(sys.argv[1]))["cases"]))' $ROOT/g2-oracle/task-suite.json)
   ORACLE_DIR=$ROOT/g2-oracle MAX_CONTEXT=8192 qualify $ROOT/out/g2-answers --gpus 0,1,2,3 --answers 4096 --cases "$cases"
   log "holdout runs done"
