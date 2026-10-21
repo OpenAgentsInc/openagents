@@ -12,7 +12,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 use web_sys::{Document, Element, EventSource, HtmlElement, KeyboardEvent, MessageEvent, Window};
 
-use crate::camera::{Keep, Placed, blocked, spots};
+use crate::camera::{Keep, Placed, hides, spots};
 use crate::terminal_web::Terminal;
 use crate::world_camera::{WorldCamera, anchor};
 
@@ -197,6 +197,26 @@ fn run() -> Option<()> {
         on_keep.forget();
     }
 
+    // A pillar never takes focus from a mouse or touch: the keyboard stays
+    // with whatever had it (Verse's world on `/`), and a key press can't
+    // turn the pillar's focus ring on (#12415). Pillars are out of the tab
+    // order; the list is the keyboard's way to a pylon.
+    {
+        let on_down = Closure::<dyn FnMut(web_sys::Event)>::new(move |event: web_sys::Event| {
+            let pillar = event
+                .target()
+                .and_then(|t| t.dyn_into::<Element>().ok())
+                .and_then(|t| t.closest(".pylon").ok().flatten());
+            if pillar.is_some() {
+                event.prevent_default();
+            }
+        });
+        document
+            .add_event_listener_with_callback("mousedown", on_down.as_ref().unchecked_ref())
+            .ok()?;
+        on_down.forget();
+    }
+
     // Clicks on a pillar or a list entry open its card; a click anywhere
     // else but the card closes it.
     {
@@ -217,11 +237,17 @@ fn run() -> Option<()> {
                 return;
             };
             if let Some(id) = found.get_attribute("data-pylon") {
+                // Enter or Space on a button clicks with no pointer count:
+                // only then does focus move into the card and back.
+                let keyboard = event
+                    .dyn_ref::<web_sys::UiEvent>()
+                    .is_some_and(|event| event.detail() == 0);
                 let opener = target
                     .closest("button")
                     .ok()
                     .flatten()
-                    .and_then(|b| b.dyn_into().ok());
+                    .and_then(|b| b.dyn_into().ok())
+                    .filter(|_| keyboard);
                 open(&layer, &id, opener);
             }
         });
@@ -394,14 +420,17 @@ fn open(layer: &Shared, id: &str, opener: Option<HtmlElement>) {
         let _ = entry.pillar.class_list().add_1("sel");
     }
     l.open = Some(id.to_owned());
-    if opener.is_some() {
-        l.opener = opener;
-    }
+    // Opened from the keyboard, focus moves to the card and returns to the
+    // opener when it closes. A click leaves focus where it was, so the
+    // movement keys keep working with the card open.
+    let keyboard = opener.is_some();
+    l.opener = opener;
     l.show(&shown);
-    if let Some(close) = l
-        .document
-        .get_element_by_id("pylon-close")
-        .and_then(|e| e.dyn_into::<HtmlElement>().ok())
+    if keyboard
+        && let Some(close) = l
+            .document
+            .get_element_by_id("pylon-close")
+            .and_then(|e| e.dyn_into::<HtmlElement>().ok())
     {
         let _ = close.focus();
     }
@@ -417,6 +446,12 @@ fn close(layer: &Shared) {
     call_card("hide", None);
     if let Some(opener) = l.opener.take() {
         let _ = opener.focus();
+    } else if let Some(focused) = l.document.active_element()
+        && l.card.contains(Some(&focused))
+        && let Some(focused) = focused.dyn_ref::<HtmlElement>()
+    {
+        // The close button, clicked: don't leave focus in a hidden card.
+        let _ = focused.blur();
     }
 }
 
@@ -500,12 +535,13 @@ impl Layer {
             let _ = entry.pillar.class_list().add_1("hid");
             return;
         };
-        // A spot the page's own content now covers (the chat card grew
-        // over it before the pillars moved) hides its pillar.
+        // On the shader floor, a spot the page's own content now covers
+        // (the chat card grew over it before the pillars moved) hides its
+        // pillar. In the world, only leaving the view does.
         let _ = entry
             .pillar
             .class_list()
-            .toggle_with_force("hid", blocked(&spot, &self.keep));
+            .toggle_with_force("hid", hides(&spot, self.world.is_some(), &self.keep));
         let style = entry.pillar.style();
         // Interpolating transforms would make a world anchor lag behind the
         // camera. Keep the arrival/departure fade, but follow every frame.

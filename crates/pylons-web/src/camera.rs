@@ -113,6 +113,17 @@ pub fn blocked(placed: &Placed, keep: &[Keep]) -> bool {
         .any(|k| overlaps((tag.0, tag.1, tag.2, placed.y + 6.0), *k))
 }
 
+/// Whether a placed pillar hides behind the page's own content. On the
+/// shader floor a covered spot hides its pillar, because the pillars draw
+/// over the page there. A pillar rooted in Verse's world never hides for
+/// this: the page's header and cards draw over the field, and a pillar
+/// that faded whenever its tag reached the header vanished as the visitor
+/// walked toward it (#12415).
+#[must_use]
+pub fn hides(placed: &Placed, world: bool, keep: &[Keep]) -> bool {
+    !world && blocked(placed, keep)
+}
+
 /// Up to `count` spots on a `width` × `height` view, nearest the middle of
 /// the floor first: crossings of the Grid's lines whose pillar and tag fit
 /// on the screen, below `top` (the corner name), outside `keep` (the list
@@ -227,5 +238,17 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn only_shader_floor_pillars_hide_behind_page_content() {
+        let (w, h) = (1280.0, 720.0);
+        let pillar = place(CAMERA_X, -20.0, w, h).unwrap();
+        // A full-width header strip over the pillar's tag.
+        let header = (-8.0, -8.0, w + 8.0, pillar.y - pillar.height);
+        assert!(blocked(&pillar, &[header]));
+        assert!(hides(&pillar, false, &[header]));
+        assert!(!hides(&pillar, true, &[header]));
+        assert!(!hides(&pillar, false, &[]));
     }
 }
