@@ -724,7 +724,14 @@
    }
   ],
   "method": "a long answer pinned to the group; after 15 s, SIGKILL or SIGSTOP of one stage over gcloud ssh (pkill with a pattern that cannot match its own command line); the buyer's result recorded; the head beacon polled until ready at a newer generation; then the baseline prompt asked again",
-  "not_covered": "SIGSTOP freezes the whole stage process, so it exercises the health check rather than the stalled-executor queue bound with live readers; that bound is covered by crates/psionic/crates/psionic-v41-stage/tests/handoff.rs on the real worker binary only"
+  "not_covered": "SIGSTOP freezes the whole stage process, so it exercises the health check rather than the stalled-executor queue bound with live readers; that bound is covered by crates/psionic/crates/psionic-v41-stage/tests/handoff.rs on the real worker binary only",
+  "machine_loss_two_dual (w16-td2, pylon f1882776)": {
+   "injected": "19:23:34Z: oa-w16-td2-m1 (stages s2, s3) deleted through the spend guard, as a spot reclaim does",
+   "seen": "both ssh sessions closed; s2 and s3 failed ('its connection to the front closed'); the group moved to generation 3, stopped admitting, and refused generation-2 messages from s0 and s1",
+   "end": "19:38:43Z: the restarts waited out the launcher's 840 s readiness wait for a machine that no longer existed, then the restart budget ran out; the group stopped for good, its beacons went offline, and `up` deleted m0 and recorded $5.82",
+   "defect": "the readiness wait added in dc32e4856c turned a loss that W12 ended within a minute into a 15-minute unready group; dd2037365a makes the launcher fail at once when ssh can't resolve the machine or gcloud can't find it",
+   "passed": true
+  }
  },
  "beacons_on_relay": [
   {
