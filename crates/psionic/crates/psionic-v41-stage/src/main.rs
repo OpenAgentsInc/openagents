@@ -13,6 +13,7 @@
 //! psionic-v41-stage manifest --split 0-10,10-20,20-30,30-40
 //! psionic-v41-stage plan --device HOST:GPU:CLASS:BYTES[:host-experts][:fixed=BYTES] ...
 //!     --ram HOST:BYTES ... [--split A-B,...] [--max-context N] [--max-step-tokens N]
+//!     [--diagnostic-cpu]
 //! psionic-v41-stage synthetic DIR [NAME]
 //! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR [...]
 //! psionic-v41-stage qualify-derive --reference R[,R] --control C[,C] --out FILE
@@ -206,6 +207,10 @@ fn run_manifest(args: &[String]) -> Result<(), Refused> {
 /// free memory, or host memory for a CPU stage), `host-experts` keeps a
 /// GPU's routed experts in host memory, and `fixed` is the class's measured
 /// fixed cost per stage.
+///
+/// Groups run on GPUs only: a CPU device is refused unless
+/// `--diagnostic-cpu` marks the plan as a reference diagnostic (owner,
+/// 2026-10-21, #12418). CPU stages stay for unit tests and diagnostics.
 fn run_plan(args: &[String]) -> Result<(), Refused> {
     use psionic_models::deepseek_v41_stage::{
         DeviceKind, DeviceSlot, ExpertMemory, HostRam, MeasuredMemory, plan_devices,
@@ -214,10 +219,15 @@ fn run_plan(args: &[String]) -> Result<(), Refused> {
     let number = |v: &str| -> Result<u64, Refused> { v.parse().map_err(|_| bad("number", v)) };
     let mut slots = Vec::new();
     let mut hosts = Vec::new();
+    let diagnostic = args.iter().any(|a| a == "--diagnostic-cpu");
     let mut i = 0;
     while i < args.len() {
         let value = args.get(i + 1).map(String::as_str).unwrap_or_default();
         match args[i].as_str() {
+            "--diagnostic-cpu" => {
+                i += 1;
+                continue;
+            }
             "--device" => {
                 let parts: Vec<&str> = value.split(':').collect();
                 if parts.len() < 4 {
@@ -228,6 +238,11 @@ fn run_plan(args: &[String]) -> Result<(), Refused> {
                 } else {
                     DeviceKind::Gpu
                 };
+                if kind == DeviceKind::Cpu && !diagnostic {
+                    return Err(Refused(format!(
+                        "--device {value} is a CPU stage; groups run on GPUs only, so pass --diagnostic-cpu for a reference diagnostic"
+                    )));
+                }
                 let mut slot = DeviceSlot {
                     host: parts[0].into(),
                     gpu: number(parts[1])? as u32,

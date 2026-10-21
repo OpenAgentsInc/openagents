@@ -75,7 +75,7 @@ fn cpu_stages_on_the_cuda_wire_announce_it_and_answer() {
     let _ = native.run(&prompt, 10);
 }
 
-/// `plan` places a group over mixed device types from the measured memory
+/// `plan` places a group over mixed GPU types from the measured memory
 /// and prints a manifest whose stages name their devices (#12418).
 #[test]
 fn plan_places_a_mixed_device_group() {
@@ -89,7 +89,7 @@ fn plan_places_a_mixed_device_group() {
             "--device",
             "h100:0:cuda-sm_90:84000000000",
             "--device",
-            "cpu:0:cpu-x86_64:400000000000",
+            "a100:0:cuda-sm_80:42000000000",
             "--device",
             "home:0:cuda-sm_89:5500000000:host-experts",
             "--ram",
@@ -97,11 +97,11 @@ fn plan_places_a_mixed_device_group() {
             "--ram",
             "h100:240000000000",
             "--ram",
-            "cpu:900000000000",
+            "a100:90000000000",
             "--ram",
             "home:60000000000",
             "--split",
-            "0-12,12-24,24-34,34-36,36-40",
+            "0-12,12-24,24-34,34-38,38-40",
         ]),
         LIMIT,
     );
@@ -124,10 +124,23 @@ fn plan_places_a_mixed_device_group() {
             "cuda-sm_120",
             "cuda-sm_120",
             "cuda-sm_90",
-            "cpu-x86_64",
+            "cuda-sm_80",
             "cuda-sm_89"
         ]
     );
+    // Groups run on GPUs only: a CPU stage needs the diagnostic flag.
+    let cpu = [
+        "plan",
+        "--device",
+        "a:0:cpu-x86_64:900000000000",
+        "--ram",
+        "a:900000000000",
+    ];
+    let refused = run_bounded(Command::new(BIN).args(cpu), LIMIT);
+    assert_eq!(refused.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&refused.stderr).contains("GPUs only"));
+    let diagnostic = run_bounded(Command::new(BIN).args(cpu).arg("--diagnostic-cpu"), LIMIT);
+    assert!(diagnostic.status.success());
     // Without its experts on the host, the 16 GB card can't hold four layers.
     let short = run_bounded(
         Command::new(BIN).args([

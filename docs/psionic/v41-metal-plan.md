@@ -4,12 +4,14 @@ Status: plan, written 2026-10-21 for
 [#12418](https://github.com/OpenAgentsInc/openagents/issues/12418). The port
 itself is [#12420](https://github.com/OpenAgentsInc/openagents/issues/12420). Nothing here is built yet.
 
-A V4.1 group can now mix device types (#12418): each stage is checked
-against its own manifest entry, a CPU stage can sit between CUDA stages on
-the CUDA wire, and a small GPU can keep its routed experts in host memory.
-A Mac stage is the next device class. This plan scopes a Metal backend for
-`psionic-v41-stage` that runs a contiguous layer range on an Apple GPU and
-joins a group like any other stage.
+A V4.1 group can now mix GPU types (#12418): each stage is checked
+against its own manifest entry, and a small GPU can keep its routed experts
+in host memory. A Mac stage is the next device class. Groups run on GPUs
+only (owner, 2026-10-21): CPU stages stay for unit tests and reference
+diagnostics, so a Mac joins a group through Metal, never through the CPU
+port. This plan scopes a Metal backend for `psionic-v41-stage` that runs a
+contiguous layer range on an Apple GPU and joins a group like any other
+stage.
 
 ## What the stage must do
 
@@ -24,7 +26,7 @@ The Metal stage implements the same contract as W7's CUDA stage
   the last stage the norm, head, and sampler.
 - Send and take stage state on the CUDA wire (`F32` residuals and pre-mixes,
   BF16 KV and indexer-key rows, `I32` selections, `U32` candidates), so a
-  Metal stage joins CUDA and CPU stages without conversion elsewhere.
+  Metal stage joins CUDA stages without conversion elsewhere.
 - Announce runtime `psionic-v41-stage/1+metal`, device class `metal-<gpu
   family>` (for example `metal-apple9`), its profile, and a verified bundle,
   and refuse a manifest entry planned for another class.

@@ -1015,7 +1015,12 @@ checks are listed in the master delegation document's After-close checks.
 
 A V4.1 group no longer has to run one GPU type. Each stage is checked
 against its own entry, so a group can combine RTX PRO 6000 (`sm_120`), H100
-(`sm_90`), A100 (`sm_80`), and RTX 4080 (`sm_89`) stages with CPU stages.
+(`sm_90`), A100 (`sm_80`), and RTX 4080 (`sm_89`) stages.
+
+**No CPU stages in groups (owner, 2026-10-21, standing rule).** Groups run
+on GPUs only, for evidence, demos, and defaults. The CPU port stays for unit
+tests and reference diagnostics. `psionic-v41-stage plan` refuses a CPU
+device unless `--diagnostic-cpu` marks the plan as a diagnostic.
 Every such group is a **development group** until each device class is
 qualified under G1 v2; the After-close checks list that work.
 
@@ -1042,15 +1047,15 @@ qualified under G1 v2; the After-close checks list that work.
   0.17 GB of device memory instead of 7.4 GB, so an RTX 4080 with 5.5 GB
   free holds four layers and the head. Tokens and logits equal device
   experts bit for bit (`host_experts_equal_device_experts`).
-- **CPU stages between CUDA stages.** `--wire cuda` makes a CPU stage send
-  and take BF16 cache rows like a CUDA stage, converting at its
-  boundaries.
+- **CPU stages, diagnostics only.** `--wire cuda` makes a CPU stage send
+  and take BF16 cache rows like a CUDA stage, so a reference diagnostic
+  can put one between CUDA stages. Groups don't use CPU stages.
 - **Placement.** `plan_devices` (and `psionic-v41-stage plan`) places
   layers over GPUs of any architecture, GPUs with host experts, and CPU
   stages from W3's measured memory, counting host memory for Engram tables
   and host experts, and a class's own fixed cost per stage when measured.
-  It balances memory only; give an explicit `--split` when stages differ in
-  speed, such as a CPU stage.
+  It balances memory only; give an explicit `--split` weighted by each
+  class's measured time per layer.
 - **Architectures.** `v41-stage-build.sh build --arch sm_90` and `sm_80`
   build bundles (an `sm_90` worker may also hold the Hopper kernels'
   `sm_90a`). `tests --arch sm_NN` packs the GPU tests for a machine
@@ -1062,7 +1067,8 @@ qualified under G1 v2; the After-close checks list that work.
   W8's.
 
 **A mixed group answered V4.1 chat through Pylon** (development group,
-unqualified). Five stages on four device classes, each pinned to its own
+unqualified; this first run used a CPU stage, which the rule above now
+excludes, and the GPU-only rerun below replaces it as the evidence). Five stages on four device classes, each pinned to its own
 bundle: layers 0–12 and 12–24 on the two RTX PRO 6000s of a spot
 `g4-standard-96` (us-west3-a, the only US zone with G4 capacity that hour),
 24–34 on a flex-start H100 (us-central1-c), 34–36 on a CPU stage on an
