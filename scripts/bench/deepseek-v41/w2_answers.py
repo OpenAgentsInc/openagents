@@ -143,8 +143,14 @@ def check(path, oracle_prompts):
     out["oracle_mode"] = reference["thinking_mode"]
     if "ids" in answer:
         ids = answer["ids"]
-        out["prompt_ids_equal_oracle"] = answer.get("prompt_ids") == reference["prompt_token_ids"]
-        out["answer_mode_thinking"] = answer.get("thinking")
+        if "prompt_ids" in answer:
+            out["prompt_ids_equal_oracle"] = answer["prompt_ids"] == reference["prompt_token_ids"]
+        # Reports from before #12408 say `thinking`; later ones `mode`.
+        mode = answer.get("mode")
+        if mode is None and isinstance(answer.get("thinking"), bool):
+            mode = "thinking" if answer["thinking"] else "chat"
+        out["answer_mode"] = mode
+        out["mode_matches_oracle"] = mode == reference["thinking_mode"]
         first = next(
             (i for i, (a, b) in enumerate(zip(ids, ref["ids"])) if a != b),
             min(len(ids), len(ref["ids"])),

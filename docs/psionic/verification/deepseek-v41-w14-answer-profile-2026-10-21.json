@@ -8,11 +8,11 @@
     "deadline_secs": 600,
     "max_output_tokens": 4096,
     "step_limit_secs": 75,
-    "supported_prompt_tokens": 3022,
+    "supported_prompt_tokens": 1526,
     "context_note": "the longest measured prompt; an unchunked prefill overflows the 256 MiB stage-state codec at about 3,277 tokens (six-hour audit F6), so nothing longer is claimed, and #12408's checked budget with a typed refusal replaces this number once it lands. The 20k case is not claimed.",
     "sampling": "greedy (temperature 0); thinking mode with the #12372 adapter's default reasoning effort",
     "beacon": "the head's v2 beacon declares deadline_secs 600 and max_output_tokens 4096, and carries its measured answer_profile in its inert meta (NIP-PYLON, Model groups)",
-    "why_600": "the worst case inside the profile, a 3,022-token prompt (TTFT 52 s) plus a 4,096-token answer at 26.7 tokens/s (153 s), is about 205 s; the measured 4,096-token answer took 155.7 s from admission. 600 s leaves about 2.9 times that"
+    "why_600": "the worst case inside the profile, a 1,526-token prompt (TTFT 52 s) plus a 4,096-token answer at 26.7 tokens/s (153 s), is about 205 s; the measured 4,096-token answer took 155.7 s from admission. 600 s leaves about 2.9 times that"
   },
   "launch": "pylon cloud up four-single|two-dual --head stage0 --transport direct --temperature 0 --deadline-secs 600 --max-output-tokens 4096 --step-secs 75 (see deepseek-v41-g6-g7-cross-machine-2026-10-21.json for builds and machines)",
   "harness": {
@@ -229,7 +229,7 @@
         }
       },
       {
-        "prompt_tokens": 3022,
+        "prompt_tokens": 1526,
         "output_tokens": 2154,
         "first_token_ms": {
           "four-single": 51918,
@@ -245,7 +245,7 @@
         }
       }
     ],
-    "prefill": "stage after stage: each stage takes 8.7-9.1 s for 1,072 tokens and 12.2-13.0 s for 3,022 (the head times the whole prompt step from stage 0 to the last stage's first token: 36 s and 52 s, inside the 75 s step limit this profile needs; the default 30 s would fail the 1,072-token prompt)",
+    "prefill": "stage after stage: each stage takes 8.7-9.1 s for 1,072 tokens and 12.2-13.0 s for 1,526 (the head times the whole prompt step from stage 0 to the last stage's first token: 36 s and 52 s, inside the 75 s step limit this profile needs; the default 30 s would fail the 1,072-token prompt)",
     "at_the_cap": {
       "prompt_tokens": "about 60",
       "output_tokens": 4096,
@@ -271,5 +271,17 @@
     "note": "read before 5dcc9911f6: this build still counted the cut-off answer; the head now records complete answers only"
   },
   "not_paired": "the oracle's p2 is a chat-mode case and these answers are thinking mode, so none of them is paired G2 evidence; final G2 and quality evidence needs the qualified runtime",
-  "cost_usd": "shared with the G6/G7 runs: 7.84 in total"
+  "cost_usd": "shared with the G6/G7 runs: 7.84 in total",
+  "correction": {
+    "date": "2026-10-21",
+    "issues": [
+      12389,
+      12408
+    ],
+    "what": "the long prompt recorded as 3,022 tokens rendered to 1,526: the first 6,110 characters of the retained long3k.txt (sha256 330713abc5268a98e4e17e337c39072b55d8eea0f19ea34721a10bf2eaec86a1), which the buyer records as the prompt it sent, are 1,496 tokens with the checkpoint tokenizer, plus 30 of the thinking-mode template. The 1,072-token prompt recounts exactly (1,042 + 30). The per-stage prefill times agree: 12.9 s against 9.0 s is 1.43 times, and 1,526 tokens are 1.42 times 1,072.",
+    "boundary_bytes": "not logged by that run (the head logs decode state only); about 142.6 MB into the layer-30 stage, from the 93,459 bytes per prompt token measured below, within the 256 MiB codec limit",
+    "measured_at_3022": "on the earlier binary (6e59f4de54, development run), a 3,022-token chat-mode prompt encodes to 282,436,409 bytes into the layer-30 stage, over the 268,435,456-byte limit; #12408's 2,872-token budget is right",
+    "supported_prompt_tokens": "1,526 is the longest prompt this profile measured; #12408's checked budget is 2,872",
+    "receipt": "deepseek-v41-w3-w2-2026-10-21.json"
+  }
 }

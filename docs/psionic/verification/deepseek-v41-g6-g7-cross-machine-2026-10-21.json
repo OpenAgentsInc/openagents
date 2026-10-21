@@ -341,7 +341,7 @@
             12948,
             12507
           ],
-          "prompt": "3,022-token prompt"
+          "prompt": "1,526-token prompt (recorded as 3,022 before the W14 correction)"
         }
       ]
     },
@@ -623,7 +623,7 @@
             12884,
             12244
           ],
-          "prompt": "3,022-token prompt"
+          "prompt": "1,526-token prompt (recorded as 3,022 before the W14 correction)"
         },
         {
           "tokens": 121,

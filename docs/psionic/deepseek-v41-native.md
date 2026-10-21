@@ -77,7 +77,9 @@ Memory split, summed from the tensor byte ranges in all 48 shard headers
 | Total | 510.3 GB | 510,286,023,000 bytes, as the index declares |
 
 Each token reads 6 routed experts and 1 shared expert in each of the 40
-layers: about 10 billion expert parameters, or 5 GB at FP4. Attention and the
+layers: about 10 billion expert parameters, or 5 GB at FP4. W3 measured the
+whole decode read at 16.13 billion parameters and 13.07 GB
+([W3 measurements](#w3-measurements-and-w2-answers-2026-10-21)). Attention and the
 shared weights add a few GB. Because the attention keeps one 512-wide KV
 head with a 128-token window and compressed history, the cache for a long
 context is small compared with the weights.
@@ -537,7 +539,8 @@ but block V7:
 ## Open questions
 
 - The precise active parameter count and the KV bytes per token at each
-  compression ratio. Measure both in V4 instead of trusting our estimates.
+  compression ratio. Measured by W3 (#12390); see
+  [W3 measurements](#w3-measurements-and-w2-answers-2026-10-21).
 - G4 spot price and capacity on the day of the run.
 - Whether to qualify vision. It's out of scope for the first result; image
   requests are refused.
@@ -1818,3 +1821,66 @@ because it checks F(187) first. The
 [retained local check](verification/deepseek-v41-code-answer-review-2026-10-21.json)
 records the defect. Add executable boundary assertions to G2; this answer
 failure does not by itself identify a GPU arithmetic cause.
+
+## W3 measurements and W2 answers (2026-10-21)
+
+Provisional: the runtime is not yet numerically qualified (G1 v2, #12405),
+and the runs predate the pinned bundles of #12410. Repeat any number that a
+qualification fix changes. Evidence:
+[receipt](verification/deepseek-v41-w3-w2-2026-10-21.json) and
+[raw reports](verification/deepseek-v41-w3-w2-raw-2026-10-21.json.gz).
+
+**How.** `psionic-v41-stage chain` runs a group's CUDA stages as threads of
+one process, one GPU each, through W9's codec, as a group's stages do
+without the network. It reports each stage's `cudaMemGetInfo` peak beside
+its allocation ledger (`V41Stage::memory`), step times, an Engram gather
+benchmark, parameters read per decode token, and the parsed answer. It ran
+on one spot `g4-standard-192` (four RTX PRO 6000s, us-west3-a) from commit
+6e59f4de54, with the stages' weights from a `pylon cloud up one-quad`
+launch, after the same machine served p2 through Pylon.
+
+**Memory.** At the served context of 8,192 positions, the four 10-layer
+stages peak at 78.10, 76.75, 76.54, and 77.85 GB of a card's 101.97 GB.
+A layer holds 7.39–7.57 GB of weights, 7.22 GB of them routed experts.
+The cache is small: a stored KV-source row is 1,280 bytes (KV 1,024 and
+indexer keys 256), so a ratio-2 source (layers 2, 8, 14) costs 640 bytes a
+position and the ratio-1 source (layer 20) 1,280. The whole model needs
+3,200 bytes a position; a four-way split allocates 5,120, because stages
+hold every source their layers read. Layers 0 and 1 keep a fixed
+128-position window. The step buffers cost more: 184,356 bytes for each
+token a step may carry, and a group's front sends a prompt in one step, so
+a serving stage sizes them for its whole context. That is 1.51 GB at 8,192
+positions and 24.2 GB at 131,072, where a stage peaks at 100.9 GB. With
+8,192-token steps the KV for a 1,048,576-position context adds only 1.3 GB.
+`MeasuredMemory` (in `deepseek_v41_stage`) gives W9's placement these
+inputs; its model covers all 40 measured stage peaks within 1 GiB.
+
+**Engram.** A decode token's lookup reads 24 rows, 6,336 bytes, from the
+pinned host table over PCIe: 6.2 µs in stream, 14 µs when waited on alone.
+A prefill-sized gather of 24,576 rows moves 6.8–6.9 GB/s.
+
+**Speed.** A decode token takes 33.2 ms through four stages (8.2, 7.9, 8.2,
+and 8.7 ms each), 35.5 ms after a 13,761-token prompt (sent in 2,048-token
+chunks, which a group doesn't do).
+
+**Answers (W2).** Chat mode renders the oracle's p2 prompt to its 40 IDs
+and thinking mode the p1 prompt to its 41. Greedy to the end token, p1
+takes 121 tokens and p2 289, the same IDs when repeated; p2 served through
+Pylon equals the chained answer byte for byte. Both split correctly into
+reasoning and final text. p1 diverges from the oracle at token 26 and
+passes its two-sentence and Rayleigh assertions. p2's code is the oracle's
+own loop: it compiles and handles small values and overflow, but returns
+`None` for F(186), as 30ba21cb1e found, and its notes claim the opposite.
+The CPU model (`ReferenceBf16Tp8`, diagnostic) gives p1 in 64 tokens and p2
+in 288, neither equal to the oracle; its p2 equals the GPU answer for 275
+tokens. G2 v2 needs its frozen task suite and quality budget before any of
+this is acceptance.
+
+**The W14 prompt.** W14's long prompt, recorded as 3,022 tokens, rendered
+to 1,526: the buyer's record holds the first 6,110 characters of the
+retained file. On the earlier binary a real 3,022-token prompt encodes to
+282,436,409 bytes into the layer-30 stage, over the codec's 268,435,456,
+which confirms #12408's 2,872-token budget.
+
+Cost: $11.56 in compute, including $1.34 for a four-single limit check
+that spot reclaimed mid-request. Every machine and disk is deleted.

@@ -489,9 +489,16 @@ The status lines below summarize each issue and its comments. Open the issue for
   `group_stage_worker` with `PSIONIC_V41_STAGE_REQUIRED=1`,
   `PSIONIC_V41_STAGE_BACKEND=cuda`, and the build's
   `PSIONIC_V41_STAGE_SHA256`; send a 2,872-token prompt (accepted) and a
-  2,873-token one (refused `limit_exceeded`, no stage replaced); recount
-  W14's "3,022-token" prompt with the checkpoint tokenizer; and check that
-  the head beacon carries `request_limits`.
+  2,873-token one (refused `limit_exceeded`, no stage replaced); and check
+  that the head beacon carries `request_limits`. W14's prompt is recounted
+  (1,526 tokens, #12389). A spot attempt was reclaimed mid-request
+  (`deepseek-v41-w3-w2-2026-10-21.json`, `limit_check`); exact-length
+  chat-mode prompts are easy to rebuild with the checkpoint tokenizer.
+- #12390 (W3): once G1 v2 qualifies the runtime (#12405), or a fix changes
+  allocation, dispatch, or the prefill schedule, rerun
+  `scripts/bench/deepseek-v41/w3w2_vm.sh answers|memory|long` with a pinned
+  bundle (#12410), regenerate `placement_memory_measured.json` with
+  `placement_memory.py`, and record the worker's `build.bundle_sha256`.
 - #12399 and #12401: once the G1 v2 runtime is qualified (#12405) and
   #12408's context budget and bounded queue land, rerun both placements
   (`pylon cloud up four-single|two-dual --head stage0 --transport direct

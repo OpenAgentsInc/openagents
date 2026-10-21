@@ -173,13 +173,15 @@ Gate progress (2026-10-21):
   prompt step), and supports prompts of up to 2,872 tokens, the checked
   budget of #12408 for `four-single` and `two-dual`, which the stages
   announce and the head's beacon carries as `request_limits`; the 20k
-  case is not claimed. The receipt records a 3,022-token prompt, but a
-  3,022-token prefill can't cross the boundary at layer 30 under the
-  256 MiB codec (282 MB), so recount that prompt with the checkpoint
-  tokenizer before relying on it. All nine qualification prompts passed in both placements:
+  case is not claimed. The receipt recorded a 3,022-token prompt; the
+  recount (W2, #12389) found that the prompt sent was the first 6,110
+  characters of the retained file, 1,526 rendered tokens, and the receipt
+  is corrected. A 3,022-token prompt encodes to 282,436,409 bytes into the
+  layer-30 stage on the earlier binary, over the codec's 268,435,456, so
+  #12408's 2,872-token budget stands. All nine qualification prompts passed in both placements:
   extended, `stop`, a final answer split off at the model's own token, and
   complete in 3.1–9.2 s against the 600 s deadline. A 1,072-token prompt
-  took 36 s to the first token and 64 s in all; a 3,022-token prompt took
+  took 36 s to the first token and 64 s in all; a 1,526-token prompt took
   52 s and 131 s. An answer whose reasoning reached 4,096 tokens took
   156 s and was refused `limit_exceeded`. The last stage slows from 8.8 ms
   to 10.9 ms a token over 4,096 tokens, consistent with `AnswerParser::push`
@@ -256,12 +258,17 @@ Gate progress (2026-10-21):
   from one source: `quantized_matvec.cu` takes CUB from CUDA 13's
   `include/cccl` or CUDA 12's `include/cub`, so the stage machines no
   longer need an include shim. Numbers and logs are on #12395.
-- **Placement from header bytes.** Layers 0–9, 10–19, 20–29, and 30–39
-  need 75.41, 74.07, 73.92, and 75.23 GB of GPU weights, as the plan's
-  table says, and the Engram tables (101.38 GB each) go to host memory on
-  the stages that run layers 1 and 14. Four stages are tried before eight,
-  and a plan that fits neither is refused. The runtime reserve is a fixed
-  input until W3 measures it.
+- **Placement from header bytes, then measured bytes (W3, #12390;
+  provisional).** Layers 0–9, 10–19, 20–29, and 30–39 need 75.41, 74.07,
+  73.92, and 75.23 GB of GPU weights by the shard headers, and the Engram
+  tables (101.38 GB each) go to host memory on the stages that run layers 1
+  and 14. Four stages are tried before eight, and a plan that fits neither
+  is refused. `MeasuredMemory` now implements the same `PlacementMemory`
+  trait from the CUDA runtime's measured bytes
+  ([`placement_memory_measured.json`](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41_weights/placement_memory_measured.json)):
+  at the served 8,192-token context the four stages peak at 78.10, 76.75,
+  76.54, and 77.85 GB of a card's 101.97 GB, and the model covers all 40
+  measured stage peaks within 1 GiB. See W3 below.
 
 Out of scope for the epic, tracked in the [Enter the Verse
 roadmap](../roadmap/2026-10-20-enter-the-verse.md): streamed tokens and the
@@ -336,8 +343,8 @@ spend guard from the one budget host.
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
 | W1 | **Original-weight CPU parity report.** Compared original weights with the frozen policy. Complete chat diagnostics and first-failure runs report every case, mode, and recorded position, including untested positions. G1 fails; #12404 tracks the divergence and missing observations. | M, cloud | #12385–#12387 | Report retained; closing W1 does not pass G1. |
-| W2 | **Complete answers and quality.** Qualify the served GPU runtime's complete answers with the #12372 parser and task assertions. Keep the originally requested CPU answers as diagnostic evidence, without requiring B200 token identity. | S, cloud; quality suite may need a separate estimate | GPU runner; frozen G2 policy for acceptance | G2 v2 passes; CPU evidence and its limitations are reported separately. |
-| W3 | **Measure the model.** Peak memory per layer range, KV and indexer bytes per token at each compression ratio, Engram lookup cost from RAM, and active parameters per token. | S, cloud | Existing loader and running stages; no numerical-parity blocker | Measured placement inputs name the runtime and context range; provisional measurements are repeated if qualification fixes change allocation or performance. |
+| W2 | **Complete answers and quality. Evidence collected; acceptance pending the frozen G2 v2 policy.** On the served CUDA runtime, p1 (thinking) and p2 (chat, the oracle's exact 40 prompt IDs) finish at the end token in 121 and 289 tokens, identically when repeated, and split correctly with the #12372 parser; p2 through Pylon equals the chained answer byte for byte. p1 passes its assertions; p2's code is the oracle's own loop and fails the F(186) boundary (30ba21cb1e), as the oracle's answer does. CPU diagnostics (`ReferenceBf16Tp8`): p1 64 tokens, p2 288, neither equal to the oracle. [Receipt](verification/deepseek-v41-w3-w2-2026-10-21.json). | S, cloud; quality suite may need a separate estimate | GPU runner; frozen G2 policy for acceptance | G2 v2 passes; CPU evidence and its limitations are reported separately. |
+| W3 | **Done, provisional (#12390).** Measured on four RTX PRO 6000s (commit 6e59f4de54, contexts 8,192 to 1,048,576): a 10-layer stage peaks at 76.5–78.1 GB at 8,192 positions; a stored KV-source row is 1,280 bytes (KV 1,024, indexer keys 256), so 640 bytes a position at ratio 2 and 1,280 at ratio 1; a group's one-step prefill sizes step buffers at 184,356 bytes a token, which dominates long contexts (24.2 GB a stage at 131,072); an Engram decode lookup reads 6,336 bytes from pinned host memory in 6.2 µs in stream (14 µs waited); a decode token reads 16.13 billion parameters, 13.07 GB. `MeasuredMemory` gives W9's placement these inputs. [Receipt](verification/deepseek-v41-w3-w2-2026-10-21.json). | S, cloud | Existing loader and running stages; no numerical-parity blocker | Measured placement inputs name the runtime and context range; provisional measurements are repeated if qualification fixes change allocation or performance. |
 
 ### Phase 3: CUDA (G3, G4)
 
@@ -426,9 +433,10 @@ started first.
   specified in the review addendum. The [fixed v1 CPU policy](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/tolerance-policy.json)
   stays unchanged. Same-mode B200 repeatability is now measured as exact;
   neither that result nor the cross-mode gap determines cross-hardware limits.
-- Host RAM per stage for the Engram tables (about 101 GB each, layers 1 and
-  14) on single-GPU machines. On the one-machine `g4-standard-192`, both
-  tables and the page cache fit in its 720 GiB.
+- Host RAM per stage for the Engram tables (101.38 GB of pinned host memory
+  each, measured by W3, layers 1 and 14) on single-GPU machines. On the
+  one-machine `g4-standard-192`, both tables and the page cache fit in its
+  720 GiB.
 - Redistribution terms of the checkpoint's license for stage packages
   derived from it, before any stage package leaves our buckets.
 - The deadline a V4.1 reasoning answer actually needs through Pylon:
