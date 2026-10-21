@@ -25,7 +25,10 @@ log() { printf '%s %s\n' "$(date -u +%H:%M:%SZ)" "$*"; }
 setup() {
   : "${WORKER:?}" "${MANIFEST:?}"
   command -v mdadm >/dev/null || { sudo apt-get -qq update && sudo apt-get -qq install -y mdadm >/dev/null; }
-  if ! mountpoint -q $ROOT; then
+  if ! mountpoint -q $ROOT && ! ls /dev/disk/by-id/google-local-nvme-ssd-* >/dev/null 2>&1; then
+    # No local SSDs (a G4 without Titanium SSDs): use the boot disk.
+    sudo mkdir -p $ROOT && sudo chown "$(id -u):$(id -g)" $ROOT
+  elif ! mountpoint -q $ROOT; then
     mapfile -t disks < <(ls /dev/disk/by-id/google-local-nvme-ssd-*)
     sudo mdadm --create /dev/md0 --level=0 --raid-devices=${#disks[@]} "${disks[@]}" --force --run
     sudo mkfs.ext4 -q -F -E lazy_itable_init=1,lazy_journal_init=1 /dev/md0
