@@ -233,6 +233,12 @@ pub struct Up {
     /// The stage worker binary in a bucket (W11 builds it); a dry run
     /// leaves it unset.
     pub worker: Option<String>,
+    /// The SHA-256 of the worker build's `BUILD.json`, which pins the
+    /// worker, its libraries, its target, and its profile; each stage
+    /// machine refuses another build (#12407).
+    pub worker_build: Option<String>,
+    /// The SHA-256 of the pylon build's `BUILD.json`, for a head in the zone.
+    pub pylon_build: Option<String>,
     pub deadline_secs: u64,
     pub max_output_tokens: u32,
     pub sampling: Sampling,
@@ -290,6 +296,8 @@ impl Up {
             group: format!("v41-{placement}"),
             weights: placement::WEIGHTS.into(),
             worker: None,
+            worker_build: None,
+            pylon_build: None,
             deadline_secs: 90,
             max_output_tokens: 1_024,
             sampling: Sampling::new(0.6, 0.95, 0).unwrap_or_else(|_| unreachable!()),
@@ -434,6 +442,7 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
                     up.worker.clone().unwrap_or_else(|| "unset".into()),
                 ),
             ];
+            metadata.extend(build_pins(up));
             let mut files = vec![format!("startup-script={}", startup.display())];
             if up.head.remote() {
                 // The head starts this machine's stages with the group's
@@ -499,16 +508,18 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
         // A small on-demand machine that only heads the group: losing a
         // spot head would lose the group.
         let name = format!("oa-{}-head", up.group);
-        let metadata = [
+        let mut metadata = vec![
             ("oa-group", up.group.clone()),
             ("oa-role", "head".into()),
             ("oa-group-head", "1".into()),
             ("oa-pylon", pylon),
-        ]
-        .iter()
-        .map(|(k, v)| format!("{k}={v}"))
-        .collect::<Vec<_>>()
-        .join(",");
+        ];
+        metadata.extend(build_pins(up));
+        let metadata = metadata
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join(",");
         machines.push(MachinePlan {
             guard: vec![
                 "create".into(),
@@ -915,6 +926,19 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
         backoff_ms: 1_000,
         max_backoff_ms: 30_000,
     }
+}
+
+/// The build pins a machine's startup script checks (`oa-build`,
+/// `oa-pylon-build`), when the launch names them.
+fn build_pins(up: &Up) -> Vec<(&'static str, String)> {
+    let mut pins = Vec::new();
+    if let Some(build) = &up.worker_build {
+        pins.push(("oa-build", build.clone()));
+    }
+    if let Some(build) = &up.pylon_build {
+        pins.push(("oa-pylon-build", build.clone()));
+    }
+    pins
 }
 
 fn millis(d: Duration) -> u64 {
@@ -1459,6 +1483,9 @@ checkout on the one host that allocates for the budget.
                             and the budget total; create nothing.
       --worker GS_URL       The stage worker binary in a bucket (required to
                             launch).
+      --worker-build SHA256 The SHA-256 of the worker's BUILD.json; each
+                            stage machine refuses any other build.
+      --pylon-build SHA256  The SHA-256 of the head's pylon BUILD.json.
       --hours H             Hours until each machine's expiry (default 4).
       --zone ZONE           Default us-east1-b.
       --machine-type TYPE   Another machine type for the placement.
@@ -1537,6 +1564,8 @@ pub fn parse_up(
         Ok(take_values(words, name)?.pop())
     };
     let worker = value(&mut words, "--worker")?;
+    let worker_build = value(&mut words, "--worker-build")?;
+    let pylon_build = value(&mut words, "--pylon-build")?;
     let hours = value(&mut words, "--hours")?;
     let zone = value(&mut words, "--zone")?;
     let machine_type = value(&mut words, "--machine-type")?;
@@ -1565,6 +1594,19 @@ pub fn parse_up(
     up.relay = relay.into();
     up.worker = worker;
     up.pylon = pylon;
+    for (name, pin) in [
+        ("--worker-build", &worker_build),
+        ("--pylon-build", &pylon_build),
+    ] {
+        if pin
+            .as_deref()
+            .is_some_and(|p| p.len() != 64 || !p.bytes().all(|b| b.is_ascii_hexdigit()))
+        {
+            return Err(format!("{name} takes a SHA-256 in hex"));
+        }
+    }
+    up.worker_build = worker_build.map(|p| p.to_ascii_lowercase());
+    up.pylon_build = pylon_build.map(|p| p.to_ascii_lowercase());
     if let Some(head) = head {
         up.head = HeadPlacement::parse(&head)?;
     }

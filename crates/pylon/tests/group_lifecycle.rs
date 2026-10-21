@@ -283,6 +283,41 @@ async fn a_stage_with_other_weights_is_never_advertised_and_spends_the_budget() 
     rig.close().await;
 }
 
+/// A replaced stage worker that runs another build or numerical profile
+/// than the group never joins it, though its weights, runtime, and protocol
+/// still match (#12407).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_replaced_stage_with_another_build_or_profile_never_joins() {
+    let flags = [
+        ("build-s0", "aaaa"),
+        ("build-s1", "aaaa"),
+        ("build-s2", "aaaa"),
+        ("profile-s0", "cuda-device-sm_120"),
+        ("profile-s1", "cuda-device-sm_120"),
+        ("profile-s2", "cuda-device-sm_120"),
+    ];
+    for (file, value) in [("build-s2", "bbbb"), ("profile-s2", "cpu-bf16")] {
+        let rig = Rig::with(&flags, |c| {
+            c.startup_timeout = Duration::from_secs(3);
+            c.max_restarts = 2;
+        })
+        .await;
+        rig.ready(1).await;
+        let before = rig.pids();
+        rig.flag(file, value);
+        unsafe { libc::kill(before[2] as i32, libc::SIGKILL) };
+        let status = rig
+            .until("the replaced stage is refused", |s| {
+                s.reason.contains("the group runs build aaaa (sm_120)")
+            })
+            .await;
+        assert!(!status.ready, "{file}: {status:?}");
+        let status = rig.until("budget exhaustion", |s| s.failed.is_some()).await;
+        assert!(!status.ready, "{file}");
+        rig.close().await;
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn front_disconnect_holds_admission_until_every_stage_stops() {
     let rig = Rig::start(&[("slow-s1", "150")]).await;

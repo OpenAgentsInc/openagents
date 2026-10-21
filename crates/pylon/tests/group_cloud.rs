@@ -1037,16 +1037,10 @@ fn the_launchers_reach_stages_and_the_head_inside_the_zone() {
     assert!(String::from_utf8_lossy(&output.stderr).contains("did not start its head within 1 s"));
     let calls = std::fs::read_to_string(dir.path().join("calls.jsonl")).unwrap();
     let probe: Vec<String> = serde_json::from_str(calls.lines().next().unwrap()).unwrap();
+    // Ready means this boot's ready mark (v41-stage-startup.sh, #12407).
     assert_eq!(
-        probe[probe.len() - 6..],
-        [
-            "test",
-            "-x",
-            "/opt/openagents/head-run",
-            "-a",
-            "-f",
-            "/mnt/stage/ready"
-        ]
+        probe.last().unwrap(),
+        "test -x /opt/openagents/head-run && test \"$(head -n 1 /mnt/stage/ready 2>/dev/null)\" = \"boot $(cat /proc/sys/kernel/random/boot_id)\""
     );
     assert!(!calls.contains("\"-T\""));
 
@@ -1099,6 +1093,54 @@ fn a_cloud_group_runs_cuda_stages_unless_told_otherwise() {
     assert_eq!(up.stage_backend.as_deref(), Some("cpu"));
     assert_eq!(up.stage_runtime, cloud::RUNTIME);
     assert!(parse(&["two-dual", "--backend", "rocm"]).is_err());
+}
+
+/// A launch can pin the worker and pylon builds; every machine's metadata
+/// then carries the pins its startup script checks (#12407).
+#[test]
+fn build_pins_reach_every_machine() {
+    let parse = |words: &[&str]| {
+        let words: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
+        cloud::parse_up(
+            &words,
+            &repo(),
+            Path::new("/home/me"),
+            "wss://relay.example",
+        )
+    };
+    let (worker, pylon) = ("A".repeat(64), "b".repeat(64));
+    let (mut up, _) = parse(&[
+        "two-dual",
+        "--worker-build",
+        &worker,
+        "--pylon-build",
+        &pylon,
+        "--head",
+        "vm",
+        "--pylon",
+        "gs://pylon-test/pylon",
+    ])
+    .unwrap();
+    up.worker = Some("gs://pylon-test/stage-worker".into());
+    let plan = cloud::plan(&up).unwrap();
+    assert_eq!(plan.machines.len(), 3);
+    for machine in &plan.machines {
+        let metadata = machine
+            .guard
+            .iter()
+            .find(|a| a.starts_with("--metadata="))
+            .unwrap();
+        assert!(
+            metadata.contains(&format!("oa-build={}", "a".repeat(64))),
+            "{metadata}"
+        );
+        assert!(
+            metadata.contains(&format!("oa-pylon-build={pylon}")),
+            "{metadata}"
+        );
+    }
+    assert!(parse(&["two-dual", "--worker-build", "abc"]).is_err());
+    assert!(parse(&["two-dual", "--pylon-build", &"g".repeat(64)]).is_err());
 }
 
 /// The one-machine placement with its head on that machine (W11, #12398):

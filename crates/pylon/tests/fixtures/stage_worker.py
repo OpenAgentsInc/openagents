@@ -5,7 +5,8 @@ The stage connects to the front, announces itself, and answers health pings,
 checks, steps, cancellations, and fences as line-delimited JSON. Faults are
 files in --root named KIND-STAGE. A file holding a step number fires once at
 that step and is then removed; "slow", "ignore-cancel", "always-die", and
-"weights" stay until the test removes them. A file "end-STAGE" makes the
+"weights", "build", and "profile" (what hello reports) stay until the test
+removes them. A file "end-STAGE" makes the
 last stage end the answer at that step; "answer-STAGE", a JSON array of
 strings, makes it answer with those pieces, one a step, and end at the last.
 Every observation goes to events.jsonl in --root.
@@ -107,6 +108,11 @@ def hello(reported):
                "runtime": "fixture-runtime/1", "protocol": 1}
     if direct:
         message["data"] = advertise
+    # The build and numerical profile a real worker reports (#12407).
+    if text("build") is not None:
+        message["build"] = {"sha256": text("build"), "cuda_arch": "sm_120"}
+    if text("profile") is not None:
+        message["profile"] = text("profile")
     return message
 
 

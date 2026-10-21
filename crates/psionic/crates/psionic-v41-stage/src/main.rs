@@ -3,7 +3,7 @@
 //! ```text
 //! psionic-v41-stage --weights DIR --layers A-B --gpu N --manifest D [--embeddings] [--head]
 //!     --stage NAME --generation G --front ADDR --token T
-//!     [--backend cpu|cuda] [--arithmetic f32|bf16|bf16-tp8] [--max-context N]
+//!     [--backend cpu|cuda] [--arithmetic f32|bf16|bf16-tp8|device] [--max-context N]
 //!     [--listen ADDR] [--data-listen ADDR [--data-advertise ADDR]] [--events FILE]
 //! psionic-v41-stage reference --weights DIR [--prompt JSON] [--steps N]
 //!     [--temperature T --top-p P --seed S] [--arithmetic A] [--max-context N]
@@ -12,13 +12,19 @@
 //! psionic-v41-stage synthetic DIR [NAME]
 //! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR [...]
 //! psionic-v41-stage qualify-derive --reference R[,R] --control C[,C] --out FILE
+//! psionic-v41-stage build-info
 //! ```
+//!
+//! `--arithmetic` takes `f32`, `bf16`, or `bf16-tp8` on the CPU backend and
+//! only `device` on CUDA; anything else is refused before weights load.
+//! `build-info` prints the executable's SHA-256, its CUDA architecture, and
+//! the profiles it runs, as `scripts/pylon/v41-stage-build.sh` records them.
 
 use std::{io::Write, path::Path, process::ExitCode};
 
 use psionic_v41_stage::{
-    Backend, Options, Refused, Sampling, load_manifest, load_model, load_model_for,
-    parse_arithmetic, parse_layers, reference, serve, synthetic_manifest, write_synthetic,
+    Backend, Options, Refused, Sampling, load_manifest, load_model, load_model_for, parse_layers,
+    parse_profile, reference, serve, synthetic_manifest, write_synthetic,
 };
 
 fn main() -> ExitCode {
@@ -29,6 +35,7 @@ fn main() -> ExitCode {
         Some("synthetic") => run_synthetic(&args[1..]),
         Some("qualify") => run_qualify(&args[1..]),
         Some("qualify-derive") => psionic_v41_stage::qualify::run_derive(&args[1..]),
+        Some("build-info") => run_build_info(),
         _ => run_stage(&args),
     };
     match result {
@@ -102,6 +109,11 @@ fn run_reference(args: &[String]) -> Result<(), Refused> {
         .map(Backend::parse)
         .transpose()?
         .unwrap_or(Backend::Cpu);
+    // Refuse an arithmetic the backend doesn't implement before any load.
+    let arithmetic = flag(args, "--arithmetic")
+        .map(|value| parse_profile(backend, value))
+        .transpose()?
+        .flatten();
     let answer = match backend {
         #[cfg(feature = "cuda")]
         Backend::Cuda => psionic_v41_stage::cuda::reference(
@@ -113,10 +125,7 @@ fn run_reference(args: &[String]) -> Result<(), Refused> {
         )?,
         _ => {
             let model = load_model(Path::new(weights))?;
-            let arithmetic = flag(args, "--arithmetic")
-                .map(parse_arithmetic)
-                .transpose()?
-                .unwrap_or(model.arithmetic);
+            let arithmetic = arithmetic.unwrap_or(model.arithmetic);
             reference(
                 &model,
                 prompt.as_ref(),
@@ -129,6 +138,20 @@ fn run_reference(args: &[String]) -> Result<(), Refused> {
     };
     let json = serde_json::to_string(&answer).map_err(|e| Refused(e.to_string()))?;
     let _ = writeln!(std::io::stdout(), "{json}");
+    Ok(())
+}
+
+fn run_build_info() -> Result<(), Refused> {
+    let mut info = psionic_v41_stage::build_identity();
+    info["runtimes"] = serde_json::json!({
+        "cpu": Backend::Cpu.runtime(),
+        "cuda": cfg!(feature = "cuda").then(|| Backend::Cuda.runtime()),
+    });
+    info["profiles"] = serde_json::json!({
+        "cpu": ["cpu-f32", "cpu-bf16", "cpu-bf16-tp8"],
+        "cuda": cfg!(feature = "cuda").then(|| psionic_v41_stage::profile_name(Backend::Cuda, None)),
+    });
+    let _ = writeln!(std::io::stdout(), "{info}");
     Ok(())
 }
 

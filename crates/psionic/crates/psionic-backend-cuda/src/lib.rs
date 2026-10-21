@@ -45,6 +45,12 @@ use psionic_runtime::{
 };
 use rayon::prelude::*;
 
+/// The GPU architecture the kernels were compiled for, such as `sm_120`
+/// (`nvcc-default` when nvcc chose it), or `None` in a build that links the
+/// kernel stubs. The build script sets it from `CUDAARCHS`, `PSI_CUDA_ARCH`,
+/// or the build machine's GPU.
+pub const COMPILED_CUDA_ARCH: Option<&str> = option_env!("PSIONIC_CUDA_COMPILED_ARCH");
+
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "CUDA backend discovery, allocation, and submission";
 

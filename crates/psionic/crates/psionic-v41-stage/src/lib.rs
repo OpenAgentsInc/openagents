@@ -193,6 +193,8 @@ pub struct Options {
     pub front: String,
     pub token: String,
     pub backend: Backend,
+    /// The CPU arithmetic asked for; always `None` on CUDA, whose only
+    /// arithmetic is [`CUDA_PROFILE`].
     pub arithmetic: Option<Arithmetic>,
     pub max_context: usize,
     /// Where the stage listens for state from the stage before it.
@@ -290,6 +292,128 @@ pub fn parse_arithmetic(value: &str) -> Result<Arithmetic, Refused> {
     }
 }
 
+/// The arithmetic the CUDA stage runs: its kernels' own order and rounding
+/// (BF16 cache rows, F32 residuals), which none of the CPU port's
+/// [`Arithmetic`] settings describe.
+pub const CUDA_PROFILE: &str = "device";
+
+/// The name of a CPU arithmetic, as `--arithmetic` takes it.
+#[must_use]
+pub const fn arithmetic_name(arithmetic: Arithmetic) -> &'static str {
+    match arithmetic {
+        Arithmetic::Float32 => "f32",
+        Arithmetic::ReferenceBf16 => "bf16",
+        Arithmetic::ReferenceBf16Tp8 => "bf16-tp8",
+    }
+}
+
+/// Parses `--arithmetic` for a backend, before any weights load. The CPU
+/// port implements `f32`, `bf16`, and `bf16-tp8`; the CUDA stage implements
+/// only its own arithmetic, [`CUDA_PROFILE`], so it refuses the CPU names
+/// rather than run something other than what was asked for.
+///
+/// # Errors
+///
+/// Refuses a name the backend doesn't implement, and unknown names.
+pub fn parse_profile(backend: Backend, value: &str) -> Result<Option<Arithmetic>, Refused> {
+    match (backend, value) {
+        (Backend::Cpu, CUDA_PROFILE) => refuse(format!(
+            "--arithmetic {CUDA_PROFILE} is the CUDA stage's arithmetic; the CPU stage takes f32, bf16, or bf16-tp8"
+        )),
+        (Backend::Cpu, _) => parse_arithmetic(value).map(Some),
+        (Backend::Cuda, CUDA_PROFILE) => Ok(None),
+        (Backend::Cuda, "f32" | "bf16" | "bf16-tp8") => refuse(format!(
+            "the CUDA stage doesn't implement --arithmetic {value}; it runs only `{CUDA_PROFILE}`"
+        )),
+        (Backend::Cuda, _) => refuse(format!(
+            "--arithmetic {value} is not `{CUDA_PROFILE}`, the CUDA stage's arithmetic"
+        )),
+    }
+}
+
+/// The numerical profile a stage announces: `cpu-` and the arithmetic it
+/// runs, or `cuda-device` and the architecture its kernels were compiled
+/// for.
+#[must_use]
+pub fn profile_name(backend: Backend, arithmetic: Option<Arithmetic>) -> String {
+    match (backend, arithmetic) {
+        (Backend::Cpu, Some(a)) => format!("cpu-{}", arithmetic_name(a)),
+        (Backend::Cpu, None) => "cpu".into(),
+        (Backend::Cuda, _) => match cuda_arch() {
+            Some(arch) => format!("cuda-{CUDA_PROFILE}-{arch}"),
+            None => format!("cuda-{CUDA_PROFILE}"),
+        },
+    }
+}
+
+/// The architecture the CUDA kernels were compiled for, or `None` in a build
+/// without CUDA kernels.
+#[must_use]
+pub fn cuda_arch() -> Option<&'static str> {
+    #[cfg(feature = "cuda")]
+    {
+        psionic_backend_cuda::COMPILED_CUDA_ARCH
+    }
+    #[cfg(not(feature = "cuda"))]
+    {
+        None
+    }
+}
+
+/// What a stage announces about its own executable: the SHA-256 of the
+/// program running and the CUDA architecture its kernels target. Pylon's
+/// front compares it across stages, so a replaced worker can't join a group
+/// that runs another build.
+#[must_use]
+pub fn build_identity() -> Value {
+    static IDENTITY: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    IDENTITY
+        .get_or_init(|| {
+            let sha256 = std::env::current_exe()
+                .and_then(std::fs::read)
+                .map(|bytes| hex::encode(Sha256::digest(bytes)))
+                .ok();
+            serde_json::json!({
+                "sha256": sha256,
+                "version": env!("CARGO_PKG_VERSION"),
+                "cuda": cfg!(feature = "cuda"),
+                "cuda_arch": cuda_arch(),
+            })
+        })
+        .clone()
+}
+
+/// The device a stage with `--gpu gpu` runs on, as the one-entry
+/// `CUDA_VISIBLE_DEVICES` to give the CUDA runtime.
+///
+/// `--gpu` is a logical index into the devices this process may see. With no
+/// inherited mask it is the physical index. With an inherited mask, such as
+/// `CUDA_VISIBLE_DEVICES=2,3` from a scheduler, `--gpu 1` is the mask's
+/// second entry (`3`), so stages on one machine never share a device by
+/// accident.
+///
+/// # Errors
+///
+/// Refuses an index outside the mask and a mask that hides every device.
+pub fn select_device(mask: Option<&str>, gpu: u32) -> Result<String, Refused> {
+    let Some(mask) = mask else {
+        return Ok(gpu.to_string());
+    };
+    let entries: Vec<&str> = mask.split(',').map(str::trim).collect();
+    if entries.iter().any(|e| e.is_empty() || e.starts_with('-')) {
+        return refuse(format!(
+            "CUDA_VISIBLE_DEVICES={mask} hides every device or has an empty entry"
+        ));
+    }
+    let index = usize::try_from(gpu).unwrap_or(usize::MAX);
+    entries.get(index).map(|e| (*e).to_owned()).ok_or_else(|| {
+        Refused(format!(
+            "--gpu {gpu} is outside CUDA_VISIBLE_DEVICES={mask}, which shows {} device(s); --gpu counts the visible devices from 0",
+            entries.len()
+        ))
+    })
+}
+
 impl Options {
     /// Parses a stage's arguments, without the program name.
     ///
@@ -344,10 +468,10 @@ impl Options {
             None => Backend::Cpu,
             Some(value) => Backend::parse(&value)?,
         };
-        let arithmetic = values
-            .remove("--arithmetic")
-            .map(|v| parse_arithmetic(&v))
-            .transpose()?;
+        let arithmetic = match values.remove("--arithmetic") {
+            Some(v) => parse_profile(backend, &v)?,
+            None => None,
+        };
         let max_context = match values.remove("--max-context") {
             Some(v) => v
                 .parse()
@@ -777,6 +901,10 @@ pub fn stage_info<'a>(
         data_listen: options.data_listen.clone(),
         data_advertise: options.data_advertise.clone(),
         runtime: backend.runtime(),
+        profile: profile_name(
+            backend,
+            Some(options.arithmetic.unwrap_or(model.arithmetic)),
+        ),
         events: options.events.clone(),
         record: options.record.clone(),
     }

@@ -81,6 +81,8 @@ pub struct Stage<'a> {
     pub data_advertise: Option<String>,
     /// The runtime it announces, with its backend.
     pub runtime: &'static str,
+    /// The numerical profile it runs ([`crate::profile_name`]).
+    pub profile: String,
     /// Where to record what the stage does.
     pub events: Option<PathBuf>,
     /// Qualification (#12405): where each step's logits (last stage) and
@@ -544,6 +546,8 @@ where
             "weights": self.stage.weights,
             "runtime": self.stage.runtime,
             "protocol": PROTOCOL,
+            "build": crate::build_identity(),
+            "profile": self.stage.profile,
         });
         if let Some(listen) = &self.listen {
             hello["listen"] = json!(listen);

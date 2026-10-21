@@ -613,6 +613,18 @@ mod runtime {
 
     type Log = Arc<dyn Fn(String) + Send + Sync>;
 
+    /// A stage's build as one line: its executable's SHA-256 and target.
+    fn describe_build(build: Option<&serde_json::Value>) -> String {
+        let Some(build) = build else {
+            return "unstated".into();
+        };
+        match (build["sha256"].as_str(), build["cuda_arch"].as_str()) {
+            (Some(sha), Some(arch)) => format!("{sha} ({arch})"),
+            (Some(sha), None) => sha.into(),
+            _ => build.to_string(),
+        }
+    }
+
     #[derive(Debug, Clone, Deserialize)]
     struct Hello {
         stage: String,
@@ -629,6 +641,13 @@ mod runtime {
         /// (direct transport).
         #[serde(default)]
         data: Option<String>,
+        /// The executable the stage runs, as it reports it (its SHA-256 and
+        /// target); every stage of a group must report the same (#12407).
+        #[serde(default)]
+        build: Option<serde_json::Value>,
+        /// The numerical profile the stage runs, such as `cuda-device-sm_120`.
+        #[serde(default)]
+        profile: Option<String>,
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -989,6 +1008,10 @@ mod runtime {
         was_ready: bool,
         /// The link key for the current generation (direct transport).
         key: Option<(u64, stage_link::Key)>,
+        /// The build and numerical profile the first stage to join
+        /// announced. A stage that announces another, such as a replaced
+        /// worker, never joins (#12407).
+        identity: Option<(Option<serde_json::Value>, Option<String>)>,
     }
 
     impl Front {
@@ -1049,6 +1072,7 @@ mod runtime {
                 nonce: 0,
                 was_ready: false,
                 key: None,
+                identity: None,
             }
         }
 
@@ -1341,6 +1365,18 @@ mod runtime {
                 Some(format!(
                     "stage {name} has no link address; the group sends stage state directly"
                 ))
+            } else if let Some((build, profile)) = self
+                .identity
+                .as_ref()
+                .filter(|(build, profile)| *build != hello.build || *profile != hello.profile)
+            {
+                Some(format!(
+                    "stage {name} runs build {} with profile {}; the group runs build {} with profile {}",
+                    describe_build(hello.build.as_ref()),
+                    hello.profile.as_deref().unwrap_or("unstated"),
+                    describe_build(build.as_ref()),
+                    profile.as_deref().unwrap_or("unstated"),
+                ))
             } else {
                 None
             };
@@ -1348,6 +1384,14 @@ mod runtime {
                 // It never joins, so its startup deadline replaces it.
                 self.reason = reason;
                 return;
+            }
+            if self.identity.is_none() {
+                (self.log)(format!(
+                    "stage group runs build {} with profile {}",
+                    describe_build(hello.build.as_ref()),
+                    hello.profile.as_deref().unwrap_or("unstated")
+                ));
+                self.identity = Some((hello.build.clone(), hello.profile.clone()));
             }
             let direct = self.direct();
             let slot = &mut self.slots[index];

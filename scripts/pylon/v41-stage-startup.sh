@@ -11,23 +11,48 @@
 #                  with the group manifests beside it in manifests/ and
 #                  the CUDA 13 libraries it opens in lib/
 #   oa-manifest    the group manifest's SHA-256
+#   oa-build       optional: the SHA-256 of the build's BUILD.json, which
+#                  pins the worker, its libraries, its target, and its
+#                  profile to the qualified execution configuration
 # and, when the group head runs in the zone (#12399, `--head stage0|vm`):
 #   oa-role        `head` on a machine that only heads the group
 #   oa-group-head  1 on the machine the head runs on
-#   oa-pylon       the pylon binary's gs:// URL, for that machine
+#   oa-pylon       the pylon binary's gs:// URL, for that machine, with its
+#                  BUILD.json beside it
+#   oa-pylon-build optional: the SHA-256 of that BUILD.json
 #   oa-stage-ssh   scripts/pylon/v41-stage-ssh.sh, for that machine
-# It copies only the shards those stages read (W9's stage selection), the
-# tokenizer files, and the group manifest into the weights folder, installs
-# the worker as /opt/openagents/stage-worker after checking it was built for
-# this machine's GPU, and installs /opt/openagents/stage-run, which the group
-# head starts over ssh for each stage, so the head owns every worker's
-# lifetime. On the head's machine it also installs /opt/openagents/head-run
-# and stage-ssh.
+#
+# It first removes the ready mark, so nothing trusts a machine whose
+# installation is changing. It then fetches the worker's BUILD.json (schema
+# v2, written by scripts/pylon/v41-stage-build.sh) and installs the build
+# only if the worker and every CUDA library hash to what BUILD.json lists,
+# BUILD.json names this machine's GPU architecture, and the group manifest
+# is one the build was made with (#12407). The build goes to a staging
+# folder and is renamed into /opt/openagents/builds/BUILD_SHA256 whole. It
+# copies only the shards the stages read (W9's stage selection), the
+# tokenizer files, and the group manifest into the weights folder, and
+# installs /opt/openagents/stage-run, which the group head starts over ssh
+# for each stage, so the head owns every worker's lifetime. On the head's
+# machine it also installs /opt/openagents/head-run and stage-ssh, after the
+# same check of the pylon binary against its BUILD.json.
+#
+# The ready mark is written last, atomically, and names this boot, the
+# manifest, and the build:
+#
+#   boot BOOT_ID
+#   manifest SHA256
+#   build SHA256
+#
+# stage-run starts a worker only when the mark names the current boot and
+# its own manifest and build, and rechecks the build's hashes first; the
+# head's ssh probe (v41-head-ssh.sh) waits for a mark of the current boot.
+# A failed, interrupted, or older boot's installation is never ready.
 #
 # Local mode, for tests: OA_STAGE_METADATA=DIR reads each metadata value from
 # the file DIR/KEY instead of the metadata server; OA_STAGE_ROOT and
 # OA_STAGE_OPT replace /mnt/stage and /opt/openagents; OA_GCLOUD and
-# OA_NVIDIA_SMI replace gcloud and nvidia-smi.
+# OA_NVIDIA_SMI replace gcloud and nvidia-smi; OA_BOOT_ID replaces
+# /proc/sys/kernel/random/boot_id.
 set -eu
 root=${OA_STAGE_ROOT:-/mnt/stage}
 opt=${OA_STAGE_OPT:-/opt/openagents}
@@ -54,7 +79,10 @@ if [ -z "${OA_STAGE_METADATA:-}" ] && ! mountpoint -q "$root"; then
   fi
 fi
 mkdir -p "$root/weights" "$opt"
+# Nothing may trust this machine until every check below passes.
+rm -f "$root/ready" "$root/ready.new"
 exec >>"$root/startup.log" 2>&1
+boot=$(cat "${OA_BOOT_ID:-/proc/sys/kernel/random/boot_id}")
 md() {
   if [ -n "${OA_STAGE_METADATA:-}" ]; then
     cat "$OA_STAGE_METADATA/$1"
@@ -64,28 +92,105 @@ md() {
     "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1"
 }
 optional() { md "$1" 2>/dev/null || true; }
+fail() {
+  echo "oa-stage: $*"
+  exit 1
+}
+# The checker stage-run and head-run use too. `build DIR` checks DIR's
+# worker and libraries against DIR/BUILD.json and prints its architecture;
+# `file PATH SHA256` checks one file; `field JSON KEY` prints a field.
+cat >"$opt/oa-verify.new" <<'PY'
+import hashlib, json, os, sys
+
+def sha256(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+def refuse(message):
+    print(message, file=sys.stderr)
+    sys.exit(1)
+
+verb = sys.argv[1]
+if verb == "file":
+    got = sha256(sys.argv[2])
+    if got != sys.argv[3]:
+        refuse(f"{sys.argv[2]} hashes to {got}, not {sys.argv[3]}")
+elif verb == "field":
+    value = json.load(open(sys.argv[2])).get(sys.argv[3])
+    if not isinstance(value, str) or not value:
+        refuse(f"{sys.argv[2]} has no {sys.argv[3]}")
+    print(value)
+elif verb == "build":
+    root = sys.argv[2]
+    build = json.load(open(os.path.join(root, "BUILD.json")))
+    if build.get("schema") != "openagents.psionic_v41_stage.build.v2":
+        refuse(f"BUILD.json has schema {build.get('schema')}; rebuild with scripts/pylon/v41-stage-build.sh")
+    libraries = build.get("libraries") or {}
+    if not libraries:
+        refuse("BUILD.json lists no CUDA libraries")
+    got = sha256(os.path.join(root, "psionic-v41-stage"))
+    if got != build.get("sha256"):
+        refuse(f"the worker hashes to {got}, but BUILD.json says {build.get('sha256')}")
+    present = sorted(os.listdir(os.path.join(root, "lib")))
+    if present != sorted(libraries):
+        refuse(f"lib/ holds {present}, but BUILD.json lists {sorted(libraries)}")
+    for name, want in sorted(libraries.items()):
+        got = sha256(os.path.join(root, "lib", name))
+        if got != want:
+            refuse(f"lib/{name} hashes to {got}, but BUILD.json says {want}")
+    if len(sys.argv) > 3 and sys.argv[3] not in (build.get("manifests") or {}):
+        refuse(f"the build was not made with group manifest {sys.argv[3]}")
+    print(build.get("arch", ""))
+else:
+    refuse(f"unknown check {verb}")
+PY
+mv "$opt/oa-verify.new" "$opt/oa-verify"
+verify() { python3 "$opt/oa-verify" "$@"; }
+# Writes the ready mark atomically, last.
+publish_ready() {
+  printf 'boot %s\n%s' "$boot" "$1" >"$root/ready.new"
+  mv "$root/ready.new" "$root/ready"
+}
 # The budget host starts the head as soon as head-run exists, and the head
 # checks every stage program at once, so head-run comes after stage-run and
 # before the long weight copy (stage-run waits for the weights itself).
 install_head() {
   [ "$(optional oa-group-head)" = 1 ] || return 0
-  "$gcloud" storage cp "$(md oa-pylon)" "$opt/pylon"
-  chmod 755 "$opt/pylon"
-  md oa-stage-ssh >"$opt/stage-ssh"
-  chmod 755 "$opt/stage-ssh"
+  pylon_url=$(md oa-pylon)
+  rm -rf "$opt/pylon.staging"
+  mkdir -p "$opt/pylon.staging"
+  "$gcloud" storage cp "$pylon_url" "${pylon_url%/*}/BUILD.json" "$opt/pylon.staging/"
+  pylon_build=$(sha256sum "$opt/pylon.staging/BUILD.json" | cut -d ' ' -f 1)
+  pin=$(optional oa-pylon-build)
+  [ -z "$pin" ] || [ "$pin" = "$pylon_build" ] ||
+    fail "the pylon build is $pylon_build, but this group runs $pin"
+  pylon_sha=$(verify field "$opt/pylon.staging/BUILD.json" sha256) ||
+    fail "the pylon build has no sha256"
+  verify file "$opt/pylon.staging/${pylon_url##*/}" "$pylon_sha" ||
+    fail "the pylon binary does not match its BUILD.json"
+  chmod 755 "$opt/pylon.staging/${pylon_url##*/}"
+  mv "$opt/pylon.staging/${pylon_url##*/}" "$opt/pylon-$pylon_sha"
+  rm -rf "$opt/pylon.staging"
+  md oa-stage-ssh >"$opt/stage-ssh.new"
+  chmod 755 "$opt/stage-ssh.new"
+  mv "$opt/stage-ssh.new" "$opt/stage-ssh"
   cat >"$opt/head-run.new" <<RUN
 #!/bin/sh
 # Head the group in the foreground of the budget host's ssh session; the
 # launch arrives on standard input, and the session ending stops the head.
-exec $opt/pylon cloud head --home "\$HOME/.openagents/v41-head"
+python3 $opt/oa-verify file $opt/pylon-$pylon_sha $pylon_sha || exit 1
+exec $opt/pylon-$pylon_sha cloud head --home "\$HOME/.openagents/v41-head"
 RUN
   chmod 755 "$opt/head-run.new"
   mv "$opt/head-run.new" "$opt/head-run"
-  echo "oa-stage: the group head can start here"
+  echo "oa-stage: the group head can start here (pylon $pylon_sha)"
 }
 if [ "$(optional oa-role)" = head ]; then
   install_head
-  touch "$root/ready"
+  publish_ready "head"
   exit 0
 fi
 weights=$(md oa-weights)
@@ -95,38 +200,57 @@ head=$(md oa-head)
 worker=$(md oa-worker)
 manifest=$(md oa-manifest)
 echo "oa-stage: layers $layers from $weights"
-# The worker is built for one GPU architecture; refuse another before
-# copying any weights.
+# Stage the whole build, check it against BUILD.json, and refuse a build for
+# another GPU architecture, all before copying any weights.
+staging="$opt/build.staging"
+rm -rf "$staging"
+mkdir -p "$staging/lib"
+"$gcloud" storage cp "${worker%/*}/BUILD.json" "$staging/"
+build=$(sha256sum "$staging/BUILD.json" | cut -d ' ' -f 1)
+pin=$(optional oa-build)
+[ -z "$pin" ] || [ "$pin" = "$build" ] ||
+  fail "the worker build is $build, but this group runs $pin"
+"$gcloud" storage cp "$worker" "$staging/psionic-v41-stage"
+"$gcloud" storage cp "${worker%/*}/lib/*" "$staging/lib/"
+arch=$(verify build "$staging" "$manifest") || fail "the worker build $build does not check out"
+have=$("${OA_NVIDIA_SMI:-nvidia-smi}" --query-gpu=compute_cap --format=csv,noheader |
+  head -n 1 | tr -d '. ')
+if [ "${arch#sm_}" != "$have" ]; then
+  fail "the worker is built for $arch, but this GPU is sm_$have"
+fi
 case $worker in
   */sm_*/*)
-    want=${worker%/*}
-    want=${want##*/sm_}
-    have=$("${OA_NVIDIA_SMI:-nvidia-smi}" --query-gpu=compute_cap --format=csv,noheader |
-      head -n 1 | tr -d '. ')
-    if [ "$want" != "$have" ]; then
-      echo "oa-stage: the worker is built for sm_$want, but this GPU is sm_$have"
-      exit 1
-    fi
+    path_arch=${worker%/*}
+    path_arch=${path_arch##*/}
+    [ "$path_arch" = "$arch" ] || fail "the worker's path says $path_arch, but BUILD.json says $arch"
     ;;
 esac
-"$gcloud" storage cp "$worker" "$opt/stage-worker"
-chmod 755 "$opt/stage-worker"
-mkdir -p "$opt/lib"
-"$gcloud" storage cp "${worker%/*}/lib/*" "$opt/lib/"
-cat >"$opt/stage-run" <<RUN
+chmod 755 "$staging/psionic-v41-stage"
+installed="$opt/builds/$build"
+mkdir -p "$opt/builds"
+rm -rf "$installed"
+mv "$staging" "$installed"
+cat >"$opt/stage-run.new" <<RUN
 #!/bin/sh
-# Wait for this machine's weights, then run one stage worker in the
-# foreground of the head's ssh session; the session ending ends it.
+# Wait for this boot's installation of manifest $manifest and build $build,
+# recheck the build, then run one stage worker in the foreground of the
+# head's ssh session; the session ending ends it.
+want="boot \$(cat ${OA_BOOT_ID:-/proc/sys/kernel/random/boot_id})
+manifest $manifest
+build $build"
 i=0
-while [ ! -f $root/ready ]; do
+while [ "\$(cat $root/ready 2>/dev/null)" != "\$want" ]; do
   i=\$((i + 1))
-  [ "\$i" -le 3600 ] || { echo "the stage weights are not ready" >&2; exit 1; }
+  [ "\$i" -le "\${OA_STAGE_WAIT:-3600}" ] || { echo "this machine's stage installation is not ready" >&2; exit 1; }
   sleep 1
 done
-export LD_LIBRARY_PATH=$opt/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}
-exec $opt/stage-worker --weights $root/weights "\$@"
+python3 $opt/oa-verify build $installed $manifest >/dev/null || exit 1
+export LD_LIBRARY_PATH=$installed/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}
+exec $installed/psionic-v41-stage --weights $root/weights "\$@"
 RUN
-chmod 755 "$opt/stage-run"
+chmod 755 "$opt/stage-run.new"
+mv "$opt/stage-run.new" "$opt/stage-run"
+echo "oa-stage: installed build $build for $arch"
 install_head
 "$gcloud" storage cp "${weights}model.safetensors.index.json" "${weights}config.json" \
   "${weights}tokenizer.json" "${weights}tokenizer_config.json" "$root/weights/"
@@ -150,8 +274,8 @@ mkdir -p "$root/weights/manifests"
 "$gcloud" storage cp "${worker%/*}/manifests/$manifest.json" "$root/weights/manifests/"
 got=$(sha256sum "$root/weights/manifests/$manifest.json" | cut -d ' ' -f 1)
 if [ "$got" != "$manifest" ]; then
-  echo "oa-stage: the group manifest hashes to $got, not $manifest"
-  exit 1
+  fail "the group manifest hashes to $got, not $manifest"
 fi
-touch "$root/ready"
-echo "oa-stage: ready with $(wc -l <"$root/shards") shards"
+publish_ready "manifest $manifest
+build $build"
+echo "oa-stage: ready with $(wc -l <"$root/shards") shards, manifest $manifest, build $build"

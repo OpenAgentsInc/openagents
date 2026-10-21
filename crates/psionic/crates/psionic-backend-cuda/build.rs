@@ -28,6 +28,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=src/kernels/v41_stage_stub.c");
     println!("cargo:rerun-if-env-changed=NVCC");
     println!("cargo:rerun-if-env-changed=PSIONIC_CUDA");
+    // The target architecture is read at run time below, so Cargo only
+    // recompiles the kernels for a new one when told to watch it (#12407).
+    println!("cargo:rerun-if-env-changed=CUDAARCHS");
+    println!("cargo:rerun-if-env-changed=PSI_CUDA_ARCH");
     let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     // `PSIONIC_CUDA=off` links the stubs even where nvcc is installed: the
     // CPU-only engine build (`scripts/release/psionic.sh`) must not need
@@ -112,6 +116,18 @@ fn compile_cuda_object_for(
 }
 
 fn compile_cuda_kernels(nvcc: &Path, out_dir: &Path) -> Result<(), Box<dyn Error>> {
+    // The crate reports the architecture it was compiled for
+    // (`COMPILED_CUDA_ARCH`), so a binary can say what it holds.
+    match find_cuda_arch() {
+        Some(arch) => println!("cargo:rustc-env=PSIONIC_CUDA_COMPILED_ARCH={arch}"),
+        None => println!("cargo:rustc-env=PSIONIC_CUDA_COMPILED_ARCH=nvcc-default"),
+    }
+    if env::var("CUDAARCHS").is_err() && env::var("PSI_CUDA_ARCH").is_err() {
+        println!(
+            "cargo:warning=psionic-backend-cuda: no CUDAARCHS or PSI_CUDA_ARCH; the kernels target {}, and changing the GPU alone won't rebuild them",
+            find_cuda_arch().unwrap_or_else(|| "nvcc's default".into())
+        );
+    }
     let object = out_dir.join("quantized_matvec.o");
     compile_cuda_object(nvcc, "src/kernels/quantized_matvec.cu", &object, true)?;
     // The Clef prefill kernels keep IEEE expf/division: decisions compare

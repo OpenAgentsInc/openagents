@@ -161,9 +161,53 @@ impl Rng {
         self.0 >> 11
     }
 
-    /// Uniform in [-1, 1).
+    /// Uniform in [-1, 1): 53 random bits over 2^53 are in [0, 1). Rounding
+    /// to `f32` can reach 1.0 only from the top 2^-25 of the range, so the
+    /// result is clamped below it (#12407: dividing by 2^52 reached 3).
     fn unit(&mut self) -> f32 {
-        (self.next() as f64 / (1u64 << 52) as f64 * 2.0 - 1.0) as f32
+        unit(self.next())
+    }
+}
+
+/// 53 random bits as a value in [-1, 1).
+fn unit(bits: u64) -> f32 {
+    let x = bits as f64 / (1u64 << 53) as f64;
+    ((x * 2.0 - 1.0) as f32).min(1.0 - f32::EPSILON / 2.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Rng, unit};
+
+    #[test]
+    fn unit_draws_cover_both_signs_inside_minus_one_to_one() {
+        for seed in [0, 1, 11, 0xdead_beef] {
+            let mut rng = Rng(seed);
+            let draws: Vec<f32> = (0..4096).map(|_| rng.unit()).collect();
+            assert!(
+                draws.iter().all(|v| (-1.0..1.0).contains(v)),
+                "seed {seed}: a draw left [-1, 1)"
+            );
+            let negative = draws.iter().filter(|v| **v < 0.0).count();
+            // Each sign within 10% of half the draws.
+            assert!(
+                (1638..=2458).contains(&negative),
+                "seed {seed}: {negative} negative"
+            );
+            let mean = draws.iter().map(|v| f64::from(*v)).sum::<f64>() / 4096.0;
+            assert!(mean.abs() < 0.05, "seed {seed}: mean {mean}");
+            let (lo, hi) = draws
+                .iter()
+                .fold((1.0f32, -1.0f32), |(l, h), v| (l.min(*v), h.max(*v)));
+            assert!(lo < -0.99 && hi > 0.99, "seed {seed}: range {lo}..{hi}");
+        }
+    }
+
+    #[test]
+    fn the_ends_of_the_53_bit_range_map_inside_minus_one_to_one() {
+        assert_eq!(unit(0), -1.0);
+        assert_eq!(unit(1 << 52), 0.0);
+        assert!(unit((1 << 53) - 1) < 1.0);
     }
 }
 

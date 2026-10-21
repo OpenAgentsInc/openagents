@@ -722,11 +722,11 @@ pub fn run_stage(
     entry: &V41StageEntry,
     selection: Option<&V41StageSelection>,
 ) -> Result<(), Refused> {
-    if std::env::var_os("CUDA_VISIBLE_DEVICES").is_none() {
-        // The backend uses the first visible device: make it `--gpu`. No
-        // other thread runs yet.
-        unsafe { std::env::set_var("CUDA_VISIBLE_DEVICES", options.gpu.to_string()) };
-    }
+    // The backend uses the first visible device: narrow the mask to `--gpu`,
+    // counted within any inherited mask. No other thread runs yet.
+    let mask = std::env::var("CUDA_VISIBLE_DEVICES").ok();
+    let device = crate::select_device(mask.as_deref(), options.gpu)?;
+    unsafe { std::env::set_var("CUDA_VISIBLE_DEVICES", device) };
     let model: &'static CudaModel =
         Box::leak(Box::new(CudaModel::load(&options.weights, selection)?));
     check_weights(manifest, &model.digest)?;
@@ -758,6 +758,7 @@ pub fn run_stage(
         data_listen: options.data_listen.clone(),
         data_advertise: options.data_advertise.clone(),
         runtime: Backend::Cuda.runtime(),
+        profile: crate::profile_name(Backend::Cuda, None),
         events: options.events.clone(),
         record: options.record.clone(),
     };
