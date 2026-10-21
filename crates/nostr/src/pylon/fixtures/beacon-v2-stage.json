@@ -1,0 +1,26 @@
+{
+  "id": "c76b6377b405b408d62403a7a9dd59b9d553e7a723aba22d8a83b7c5c95a4671",
+  "pubkey": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+  "created_at": 1791400000,
+  "kind": 30200,
+  "tags": [
+    [
+      "d",
+      "v41-stage-0"
+    ],
+    [
+      "t",
+      "oa:pylon-beacon:v2"
+    ],
+    [
+      "x",
+      "958440f04cb1b36eec1f0c2ec5cc69070885271347a877a25a015e914b0674b2"
+    ],
+    [
+      "expiration",
+      "1791400240"
+    ]
+  ],
+  "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":16,\"tier\":\"medium\"},\"generation\":1,\"group\":{\"artifact\":\"sha256:4c1f1a7e1b7d4a8c0e9f2b3d5a6c7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d\",\"generation\":3,\"id\":\"v41-a\",\"layers\":{\"from\":0,\"to\":11},\"role\":\"stage\"},\"label\":\"RTX 4080\",\"observed_at\":1791400000,\"pools\":[\"everglade\"],\"provider\":\"1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f\",\"pylon\":\"v41-stage-0\",\"requires\":[],\"services\":[],\"settlement\":[\"free-v1\"],\"since\":1791399900,\"slots\":{\"free\":0,\"total\":0},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v2\",\"valid_until\":1791400240}",
+  "sig": "fe5f5f119a14418a77d91185a45aa93cf054649bd9c8a365e3b43314f2fbb2438c1dc09a75dc8266df74beb603836d388eead9ceae0785e92674a85789b48793"
+}

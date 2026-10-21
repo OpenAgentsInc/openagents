@@ -10,14 +10,15 @@ use std::time::{Duration, Instant};
 use nostr::domain::Event;
 use nostr::domain::Tag;
 use nostr::pylon::{
-    self, BEACON_MARKER, Beacon, BeaconBook, Freshness, Lane, Outcome, RECEIPT_V, Receipt, Status,
-    UnitKind, Units, parse_beacon, receipt_event, sha256_hex,
+    self, BEACON_MARKER, Beacon, BeaconBook, Freshness, GROUP_BEACON_MARKER, Lane, Outcome,
+    RECEIPT_V, Receipt, Status, UnitKind, Units, parse_beacon, receipt_event, sha256_hex,
 };
 use openagents_x402::PaymentPayload;
 use openagents_x402::native::{self, Phase, RecordType, Signed, parse_status};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
 
+use crate::group::{self, Want};
 use crate::identity::Identity;
 use crate::job;
 use crate::now;
@@ -34,7 +35,28 @@ pub async fn beacons(
     conn: &mut nostr_transport::Connection,
     authors: Option<&[String]>,
 ) -> Result<BeaconBook, String> {
-    let mut filter = json!({"kinds": [pylon::BEACON_KIND], "#t": [BEACON_MARKER], "limit": 500});
+    read_beacons(conn, authors, &[BEACON_MARKER]).await
+}
+
+/// As [`beacons`], with model groups' head and stage beacons (NIP-PYLON
+/// v2) beside the complete pylons.
+///
+/// # Errors
+///
+/// When the relay query fails.
+pub async fn all_beacons(
+    conn: &mut nostr_transport::Connection,
+    authors: Option<&[String]>,
+) -> Result<BeaconBook, String> {
+    read_beacons(conn, authors, &[BEACON_MARKER, GROUP_BEACON_MARKER]).await
+}
+
+async fn read_beacons(
+    conn: &mut nostr_transport::Connection,
+    authors: Option<&[String]>,
+    markers: &[&str],
+) -> Result<BeaconBook, String> {
+    let mut filter = json!({"kinds": [pylon::BEACON_KIND], "#t": markers, "limit": 500});
     if let Some(authors) = authors {
         filter["authors"] = json!(authors);
     }
@@ -49,7 +71,8 @@ pub async fn beacons(
 
 /// The pylon a buyer should use: a fresh, online beacon with a free slot on
 /// the conversation lane, most free slots first, never one in `failing`
-/// (addresses a trusted checker failed).
+/// (addresses a trusted checker failed). A request that names no model
+/// never goes to a model group; see [`choose_model`].
 #[must_use]
 pub fn choose(book: &BeaconBook, at: u64, failing: &BTreeSet<String>) -> Option<Beacon> {
     choose_on(book, at, failing, Lane::CjConversation)
@@ -66,12 +89,32 @@ pub fn choose_on(
     book.iter()
         .map(|(_, beacon)| beacon)
         .filter(|b| {
-            !failing.contains(&b.address())
+            b.group.is_none()
+                && !failing.contains(&b.address())
                 && pylon::freshness(b, at) == Freshness::Fresh
                 && b.status == Status::Online
                 && b.slots.free > 0
                 && b.serves(lane).is_some()
         })
+        .max_by_key(|b| (b.slots.free, b.observed_at))
+        .cloned()
+}
+
+/// The pylon for a request that asks for one model: a complete pylon or a
+/// ready group head serving exactly `want` on `lane`, as [`choose_on`]
+/// otherwise. Never a stage, and never another model: `None` when nothing
+/// serves this one.
+#[must_use]
+pub fn choose_model(
+    book: &BeaconBook,
+    at: u64,
+    failing: &BTreeSet<String>,
+    lane: Lane,
+    want: &Want,
+) -> Option<Beacon> {
+    book.iter()
+        .map(|(_, beacon)| beacon)
+        .filter(|b| group::serves_want(b, at, failing, lane, want).is_some())
         .max_by_key(|b| (b.slots.free, b.observed_at))
         .cloned()
 }
@@ -169,10 +212,44 @@ pub async fn ask_conversation(
     history: &[crate::engine::Turn],
     instructions: Option<&str>,
 ) -> Result<Answer, String> {
+    ask_for(buyer, ask, None, history, instructions).await
+}
+
+/// [`ask_conversation`] for a request that asks for one model: only a
+/// complete pylon or a ready group head serving exactly `want` answers it.
+///
+/// # Errors
+///
+/// As [`ask`].
+pub async fn ask_model(
+    buyer: &Identity,
+    ask: &Ask,
+    want: &Want,
+    history: &[crate::engine::Turn],
+    instructions: Option<&str>,
+) -> Result<Answer, String> {
+    ask_for(buyer, ask, Some(want), history, instructions).await
+}
+
+async fn ask_for(
+    buyer: &Identity,
+    ask: &Ask,
+    want: Option<&Want>,
+    history: &[crate::engine::Turn],
+    instructions: Option<&str>,
+) -> Result<Answer, String> {
     let started = Instant::now();
     let mut conn = relay::connect(&ask.relay, buyer, LIFETIME).await?;
     let authors = ask.pylon.as_ref().map(|p| vec![p.clone()]);
-    let mut book = beacons(&mut conn, authors.as_deref()).await?;
+    let fetch = async |conn: &mut nostr_transport::Connection| match want {
+        Some(_) => all_beacons(conn, authors.as_deref()).await,
+        None => beacons(conn, authors.as_deref()).await,
+    };
+    let pick = |book: &BeaconBook, failing: &BTreeSet<String>| match want {
+        Some(want) => choose_model(book, now(), failing, Lane::CjConversation, want),
+        None => choose(book, now(), failing),
+    };
+    let mut book = fetch(&mut conn).await?;
     let (labels, checked) = crate::check::fetch(
         &mut conn,
         &ask.checkers,
@@ -188,7 +265,7 @@ pub async fn ask_conversation(
     // A pinned pylon may be busy or restarting. Wait for a ready beacon
     // within the buyer's budget before publishing any job.
     let beacon = loop {
-        if let Some(beacon) = choose(&book, now(), &failing) {
+        if let Some(beacon) = pick(&book, &failing) {
             break beacon;
         }
         let pinned_waiting = ask.pylon.is_some()
@@ -197,6 +274,7 @@ pub async fn ask_conversation(
                     && pylon::freshness(beacon, now()) == Freshness::Fresh
                     && matches!(beacon.status, Status::Online | Status::Draining)
                     && beacon.slots.free == 0
+                    && !beacon.is_stage()
                     && beacon.serves(Lane::CjConversation).is_some()
             });
         let remaining = ask.wait.saturating_sub(started.elapsed());
@@ -208,12 +286,14 @@ pub async fn ask_conversation(
         if remaining.is_zero() {
             return Err("no fresh online pylon with a free slot that passes its checks".into());
         }
-        book = tokio::time::timeout(remaining, beacons(&mut conn, authors.as_deref()))
+        book = tokio::time::timeout(remaining, fetch(&mut conn))
             .await
             .map_err(|_| "no fresh online pylon with a free slot that passes its checks")??;
     };
     let service = beacon
-        .serves(Lane::CjConversation)
+        .services
+        .iter()
+        .find(|s| s.lanes.contains(&Lane::CjConversation) && want.is_none_or(|w| w.matches(s)))
         .ok_or("pylon serves no conversation lane")?
         .clone();
     let discover_ms = started.elapsed().as_millis() as u64;

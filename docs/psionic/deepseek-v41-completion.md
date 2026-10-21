@@ -49,6 +49,7 @@ speculation, vision, and paid jobs.
 | Oracle | #12371 | 18,177 reference tensors for four prompts plus edge cases, in decode, replay, and chunked modes, with full logits, precision notes, tie rules, and complete answers. Slices in `testdata/deepseek_v41/oracle/`, read by `psionic_models::deepseek_v41_oracle`; the rest in `gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/`. Weights in `gs://openagents-psionic-models/`. |
 | CPU components | #12377–#12384 | `deepseek_v41_cpu`: hyper-connections, routing and experts, attention primitives, Engram, projection wiring, RoPE/YaRN, activation quantization, and request-owned shared KV/indexer state across the 40-layer owner schedule. 45 tests on synthetic fixtures; the Engram token map matches the reference over all 129,280 entries. |
 | Native serving shape | #12358, #12364, #12367, #12368 | `--single-generation`, Pylon's managed worker recovery (now for native Psionic workers too), the `pylon up` text profile, and native Qwen2 CUDA for the R1 distill. |
+| Group beacon and routing | #12400 | W13: NIP-PYLON v2 group head and stage beacons (one serial slot, exact artifact, deadline, output limit, readiness, generation) with v1 fixtures in both directions; `pylon::group` readiness source for W10; the router and `client::choose_model` route a request to a group only when it names that model and the group is ready, never to a stage, never substituting. Fixtures only; nothing publishes a group yet. |
 
 ### CPU assembly completed (Codex, DeepSeek chat)
 
@@ -125,7 +126,7 @@ spend guard from the one budget host.
 
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
-| W13 | **Group beacon and routing.** The group publishes one routable beacon (one serial slot, the exact model artifact, its declared deadline and output limit); stage beacons are visible but not routable. The router matches requested model and group readiness. | M | W10 | Router tests pick the group only for V4.1 requests and only when it's ready. |
+| W13 | **Group beacon and routing.** Done (#12400): the group publishes one routable beacon (one serial slot, the exact model artifact, its declared deadline and output limit); stage beacons are visible but not routable. The router matches requested model and group readiness. W10 feeds readiness through `pylon::group::GroupReadiness`, and W15 publishes the beacons. | M | W10 | Router tests pick the group only for V4.1 requests and only when it's ready. |
 | W14 | **Deadline and answer profile.** Qualify a V4.1 reasoning profile (output cap, deadline) that finishes complete answers within the deadline the beacon declares. Changing Pylon's 90-second default is a versioned transport change with old-client refusal. | M | W11, W13 | Complete answers for the qualification prompts through Pylon within the declared deadline. |
 | W15 | **`pylon cloud up` for a group.** One command starts a group in a named placement through the spend guard, waits for readiness, publishes it, and stops it on expiry, cap, or `down`. Spot loss shows as Pylons leaving. | M | W12, W13 | A cold launch to a first answer, then a clean stop, with costs in the ledger. |
 | W16 | **Show it.** Run the launched group with the `/home` Pylon layer open and record the transcript, router log, and capture. | S, cloud | W15 | G8's evidence is committed and the epic can close. |

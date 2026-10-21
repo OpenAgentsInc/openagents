@@ -405,6 +405,7 @@ impl Provider {
                 "free-v1".into()
             }],
             pools: self.config.pools.clone(),
+            group: None,
         }
     }
 

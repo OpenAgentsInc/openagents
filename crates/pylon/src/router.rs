@@ -11,6 +11,12 @@
 //! [`client::ask_conversation`], failing over to the next candidate in
 //! rank order on a refusal, a timeout, or an empty answer.
 //!
+//! A request that asks for one model ([`Settings::want`]) goes only to a
+//! pylon or a ready model group serving exactly that model ([`crate::group`]),
+//! ranked in code with no decision and no `default`: it is never answered
+//! by another model. A request that names no model never goes to a group,
+//! and nothing routes to a group's stage.
+//!
 //! Each [`Routed`] says how the choice was made and what was tried, for the
 //! caller's log. It never carries the message.
 
@@ -24,6 +30,7 @@ use nostr::pylon::{self, Beacon, BeaconBook, Family, Freshness, Lane, Status, Ti
 
 use crate::client::{self, Answer, Ask};
 use crate::engine::Turn;
+use crate::group::{self, Want};
 use crate::identity::Identity;
 use crate::now;
 use crate::relay::{self, LIFETIME};
@@ -126,10 +133,11 @@ fn tier_rank(tier: Tier) -> u8 {
     }
 }
 
-/// Whether `beacon` is live at `at`: fresh, online, with a free slot, and
-/// not failing a trusted check.
+/// Whether `beacon` is a live complete pylon at `at`: no model group, fresh,
+/// online, with a free slot, and not failing a trusted check.
 fn live(beacon: &Beacon, at: u64, failing: &BTreeSet<String>) -> bool {
-    !failing.contains(&beacon.address())
+    beacon.group.is_none()
+        && !failing.contains(&beacon.address())
         && pylon::freshness(beacon, at) == Freshness::Fresh
         && beacon.status == Status::Online
         && beacon.slots.free > 0
@@ -140,13 +148,31 @@ fn live(beacon: &Beacon, at: u64, failing: &BTreeSet<String>) -> bool {
 /// most [`MAX_CANDIDATES`].
 #[must_use]
 pub fn candidates(book: &BeaconBook, at: u64, failing: &BTreeSet<String>) -> Vec<Candidate> {
+    candidates_for(book, at, failing, None)
+}
+
+/// As [`candidates`], for a request that asks for `want`: only complete
+/// pylons and ready group heads serving exactly that model, each group one
+/// candidate with its one serial slot. `None` is [`candidates`].
+#[must_use]
+pub fn candidates_for(
+    book: &BeaconBook,
+    at: u64,
+    failing: &BTreeSet<String>,
+    want: Option<&Want>,
+) -> Vec<Candidate> {
     let mut found: Vec<Candidate> = book
         .iter()
         .map(|(_, beacon)| beacon)
-        .filter(|b| live(b, at, failing) && b.settlement.iter().any(|s| s == FREE))
+        .filter(|b| b.settlement.iter().any(|s| s == FREE))
         .filter_map(|b| {
-            b.serves(Lane::CjConversation)
-                .map(|service| Candidate::from_beacon(b, service))
+            match want {
+                Some(want) => group::serves_want(b, at, failing, Lane::CjConversation, want),
+                None => live(b, at, failing)
+                    .then(|| b.serves(Lane::CjConversation))
+                    .flatten(),
+            }
+            .map(|service| Candidate::from_beacon(b, service))
         })
         .collect();
     found.sort_by(|a, b| {
@@ -321,6 +347,9 @@ pub struct Settings {
     pub budget: Duration,
     /// The most pylons tried.
     pub tries: usize,
+    /// The model the request asks for, when it names one: only a pylon or
+    /// a ready group serving exactly it answers, and nothing else does.
+    pub want: Option<Want>,
 }
 
 impl Settings {
@@ -335,6 +364,7 @@ impl Settings {
             try_wait: Duration::from_secs(30),
             budget: Duration::from_secs(50),
             tries: 3,
+            want: None,
         }
     }
 }
@@ -492,7 +522,11 @@ async fn discover(
     settings: &Settings,
 ) -> Result<(BeaconBook, BTreeSet<String>), String> {
     let mut conn = relay::connect(&settings.relay, buyer, LIFETIME).await?;
-    let book = client::beacons(&mut conn, None).await?;
+    let book = if settings.want.is_some() {
+        client::all_beacons(&mut conn, None).await?
+    } else {
+        client::beacons(&mut conn, None).await?
+    };
     let failing = if settings.checkers.is_empty() {
         BTreeSet::new()
     } else {
@@ -538,18 +572,29 @@ pub async fn route(
         }
     };
     let at = now();
-    let found = candidates(&book, at, &failing);
+    let want = settings.want.as_ref();
+    let found = candidates_for(&book, at, &failing, want);
     let deciders = deciders(&book, at, &failing);
     let admitted = found.len();
     if found.is_empty() {
         let mut routed = Routed::unavailable(
-            "no live pylon can take a free conversation job".into(),
+            if want.is_some() {
+                "no live pylon serves the requested model".into()
+            } else {
+                "no live pylon can take a free conversation job".into()
+            },
             ranked("no candidates"),
         );
         routed.deciders = deciders;
         return routed;
     }
-    let (ordered, how) = order(found, deciders, turns, decide, settings.decide).await;
+    // A named model is never handed to the decision, whose `default` is
+    // another model.
+    let (ordered, how) = if want.is_some() {
+        (Some(found), ranked("the request asks for one model"))
+    } else {
+        order(found, deciders, turns, decide, settings.decide).await
+    };
     let Some(ordered) = ordered else {
         return Routed {
             outcome: Outcome::Declined,
@@ -577,7 +622,11 @@ pub async fn route(
             checkers: settings.checkers.clone(),
             pay: None,
         };
-        match client::ask_conversation(buyer, &ask, &history, instructions).await {
+        let asked = match want {
+            Some(want) => client::ask_model(buyer, &ask, want, &history, instructions).await,
+            None => client::ask_conversation(buyer, &ask, &history, instructions).await,
+        };
+        match asked {
             Ok(answer) if answer.text.as_deref().is_some_and(|t| !t.trim().is_empty()) => {
                 return Routed {
                     outcome: Outcome::Answered(Box::new(answer)),
@@ -677,6 +726,7 @@ mod tests {
                 services,
                 settlement: vec![spec.settlement.into()],
                 pools: vec![],
+                group: None,
             };
             let event = beacon_event(key.signer(), &beacon).unwrap();
             book.offer(event, beacon);

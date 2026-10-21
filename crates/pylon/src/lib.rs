@@ -40,6 +40,7 @@ pub mod envelope;
 pub mod field;
 #[cfg(feature = "fixture")]
 pub mod fixture;
+pub mod group;
 pub mod harden;
 pub mod identity;
 pub mod inflight;

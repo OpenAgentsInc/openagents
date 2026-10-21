@@ -702,6 +702,7 @@ fn a_relay_pylon_samples_from_its_verified_beacon_and_turns_unknown_when_stale()
         }],
         settlement: vec!["free-v1".into()],
         pools: vec!["everglade".into()],
+        group: None,
     };
     let mut live = pylon::field::Live::new(Some("everglade"));
     assert!(live.offer(np::beacon_event(&provider, &beacon).unwrap(), NOW));
@@ -793,6 +794,7 @@ fn only_a_receipt_acknowledged_by_a_trusted_issuer_lights_a_relay_pylons_coin() 
         }],
         settlement: vec!["lightning-bolt11".into()],
         pools: vec!["everglade".into()],
+        group: None,
     };
     let receipt = |request: &str| np::Receipt {
         v: np::RECEIPT_V.into(),

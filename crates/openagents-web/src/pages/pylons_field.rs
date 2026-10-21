@@ -313,6 +313,7 @@ mod tests {
             }],
             settlement: vec!["free-v1".into()],
             pools: vec!["everglade".into()],
+            group: None,
         }
     }
 

@@ -111,6 +111,29 @@ impl RelayField {
     }
 }
 
+impl RelayField {
+    /// Fetch and verify the model groups' beacons and show each group with
+    /// its stages ([`crate::group::field`]). [`Self::poll`] shows complete
+    /// pylons only; a stage is never one.
+    ///
+    /// # Errors
+    ///
+    /// When the relay cannot be read.
+    pub async fn poll_groups(&self) -> Result<Vec<crate::group::GroupState>, String> {
+        let mut conn = relay::connect(&self.relay, &self.reader, LIFETIME).await?;
+        let book = crate::client::all_beacons(&mut conn, None).await?;
+        let _ = conn.close().await;
+        let mut pooled = BeaconBook::default();
+        for (event, beacon) in book.iter() {
+            if beacon.group.is_some() && self.pool.as_ref().is_none_or(|p| beacon.pools.contains(p))
+            {
+                pooled.offer(event.clone(), beacon.clone());
+            }
+        }
+        Ok(crate::group::field(&pooled, now()))
+    }
+}
+
 /// Whether a pylon state should glow: fresh and serving at least one job.
 #[must_use]
 pub fn glowing(state: &PylonState) -> bool {

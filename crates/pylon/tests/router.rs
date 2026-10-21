@@ -9,9 +9,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use nostr::decision::Refusal;
-use nostr::pylon::{Class, Family, Tier};
+use nostr::pylon::{Class, Family, Readiness, Tier, beacon_event, parse_beacon};
 use pylon::decide::{Decider, Identity as Served};
 use pylon::engine::{Echo, Engine, Pending, Turn};
+use pylon::group::{GroupSpec, GroupStatus, Want, head_beacon};
 use pylon::identity::Identity;
 use pylon::lease::Dedicated;
 use pylon::provider::{Config, Provider};
@@ -90,6 +91,7 @@ struct Running {
 /// decisions.
 struct Net {
     relay: String,
+    hub: Arc<tokio::sync::Mutex<pylon::fixture::Hub>>,
     closed: Running,
     rig: Running,
     _clef: Option<Running>,
@@ -178,6 +180,7 @@ async fn net(clef: bool) -> Net {
     }
     Net {
         relay,
+        hub,
         closed,
         rig,
         _clef: clef,
@@ -337,4 +340,110 @@ async fn an_unreachable_relay_leaves_the_message_for_the_hosted_chat() {
         matches!(routed.outcome, Outcome::Unavailable(_)),
         "{routed:?}"
     );
+}
+
+const V41: &str = "sha256:4c1f1a7e1b7d4a8c0e9f2b3d5a6c7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d";
+
+/// Publish a V4.1 group head under `rig`'s key, from its own beacon, with
+/// `readiness`: `rig`'s echo engine stands in for the group.
+async fn publish_group(net: &Net, readiness: Readiness) {
+    let mut hub = net.hub.lock().await;
+    let own = hub
+        .stored
+        .iter()
+        .find(|e| e.kind == 30_200 && e.pubkey == net.rig.key.pubkey())
+        .cloned()
+        .unwrap();
+    let mut base = parse_beacon(&own).unwrap();
+    base.pylon = "v41-group".into();
+    let spec = GroupSpec {
+        id: "v41-a".into(),
+        model: "deepseek-v4.1-flash".into(),
+        artifact: V41.into(),
+        deadline_secs: 600,
+        max_output_tokens: 4_096,
+    };
+    let status = GroupStatus {
+        readiness,
+        generation: 1,
+    };
+    let head = head_beacon(&base, &spec, &status, false);
+    hub.stored
+        .push(beacon_event(net.rig.key.signer(), &head).unwrap());
+}
+
+fn wanting(net: &Net, home: &std::path::Path, want: Want) -> Settings {
+    let mut settings = settings(&net.relay, home);
+    settings.want = Some(want);
+    settings
+}
+
+#[tokio::test]
+async fn a_requested_model_goes_only_to_its_ready_group() {
+    let net = net(true).await;
+    publish_group(&net, Readiness::Ready).await;
+    let home = tempfile::tempdir().unwrap();
+    let decide = Fixed::picks(DEFAULT, 0.99);
+    let routed = router::route(
+        &Identity::generate(),
+        &wanting(&net, home.path(), Want::Artifact(V41.into())),
+        &decide,
+        &turns("abc"),
+        None,
+    )
+    .await;
+    // Only the group is a candidate, and the decision (whose `default` is
+    // another model) is never asked.
+    assert_eq!(routed.candidates, 1);
+    assert!(decide.asked.lock().unwrap().is_empty());
+    assert_eq!(
+        routed.how,
+        How::Ranked {
+            why: "the request asks for one model".into()
+        }
+    );
+    let answer = answered(&routed);
+    assert!(answer.pylon.contains(net.rig.key.pubkey()));
+    assert_eq!(answer.text.as_deref(), Some("echo: cba"));
+
+    // A request that names no model never reaches the group.
+    let plain = router::route(
+        &Identity::generate(),
+        &settings(&net.relay, home.path()),
+        &Fixed::picks("p1", 1.0),
+        &turns("abc"),
+        None,
+    )
+    .await;
+    assert_eq!(plain.candidates, 2);
+}
+
+#[tokio::test]
+async fn a_requested_model_is_never_substituted() {
+    let net = net(true).await;
+    publish_group(&net, Readiness::Starting).await;
+    let home = tempfile::tempdir().unwrap();
+    for want in [
+        Want::Artifact(V41.into()),
+        Want::Model("deepseek-v4.1-flash".into()),
+        Want::Artifact(format!("sha256:{}", "ab".repeat(32))),
+    ] {
+        let decide = Fixed::picks("p1", 1.0);
+        let routed = router::route(
+            &Identity::generate(),
+            &wanting(&net, home.path(), want),
+            &decide,
+            &turns("abc"),
+            None,
+        )
+        .await;
+        assert_eq!(routed.candidates, 0);
+        assert!(decide.asked.lock().unwrap().is_empty());
+        match &routed.outcome {
+            Outcome::Unavailable(why) => {
+                assert_eq!(why, "no live pylon serves the requested model");
+            }
+            other => panic!("another model answered: {other:?}"),
+        }
+    }
 }

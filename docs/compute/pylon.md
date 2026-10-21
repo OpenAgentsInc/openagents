@@ -726,6 +726,39 @@ confidence of at least 0.6. The website's door is
 `crates/openagents-web/src/pylon_door.rs`; `OPENAGENTS_WEB_PYLON_ROUTER=off`
 turns it off, and `OPENAGENTS_WEB_PYLON_HOME` sets where its receipts go.
 
+A request that asks for one model sets `router::Settings::want` to
+`group::Want::Artifact("sha256:…")` or `Want::Model("name")`. The router
+then admits only pylons and ready model groups serving exactly that model,
+skips the decision (its `default` is another model), and returns
+`Unavailable` when none can take the job. A request that names no model
+never reaches a group. `client::choose_model` and `client::ask_model` are
+the same rule for a single ask.
+
+### Model groups (#12400)
+
+A model too large for one machine, such as DeepSeek-V4.1, runs as a group
+of stage Pylons behind one head ([NIP-PYLON model
+groups](../../nips/openagents/NIP-PYLON.md#model-groups)). The head
+publishes the group's one routable beacon: the exact artifact, one serial
+slot, the declared deadline and output limit, readiness, and the group's
+generation. Each stage publishes its layer range with no slots or services,
+so nothing routes to it and pool totals count one slot per group.
+
+`pylon::group` holds the pieces:
+
+- `GroupReadiness` is where a head reads its group's readiness and
+  generation. The group lifecycle (#12397) implements it or sets a
+  `SharedReadiness`; `head_beacon` and `stage_beacon` build the beacons.
+- `serves_want` is the routing rule: fresh, online, a free slot, not
+  failing a check, serving exactly the requested model, and, for a head,
+  `ready`.
+- `field` groups heads and stages for display, and
+  `RelayField::poll_groups` reads them from a relay. A stage shows under
+  the head with the same group id, artifact, and NIP-OA owner (or key).
+
+Nothing publishes group beacons yet. `client::beacons` still reads complete
+pylons only; `client::all_beacons` adds the groups.
+
 ## Drive a pylon from an agent
 
 `openagents pylon mcp` lets another agent (Claude Code, Codex, or anything

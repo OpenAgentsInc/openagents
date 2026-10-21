@@ -1,7 +1,7 @@
 # NIP-PYLON — Compute Pylons and Pools
 
 `draft` `optional` — receipts, pool aggregates, and pool policies v2,
-2026-10-15. Beacons remain v1. **Partly implemented**:
+2026-10-15. Beacons are v1; a model group's beacons are v2, 2026-10-20. **Partly implemented**:
 see [Implementation status](#implementation-status). The [shared contracts](contracts.md) are
 normative. The [Verse compute vision and spec](../../docs/compute/verse-compute.md)
 is the design this profile serves.
@@ -126,6 +126,50 @@ utilization, temperature, process names, users, paths, addresses, or
 earnings. Earnings come only from receipts, which the provider does not
 sign. Reachability is not a beacon field; a buyer reaches a pylon through
 the relays in the provider's NIP-65 list and the CJ transport.
+
+### Model groups
+
+A model too large for one machine runs as a *group*: one *stage* Pylon per
+GPU, each holding a contiguous layer range, behind one *head*. A group's
+beacons are version `openagents.pylon-beacon.v2` under the `t` marker
+`oa:pylon-beacon:v2`. A v2 body is a v1 body plus one field, `group`. A
+complete pylon keeps publishing v1, which never carries `group`.
+
+```json
+"group": {"id": "v41-a", "role": "head", "generation": 3,
+          "artifact": "sha256:<64 hex>", "readiness": "ready",
+          "deadline_secs": 600, "max_output_tokens": 4096}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `id` | The group's slug, shared by the head and every stage. |
+| `role` | `head` or `stage`. |
+| `generation` | Rises whenever a stage is replaced. A stage on another generation than the head is not serving. |
+| `artifact` | The exact model artifact, `sha256:<64 hex>`. |
+| `readiness` | Head only: `starting`, `ready`, or `recovering`. A group is `ready` only when every stage is loaded, checked, and on this generation. |
+| `deadline_secs` | Head only: the most seconds one job may take, 1 to 3,600. |
+| `max_output_tokens` | Head only: the most tokens one answer carries, 1 to 1,048,576. |
+| `layers` | Stage only: `{from, to}`, the half-open layer range the stage holds, `from < to ≤ 4096`. |
+
+Rules:
+
+- The head is the group's one routable beacon. Its `slots.total` is 1: the
+  group runs one job at a time, and a reader counts one slot for the group,
+  never the sum of its stages. Every service's `model` is
+  `<name>@<artifact>`.
+- A stage has `slots` `{0, 0}` and no services. A reader never sends it a
+  job and never treats it as a complete model.
+- A buyer sends a group a job only when the request asks for that model,
+  by the exact artifact or by its name, and only while the head is fresh,
+  online, `ready`, and has its slot free. A buyer never answers a request
+  for one model with another; when no pylon or group serves the model, the
+  request fails.
+- A reader shows a stage with the head of the same `id` and `artifact`
+  whose NIP-OA owner matches, or, without owners, whose key matches.
+- A v1 reader fetches beacons by the v1 marker, so it never sees a group
+  beacon; one that arrives anyway is refused for its marker, version, and
+  field. Group beacons need no change to v1 beacons.
 
 ### Relay list
 
@@ -382,6 +426,10 @@ A reader refuses:
   whose `slots.free` exceeds `slots.total`.
 - A beacon with an `auth` tag that does not verify under NIP-OA. A beacon
   without one is valid and shows no owner.
+- A beacon whose `t` marker and version disagree, a v1 beacon with `group`,
+  a v2 beacon without it, a head without one slot, readiness, deadline, and
+  output limit, or whose service models are not `<name>@<artifact>`, and a
+  stage with slots, services, head fields, or an empty layer range.
 - A receipt whose `buyer` is not the signer, whose `buyer` equals its
   `provider` or the beacon's NIP-OA owner, whose `p` and `a` tags disagree
   with the body, or whose payment acknowledgment is missing, forged, or bound to another receipt.
@@ -470,6 +518,15 @@ signs broker acknowledgments, and keeps payment evidence private. Pool/field
 paid totals use explicit issuer trust and settlement deduplication. This is
 fixture-backed implementation, not qualification of a live payment.
 
+Model groups (2026-10-20, #12400): `nostr::pylon` builds and verifies v2
+head and stage beacons; an aggregate counts a head's one slot and none of
+its stages'. `crates/pylon` builds a head's beacon from the group
+lifecycle's readiness report (`pylon::group`), shows each group with its
+stages (`RelayField::poll_groups`), and routes a request that names a model
+only to a pylon or ready group serving it (`router::Settings::want`,
+`client::choose_model`). Nothing publishes group beacons yet; the group
+lifecycle (#12397) will.
+
 Not implemented: mainnet paid receipts, a `wellspring` projection from an
 aggregate, and the `nip-pylon-v2` relay extension. A service's `capability` is a qualified ID
 (`<pylon key>:pylon/text-generation`) rather than a full DefinitionRef.
@@ -483,7 +540,10 @@ and from its NIP-OA owner; two receipts for one request; a missing, forged, wron
 untrusted issuers and repeated settlement references excluded from paid totals;
 no payment secret in public serialization; an aggregate whose digest or totals do
 not recompute; test-network amounts kept apart from `bitcoin`; and the
-world projection of each fixture to its `pylon` or `wellspring` state.
+world projection of each fixture to its `pylon` or `wellspring` state;
+and a recorded v1 beacon that still verifies, recorded group head and stage
+beacons that a v1 reader refuses, each group rule, and an aggregate that
+counts one slot per group.
 
 Advertise `nip-pylon-v2` in NIP-11 `supported_extensions` only for a relay
 that stores `30200`, `30201`, and `3201` and applies the beacon rate limit.

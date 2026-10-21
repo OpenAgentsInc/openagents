@@ -42,6 +42,7 @@ pub(super) fn beacon(provider: &RelaySigner, observed_at: u64, free: u32) -> Bea
         }],
         settlement: vec!["free-v1".into()],
         pools: vec!["everglade".into()],
+        group: None,
     }
 }
 

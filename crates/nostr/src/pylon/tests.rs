@@ -36,6 +36,7 @@ fn beacon(provider: &RelaySigner, observed_at: u64) -> Beacon {
         }],
         settlement: vec!["free-v1".into()],
         pools: vec!["everglade".into()],
+        group: None,
     }
 }
 
@@ -693,4 +694,241 @@ fn a_sealed_job_receipt_carries_exactly_its_attested_block() {
     body.meta = Some(block);
     body.requires = vec!["openagents.other.v1".into()];
     assert!(body.validate().is_err());
+}
+
+const ARTIFACT: &str = "sha256:4c1f1a7e1b7d4a8c0e9f2b3d5a6c7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d";
+
+/// A V4.1 group head: one serial slot, the exact artifact, a deadline
+/// and an output limit.
+fn head(provider: &RelaySigner, observed_at: u64) -> Beacon {
+    let mut body = beacon(provider, observed_at);
+    body.v = BEACON_V2.into();
+    body.pylon = "v41-group".into();
+    body.slots = Slots { total: 1, free: 1 };
+    body.services[0].model = format!("deepseek-v4.1-flash@{ARTIFACT}");
+    body.group = Some(Group {
+        id: "v41-a".into(),
+        role: GroupRole::Head,
+        generation: 3,
+        artifact: ARTIFACT.into(),
+        readiness: Some(Readiness::Ready),
+        deadline_secs: Some(600),
+        max_output_tokens: Some(4_096),
+        layers: None,
+    });
+    body
+}
+
+/// One stage of that group, holding layers 0 to 11.
+fn stage(provider: &RelaySigner, observed_at: u64) -> Beacon {
+    let mut body = beacon(provider, observed_at);
+    body.v = BEACON_V2.into();
+    body.pylon = "v41-stage-0".into();
+    body.slots = Slots { total: 0, free: 0 };
+    body.services = Vec::new();
+    body.group = Some(Group {
+        id: "v41-a".into(),
+        role: GroupRole::Stage,
+        generation: 3,
+        artifact: ARTIFACT.into(),
+        readiness: None,
+        deadline_secs: None,
+        max_output_tokens: None,
+        layers: Some(Layers { from: 0, to: 11 }),
+    });
+    body
+}
+
+#[test]
+fn group_beacons_round_trip_under_their_own_marker() {
+    let provider = signer(1);
+    for body in [head(&provider, NOW), stage(&provider, NOW)] {
+        let event = beacon_event(&provider, &body).unwrap();
+        assert_eq!(single_tag(&event, "t").unwrap(), GROUP_BEACON_MARKER);
+        assert_eq!(parse_beacon(&event).unwrap(), body);
+    }
+    let head = head(&provider, NOW);
+    assert_eq!(head.group_head().unwrap().id, "v41-a");
+    assert!(!head.is_stage());
+    let stage = stage(&provider, NOW);
+    assert!(stage.group_head().is_none() && stage.is_stage());
+    assert_eq!(project(&stage, NOW + 10, 0).total, 0);
+    // A v1 beacon keeps its v1 marker and bytes.
+    let plain = beacon_event(&provider, &beacon(&provider, NOW)).unwrap();
+    assert_eq!(single_tag(&plain, "t").unwrap(), BEACON_MARKER);
+    assert!(!plain.content.contains("group"));
+}
+
+#[test]
+fn group_beacons_refuse_each_group_rule() {
+    let provider = signer(1);
+    let refused = |body: Beacon, why: &str| {
+        let err = beacon_event(&provider, &body).unwrap_err();
+        assert!(err.contains(why), "{err} does not say {why}");
+    };
+    let mut v1_group = head(&provider, NOW);
+    v1_group.v = BEACON_V.into();
+    refused(v1_group, "carries no group");
+    let mut v2_bare = beacon(&provider, NOW);
+    v2_bare.v = BEACON_V2.into();
+    refused(v2_bare, "carries its group");
+    let mut two_slots = head(&provider, NOW);
+    two_slots.slots = Slots { total: 2, free: 2 };
+    refused(two_slots, "one serial slot");
+    let mut other_model = head(&provider, NOW);
+    other_model.services[0].model = "deepseek-r1-distill".into();
+    refused(other_model, "<name>@<artifact>");
+    let mut no_name = head(&provider, NOW);
+    no_name.services[0].model = format!("@{ARTIFACT}");
+    refused(no_name, "<name>@<artifact>");
+    let mut not_ready = head(&provider, NOW);
+    not_ready.group.as_mut().unwrap().readiness = None;
+    refused(not_ready, "readiness");
+    let mut no_deadline = head(&provider, NOW);
+    no_deadline.group.as_mut().unwrap().deadline_secs = Some(0);
+    refused(no_deadline, "deadline");
+    let mut no_limit = head(&provider, NOW);
+    no_limit.group.as_mut().unwrap().max_output_tokens = None;
+    refused(no_limit, "output limit");
+    let mut bad_artifact = head(&provider, NOW);
+    bad_artifact.group.as_mut().unwrap().artifact = "sha256:abc".into();
+    refused(bad_artifact, "artifact");
+    let mut slotted_stage = stage(&provider, NOW);
+    slotted_stage.slots = Slots { total: 1, free: 1 };
+    refused(slotted_stage, "no slots");
+    let mut serving_stage = stage(&provider, NOW);
+    serving_stage.services = beacon(&provider, NOW).services;
+    refused(serving_stage, "no services");
+    let mut empty_layers = stage(&provider, NOW);
+    empty_layers.group.as_mut().unwrap().layers = Some(Layers { from: 4, to: 4 });
+    refused(empty_layers, "layers");
+    let mut ready_stage = stage(&provider, NOW);
+    ready_stage.group.as_mut().unwrap().readiness = Some(Readiness::Ready);
+    refused(ready_stage, "only its layers");
+
+    // A v2 body under the v1 marker, and the reverse, refuse.
+    let event = beacon_event(&provider, &head(&provider, NOW)).unwrap();
+    let mut tags = event.tags.clone();
+    tags[1] = Tag::new(vec!["t".into(), BEACON_MARKER.into()]);
+    assert!(
+        parse_beacon(&resign(&provider, &event, event.content.clone(), tags))
+            .unwrap_err()
+            .contains("marker")
+    );
+    let event = beacon_event(&provider, &beacon(&provider, NOW)).unwrap();
+    let mut tags = event.tags.clone();
+    tags[1] = Tag::new(vec!["t".into(), GROUP_BEACON_MARKER.into()]);
+    assert!(
+        parse_beacon(&resign(&provider, &event, event.content.clone(), tags))
+            .unwrap_err()
+            .contains("marker")
+    );
+}
+
+#[test]
+fn an_aggregate_counts_one_slot_per_group() {
+    let provider = signer(1);
+    let mut inputs = vec![beacon_event(&provider, &head(&provider, NOW)).unwrap()];
+    for (i, byte) in [3_u8, 4, 5].into_iter().enumerate() {
+        let key = signer(byte);
+        let mut body = stage(&key, NOW);
+        body.pylon = format!("v41-stage-{i}");
+        inputs.push(beacon_event(&key, &body).unwrap());
+    }
+    let window = Window {
+        from: NOW - (NOW % 60),
+        to: NOW - (NOW % 60) + 60,
+    };
+    let aggregate = compute_aggregate(
+        &signer(9).pubkey().to_string(),
+        &PoolPolicy::open("everglade", 1),
+        window,
+        &AggregateInputs {
+            beacons: &inputs,
+            receipts: &[],
+            checks: &[],
+        },
+        window.to,
+    )
+    .unwrap();
+    assert_eq!(aggregate.totals.pylons_online, 4);
+    assert_eq!(aggregate.totals.slots_total, 1);
+    assert_eq!(aggregate.totals.slots_free, 1);
+}
+
+/// The v1 beacon body exactly as v1 readers declare it, before groups.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[allow(dead_code)]
+struct V1Body {
+    v: String,
+    requires: Vec<String>,
+    #[serde(default)]
+    meta: Option<Value>,
+    provider: String,
+    pylon: String,
+    label: String,
+    status: Status,
+    generation: u64,
+    since: u64,
+    observed_at: u64,
+    valid_until: u64,
+    class: Class,
+    slots: Slots,
+    services: Vec<Service>,
+    settlement: Vec<String>,
+    pools: Vec<String>,
+}
+
+/// What a v1 reader did with a fetched event: the v1 marker, then the v1
+/// body, then the v1 version.
+fn v1_reader(event: &Event) -> Result<V1Body, String> {
+    if single_tag(event, "t")? != BEACON_MARKER {
+        return Err("wrong `t` marker".into());
+    }
+    let body: V1Body = serde_json::from_str(&event.content).map_err(|e| e.to_string())?;
+    if body.v != BEACON_V {
+        return Err("unknown beacon version".into());
+    }
+    Ok(body)
+}
+
+fn fixture(name: &str) -> Event {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/pylon/fixtures")
+        .join(name);
+    if std::env::var_os("PYLON_FIXTURES_WRITE").is_some() {
+        let provider = signer(1);
+        let body = match name {
+            "beacon-v1.json" => beacon(&provider, NOW),
+            "beacon-v2-head.json" => head(&provider, NOW),
+            "beacon-v2-stage.json" => stage(&provider, NOW),
+            _ => panic!("no fixture {name}"),
+        };
+        let event = beacon_event(&provider, &body).unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, serde_json::to_string_pretty(&event).unwrap() + "\n").unwrap();
+    }
+    serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap()
+}
+
+#[test]
+fn a_recorded_v1_beacon_still_parses() {
+    let event = fixture("beacon-v1.json");
+    let body = parse_beacon(&event).unwrap();
+    assert_eq!(body.v, BEACON_V);
+    assert!(body.group.is_none());
+    assert!(v1_reader(&event).is_ok());
+}
+
+#[test]
+fn a_v1_reader_refuses_recorded_group_beacons() {
+    for name in ["beacon-v2-head.json", "beacon-v2-stage.json"] {
+        let event = fixture(name);
+        assert!(parse_beacon(&event).unwrap().group.is_some());
+        // Never fetched under the v1 marker, and refused if it arrives.
+        assert_eq!(v1_reader(&event).unwrap_err(), "wrong `t` marker");
+        // Its body refuses under the v1 shape too.
+        assert!(serde_json::from_str::<V1Body>(&event.content).is_err());
+    }
 }

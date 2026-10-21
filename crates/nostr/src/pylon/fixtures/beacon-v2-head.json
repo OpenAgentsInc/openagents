@@ -1,0 +1,26 @@
+{
+  "id": "a8134258b8f9bee5b5cf9650594b85e5670eaaada07a1724333a3486dfaeb9db",
+  "pubkey": "1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f",
+  "created_at": 1791400000,
+  "kind": 30200,
+  "tags": [
+    [
+      "d",
+      "v41-group"
+    ],
+    [
+      "t",
+      "oa:pylon-beacon:v2"
+    ],
+    [
+      "x",
+      "761c4e829800f143df067986ba7c5d62977e2a1696a7cb9228e177e2afa48b69"
+    ],
+    [
+      "expiration",
+      "1791400240"
+    ]
+  ],
+  "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":16,\"tier\":\"medium\"},\"generation\":1,\"group\":{\"artifact\":\"sha256:4c1f1a7e1b7d4a8c0e9f2b3d5a6c7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d\",\"deadline_secs\":600,\"generation\":3,\"id\":\"v41-a\",\"max_output_tokens\":4096,\"readiness\":\"ready\",\"role\":\"head\"},\"label\":\"RTX 4080\",\"observed_at\":1791400000,\"pools\":[\"everglade\"],\"provider\":\"1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f\",\"pylon\":\"v41-group\",\"requires\":[],\"services\":[{\"capability\":\"1b84c5567b126440995d3ed5aaba0565d71e1834604819ff9c17f5e9d5dd078f:pylon/text-generation\",\"lanes\":[\"cj-conversation\"],\"model\":\"deepseek-v4.1-flash@sha256:4c1f1a7e1b7d4a8c0e9f2b3d5a6c7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1791399900,\"slots\":{\"free\":1,\"total\":1},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v2\",\"valid_until\":1791400240}",
+  "sig": "0be81b3ae91175f516ee045ed697330a692f78a4f55759fa99ef1e8b5ccbb77eabdc0ea330c2c4e7bc2386e1fab42b2adc847c228fd598119a616904a7ac9a6c"
+}

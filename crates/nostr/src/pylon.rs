@@ -37,8 +37,12 @@ pub const POOL_KIND: u16 = 30_201;
 /// The service receipt kind (regular).
 pub const RECEIPT_KIND: u16 = 3_201;
 
-/// The beacon body version.
+/// The beacon body version of a complete pylon.
 pub const BEACON_V: &str = "openagents.pylon-beacon.v1";
+/// The beacon body version that carries `group`: a model group's head or
+/// one of its stages. A v1 reader never fetches it (another `t` marker)
+/// and refuses it if it does (unknown version and field).
+pub const BEACON_V2: &str = "openagents.pylon-beacon.v2";
 /// The receipt body version.
 pub const RECEIPT_V: &str = "openagents.pylon-receipt.v2";
 /// The pool aggregate body version.
@@ -48,6 +52,8 @@ pub const POLICY_V: &str = "openagents.pylon-pool-policy.v2";
 
 /// The beacon's `t` marker.
 pub const BEACON_MARKER: &str = "oa:pylon-beacon:v1";
+/// The `t` marker of a v2 (group) beacon.
+pub const GROUP_BEACON_MARKER: &str = "oa:pylon-beacon:v2";
 /// The receipt's `t` marker.
 pub const RECEIPT_MARKER: &str = "oa:pylon-receipt:v2";
 /// The pool aggregate's `t` marker.
@@ -69,6 +75,12 @@ pub const MAX_SLOTS: u32 = 64;
 pub const MAX_SERVICES: usize = 16;
 /// The most pools one beacon may ask to join.
 pub const MAX_POOLS: usize = 8;
+/// The longest deadline a group head may declare, s.
+pub const MAX_GROUP_DEADLINE_SECS: u64 = 3_600;
+/// The largest output limit a group head may declare, tokens.
+pub const MAX_GROUP_OUTPUT_TOKENS: u32 = 1_048_576;
+/// The highest layer bound a stage may declare.
+pub const MAX_GROUP_LAYERS: u32 = 4_096;
 /// The most `rate` slices an aggregate carries.
 pub const MAX_RATE_SLICES: usize = 60;
 
@@ -158,6 +170,105 @@ pub struct Service {
     pub price_hint_msat: Option<u64>,
 }
 
+/// What a beacon in a model group is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GroupRole {
+    /// The group's one routable beacon: the whole model, one serial slot.
+    Head,
+    /// One stage of the group: a layer range, never routable on its own.
+    Stage,
+}
+
+/// A group head's readiness, as the group's lifecycle reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Readiness {
+    /// Stages are loading or being checked; take no work.
+    Starting,
+    /// Every stage is loaded, checked, and on this generation.
+    Ready,
+    /// A stage is being replaced; work resumes under a new generation.
+    Recovering,
+}
+
+/// A half-open layer range `[from, to)` that one stage holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Layers {
+    pub from: u32,
+    pub to: u32,
+}
+
+/// `group` in a v2 beacon: which model group the pylon belongs to.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Group {
+    /// The group's slug, shared by its head and its stages.
+    pub id: String,
+    pub role: GroupRole,
+    /// Rises whenever a stage is replaced; a stage on another generation
+    /// is not part of the serving group.
+    pub generation: u64,
+    /// The exact model artifact: `sha256:<64 hex>`.
+    pub artifact: String,
+    /// Head only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub readiness: Option<Readiness>,
+    /// Head only: the most seconds one job may take.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline_secs: Option<u64>,
+    /// Head only: the most tokens one answer may carry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_output_tokens: Option<u32>,
+    /// Stage only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layers: Option<Layers>,
+}
+
+impl Group {
+    fn validate(&self) -> Result<(), String> {
+        slug(&self.id, "group id")?;
+        let digest = self
+            .artifact
+            .strip_prefix("sha256:")
+            .ok_or("group artifact is not sha256:<64 hex>")?;
+        hex64(digest, "group artifact")?;
+        match self.role {
+            GroupRole::Head => {
+                if self.readiness.is_none() || self.layers.is_some() {
+                    return Err("a group head states readiness and no layers".into());
+                }
+                if !self
+                    .deadline_secs
+                    .is_some_and(|d| (1..=MAX_GROUP_DEADLINE_SECS).contains(&d))
+                {
+                    return Err("a group head declares a deadline of 1 to 3600 seconds".into());
+                }
+                if !self
+                    .max_output_tokens
+                    .is_some_and(|m| (1..=MAX_GROUP_OUTPUT_TOKENS).contains(&m))
+                {
+                    return Err("a group head declares an output limit of 1 to 1048576".into());
+                }
+            }
+            GroupRole::Stage => {
+                if self.readiness.is_some()
+                    || self.deadline_secs.is_some()
+                    || self.max_output_tokens.is_some()
+                {
+                    return Err("a group stage states only its layers".into());
+                }
+                let layers = self.layers.ok_or("a group stage states its layers")?;
+                if layers.from >= layers.to || layers.to > MAX_GROUP_LAYERS {
+                    return Err("stage layers are empty or out of bounds".into());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// The `30200` beacon body.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -179,6 +290,9 @@ pub struct Beacon {
     pub services: Vec<Service>,
     pub settlement: Vec<String>,
     pub pools: Vec<String>,
+    /// v2 only: the model group this pylon heads or serves a stage of.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<Group>,
 }
 
 /// How a receipt measures the work.
@@ -524,8 +638,11 @@ impl Beacon {
     ///
     /// Names the first rule the body breaks.
     pub fn validate(&self) -> Result<(), String> {
-        if self.v != BEACON_V {
-            return Err("unknown beacon version".into());
+        match (self.v.as_str(), &self.group) {
+            (BEACON_V, None) | (BEACON_V2, Some(_)) => {}
+            (BEACON_V, Some(_)) => return Err("a v1 beacon carries no group".into()),
+            (BEACON_V2, None) => return Err("a v2 beacon carries its group".into()),
+            _ => return Err("unknown beacon version".into()),
         }
         if !self.requires.is_empty() {
             return Err("beacon requires an unknown feature".into());
@@ -549,7 +666,20 @@ impl Beacon {
         if self.slots.total > MAX_SLOTS || self.slots.free > self.slots.total {
             return Err("slots are out of bounds".into());
         }
-        if self.services.is_empty() || self.services.len() > MAX_SERVICES {
+        if let Some(group) = &self.group {
+            group.validate()?;
+            match group.role {
+                GroupRole::Head if self.slots.total != 1 => {
+                    return Err("a group head has one serial slot".into());
+                }
+                GroupRole::Stage if self.slots.total != 0 || !self.services.is_empty() => {
+                    return Err("a group stage has no slots and no services".into());
+                }
+                _ => {}
+            }
+        }
+        let stage = self.is_stage();
+        if (!stage && self.services.is_empty()) || self.services.len() > MAX_SERVICES {
             return Err("a beacon has 1 to 16 services".into());
         }
         for service in &self.services {
@@ -562,6 +692,15 @@ impl Beacon {
             let lanes: BTreeSet<_> = service.lanes.iter().collect();
             if lanes.is_empty() || lanes.len() != service.lanes.len() {
                 return Err("service lanes are empty or repeated".into());
+            }
+            if let Some(group) = &self.group
+                && service
+                    .model
+                    .strip_suffix(group.artifact.as_str())
+                    .and_then(|name| name.strip_suffix('@'))
+                    .is_none_or(str::is_empty)
+            {
+                return Err("a group head's service model is not <name>@<artifact>".into());
             }
         }
         let settlement: BTreeSet<_> = self.settlement.iter().collect();
@@ -587,6 +726,30 @@ impl Beacon {
     #[must_use]
     pub fn serves(&self, lane: Lane) -> Option<&Service> {
         self.services.iter().find(|s| s.lanes.contains(&lane))
+    }
+
+    /// The group this beacon heads, when it is a group head.
+    #[must_use]
+    pub fn group_head(&self) -> Option<&Group> {
+        self.group.as_ref().filter(|g| g.role == GroupRole::Head)
+    }
+
+    /// Whether this beacon is one stage of a group: never routable.
+    #[must_use]
+    pub fn is_stage(&self) -> bool {
+        self.group
+            .as_ref()
+            .is_some_and(|g| g.role == GroupRole::Stage)
+    }
+
+    /// The `t` marker this beacon's version publishes under.
+    #[must_use]
+    pub fn marker(&self) -> &'static str {
+        if self.v == BEACON_V2 {
+            GROUP_BEACON_MARKER
+        } else {
+            BEACON_MARKER
+        }
     }
 }
 
@@ -620,7 +783,7 @@ pub fn owned_beacon_event(
     let content = String::from_utf8(canonical(beacon)?).map_err(|e| e.to_string())?;
     let tags = vec![
         Tag::new(vec!["d".into(), beacon.pylon.clone()]),
-        Tag::new(vec!["t".into(), BEACON_MARKER.into()]),
+        Tag::new(vec!["t".into(), beacon.marker().into()]),
         Tag::new(vec!["x".into(), sha256_hex(content.as_bytes())]),
         Tag::new(vec!["expiration".into(), beacon.valid_until.to_string()]),
     ];
@@ -666,8 +829,18 @@ pub fn parse_beacon(event: &Event) -> Result<Beacon, String> {
 ///
 /// As [`parse_beacon`].
 pub fn parse_owned_beacon(event: &Event) -> Result<(Beacon, Option<String>), String> {
-    let beacon: Beacon = envelope(event, BEACON_KIND, BEACON_MARKER)?;
+    // A v1 reader checks only `BEACON_MARKER`, so a v2 beacon refuses
+    // there before its body is read.
+    let marker = match single_tag(event, "t")? {
+        BEACON_MARKER => BEACON_MARKER,
+        GROUP_BEACON_MARKER => GROUP_BEACON_MARKER,
+        _ => return Err("wrong `t` marker".into()),
+    };
+    let beacon: Beacon = envelope(event, BEACON_KIND, marker)?;
     beacon.validate()?;
+    if beacon.marker() != marker {
+        return Err("`t` marker differs from the beacon version".into());
+    }
     if beacon.provider != event.pubkey {
         return Err("beacon provider is not the signer".into());
     }
