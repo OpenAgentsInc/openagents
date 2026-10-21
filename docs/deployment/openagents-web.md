@@ -1283,3 +1283,72 @@ terminal turns on `/` were answered by the Mac M5 Max Pylon (web log:
 `answered by 30200:…`) and, with `X-OpenAgents-Pylon-Model:
 deepseek-v4.1-flash`, by the DeepSeek-V4.1 group `w16-g5b`; the test chats
 were deleted. Production is unchanged.
+
+## 2026-10-21: what the image build caches (#12417, #12427)
+
+`scripts/deploy/web.sh stage` builds the image with
+`crates/openagents-web/cloudbuild.yaml`, which runs
+`scripts/deploy/cloud-buildx.sh` on a fresh `E2_HIGHCPU_32` machine. Three
+caches make that fast. Each is safe to lose: a miss compiles again and
+never fails the build.
+
+| Cache | Where | Key | Holds |
+| --- | --- | --- | --- |
+| Dependency layers | `us-central1-docker.pkg.dev/openagentsgemini/build-cache/openagents-web:deps` (registry cache, zstd) | The manifests, `Cargo.lock`, and the base images (`scripts/deploy/cargo-skeleton.sh`) | Each Rust stage's compiled dependencies |
+| Compile cache (kache) | `gs://openagentsgemini-rust-build-cache/artifacts` | Each crate's compiler inputs | Compiled crates, so a lock file change recompiles only what changed |
+| Browser modules | `gs://openagentsgemini-rust-build-cache/web-modules/NAME/` | The recipe (command, tools, lock files, build scripts) and the module's source packages, from Cargo's dep-info (`scripts/deploy/oa-module-cache.sh`) | Each module's finished files: wasm, glue, gzip and brotli copies |
+
+How a build runs:
+
+1. The `deps` target builds first, from the registry cache or compiled
+   under kache.
+2. If anything compiled, its layers are exported in the background while
+   the image builds. An all-cached build exports nothing.
+3. The image's stages run side by side: the server (`builder`), Everglade
+   and its neighbors (`everglade`), CAD (`cadweb`), and three GPUI stages
+   (`gpuiweb`, `gpuiweb-graph`, `gpuiweb-chat`). Inside the GPUI stages,
+   each module's `wasm-opt` and size check run in parallel
+   (`WEB_BUILD_JOBS`, default the CPU count).
+4. Each module build first looks for a stored build with the same key. A
+   hit downloads it in 1 to 15 s and skips Cargo, `wasm-opt`, and
+   compression.
+
+The server reads its commit at run time (`OPENAGENTS_COMMIT`, set in the
+image's last stage), so a new commit doesn't change the server's compile.
+
+**Warm a cache:** build the image once, for example with `web.sh stage`, or
+submit `cloudbuild.yaml` with a `_TAG` that `web.sh` won't deploy, such as
+`cachetest-SHA`. Each later build reuses what it stored.
+
+**Bust a cache:**
+
+- Dependency layers: pass another cache name as `cloud-buildx.sh`'s third
+  argument in `cloudbuild.yaml` (for example `openagents-web-2`), or delete
+  the `deps` tag in Artifact Registry. Old untagged layers expire after 7
+  days.
+- One module: delete its prefix,
+  `gcloud storage rm -r gs://openagentsgemini-rust-build-cache/web-modules/NAME/`.
+- Every module: set `OA_MODULE_CACHE=0` in the Dockerfile's environment for
+  one build, or change a build script, which changes every recipe.
+
+Measured on Cloud Build, build step only (upload and queue excluded):
+
+| Build | What changed | Build step |
+| --- | --- | --- |
+| `a837a653`, `7db36774` (before) | A new commit | Timed out at 3,600 s |
+| `9a302dca` (before, dependency layers cached) | A new commit | 2,563 s |
+| `b4fbe7ed` (parallel `wasm-opt`) | A new commit | 1,351 s |
+| `73a84a5b` (GPUI stages side by side) | A new commit | 768 s |
+| `2a343a62` | Empty dependency-layer cache | 1,170 s |
+| `f56a8fdd` | A manifest change, as after a lock file change | 943 s |
+| `90977d09` (module cache) | New lock file and build scripts: every module built | 1,068 s |
+| `c5730f48` | Server only: all 18 modules reused | 391 s |
+| `933f6b01` | One GPUI module (the chat): 17 modules reused | 683 s |
+
+Before, a build spent 1,900 to 2,800 s in the GPUI stage, which built about
+50 modules one at a time and compressed each one three times, and 400 to
+800 s exporting the dependency cache before the image could start.
+
+A deploy also uploads the build context from the machine that runs
+`web.sh` (about 330 MB compressed), which takes 1 to 10 minutes on a home
+connection and isn't counted above.

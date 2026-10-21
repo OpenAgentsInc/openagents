@@ -93,9 +93,12 @@ store() { # FILE OBJECT
         apps/openagents/.cargo/config.toml apps/openagents/web/.cargo/config.toml; do
         if [ -f "$ROOT/$f" ]; then (cd "$ROOT" && sha256sum "$f"); fi
     done
+    # The image build's own plumbing doesn't change a module's files.
     for d in scripts apps/openagents/scripts; do
         if [ -d "$ROOT/$d" ]; then
-            (cd "$ROOT" && find "$d" -type f | sort | xargs sha256sum)
+            (cd "$ROOT" && find "$d" -type f ! -path scripts/deploy/cloud-buildx.sh \
+                ! -path scripts/deploy/cargo-skeleton.sh ! -path scripts/deploy/oa-kache.sh |
+                LC_ALL=C sort | xargs sha256sum)
         fi
     done
 } > "$work/recipe"
