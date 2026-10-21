@@ -687,7 +687,17 @@ fn chunk_attention_reads_cache_and_chunk() {
     let Some(gpu) = Gpu::new() else { return };
     let mut rng = Rng(19);
     let count = 40;
-    for (global, start) in [(false, 600usize), (true, 70)] {
+    let variants: Vec<(&str, usize, usize, usize)> = [
+        ("flint_rows_attention", 8, 4, 256),
+        ("flint_rows_attention_tensor", 64, 32, 128),
+    ]
+    .into_iter()
+    .filter(|v| gpu.pipelines.contains_key(v.0))
+    .collect();
+    for ((global, start), (kernel, per, heads, threads)) in [(false, 600usize), (true, 70)]
+        .into_iter()
+        .flat_map(|case| variants.iter().map(move |v| (case, *v)))
+    {
         let cap = if global { 256 } else { 513 };
         let qkv = rng.vec(count * 5120, 1.0);
         let kv = rng.vec(2 * 4 * cap * 128, 1.0);
@@ -702,14 +712,14 @@ fn chunk_attention_reads_cache_and_chunk() {
         let (qb, kvb, sb) = (gpu.bf16s(&qkv), gpu.bf16s(&kv), gpu.bf16s(&sinks));
         let out = gpu.zeros(count * 4096 * 2);
         gpu.run(|p| {
-            p.kernel("flint_rows_attention")
+            p.kernel(kernel)
                 .buf(0, &qb, 0)
                 .buf(1, &kvb, 0)
                 .buf(2, &sb, 0)
                 .buf(3, &out, 0)
                 .val(4, &params)
                 .val(5, &(WINDOW as u32))
-                .groups((count.div_ceil(8), 4), 256);
+                .groups((count.div_ceil(per), heads), threads);
         });
         let got = read_bf16(&out, count * 4096);
         for row in [0, 17, count - 1] {
@@ -834,7 +844,13 @@ fn attention_speed() {
         count: count as u32,
     };
     for round in 0..3 {
-        for (kernel, threads) in [("flint_rows_attention", 256)] {
+        for (kernel, per, heads, threads) in [
+            ("flint_rows_attention", 8, 4, 256),
+            ("flint_rows_attention_tensor", 64, 32, 128),
+        ] {
+            if !gpu.pipelines.contains_key(kernel) {
+                continue;
+            }
             let command = gpu.queue.new_command_buffer();
             let encoder = command.new_compute_command_encoder();
             let pass = Pass::new(encoder, &gpu.pipelines);
@@ -845,7 +861,7 @@ fn attention_speed() {
                 .buf(3, &out, 0)
                 .val(4, &params)
                 .val(5, &(WINDOW as u32))
-                .groups((count.div_ceil(8), 4), threads);
+                .groups((count.div_ceil(per), heads), threads);
             pass.encoder.borrow().end_encoding();
             command.commit();
             command.wait_until_completed();

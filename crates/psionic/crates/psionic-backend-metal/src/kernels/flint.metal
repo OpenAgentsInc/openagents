@@ -1080,6 +1080,125 @@ kernel void flint_rows_attention(const device bf16* qkv [[buffer(0)]],
     }
 }
 
+
+#if defined(__HAVE_TENSOR__)
+// Causal attention for a chunk on Metal 4 tensor operations. A threadgroup
+// owns one query head and 64 positions. Q is read in place (row stride 5120);
+// each 32-key block of K and V is staged in threadgroup memory. S = Q K^T and
+// O += P V run on the matrix units; two threads per row apply the causal or
+// window mask, the learned sink, and the online softmax between them.
+kernel void flint_rows_attention_tensor(const device bf16* qkv [[buffer(0)]],
+                                        const device bf16* kv [[buffer(1)]],
+                                        const device bf16* sinks [[buffer(2)]],
+                                        device bf16* out [[buffer(3)]],
+                                        constant RowParams& P [[buffer(4)]],
+                                        constant uint& window [[buffer(5)]],
+                                        uint2 tg [[threadgroup_position_in_grid]],
+                                        uint tid [[thread_index_in_threadgroup]]) {
+    using namespace mpp::tensor_ops;
+    threadgroup bf16 ks[32 * 128];
+    threadgroup bf16 vs[32 * 128];
+    threadgroup float sc[64 * 32];
+    threadgroup bf16 pm[64 * 32];
+    threadgroup float m_s[64], l_s[64], f_s[64];
+    uint h = tg.y, g = h / 8, pb = tg.x * 64;
+    if (pb >= P.count) return;
+    uint rows = min(64u, P.count - pb);
+    const float log2e = 1.4426950408889634f;
+    const float scale = 0.08838834764831845f * log2e;
+    if (tid < 64) { m_s[tid] = float(sinks[h]) * log2e; l_s[tid] = 1.0f; }
+    auto tq = tensor<device bf16, dextents<int32_t, 2>, tensor_inline>(
+        (device bf16*)(qkv + size_t(pb) * 5120 + h * 128), dextents<int32_t, 2>(128, 64), array<int32_t, 2>{1, 5120});
+    auto tk = tensor<threadgroup bf16, dextents<int32_t, 2>, tensor_inline>(ks, dextents<int32_t, 2>(128, 32));
+    auto tv = tensor<threadgroup bf16, dextents<int32_t, 2>, tensor_inline>(vs, dextents<int32_t, 2>(128, 32));
+    auto ts = tensor<threadgroup float, dextents<int32_t, 2>, tensor_inline>(sc, dextents<int32_t, 2>(32, 64));
+    auto tp = tensor<threadgroup bf16, dextents<int32_t, 2>, tensor_inline>(pm, dextents<int32_t, 2>(32, 64));
+    constexpr auto qk_desc = matmul2d_descriptor(64, 32, 128, false, true, false, matmul2d_descriptor::mode::multiply);
+    constexpr auto pv_desc = matmul2d_descriptor(64, 128, 32, false, false, false, matmul2d_descriptor::mode::multiply_accumulate);
+    matmul2d<qk_desc, execution_simdgroups<4>> qk;
+    matmul2d<pv_desc, execution_simdgroups<4>> pv;
+    auto o = pv.get_destination_cooperative_tensor<decltype(tp), decltype(tv), float>();
+    #pragma clang loop unroll(full)
+    for (uint16_t i = 0; i < o.get_capacity(); ++i) if (o.is_valid_element(i)) o[i] = 0.0f;
+    uint p_first = P.start + pb, p_last = P.start + pb + rows - 1;
+    uint k_first = P.global ? 0 : (p_first + 1 > window ? p_first + 1 - window : 0);
+    const device bf16* ck = kv + size_t(g) * P.cap * 128;
+    const device bf16* cv = kv + size_t(4 + g) * P.cap * 128;
+    // This thread's half row of the softmax.
+    uint r = tid / 2, part = (tid % 2) * 16;
+    uint pos = P.start + pb + r;
+    uint lo = P.global ? 0 : (pos + 1 > window ? pos + 1 - window : 0);
+    bool live = r < rows;
+    for (uint kb = k_first; kb <= p_last; kb += 32) {
+        for (uint i = tid; i < 32 * 16; i += 128) {
+            uint j = i / 16, c = (i % 16) * 8, t = kb + j;
+            threadgroup bf16* kd = ks + j * 128 + c;
+            threadgroup bf16* vd = vs + j * 128 + c;
+            if (t <= p_last) {
+                const device bf16* kp;
+                const device bf16* vp;
+                if (t >= P.start) {
+                    size_t at = size_t(t - P.start) * 5120 + g * 128 + c;
+                    kp = qkv + 4096 + at; vp = qkv + 4608 + at;
+                } else {
+                    uint slot = P.global ? t : t % P.cap;
+                    kp = ck + size_t(slot) * 128 + c; vp = cv + size_t(slot) * 128 + c;
+                }
+                *(threadgroup uint4*)kd = *(const device uint4*)kp;
+                *(threadgroup uint4*)vd = *(const device uint4*)vp;
+            } else {
+                *(threadgroup uint4*)kd = uint4(0);
+                *(threadgroup uint4*)vd = uint4(0);
+            }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        qk.run(tq, tk, ts);
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        float m = m_s[r], top = -INFINITY;
+        float v[16];
+        for (uint e = 0; e < 16; ++e) {
+            uint key = kb + part + e;
+            float x = sc[r * 32 + part + e] * scale;
+            v[e] = (live && key >= lo && key <= pos) ? x : -INFINITY;
+            top = max(top, v[e]);
+        }
+        top = max(top, simd_shuffle_xor(top, 1));
+        float next = max(m, top);
+        float sum = 0.0f;
+        for (uint e = 0; e < 16; ++e) {
+            float p = metal::exp2(v[e] - next);
+            sum += p;
+            pm[r * 32 + part + e] = bf16(p);
+        }
+        sum += simd_shuffle_xor(sum, 1);
+        if (part == 0) {
+            float factor = metal::exp2(m - next);
+            f_s[r] = factor;
+            l_s[r] = l_s[r] * factor + sum;
+            m_s[r] = next;
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        #pragma clang loop unroll(full)
+        for (uint16_t i = 0; i < o.get_capacity(); ++i) {
+            if (o.is_valid_element(i)) {
+                auto at = o.get_multidimensional_index(i);
+                o[i] *= f_s[at[1]];
+            }
+        }
+        pv.run(tp, tv, o);
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    #pragma clang loop unroll(full)
+    for (uint16_t i = 0; i < o.get_capacity(); ++i) {
+        if (o.is_valid_element(i)) {
+            auto at = o.get_multidimensional_index(i);
+            uint row = at[1], col = at[0];
+            if (row < rows) out[size_t(pb + row) * 4096 + h * 128 + col] = bf16(o[i] / l_s[row]);
+        }
+    }
+}
+#endif
+
 // Top-6 per row: ids and weights into `routes` (row * 6 + rank), and per-expert counts.
 kernel void flint_rows_route(const device float* probs [[buffer(0)]],
                              device uint* ids_out [[buffer(1)]],

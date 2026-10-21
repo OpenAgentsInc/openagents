@@ -298,7 +298,7 @@ fn attention_schedule(global: bool, count: usize) -> (usize, bool, usize) {
 }
 
 /// Kernels present only when the compiler has Metal 4 tensor operations.
-const TENSOR_PIPELINES: &[&str] = &["flint_gemm_q4_tensor"];
+const TENSOR_PIPELINES: &[&str] = &["flint_gemm_q4_tensor", "flint_rows_attention_tensor"];
 
 /// Compile the Flint kernels, with Metal 4 tensor operations when available.
 pub fn compile(device: &Device) -> Result<BTreeMap<&'static str, ComputePipelineState>, String> {
@@ -332,13 +332,42 @@ pub fn compile(device: &Device) -> Result<BTreeMap<&'static str, ComputePipeline
     Ok(pipelines)
 }
 
+fn tensor_allowed() -> bool {
+    std::env::var("PSIONIC_FLINT_TENSOR").map_or(true, |v| v != "0")
+}
+
 /// The prefill matrix kernel: tensor operations unless PSIONIC_FLINT_TENSOR=0.
 fn gemm_kernel(pipelines: &BTreeMap<&'static str, ComputePipelineState>) -> &'static str {
-    let allowed = std::env::var("PSIONIC_FLINT_TENSOR").map_or(true, |v| v != "0");
-    if allowed && pipelines.contains_key("flint_gemm_q4_tensor") {
+    if tensor_allowed() && pipelines.contains_key("flint_gemm_q4_tensor") {
         "flint_gemm_q4_tensor"
     } else {
         "flint_gemm_q4"
+    }
+}
+
+/// Keys a chunk must reach before its attention runs on tensor operations.
+/// Shorter contexts keep the simdgroup kernel, whose arithmetic stays closer
+/// to rec's and costs little there.
+pub const TENSOR_ATTENTION_KEYS: usize = 4096;
+
+/// Chunk attention: the tensor-operation kernel (64 positions of one query
+/// head per threadgroup) or the simdgroup kernel (8 positions of one KV head).
+pub(crate) fn chunk_attention(
+    pipelines: &BTreeMap<&'static str, ComputePipelineState>,
+    start: usize,
+    count: usize,
+) -> (&'static str, (usize, usize), usize) {
+    if tensor_allowed()
+        && start + count > TENSOR_ATTENTION_KEYS
+        && pipelines.contains_key("flint_rows_attention_tensor")
+    {
+        (
+            "flint_rows_attention_tensor",
+            (count.div_ceil(64), HEADS),
+            128,
+        )
+    } else {
+        ("flint_rows_attention", (count.div_ceil(8), KV_HEADS), 256)
     }
 }
 
@@ -1254,14 +1283,15 @@ impl FlintMetal {
                 .groups(((count * 36).div_ceil(8), 1), 256);
             let window = WINDOW as u32;
             let (sb, so) = self.t(layer.sinks);
-            pass.kernel("flint_rows_attention")
+            let (attention, grid, threads) = chunk_attention(&self.pipelines, start, count);
+            pass.kernel(attention)
                 .buf(0, &c.qkv, 0)
                 .buf(1, kv, 0)
                 .buf(2, sb, so)
                 .buf(3, &c.a, 0)
                 .val(4, &rows)
                 .val(5, &window)
-                .groups((count.div_ceil(8), KV_HEADS), 256);
+                .groups(grid, threads);
             pass.kernel("flint_rows_store_kv")
                 .buf(0, &c.qkv, 0)
                 .buf(1, kv, 0)
