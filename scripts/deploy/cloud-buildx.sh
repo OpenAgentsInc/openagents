@@ -32,9 +32,17 @@ docker buildx create --name oa-deploy --driver docker-container \
 started=$(date +%s)
 # First the dependency layers, from the registry cache or compiled. The
 # image's stages start from them, so nothing waits that wouldn't anyway.
+first=$(mktemp)
 docker buildx build --progress=plain --allow network.host -f "$dockerfile" --target deps \
-    --cache-from "type=registry,ref=$cache" .
+    --cache-from "type=registry,ref=$cache" . 2>&1 | tee "$first"
 echo "cloud-buildx: dependency layers took $(( $(date +%s) - started )) s"
+# Every dependency layer came from the registry: nothing to export. (An
+# export beside the image build then also kept the image build from using
+# the registry's layers, so it compiled them again, #12427.) A compile in
+# the dependency stages prints oa-kache's upload line.
+export_cache=1
+if ! grep -q 'oa-kache: uploads finished' "$first"; then export_cache=; fi
+rm -f "$first"
 # Then the export, in the background while the image builds: every layer it
 # names is now local, so it only compresses and uploads. Compressing the
 # multi-gigabyte target directories took 400 to 800 s with gzip before the
@@ -42,18 +50,23 @@ echo "cloud-buildx: dependency layers took $(( $(date +%s) - started )) s"
 # no longer waits for it. (Started together with the dependency build, the
 # export raced it and sometimes left the compiled layers out.)
 log=$(mktemp)
-docker buildx build --progress=plain --allow network.host -f "$dockerfile" --target deps \
-    --cache-from "type=registry,ref=$cache" \
-    --cache-to "type=registry,ref=$cache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd,ignore-error=true" \
-    . > "$log" 2>&1 &
-deps=$!
+deps=
+if [ -n "$export_cache" ]; then
+    docker buildx build --progress=plain --allow network.host -f "$dockerfile" --target deps \
+        --cache-from "type=registry,ref=$cache" \
+        --cache-to "type=registry,ref=$cache,mode=max,image-manifest=true,oci-mediatypes=true,compression=zstd,ignore-error=true" \
+        . > "$log" 2>&1 &
+    deps=$!
+fi
 docker buildx build --progress=plain --allow network.host -f "$dockerfile" \
     --cache-from "type=registry,ref=$cache" \
     --provenance=false --sbom=false "$@" -t "$image" --push .
 echo "cloud-buildx: the image took $(( $(date +%s) - started )) s"
 # The cache export never fails the build: a stale cache only makes the next
 # build slower.
-if wait "$deps"; then
+if [ -z "$deps" ]; then
+    echo "cloud-buildx: the dependency layers came from the registry cache; nothing to export"
+elif wait "$deps"; then
     grep 'preparing build cache for export .*done' "$log" || true
     echo "cloud-buildx: the dependency cache export finished $(( $(date +%s) - started )) s after the start"
 else

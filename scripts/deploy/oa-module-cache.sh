@@ -119,8 +119,11 @@ widen() {
 }
 
 # The digest of the files under each listed path (a file or a directory),
-# with a line for each listed path that no longer exists.
-digest_inputs() { # LIST
+# with a line for each listed path that doesn't exist. With BEFORE (the
+# sorted list of paths that existed before the build), files the build
+# wrote into the source tree are left out (pylon-card's patched wgpu, for
+# one): the next build looks its key up before they exist.
+digest_inputs() { # LIST [BEFORE]
     while IFS= read -r p; do
         if [ -d "$ROOT/$p" ]; then
             (cd "$ROOT" && find "$p" -path '*/target' -prune -o -type f -print)
@@ -129,7 +132,11 @@ digest_inputs() { # LIST
         else
             echo "missing $p" >> "$work/missing"
         fi
-    done < "$1" | sort -u > "$work/files"
+    done < "$1" | LC_ALL=C sort -u > "$work/files"
+    if [ -n "${2:-}" ]; then
+        LC_ALL=C comm -12 "$work/files" "$2" > "$work/files.before"
+        mv "$work/files.before" "$work/files"
+    fi
     {
         (cd "$ROOT" && tr '\n' '\0' < "$work/files" | xargs -0 sha256sum)
         cat "$work/missing" 2> /dev/null || true
@@ -150,6 +157,8 @@ if fetch "$prefix/inputs" "$work/inputs" && [ -s "$work/inputs" ]; then
 fi
 
 # Build, then store the build and the inputs Cargo reported.
+(cd "$ROOT" && find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -print |
+    sed 's|^\./||' | LC_ALL=C sort) > "$work/before"
 : > "$work/stamp"
 sleep 1
 "$@"
@@ -172,13 +181,13 @@ xargs cat < "$work/depinfo" | sed 's/\\$//' | tr ' ' '\n' | sed -n 's/:$//; /^\/
             "$root_real"/target/* | "$root_real"/target-*/*) ;;
             "$root_real"/*) widen "${r#"$root_real"/}" ;;
         esac
-    done | sort -u > "$work/inputs"
+    done | LC_ALL=C sort -u | LC_ALL=C comm -12 - "$work/before" > "$work/inputs"
 if [ ! -s "$work/inputs" ]; then
     say "built in $(( built - started )) s; no source inputs found, so the build is not stored"
     exit 0
 fi
 : > "$work/missing"
-inputs=$(digest_inputs "$work/inputs")
+inputs=$(digest_inputs "$work/inputs" "$work/before")
 dirs=$(printf '%s' "$outdirs" | tr ',' ' ')
 # shellcheck disable=SC2086
 if tar -czf "$work/build.tar.gz" -C / $(for d in $dirs; do printf '%s ' "${d#/}"; done) &&
