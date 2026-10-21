@@ -59,7 +59,7 @@ setup() {
 qualify() {
   local out=$1; shift
   timeout 21600 $BIN qualify --weights $ROOT/weights --manifest "sha256:$MANIFEST" \
-    --oracle $ROOT/oracle --out "$out" --max-context 20608 "$@" > "$out.log" 2>&1 \
+    --oracle $ROOT/oracle --out "$out" --max-context 2560 "$@" > "$out.log" 2>&1 \
     || log "qualify $out exited $?"
   gcloud storage rsync -q -r -x 'record/.*\.u32$' $ROOT/out "$RESULTS" || true
 }
@@ -71,7 +71,9 @@ qualify() {
 run-gpu() {
   : "${MANIFEST:?}" "${RESULTS:?}"
   local name
-  for case in p1-chat-thinking p2-code e-window-127 e-window-128 e-window-129 e-engram p3-2k p4-20k; do
+  # p4-20k is unsupported: the unchunked profile's checked budget is 2,872
+  # positions on a four-stage split, so it stays missing coverage.
+  for case in p1-chat-thinking p2-code e-window-127 e-window-128 e-window-129 e-engram p3-2k; do
     name=calibration-$case
     gcloud storage ls "$RESULTS/$name/report.json" >/dev/null 2>&1 && continue
     qualify $ROOT/out/$name --observe --gpus 0,1,2,3 --cases $case
