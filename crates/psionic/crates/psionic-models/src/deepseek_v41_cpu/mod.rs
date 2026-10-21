@@ -11,6 +11,7 @@
 pub mod attention;
 pub mod block;
 pub mod engram;
+pub mod generation;
 pub mod hyperconnections;
 pub mod moe;
 pub mod projection;

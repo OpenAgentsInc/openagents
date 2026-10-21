@@ -145,6 +145,16 @@ def transformer():
     write('transformer',transformer_forward([0,3,4,5]))
 
 
+def greedy():
+    prompt=[0,3,4,5];tokens=[];logits=[]
+    for _ in range(3):
+        row=transformer_forward(prompt+tokens)['logits'];logits.append(row)
+        tokens.append(int(np.argmax(row)))
+    assert 7 not in tokens
+    write('greedy',dict(prompt=prompt,tokens=tokens,logits=logits))
+
+
 if __name__=='__main__':
     block()
     transformer()
+    greedy()

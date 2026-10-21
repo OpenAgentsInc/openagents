@@ -830,7 +830,7 @@ independent implementation work. The next children of #12369 are:
 | --- | --- | --- |
 | [#12385](https://github.com/OpenAgentsInc/openagents/issues/12385) | Complete text-block wiring | Named mHC projections and pre-mix propagation, collapse/norm/expand, routed/shared experts, and Engram lookup/gating with explicit arithmetic modes. Independent nonuniform block fixtures check intermediate residuals, attention input/mixes, router choices/weights, and output. |
 | [#12386](https://github.com/OpenAgentsInc/openagents/issues/12386) | Full 40-layer CPU transformer | Embedding, both Engram layers, all 40 text blocks, final collapse/norm/head, explicit selected-layer traces, and request-owned state. Full synthetic-model logits and intermediate residuals/routing match independent NumPy equations. |
-| [#12387](https://github.com/OpenAgentsInc/openagents/issues/12387) | Greedy decoding and pinned checkpoint runner | Filed; follows #12386. |
+| [#12387](https://github.com/OpenAgentsInc/openagents/issues/12387) | Greedy decoding and pinned checkpoint runner | Deterministic argmax, EOS/output/context stops, cooperative cancellation, fresh-request isolation, and an offline pinned-checkpoint Rust example. Complete tiny-model tokens/logits match NumPy; 57 CPU tests and two runner argument tests pass. |
 
 The [transformer fixture generator](../../scripts/dev/deepseek-v41-transformer-fixtures.py)
 uses independent NumPy equations from the pinned public reference. Block
@@ -853,3 +853,74 @@ n-gram history, and positions. Invalid tokens, trace layers, and context lengths
 are rejected before mutation. The forward result retains only the last token's
 logits unless the caller explicitly requests selected-layer activation traces.
 These are complete tiny-model checks, not original-weight qualification.
+
+The greedy API starts each request from empty KV/indexer/hash state and uses the
+smallest token ID for equal finite maxima. It rejects nonfinite logits and
+invalid prompts, never truncates the prompt, and reports `eos`, `output_limit`,
+`context_limit`, or `cancelled`. Generated IDs include EOS. The prompt plus
+selected output cannot exceed the caller's context capacity; EOS wins when stop
+conditions coincide, followed by the output limit. A zero output budget does
+no forward work. `processed_tokens` counts tokens passed through all blocks;
+the last selected token needs no further forward and is excluded. Cancellation
+is checked between prefill chunks and decode calls, not inside a matrix
+operation. Errors preserve the previous request, while successful stops keep
+this request's processed state, including a cancelled partial prefill.
+
+All 57 accumulated CPU tests pass. The independent NumPy model predicts
+`[5, 0, 6]` for the fixed synthetic prompt `[0, 3, 4, 5]`; Rust matches those
+IDs and all three full logit vectors within `2e-4 + 3e-5 * abs(expected)`.
+Complete-model checks also cover EOS, ties, output/context limits, zero budget,
+cancellation before/during prefill and during decode, repeated requests, and
+rollback after a decode failure. Two offline runner tests reject conflicting,
+duplicate, unknown, missing, and out-of-range arguments. The runner's `--help`
+path runs without a checkpoint.
+
+From the repository root, use the existing shared target for the Psionic Cargo
+workspace, then run these focused checks:
+
+```sh
+cd crates/psionic
+: "${CARGO_TARGET_DIR:?Set the existing shared Psionic workspace target}"
+. ../../scripts/dev/cargo-build-env.sh
+export CARGO_INCREMENTAL=0
+cargo test -p psionic-models --lib deepseek_v41_cpu
+cargo test -p psionic-models --example deepseek_v41_cpu_generate
+cargo run -p psionic-models --example deepseek_v41_cpu_generate -- --help
+```
+
+For later original-weight checks, keep all 48 full shards and the pinned
+`tokenizer.json` and `tokenizer_config.json` in `V41_CHECKPOINT`. These commands
+are documented for that qualification; they were not run on original weights
+in this implementation phase:
+
+```sh
+cargo run --release -p psionic-models --example deepseek_v41_cpu_generate -- \
+  "$V41_CHECKPOINT" --check-only --verify-sha256
+cargo run --release -p psionic-models --example deepseek_v41_cpu_generate -- \
+  "$V41_CHECKPOINT" --prompt 'Write a short Rust function that adds two integers.' \
+  --context 4096 --max-tokens 32 --prefill-chunk 128 --verify-sha256
+cargo run --release -p psionic-models --example deepseek_v41_cpu_generate -- \
+  "$V41_CHECKPOINT" --prompt-tokens "$V41_PROMPT_IDS" \
+  --context 32768 --max-tokens 32 --prefill-chunk 128 --verify-sha256
+```
+
+`--prompt` uses the existing DS1 single-user chat renderer and special-token
+encoding. `--prompt-tokens` reads a JSON array of raw token IDs, so oracle cases
+can preserve their exact thinking/template input. The JSON report includes the
+full checkpoint/tokenizer identity, per-shard hash-verification status, arithmetic
+mode, limits, generated IDs/selected logits/text, stop reason, processed counts,
+and preparation/generation timings. SHA-256 verification reads about 510 GB;
+without the flag, the runner checks the pinned index, shard sizes/headers, tensor
+map, and tokenizer but reports the shard hashes as unverified. `--check-only`
+checks metadata/tokenizer and optional hashes without building a token map or
+running generation.
+
+The CPU implementation performs scalar row-at-a-time projections and positional
+checkpoint reads. It does not expand the full checkpoint into float32 RAM, but
+original-weight memory, speed, and numerical behavior remain unmeasured here.
+The oracle agent has now completed #12371 in `fcfc9cf1ab`, including real B200
+outputs. Its own cached decode and teacher-forced replay differ numerically and
+include an argmax flip; real router ties also occur. Future comparisons must name
+the matching reference mode and tie cases, retain the observed errors and token
+mismatches, and establish measured numerical bounds before qualification. The
+new CPU runner does not claim oracle parity, native CUDA, or Pylon serving.

@@ -203,3 +203,10 @@ numerical wiring, complete 40-layer text-transformer execution, and bounded
 greedy decoding with a pinned checkpoint runner. They are implemented serially
 without taking #12371's oracle claim. See the
 [CPU transformer status](../psionic/deepseek-v41-native.md#full-cpu-transformer-implementation-phase-2026-10-20).
+
+The #12385–#12387 implementation is complete: all 40 blocks, both Engram layers,
+final logits, bounded greedy generation, and an offline pinned-checkpoint runner.
+Local verification passes 57 accumulated CPU tests and two runner argument tests;
+the independent complete-model NumPy fixture checks residuals, routing, logits,
+and generated IDs. Original-weight CPU/oracle comparison and CUDA/serving gates
+remain separate; #12371 has published its oracle evidence in `fcfc9cf1ab`.

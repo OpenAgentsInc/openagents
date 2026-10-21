@@ -536,7 +536,7 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 - #12385–#12387: on the original pinned V4.1 checkpoint, compare the complete
   CPU transformer's selected block residuals, router/hash choices, full logits,
-  greedy token IDs, and complete final answers with #12371's teacher-forced
+  greedy token IDs, and complete final answers with #12371's mode-matched
   oracle. Check prefill/chunk/replay and reset behavior at numerical boundaries,
   retain hashes and timings, and report any divergence. Tiny synthetic models
   qualify composition only; they do not qualify original-weight CPU or CUDA
