@@ -61,14 +61,22 @@ qualify() {
   gcloud storage rsync -q -r -x 'record/.*\.u32$' $ROOT/out "$RESULTS" || true
 }
 
-# GPU calibration: the eight cases with observations, then the four
-# negative controls on the chat prompt.
+# GPU calibration: each case with observations, then the four negative
+# controls on the chat prompt. One group per run, so a spot machine that is
+# reclaimed loses only the run in progress: a run whose report is already
+# under RESULTS is skipped.
 run-gpu() {
   : "${MANIFEST:?}" "${RESULTS:?}"
-  qualify $ROOT/out/calibration --observe --gpus 0,1,2,3 \
-    --cases p1-chat-thinking,p2-code,e-window-127,e-window-128,e-window-129,e-engram,p3-2k,p4-20k
+  local name
+  for case in p1-chat-thinking p2-code e-window-127 e-window-128 e-window-129 e-engram p3-2k p4-20k; do
+    name=calibration-$case
+    gcloud storage ls "$RESULTS/$name/report.json" >/dev/null 2>&1 && continue
+    qualify $ROOT/out/$name --observe --gpus 0,1,2,3 --cases $case
+  done
   for control in wrong-weights wrong-routing wrong-rope stale-cache; do
-    qualify $ROOT/out/control-$control --gpus 0,1,2,3 --cases p1-chat-thinking --control $control
+    name=control-$control
+    gcloud storage ls "$RESULTS/$name/report.json" >/dev/null 2>&1 && continue
+    qualify $ROOT/out/$name --gpus 0,1,2,3 --cases p1-chat-thinking --control $control
   done
   log "GPU runs done"
 }
