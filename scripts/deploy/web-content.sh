@@ -7,24 +7,29 @@
 #   livehost deploy OUTDIR --tenant openagents --channel staging ...
 #
 # Usage: scripts/deploy/web-content.sh OUTDIR
+#
+# WEB_CONTENT_SOURCE names another tree to take the content from, such as
+# a commit `scripts/deploy/web.sh stage` exported; the bundling tool still
+# builds from this checkout, so its build stays warm (#12427).
 
 set -euo pipefail
 
 out="${1:?usage: web-content.sh OUTDIR}"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-web="$root/crates/openagents-web"
+source_root="${WEB_CONTENT_SOURCE:-$root}"
+web="$source_root/crates/openagents-web"
 
 rm -rf "$out"
 mkdir -p "$out/static"
 cp -R "$web/content" "$out/content"
 cp "$web/static/fonts.css" "$web/static/legacy-demo.css" "$out/static/"
 cargo run --quiet --locked --manifest-path "$root/Cargo.toml" -p openagents-ui \
-  --bin openagents-ui-bundle -- "$out" "$root/crates/openagents-ui"
+  --bin openagents-ui-bundle -- "$out" "$source_root/crates/openagents-ui"
 cat > "$out/site.json" <<JSON
 {
   "tenant": "openagents",
   "guests": "$web/components",
-  "guest_inputs": ["$root/crates/livehost/wit", "$root/crates/pylons-view"],
+  "guest_inputs": ["$source_root/crates/livehost/wit", "$source_root/crates/pylons-view"],
   "handlers": {"pylons-list": "pylons-list"}
 }
 JSON

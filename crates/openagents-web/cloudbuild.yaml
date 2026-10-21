@@ -7,6 +7,27 @@
 #
 # See docs/deployment/openagents-web.md for the deploy and the rollback.
 steps:
+  # The source, when _SOURCE_COMMIT names a commit on GitHub: fetched here
+  # from the public repository and cut down by crates/openagents-web/web.gcloudignore, as
+  # `gcloud builds submit --ignore-file` would, instead of uploaded from the
+  # machine that runs the deploy (about 330 MB, 1 to 10 minutes on a home
+  # connection, #12427). Without it, the build uses the uploaded source.
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        if [ -z "${_SOURCE_COMMIT}" ]; then exit 0; fi
+        started=$$(date +%s)
+        mkdir -p /tmp/src
+        curl -fsSL --retry 3 "https://codeload.github.com/OpenAgentsInc/openagents/tar.gz/${_SOURCE_COMMIT}" |
+          tar -xz -C /tmp/src --strip-components=1
+        cd /tmp/src
+        cp crates/openagents-web/web.gcloudignore .gcloudignore
+        gcloud meta list-files-for-upload > /tmp/files
+        tar -cf - -T /tmp/files | tar -xf - -C /workspace
+        echo "source: $$(wc -l < /tmp/files) files of ${_SOURCE_COMMIT} in $$(( $$(date +%s) - started )) s"
   # The pinned medieval kit pack (KIT_SHA256 in
   # crates/verse-zone-everglade/src/zones/everglade_pack/kit.rs), from the
   # private bucket into the build context, so /everglade/kit/ serves it.
@@ -75,6 +96,8 @@ steps:
       - OPENAGENTS_COMMIT=${_COMMIT}
 substitutions:
   _TAG: latest
+  # A commit on GitHub to fetch the source from; empty to use the upload.
+  _SOURCE_COMMIT: ""
   # The full commit the context was exported from (scripts/deploy/web.sh).
   _COMMIT: unknown
 options:

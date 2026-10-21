@@ -1349,9 +1349,28 @@ Before, a build spent 1,900 to 2,800 s in the GPUI stage, which built about
 50 modules one at a time and compressed each one three times, and 400 to
 800 s exporting the dependency cache before the image could start.
 
-A deploy also uploads the build context from the machine that runs
-`web.sh` (about 330 MB compressed), which takes 1 to 10 minutes on a home
-connection and isn't counted above.
+### Source and deploy paths (#12427)
+
+`web.sh stage` no longer uploads the build context when REF is on GitHub.
+The web and stack builds run with `--no-source` and `_SOURCE_COMMIT`, and
+their first step downloads that commit from the public repository and cuts
+it down with the same ignore file (85 s in build `d7cca760`). An upload of
+about 330 MB from a home connection took 1 to 10 minutes and sometimes
+timed out. `WEB_SOURCE=upload` forces the upload, and a commit that isn't
+on GitHub is still uploaded.
+
+`web.sh stage` picks the cheapest path from the commit staging runs (named
+in its serving revision) to REF:
+
+- **Content:** every change modifies a file the server reads from the
+  livehost content tier (a guide in `content/docs/`, an API guide, the terms
+  or privacy text, `static/fonts.css`, `static/legacy-demo.css`, or
+  `crates/openagents-ui/static/`). `web.sh` runs `livehost.sh deploy` with
+  REF's content (`WEB_CONTENT_SOURCE`), waits until staging serves a changed
+  guide, and runs the smoke. No image is built and no revision is made.
+- **Image:** anything else. Unchanged modules come from the module cache and
+  an unchanged server from kache, and `web.sh` prints which modules were
+  rebuilt. `WEB_PATH=image` always takes this path.
 
 ## 2026-10-21: content deploys from livehost on staging (#12435)
 

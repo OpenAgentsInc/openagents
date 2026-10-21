@@ -9,10 +9,14 @@
 #   scripts/deploy/web.sh shift-staging REVISION [SPEC]  # same handoff on staging
 #   scripts/deploy/web.sh rollback [REVISION]
 #
-# stage: exports REF with `git archive` (a dirty checkout never leaks into
+# stage: when every change since staging's commit is content the server
+# reads from livehost, deploys that content alone (scripts/deploy/livehost.sh)
+# and smokes it; WEB_PATH=image skips that check (#12427). Otherwise it
+# exports REF with `git archive` (a dirty checkout never leaks into
 # the image), builds the web image (crates/openagents-web/cloudbuild.yaml,
 # tag stg-SHA) and the staging stack image (deploy/staging/cloudbuild.yaml,
-# tag SHA) in parallel, skipping either when that tag is already in
+# tag SHA) in parallel, from GitHub when REF is there (WEB_SOURCE=upload
+# uploads the export instead), skipping either when that tag is already in
 # Artifact Registry, deploys both by digest to openagents-web-1-staging with
 # REF's deploy/staging/render.py, and runs scripts/smoke/staging.sh.
 # SMOKE_REF selects scripts/smoke from another commit; it defaults to REF.
@@ -141,6 +145,66 @@ export_context() {
     (umask 022; git -C "$ROOT" archive "$1" | tar -x -C "$2")
 }
 
+# Whether COMMIT is on GitHub (on a fetched origin branch), so Cloud Build
+# can fetch the source itself instead of an upload from this machine.
+on_github() {
+    git -C "$ROOT" branch -r --contains "$1" 2> /dev/null | grep -q 'origin/'
+}
+
+# Whether Cloud Build fetches COMMIT's source from GitHub (_SOURCE_COMMIT in
+# the build configs, #12427) instead of an upload of the exported context
+# (about 330 MB). WEB_SOURCE=upload always uploads.
+fetch_source() { # COMMIT
+    [ "${WEB_SOURCE:-auto}" != upload ] && on_github "$1"
+}
+
+# The commit staging's web container was built from: the serving
+# revision is named $STAGING-SHA-HHMMSS. Empty when it can't be told.
+staging_commit() {
+    rev=$(SERVICE=$STAGING; serving_revision 2> /dev/null || true)
+    short=$(printf '%s' "${rev#"$STAGING"-}" | cut -c1-10)
+    git -C "$ROOT" rev-parse -q --verify "$short^{commit}" 2> /dev/null || true
+}
+
+# Whether every change from FROM to TO is a modified file the server reads
+# from the livehost content tier (crates/openagents-web/src/live_content.rs):
+# a guide, an API guide, the terms or privacy text, the two shared
+# stylesheets, or the design-language bundle's static files. A new or
+# deleted file, or anything else, needs a new image.
+content_only() { # FROM TO
+    changes=$(git -C "$ROOT" diff --name-status "$1" "$2") || return 1
+    [ -n "$changes" ] || return 1
+    printf '%s\n' "$changes" | awk '
+        $1 != "M" { bad = 1 }
+        $1 == "M" && $2 !~ /^crates\/openagents-web\/content\/docs\/(api\/)?[a-z0-9-]+\.md$/ \
+            && $2 !~ /^crates\/openagents-web\/content\/legal\/(terms|privacy)\.md$/ \
+            && $2 !~ /^crates\/openagents-web\/static\/(fonts|legacy-demo)\.css$/ \
+            && $2 !~ /^crates\/openagents-ui\/static\// { bad = 1 }
+        END { exit bad }'
+}
+
+# The content path: deploy REF's content tier to the livehost staging
+# pointer, which the staging server follows without a new revision, wait
+# until a changed guide is served, and run the smoke.
+stage_content() { # FULL SHA CTX FROM
+    t=$(now)
+    say "  content only since staging's $(printf '%s' "$4" | cut -c1-10): deploying the livehost content tier"
+    WEB_CONTENT_SOURCE=$3 "$ROOT/scripts/deploy/livehost.sh" deploy >&2
+    took "content deploy" "$t"
+    doc=$(git -C "$ROOT" diff --name-only "$4" "$1" |
+        sed -n 's|^crates/openagents-web/content/docs/\([a-z0-9-]*\)\.md$|\1|p' | head -n 1)
+    if [ -n "$doc" ]; then
+        t=$(now)
+        deadline=$(( $(now) + 120 ))
+        until curl -fsS "https://staging.openagents.com/docs/$doc.md" 2> /dev/null |
+            cmp -s - "$3/crates/openagents-web/content/docs/$doc.md"; do
+            [ "$(now)" -lt "$deadline" ] || { say "Staging did not serve the new /docs/$doc.md within 120 s"; exit 1; }
+            sleep 2
+        done
+        took "staging serves /docs/$doc" "$t"
+    fi
+}
+
 stage() {
     keep=
     if [ "${1:-}" = --keep-spec ]; then keep=1; shift; fi
@@ -153,15 +217,40 @@ stage() {
     ctx=$(mktemp -d "${TMPDIR:-/tmp}/oa-stage-$sha.XXXXXX")
     export_context "$full" "$ctx"
     say "stage $sha ($ref) from $ctx"
+    # The cheapest path (#12427): a change to content the server reads from
+    # livehost deploys that content alone; anything else builds the image,
+    # where unchanged browser modules come from the module cache and an
+    # unchanged server from the compile cache. WEB_PATH=image always builds.
+    from=
+    if [ -z "$keep" ] && [ "${WEB_PATH:-auto}" != image ]; then from=$(staging_commit); fi
+    if [ -n "$from" ] && content_only "$from" "$full"; then
+        stage_content "$full" "$sha" "$ctx" "$from"
+        t=$(now)
+        smoke=0
+        "$ctx/scripts/smoke/staging.sh" || smoke=$?
+        took smoke "$t"
+        took "stage total" "$started"
+        rm -rf "$ctx"
+        [ "$smoke" -eq 0 ] || { say "The staging smoke failed after the content deploy; roll back with scripts/deploy/livehost.sh rollback."; exit 1; }
+        say "Staging serves $sha's content. Production follows no livehost pointer yet; ship it with the next image."
+        return 0
+    fi
+    say "  path: image (staging runs ${from:-an unknown commit})"
     web=$REPO/openagents-web:stg-$sha
     stack=$REPO/openagents-stack:$sha
     t=$(now)
     pids=
     if [ -z "$(digest "$web")" ]; then
-        (cd "$ctx" && g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
-            --config crates/openagents-web/cloudbuild.yaml \
-            --ignore-file crates/openagents-web/web.gcloudignore \
-            --substitutions "_TAG=stg-$sha,_COMMIT=$full" . > "$STATE/build-web-$sha.log" 2>&1) &
+        if fetch_source "$full"; then
+            (cd "$ctx" && g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
+                --config crates/openagents-web/cloudbuild.yaml --no-source \
+                --substitutions "_TAG=stg-$sha,_COMMIT=$full,_SOURCE_COMMIT=$full" > "$STATE/build-web-$sha.log" 2>&1) &
+        else
+            (cd "$ctx" && g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
+                --config crates/openagents-web/cloudbuild.yaml \
+                --ignore-file crates/openagents-web/web.gcloudignore \
+                --substitutions "_TAG=stg-$sha,_COMMIT=$full" . > "$STATE/build-web-$sha.log" 2>&1) &
+        fi
         pids="$pids $!"
         say "  building $web (log: $STATE/build-web-$sha.log)"
     else
@@ -170,10 +259,16 @@ stage() {
     if [ -n "$keep" ]; then
         say "  --keep-spec: the live staging stack image stays"
     elif [ -z "$(digest "$stack")" ]; then
-        (cd "$ctx" && g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
-            --config deploy/staging/cloudbuild.yaml \
-            --ignore-file deploy/staging/stack.gcloudignore \
-            --substitutions "_TAG=$sha" . > "$STATE/build-stack-$sha.log" 2>&1) &
+        if fetch_source "$full"; then
+            (cd "$ctx" && g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
+                --config deploy/staging/cloudbuild.yaml --no-source \
+                --substitutions "_TAG=$sha,_SOURCE_COMMIT=$full" > "$STATE/build-stack-$sha.log" 2>&1) &
+        else
+            (cd "$ctx" && g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
+                --config deploy/staging/cloudbuild.yaml \
+                --ignore-file deploy/staging/stack.gcloudignore \
+                --substitutions "_TAG=$sha" . > "$STATE/build-stack-$sha.log" 2>&1) &
+        fi
         pids="$pids $!"
         say "  building $stack (log: $STATE/build-stack-$sha.log)"
     else
@@ -183,6 +278,12 @@ stage() {
         wait "$pid" || { say "A build failed; see the logs above."; exit 1; }
     done
     took build "$t"
+    # What the web build reused and what it built (scripts/deploy/oa-module-cache.sh).
+    if [ -f "$STATE/build-web-$sha.log" ]; then
+        reused=$(grep -c 'oa-module-cache [a-z0-9-]*: reused' "$STATE/build-web-$sha.log" || true)
+        built=$(sed -n 's/.*oa-module-cache \([a-z0-9-]*\): built in \([0-9]*\) s.*/\1 (\2 s)/p' "$STATE/build-web-$sha.log" | sort -u | tr '\n' ' ')
+        say "  browser modules: $reused reused; built: ${built:-none}"
+    fi
     web_digest=$(digest "$web")
     [ -n "$web_digest" ] || { say "No digest for the web image"; exit 1; }
     t=$(now)

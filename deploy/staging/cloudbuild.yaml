@@ -9,6 +9,27 @@
 # The site's image is the ordinary openagents-web build
 # (crates/openagents-web/cloudbuild.yaml). See deploy/staging/README.md.
 steps:
+  # The source, when _SOURCE_COMMIT names a commit on GitHub: fetched here
+  # from the public repository and cut down by deploy/staging/stack.gcloudignore, as
+  # `gcloud builds submit --ignore-file` would, instead of uploaded from the
+  # machine that runs the deploy (about 330 MB, 1 to 10 minutes on a home
+  # connection, #12427). Without it, the build uses the uploaded source.
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -euo pipefail
+        if [ -z "${_SOURCE_COMMIT}" ]; then exit 0; fi
+        started=$$(date +%s)
+        mkdir -p /tmp/src
+        curl -fsSL --retry 3 "https://codeload.github.com/OpenAgentsInc/openagents/tar.gz/${_SOURCE_COMMIT}" |
+          tar -xz -C /tmp/src --strip-components=1
+        cd /tmp/src
+        cp deploy/staging/stack.gcloudignore .gcloudignore
+        gcloud meta list-files-for-upload > /tmp/files
+        tar -cf - -T /tmp/files | tar -xf - -C /workspace
+        echo "source: $$(wc -l < /tmp/files) files of ${_SOURCE_COMMIT} in $$(( $$(date +%s) - started )) s"
   # BuildKit, as in the web build: independent stages run in parallel
   # (docs/deployment/2026-10-09-faster-deploys.md), and the dependency
   # layers are kept in a registry cache (scripts/deploy/cloud-buildx.sh,
@@ -22,6 +43,8 @@ steps:
       - openagents-stack
 substitutions:
   _TAG: latest
+  # A commit on GitHub to fetch the source from; empty to use the upload.
+  _SOURCE_COMMIT: ""
 options:
   machineType: E2_HIGHCPU_32
   logging: CLOUD_LOGGING_ONLY
