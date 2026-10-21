@@ -27,15 +27,23 @@ pub enum Basis {
     ListPrice,
     /// The cost the provider reported it billed.
     Billed,
+    /// A model served on this computer, such as Flint through `rec`: no
+    /// one bills for it, so its dollar cost is zero and unpriced.
+    Local,
+    /// A free job on the OpenAgents compute network (a Pylon): no one
+    /// bills for it.
+    FreeNetwork,
 }
 
 impl Basis {
-    /// `list_price` or `billed`.
+    /// `list_price`, `billed`, `local`, or `free_network`.
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
             Basis::ListPrice => "list_price",
             Basis::Billed => "billed",
+            Basis::Local => "local",
+            Basis::FreeNetwork => "free_network",
         }
     }
 }

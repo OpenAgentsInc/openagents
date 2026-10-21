@@ -13,6 +13,7 @@ use microcoder::state::State;
 use microcoder::{MODEL, STRONG_MODEL, tbench};
 
 const USAGE: &str = "usage: microcoder <terminal-bench-task> [options]
+       microcoder \"TASK IN WORDS\" [--dir DIRECTORY] [options]
        microcoder kb <command> ... (microcoder kb --help lists the commands)
        microcoder xp <command> ... (microcoder xp --help lists the commands)
        microcoder repository --grant FILE [--store DIRECTORY] [--detach]
@@ -22,6 +23,12 @@ Runs Microcoder on a Terminal-Bench 4 task and streams every step: Jev's
 judgments, the model's rationale and commands, each command's output, and
 the cost. Then it runs the task's own tests and prints the reward beside
 Fable 5.1 low's time and cost on the same task.
+
+A task in words (anything with a space in it), or any task with --dir, runs
+in a directory on this computer instead: the current one, or --dir. Its
+commands run inside a sandbox that writes only that directory and a private
+temporary one, with no acceptance tests and no knowledge base. The run ends
+when the model finishes; exit code 0 means it said it finished.
 
 Options:
   --model SLUG       the model (default gpt-6.1-sol)
@@ -39,7 +46,23 @@ Options:
                      default model names map to opus), or local (the chain
                      Coder's microcoder tool uses: the Codex login, then the
                      Claude Code login, then the OpenAgents gateway, falling
-                     over mid-task; --model sets the Codex model)
+                     over mid-task; --model sets the Codex model), or
+                     openai-compatible (any OpenAI-compatible server at
+                     --base-url, such as Flint through rec; name its model
+                     with --model), or pylon (a free job on the OpenAgents
+                     compute network for each step; --model defaults to
+                     deepseek-v4.1-flash)
+  --base-url URL     openai-compatible: the server, such as
+                     http://127.0.0.1:11500/v1
+  --token-file FILE  openai-compatible: a file holding the bearer, read before
+                     every call; without one, no authentication is sent
+  --response-format F  openai-compatible: schema (strict json_schema), text
+                     (JSON in the reply's text), or auto (schema until the
+                     server refuses or ignores it, then text; the default)
+  --relay URL        pylon: the relay (default wss://relay.openagents.com)
+  --pylon-key WHICH  pylon: fresh (a new buyer key for this run, the default)
+                     or home (the Pylon home's buyer.key)
+  --dir DIRECTORY    run the task in DIRECTORY on this computer
   --effort LEVEL     low, medium, or high (default medium); claude also takes
                      xhigh and max
   --strong-model SLUG  the model that writes the acceptance tests on
@@ -113,8 +136,25 @@ struct Options {
     run_dir: Option<std::path::PathBuf>,
     container_name: Option<String>,
     model: String,
-    /// `codex`, `openrouter`, `door`, `vertex`, or `claude`.
+    /// `codex`, `openrouter`, `door`, `vertex`, `claude`, `local`,
+    /// `openai-compatible`, or `pylon`.
     provider: String,
+    /// Whether `--model` named the model.
+    model_named: bool,
+    /// `--base-url`, for `openai-compatible`.
+    base_url: Option<String>,
+    /// `--token-file`, for `openai-compatible`.
+    token_file: Option<std::path::PathBuf>,
+    /// `--response-format`, for `openai-compatible`.
+    response_format: microcoder::openai_compat::Format,
+    /// `--relay`, for `pylon`.
+    relay: String,
+    /// `--pylon-key`: `fresh` or `home`.
+    pylon_key: String,
+    /// `--dir`: run in a local directory.
+    dir: Option<std::path::PathBuf>,
+    /// Whether `--kb` was given.
+    kb_named: bool,
     strong_model: String,
     effort: Option<String>,
     limits: Limits,
@@ -145,6 +185,14 @@ fn parse(args: &[String]) -> Result<Options, String> {
         container_name: None,
         model: MODEL.to_string(),
         provider: "codex".to_string(),
+        model_named: false,
+        base_url: None,
+        token_file: None,
+        response_format: microcoder::openai_compat::Format::Auto,
+        relay: microcoder::pylon_provider::RELAY.to_string(),
+        pylon_key: "fresh".to_string(),
+        dir: None,
+        kb_named: false,
         strong_model: STRONG_MODEL.to_string(),
         effort: Some("medium".to_string()),
         limits: Limits::default(),
@@ -186,18 +234,49 @@ fn parse(args: &[String]) -> Result<Options, String> {
                 }
                 options.container_name = Some(name);
             }
-            "--model" => options.model = value()?,
+            "--model" => {
+                options.model = value()?;
+                options.model_named = true;
+            }
             "--provider" => {
                 options.provider = value()?;
-                if !["codex", "openrouter", "door", "vertex", "claude", "local"]
-                    .contains(&options.provider.as_str())
+                if ![
+                    "codex",
+                    "openrouter",
+                    "door",
+                    "vertex",
+                    "claude",
+                    "local",
+                    "openai-compatible",
+                    "pylon",
+                ]
+                .contains(&options.provider.as_str())
                 {
                     return Err(format!(
-                        "--provider wants codex, openrouter, door, vertex, claude, or local, not {}",
+                        "--provider wants codex, openrouter, door, vertex, claude, local, openai-compatible, or pylon, not {}",
                         options.provider
                     ));
                 }
             }
+            "--base-url" => options.base_url = Some(value()?),
+            "--token-file" => options.token_file = Some(value()?.into()),
+            "--response-format" => {
+                let name = value()?;
+                options.response_format = microcoder::openai_compat::Format::parse(&name).ok_or(
+                    format!("--response-format wants schema, text, or auto, not {name}"),
+                )?;
+            }
+            "--relay" => options.relay = value()?,
+            "--pylon-key" => {
+                options.pylon_key = value()?;
+                if !["fresh", "home"].contains(&options.pylon_key.as_str()) {
+                    return Err(format!(
+                        "--pylon-key wants fresh or home, not {}",
+                        options.pylon_key
+                    ));
+                }
+            }
+            "--dir" => options.dir = Some(value()?.into()),
             "--strong-model" => options.strong_model = value()?,
             "--route" => {
                 options.limits.route = match value()?.as_str() {
@@ -224,6 +303,7 @@ fn parse(args: &[String]) -> Result<Options, String> {
             "--prompt" => options.prompt = value()?,
             "--kb" => {
                 options.kb = value()?;
+                options.kb_named = true;
                 if !["on", "off", "candidates"].contains(&options.kb.as_str()) {
                     return Err(format!(
                         "--kb wants on, off, or candidates, not {}",
@@ -273,6 +353,23 @@ fn parse(args: &[String]) -> Result<Options, String> {
     }
     if options.task.is_empty() {
         return Err(USAGE.to_string());
+    }
+    if !options.model_named {
+        match options.provider.as_str() {
+            "pylon" => options.model = microcoder::pylon_provider::MODEL.to_string(),
+            "openai-compatible" => {
+                return Err(
+                    "--provider openai-compatible needs --model, such as --model flint".into(),
+                );
+            }
+            _ => {}
+        }
+    }
+    if options.provider == "openai-compatible" && options.base_url.is_none() {
+        return Err(
+            "--provider openai-compatible needs --base-url, such as http://127.0.0.1:11500/v1"
+                .into(),
+        );
     }
     Ok(options)
 }
@@ -357,7 +454,13 @@ async fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    match go(options).await {
+    let local = options.dir.is_some() || options.task.contains(char::is_whitespace);
+    let ran = if local {
+        go_local(options).await
+    } else {
+        go(options).await
+    };
+    match ran {
         Ok(code) => ExitCode::from(code),
         Err(message) => {
             eprintln!("microcoder: {message}");
@@ -372,87 +475,9 @@ async fn go(options: Options) -> Result<u8, String> {
         .network
         .clone()
         .unwrap_or_else(|| task.agent_network.docker().to_string());
-    let make_one = |model: &str| -> Result<(AnyGenerator, String), String> {
-        if options.provider == "openrouter" {
-            let slug = if model.contains('/') {
-                model.to_string()
-            } else {
-                format!("openai/{model}")
-            };
-            let config = openrouter::Config::from_env().map_err(|e| e.to_string())?;
-            let recipient = format!("openrouter:{}#{slug}", config.base_url);
-            return Ok((
-                AnyGenerator::OpenRouter(OpenRouterGenerator {
-                    client: openrouter::Client::new(config).map_err(|e| e.to_string())?,
-                    model: slug,
-                    effort: options.effort.clone(),
-                }),
-                recipient,
-            ));
-        }
-        if options.provider == "vertex" {
-            let generator =
-                microcoder::vertex::VertexGenerator::from_env(model, options.effort.clone())?;
-            let recipient = format!("vertex:{}#{}", generator.base_url, generator.model);
-            return Ok((AnyGenerator::Vertex(generator), recipient));
-        }
-        if options.provider == "claude" {
-            let generator =
-                microcoder::claude::ClaudeGenerator::from_env(model, options.effort.clone())?;
-            let recipient = format!("claude:{}#{}", generator.binary.display(), generator.model);
-            return Ok((AnyGenerator::Claude(generator), recipient));
-        }
-        if options.provider == "door" {
-            let session = format!("microcoder-{}-{}", options.task, std::process::id());
-            if options.kb_private.is_some() {
-                return Err("private knowledge delivery through the door provider requires an exact endpoint binding and is not supported by this profile".into());
-            }
-            return Ok((
-                AnyGenerator::Door(microcoder::door::DoorGenerator::new(
-                    microcoder::door::DoorTransport::from_env()?,
-                    model,
-                    options.effort.clone(),
-                    &session,
-                )),
-                format!("door:unused-for-public-knowledge#{model}"),
-            ));
-        }
-        let login = codex_transport::codex::Login::default_path()
-            .ok_or("no Codex login: can't find ~/.codex/auth.json; run `codex login`")?;
-        let session = format!("microcoder-{}-{}", options.task, std::process::id());
-        let transport = codex_transport::codex::CodexTransport::new(login, &session)
-            .map_err(|e| format!("the Codex login can't be used: {e}; run `codex login`"))?;
-        let actual_model = model.rsplit('/').next().unwrap_or(model).to_string();
-        let recipient = format!("codex:{}#{actual_model}", codex_transport::codex::BASE_URL);
-        Ok((
-            AnyGenerator::Codex(CodexGenerator {
-                transport,
-                model: actual_model,
-                effort: options.effort.clone(),
-                cache_key: session,
-                images: Vec::new(),
-            }),
-            recipient,
-        ))
-    };
-    let make = |model: &str| -> Result<(Generator, Vec<String>), String> {
-        if options.provider == "local" {
-            if options.kb_private.is_some() {
-                return Err("private knowledge delivery through the local chain is not supported: its gateway fallback has no exact endpoint binding".into());
-            }
-            let session = format!("microcoder-{}-{}", options.task, std::process::id());
-            let generator = coder::local_chain::local_generator(
-                &session,
-                Some(model.rsplit('/').next().unwrap_or(model).to_string()),
-                options.effort.clone(),
-            )?;
-            let recipients = generator.recipients();
-            return Ok((Generator::Local(generator), recipients));
-        }
-        make_one(model).map(|(generator, recipient)| (Generator::Any(generator), vec![recipient]))
-    };
-    let (generator, generation_recipients) = make(&options.model)?;
-    let (strong, strong_recipient) = make(&options.strong_model)?;
+    let session = format!("microcoder-{}-{}", options.task, std::process::id());
+    let (generator, generation_recipients) = generators(&options, &session, &options.model)?;
+    let (strong, strong_recipient) = generators(&options, &session, &options.strong_model)?;
     let set = question_set();
     let route = route_set();
     let judge = JevJudge {
@@ -757,13 +782,9 @@ async fn go(options: Options) -> Result<u8, String> {
     // logins report tokens at list price, the gateway what it billed.
     let provider = match &generator {
         Generator::Local(local) => local.provider(),
-        Generator::Any(_) => options.provider.as_str(),
+        Generator::Any(_) | Generator::Pylon(_) => options.provider.as_str(),
     };
-    let basis = if ["codex", "vertex", "claude"].contains(&provider) {
-        Basis::ListPrice
-    } else {
-        Basis::Billed
-    };
+    let basis = basis_of(provider);
     println!(
         "\n{} · reward {} · {} steps · {} · {total} (model {} {basis}, Jev {}, embeddings {}) · ended by {}{}",
         task.name,
@@ -842,6 +863,268 @@ async fn go(options: Options) -> Result<u8, String> {
         tbench::remove(&name).await;
     }
     Ok(if passed { 0 } else { 1 })
+}
+
+/// The generator `--provider` names for `model`, and the recipients a
+/// private knowledge input may be disclosed to.
+fn generators(
+    options: &Options,
+    session: &str,
+    model: &str,
+) -> Result<(Generator, Vec<String>), String> {
+    let make_one = |model: &str| -> Result<(AnyGenerator, String), String> {
+        if options.provider == "openai-compatible" {
+            let base_url = options
+                .base_url
+                .as_deref()
+                .ok_or("--provider openai-compatible needs --base-url")?;
+            if let Some(path) = &options.token_file {
+                microcoder::openai_compat::read_token(path)?;
+            }
+            let mut generator = microcoder::openai_compat::ChatGenerator::new(
+                "openai-compatible",
+                model,
+                base_url,
+                options.token_file.clone(),
+                microcoder::openai_compat::Pricing::Local,
+                options.response_format,
+            );
+            generator.effort.clone_from(&options.effort);
+            let recipient = format!(
+                "openai-compatible:{}#{}",
+                generator.base_url, generator.model
+            );
+            return Ok((AnyGenerator::OpenAiCompatible(generator), recipient));
+        }
+        if options.provider == "openrouter" {
+            let slug = if model.contains('/') {
+                model.to_string()
+            } else {
+                format!("openai/{model}")
+            };
+            let config = openrouter::Config::from_env().map_err(|e| e.to_string())?;
+            let recipient = format!("openrouter:{}#{slug}", config.base_url);
+            return Ok((
+                AnyGenerator::OpenRouter(OpenRouterGenerator {
+                    client: openrouter::Client::new(config).map_err(|e| e.to_string())?,
+                    model: slug,
+                    effort: options.effort.clone(),
+                }),
+                recipient,
+            ));
+        }
+        if options.provider == "vertex" {
+            let generator = microcoder::vertex::generator(model, options.effort.clone())?;
+            let recipient = format!("vertex:{}#{}", generator.base_url, generator.model);
+            return Ok((AnyGenerator::Vertex(generator), recipient));
+        }
+        if options.provider == "claude" {
+            let generator =
+                microcoder::claude::ClaudeGenerator::from_env(model, options.effort.clone())?;
+            let recipient = format!("claude:{}#{}", generator.binary.display(), generator.model);
+            return Ok((AnyGenerator::Claude(generator), recipient));
+        }
+        if options.provider == "door" {
+            if options.kb_private.is_some() {
+                return Err("private knowledge delivery through the door provider requires an exact endpoint binding and is not supported by this profile".into());
+            }
+            return Ok((
+                AnyGenerator::Door(microcoder::door::DoorGenerator::new(
+                    microcoder::door::DoorTransport::from_env()?,
+                    model,
+                    options.effort.clone(),
+                    session,
+                )),
+                format!("door:unused-for-public-knowledge#{model}"),
+            ));
+        }
+        let login = codex_transport::codex::Login::default_path()
+            .ok_or("no Codex login: can't find ~/.codex/auth.json; run `codex login`")?;
+        let transport = codex_transport::codex::CodexTransport::new(login, session)
+            .map_err(|e| format!("the Codex login can't be used: {e}; run `codex login`"))?;
+        let actual_model = model.rsplit('/').next().unwrap_or(model).to_string();
+        let recipient = format!("codex:{}#{actual_model}", codex_transport::codex::BASE_URL);
+        Ok((
+            AnyGenerator::Codex(CodexGenerator {
+                transport,
+                model: actual_model,
+                effort: options.effort.clone(),
+                cache_key: session.to_string(),
+                images: Vec::new(),
+            }),
+            recipient,
+        ))
+    };
+    if options.provider == "pylon" {
+        let buyer = microcoder::pylon_provider::PylonGenerator::buyer(&options.pylon_key)?;
+        let generator =
+            microcoder::pylon_provider::PylonGenerator::new(model, &options.relay, buyer);
+        let recipient = format!("pylon:{}#{model}", options.relay);
+        return Ok((Generator::Pylon(generator), vec![recipient]));
+    }
+    {
+        if options.provider == "local" {
+            if options.kb_private.is_some() {
+                return Err("private knowledge delivery through the local chain is not supported: its gateway fallback has no exact endpoint binding".into());
+            }
+            let generator = coder::local_chain::local_generator(
+                session,
+                Some(model.rsplit('/').next().unwrap_or(model).to_string()),
+                options.effort.clone(),
+            )?;
+            let recipients = generator.recipients();
+            return Ok((Generator::Local(generator), recipients));
+        }
+        make_one(model).map(|(generator, recipient)| (Generator::Any(generator), vec![recipient]))
+    }
+}
+
+/// How a provider's cost is reached: the logins and Vertex report tokens,
+/// priced at list price; a server on this computer and a free Pylon job
+/// bill nothing; the others bill.
+fn basis_of(provider: &str) -> Basis {
+    match provider {
+        "codex" | "vertex" | "claude" => Basis::ListPrice,
+        "openai-compatible" => Basis::Local,
+        "pylon" => Basis::FreeNetwork,
+        _ => Basis::Billed,
+    }
+}
+
+/// `microcoder "TASK" [--dir DIRECTORY]`: run the loop on a directory on
+/// this computer, its commands inside a `coder-boundary` sandbox that
+/// writes only that directory and a private temporary one, as Coder's
+/// delegate door runs a turn. No acceptance tests (they live under `/tmp`,
+/// which the sandbox doesn't write) and no knowledge base.
+async fn go_local(mut options: Options) -> Result<u8, String> {
+    if options.kb_named && options.kb != "off" {
+        return Err("a run in a local directory takes no knowledge base; drop --kb".into());
+    }
+    if options.check_grading {
+        return Err("--check-grading is for Terminal-Bench tasks".into());
+    }
+    let dir = match &options.dir {
+        Some(dir) => dir.clone(),
+        None => std::env::current_dir().map_err(|e| format!("no working directory: {e}"))?,
+    };
+    let dir = dir
+        .canonicalize()
+        .map_err(|e| format!("can't open {}: {e}", dir.display()))?;
+    options.limits.acceptance = false;
+    let session = format!("microcoder-local-{}", std::process::id());
+    let (generator, _) = generators(&options, &session, &options.model)?;
+    let judge = JevJudge {
+        client: jev_client()?,
+    };
+    let set = question_set();
+    let route = route_set();
+    let env = microcoder::env::Hooked {
+        hooks: microcoder::env::held_hooks(&dir, true),
+        env: microcoder::env::Bounded::new(dir.clone(), true)?,
+    };
+    let runs = std::path::PathBuf::from(user_home::home_os().unwrap_or_default())
+        .join(".openagents/microcoder/runs");
+    std::fs::create_dir_all(&runs).map_err(|e| format!("can't make {}: {e}", runs.display()))?;
+    let mut stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis());
+    let run_dir = loop {
+        let candidate = runs.join(format!("local-{stamp}"));
+        match std::fs::create_dir(&candidate) {
+            Ok(()) => break candidate,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => stamp += 1,
+            Err(e) => return Err(format!("can't make {}: {e}", candidate.display())),
+        }
+    };
+    println!(
+        "microcoder · {} · {} on {} · {}",
+        dir.display(),
+        options.model,
+        options.provider,
+        options
+            .limits
+            .max_steps
+            .map_or("no step limit".to_string(), |n| format!("up to {n} steps")),
+    );
+    let mut record = Record::create(&run_dir.join("events.jsonl"))
+        .map_err(|e| format!("can't write the record: {e}"))?;
+    record.write(&serde_json::json!({
+        "event": "started", "dir": dir, "task": options.task, "model": options.model,
+        "provider": options.provider, "effort": options.effort, "limits": options.limits,
+        "prompt": options.prompt, "questions": set.id,
+    }));
+    let state = State {
+        environment: format!(
+            "Working directory: {}, on this computer. Commands may write inside the working \
+             directory and a private temporary directory ($TMPDIR), and nowhere else.",
+            dir.display()
+        ),
+        task: options.task.clone(),
+        ..State::default()
+    };
+    let mut terminal = Terminal::new();
+    let models = Models {
+        generator: &generator,
+        judge: &judge,
+        set: &set,
+        route: &route,
+        strong: None,
+        knowledge: None,
+    };
+    let (_, outcome) = tokio::select! {
+        result = async {
+            let mut both = Both(&mut terminal, &mut record);
+            run(state, &options.prompt, &env, &models, &options.limits, &mut both).await
+        } => result,
+        _ = tokio::signal::ctrl_c() => {
+            println!("\nInterrupted.");
+            return Ok(1);
+        }
+    };
+    let basis = basis_of(&options.provider);
+    let answered = match &generator {
+        Generator::Pylon(pylon) => Some(pylon.answered()),
+        _ => None,
+    };
+    let finished = matches!(outcome.ending, Ending::Finished);
+    println!(
+        "\n{} · {} steps · {} · {} (model {} {basis}, Jev {}) · ended by {}",
+        if finished { "finished" } else { "not finished" },
+        outcome.steps,
+        clock(outcome.seconds),
+        microcoder::run::total_text(&outcome),
+        dollars(outcome.model_usd, 4),
+        dollars(outcome.jev_usd, 5),
+        match &outcome.ending {
+            Ending::Finished => "the model finishing".to_string(),
+            other => format!("{other:?}"),
+        },
+    );
+    if let Generator::Pylon(pylon) = &generator {
+        let by = pylon
+            .answered_by()
+            .into_iter()
+            .map(|(label, steps)| format!("{label} ({steps})"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        println!(
+            "answered by {}",
+            if by.is_empty() { "no pylon" } else { &by }
+        );
+    }
+    let summary = serde_json::json!({
+        "dir": dir, "task": options.task, "model": options.model, "effort": options.effort,
+        "provider": options.provider, "cost_basis": basis,
+        "cost_bases": {"model": basis, "jev": Basis::ListPrice},
+        "outcome": outcome, "finished": finished, "pylon_answers": answered,
+    });
+    let _ = std::fs::write(
+        run_dir.join("summary.json"),
+        serde_json::to_string_pretty(&summary).unwrap_or_default(),
+    );
+    record.write(&serde_json::json!({"event": "ended", "finished": finished}));
+    println!("Record: {}", run_dir.display());
+    Ok(if finished { 0 } else { 1 })
 }
 
 /// The reward, or "unknown" with the reason.
@@ -1015,10 +1298,12 @@ fn indent_block(text: &str) -> String {
         .join("\n")
 }
 
-/// The generator `--provider` names: one provider, or the local chain.
+/// The generator `--provider` names: one provider, the local chain, or
+/// the Pylon network.
 enum Generator {
     Any(AnyGenerator),
     Local(coder::local_chain::LocalGenerator),
+    Pylon(microcoder::pylon_provider::PylonGenerator),
 }
 
 impl microcoder::models::Generate for Generator {
@@ -1026,6 +1311,7 @@ impl microcoder::models::Generate for Generator {
         match self {
             Generator::Any(generator) => generator.generate(system, prompt).await,
             Generator::Local(generator) => generator.generate(system, prompt).await,
+            Generator::Pylon(generator) => generator.generate(system, prompt).await,
         }
     }
 

@@ -14,7 +14,8 @@
 //! crate re-exports its modules under their old paths ([`run`], [`models`],
 //! [`env`], and the rest) and adds what needs `crates/coder`: the task
 //! owner's [`repository`] adapter, [`tbench`] for Terminal-Bench 4 tasks,
-//! [`show`] to stream a run to the terminal, and the knowledge network.
+//! [`show`] to stream a run to the terminal, [`pylon_provider`] for steps
+//! answered on the Pylon network, and the knowledge network.
 //! Issues #9666 to #9669 hold the design.
 //!
 //! With the knowledge base on (`crates/knowledge`, issue #9670), each step's
@@ -24,13 +25,14 @@
 //! [`xpnet`] publishes quests and awards and derives the XP ledger (NIP-XP).
 
 pub use microcoder_loop::{
-    MODEL, STRONG_MODEL, capacity, claude, door, env, failover, gate, images, logins, models, run,
-    state, vertex,
+    MODEL, STRONG_MODEL, capacity, claude, door, env, failover, gate, images, logins, models,
+    openai_compat, run, state, text_action, vertex,
 };
 
 pub mod kbinput;
 pub mod kbnet;
 pub mod kbstudy;
+pub mod pylon_provider;
 pub mod repository;
 pub mod show;
 pub mod tbench;

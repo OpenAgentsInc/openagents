@@ -11220,6 +11220,7 @@ dependencies = [
  "openagents-chat",
  "openagents-workspace-hack",
  "openrouter",
+ "pylon",
  "reqwest 0.12.28",
  "route-contract",
  "rusqlite",

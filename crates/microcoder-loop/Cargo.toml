@@ -33,7 +33,7 @@ private-fs = { path = "../private-fs" }
 
 [dev-dependencies]
 tempfile = "3"
-tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util", "test-util"] }
+tokio = { version = "1", features = ["macros", "rt", "time", "process", "io-util", "test-util", "net"] }
 
 [lints]
 workspace = true

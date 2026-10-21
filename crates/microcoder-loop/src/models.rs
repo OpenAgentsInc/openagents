@@ -768,6 +768,9 @@ pub enum AnyGenerator {
     Door(crate::door::DoorGenerator),
     /// Vertex AI's OpenAI-compatible endpoint (`--provider vertex`).
     Vertex(crate::vertex::VertexGenerator),
+    /// Another OpenAI-compatible server (`--provider openai-compatible`),
+    /// such as Flint through `rec`.
+    OpenAiCompatible(crate::openai_compat::ChatGenerator),
     /// The operator's Claude Code login (`--provider claude`).
     Claude(crate::claude::ClaudeGenerator),
 }
@@ -778,7 +781,9 @@ impl Generate for AnyGenerator {
             AnyGenerator::Codex(g) => g.generate(system, prompt).await,
             AnyGenerator::OpenRouter(g) => g.generate(system, prompt).await,
             AnyGenerator::Door(g) => g.generate(system, prompt).await,
-            AnyGenerator::Vertex(g) => g.generate(system, prompt).await,
+            AnyGenerator::Vertex(g) | AnyGenerator::OpenAiCompatible(g) => {
+                g.generate(system, prompt).await
+            }
             AnyGenerator::Claude(g) => g.generate(system, prompt).await,
         }
     }

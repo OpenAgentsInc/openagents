@@ -12,8 +12,10 @@
 //! [`run::run`] is the loop. [`models`] holds the two calls a step makes: Jev
 //! through `crates/jev`, and one structured model call, GPT-6 Luna on the
 //! operator's Codex login by default, or Claude through the `claude` binary
-//! ([`claude`]), Vertex ([`vertex`]), OpenRouter, or the OpenAgents door
-//! ([`door`]). [`env`] is where commands run. [`capacity`] is the
+//! ([`claude`]), Vertex ([`vertex`]), any OpenAI-compatible server
+//! ([`openai_compat`]), OpenRouter, or the OpenAgents door ([`door`]).
+//! [`text_action`] reads the action from a reply's text where no
+//! structured output is available. [`env`] is where commands run. [`capacity`] is the
 //! provider capacity book and [`failover`] the switch to the next provider
 //! with capacity when one refuses for a usage or rate limit.
 //!
@@ -34,9 +36,11 @@ pub mod hooks;
 pub mod images;
 pub mod logins;
 pub mod models;
+pub mod openai_compat;
 pub mod reply;
 pub mod run;
 pub mod state;
+pub mod text_action;
 pub mod transcript;
 pub mod usage;
 pub mod vertex;
