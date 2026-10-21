@@ -45,13 +45,22 @@ other. The CPU VM row is the pylon the L4 VM replaced.
 | `oa-pylon-gpu-1`, "GCE L4 (network lane)" | GCE `g2-standard-8` in `us-central1-a`, NVIDIA L4 24 GB, 32 GB, Ubuntu 22.04 | Psionic on CUDA 12.9 | Decisions (port 18096), text (port 18097) | `npub1g47xkl9yhhtj3tta4t6wrzut5f27k4mtaf3qw4v8gj2j09ejk09qfulsw6` | `npub1pr3yk84y7a76ptdedvfck60wqxnxywlcu8atsfyqhyk6je49avpsp29pyu` |
 | `oa-pylon-cloud-1` (deleted) | GCE `n2-standard-16` in `us-central1-a`, Debian 12, 64 GB, no GPU | Psionic on the CPU | Decisions only (port 18096) | Same as the L4 VM | Same as the L4 VM |
 
-Each pylon admitted only the three buyer keys (`--allow`), so each machine
-could buy from the other two. That also refused the Grid terminal on `/`,
-which sends each person's jobs from a key of their own (#12416). On
-2026-10-21 the Mac and CoderOS pylons were restarted with `--allow-any`
-(rate limits still apply), which `share.json` keeps for later starts. The
-L4 VM still runs with the allowlist; replace its unit's `--allow ...` with
-`--allow-any` to open it, since `--allow` adds the keys again on each start. All three serve the pinned Clef-Flash Q4_K_M file
+Network-lane pylons admit any buyer key (`--allow-any`; rate limits still
+apply). Website users each send jobs from a key of their own, so an allowlist
+of three keys refused the Grid terminal on `/` (#12416). The three pylons are
+set up as follows:
+
+- The Mac runs `--allow-any` from the launchd agent
+  `~/Library/LaunchAgents/com.openagents.pylon-net.plist`, which starts at
+  login and restarts the pylon if it fails.
+- CoderOS runs `--allow-any` from the user unit
+  `~/.config/systemd/user/oa-pylon-net.service`, enabled, with lingering on,
+  so it starts at boot. It is not declared in `os/`.
+- The L4 VM still runs with the allowlist; replace its unit's `--allow ...`
+  with `--allow-any` to open it, since `--allow` adds the keys again on each
+  start.
+
+All three serve the pinned Clef-Flash Q4_K_M file
 (`sha256:36261166…`) and publish to `wss://relay.openagents.com` in the
 `everglade` pool. None is linked to an owner and none is paid.
 
@@ -147,7 +156,7 @@ its own target folder, such as `~/work/openagents-target-psionic`.
      /usr/bin/env OPENAGENTS_PYLON_HOME=$H/home OPENAGENTS_PSIONIC_BIN=$H/engine \
      HOME=$HOME PATH=/usr/bin:/bin:/usr/sbin:/sbin \
      $H/bin/openagents pylon up --foreground --yes --port 18196 --text-port 18197 \
-     --label "Mac M5 Max (network lane)" --allow BUYER1,BUYER2,BUYER3
+     --label "Mac M5 Max (network lane)" --allow-any
    ```
 
    The first start downloads Clef-Flash (6.5 GB, digest checked), starts
@@ -215,7 +224,7 @@ CoderOS without a nix shell.
      -p StandardError=append:$HOME/.openagents/pylon-net/up.log \
      $HOME/work/pylon-net/bin/openagents pylon up --foreground --yes --port 18196 \
      --pylon coderos-4080-net --label "CoderOS RTX 4080 (network lane)" \
-     --allow BUYER1,BUYER2,BUYER3
+     --allow-any
    ```
 
    The engine needs `libcuda` from `/run/opengl-driver/lib`, which is why
@@ -224,7 +233,10 @@ CoderOS without a nix shell.
 1. Check it with `pylon status`: `on cuda`, decisions on 18196 and text on
    18097, self-check passed.
 
-To survive a reboot, the Pylon 1.0 path is the host service: run `up`
+To survive a reboot, save the same command as a user unit with
+`WantedBy=default.target` (`~/.config/systemd/user/oa-pylon-net.service`) and
+run `systemctl --user enable --now oa-pylon-net`; lingering must be on. The
+Pylon 1.0 path is the host service: run `up`
 without `--foreground` in the home the host watches. The run did not
 install a unit on the owner's computer.
 
