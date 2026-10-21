@@ -895,6 +895,10 @@ async fn run_grid(
     // The page opens a portal's zone itself: it says what loads first, and
     // refuses a zone this build can't open ([`crate::transit`]).
     runtime.defer_grid_portals(true);
+    // `?hosted=TENANT`: an arch to a zone hosted on this origin.
+    if let Some(portal) = crate::hosted::from_query(&window) {
+        runtime.set_hosted_portal(Some(portal));
+    }
     runtime.interact_hint = verse::runtime::InteractHint::None;
     // `?at=X,Z` or `?at=X,Z,YAW` stands the player there, as on the
     // Everglade page, for captures (an arch's approach).
@@ -1459,7 +1463,9 @@ impl Page {
             );
             self.show(step);
         }
-        if self.transit.busy() {
+        // The hosted zone's arch: prefetch, open, and come back.
+        let hosted_open = crate::hosted::frame(&mut self.runtime);
+        if hosted_open || self.transit.busy() {
             input = verse::controller::InputState::default();
         }
         let state = serde_json::json!({

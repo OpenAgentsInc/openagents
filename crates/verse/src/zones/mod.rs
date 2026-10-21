@@ -484,6 +484,11 @@ pub(crate) struct State {
     ritual: Option<std::path::PathBuf>,
     /// A RITUAL crossing the application has not taken yet.
     ritual_crossed: bool,
+    /// The Grid's arch to a hosted zone (a livehost tenant), when the page
+    /// has one ([`WorldRuntime::set_hosted_portal`]).
+    hosted: Option<gate::HostedPortal>,
+    /// The hosted arch was walked through; the page opens the zone.
+    hosted_crossed: bool,
     /// Whether a walk through a Grid portal waits for the application to
     /// open the zone ([`WorldRuntime::defer_grid_portals`]): the web build
     /// says what it loads first, and refuses what it cannot load.
@@ -555,6 +560,8 @@ impl Default for State {
             grid_portal: gate::GRID_PORTAL_OPEN,
             ritual: None,
             ritual_crossed: false,
+            hosted: None,
+            hosted_crossed: false,
             defer_portals: false,
             portal_asked: None,
             sight_tops: (u64::MAX, 0, Vec::new()),

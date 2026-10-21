@@ -542,6 +542,55 @@ fn the_ritual_arch_appears_with_a_pinned_chamber_and_a_walk_through_hands_it_ove
 }
 
 #[test]
+fn a_hosted_arch_hands_its_tenant_over_once_and_says_how_near_it_is() {
+    use super::gate::HostedPortal;
+    assert!(HostedPortal::new("Ice Cream", "X").is_err());
+    assert!(HostedPortal::new("icecream", "ICE CREAM MAN!").is_err());
+    let portal = HostedPortal::new("icecream", "Ice Cream Man").unwrap();
+    assert_eq!(portal.sign, "ICE CREAM MAN");
+
+    let mut runtime = WorldRuntime::bare();
+    assert!(runtime.hosted_gate().is_none() && runtime.hosted_distance().is_none());
+    let bare = runtime.grid_portal_mesh().lines.len();
+    runtime.set_hosted_portal(Some(portal.clone()));
+    let gate = runtime.hosted_gate().expect("the hosted arch");
+    assert!(runtime.grid_portal_mesh().lines.len() > bare);
+    assert!(gate.at.abs().max_element() < crate::world::HALF - 5.0);
+    // Clear of the other arches.
+    for other in [runtime.lagrange2_gate(), runtime.everglade_gate()]
+        .into_iter()
+        .flatten()
+    {
+        assert!(other.at.distance(gate.at) > 8.0);
+    }
+    let (front, away) = gate.front();
+    runtime
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+    let near = runtime.hosted_distance().unwrap();
+    assert!(near < super::gate::HOSTED_PREFETCH && near > 3.0);
+    let forward = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    let mut crossing = None;
+    for _ in 0..180 {
+        runtime.tick(&forward, 1.0 / 60.0);
+        if let Some(found) = runtime.take_hosted_crossing() {
+            crossing = Some(found);
+            break;
+        }
+    }
+    assert_eq!(crossing, Some(portal));
+    assert!(runtime.is_plaza());
+    assert!(runtime.take_hosted_crossing().is_none());
+    runtime.return_from_hosted().unwrap();
+    assert!(runtime.player.pos.distance(front) < 0.5);
+    runtime.set_hosted_portal(None);
+    assert!(runtime.return_from_hosted().is_err());
+}
+
+#[test]
 fn walking_through_the_grid_portal_enters_lagrange_2_and_flying_back_returns() {
     let mut runtime = WorldRuntime::bare();
     // Shown on every Grid: the factory is generated, not downloaded.

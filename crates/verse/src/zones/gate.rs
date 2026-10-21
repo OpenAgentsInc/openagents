@@ -52,6 +52,13 @@ pub const GRID_LAGRANGE2_AT: [f64; 2] = [-20.0, 19.0];
 /// the side arches and the blocks before reaching it. Shown only when the
 /// desktop has a pinned chamber to join ([`crate::ritual`]). Side, forward, m.
 pub const GRID_RITUAL_AT: [f64; 2] = [0.0, 26.0];
+/// The Grid's arch to a hosted zone in the same frame: the Lagrange 2
+/// arch's mirror image, on the dominoes' side and farther out, clear of the
+/// blocks, the pillar, and the other arches' approaches. Side, forward, m.
+pub const GRID_HOSTED_AT: [f64; 2] = [20.0, 19.0];
+/// How near the hosted arch a page starts fetching the zone's first play,
+/// m: a few seconds' walk.
+pub const HOSTED_PREFETCH: f32 = 24.0;
 /// The RITUAL arch's lettering.
 pub const RITUAL_SIGN: &str = "RITUAL";
 /// Half the arch's clear opening between its pillars, m.
@@ -65,6 +72,49 @@ const FEET: [f32; 2] = [-1.0, 3.2];
 pub const RETURN_DISTANCE: f32 = 3.5;
 /// Seconds after a crossing before a gate admits another.
 pub const COOLDOWN: f32 = 1.0;
+
+/// A zone hosted on livehost that the Grid has an arch to: a tenant whose
+/// page the application opens when the player walks through
+/// (`docs/verse/ice-cream-man-live.md`). The world draws the arch and says
+/// when it is crossed; it never loads the zone itself.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HostedPortal {
+    /// The livehost tenant, such as `icecream`.
+    pub tenant: String,
+    /// The arch's lettering.
+    pub sign: String,
+}
+
+impl HostedPortal {
+    /// A portal to `tenant` lettered `sign`.
+    ///
+    /// # Errors
+    /// The tenant isn't a livehost name, or the sign has letters the arch
+    /// can't draw or is longer than 16.
+    pub fn new(tenant: &str, sign: &str) -> Result<Self, String> {
+        let name_ok = !tenant.is_empty()
+            && tenant.len() <= 64
+            && tenant
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+        if !name_ok {
+            return Err(format!("{tenant:?} is not a tenant name"));
+        }
+        let sign = sign.trim().to_ascii_uppercase();
+        let sign_ok = !sign.is_empty()
+            && sign.len() <= 16
+            && sign
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit() || b" /.".contains(&b));
+        if !sign_ok {
+            return Err(format!("the arch can't letter {sign:?}"));
+        }
+        Ok(Self {
+            tenant: tenant.into(),
+            sign,
+        })
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Gate {
@@ -91,6 +141,13 @@ impl Gate {
     #[must_use]
     pub fn lagrange2(layout: &crate::blocks::Layout) -> Self {
         Self::on_grid(layout, GRID_LAGRANGE2_AT)
+    }
+
+    /// The Grid's arch to a hosted zone, placed and turned as
+    /// [`Self::grid`].
+    #[must_use]
+    pub fn hosted(layout: &crate::blocks::Layout) -> Self {
+        Self::on_grid(layout, GRID_HOSTED_AT)
     }
 
     /// The Grid's RITUAL arch to the pinned chamber, placed and turned as

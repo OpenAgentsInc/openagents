@@ -40,6 +40,7 @@ wgpu = "30.0.1"
 verse-engine = { path = "../verse-engine" }
 verse-world = { path = "../verse-world", features = ["reach-client"] }
 verse-content = { path = "../verse-content" }
+icecream-zone = { path = "../icecream-zone" }
 coder-reach = { path = "../coder-reach" }
 serde_json = "1"
 web-time = "1.1.0"
@@ -62,6 +63,7 @@ web-sys = { version = "0.3", features = [
     "Document",
     "Element",
     "Event",
+    "EventSource",
     "EventTarget",
     "HtmlButtonElement",
     "Gamepad",
@@ -69,6 +71,7 @@ web-sys = { version = "0.3", features = [
     "Navigator",
     "HtmlCanvasElement",
     "HtmlElement",
+    "HtmlIFrameElement",
     "KeyboardEvent",
     "CompositionEvent",
     "InputEvent",
@@ -76,6 +79,7 @@ web-sys = { version = "0.3", features = [
     "Clipboard",
     "Navigator",
     "Location",
+    "MessageEvent",
     "MouseEvent",
     "Node",
     "Performance",
@@ -89,6 +93,7 @@ web-sys = { version = "0.3", features = [
     "RequestRedirect",
     "Response",
     "Storage",
+    "UrlSearchParams",
     "WheelEvent",
     "Window", "Crypto", "Headers",
     "console",

@@ -3002,6 +3002,48 @@ impl WorldRuntime {
         self.place_player(pos, yaw)
     }
 
+    /// The Grid's arch to a hosted zone, when the page has one
+    /// ([`Self::set_hosted_portal`]); none elsewhere.
+    #[must_use]
+    pub fn hosted_gate(&self) -> Option<super::Gate> {
+        (self.is_bare() && self.is_plaza() && self.zone_state.hosted.is_some())
+            .then(|| super::Gate::hosted(&crate::blocks::Layout::grid()))
+    }
+
+    /// Puts an arch to a hosted zone on the Grid, or removes it.
+    pub fn set_hosted_portal(&mut self, portal: Option<super::gate::HostedPortal>) {
+        self.zone_state.hosted = portal;
+        self.zone_state.hosted_crossed = false;
+    }
+
+    /// How far the player stands from the hosted arch, m, for a page that
+    /// fetches the zone before the player reaches it.
+    #[must_use]
+    pub fn hosted_distance(&self) -> Option<f32> {
+        let gate = self.hosted_gate()?;
+        let feet = self.player.pos;
+        Some(glam::Vec2::new(feet.x - gate.at.x, feet.z - gate.at.z).length())
+    }
+
+    /// The hosted zone, once per walk through its arch. The page opens it
+    /// and, on return, calls [`Self::return_from_hosted`].
+    pub fn take_hosted_crossing(&mut self) -> Option<super::gate::HostedPortal> {
+        std::mem::take(&mut self.zone_state.hosted_crossed)
+            .then(|| self.zone_state.hosted.clone())
+            .flatten()
+    }
+
+    /// Puts the player back in front of the hosted arch, facing away.
+    ///
+    /// # Errors
+    /// The Grid has no hosted arch, or the player cannot be placed.
+    pub fn return_from_hosted(&mut self) -> Result<(), String> {
+        let gate = self.hosted_gate().ok_or("The Grid has no hosted arch")?;
+        let (pos, yaw) = gate.front();
+        self.zone_state.gate_cooldown = super::gate::COOLDOWN;
+        self.place_player(pos, yaw)
+    }
+
     /// The Grid's shown walk-in portals with their destinations.
     fn grid_gates(&self) -> Vec<(ZoneId, super::Gate)> {
         [
@@ -3107,6 +3149,9 @@ impl WorldRuntime {
             if let Some(gate) = self.ritual_gate() {
                 mesh.extend(&gate.mesh(ZoneId::Plaza, super::gate::RITUAL_SIGN, elapsed));
             }
+            if let (Some(gate), Some(hosted)) = (self.hosted_gate(), &self.zone_state.hosted) {
+                mesh.extend(&gate.mesh(ZoneId::Plaza, &hosted.sign, elapsed));
+            }
             return mesh;
         }
         // The crypt's door and the Water Lab's lantern are their ways out;
@@ -3148,6 +3193,16 @@ impl WorldRuntime {
         }
         let to = self.player.pos;
         if self.is_plaza() {
+            if self
+                .hosted_gate()
+                .is_some_and(|gate| gate.crossed(from, to))
+            {
+                self.cancel_navigation();
+                self.doors.cancel_transient();
+                self.zone_state.hosted_crossed = true;
+                self.zone_state.gate_cooldown = super::gate::COOLDOWN;
+                return;
+            }
             if self
                 .ritual_gate()
                 .is_some_and(|gate| gate.crossed(from, to))
