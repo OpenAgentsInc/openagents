@@ -184,7 +184,9 @@ const AFTER_LIST: &str = "\
 ";
 
 /// Loads the pylons, Verse, and GPUI chat as separate modules. The pylon
-/// card loads on click. Only the focused GPUI input pauses world controls.
+/// card loads on click. Only the focused GPUI chat input pauses world
+/// controls: the card has nothing to type into, so a click on it hands the
+/// keyboard straight back to the world (#12415).
 const LOADER: &str = "\
 const still=matchMedia(\"(prefers-reduced-motion: reduce)\").matches;\
 const idle=t=>new Promise(r=>(window.requestIdleCallback||(f=>setTimeout(f,1)))(r,{timeout:t}));\
@@ -285,7 +287,8 @@ mount.addEventListener(\"gpui-first-frame\",()=>{mount.id=\"pylon-card-mount\";\
 box.classList.add(\"ready\");\
 performance.mark(\"pylon-card-first-frame\");\
 setTimeout(()=>{for(const field of document.querySelectorAll(\"body>input\"))if(!fields.has(field)){field.tabIndex=-1;\
-field.setAttribute(\"aria-hidden\",\"true\")}const now=document.activeElement;\
+field.setAttribute(\"aria-hidden\",\"true\");\
+field.addEventListener(\"focus\",()=>world.focus({preventScroll:true}))}const now=document.activeElement;\
 if(now&&now.tagName===\"INPUT\"&&!fields.has(now)){if(before&&before!==document.body)before.focus({preventScroll:true});\
 else now.blur()}});\
 ok()},{once:true});\
@@ -529,6 +532,8 @@ mod tests {
         assert!(LOADER.contains("globalThis.pylonsCard"));
         assert!(LOADER.contains(super::super::pylons::CARD_WASM));
         assert!(LOADER.contains("/home/me"));
+        // A click on the card hands the keyboard back to the world.
+        assert!(LOADER.contains("addEventListener(\"focus\",()=>world.focus("));
         assert!(!LOADER.contains("</script"));
     }
 }
