@@ -219,6 +219,12 @@ impl MapHud {
                 x: crate::zones::duel::RETURN_PORTAL.x,
                 z: crate::zones::duel::RETURN_PORTAL.z,
             }],
+            crate::zones::ZoneId::HandDuel => vec![Landmark {
+                id: "return",
+                label: "Plaza portal",
+                x: crate::zones::hand_duel::RETURN_PORTAL.x,
+                z: crate::zones::hand_duel::RETURN_PORTAL.z,
+            }],
             crate::zones::ZoneId::Arena => vec![Landmark {
                 id: "return",
                 label: "Plaza portal",

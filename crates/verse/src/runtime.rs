@@ -615,6 +615,13 @@ impl WorldRuntime {
         } else {
             1.0
         };
+        // The Hand Duel is seen through the player's own eyes.
+        if let Some(duel) = self.hand_duel()
+            && self.shot.is_none()
+        {
+            let (view_proj, eye) = duel.view(aspect, self.player.pos);
+            return View { view_proj, eye };
+        }
         if let Some((eye, target)) = self.shot {
             // A blast jolts the eye and, more, where it looks, so the shake
             // reads in a wide shot as well as a close one.
@@ -711,6 +718,7 @@ impl WorldRuntime {
                     | crate::zones::ZoneId::Coast
                     | crate::zones::ZoneId::Arena
                     | crate::zones::ZoneId::Duel
+                    | crate::zones::ZoneId::HandDuel
             )
     }
 

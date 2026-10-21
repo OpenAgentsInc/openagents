@@ -95,6 +95,7 @@ pub(crate) fn routes() -> Router<App> {
         .route("/druid", get(druid))
         .route("/grid", get(grid))
         .route("/verse", get(verse))
+        .route("/hand-duel", get(hand_duel))
         .route("/everglade/{file}", get(build_file))
         .route("/everglade/pack/{file}", get(pack_file))
         .route("/everglade/kit/{file}", get(kit_file))
@@ -151,6 +152,21 @@ const VERSE: Stage = Stage {
     policy: VERSE_POLICY,
 };
 
+/// `/hand-duel` (#12429): the same build, which opens the Hand Duel on
+/// this path, a sword-and-shield fight played with the camera's hands.
+const HAND_DUEL: Stage = Stage {
+    title: "Hand Duel",
+    path: "/hand-duel",
+    label: "The Hand Duel: a sword-and-shield fight played with your hands",
+    loading: "the Hand Duel",
+    policy: HAND_DUEL_POLICY,
+};
+
+/// `/hand-duel`'s policy: the build's, plus the hand landmarker's worker.
+const HAND_DUEL_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
+img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; \
+connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
 /// `/verse`'s policy: the Grid's, plus the hand landmarker's worker.
 pub(crate) const VERSE_POLICY: &str = "default-src 'none'; style-src 'self'; font-src 'self'; \
 img-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src blob:; \
@@ -180,7 +196,11 @@ data-wasm=\"/everglade/{WASM}\" data-wasm-bytes=\"{wasm_bytes}\" data-pack=\"{PA
 <p class=\"glade-status\" id=\"everglade-status\" aria-live=\"polite\">Loading {loading}…</p>\
 <noscript><p class=\"glade-status\">Turn on JavaScript to open {loading}.</p></noscript></div>\
 {hand_bar}<script type=\"module\" src=\"/static/everglade.js\"></script>",
-        hand_bar = if hands { HAND_BAR } else { "" },
+        hand_bar = match (hands, stage.path == HAND_DUEL.path) {
+            (false, _) => String::new(),
+            (true, false) => hand_bar(VERSE_HAND_NOTE),
+            (true, true) => hand_bar(DUEL_HAND_NOTE),
+        },
         name = name
             .map(|n| format!(" data-name=\"{}\"", crate::layout::escape(n)))
             .unwrap_or_default(),
@@ -230,6 +250,11 @@ async fn verse(State(app): State<App>, headers: HeaderMap) -> Response {
     stage(&app, &VERSE, &headers).await
 }
 
+/// `/hand-duel`: the same build, which opens the Hand Duel on this path.
+async fn hand_duel(State(app): State<App>, headers: HeaderMap) -> Response {
+    stage(&app, &HAND_DUEL, &headers).await
+}
+
 /// `/grid`: the same build, which opens the shared Grid on this path.
 async fn grid(State(app): State<App>, headers: HeaderMap) -> Response {
     stage(&app, &GRID, &headers).await
@@ -254,7 +279,7 @@ async fn stage(app: &App, stage: &Stage, headers: &HeaderMap) -> Response {
         None
     };
     // Hand tracking waits on its check (#12309, #12336).
-    let hands = stage.path == VERSE.path
+    let hands = (stage.path == VERSE.path || stage.path == HAND_DUEL.path)
         && app.config.features.on(crate::features::Feature::VerseHands)
         && hand_files(app);
     // A signed-in person's browser asks for its Verse key's owner tag with
@@ -281,11 +306,20 @@ async fn stage(app: &App, stage: &Stage, headers: &HeaderMap) -> Response {
 /// `/verse`'s opt-in hand input (#12309): the button, the note, and the
 /// camera's `<video>`, which `everglade.js` drives with `/verse/hands`'s hand
 /// landmarker. Nothing loads until the button is pressed.
-const HAND_BAR: &str = "<div class=\"glade-hands\"><button type=\"button\" id=\"hand-toggle\" \
+fn hand_bar(note: &str) -> String {
+    format!(
+        "<div class=\"glade-hands\"><button type=\"button\" id=\"hand-toggle\" \
 aria-pressed=\"false\" aria-label=\"Turn on hand tracking\">Hands</button>\
-<p id=\"hand-note\" role=\"status\" aria-live=\"polite\">Pinch and move to look, point to walk. \
+<p id=\"hand-note\" role=\"status\" aria-live=\"polite\">{note} \
 Hand tracking runs on this device. Your camera's picture is never uploaded.</p></div>\
-<video id=\"hand-video\" muted playsinline aria-hidden=\"true\"></video>";
+<video id=\"hand-video\" muted playsinline aria-hidden=\"true\"></video>"
+    )
+}
+
+/// What the hands do on `/verse`.
+const VERSE_HAND_NOTE: &str = "Pinch and move to look, point to walk.";
+/// What the hands do in the Hand Duel.
+const DUEL_HAND_NOTE: &str = "Shield in your left hand, sword in your right.";
 
 /// Whether this server has the hand landmarker to serve.
 fn hand_files(app: &App) -> bool {

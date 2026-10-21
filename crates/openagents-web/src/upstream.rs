@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 102] = [
+const OWNED_EXACT: [&str; 103] = [
     "/",
     // The GPUI web chat (crate::pages::gpui_chat).
     "/gpui",
@@ -78,6 +78,8 @@ const OWNED_EXACT: [&str; 102] = [
     "/studios/blue-rush",
     "/druid",
     "/grid",
+    // The hand-tracked duel (#12429).
+    "/hand-duel",
     "/lander3",
     // The Grid at twilight, a Shader Skills background (crate::pages::lander5).
     "/lander5",

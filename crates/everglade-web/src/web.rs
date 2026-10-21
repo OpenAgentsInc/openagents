@@ -30,10 +30,30 @@ const STATUS_ID: &str = "everglade-status";
 const MAX_SIDE: u32 = 4096;
 /// The longest frame step; a hidden tab resumes without a jump.
 const MAX_STEP: f32 = 0.1;
+/// The most landmarker frames held for the Hand Duel between two drawn
+/// frames.
+const RAW_LIMIT: usize = 8;
+
+/// Keeps one landmarker frame for the Hand Duel.
+fn push_raw(data: &[f32], t: f64) {
+    RAW.with(|raw| {
+        let mut raw = raw.borrow_mut();
+        if raw.len() >= RAW_LIMIT {
+            raw.pop_front();
+        }
+        raw.push_back((data.to_vec(), t));
+    });
+}
 
 thread_local! {
     /// Opt-in hand input on /verse (#12309).
     static HANDS: RefCell<crate::hand_input::HandInput> = RefCell::default();
+    /// The landmarker's frames as they came (packed floats, seconds), for
+    /// the Hand Duel, which reads both hands itself. The frame loop drains
+    /// it; [`RAW_LIMIT`] bounds it while nothing does.
+    static RAW: RefCell<std::collections::VecDeque<(Vec<f32>, f64)>> = RefCell::default();
+    /// Whether the page's hand tracking is on, for the Hand Duel's screen.
+    static RAW_ON: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
     /// `/lander11`: the Grid behind the site's chat. The camera drifts round
     /// the plaza by itself, the page joins no one, and the keyboard is the
     /// chat's until the page hands it over with [`verse_walk`].
@@ -184,6 +204,10 @@ pub fn verse_walk(on: bool) {
 #[wasm_bindgen]
 pub fn verse_hands_on(on: bool) {
     HANDS.with(|h| h.borrow_mut().set_on(on));
+    RAW_ON.with(|r| r.set(Some(on)));
+    if !on {
+        RAW.with(|raw| raw.borrow_mut().clear());
+    }
 }
 
 /// One frame of the hand landmarker's points, packed as floats, at `t`
@@ -191,6 +215,7 @@ pub fn verse_hands_on(on: bool) {
 #[wasm_bindgen]
 pub fn verse_hand_frame(data: &[f32], t: f64, width: f32, height: f32) {
     HANDS.with(|h| h.borrow_mut().frame(data, t / 1000.0, (width, height)));
+    push_raw(data, t / 1000.0);
 }
 
 /// Made-up hands, for checking without a camera: `pose` at page fractions
@@ -210,6 +235,9 @@ pub fn verse_hand_synth(
     let mut hands = vec![(pose, x, y)];
     if !pose2.is_empty() {
         hands.push((pose2, x2, y2));
+    }
+    if let Some(frame) = crate::hand_input::synth_frame(&hands) {
+        push_raw(&frame.encode(), t / 1000.0);
     }
     HANDS.with(|h| h.borrow_mut().synth(&hands, t / 1000.0, (width, height)))
 }
@@ -654,7 +682,15 @@ async fn run() -> Result<(), String> {
     }
     // `?zone=arena`, or the `/arena` page, opens the Grid Arena, the robot
     // duel. Its geometry is generated, so nothing downloads.
-    let arena = query_value(&window, "zone").as_deref() == Some("arena")
+    // `?zone=hand-duel`, or the `/hand-duel` page, opens the Hand Duel,
+    // played with the camera's hands. Its geometry is generated too.
+    let hand_duel = query_value(&window, "zone").as_deref() == Some("hand-duel")
+        || window
+            .location()
+            .pathname()
+            .is_ok_and(|path| path.trim_end_matches('/').ends_with("/hand-duel"));
+    let arena = hand_duel
+        || query_value(&window, "zone").as_deref() == Some("arena")
         || window
             .location()
             .pathname()
@@ -683,7 +719,9 @@ async fn run() -> Result<(), String> {
     // `?zone=water` opens the Water Lab, the cove for Verse's water, built
     // on the same pack (`docs/verse/water.md`).
     let water = query_value(&window, "zone").as_deref() == Some("water");
-    if arena {
+    if hand_duel {
+        runtime.enter_hand_duel()?;
+    } else if arena {
         runtime.enter_arena()?;
     } else if query_value(&window, "zone").as_deref() == Some("coast") {
         status("Opening the coast…");
@@ -1334,7 +1372,20 @@ impl Page {
             self.input = super::input::Input::default();
         }
         let mut input = self.input.take();
-        let (moves, walking) = HANDS.with(|h| h.borrow_mut().take());
+        let (mut moves, mut walking) = HANDS.with(|h| h.borrow_mut().take());
+        let raw: Vec<(Vec<f32>, f64)> = RAW.with(|r| r.borrow_mut().drain(..).collect());
+        if let Some(duel) = self.runtime.hand_duel_mut() {
+            // The Hand Duel reads both hands itself; they don't steer the
+            // camera or walk.
+            if let Some(on) = RAW_ON.with(std::cell::Cell::take) {
+                duel.set_tracking(on);
+            }
+            for (data, t) in &raw {
+                duel.hand_frame(data, *t);
+            }
+            moves.clear();
+            walking = false;
+        }
         for hand in moves {
             let _ = self.runtime.apply(match hand {
                 crate::hand_input::Move::Look { dx, dy } => Action::Look { dx, dy },
@@ -1549,6 +1600,10 @@ impl Page {
             if let Some(index) = tip {
                 zones::grove::hotbar::draw_tip(&mut ui, atlas, size, 0.0, layout, &bar, index);
             }
+        }
+        // The Hand Duel's bars, belt, hands, and numbers.
+        if let (Some(atlas), Some(duel)) = (&self.layout, self.runtime.hand_duel()) {
+            zones::hand_duel::hud::draw(&mut ui, atlas, css, view.view_proj, duel);
         }
         // The Grid Arena's bars, numbers, and action bar.
         if let (Some(atlas), Some(arena)) = (&self.layout, self.runtime.arena()) {

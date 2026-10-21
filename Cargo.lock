@@ -20934,6 +20934,7 @@ dependencies = [
  "verse-zone-duel",
  "verse-zone-everglade",
  "verse-zone-grove",
+ "verse-zone-handduel",
  "verse-zone-lab",
  "verse-zone-lagrange",
  "verse-zone-lagrange2",
@@ -21395,6 +21396,21 @@ dependencies = [
  "verse-pbr",
  "verse-world",
  "verse-zone-everglade",
+]
+
+[[package]]
+name = "verse-zone-handduel"
+version = "1.0.0"
+dependencies = [
+ "coder-ui",
+ "glam",
+ "oa-copy",
+ "openagents-web-hands",
+ "openagents-workspace-hack",
+ "verse-core",
+ "verse-gfx",
+ "verse-pbr",
+ "verse-world",
 ]
 
 [[package]]

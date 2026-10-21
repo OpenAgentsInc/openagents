@@ -287,6 +287,7 @@ pub const NOT_SCREENS: &[(&str, &str)] = &[
     ("/everglade*", "a canvas world"),
     ("/druid", "a canvas world"),
     ("/grid", "a canvas world"),
+    ("/hand-duel", "a canvas world: a fight played with your hands"),
     (
         "/verse",
         "a canvas world: the Grid, as the website's spatial layer",

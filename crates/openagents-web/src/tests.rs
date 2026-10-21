@@ -79,7 +79,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 /// of `UiPage`, so the shell's checks (one `ui.css` link, the wordmark, no
 /// script) don't apply. Its own test below holds it to the same policy
 /// rules: no inline script or style, scripts from this site only.
-const PAGES: [&str; 64] = [
+const PAGES: [&str; 65] = [
     "/chat",
     "/agent/foreman",
     "/blog",
@@ -91,6 +91,7 @@ const PAGES: [&str; 64] = [
     "/everglade",
     "/druid",
     "/grid",
+    "/hand-duel",
     "/games/grow-little-bunny",
     "/games/the-ice-cream-man",
     "/games/snap-station",

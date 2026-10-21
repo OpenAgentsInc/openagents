@@ -9,6 +9,7 @@ pub use verse_zone_crypt as crypt;
 pub use verse_zone_duel as duel;
 pub use verse_zone_everglade::zones::everglade;
 pub use verse_zone_everglade::zones::everglade_pack;
+pub use verse_zone_handduel as hand_duel;
 pub use verse_zone_water as water;
 pub mod gate;
 pub use verse_zone_grove::zones::grove;
@@ -117,9 +118,12 @@ pub enum ZoneId {
     /// A Teutonic knight against a Prussian warrior on a grassy meadow
     /// ([`duel`], `verse --duel`, `docs/verse/duel.md`).
     Duel,
+    /// The hand-tracked sword-and-shield fight against the Barrow Warden
+    /// ([`hand_duel`], the browser's `/hand-duel`, `docs/verse/hand-duel.md`).
+    HandDuel,
 }
 impl ZoneId {
-    pub const ALL: [Self; 14] = [
+    pub const ALL: [Self; 15] = [
         Self::Plaza,
         Self::Lagrange1,
         Self::PhysicsLab,
@@ -134,6 +138,7 @@ impl ZoneId {
         Self::Lagrange2,
         Self::Arena,
         Self::Duel,
+        Self::HandDuel,
     ];
 
     /// Whether this zone is one of the standalone Meteor Swarm stages: the
@@ -172,6 +177,7 @@ impl ZoneId {
             Self::Lagrange2 => "verse-lagrange-2",
             Self::Arena => "verse-arena",
             Self::Duel => "verse-duel-v1",
+            Self::HandDuel => "verse-hand-duel-v1",
         }
     }
     pub const fn label(self) -> &'static str {
@@ -190,6 +196,7 @@ impl ZoneId {
             Self::Lagrange2 => "Lagrange 2",
             Self::Arena => "Grid Arena",
             Self::Duel => "Prussian Duel",
+            Self::HandDuel => "Hand Duel",
         }
     }
     pub const fn half_extent(self) -> f32 {
@@ -207,6 +214,7 @@ impl ZoneId {
             Self::Coast => coast::HALF_EXTENT,
             Self::Arena => arena::HALF_EXTENT,
             Self::Duel => duel::HALF_EXTENT,
+            Self::HandDuel => hand_duel::HALF_EXTENT,
         }
     }
     /// The zone's primary portal: the plaza's Lagrange 1 arch, or a zone's
@@ -251,6 +259,7 @@ impl ZoneId {
             Self::Coast => vec![(Self::Plaza, coast::RETURN_PORTAL)],
             Self::Arena => vec![(Self::Plaza, arena::RETURN_PORTAL)],
             Self::Duel => vec![(Self::Plaza, duel::RETURN_PORTAL)],
+            Self::HandDuel => vec![(Self::Plaza, hand_duel::RETURN_PORTAL)],
         }
     }
     /// Short arch lettering for a destination.
@@ -270,6 +279,7 @@ impl ZoneId {
             Self::Lagrange2 => "LAGRANGE 2",
             Self::Arena => "GRID ARENA",
             Self::Duel => "PRUSSIAN DUEL",
+            Self::HandDuel => "HAND DUEL",
         }
     }
 }
@@ -287,7 +297,7 @@ pub use verse_core::zone::Atmosphere;
 pub fn atmosphere(zone: ZoneId) -> Atmosphere {
     match zone {
         // The arena stands on the Grid, under the plaza's own field.
-        ZoneId::Plaza | ZoneId::Arena => Atmosphere {
+        ZoneId::Plaza | ZoneId::Arena | ZoneId::HandDuel => Atmosphere {
             color: crate::palette::field(),
             fog_start: crate::render::FOG_START,
             fog_end: crate::render::FOG_END,
@@ -433,6 +443,8 @@ pub(crate) struct State {
     arena: Option<Box<arena::Arena>>,
     /// The Prussian duel.
     duel: Option<Box<duel::Duel>>,
+    /// The hand-tracked duel.
+    hand_duel: Option<Box<hand_duel::HandDuel>>,
     /// Open Everglade as the demolition yard (`verse --demolition`).
     demolition: bool,
     /// The town clock Everglade's sky follows (`verse --town-hour`,
@@ -525,6 +537,7 @@ impl Default for State {
             coast: None,
             arena: None,
             duel: None,
+            hand_duel: None,
             demolition: false,
             town_clock: town_clock::Clock::DAYTIME,
             dev_destruction: false,
@@ -624,6 +637,7 @@ fn arch_rings(mesh: &mut crate::mesh::Mesh, zone: ZoneId, at: glam::Vec3, elapse
         ZoneId::WaterLab | ZoneId::Coast => [0.35, 0.8, 1.0],
         ZoneId::Arena => crate::palette::amber(coder_ui::theme::Intensity::Full),
         ZoneId::Duel => [0.85, 0.82, 0.7],
+        ZoneId::HandDuel => crate::palette::amber(coder_ui::theme::Intensity::Full),
     };
     // Broken concentric arcs leave the destination visible through the opening.
     for ring in 0..3 {

@@ -14,6 +14,9 @@ Open it with `verse --duel`, or render a frame offline with
 [SECONDS]`. The code is in
 [`verse-zone-duel`](../../crates/verse-zone-duel/src/lib.rs).
 
+For a version played with your hands in front of a camera, see
+[Hand Duel](hand-duel.md).
+
 ## Controls
 
 | Input | Action |

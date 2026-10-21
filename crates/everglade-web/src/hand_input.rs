@@ -135,6 +135,25 @@ impl HandInput {
     }
 }
 
+/// Made-up hands at page fractions as one landmarker frame, the way
+/// [`HandInput::synth`] makes them. `None` for a pose it doesn't know.
+#[must_use]
+pub fn synth_frame(hands: &[(&str, f32, f32)]) -> Option<RawFrame> {
+    let aspect = 4.0 / 3.0;
+    let map = openagents_web_hands::Mapping::default();
+    let mut frame = RawFrame {
+        aspect,
+        hands: Vec::new(),
+    };
+    for (pose, x, y) in hands {
+        frame.hands.push(openagents_web_hands::RawHand {
+            score: 1.0,
+            landmarks: synth::hand(synth::Pose::parse(pose)?, *x, *y, aspect, &map),
+        });
+    }
+    Some(frame)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

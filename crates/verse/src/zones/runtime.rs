@@ -76,6 +76,9 @@ impl WorldRuntime {
         } else if let Some(duel) = &mut self.zone_state.duel {
             // The duel moves the knight itself; the keys become footwork.
             duel.move_player(input);
+        } else if self.zone_state.hand_duel.is_some() {
+            // The hands do everything; the player stands their ground.
+            let _ = (input, dt);
         } else {
             self.player
                 .update(input, dt, &self.world.blockers, self.zone_half());
@@ -332,6 +335,56 @@ impl WorldRuntime {
         // Close over the knight's shoulder, so both fighters fill the view.
         self.camera.distance = 4.6;
         self.camera.pitch = 0.2;
+    }
+
+    /// Enter the Hand Duel: the hand-tracked sword-and-shield fight against
+    /// the Barrow Warden. Its geometry is generated; nothing is downloaded.
+    pub fn install_hand_duel(&mut self) {
+        if self.is_hosted() || !self.is_plaza() {
+            return;
+        }
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.zone_cancel_loading();
+        let mut world = crate::world::bare_ground();
+        let field = super::hand_duel::HandDuel::world();
+        world.mesh.extend(&field.mesh);
+        self.world = world;
+        self.zone_state.hand_duel = Some(Box::new(super::hand_duel::HandDuel::new()));
+        self.zone = ZoneId::HandDuel;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(
+            super::hand_duel::HandDuel::spawn(),
+            super::hand_duel::HandDuel::spawn_yaw(),
+        );
+        self.camera = crate::camera::FollowCamera::default();
+    }
+
+    /// Enter the Hand Duel from the plaza, as the browser's `/hand-duel`
+    /// page does.
+    ///
+    /// # Errors
+    ///
+    /// The player is not in the plaza.
+    pub fn enter_hand_duel(&mut self) -> Result<(), String> {
+        if !self.is_plaza() {
+            return Err("Return to the plaza before entering the Hand Duel".into());
+        }
+        self.cancel_navigation();
+        self.doors.cancel_transient();
+        self.install_hand_duel();
+        Ok(())
+    }
+
+    /// The Hand Duel, while the player is in it.
+    #[must_use]
+    pub fn hand_duel(&self) -> Option<&super::hand_duel::HandDuel> {
+        self.zone_state.hand_duel.as_deref()
+    }
+
+    /// The Hand Duel, to give it hand frames.
+    pub fn hand_duel_mut(&mut self) -> Option<&mut super::hand_duel::HandDuel> {
+        self.zone_state.hand_duel.as_deref_mut()
     }
 
     /// Enter the Prussian duel from the plaza, as `verse --duel` does.
@@ -1531,6 +1584,7 @@ impl WorldRuntime {
                 self.zone_state.lab = None;
                 self.zone_state.arena = None;
                 self.zone_state.duel = None;
+                self.zone_state.hand_duel = None;
                 self.zone_state.robot_lab = None;
                 self.zone_state.everglade = None;
                 #[cfg(not(target_arch = "wasm32"))]
@@ -2564,6 +2618,9 @@ impl WorldRuntime {
         } else if let Some(duel) = &self.zone_state.duel {
             // The duel draws its own screen; no panel controls.
             duel.caption()
+        } else if let Some(duel) = &self.zone_state.hand_duel {
+            // The hands are the controls; no panel buttons.
+            duel.caption()
         } else if let Some(lab) = &self.zone_state.lab {
             add("knob_prev", "Prev", Intent::KnobPrev, true);
             add("knob_next", "Next", Intent::KnobNext, true);
@@ -2869,7 +2926,10 @@ impl WorldRuntime {
             false
         } else if let Some(lab) = &self.zone_state.lab {
             crate::runtime::mesh_occludes(lab.dynamic(), eye, direction, distance)
-        } else if self.zone_state.arena.is_some() || self.zone_state.duel.is_some() {
+        } else if self.zone_state.arena.is_some()
+            || self.zone_state.duel.is_some()
+            || self.zone_state.hand_duel.is_some()
+        {
             // Two fighters in the open hide nothing worth the test.
             false
         } else if let Some(everglade) = &self.zone_state.everglade {
@@ -3617,6 +3677,9 @@ impl WorldRuntime {
         if let Some(duel) = &mut self.zone_state.duel {
             duel.tick(dt, &mut self.player);
         }
+        if let Some(duel) = &mut self.zone_state.hand_duel {
+            duel.tick(dt);
+        }
         if let Some(room) = &mut self.zone_state.robot_lab {
             room.tick(dt);
         }
@@ -3751,6 +3814,11 @@ impl WorldRuntime {
         // The arena draws the player as its robot; no plaza figure.
         if let Some(arena) = &self.zone_state.arena {
             mesh.extend(arena.dynamic());
+        }
+        // First person: the Hand Duel draws the hands, the shield, and the
+        // sword, and no figure for the player.
+        if let Some(duel) = &self.zone_state.hand_duel {
+            mesh.extend(duel.dynamic());
         }
         // The duel draws the knight and the Prussian under Everglade's
         // late-morning stage, its shadows centered on the fight.

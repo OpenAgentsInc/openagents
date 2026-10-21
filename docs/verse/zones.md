@@ -171,6 +171,10 @@ controls, the rules, and the historical notes;
 `cargo run -p verse --features capture --example duel_capture -- OUT.png`
 renders a frame of the fight, such as [this one](captures/prussian-duel/duel.jpg).
 
+The [Hand Duel](hand-duel.md) is a sword-and-shield fight played with tracked hands
+in the browser at `/hand-duel`
+([`verse-zone-handduel`](../../crates/verse-zone-handduel/src/lib.rs)).
+
 ### Everglade controls
 
 You walk the plaza character over the glade's generated ground; the camera
