@@ -386,3 +386,141 @@ The 20k CPU/GPU runs and all qualification gates retain their prior status.
 [worker-receiver]: https://github.com/OpenAgentsInc/openagents/blob/30ba21cb1efab4097872a7b49e438e1d947924e7/crates/psionic/crates/psionic-v41-stage/src/serve.rs#L354-L359
 [worker-parser]: https://github.com/OpenAgentsInc/openagents/blob/30ba21cb1efab4097872a7b49e438e1d947924e7/crates/psionic/crates/psionic-v41-stage/src/lib.rs#L967-L1014
 [synthetic-rng]: https://github.com/OpenAgentsInc/openagents/blob/30ba21cb1efab4097872a7b49e438e1d947924e7/crates/psionic/crates/psionic-v41-stage/src/cuda/synthetic.rs#L153-L168
+
+## Review of the remediation response (2026-10-21)
+
+Reviewed the response against main at `8447cdff74828484827c1a16ec8090baa124f576`,
+including #12407, #12408, #12409, and the new W12/W14 receipts. The fixes are
+substantial, but **“acted on every item” is more accurate than “every item is
+fixed.”** Build identity, VM identity, and output decoding still need work.
+This addendum leaves the original findings and results unchanged.
+
+### R1 — P1: Finish binding the complete build through qualification and launch
+
+The startup checks now reject an individual worker or library that differs
+from `BUILD.json`, and an explicit `--worker-build` pins that document. These
+fix the original unchecked download. However:
+
+- [`build_identity()`](https://github.com/OpenAgentsInc/openagents/blob/8447cdff74828484827c1a16ec8090baa124f576/crates/psionic/crates/psionic-v41-stage/src/lib.rs#L530-L550)
+  reports the executable hash and target, without the library or build-record
+  hashes. The group compares these announcements with the first stage's
+  announcement. The
+  [qualification report](https://github.com/OpenAgentsInc/openagents/blob/8447cdff74828484827c1a16ec8090baa124f576/crates/psionic/crates/psionic-v41-stage/src/qualify.rs#L1104-L1118)
+  calls the executable hash `stage_build_sha256`. Two bundles with the same
+  executable and different CUDA libraries have the same reported identity.
+- Cloud build pins remain optional. The claim that launches pin exact builds
+  describes an available option, rather than enforced launch behavior.
+  The calibration setup also downloads `BUILD.json` and libraries without
+  checking their hashes against an independently supplied build pin.
+- `stage-run` rechecks files against the installed `BUILD.json`, but does not
+  rehash that document against the build hash in its path and ready marker.
+  In the local fixture, bundle A passed startup with its explicit pin. After
+  replacing its installed library and updating its installed `BUILD.json`
+  consistently, `stage-run` still succeeded under A's ready marker.
+
+The [follow-up results](2026-10-21-deepseek-six-hour-review/follow-up-results.json)
+retain both startup fixtures. They use a shell worker and fake libraries;
+they demonstrate acceptance checks, not CUDA execution or a running-process
+exploit. The omitted group/report fields are source-inspection findings.
+
+Before accepting G1, include the verified bundle hash in worker announcements,
+group configuration, qualification results, and launch records. Compare it
+with the qualified profile's expected hash, not only with the first worker.
+Require those pins for qualification and qualified serving; explicitly label
+any development launch that omits them. Recheck `BUILD.json` itself before
+starting a worker. Test identical executables with different libraries and a
+self-consistent replacement of an installed build record and library.
+
+### R2 — P2: Reused VM names can still supply the wrong timestamps
+
+The original sync calculation and start/delete race have regression tests,
+and all **37 guard tests pass**. The new reused-name test places the
+replacement one hour later, outside `same_machine`'s 30-minute window. It
+misses replacements inside that window.
+
+[`describe()`](https://github.com/OpenAgentsInc/openagents/blob/8447cdff74828484827c1a16ec8090baa124f576/scripts/dev/cloud-budget.py#L638-L655)
+compares creation time but ignores a known mismatch between the ledger's
+instance ID and the described instance ID.
+[`settle()`](https://github.com/OpenAgentsInc/openagents/blob/8447cdff74828484827c1a16ec8090baa124f576/scripts/dev/cloud-budget.py#L735-L759)
+filters operation events by ID, then borrows the unvalidated describe
+snapshot's start and stop timestamps anyway.
+
+The executed fixture records instance `111` at 08:00, whose insert fails at
+08:05. Instance `222` reuses the name at 08:10 and stops at 09:00. Settlement
+reports instance `111` with instance `222`'s timestamps and **$53.70** at the
+fixture rate of $64.44/hour, although the failed request never started.
+This is a local reproduction, not a claim about an actual GCP charge.
+
+Reject mismatched instance IDs before using describe timestamps, and resolve
+the instance ID from the matching creation operation when the ledger lacks
+one. Add the rapid-reuse case to the suite. Manual stop should also refuse to
+delete a replacement instance when it discovers that the ledger's machine is
+gone. The billing-console check remains an owner step; passing fixtures do
+not confirm an invoice.
+
+### R3 — P2: Output decoding still processes the full history on every token
+
+`AnswerParser` now keeps a live parser, and its whole-answer replay was
+removed. That is a useful fix. But
+[`Server::run_step`](https://github.com/OpenAgentsInc/openagents/blob/8447cdff74828484827c1a16ec8090baa124f576/crates/psionic/crates/psionic-v41-stage/src/serve.rs#L1192-L1201)
+still calls `TextStream::push` before the answer parser. That method appends
+the token, decodes `self.ids` in full, and checks the full emitted prefix on
+every call. At 4,096 tokens it submits 8,390,656 token IDs to the decoder
+across those calls. The remaining cost is quadratic in answer length.
+
+Use an incremental decoder for the raw-text stream, or avoid that duplicate
+stream when the structured parser supplies the answer. Keep the split-UTF-8
+and special-token tests, then measure end-to-end parsing at the output cap.
+This is a source-level complexity finding; this review did not measure its
+latency on the GPU. The response should say “incremental answer parser,”
+without implying that all repeated-prefix processing is gone.
+
+### Coverage and remaining evidence
+
+- Independently ran the **37 billing tests** and **16 CPU stage tests**:
+  `answer` (8), `budget` (3), `handoff` (1), and `identity` (4). All passed.
+  The chat test matches the oracle p2 IDs. The handoff test uses the real
+  serving loop and a gated CPU executor, exercises backpressure, then checks
+  cancellation, fencing, and a new request.
+- F1, F3, F5, and F9 have concrete source changes and regression coverage.
+  This review inspected the architecture rebuild record but did not repeat
+  the other agent's three-build 4080 check or its CUDA tests. They remain
+  that agent's hardware evidence.
+- The **3,022-token receipt remains disputed**. The checked four-stage CUDA
+  budget is 2,872 tokens, and the local budget test passes. Retain the older
+  measurement as historical evidence with the dispute attached; do not use
+  its token count to certify the current context limit. Recover its exact
+  prompt IDs and actual encoded boundary lengths first. Recounting retained
+  inputs does not require a new GPU session; new timing does. The receipt
+  does not retain enough prompt data to resolve this here.
+- The new queue, parser, build, and admission changes postdate the W12/W14
+  GPU runs. Repeat the required direct-link fault matrix for both placements
+  and the answer/deadline measurements on the same pinned SM120 bundle that
+  passes numerical qualification. After-close tracking is appropriate under
+  the issue policy, but does not pass G1, G2, or final launch acceptance.
+- G1 v2 remains in progress. Its machine script still schedules the 20k
+  calibration case although the current unchunked profile cannot carry it.
+  Report it as unsupported/missing coverage until a separately qualified
+  prefill schedule exists. Do not interpret the bounded short-context
+  profile as 20k qualification.
+
+### Correction to this audit's reproduction command
+
+The other agent correctly identified that the old reproduction command
+fails against newer startup code. The script used the working tree; it did
+**not** automatically check out its recorded review revision. That omission
+was mine. It now checks the retained source hashes before running, gives a
+clear error for changed sources, and accepts `--source-root PATH` for a
+checkout of `4dab114ee5`, which contains both the historical source and audit.
+The original `results.json` stays unchanged.
+
+For the follow-up fixtures on current source, run:
+
+```sh
+python3 docs/audits/2026-10-21-deepseek-six-hour-review/follow-up-reproduce.py \
+  --output "$(openagents scratch)/deepseek-follow-up.json"
+```
+
+The follow-up script records the tested commit and source hashes and uses
+isolated local metadata, fake storage, and mocked lifecycle records. It makes
+no cloud requests and starts no model or production service.

@@ -201,9 +201,22 @@ fn main() {
 
 
 def main():
+    global ROOT
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source-root", type=Path, default=ROOT,
+                        help="checkout containing the audited source, such as commit 4dab114ee5")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
+    ROOT = args.source_root.resolve()
+    retained = json.loads(Path(__file__).with_name("results.json").read_text())
+    changed = [name for name, want in retained["source_sha256"].items()
+               if not (ROOT / name).is_file()
+               or hashlib.sha256((ROOT / name).read_bytes()).hexdigest() != want]
+    if changed:
+        parser.error("this reproduces historical findings, and the audited source differs: "
+                     + ", ".join(changed)
+                     + ". Use --source-root with a checkout of 4dab114ee5; "
+                     "the follow-up-reproduce.py script checks the later fixes.")
     scratch = Path(subprocess.check_output(["openagents", "scratch"], text=True).strip())
     baseline = subprocess.run(
         ["python3", "-m", "unittest", "scripts/dev/test_cloud_budget.py"],
