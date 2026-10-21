@@ -28,6 +28,43 @@ use std::{
 };
 const POLICY: &str =
     include_str!("../src/testdata/deepseek_v41/cpu_qualification/tolerance-policy.json");
+const REQUIRED_CASES: [&str; 8] = [
+    "p1-chat-thinking",
+    "p2-code",
+    "p3-2k",
+    "p4-20k",
+    "e-engram",
+    "e-window-127",
+    "e-window-128",
+    "e-window-129",
+];
+fn qualification_passed(runs: &Value) -> bool {
+    let Some(runs) = runs.as_array() else {
+        return false;
+    };
+    runs.len() == REQUIRED_CASES.len() * 2
+        && REQUIRED_CASES.iter().all(|id| {
+            ["decode", "replay"].iter().all(|mode| {
+                runs.iter()
+                    .filter(|r| r["prompt"] == *id && r["mode"] == *mode)
+                    .count()
+                    == 1
+                    && runs.iter().any(|r| {
+                        r["prompt"] == *id
+                            && r["mode"] == *mode
+                            && r["passed"] == true
+                            && r["forward_complete"] == true
+                    })
+            })
+        })
+}
+fn require_component_pass(report: Value) -> Result<(), Box<dyn std::error::Error>> {
+    if report["checked"].as_u64().is_some_and(|n| n > 0) && report["failed"].as_u64() == Some(0) {
+        Ok(())
+    } else {
+        Err("Component diagnostic failed or has no observations; see report.json".into())
+    }
+}
 #[derive(Clone, Deserialize)]
 struct Entry {
     name: String,
@@ -389,7 +426,7 @@ impl ModelObserver for Compare<'_> {
                 if actual != expected && !tied {
                     self.router_failed += 1;
                     self.router_failed_positions.insert(pos);
-                    let v = json!({"kind":"router_set_mismatch","layer":layer,"position":pos,"step":self.step,"actual":actual,"reference":expected});
+                    let v = json!({"kind":"router_set_mismatch","tensor":all,"layer":layer,"position":pos,"step":self.step,"actual":actual,"reference":expected});
                     if self.first_failure.is_none() {
                         self.first_failure = Some(v.clone());
                     }
@@ -938,16 +975,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     if ffns_only {
-        ffn_checks(&Oracle::open(&oracle_dir)?, &checkpoint, &out)?;
-        return Ok(());
+        return require_component_pass(ffn_checks(&Oracle::open(&oracle_dir)?, &checkpoint, &out)?);
     }
     if experts_only {
-        expert_checks(&Oracle::open(&oracle_dir)?, &checkpoint, &out)?;
-        return Ok(());
+        return require_component_pass(expert_checks(
+            &Oracle::open(&oracle_dir)?,
+            &checkpoint,
+            &out,
+        )?);
     }
     if mixing_only {
-        mixing_checks(&Oracle::open(&oracle_dir)?, &checkpoint, &out)?;
-        return Ok(());
+        return require_component_pass(mixing_checks(
+            &Oracle::open(&oracle_dir)?,
+            &checkpoint,
+            &out,
+        )?);
     }
     if swiglu_only {
         swiglu_checks(&Oracle::open(&oracle_dir)?, &out)?;
@@ -1105,17 +1147,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .cloned()
                 .collect();
             let summary = json!({"prompt":id,"mode":current,"seconds":start.elapsed().as_secs_f64(),"peak_decoded_matrix_bytes":resident.peak_decoded_matrix_bytes(),"processed_tokens":model.position(),"committed_tokens":model.position(),"forward_tokens_requested":attempted_tokens,"position_coverage":coverage,"checked_tensors":compare.checked.len(),"failed_tensors":compare.failed,"router_rows":compare.router_rows,"router_failed":compare.router_failed,"exact_tie_rows":compare.exact_ties,"first_failure":compare.first_failure,"error":error,"steps":steps,"unobserved_tensors":missing,"coverage_complete":missing.is_empty(),"passed":compare.failed==0&&compare.router_failed==0&&error.is_none()&&missing.is_empty()});
+            let mut summary = summary;
+            summary["expected_forward_tokens"] = json!(prompt.len() + generated.len());
+            summary["forward_complete"] = json!(model.position() == prompt.len() + generated.len());
             report["runs"]
                 .as_array_mut()
                 .ok_or("runs invalid")?
                 .push(summary);
+            report["qualification_passed"] = json!(qualification_passed(&report["runs"]));
             fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
         }
     }
-    if report["runs"]
-        .as_array()
-        .is_none_or(|runs| runs.is_empty() || runs.iter().any(|run| run["passed"] != true))
-    {
+    if !qualification_passed(&report["runs"]) {
         return Err("CPU qualification failed or is incomplete; see report.json".into());
     }
     Ok(())
@@ -1123,6 +1166,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn partial_scope_and_incomplete_forward_never_qualify() {
+        let runs: Vec<_> = REQUIRED_CASES
+            .iter()
+            .flat_map(|id| {
+                ["decode", "replay"].map(
+                    |mode| json!({"prompt":id,"mode":mode,"passed":true,"forward_complete":true}),
+                )
+            })
+            .collect();
+        assert!(qualification_passed(&json!(runs)));
+        assert!(!qualification_passed(&json!(&runs[..15])));
+        let mut incomplete = runs.clone();
+        incomplete[0]["forward_complete"] = json!(false);
+        assert!(!qualification_passed(&json!(incomplete)));
+        assert!(require_component_pass(json!({"checked":0,"failed":0})).is_err());
+        assert!(require_component_pass(json!({"checked":1,"failed":1})).is_err());
+        assert!(require_component_pass(json!({"checked":1})).is_err());
+        assert!(require_component_pass(json!({"checked":1,"failed":0})).is_ok());
+    }
     #[test]
     fn combine_weights_follow_expert_ids_instead_of_topk_order() -> Result<(), CpuError> {
         let order = route_weight_order(&[7, 2, 3], &[2.0, 7.0, 3.0])?;
