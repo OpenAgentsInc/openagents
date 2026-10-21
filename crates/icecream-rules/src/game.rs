@@ -11,7 +11,7 @@ use crate::{DT, HZ};
 
 /// The hot bar's tools. A run starts with the first three; the rest are
 /// earned.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Tool {
     Fudge,
     Fart,
@@ -48,7 +48,7 @@ impl Tool {
 }
 
 /// Something lying on the floor to walk over.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum DropKind {
     /// An edible ice cream cone: extra health for a while.
     Cone,
@@ -56,7 +56,7 @@ pub enum DropKind {
     Weapon(Tool),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Drop {
     pub at: V2,
     pub kind: DropKind,
@@ -70,7 +70,7 @@ pub const MAX_FRIENDS: usize = 24;
 
 /// What the player does this step. Directions are on the floor, in world
 /// space; the host turns keys and the camera into them.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Input {
     /// Where to walk, up to length 1.
     pub walk: V2,
@@ -88,7 +88,7 @@ pub struct Input {
 }
 
 /// Choices for tests and captures.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Options {
     /// Whether the Ice Cream Man is in the house (off: captures and tests).
     pub man: bool,
@@ -100,7 +100,7 @@ impl Default for Options {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Status {
     Playing,
     Escaped,
@@ -129,7 +129,7 @@ pub enum Prompt {
 }
 
 /// Something that happened this step, for sounds and effects.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Event {
     FudgeFired,
     FudgeHit,
@@ -198,7 +198,7 @@ pub enum Event {
     FreeRoam,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum ShotKind {
     Fudge,
     /// A cone from the cone pistol.
@@ -210,7 +210,7 @@ pub enum ShotKind {
 }
 
 /// Something flying.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Shot {
     pub kind: ShotKind,
     pub pos: V2,
@@ -221,13 +221,13 @@ pub struct Shot {
 }
 
 /// A fart cloud, hanging about.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Cloud {
     pub at: V2,
     pub age: f32,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Player {
     pub pos: V2,
     /// Feet above the floor.
@@ -259,7 +259,7 @@ pub struct Player {
 }
 
 /// What the run card shows.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Stats {
     pub hits_taken: u32,
     pub fudge_shots: u32,
@@ -288,8 +288,11 @@ pub struct RunCard {
     pub accuracy: Option<u32>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Game {
+    /// Built again from the seed and the tuning when a state is read
+    /// ([`crate::live`]), so it never crosses the module boundary.
+    #[serde(skip, default = "House::empty")]
     pub house: House,
     pub player: Player,
     pub man: Man,

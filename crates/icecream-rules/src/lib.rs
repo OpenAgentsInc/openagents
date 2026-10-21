@@ -10,6 +10,7 @@ pub mod bot;
 pub mod game;
 pub mod geom;
 pub mod layout;
+pub mod live;
 pub mod man;
 pub mod minion;
 pub mod rng;

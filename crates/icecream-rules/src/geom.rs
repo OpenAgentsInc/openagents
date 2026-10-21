@@ -5,7 +5,7 @@
 use std::ops::{Add, Mul, Neg, Sub};
 
 /// A point or direction on the floor.
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct V2 {
     pub x: f32,
     pub z: f32,

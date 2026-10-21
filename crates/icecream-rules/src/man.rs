@@ -11,7 +11,7 @@ use crate::rng::Rng;
 use crate::tuning::*;
 
 /// What he is doing.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ManState {
     Wander,
     Investigate,
@@ -49,7 +49,7 @@ pub struct Senses<'a> {
     pub keys: u32,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Man {
     pub pos: V2,
     pub facing: V2,

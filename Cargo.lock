@@ -8737,10 +8737,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "icecream-logic"
+version = "1.0.0"
+dependencies = [
+ "icecream-rules",
+ "openagents-workspace-hack",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "icecream-rules"
 version = "1.0.0"
 dependencies = [
  "openagents-workspace-hack",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

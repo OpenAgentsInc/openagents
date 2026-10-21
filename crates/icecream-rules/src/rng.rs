@@ -1,7 +1,7 @@
 //! A small seeded generator (SplitMix64): the same seed gives the same
 //! house and the same run everywhere.
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Rng(u64);
 
 impl Rng {

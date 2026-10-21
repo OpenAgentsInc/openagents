@@ -329,7 +329,7 @@ pub struct Room {
 }
 
 /// What a fridge holds.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Pickup {
     /// More hot fudge.
     Fudge,
@@ -464,6 +464,36 @@ fn opposite(side: Side) -> Side {
 }
 
 impl House {
+    /// A house with no rooms, which [`crate::live`] replaces as soon as a
+    /// state is read.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self {
+            seed: 0,
+            cols: 0,
+            rows: 0,
+            rooms: Vec::new(),
+            blocks: Vec::new(),
+            closets: Vec::new(),
+            fridges: Vec::new(),
+            keys: Vec::new(),
+            spawn: V2::ZERO,
+            spawn_room: 0,
+            man_start: V2::ZERO,
+            front: FrontDoor {
+                room: 0,
+                side: Side::North,
+                at: V2::ZERO,
+                stand: V2::ZERO,
+            },
+            extras: Vec::new(),
+            buttons: Vec::new(),
+            cabinet: V2::ZERO,
+            backrooms: false,
+            cabinet_key: None,
+        }
+    }
+
     /// The house a run with `tuning` plays: its size, loops, the
     /// Backrooms or not, its keys, and its extra closets.
     #[must_use]

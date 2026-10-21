@@ -566,6 +566,36 @@ impl Tuning {
     }
 }
 
+/// A tuning crosses the logic module's boundary as a map from each
+/// setting's name to its value, so a state written by an older or newer
+/// build still reads: a setting it doesn't name keeps its default, and a
+/// name this build doesn't know is ignored.
+impl serde::Serialize for Tuning {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap;
+        let mut map = serializer.serialize_map(Some(FIELDS.len()))?;
+        for field in FIELDS {
+            if let Some(value) = self.get(field.name) {
+                map.serialize_entry(field.name, &value)?;
+            }
+        }
+        map.end()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Tuning {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let values = std::collections::BTreeMap::<String, f64>::deserialize(deserializer)?;
+        let mut tuning = Tuning::default();
+        for (name, value) in values {
+            if field(&name).is_some() {
+                tuning.set(&name, value).map_err(serde::de::Error::custom)?;
+            }
+        }
+        Ok(tuning)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

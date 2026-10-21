@@ -9,7 +9,7 @@ use crate::layout::{House, centre};
 use crate::rng::Rng;
 use crate::tuning::MINION_RADIUS;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Minion {
     pub pos: V2,
     pub facing: V2,
