@@ -1,0 +1,367 @@
+{
+ "grid_before": {
+  "where": {
+   "zone": "The Grid",
+   "place": "grid",
+   "scheme": "GridWalk",
+   "trip": null,
+   "panel": null,
+   "player": [
+    4.406449317932129,
+    0,
+    -13.406587600708008,
+    -0.31755495071411133
+   ],
+   "draw": "grid",
+   "load": "Idle",
+   "stopped": false
+  },
+  "overlay": {
+   "field": "visible",
+   "hint": "visible",
+   "place": "grid",
+   "pylons": 11
+  }
+ },
+ "loading_in": {
+  "where": {
+   "zone": "Lagrange 2",
+   "place": "loading",
+   "scheme": "Station",
+   "trip": "World",
+   "panel": null,
+   "player": [
+    -26,
+    4,
+    36,
+    2.5161077976226807
+   ],
+   "draw": "opening",
+   "load": "Idle",
+   "stopped": false
+  },
+  "overlay": {
+   "field": "hidden",
+   "hint": "hidden",
+   "place": "loading",
+   "pylons": 11
+  }
+ },
+ "zone": {
+  "where": {
+   "zone": "Lagrange 2",
+   "place": "zone",
+   "scheme": "Station",
+   "trip": null,
+   "panel": [
+    {
+     "label": "Slower",
+     "frame": [
+      516,
+      776,
+      102,
+      44
+     ]
+    },
+    {
+     "label": "Faster",
+     "frame": [
+      618,
+      776,
+      102,
+      44
+     ]
+    },
+    {
+     "label": "Pause",
+     "frame": [
+      720,
+      776,
+      102,
+      44
+     ]
+    },
+    {
+     "label": "New ship",
+     "frame": [
+      822,
+      776,
+      102,
+      44
+     ]
+    },
+    {
+     "label": "Forces",
+     "frame": [
+      516,
+      826,
+      102,
+      44
+     ]
+    },
+    {
+     "label": "Art",
+     "frame": [
+      618,
+      826,
+      102,
+      44
+     ]
+    },
+    {
+     "label": "The Grid",
+     "frame": [
+      720,
+      826,
+      102,
+      44
+     ]
+    }
+   ],
+   "player": [
+    -26,
+    4,
+    36,
+    2.5161077976226807
+   ],
+   "draw": "legacy",
+   "load": "Idle",
+   "stopped": false
+  },
+  "overlay": {
+   "field": "hidden",
+   "hint": "hidden",
+   "place": "zone",
+   "pylons": 11
+  }
+ },
+ "a_turns": {
+  "before": [
+   -26,
+   4,
+   36,
+   2.5161077976226807
+  ],
+  "after": [
+   -26,
+   4,
+   36,
+   -2.0916664600372314
+  ],
+  "yaw_change": -4.607774257659912,
+  "moved": 0.0
+ },
+ "space_climbs": {
+  "before": [
+   -26,
+   4,
+   36,
+   -2.0916664600372314
+  ],
+  "after": [
+   -26,
+   6.100000858306885,
+   36,
+   -2.0916664600372314
+  ],
+  "dy": 2.1000008583068848
+ },
+ "forces_button": [
+  "Slower",
+  "Faster",
+  "Pause",
+  "New ship",
+  "Hide forces",
+  "Art",
+  "The Grid"
+ ],
+ "loading_back": {
+  "where": {
+   "zone": "The Grid",
+   "place": "grid",
+   "scheme": "GridWalk",
+   "trip": null,
+   "panel": null,
+   "player": [
+    -17.462501525878906,
+    0,
+    6.589376926422119,
+    2.330559015274048
+   ],
+   "draw": "grid",
+   "load": "Idle",
+   "stopped": false
+  },
+  "overlay": {
+   "field": "visible",
+   "hint": "visible",
+   "place": "grid",
+   "pylons": 11
+  }
+ },
+ "grid_after": {
+  "where": {
+   "zone": "The Grid",
+   "place": "grid",
+   "scheme": "GridWalk",
+   "trip": null,
+   "panel": null,
+   "player": [
+    -17.462501525878906,
+    0,
+    6.589376926422119,
+    2.330559015274048
+   ],
+   "draw": "grid",
+   "load": "Idle",
+   "stopped": false
+  },
+  "overlay": {
+   "field": "visible",
+   "hint": "visible",
+   "place": "grid",
+   "pylons": 11
+  }
+ },
+ "events": [
+  {
+   "name": "verse-zone",
+   "t": 1261,
+   "detail": {
+    "zone": "grid",
+    "place": "grid"
+   }
+  },
+  {
+   "name": "verse-zone-load",
+   "t": 12038,
+   "detail": {
+    "phase": "start",
+    "zone": "lagrange2",
+    "direction": "enter",
+    "ms": 0
+   }
+  },
+  {
+   "name": "verse-zone",
+   "t": 12038,
+   "detail": {
+    "zone": "grid",
+    "place": "loading"
+   }
+  },
+  {
+   "name": "verse-zone",
+   "t": 12790,
+   "detail": {
+    "zone": "lagrange2",
+    "place": "loading"
+   }
+  },
+  {
+   "name": "verse-zone-load",
+   "t": 29860,
+   "detail": {
+    "phase": "ready",
+    "zone": "lagrange2",
+    "direction": "enter",
+    "ms": 17816
+   }
+  },
+  {
+   "name": "verse-zone",
+   "t": 29867,
+   "detail": {
+    "zone": "lagrange2",
+    "place": "zone"
+   }
+  },
+  {
+   "name": "verse-zone-load",
+   "t": 37318,
+   "detail": {
+    "phase": "start",
+    "zone": "grid",
+    "direction": "return",
+    "ms": 0
+   }
+  },
+  {
+   "name": "verse-zone",
+   "t": 37320,
+   "detail": {
+    "zone": "grid",
+    "place": "loading"
+   }
+  },
+  {
+   "name": "verse-zone-load",
+   "t": 37674,
+   "detail": {
+    "phase": "ready",
+    "zone": "grid",
+    "direction": "return",
+    "ms": 300
+   }
+  },
+  {
+   "name": "verse-zone",
+   "t": 37676,
+   "detail": {
+    "zone": "grid",
+    "place": "grid"
+   }
+  }
+ ],
+ "load_samples": [
+  {
+   "t": 12052,
+   "opacity": "1",
+   "title": "Entering Lagrange 2",
+   "value": "5",
+   "detail": "Building Lagrange 2\u2026"
+  },
+  {
+   "t": 12812,
+   "opacity": "1",
+   "title": "Entering Lagrange 2",
+   "value": "40",
+   "detail": "Starting the graphics\u2026"
+  },
+  {
+   "t": 13236,
+   "opacity": "1",
+   "title": "Entering Lagrange 2",
+   "value": "60",
+   "detail": "Setting up the scene\u2026"
+  },
+  {
+   "t": 29867,
+   "opacity": "0",
+   "title": "Entering Lagrange 2",
+   "value": "100",
+   "detail": "Ready"
+  },
+  {
+   "t": 37609,
+   "opacity": "1",
+   "title": "Back to the Grid",
+   "value": "5",
+   "detail": "Getting the Grid ready\u2026"
+  },
+  {
+   "t": 37666,
+   "opacity": "1",
+   "title": "Back to the Grid",
+   "value": "40",
+   "detail": "Starting the graphics\u2026"
+  },
+  {
+   "t": 37676,
+   "opacity": "0",
+   "title": "Back to the Grid",
+   "value": "100",
+   "detail": "Ready"
+  }
+ ]
+}
