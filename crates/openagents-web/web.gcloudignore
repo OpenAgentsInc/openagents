@@ -62,6 +62,7 @@
 !/scripts/deploy/cargo-skeleton.sh
 !/scripts/deploy/cloud-buildx.sh
 !/scripts/deploy/oa-kache.sh
+!/scripts/deploy/oa-module-cache.sh
 !/programs/
 !/questions/
 !/plugins/

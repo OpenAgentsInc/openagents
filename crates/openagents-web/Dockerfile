@@ -12,7 +12,10 @@
 # profile, features, and environment), or the dependencies compile twice.
 # Every Cargo command also runs under the shared remote compile cache
 # (#12176) through scripts/deploy/oa-kache.sh, so a workspace crate whose
-# inputs didn't change is downloaded rather than compiled.
+# inputs didn't change is downloaded rather than compiled. Each browser
+# module's build runs through scripts/deploy/oa-module-cache.sh (#12427):
+# when none of its inputs changed, its finished files are downloaded and
+# the build, wasm-opt, and compression are skipped.
 
 # The skeleton, read from the context through a bind mount so the context
 # itself never becomes a layer.
@@ -110,11 +113,12 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
 FROM everglade-deps AS everglade
 COPY . .
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -exec touch -c {} + \
-    && oa-kache run scripts/build-everglade-web.sh /build/everglade \
-    && test -f /build/everglade/everglade_web.js \
-    && test -f /build/everglade/everglade_web_bg.wasm \
-    && gzip -9 -k /build/everglade/everglade_web.js /build/everglade/everglade_web_bg.wasm \
-    && brotli -q 11 -k /build/everglade/everglade_web.js /build/everglade/everglade_web_bg.wasm \
+    && sh scripts/deploy/oa-module-cache.sh everglade /build/everglade -- sh -c '\
+        oa-kache run scripts/build-everglade-web.sh /build/everglade \
+        && test -f /build/everglade/everglade_web.js \
+        && test -f /build/everglade/everglade_web_bg.wasm \
+        && gzip -9 -k /build/everglade/everglade_web.js /build/everglade/everglade_web_bg.wasm \
+        && brotli -q 11 -k /build/everglade/everglade_web.js /build/everglade/everglade_web_bg.wasm' \
     && test -s /build/everglade/everglade_web_bg.wasm.br \
     && mkdir -p /build/everglade/pack /build/everglade/kit/bake /build/everglade/space \
     && cp assets/verse/everglade/*.vtp /build/everglade/pack/ \
@@ -129,7 +133,9 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
 # Build the shared component catalog, the Cloud privacy adapter, and the
 # granted workbench terminal (both served from /cloud/assets/ out of the
 # --cloud-build directory) directly in this isolated stage. The local build scripts use the machine's build lease.
-RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run cargo build --locked --release --target wasm32-unknown-unknown \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    sh scripts/deploy/oa-module-cache.sh components /build/components,/build/cloud,/build/chat -- sh -c '\
+    oa-kache run cargo build --locked --release --target wasm32-unknown-unknown \
         -p coder-components-web -p coder-cloud-web -p coder-browser-web \
         -p coder-chat-web -p oa-vault-web \
     && mkdir -p /build/components /build/cloud /build/chat \
@@ -142,7 +148,7 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
     && wasm-bindgen --target web --no-typescript --out-dir /build/chat \
         target/wasm32-unknown-unknown/release/coder_chat_web.wasm \
     && wasm-bindgen --target web --no-typescript --out-dir /build/chat \
-        target/wasm32-unknown-unknown/release/oa_vault_web.wasm \
+        target/wasm32-unknown-unknown/release/oa_vault_web.wasm' \
     && test -s /build/chat/oa_vault_web.js \
     && test -s /build/chat/oa_vault_web_bg.wasm \
     && test -s /build/chat/coder_chat_web.js \
@@ -161,11 +167,12 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
     --mount=type=cache,target=/var/cache/openagents-wallet-cargo,sharing=locked \
     CARGO_TARGET_DIR=/var/cache/openagents-wallet-cargo OA_BUILD_CACHE=remote \
-        oa-kache run scripts/build-spark-wallet-web.sh /build/wallet
+        sh scripts/deploy/oa-module-cache.sh wallet /build/wallet -- oa-kache run scripts/build-spark-wallet-web.sh /build/wallet
 
 # Grow Little Bunny, which /games/grow-little-bunny serves: the glue, the
 # module, the start script, and gzip copies of each.
-RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-bunny-web.sh /build/bunny \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    sh scripts/deploy/oa-module-cache.sh bunny /build/bunny -- oa-kache run scripts/build-bunny-web.sh /build/bunny \
     && test -s /build/bunny/bunny_web.js \
     && test -s /build/bunny/bunny_web_bg.wasm \
     && test -s /build/bunny/start.js
@@ -173,19 +180,22 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
 # The Ice Cream Man, which /games/the-ice-cream-man serves the same way. The
 # site finds it at /srv/icecream without a flag (production's arguments are
 # copied from the live revision).
-RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-icecream-web.sh /build/icecream \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    sh scripts/deploy/oa-module-cache.sh icecream /build/icecream -- oa-kache run scripts/build-icecream-web.sh /build/icecream \
     && test -s /build/icecream/icecream_web.js \
     && test -s /build/icecream/icecream_web_bg.wasm \
     && test -s /build/icecream/start.js
 
 # Robot Lab's Rust player for account-scoped CAD imports.
-RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run env CARGO_TARGET_DIR=/build/target scripts/build-robot-web.sh /build/robot \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    sh scripts/deploy/oa-module-cache.sh robot /build/robot -- oa-kache run env CARGO_TARGET_DIR=/build/target scripts/build-robot-web.sh /build/robot \
     && test -s /build/robot/robot_web.js \
     && test -s /build/robot/robot_web_bg.wasm
 
 # Snap Station, which /games/snap-station serves the same way, found at
 # /srv/snap without a flag.
-RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-snap-web.sh /build/snap \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    sh scripts/deploy/oa-module-cache.sh snap /build/snap -- oa-kache run scripts/build-snap-web.sh /build/snap \
     && test -s /build/snap/snap_web.js \
     && test -s /build/snap/snap_web_bg.wasm \
     && test -s /build/snap/start.js \
@@ -193,29 +203,34 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
 
 # The sealed-inference demo, which /att serves (crates/att-web): the glue,
 # the module, the start script, the stylesheet, and gzip copies of each.
-RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-att-web.sh /build/att \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    sh scripts/deploy/oa-module-cache.sh att /build/att -- oa-kache run scripts/build-att-web.sh /build/att \
     && test -s /build/att/att_web.js \
     && test -s /build/att/att_web_bg.wasm \
     && test -s /build/att/start.js \
     && test -s /build/att/att.css
 
-RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-sand-garden.sh /build/sand
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    sh scripts/deploy/oa-module-cache.sh sand /build/sand -- oa-kache run scripts/build-sand-garden.sh /build/sand
 
 # The LayerTree demo (#11987), which /layertree serves the same way, found at
 # /srv/layertree without a flag.
-RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-layertree-web.sh /build/layertree \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    sh scripts/deploy/oa-module-cache.sh layertree /build/layertree -- oa-kache run scripts/build-layertree-web.sh /build/layertree \
     && test -s /build/layertree/layertree_web.js \
     && test -s /build/layertree/layertree_web_bg.wasm \
     && test -s /build/layertree/start.js
 
 # /lander5's WebGL2 runner, which the page inlines, found at /srv/lander5
 # without a flag.
-RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-lander5-web.sh /build/lander5 \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    sh scripts/deploy/oa-module-cache.sh lander5 /build/lander5 -- oa-kache run scripts/build-lander5-web.sh /build/lander5 \
     && test -s /build/lander5/lander5_web.js \
     && test -s /build/lander5/lander5_web_bg.wasm
 
 # /pylons' Grid layer, found at /srv/pylons/layer without a flag.
-RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa-kache run scripts/build-pylons-web.sh /build/pylons-layer \
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    sh scripts/deploy/oa-module-cache.sh pylons /build/pylons-layer -- oa-kache run scripts/build-pylons-web.sh /build/pylons-layer \
     && test -s /build/pylons-layer/pylons_web.js \
     && test -s /build/pylons-layer/pylons_web_bg.wasm.br
 
@@ -230,7 +245,7 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
 FROM cadweb-deps AS cadweb
 COPY . .
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -exec touch -c {} + \
-    && oa-kache run scripts/build-cad-web.sh /build/cad \
+    && sh scripts/deploy/oa-module-cache.sh cad /build/cad -- oa-kache run scripts/build-cad-web.sh /build/cad \
     && test -s /build/cad/cad_wasm.js \
     && test -s /build/cad/cad_wasm_bg.wasm.br \
     && test -s /build/cad/worker.js \
@@ -297,7 +312,7 @@ COPY . .
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -exec touch -c {} + \
     && apps/openagents/scripts/build-web-fonts.sh /build/gpui-fonts \
     && test -s /build/gpui-fonts/fonts.json \
-    && oa-kache run apps/openagents/scripts/build-web-demo.sh /build/gpui-demo \
+    && sh scripts/deploy/oa-module-cache.sh gpui-demo /build/gpui-demo -- oa-kache run apps/openagents/scripts/build-web-demo.sh /build/gpui-demo \
     && test -s /build/gpui-demo/openagents_web_demo.js \
     && test -s /build/gpui-demo/openagents_web_demo_bg.wasm \
     && test -s /build/gpui-demo/start.js \
@@ -308,7 +323,7 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
 FROM gpuiweb-deps AS gpuiweb-graph
 COPY . .
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -exec touch -c {} + \
-    && oa-kache run apps/openagents/scripts/build-web-demo.sh --app agent-graph /build/agent-graph \
+    && sh scripts/deploy/oa-module-cache.sh agent-graph /build/agent-graph -- oa-kache run apps/openagents/scripts/build-web-demo.sh --app agent-graph /build/agent-graph \
     && test -s /build/agent-graph/openagents_web_agent_graph.js \
     && test -s /build/agent-graph/openagents_web_agent_graph_bg.wasm \
     && test -s /build/agent-graph/start.js \
@@ -316,17 +331,17 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/agent-graph/first-frame/painter.wasm.gz \
     && test -s /build/agent-graph/first-frame/foreman-desktop.ffs.gz \
     && test -x /build/agent-graph/first-frame/first-frame-capture \
-    && oa-kache run apps/openagents/scripts/build-web-pylon-card.sh /build/pylons-card \
+    && sh scripts/deploy/oa-module-cache.sh pylons-card /build/pylons-card -- oa-kache run apps/openagents/scripts/build-web-pylon-card.sh /build/pylons-card \
     && test -s /build/pylons-card/webgpu/openagents_web_pylon_card_bg.wasm.br \
     && test -s /build/pylons-card/webgl/openagents_web_pylon_card_bg.wasm.br \
-    && oa-kache run apps/openagents/scripts/build-web-lander-chat.sh /build/lander8 \
+    && sh scripts/deploy/oa-module-cache.sh lander8 /build/lander8 -- oa-kache run apps/openagents/scripts/build-web-lander-chat.sh /build/lander8 \
     && test -s /build/lander8/webgpu/openagents_web_lander_chat_bg.wasm.br \
     && test -s /build/lander8/webgl/openagents_web_lander_chat_bg.wasm.br
 
 FROM gpuiweb-deps AS gpuiweb-chat
 COPY . .
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -exec touch -c {} + \
-    && oa-kache run apps/openagents/scripts/build-web-chat.sh /build/gpui-chat \
+    && sh scripts/deploy/oa-module-cache.sh gpui-chat /build/gpui-chat -- oa-kache run apps/openagents/scripts/build-web-chat.sh /build/gpui-chat \
     && test -s /build/gpui-chat/openagents_web_chat.js \
     && test -s /build/gpui-chat/openagents_web_chat_bg.wasm \
     && test -s /build/gpui-chat/start.js \
