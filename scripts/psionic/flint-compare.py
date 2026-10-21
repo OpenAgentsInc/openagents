@@ -15,6 +15,9 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("native", type=Path)
 p.add_argument("reference", type=Path)
 p.add_argument("output", type=Path)
+p.add_argument("--total-variation-max", type=float, default=.02,
+               help="Declare a looser limit before comparing a different numerical profile, such as INT4.")
+p.add_argument("--centered-logit-max", type=float, default=.25)
 args = p.parse_args()
 rows = []
 native = [json.loads(s) for s in args.native.read_text().splitlines()]
@@ -34,10 +37,11 @@ for a, b in zip(native, reference):
     px, py = softmax(x), softmax(y)
     tv = sum(abs(i-j) for i, j in zip(px, py))*.5
     tx, ty = max(range(len(x)), key=x.__getitem__), max(range(len(y)), key=y.__getitem__)
-    passed = tx == ty and tv <= .02 and error <= .25
+    passed = tx == ty and tv <= args.total_variation_max and error <= args.centered_logit_max
     rows.append(dict(position=a["position"], token=a["token"], native_top1=tx, reference_top1=ty,
                      total_variation=tv, centered_logit_max_abs=error, passed=passed))
-report = dict(policy=dict(top1="equal", total_variation_max=.02, centered_logit_max_abs=.25),
+report = dict(policy=dict(top1="equal", total_variation_max=args.total_variation_max,
+                          centered_logit_max_abs=args.centered_logit_max),
               positions=len(rows), passed=all(r["passed"] for r in rows), rows=rows)
 args.output.write_text(json.dumps(report, indent=2) + "\n")
 print(json.dumps(report, indent=2))

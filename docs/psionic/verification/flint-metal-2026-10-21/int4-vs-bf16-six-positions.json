@@ -1,0 +1,66 @@
+{
+ "policy": {
+  "top1": "equal",
+  "total_variation_max": 0.1,
+  "centered_logit_max_abs": 1.5
+ },
+ "positions": 6,
+ "passed": false,
+ "rows": [
+  {
+   "position": 0,
+   "token": 150003,
+   "native_top1": 3755,
+   "reference_top1": 14751,
+   "total_variation": 0.9725614327032996,
+   "centered_logit_max_abs": 32.04407478582796,
+   "passed": false
+  },
+  {
+   "position": 1,
+   "token": 17,
+   "native_top1": 3157,
+   "reference_top1": 3157,
+   "total_variation": 0.4448493537388206,
+   "centered_logit_max_abs": 4.888381607385902,
+   "passed": false
+  },
+  {
+   "position": 2,
+   "token": 10,
+   "native_top1": 17,
+   "reference_top1": 17,
+   "total_variation": 0.5866563708994639,
+   "centered_logit_max_abs": 5.574942971572586,
+   "passed": false
+  },
+  {
+   "position": 3,
+   "token": 17,
+   "native_top1": 28,
+   "reference_top1": 28,
+   "total_variation": 0.4188935649691838,
+   "centered_logit_max_abs": 6.349105142118869,
+   "passed": false
+  },
+  {
+   "position": 4,
+   "token": 30,
+   "native_top1": 330,
+   "reference_top1": 13594,
+   "total_variation": 0.5972835851676228,
+   "centered_logit_max_abs": 10.929259293975477,
+   "passed": false
+  },
+  {
+   "position": 5,
+   "token": 150004,
+   "native_top1": 150006,
+   "reference_top1": 150006,
+   "total_variation": 4.2304630515899603e-07,
+   "centered_logit_max_abs": 8.18481217062407,
+   "passed": false
+  }
+ ],
+ "note": "Metal INT4 (RecursiveSI/flint-int4, mlx_int4_metal_v1) against the eager FP32-compute reference on the original BF16 weights, at the six positions of #12419 (evidence d4dfc0cf..., flint-reference-f32-logits.jsonl). Positions 0-4 predict the user turn; position 5 starts the assistant turn."
+}
