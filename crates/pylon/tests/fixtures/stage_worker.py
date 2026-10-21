@@ -5,8 +5,8 @@ The stage connects to the front, announces itself, and answers health pings,
 checks, steps, cancellations, and fences as line-delimited JSON. Faults are
 files in --root named KIND-STAGE. A file holding a step number fires once at
 that step and is then removed; "slow", "ignore-cancel", "always-die", and
-"weights", "build", "bundle", and "profile" (what hello reports) stay until the test
-removes them. A file "end-STAGE" makes the
+"weights", "build", "bundle", "profile", "runtime", "arch", "device", and
+"wire" (what hello reports) stay until the test removes them. A file "end-STAGE" makes the
 last stage end the answer at that step; "answer-STAGE", a JSON array of
 strings, makes it answer with those pieces, one a step, and end at the last.
 Every observation goes to events.jsonl in --root.
@@ -105,17 +105,22 @@ if direct:
 def hello(reported):
     message = {"kind": "hello", "stage": name, "token": token, "generation": reported,
                "weights": text("weights") or "sha256:fixture",
-               "runtime": "fixture-runtime/1", "protocol": 1}
+               "runtime": text("runtime") or "fixture-runtime/1", "protocol": 1}
     if direct:
         message["data"] = advertise
     # The build and numerical profile a real worker reports (#12407).
     if text("build") is not None:
-        message["build"] = {"sha256": text("build"), "cuda_arch": "sm_120"}
+        message["build"] = {"sha256": text("build"), "cuda_arch": text("arch") or "sm_120"}
         # The verified bundle hash (#12410).
         if text("bundle") is not None:
             message["build"]["bundle_sha256"] = text("bundle")
     if text("profile") is not None:
         message["profile"] = text("profile")
+    # The device and stage-state dtypes a mixed-device worker reports (#12418).
+    if text("device") is not None:
+        message["device"] = {"class": text("device")}
+    if text("wire") is not None:
+        message["wire"] = {"residual": "f32", "cache": text("wire")}
     return message
 
 

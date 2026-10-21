@@ -479,6 +479,8 @@ impl Provider {
         let generation = group.readiness.status().generation;
         let ready: std::collections::BTreeMap<String, bool> =
             group.readiness.stages().into_iter().collect();
+        let devices: std::collections::BTreeMap<String, crate::group::StageDevice> =
+            group.readiness.stage_devices().into_iter().collect();
         let mut out = vec![head.clone()];
         for (name, layers) in &group.stages {
             let mut base = head.clone();
@@ -493,7 +495,9 @@ impl Provider {
                 } else {
                     Status::Online
                 };
-            out.push(stage_beacon(&base, &group.spec, generation, *layers));
+            let mut stage = stage_beacon(&base, &group.spec, generation, *layers);
+            crate::group::set_stage_device(&mut stage, devices.get(name));
+            out.push(stage);
         }
         out
     }

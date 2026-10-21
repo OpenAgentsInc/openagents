@@ -471,6 +471,41 @@ impl Default for LinkPolicy {
     }
 }
 
+/// What one stage of a group must announce, from its own entry in the
+/// group manifest (#12418). A group can mix device types, so each stage is
+/// checked against its own entry rather than against the first stage to
+/// join. A field left out falls back to the group's setting, or, in a
+/// development group, to agreeing with the first undeclared stage.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StageIdentity {
+    /// The device class, such as `cuda-sm_120`, `cuda-sm_89`, or
+    /// `cpu-x86_64`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+    /// The runtime it announces, when it differs from the group's, such as
+    /// a CPU stage among CUDA stages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime: Option<String>,
+    /// Its verified bundle hash, when it differs from the group's pin.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<String>,
+    /// The numerical profile it runs, such as `cuda-device-sm_89` or
+    /// `cpu-bf16`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+}
+
+impl StageIdentity {
+    /// Whether the entry declares anything of its own.
+    #[must_use]
+    pub fn declared(&self) -> bool {
+        self.device.is_some()
+            || self.runtime.is_some()
+            || self.build.is_some()
+            || self.profile.is_some()
+    }
+}
+
 /// One stage process and how to start it.
 ///
 /// The front appends `--stage NAME --generation N --front ADDR --token T`.
@@ -479,6 +514,8 @@ pub struct StageSpec {
     pub name: String,
     pub program: PathBuf,
     pub args: Vec<String>,
+    /// What this stage must announce (#12418).
+    pub identity: StageIdentity,
 }
 
 /// What a group must agree on, and its limits.
@@ -493,8 +530,9 @@ pub struct StageGroupConfig {
     /// The protocol version every stage must report.
     pub protocol: u32,
     /// The verified bundle hash every stage must announce: the SHA-256 of
-    /// the qualified build's `BUILD.json` (#12410). `None` is a development
-    /// group, whose stages must only agree with the first to join.
+    /// the qualified build's `BUILD.json` (#12410), unless a stage's own
+    /// entry pins another (#12418). A group with any stage left unpinned is
+    /// a development group.
     pub build: Option<String>,
     /// The stages, in step order.
     pub stages: Vec<StageSpec>,
@@ -519,6 +557,22 @@ pub struct StageGroupConfig {
 }
 
 impl StageGroupConfig {
+    /// The bundle pin stage `index` must announce: its own, else the
+    /// group's.
+    #[must_use]
+    pub fn pin(&self, index: usize) -> Option<&str> {
+        let stage = self.stages.get(index)?;
+        stage.identity.build.as_deref().or(self.build.as_deref())
+    }
+
+    /// Whether every stage is pinned to a verified bundle (#12410). Only a
+    /// pinned group can be qualified; any other group is a development
+    /// group.
+    #[must_use]
+    pub fn pinned(&self) -> bool {
+        (0..self.stages.len()).all(|i| self.pin(i).is_some())
+    }
+
     /// Refuse invalid groups and limits before starting any stage.
     ///
     /// # Errors
@@ -571,6 +625,25 @@ impl StageGroupConfig {
         if self.weights.is_empty() || self.runtime.is_empty() {
             return Err("a stage group needs its weights digest and runtime".into());
         }
+        let hex = |v: &str| v.len() == 64 && v.bytes().all(|b| b.is_ascii_hexdigit());
+        for stage in &self.stages {
+            if stage.identity.build.as_deref().is_some_and(|b| !hex(b)) {
+                return Err(format!(
+                    "stage {} pins a bundle that isn't a SHA-256",
+                    stage.name
+                ));
+            }
+            if [
+                &stage.identity.device,
+                &stage.identity.runtime,
+                &stage.identity.profile,
+            ]
+            .into_iter()
+            .any(|v| v.as_deref().is_some_and(str::is_empty))
+            {
+                return Err(format!("stage {} declares an empty identity", stage.name));
+            }
+        }
         Ok(())
     }
 }
@@ -591,6 +664,10 @@ pub struct StageStatus {
     pub forwarded: u64,
     #[serde(default)]
     pub forwarded_bytes: u64,
+    /// The device, profile, and bundle the joined instance announced
+    /// (#12418).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub announced: Option<crate::group::StageDevice>,
 }
 
 /// The one readiness and generation status a beacon or router reads.
@@ -607,6 +684,10 @@ pub struct StageGroupStatus {
     /// group (#12410).
     #[serde(default)]
     pub build: Option<String>,
+    /// Every stage is pinned to a verified bundle, its own or the group's
+    /// (#12418); otherwise this is a development group.
+    #[serde(default)]
+    pub pinned: bool,
     /// Where stage state travels.
     #[serde(default)]
     pub transport: Transport,
@@ -821,6 +902,19 @@ mod runtime {
         build.and_then(|b| b["bundle_sha256"].as_str())
     }
 
+    /// The device class a stage announced: its `device.class`, else, from
+    /// a worker that predates it, `cuda-` and its build's CUDA architecture.
+    fn device_class(hello: &Hello) -> Option<String> {
+        if let Some(class) = hello.device.as_ref().and_then(|d| d["class"].as_str()) {
+            return Some(class.to_owned());
+        }
+        hello
+            .build
+            .as_ref()
+            .and_then(|b| b["cuda_arch"].as_str())
+            .map(|arch| format!("cuda-{arch}"))
+    }
+
     #[derive(Debug, Clone, Deserialize)]
     struct Hello {
         stage: String,
@@ -846,6 +940,15 @@ mod runtime {
         /// The numerical profile the stage runs, such as `cuda-device-sm_120`.
         #[serde(default)]
         profile: Option<String>,
+        /// The device it runs on: its `class` (`cuda-sm_89`, `cpu-x86_64`),
+        /// and optionally its `name`, `memory_bytes`, and where its routed
+        /// `experts` live (#12418).
+        #[serde(default)]
+        device: Option<serde_json::Value>,
+        /// The dtypes of the stage state it sends and takes. Every stage of
+        /// a group must agree, whatever backend it runs (#12418).
+        #[serde(default)]
+        wire: Option<serde_json::Value>,
         /// The request sizes and modes it serves.
         #[serde(default)]
         limits: Option<StageLimits>,
@@ -1080,6 +1183,15 @@ mod runtime {
         fn limits(&self) -> Option<StageLimits> {
             self.status.borrow().limits.clone()
         }
+
+        fn stage_devices(&self) -> Vec<(String, crate::group::StageDevice)> {
+            self.status
+                .borrow()
+                .stages
+                .iter()
+                .filter_map(|s| Some((s.name.clone(), s.announced.clone()?)))
+                .collect()
+        }
     }
 
     impl Drop for StageGroup {
@@ -1177,6 +1289,8 @@ mod runtime {
         progress: Option<u64>,
         forwarded: u64,
         forwarded_bytes: u64,
+        /// What the joined instance announced about its device (#12418).
+        announced: Option<crate::group::StageDevice>,
     }
 
     impl Slot {
@@ -1255,10 +1369,14 @@ mod runtime {
         was_ready: bool,
         /// The link key for the current generation (direct transport).
         key: Option<(u64, stage_link::Key)>,
-        /// The build and numerical profile the first stage to join
-        /// announced. A stage that announces another, such as a replaced
+        /// The build and numerical profile the first stage without an
+        /// identity of its own announced. In a development group, another
+        /// such stage that announces a different one, such as a replaced
         /// worker, never joins (#12407).
         identity: Option<(Option<serde_json::Value>, Option<String>)>,
+        /// The stage-state dtypes the first stage to join announced; every
+        /// stage must send and take the same (#12418).
+        wire: Option<serde_json::Value>,
     }
 
     impl Front {
@@ -1296,6 +1414,7 @@ mod runtime {
                     progress: None,
                     forwarded: 0,
                     forwarded_bytes: 0,
+                    announced: None,
                 })
                 .collect();
             let stages = u16::try_from(config.stages.len()).expect("at most 16 stages");
@@ -1321,6 +1440,7 @@ mod runtime {
                 was_ready: false,
                 key: None,
                 identity: None,
+                wire: None,
             }
         }
 
@@ -1337,6 +1457,7 @@ mod runtime {
                 runtime: self.config.runtime.clone(),
                 protocol: self.config.protocol,
                 build: self.config.build.clone(),
+                pinned: self.config.pinned(),
                 transport: self.config.transport,
                 generation: self.fence.generation(),
                 ready,
@@ -1362,6 +1483,7 @@ mod runtime {
                         replacements: s.replacements,
                         forwarded: s.forwarded,
                         forwarded_bytes: s.forwarded_bytes,
+                        announced: s.announced.clone(),
                     })
                     .collect(),
             }
@@ -1615,8 +1737,12 @@ mod runtime {
         /// Check a stage's announcement and, if it agrees, send its check.
         async fn announce(&mut self, index: usize, hello: Hello) {
             let name = self.slots[index].spec.name.clone();
+            let declared = self.slots[index].spec.identity.clone();
+            let pin = self.config.pin(index).map(str::to_owned);
+            let class = device_class(&hello);
             let generation = self.fence.generation();
             let config = &self.config;
+            let runtime = declared.runtime.as_deref().unwrap_or(&config.runtime);
             let disagreement = if hello.stage != name {
                 Some(format!("stage {name} announced itself as {}", hello.stage))
             } else if hello.generation < generation
@@ -1642,10 +1768,10 @@ mod runtime {
                     "stage {name} has weights {}; the group needs {}",
                     hello.weights, config.weights
                 ))
-            } else if hello.runtime != config.runtime {
+            } else if hello.runtime != runtime {
                 Some(format!(
-                    "stage {name} runs {}; the group needs {}",
-                    hello.runtime, config.runtime
+                    "stage {name} runs {}; its entry needs {runtime}",
+                    hello.runtime
                 ))
             } else if hello.protocol != config.protocol {
                 Some(format!(
@@ -1656,16 +1782,37 @@ mod runtime {
                 Some(format!(
                     "stage {name} has no link address; the group sends stage state directly"
                 ))
-            } else if let Some(pin) = &config.build
+            } else if let Some(pin) = &pin
                 && bundle(hello.build.as_ref()) != Some(pin.as_str())
             {
                 Some(format!(
-                    "stage {name} runs build {}; the group is pinned to bundle {pin}",
+                    "stage {name} runs build {}; its entry pins bundle {pin}",
                     describe_build(hello.build.as_ref()),
+                ))
+            } else if let Some(device) = &declared.device
+                && class.as_deref() != Some(device.as_str())
+            {
+                Some(format!(
+                    "stage {name} runs on {}; its entry declares {device}",
+                    class.as_deref().unwrap_or("an unstated device"),
+                ))
+            } else if let Some(profile) = &declared.profile
+                && hello.profile.as_deref() != Some(profile.as_str())
+            {
+                Some(format!(
+                    "stage {name} runs profile {}; its entry declares {profile}",
+                    hello.profile.as_deref().unwrap_or("unstated"),
+                ))
+            } else if let (Some(wire), Some(first)) = (&hello.wire, &self.wire)
+                && wire != first
+            {
+                Some(format!(
+                    "stage {name} sends stage state as {wire}; the group sends {first}"
                 ))
             } else if let Some((build, profile)) = self
                 .identity
                 .as_ref()
+                .filter(|_| !declared.declared())
                 .filter(|(build, profile)| *build != hello.build || *profile != hello.profile)
             {
                 Some(format!(
@@ -1683,12 +1830,24 @@ mod runtime {
                 self.reason = reason;
                 return;
             }
-            if self.identity.is_none() {
+            if declared.declared() {
+                (self.log)(format!(
+                    "stage {name} runs build {} with profile {} on {}{}",
+                    describe_build(hello.build.as_ref()),
+                    hello.profile.as_deref().unwrap_or("unstated"),
+                    class.as_deref().unwrap_or("an unstated device"),
+                    if pin.is_some() {
+                        ", as pinned"
+                    } else {
+                        "; development group: no build pin"
+                    }
+                ));
+            } else if self.identity.is_none() {
                 (self.log)(format!(
                     "stage group runs build {} with profile {}{}",
                     describe_build(hello.build.as_ref()),
                     hello.profile.as_deref().unwrap_or("unstated"),
-                    if config.build.is_some() {
+                    if pin.is_some() {
                         ", as pinned"
                     } else {
                         "; development group: no build pin"
@@ -1696,6 +1855,24 @@ mod runtime {
                 ));
                 self.identity = Some((hello.build.clone(), hello.profile.clone()));
             }
+            if self.wire.is_none() {
+                self.wire.clone_from(&hello.wire);
+            }
+            self.slots[index].announced = Some(crate::group::StageDevice {
+                class: class.clone(),
+                name: hello
+                    .device
+                    .as_ref()
+                    .and_then(|d| d["name"].as_str())
+                    .map(str::to_owned),
+                experts: hello
+                    .device
+                    .as_ref()
+                    .and_then(|d| d["experts"].as_str())
+                    .map(str::to_owned),
+                profile: hello.profile.clone(),
+                bundle: bundle(hello.build.as_ref()).map(str::to_owned),
+            });
             let direct = self.direct();
             let slot = &mut self.slots[index];
             slot.joined = true;
@@ -2538,6 +2715,7 @@ mod tests {
             runtime: "r".into(),
             protocol: PROTOCOL,
             build: None,
+            pinned: false,
             transport: Transport::Front,
             generation: 1,
             ready: false,
@@ -2572,6 +2750,7 @@ mod tests {
             name: name.into(),
             program: program.clone(),
             args: vec![],
+            identity: Default::default(),
         };
         assert!(config(vec![stage("a"), stage("b")]).validate().is_ok());
         assert!(config(vec![]).validate().is_err());
@@ -2587,5 +2766,39 @@ mod tests {
         assert!(stop.validate().is_ok());
         stop.stop_timeout = Duration::from_secs(61);
         assert!(stop.validate().is_err());
+    }
+
+    /// Each stage's pin is its own entry's, else the group's; a group is
+    /// pinned only when every stage has one (#12418).
+    #[cfg(unix)]
+    #[test]
+    fn each_stage_takes_its_own_pin_and_every_stage_must_have_one() {
+        let program = PathBuf::from("/bin/sh");
+        let a = "a".repeat(64);
+        let b = "b".repeat(64);
+        let stage = |name: &str, build: Option<&str>| StageSpec {
+            name: name.into(),
+            program: program.clone(),
+            args: vec![],
+            identity: StageIdentity {
+                device: Some("cuda-sm_89".into()),
+                build: build.map(Into::into),
+                ..StageIdentity::default()
+            },
+        };
+        let mut group = config(vec![stage("s0", Some(&a)), stage("s1", None)]);
+        assert_eq!(group.pin(0), Some(a.as_str()));
+        assert_eq!(group.pin(1), None);
+        assert!(!group.pinned());
+        group.build = Some(b.clone());
+        assert_eq!(group.pin(0), Some(a.as_str()));
+        assert_eq!(group.pin(1), Some(b.as_str()));
+        assert!(group.pinned());
+        assert!(group.validate().is_ok());
+        group.stages[0].identity.build = Some("short".into());
+        assert!(group.validate().unwrap_err().contains("isn't a SHA-256"));
+        group.stages[0].identity.build = None;
+        group.stages[1].identity.device = Some(String::new());
+        assert!(group.validate().unwrap_err().contains("empty identity"));
     }
 }

@@ -354,6 +354,9 @@ pub struct StagePlan {
     pub gpu: u32,
     pub embeddings: bool,
     pub head: bool,
+    /// The device class the manifest planned the stage for (#12418).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
 }
 
 /// One machine and the guard command that creates it.
@@ -453,6 +456,7 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
                     gpu: s.gpu,
                     embeddings: s.embeddings,
                     head: s.head,
+                    device: s.device.as_ref().map(|d| d.class.clone()),
                 })
                 .collect();
             let head = up.head == HeadPlacement::Stage0 && stages.iter().any(|s| s.stage == 0);
@@ -956,6 +960,10 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
                     args,
                     from: stage.from,
                     to: stage.to,
+                    identity: crate::stage_group::StageIdentity {
+                        device: stage.device.clone(),
+                        ..Default::default()
+                    },
                 }
             })
         })

@@ -410,3 +410,62 @@ fn a_head_beacon_carries_its_request_limits_and_a_stage_never_does() {
     assert_eq!(request_limits(&stage), None);
     assert_eq!(stage.meta, None);
 }
+
+/// A stage beacon carries the device its stage announced, which the field
+/// shows beside the stage, so a group of mixed device types is visible
+/// (#12418). A head's own device never leaks into its stages' beacons.
+#[test]
+fn a_stage_beacon_carries_its_device_and_the_field_shows_it() {
+    let spec = spec("v41-mixed", V41);
+    let mut book = BeaconBook::default();
+    let head = Identity::generate();
+    let mut head_beacon_ = head_beacon(&base(&head, "v41-head", "x"), &spec, &ready(1), false);
+    let gpu = StageDevice {
+        class: Some("cuda-sm_89".into()),
+        name: Some("NVIDIA GeForce RTX 4080".into()),
+        experts: Some("host".into()),
+        profile: Some("cuda-device-sm_89".into()),
+        bundle: Some("b".repeat(64)),
+    };
+    set_stage_device(&mut head_beacon_, Some(&gpu));
+    let inherited = stage_beacon(&head_beacon_, &spec, 1, Layers { from: 0, to: 1 });
+    assert_eq!(stage_device(&inherited), None);
+    head_beacon_.meta = None;
+    offer(&mut book, &head, head_beacon_.clone());
+    let cpu = StageDevice {
+        class: Some("cpu-x86_64".into()),
+        profile: Some("cpu-bf16".into()),
+        ..StageDevice::default()
+    };
+    for (i, device) in [Some(&gpu), Some(&cpu), None].into_iter().enumerate() {
+        let i = i as u32;
+        let mut beacon = stage_beacon(
+            &head_beacon_,
+            &spec,
+            1,
+            Layers {
+                from: 10 * i,
+                to: 10 * (i + 1),
+            },
+        );
+        beacon.pylon = format!("v41-head-s{i}");
+        set_stage_device(&mut beacon, device);
+        let event = beacon_event(head.signer(), &beacon).unwrap();
+        assert_eq!(
+            stage_device(&parse_beacon(&event).unwrap()),
+            device.cloned()
+        );
+        book.offer(event, beacon);
+    }
+    let groups = field(&book, AT);
+    assert_eq!(groups.len(), 1);
+    let devices: Vec<_> = groups[0]
+        .stages
+        .iter()
+        .map(|s| s.device.as_ref().and_then(|d| d.class.clone()))
+        .collect();
+    assert_eq!(
+        devices,
+        [Some("cuda-sm_89".into()), Some("cpu-x86_64".into()), None]
+    );
+}

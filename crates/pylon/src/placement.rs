@@ -50,6 +50,16 @@ pub struct Stage {
     pub gpu_runtime_bytes: u64,
     #[serde(default)]
     pub engram: Vec<Engram>,
+    /// The device a mixed-device manifest planned the stage for (#12418).
+    #[serde(default)]
+    pub device: Option<StageDevice>,
+}
+
+/// The device a manifest stage was planned for: its class, such as
+/// `cuda-sm_89` or `cpu-x86_64`. Pylon reads only the class.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct StageDevice {
+    pub class: String,
 }
 
 /// The part of Psionic's group manifest Pylon reads.

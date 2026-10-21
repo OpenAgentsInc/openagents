@@ -119,6 +119,65 @@ pub trait GroupReadiness: Send + Sync {
     fn limits(&self) -> Option<crate::stage_group::StageLimits> {
         None
     }
+
+    /// Each joined stage by name, with the device, profile, and bundle it
+    /// announced (#12418). Empty when the source doesn't know them.
+    fn stage_devices(&self) -> Vec<(String, StageDevice)> {
+        Vec::new()
+    }
+}
+
+/// The key a stage beacon's inert `meta` carries its device under.
+pub const STAGE_DEVICE: &str = "stage_device";
+
+/// What a stage announced about where it runs (#12418), as its beacon's
+/// `meta` carries it, so the Grid can show a group that mixes device types.
+/// Nothing routes on it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StageDevice {
+    /// Such as `cuda-sm_120`, `cuda-sm_89`, or `cpu-x86_64`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub class: Option<String>,
+    /// The device's name, such as `NVIDIA GeForce RTX 4080`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Where a GPU stage keeps its routed experts: `device` or `host`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub experts: Option<String>,
+    /// The numerical profile it runs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
+    /// Its verified bundle hash, when it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bundle: Option<String>,
+}
+
+/// `beacon` with `device` in its `meta` under [`STAGE_DEVICE`], keeping any
+/// other `meta`; without one, with that key removed.
+pub fn set_stage_device(beacon: &mut Beacon, device: Option<&StageDevice>) {
+    let mut meta = match beacon.meta.take() {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(other) => {
+            beacon.meta = Some(other);
+            return;
+        }
+        None => serde_json::Map::new(),
+    };
+    match device.and_then(|d| serde_json::to_value(d).ok()) {
+        Some(value) => {
+            meta.insert(STAGE_DEVICE.into(), value);
+        }
+        None => {
+            meta.remove(STAGE_DEVICE);
+        }
+    }
+    beacon.meta = (!meta.is_empty()).then_some(serde_json::Value::Object(meta));
+}
+
+/// The device a stage beacon carries, if any.
+#[must_use]
+pub fn stage_device(beacon: &Beacon) -> Option<StageDevice> {
+    serde_json::from_value(beacon.meta.as_ref()?.get(STAGE_DEVICE)?.clone()).ok()
 }
 
 impl GroupReadiness for GroupStatus {
@@ -347,9 +406,11 @@ pub fn answer_profile(beacon: &Beacon) -> Option<AnswerProfile> {
 pub fn stage_beacon(base: &Beacon, spec: &GroupSpec, generation: u64, layers: Layers) -> Beacon {
     let mut beacon = base.clone();
     beacon.v = BEACON_V2.into();
-    // A stage takes no jobs, so it has no answer profile of its own.
+    // A stage takes no jobs, so it has no answer profile of its own; it
+    // inherits no other stage's device either.
     set_answer_profile(&mut beacon, None);
     set_request_limits(&mut beacon, None);
+    set_stage_device(&mut beacon, None);
     beacon.slots = Slots { total: 0, free: 0 };
     beacon.services = Vec::new();
     beacon.group = Some(Group {
@@ -374,6 +435,8 @@ pub struct StageState {
     pub generation: u64,
     /// Whether the stage is on the head's generation.
     pub current: bool,
+    /// The device it announced, when its beacon carries one (#12418).
+    pub device: Option<StageDevice>,
 }
 
 /// One group as the field shows it: its head, when one is held, and its
@@ -439,6 +502,7 @@ pub fn field(book: &BeaconBook, at: u64) -> Vec<GroupState> {
                 layers: group.layers.unwrap_or(Layers { from: 0, to: 0 }),
                 generation: group.generation,
                 current: false,
+                device: stage_device(beacon),
             }),
         }
     }

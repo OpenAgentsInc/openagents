@@ -245,6 +245,7 @@ impl Rig {
                     name: format!("s{i}"),
                     program: bin.clone(),
                     args: stage_args(&dir, &manifest, i, split),
+                    identity: Default::default(),
                 })
                 .collect(),
             transport: Transport::Front,

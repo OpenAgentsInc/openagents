@@ -54,6 +54,11 @@ pub struct GroupStage {
     pub from: u32,
     /// One past the last layer.
     pub to: u32,
+    /// What this stage must announce: its device class, and the runtime,
+    /// bundle, and numerical profile when they differ from the lane's
+    /// (#12418). Left out for a stage of a single-device group.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub identity: crate::stage_group::StageIdentity,
 }
 
 /// The model group this pylon heads (#12402): the stage workers it
@@ -130,6 +135,7 @@ impl GroupLane {
                     name: s.name.clone(),
                     program: s.program.clone(),
                     args: s.args.clone(),
+                    identity: s.identity.clone(),
                 })
                 .collect(),
             transport: self.transport,

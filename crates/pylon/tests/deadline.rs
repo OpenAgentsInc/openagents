@@ -625,6 +625,7 @@ fn stage_group(root: &std::path::Path) -> StageGroupConfig {
                 name: (*name).into(),
                 program: script.clone(),
                 args: vec!["--root".into(), root.display().to_string()],
+                identity: Default::default(),
             })
             .collect(),
         transport: Transport::Front,

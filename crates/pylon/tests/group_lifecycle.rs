@@ -10,8 +10,8 @@ use nostr::pylon::Readiness;
 use pylon::engine::Sampling;
 use pylon::group::GroupReadiness;
 use pylon::stage_group::{
-    Failure, LinkPolicy, PROTOCOL, StageGroup, StageGroupConfig, StageGroupStatus, StageSpec,
-    Transport,
+    Failure, LinkPolicy, PROTOCOL, StageGroup, StageGroupConfig, StageGroupStatus, StageIdentity,
+    StageSpec, Transport,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -72,6 +72,7 @@ impl Rig {
                     name: (*name).into(),
                     program: script.clone(),
                     args: vec!["--root".into(), root.path().display().to_string()],
+                    identity: Default::default(),
                 })
                 .collect(),
             transport: Transport::Front,
@@ -373,7 +374,7 @@ async fn a_pinned_group_admits_only_the_pinned_bundle() {
     let status = rig
         .until("every stage is refused", |s| {
             s.reason
-                .contains("runs build bundle b2 (sm_120); the group is pinned to bundle b1")
+                .contains("runs build bundle b2 (sm_120); its entry pins bundle b1")
         })
         .await;
     assert!(!status.ready, "{status:?}");
@@ -391,6 +392,149 @@ async fn a_pinned_group_admits_only_the_pinned_bundle() {
     let rig = Rig::with(&pinned, |c| c.build = Some("b1".into())).await;
     let status = rig.ready(1).await;
     assert_eq!(status.build.as_deref(), Some("b1"));
+    rig.close().await;
+}
+
+const BUNDLE_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const BUNDLE_B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+/// The fixture flags of a group that mixes an RTX PRO 6000, an RTX 4080,
+/// and a CPU stage (#12418): two CUDA bundles and the CPU stage's runtime.
+fn mixed_flags() -> Vec<(&'static str, &'static str)> {
+    vec![
+        ("build-s0", "e120"),
+        ("bundle-s0", BUNDLE_A),
+        ("arch-s0", "sm_120"),
+        ("device-s0", "cuda-sm_120"),
+        ("profile-s0", "cuda-device-sm_120"),
+        ("wire-s0", "bf16"),
+        ("build-s1", "e89"),
+        ("bundle-s1", BUNDLE_B),
+        ("arch-s1", "sm_89"),
+        ("device-s1", "cuda-sm_89"),
+        ("profile-s1", "cuda-device-sm_89"),
+        ("wire-s1", "bf16"),
+        ("build-s2", "e120"),
+        ("bundle-s2", BUNDLE_A),
+        ("runtime-s2", "fixture-cpu/1"),
+        ("device-s2", "cpu-x86_64"),
+        ("profile-s2", "cpu-bf16"),
+        ("wire-s2", "bf16"),
+    ]
+}
+
+/// Each stage's own manifest entry, as `mixed_flags` reports them.
+fn mixed_entries(config: &mut StageGroupConfig) {
+    let entries = [
+        ("cuda-sm_120", None, BUNDLE_A, "cuda-device-sm_120"),
+        ("cuda-sm_89", None, BUNDLE_B, "cuda-device-sm_89"),
+        ("cpu-x86_64", Some("fixture-cpu/1"), BUNDLE_A, "cpu-bf16"),
+    ];
+    for (stage, (device, runtime, build, profile)) in config.stages.iter_mut().zip(entries) {
+        stage.identity = StageIdentity {
+            device: Some(device.into()),
+            runtime: runtime.map(Into::into),
+            build: Some(build.into()),
+            profile: Some(profile.into()),
+        };
+    }
+}
+
+/// A group whose stages run on different device types, builds, runtimes,
+/// and profiles is ready when each stage matches its own manifest entry,
+/// and it is pinned because every entry names a bundle (#12418).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_mixed_device_group_joins_each_stage_against_its_own_entry() {
+    let rig = Rig::with(&mixed_flags(), mixed_entries).await;
+    let status = rig.ready(1).await;
+    assert!(status.pinned, "{status:?}");
+    assert_eq!(status.build, None);
+    let classes: Vec<_> = status
+        .stages
+        .iter()
+        .map(|s| s.announced.as_ref().and_then(|d| d.class.clone()))
+        .collect();
+    assert_eq!(
+        classes,
+        ["cuda-sm_120", "cuda-sm_89", "cpu-x86_64"].map(|c| Some(c.to_owned()))
+    );
+    let devices = rig.group().stage_devices();
+    assert_eq!(devices.len(), 3);
+    assert_eq!(devices[1].1.bundle.as_deref(), Some(BUNDLE_B));
+    assert_eq!(devices[2].1.profile.as_deref(), Some("cpu-bf16"));
+    assert_eq!(rig.complete(3).await, toks(0..3));
+    rig.close().await;
+}
+
+/// A stage that doesn't match its own entry never joins, even when it
+/// matches another stage's: another device class, another profile,
+/// another bundle, another runtime, or another stage-state format
+/// (#12418).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_stage_that_differs_from_its_own_entry_never_joins() {
+    for (file, value, reason) in [
+        (
+            "device-s1",
+            "cuda-sm_120",
+            "stage s1 runs on cuda-sm_120; its entry declares cuda-sm_89",
+        ),
+        ("arch-s1", "sm_120", "stage s1 runs build bundle"),
+        (
+            "profile-s1",
+            "cuda-device-sm_120",
+            "stage s1 runs profile cuda-device-sm_120; its entry declares cuda-device-sm_89",
+        ),
+        ("bundle-s1", BUNDLE_A, "its entry pins bundle bbbb"),
+        (
+            "runtime-s2",
+            "fixture-runtime/1",
+            "stage s2 runs fixture-runtime/1; its entry needs fixture-cpu/1",
+        ),
+        // Whichever stage joins first sets the format the others must use.
+        ("wire-s2", "f32", "sends stage state as"),
+    ] {
+        let mut flags = mixed_flags();
+        for flag in &mut flags {
+            if flag.0 == file {
+                flag.1 = value;
+            }
+        }
+        if file == "arch-s1" {
+            // A worker that predates `device` reports only its build's
+            // architecture, which still decides its class.
+            flags.retain(|f| f.0 != "device-s1");
+        }
+        let rig = Rig::with(&flags, |c| {
+            mixed_entries(c);
+            // Long enough for a loaded machine to start the fixture.
+            c.startup_timeout = Duration::from_secs(5);
+            c.max_restarts = 1;
+        })
+        .await;
+        let reason = if file == "arch-s1" {
+            "stage s1 runs on cuda-sm_120; its entry declares cuda-sm_89"
+        } else {
+            reason
+        };
+        let status = rig
+            .until(&format!("{file} is refused"), |s| s.reason.contains(reason))
+            .await;
+        assert!(!status.ready, "{file}: {status:?}");
+        rig.close().await;
+    }
+}
+
+/// A group with one stage left unpinned is a development group, even when
+/// the other stages pin their own bundles (#12410, #12418).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_group_with_an_unpinned_stage_is_a_development_group() {
+    let rig = Rig::with(&mixed_flags(), |c| {
+        mixed_entries(c);
+        c.stages[2].identity.build = None;
+    })
+    .await;
+    let status = rig.ready(1).await;
+    assert!(!status.pinned, "{status:?}");
     rig.close().await;
 }
 

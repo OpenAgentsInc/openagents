@@ -70,6 +70,7 @@ impl Rig {
                     name: (*name).into(),
                     program: script.clone(),
                     args: args.clone(),
+                    identity: Default::default(),
                 })
                 .collect(),
             transport,
