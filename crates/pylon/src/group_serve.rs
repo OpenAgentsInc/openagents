@@ -132,6 +132,7 @@ impl Engine for GroupEngine {
                 .await
                 .map_err(|_| "the stage group stopped".to_string())?
                 .map_err(|failure| failure.to_string())?;
+            let mut timed = None;
             if let Some(first) = first {
                 let decode = first.elapsed().as_secs_f64();
                 let rate = if ids.len() > 1 && decode > 0.0 {
@@ -141,9 +142,7 @@ impl Engine for GroupEngine {
                 };
                 let first_ms = u64::try_from((first - started).as_millis()).unwrap_or(u64::MAX);
                 let total_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-                if let Some(answers) = &self.answers {
-                    answers.record(first_ms, rate, ids.len() as u64, total_ms);
-                }
+                timed = Some((first_ms, rate, total_ms));
                 if let Some(log) = &self.log {
                     let parts = if parsed {
                         format!(" ({thinking} of reasoning)")
@@ -183,20 +182,28 @@ impl Engine for GroupEngine {
                 // Stages that decode nothing answer with the token ids.
                 text = ids.iter().map(u32::to_string).collect::<Vec<_>>().join(" ");
             }
+            // Fewer tokens than asked for means the last stage sampled the
+            // end of the answer.
+            let finish = if let Some(finish) = reported {
+                finish
+            } else if done.tokens < u64::from(steps) {
+                Finish::Stop
+            } else {
+                Finish::Length
+            };
+            // The profile describes complete answers only: one the output
+            // limit cut off is refused, never delivered.
+            if finish == Finish::Stop
+                && let (Some(answers), Some((first_ms, rate, total_ms))) = (&self.answers, timed)
+            {
+                answers.record(first_ms, rate, ids.len() as u64, total_ms);
+            }
             Ok(Generation {
                 text,
                 input_tokens: None,
                 output_tokens: Some(done.tokens),
                 model: self.model.clone(),
-                // Fewer tokens than asked for means the last stage sampled
-                // the end of the answer.
-                finish: if let Some(finish) = reported {
-                    finish
-                } else if done.tokens < u64::from(steps) {
-                    Finish::Stop
-                } else {
-                    Finish::Length
-                },
+                finish,
             })
         })
     }

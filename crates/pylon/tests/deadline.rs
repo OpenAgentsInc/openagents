@@ -713,6 +713,8 @@ struct Fake {
     relay: String,
     root: tempfile::TempDir,
     group: Arc<StageGroup>,
+    /// The head's recent complete answers, which its beacon summarizes.
+    answers: Arc<pylon::group::AnswerBook>,
     _head: Running,
 }
 
@@ -739,6 +741,7 @@ async fn fake_group(pieces: &[&str], slow_ms: u64) -> Fake {
     }
     let (relay, hub) = pylon::fixture::relay().await.unwrap();
     let home = tempfile::tempdir().unwrap();
+    let answers = Arc::new(pylon::group::AnswerBook::default());
     let mut config = config(&relay, "v41-head", home.path());
     config.slots = 1;
     config.max_tokens = 64;
@@ -750,19 +753,23 @@ async fn fake_group(pieces: &[&str], slow_ms: u64) -> Fake {
             ("s0".into(), Layers { from: 0, to: 20 }),
             ("s1".into(), Layers { from: 20, to: 43 }),
         ],
-        answers: None,
+        answers: Some(Arc::clone(&answers)),
     });
-    let engine = Arc::new(GroupEngine::new(
-        Arc::clone(&group),
-        format!("{MODEL}@{ARTIFACT}"),
-        Sampling::new(0.6, 0.95, 7).unwrap(),
-        64,
-    ));
+    let engine = Arc::new(
+        GroupEngine::new(
+            Arc::clone(&group),
+            format!("{MODEL}@{ARTIFACT}"),
+            Sampling::new(0.6, 0.95, 7).unwrap(),
+            64,
+        )
+        .with_answers(Arc::clone(&answers)),
+    );
     let head = run(&hub, config, home, engine).await;
     Fake {
         relay,
         root,
         group,
+        answers,
         _head: head,
     }
 }
@@ -833,6 +840,10 @@ async fn the_harness_qualifies_a_slow_group_within_its_deadline() {
     assert!(data["answer_ms"].as_u64().unwrap() >= 1_000, "{data:#}");
     assert_eq!(data["declared"]["ceiling_secs"], 600);
     assert_eq!(data["declared"]["deadline_secs"], 20);
+    // The head's beacon now describes that one complete answer.
+    let profile = fake.answers.profile().unwrap();
+    assert_eq!((profile.answers, profile.median_tokens), (1, 3));
+    assert!(profile.first_token_ms >= 400, "{profile:?}");
     fake.group.stop().await;
 }
 
@@ -856,5 +867,7 @@ async fn the_harness_fails_a_group_that_misses_its_deadline() {
             .contains("limit_exceeded"),
         "{case:#}"
     );
+    // An answer that missed its deadline never enters the profile.
+    assert_eq!(fake.answers.profile(), None);
     fake.group.stop().await;
 }
