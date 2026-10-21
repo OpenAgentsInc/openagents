@@ -52,6 +52,48 @@ the application can publish instance `worlds` in the existing host directory.
 Joining still needs an enrolled world role. A directory entry or channel grant
 does not assign a character or expose Studio panels.
 
+## The Grid on `/home`
+
+`/home` is the multiplayer Grid at openagents.com (#12406). It runs the
+browser Grid's NIP-MV presence session (`crates/everglade-web/src/grid.rs`)
+on the public relay, which the page's content security policy admits.
+
+- **Watching first.** The page opens on an overview: the whole plaza from
+  about 45 degrees, circling slowly, with the players already there. While
+  it watches, the session only reads the relay (`Session::listen`); it
+  publishes nothing and draws no local avatar, so a visitor who never joins
+  is invisible and takes no place under the relay's population cap.
+- **Joining.** A click on the world or a movement key joins. The session
+  recovers the visitor's last pose, or the page picks a free spot in the
+  spawn area (`verse_world::social::arrival::pick_spawn`, a disc south of
+  the plaza's center, facing it). Candidates are seeded by the visitor's
+  key, so two visitors who arrive at the same moment land apart, and each
+  candidate stays at least 2.1 m from every player already shown. The
+  camera then glides down behind the avatar into the third-person camera.
+  Wheel, pinch, and the `=` and `-` keys zoom smoothly to first person and
+  back.
+- **Identity.** A signed-out visitor plays under a key the browser makes on
+  the first visit and keeps in local storage (no network call; the secret
+  never leaves the page's storage). A signed-in visitor plays under the
+  same browser key, owned by their account key through the NIP-OA owner tag
+  their phone or computer signs (#12313); `/home/me` gives the page their
+  profile name and the write value it asks for the tag with.
+- **Tags.** Each avatar shows its npub prefix (`npub1` and six characters)
+  with its name under it: a verified owner's profile name, else the name
+  its frames give, else its key's profile name. Names stay on one line and
+  are cut at 24 characters; at most 24 tags show, nearest the camera first.
+- **Collisions.** Each avatar is a standing capsule (0.45 m radius, 1.8 m
+  tall). Every client resolves only its own player against the others'
+  latest shown positions: the step is swept against each capsule and stops
+  at the first one in the way, then slides along it
+  (`verse_world::social::arrival::sweep`), so no frame is long enough to
+  pass through anyone; an avatar that walks onto the player pushes the
+  player aside (`PlayerController::separate`). Remote players move by the
+  crowd's pose interpolation, drawn 300 ms behind the moving cadence.
+
+`scripts/dev/check-grid-home-players.py` checks this with two or three
+headless browsers on a local relay.
+
 ## Convergence status and remaining proposals
 
 Chamber and social presentation consume shared engine contracts and intent-only

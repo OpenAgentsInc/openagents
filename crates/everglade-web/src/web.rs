@@ -49,6 +49,10 @@ thread_local! {
     /// Where the page is, for [`verse_where`]: the zone's label, the
     /// renderer's state, and the last error.
     static WHERE: RefCell<String> = const { RefCell::new(String::new()) };
+    /// The Grid's players as this page sees them, for [`verse_players`].
+    static PLAYERS: RefCell<String> = const { RefCell::new(String::new()) };
+    /// A ground point the player should turn to face, from [`verse_face`].
+    static FACE: RefCell<Option<[f32; 2]>> = const { RefCell::new(None) };
 }
 
 /// Goes through the Grid's portal to `name` (`lagrange1`, `lagrange2`,
@@ -89,6 +93,25 @@ fn stopped_event() {
 #[wasm_bindgen]
 pub fn verse_where() -> String {
     WHERE.with(|w| w.borrow().clone())
+}
+
+/// The Grid's players as this page sees them, as JSON, for checks
+/// (#12406): `{joined, me: {pubkey, tag, pos}, others: [{pubkey, tag,
+/// pos}]}`, where a tag is `[npub prefix, name or null]` and a position is
+/// `[x, y, z]`. Refreshed about four times a second; empty before the
+/// Grid's presence opens.
+#[wasm_bindgen]
+pub fn verse_players() -> String {
+    PLAYERS.with(|p| p.borrow().clone())
+}
+
+/// Turns the player to face the ground point (`x`, `z`) on the next frame,
+/// for checks that walk one player at another (#12406).
+#[wasm_bindgen]
+pub fn verse_face(x: f32, z: f32) {
+    if x.is_finite() && z.is_finite() {
+        FACE.with(|f| *f.borrow_mut() = Some([x, z]));
+    }
 }
 
 /// How fast the ambient camera circles the plaza, in orbit-drag CSS pixels
@@ -474,6 +497,24 @@ pub(crate) struct Page {
     draw_atlas: Option<Atlas>,
     /// A Grid portal's zone on its way ([`crate::transit`]).
     transit: crate::transit::Transit<zones::ZoneId>,
+    /// Zoom from the wheel and the zoom keys, applied over a few frames.
+    zoom: crate::overview::SmoothZoom,
+    /// `/home` (#12406): where the visitor is between the overview and
+    /// their avatar.
+    arrival: Arrival,
+}
+
+/// `/home`'s camera as the visitor joins (#12406).
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Arrival {
+    /// The overview, before the visitor joins, and while their spawn is
+    /// chosen.
+    Watching,
+    /// Gliding down behind the avatar, from this shot at these seconds.
+    Gliding(crate::overview::Shot, f64),
+    /// The third-person camera: the page's own. Every other page starts
+    /// here.
+    Joined,
 }
 
 /// Frame times over the current second, for `?frames`.
@@ -786,6 +827,8 @@ async fn run() -> Result<(), String> {
         backends,
         draw_atlas: None,
         transit: Default::default(),
+        zoom: Default::default(),
+        arrival: Arrival::Joined,
     }));
     listen(&window, &page)?;
     crate::cad_sync::start(window.clone(), page.clone());
@@ -848,10 +891,13 @@ async fn run_grid(
     // Presence over the browser's WebSocket; a page that cannot join still
     // shows the Grid.
     let options = grid::Options::parse(&window.location().search().unwrap_or_default());
-    let presence = if ambient {
+    // `/home` watches the Grid's players from the overview until the
+    // visitor joins (#12406); `/lander11`'s backdrop stays offline.
+    let home = HOME.with(std::cell::Cell::get);
+    let presence = if ambient && !home {
         Ok(None)
     } else {
-        Presence::open(&window, &options)
+        Presence::open(&window, &options, home)
     }
     .unwrap_or_else(|error| {
         web_sys::console::error_1(&JsValue::from_str(&format!(
@@ -884,6 +930,12 @@ async fn run_grid(
         backends,
         draw_atlas: Some(atlas.clone()),
         transit: Default::default(),
+        zoom: Default::default(),
+        arrival: if HOME.with(std::cell::Cell::get) {
+            Arrival::Watching
+        } else {
+            Arrival::Joined
+        },
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -1347,13 +1399,30 @@ impl Page {
         })
         .to_string();
         WHERE.with(|w| *w.borrow_mut() = state);
+        let home = HOME.with(std::cell::Cell::get);
         if !self::walking() && !editing() {
-            // Behind the chat: no keys or drags, and the camera circles.
+            // Behind the chat: no keys or drags, and the camera circles
+            // (on `/home`, the overview does).
             input = verse::controller::InputState::default();
-            let _ = self.runtime.apply(Action::Orbit {
-                dx: AMBIENT_ORBIT * dt,
-                dy: 0.0,
-            });
+            if !home {
+                let _ = self.runtime.apply(Action::Orbit {
+                    dx: AMBIENT_ORBIT * dt,
+                    dy: 0.0,
+                });
+            }
+        }
+        let lines = self.zoom.take(dt);
+        if lines != 0.0 {
+            let _ = self.runtime.apply(Action::Zoom { lines });
+        }
+        if home && self.arrival_camera(now) {
+            input = verse::controller::InputState::default();
+        }
+        if let Some([x, z]) = FACE.with(|f| f.borrow_mut().take()) {
+            let to = glam::Vec3::new(x, 0.0, z) - self.runtime.player.pos;
+            if to.x.hypot(to.z) > 1e-3 {
+                self.runtime.player.yaw = to.x.atan2(to.z);
+            }
         }
         let dt = self
             .runtime
@@ -1374,13 +1443,27 @@ impl Page {
                 .presence
                 .as_mut()
                 .map_or_else(Vec::new, |presence| presence.tick(&mut self.runtime, dt));
+            if let Some(presence) = &self.presence
+                && (self.now / 250.0).floor()
+                    != ((self.now - f64::from(dt) * 1000.0) / 250.0).floor()
+            {
+                let players = presence.players(&self.runtime).to_string();
+                PLAYERS.with(|p| *p.borrow_mut() = players);
+            }
             let dynamic = grid_frame::dynamic(&self.runtime, &peers, &[]);
             let lighting = grid_frame::lighting(&self.runtime.atmosphere());
             // Name tags, the connection line, and a player's card, laid
             // out in CSS pixels and drawn in device pixels.
             let mut ui = verse::ui::UiBatch::default();
             if let (Some(presence), Some(layout)) = (&self.presence, &self.layout) {
-                presence.draw(&mut ui, layout, css, &self.runtime, view.view_proj);
+                presence.draw(
+                    &mut ui,
+                    layout,
+                    css,
+                    &self.runtime,
+                    view.view_proj,
+                    view.eye,
+                );
             }
             if let Some(atlas) = &self.layout {
                 super::terminal::draw(&mut ui, atlas, css);
@@ -1489,12 +1572,57 @@ impl Page {
     fn press_grid(&mut self, at: [f32; 2]) -> bool {
         let size = self.css_size();
         let aspect = self.renderer.aspect();
-        let view_proj = self.runtime.view(aspect).view_proj;
+        let view = self.runtime.view(aspect);
         let line = self.layout.as_ref().map_or(14.0, |layout| layout.line);
         let Some(presence) = &mut self.presence else {
             return false;
         };
-        presence.press(at, size, line, &self.runtime, view_proj)
+        presence.press(at, size, line, view.view_proj, view.eye)
+    }
+
+    /// `/home`'s camera at `now` (ms, #12406): the overview until the
+    /// visitor joins and their spawn is chosen, then a glide down behind
+    /// their avatar into the page's third-person camera. Returns whether
+    /// the visitor is still on their way in, when they don't walk yet.
+    fn arrival_camera(&mut self, now: f64) -> bool {
+        use crate::overview;
+        let seconds = now / 1000.0;
+        if self::walking() && self.arrival == Arrival::Watching {
+            if let (Some(presence), Some(window)) = (&mut self.presence, web_sys::window()) {
+                presence.join(&window);
+            }
+        }
+        let placed = self
+            .presence
+            .as_ref()
+            .is_none_or(|presence| presence.joined() && !presence.placing());
+        match self.arrival {
+            Arrival::Watching if self::walking() && placed => {
+                self.runtime.set_occupied(true);
+                self.arrival = Arrival::Gliding(overview::shot(seconds), seconds);
+                mark("home-joined");
+            }
+            Arrival::Watching => {
+                self.runtime.set_occupied(false);
+                self.runtime.set_shot(Some(overview::shot(seconds)));
+                return true;
+            }
+            _ => {}
+        }
+        if let Arrival::Gliding(from, started) = self.arrival {
+            let t = overview::glide(started, seconds);
+            self.runtime.set_shot(None);
+            if t >= 1.0 {
+                self.arrival = Arrival::Joined;
+                mark("home-third-person");
+                return false;
+            }
+            let eye = self.runtime.view(self.renderer.aspect()).eye;
+            let focus = self.runtime.player.pos + glam::Vec3::Y * verse::camera::FOCUS_HEIGHT;
+            self.runtime
+                .set_shot(Some(overview::between(from, (eye, focus), t)));
+        }
+        false
     }
 
     /// Puts Meteor Swarm's circle on the ground under `at` (CSS pixels)
@@ -1887,6 +2015,17 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 event.prevent_default();
                 return;
             }
+            // `=` and `-` zoom while held, in and out of first person.
+            let zoom = match event.code().as_str() {
+                "Equal" | "NumpadAdd" => 1.0,
+                "Minus" | "NumpadSubtract" => -1.0,
+                _ => 0.0,
+            };
+            if zoom != 0.0 && !chord && page.runtime.is_plaza() {
+                page.zoom.held = if down { zoom } else { 0.0 };
+                event.prevent_default();
+                return;
+            }
             let modifiers = [event.shift_key(), event.ctrl_key(), event.alt_key()];
             let used = page.hotbar_key(&event.code(), down, modifiers);
             let code = event.code();
@@ -1926,6 +2065,11 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             let touch = event.pointer_type() == "touch";
             let now = event.time_stamp();
             if event.is_primary() && event.button() == 0 && page.press_grid(on_canvas) {
+                return;
+            }
+            // On `/home`, a click on the overview joins the Grid (#12406).
+            if HOME.with(std::cell::Cell::get) && !walking() && event.is_primary() {
+                WALK.with(|walk| walk.set(true));
                 return;
             }
             if page.press_hotbar(on_canvas, Some(event.pointer_id()), touch, now) {
@@ -2038,7 +2182,8 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 _ => event.delta_y(),
             };
             let lines = (-pixels / 100.0).clamp(-10.0, 10.0) as f32;
-            page.borrow_mut().apply(Some(Action::Zoom { lines }));
+            // Applied over the next few frames, so a wheel notch glides.
+            page.borrow_mut().zoom.add(lines);
         })?;
     }
     {

@@ -193,6 +193,7 @@ const ADDITION: Addition = Addition {
     runner_tail: super::lander6::RUNNER_TAIL,
     main: Some(MAIN),
     grid: None,
+    connect: "",
 };
 
 /// The last document made, and the background build it came from.

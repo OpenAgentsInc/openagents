@@ -117,6 +117,14 @@ Query parameters:
 - `name=NAME` sets and keeps the display name.
 - `offline` opens the Grid without joining.
 
+On `/home` (`data-ambient` on that path) the module opens on an overview of
+the whole Grid and only listens until a click or a movement key joins; then
+it picks a free spawn, glides the camera behind the avatar, and draws each
+player's npub prefix over their name ([the Grid on
+`/home`](../../docs/verse/networking.md#the-grid-on-home)). Checks read the
+players through `verse_players()` and turn the player with
+`verse_face(x, z)`; `scripts/dev/check-grid-home-players.py` uses both.
+
 Once a second the module logs `Grid frames {...}` to the console: frame
 times, the players drawn, and the session's status and refusals. The
 receipt is `docs/verse/verification/2026-10-05-grid-browser/`.

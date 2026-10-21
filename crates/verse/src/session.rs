@@ -677,6 +677,16 @@ impl Session {
         (self.intervals.state / 3).clamp(Duration::from_secs(2), Duration::from_secs(60))
     }
 
+    /// Drains the relay without publishing anything, once per frame, while
+    /// the page only watches (`/home`'s overview, #12406): the crowd fills
+    /// with the players there, and this player stays invisible.
+    pub fn listen(&mut self, now: Instant) {
+        for message in self.link.drain() {
+            self.handle(message, now);
+        }
+        self.crowd.prune(now);
+    }
+
     /// Drains the relay and publishes what is due, once per game frame.
     pub fn tick(&mut self, now: Instant, player: &PlayerController, agent: &Agent) {
         self.tick_bodies(now, player, agent, None);

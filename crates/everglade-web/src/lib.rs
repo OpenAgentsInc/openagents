@@ -25,6 +25,8 @@ mod home_terminal;
 #[cfg(target_arch = "wasm32")]
 mod input;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+mod overview;
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod presence_ui;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod transit;

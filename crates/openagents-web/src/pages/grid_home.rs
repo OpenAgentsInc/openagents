@@ -185,6 +185,9 @@ const LOADER: &str = "\
 const still=matchMedia(\"(prefers-reduced-motion: reduce)\").matches;\
 const idle=t=>new Promise(r=>(window.requestIdleCallback||(f=>setTimeout(f,1)))(r,{timeout:t}));\
 const account=()=>fetch(\"/home/me\").then(r=>r.ok?r.json():null).then(me=>{if(!me||!me.signed_in)return;\
+const grid=document.getElementById(\"everglade-canvas\");\
+if(me.verse_name)grid.dataset.name=me.verse_name;\
+if(me.csrf)grid.dataset.csrf=me.csrf;\
 const nav=document.getElementById(\"home-account\");\
 nav.textContent=\"\";\
 const who=document.createElement(me.profile?\"a\":\"span\");\
@@ -316,6 +319,10 @@ account();\
 loadLayer().then(verse);\
 ";
 
+/// The relay the Grid's players meet on, which the page's policy admits
+/// (#12406).
+const HOME_CONNECT: &str = super::everglade::GRID_RELAY;
+
 const ADDITION: Addition = Addition {
     style: STYLE,
     in_main: "",
@@ -323,6 +330,7 @@ const ADDITION: Addition = Addition {
     runner_tail: "",
     main: None,
     grid: None,
+    connect: HOME_CONNECT,
 };
 
 /// The last document and the live list it came from.
@@ -388,7 +396,8 @@ async fn page(State(app): State<App>, request: HeaderMap) -> Response {
     response
 }
 
-/// `{signed_in, name, profile, chat}` for the top bar: who is
+/// `{signed_in, name, profile, chat, verse_name, csrf}` for the top bar
+/// and the Grid's avatar: who is
 /// signed in, where their profile is (their key's page, or their GitHub
 /// login's, which moves to the key's), and the chat. Signed out (or on a
 /// server without sign-in),
@@ -408,11 +417,20 @@ async fn me(State(app): State<App>, headers: HeaderMap) -> Response {
             (None, Some((_, login))) => Some(format!("/u/{login}")),
             (None, None) => None,
         };
+        // The Grid's avatar carries the profile name, never the account
+        // label, and asks for its owner tag with the page's write value
+        // (#12313, #12406).
+        let csrf = match crate::chat_owner::who(&app, &headers).await {
+            crate::chat_owner::Who::Account(owner) => Some(super::chat::csrf(&app, &owner)),
+            _ => None,
+        };
         body = json!({
             "signed_in": true,
-            "name": name.unwrap_or(viewer.account_label),
+            "verse_name": name,
+            "name": name.clone().unwrap_or(viewer.account_label),
             "profile": profile,
             "chat": CHAT,
+            "csrf": csrf,
         });
     }
     let mut response = (
@@ -455,7 +473,9 @@ mod tests {
         let policy = document.policy.to_str().unwrap();
         assert!(policy.contains(&super::super::lander5::source_hash(LOADER)));
         assert!(policy.contains(&super::super::lander5::source_hash(STYLE)));
-        assert!(policy.contains("connect-src 'self'; worker-src blob:;"));
+        assert!(
+            policy.contains("connect-src 'self' wss://relay.openagents.com; worker-src blob:;")
+        );
         assert!(!policy.contains("unsafe-inline"));
         for copy in [
             heading().as_str(),

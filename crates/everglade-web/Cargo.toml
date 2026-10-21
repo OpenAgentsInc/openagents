@@ -12,6 +12,11 @@ crate-type = ["cdylib", "rlib"]
 # The plain data the native tests cover (presence_ui's names answer).
 [dependencies]
 serde_json = "1"
+# Name tags' npub prefixes (#12406) and the owner tag a person's key signs
+# for the browser's Grid key (#12313).
+nostr = { path = "../nostr" }
+# The `/home` overview camera's math (#12406).
+glam = "0.30.10"
 # Opt-in hand input on /verse, the gestures /lander9 uses (#12309).
 openagents-web-hands = { path = "../../apps/openagents/web/hands" }
 
@@ -36,10 +41,7 @@ verse-engine = { path = "../verse-engine" }
 verse-world = { path = "../verse-world", features = ["reach-client"] }
 verse-content = { path = "../verse-content" }
 coder-reach = { path = "../coder-reach" }
-glam = "0.30.10"
 serde_json = "1"
-# The owner tag a person's key signs for the browser's Grid key (#12313).
-nostr = { path = "../nostr" }
 web-time = "1.1.0"
 # The browser display handle wgpu's WebGL2 backend needs on its instance.
 raw-window-handle = "0.6"

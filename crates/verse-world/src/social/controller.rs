@@ -261,6 +261,31 @@ impl PlayerController {
         }
     }
 
+    /// Keeps a character that stepped from `from` this frame out of other
+    /// players' avatars: the step stops at the first one in its way and
+    /// slides along it ([`super::arrival::sweep`]), so a long frame can't
+    /// carry it through anyone, then [`Self::separate`] pushes it out of
+    /// any avatar that walked onto it.
+    pub fn bump(&mut self, from: Vec3, others: &[Vec3], blockers: &[Footprint], bound: f32) {
+        if others.is_empty() {
+            return;
+        }
+        // A jump of more than a few meters is a teleport, not a step.
+        let step = (self.pos.x - from.x).hypot(self.pos.z - from.z);
+        let swept = if step <= 5.0 {
+            super::arrival::sweep(from, self.pos, others)
+        } else {
+            self.pos
+        };
+        if swept != self.pos {
+            self.pos = swept;
+            for block in blockers {
+                self.push_out(block);
+            }
+        }
+        self.separate(others, blockers, bound);
+    }
+
     /// Moves the character out of `block` along the shallowest axis.
     fn push_out(&mut self, block: &Footprint) {
         let (x, z) = (self.pos.x, self.pos.z);
@@ -413,5 +438,24 @@ mod tests {
         assert!((wrap(3.0 * PI) - PI).abs() < 1e-5);
         assert!((wrap(-PI / 2.0) + PI / 2.0).abs() < 1e-6);
         assert!(wrap(-PI) > 0.0);
+    }
+    #[test]
+    fn a_slow_frame_cannot_carry_a_sprinter_through_another_player() {
+        let other = Vec3::new(0.0, 0.0, 1.5);
+        let mut pc = PlayerController::new(Vec3::ZERO, 0.0);
+        let input = InputState {
+            forward: true,
+            sprint: true,
+            ..Default::default()
+        };
+        // A quarter-second frame moves 2.5 m, past the other player.
+        let from = pc.pos;
+        pc.update(&input, 0.25, &[], OPEN);
+        assert!(
+            pc.pos.z > other.z + RADIUS * 2.0,
+            "the step alone passes them"
+        );
+        pc.bump(from, &[other], &[], OPEN);
+        assert!(pc.pos.z <= other.z - RADIUS * 2.0 + 1e-3, "{:?}", pc.pos);
     }
 }

@@ -1817,8 +1817,10 @@ async fn the_grid_homepage_is_at_home_and_the_classic_one_moved() {
     assert!(html.contains("href=\"/signup?return_to=%2Fhome\""));
     assert!(html.contains("id=\"pylons-panel\"") && html.contains("data-ambient"));
     let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    // The Grid's players meet on the public relay (#12406).
     assert!(
-        policy.contains("connect-src 'self';") && !policy.contains("unsafe-inline"),
+        policy.contains("connect-src 'self' wss://relay.openagents.com;")
+            && !policy.contains("unsafe-inline"),
         "{policy}"
     );
     crate::copy_guard::assert_plain("/home", &html);

@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import time
 import urllib.request
+from urllib.parse import parse_qs, urlsplit
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--url", default="http://localhost:4331/home")
@@ -52,6 +53,9 @@ Object.defineProperty(globalThis,"pylonsCamera",{
 cdp.call("Emulation.setDeviceMetricsOverride", {
     "width": 1440, "height": 900, "deviceScaleFactor": 1, "mobile": False,
 })
+if "relay=" in args.url:
+    # A local relay isn't in /home's policy; production's is.
+    cdp.call("Page.setBypassCSP", {"enabled": True})
 
 
 def evaluate(expression):
@@ -118,7 +122,11 @@ times = {mark["name"]: mark["ms"] for mark in marks}
 assert not any(mark["name"].startswith("lander5-") for mark in marks), "Preliminary shader still loads."
 assert times["pylons-layer"] < times["verse-start"]
 assert times["verse-start"] <= times["verse-first-frame"] <= times["verse-visible"]
-assert not [e for e in cdp.events if e.get("method") == "Network.webSocketCreated"]
+# The only socket is the Grid's relay, which the overview listens on
+# (#12406); a local check passes `?relay=` and bypasses the page's policy.
+sockets = [e["params"]["url"] for e in cdp.events if e.get("method") == "Network.webSocketCreated"]
+relay = parse_qs(urlsplit(args.url).query).get("relay", ["wss://relay.openagents.com"])[0]
+assert all(url.rstrip("/") == relay.rstrip("/") for url in sockets), sockets
 samples = []
 for name in ("home-verse.png", "home-orbit.png"):
     samples.append(sample_anchors())
@@ -169,6 +177,11 @@ if args.movement:
     def draft_chars():
         return evaluate('Number(document.querySelector("#pylon-composer").dataset.draftChars)')
 
+    # The first key joins from the overview; wait for the glide to the
+    # avatar's third-person camera before measuring the walk (#12406).
+    key("KeyW", True)
+    key("KeyW", False)
+    wait_for(lambda: evaluate('performance.getEntriesByName("home-third-person").length > 0'), "Join from the overview")
     wait_for(lambda: evaluate('performance.getEntriesByName("home-chat-ready").length > 0'), "Background chat preparation")
     assert evaluate('document.activeElement?.id !== "pylon-message"'), "Background chat stole focus."
     assert evaluate('!document.querySelector("#everglade-canvas").hasAttribute("data-composing")')

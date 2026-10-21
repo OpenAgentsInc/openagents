@@ -194,6 +194,10 @@ async fn a_key_names_itself_publishes_its_profile_and_shows_it_publicly() {
     assert_eq!(me["profile"], "/@pat-test");
     // /new applies the chat feature flags and the person's saved UI choice.
     assert_eq!(me["chat"], "/new");
+    // The Grid's avatar carries the profile name and can ask for its
+    // owner tag (#12406).
+    assert_eq!(me["verse_name"], "pat-test");
+    assert!(me["csrf"].as_str().is_some_and(|c| !c.is_empty()), "{me}");
 
     // NIP-05 answers the name with the key and our relay.
     let mut anyone = Browser::default();

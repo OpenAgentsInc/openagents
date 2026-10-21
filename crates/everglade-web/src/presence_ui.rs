@@ -120,11 +120,62 @@ pub fn read_places(json: &str) -> Vec<Place> {
     places
 }
 
-/// The tag over a player: the name their own frames gave, else their
-/// profile's, else `fallback` (a short key).
+/// The most characters of a name a tag shows.
+pub const TAG_NAME_MAX: usize = 24;
+/// How many characters of the npub after `npub1` a tag shows.
+const NPUB_SHOWN: usize = 6;
+
+/// A player's key as a tag shows it: `npub1` and the first few characters
+/// of the rest, then an ellipsis. A key that isn't 64 hex characters shows
+/// its own first characters.
 #[must_use]
-pub fn label(own: Option<&str>, profile: Option<&str>, fallback: String) -> String {
-    own.or(profile).map_or(fallback, str::to_owned)
+pub fn npub_prefix(pubkey: &str) -> String {
+    let mut bytes = [0u8; 32];
+    let parsed = pubkey.len() == 64
+        && bytes.iter_mut().enumerate().all(|(i, byte)| {
+            u8::from_str_radix(&pubkey[2 * i..2 * i + 2], 16)
+                .map(|b| *byte = b)
+                .is_ok()
+        });
+    if !parsed {
+        let short: String = pubkey.chars().take(8).collect();
+        return format!("{short}…");
+    }
+    let npub = nostr::nip19::encode_npub(&bytes);
+    format!("{}…", &npub[..5 + NPUB_SHOWN])
+}
+
+/// The name a tag shows: trimmed, on one line, at most [`TAG_NAME_MAX`]
+/// characters (the last an ellipsis when cut); `None` when empty.
+#[must_use]
+pub fn tag_name(name: &str) -> Option<String> {
+    let one_line: String = name
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .filter(|c| !c.is_control())
+        .collect();
+    if one_line.is_empty() {
+        return None;
+    }
+    if one_line.chars().count() <= TAG_NAME_MAX {
+        return Some(one_line);
+    }
+    let cut: String = one_line.chars().take(TAG_NAME_MAX - 1).collect();
+    Some(format!("{}…", cut.trim_end()))
+}
+
+/// The two lines over a player (#12406): the npub prefix on top, and the
+/// name under it, from the player's own frames, else their profile's. With
+/// no name, only the prefix.
+#[must_use]
+pub fn tag(own: Option<&str>, profile: Option<&str>, pubkey: &str) -> (String, Option<String>) {
+    (
+        npub_prefix(pubkey),
+        own.and_then(tag_name)
+            .or_else(|| profile.and_then(tag_name)),
+    )
 }
 
 /// Percent-decodes a query value, with `+` as a space; a malformed escape
@@ -212,9 +263,20 @@ mod tests {
             read_names(r#"{"names":{"aa":{"name":"Pat Verse"},"bb":{"name":"  "},"cc":{}}}"#);
         assert_eq!(read, vec![("aa".to_string(), "Pat Verse".to_string())]);
         assert!(read_names("not json").is_empty());
-        assert_eq!(label(Some("Own"), Some("Profile"), "k…".into()), "Own");
-        assert_eq!(label(None, Some("Profile"), "k…".into()), "Profile");
-        assert_eq!(label(None, None, "k…".into()), "k…");
+        let key = "7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e";
+        assert_eq!(
+            tag(Some("Own"), Some("Profile"), key).1.as_deref(),
+            Some("Own")
+        );
+        assert_eq!(
+            tag(None, Some("Profile"), key).1.as_deref(),
+            Some("Profile")
+        );
+        assert_eq!(
+            tag(Some("  "), Some("Profile"), key).1.as_deref(),
+            Some("Profile")
+        );
+        assert_eq!(tag(None, None, key), (npub_prefix(key), None));
     }
 
     #[test]
@@ -237,5 +299,32 @@ mod tests {
             assert_eq!(card_hit(size, [bx + bw / 2.0, by + bh / 2.0]), Some(button));
         }
         assert_eq!(card_hit(size, [0.0, 0.0]), None);
+    }
+    #[test]
+    fn tags_show_the_npub_prefix_over_a_bounded_name() {
+        let key = "7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2794234d86addf4e";
+        let npub = nostr::nip19::encode_npub(&{
+            let mut b = [0u8; 32];
+            for (i, byte) in b.iter_mut().enumerate() {
+                *byte = u8::from_str_radix(&key[2 * i..2 * i + 2], 16).unwrap();
+            }
+            b
+        });
+        let prefix = npub_prefix(key);
+        assert_eq!(prefix, format!("{}…", &npub[..11]));
+        assert!(prefix.starts_with("npub1") && prefix.chars().count() == 12);
+        // Not a key: its own start, never a panic.
+        assert_eq!(npub_prefix("abc"), "abc…");
+        assert_eq!(npub_prefix(&"zz".repeat(32)), "zzzzzzzz…");
+        // Names stay on one line and short.
+        assert_eq!(tag_name(" Pat \n Verse ").as_deref(), Some("Pat Verse"));
+        assert_eq!(tag_name("\u{7}").as_deref(), None);
+        let long = tag_name(&"x".repeat(80)).unwrap();
+        assert_eq!(long.chars().count(), TAG_NAME_MAX);
+        assert!(long.ends_with('…'));
+        assert_eq!(
+            tag_name(&"é".repeat(TAG_NAME_MAX)).unwrap().chars().count(),
+            TAG_NAME_MAX
+        );
     }
 }

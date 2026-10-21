@@ -165,6 +165,9 @@ pub(super) struct Addition {
     /// The grid pass in place of `/lander5`'s (`/pylons` holds the camera
     /// still and draws in black and white).
     pub grid: Option<fn() -> String>,
+    /// More `connect-src` sources than the page's own origin, separated
+    /// by spaces (`/home`'s relay, #12406); empty for none.
+    pub connect: &'static str,
 }
 
 /// The page, with the runner when a build is given.
@@ -252,7 +255,14 @@ for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);const ready=__wbg_init({{module_
                 "<script type=\"module\">{}</script>",
                 addition.script
             ));
-            connect = "connect-src 'self'; worker-src blob:; ".to_owned();
+            connect = if addition.connect.is_empty() {
+                "connect-src 'self'; worker-src blob:; ".to_owned()
+            } else {
+                format!(
+                    "connect-src 'self' {}; worker-src blob:; ",
+                    addition.connect
+                )
+            };
             let runner = script_hash.as_deref().unwrap_or_default();
             format!(
                 "{runner} {} 'self' 'wasm-unsafe-eval'",

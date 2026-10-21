@@ -13,6 +13,7 @@
 //! feature, [`studio`] places a NIP-HOST studio snapshot's seats, drives
 //! them for every viewer, and checks the studio rights a panel needs.
 
+pub mod arrival;
 pub mod columns;
 pub mod controller;
 pub use cad_world::{everglade, everglade_water};

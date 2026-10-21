@@ -40,8 +40,15 @@ const SPAWN_WAIT: Duration = Duration::from_millis(1500);
 /// Remote players are drawn this far behind the moving cadence, as on the
 /// phone, so they walk continuously between sparse poses.
 const PRESENCE_MARGIN: Duration = Duration::from_millis(300);
-/// Players farther than this, in meters, have no tag.
+/// Players farther than this from the camera, in meters, have no tag.
 const TAG_RANGE: f32 = 60.0;
+/// The overview's tag range: the whole plaza (#12406).
+const OVERVIEW_TAG_RANGE: f32 = 160.0;
+/// The most tags drawn at once, nearest the camera first.
+const MAX_TAGS: usize = 24;
+/// Where a returning player's last pose still counts as free: two radii
+/// and a little from everyone shown.
+const RESUME_SPACING: f32 = verse_world::social::controller::RADIUS * 2.0 + 0.3;
 /// A tag's height above the feet, in meters.
 const TAG_LIFT: f32 = 2.2;
 /// How far from a tag's center a click still picks its player, in CSS
@@ -68,17 +75,27 @@ pub struct Presence {
     owned: bool,
     /// Agents and pylons drawn on the plaza, from the site (#12313).
     places: std::rc::Rc<std::cell::RefCell<Vec<crate::presence_ui::Place>>>,
+    /// Whether this player is in the world yet. `/home` opens watching:
+    /// it shows the others and publishes nothing until the visitor joins
+    /// ([`Self::join`], #12406).
+    joined: bool,
+    /// `/home`, whose header holds the top left: no connection line there.
+    home: bool,
 }
 
 impl Presence {
     /// Joins the Grid through `options.relay`, or the public relay, as the
-    /// player whose key the page's storage holds (made on the first visit).
-    /// `None` when `options.offline` asks for no presence.
+    /// player whose key the page's storage holds (made on the first visit,
+    /// in this browser, with no network call; the secret never leaves the
+    /// page's storage). `None` when `options.offline` asks for no presence.
+    /// With `watch` (`/home`), the session only listens until
+    /// [`Self::join`], and the site's agents and pylons are left to the
+    /// page's own layer.
     ///
     /// # Errors
     ///
     /// Returns a message when the stored key or the session cannot be used.
-    pub fn open(window: &Window, options: &Options) -> Result<Option<Self>, String> {
+    pub fn open(window: &Window, options: &Options, watch: bool) -> Result<Option<Self>, String> {
         if options.offline {
             return Ok(None);
         }
@@ -106,18 +123,12 @@ impl Presence {
         if let Some(name) = &options.name {
             set(NAME_KEY, name);
         }
-        // A signed-in person's profile name, from the page (/verse).
-        let profile_name = window
-            .document()
-            .and_then(|d| d.get_element_by_id("everglade"))
-            .and_then(|e| e.get_attribute("data-name"))
-            .filter(|n| !n.trim().is_empty());
         session.set_display_name(
             options
                 .name
                 .clone()
                 .or_else(|| get(NAME_KEY))
-                .or(profile_name)
+                .or_else(|| page_data(window, "data-name"))
                 .as_deref(),
         );
         let intervals = PublishIntervals::mobile();
@@ -130,34 +141,118 @@ impl Presence {
         {
             session.set_blocklist(lists);
         }
-        // Signed in: ask the site for this key's owner tag, which the
-        // person's phone or computer signs (#12313).
-        let owner_tag: std::rc::Rc<std::cell::RefCell<Option<Vec<String>>>> = Default::default();
-        if let Some(csrf) = window
-            .document()
-            .and_then(|d| d.get_element_by_id("everglade"))
-            .and_then(|e| e.get_attribute("data-csrf"))
-        {
-            ask_owner(session.pubkey().to_owned(), csrf, owner_tag.clone());
-        }
-        session.begin_spawn(SPAWN_WAIT);
-        web_sys::console::info_1(&JsValue::from_str(&format!(
-            "Grid: joining {} on {relay} as {}",
-            session::BARE_WORLD,
-            session.pubkey()
-        )));
-        Ok(Some(Self {
+        let mut presence = Self {
             session,
             storage,
-            spawn_pending: true,
+            spawn_pending: false,
             timing: Timing::start(Instant::now()),
             card: None,
             profiles: Default::default(),
             asked: None,
-            owner_tag,
+            owner_tag: Default::default(),
             owned: false,
-            places: load_places(),
-        }))
+            places: if watch {
+                Default::default()
+            } else {
+                load_places()
+            },
+            joined: false,
+            home: watch,
+        };
+        if watch {
+            web_sys::console::info_1(&JsValue::from_str(&format!(
+                "Grid: watching {} on {relay}",
+                session::BARE_WORLD
+            )));
+        } else {
+            presence.join(window);
+        }
+        Ok(Some(presence))
+    }
+
+    /// Puts this player in the world: a spawn (their last pose, when it
+    /// is still free, else a free spot in the spawn area), their profile
+    /// name, and, signed in, the owner tag their own key signs. Only the
+    /// first call does anything.
+    pub fn join(&mut self, window: &Window) {
+        if self.joined {
+            return;
+        }
+        self.joined = true;
+        // `/home` learns who is signed in after it opens.
+        if self.session.display_name().is_none() {
+            self.session
+                .set_display_name(page_data(window, "data-name").as_deref());
+        }
+        // Signed in: ask the site for this key's owner tag, which the
+        // person's phone or computer signs (#12313).
+        if let Some(csrf) = page_data(window, "data-csrf") {
+            ask_owner(
+                self.session.pubkey().to_owned(),
+                csrf,
+                self.owner_tag.clone(),
+            );
+        }
+        self.session.begin_spawn(SPAWN_WAIT);
+        self.spawn_pending = true;
+        web_sys::console::info_1(&JsValue::from_str(&format!(
+            "Grid: joining {} on {} as {}",
+            session::BARE_WORLD,
+            self.session.relay(),
+            self.session.pubkey()
+        )));
+    }
+
+    /// Whether this player is in the world ([`Self::join`]).
+    pub fn joined(&self) -> bool {
+        self.joined
+    }
+
+    /// The players as this page sees them, for `verse_players`.
+    pub fn players(&self, runtime: &WorldRuntime) -> serde_json::Value {
+        let now = Instant::now();
+        let me = self.session.pubkey();
+        let others: Vec<serde_json::Value> = self
+            .session
+            .crowd
+            .shown(now)
+            .into_iter()
+            .filter(|shown| shown.role == "avatar" && shown.pubkey != me)
+            .map(|shown| {
+                let tag = self.tag(&shown.pubkey);
+                serde_json::json!({
+                    "pubkey": shown.pubkey,
+                    "tag": [tag.0, tag.1],
+                    "pos": shown.pos.to_array(),
+                })
+            })
+            .collect();
+        let tag = self.tag(me);
+        serde_json::json!({
+            "joined": self.joined && !self.spawn_pending,
+            "me": {
+                "pubkey": me,
+                "tag": [tag.0, tag.1],
+                "pos": runtime.player.pos.to_array(),
+            },
+            "others": others,
+        })
+    }
+
+    /// Whether this player's spawn is still being chosen.
+    pub fn placing(&self) -> bool {
+        self.spawn_pending
+    }
+
+    /// Other players' feet, as shown now.
+    fn others(&self, now: Instant) -> Vec<Vec3> {
+        self.session
+            .crowd
+            .shown(now)
+            .into_iter()
+            .filter(|shown| shown.role == "avatar" && shown.pubkey != self.session.pubkey())
+            .map(|shown| shown.pos)
+            .collect()
     }
 
     /// Exchanges this frame with the relay and returns the players to draw.
@@ -165,18 +260,42 @@ impl Presence {
     /// ends) the session only listens.
     pub fn tick(&mut self, runtime: &mut WorldRuntime, dt: f32) -> Vec<Figure> {
         let now = Instant::now();
+        if !self.joined {
+            self.session.listen(now);
+            return self.session.crowd.figures(now, dt);
+        }
         if self.spawn_pending {
             let Some(spawn) = self
                 .session
                 .poll_spawn(&runtime.world.blockers, runtime.zone_half())
             else {
-                return Vec::new();
+                return self.session.crowd.figures(now, dt);
             };
-            // A new player starts where the Grid puts everyone; only a
-            // signed retained pose moves them.
-            if spawn.resumed {
-                let _ = runtime.set_spawn(spawn.pos, spawn.yaw);
-            }
+            // A returning player stands where they left, when nobody
+            // stands there now; anyone else gets a free spot in the spawn
+            // area, which their key picks, away from everyone shown
+            // (#12406).
+            let others = self.others(now);
+            let free = |pos: Vec3| others.iter().all(|o| o.distance(pos) >= RESUME_SPACING);
+            let (pos, yaw) = if spawn.resumed && free(spawn.pos) {
+                (spawn.pos, spawn.yaw)
+            } else {
+                let arrival = verse_world::social::arrival::pick_spawn(
+                    self.session.pubkey(),
+                    verse_world::social::arrival::SpawnArea::GRID,
+                    &others,
+                    &runtime.world.blockers,
+                );
+                (arrival.pos, arrival.yaw)
+            };
+            let _ = runtime.set_spawn(pos, yaw);
+            web_sys::console::info_1(&JsValue::from_str(&format!(
+                "Grid: spawned at {:.2},{:.2} ({} others shown{})",
+                pos.x,
+                pos.z,
+                others.len(),
+                if spawn.resumed { ", returning" } else { "" }
+            )));
             self.spawn_pending = false;
         }
         if !self.owned
@@ -211,19 +330,26 @@ impl Presence {
         log_frames(&times, players, &self.session);
     }
 
-    /// The tag over `pubkey`: its own frames' name, else its profile's.
-    fn label(&self, pubkey: &str) -> String {
+    /// The tag over `pubkey`: its npub prefix, and its name when it has
+    /// one: a verified owner's profile name (#12313), else its own
+    /// frames' name, else its key's profile name.
+    fn tag(&self, pubkey: &str) -> (String, Option<String>) {
         let profiles = self.profiles.borrow();
-        // A verified owner's profile name comes first (#12313).
         let owner = self
             .session
             .owner_of(pubkey)
             .and_then(|owner| profiles.get(owner).and_then(Option::as_deref));
-        crate::presence_ui::label(
+        crate::presence_ui::tag(
             owner.or(self.session.shown_name(pubkey)),
             profiles.get(pubkey).and_then(Option::as_deref),
-            self.session.name_of(pubkey),
+            pubkey,
         )
+    }
+
+    /// The card's title: the name, else the npub prefix.
+    fn label(&self, pubkey: &str) -> String {
+        let (prefix, name) = self.tag(pubkey);
+        name.unwrap_or(prefix)
     }
 
     /// Ask the site, at most every two seconds, for the profile names of
@@ -299,18 +425,32 @@ impl Presence {
         });
     }
 
-    /// The remote players whose tags show, with where their heads are.
-    fn tagged(&self, runtime: &WorldRuntime) -> Vec<(String, Vec3)> {
-        self.session
+    /// The remote players whose tags show, with where their heads are:
+    /// those within range of the camera at `eye`, nearest first, at most
+    /// [`MAX_TAGS`].
+    fn tagged(&self, eye: Vec3) -> Vec<(String, Vec3)> {
+        let range = if self.joined {
+            TAG_RANGE
+        } else {
+            OVERVIEW_TAG_RANGE
+        };
+        let mut tagged: Vec<(f32, String, Vec3)> = self
+            .session
             .crowd
             .shown(Instant::now())
             .into_iter()
-            .filter(|shown| {
-                shown.role == "avatar"
-                    && shown.pubkey != self.session.pubkey()
-                    && shown.pos.distance(runtime.player.pos) <= TAG_RANGE
+            .filter(|shown| shown.role == "avatar" && shown.pubkey != self.session.pubkey())
+            .map(|shown| {
+                let head = shown.pos + Vec3::Y * TAG_LIFT;
+                (head.distance(eye), shown.pubkey, head)
             })
-            .map(|shown| (shown.pubkey, shown.pos + Vec3::Y * TAG_LIFT))
+            .filter(|(distance, _, _)| *distance <= range)
+            .collect();
+        tagged.sort_by(|a, b| a.0.total_cmp(&b.0));
+        tagged
+            .into_iter()
+            .take(MAX_TAGS)
+            .map(|(_, pubkey, head)| (pubkey, head))
             .collect()
     }
 
@@ -324,9 +464,10 @@ impl Presence {
         size: [f32; 2],
         runtime: &WorldRuntime,
         view_proj: Mat4,
+        eye: Vec3,
     ) {
-        let mut tags = self.tagged(runtime);
-        if !runtime.first_person() {
+        let mut tags = self.tagged(eye);
+        if self.joined && !runtime.first_person() {
             tags.push((
                 self.session.pubkey().to_owned(),
                 runtime.player.pos + Vec3::Y * TAG_LIFT,
@@ -350,28 +491,43 @@ impl Presence {
                 crate::theme::linear(coder_ui::coder_noir::CONTENT, 0.7),
             );
         }
+        // The name sits over the head and the npub prefix over the name.
         for (pubkey, head) in tags {
             let Some([x, y]) = verse::hud::project(view_proj, size, head) else {
                 continue;
             };
-            let name = self.label(&pubkey);
-            let width = atlas.measure(&name);
+            let (prefix, name) = self.tag(&pubkey);
+            let mut top = y - atlas.line;
+            if let Some(name) = &name {
+                let width = atlas.measure(name);
+                ui.text(
+                    atlas,
+                    x - width / 2.0,
+                    top,
+                    name,
+                    crate::theme::linear(coder_ui::coder_noir::CONTENT, 1.0),
+                );
+                top -= atlas.line;
+            }
+            let width = atlas.measure(&prefix);
             ui.text(
                 atlas,
                 x - width / 2.0,
-                y - atlas.line,
-                &name,
-                crate::theme::linear(coder_ui::coder_noir::CONTENT, 1.0),
+                top,
+                &prefix,
+                crate::theme::linear(coder_ui::coder_noir::CONTENT_SECONDARY, 1.0),
             );
         }
-        let line = self.status_line();
-        ui.text(
-            atlas,
-            CARD_PAD,
-            CARD_PAD,
-            &line,
-            crate::theme::linear(coder_ui::coder_noir::CONTENT_SECONDARY, 1.0),
-        );
+        if !self.home {
+            let line = self.status_line();
+            ui.text(
+                atlas,
+                CARD_PAD,
+                CARD_PAD,
+                &line,
+                crate::theme::linear(coder_ui::coder_noir::CONTENT_SECONDARY, 1.0),
+            );
+        }
         self.draw_card(ui, atlas, size);
     }
 
@@ -391,7 +547,7 @@ impl Presence {
             Status::Connecting => "CONNECTING".into(),
             Status::Offline => "OFFLINE; RETRYING".into(),
             Status::Online => {
-                let here = self.session.crowd.live_len(now) + 1;
+                let here = self.session.crowd.live_len(now) + usize::from(self.joined);
                 format!("ONLINE · {here} HERE")
             }
         }
@@ -404,10 +560,10 @@ impl Presence {
         at: [f32; 2],
         size: [f32; 2],
         line: f32,
-        runtime: &WorldRuntime,
         view_proj: Mat4,
+        eye: Vec3,
     ) -> Option<String> {
-        self.tagged(runtime)
+        self.tagged(eye)
             .into_iter()
             .filter_map(|(pubkey, head)| {
                 let [x, y] = verse::hud::project(view_proj, size, head)?;
@@ -426,8 +582,8 @@ impl Presence {
         at: [f32; 2],
         size: [f32; 2],
         line: f32,
-        runtime: &WorldRuntime,
         view_proj: Mat4,
+        eye: Vec3,
     ) -> bool {
         if let Some(pubkey) = self.card.take() {
             if let Some(button) = card_hit(size, at) {
@@ -437,7 +593,7 @@ impl Presence {
             }
             return true;
         }
-        if let Some(pubkey) = self.player_at(at, size, line, runtime, view_proj) {
+        if let Some(pubkey) = self.player_at(at, size, line, view_proj, eye) {
             self.card = Some(pubkey);
             return true;
         }
@@ -516,6 +672,17 @@ impl Presence {
             );
         }
     }
+}
+
+/// A `data-` attribute the page puts on `#everglade` (`/verse`) or on the
+/// canvas (`/home`, once it knows who is signed in); `None` when blank.
+fn page_data(window: &Window, name: &str) -> Option<String> {
+    let document = window.document()?;
+    ["everglade", "everglade-canvas"]
+        .into_iter()
+        .filter_map(|id| document.get_element_by_id(id))
+        .find_map(|element| element.get_attribute(name))
+        .filter(|value| !value.trim().is_empty())
 }
 
 fn log_frames(times: &FrameTimes, players: usize, session: &Session) {

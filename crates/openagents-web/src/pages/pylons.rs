@@ -243,6 +243,7 @@ const ADDITION: Addition = Addition {
     runner_tail: super::lander6::RUNNER_TAIL,
     main: None,
     grid: Some(still_gray_grid),
+    connect: "",
 };
 
 /// The last document made: the runner build and the list it came from.

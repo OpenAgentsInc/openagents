@@ -247,6 +247,13 @@ impl WorldRuntime {
         runtime
     }
 
+    /// Takes the local player out of the world, or puts them back: while
+    /// out, no local avatar is drawn, as in [`Self::unoccupied`]. `/home`
+    /// watches the Grid this way until the visitor joins (#12406).
+    pub fn set_occupied(&mut self, occupied: bool) {
+        self.unoccupied = !occupied;
+    }
+
     #[must_use]
     pub fn is_bare(&self) -> bool {
         self.bare
@@ -499,8 +506,12 @@ impl WorldRuntime {
             self.update_player(input, dt);
         }
         if self.is_plaza() && !self.avatars.is_empty() {
-            self.player
-                .separate(&self.avatars, &self.world.blockers, self.zone_half());
+            self.player.bump(
+                previous.pos,
+                &self.avatars,
+                &self.world.blockers,
+                self.zone_half(),
+            );
         }
         self.robot_clock += f64::from(dt);
         // Nobody walks through the Grid robots.

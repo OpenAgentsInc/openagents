@@ -22,7 +22,9 @@ impl Terminal {
             .dyn_into::<HtmlElement>()
             .ok()?;
         hint.set_id("grid-controls");
-        hint.set_text_content(Some("WASD to walk · Drag to look"));
+        hint.set_text_content(Some(
+            "Click or WASD to walk · Drag to look · Scroll to zoom",
+        ));
         hint.style().set_css_text("position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:3;margin:0;padding:8px 12px;background:#080808cc;border-radius:8px;font-size:12px;color:#aaa;white-space:nowrap;pointer-events:none");
         document.body()?.append_child(&hint).ok()?;
         Some(Self { hint, near: false })
