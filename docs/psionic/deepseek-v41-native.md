@@ -670,7 +670,7 @@ The next four children of #12369 connect the earlier CPU components while
 | [#12381](https://github.com/OpenAgentsInc/openagents/issues/12381) | Projection wiring | Named row-addressable checkpoint matrices, query/KV/compressor/indexer paths, grouped output projection, embedding, and final collapse/norm/logits. Nonuniform NumPy fixtures, group isolation, sparse embedding reads, and invalid inputs are tested. |
 | [#12382](https://github.com/OpenAgentsInc/openagents/issues/12382) | RoPE/YaRN | Adjacent-pair tail rotation and inverse, pure-window base 10000, compressed/full base 160000 with YaRN, and first-token positions for completed groups. All 33 accumulated tests pass. |
 | [#12383](https://github.com/OpenAgentsInc/openagents/issues/12383) | Activation quantization | Explicit float32/BF16 arithmetic, FP8 activation dispatch for FP4/FP8 weights, per-32 indexer FP4/UE8M0, per-16 compressed KV FP4/E4M3, and BF16 probability/value products. All 39 accumulated tests pass. |
-| [#12384](https://github.com/OpenAgentsInc/openagents/issues/12384) | Shared KV state | Filed; follows #12383. |
+| [#12384](https://github.com/OpenAgentsInc/openagents/issues/12384) | Shared KV state | Request-owned attention runtime with fixed weights/geometry/arithmetic, per-layer window rings, source KV/index keys, index selections, layer-20 candidates, bounded context, reset, and transactional layer updates. |
 
 The [integration fixture generator](../../scripts/dev/deepseek-v41-integration-fixtures.py)
 uses small independent NumPy equations from the pinned public reference.
@@ -702,3 +702,35 @@ value product across 64-index blocks. Nonfinite inputs, invalid block widths,
 and an E4M3 compressed-KV scale outside its finite range return errors. These
 CPU conversion rules and float32 reduction order still require comparison with
 the official device kernels; they do not claim bitwise GEMM/device parity.
+
+The integrated attention runtime runs normalized inputs through the actual
+40-layer ownership schedule. KV sources are 2/8/14/20; index sources are
+2/8/14/20/24/28/32/36. Index keys consume the unrotated latent before its KV
+form is rotated and quantized. Compressed IDs remain independent of each
+query's window length, then become local addresses when the two sources join.
+Consumers see only completed groups and causally visible rows. Layer 20's
+candidate mask is reused by later indexers, and per-chunk selections never
+survive into a new chunk.
+
+All 45 accumulated CPU tests pass. The integrated float32 attention outputs
+for all 40 layers on tiny synthetic weights match independent NumPy equations
+within `2e-5` absolute. Whole prefill and split prefill/decode agree in float32;
+the BF16 path agrees exactly across those chunkings on its tiny fixture.
+Checks also cover odd compression tails, ring wrap, source-only projection
+reads, candidate-mask reuse, reset/new-request isolation, wrong order/positions,
+capacity refusal, and a projection failure after cache computation. The failed
+layer leaves the runtime unchanged. Index weight scale factors are computed
+as Python float64 scalars before the BF16 boundary.
+
+The runtime binds one immutable weight-source reference for its lifetime and
+owns its request state. Immutable rows and source buffers use copy-on-write
+storage for transactional updates. Caller-selected context capacity bounds the
+stored token history; this is not a measured full-model memory or throughput
+qualification. There is no new serving route or network protocol.
+
+This completes #12381–#12384. The integrated test exercises attention across
+40 layer IDs with supplied normalized inputs; it does not run the 40-layer
+transformer. The next CPU integration must compose Engram, hyper-connections,
+attention norms, MoE, final logits, and generation with consistent numerical
+boundaries, then compare original-weight activations and complete answers with
+#12371. Native V4.1 CUDA, stage transport, and Pylon recovery remain separate.

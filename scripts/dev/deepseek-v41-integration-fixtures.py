@@ -39,6 +39,7 @@ def projection():
     residual=np.array([[1,2,-1,.5],[-2,1,3,-.25]],dtype=np.float32)
     logits=hw@norm((residual*np.array([.25,.75],dtype=np.float32)[:,None]).sum(axis=0),nw)
     expected={k:v.flatten().tolist() for k,v in dict(qr=qr,q=q,kv=kv,compress_value=cv,compress_gate=cg,index_key=ik,index_query=iq,index_weights=iw,output=out,embedding=embed,residual=residual,logits=logits).items()}
+    vector('layers.2.attn.attn_sink',4)
     write('projection',dict(tensors=tensors,input=x.tolist(),expected=expected))
 
 
@@ -110,7 +111,66 @@ def quantization():
     write('quantization',dict(cases=cases,query=q.tolist(),kv=kv.flatten().tolist(),indices=ids,sinks=sinks,attention=out.tolist()))
 
 
+def shared_state():
+    # Independent layerwise NumPy attention with the actual 40-layer schedule,
+    # tiny geometry and synthetic projection weights. Not a full transformer.
+    f=json.loads((OUT/'projection.json').read_text())
+    tensors=f['tensors']
+    def w(part):
+        t=tensors['layers.2.attn.'+part];return np.array(t['values'],dtype=np.float32).reshape(t['shape'])
+    def norm(x,weight):return weight*(x/np.sqrt(np.mean(x*x)+np.float32(1e-20)))
+    def rotate(x,pos,width):
+        x=x.reshape(-1,width).copy();a=x[:,-2].copy();b=x[:,-1].copy()
+        c=np.cos(np.float32(pos));s=np.sin(np.float32(pos));x[:,-2]=a*c-b*s;x[:,-1]=a*s+b*c
+        return x.flatten()
+    caches={i:dict(kv=[],keys=[],values=[],gates=[]) for i in [2,8,14,20]}
+    selections={};outputs={}
+    for layer in range(40):
+        ratio=0 if layer<2 else 2 if layer<20 else 1
+        owner=max((i for i in caches if i<=layer),default=None)
+        index=max((i for i in [2,8,14,20,24,28,32,36] if i<=layer),default=None)
+        ring=[];ys=[];selected_rows=[]
+        for pos in range(7):
+            x=np.array([.25,-.5,1,2],dtype=np.float32)+np.float32(layer)*np.float32(.03)+np.sin(np.float32(pos)*np.float32(.4))*np.float32(.2)
+            qr=norm(w('wq_a.weight')@x,w('q_norm.weight'))
+            q=rotate(w('wq_b.weight')@qr,pos,4).reshape(4,4)
+            ring.append(rotate(norm(w('wkv.weight')@x,w('kv_norm.weight')),pos,4));ring=ring[-4:]
+            if layer==owner:
+                cache=caches[owner];cache['values'].append(w('compressor.wkv.weight')@x)
+                if ratio>1:cache['gates'].append(w('compressor.wgate.weight')@x)
+                if (pos+1)%ratio==0:
+                    if ratio==1:latent=cache['values'][0]
+                    else:
+                        v=np.array(cache['values']);gate=np.array(cache['gates']);gate=np.exp(gate-gate.max(axis=0));gate/=gate.sum(axis=0)
+                        latent=(v*gate).sum(axis=0)
+                    latent=norm(latent,w('compressor.norm.weight'));gp=pos+1-ratio
+                    key=norm(w('indexer.wk.weight')@latent,w('indexer.k_norm.weight'))
+                    cache['keys'].append(rotate(key,gp,4));cache['kv'].append(rotate(latent,gp,4));cache['values']=[];cache['gates']=[]
+            kv=list(ring)
+            if owner is not None:
+                visible=(pos+1)//ratio
+                if layer==index:
+                    iq=rotate(w('indexer.wq_b.weight')@qr,pos,4).reshape(2,4)
+                    keys=np.array(caches[owner]['keys'][:visible],dtype=np.float32).reshape(-1,4)
+                    iw=(w('indexer.weights_proj.weight')@x)*(np.float32(4**-.5)*np.float32(2**-.5))
+                    scores=(np.maximum(iq@keys.T,0)*iw[:,None]).sum(axis=0)
+                    ids=np.sort(np.argsort(-scores,kind='stable')[:min(3,visible)]).tolist();selected_rows.append(ids)
+                else:ids=selections[index][pos]
+                kv.extend(caches[owner]['kv'][i] for i in ids)
+            kv=np.array(kv,dtype=np.float32)
+            scores=(q@kv.T)*np.float32(.5)
+            logits=np.concatenate([scores,w('attn_sink')[:,None]],axis=-1)
+            probs=np.exp(logits-logits.max(axis=-1,keepdims=True));probs/=probs.sum(axis=-1,keepdims=True)
+            heads=rotate((probs[:,:-1]@kv).flatten(),-pos,4)
+            oa=w('wo_a.weight').reshape(2,2,8)
+            low=np.einsum('grd,gd->gr',oa,heads.reshape(2,8)).flatten();ys.extend((w('wo_b.weight')@low).tolist())
+        if layer==index:selections[layer]=selected_rows
+        outputs[layer]=ys
+    write('shared_state',dict(outputs=outputs))
+
+
 if __name__ == '__main__':
     projection()
     rope()
     quantization()
+    shared_state()
