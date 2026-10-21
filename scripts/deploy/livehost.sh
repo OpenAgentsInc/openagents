@@ -17,6 +17,10 @@
 #   LIVEHOST_RELAY    [wss://relay.openagents.com]
 #   LIVEHOST_KEY      [~/work/.secrets/livehost-openagents-staging.key]
 #   CLOUDSDK_CONFIG   for the bucket [~/work/.secrets/gcloud-sa-config]
+#   LIVEHOST_TOOLS_TARGET  where the deploy tools build
+#                     [~/work/openagents-target-1-livehost-tools]. A target of
+#                     their own: in the shared one, a content deploy waited
+#                     minutes for other builds' artifact lock.
 
 set -euo pipefail
 
@@ -26,6 +30,8 @@ store="${LIVEHOST_STORE:-gs://openagentsgemini-livehost}"
 relay="${LIVEHOST_RELAY:-wss://relay.openagents.com}"
 key="${LIVEHOST_KEY:-$HOME/work/.secrets/livehost-openagents-staging.key}"
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
+export CARGO_TARGET_DIR="${LIVEHOST_TOOLS_TARGET:-$HOME/work/openagents-target-1-livehost-tools}"
+unset CARGO_BUILD_BUILD_DIR
 
 if [[ "$channel" != staging ]]; then
   echo "livehost.sh: only the staging channel can be deployed from here" >&2

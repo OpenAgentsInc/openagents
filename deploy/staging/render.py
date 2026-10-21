@@ -86,6 +86,12 @@ PUSH_STANDIN_SECRET = "openagents-web-1-staging-push-standin-token"
 WORKOS_STAGING_CLIENT = "openagents-web-workos-staging-client-id"
 WORKOS_STAGING_KEY = "openagents-web-workos-staging-api-key"
 WORKOS_STAGING_METHODS = "github,google,password,magic_code,sso"
+# The content tier (#12435): staging follows the `openagents` tenant's
+# staging pointer, signed by this key (scripts/deploy/livehost.sh), and
+# reads the manifest's objects from this bucket.
+LIVEHOST_RELAY = "wss://relay.openagents.com"
+LIVEHOST_BUCKET = "gs://openagentsgemini-livehost"
+LIVEHOST_STAGING_PUBKEY = "9db9a1549ef4af943371415ee6c388e2b4a225b1f046cdcbeb8ceb2875ccd014"
 
 
 def secret(name, var):
@@ -173,6 +179,11 @@ def main():
             secret(DATABASE_SECRET, "OPENAGENTS_WEB_ACTORS_DATABASE_URL"),
             secret("openagents-labs-staging-pg-url", "OPENAGENTS_WEB_LABS_DATABASE_URL"),
             plain("OPENAGENTS_WEB_LABS_BUCKET", CHAT_BUCKET),
+            # Docs, legal text, and the design-language bundle from the
+            # content tier's manifest, compiled-in copies otherwise (#12435).
+            plain("OPENAGENTS_LIVE_RELAY", LIVEHOST_RELAY),
+            plain("OPENAGENTS_LIVE_STORE", LIVEHOST_BUCKET),
+            plain("OPENAGENTS_LIVE_PUBKEY", LIVEHOST_STAGING_PUBKEY),
             plain("OPENAGENTS_WEB_LABS_SIGNING_ACCOUNT", RUNTIME),
             plain("OPENAGENTS_WEB_MAC_JOBS_ACTORS", MAC_JOBS_ACTORS),
             *workos,
