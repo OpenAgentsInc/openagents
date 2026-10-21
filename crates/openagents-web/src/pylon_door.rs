@@ -55,6 +55,12 @@ const MODEL: &str = "openagents/decide";
 const INSTRUCTIONS: &str = "You are a pylon: a computer on the OpenAgents network. Someone \
 typed this at the terminal on the OpenAgents Grid. Answer directly, in plain words, in a few \
 sentences unless they ask for more.";
+/// What a V4.1 group is told: the person chose DeepSeek V4.1, so it
+/// answers as that model rather than denying it is one (#12421).
+const GROUP_INSTRUCTIONS: &str = "You are DeepSeek V4.1 Flash, running on a group of pylons: \
+computers on the OpenAgents network that each hold part of the model. Someone chose you at the \
+terminal on the OpenAgents Grid. Answer directly, in plain words, in a few sentences unless they \
+ask for more.";
 
 /// The key a person's pylon jobs are sent as: derived from the server's
 /// secret and the payer, apart from their worker key, so a pylon's rate
@@ -335,13 +341,18 @@ impl Door for PylonDoor {
                 })
                 .filter(|turn| !turn.content.trim().is_empty())
                 .collect();
+            let instructions = if settings.want.is_some() {
+                GROUP_INSTRUCTIONS
+            } else {
+                INSTRUCTIONS
+            };
             let started = Instant::now();
             let mut routed = router::route(
                 &buyer,
                 &settings,
                 decide.as_ref(),
                 &jobs,
-                Some(INSTRUCTIONS),
+                Some(instructions),
             )
             .await;
             eprintln!("{}", log_line(&routed, started.elapsed().as_millis()));
@@ -359,7 +370,7 @@ impl Door for PylonDoor {
                     &settings,
                     decide.as_ref(),
                     &theirs,
-                    Some(INSTRUCTIONS),
+                    Some(instructions),
                 )
                 .await;
                 eprintln!(
