@@ -331,6 +331,10 @@ struct Group {
     timeout: Duration,
     weights: String,
     runtime: String,
+    /// The numerical profile and executable SHA-256 every stage announced
+    /// (#12407), so the report names what ran, not what was asked for.
+    profile: String,
+    build: String,
 }
 
 impl Drop for Group {
@@ -442,6 +446,8 @@ impl Group {
             timeout: opts.step_timeout,
             weights: String::new(),
             runtime: String::new(),
+            profile: String::new(),
+            build: String::new(),
         };
         while writers.iter().any(Option::is_none) {
             if Instant::now() > deadline {
@@ -480,6 +486,11 @@ impl Group {
                     identity.insert((
                         hello["weights"].as_str().unwrap_or_default().to_owned(),
                         hello["runtime"].as_str().unwrap_or_default().to_owned(),
+                        hello["profile"].as_str().unwrap_or_default().to_owned(),
+                        hello["build"]["sha256"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_owned(),
                     ));
                     listens[i] = hello["listen"].as_str().map(str::to_owned);
                     let send = send.clone();
@@ -503,12 +514,14 @@ impl Group {
         }
         if identity.len() != 1 {
             return Err(refused(format!(
-                "the stages announce different weights or runtimes: {identity:?}"
+                "the stages announce different weights, runtimes, profiles, or builds: {identity:?}"
             )));
         }
-        let (weights, runtime) = identity.into_iter().next().unwrap_or_default();
+        let (weights, runtime, profile, build) = identity.into_iter().next().unwrap_or_default();
         group.weights = weights;
         group.runtime = runtime;
+        group.profile = profile;
+        group.build = build;
         group.writers = writers.into_iter().flatten().collect();
         group.listens = listens;
         Ok(group)
@@ -1096,6 +1109,8 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         "policy_version": policy.version,
         "policy_sha256": policy_sha,
         "runtime": group.runtime,
+        "profile": group.profile,
+        "stage_build_sha256": group.build,
         "weights": group.weights,
         "manifest": opts.manifest,
         "binary_sha256": sha256_file(&exe),
