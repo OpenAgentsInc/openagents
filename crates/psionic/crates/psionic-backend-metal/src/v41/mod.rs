@@ -24,6 +24,7 @@
 pub mod attention;
 pub mod matvec;
 pub mod mix;
+pub mod stage;
 
 use metal::{
     Buffer, CompileOptions, ComputePipelineState, Device, MTLResourceOptions, MTLResourceUsage,
@@ -34,11 +35,12 @@ use psionic_runtime::RuntimeError;
 use std::{collections::BTreeMap, ffi::c_void, sync::Mutex};
 
 /// Every V4.1 kernel source, in compile order.
-const SOURCES: [&str; 5] = [
+const SOURCES: [&str; 6] = [
     include_str!("../kernels/v41/common.metal"),
     include_str!("../kernels/v41/matvec.metal"),
     include_str!("../kernels/v41/mix.metal"),
     include_str!("../kernels/v41/attention.metal"),
+    include_str!("../kernels/v41/stage.metal"),
     include_str!("../kernels/v41/checks.metal"),
 ];
 
@@ -75,6 +77,14 @@ const PIPELINES: &[&str] = &[
     "v41_select",
     "v41_block_max",
     "v41_sparse_attention",
+    "v41_stage_begin",
+    "v41_stage_load",
+    "v41_stage_store",
+    "v41_copy_words",
+    "v41_stage_advance",
+    "v41_engram_hash",
+    "v41_sample",
+    "v41_candidate_flags",
     "v41_check_exp",
     "v41_check_log1p",
     "v41_check_double",
