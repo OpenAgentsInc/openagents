@@ -126,6 +126,10 @@ pub struct StepAck {
     /// answer, `length` when the front's output limit cut it off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub finish: Option<String>,
+    /// The step's own time on the stage, in microseconds, when the stage
+    /// reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compute_us: Option<u64>,
 }
 
 /// Parsed answer text from one token.
@@ -582,6 +586,76 @@ pub struct Done {
     pub tokens: u64,
     /// How the last stage said the answer ended, when it parses answers.
     pub finish: Option<String>,
+    /// Where the request's steps spent their time on each stage.
+    pub profile: StepProfile,
+}
+
+/// Where one request's steps spent their time, stage by stage (W12,
+/// #12399), from the times and bytes the stages report. A decode token's
+/// time at the front minus the stages' summed compute is what the links
+/// between stages and the head's own round trip cost.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StepProfile {
+    /// The first step's (the prompt's) compute on each stage, µs.
+    pub prefill_compute_us: Vec<u64>,
+    /// Decode steps (every step after the first) each stage reported.
+    pub decode_steps: Vec<u64>,
+    /// Their summed compute on each stage, µs.
+    pub decode_compute_us: Vec<u64>,
+    /// The stage state each stage passed on in them, bytes on the wire
+    /// (direct transport only).
+    pub decode_bytes: Vec<u64>,
+}
+
+impl StepProfile {
+    fn new(stages: usize) -> Self {
+        Self {
+            prefill_compute_us: vec![0; stages],
+            decode_steps: vec![0; stages],
+            decode_compute_us: vec![0; stages],
+            decode_bytes: vec![0; stages],
+        }
+    }
+
+    /// Count one step that `stage` finished.
+    fn note(&mut self, stage: usize, step: u64, compute_us: Option<u64>, bytes: u64) {
+        let Some(compute) = compute_us else {
+            return;
+        };
+        if stage >= self.decode_steps.len() {
+            return;
+        }
+        if step == 0 {
+            self.prefill_compute_us[stage] += compute;
+        } else {
+            self.decode_steps[stage] += 1;
+            self.decode_compute_us[stage] += compute;
+            self.decode_bytes[stage] += bytes;
+        }
+    }
+
+    /// Each stage's mean compute per decode step, ms; `None` when a stage
+    /// reported none.
+    #[must_use]
+    pub fn decode_ms(&self) -> Option<Vec<f64>> {
+        if self.decode_steps.is_empty() || self.decode_steps.contains(&0) {
+            return None;
+        }
+        Some(
+            self.decode_compute_us
+                .iter()
+                .zip(&self.decode_steps)
+                .map(|(us, n)| *us as f64 / *n as f64 / 1_000.0)
+                .collect(),
+        )
+    }
+
+    /// The stage state passed between stages per decode token, bytes.
+    #[must_use]
+    pub fn bytes_per_token(&self) -> Option<f64> {
+        let steps = *self.decode_steps.last()?;
+        (steps > 0).then(|| self.decode_bytes.iter().sum::<u64>() as f64 / steps as f64)
+    }
 }
 
 /// One admitted request. Dropping `tokens` cancels it.
@@ -684,6 +758,8 @@ mod runtime {
             step: u64,
             #[serde(default)]
             bytes: u64,
+            #[serde(default)]
+            compute_us: Option<u64>,
         },
         /// The stage refused a frame from the previous stage.
         Refused {
@@ -988,6 +1064,7 @@ mod runtime {
         answer: mpsc::UnboundedSender<AnswerPiece>,
         done: Option<oneshot::Sender<Result<Done, Failure>>>,
         phase: Phase,
+        profile: StepProfile,
     }
 
     struct Front {
@@ -1203,6 +1280,7 @@ mod runtime {
                         phase: Phase::Running {
                             sent: Instant::now(),
                         },
+                        profile: StepProfile::new(self.slots.len()),
                     });
                     let _ = reply.send(Ok(Run {
                         request: id,
@@ -1472,7 +1550,13 @@ mod runtime {
                         ));
                         return;
                     }
-                    match self.fence.accept(&ack) {
+                    let accepted = self.fence.accept(&ack);
+                    if accepted.is_ok()
+                        && let Some(active) = &mut self.active
+                    {
+                        active.profile.note(index, ack.step, ack.compute_us, 0);
+                    }
+                    match accepted {
                         Ok(Accepted::Next(next)) => self.send_step(next, ack.step).await,
                         Ok(Accepted::StepDone(step)) => {
                             let token = ack.token.unwrap_or_default();
@@ -1536,6 +1620,7 @@ mod runtime {
                     attempt,
                     step,
                     bytes,
+                    compute_us,
                 } => {
                     let current = self.active.as_ref().is_some_and(|a| {
                         a.id == request_id
@@ -1552,6 +1637,9 @@ mod runtime {
                     slot.progress = Some(slot.progress.map_or(step, |p| p.max(step)));
                     slot.forwarded += 1;
                     slot.forwarded_bytes += bytes;
+                    if let Some(active) = &mut self.active {
+                        active.profile.note(index, step, compute_us, bytes);
+                    }
                 }
                 Incoming::Refused { reason } => {
                     let name = self.slots[index].spec.name.clone();
@@ -1636,6 +1724,7 @@ mod runtime {
                 generation: self.fence.generation(),
                 tokens: active.delivered,
                 finish: ack.finish,
+                profile: std::mem::take(&mut active.profile),
             };
             let reply = active.done.take();
             self.active = None;
@@ -2004,11 +2093,31 @@ mod tests {
             reasoning: None,
             content: None,
             finish: None,
+            compute_us: None,
         }
     }
 
     fn fence() -> Fence {
         Fence::new(3, 2)
+    }
+
+    #[test]
+    fn a_profile_splits_prefill_from_decode_per_stage() {
+        let mut profile = StepProfile::new(2);
+        assert_eq!(profile.decode_ms(), None);
+        profile.note(0, 0, Some(900_000), 50_000);
+        profile.note(1, 0, Some(800_000), 0);
+        for step in 1..=4 {
+            profile.note(0, step, Some(8_000), 44_000);
+            profile.note(1, step, Some(9_000), 0);
+        }
+        // A stage that reports no time leaves the profile as it was.
+        profile.note(1, 5, None, 0);
+        profile.note(7, 5, Some(1), 0);
+        assert_eq!(profile.prefill_compute_us, vec![900_000, 800_000]);
+        assert_eq!(profile.decode_steps, vec![4, 4]);
+        assert_eq!(profile.decode_ms(), Some(vec![8.0, 9.0]));
+        assert_eq!(profile.bytes_per_token(), Some(44_000.0));
     }
 
     #[test]

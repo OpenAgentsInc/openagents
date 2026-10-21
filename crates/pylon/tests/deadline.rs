@@ -173,6 +173,7 @@ async fn head(
         spec: spec(ceiling_secs),
         readiness: Arc::new(readiness),
         stages: vec![("s0".into(), Layers { from: 0, to: 43 })],
+        answers: None,
     });
     run(hub, config, home, engine).await
 }
@@ -632,6 +633,7 @@ async fn a_missed_deadline_holds_the_group_until_its_stages_stop() {
             ("s0".into(), Layers { from: 0, to: 20 }),
             ("s1".into(), Layers { from: 20, to: 43 }),
         ],
+        answers: None,
     });
     let engine = Arc::new(GroupEngine::new(
         Arc::clone(&group),
@@ -748,6 +750,7 @@ async fn fake_group(pieces: &[&str], slow_ms: u64) -> Fake {
             ("s0".into(), Layers { from: 0, to: 20 }),
             ("s1".into(), Layers { from: 20, to: 43 }),
         ],
+        answers: None,
     });
     let engine = Arc::new(GroupEngine::new(
         Arc::clone(&group),
@@ -821,7 +824,7 @@ async fn the_harness_qualifies_a_slow_group_within_its_deadline() {
         "extended",
         "finish_stop",
         "within_declared_deadline",
-        "reasoning_and_final",
+        "final_answer",
         "final_scores",
     ] {
         assert!(passed(case, check), "{check}: {case:#}");

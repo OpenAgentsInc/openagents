@@ -17,6 +17,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
+use serde::{Deserialize, Serialize};
+
 use nostr::pylon::{
     self, BEACON_V2, Beacon, BeaconBook, Freshness, Group, GroupRole, Lane, Layers, Readiness,
     Service, Slots, Status,
@@ -195,12 +197,120 @@ pub fn head_beacon(
     beacon
 }
 
+/// The key a head beacon's inert `meta` carries its answer profile under.
+pub const ANSWER_PROFILE: &str = "answer_profile";
+/// How many recent answers the profile summarizes.
+pub const PROFILE_WINDOW: usize = 32;
+
+/// What a group head measured of its own recent answers (W14, #12401):
+/// how long the first token takes, how fast the answer then comes, and how
+/// long answers run. The head beacon carries it in its inert `meta` as
+/// `answer_profile`, beside the deadline and output limit it declares, so a
+/// buyer can see how an answer fits that deadline. Nothing routes on it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AnswerProfile {
+    /// The answers it summarizes, the most recent up to [`PROFILE_WINDOW`].
+    pub answers: usize,
+    /// The median time from admission to the first token, ms.
+    pub first_token_ms: u64,
+    /// The median decode rate after the first token, tokens per second.
+    pub tokens_per_s: f64,
+    /// The median and the longest answer, tokens.
+    pub median_tokens: u64,
+    pub max_tokens: u64,
+    /// The longest time from admission to the last token, ms.
+    pub max_answer_ms: u64,
+}
+
+/// One answer as the head timed it.
+#[derive(Debug, Clone, Copy)]
+struct Answered {
+    first_token_ms: u64,
+    tokens_per_s: f64,
+    tokens: u64,
+    answer_ms: u64,
+}
+
+/// The head's recent answers, which [`AnswerProfile`] summarizes.
+#[derive(Debug, Default)]
+pub struct AnswerBook {
+    answers: Mutex<std::collections::VecDeque<Answered>>,
+}
+
+impl AnswerBook {
+    /// Record one complete answer.
+    pub fn record(&self, first_token_ms: u64, tokens_per_s: f64, tokens: u64, answer_ms: u64) {
+        let mut answers = self.answers.lock().unwrap_or_else(|e| e.into_inner());
+        if answers.len() == PROFILE_WINDOW {
+            answers.pop_front();
+        }
+        answers.push_back(Answered {
+            first_token_ms,
+            tokens_per_s,
+            tokens,
+            answer_ms,
+        });
+    }
+
+    /// The profile of the recorded answers; `None` before the first.
+    #[must_use]
+    pub fn profile(&self) -> Option<AnswerProfile> {
+        let answers = self.answers.lock().unwrap_or_else(|e| e.into_inner());
+        if answers.is_empty() {
+            return None;
+        }
+        fn median<T: Copy + PartialOrd>(mut values: Vec<T>) -> T {
+            values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            values[values.len() / 2]
+        }
+        let rate = median(answers.iter().map(|a| a.tokens_per_s).collect());
+        Some(AnswerProfile {
+            answers: answers.len(),
+            first_token_ms: median(answers.iter().map(|a| a.first_token_ms).collect()),
+            tokens_per_s: (rate * 100.0).round() / 100.0,
+            median_tokens: median(answers.iter().map(|a| a.tokens).collect()),
+            max_tokens: answers.iter().map(|a| a.tokens).max().unwrap_or(0),
+            max_answer_ms: answers.iter().map(|a| a.answer_ms).max().unwrap_or(0),
+        })
+    }
+}
+
+/// `beacon` with `profile` in its `meta` under [`ANSWER_PROFILE`], keeping
+/// any other `meta` it has; without a profile, with that key removed.
+pub fn set_answer_profile(beacon: &mut Beacon, profile: Option<&AnswerProfile>) {
+    let mut meta = match beacon.meta.take() {
+        Some(serde_json::Value::Object(map)) => map,
+        Some(other) => {
+            beacon.meta = Some(other);
+            return;
+        }
+        None => serde_json::Map::new(),
+    };
+    match profile.and_then(|p| serde_json::to_value(p).ok()) {
+        Some(value) => {
+            meta.insert(ANSWER_PROFILE.into(), value);
+        }
+        None => {
+            meta.remove(ANSWER_PROFILE);
+        }
+    }
+    beacon.meta = (!meta.is_empty()).then_some(serde_json::Value::Object(meta));
+}
+
+/// The answer profile a head beacon carries, if any.
+#[must_use]
+pub fn answer_profile(beacon: &Beacon) -> Option<AnswerProfile> {
+    serde_json::from_value(beacon.meta.as_ref()?.get(ANSWER_PROFILE)?.clone()).ok()
+}
+
 /// A stage's v2 beacon from the stage Pylon's `base` beacon: no slots, no
 /// services, and its layer range under the group's generation.
 #[must_use]
 pub fn stage_beacon(base: &Beacon, spec: &GroupSpec, generation: u64, layers: Layers) -> Beacon {
     let mut beacon = base.clone();
     beacon.v = BEACON_V2.into();
+    // A stage takes no jobs, so it has no answer profile of its own.
+    set_answer_profile(&mut beacon, None);
     beacon.slots = Slots { total: 0, free: 0 };
     beacon.services = Vec::new();
     beacon.group = Some(Group {

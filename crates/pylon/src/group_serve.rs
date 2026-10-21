@@ -19,13 +19,14 @@ use serde_json::json;
 use tokio::sync::oneshot;
 
 use crate::engine::{Engine, Finish, Generation, Pending, Sampling, Turn};
+use crate::group::AnswerBook;
 use crate::identity::{Identity, load_owner, npub};
 use crate::lease::{Dedicated, Machine};
 use crate::now;
 use crate::online::{Log, Phase, Shared, add, set};
 use crate::provider::{Counters, HeadGroup, Provider};
 use crate::share::Settings;
-use crate::stage_group::StageGroup;
+use crate::stage_group::{StageGroup, StepProfile};
 
 /// The engine a group head runs jobs on: one request at a time through
 /// the stage group.
@@ -37,6 +38,8 @@ pub struct GroupEngine {
     max_output: u32,
     /// Where each answer's timing goes: first-token time and decode rate.
     log: Option<Log>,
+    /// The recent answers the head beacon's answer profile summarizes.
+    answers: Option<Arc<AnswerBook>>,
 }
 
 impl GroupEngine {
@@ -48,7 +51,15 @@ impl GroupEngine {
             sampling,
             max_output,
             log: None,
+            answers: None,
         }
+    }
+
+    /// Record each complete answer's timing in `answers`.
+    #[must_use]
+    pub fn with_answers(mut self, answers: Arc<AnswerBook>) -> Self {
+        self.answers = Some(answers);
+        self
     }
 
     /// Log each answer's first-token time and decode rate to `log`.
@@ -90,6 +101,7 @@ impl Engine for GroupEngine {
                 .await?;
             let (mut ids, mut text) = (Vec::new(), String::new());
             let (mut reasoning, mut content, mut parsed) = (String::new(), String::new(), false);
+            let mut thinking = 0_usize;
             let (mut tokens_open, mut text_open, mut answer_open) = (true, true, true);
             while tokens_open || text_open || answer_open {
                 tokio::select! {
@@ -107,6 +119,7 @@ impl Engine for GroupEngine {
                     piece = run.answer.recv(), if answer_open => match piece {
                         Some(piece) => {
                             parsed = true;
+                            thinking += usize::from(!piece.reasoning.is_empty());
                             reasoning.push_str(&piece.reasoning);
                             content.push_str(&piece.content);
                         }
@@ -119,18 +132,30 @@ impl Engine for GroupEngine {
                 .await
                 .map_err(|_| "the stage group stopped".to_string())?
                 .map_err(|failure| failure.to_string())?;
-            if let (Some(log), Some(first)) = (&self.log, first) {
+            if let Some(first) = first {
                 let decode = first.elapsed().as_secs_f64();
                 let rate = if ids.len() > 1 && decode > 0.0 {
                     (ids.len() - 1) as f64 / decode
                 } else {
                     0.0
                 };
-                log(format!(
-                    "model group answered {} tokens: first token after {} ms, then {rate:.2} tokens/s",
-                    ids.len(),
-                    (first - started).as_millis()
-                ));
+                let first_ms = u64::try_from((first - started).as_millis()).unwrap_or(u64::MAX);
+                let total_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+                if let Some(answers) = &self.answers {
+                    answers.record(first_ms, rate, ids.len() as u64, total_ms);
+                }
+                if let Some(log) = &self.log {
+                    let parts = if parsed {
+                        format!(" ({thinking} of reasoning)")
+                    } else {
+                        String::new()
+                    };
+                    log(format!(
+                        "model group answered {} tokens{parts}: first token after {first_ms} ms, then {rate:.2} tokens/s{}",
+                        ids.len(),
+                        split(&done.profile, rate)
+                    ));
+                }
             }
             // A last stage that parses the answer (W11's V4.1 worker) splits
             // reasoning from the final answer at the model's own `</think>`
@@ -194,6 +219,39 @@ impl Engine for GroupEngine {
     }
 }
 
+/// Where a decode token's time went, from the stages' own reports: each
+/// stage's compute, and the rest, which is the links between stages and the
+/// head's round trip (W12, #12399). Empty when the stages report no times.
+fn split(profile: &StepProfile, rate: f64) -> String {
+    let Some(stages) = profile.decode_ms() else {
+        return String::new();
+    };
+    if rate <= 0.0 {
+        return String::new();
+    }
+    let token_ms = 1_000.0 / rate;
+    let compute: f64 = stages.iter().sum();
+    let prefill: Vec<String> = profile
+        .prefill_compute_us
+        .iter()
+        .map(|us| format!("{:.0}", *us as f64 / 1_000.0))
+        .collect();
+    let mut line = format!(
+        "; a decode token took {token_ms:.2} ms: stages {} ms, links and head {:.2} ms",
+        stages
+            .iter()
+            .map(|ms| format!("{ms:.2}"))
+            .collect::<Vec<_>>()
+            .join(" + "),
+        token_ms - compute
+    );
+    if let Some(bytes) = profile.bytes_per_token().filter(|b| *b > 0.0) {
+        line.push_str(&format!(", {bytes:.0} bytes of stage state a token"));
+    }
+    line.push_str(&format!("; prefill stages {} ms", prefill.join(" + ")));
+    line
+}
+
 /// Head the group in `settings` until `halt` resolves, or until the group
 /// stops for good: then publish its beacons offline, record why in
 /// `live.json`, and wait for `halt`.
@@ -237,6 +295,7 @@ pub(crate) async fn run(
             return;
         }
     };
+    let answers = Arc::new(AnswerBook::default());
     let built = (|| {
         let mut config = settings.config(&home);
         config.owner = load_owner(&home)?;
@@ -259,6 +318,7 @@ pub(crate) async fn run(
                     )
                 })
                 .collect(),
+            answers: Some(Arc::clone(&answers)),
         });
         let identity = Identity::load_or_create(&home.join("provider.key"))?;
         let engine = Arc::new(
@@ -268,7 +328,8 @@ pub(crate) async fn run(
                 lane.sampling,
                 lane.max_output_tokens,
             )
-            .with_log(Arc::clone(&log)),
+            .with_log(Arc::clone(&log))
+            .with_answers(Arc::clone(&answers)),
         );
         let machine: Arc<dyn Machine> = if settings.dedicated {
             Arc::new(Dedicated)
@@ -343,5 +404,26 @@ pub(crate) async fn run(
     });
     if ended.is_some() {
         let _ = halt.await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_answer_log_splits_a_token_into_stages_and_links() {
+        assert_eq!(split(&StepProfile::default(), 30.0), "");
+        let profile = StepProfile {
+            prefill_compute_us: vec![350_000, 340_000],
+            decode_steps: vec![10, 10],
+            decode_compute_us: vec![80_000, 90_000],
+            decode_bytes: vec![443_890, 0],
+        };
+        assert_eq!(
+            split(&profile, 40.0),
+            "; a decode token took 25.00 ms: stages 8.00 + 9.00 ms, links and head 8.00 ms, \
+             44389 bytes of stage state a token; prefill stages 350 + 340 ms"
+        );
     }
 }

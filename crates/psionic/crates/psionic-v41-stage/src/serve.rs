@@ -823,6 +823,9 @@ where
 
     fn run_step(&mut self, step: &Step, message: StageMessage) {
         self.pending = None;
+        // The step's own time on this stage, which the front subtracts from
+        // a token's time to find what the links between stages cost.
+        let started = Instant::now();
         let request = (step.request.clone(), step.attempt);
         if self.last() {
             self.worker
@@ -930,12 +933,13 @@ where
                     Err(refusal) => return self.refused(refusal, json!({})),
                 }
             }
+            ack["compute_us"] = json!(micros(started));
         } else {
             let next = usize::from(self.stage.index) + 1;
             let layers = self.stage.manifest.stages[next].layers();
             let hop = message.next_hop(next as u16, layers, sections);
             if self.direct.is_some() {
-                return self.forward_link(step, &hop);
+                return self.forward_link(step, &hop, micros(started));
             }
             let Some(address) = step.next.clone() else {
                 return self.refused("the front sent no address for the next stage", json!({}));
@@ -1100,7 +1104,7 @@ where
     }
 
     /// Sends a step's state to the next stage and tells the front.
-    fn forward_link(&mut self, step: &Step, hop: &StageMessage) {
+    fn forward_link(&mut self, step: &Step, hop: &StageMessage, compute_us: u64) {
         let state = match encode(hop, &CodecLimits::default()) {
             Ok(bytes) => bytes,
             Err(refusal) => return self.refused(refusal, json!({})),
@@ -1139,6 +1143,7 @@ where
                     "attempt": step.attempt,
                     "step": step.step,
                     "bytes": bytes,
+                    "compute_us": compute_us,
                 }));
             }
             Err(reason) => self.link_failed(generation, "next", &reason),
@@ -1256,4 +1261,9 @@ where
         self.next.insert(address.to_owned(), stream);
         Ok(())
     }
+}
+
+/// Microseconds since `started`.
+fn micros(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX)
 }

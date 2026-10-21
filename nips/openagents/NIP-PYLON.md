@@ -168,6 +168,13 @@ Rules:
   request fails.
 - A reader shows a stage with the head of the same `id` and `artifact`
   whose NIP-OA owner matches, or, without owners, whose key matches.
+- A head may describe its recent answers in its inert `meta` as
+  `answer_profile`: `answers` (how many, the most recent up to 32),
+  `first_token_ms` (median time from admission to the first token),
+  `tokens_per_s` (median decode rate after it), `median_tokens`,
+  `max_tokens`, and `max_answer_ms`. It helps a buyer choose a budget
+  against the declared deadline. Nothing routes on it, and a stage beacon
+  carries none.
 - A v1 reader fetches beacons by the v1 marker, so it never sees a group
   beacon; one that arrives anyway is refused for its marker, version, and
   field. Group beacons need no change to v1 beacons.

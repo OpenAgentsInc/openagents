@@ -8,9 +8,13 @@ must be complete:
 
 - the job ended with finish `stop`, inside the deadline the group's beacon
   declares and the buyer's budget, measured from sending the request;
-- the text splits into reasoning and a final answer the way the #12372
-  protocol adapter starts a V4.1 thinking-mode answer (in reasoning, until
-  the first `</think>`), with both parts present;
+- the answer has a final part. The real group's last stage splits each
+  token into reasoning or final answer at the model's own `</think>` token
+  (#12372's parser), and the head returns only the final answer, as every
+  pylon keeps reasoning private; the head refuses an answer with reasoning
+  and no final part. A group whose stages send plain text (the tests'
+  synthetic stages) is split here the way the adapter starts a thinking-mode
+  answer: in reasoning, until the first `</think>`;
 - the final answer scores as `run.py` scores the same prompt.
 
 The group is started elsewhere: `pylon cloud up` for the real one, or a
@@ -52,7 +56,12 @@ def check(name, response, score):
     """The checks for one CLI answer, as (name, passed, detail) rows."""
     data = response.get("data") or {}
     declared = data.get("declared") or {}
-    reasoning, final = split(data.get("text"))
+    text = data.get("text")
+    reasoning, final = split(text)
+    if final is None and text and declared.get("finish") == "stop":
+        # The head split the answer at the model's token and sent the final
+        # part only.
+        reasoning, final = None, text
     ceiling = declared.get("ceiling_secs")
     deadline = declared.get("deadline_secs")
     answer_ms = data.get("answer_ms")
@@ -66,8 +75,9 @@ def check(name, response, score):
         ("within_declared_deadline", answer_ms is not None and ceiling is not None
          and deadline is not None and answer_ms <= min(ceiling, deadline) * 1000,
          {"answer_ms": answer_ms, "ceiling_secs": ceiling, "deadline_secs": deadline}),
-        ("reasoning_and_final", bool((reasoning or "").strip()) and bool((final or "").strip()),
-         {"reasoning_chars": len(reasoning or ""), "final": final}),
+        ("final_answer", bool((final or "").strip()),
+         {"reasoning_chars": None if reasoning is None else len(reasoning),
+          "split_by": "head" if reasoning is None else "harness", "final": final}),
         ("final_scores", scored is not False, {"score": scored}),
     ]
 

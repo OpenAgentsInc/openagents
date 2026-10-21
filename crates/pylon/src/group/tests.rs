@@ -327,3 +327,50 @@ fn the_field_shows_stages_under_their_group() {
         None
     );
 }
+
+#[test]
+fn a_head_beacon_carries_its_answer_profile_and_a_stage_never_does() {
+    let key = Identity::generate();
+    let spec = spec("v41-a", V41);
+    let book = AnswerBook::default();
+    assert_eq!(book.profile(), None);
+    for (first, rate, tokens, total) in [
+        (1_300, 29.7, 121, 5_500),
+        (2_100, 28.3, 851, 32_300),
+        (35_600, 27.7, 757, 63_100),
+    ] {
+        book.record(first, rate, tokens, total);
+    }
+    let profile = book.profile().unwrap();
+    assert_eq!(
+        profile,
+        AnswerProfile {
+            answers: 3,
+            first_token_ms: 2_100,
+            tokens_per_s: 28.3,
+            median_tokens: 757,
+            max_tokens: 851,
+            max_answer_ms: 63_100,
+        }
+    );
+    let mut head = head_beacon(&base(&key, "v41-head", "x"), &spec, &ready(2), false);
+    set_answer_profile(&mut head, Some(&profile));
+    assert_eq!(answer_profile(&head), Some(profile));
+    // The profile rides in the inert meta, so the beacon signs, verifies,
+    // and keeps its other meta.
+    let event = beacon_event(key.signer(), &head).unwrap();
+    assert_eq!(
+        answer_profile(&parse_beacon(&event).unwrap()),
+        answer_profile(&head)
+    );
+    let stage = stage_beacon(&head, &spec, 2, Layers { from: 0, to: 10 });
+    assert_eq!(answer_profile(&stage), None);
+    assert_eq!(stage.meta, None);
+    beacon_event(key.signer(), &stage).unwrap();
+    // The book keeps only the most recent answers.
+    for _ in 0..PROFILE_WINDOW {
+        book.record(1_000, 30.0, 100, 4_000);
+    }
+    assert_eq!(book.profile().unwrap().answers, PROFILE_WINDOW);
+    assert_eq!(book.profile().unwrap().max_tokens, 100);
+}

@@ -26,10 +26,18 @@ class V41GroupTests(unittest.TestCase):
         rows = check("arithmetic", answer("17 x 24 = 408.</think>373"), score)
         self.assertTrue(all(passed for _, passed, _ in rows), rows)
 
+    def test_a_final_answer_the_head_split_passes(self):
+        rows = check("arithmetic", answer("373"), score)
+        self.assertTrue(all(passed for _, passed, _ in rows), rows)
+        detail = {name: d for name, _, d in rows}["final_answer"]
+        self.assertEqual(detail["split_by"], "head")
+        self.assertFalse(dict((n, p) for n, p, _ in check("arithmetic", answer("374"), score))["final_scores"])
+
     def test_each_failure_is_named(self):
         def failed(response):
             return [name for name, passed, _ in check("arithmetic", response, score) if not passed]
-        self.assertEqual(failed(answer("reasoning only")), ["reasoning_and_final", "final_scores"])
+        self.assertEqual(failed(answer("reasoning only", finish=None)),
+                         ["finish_stop", "final_answer", "final_scores"])
         self.assertEqual(failed(answer("r</think>374")), ["final_scores"])
         self.assertEqual(failed(answer("r</think>373", finish=None)), ["finish_stop"])
         self.assertEqual(failed(answer("r</think>373", answer_ms=20_001, deadline=20)),

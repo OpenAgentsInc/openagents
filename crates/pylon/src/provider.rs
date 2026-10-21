@@ -26,7 +26,9 @@ use tokio::time::timeout;
 
 use crate::decide::Decider;
 use crate::engine::{Engine, Finish};
-use crate::group::{GroupReadiness, GroupSpec, head_beacon, stage_beacon};
+use crate::group::{
+    AnswerBook, GroupReadiness, GroupSpec, head_beacon, set_answer_profile, stage_beacon,
+};
 use crate::identity::Identity;
 use crate::job::{self, Refusal};
 use crate::lease::{Dedicated, Machine};
@@ -82,6 +84,9 @@ pub struct HeadGroup {
     pub spec: GroupSpec,
     pub readiness: Arc<dyn GroupReadiness>,
     pub stages: Vec<(String, Layers)>,
+    /// The head's recent answers, which its beacon summarizes as its
+    /// answer profile (#12401).
+    pub answers: Option<Arc<AnswerBook>>,
 }
 
 impl std::fmt::Debug for HeadGroup {
@@ -443,6 +448,8 @@ impl Provider {
         match &self.config.group {
             Some(group) => {
                 let mut head = head_beacon(&beacon, &group.spec, group.readiness.as_ref(), busy);
+                let profile = group.answers.as_ref().and_then(|a| a.profile());
+                set_answer_profile(&mut head, profile.as_ref());
                 if status != Status::Online {
                     head.slots.free = 0;
                 }
