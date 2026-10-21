@@ -1437,3 +1437,38 @@ fn a_cloud_group_takes_a_prompt_step_limit() {
     assert!(parse(&["one-quad", "--step-secs", "75", "--prefill-secs", "60"]).is_err());
     assert!(parse(&["one-quad", "--prefill-secs", "301"]).is_err());
 }
+
+/// A stage machine that no longer exists, as after a spot reclaim, fails
+/// its stage at once instead of after the whole readiness wait (W16).
+#[test]
+fn the_stage_launcher_gives_up_at_once_on_a_machine_that_is_gone() {
+    let dir = tempfile::tempdir().unwrap();
+    let started = std::time::Instant::now();
+    let output = std::process::Command::new(repo().join("scripts/pylon/v41-stage-ssh.sh"))
+        .args([
+            "--ssh",
+            "/home/me/.openagents/v41-head/group-ssh",
+            "oa-stage@oa-v41-two-dual-m1.us-east1-b.c.openagentsgemini.internal",
+            "47103",
+            "--",
+            "--layers",
+            "30-40",
+            "--front",
+            "127.0.0.1:53111",
+        ])
+        .env("OA_SSH", fixture("fake_gcloud.py"))
+        .env("FAKE_GCLOUD_ROOT", dir.path())
+        .env("OA_STAGE_SSH_WAIT", "600")
+        .env(
+            "FAKE_SSH_ERROR",
+            "ssh: Could not resolve hostname oa-v41-two-dual-m1: Name or service not known",
+        )
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(started.elapsed() < Duration::from_secs(20));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("the stage machine is gone"),
+        "{output:?}"
+    );
+}

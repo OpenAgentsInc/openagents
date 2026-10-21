@@ -41,5 +41,9 @@ if words[:2] == ["compute", "instances"] and len(words) >= 3:
 if words[:2] == ["compute", "operations"]:
     print("[]")
     sys.exit(0)
+if os.environ.get("FAKE_SSH_ERROR"):
+    # Stands in for ssh to a machine: what ssh says when it can't connect.
+    print(os.environ["FAKE_SSH_ERROR"], file=sys.stderr)
+    sys.exit(255)
 print("fake gcloud: unexpected call " + " ".join(args), file=sys.stderr)
 sys.exit(1)

@@ -46,12 +46,24 @@ probe="test -x /opt/openagents/stage-run && test \"\$(head -n 1 /mnt/stage/ready
 start=$(date +%s)
 while [ "$wait" -gt 0 ]; do
   if [ "$mode" = ssh ]; then
-    "${OA_SSH:-ssh}" -i "$key" -o BatchMode=yes -o ConnectTimeout=10 \
+    why=$("${OA_SSH:-ssh}" -i "$key" -o BatchMode=yes -o ConnectTimeout=10 \
       -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$key.known_hosts" \
-      "$target" "$probe" </dev/null >/dev/null 2>&1 && break
+      "$target" "$probe" </dev/null 2>&1 >/dev/null) && break
+    # A machine that no longer exists has no internal name: a spot reclaim
+    # or a deleted machine fails at once rather than after the whole wait.
+    case $why in
+      *"Could not resolve hostname"*|*"Name or service not known"*)
+        echo "the stage machine is gone: $why" >&2
+        exit 1 ;;
+    esac
   else
-    "${OA_GCLOUD:-gcloud}" compute ssh "$machine" --zone "$zone" --project "$project" --quiet -- \
-      -o ConnectTimeout=10 "$probe" </dev/null >/dev/null 2>&1 && break
+    why=$("${OA_GCLOUD:-gcloud}" compute ssh "$machine" --zone "$zone" --project "$project" --quiet -- \
+      -o ConnectTimeout=10 "$probe" </dev/null 2>&1 >/dev/null) && break
+    case $why in
+      *"was not found"*)
+        echo "the stage machine is gone: $why" >&2
+        exit 1 ;;
+    esac
   fi
   if [ $(($(date +%s) - start)) -ge "$wait" ]; then
     echo "the stage machine was not ready within $wait s" >&2
