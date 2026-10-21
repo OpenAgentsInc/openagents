@@ -485,6 +485,16 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12407: rebuild the stage worker for `sm_120` (`scripts/pylon/v41-stage-build.sh
+  build`) and pylon (`... pylon`) so `BUILD.json` is schema v2, then launch the
+  next group with `--worker-build` and `--pylon-build` set to the printed
+  hashes. On the first G4 boot, check `/mnt/stage/ready` names the boot,
+  manifest, and build, that each stage's hello reports `profile`
+  `cuda-device-sm_120` and the worker's SHA-256, and that the `sm_120`
+  build's CUDA tests pass on the RTX PRO 6000 (`v41-stage-build.sh test
+  --host` a G4 builder, or the stage VM). Rerun the synthetic CUDA split
+  comparisons there with the corrected generator.
+
 - #12398: after #12407 binds the build and arithmetic identity and #12405
   lands the direct GPU comparison harness under the frozen G1 v2 policy,
   rerun the one-machine group (`pylon cloud up one-quad --head stage0

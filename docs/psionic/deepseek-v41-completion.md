@@ -586,3 +586,44 @@ order and the serial group's cancellation/admission rules. Requalify any
 changed arithmetic schedule. Freeze the W14 deadline target and context range
 first; make a prefill change a launch blocker only if that profile misses its
 declared budget. Keep larger-context throughput work separately scoped.
+
+## Build and arithmetic identity (#12407, 2026-10-21)
+
+Audit findings F1, F2, F3, F5, and F9 of the
+[six-hour review](../audits/2026-10-21-deepseek-six-hour-review.md) are fixed
+on `main`. A V4.1 result now names the executable, libraries, target, and
+arithmetic it ran:
+
+- **Target (F1).** `psionic-backend-cuda` rebuilds its kernels when
+  `CUDAARCHS` or `PSI_CUDA_ARCH` changes and records the architecture it
+  compiled for. `scripts/pylon/v41-stage-build.sh` always passes an explicit
+  architecture (the host GPU's for `test`), loads
+  `scripts/dev/cargo-build-env.sh` in the container, and refuses a worker
+  whose fatbinary (`cuobjdump --list-elf`) holds anything but that
+  architecture. `build --no-upload` runs the same checks without uploading.
+- **Executable (F2).** `BUILD.json` schema v2 lists the worker's and each CUDA
+  library's SHA-256, the embedded architecture, the worker's `build-info`
+  and profile, the manifests by digest (taken from `--commit`), the tree, the
+  base image digest, and the builder image ID; `GENERATIONS.json` records the
+  uploaded objects' generations. The stage startup script installs a build
+  only when it matches `BUILD.json` and the optional pin
+  `pylon cloud up --worker-build SHA256` (the SHA-256 of `BUILD.json`;
+  `--pylon-build` pins the head). `stage-run` and `head-run` recheck the
+  hashes before they start. Old v1 builds are refused: rebuild before the
+  next group launch.
+- **Arithmetic (F3).** `--arithmetic` is parsed for the backend before
+  anything loads. The CPU backend takes `f32`, `bf16`, and `bf16-tp8`; CUDA
+  takes only `device`, its own kernels' arithmetic. A stage's hello reports
+  `build` (its executable's SHA-256 and CUDA architecture) and `profile`
+  (such as `cuda-device-sm_120`), and Pylon's front refuses a stage whose
+  build or profile differs from the group's.
+- **Readiness (F5).** Startup removes the ready mark before changing
+  anything and writes it last, naming the boot ID, manifest, and build.
+  `stage-run` and the head's ssh probe accept only a mark from the current
+  boot.
+- **Synthetic data (F9).** The synthetic generator's draws are in
+  `[-1, 1)`. Synthetic CPU, GPU, and process comparisons from before this
+  change used the old distribution; label them as the old fixture.
+- **GPU numbering.** `--gpu N` counts the devices the process may see: the
+  physical index without `CUDA_VISIBLE_DEVICES`, and the Nth entry of an
+  inherited mask otherwise.
