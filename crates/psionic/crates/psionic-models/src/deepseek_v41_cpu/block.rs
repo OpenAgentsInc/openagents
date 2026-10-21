@@ -61,6 +61,10 @@ pub struct FeedForwardOutput {
     pub residual: Vec<f32>,
     pub next_pre: Vec<f32>,
     pub routing: Routing,
+    pub normalized_input: Vec<f32>,
+    pub collapsed_input: Vec<f32>,
+    pub moe_output: Vec<f32>,
+    pub mixes: Mixes,
 }
 
 pub struct TextBlock<'a> {
@@ -177,8 +181,12 @@ impl<'a> TextBlock<'a> {
         let residual = self.finish(self.config.hyper.expand(&output, residual, &mixes)?)?;
         Ok(FeedForwardOutput {
             residual,
-            next_pre: mixes.pre,
+            next_pre: mixes.pre.clone(),
             routing,
+            normalized_input: input,
+            collapsed_input: collapsed,
+            moe_output: output,
+            mixes,
         })
     }
     pub fn apply_engram(

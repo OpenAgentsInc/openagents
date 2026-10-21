@@ -5067,6 +5067,7 @@ dependencies = [
  "psionic-nn",
  "psionic-runtime",
  "psionic-transformer",
+ "rayon",
  "safetensors 0.7.0",
  "serde",
  "serde_json",

@@ -23,6 +23,7 @@ qwen38-vision-cuda = ["candle/cuda", "candle-nn/cuda", "candle-transformers/cuda
 deepseek-v41-fixtures = []
 
 [dependencies]
+rayon = "1.11"
 candle = { package = "candle-core", version = "0.9.2" }
 candle-nn = "0.9.2"
 candle-transformers = "0.9.2"

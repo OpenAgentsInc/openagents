@@ -351,6 +351,20 @@ pub fn final_logits_with_arithmetic(
     epsilon: f32,
     arithmetic: Arithmetic,
 ) -> Result<Vec<f32>, CpuError> {
+    let (_, normalized) =
+        final_input_with_arithmetic(weights, residual, pre_mix, width, epsilon, arithmetic)?;
+    matvec(weights.matrix("head.weight")?.as_ref(), &normalized)
+}
+
+/// The collapsed BF16 stream and normalized head input, exposed for qualification.
+pub fn final_input_with_arithmetic(
+    weights: &dyn WeightSource,
+    residual: &[f32],
+    pre_mix: &[f32],
+    width: usize,
+    epsilon: f32,
+    arithmetic: Arithmetic,
+) -> Result<(Vec<f32>, Vec<f32>), CpuError> {
     use super::hyperconnections::HyperConnections;
     let hc = HyperConnections {
         streams: pre_mix.len(),
@@ -370,7 +384,7 @@ pub fn final_logits_with_arithmetic(
     } else {
         normalized
     };
-    matvec(weights.matrix("head.weight")?.as_ref(), &normalized)
+    Ok((hidden, normalized))
 }
 
 #[cfg(test)]

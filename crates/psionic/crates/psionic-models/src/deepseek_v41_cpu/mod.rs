@@ -79,6 +79,10 @@ pub(crate) fn sigmoid(x: f32) -> f32 {
 
 /// Read one logical float32 row of a weight matrix.
 pub trait MatrixRows {
+    /// Independent rows may run concurrently; each row keeps its float32 sum order.
+    fn multiply(&self, input: &[f32], bf16_weights: bool) -> Result<Vec<f32>, CpuError> {
+        multiply_rows(self, input, bf16_weights)
+    }
     fn dimensions(&self) -> (usize, usize);
     fn row(&self, index: usize) -> Result<Vec<f32>, CpuError>;
     fn precision(&self) -> quantization::MatrixPrecision {
@@ -143,6 +147,27 @@ impl MatrixRows for CheckpointMatrix<'_> {
     fn dimensions(&self) -> (usize, usize) {
         self.dimensions
     }
+    fn multiply(&self, input: &[f32], bf16_weights: bool) -> Result<Vec<f32>, CpuError> {
+        use rayon::prelude::*;
+        shape("checkpoint matrix input", input, self.dimensions.1)?;
+        // Decoded BF16 checkpoint rows are already exactly BF16. Parallelism
+        // changes the order between rows only, never the sum within a row.
+        let out: Result<Vec<_>, CpuError> = (0..self.dimensions.0)
+            .into_par_iter()
+            .map(|i| {
+                let row = self.row(i)?;
+                let row = if bf16_weights && self.precision != quantization::MatrixPrecision::Bf16 {
+                    quantization::round_bf16(&row)?
+                } else {
+                    row
+                };
+                Ok(row.iter().zip(input).map(|(w, x)| w * x).sum::<f32>())
+            })
+            .collect();
+        let out = out?;
+        finite("checkpoint matrix output", &out)?;
+        Ok(out)
+    }
     fn row(&self, index: usize) -> Result<Vec<f32>, CpuError> {
         if index >= self.dimensions.0 {
             return Err(CpuError::Invalid("matrix row out of range"));
@@ -184,6 +209,13 @@ impl MatrixRows for MatrixRef<'_> {
 
 /// Evaluate a matrix-vector product one row at a time with float32 sums.
 pub fn matvec(matrix: &dyn MatrixRows, input: &[f32]) -> Result<Vec<f32>, CpuError> {
+    matrix.multiply(input, false)
+}
+fn multiply_rows<M: MatrixRows + ?Sized>(
+    matrix: &M,
+    input: &[f32],
+    bf16_weights: bool,
+) -> Result<Vec<f32>, CpuError> {
     let (rows, cols) = matrix.dimensions();
     if rows == 0 || cols == 0 {
         return Err(CpuError::Invalid("empty matrix"));
@@ -191,9 +223,12 @@ pub fn matvec(matrix: &dyn MatrixRows, input: &[f32]) -> Result<Vec<f32>, CpuErr
     shape("matrix input", input, cols)?;
     let mut out = Vec::with_capacity(rows);
     for i in 0..rows {
-        let row = matrix.row(i)?;
+        let mut row = matrix.row(i)?;
         shape("matrix row", &row, cols)?;
-        out.push(row.iter().zip(input).map(|(a, b)| a * b).sum());
+        if bf16_weights {
+            row = quantization::round_bf16(&row)?;
+        }
+        out.push(row.iter().zip(input).map(|(w, x)| w * x).sum());
     }
     finite("matrix output", &out)?;
     Ok(out)
@@ -230,18 +265,20 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let header = serde_json::to_vec(&serde_json::json!({
-            "probe.weight": { "dtype": "I8", "shape": [1,16], "data_offsets": [0,16] },
-            "probe.scale": { "dtype": "F8_E8M0", "shape": [1,1], "data_offsets": [16,17] }
+            "probe.weight": { "dtype": "I8", "shape": [3,16], "data_offsets": [0,48] },
+            "probe.scale": { "dtype": "F8_E8M0", "shape": [3,1], "data_offsets": [48,51] }
         }))?;
         let mut shard = (header.len() as u64).to_le_bytes().to_vec();
         shard.extend(header);
         shard.extend([0x71; 16]);
-        shard.push(127);
+        shard.extend([0x72; 16]);
+        shard.extend([0x73; 16]);
+        shard.extend([127; 3]);
         std::fs::write(dir.path().join("probe.safetensors"), shard)?;
         std::fs::write(
             dir.path().join("model.safetensors.index.json"),
             serde_json::to_vec(&serde_json::json!({
-                "metadata": { "total_size": 17 },
+                "metadata": { "total_size": 51 },
                 "weight_map": { "probe.weight": "probe.safetensors", "probe.scale": "probe.safetensors" }
             }))?,
         )?;
@@ -254,10 +291,10 @@ mod tests {
             },
         )?;
         let matrix = CheckpointMatrix::new(&checkpoint, "probe.weight")?;
-        assert_eq!(matrix.dimensions(), (1, 32));
+        assert_eq!(matrix.dimensions(), (3, 32));
         assert_eq!(&matrix.row(0)?[..4], &[0.5, 6.0, 0.5, 6.0]);
-        assert_eq!(matvec(&matrix, &[1.0; 32])?, vec![104.0]);
-        assert!(matrix.row(1).is_err());
+        assert_eq!(matvec(&matrix, &[1.0; 32])?, vec![104.0, 112.0, 120.0]);
+        assert!(matrix.row(3).is_err());
         Ok(())
     }
 }

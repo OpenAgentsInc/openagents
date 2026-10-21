@@ -189,20 +189,7 @@ pub fn linear(
     } else {
         input
     };
-    let (rows, cols) = matrix.dimensions();
-    shape("linear input", &activation, cols)?;
-    if rows == 0 {
-        return Err(CpuError::Invalid("empty linear matrix"));
-    }
-    let mut out = Vec::with_capacity(rows);
-    for i in 0..rows {
-        let mut row = matrix.row(i)?;
-        shape("linear weight row", &row, cols)?;
-        if matrix.precision() == MatrixPrecision::Bf16 {
-            row = round_bf16(&row)?;
-        }
-        out.push(row.iter().zip(&activation).map(|(w, x)| w * x).sum());
-    }
+    let out = matrix.multiply(&activation, matrix.precision() == MatrixPrecision::Bf16)?;
     round_bf16(&out)
 }
 

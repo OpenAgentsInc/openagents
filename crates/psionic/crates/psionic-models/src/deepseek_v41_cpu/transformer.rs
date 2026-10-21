@@ -81,6 +81,35 @@ pub struct TransformerSummary {
     pub attention: StateSummary,
 }
 
+/// Synchronous qualification observations. Values are borrowed for the call only.
+/// An observer error aborts the forward without committing model state. External
+/// observer output is diagnostic and is not rolled back with model state.
+pub trait ModelObserver {
+    /// Requests final collapse/norm observations at this position.
+    fn final_position(&self, _position: usize) -> bool {
+        false
+    }
+    /// Requests a full vocabulary projection in addition to final collapse/norm.
+    fn logits_position(&self, _position: usize) -> bool {
+        false
+    }
+    fn floats(&mut self, site: &str, position: usize, values: &[f32]) -> Result<(), CpuError>;
+    fn integers(&mut self, _site: &str, _position: usize, _values: &[u64]) -> Result<(), CpuError> {
+        Ok(())
+    }
+}
+fn observe(
+    observer: &mut Option<&mut dyn ModelObserver>,
+    site: &str,
+    position: usize,
+    values: &[f32],
+) -> Result<(), CpuError> {
+    if let Some(o) = observer {
+        o.floats(site, position, values)?;
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 pub struct CpuTransformer<'a> {
     weights: &'a dyn WeightSource,
@@ -170,6 +199,22 @@ impl<'a> CpuTransformer<'a> {
         tokens: &[u32],
         trace_layers: &[usize],
     ) -> Result<ForwardOutput, CpuError> {
+        self.forward_impl(tokens, trace_layers, None)
+    }
+    /// Observes all blocks without retaining their full activation tensors.
+    pub fn forward_observed(
+        &mut self,
+        tokens: &[u32],
+        observer: &mut dyn ModelObserver,
+    ) -> Result<ForwardOutput, CpuError> {
+        self.forward_impl(tokens, &[], Some(observer))
+    }
+    fn forward_impl(
+        &mut self,
+        tokens: &[u32],
+        trace_layers: &[usize],
+        observer: Option<&mut dyn ModelObserver>,
+    ) -> Result<ForwardOutput, CpuError> {
         if tokens.is_empty()
             || tokens.iter().any(|t| *t as usize >= self.config.vocabulary)
             || self
@@ -184,7 +229,7 @@ impl<'a> CpuTransformer<'a> {
             return Err(CpuError::Invalid("transformer trace layers"));
         }
         let mut next = self.clone();
-        let output = next.run(tokens, &trace)?;
+        let output = next.run(tokens, &trace, observer)?;
         *self = next;
         Ok(output)
     }
@@ -195,7 +240,12 @@ impl<'a> CpuTransformer<'a> {
             Ok(values)
         }
     }
-    fn run(&mut self, tokens: &[u32], trace: &BTreeSet<usize>) -> Result<ForwardOutput, CpuError> {
+    fn run(
+        &mut self,
+        tokens: &[u32],
+        trace: &BTreeSet<usize>,
+        mut observer: Option<&mut dyn ModelObserver>,
+    ) -> Result<ForwardOutput, CpuError> {
         let c = &self.config;
         let width = c.block.geometry.hidden;
         let streams = c.block.hyper.streams;
@@ -204,9 +254,10 @@ impl<'a> CpuTransformer<'a> {
             .push_tokens(self.position, tokens, None, &self.map)?;
         let mut residuals = Vec::with_capacity(tokens.len());
         let mut pre_mixes = Vec::with_capacity(tokens.len());
-        for token in tokens {
+        for (i, token) in tokens.iter().enumerate() {
             let embedded =
                 self.finish(projection::embedding(self.weights, *token as usize, width)?)?;
+            observe(&mut observer, "embed.out", self.position + i, &embedded)?;
             residuals.push(embedded.repeat(streams));
             let mut pre = vec![0.0; streams];
             pre[0] = 1.0;
@@ -215,6 +266,20 @@ impl<'a> CpuTransformer<'a> {
         let mut layers = Vec::new();
         for layer in 0..40 {
             let block = TextBlock::new(self.weights, layer, c.block, self.arithmetic)?;
+            for i in 0..tokens.len() {
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.hc.in"),
+                    self.position + i,
+                    &residuals[i],
+                )?;
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.hc.pre_mix_in"),
+                    self.position + i,
+                    &pre_mixes[i],
+                )?;
+            }
             let engram = c
                 .engram
                 .layers
@@ -222,18 +287,64 @@ impl<'a> CpuTransformer<'a> {
                 .position(|l| l.layer_id as usize == layer);
             if let Some(slot) = engram {
                 for (i, residual) in residuals.iter_mut().enumerate() {
+                    observe(
+                        &mut observer,
+                        &format!("layers.{layer}.engram.in"),
+                        self.position + i,
+                        residual,
+                    )?;
+                    if let Some(o) = &mut observer {
+                        o.integers(
+                            &format!("layers.{layer}.engram.hash_ids"),
+                            self.position + i,
+                            &hashes[i].layers[slot],
+                        )?;
+                    }
                     *residual = block.apply_engram(
                         residual,
                         &hashes[i].layers[slot],
                         c.engram.layers[slot].table_rows,
                         c.engram.head_dim,
                     )?;
+                    observe(
+                        &mut observer,
+                        &format!("layers.{layer}.engram.out"),
+                        self.position + i,
+                        residual,
+                    )?;
                 }
             }
             let mut mixes = Vec::with_capacity(tokens.len());
             let mut normalized = Vec::with_capacity(product(tokens.len(), width)?);
-            for (residual, pre) in residuals.iter().zip(&pre_mixes) {
+            for (i, (residual, pre)) in residuals.iter().zip(&pre_mixes).enumerate() {
                 let input = block.begin_attention(residual, pre)?;
+                let pos = self.position + i;
+                if observer.is_some() {
+                    observe(
+                        &mut observer,
+                        &format!("layers.{layer}.hc.attn.collapsed"),
+                        pos,
+                        &self.finish(c.block.hyper.collapse(residual, pre)?)?,
+                    )?;
+                }
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.attn.in"),
+                    pos,
+                    &input.normalized,
+                )?;
+                for (name, values) in [
+                    ("pre", &input.mixes.pre),
+                    ("post", &input.mixes.post),
+                    ("comb", &input.mixes.comb),
+                ] {
+                    observe(
+                        &mut observer,
+                        &format!("layers.{layer}.hc.attn.{name}"),
+                        pos,
+                        values,
+                    )?;
+                }
                 normalized.extend(input.normalized);
                 mixes.push(input.mixes);
             }
@@ -243,12 +354,91 @@ impl<'a> CpuTransformer<'a> {
             let mut expert_ids = Vec::new();
             let mut route_weights = Vec::new();
             for i in 0..tokens.len() {
+                let pos = self.position + i;
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.attn.out"),
+                    pos,
+                    &attention[i * width..(i + 1) * width],
+                )?;
                 let attended = block.finish_attention(
                     &attention[i * width..(i + 1) * width],
                     &residuals[i],
                     &mixes[i],
                 )?;
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.hc.attn.expanded"),
+                    pos,
+                    &attended,
+                )?;
                 let output = block.feed_forward(&attended, &mixes[i].pre)?;
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.ffn.gate.in"),
+                    pos,
+                    &output.normalized_input,
+                )?;
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.ffn.out"),
+                    pos,
+                    &output.moe_output,
+                )?;
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.hc.ffn.collapsed"),
+                    pos,
+                    &output.collapsed_input,
+                )?;
+                for (name, values) in [
+                    ("pre", &output.mixes.pre),
+                    ("post", &output.mixes.post),
+                    ("comb", &output.mixes.comb),
+                ] {
+                    observe(
+                        &mut observer,
+                        &format!("layers.{layer}.hc.ffn.{name}"),
+                        pos,
+                        values,
+                    )?;
+                }
+                if let Some(o) = &mut observer {
+                    o.integers(
+                        &format!("layers.{layer}.ffn.gate.ids"),
+                        pos,
+                        &output
+                            .routing
+                            .indices
+                            .iter()
+                            .map(|id| *id as u64)
+                            .collect::<Vec<_>>(),
+                    )?;
+                }
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.ffn.gate.weights"),
+                    pos,
+                    &output.routing.weights,
+                )?;
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.hc.ffn.expanded"),
+                    pos,
+                    &output.residual,
+                )?;
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.hc.out"),
+                    pos,
+                    &output.residual,
+                )?;
+                observe(
+                    &mut observer,
+                    &format!("layers.{layer}.hc.pre_mix_out"),
+                    pos,
+                    &output.next_pre,
+                )?;
                 residuals[i] = output.residual;
                 pre_mixes[i] = output.next_pre;
                 if trace.contains(&layer) {
@@ -269,15 +459,38 @@ impl<'a> CpuTransformer<'a> {
             }
         }
         let last = tokens.len() - 1;
-        let logits = projection::final_logits_with_arithmetic(
-            self.weights,
-            &residuals[last],
-            &pre_mixes[last],
-            width,
-            c.block.geometry.norm_epsilon,
-            self.arithmetic,
-        )?;
-        shape("transformer logits", &logits, c.vocabulary)?;
+        let mut logits = Vec::new();
+        for i in 0..tokens.len() {
+            let pos = self.position + i;
+            let final_position = observer.as_ref().is_some_and(|o| o.final_position(pos));
+            let want_logits = observer.as_ref().is_some_and(|o| o.logits_position(pos));
+            if i != last && !final_position && !want_logits {
+                continue;
+            }
+            let (collapsed, normalized) = projection::final_input_with_arithmetic(
+                self.weights,
+                &residuals[i],
+                &pre_mixes[i],
+                width,
+                c.block.geometry.norm_epsilon,
+                self.arithmetic,
+            )?;
+            observe(
+                &mut observer,
+                "layers.39.hc.final.collapsed",
+                pos,
+                &collapsed,
+            )?;
+            observe(&mut observer, "norm.out", pos, &normalized)?;
+            if i == last || want_logits {
+                let row = super::matvec(self.weights.matrix("head.weight")?.as_ref(), &normalized)?;
+                shape("transformer logits", &row, c.vocabulary)?;
+                observe(&mut observer, "logits", pos, &row)?;
+                if i == last {
+                    logits = row;
+                }
+            }
+        }
         self.position += tokens.len();
         if self.hash.next_position() != self.position
             || self.attention.summary().next_position != self.position
@@ -460,6 +673,52 @@ pub(crate) mod tests {
         assert!(replay.forward_with_trace(&[0], &[40]).is_err());
         replay.reset();
         assert_eq!(replay.forward_tokens(&f.tokens)?.logits, expected.logits);
+        Ok(())
+    }
+    #[test]
+    fn borrowed_observations_preserve_outputs_and_observer_errors_roll_back()
+    -> Result<(), Box<dyn std::error::Error>> {
+        struct Observe {
+            count: usize,
+            fail: bool,
+            logits: Vec<Vec<f32>>,
+        }
+        impl ModelObserver for Observe {
+            fn final_position(&self, _: usize) -> bool {
+                true
+            }
+            fn logits_position(&self, _: usize) -> bool {
+                true
+            }
+            fn floats(&mut self, site: &str, _: usize, values: &[f32]) -> Result<(), CpuError> {
+                self.count += 1;
+                if self.fail && site == "layers.39.hc.out" {
+                    return Err(CpuError::Invalid("injected observer failure"));
+                }
+                if site == "logits" {
+                    self.logits.push(values.to_vec());
+                }
+                Ok(())
+            }
+        }
+        let w = weights()?;
+        let mut a = CpuTransformer::new(&w, config(false)?, map()?, 16, Arithmetic::Float32)?;
+        let mut b = a.clone();
+        let expected = a.forward_tokens(&[0, 3, 4])?;
+        let mut observer = Observe {
+            count: 0,
+            fail: false,
+            logits: Vec::new(),
+        };
+        let observed = b.forward_observed(&[0, 3, 4], &mut observer)?;
+        assert_eq!(expected.logits, observed.logits);
+        assert_eq!(a.summary(), b.summary());
+        assert_eq!(observer.logits.len(), 3);
+        assert!(observer.count > 40 * 3);
+        let before = b.summary();
+        observer.fail = true;
+        assert!(b.forward_observed(&[5], &mut observer).is_err());
+        assert_eq!(b.summary(), before);
         Ok(())
     }
     struct Fail<'a> {

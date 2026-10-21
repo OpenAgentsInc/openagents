@@ -947,3 +947,21 @@ fail. Limits cannot increase after failures. Missing coverage keeps G1 incomplet
 Router/index selections require exact sets except at oracle-recorded exact
 selection ties; near ties are reported and are not exempt. Per-layer hashes
 locate differences but do not replace comparisons of actual tensor values.
+
+W1 adds `deepseek_v41_cpu_qualify`, an offline Rust example that streams selected
+activations, exact Engram addresses, router sets, and per-layer BF16 hashes against
+the full bucket dumps. Decode comparisons feed the oracle's fixed token sequence;
+free greedy answers remain W2. Replay runs one complete forward over that sequence.
+The example verifies each oracle tensor's SHA-256 before comparing values. Its
+JSONL output survives a later failure, and missing tensors or limited runs remain
+incomplete rather than passing. `--stop-on-first-failure` supports diagnosis;
+`--max-steps` limits decode steps and never substitutes for full coverage.
+
+`ModelObserver` borrows observations synchronously and preserves forward rollback
+on an observer error. Checkpoint matrix rows run concurrently through Rayon while
+each row retains its original float32 summation order. The temporary acceptance
+Cargo wrapper in `scripts/bench/deepseek-v41/cpu_build.py` includes these exact
+library modules by path and pins dependencies from the Psionic workspace lock;
+it avoids compiling unrelated model stacks on the CPU VM. It contains no second
+inference implementation. Local checks pass 58 CPU tests and two comparator
+checks; these are preparation for the original-weight run, not a G1 pass.
