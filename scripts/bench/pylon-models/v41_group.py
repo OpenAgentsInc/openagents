@@ -95,6 +95,7 @@ def qualify(args, cases, score, cli):
     home = folder / "buyer-home"
     report = folder / "results.json"
     result = {"scope": "v41_group_through_pylon", "relay": args.relay, "want": args.v41_want,
+              "pylon": getattr(args, "v41_pylon", None),
               "budget_secs": args.v41_budget, "qualified": False, "cases": []}
     try:
         path = getattr(args, "v41_cases_json", None)
@@ -121,6 +122,8 @@ def qualify(args, cases, score, cli):
                 continue
             command = ["ask", prompt, "--model", args.v41_want, "--deadline", str(args.v41_budget),
                        "--no-receipt", "--relay", args.relay]
+            if getattr(args, "v41_pylon", None):
+                command += ["--pylon", args.v41_pylon]
             answer = cli(args.pylon_bin, home, command, timeout=args.v41_budget + 60)
             # The head's beacon says its one slot is busy for a moment after
             # an answer; discovery then finds no free group. Ask again.

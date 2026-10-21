@@ -669,6 +669,8 @@ def main():
     parser.add_argument("--pause-unit",help="Temporarily stop this systemd user unit and restore it on exit")
     parser.add_argument("--v41-group", action="store_true",
                         help="Send the prompts through a running V4.1 Pylon group with the router and pylon.deadline.v1 (W14)")
+    parser.add_argument("--v41-pylon",
+                        help="Send every prompt to this group head (npub) instead of letting the router pick, to measure one placement while others are online")
     parser.add_argument("--v41-want", default="deepseek-v4.1-flash",
                         help="The model the requests ask for: a name or sha256:<artifact> (default deepseek-v4.1-flash)")
     parser.add_argument("--v41-budget", type=int, default=3600,
