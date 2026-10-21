@@ -509,6 +509,13 @@ The status lines below summarize each issue and its comments. Open the issue for
   (1,526 tokens, #12389). A spot attempt was reclaimed mid-request
   (`deepseek-v41-w3-w2-2026-10-21.json`, `limit_check`); exact-length
   chat-mode prompts are easy to rebuild with the checkpoint tokenizer.
+  **W16 (2026-10-21): done, except `group_stage_worker`.** On pinned
+  one-quad, two-dual, and four-single groups, an exact 2,872-token prompt
+  was answered in about 108 s with `--prefill-secs 150`. Under the 75 s
+  step limit alone it failed at step 0 (fixed in 3d44d55ace). A 2,873-token
+  prompt was refused before any stage ran, and no stage was replaced. Each
+  head beacon carries `request_limits` (`max_input_tokens` 2872). Receipt:
+  `docs/psionic/verification/deepseek-v41-w16-groups-2026-10-21.json`.
 - #12390 (W3): once G1 v2 qualifies the runtime (#12405), or a fix changes
   allocation, dispatch, or the prefill schedule, rerun
   `scripts/bench/deepseek-v41/w3w2_vm.sh answers|memory|long` with a pinned
@@ -525,6 +532,13 @@ The status lines below summarize each issue and its comments. Open the issue for
   profile. Receipts for the first runs:
   `docs/psionic/verification/deepseek-v41-g6-g7-cross-machine-2026-10-21.json`
   and `docs/psionic/verification/deepseek-v41-w14-answer-profile-2026-10-21.json`.
+  **W16 (2026-10-21): done on the unqualified runtime with the pinned
+  worker `185eb68c…`.** In both placements, a killed stage and a frozen
+  stage failed the request visibly with no replay and recovered under a
+  new generation. An 8 s buyer cancel freed the slot. W14's nine prompts
+  passed (9/9 in each placement). A 2,873-token request was refused.
+  Remaining: machine loss on the pinned build, and G6's numerical checks,
+  which need G1 v2. Receipt: `docs/psionic/verification/deepseek-v41-w16-groups-2026-10-21.json`.
 
 - #12407: rebuild the stage worker for `sm_120` (`scripts/pylon/v41-stage-build.sh
   build`) and pylon (`... pylon`) so `BUILD.json` is schema v2, then launch the
@@ -535,6 +549,10 @@ The status lines below summarize each issue and its comments. Open the issue for
   build's CUDA tests pass on the RTX PRO 6000 (`v41-stage-build.sh test
   --host` a G4 builder, or the stage VM). Rerun the synthetic CUDA split
   comparisons there with the corrected generator.
+  **W16 (2026-10-21): launch checks done.** Each ready mark named the boot,
+  manifest, and build. Each group logged "runs build bundle 185eb68c…
+  (sm_120) with profile cuda-device-sm_120, as pinned". Remaining: the CUDA
+  tests and the synthetic split comparisons on an RTX PRO 6000.
 
 - #12410 and #12412: rebuild the `sm_120` worker and pylon from a commit
   that includes them, then run the pinned bundle on the RTX PRO 6000
@@ -546,6 +564,10 @@ The status lines below summarize each issue and its comments. Open the issue for
   `expected_bundle_sha256` with `launch` `pinned`. Also measure the last
   stage's per-token time at 4,096 output tokens against W14's
   8.8-to-10.9 ms slowdown.
+  **W16 (2026-10-21):** pinned groups ran worker `185eb68c…` and pylon
+  `f1882776…`, and `status` shows `build    worker bundle 185eb68c…`. At
+  4,096 output tokens, the last stage averaged 9.36–9.37 ms a token, down
+  from W14's 10.9 ms. The G1 v2 report check stays with #12405.
 
 - #12398: after #12407 binds the build and arithmetic identity and #12405
   lands the direct GPU comparison harness under the frozen G1 v2 policy,
@@ -556,6 +578,11 @@ The status lines below summarize each issue and its comments. Open the issue for
   DS0's six runtime checks, and G7's faults on the real group. The lifecycle
   checks don't wait for numerical qualification. Receipt for the first run:
   `docs/psionic/verification/deepseek-v41-g5-one-quad-2026-10-21.json`.
+  **W16 (2026-10-21):** pinned one-quad in asia-northeast1-b. DS0's runtime
+  checks passed: answer, continuation, cache reset, truncation, and an 8 s
+  buyer cut standing in for stream truncation. The cap was reached 99
+  tokens into the final answer, not inside reasoning. Remaining: G1 v2's
+  numerical checks and G2 v2. Receipt: `docs/psionic/verification/deepseek-v41-w16-groups-2026-10-21.json`.
 
 - #12394: rerun G4 on layers 0–4 and 0–9 with
   `scripts/bench/deepseek-v41/stage_vm.sh` under the G1 v2 direct-runtime

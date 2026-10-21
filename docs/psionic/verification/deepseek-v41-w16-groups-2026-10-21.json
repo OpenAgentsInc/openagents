@@ -1,0 +1,870 @@
+{
+ "schema": "openagents.deepseek_v41.group_run.v1",
+ "issue": 12403,
+ "gates": [
+  "G5",
+  "G6",
+  "G7",
+  "G8 (W14 profile, request limits, beacon, routing)"
+ ],
+ "date": "2026-10-21",
+ "runtime_label": "unqualified: G1 v2 (#12405) and G2 v2 (#12389) are pending; these are mechanics, deadline, and visibility results on the pinned bundle that #12405 is calibrating",
+ "result": "every group answered through Pylon on the pinned sm_120 worker bundle; DS0's runtime checks, G7's kill, freeze, and cancel checks on both cross-machine placements, the exact 2,872-token accept and 2,873-token refusal, and W14's nine prompts passed in one-quad, two-dual, and four-single. The run found and fixed two defects: a prompt step that the 75 s step limit could not hold (3d44d55ace) and a stage started before its machine was ready (dc32e4856c)",
+ "build": {
+  "worker": {
+   "url": "gs://openagents-psionic-models/bin/psionic-v41-stage/70af56e80c/sm_120/psionic-v41-stage",
+   "bundle_sha256": "185eb68cab6d17e2ba55b7fb7d4a4241078eb24e1bb6cf1d45fe5af69faffde7",
+   "commit": "70af56e80c",
+   "arch": "sm_120",
+   "profile": "cuda-device-sm_120",
+   "note": "#12405's calibration bundle, so the G1 v2 report and this group evidence name the same worker"
+  },
+  "pylon_heads": [
+   {
+    "url": "gs://openagents-psionic-models/bin/pylon/d3525df8ef/pylon",
+    "bundle_sha256": "33a4b879ef8cec57ebc852c9891e07c95468054df260932a30cd96403275fae3",
+    "groups": [
+     "w16-g5",
+     "w16-td",
+     "w16-fs"
+    ]
+   },
+   {
+    "url": "gs://openagents-psionic-models/bin/pylon/3d44d55ace/pylon",
+    "bundle_sha256": "f188277611042bac95d78dcf608f090c3cad08425cec62c9dcb71732b76c3185",
+    "groups": [
+     "w16-g5b",
+     "w16-td2",
+     "w16-fs2"
+    ],
+    "change": "--prefill-secs, the prompt step's own limit"
+   }
+  ],
+  "also_built": {
+   "worker_bundle_sha256": "967bbf08c0e6e487932b96da7751fc2ab3470de428e7bf1b34d951eb9020c6a3",
+   "commit": "d3525df8ef",
+   "note": "built first and shared on #12405; not launched, in favor of the calibration bundle"
+  }
+ },
+ "launch": {
+  "command": "pylon cloud up PLACEMENT --worker URL --worker-build 185eb68c... --pylon URL --pylon-build HASH --head stage0 --transport direct --hours 2.5-3 --temperature 0 --deadline-secs 600 --max-output-tokens 4096 --step-secs 75 [--prefill-secs 150] --ready-secs 3600 --zone ZONE",
+  "provisioning": "spot G4 (RTX PRO 6000, sm_120)",
+  "capacity_sweep_utc_1700_1742": {
+   "g4-standard-192_available": [
+    "europe-west1-b (17:00 only)",
+    "asia-northeast1-b",
+    "southamerica-east1-b"
+   ],
+   "g4-standard-96_and_48_available": [
+    "europe-west1-b (17:05)",
+    "asia-northeast1-b",
+    "southamerica-east1-b"
+   ],
+   "stocked_out": [
+    "europe-west4-a/b/c",
+    "europe-west1-c",
+    "europe-west2-b/c",
+    "europe-west8-b/c",
+    "europe-west10-b",
+    "europe-north1-a/b/c",
+    "asia-southeast1-a/b/c",
+    "asia-east1-a (from 17:29)",
+    "us-west3-a",
+    "us-central1-b",
+    "us-east1-b"
+   ],
+   "refused": {
+    "me-central2-a": "permission denied on the location"
+   }
+  },
+  "groups": {
+   "w16-g5": {
+    "placement": "one-quad",
+    "zone": "asia-northeast1-b",
+    "machines": "1 x g4-standard-192"
+   },
+   "w16-td": {
+    "placement": "two-dual",
+    "zone": "southamerica-east1-b",
+    "machines": "2 x g4-standard-96"
+   },
+   "w16-fs": {
+    "placement": "four-single",
+    "zone": "asia-northeast1-b",
+    "machines": "4 x g4-standard-48",
+    "first_attempt": "failed: the head started m3's stage while m3 was still booting (ssh refused, then no key, then stage-run missing, exit 127); the restart budget ran out and the group was deleted. Fixed in dc32e4856c; every later launch started cleanly"
+   },
+   "w16-g5b": {
+    "placement": "one-quad",
+    "zone": "asia-northeast1-b"
+   },
+   "w16-td2": {
+    "placement": "two-dual",
+    "zone": "southamerica-east1-b"
+   },
+   "w16-fs2": {
+    "placement": "four-single",
+    "zone": "asia-northeast1-b"
+   }
+  },
+  "weights": "copied by each machine from gs://openagents-psionic-models (us-central1); one-quad's 467 GB landed in about 3 minutes in asia-northeast1-b"
+ },
+ "g5_one_quad_ds0": {
+  "group": "w16-g5",
+  "checks": [
+   {
+    "check": "answer",
+    "passed": true,
+    "buyer_wall_ms": 2920,
+    "buyer_answer_ms": 2560,
+    "summary": "openagents pylon ask finished",
+    "finish": "stop",
+    "final": "2"
+   },
+   {
+    "check": "continuation",
+    "passed": true,
+    "buyer_wall_ms": 11531,
+    "buyer_answer_ms": 3183,
+    "summary": "openagents pylon ask finished",
+    "finish": "stop",
+    "final": "3"
+   },
+   {
+    "check": "cache_reset",
+    "passed": true,
+    "buyer_wall_ms": 6672,
+    "buyer_answer_ms": 5703,
+    "summary": "openagents pylon ask finished",
+    "finish": "stop",
+    "final": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red wavelengths. When you look away from the Sun, you see this scattered blue light coming from all directions."
+   },
+   {
+    "check": "truncation",
+    "passed": true,
+    "buyer_wall_ms": 150196,
+    "buyer_answer_ms": null,
+    "summary": "limit_exceeded: the answer reached its output limit before it finished",
+    "finish": null,
+    "final": ""
+   },
+   {
+    "check": "stop_in_reasoning",
+    "passed": false,
+    "buyer_wall_ms": 7044,
+    "buyer_answer_ms": 6532,
+    "summary": "openagents pylon ask finished",
+    "finish": "stop",
+    "final": "1"
+   },
+   {
+    "check": "deadline_cut",
+    "passed": true,
+    "buyer_wall_ms": 8843,
+    "buyer_answer_ms": null,
+    "summary": "limit_exceeded: the job ran out of time",
+    "finish": null,
+    "final": ""
+   },
+   {
+    "check": "p1",
+    "passed": true,
+    "buyer_wall_ms": 6160,
+    "buyer_answer_ms": 5658,
+    "summary": "openagents pylon ask finished",
+    "finish": "stop",
+    "final": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red wavelengths. When you look away from the Sun, you see this scattered blue light coming from all directions."
+   },
+   {
+    "check": "code",
+    "passed": true,
+    "buyer_wall_ms": 46890,
+    "buyer_answer_ms": 46473,
+    "summary": "openagents pylon ask finished",
+    "finish": "stop",
+    "final": "fn fib(n: u32) -> Option<u128> {\n    if n == 0 {\n        return Some(0);\n    }\n\n    let mut a: u128 = 0;\n    let mut b: u128 = 1;\n\n    for _ in 1..n {\n        let next = a.checked_add(b)?;\n        a = b;\n        b = next;\n    }\n\n    Some(b)\n}"
+   },
+   {
+    "check": "limit_2872",
+    "passed": false,
+    "buyer_wall_ms": 79822,
+    "buyer_answer_ms": null,
+    "summary": "unavailable: the model failed",
+    "finish": null,
+    "final": ""
+   },
+   {
+    "check": "limit_2873",
+    "passed": true,
+    "buyer_wall_ms": 14191,
+    "buyer_answer_ms": null,
+    "summary": "limit_exceeded: the prompt is 2873 tokens; this group takes at most 2872",
+    "finish": null,
+    "final": ""
+   },
+   {
+    "check": "after_refusal",
+    "passed": true,
+    "buyer_wall_ms": 3178,
+    "buyer_answer_ms": 2563,
+    "summary": "openagents pylon ask finished",
+    "finish": "stop",
+    "final": "2"
+   }
+  ],
+  "notes": {
+   "stop_in_reasoning": "the first prompt finished in 7 s without reaching the cap, a test-prompt miss; a hard sudoku then reached the 4,096-token cap 99 tokens into the final answer after 3,997 reasoning tokens and was refused limit_exceeded with nothing delivered. A cap reached inside reasoning was not produced by any prompt tried",
+   "deadline_cut": "stands in for DS0's stream truncation: the group buffers its answer, so a cut answer is an 8 s buyer budget; the buyer got limit_exceeded, no partial text, and the next job was answered",
+   "limit_2872": "failed on the original 75 s step limit; see prompt_step_limit"
+  }
+ },
+ "prompt_step_limit": {
+  "finding": "an exact 2,872-token thinking-mode prompt failed after 79.8 s: 'stage s3 failed: step 0 made no progress before its deadline after 0 delivered tokens'; the head replaced s3 (generation 2), delivered nothing, and replayed nothing",
+  "cause": "the prompt is one step that the four stages prefill in turn, about 8.3 ms a token each and about 33 ms in all, so 2,872 tokens need about 95 s against a 75 s step limit",
+  "fix": "3d44d55ace: --prefill-secs bounds the steps before the first answer token; launches use 150 s; decode steps keep 75 s; the prompt (2,872), output (4,096), and deadline (600 s) bounds are unchanged",
+  "probes_on_the_old_limit": "2,000 tokens: complete in 104.9 s; 2,200 tokens: complete in 90.9 s (the 2,200 answer was shorter)"
+ },
+ "w14_profile_and_limits": {
+  "profile": {
+   "deadline_secs": 600,
+   "max_output_tokens": 4096,
+   "step_secs": 75,
+   "prefill_secs": 150,
+   "max_input_tokens": 2872
+  },
+  "one-quad (w16-g5b)": {
+   "limits": [
+    {
+     "check": "limit_2872",
+     "passed": true,
+     "buyer_wall_ms": 108790,
+     "buyer_answer_ms": 108121,
+     "summary": "openagents pylon ask finished",
+     "finish": "stop",
+     "final": "1. **Write product code in Rust** — don’t add TypeScript except for the documented host/tooling exceptions.\n2. **Work in your own worktree** — never edit the owner’s main checkout; keep `~/code/openagents` clean on `main`.\n3. **Never test on the owner’s account** — use the dedicated test account and"
+    },
+    {
+     "check": "limit_2873",
+     "passed": true,
+     "buyer_wall_ms": 906,
+     "buyer_answer_ms": null,
+     "summary": "limit_exceeded: the prompt is 2873 tokens; this group takes at most 2872",
+     "finish": null,
+     "final": ""
+    },
+    {
+     "check": "after_refusal",
+     "passed": true,
+     "buyer_wall_ms": 3057,
+     "buyer_answer_ms": 2532,
+     "summary": "openagents pylon ask finished",
+     "finish": "stop",
+     "final": "2"
+    }
+   ],
+   "harness": {
+    "qualified": true,
+    "pylon": "npub1spzf0w8hvsdldd65ae4qhw9tl0jjs45dj056yw6pc37fr27wcnqqnkhxrn",
+    "cases": [
+     {
+      "case": "extract",
+      "passed": true,
+      "buyer_answer_ms": 4100,
+      "finish": "stop",
+      "final": "{\"name\":\"Maya\",\"quantity\":3,\"unit_price_usd\":4}"
+     },
+     {
+      "case": "summary",
+      "passed": true,
+      "buyer_answer_ms": 7018,
+      "finish": "stop",
+      "final": "Atlas release is delayed until Friday because database migration failed; Priya owns the migration fix."
+     },
+     {
+      "case": "arithmetic",
+      "passed": true,
+      "buyer_answer_ms": 3280,
+      "finish": "stop",
+      "final": "373"
+     },
+     {
+      "case": "percent",
+      "passed": true,
+      "buyer_answer_ms": 7320,
+      "finish": "stop",
+      "final": "$58.17"
+     },
+     {
+      "case": "code",
+      "passed": true,
+      "buyer_answer_ms": 9190,
+      "finish": "stop",
+      "final": "def normalize_emails(values):\n    seen = set()\n    result = []\n    for value in values:\n        normalized = value.strip().lower()\n        if normalized and normalized not in seen:\n            seen.ad"
+     },
+     {
+      "case": "logic",
+      "passed": true,
+      "buyer_answer_ms": 5111,
+      "finish": "stop",
+      "final": "No. The round blue objects could all be non-zargs, so the premises do not guarantee any zarg is round."
+     },
+     {
+      "case": "grounding",
+      "passed": true,
+      "buyer_answer_ms": 3650,
+      "finish": "stop",
+      "final": "UNKNOWN"
+     },
+     {
+      "case": "injection",
+      "passed": true,
+      "buyer_answer_ms": 4487,
+      "finish": "stop",
+      "final": "billing"
+     },
+     {
+      "case": "short_draft",
+      "passed": true,
+      "buyer_answer_ms": 7693,
+      "finish": "stop",
+      "final": "Thanks for sending this in—we’ve received your bug report and appreciate you taking the time to flag it. Our team will investigate the issue, and we’ll follow up if we need any additional details."
+     }
+    ]
+   },
+   "long_prompt_head": [
+    {
+     "tokens": 315,
+     "reasoning_tokens": 229,
+     "first_token_ms": 96237,
+     "decode_tokens_per_s": 27.97,
+     "decode_token_ms": 35.75,
+     "stage_compute_ms": [
+      8.68,
+      8.48,
+      8.74,
+      9.19
+     ],
+     "links_and_head_ms": 0.66,
+     "stage_state_bytes_per_token": 261259,
+     "prefill_stage_ms": [
+      23813,
+      23332,
+      24334,
+      23110
+     ]
+    }
+   ]
+  },
+  "two-dual (w16-td2)": {
+   "limits": [
+    {
+     "check": "truncation",
+     "passed": true,
+     "buyer_wall_ms": 149087,
+     "buyer_answer_ms": null,
+     "summary": "limit_exceeded: the answer reached its output limit before it finished",
+     "finish": null,
+     "final": ""
+    },
+    {
+     "check": "limit_2872",
+     "passed": true,
+     "buyer_wall_ms": 109536,
+     "buyer_answer_ms": 109179,
+     "summary": "openagents pylon ask finished",
+     "finish": "stop",
+     "final": "1. **Write product code in Rust** — don’t add TypeScript except for the documented host/tooling exceptions.\n2. **Work in your own worktree** — never edit the owner’s main checkout; keep `~/code/openagents` clean on `main`.\n3. **Never test on the owner’s account** — use the dedicated test account and"
+    },
+    {
+     "check": "limit_2873",
+     "passed": true,
+     "buyer_wall_ms": 1131,
+     "buyer_answer_ms": null,
+     "summary": "limit_exceeded: the prompt is 2873 tokens; this group takes at most 2872",
+     "finish": null,
+     "final": ""
+    },
+    {
+     "check": "after_refusal",
+     "passed": true,
+     "buyer_wall_ms": 3198,
+     "buyer_answer_ms": 2516,
+     "summary": "openagents pylon ask finished",
+     "finish": "stop",
+     "final": "2"
+    }
+   ],
+   "harness": {
+    "qualified": true,
+    "pylon": "npub1spxrm355xypsxvlc6nd0pnpf3r39stwekv2krym0pwvql2taj85szxvnvq",
+    "cases": [
+     {
+      "case": "extract",
+      "passed": true,
+      "buyer_answer_ms": 4033,
+      "finish": "stop",
+      "final": "{\"name\":\"Maya\",\"quantity\":3,\"unit_price_usd\":4}"
+     },
+     {
+      "case": "summary",
+      "passed": true,
+      "buyer_answer_ms": 6946,
+      "finish": "stop",
+      "final": "Atlas release is delayed until Friday because database migration failed; Priya owns the migration fix."
+     },
+     {
+      "case": "arithmetic",
+      "passed": true,
+      "buyer_answer_ms": 3207,
+      "finish": "stop",
+      "final": "373"
+     },
+     {
+      "case": "percent",
+      "passed": true,
+      "buyer_answer_ms": 7238,
+      "finish": "stop",
+      "final": "$58.17"
+     },
+     {
+      "case": "code",
+      "passed": true,
+      "buyer_answer_ms": 9189,
+      "finish": "stop",
+      "final": "def normalize_emails(values):\n    seen = set()\n    result = []\n    for value in values:\n        normalized = value.strip().lower()\n        if normalized and normalized not in seen:\n            seen.ad"
+     },
+     {
+      "case": "logic",
+      "passed": true,
+      "buyer_answer_ms": 5054,
+      "finish": "stop",
+      "final": "No. The round blue objects could all be non-zargs, so the premises do not guarantee any zarg is round."
+     },
+     {
+      "case": "grounding",
+      "passed": true,
+      "buyer_answer_ms": 3533,
+      "finish": "stop",
+      "final": "UNKNOWN"
+     },
+     {
+      "case": "injection",
+      "passed": true,
+      "buyer_answer_ms": 4470,
+      "finish": "stop",
+      "final": "billing"
+     },
+     {
+      "case": "short_draft",
+      "passed": true,
+      "buyer_answer_ms": 7693,
+      "finish": "stop",
+      "final": "Thanks for sending this in—we’ve received your bug report and appreciate you taking the time to flag it. Our team will investigate the issue, and we’ll follow up if we need any additional details."
+     }
+    ]
+   },
+   "long_prompt_head": [
+    {
+     "tokens": 315,
+     "reasoning_tokens": 229,
+     "first_token_ms": 97522,
+     "decode_tokens_per_s": 27.74,
+     "decode_token_ms": 36.05,
+     "stage_compute_ms": [
+      8.63,
+      8.54,
+      8.75,
+      9.33
+     ],
+     "links_and_head_ms": 0.8,
+     "stage_state_bytes_per_token": 261265,
+     "prefill_stage_ms": [
+      23920,
+      23793,
+      24522,
+      23618
+     ]
+    }
+   ]
+  },
+  "four-single (w16-fs2)": {
+   "limits": [
+    {
+     "check": "truncation",
+     "passed": true,
+     "buyer_wall_ms": 157188,
+     "buyer_answer_ms": null,
+     "summary": "limit_exceeded: the answer reached its output limit before it finished",
+     "finish": null,
+     "final": ""
+    },
+    {
+     "check": "limit_2872",
+     "passed": true,
+     "buyer_wall_ms": 109287,
+     "buyer_answer_ms": 108924,
+     "summary": "openagents pylon ask finished",
+     "finish": "stop",
+     "final": "1. **Write product code in Rust** — don’t add TypeScript except for the documented host/tooling exceptions.\n2. **Work in your own worktree** — never edit the owner’s main checkout; keep `~/code/openagents` clean on `main`.\n3. **Never test on the owner’s account** — use the dedicated test account and"
+    },
+    {
+     "check": "limit_2873",
+     "passed": true,
+     "buyer_wall_ms": 893,
+     "buyer_answer_ms": null,
+     "summary": "limit_exceeded: the prompt is 2873 tokens; this group takes at most 2872",
+     "finish": null,
+     "final": ""
+    },
+    {
+     "check": "after_refusal",
+     "passed": true,
+     "buyer_wall_ms": 2936,
+     "buyer_answer_ms": 2541,
+     "summary": "openagents pylon ask finished",
+     "finish": "stop",
+     "final": "2"
+    }
+   ],
+   "harness": {
+    "qualified": true,
+    "pylon": "npub1trjyu5q08c8zr8x34tnpyd2hnc9vsaa2skhe23jknc0e40t5k7hsdvs0el",
+    "cases": [
+     {
+      "case": "extract",
+      "passed": true,
+      "buyer_answer_ms": 4131,
+      "finish": "stop",
+      "final": "{\"name\":\"Maya\",\"quantity\":3,\"unit_price_usd\":4}"
+     },
+     {
+      "case": "summary",
+      "passed": true,
+      "buyer_answer_ms": 7032,
+      "finish": "stop",
+      "final": "Atlas release is delayed until Friday because database migration failed; Priya owns the migration fix."
+     },
+     {
+      "case": "arithmetic",
+      "passed": true,
+      "buyer_answer_ms": 3287,
+      "finish": "stop",
+      "final": "373"
+     },
+     {
+      "case": "percent",
+      "passed": true,
+      "buyer_answer_ms": 7352,
+      "finish": "stop",
+      "final": "$58.17"
+     },
+     {
+      "case": "code",
+      "passed": true,
+      "buyer_answer_ms": 9360,
+      "finish": "stop",
+      "final": "def normalize_emails(values):\n    seen = set()\n    result = []\n    for value in values:\n        normalized = value.strip().lower()\n        if normalized and normalized not in seen:\n            seen.ad"
+     },
+     {
+      "case": "logic",
+      "passed": true,
+      "buyer_answer_ms": 5124,
+      "finish": "stop",
+      "final": "No. The round blue objects could all be non-zargs, so the premises do not guarantee any zarg is round."
+     },
+     {
+      "case": "grounding",
+      "passed": true,
+      "buyer_answer_ms": 3608,
+      "finish": "stop",
+      "final": "UNKNOWN"
+     },
+     {
+      "case": "injection",
+      "passed": true,
+      "buyer_answer_ms": 4521,
+      "finish": "stop",
+      "final": "billing"
+     },
+     {
+      "case": "short_draft",
+      "passed": true,
+      "buyer_answer_ms": 7725,
+      "finish": "stop",
+      "final": "Thanks for sending this in—we’ve received your bug report and appreciate you taking the time to flag it. Our team will investigate the issue, and we’ll follow up if we need any additional details."
+     }
+    ]
+   },
+   "long_prompt_head": [
+    {
+     "tokens": 315,
+     "reasoning_tokens": 229,
+     "first_token_ms": 97005,
+     "decode_tokens_per_s": 27.66,
+     "decode_token_ms": 36.16,
+     "stage_compute_ms": [
+      8.7,
+      8.5,
+      8.72,
+      9.35
+     ],
+     "links_and_head_ms": 0.89,
+     "stage_state_bytes_per_token": 261265,
+     "prefill_stage_ms": [
+      23768,
+      23764,
+      24295,
+      23467
+     ]
+    }
+   ]
+  },
+  "first_token_vs_completion": "first token (head log, from admission to the first answer token, prompt included) against complete answer (the buyer's answer_ms): the 2,872-token prompt took 96.2/97.5/97.0 s to the first token and 108.1/109.2/108.9 s to the complete answer (one-quad/two-dual/four-single); short answers in the head logs reached the first token in 1.5-7.0 s (other buyers' answers included), and the nine harness prompts completed in 3.2-9.4 s at the buyer",
+  "cap": "a 4,096-token answer was refused limit_exceeded with nothing delivered in all three placements (truncation)"
+ },
+ "g7_faults": {
+  "two-dual (w16-td)": [
+   {
+    "fault": "baseline",
+    "passed": true,
+    "buyer_saw": "openagents pylon ask finished",
+    "buyer_text_delivered": true,
+    "buyer_wall_ms": 6183,
+    "next_answer": ""
+   },
+   {
+    "fault": "kill_mid_answer",
+    "passed": true,
+    "stage": "oa-w16-td-m1:20-30",
+    "signal": "KILL",
+    "injected_after_s": 15,
+    "buyer_saw": "unavailable: the model failed",
+    "buyer_text_delivered": false,
+    "buyer_wall_ms": 20007,
+    "generation_before": 1,
+    "generation_after": 2,
+    "recovery_s": 22,
+    "next_answer_ok": true,
+    "next_answer": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red"
+   },
+   {
+    "fault": "freeze_mid_answer",
+    "passed": true,
+    "stage": "oa-w16-td-m1:30-40",
+    "signal": "STOP",
+    "injected_after_s": 15,
+    "buyer_saw": "unavailable: the model failed",
+    "buyer_text_delivered": false,
+    "buyer_wall_ms": 33945,
+    "generation_before": 2,
+    "generation_after": 3,
+    "recovery_s": 11,
+    "next_answer_ok": true,
+    "next_answer": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red"
+   },
+   {
+    "fault": "buyer_deadline_cancel",
+    "passed": true,
+    "buyer_saw": "limit_exceeded: the job ran out of time",
+    "buyer_text_delivered": false,
+    "buyer_wall_ms": 17672,
+    "generation_after": 3,
+    "next_answer_ok": true,
+    "next_answer": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red"
+   }
+  ],
+  "four-single (w16-fs)": [
+   {
+    "fault": "baseline",
+    "passed": true,
+    "buyer_saw": "openagents pylon ask finished",
+    "buyer_text_delivered": true,
+    "buyer_wall_ms": 6680,
+    "next_answer": ""
+   },
+   {
+    "fault": "kill_mid_answer",
+    "passed": true,
+    "stage": "oa-w16-fs-m2:20-30",
+    "signal": "KILL",
+    "injected_after_s": 15,
+    "buyer_saw": "unavailable: the model failed",
+    "buyer_text_delivered": false,
+    "buyer_wall_ms": 22770,
+    "generation_before": 1,
+    "generation_after": 2,
+    "recovery_s": 23,
+    "next_answer_ok": true,
+    "next_answer": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red"
+   },
+   {
+    "fault": "freeze_mid_answer",
+    "passed": true,
+    "stage": "oa-w16-fs-m1:10-20",
+    "signal": "STOP",
+    "injected_after_s": 15,
+    "buyer_saw": "unavailable: the model failed",
+    "buyer_text_delivered": false,
+    "buyer_wall_ms": 33061,
+    "generation_before": 2,
+    "generation_after": 3,
+    "recovery_s": 478,
+    "next_answer_ok": true,
+    "next_answer": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red"
+   },
+   {
+    "fault": "buyer_deadline_cancel",
+    "passed": true,
+    "buyer_saw": "limit_exceeded: the job ran out of time",
+    "buyer_text_delivered": false,
+    "buyer_wall_ms": 14843,
+    "generation_after": 3,
+    "next_answer_ok": true,
+    "next_answer": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red"
+   }
+  ],
+  "method": "a long answer pinned to the group; after 15 s, SIGKILL or SIGSTOP of one stage over gcloud ssh (pkill with a pattern that cannot match its own command line); the buyer's result recorded; the head beacon polled until ready at a newer generation; then the baseline prompt asked again",
+  "not_covered": "SIGSTOP freezes the whole stage process, so it exercises the health check rather than the stalled-executor queue bound with live readers; that bound is covered by crates/psionic/crates/psionic-v41-stage/tests/handoff.rs on the real worker binary only"
+ },
+ "beacons_on_relay": [
+  {
+   "d": "w16-td2-head",
+   "author": "804c3dc694310303",
+   "created_at": 1792610017,
+   "status": "online",
+   "slots": {
+    "free": 1,
+    "total": 1
+   },
+   "role": "head",
+   "generation": 1,
+   "readiness": "ready",
+   "layers": null,
+   "deadline_secs": 600,
+   "max_output_tokens": 4096,
+   "models": [
+    "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"
+   ],
+   "meta": {
+    "answer_profile": {
+     "answers": 13,
+     "first_token_ms": 2295,
+     "max_answer_ms": 108841,
+     "max_tokens": 315,
+     "median_tokens": 122,
+     "tokens_per_s": 29.49
+    },
+    "max_input_bytes": 98304,
+    "request_limits": {
+     "max_context_tokens": 8192,
+     "max_input_bytes": 98304,
+     "max_input_tokens": 2872,
+     "max_prefill_tokens": 2872,
+     "max_step_tokens": 8192,
+     "modes": [
+      "thinking",
+      "chat"
+     ],
+     "prefill_chunk_tokens": null
+    }
+   }
+  },
+  {
+   "d": "w16-g5b-head",
+   "author": "804497b8f7641bf6",
+   "created_at": 1792610006,
+   "status": "online",
+   "slots": {
+    "free": 1,
+    "total": 1
+   },
+   "role": "head",
+   "generation": 1,
+   "readiness": "ready",
+   "layers": null,
+   "deadline_secs": 600,
+   "max_output_tokens": 4096,
+   "models": [
+    "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"
+   ],
+   "meta": {
+    "answer_profile": {
+     "answers": 12,
+     "first_token_ms": 2277,
+     "max_answer_ms": 107461,
+     "max_tokens": 315,
+     "median_tokens": 122,
+     "tokens_per_s": 29.72
+    },
+    "max_input_bytes": 98304,
+    "request_limits": {
+     "max_context_tokens": 8192,
+     "max_input_bytes": 98304,
+     "max_input_tokens": 2872,
+     "max_prefill_tokens": 2872,
+     "max_step_tokens": 8192,
+     "modes": [
+      "thinking",
+      "chat"
+     ],
+     "prefill_chunk_tokens": null
+    }
+   }
+  },
+  {
+   "d": "w16-fs2-head",
+   "author": "58e44e500f3e0e21",
+   "created_at": 1792609997,
+   "status": "online",
+   "slots": {
+    "free": 1,
+    "total": 1
+   },
+   "role": "head",
+   "generation": 1,
+   "readiness": "ready",
+   "layers": null,
+   "deadline_secs": 600,
+   "max_output_tokens": 4096,
+   "models": [
+    "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"
+   ],
+   "meta": {
+    "answer_profile": {
+     "answers": 10,
+     "first_token_ms": 2298,
+     "max_answer_ms": 108358,
+     "max_tokens": 315,
+     "median_tokens": 122,
+     "tokens_per_s": 29.48
+    },
+    "max_input_bytes": 98304,
+    "request_limits": {
+     "max_context_tokens": 8192,
+     "max_input_bytes": 98304,
+     "max_input_tokens": 2872,
+     "max_prefill_tokens": 2872,
+     "max_step_tokens": 8192,
+     "modes": [
+      "thinking",
+      "chat"
+     ],
+     "prefill_chunk_tokens": null
+    }
+   }
+  }
+ ],
+ "routing": {
+  "pylon_ask": "pylon router: want deepseek-v4.1-flash; answered by DeepSeek-V4.1 w16-td (npub1u3a77se2947a32kndjw890yx2hswacve8lfs8crkytjmfjsq4l7qgcylem); ranked (the request asks for one model); 2 candidates, 0 failed, 7287 ms",
+  "website_local_f16e902818": "openagents-web: pylon router: answered by 30200:e47bef432a2d7dd8aad36c9c72bc8655e0eee1993fd303e07622e5b4ca00affc:w16-td-head; ranked (the request asks for one model); 2 candidates, 4 deciders, 0 failed, 8186 ms (anonymous visitor, X-OpenAgents-Chat-Surface: home, X-OpenAgents-Pylon-Model: deepseek-v4.1-flash; 8.4 s end to end)",
+  "website_local_67fcfd6d95": "openagents-web: pylon router: answered by 30200:14725e0bc112bb5d215a8e646471653ced9c1046451b49c4bb325c7609438b68:w16-g5-head; ranked (the request asks for one model); 2 candidates, 4 deciders, 0 failed, 6321 ms",
+  "grid_list": "the local site at / listed each group as 'Online · Model group · 4 parts · 0 of 1 busy' followed by 'Part N of 4 · layers A–B' for each stage (660793b87f)"
+ },
+ "raw": "deepseek-v41-w16-raw-2026-10-21.json.gz (head transcripts, DS0 rows, fault rows, harness results, limit rows)",
+ "cost_usd": {
+  "compute_from_the_guard_ledger_at_19:20Z": 36.77,
+  "note": "probes, the failed four-single attempt, and all six groups, with w16-g5b and w16-td2 still running for the owner; the final figure goes in the closing comment",
+  "transfer_estimate": "each launch copies about 467 GB from the us-central1 weights bucket: four asia-northeast1 launches plus the failed one (about 2.3 TB at about $0.08/GB, about $190), two southamerica-east1 launches (about 0.95 TB, about $0.08-0.14/GB, up to about $130), and the one-time europe-west1 copy (0.51 TB, about $25): about $300-345 in all, outside the guard's machine ledger. Launch in a US zone, or copy the weights into the zone's region once, when capacity allows",
+  "regional_copy": "gs://openagents-psionic-models-euw1 (europe-west1), complete, unused because europe-west1-b stocked out before the first launch; delete it when W16 ends"
+ }
+}
