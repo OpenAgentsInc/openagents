@@ -46,6 +46,42 @@
       "spot": 0.010053,
       "math": "0.5 vCPU + 2 GiB: 0.5 x 0.02181159 + 2 x 0.00292353 on demand; 0.5 x 0.01309 + 2 x 0.001754 spot",
       "source": "catalog-2026-10-20"
+    },
+    "n2-highmem-128": {
+      "standard": 7.7071,
+      "spot": 4.6232,
+      "math": "128 vCPU + 864 GiB: 128 x 0.031611 + 864 x 0.004237 on demand; 128 x 0.01896 + 864 x 0.002542 spot",
+      "source": "catalog-2026-10-20"
+    },
+    "n2-highmem-96": {
+      "standard": 6.2887,
+      "spot": 3.7725,
+      "math": "96 vCPU + 768 GiB: 96 x 0.031611 + 768 x 0.004237 on demand; 96 x 0.01896 + 768 x 0.002542 spot",
+      "source": "catalog-2026-10-20"
+    },
+    "n2d-highmem-96": {
+      "standard": 5.471,
+      "spot": 2.5137,
+      "math": "96 vCPU + 768 GiB: 96 x 0.027502 + 768 x 0.003686 on demand; 96 x 0.01264 + 768 x 0.001693 spot",
+      "source": "catalog-2026-10-20"
+    },
+    "c2d-highmem-112": {
+      "standard": 6.8584,
+      "spot": 3.3152,
+      "math": "112 vCPU + 896 GiB: 112 x 0.029563 + 896 x 0.003959 on demand; 112 x 0.01428 + 896 x 0.001915 spot",
+      "source": "catalog-2026-10-20"
+    },
+    "m1-ultramem-40": {
+      "standard": 6.2931,
+      "spot": 0.9752,
+      "math": "40 vCPU + 961 GiB: 40 x 0.0348 + 961 x 0.0051 on demand; 40 x 0.0054 + 961 x 0.00079 spot",
+      "source": "catalog-2026-10-20"
+    },
+    "c3d-highmem-180": {
+      "standard": 11.0223,
+      "spot": 2.5355,
+      "math": "180 vCPU + 1,440 GiB: 180 x 0.029563 + 1440 x 0.003959 on demand; 180 x 0.00679 + 1440 x 0.000912 spot",
+      "source": "catalog-2026-10-20"
     }
   }
 }

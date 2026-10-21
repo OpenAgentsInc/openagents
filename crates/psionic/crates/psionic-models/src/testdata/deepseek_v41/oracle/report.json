@@ -1,0 +1,226 @@
+{
+ "schema": "openagents.deepseek_v41.oracle_report.v1",
+ "issue": 12371,
+ "date": "2026-10-20",
+ "revision": "1bae0e1088993b9b82de08f59de5be5a34e42170",
+ "service_account": "oa-mvp-automation@openagentsgemini.iam.gserviceaccount.com (through scripts/dev/cloud-budget.py, budget deepseek-v41)",
+ "machines": [
+  {
+   "name": "oa-dsv41-weights-1",
+   "machine_type": "n2d-highmem-96",
+   "zone": "us-central1-b",
+   "spot": false,
+   "disk": "2 TB pd-ssd data disk",
+   "started": "2026-10-20T22:58:14Z",
+   "ended": "2026-10-20T23:46:07Z",
+   "hours": 0.8,
+   "ledger_cost_usd": 4.37,
+   "how_ended": "deleted with cloud-budget.py stop",
+   "did": "downloaded the pinned revision from Hugging Face (8.5 min), verified 83 files, uploaded them, wrote the dequant parity file, ran #12373's weights check, ran convert.py (TP8, FP4) and uploaded the converted files",
+   "note": "n2-highmem-128 and n2-highmem-96 (with 16 local SSDs or a pd-ssd) were out of capacity in every us-central1 zone"
+  },
+  {
+   "name": "oa-dsv41-oracle-1",
+   "machine_type": "a4-highgpu-8g",
+   "gpus": "8x NVIDIA B200 (SM100)",
+   "zone": "us-east1-b",
+   "spot": true,
+   "started": "2026-10-20T23:17:05Z",
+   "ended": "2026-10-21T00:06:15Z",
+   "hours": 0.82,
+   "ledger_cost_usd": 32.48,
+   "how_ended": "Google preempted and deleted the spot machine at 00:06:15Z, after all eight prompts had been dumped and uploaded; the manifest and fixtures were then built from the bucket copy",
+   "note": "us-central1-b had no a4-highgpu-8g spot capacity"
+  }
+ ],
+ "total_compute_usd": 36.85,
+ "other_costs_estimate": {
+  "bucket_storage": "about 1.05 TB standard in us-central1 (original plus TP8 copy), about $21 a month",
+  "egress": "537 GB us-central1 to us-east1, about $11",
+  "pd_ssd": "2 TB for 0.8 h, under $1",
+  "reserve_recorded_usd": 200
+ },
+ "software": {
+  "gpu_vm": {
+   "python": "3.12.3",
+   "torch": "2.13.0+cu129",
+   "cuda_runtime": "12.9",
+   "gpu": "NVIDIA B200",
+   "gpu_capability": [
+    10,
+    0
+   ],
+   "gpu_count": 8,
+   "packages": {
+    "tilelang": "0.1.12",
+    "safetensors": "0.8.0",
+    "transformers": "5.20.2",
+    "tokenizers": "0.23.3",
+    "numpy": "2.5.4",
+    "sympy": "1.14.0",
+    "triton": "3.7.1"
+   },
+   "nvidia_smi": [
+    "NVIDIA B200, 580.178.04, 183359 MiB",
+    "NVIDIA B200, 580.178.04, 183359 MiB",
+    "NVIDIA B200, 580.178.04, 183359 MiB",
+    "NVIDIA B200, 580.178.04, 183359 MiB",
+    "NVIDIA B200, 580.178.04, 183359 MiB",
+    "NVIDIA B200, 580.178.04, 183359 MiB",
+    "NVIDIA B200, 580.178.04, 183359 MiB",
+    "NVIDIA B200, 580.178.04, 183359 MiB"
+   ],
+   "nvcc": [
+    "Build cuda_12.9.r12.9/compiler.35813241_0"
+   ]
+  },
+  "image": "common-cu129-ubuntu-2404-nvidia-580-v20261019 (deeplearning-platform-release); g++ 13.3 added for TileLang's nvcc host compiler",
+  "cpu_vm": {
+   "image": "ubuntu-2404-lts-amd64",
+   "torch": "2.14.1+cpu",
+   "safetensors": "0.8.0",
+   "huggingface_hub": "2.2.0",
+   "rust": "stable (rustup minimal)"
+  }
+ },
+ "dump_tool": {
+  "path": "scripts/bench/deepseek-v41/oracle_dump.py",
+  "sha256": "265a3f208bc0f96adbe82bca63f1fc05454248cc3ae43d4330a0510718488243",
+  "run_from": "cd9ce6a9ce44bcb01212ba8f2b0d1172c01eaae1+uncommitted",
+  "patch": "one added line in a copy of inference/model.py keeps the indexer's masked scores (dump/model.py.diff); everything else is forward hooks and per-instance method wrappers"
+ },
+ "reference_files_sha256": {
+  "inference/README.md": "2834402823199ee24e9a42bdf36a0fc6daf94448f444cb062c042a057a798f1c",
+  "inference/config.json": "2e84f45cf1dac8c7fcbb200e96667d4b913275690668ed496f24c7747207a809",
+  "inference/convert.py": "035028340479145594a81d6084a8424e57363adf83c0d5983914783d95614d76",
+  "inference/engram.py": "11f35ecbead8150c35aa002b3d180ef290b05a25afe883a11884f94d476d3897",
+  "inference/examples/example.txt": "8456a2f1d5a15b7aa1f697567e34f79af0522fb694df7ac789dae9853fff165d",
+  "inference/examples/example_harmony.json": "44ae84a3cbd360b1b8d303ed4006756afb77e5d014c4abb7c61ff9b9a094f6ea",
+  "inference/examples/images/carrots.jpeg": "5df896a4a07e127281c60fc957f8b3d73f4735b3258a0bf762b4383557f8fa9a",
+  "inference/examples/images/corn.jpeg": "251fe7ad58f44db139a6af5ed489e027eca93ae60878b83f3e709c7d6f0112a1",
+  "inference/generate.py": "8668d67f7d108e32b90d50cb0d8606889ceb2219bfe95741d84e22f70768e9f0",
+  "inference/image_processor.py": "482759e3bcc4e9bb5ee582b244cc563f5d0e163d8b48dda91ebb7106e62f9272",
+  "inference/kernel.py": "1236c3507019ed176f5dba5e04bcea58867cf654818c6cf138ed4845398c2455",
+  "inference/model.py": "e5decd76fe70fd56ef2f10124d245c6f64fb6a0003cc9068a1d3182a168b8d2d",
+  "inference/requirements.txt": "be82bcd5775ccf8361ddd22cac53ef7b3b83434697fc3c61c75870450fb9437e",
+  "inference/run.sh": "91eddd7895f9fcd9bace53c21128c506e741e770f3c1a02464eff51f60401dfb",
+  "inference/vision.py": "5d49edc196a4ef22384abe76d35a40098cbe1e74b586c8f66a2edff4f076b26c",
+  "encoding/README.md": "a34a5ca98c65e5b5b2bedd693cc2e18e732fe50192723fb6937ae07219c23739",
+  "encoding/encoding.py": "13231c592e958fb39e2af6001dae69d90e7a36b265702b9b390236fb387599e2",
+  "encoding/test_encoding.py": "288b79c9ea7d018ae03b0dd3e54a8220cc3a2df1ff97f59907e75ed8112765d6",
+  "encoding/tests/test_input_1.json": "6a5a86694e47169c8f0c9243a7e24cc5db05447be0d3d3a9891034e913c518de",
+  "encoding/tests/test_input_2.json": "fd985cda88e8640b8e2404d8e659f7006cad204eb41f73c9e6662b1f218c01aa",
+  "encoding/tests/test_input_3.json": "4207613f15c79b95ad92074bdb8b2b81c5ce9cfdf15b7a67f58ded6bb3ec4fa5",
+  "encoding/tests/test_input_4.json": "4c3890a7bc042ec6396d98d024a39a73cdcffbe1d0253e852da0c35e65296f3e",
+  "encoding/tests/test_input_5.json": "88289b0aac8d650aa55c4ffeb392818fff3a0ac83c2293ddfd90546804d5e5c4",
+  "encoding/tests/test_output_1.txt": "91f79aa955717b414a82aabfb38bcd83ab5a998bd47db89d2a26338e8d3de550",
+  "encoding/tests/test_output_2.txt": "9fa162587b73ab9b315be5c88d433f9e0e681b4b36926952f289099ed9bc1dab",
+  "encoding/tests/test_output_3.txt": "cf2b801d0738c88abb691bf4a096000c0e0737faab8a54a4ba5243c5513a3711",
+  "encoding/tests/test_output_4.txt": "94433b68370dcc69fa61efc5011b5d0e28685e4716fee1ee77fbbfc0c9935b54",
+  "encoding/tests/test_output_5.txt": "4d673091746553d1cb2e40a3fc01dc09a7c53c40627096a3e49c97a269a81f64"
+ },
+ "smoke": "python model.py (the reference self-test: real FP8 and FP4 TileLang kernels, prefill plus 22 decode steps) and oracle_dump.py --self-test passed on one B200 before the full run",
+ "weights": {
+  "original": "gs://openagents-psionic-models/deepseek-ai/DeepSeek-V4.1-Flash-1017/1bae0e1/",
+  "original_manifest": "gs://openagents-psionic-models/deepseek-ai/DeepSeek-V4.1-Flash-1017/1bae0e1.manifest.json",
+  "original_bytes": 510311045295,
+  "original_files": 83,
+  "verified": "every file against the Hugging Face tree API: LFS SHA-256, or git blob ID for non-LFS files",
+  "tp8": "gs://openagents-psionic-models/deepseek-ai/DeepSeek-V4.1-Flash-1017/1bae0e1-tp8-fp4/",
+  "tp8_manifest": "gs://openagents-psionic-models/deepseek-ai/DeepSeek-V4.1-Flash-1017/1bae0e1-tp8-fp4.manifest.json",
+  "tp8_bytes": 537304180250
+ },
+ "weights_check_12373": {
+  "commit": "4383d409f435082337ce237a997efa9c3f3f71a0",
+  "tensors_opened": 96085,
+  "rows_dequantized": 96372,
+  "nan_values": 0,
+  "failures": [],
+  "shards_verified": 48,
+  "parity_cases": 19,
+  "parity_mismatches": 0,
+  "outputs": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/weights-check/"
+ },
+ "dumps": {
+  "bucket": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/dump/",
+  "manifest": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/dump/manifest.json",
+  "tensors": 18177,
+  "bytes": 455150888,
+  "fixtures_in_repo": "crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/oracle/ (decode-mode tensors of p1 to p4)"
+ },
+ "prompts": {
+  "e-engram": {
+   "prompt_tokens": 68,
+   "generated_text": "The the THE tHe. Hello hello",
+   "near_tie_count": 54,
+   "complete_answer_tokens": null,
+   "complete_answer_finished": null,
+   "decode_seconds": 1.86
+  },
+  "e-window-127": {
+   "prompt_tokens": 127,
+   "generated_text": " \"\"\"\n    Build a token map that comp",
+   "near_tie_count": 91,
+   "complete_answer_tokens": null,
+   "complete_answer_finished": null,
+   "decode_seconds": 2.07
+  },
+  "e-window-128": {
+   "prompt_tokens": 128,
+   "generated_text": "Map every token id to a distinct prime",
+   "near_tie_count": 94,
+   "complete_answer_tokens": null,
+   "complete_answer_finished": null,
+   "decode_seconds": 2.06
+  },
+  "e-window-129": {
+   "prompt_tokens": 129,
+   "generated_text": " every token id to a distinct prime,",
+   "near_tie_count": 90,
+   "complete_answer_tokens": null,
+   "complete_answer_finished": null,
+   "decode_seconds": 2.07
+  },
+  "p1-chat-thinking": {
+   "prompt_tokens": 41,
+   "generated_text": "We need answer two sentences. Need explain Rayleigh scattering. Concise. Ensure exactly two sentences. \"The sky appears blue because sunlight passing through the atmosphere is scattered",
+   "near_tie_count": 70,
+   "complete_answer_tokens": 122,
+   "complete_answer_finished": true,
+   "decode_seconds": 20.17
+  },
+  "p2-code": {
+   "prompt_tokens": 40,
+   "generated_text": "```rust\nfn fib(n: u32) -> Option<u128> {\n    let (mut a, mut b) = (0u128,",
+   "near_tie_count": 70,
+   "complete_answer_tokens": 268,
+   "complete_answer_finished": true,
+   "decode_seconds": 40.88
+  },
+  "p3-2k": {
+   "prompt_tokens": 2124,
+   "generated_text": "# `NgramHashState.forward` \u2014 return shape and image-span blocking\n\n## Return shape\n\nThe docstring says it returns `[B, L",
+   "near_tie_count": 2114,
+   "complete_answer_tokens": null,
+   "complete_answer_finished": null,
+   "decode_seconds": 11.55
+  },
+  "p4-20k": {
+   "prompt_tokens": 19989,
+   "generated_text": "# Engram table sharding in `convert.py` and `ParallelEngramEmbedding`\n\n## What `convert.py` does\n\nThe relevant branch is inside",
+   "near_tie_count": 6010,
+   "complete_answer_tokens": null,
+   "complete_answer_finished": null,
+   "decode_seconds": 61.82
+  }
+ },
+ "findings": [
+  "Exact gate ties occur in real prompts: the 6th and 7th biased expert scores are equal (margin 0.0) at some rows, for example p1 layers 2, 36 and 37. torch.topk picks among them in an unspecified order, so router comparisons must exclude exact ties and report near ties (run.json near_ties).",
+  "Cached decode and one-shot replay of the same fixed sequence differ in the reference itself: logits by about 1 to 5 in absolute value, residual streams by up to 2,048 at layer 39, and one argmax (e-window-127, g4) flips. Compare Psionic decode against reference decode and replay against replay; the decode-replay gap is a floor for tolerances, not a target.",
+  "All 40 layers run on every decode step; no layer is skipped after prefill (residual hashes exist for all 40 layers at all 33 steps)."
+ ],
+ "not_done": [
+  "A multi-token chunk after position 0 is not possible in the reference (decode paths assume one token), so the chunked mode prefills half the prompt and then steps one token at a time.",
+  "p4-20k skipped the chunked mode (about 10,000 single-token steps)."
+ ]
+}

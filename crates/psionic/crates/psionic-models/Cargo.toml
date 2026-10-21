@@ -43,11 +43,11 @@ psionic-runtime = { path = "../psionic-runtime" }
 safetensors = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+flate2 = "1.1"
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 tokenizers = { version = "0.23.1", default-features = false, features = ["onig"] }
 unicode-normalization = "0.1.24"
 
 [dev-dependencies]
-flate2 = "1.1"
 tempfile = "3"

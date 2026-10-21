@@ -42,8 +42,9 @@ model across devices or machines if one GPU can't hold it.
 Pinned revision: [`deepseek-ai/DeepSeek-V4.1-Flash-1017`][H4] at
 `1bae0e1088993b9b82de08f59de5be5a34e42170`. We read the `config.json`,
 `inference/config.json`, `model.safetensors.index.json`, the file listing, and
-the `inference/` reference sources at that revision on 2026-10-20. We didn't
-download the weights.
+the `inference/` reference sources at that revision on 2026-10-20. The
+weights are copied, verified, only to Cloud Storage
+([Oracle](#oracle-v0)).
 
 | Property | Value | Source |
 | --- | --- | --- |
@@ -106,7 +107,7 @@ passes.
 
 | Step | Work | Done when |
 | --- | --- | --- |
-| V0: Oracle | Pin the reference sources. On a rented 8-GPU machine, run `inference/generate.py` (TP8, FP4 experts) on a fixed prompt set and dump per-layer inputs and outputs for selected layers and tokens: embeddings, Engram output, each attention variant, indexer selections, Sinkhorn mixing, router ids and weights, expert outputs, logits. Store digests and small slices in the repository and full dumps in a bucket. | Golden fixtures cover layers 0, 1, 2, 14, 20, 21, and 39; the run's environment, revision, and costs are recorded; the VM is deleted. |
+| V0: Oracle | Pin the reference sources. On a rented 8-GPU machine, run `inference/generate.py` (TP8, FP4 experts) on a fixed prompt set and dump per-layer inputs and outputs for selected layers and tokens: embeddings, Engram output, each attention variant, indexer selections, Sinkhorn mixing, router ids and weights, expert outputs, logits. Store digests and small slices in the repository and full dumps in a bucket. | Done (#12371): golden fixtures cover layers 0, 1, 2, 14, 20, 21, and 39 and more, on four prompts and four edge cases; the run's environment, revision, and costs are recorded; both machines are gone. See [Oracle](#oracle-v0). |
 | V1: Protocol | DS1: integrate `deepseek-recipe` for V4.1 rendering, token encoding, reasoning, and tool-call parsing, with mock-backend tests. | Done (#12372): the checkpoint's five `encoding/tests` cases render byte for byte with the official token IDs, and mock-backend streams map onto Chat Completions. Protocol-qualified only; see [DS1](deepseek-support-plan.md#ds1-implementation-v41-protocol-adapter-12372). |
 | V2: Loader | Safetensors reader with exact FP8 and FP4 block layouts, tensor naming, and the 48-shard index. Stream-mode loading for machines that hold only part of the model. | Every tensor in the index loads with its shape and dtype; random-block dequantization matches the oracle's dequantized values. |
 | V3: CPU components | Rust references for RMSNorm, hyper-connection mixing (Sinkhorn), the three attention variants, the indexer and candidate selection, Engram hashing and lookup, the gate, routed and shared experts, the head. | Each matches its golden slice within a stated tolerance; router ids match exactly. |
@@ -398,10 +399,90 @@ in a `psionic.deepseek_v41.dequant_parity.v1` file: `cases` of
 `{"kind": "fp8_block", "tensor", "block_row", "block_col"}`,
 `{"kind": "row", "tensor", "row"}`, or `{"kind": "engram_row", "layer", "row"}`,
 each with `f32_bits`, the reference's `weight.float() * scale.float()` as
-IEEE-754 bit patterns in row-major order. The oracle run (#12371) writes it.
-Opening every tensor's bytes and the parity check run on that machine; until
-then they are listed under After-close checks in the
-[master delegation](../audits/2026-10-16-master-delegation.md#after-close-checks).
+IEEE-754 bit patterns in row-major order. The oracle run (#12371) wrote it
+(`scripts/bench/deepseek-v41/dequant_parity.py`, 19 cases). On the original
+files, the check opened all 96,085 tensors with 0 NaN values, matched all 48
+shard hashes, and had 0 mismatches in all 19 parity cases; both outputs are on
+#12373.
+
+## Oracle (V0)
+
+#12371 ran the checkpoint's own reference on eight B200 GPUs and recorded
+golden values. The weights never touched a workstation: a CPU machine copied
+the pinned revision from Hugging Face to Cloud Storage, and the GPU machine
+copied the converted files from there.
+
+| Item | Where |
+| --- | --- |
+| Original checkpoint, 83 files, 510,311,045,295 bytes, each verified against the Hugging Face tree API | `gs://openagents-psionic-models/deepseek-ai/DeepSeek-V4.1-Flash-1017/1bae0e1/` and `1bae0e1.manifest.json` beside it |
+| `convert.py --model-parallel 8 --expert-dtype fp4` output, 537,304,180,250 bytes | `gs://openagents-psionic-models/deepseek-ai/DeepSeek-V4.1-Flash-1017/1bae0e1-tp8-fp4/` and its manifest |
+| Dumps: 18,177 tensors, 455 MB, a manifest with each tensor's shape, dtype, and SHA-256 | `gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/dump/` |
+| Repository fixtures: decode-mode tensors of the four main prompts, first and last 64 values of each, small tensors whole; 5.1 MB, 2.0 MB gzip-compressed | [`testdata/deepseek_v41/oracle/`](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/oracle/), read by `psionic_models::deepseek_v41_oracle` |
+| Report: machines, hours, costs, driver, CUDA, packages, reference file hashes | [`report.json`](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/oracle/report.json) |
+| Tools | [`scripts/bench/deepseek-v41/`](../../scripts/bench/deepseek-v41/): `weights_vm.sh`, `oracle_vm.sh`, `oracle_dump.py`, `oracle_manifest.py`, `dequant_parity.py`, `weights_manifest.py` |
+
+**Prompts.** Four main prompts, each greedy for 32 tokens: a short chat
+with thinking on (41 tokens), a Rust code question (40), a 2,124-token
+prompt, and a 19,989-token prompt (past 2,048 × 8 = 16,384, so the layer-20
+candidate selection and the indexers select). The checkpoint's `encoding/`
+renders them. Edge cases: the 2k prompt cut to 127, 128, and 129 tokens with
+8 decode steps (window ring and odd and even ratio-2 groups), and an Engram
+normalization prompt. The first two prompts also ran to the end-of-sentence
+token for a complete answer: 122 and 268 tokens.
+
+**Modes.** `decode` is the reference's cached decode. `replay` runs the
+fixed sequence (prompt plus the decode run's tokens) in one prefill, with full
+logits at every position from the last prompt token on, for teacher-forced
+comparison. `chunked` prefills half the prompt, then steps one token at a
+time; the reference can't take a multi-token step after position 0.
+
+**Recorded at five positions** (first token, last prompt token, and the
+steps whose input is generated tokens 1, 2, and 32): embeddings; Engram input,
+hash ids, rows, and output at layers 1 and 14; hyper-connection input,
+pre/post/comb in both halves, collapsed and expanded streams at layers 0, 1,
+2, 14, 20, 21, and 39; attention input and output at layers 0–3, 8, 9, 14,
+15, 20, 21, 24, 25, and 39 (each compress mode and each KV source with the
+layer that reuses it); compressor latents at 2, 14, and 20; selected indices
+and masked scores at all eight index sources, and layer 20's candidate blocks;
+gate input, scores, biased scores, ids, and weights at layers 0, 2, 14, 20,
+and 39; one routed expert at layers 2 and 20 with its FP8 activation values
+and scales; the shared expert and MoE outputs; the final norm and full
+logits. Every step also records router ids for every token and layer, the
+SHA-256 of every layer's output, and selection margins.
+
+**Precision and ties.** The fixture manifest's `precision` and `tie_rules`
+state each boundary's dtype, quantization, and accumulation, from
+`inference/model.py` and `kernel.py`. Two findings set how comparisons work:
+
+- Exact gate ties occur on real prompts (the 6th and 7th biased scores equal,
+  for example in the chat prompt at layers 2, 36, and 37). `torch.topk`'s order
+  among them is unspecified, so router checks must skip exact ties and report
+  near ties; each prompt's `near_ties` lists rows within 1e-4.
+- Cached decode and one-shot replay of the same tokens differ in the
+  reference itself: logits by about 1 to 5, and one argmax flips (the 127-token
+  case, generated token 4). Compare Psionic's decode with the reference's
+  decode, and replay with replay. The gap is a floor for tolerances.
+
+**Is V4.1 an encoder and decoder?** No. The reference has one block type for
+all 40 layers (`model.py` lines 1206–1207), and `Transformer.forward` runs
+every layer on every call, prefill or decode (lines 1264–1270; the dumps
+have output hashes for all 40 layers at all 33 steps). Layer 20's compressor
+reads layer 20's own attention input: `Block.forward` collapses the four
+streams that layer 19 produced with `hc_pre`, applies `attn_norm`, and calls
+attention (lines 983–987), which passes that input to the compressor (lines
+747–748). At ratio 1 the compressor has no gate: `norm(wkv(x))` (lines
+461–462). The dumps record that input as `layers.20.attn.in`. What is true is
+narrower: layers 21–39 read layer 20's compressed KV and candidate blocks
+(lines 749 and 764, 570–576) instead of compressing their own, just as layers
+3–7, 9–13, and 15–19 read layers 2, 8, and 14. Every layer still computes its
+own queries and sliding-window KV. A stage boundary inside 20–39 must carry
+layer 20's compressed KV and candidates, and the latest indexer selection.
+
+Costs, from the guard's ledger: `n2d-highmem-96` on demand, 0.80 h, $4.37;
+`a4-highgpu-8g` spot in us-east1-b, 0.82 h, $32.48 (no us-central1 capacity;
+Google preempted it after every prompt was uploaded). Total compute
+$36.85, plus storage of about $21 a month for both copies and about $11 of
+cross-region transfer.
 
 ## Pylon gaps for this model
 

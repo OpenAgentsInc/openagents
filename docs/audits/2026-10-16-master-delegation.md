@@ -541,6 +541,10 @@ The status lines below summarize each issue and its comments. Open the issue for
   the dequantized rows, every shard hash matches the pin, and every parity case
   has 0 mismatches. Post the JSON on #12373. Without the oracle file, run it
   without `--oracle` first and add parity when #12371 writes the file.
+  **Done (2026-10-20):** on `oa-dsv41-weights-1` (the original files from
+  Hugging Face on a Cloud disk), built from `4383d409f4`: 96,085 tensors open,
+  0 NaN, 0 failures, all 48 shard hashes match, and 19 of 19 parity cases have
+  0 mismatches. Both JSON outputs are on #12373.
 
 - #12335: After the web deploy, use a dedicated test-admin account to open analytics, attribution, and Drive access with `?ui=gpui`. Confirm reports render, Drive entries can be added and removed, and a non-admin receives 404. Capture the pages on a hardware WebGPU browser; software captures here were blank for baseline Traces as well. Never use the owner’s account.
 
