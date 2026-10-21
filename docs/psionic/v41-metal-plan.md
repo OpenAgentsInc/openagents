@@ -1,8 +1,9 @@
 # DeepSeek-V4.1 stages on Apple Metal: plan and estimate
 
-Status: plan, written 2026-10-21 for
-[#12418](https://github.com/OpenAgentsInc/openagents/issues/12418). The port
-itself is [#12420](https://github.com/OpenAgentsInc/openagents/issues/12420). Nothing here is built yet.
+Status: M1 to M5 built (2026-10-21, #12420); M6 qualification pending.
+Written for [#12418](https://github.com/OpenAgentsInc/openagents/issues/12418);
+the port is [#12420](https://github.com/OpenAgentsInc/openagents/issues/12420).
+[Progress](#progress) records what landed and its evidence.
 
 A V4.1 group can now mix GPU types (#12418): each stage is checked
 against its own manifest entry, and a small GPU can keep its routed experts
@@ -93,6 +94,83 @@ owner's Mac, and the group run needs only the cloud stages it already uses.
 - **Wake and power.** A Mac stage that sleeps drops out of the group; the
   stage must hold a power assertion while it serves, as the desktop app does
   for hosts.
+
+## Progress
+
+### How the port is built
+
+- **One launch for one launch.** The kernels in
+  `crates/psionic/crates/psionic-backend-metal/src/kernels/v41/` port
+  `v41_block_matvec.cu`, `v41_mix.cu`, `v41_attention.cu`, and
+  `v41_stage.cu` with the same grids, thread roles, and floating-point order.
+  CUDA warp shuffles map to SIMD-group shuffles of the same width (32), so
+  every reduction adds in the CUDA kernel's order.
+- **Kernel arguments are GPU addresses.** Each kernel takes one struct of
+  Metal 3 GPU addresses and scalars, so every Rust wrapper in
+  `psionic_backend_metal::v41` keeps its CUDA counterpart's signature, with
+  `V41Buffer` for `CudaBuffer` and `V41Submission` for `CudaSubmission`. The
+  shapes, configuration types, and host models are the CUDA backend's,
+  re-exported, and the CUDA parity tests are ported almost unchanged.
+- **Recorded dispatches replace CUDA graphs.** A submission records
+  dispatches; `V41Metal::run` encodes recordings, each repeated a number of
+  times, into one command buffer with a buffer barrier between dispatches,
+  and waits once. `V41MetalStage` records its per-token body and its tail
+  once and replays them: a step is one command buffer and one wait, and the
+  token index lives in a device counter, as on CUDA.
+- **Threadgroup memory.** Apple GPUs give a threadgroup 32 KB. The dense
+  product stages 256 columns at a time instead of 512, and the sparse
+  attention reads value rows from memory instead of staging each 64-slot
+  block; neither changes an operation's order.
+
+### Precision on Apple GPUs
+
+- **No double precision.** `exp` and `log1p` are float-float (about 47 bit)
+  implementations. Their rounded results equal the host's
+  `(x as f64).exp() as f32` and `ln_1p` for every float input the kernels
+  can see: 2,239,889,413 inputs of `exp` and 2,130,706,434 of `log1p`,
+  checked on the GPU in about two seconds each by `v41::checks`. The 12 and
+  34 inputs where float-float can't decide the rounding are listed in
+  `common.metal` with the host's result.
+- **`cos` and `sin`** come from a host table of `cos((double)(float(p) * f))`
+  rounded to float, one row per position up to the stage's context, which is
+  what the CUDA kernels compute on the device.
+- **The sampler's double sums** use a software binary64 (`sd_add`,
+  `sd_mul`) that rounds exactly as IEEE binary64, in the CUDA kernel's tree
+  and prefix order. 120 seeded draws at vocabularies of 5,000 and 129,280
+  equal a host model of that order token for token.
+- **Subnormals flush to zero.** Apple GPUs flush float32 subnormals, which
+  the CUDA kernels keep. Decoders use exact tables; a UE8M0 scale of 2^-127
+  multiplies in two exact steps, so a normal product equals CUDA's. A result
+  below 2^-126 is zero on Metal. The host models with subnormals flushed
+  (`v41_block_matvec_host_ftz`, `v41_swiglu_host_ftz`) describe this; it
+  shows only in synthetic edge cases, such as a SwiGLU gate below -87.
+
+### G3 on the M5 Max
+
+Every ported CUDA parity test passes with the tolerances fixed before the
+first CUDA run, and every kernel equals its host model bit for bit:
+
+| Kernels | Tests | Result |
+| --- | --- | --- |
+| M1 block matvecs, FP8 quantizer | 8 | real rows within 0.0074 of the bound, BF16 equal to the CPU in 160 of 160, the expert rows equal to the reference's `fp4_gemm`, activation codes equal to `act_quant` |
+| M2 mixes, Engram, routing | 15 | real mixes within 0.0008 of the bound; collapse and expand equal to the CPU at every recorded layer; router ids equal to the CPU and the oracle at layers 0, 2, 14, 20, and 39; Engram rows equal to the oracle's |
+| M3 attention | 14 | RoPE at 20,952 head cases within 0.35 of the bound; 316 window tokens and 26 compressed cases equal to the CPU's BF16 output; real compressor latents at layers 2 and 20 equal to the CPU; selections equal to the oracle's at all eight index sources (largest 20,021 positions); a 600-token prefill through sources 2 and 20 equal to the CPU stage by stage |
+| M4 stage | 9 | the synthetic 40-layer stage within 0.013 of the W1 policy against the CPU stage, greedy tokens equal; five split stages equal the unsplit stage bit for bit; a decode step is one command buffer and one wait |
+
+### Worker and Pylon
+
+- `psionic-v41-stage --backend metal` (the `metal` feature) announces
+  runtime `psionic-v41-stage/1+metal`, device class `metal-apple<N>`, and
+  profile `metal-device-apple<N>`, and speaks the CUDA wire. Split Metal
+  groups answer as the unsplit Metal stage, greedy and seeded.
+- `psionic-v41-stage chain --capture DIR` keeps a CUDA chain's last-stage
+  messages, logits, and tokens; `psionic-v41-stage replay` feeds them to the
+  Metal stage and compares, so the Metal stage is checked against the CUDA
+  stage on identical inputs.
+- `pylon cloud up quad-mac --local-worker PATH --local-weights DIR
+  --transport direct` runs layers 0-38 on one g4-standard-192 and layers
+  38-40 with the sampler on this Mac. The stage before the Mac forwards the
+  Mac's link port back over its ssh session.
 
 ## Issue
 
