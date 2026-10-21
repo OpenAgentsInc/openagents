@@ -342,7 +342,9 @@ fn finished_text(body: &Value) -> Result<String, String> {
     match choice["finish_reason"].as_str() {
         Some("stop") => {}
         Some("length") => {
-            return Err("model reached its output token limit before finishing".into());
+            return Err(request_limit(
+                "model reached its output token limit before finishing",
+            ));
         }
         Some("tool_calls" | "function_call") => {
             return Err("model requested a tool instead of a final text answer".into());
@@ -471,6 +473,9 @@ mod tests {
         }
         let body = json!({"choices": [{"finish_reason": "stop", "message": {"content": "  2\n", "reasoning_content": "private thought"}}]});
         assert_eq!(finished_text(&body).unwrap(), "  2\n");
+        let truncated =
+            json!({"choices":[{"finish_reason":"length","message":{"content":"partial"}}]});
+        assert!(request_limit_reason(&finished_text(&truncated).unwrap_err()).is_some());
     }
 
     #[tokio::test]
