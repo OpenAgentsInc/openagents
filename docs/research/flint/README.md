@@ -30,6 +30,7 @@ cards, and the SGLang kit's README were fetched and read as data.
 - [(c) Hardware fit](#c-hardware-fit)
 - [(d) Fit with Coder and Microcoder](#d-fit-with-coder-and-microcoder)
 - [(e) Steps to put Flint on Pylons](#e-steps-to-put-flint-on-pylons)
+- [Local measurements on this Mac](#local-measurements-on-this-mac)
 - [Open questions](#open-questions)
 
 ## Verdict
@@ -39,6 +40,10 @@ cards, and the SGLang kit's README were fetched and read as data.
   and Pylon's llama.cpp lane starts every model with a 4,096-token context
   and a 512-token default output cap, which a reasoning model that often
   thinks for thousands of tokens overruns.
+- **Measured on the M5 Max:** with the pull-request build, llama.cpp decodes
+  Flint at 83–95 tokens per second end to end (126–129 in `llama-bench`),
+  and Recursive's `rec` at 109–140. See
+  [Local measurements on this Mac](#local-measurements-on-this-mac).
 - **Shortest path:** Pylon's managed llama.cpp lane with Recursive's Q4_1
   GGUF on the Mac M5 Max (128 GB). Build `llama-server` from the pinned
   pull-request commit, add a Flint text profile with a larger context, a
@@ -393,7 +398,7 @@ Add 1–3 GB of compute buffers to each. Each routed-expert layer is about
 
 | Machine | Fits? | Format and placement | Expected decode, one stream |
 | --- | --- | --- | --- |
-| Mac M5 Max, 128 GB (`christohersmbp2`) | Yes, with the full context | Q4_1 GGUF on Metal, all layers on the GPU | Estimate 80–150 tokens per second with llama.cpp at short context. The M5 Max has about twice the M4 Pro's memory bandwidth, and `rec`'s chart puts llama.cpp on an M4 Pro at roughly 50–90. |
+| Mac M5 Max, 128 GB (`christohersmbp2`) | Yes, with the full context | Q4_1 GGUF on Metal, all layers on the GPU | Measured: 83–95 tokens per second end to end with llama.cpp and 109–140 with `rec`; see [Local measurements](#local-measurements-on-this-mac). The estimate was 80–150. The M5 Max has about twice the M4 Pro's memory bandwidth, and `rec`'s chart puts llama.cpp on an M4 Pro at roughly 50–90. |
 | Other Apple silicon, 48 GB or more | Yes | Q4_1 on Metal | Recursive's 48 GB minimum; M4 Pro estimate 50–90 tokens per second with llama.cpp |
 | Apple silicon under 48 GB | No | — | — |
 | RTX 4080 16 GB, 126 GB RAM (`coderos-4080-net`) | Only with offload | Q4_1 with about half the expert layers in system memory (`--n-cpu-moe`); NVFP4 brings no gain on Ada | Estimate 45–65 tokens per second, near the Nemotron 30B-A3B result. It can't share the GPU with Gemma and Clef without pausing them. |
@@ -511,10 +516,176 @@ Each step is sized to be one issue. None are filed.
 12. **Defer native Psionic.** Open a tracking issue for (b) after #30928
     merges and steps 1–9 show that Flint is worth a native lane.
 
+## Local measurements on this Mac
+
+Measured on 2026-10-21 on the owner's MacBook Pro, the machine that also runs
+the "Mac M5 Max (network lane)" Pylon. That Pylon was left running and
+untouched. This section replaces the Mac estimate in
+[(c)](#c-hardware-fit) with measurements, and it answers the first open
+question: llama.cpp at the pinned commit does return reasoning separately.
+
+### Setup
+
+| Item | Value |
+| --- | --- |
+| Machine | MacBook Pro `Mac17,6`, Apple M5 Max (18 CPU cores: 6 Super and 12 Performance), 128 GB unified memory, macOS 26.4 (25E246) |
+| Background load | Other agents' Rust builds and Chrome ran throughout. Load average was 3 to 10, and the GPU showed 37% utilization from other processes while our servers sat idle. The Pylon's two Psionic servers were idle but held about 22 GB of memory. |
+| Q4_1 GGUF | `RecursiveSI/flint-int4-gguf` at `9c47151036bc2c34331142dda04488bceab2bc9f`, `flint-int4-q4_1.gguf`, 25,992,966,976 bytes, SHA-256 `43c07baccdba42eb7528a9630ee15699b1942c297291dc1b39a061f508ee1a4b` (checked locally) |
+| MLX INT4 | `RecursiveSI/flint-int4` at `3b93f9053b530488405ae9fca51d4900d6ce21f0`, fetched by `rec pull` (22.6 GB). `rec` verified the set; its digest is `fdc85248ad77a0fa9fbf0abda8b1525bea8ee74c11ada2ec95eb66113353d677`. |
+| llama.cpp | `alexey-rsi/llama.cpp` at `1b44e30775dcb2f93952116b05f89e5bd797fb00` (PR #30928), plus a cherry-pick of `9febe63d5a379f8568bae7116a5b2ba844a4a4a6` (#30929, Jinja `\x` escapes), which the branch lacks. The local head is `5780a092`, which llama-bench reports as build 11798. |
+| llama.cpp build | `cmake -B build -DGGML_METAL=ON -DGGML_ACCELERATE=OFF -DGGML_BLAS=OFF -DLLAMA_CURL=OFF -DLLAMA_BUILD_TESTS=OFF -DCMAKE_BUILD_TYPE=Release`. Accelerate is off because the macOS 26.5 SDK headers fail to compile `ggml-cpu.c` with it (`uuid_string_t` is undefined). Metal does the model's work, so this doesn't affect GPU results. |
+| `rec` | v0.1.0. The release binary `rec-darwin-arm64` has SHA-256 `22f08e8505e5ace84475c23eefffd116b4b201ad7e796aaea76d223f0e3862de`, from source commit `e53663b262af4cb1ca498e596ca8b1a2d79e0800`. Engine: MLX on Metal, bundled runtime SHA-256 `09063110dfe90c36bc40a518a64c3e9110387d449adf000be85023cfc8d46de1`. |
+
+Every third-party build, download, and benchmark script ran as the normal
+user from a scratch folder, never as root. At the owner's request, `rec` was
+then installed for normal use with its own installer (`install.sh`, read
+first, pinned with `REC_VERSION=0.1.0`). The installer put `rec` in
+`~/.local/bin` and its data in `~/.local/share/rec`. It also appended a PATH
+line to `~/.zshrc`, although `~/.local/bin` was already on PATH.
+
+### Method
+
+- **Kernel throughput:** `llama-bench -ngl 99 -fa 1 -r 3`, with prompt
+  processing at 512, 2,048, and 16,384 tokens and decode of 128 and 512
+  tokens at context depths 0, 2,048, and 16,384. It runs one sequence and
+  doesn't sample.
+- **End to end:** the same OpenAI-compatible client against both servers.
+  It streams one request at a time, with the chat template applied by the
+  server and the card's sampling (temperature 1.0, top-p 0.95, top-k 20; for
+  llama.cpp, min-p 0). Prompts were short (32 tokens), medium (1,641
+  tokens), and long (14,950 tokens), built from llama.cpp's own C++ source.
+  Each size had one warm-up and three measured runs with up to 512 output
+  tokens, and each run's prompt starts with a unique tag so no prefix cache
+  helps.
+  - Time to first token is when the first reasoning or answer text arrives.
+  - Decode rate is output tokens minus one, divided by the time after the
+    first token.
+  - Prompt rate is prompt tokens divided by time to first token.
+- **llama-server:** `llama-server -m flint-int4-q4_1.gguf --alias flint -ngl all -c 32768 -np 1 -fa on -ctk f16 -ctv f16 --jinja --temp 1 --top-p 0.95 --top-k 20 --min-p 0 --host 127.0.0.1 --port 18431`.
+- **rec:** `rec serve` on its default `127.0.0.1:11500` with the default
+  262,144-token context.
+- Peak memory comes from `/usr/bin/time -l` for llama.cpp and from
+  `footprint` for `rec`'s engine process. Power wasn't measured, because
+  `powermetrics` needs root.
+
+### Results
+
+llama-bench, Q4_1 on Metal (tokens per second, mean and standard deviation
+of three runs):
+
+| Test | First run (load 5–8) | Second run (load 8–10) |
+| --- | --- | --- |
+| Prompt, 512 tokens | 3,653 ± 7 | — |
+| Prompt, 2,048 tokens | 3,497 ± 13 | — |
+| Prompt, 16,384 tokens | 2,449 ± 180 | — |
+| Decode 128 at depth 0 | 126.4 ± 0.6 | 113.9 ± 15.6 |
+| Decode 512 at depth 0 | 128.8 ± 0.8 | — |
+| Decode 128 at depth 2,048 | 113.6 ± 3.3 | 90.4 ± 4.1 |
+| Decode 128 at depth 16,384 | 100.2 ± 1.8 | 80.1 ± 6.9 |
+
+End to end, medians of three runs:
+
+| Prompt | Engine | Time to first token | Prompt tokens/s | Decode tokens/s |
+| --- | --- | --- | --- | --- |
+| Short (32) | llama-server, Q4_1 | 0.10 s | 316 | 87 |
+| Short (32) | `rec`, MLX INT4 | 0.35 s | 92 | 125 |
+| Medium (1,641) | llama-server, Q4_1 | 0.99 s | 1,649 | 83 |
+| Medium (1,641) | `rec`, MLX INT4 | 1.11 s | 1,481 | 140 |
+| Long (14,950) | llama-server, Q4_1 | 10.39 s | 1,439 | 95 |
+| Long (14,950) | `rec`, MLX INT4 | 8.82 s | 1,695 | 109 |
+
+Individual end-to-end decode runs ranged from 78 to 96 tokens per second for
+llama-server and from 106 to 152 for `rec`. A separate llama-server check
+with 512 forced tokens gave 84 to 124 tokens per second with sampling and 76
+to 88 with greedy decoding. That spread is too wide to blame on sampling
+cost; it follows the machine's other load.
+
+Peak memory:
+
+- llama-server: 30.4 GB maximum resident set, which includes the 26 GB
+  memory-mapped model, and a 4.9 GB peak footprint without the mapped file.
+- llama-bench: 27.3 GB maximum resident set.
+- `rec`: 24 GB physical footprint after the runs, 23 GB of it in GPU
+  buffers, with a 28 GB peak.
+
+Disk use: 26.0 GB for the GGUF and 22.6 GB for the MLX weights. Free space
+stayed above 195 GiB throughout.
+
+### Quality checks
+
+Five tasks, one sample each, at the card's sampling with up to 16,384
+output tokens. The first four are coding tasks whose code ran against fixed
+tests in a separate `python3 -I` process. The fifth is a scheduling
+question whose answer is 38.
+
+| Task | llama-server, Q4_1 | `rec`, MLX INT4 |
+| --- | --- | --- |
+| Merge intervals | Pass, 454 tokens, 3.7 s | Pass, 224 tokens, 1.4 s |
+| Fix a buggy binary search | Pass, 781 tokens, 6.6 s | Fail, 510 tokens, 3.7 s: fixed `lo` but left `hi = mid - 1` with an exclusive bound |
+| Roman numerals, both directions (all 3,999 round trips) | Pass, 1,097 tokens, 9.7 s | Pass, 717 tokens, 6.0 s |
+| O(1) LRU cache | Pass, 1,303 tokens, 12.1 s | Pass, 505 tokens, 3.8 s |
+| Scheduling question | Pass (38), 1,175 tokens, 12.0 s | Pass (38), 848 tokens, 6.4 s |
+
+Both servers separated reasoning cleanly. Every answer came back with
+`finish_reason: stop`, reasoning in `reasoning_content`, and no `<think>`
+tags in `content`. Answers were short and in the requested format: one code
+block, or a two-sentence explanation ending with the `ANSWER:` line. With
+one sample per task, the single `rec` failure says nothing about a
+difference between the two quantizations.
+
+### What the numbers show
+
+Facts:
+
+- On this M5 Max, `rec` decoded at 109–140 tokens per second (medians) and
+  llama.cpp at 83–95 through its server. llama.cpp's sampling-free
+  `llama-bench` reached 126–129 tokens per second at empty context in the
+  quieter run.
+- Under the same client, `rec` was 1.16 to 1.7 times as fast as
+  llama-server at decode. At prompt processing it was slower for short
+  prompts and about 18% faster at 15K tokens. llama.cpp's
+  `llama-bench` prompt rates (2,400–3,650 tokens per second) are higher than
+  either server's end-to-end rate.
+- llama.cpp decode fell by about 20% from empty context to 16K tokens.
+
+Inference and estimates:
+
+- Recursive's claim is more than 125 tokens per second on an M4 Pro,
+  averaged over a 128K-token session. This Mac reached that figure with
+  `rec` at short and medium prompts but not at 16K, and it has roughly twice
+  the M4 Pro's memory bandwidth (Apple's M4 Pro figure is 273 GB/s; we
+  didn't measure this machine's). So this run doesn't confirm the M4 Pro
+  claim. A test on an M4 Pro, or on a quiet machine across a 128K session,
+  would.
+- `rec`'s README claims 1.4–2.6 times llama.cpp; we saw 1.2–1.7 times at up
+  to 16K tokens, which is consistent with the low end. The PR notes that
+  llama.cpp's Flint path loses 10–30% to MoE activation scaling until a
+  follow-up lands.
+- Background load cost llama.cpp 10–20% between the two llama-bench runs, so
+  quiet-machine numbers would be higher for both engines.
+- For Pylon: the Mac serves Flint at about 85–125 tokens per second through
+  llama.cpp, which fits the plan in [(e)](#e-steps-to-put-flint-on-pylons).
+  At that rate, Pylon's 90-second deadline covers roughly 7,500–11,000
+  tokens.
+
+### What's left on this Mac
+
+- `rec` 0.1.0 stays installed for the owner (`~/.local/bin/rec`, data and
+  the 22.6 GB model in `~/.local/share/rec`). Its server was left running on
+  `http://127.0.0.1:11500/v1`, an OpenAI-compatible endpoint whose key
+  `rec auth token` prints. Stop it with `rec stop`; remove everything with
+  `rec uninstall`.
+- The Q4_1 GGUF (26.0 GB) and the llama.cpp build stay in the agent scratch
+  folder for the Pylon steps in (e). llama-server was stopped.
+- The `mlx-lm` PR branch (#1998) was installed in a scratch virtual
+  environment but not measured, because `rec` already covers the MLX INT4
+  weights.
+
 ## Open questions
 
-- Does `llama-server` at the pinned commit return `reasoning_content` and
-  parse Flint's tool calls through its generic template handling?
+- Does `llama-server` at the pinned commit parse Flint's tool calls? It does
+  return `reasoning_content` correctly; see
+  [Local measurements on this Mac](#local-measurements-on-this-mac).
 - Does llama.cpp's NVFP4 path run correctly on Ada (the RTX 4080 and L4), or
   only on Blackwell? Recursive lists only Blackwell cards as tested.
 - How much does llama.cpp's MoE activation scaling slow Flint on Metal,
