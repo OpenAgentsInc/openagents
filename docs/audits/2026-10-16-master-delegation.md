@@ -485,6 +485,11 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12417: on the next `web.sh stage`, confirm the web image builds in about
+  15 minutes or less, its log prints `oa-module-cache NAME: reused` for
+  modules the commit didn't touch, and the staging smoke passes. Then
+  confirm `/att/release.json` and `/vault/release.json` report the deployed
+  commit, now read at run time.
 - #12426: on a quiet Mac, start `rec` briefly, run the three scratch tasks
   in `docs/coder/measurements/2026-10-21-microcoder-flint-pylon.md` with
   `--provider openai-compatible --model flint`, add the rows, then
