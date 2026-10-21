@@ -281,12 +281,11 @@ def working(html):
 def ask(base, question, stream=False):
     """Ask on a fresh visitor; returns (answer text, streamed?, error)."""
     site = Site(base)
-    # A visitor who isn't signed in starts a chat at /new (/ is the
-    # landing page for them).
+    # A chat starts at /chat (/ is the Grid homepage, #12413).
     # The HTML chat's form (the GPUI chat may be the default, #12226).
-    home = site.get("/new?ui=html")
+    home = site.get("/chat?ui=html")
     if home.status != 200 or "oa_visitor" not in site.cookies:
-        return None, False, f"GET /new {home.status}, visitor cookie {'oa_visitor' in site.cookies}"
+        return None, False, f"GET /chat {home.status}, visitor cookie {'oa_visitor' in site.cookies}"
     fields = hidden_fields(home.text)
     chat = str(uuid.uuid4())
     form = {"q": question, "request_id": chat, "csrf": fields.get("csrf", ""),
@@ -631,11 +630,20 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
     site = Site(base)
     want = (lambda name: True) if not only else (lambda name: any(name.startswith(o) for o in only))
 
-    # Check the default view separately from the supported HTML pages.
+    # / is the Grid homepage and /home moves there (#12413); a chat starts
+    # at /chat. Check the default chat view separately from the HTML page.
     if want("home"):
+        grid = Site(base).get("/", cookies=False)
+        record("home: / is the Grid homepage", grid.status == 200
+               and 'id="everglade-canvas"' in grid.text and "data-ambient" in grid.text
+               and 'id="pylons-panel"' in grid.text, f"{grid.status}")
+        moved = Site(base).get("/home?chat=x", cookies=False)
+        record("home: /home moves to /", moved.status == 308
+               and moved.location() in ("/?chat=x", base.rstrip("/") + "/?chat=x"),
+               f"{moved.status} {moved.location()}")
         visitor = Site(base)
         visitor.cookies.clear()
-        default = visitor.get("/")
+        default = visitor.get("/chat")
         features = re.search(r'<meta name="openagents-features" content="([^"]*)"', default.text)
         if features and "gpui_default" in features.group(1).split(","):
             record("home: default GPUI page loads", default.status == 200
@@ -658,7 +666,7 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
                        asset.status == 200 and expected is not None
                        and hashlib.sha256(asset.body).hexdigest() == expected.group(1),
                        f"{asset.status}, {len(asset.body)} bytes")
-        fallback = site.get("/?ui=html")
+        fallback = site.get("/chat?ui=html")
         chat_form = re.search(r'<form(?=[^>]*id="chat-form")(?=[^>]*action="/chat")[^>]*>.*?</form>',
                               fallback.text, re.S)
         # The composer keeps its CSRF input outside the form, linked by form="chat-form".
@@ -672,7 +680,7 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
                and 'id="chat-input"' in fallback.text
                and 'id="gpui-shell"' not in fallback.text
                and 'id="gpui-mount"' not in fallback.text, f"{fallback.status}")
-        home = site.get("/new?ui=html")
+        home = site.get("/chat?ui=html")
         chips = re.findall(r'<form class="oa-suggestion-form"[^>]*>.*?</form>', home.text, re.S)
         questions = [hidden_fields(c).get("q", "") for c in chips]
         record("home: loads", home.status == 200, f"{home.status}")
@@ -990,7 +998,7 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
         if session and want("signed-in"):
             if session.startswith("sess_"):
                 account.cookies["oa_cloud_session"] = session
-            home = account.get("/")
+            home = account.get("/chat")
             record("signed in: composer selectors render",
                    'id="composer-row"' in home.text and "/composer/row/project" in home.text)
             keys = account.follow("/settings/api-keys")
