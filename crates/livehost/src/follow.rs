@@ -33,6 +33,8 @@ pub struct Content {
     pub manifest: Manifest,
     pub pointer: Pointer,
     files: HashMap<String, Arc<[u8]>>,
+    /// Handler components by name: their hash and bytes.
+    handlers: HashMap<String, (String, Arc<[u8]>)>,
 }
 
 impl Content {
@@ -42,6 +44,13 @@ impl Content {
 
     pub fn text(&self, path: &str) -> Option<&str> {
         std::str::from_utf8(self.bytes(path)?).ok()
+    }
+
+    /// The handler component `name`: its content hash and bytes.
+    pub fn handler(&self, name: &str) -> Option<(&str, &[u8])> {
+        self.handlers
+            .get(name)
+            .map(|(hash, bytes)| (hash.as_str(), &bytes[..]))
     }
 }
 
@@ -148,6 +157,7 @@ impl Follower {
             let mut hashes: Vec<String> = manifest
                 .objects
                 .values()
+                .chain(manifest.handlers.values().map(|built| &built.object))
                 .filter(|hash| !objects.contains_key(*hash))
                 .cloned()
                 .collect();
@@ -167,11 +177,22 @@ impl Follower {
             .iter()
             .filter_map(|(path, hash)| Some((path.clone(), objects.get(hash)?.clone())))
             .collect();
+        let handlers = manifest
+            .handlers
+            .iter()
+            .filter_map(|(name, built)| {
+                Some((
+                    name.clone(),
+                    (built.object.clone(), objects.get(&built.object)?.clone()),
+                ))
+            })
+            .collect();
         Ok(Content {
             manifest_hash: pointer.manifest.clone(),
             manifest,
             pointer,
             files,
+            handlers,
         })
     }
 }

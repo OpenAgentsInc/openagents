@@ -10,7 +10,9 @@ publish.workspace = true
 default = ["host"]
 # The host, deploy tool, and benchmark. Without it the crate is the light
 # follower a site links to read content from a manifest (`follow`).
-host = ["dep:axum", "dep:brotli", "dep:clap", "dep:flate2", "dep:wasmtime", "dep:wasmtime-wasi"]
+host = ["components", "dep:axum", "dep:brotli", "dep:clap", "dep:flate2"]
+# Handler components for a site that embeds them (`site`), without the host.
+components = ["dep:wasmtime", "dep:wasmtime-wasi"]
 
 [[bin]]
 name = "livehost"

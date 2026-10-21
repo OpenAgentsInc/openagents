@@ -37,6 +37,8 @@ key="${LIVEHOST_KEY:-$HOME/work/.secrets/livehost-openagents-staging.key}"
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
 export CARGO_TARGET_DIR="${LIVEHOST_TOOLS_TARGET:-$HOME/work/openagents-target-1-livehost-tools}"
 unset CARGO_BUILD_BUILD_DIR
+# Handler components build in their own target too.
+export LIVEHOST_GUEST_TARGET="${LIVEHOST_GUEST_TARGET:-$HOME/work/openagents-target-1-livehost}"
 
 if [[ "$channel" != staging ]]; then
   echo "livehost.sh: only the staging channel can be deployed from here" >&2

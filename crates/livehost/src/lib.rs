@@ -22,6 +22,8 @@ pub mod load;
 pub mod manifest;
 pub mod pointer;
 pub mod relay;
+#[cfg(feature = "components")]
+pub mod site;
 pub mod store;
 pub mod template;
 

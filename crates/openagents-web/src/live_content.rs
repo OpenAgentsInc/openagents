@@ -96,6 +96,63 @@ pub fn manifest() -> Option<String> {
     Some(content.manifest_hash.clone())
 }
 
+static SITE_RUNTIME: OnceLock<Option<livehost::site::SiteRuntime>> = OnceLock::new();
+
+fn site_runtime() -> Option<&'static livehost::site::SiteRuntime> {
+    SITE_RUNTIME
+        .get_or_init(|| match livehost::site::SiteRuntime::new() {
+            Ok(runtime) => Some(runtime),
+            Err(error) => {
+                eprintln!("openagents-web: live handlers are off: {error:#}");
+                None
+            }
+        })
+        .as_ref()
+}
+
+/// Renders `path` with the live manifest's handler component `name`,
+/// which may read what `data` shares. `None` when there is no such
+/// handler or it fails; the caller then renders natively.
+pub async fn render(name: &str, path: &str, data: livehost::site::DataSource) -> Option<String> {
+    let content = follower()?.current()?;
+    let (hash, bytes) = content.handler(name)?;
+    let (hash, bytes) = (hash.to_owned(), bytes.to_vec());
+    let (name, path) = (name.to_owned(), path.to_owned());
+    let manifest = content.manifest_hash.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let runtime = site_runtime().ok_or_else(|| "no handler runtime".to_owned())?;
+        let handler = runtime
+            .load(&hash, &bytes)
+            .map_err(|error| format!("{error:#}"))?;
+        let request = livehost::site::Request {
+            method: "GET".into(),
+            path,
+            query: Vec::new(),
+            manifest,
+            assets: Vec::new(),
+        };
+        handler
+            .handle(&request, data)
+            .map_err(|error| format!("{error:#}"))
+    })
+    .await;
+    match result {
+        Ok(Ok(response)) if response.status == 200 => Some(response.body),
+        Ok(Ok(response)) => {
+            eprintln!(
+                "openagents-web: live handler {name} answered {}",
+                response.status
+            );
+            None
+        }
+        Ok(Err(error)) => {
+            eprintln!("openagents-web: live handler {name}: {error}");
+            None
+        }
+        Err(_) => None,
+    }
+}
+
 /// One part of the design-language bundle: its text and cache-busting
 /// version.
 pub struct Part {
@@ -235,6 +292,8 @@ mod tests {
         assert_ne!(css.version, openagents_ui::stylesheet_version());
         assert!(crate::theme::style_tag().contains(css.version.as_ref()));
         assert_eq!(ui_script().text, openagents_ui::script());
+        let data: livehost::site::DataSource = Arc::new(|_: &str| None);
+        assert_eq!(render("pylons-list", "/pylons", data).await, None);
         TEST_FOLLOWER.with(|cell| *cell.borrow_mut() = None);
     }
 }

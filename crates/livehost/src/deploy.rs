@@ -654,10 +654,11 @@ fn guest_inputs(root: &Path, guests: &Path, package: &str, extra: &[String]) -> 
     }
     for path in extra {
         let mut more = BTreeMap::new();
-        collect(root, &root.join(path), &mut more)?;
+        let dir = root.join(path);
+        collect(&dir, &dir, &mut more)?;
         files.extend(
             more.into_iter()
-                .map(|(path, bytes)| (format!("extra:{path}"), bytes)),
+                .map(|(file, bytes)| (format!("extra:{path}:{file}"), bytes)),
         );
     }
     let mut digest = Sha256::new();

@@ -292,7 +292,21 @@ const UNAVAILABLE: &str = "<h2 id=\"pylons-count\">Pylons</h2><ul id=\"pylons-li
 
 async fn page(State(app): State<App>, request: HeaderMap) -> Response {
     let list = match app.config.pylons_relay.as_deref() {
-        Some(relay) => list_html(&field(relay).current()),
+        Some(relay) => {
+            let snapshot = field(relay).current();
+            // The list from the content manifest's handler component when
+            // there is one (#12435), else rendered here.
+            let shared = snapshot.clone();
+            let data: livehost::site::DataSource = std::sync::Arc::new(move |name: &str| {
+                (name == "pylons-snapshot")
+                    .then(|| serde_json::to_string(&*shared).ok())
+                    .flatten()
+            });
+            match crate::live_content::render("pylons-list", PYLONS_PATH, data).await {
+                Some(list) => list,
+                None => list_html(&snapshot),
+            }
+        }
         None => UNAVAILABLE.to_owned(),
     };
     // The runner built with its worker exports, as /lander6 serves it.

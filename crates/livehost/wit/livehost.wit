@@ -23,6 +23,19 @@ interface handler {
   handle: func(request: request) -> response;
 }
 
+// Named data the embedding host chooses to share, such as a live snapshot
+// a page renders. The host decides which names exist; anything else is
+// none.
+interface data {
+  read: func(name: string) -> option<string>;
+}
+
 world route {
+  export handler;
+}
+
+// A route that also reads host data, for a site embedding handlers.
+world site-route {
+  import data;
   export handler;
 }

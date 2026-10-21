@@ -1,0 +1,16 @@
+# openagents.com's route handlers as WebAssembly components (#12435), built
+# for wasm32-wasip2 by `livehost deploy` (scripts/deploy/livehost.sh) and
+# served from the content manifest; the native routes stay as the fallback.
+# Its own workspace, so deploys build it apart from the server.
+[workspace]
+members = ["pylons-list"]
+resolver = "2"
+
+# Fast incremental release builds: deploys rebuild these in under a second.
+[profile.release]
+opt-level = "s"
+incremental = true
+codegen-units = 16
+debug = false
+strip = true
+panic = "abort"
