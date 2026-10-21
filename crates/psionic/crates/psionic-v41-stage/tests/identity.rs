@@ -173,4 +173,77 @@ fn hello_and_build_info_name_the_executable_and_its_profile() {
     let hello = &front.stages[0].hello;
     assert_eq!(hello["build"]["sha256"], sha);
     assert_eq!(hello["profile"], "cpu-f32");
+    // The test binary has no build bundle beside it.
+    assert_eq!(hello["build"]["bundle_sha256"], serde_json::Value::Null);
+    assert!(
+        hello["build"]["bundle"]
+            .as_str()
+            .unwrap()
+            .contains("no build record"),
+        "{hello}"
+    );
+}
+
+/// Installs the test binary as a bundle in `dir` with one library holding
+/// `library`, and returns the SHA-256 of its `BUILD.json`.
+fn bundle(dir: &std::path::Path, library: &str) -> String {
+    std::fs::create_dir_all(dir.join("lib")).unwrap();
+    let exe = dir.join("psionic-v41-stage");
+    std::fs::copy(BIN, &exe).unwrap();
+    std::fs::write(dir.join("lib/libcudart.so.13"), library).unwrap();
+    let record = serde_json::json!({
+        "schema": psionic_v41_stage::BUILD_SCHEMA,
+        "sha256": hex::encode(Sha256::digest(std::fs::read(&exe).unwrap())),
+        "libraries": {"libcudart.so.13": hex::encode(Sha256::digest(library))},
+    })
+    .to_string();
+    std::fs::write(dir.join("BUILD.json"), &record).unwrap();
+    hex::encode(Sha256::digest(record))
+}
+
+fn build_info(dir: &std::path::Path) -> serde_json::Value {
+    let out = run_bounded(
+        Command::new(dir.join("psionic-v41-stage")).arg("build-info"),
+        LIMIT,
+    );
+    assert!(out.status.success());
+    serde_json::from_slice(&out.stdout).unwrap()
+}
+
+/// #12410: the announced identity is the verified bundle, so two bundles
+/// with the same executable and different CUDA libraries differ, and a
+/// library that no longer matches its build record leaves no bundle hash.
+#[test]
+fn the_identity_is_the_verified_bundle_not_only_the_executable() {
+    let root = tempfile::tempdir().unwrap();
+    let (a, b) = (root.path().join("a"), root.path().join("b"));
+    let a_sha = bundle(&a, "fixture CUDA library A");
+    let b_sha = bundle(&b, "fixture CUDA library B");
+    let (a_info, b_info) = (build_info(&a), build_info(&b));
+    assert_eq!(a_info["sha256"], b_info["sha256"]);
+    assert_eq!(a_info["bundle_sha256"], a_sha.as_str());
+    assert_eq!(b_info["bundle_sha256"], b_sha.as_str());
+    assert_ne!(a_sha, b_sha);
+    assert_eq!(a_info["bundle"], "verified");
+
+    // The library replaced alone.
+    std::fs::write(a.join("lib/libcudart.so.13"), "replaced").unwrap();
+    let info = build_info(&a);
+    assert_eq!(info["bundle_sha256"], serde_json::Value::Null);
+    assert!(
+        info["bundle"].as_str().unwrap().contains("hashes to"),
+        "{info}"
+    );
+    // The library replaced together with BUILD.json: a self-consistent
+    // bundle, but another bundle hash, which the pin refuses.
+    let replaced = bundle(&a, "replaced");
+    assert_eq!(build_info(&a)["bundle_sha256"], replaced.as_str());
+    assert_ne!(replaced, a_sha);
+    // An extra library.
+    std::fs::write(b.join("lib/libcublas.so.13"), "extra").unwrap();
+    assert!(
+        psionic_v41_stage::verify_bundle(&b, b_info["sha256"].as_str().unwrap())
+            .unwrap_err()
+            .contains("but BUILD.json lists")
+    );
 }

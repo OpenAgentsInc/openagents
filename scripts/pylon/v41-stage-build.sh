@@ -24,8 +24,11 @@
 # build-info and numerical profile, the group manifests by digest (taken
 # from COMMIT, not the checkout), the commit and its tree, the base image's
 # digest and the builder image's ID, rustc, and nvcc. The script prints the
-# SHA-256 of BUILD.json; pass it to `pylon cloud up --worker-build` to pin
-# the group to this build. GENERATIONS.json records the uploaded objects'
+# SHA-256 of BUILD.json, the bundle hash that covers the worker and every
+# library (#12410); pass it to `pylon cloud up --worker-build` and to
+# `psionic-v41-stage qualify --worker-build` to pin a group or a
+# qualification run to this build, and to scripts/pylon/v41-build-check.py
+# to check a download of it. GENERATIONS.json records the uploaded objects'
 # generations, which name these exact bytes even if the path is rewritten.
 #
 # `build --no-upload` builds and checks the same way and prints BUILD.json
@@ -329,6 +332,8 @@ while IFS= read -r file; do
 done < <(git -C "$repo" ls-tree --name-only "$sha:$placements")
 write_build "$scratch/BUILD.json" worker
 build_sha=$(shasum -a 256 "$scratch/BUILD.json" | cut -d ' ' -f 1)
+# The bundle checks out as a stage machine will check it.
+python3 "$repo/scripts/pylon/v41-build-check.py" build "$scratch" --pin "$build_sha" >/dev/null
 if [[ $upload == 0 ]]; then
   cat "$scratch/BUILD.json"
   echo "v41-stage-build: built $arch (BUILD.json sha256 $build_sha); uploaded nothing"
@@ -344,3 +349,4 @@ gcloud storage cp -q "$scratch/GENERATIONS.json" "$dest/"
 cat "$scratch/GENERATIONS.json"
 echo "v41-stage-build: uploaded $dest/psionic-v41-stage (BUILD.json sha256 $build_sha)"
 echo "pylon cloud up ... --worker $dest/psionic-v41-stage --worker-build $build_sha"
+echo "psionic-v41-stage qualify ... --worker-build $build_sha"

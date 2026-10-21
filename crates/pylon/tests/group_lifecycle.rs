@@ -65,6 +65,7 @@ impl Rig {
             weights: "sha256:fixture".into(),
             runtime: "fixture-runtime/1".into(),
             protocol: PROTOCOL,
+            build: None,
             stages: STAGES
                 .iter()
                 .map(|name| StageSpec {
@@ -308,7 +309,8 @@ async fn a_replaced_stage_with_another_build_or_profile_never_joins() {
         unsafe { libc::kill(before[2] as i32, libc::SIGKILL) };
         let status = rig
             .until("the replaced stage is refused", |s| {
-                s.reason.contains("the group runs build aaaa (sm_120)")
+                s.reason
+                    .contains("the group runs build unbundled executable aaaa (sm_120)")
             })
             .await;
         assert!(!status.ready, "{file}: {status:?}");
@@ -316,6 +318,80 @@ async fn a_replaced_stage_with_another_build_or_profile_never_joins() {
         assert!(!status.ready, "{file}");
         rig.close().await;
     }
+}
+
+/// Two bundles with the same executable and different CUDA libraries have
+/// different bundle hashes, so a replaced stage that runs the other bundle
+/// never joins a development group (#12410).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_replaced_stage_with_the_same_executable_and_other_libraries_never_joins() {
+    let flags = [
+        ("build-s0", "aaaa"),
+        ("build-s1", "aaaa"),
+        ("build-s2", "aaaa"),
+        ("bundle-s0", "b1"),
+        ("bundle-s1", "b1"),
+        ("bundle-s2", "b1"),
+    ];
+    let rig = Rig::with(&flags, |c| {
+        c.startup_timeout = Duration::from_secs(3);
+        c.max_restarts = 2;
+    })
+    .await;
+    rig.ready(1).await;
+    let before = rig.pids();
+    rig.flag("bundle-s2", "b2");
+    unsafe { libc::kill(before[2] as i32, libc::SIGKILL) };
+    let status = rig
+        .until("the replaced stage is refused", |s| {
+            s.reason.contains("runs build bundle b2 (sm_120)")
+                && s.reason.contains("the group runs build bundle b1 (sm_120)")
+        })
+        .await;
+    assert!(!status.ready, "{status:?}");
+    rig.close().await;
+}
+
+/// A pinned group admits only stages that announce the pinned bundle, even
+/// when every stage agrees on another one (#12410).
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_pinned_group_admits_only_the_pinned_bundle() {
+    let flags = [
+        ("build-s0", "aaaa"),
+        ("build-s1", "aaaa"),
+        ("build-s2", "aaaa"),
+        ("bundle-s0", "b2"),
+        ("bundle-s1", "b2"),
+        ("bundle-s2", "b2"),
+    ];
+    let rig = Rig::with(&flags, |c| {
+        c.build = Some("b1".into());
+        c.startup_timeout = Duration::from_secs(3);
+        c.max_restarts = 1;
+    })
+    .await;
+    let status = rig
+        .until("every stage is refused", |s| {
+            s.reason
+                .contains("runs build bundle b2 (sm_120); the group is pinned to bundle b1")
+        })
+        .await;
+    assert!(!status.ready, "{status:?}");
+    assert_eq!(status.build.as_deref(), Some("b1"));
+    rig.close().await;
+
+    let pinned = [
+        ("build-s0", "aaaa"),
+        ("build-s1", "aaaa"),
+        ("build-s2", "aaaa"),
+        ("bundle-s0", "b1"),
+        ("bundle-s1", "b1"),
+        ("bundle-s2", "b1"),
+    ];
+    let rig = Rig::with(&pinned, |c| c.build = Some("b1".into())).await;
+    let status = rig.ready(1).await;
+    assert_eq!(status.build.as_deref(), Some("b1"));
+    rig.close().await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

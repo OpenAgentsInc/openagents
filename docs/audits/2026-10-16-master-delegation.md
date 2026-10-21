@@ -514,6 +514,17 @@ The status lines below summarize each issue and its comments. Open the issue for
   --host` a G4 builder, or the stage VM). Rerun the synthetic CUDA split
   comparisons there with the corrected generator.
 
+- #12410 and #12412: rebuild the `sm_120` worker and pylon from a commit
+  that includes them, then run the pinned bundle on the RTX PRO 6000
+  group. Pass the printed `BUILD.json` hashes to `pylon cloud up
+  --worker-build ... --pylon-build ...` and `qualify --worker-build ...`.
+  Check that each stage's hello reports `build.bundle_sha256` equal to the
+  pin and that `status` shows `build    worker bundle ...`. Check that the
+  G1 v2 report records `stage_bundle_sha256` equal to
+  `expected_bundle_sha256` with `launch` `pinned`. Also measure the last
+  stage's per-token time at 4,096 output tokens against W14's
+  8.8-to-10.9 ms slowdown.
+
 - #12398: after #12407 binds the build and arithmetic identity and #12405
   lands the direct GPU comparison harness under the frozen G1 v2 policy,
   rerun the one-machine group (`pylon cloud up one-quad --head stage0

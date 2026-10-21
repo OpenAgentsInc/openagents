@@ -692,6 +692,55 @@ rebuild. `v41-stage-build.sh test` passed every CUDA test on the 4080
 comparisons with the corrected generator. Running the `sm_120` build on an
 RTX PRO 6000 is an after-close check.
 
+### Bundle pins (#12410, review R1)
+
+The [remediation review](../audits/2026-10-21-deepseek-six-hour-review.md#review-of-the-remediation-response-2026-10-21)
+found that the identity above covered only the executable. Now the
+**bundle hash**, the SHA-256 of `BUILD.json`, identifies a build. Because
+`BUILD.json` lists the worker and every library, two bundles with the same
+executable and different libraries have different hashes.
+
+- A worker verifies the `BUILD.json` beside it against its own executable
+  and `lib/`, and announces the result as `build.bundle_sha256` in its
+  hello and `build-info`. An unverified build announces `null` and the
+  reason in `build.bundle`.
+- `pylon cloud up` requires `--worker-build`, plus `--pylon-build` for a
+  head in the zone. `--development` launches without the pins. The launch
+  record, receipt, dry run, and `status` say whether the launch is
+  `pinned` or `development`. The group configuration carries the pin as
+  `build`, and the front refuses any stage that doesn't announce that
+  bundle. A development group only requires every stage to match the first.
+- `psionic-v41-stage qualify` requires `--worker-build` or `--development`.
+  The report records `stage_bundle_sha256`, `stage_executable_sha256`,
+  `expected_bundle_sha256`, and `launch`.
+- `stage-run` checks the installed `BUILD.json` against the build hash in
+  its path and ready mark before it checks the files, so a library replaced
+  together with `BUILD.json` is refused. `head-run` checks the pylon's
+  installed `BUILD.json` in the same way. Startup logs an unpinned build
+  as a development launch.
+- `scripts/pylon/v41-build-check.py` is the single checker.
+  `pylon cloud up` passes it to each machine as `oa-verify`. Check any
+  other download, such as the calibration setup's, with
+  `v41-build-check.py build DIR MANIFEST --pin SHA256`.
+
+The review's follow-up fixture
+(`follow-up-reproduce.py`) now passes its `checks_12410`. Running the pinned
+`sm_120` bundle on GPUs is an after-close check.
+
+### Raw text stream (#12412, review R3)
+
+`TextStream::push` decodes only the tokens since the last emitted text,
+plus that text's tokens for context. It no longer decodes the whole answer
+on each call. At 4,096 tokens it passes 13,997 token IDs to the tokenizer
+instead of 8,390,656. On an Apple-silicon CPU with the fixture tokenizer,
+the raw text stream and the answer parser together take about 4.8 ms for
+4,096 tokens, down from about 400 ms; the answer parser alone takes
+3.4 ms (`cargo test -p psionic-v41-stage --lib measure_parsing -- --ignored
+--nocapture`). Both the answer parser and the text stream are now
+incremental. Each token's text matches the whole-answer decode, including
+split characters and special tokens. The W14 per-token slowdown on GPU has
+not been measured again.
+
 ## Supported context and mode profile (#12408)
 
 This section answers audit findings F6, F7, and F8 of the

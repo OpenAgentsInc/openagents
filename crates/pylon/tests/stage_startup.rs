@@ -443,8 +443,80 @@ fn a_replaced_worker_library_or_build_is_refused() {
 fn a_pinned_build_that_matches_installs() {
     let machine = Machine::new("12.0");
     write(&machine.path("metadata/oa-build"), &machine.build());
+    // The checker as `pylon cloud up` passes it, in the metadata.
+    std::fs::copy(
+        repo().join("scripts/pylon/v41-build-check.py"),
+        machine.path("metadata/oa-verify"),
+    )
+    .unwrap();
     assert!(machine.boot().status.success(), "{}", machine.log());
+    assert!(
+        !machine.log().contains("development launch"),
+        "{}",
+        machine.log()
+    );
     assert!(machine.run_stage().is_some());
+}
+
+#[test]
+fn an_unpinned_build_installs_as_a_development_launch() {
+    let machine = Machine::new("12.0");
+    assert!(machine.boot().status.success(), "{}", machine.log());
+    assert!(
+        machine.log().contains(&format!(
+            "development launch: the worker build {} has no oa-build pin",
+            machine.build()
+        )),
+        "{}",
+        machine.log()
+    );
+}
+
+/// The review's follow-up fixture (#12410): a library replaced together
+/// with a BUILD.json that lists it is self-consistent, but no longer the
+/// build the path and ready mark name, so stage-run refuses it, pinned or
+/// not.
+#[test]
+fn stage_run_refuses_a_library_replaced_together_with_its_build_record() {
+    for pinned in [true, false] {
+        let machine = Machine::new("12.0");
+        let build = machine.build();
+        if pinned {
+            write(&machine.path("metadata/oa-build"), &build);
+        }
+        assert!(machine.boot().status.success(), "{}", machine.log());
+        assert!(machine.run_stage().is_some());
+        let installed = machine.path(&format!("opt/builds/{build}"));
+        let replacement = "self-consistent replacement";
+        write(&installed.join("lib").join(LIBS[0]), replacement);
+        let mut record: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(installed.join("BUILD.json")).unwrap()).unwrap();
+        record["libraries"][LIBS[0]] = sha256(replacement.as_bytes()).into();
+        write(&installed.join("BUILD.json"), &record.to_string());
+        assert_eq!(machine.run_stage(), None, "pinned {pinned}");
+    }
+}
+
+/// The same for the head: head-run refuses an installed pylon BUILD.json
+/// that no longer hashes to the build it installed, though it still lists
+/// the installed binary.
+#[test]
+fn head_run_refuses_a_changed_pylon_build_record() {
+    let machine = Machine::new("12.0");
+    let pylon_build = machine.head_here();
+    write(&machine.path("metadata/oa-pylon-build"), &pylon_build);
+    assert!(machine.boot().status.success(), "{}", machine.log());
+    assert!(machine.head_probe_passes());
+    let installed = std::fs::read_dir(machine.path("opt"))
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.to_string_lossy().ends_with(".BUILD.json"))
+        .unwrap();
+    let mut record: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&installed).unwrap()).unwrap();
+    record["note"] = "changed after installation".into();
+    write(&installed, &record.to_string());
+    assert!(!machine.head_probe_passes());
 }
 
 /// F5 of the 2026-10-21 audit: a second boot that fails leaves nothing that

@@ -571,6 +571,7 @@ fn stage_group(root: &std::path::Path) -> StageGroupConfig {
         weights: "sha256:fixture".into(),
         runtime: "fixture-runtime/1".into(),
         protocol: PROTOCOL,
+        build: None,
         stages: ["s0", "s1"]
             .iter()
             .map(|name| StageSpec {

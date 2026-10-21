@@ -124,10 +124,12 @@ for source in sources:
             run = subprocess.run([str(root / "opt/stage-run")], env=env,
                                  capture_output=True, text=True)
             assert run.returncode == 0, run.stderr
+            log = (root / "stage/startup.log").read_text()
             builds.append({"build_json_sha256": sha(build.encode()),
                            "worker_sha256": sha(worker.encode()),
                            "library_sha256": sha(library.encode()),
-                           "startup_returncode": boot.returncode, "stage_run": run.stdout.strip()})
+                           "startup_returncode": boot.returncode, "stage_run": run.stdout.strip(),
+                           "labelled_development": f"development launch: the worker build {sha(build.encode())}" in log})
             if version == "A":
                 installed = root / "opt/builds" / sha(build.encode())
                 changed = json.loads(build)
@@ -145,8 +147,18 @@ for source in sources:
                     "stage_run": run.stdout.strip(),
                     "scope": "Local library and its BUILD.json changed together; this does not demonstrate changing already loaded GPU code.",
                 }
+        # #12410: the replaced library and BUILD.json are refused, and only
+        # the unpinned bundle is labelled a development launch. The group
+        # and qualification identity checks are Rust tests (#12410).
+        checks = {
+            "changed_after_pinned_install_refused": changed_after_install["stage_run_returncode"] != 0,
+            "pinned_bundle_not_labelled_development": not builds[0]["labelled_development"],
+            "unpinned_bundle_labelled_development": builds[1]["labelled_development"],
+        }
         return {
             "kind": "executed startup shell with a pinned v2 bundle A and an unpinned bundle B, and a shell worker; no CUDA execution",
+            "checks_12410": checks,
+            "passed": all(checks.values()),
             "builds": builds,
             "changed_after_pinned_install": changed_after_install,
             "interpretation": "Optional pins permit both bundles. The source-level group and qualification identity includes the worker hash, not the differing library or BUILD.json hashes.",

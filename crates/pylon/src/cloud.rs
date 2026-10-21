@@ -241,6 +241,10 @@ pub struct Up {
     pub worker_build: Option<String>,
     /// The SHA-256 of the pylon build's `BUILD.json`, for a head in the zone.
     pub pylon_build: Option<String>,
+    /// A launch without the build pins (`--development`). A qualified
+    /// launch needs `worker_build`, and `pylon_build` for a head in the
+    /// zone; a development launch is recorded and reported as one (#12410).
+    pub development: bool,
     pub deadline_secs: u64,
     pub max_output_tokens: u32,
     pub sampling: Sampling,
@@ -300,6 +304,7 @@ impl Up {
             worker: None,
             worker_build: None,
             pylon_build: None,
+            development: false,
             deadline_secs: 90,
             max_output_tokens: 1_024,
             sampling: Sampling::new(0.6, 0.95, 0).unwrap_or_else(|_| unreachable!()),
@@ -404,6 +409,8 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
     }
     let startup = up.repo.join("scripts/pylon/v41-stage-startup.sh");
     let stage_ssh = up.repo.join("scripts/pylon/v41-stage-ssh.sh");
+    // The build checker the startup script installs (#12410).
+    let check = up.repo.join("scripts/pylon/v41-build-check.py");
     let keys = key_dir(up).join("ssh-keys");
     let disk_gb = |stages: usize| 100 + 250 * stages;
     let pylon = up.pylon.clone().unwrap_or_else(|| "unset".into());
@@ -445,7 +452,10 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
                 ),
             ];
             metadata.extend(build_pins(up));
-            let mut files = vec![format!("startup-script={}", startup.display())];
+            let mut files = vec![
+                format!("startup-script={}", startup.display()),
+                format!("oa-verify={}", check.display()),
+            ];
             if up.head.remote() {
                 // The head starts this machine's stages with the group's
                 // own key.
@@ -541,8 +551,9 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
                 "--json".into(),
                 "--".into(),
                 format!(
-                    "--metadata-from-file=startup-script={},oa-stage-ssh={}",
+                    "--metadata-from-file=startup-script={},oa-verify={},oa-stage-ssh={}",
                     startup.display(),
+                    check.display(),
                     stage_ssh.display()
                 ),
                 format!("--metadata={metadata}"),
@@ -647,6 +658,7 @@ pub fn dry_run(up: &Up, plan: &Plan) -> Result<Value, String> {
         "total_after": (total * 100.0).round() / 100.0,
         "machines": machines,
         "head": head_plan(up, plan),
+        "build": build_summary(up),
     }))
 }
 
@@ -758,6 +770,16 @@ pub struct Record {
     pub head_machine: Option<String>,
     #[serde(default)]
     pub transport: Transport,
+    /// `pinned`, or `development` for a launch without build pins
+    /// (#12410). Empty in a record from before #12410.
+    #[serde(default)]
+    pub launch: String,
+    /// The worker build's bundle hash every stage must announce.
+    #[serde(default)]
+    pub worker_build: Option<String>,
+    /// The head's pylon build, for a head in the zone.
+    #[serde(default)]
+    pub pylon_build: Option<String>,
     pub generation: Option<u64>,
     pub started_at: u64,
     /// When the group ends ahead of the first expiry.
@@ -914,6 +936,7 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
         weights: up.stage_weights.clone().unwrap_or(artifact),
         runtime: up.stage_runtime.clone(),
         protocol: crate::stage_group::PROTOCOL,
+        build: up.worker_build.clone(),
         deadline_secs: up.deadline_secs,
         max_output_tokens: up.max_output_tokens,
         sampling: up.sampling,
@@ -932,6 +955,48 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
         backoff_ms: 1_000,
         max_backoff_ms: 30_000,
     }
+}
+
+/// Refuses a launch without the build pins it needs, unless it is a
+/// development launch, and pins on a development launch (#12410).
+///
+/// # Errors
+///
+/// Names the missing pin.
+pub fn check_pins(up: &Up) -> Result<(), String> {
+    if up.development {
+        if up.worker_build.is_some() || up.pylon_build.is_some() {
+            return Err("a --development launch runs without build pins; drop --worker-build and --pylon-build, or --development".into());
+        }
+        return Ok(());
+    }
+    if up.worker_build.is_none() {
+        return Err("pin the qualified worker build with --worker-build SHA256 (its BUILD.json's SHA-256), or launch with --development".into());
+    }
+    if up.head.remote() && up.pylon_build.is_none() {
+        return Err("pin the head's pylon build with --pylon-build SHA256 (its BUILD.json's SHA-256), or launch with --development".into());
+    }
+    Ok(())
+}
+
+/// What the launch record and status say about the build pins.
+fn launch_kind(up: &Up) -> &'static str {
+    if up.development {
+        "development"
+    } else {
+        "pinned"
+    }
+}
+
+/// The launch's build pins, as a dry run reports them: `launch` is
+/// `pinned` or `development`.
+#[must_use]
+pub fn build_summary(up: &Up) -> Value {
+    json!({
+        "launch": launch_kind(up),
+        "worker_build": up.worker_build,
+        "pylon_build": up.pylon_build,
+    })
 }
 
 /// The build pins a machine's startup script checks (`oa-build`,
@@ -994,6 +1059,7 @@ pub async fn launch(up: &Up) -> Result<Launched, String> {
             "name the pylon binary in its bucket with --pylon gs://… for a head in the zone".into(),
         );
     }
+    check_pins(up)?;
     let plan = plan(up)?;
     let lane = group_lane(up, &plan);
     // A head in the zone runs the stage programs on its own machines.
@@ -1069,6 +1135,9 @@ pub async fn launch(up: &Up) -> Result<Launched, String> {
             .find(|m| m.head)
             .map(|m| m.name.clone()),
         transport: up.transport,
+        launch: launch_kind(up).into(),
+        worker_build: up.worker_build.clone(),
+        pylon_build: up.pylon_build.clone(),
         generation: None,
         started_at: now(),
         ends_at,
@@ -1171,6 +1240,7 @@ pub async fn launch(up: &Up) -> Result<Launched, String> {
         "machines": record.machines,
         "ledger": {"path": up.guard.ledger(), "starts": ledger},
         "ends_at": record.ends_at,
+        "build": build_summary(up),
     });
     Ok(launched)
 }
@@ -1419,6 +1489,11 @@ pub fn status_at(home: &Path) -> Result<(Value, String), String> {
             Transport::Direct => "direct",
         },
     );
+    text.push_str(&match (record.launch.as_str(), &record.worker_build) {
+        ("pinned", Some(build)) => format!("build    worker bundle {build}\n"),
+        ("development", _) => "build    development launch: no build pins\n".into(),
+        _ => "build    not recorded\n".into(),
+    });
     if let Some(g) = &group {
         text.push_str(&format!(
             "ready    {} at generation {}{}\n",
@@ -1489,9 +1564,14 @@ checkout on the one host that allocates for the budget.
                             and the budget total; create nothing.
       --worker GS_URL       The stage worker binary in a bucket (required to
                             launch).
-      --worker-build SHA256 The SHA-256 of the worker's BUILD.json; each
-                            stage machine refuses any other build.
-      --pylon-build SHA256  The SHA-256 of the head's pylon BUILD.json.
+      --worker-build SHA256 The SHA-256 of the qualified worker's
+                            BUILD.json (required); each stage machine
+                            refuses any other build, and the head any
+                            stage that announces another bundle.
+      --pylon-build SHA256  The SHA-256 of the head's pylon BUILD.json
+                            (required with --head stage0 or vm).
+      --development         Launch without build pins; the launch is
+                            recorded and reported as a development one.
       --hours H             Hours until each machine's expiry (default 4).
       --zone ZONE           Default us-east1-b.
       --machine-type TYPE   Another machine type for the placement.
@@ -1570,6 +1650,7 @@ pub fn parse_up(
         Ok(take_values(words, name)?.pop())
     };
     let worker = value(&mut words, "--worker")?;
+    let development = take_flag(&mut words, "--development");
     let worker_build = value(&mut words, "--worker-build")?;
     let pylon_build = value(&mut words, "--pylon-build")?;
     let hours = value(&mut words, "--hours")?;
@@ -1613,6 +1694,7 @@ pub fn parse_up(
     }
     up.worker_build = worker_build.map(|p| p.to_ascii_lowercase());
     up.pylon_build = pylon_build.map(|p| p.to_ascii_lowercase());
+    up.development = development;
     if let Some(head) = head {
         up.head = HeadPlacement::parse(&head)?;
     }
@@ -1772,6 +1854,11 @@ pub async fn command(json_out: bool, words: &[String], relay: &str) -> Result<()
                         stage["launch"].as_str().unwrap_or("")
                     ));
                 }
+                text.push_str(&match up.worker_build.as_deref() {
+                    _ if up.development => "\ndevelopment launch: no build pins\n".to_string(),
+                    Some(build) => format!("\nworker bundle pinned to {build}\n"),
+                    None => "\nno worker bundle pin; pass --worker-build or --development\n".into(),
+                });
                 emit(json_out, &value, text.trim_end());
                 return Ok(());
             }

@@ -75,6 +75,8 @@ impl Rig {
         up.relay = relay.into();
         up.guard = guard;
         up.worker = Some("gs://pylon-test/stage-worker".into());
+        // The fixture stages run no build bundle.
+        up.development = true;
         up.local_stages = Some((
             script,
             vec!["--root".into(), path("stages").display().to_string()],
@@ -229,6 +231,8 @@ async fn a_group_launches_answers_through_the_router_and_stops_on_down() {
     }
     let artifact = receipt["group"]["artifact"].as_str().unwrap().to_string();
     assert_eq!(receipt["group"]["generation"], 1);
+    assert_eq!(receipt["build"]["launch"], "development");
+    assert_eq!(cloud::load(&rig.home()).unwrap().launch, "development");
     let head_address = receipt["group"]["head"].as_str().unwrap().to_string();
 
     // One ready head with one slot and the declared limits, and four
@@ -1141,6 +1145,70 @@ fn build_pins_reach_every_machine() {
     }
     assert!(parse(&["two-dual", "--worker-build", "abc"]).is_err());
     assert!(parse(&["two-dual", "--pylon-build", &"g".repeat(64)]).is_err());
+
+    // The group configuration carries the worker pin, which the head
+    // compares with every stage's announced bundle (#12410).
+    let lane = cloud::group_lane(&up, &plan);
+    assert_eq!(lane.build.as_deref(), Some("a".repeat(64).as_str()));
+    assert_eq!(lane.stage_config().build, lane.build);
+    cloud::check_pins(&up).unwrap();
+    assert_eq!(cloud::build_summary(&up)["launch"], "pinned");
+}
+
+/// A qualified launch needs the worker pin, and the pylon pin for a head in
+/// the zone; a development launch takes neither and says so (#12410).
+#[test]
+fn a_launch_without_build_pins_must_be_a_development_launch() {
+    let parse = |words: &[&str]| {
+        let words: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
+        cloud::parse_up(
+            &words,
+            &repo(),
+            Path::new("/home/me"),
+            "wss://relay.example",
+        )
+        .unwrap()
+        .0
+    };
+    let pin = "c".repeat(64);
+    let why = cloud::check_pins(&parse(&["two-dual"])).unwrap_err();
+    assert!(why.contains("--worker-build"), "{why}");
+    let why = cloud::check_pins(&parse(&[
+        "two-dual",
+        "--worker-build",
+        &pin,
+        "--head",
+        "vm",
+    ]))
+    .unwrap_err();
+    assert!(why.contains("--pylon-build"), "{why}");
+    cloud::check_pins(&parse(&["two-dual", "--worker-build", &pin])).unwrap();
+    let up = parse(&["two-dual", "--development"]);
+    cloud::check_pins(&up).unwrap();
+    assert_eq!(cloud::build_summary(&up)["launch"], "development");
+    let plan = cloud::plan(&up).unwrap();
+    assert_eq!(cloud::group_lane(&up, &plan).build, None);
+    assert!(
+        cloud::check_pins(&parse(&[
+            "two-dual",
+            "--development",
+            "--worker-build",
+            &pin
+        ]))
+        .is_err()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_unpinned_launch_creates_nothing() {
+    let (relay, _hub) = pylon::fixture::relay().await.unwrap();
+    let mut rig = Rig::new("four-single", &relay);
+    rig.up.development = false;
+    let Err(why) = cloud::launch(&rig.up).await else {
+        panic!("an unpinned launch started");
+    };
+    assert!(why.contains("--worker-build"), "{why}");
+    assert!(rig.gcloud("create").is_empty());
 }
 
 /// The one-machine placement with its head on that machine (W11, #12398):

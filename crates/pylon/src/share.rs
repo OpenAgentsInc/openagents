@@ -77,6 +77,11 @@ pub struct GroupLane {
     /// The runtime every stage must announce.
     pub runtime: String,
     pub protocol: u32,
+    /// The verified bundle hash every stage must announce, the SHA-256 of
+    /// the qualified worker build's `BUILD.json` (#12410). Left out for a
+    /// development group.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<String>,
     pub deadline_secs: u64,
     pub max_output_tokens: u32,
     /// The front's sampling settings, sent to the last stage each step.
@@ -117,6 +122,7 @@ impl GroupLane {
             weights: self.weights.clone(),
             runtime: self.runtime.clone(),
             protocol: self.protocol,
+            build: self.build.clone(),
             stages: self
                 .stages
                 .iter()

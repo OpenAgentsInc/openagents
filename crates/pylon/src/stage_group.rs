@@ -469,6 +469,10 @@ pub struct StageGroupConfig {
     pub runtime: String,
     /// The protocol version every stage must report.
     pub protocol: u32,
+    /// The verified bundle hash every stage must announce: the SHA-256 of
+    /// the qualified build's `BUILD.json` (#12410). `None` is a development
+    /// group, whose stages must only agree with the first to join.
+    pub build: Option<String>,
     /// The stages, in step order.
     pub stages: Vec<StageSpec>,
     /// Where stage state travels.
@@ -576,6 +580,10 @@ pub struct StageGroupStatus {
     pub weights: String,
     pub runtime: String,
     pub protocol: u32,
+    /// The bundle hash the group is pinned to; `None` for a development
+    /// group (#12410).
+    #[serde(default)]
+    pub build: Option<String>,
     /// Where stage state travels.
     #[serde(default)]
     pub transport: Transport,
@@ -762,16 +770,27 @@ mod runtime {
 
     type Log = Arc<dyn Fn(String) + Send + Sync>;
 
-    /// A stage's build as one line: its executable's SHA-256 and target.
+    /// A stage's build as one line: its verified bundle hash, else its
+    /// executable's SHA-256, and its target.
     fn describe_build(build: Option<&serde_json::Value>) -> String {
         let Some(build) = build else {
             return "unstated".into();
         };
-        match (build["sha256"].as_str(), build["cuda_arch"].as_str()) {
+        let sha = match (build["bundle_sha256"].as_str(), build["sha256"].as_str()) {
+            (Some(bundle), _) => Some(format!("bundle {bundle}")),
+            (None, Some(sha)) => Some(format!("unbundled executable {sha}")),
+            (None, None) => None,
+        };
+        match (sha, build["cuda_arch"].as_str()) {
             (Some(sha), Some(arch)) => format!("{sha} ({arch})"),
-            (Some(sha), None) => sha.into(),
+            (Some(sha), None) => sha,
             _ => build.to_string(),
         }
+    }
+
+    /// The verified bundle hash a stage announced, if any.
+    fn bundle(build: Option<&serde_json::Value>) -> Option<&str> {
+        build.and_then(|b| b["bundle_sha256"].as_str())
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -790,8 +809,10 @@ mod runtime {
         /// (direct transport).
         #[serde(default)]
         data: Option<String>,
-        /// The executable the stage runs, as it reports it (its SHA-256 and
-        /// target); every stage of a group must report the same (#12407).
+        /// The build the stage runs, as it reports it: its verified bundle
+        /// hash, its executable's SHA-256, and its target. Every stage must
+        /// report the group's pinned bundle (#12410), and in a development
+        /// group the same build as the first stage (#12407).
         #[serde(default)]
         build: Option<serde_json::Value>,
         /// The numerical profile the stage runs, such as `cuda-device-sm_120`.
@@ -1283,6 +1304,7 @@ mod runtime {
                 weights: self.config.weights.clone(),
                 runtime: self.config.runtime.clone(),
                 protocol: self.config.protocol,
+                build: self.config.build.clone(),
                 transport: self.config.transport,
                 generation: self.fence.generation(),
                 ready,
@@ -1594,6 +1616,13 @@ mod runtime {
                 Some(format!(
                     "stage {name} has no link address; the group sends stage state directly"
                 ))
+            } else if let Some(pin) = &config.build
+                && bundle(hello.build.as_ref()) != Some(pin.as_str())
+            {
+                Some(format!(
+                    "stage {name} runs build {}; the group is pinned to bundle {pin}",
+                    describe_build(hello.build.as_ref()),
+                ))
             } else if let Some((build, profile)) = self
                 .identity
                 .as_ref()
@@ -1616,9 +1645,14 @@ mod runtime {
             }
             if self.identity.is_none() {
                 (self.log)(format!(
-                    "stage group runs build {} with profile {}",
+                    "stage group runs build {} with profile {}{}",
                     describe_build(hello.build.as_ref()),
-                    hello.profile.as_deref().unwrap_or("unstated")
+                    hello.profile.as_deref().unwrap_or("unstated"),
+                    if config.build.is_some() {
+                        ", as pinned"
+                    } else {
+                        "; development group: no build pin"
+                    }
                 ));
                 self.identity = Some((hello.build.clone(), hello.profile.clone()));
             }
@@ -2392,6 +2426,7 @@ mod tests {
             weights: "sha256:w".into(),
             runtime: "r".into(),
             protocol: PROTOCOL,
+            build: None,
             stages,
             transport: Transport::Front,
             links: LinkPolicy::default(),
@@ -2413,6 +2448,7 @@ mod tests {
             weights: "w".into(),
             runtime: "r".into(),
             protocol: PROTOCOL,
+            build: None,
             transport: Transport::Front,
             generation: 1,
             ready: false,

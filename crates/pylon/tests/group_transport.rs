@@ -63,6 +63,7 @@ impl Rig {
             weights: "sha256:fixture".into(),
             runtime: "fixture-runtime/1".into(),
             protocol: PROTOCOL,
+            build: None,
             stages: STAGES
                 .iter()
                 .map(|name| StageSpec {

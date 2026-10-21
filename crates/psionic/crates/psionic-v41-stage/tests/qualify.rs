@@ -81,6 +81,8 @@ fn qualify(root: &Path, manifest: &str, dump: &Path, out: &str, extra: &[&str]) 
         "64".into(),
         "--step-secs".into(),
         "120".into(),
+        // The test binary has no build bundle beside it.
+        "--development".into(),
     ];
     args.extend(extra.iter().map(|s| (*s).to_owned()));
     let output = run_bounded(std::process::Command::new(BIN).args(&args), LIMIT);
@@ -201,6 +203,9 @@ fn the_harness_passes_its_own_run_and_fails_a_changed_one_on_the_cpu() {
     let first = qualify(root.path(), &manifest, &empty, "first", &cpu);
     // No oracle logits: nothing compared, so nothing passes.
     assert_eq!(first["passed"], json!(false));
+    assert_eq!(first["launch"], "development");
+    assert_eq!(first["stage_bundle_sha256"], "");
+    assert_eq!(first["expected_bundle_sha256"], json!(null));
     let (logits, _) = recorded(root.path(), "first", 0);
     assert_eq!(logits.len(), GENERATED.len() + 1);
     let policy = strict_policy(root.path());

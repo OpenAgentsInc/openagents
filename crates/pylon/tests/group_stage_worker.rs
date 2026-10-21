@@ -239,6 +239,7 @@ impl Rig {
             weights: digest,
             runtime: runtime().into(),
             protocol: PROTOCOL,
+            build: None,
             stages: (0..split.len())
                 .map(|i| StageSpec {
                     name: format!("s{i}"),

@@ -527,27 +527,109 @@ pub fn cuda_arch() -> Option<&'static str> {
     }
 }
 
-/// What a stage announces about its own executable: the SHA-256 of the
-/// program running and the CUDA architecture its kernels target. Pylon's
-/// front compares it across stages, so a replaced worker can't join a group
-/// that runs another build.
+/// The schema of the `BUILD.json` that `scripts/pylon/v41-stage-build.sh`
+/// writes beside each worker.
+pub const BUILD_SCHEMA: &str = "openagents.psionic_v41_stage.build.v2";
+
+/// What a stage announces about the build it runs: the SHA-256 of the
+/// program running, the CUDA architecture its kernels target, and the
+/// verified bundle hash (#12410).
+///
+/// The bundle hash is the SHA-256 of the `BUILD.json` beside the executable,
+/// reported only when that document lists this executable's SHA-256 and
+/// every library in `lib/` beside it with the hash it has. Two bundles with
+/// the same executable and different CUDA libraries have different bundle
+/// hashes. A program with no verified bundle, such as a development build,
+/// reports `bundle_sha256: null` and says why in `bundle`. Pylon's front
+/// compares the bundle hash with the group's pin, and the qualification
+/// report records it.
 #[must_use]
 pub fn build_identity() -> Value {
     static IDENTITY: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
     IDENTITY
         .get_or_init(|| {
-            let sha256 = std::env::current_exe()
-                .and_then(std::fs::read)
-                .map(|bytes| hex::encode(Sha256::digest(bytes)))
-                .ok();
+            let exe = std::env::current_exe();
+            let sha256 = exe.as_ref().ok().and_then(|path| sha256_file(path).ok());
+            let bundle = match (&exe, &sha256) {
+                (Ok(path), Some(sha)) => match path.parent() {
+                    Some(dir) => verify_bundle(dir, sha),
+                    None => Err("the executable has no folder".into()),
+                },
+                _ => Err("the executable can't be read".into()),
+            };
             serde_json::json!({
                 "sha256": sha256,
+                "bundle_sha256": bundle.as_ref().ok(),
+                "bundle": match &bundle {
+                    Ok(_) => "verified".to_owned(),
+                    Err(why) => why.clone(),
+                },
                 "version": env!("CARGO_PKG_VERSION"),
                 "cuda": cfg!(feature = "cuda"),
                 "cuda_arch": cuda_arch(),
             })
         })
         .clone()
+}
+
+fn sha256_file(path: &Path) -> std::io::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut digest = Sha256::new();
+    std::io::copy(&mut file, &mut digest)?;
+    Ok(hex::encode(digest.finalize()))
+}
+
+/// Checks the build bundle in `dir` and returns its hash, the SHA-256 of
+/// `dir/BUILD.json`. The document must be schema v2 and list `worker_sha256`
+/// as the worker's hash, and `dir/lib` must hold exactly the libraries it
+/// lists, each with the hash it lists.
+///
+/// # Errors
+///
+/// Says which part of the bundle is missing or differs.
+pub fn verify_bundle(dir: &Path, worker_sha256: &str) -> Result<String, String> {
+    let path = dir.join("BUILD.json");
+    let bytes =
+        std::fs::read(&path).map_err(|e| format!("no build record at {}: {e}", path.display()))?;
+    let build: Value = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("{} isn't JSON: {e}", path.display()))?;
+    if build["schema"] != BUILD_SCHEMA {
+        return Err(format!(
+            "BUILD.json has schema {}, not {BUILD_SCHEMA}",
+            build["schema"]
+        ));
+    }
+    if build["sha256"].as_str() != Some(worker_sha256) {
+        return Err(format!(
+            "the executable hashes to {worker_sha256}, but BUILD.json says {}",
+            build["sha256"]
+        ));
+    }
+    let Some(libraries) = build["libraries"].as_object().filter(|l| !l.is_empty()) else {
+        return Err("BUILD.json lists no CUDA libraries".into());
+    };
+    let mut present = std::fs::read_dir(dir.join("lib"))
+        .map_err(|e| format!("can't read {}: {e}", dir.join("lib").display()))?
+        .map(|entry| entry.map(|e| e.file_name().to_string_lossy().into_owned()))
+        .collect::<std::io::Result<Vec<_>>>()
+        .map_err(|e| e.to_string())?;
+    present.sort();
+    let mut listed: Vec<&String> = libraries.keys().collect();
+    listed.sort();
+    if present.iter().collect::<Vec<_>>() != listed {
+        return Err(format!(
+            "lib/ holds {present:?}, but BUILD.json lists {listed:?}"
+        ));
+    }
+    for (name, want) in libraries {
+        let got = sha256_file(&dir.join("lib").join(name)).map_err(|e| e.to_string())?;
+        if want.as_str() != Some(got.as_str()) {
+            return Err(format!(
+                "lib/{name} hashes to {got}, but BUILD.json says {want}"
+            ));
+        }
+    }
+    Ok(hex::encode(Sha256::digest(&bytes)))
 }
 
 /// The device a stage with `--gpu gpu` runs on, as the one-entry

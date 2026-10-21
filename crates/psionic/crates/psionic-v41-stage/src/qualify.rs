@@ -5,8 +5,13 @@
 //! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR
 //!     [--backend cuda|cpu] [--arithmetic A] [--gpus 0,1,2,3] [--cases ID,...]
 //!     [--observe] [--control NAME] [--policy FILE] [--max-context N]
-//!     [--step-secs S]
+//!     [--step-secs S] (--worker-build SHA256 | --development)
 //! ```
+//!
+//! `--worker-build` is the qualified bundle's hash, the SHA-256 of its
+//! `BUILD.json` (#12410). Every stage must announce that verified bundle,
+//! or the run refuses. `--development` runs without a pin, and the report
+//! says so.
 //!
 //! The harness is the group's front. It starts one `psionic-v41-stage`
 //! worker per manifest stage, each on its own GPU and with `--record`, and
@@ -77,6 +82,11 @@ pub struct QualifyOptions {
     pub policy: Option<PathBuf>,
     pub max_context: usize,
     pub step_timeout: Duration,
+    /// The bundle hash every stage must announce (#12410); `None` only with
+    /// `development`.
+    pub worker_build: Option<String>,
+    /// A run without a build pin, labelled as one in the report.
+    pub development: bool,
 }
 
 impl QualifyOptions {
@@ -88,11 +98,14 @@ impl QualifyOptions {
     pub fn parse(args: &[String]) -> Result<Self, Refused> {
         let mut values = BTreeMap::new();
         let mut observe = false;
+        let mut development = false;
         let mut i = 0;
         while i < args.len() {
             let flag = args[i].as_str();
             if flag == "--observe" {
                 observe = true;
+            } else if flag == "--development" {
+                development = true;
             } else if [
                 "--weights",
                 "--manifest",
@@ -106,6 +119,7 @@ impl QualifyOptions {
                 "--policy",
                 "--max-context",
                 "--step-secs",
+                "--worker-build",
             ]
             .contains(&flag)
             {
@@ -128,6 +142,25 @@ impl QualifyOptions {
         let manifest = take("--manifest")?;
         let oracle = PathBuf::from(take("--oracle")?);
         let out = PathBuf::from(take("--out")?);
+        let worker_build = values.remove("--worker-build");
+        match (&worker_build, development) {
+            (None, false) => {
+                return Err(refused(
+                    "pin the bundle with --worker-build SHA256 (its BUILD.json's SHA-256), or run with --development",
+                ));
+            }
+            (Some(_), true) => {
+                return Err(refused(
+                    "--worker-build and --development don't go together",
+                ));
+            }
+            (Some(pin), false)
+                if pin.len() != 64 || !pin.bytes().all(|b| b.is_ascii_hexdigit()) =>
+            {
+                return Err(refused("--worker-build takes a SHA-256 in hex"));
+            }
+            _ => {}
+        }
         let list = |v: Option<String>| -> Option<Vec<String>> {
             v.map(|v| v.split(',').map(str::to_owned).collect())
         };
@@ -169,6 +202,8 @@ impl QualifyOptions {
                 "--step-secs",
                 3_600,
             )?),
+            worker_build: worker_build.map(|p| p.to_ascii_lowercase()),
+            development,
         })
     }
 }
@@ -331,10 +366,12 @@ struct Group {
     timeout: Duration,
     weights: String,
     runtime: String,
-    /// The numerical profile and executable SHA-256 every stage announced
-    /// (#12407), so the report names what ran, not what was asked for.
+    /// The numerical profile, verified bundle hash, and executable SHA-256
+    /// every stage announced (#12407, #12410), so the report names what
+    /// ran, not what was asked for.
     profile: String,
     build: String,
+    executable: String,
 }
 
 impl Drop for Group {
@@ -447,6 +484,7 @@ impl Group {
             runtime: String::new(),
             profile: String::new(),
             build: String::new(),
+            executable: String::new(),
         };
         while writers.iter().any(Option::is_none) {
             if Instant::now() > deadline {
@@ -486,6 +524,10 @@ impl Group {
                         hello["weights"].as_str().unwrap_or_default().to_owned(),
                         hello["runtime"].as_str().unwrap_or_default().to_owned(),
                         hello["profile"].as_str().unwrap_or_default().to_owned(),
+                        hello["build"]["bundle_sha256"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .to_owned(),
                         hello["build"]["sha256"]
                             .as_str()
                             .unwrap_or_default()
@@ -516,11 +558,25 @@ impl Group {
                 "the stages announce different weights, runtimes, profiles, or builds: {identity:?}"
             )));
         }
-        let (weights, runtime, profile, build) = identity.into_iter().next().unwrap_or_default();
+        let (weights, runtime, profile, build, executable) =
+            identity.into_iter().next().unwrap_or_default();
+        if let Some(pin) = &opts.worker_build
+            && build != *pin
+        {
+            return Err(refused(format!(
+                "the stages run bundle {}, not the pinned bundle {pin}",
+                if build.is_empty() {
+                    "(none verified)"
+                } else {
+                    &build
+                }
+            )));
+        }
         group.weights = weights;
         group.runtime = runtime;
         group.profile = profile;
         group.build = build;
+        group.executable = executable;
         group.writers = writers.into_iter().flatten().collect();
         group.listens = listens;
         Ok(group)
@@ -1109,7 +1165,10 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         "policy_sha256": policy_sha,
         "runtime": group.runtime,
         "profile": group.profile,
-        "stage_build_sha256": group.build,
+        "stage_bundle_sha256": group.build,
+        "stage_executable_sha256": group.executable,
+        "expected_bundle_sha256": opts.worker_build,
+        "launch": if opts.development { "development" } else { "pinned" },
         "weights": group.weights,
         "manifest": opts.manifest,
         "binary_sha256": sha256_file(&exe),

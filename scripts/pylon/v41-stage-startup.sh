@@ -11,15 +11,19 @@
 #                  with the group manifests beside it in manifests/ and
 #                  the CUDA 13 libraries it opens in lib/
 #   oa-manifest    the group manifest's SHA-256
-#   oa-build       optional: the SHA-256 of the build's BUILD.json, which
-#                  pins the worker, its libraries, its target, and its
-#                  profile to the qualified execution configuration
+#   oa-build       the SHA-256 of the build's BUILD.json, which pins the
+#                  worker, its libraries, its target, and its profile to
+#                  the qualified execution configuration; a development
+#                  launch (`pylon cloud up --development`) leaves it out,
+#                  and the log says so
+#   oa-verify      scripts/pylon/v41-build-check.py, the build checker
 # and, when the group head runs in the zone (#12399, `--head stage0|vm`):
 #   oa-role        `head` on a machine that only heads the group
 #   oa-group-head  1 on the machine the head runs on
 #   oa-pylon       the pylon binary's gs:// URL, for that machine, with its
 #                  BUILD.json beside it
-#   oa-pylon-build optional: the SHA-256 of that BUILD.json
+#   oa-pylon-build the SHA-256 of that BUILD.json (left out only by a
+#                  development launch)
 #   oa-stage-ssh   scripts/pylon/v41-stage-ssh.sh, for that machine
 #
 # It first removes the ready mark, so nothing trusts a machine whose
@@ -44,7 +48,11 @@
 #   build SHA256
 #
 # stage-run starts a worker only when the mark names the current boot and
-# its own manifest and build, and rechecks the build's hashes first; the
+# its own manifest and build, and first rechecks that the installed
+# BUILD.json still hashes to that build and that the worker and libraries
+# match it, so a library replaced together with BUILD.json is refused
+# (#12410). head-run rechecks the pylon's BUILD.json and binary the same
+# way. The
 # head's ssh probe (v41-head-ssh.sh) waits for a mark of the current boot.
 # A failed, interrupted, or older boot's installation is never ready.
 #
@@ -96,57 +104,17 @@ fail() {
   echo "oa-stage: $*"
   exit 1
 }
-# The checker stage-run and head-run use too. `build DIR` checks DIR's
-# worker and libraries against DIR/BUILD.json and prints its architecture;
-# `file PATH SHA256` checks one file; `field JSON KEY` prints a field.
-cat >"$opt/oa-verify.new" <<'PY'
-import hashlib, json, os, sys
-
-def sha256(path):
-    digest = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 20), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-def refuse(message):
-    print(message, file=sys.stderr)
-    sys.exit(1)
-
-verb = sys.argv[1]
-if verb == "file":
-    got = sha256(sys.argv[2])
-    if got != sys.argv[3]:
-        refuse(f"{sys.argv[2]} hashes to {got}, not {sys.argv[3]}")
-elif verb == "field":
-    value = json.load(open(sys.argv[2])).get(sys.argv[3])
-    if not isinstance(value, str) or not value:
-        refuse(f"{sys.argv[2]} has no {sys.argv[3]}")
-    print(value)
-elif verb == "build":
-    root = sys.argv[2]
-    build = json.load(open(os.path.join(root, "BUILD.json")))
-    if build.get("schema") != "openagents.psionic_v41_stage.build.v2":
-        refuse(f"BUILD.json has schema {build.get('schema')}; rebuild with scripts/pylon/v41-stage-build.sh")
-    libraries = build.get("libraries") or {}
-    if not libraries:
-        refuse("BUILD.json lists no CUDA libraries")
-    got = sha256(os.path.join(root, "psionic-v41-stage"))
-    if got != build.get("sha256"):
-        refuse(f"the worker hashes to {got}, but BUILD.json says {build.get('sha256')}")
-    present = sorted(os.listdir(os.path.join(root, "lib")))
-    if present != sorted(libraries):
-        refuse(f"lib/ holds {present}, but BUILD.json lists {sorted(libraries)}")
-    for name, want in sorted(libraries.items()):
-        got = sha256(os.path.join(root, "lib", name))
-        if got != want:
-            refuse(f"lib/{name} hashes to {got}, but BUILD.json says {want}")
-    if len(sys.argv) > 3 and sys.argv[3] not in (build.get("manifests") or {}):
-        refuse(f"the build was not made with group manifest {sys.argv[3]}")
-    print(build.get("arch", ""))
-else:
-    refuse(f"unknown check {verb}")
-PY
+# The build checker (scripts/pylon/v41-build-check.py, #12410), which
+# stage-run and head-run use too: `pylon cloud up` passes it as the oa-verify
+# metadata value; a local run takes the copy beside this script.
+checker=$(optional oa-verify)
+if [ -n "$checker" ]; then
+  printf '%s\n' "$checker" >"$opt/oa-verify.new"
+elif [ -f "$(dirname "$0")/v41-build-check.py" ]; then
+  cp "$(dirname "$0")/v41-build-check.py" "$opt/oa-verify.new"
+else
+  fail "no build checker: pass scripts/pylon/v41-build-check.py as oa-verify"
+fi
 mv "$opt/oa-verify.new" "$opt/oa-verify"
 verify() { python3 "$opt/oa-verify" "$@"; }
 # Writes the ready mark atomically, last.
@@ -165,13 +133,17 @@ install_head() {
   "$gcloud" storage cp "$pylon_url" "${pylon_url%/*}/BUILD.json" "$opt/pylon.staging/"
   pylon_build=$(sha256sum "$opt/pylon.staging/BUILD.json" | cut -d ' ' -f 1)
   pin=$(optional oa-pylon-build)
-  [ -z "$pin" ] || [ "$pin" = "$pylon_build" ] ||
+  if [ -z "$pin" ]; then
+    echo "oa-stage: development launch: the pylon build $pylon_build has no oa-pylon-build pin"
+  elif [ "$pin" != "$pylon_build" ]; then
     fail "the pylon build is $pylon_build, but this group runs $pin"
+  fi
   pylon_sha=$(verify field "$opt/pylon.staging/BUILD.json" sha256) ||
     fail "the pylon build has no sha256"
   verify file "$opt/pylon.staging/${pylon_url##*/}" "$pylon_sha" ||
     fail "the pylon binary does not match its BUILD.json"
   chmod 755 "$opt/pylon.staging/${pylon_url##*/}"
+  mv "$opt/pylon.staging/BUILD.json" "$opt/pylon-$pylon_sha.BUILD.json"
   mv "$opt/pylon.staging/${pylon_url##*/}" "$opt/pylon-$pylon_sha"
   rm -rf "$opt/pylon.staging"
   md oa-stage-ssh >"$opt/stage-ssh.new"
@@ -181,6 +153,8 @@ install_head() {
 #!/bin/sh
 # Head the group in the foreground of the budget host's ssh session; the
 # launch arrives on standard input, and the session ending stops the head.
+python3 $opt/oa-verify file $opt/pylon-$pylon_sha.BUILD.json $pylon_build || exit 1
+[ "\$(python3 $opt/oa-verify field $opt/pylon-$pylon_sha.BUILD.json sha256)" = $pylon_sha ] || exit 1
 python3 $opt/oa-verify file $opt/pylon-$pylon_sha $pylon_sha || exit 1
 exec $opt/pylon-$pylon_sha cloud head --home "\$HOME/.openagents/v41-head"
 RUN
@@ -208,8 +182,11 @@ mkdir -p "$staging/lib"
 "$gcloud" storage cp "${worker%/*}/BUILD.json" "$staging/"
 build=$(sha256sum "$staging/BUILD.json" | cut -d ' ' -f 1)
 pin=$(optional oa-build)
-[ -z "$pin" ] || [ "$pin" = "$build" ] ||
+if [ -z "$pin" ]; then
+  echo "oa-stage: development launch: the worker build $build has no oa-build pin"
+elif [ "$pin" != "$build" ]; then
   fail "the worker build is $build, but this group runs $pin"
+fi
 "$gcloud" storage cp "$worker" "$staging/psionic-v41-stage"
 "$gcloud" storage cp "${worker%/*}/lib/*" "$staging/lib/"
 arch=$(verify build "$staging" "$manifest") || fail "the worker build $build does not check out"
@@ -233,7 +210,8 @@ mv "$staging" "$installed"
 cat >"$opt/stage-run.new" <<RUN
 #!/bin/sh
 # Wait for this boot's installation of manifest $manifest and build $build,
-# recheck the build, then run one stage worker in the foreground of the
+# recheck that BUILD.json still hashes to $build and that the worker and
+# libraries match it, then run one stage worker in the foreground of the
 # head's ssh session; the session ending ends it.
 want="boot \$(cat ${OA_BOOT_ID:-/proc/sys/kernel/random/boot_id})
 manifest $manifest
@@ -244,7 +222,7 @@ while [ "\$(cat $root/ready 2>/dev/null)" != "\$want" ]; do
   [ "\$i" -le "\${OA_STAGE_WAIT:-3600}" ] || { echo "this machine's stage installation is not ready" >&2; exit 1; }
   sleep 1
 done
-python3 $opt/oa-verify build $installed $manifest >/dev/null || exit 1
+python3 $opt/oa-verify build $installed $manifest --pin $build >/dev/null || exit 1
 export LD_LIBRARY_PATH=$installed/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}
 exec $installed/psionic-v41-stage --weights $root/weights "\$@"
 RUN
