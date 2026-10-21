@@ -24,7 +24,10 @@ pub const FEEDBACK_KIND: u16 = 27_000;
 /// The most transcript entries a pylon accepts.
 pub const MAX_TURNS: usize = 32;
 /// The most request text, in bytes, a pylon accepts.
-pub const MAX_INPUT_BYTES: usize = 16 * 1024;
+pub const MAX_INPUT_BYTES: usize = 96 * 1024;
+/// The encoded JSON must also fit the encrypted transport, including
+/// duplicated task text, history, and JSON escapes.
+pub const MAX_REQUEST_BYTES: usize = nip44::MAX_CLIENT_PLAINTEXT_BYTES;
 
 /// A decoded conversation request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -113,7 +116,7 @@ pub fn request_body(prompt: &str, history: &[Turn]) -> Value {
 ///
 /// A refusal with the NIP-CJ code for what is wrong.
 pub fn parse_request(plaintext: &str) -> Result<Request, Refusal> {
-    if plaintext.len() > 4 * MAX_INPUT_BYTES {
+    if plaintext.len() > MAX_REQUEST_BYTES {
         return Err(Refusal::new("limit_exceeded", "request is too large"));
     }
     let body: Value = serde_json::from_str(plaintext)
@@ -178,7 +181,7 @@ pub fn parse_request(plaintext: &str) -> Result<Request, Refusal> {
     if bytes > MAX_INPUT_BYTES || task.trim().is_empty() {
         return Err(Refusal::new(
             "limit_exceeded",
-            "request text is empty or over 16 KiB",
+            "request text is empty or over 96 KiB",
         ));
     }
     Ok(Request {
@@ -240,4 +243,30 @@ pub fn answers(event: &Event, request_id: &str, pylon: &str, me: &str) -> bool {
         && p == [me]
         && e == [request_id]
         && event.validate_crypto().is_ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_long_prompt_round_trips_through_extended_nip44_without_clipping() {
+        let buyer = Identity::generate();
+        let provider = Identity::generate();
+        let prompt = format!("{}\nEND-OF-PROMPT", "let x = 1;\n".repeat(6500));
+        assert!(prompt.len() > 65535 && prompt.len() < MAX_INPUT_BYTES);
+        let body = request_body_within(&prompt, &[], 1800);
+        let event = seal(&buyer, provider.pubkey(), REQUEST_KIND, vec![], &body, 1).unwrap();
+        let plaintext = open(&provider, &event).unwrap();
+        let request = parse_request(&plaintext).unwrap();
+        assert_eq!(request.turns.last().unwrap().content, prompt);
+        assert!(
+            parse_request(&request_body(&"x".repeat(MAX_INPUT_BYTES + 1), &[]).to_string())
+                .is_err()
+        );
+        // Escapes can overflow the encrypted body before the text cap.
+        assert!(
+            parse_request(&request_body(&"\0".repeat(MAX_INPUT_BYTES), &[]).to_string()).is_err()
+        );
+    }
 }

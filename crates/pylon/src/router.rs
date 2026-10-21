@@ -62,7 +62,7 @@ const DECIDE_EARLIER: usize = 3;
 const DECIDE_TURN: usize = 400;
 /// The most request text a job carries, inside NIP-CJ's
 /// [`crate::job::MAX_INPUT_BYTES`] with room for the instructions.
-const JOB_TEXT_BYTES: usize = 12 * 1024;
+const JOB_TEXT_BYTES: usize = crate::job::MAX_INPUT_BYTES - 4 * 1024;
 
 /// One pylon that can answer now.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -439,14 +439,9 @@ pub fn job_text(turns: &[Turn]) -> (Vec<Turn>, String) {
     let Some(last) = turns.iter().rposition(|t| t.role == "user") else {
         return (Vec::new(), String::new());
     };
-    let mut prompt = turns[last].content.clone();
-    if prompt.len() > JOB_TEXT_BYTES / 2 {
-        let mut cut = JOB_TEXT_BYTES / 2;
-        while !prompt.is_char_boundary(cut) {
-            cut -= 1;
-        }
-        prompt.truncate(cut);
-    }
+    // Keep the current question intact. The job admission checks refuse
+    // an oversized prompt instead of silently changing what was asked.
+    let prompt = turns[last].content.clone();
     let mut room = JOB_TEXT_BYTES.saturating_sub(prompt.len());
     let mut history = Vec::new();
     for turn in turns[..last].iter().rev() {
@@ -902,6 +897,6 @@ mod tests {
         ];
         let (history, prompt) = job_text(&long);
         assert!(history.is_empty());
-        assert!(prompt.len() <= JOB_TEXT_BYTES / 2);
+        assert_eq!(prompt, long[2].content);
     }
 }

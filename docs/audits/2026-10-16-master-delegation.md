@@ -485,6 +485,21 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12414: the optional long-prompt profile remains **unqualified**. With the
+  frozen G1 v2 policy from #12405 and available RTX PRO 6000 capacity, rebuild
+  and pin both bundles, run `qualify --cases p3-2k,p4-20k --max-context 32768
+  --max-step-tokens 2048 --prefill-chunk 2048 --observe --worker-build HASH`,
+  retain complete forced-token/replay and router/exact-check evidence, and
+  qualify a prospectively frozen long-context holdout. Measure device peaks
+  for each placement; the retained memory envelope uses provisional W3 data.
+  Repeat cancellation, fencing, and limit refusal on the actual group, then
+  W14 with `--max-input-tokens 20480 --max-output-tokens 4096
+  --deadline-secs 1800 --step-secs 75` and full prompts through
+  `run.py --v41-group --v41-budget 1800 --v41-cases-json FILE`. Record the
+  input-token counts, TTFT, total time, stop/length behavior, and beacon's
+  context/chunk/text limits. #12414's stockout attempts created no machine.
+  The short launch remains independent of these checks.
+
 - #12408: on an RTX PRO 6000 group (`four-single` or `two-dual`), run
   `group_stage_worker` with `PSIONIC_V41_STAGE_REQUIRED=1`,
   `PSIONIC_V41_STAGE_BACKEND=cuda`, and the build's

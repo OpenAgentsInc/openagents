@@ -413,6 +413,7 @@ async fn ask_for(
         body["instructions"] = json!(instructions);
     }
     let request_plain = body.to_string();
+    job::parse_request(&request_plain).map_err(|e| format!("{}: {}", e.code, e.message))?;
     // A direct payment buys the job before it is sent: the purchase's
     // input is this request's plaintext.
     let mut bought = None;

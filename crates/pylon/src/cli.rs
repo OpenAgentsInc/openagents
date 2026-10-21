@@ -579,10 +579,10 @@ fn conversation_history(path: &str, prompt: &str) -> Result<Vec<Turn>, String> {
     let mut bytes = Vec::new();
     std::fs::File::open(path)
         .map_err(|e| format!("cannot open conversation history: {e}"))?
-        .take((4 * crate::job::MAX_INPUT_BYTES + 1) as u64)
+        .take((crate::job::MAX_REQUEST_BYTES + 1) as u64)
         .read_to_end(&mut bytes)
         .map_err(|e| format!("cannot read conversation history: {e}"))?;
-    if bytes.len() > 4 * crate::job::MAX_INPUT_BYTES {
+    if bytes.len() > crate::job::MAX_REQUEST_BYTES {
         return Err("conversation history file is too large".into());
     }
     let history: Vec<Turn> = serde_json::from_slice(&bytes).map_err(|e| {

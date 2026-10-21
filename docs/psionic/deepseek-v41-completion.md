@@ -947,3 +947,35 @@ cancellation and link loss during prefill; refusal before execution; codec and
 memory bounds; and strict-policy qualification with three-token chunks. These
 checks establish implementation behavior, not original-weight G1 acceptance.
 GPU and original-weight evidence is recorded separately when available.
+
+
+### The encrypted request path
+
+The long profile also needs more than the stage wire changes. The router now
+keeps the latest user message intact instead of cutting it to 6,144 bytes.
+Pylon accepts up to 96 KiB of conversation text and at most 256 KiB of encoded
+JSON, including repeated task text and escapes, under the existing extended
+NIP-44 implementation. The head advertises `max_input_bytes` alongside its
+token limits. Clients validate the body before sending or buying the job.
+Oversized text fails visibly. A loopback relay test sends a prompt longer than
+65,535 bytes through routing, encryption, provider admission, and an engine,
+and checks its final question byte for byte.
+
+For W14 measurements, `scripts/bench/pylon-models/run.py --v41-group` accepts
+`--v41-cases-json FILE`. Each row contains `name`, the full `prompt`, and an
+existing executable `score_case` (`extract`, `arithmetic`, `percent`, `grounding`,
+or `injection`). The report retains prompt byte counts and hashes. Freeze
+these long-prompt cases before a run; no prompt padding or clipping happens in
+the harness. This measures complete answers under the proposed deadline; it
+does not replace forced-token p3/p4 comparisons or the long holdout.
+
+GPU checks on the RTX 4080 pass for the implementation in `b0f5af34b5`:
+`v41-stage-build.sh test --host coderos-4080 --arch sm_89` runs the new
+intermediate-head regression and the stage crate's tests with
+`PSIONIC_REQUIRE_CUDA=1`. The head regression checks exact final logits and
+token equality across chunks, no intermediate token, and no intermediate
+output readback. Original-weight SM120 qualification and fresh placement peak
+measurements still need capacity and the frozen G1 v2 policy. Five guarded
+four-GPU spot attempts (us-west3-a, us-east1-b, us-central1-b, us-east4-c, and
+us-west4-c) failed with stockouts; an on-demand us-west3-a attempt hit the
+project's zero quota. No machine started and the guard recorded zero cost.

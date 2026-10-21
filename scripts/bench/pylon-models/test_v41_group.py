@@ -1,6 +1,10 @@
 import unittest
+import json
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
 
-from v41_group import END_OF_SENTENCE, check, split
+from v41_group import END_OF_SENTENCE, check, split, qualify
 
 
 def score(name, text):
@@ -14,6 +18,23 @@ def answer(text, answer_ms=1500, finish="stop", ceiling=600, deadline=600, ok=Tr
 
 
 class V41GroupTests(unittest.TestCase):
+    def test_full_prompt_files_are_sent_intact_and_use_executable_scoring(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "cases.json"
+            prompt = "let x = 1;\n" * 6500 + "Reply with 373."
+            path.write_text(json.dumps([{"name": "full-20k", "prompt": prompt, "score_case": "arithmetic"}]))
+            args = SimpleNamespace(output=root, relay="ws://fixture", v41_want="deepseek-v4.1-flash",
+                                   v41_budget=1800, v41_cases_json=path, cases=None)
+            def cli(binary, home, command, timeout):
+                self.assertEqual(command[1], prompt)
+                return {"response": answer("373", ceiling=1800, deadline=1800)}
+            args.pylon_bin = "fixture"
+            report = qualify(args, [], score, cli)
+            self.assertTrue(report["qualified"], report)
+            self.assertEqual(report["cases"][0]["prompt_bytes"], len(prompt.encode()))
+            path.write_text(json.dumps([{"name": "unscored", "prompt": prompt, "score_case": "manual"}]))
+            self.assertFalse(qualify(args, [], score, cli)["qualified"])
+
     def test_split_starts_in_reasoning_and_keeps_the_final_bytes(self):
         self.assertEqual(split("think</think>\n373 " + END_OF_SENTENCE), ("think", "\n373 "))
         self.assertEqual(split("<think>a</think>b"), ("a", "b"))

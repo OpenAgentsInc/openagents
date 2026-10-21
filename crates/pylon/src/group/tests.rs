@@ -383,6 +383,7 @@ fn a_head_beacon_carries_its_request_limits_and_a_stage_never_does() {
     let limits = StageLimits {
         max_context_tokens: 8192,
         max_input_tokens: 2872,
+        max_input_bytes: crate::job::MAX_INPUT_BYTES as u64,
         max_prefill_tokens: 2872,
         max_step_tokens: 8192,
         prefill_chunk_tokens: None,

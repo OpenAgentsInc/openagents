@@ -267,6 +267,53 @@ async fn a_long_group_answers_an_extended_job_within_the_budget() {
     assert!(answer.answer_ms.unwrap() < 20_000);
 }
 
+/// The router, NIP-44, provider, and engine all see the complete prompt,
+/// including its final question, past the old 6 KiB router and 16 KiB job caps.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_long_prompt_reaches_the_group_without_clipping() {
+    struct FullPrompt(String);
+    impl Engine for FullPrompt {
+        fn model(&self) -> &str {
+            "full-prompt"
+        }
+        fn healthy(&self) -> Pending<'_, bool> {
+            Box::pin(async { true })
+        }
+        fn generate<'a>(
+            &'a self,
+            turns: &'a [Turn],
+            _: u32,
+        ) -> Pending<'a, Result<Generation, String>> {
+            Box::pin(async move {
+                assert_eq!(turns.last().unwrap().content, self.0);
+                Ok(Generation {
+                    text: "4".into(),
+                    input_tokens: None,
+                    output_tokens: Some(1),
+                    model: self.model().into(),
+                    finish: Finish::Stop,
+                })
+            })
+        }
+    }
+    let (relay, hub) = pylon::fixture::relay().await.unwrap();
+    let prompt = format!("{}What is 2 + 2?", "let x = 1;\n".repeat(6500));
+    let _group = head(&relay, &hub, 1800, Arc::new(FullPrompt(prompt.clone()))).await;
+    let home = tempfile::tempdir().unwrap();
+    let routed = router::route(
+        &Identity::generate(),
+        &routing(&relay, home.path(), Some(20)),
+        &NoDecision,
+        &[Turn {
+            role: "user".into(),
+            content: prompt,
+        }],
+        None,
+    )
+    .await;
+    assert_eq!(answered(&routed).text.as_deref(), Some("4"));
+}
+
 /// Heartbeats keep coming while the job runs, and the job still ends at
 /// the buyer's budget: the provider refuses it with `limit_exceeded` and
 /// drops the work, and the buyer hears so instead of waiting on.

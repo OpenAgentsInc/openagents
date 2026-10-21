@@ -404,7 +404,8 @@ fn greedy() -> Sampling {
 }
 
 fn prompt() -> serde_json::Value {
-    serde_json::json!([{"role": "user", "content": "tok3 tok5 tok0 tok6 tok4 tok7"}])
+    let prefix = if cuda() { "t" } else { "tok" };
+    serde_json::json!([{"role": "user", "content": [3,5,0,6,4,7].map(|i| format!("{prefix}{i}")).join(" ")}])
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -704,7 +705,7 @@ async fn chunked_prefill_matches_reference_without_delivering_intermediate_token
             let limits = rig.ready(1).await.limits.unwrap();
             assert_eq!(limits.max_input_tokens, 511);
             assert_eq!(limits.prefill_chunk_tokens, Some(chunk));
-            let prompt = serde_json::json!([{"role":"user", "content": (0..131).map(|i| format!("tok{}", 3 + i % 5)).collect::<Vec<_>>().join(" ")}]);
+            let prompt = serde_json::json!([{"role":"user", "content": (0..131).map(|i| format!("{}{}", if cuda() { "t" } else { "tok" }, 3 + i % 5)).collect::<Vec<_>>().join(" ")}]);
             for settings in [(0.0, 1.0, 0), (0.9, 0.95, 11)] {
                 let expected = rig.reference(&prompt, 4, settings);
                 let answer = rig
@@ -759,7 +760,7 @@ async fn cancelling_or_losing_a_link_during_prefill_never_delivers_a_token() {
             rig.ready(1).await;
             let pid = rig.pids()[1];
             unsafe { libc::kill(pid as i32, libc::SIGSTOP) };
-            let long = serde_json::json!([{"role":"user", "content":"tok3 ".repeat(131)}]);
+            let long = serde_json::json!([{"role":"user", "content":(if cuda() { "t3 " } else { "tok3 " }).repeat(131)}]);
             let mut run = rig
                 .group()
                 .generate_prompt(long, 4, greedy())
@@ -821,7 +822,7 @@ async fn full_2k_and_19989_token_prompts_cross_the_group_in_bounded_chunks() {
     .await;
     rig.ready(1).await;
     for count in [2048, 19989] {
-        let prompt = serde_json::json!([{"role":"user", "content": "tok3 ".repeat(count)}]);
+        let prompt = serde_json::json!([{"role":"user", "content": (if cuda() { "t3 " } else { "tok3 " }).repeat(count)}]);
         let mut run = rig
             .group()
             .generate_prompt(prompt, 2, greedy())

@@ -395,6 +395,9 @@ pub struct StageLimits {
     pub max_context_tokens: u64,
     /// The most prompt tokens one request may send.
     pub max_input_tokens: u64,
+    /// Text-byte limit of Pylon's encrypted conversation path.
+    #[serde(default = "default_max_input_bytes")]
+    pub max_input_bytes: u64,
     /// The largest prefill the stages' wire carries in one step.
     #[serde(default)]
     pub max_prefill_tokens: u64,
@@ -407,6 +410,10 @@ pub struct StageLimits {
     pub modes: Vec<PromptMode>,
 }
 
+fn default_max_input_bytes() -> u64 {
+    crate::job::MAX_INPUT_BYTES as u64
+}
+
 impl StageLimits {
     /// The limits two stages both serve.
     #[must_use]
@@ -414,6 +421,7 @@ impl StageLimits {
         Self {
             max_context_tokens: self.max_context_tokens.min(other.max_context_tokens),
             max_input_tokens: self.max_input_tokens.min(other.max_input_tokens),
+            max_input_bytes: self.max_input_bytes.min(other.max_input_bytes),
             max_prefill_tokens: self.max_prefill_tokens.min(other.max_prefill_tokens),
             max_step_tokens: self.max_step_tokens.min(other.max_step_tokens),
             prefill_chunk_tokens: self

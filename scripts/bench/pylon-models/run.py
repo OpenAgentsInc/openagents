@@ -673,6 +673,8 @@ def main():
                         help="The model the requests ask for: a name or sha256:<artifact> (default deepseek-v4.1-flash)")
     parser.add_argument("--v41-budget", type=int, default=3600,
                         help="The buyer's budget in seconds (1 to 3600; default 3600, so the group's declared deadline governs)")
+    parser.add_argument("--v41-cases-json", type=Path,
+                        help="Full prompts for the group deadline run: JSON rows with name, prompt, and score_case (extract, arithmetic, percent, grounding, or injection)")
     args=parser.parse_args()
     if args.v41_group:
         if args.pylon_bin is None:

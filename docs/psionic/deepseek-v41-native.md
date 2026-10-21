@@ -528,7 +528,7 @@ cross-region transfer.
 These are owned by the [Enter the Verse roadmap](../roadmap/2026-10-20-enter-the-verse.md)
 but block V7:
 
-- NIP-CJ input is capped at 16 KiB and 32 turns (`crates/pylon/src/job.rs`).
+- Pylon conversation text is capped at 96 KiB and 32 turns, with a 256 KiB encoded-body cap (`crates/pylon/src/job.rs`, #12414).
   Agent work needs far more context.
 - Results aren't streamed, and the provider deadline is 90 seconds. A
   V4.1 reasoning answer can run longer. Any longer deadline is a transport

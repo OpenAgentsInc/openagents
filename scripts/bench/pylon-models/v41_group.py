@@ -23,6 +23,7 @@ the owner's home, and no receipts are published.
 """
 
 import json
+import hashlib
 import time
 from pathlib import Path
 
@@ -96,6 +97,25 @@ def qualify(args, cases, score, cli):
     result = {"scope": "v41_group_through_pylon", "relay": args.relay, "want": args.v41_want,
               "budget_secs": args.v41_budget, "qualified": False, "cases": []}
     try:
+        path = getattr(args, "v41_cases_json", None)
+        if path:
+            raw = Path(path).read_bytes()
+            rows = json.loads(raw)
+            if not isinstance(rows, list) or not 1 <= len(rows) <= 32:
+                raise ValueError("group cases must contain 1 to 32 rows")
+            rules = {}
+            cases = []
+            for row in rows:
+                name, prompt, rule = row["name"], row["prompt"], row["score_case"]
+                if (not isinstance(name, str) or not name or name in rules
+                        or not isinstance(prompt, str) or not prompt.strip()
+                        or rule not in {"extract", "arithmetic", "percent", "grounding", "injection"}):
+                    raise ValueError("each case needs a unique name, a full prompt, and an executable score_case")
+                cases.append((name, prompt))
+                rules[name] = rule
+            original_score = score
+            score = lambda name, text: original_score(rules[name], text)
+            result["cases_sha256"] = hashlib.sha256(raw).hexdigest()
         for name, prompt in cases:
             if args.cases and name not in args.cases:
                 continue
@@ -110,7 +130,8 @@ def qualify(args, cases, score, cli):
                 time.sleep(BUSY_WAIT_SECS)
                 answer = cli(args.pylon_bin, home, command, timeout=args.v41_budget + 60)
             rows = check(name, answer["response"], score)
-            case = {"name": name, "prompt": prompt, "cli": answer,
+            case = {"name": name, "prompt": prompt, "prompt_bytes": len(prompt.encode()),
+                    "prompt_sha256": hashlib.sha256(prompt.encode()).hexdigest(), "cli": answer,
                     "checks": [{"name": n, "passed": bool(p), **d} for n, p, d in rows],
                     "passed": all(p for _, p, _ in rows)}
             result["cases"].append(case)
