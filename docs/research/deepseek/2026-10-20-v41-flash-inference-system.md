@@ -422,40 +422,36 @@ host can't know each request's accepted length in time, so the per-request
 lengths are computed on the device and the host learns them a step late.
 R3's buffer-lifetime contract should allow that.
 
-### The CED encoder/decoder split and our 40-layer checkpoint
+### Our 40-layer checkpoint is not an encoder/decoder stack
 
-The article says decoder-layer block KV is projected from the encoder's last
-hidden state, and counts 20 decoder layers. Our pinned checkpoint fits that
-reading, though nothing in our docs uses the words "encoder" or "decoder" for
-it yet:
+The article describes a CED (encoder/decoder) layout in which decoder-layer
+block KV is projected from the encoder's last hidden state. The checkpoint
+hints suggested layers 0–19 might be an encoder and 20–39 a decoder:
+`compress_ratios` changes at layer 20, layer 20 owns the only (ungated)
+compressor in layers 20–39, and 2,560 = 128 × 20. The V0 oracle run (#12371)
+checked this against the pinned reference and refuted it:
 
-- `compress_ratios` gives layers 0–1 window only, layers 2–19 ratio 2, and
-  layers 20–39 ratio 1 (`V41WeightConfig::flash` in
-  [`deepseek_v41_weights.rs`](../../../crates/psionic/crates/psionic-models/src/deepseek_v41_weights.rs)).
-- In the pinned tensor index, layers 2, 8, and 14 own a gated compressor and
-  an indexer. Layer 20 owns the only compressor in layers 20–39, and it has
-  no gate. Layers 24, 28, 32, and 36 own indexers only. Every layer has its
-  own `wkv` for its window.
-- The candidate source is layer 20; layers 21–39 read its candidates.
-- The article's 2,560 tokens equals 128 × 20, which fits a decoder of layers
-  20–39, and its SWA ring is kept only for "the first 20 layers", which fits
-  an encoder of layers 0–19 whose window state is cached while the decoder's
-  is replayed.
+- Layer 20's compressor reads layer 20's own attention input, which is built
+  from layer 19's output, like every other layer (`inference/model.py`
+  lines 983–987, 747–748, 461–462; dumped as `layers.20.attn.in`).
+- All 40 layers are the same block type (`model.py` lines 1206–1207). Layers
+  21–39 reuse layer 20's compressed cache and candidates in the same way that
+  layers 3–7, 9–13, and 15–19 reuse layers 2, 8, and 14.
+- Layers 0–19 run on every decode step (`model.py` lines 1264–1270); the dumps
+  hold output hashes for all 40 layers at every step.
 
-What this means for staging: a boundary at layer 20 is natural. Everything in
-layers 20–39 depends on the prefix through layer 20's shared KV and
-candidates, plus their own indexers and windows. The four-stage candidate in
-the [review addendum](../../psionic/deepseek-v41-native.md#evaluate-four-native-stages-before-fixing-the-topology-at-eight)
-already starts stage 2 at layer 20.
+So the article's CED description doesn't match this checkpoint's reference
+code, or it describes a serving-side arrangement that the open reference
+doesn't implement. For staging, layer 20 is still a convenient boundary,
+because it's a KV and candidate source for the layers after it, but not
+because decode can skip layers 0–19. See the [Oracle (V0)
+section](../../psionic/deepseek-v41-native.md) of the V4.1 plan.
 
 ### Open questions
 
-- **Is layers 0–19 the encoder and 20–39 the decoder?** The index and config
-  fit, but we haven't confirmed it in `inference/model.py`. In particular,
-  does layer 20's compressor read the hidden state entering layer 20 (the
-  encoder's last hidden state), and is layer 20 the first decoder layer or
-  the last encoder layer? Check in the reference source and in the V0 oracle
-  dumps.
+- **What does the article's CED description refer to?** The pinned
+  reference runs all 40 layers per step (see above). The article's
+  encoder/decoder split may describe a serving variant we can't see.
 - **YOCO truncation of 134.** Why the maximum hit is L − 134 rather than
   L − 128 for a non-speculative request, and whether exact (not bounded)
   replay needs the same margin.
