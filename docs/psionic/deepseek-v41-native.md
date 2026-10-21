@@ -466,7 +466,9 @@ state each boundary's dtype, quantization, and accumulation, from
 - Cached decode and one-shot replay of the same tokens differ in the
   reference itself: logits by about 1 to 5, and one argmax flips (the 127-token
   case, generated token 4). Compare Psionic's decode with the reference's
-  decode, and replay with replay. The gap is a floor for tolerances.
+  decode, and replay with replay. The cross-mode gap is context only; it does not set or relax same-mode
+  tolerances. Per-component arithmetic bounds must be fixed before comparison,
+  with same-mode repeatability measured separately when available.
 
 **Is V4.1 an encoder and decoder?** No. The reference has one block type for
 all 40 layers (`model.py` lines 1206–1207), and `Transformer.forward` runs
@@ -924,3 +926,24 @@ include an argmax flip; real router ties also occur. Future comparisons must nam
 the matching reference mode and tie cases, retain the observed errors and token
 mismatches, and establish measured numerical bounds before qualification. The
 new CPU runner does not claim oracle parity, native CUDA, or Pylon serving.
+
+## W1 tolerance policy correction (2026-10-20)
+
+The original oracle report and earlier plan incorrectly described the
+decode-versus-replay gap as a tolerance floor. That comparison crosses execution
+modes and cannot justify differences within one mode. The original report is
+retained unchanged as run evidence; the [W1 policy](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/tolerance-policy.json)
+corrects its interpretation. The issue body and completion checklist use this
+policy. It is committed before original-weight CPU comparisons.
+
+Embedding values, integer addresses/hashes, and conversion codes/scales supplied
+identical inputs must match exactly. Float32 mixing/router values use `2e-4`
+absolute plus `2e-4` relative error. BF16 activations/residuals use `2^-6` absolute
+plus `2^-6` relative error (two relative BF16 spacings). Float32 head logits use
+`0.03125` absolute plus `2^-6` relative error, accounting for BF16-normalized
+inputs. These are provisional engineering limits based on the arithmetic, not
+measured oracle repeatability. Every element must pass and nonfinite values
+fail. Limits cannot increase after failures. Missing coverage keeps G1 incomplete.
+Router/index selections require exact sets except at oracle-recorded exact
+selection ties; near ties are reported and are not exempt. Per-layer hashes
+locate differences but do not replace comparisons of actual tensor values.

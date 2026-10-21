@@ -50,7 +50,7 @@ speculation, vision, and paid jobs.
 | CPU components | #12377–#12384 | `deepseek_v41_cpu`: hyper-connections, routing and experts, attention primitives, Engram, projection wiring, RoPE/YaRN, activation quantization, and request-owned shared KV/indexer state across the 40-layer owner schedule. 45 tests on synthetic fixtures; the Engram token map matches the reference over all 129,280 entries. |
 | Native serving shape | #12358, #12364, #12367, #12368 | `--single-generation`, Pylon's managed worker recovery (now for native Psionic workers too), the `pylon up` text profile, and native Qwen2 CUDA for the R1 distill. |
 
-### In progress (Codex, DeepSeek chat)
+### CPU assembly completed (Codex, DeepSeek chat)
 
 | Issue | Scope |
 | --- | --- |
@@ -58,15 +58,17 @@ speculation, vision, and paid jobs.
 | #12386 | The full 40-layer CPU transformer to logits |
 | #12387 | Greedy decoding and an offline runner for the pinned checkpoint |
 
-When these close, the CPU model exists but isn't yet compared with the
-oracle on real weights. That comparison is W1.
+These three issues are closed on `main` through `d912ed9392`. The complete
+model and greedy runner pass 57 CPU tests and two argument tests on synthetic
+fixtures. Original-weight comparison is W1 (#12388), now claimed by this chat.
 
 ## Lessons that shape the remaining work
 
 - **Compare like with like.** The reference's own decode and replay of the
-  same tokens differ by about 1 to 5 in logits, and one top token flips. Set
-  tolerances from that gap, and never compare Psionic's decode with the
-  reference's replay.
+  same tokens differ by about 1 to 5 in logits, and one top token flips. That gap is context only: it does not set or relax same-mode tolerances.
+  Fix per-component bounds from the stated arithmetic before comparison,
+  measure same-mode repeatability separately when available, and never compare
+  Psionic's decode with the reference's replay.
 - **Exact router ties exist.** The 6th and 7th expert scores are sometimes
   exactly equal, and the reference's order between them is unspecified. Skip
   exact ties, report near ties, and keep Psionic's tie rule (lowest id)
@@ -177,9 +179,10 @@ started first.
 
 ## Open questions
 
-- Tolerances for G1: set them per component from the reference's own
-  decode-versus-replay gap before W1 runs, and don't loosen them after a
-  failure.
+- Tolerances for G1: the [fixed CPU policy](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/tolerance-policy.json)
+  uses per-component arithmetic limits. Same-mode repeatability is currently
+  unmeasured; the cross-mode gap grants no allowance. Do not loosen bounds
+  after a failure.
 - Whether the RTX PRO 6000 (SM120) runs the kernels at useful speed, or the
   group needs B200 machines.
 - Host RAM per stage for the Engram tables (about 101 GB each, layers 1 and
