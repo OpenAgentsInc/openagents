@@ -1,4 +1,4 @@
-//! Text MoE equations from `model.py:794-906`, before activation quantization.
+//! Text MoE equations from `model.py:794-906`, with explicit arithmetic modes.
 
 use super::{CheckpointMatrix, CpuError, MatrixRows, finite, matvec, positive, shape, sigmoid};
 
@@ -85,6 +85,27 @@ pub fn expert(
     route_weight: f32,
     limit: f32,
 ) -> Result<Vec<f32>, CpuError> {
+    expert_with_arithmetic(
+        input,
+        w1,
+        w2,
+        w3,
+        route_weight,
+        limit,
+        super::quantization::Arithmetic::Float32,
+    )
+}
+
+pub fn expert_with_arithmetic(
+    input: &[f32],
+    w1: &dyn MatrixRows,
+    w2: &dyn MatrixRows,
+    w3: &dyn MatrixRows,
+    route_weight: f32,
+    limit: f32,
+    arithmetic: super::quantization::Arithmetic,
+) -> Result<Vec<f32>, CpuError> {
+    use super::quantization::{self, Arithmetic};
     let (intermediate, width) = w1.dimensions();
     if w3.dimensions() != (intermediate, width)
         || w2.dimensions() != (width, intermediate)
@@ -96,8 +117,8 @@ pub fn expert(
         return Err(CpuError::Invalid("expert dimensions, weight, or clamp"));
     }
     shape("expert input", input, width)?;
-    let gate = matvec(w1, input)?;
-    let up = matvec(w3, input)?;
+    let gate = quantization::linear(w1, input, arithmetic)?;
+    let up = quantization::linear(w3, input, arithmetic)?;
     let hidden: Vec<_> = gate
         .into_iter()
         .zip(up)
@@ -109,7 +130,12 @@ pub fn expert(
             (g * sigmoid(g) * u) * route_weight
         })
         .collect();
-    matvec(w2, &hidden)
+    let hidden = if arithmetic == Arithmetic::ReferenceBf16 {
+        quantization::round_bf16(&hidden)?
+    } else {
+        hidden
+    };
+    quantization::linear(w2, &hidden, arithmetic)
 }
 
 /// Supplies routed experts by ID and the shared expert as `None`.

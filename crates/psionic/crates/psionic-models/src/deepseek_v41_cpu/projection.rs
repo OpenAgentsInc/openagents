@@ -1,5 +1,6 @@
 //! Named checkpoint projection wiring from the pinned `model.py` reference.
 
+use super::quantization::{self, Arithmetic, Quantization};
 use super::{
     CheckpointMatrix, CpuError, MatrixRows, finite, matvec, positive, product, rms_norm, shape,
 };
@@ -107,9 +108,38 @@ pub struct AttentionProjections<'a> {
     pub(crate) weights: &'a dyn WeightSource,
     pub(crate) layer: usize,
     pub(crate) geometry: Geometry,
+    pub(crate) arithmetic: Arithmetic,
 }
 
 impl<'a> AttentionProjections<'a> {
+    pub fn with_arithmetic(mut self, arithmetic: Arithmetic) -> Result<Self, CpuError> {
+        let g = self.geometry;
+        if arithmetic == Arithmetic::ReferenceBf16
+            && [
+                g.hidden,
+                g.q_rank,
+                g.head_dim,
+                g.heads * g.head_dim / g.o_groups,
+                g.o_groups * g.o_rank,
+                g.index_dim,
+            ]
+            .iter()
+            .any(|n| !n.is_multiple_of(32))
+        {
+            return Err(CpuError::Invalid(
+                "reference activation widths must be multiples of 32",
+            ));
+        }
+        self.arithmetic = arithmetic;
+        Ok(self)
+    }
+    pub(crate) fn finish(&self, values: Vec<f32>) -> Result<Vec<f32>, CpuError> {
+        if self.arithmetic == Arithmetic::ReferenceBf16 {
+            quantization::round_bf16(&values)
+        } else {
+            Ok(values)
+        }
+    }
     pub fn geometry(&self) -> Geometry {
         self.geometry
     }
@@ -127,6 +157,7 @@ impl<'a> AttentionProjections<'a> {
             weights,
             layer,
             geometry,
+            arithmetic: Arithmetic::Float32,
         })
     }
     fn name(&self, part: &str) -> String {
@@ -143,14 +174,24 @@ impl<'a> AttentionProjections<'a> {
         if weight.dimensions() != (rows, cols) {
             return Err(CpuError::Invalid("attention projection shape"));
         }
-        matvec(weight.as_ref(), input)
+        if self.arithmetic == Arithmetic::ReferenceBf16
+            && compress_ratio(self.layer)? > 1
+            && part.starts_with("compressor.")
+        {
+            // convert.py promotes these BF16 checkpoint weights to F32.
+            matvec(weight.as_ref(), input)
+        } else {
+            quantization::linear(weight.as_ref(), input, self.arithmetic)
+        }
     }
     fn norm(&self, part: &str, input: &[f32]) -> Result<Vec<f32>, CpuError> {
-        rms_norm(
-            input,
-            &self.weights.vector(&self.name(part))?,
-            self.geometry.norm_epsilon,
-        )
+        let weight = self.weights.vector(&self.name(part))?;
+        let weight = if self.arithmetic == Arithmetic::ReferenceBf16 {
+            quantization::round_bf16(&weight)?
+        } else {
+            weight
+        };
+        self.finish(rms_norm(input, &weight, self.geometry.norm_epsilon)?)
     }
     pub fn query(&self, input: &[f32]) -> Result<Query, CpuError> {
         let g = self.geometry;
@@ -230,6 +271,11 @@ impl<'a> AttentionProjections<'a> {
         let g = self.geometry;
         let width = product(g.heads, g.head_dim)? / g.o_groups;
         shape("attention heads", heads, product(g.heads, g.head_dim)?)?;
+        let heads = if self.arithmetic == Arithmetic::ReferenceBf16 {
+            quantization::inplace_bf16(heads, Quantization::Fp8)?
+        } else {
+            heads.to_vec()
+        };
         let weight = self.weights.matrix(&self.name("wo_a.weight"))?;
         if weight.dimensions() != (product(g.o_groups, g.o_rank)?, width) {
             return Err(CpuError::Invalid("grouped output projection shape"));
@@ -238,6 +284,12 @@ impl<'a> AttentionProjections<'a> {
         for group in 0..g.o_groups {
             for rank in 0..g.o_rank {
                 let row = weight.row(group * g.o_rank + rank)?;
+                // wo_a is dequantized to BF16 by the official converter.
+                let row = if self.arithmetic == Arithmetic::ReferenceBf16 {
+                    quantization::round_bf16(&row)?
+                } else {
+                    row
+                };
                 shape("grouped output row", &row, width)?;
                 low_rank.push(
                     row.iter()
@@ -248,6 +300,7 @@ impl<'a> AttentionProjections<'a> {
             }
         }
         finite("grouped output", &low_rank)?;
+        let low_rank = self.finish(low_rank)?;
         self.project(
             "wo_b.weight",
             &low_rank,
@@ -280,6 +333,24 @@ pub fn final_logits(
     width: usize,
     epsilon: f32,
 ) -> Result<Vec<f32>, CpuError> {
+    final_logits_with_arithmetic(
+        weights,
+        residual,
+        pre_mix,
+        width,
+        epsilon,
+        Arithmetic::Float32,
+    )
+}
+
+pub fn final_logits_with_arithmetic(
+    weights: &dyn WeightSource,
+    residual: &[f32],
+    pre_mix: &[f32],
+    width: usize,
+    epsilon: f32,
+    arithmetic: Arithmetic,
+) -> Result<Vec<f32>, CpuError> {
     use super::hyperconnections::HyperConnections;
     let hc = HyperConnections {
         streams: pre_mix.len(),
@@ -288,7 +359,17 @@ pub fn final_logits(
         ..HyperConnections::flash()
     };
     let hidden = hc.collapse(residual, pre_mix)?;
+    let hidden = if arithmetic == Arithmetic::ReferenceBf16 {
+        quantization::round_bf16(&hidden)?
+    } else {
+        hidden
+    };
     let normalized = rms_norm(&hidden, &weights.vector("norm.weight")?, epsilon)?;
+    let normalized = if arithmetic == Arithmetic::ReferenceBf16 {
+        quantization::round_bf16(&normalized)?
+    } else {
+        normalized
+    };
     matvec(weights.matrix("head.weight")?.as_ref(), &normalized)
 }
 

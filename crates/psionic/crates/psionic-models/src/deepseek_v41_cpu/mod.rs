@@ -2,9 +2,10 @@
 //!
 //! Math reimplemented from the public MIT-licensed reference at checkpoint
 //! revision `1bae0e1088993b9b82de08f59de5be5a34e42170`. See
-//! `testdata/deepseek_v41_cpu/LICENSE-DeepSeek`. These components do not yet
-//! reproduce BF16 rounding or quantized activation boundaries and do not
-//! qualify a serving model. Matrix rows can be supplied without expanding a
+//! `testdata/deepseek_v41_cpu/LICENSE-DeepSeek`. These components do not
+//! qualify a serving model. Float32 equations and explicit BF16/activation
+//! boundaries are available separately; device parity remains unqualified.
+//! Matrix rows can be supplied without expanding a
 //! checkpoint in memory.
 
 pub mod attention;
@@ -12,6 +13,7 @@ pub mod engram;
 pub mod hyperconnections;
 pub mod moe;
 pub mod projection;
+pub mod quantization;
 pub mod rope;
 
 use thiserror::Error;
@@ -75,6 +77,9 @@ pub(crate) fn sigmoid(x: f32) -> f32 {
 pub trait MatrixRows {
     fn dimensions(&self) -> (usize, usize);
     fn row(&self, index: usize) -> Result<Vec<f32>, CpuError>;
+    fn precision(&self) -> quantization::MatrixPrecision {
+        quantization::MatrixPrecision::F32
+    }
 }
 
 /// Matrix backed by positioned checkpoint reads, including packed FP4 rows.
@@ -82,6 +87,7 @@ pub struct CheckpointMatrix<'a> {
     checkpoint: &'a crate::deepseek_v41_weights::DeepSeekV41Checkpoint,
     name: String,
     dimensions: (usize, usize),
+    precision: quantization::MatrixPrecision,
 }
 
 impl<'a> CheckpointMatrix<'a> {
@@ -116,11 +122,20 @@ impl<'a> CheckpointMatrix<'a> {
             checkpoint,
             name,
             dimensions,
+            precision: match format {
+                V41BlockFormat::F32 => quantization::MatrixPrecision::F32,
+                V41BlockFormat::Bf16 => quantization::MatrixPrecision::Bf16,
+                V41BlockFormat::Fp4E2M1Row32 => quantization::MatrixPrecision::Fp4,
+                _ => quantization::MatrixPrecision::Fp8,
+            },
         })
     }
 }
 
 impl MatrixRows for CheckpointMatrix<'_> {
+    fn precision(&self) -> quantization::MatrixPrecision {
+        self.precision
+    }
     fn dimensions(&self) -> (usize, usize) {
         self.dimensions
     }

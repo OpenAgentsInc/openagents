@@ -669,7 +669,7 @@ The next four children of #12369 connect the earlier CPU components while
 | --- | --- | --- |
 | [#12381](https://github.com/OpenAgentsInc/openagents/issues/12381) | Projection wiring | Named row-addressable checkpoint matrices, query/KV/compressor/indexer paths, grouped output projection, embedding, and final collapse/norm/logits. Nonuniform NumPy fixtures, group isolation, sparse embedding reads, and invalid inputs are tested. |
 | [#12382](https://github.com/OpenAgentsInc/openagents/issues/12382) | RoPE/YaRN | Adjacent-pair tail rotation and inverse, pure-window base 10000, compressed/full base 160000 with YaRN, and first-token positions for completed groups. All 33 accumulated tests pass. |
-| [#12383](https://github.com/OpenAgentsInc/openagents/issues/12383) | Activation quantization | Filed; follows #12382. |
+| [#12383](https://github.com/OpenAgentsInc/openagents/issues/12383) | Activation quantization | Explicit float32/BF16 arithmetic, FP8 activation dispatch for FP4/FP8 weights, per-32 indexer FP4/UE8M0, per-16 compressed KV FP4/E4M3, and BF16 probability/value products. All 39 accumulated tests pass. |
 | [#12384](https://github.com/OpenAgentsInc/openagents/issues/12384) | Shared KV state | Filed; follows #12383. |
 
 The [integration fixture generator](../../scripts/dev/deepseek-v41-integration-fixtures.py)
@@ -686,3 +686,19 @@ rotations use float32. The public reference's device power/trigonometric
 implementations still need comparison, especially where long positions magnify
 frequency differences. The frequency helper's 1M position bound is not a
 qualified runtime context limit.
+
+The numerical path selects `Arithmetic::ReferenceBf16` explicitly. It casts
+projection/norm/rotation results to BF16, preserves float32 promoted ratio-two
+compressor projections, rounds pooled latents before normalization, and handles
+grouped `wo_a` through BF16 weights and FP8-quantize/dequantize inputs. The final
+head remains a float32 projection of BF16-normalized input. The expert helper
+also exposes an explicit arithmetic mode for its pre-down-projection boundary.
+Existing float32 equation APIs keep their behavior.
+
+Activation fixtures compare packed codes, scale bytes, and dequantized values
+exactly. Tests cover ties, signed zero, saturation, zero and tiny groups, scale
+changes, named projection dispatch, compression rounding, and the BF16 attention
+value product across 64-index blocks. Nonfinite inputs, invalid block widths,
+and an E4M3 compressed-KV scale outside its finite range return errors. These
+CPU conversion rules and float32 reduction order still require comparison with
+the official device kernels; they do not claim bitwise GEMM/device parity.

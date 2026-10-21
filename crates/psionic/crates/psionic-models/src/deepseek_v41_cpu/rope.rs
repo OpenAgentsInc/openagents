@@ -148,6 +148,7 @@ impl super::projection::AttentionProjections<'_> {
         }
         let mut q = self.query(input)?;
         rope.apply_tail(&mut q.heads, self.geometry.head_dim, position, false)?;
+        q.heads = self.finish(q.heads)?;
         Ok(q)
     }
     pub fn rotated_window_kv(
@@ -161,7 +162,7 @@ impl super::projection::AttentionProjections<'_> {
         }
         let mut kv = self.window_kv(input)?;
         rope.apply_tail(&mut kv, self.geometry.head_dim, position, false)?;
-        Ok(kv)
+        self.finish(kv)
     }
     pub fn rotated_output(
         &self,
@@ -174,7 +175,7 @@ impl super::projection::AttentionProjections<'_> {
         }
         let mut heads = heads.to_vec();
         rope.apply_tail(&mut heads, self.geometry.head_dim, position, true)?;
-        self.output(&heads)
+        self.output(&self.finish(heads)?)
     }
 }
 
