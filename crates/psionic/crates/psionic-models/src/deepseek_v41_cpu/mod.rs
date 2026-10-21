@@ -11,6 +11,7 @@ pub mod attention;
 pub mod engram;
 pub mod hyperconnections;
 pub mod moe;
+pub mod projection;
 
 use thiserror::Error;
 

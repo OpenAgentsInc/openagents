@@ -528,6 +528,12 @@ The status lines below summarize each issue and its comments. Open the issue for
   only. Full attention wiring, 40-layer
   decode, native CUDA, and a V4.1 serving model remain separate gates.
 
+- #12381–#12384: compare named projections and grouped output, RoPE/YaRN at
+  long positions, BF16/FP8/FP4 activation codes/scales and GEMM boundaries, and
+  the integrated shared-cache attention path against #12371's original-weight
+  oracle. Pin device conversion/tie rules and reduction tolerances. Local
+  equation/state tests do not qualify a full CPU decoder or V4.1 CUDA serving.
+
 - #12373: on the #12371 oracle VM with the V4.1-Flash weights, from
   `crates/psionic`, run `cargo run --release -p psionic-models --example
   deepseek_v41_weights_check -- CHECKPOINT_DIR --verify-sha256 --oracle

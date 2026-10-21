@@ -190,3 +190,10 @@ The existing oracle and protocol scopes stay separate. See the
 [component status](../psionic/deepseek-v41-native.md#independent-cpu-port-first-implementation-phase-2026-10-20)
 for completed checks and remaining integration. Small synthetic fixtures unblock
 implementation; they do not replace P1.0's full-checkpoint numerical gates.
+
+The next independent integration phase is filed as children #12381–#12384:
+projection wiring, RoPE/YaRN, activation quantization, and request-owned shared
+KV/indexer state. This chat implements them serially, with targeted tests and
+one push/closure before the next claim. See the
+[integration status](../psionic/deepseek-v41-native.md#independent-cpu-integration-phase-2026-10-20).
+The existing #12371 oracle claim remains separate.

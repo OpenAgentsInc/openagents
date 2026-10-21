@@ -659,3 +659,22 @@ KV/indexer state across layers before attempting P1.8's full CPU decoder. The
 original-weight oracle remains a numerical dependency for that integration;
 closing these issues does not mark P1.4's whole attention block, full CPU decode,
 native V4.1 CUDA, stage transport, or Pylon recovery as qualified.
+
+## Independent CPU integration phase (2026-10-20)
+
+The next four children of #12369 connect the earlier CPU components while
+#12371's original-weight oracle remains separate:
+
+| Issue | Scope | Local implementation |
+| --- | --- | --- |
+| [#12381](https://github.com/OpenAgentsInc/openagents/issues/12381) | Projection wiring | Named row-addressable checkpoint matrices, query/KV/compressor/indexer paths, grouped output projection, embedding, and final collapse/norm/logits. Nonuniform NumPy fixtures, group isolation, sparse embedding reads, and invalid inputs are tested. |
+| [#12382](https://github.com/OpenAgentsInc/openagents/issues/12382) | RoPE/YaRN | Filed; follows #12381. |
+| [#12383](https://github.com/OpenAgentsInc/openagents/issues/12383) | Activation quantization | Filed; follows #12382. |
+| [#12384](https://github.com/OpenAgentsInc/openagents/issues/12384) | Shared KV state | Filed; follows #12383. |
+
+The [integration fixture generator](../../scripts/dev/deepseek-v41-integration-fixtures.py)
+uses small independent NumPy equations from the pinned public reference.
+Projection fixtures use `3e-6` absolute tolerance. The first projection change
+uses float32 arithmetic; later rows add explicit numerical boundaries. Code
+closure does not qualify original-weight activations, full CPU decoding, or
+native V4.1 CUDA serving.
