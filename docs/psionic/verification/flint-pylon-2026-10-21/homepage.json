@@ -1,0 +1,16 @@
+{
+  "url": "https://openagents.com/",
+  "flintReady": true,
+  "entries": [
+    {
+      "text": "Flint on GCP",
+      "parent": "Flint on GCP\nOnline \u00b7 GPU \u00b7 0 of 1 busy",
+      "visible": true
+    },
+    {
+      "text": "Flint on GCPGPU \u00b7 0 of 1 busy",
+      "parent": "Sealed Clef (Intel TDX, Confidential Space)\nCPU \u00b7 0 of 1 busy\nGCE L4 (network lane)\nGPU \u00b7 0 of 2 busy\nCoderOS RTX 4080 (network lane)\nGPU \u00b7 0 of 2 busy\nFlint on GCP\nGPU \u00b7 0 of 1 busy\nMac M5 Max (network lane)\nUnified mem",
+      "visible": true
+    }
+  ]
+}

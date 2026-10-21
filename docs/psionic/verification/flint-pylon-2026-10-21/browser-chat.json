@@ -1,0 +1,58 @@
+{
+  "website": "https://openagents.com/",
+  "account": "declared dedicated test account; account ID checked before browser startup",
+  "auth_setup": "DevTools attaches the dedicated app API credential only to same-origin thread and history requests, including the real EventSource stream. The composer, API routing, and SSE implementation are unchanged; this is not a WorkOS login test.",
+  "chat": "a5e13b64-75ff-4261-b363-aea6bfb4da58",
+  "messages": [
+    {
+      "role": "user",
+      "text": "What is 19 + 23? Reply with just the number."
+    },
+    {
+      "role": "assistant",
+      "text": "**Flint on GCP** \u00b7 Flint\n\n42"
+    },
+    {
+      "role": "user",
+      "text": "Subtract 5 from that answer. Reply with just the number."
+    },
+    {
+      "role": "assistant",
+      "text": "**Flint on GCP** \u00b7 Flint\n\n37"
+    }
+  ],
+  "outcome": "answered",
+  "requests": [
+    {
+      "path": "/v1/threads",
+      "method": "POST",
+      "model": "flint",
+      "surface": "home",
+      "credential": "declared dedicated test-account app key"
+    },
+    {
+      "path": "/v1/threads/a5e13b64-75ff-4261-b363-aea6bfb4da58/events",
+      "method": "GET",
+      "model": null,
+      "surface": null,
+      "credential": "declared dedicated test-account app key"
+    },
+    {
+      "path": "/v1/threads/a5e13b64-75ff-4261-b363-aea6bfb4da58/messages",
+      "method": "POST",
+      "model": "flint",
+      "surface": "home",
+      "credential": "declared dedicated test-account app key"
+    },
+    {
+      "path": "/v1/threads/a5e13b64-75ff-4261-b363-aea6bfb4da58/events",
+      "method": "GET",
+      "model": null,
+      "surface": null,
+      "credential": "declared dedicated test-account app key"
+    }
+  ],
+  "model_choice": "Flint",
+  "provider": "Flint on GCP",
+  "reasoning_displayed": false
+}

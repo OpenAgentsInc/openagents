@@ -1,0 +1,249 @@
+{
+  "checked_date": "2026-10-21",
+  "source": "Google Cloud Billing Catalog Compute Engine SKUs",
+  "region": "asia-northeast1",
+  "gpu_skus": [
+    {
+      "skuId": "A2EC-5B6D-E195",
+      "description": "G4 Instance Ram running in Tokyo",
+      "serviceRegions": [
+        "asia-northeast1"
+      ],
+      "category": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceFamily": "Compute",
+        "resourceGroup": "RAM",
+        "usageType": "OnDemand"
+      },
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "GiBy.h",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 7631000
+                }
+              }
+            ],
+            "usageUnitDescription": "gibibyte hour",
+            "baseUnit": "By.s",
+            "baseUnitDescription": "byte second",
+            "baseUnitConversionFactor": 3865470566400
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2026-10-21T07:00:00Z"
+        }
+      ]
+    },
+    {
+      "skuId": "AB09-3116-6D80",
+      "description": "G4 Instance Core running in Tokyo",
+      "serviceRegions": [
+        "asia-northeast1"
+      ],
+      "category": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceFamily": "Compute",
+        "resourceGroup": "CPU",
+        "usageType": "OnDemand"
+      },
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "h",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 63583000
+                }
+              }
+            ],
+            "usageUnitDescription": "hour",
+            "baseUnit": "s",
+            "baseUnitDescription": "second",
+            "baseUnitConversionFactor": 3600
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2026-10-21T07:00:00Z"
+        }
+      ]
+    },
+    {
+      "skuId": "C7F5-880A-78A2",
+      "description": "RTX 6000 96GB attached to Spot Preemptible VMs running in Tokyo",
+      "serviceRegions": [
+        "asia-northeast1"
+      ],
+      "category": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceFamily": "Compute",
+        "resourceGroup": "GPU",
+        "usageType": "Preemptible"
+      },
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "h",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 541300000
+                }
+              }
+            ],
+            "usageUnitDescription": "hour",
+            "baseUnit": "s",
+            "baseUnitDescription": "second",
+            "baseUnitConversionFactor": 3600
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2026-10-21T07:00:00Z"
+        }
+      ]
+    },
+    {
+      "skuId": "CAD1-3E4F-197B",
+      "description": "Spot Preemptible G4 Instance Ram running in Tokyo",
+      "serviceRegions": [
+        "asia-northeast1"
+      ],
+      "category": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceFamily": "Compute",
+        "resourceGroup": "RAM",
+        "usageType": "Preemptible"
+      },
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "GiBy.h",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 2907000
+                }
+              }
+            ],
+            "usageUnitDescription": "gibibyte hour",
+            "baseUnit": "By.s",
+            "baseUnitDescription": "byte second",
+            "baseUnitConversionFactor": 3865470566400
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2026-10-21T07:00:00Z"
+        }
+      ]
+    },
+    {
+      "skuId": "F68B-1CCF-F2C3",
+      "description": "Spot Preemptible G4 Instance Core running in Tokyo",
+      "serviceRegions": [
+        "asia-northeast1"
+      ],
+      "category": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceFamily": "Compute",
+        "resourceGroup": "CPU",
+        "usageType": "Preemptible"
+      },
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "h",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "0",
+                  "nanos": 24170000
+                }
+              }
+            ],
+            "usageUnitDescription": "hour",
+            "baseUnit": "s",
+            "baseUnitDescription": "second",
+            "baseUnitConversionFactor": 3600
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2026-10-21T07:00:00Z"
+        }
+      ]
+    },
+    {
+      "skuId": "FE87-7A0E-01A8",
+      "description": "RTX 6000 96GB running in Tokyo",
+      "serviceRegions": [
+        "asia-northeast1"
+      ],
+      "category": {
+        "serviceDisplayName": "Compute Engine",
+        "resourceFamily": "Compute",
+        "resourceGroup": "GPU",
+        "usageType": "OnDemand"
+      },
+      "pricingInfo": [
+        {
+          "summary": "",
+          "pricingExpression": {
+            "usageUnit": "h",
+            "displayQuantity": 1,
+            "tieredRates": [
+              {
+                "startUsageAmount": 0,
+                "unitPrice": {
+                  "currencyCode": "USD",
+                  "units": "1",
+                  "nanos": 424345000
+                }
+              }
+            ],
+            "usageUnitDescription": "hour",
+            "baseUnit": "s",
+            "baseUnitDescription": "second",
+            "baseUnitConversionFactor": 3600
+          },
+          "currencyConversionRate": 1,
+          "effectiveTime": "2026-10-21T07:00:00Z"
+        }
+      ]
+    }
+  ],
+  "gpu_vm": {
+    "vcpus": 48,
+    "ram_gib": 180,
+    "gpus": 1,
+    "spot_compute_usd_per_hour": 2.22472,
+    "on_demand_compute_usd_per_hour": 5.849909
+  },
+  "controller_compute_usd_per_hour": 0.008376,
+  "total_spot_plus_controller_compute_usd_per_day": 53.5943,
+  "excludes": [
+    "disks",
+    "network"
+  ],
+  "on_demand_gpu_quota_request": "flint-12425-rtx-pro6000-tokyo: denied"
+}

@@ -1,0 +1,30 @@
+   Compiling psionic-flint v1.0.0 (/home/christopherdavid/work/openagents/crates/psionic/crates/psionic-flint)
+    Finished `release` profile [optimized + debuginfo] target(s) in 18.41s
+     Running unittests src/lib.rs (/home/christopherdavid/work/agent-targets/openagents-crates-psionic/worktrees/6d/635874e1e370a7f8b7d97879601f9c25c127f9b5e80665e26349118df11906/release/deps/psionic_flint-8ccbd8d7c9af58ff)
+
+running 9 tests
+test tests::answer_parser_never_returns_unfinished_reasoning_as_content ... ok
+test tests::released_text_template_escapes_roles_and_preserves_reasoning ... ok
+test tests::released_template_matches_official_jinja_fixtures ... ok
+test tests::routing_is_sigmoid_renormalized_with_stable_ties ... ok
+test tests::sampling_is_seeded_and_bounded ... ok
+test tests::refuses_invalid_context_token_and_failed_session ... ok
+test tests::whole_transformer_matches_independent_numpy_across_window ... ok
+test tests::released_tokenizer_matches_python_fixtures ... ok
+test tests::cuda_bf16_weights_f32_compute_matches_independent_fixture ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.27s
+
+     Running unittests src/main.rs (/home/christopherdavid/work/agent-targets/openagents-crates-psionic/worktrees/6d/635874e1e370a7f8b7d97879601f9c25c127f9b5e80665e26349118df11906/release/deps/psionic_flint-959296f58faba3cb)
+
+running 1 test
+test tests::watchdog_tracks_work_until_its_owner_finishes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests psionic_flint
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

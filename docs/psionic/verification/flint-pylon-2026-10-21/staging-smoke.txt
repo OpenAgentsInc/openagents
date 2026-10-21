@@ -1,0 +1,15 @@
+FAIL  home: HTML chat fallback loads  (200)
+FAIL  home: loads  (308)
+FAIL  home: composer
+FAIL  home: four starter questions
+FAIL  home: composer docked at the bottom like a chat
+FAIL  home: four learn-about cards
+FAIL  home: theme toggle in the sidebar corner
+FAIL  home: phone menu button opens the drawer
+FAIL  home: phone hides the rail
+FAIL  home: Download and legal links in the phone drawer
+FAIL  home: phone cards two small ones a row
+FAIL  signed in: composer selectors render
+FAIL  environments: the left panel links Environments  (200)
+PASS  accounts: disposable operator account is deleted  (200)
+80 passed, 13 failed, 2 skipped in 108 s

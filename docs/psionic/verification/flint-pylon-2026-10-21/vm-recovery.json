@@ -1,0 +1,67 @@
+{
+  "started_utc": "2026-10-21T20:28:28.727119+00:00",
+  "before_id": "8464999274901750287",
+  "stopped_utc": "2026-10-21T20:29:30.661802+00:00",
+  "deliberate_stop_respected_seconds": 75,
+  "requested_utc": "2026-10-21T20:30:57.665999+00:00",
+  "running_after_seconds": 30.211307208000022,
+  "after_id": "8464999274901750287",
+  "external_ip": "34.84.253.79",
+  "ready_after_seconds": 249.336702917,
+  "services": [
+    "active",
+    "active",
+    "enabled",
+    "enabled"
+  ],
+  "worker_identity": {
+    "artifact": "sha256:e2e253557466548339ec3ba3d866ef6cd60440dfc895de7717b81f3ba320f58f",
+    "backend": "cuda",
+    "busy": false,
+    "max_context_tokens": 8192,
+    "numerical_profile": "bf16_weights_f32_compute_v1",
+    "revision": "2a247be0c0aec895ccb0ac7ca92229ec6df37288"
+  },
+  "followup": {
+    "schema": "openagents.pylon/1",
+    "command": "ask",
+    "ok": true,
+    "status": "ok",
+    "summary": "openagents pylon ask finished",
+    "data": {
+      "pylon": "30200:a2dbdb1f68223331c50ab4efb8c6bdc703f885c62cdb54cff47dbdfa4903c29d:flint-gcp",
+      "pylon_npub": "npub15tdak8mgygenr3g2knhm334acupl3pwx9nd4fnl50k7l5jgrc2wsenpa79",
+      "label": "Flint on GCP",
+      "model": "flint@sha256:e2e253557466548339ec3ba3d866ef6cd60440dfc895de7717b81f3ba320f58f",
+      "prompt": "What is 19 + 23? Reply with just the number.",
+      "text": "42",
+      "outcome": "accepted",
+      "error": null,
+      "request": "1fbf2dfb393b7bf72465d543e7846a722efe22c173548a52f015f4cd0acabe88",
+      "discover_ms": 899,
+      "contact_ms": 465,
+      "answer_ms": 1953,
+      "usage": {
+        "input": 16,
+        "output": 22
+      },
+      "receipt": null,
+      "receipt_error": null,
+      "paid_msat": null,
+      "declared": {
+        "budget_secs": 900,
+        "ceiling_secs": 900,
+        "deadline_secs": 900,
+        "admitted_secs": 900,
+        "heartbeats": 0,
+        "finish": "stop",
+        "connections": 1
+      }
+    },
+    "warnings": [],
+    "needs_owner": null,
+    "next": [],
+    "exit_code": 0
+  },
+  "passed": true
+}

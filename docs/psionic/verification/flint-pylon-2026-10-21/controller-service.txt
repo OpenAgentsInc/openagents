@@ -1,0 +1,26 @@
+# /etc/systemd/system/flint-vm-recovery.service
+[Unit]
+Description=Restart the maintained Flint GPU VM after a preemption
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+User=christopherdavid
+ExecStart=/home/christopherdavid/flint-builds/9d34624102/pylon-vm-recovery openagentsgemini asia-northeast1-b oa-flint-12419 8464999274901750287
+Restart=always
+RestartSec=10
+MemoryMax=128M
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+ff6f8e27d462ba091a179e385f25185374aaaf829a8177883600882e67e098f4  /home/christopherdavid/flint-builds/9d34624102/pylon-vm-recovery
+Oct 21 20:25:15 oa-flint-control-12425.us-central1-a.c.openagentsgemini.internal pylon-vm-recovery[554]: Flint VM recovery: unchanged
+Oct 21 20:26:15 oa-flint-control-12425.us-central1-a.c.openagentsgemini.internal pylon-vm-recovery[554]: Flint VM recovery: unchanged
+Oct 21 20:27:15 oa-flint-control-12425.us-central1-a.c.openagentsgemini.internal pylon-vm-recovery[554]: Flint VM recovery: unchanged
+Oct 21 20:28:16 oa-flint-control-12425.us-central1-a.c.openagentsgemini.internal pylon-vm-recovery[554]: Flint VM recovery: unchanged
+Oct 21 20:29:16 oa-flint-control-12425.us-central1-a.c.openagentsgemini.internal pylon-vm-recovery[554]: Flint VM recovery: unchanged
+Oct 21 20:30:16 oa-flint-control-12425.us-central1-a.c.openagentsgemini.internal pylon-vm-recovery[554]: Flint VM recovery: unchanged
+Oct 21 20:31:17 oa-flint-control-12425.us-central1-a.c.openagentsgemini.internal pylon-vm-recovery[554]: Flint VM recovery: starting
+Oct 21 20:32:18 oa-flint-control-12425.us-central1-a.c.openagentsgemini.internal pylon-vm-recovery[554]: Flint VM recovery: unchanged

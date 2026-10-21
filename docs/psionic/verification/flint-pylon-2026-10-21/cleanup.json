@@ -1,0 +1,14 @@
+{
+  "owner_account_used": false,
+  "chats": [
+    {
+      "chat": "3fb1c6d3-dfaf-4cb2-9a85-600c1a6bd312",
+      "delete_status": 204
+    },
+    {
+      "chat": "a5e13b64-75ff-4261-b363-aea6bfb4da58",
+      "delete_status": 204
+    }
+  ],
+  "remaining_test_chats": 0
+}

@@ -1,6 +1,7 @@
 # Native Flint on GCP
 
-Issue: [#12419](https://github.com/OpenAgentsInc/openagents/issues/12419).
+Issues: [#12419](https://github.com/OpenAgentsInc/openagents/issues/12419) and
+[#12425](https://github.com/OpenAgentsInc/openagents/issues/12425).
 
 `psionic-flint` executes Recursive's original Flint checkpoint in Rust through
 Candle on one CUDA GPU. Python supplies offline test references; it is absent
@@ -79,6 +80,7 @@ digits, NUL removal, escaped role markers, and reasoning history.
 cd crates/psionic
 export CARGO_TARGET_DIR="$HOME/work/agent-targets/openagents-crates-psionic"
 . ../../scripts/dev/cargo-build-env.sh
+export CARGO_INCREMENTAL=0
 FLINT_TOKENIZER="$HOME/flint-weights/tokenizer.json" \
   cargo test --release -p psionic-flint --features cuda -- --include-ignored
 ```
@@ -99,7 +101,7 @@ to a one-BF16-ULP attention difference; subsequent residuals and routes drifted.
 The supported profile uses FP32 computation to avoid repeatedly rounding those
 states. The failed result stays separate from the supported profile's results.
 
-## GCP results, 2026-10-21
+## Initial GCP results, 2026-10-21
 
 [Receipt](verification/flint-2026-10-21/receipt.json),
 [CUDA test log](verification/flint-2026-10-21/cuda-tests.log),
@@ -128,11 +130,11 @@ states. The failed result stays separate from the supported profile's results.
   not a measured memory peak.
 
 The service is `psionic-flint` on `oa-flint-12419`, project
-`openagentsgemini`, zone `asia-northeast1-b`. Its spot VM expires at
-**2026-10-21 21:56:08 UTC** and may be preempted earlier. The guard estimates
-$6.65 of compute through that expiry and holds a separate $10 reserve for
-storage and regional price differences, within the $150 cap. These are
-estimates rather than a billing invoice.
+`openagentsgemini`, zone `asia-northeast1-b`. The development run originally
+expired at **2026-10-21 21:56:08 UTC**, with an estimated $6.65 of compute
+and a separate $10 reserve within its $150 budget. The maintained-service
+handoff below removed that expiry and settled the development entries.
+Spot preemption remains possible. These costs are estimates, not an invoice.
 
 To reach this running instance:
 
@@ -145,10 +147,11 @@ curl http://127.0.0.1:18080/healthz
 
 The receipt links the raw logits and traces in GCS and pins their archive by
 SHA-256. The failed BF16-compute experiment remains in a separate report.
-The longest full-checkpoint smoke prompt has 27 tokens. Long contexts, sustained-load
-performance, quantized formats, Metal, streaming, tools, and public Pylon
-routing need separate work. The native text smoke does not establish
-Recursive's published coding benchmark scores.
+The initial smoke's longest prompt had 27 tokens. The public CUDA profile's
+larger-context, sequential-load, relay, and app checks are recorded below.
+The separate Metal work is tracked in #12422. Streaming and tools remain
+unsupported. These checks do not establish Recursive's published coding
+benchmark scores.
 
 ## Pylon and app integration (#12425)
 
@@ -196,8 +199,9 @@ and preemption stops it while preserving its disk. An on-demand CPU VM,
 it only when its numeric instance ID matches, its labels say
 `service=psionic-flint,lifecycle=maintained,desired=running`, and it has no
 agent-run, budget, or expiry labels or scheduled expiry. It never creates
-a replacement VM. The controller's service account has Compute access
-only on this GPU instance and uses short-lived metadata credentials.
+a replacement VM. This task grants its service account Compute access
+on this GPU instance, creates no project-level role grant, and uses
+short-lived metadata credentials.
 
 The on-demand RTX PRO 6000 quota is currently zero. Request
 `flint-12425-rtx-pro6000-tokyo` for one was denied; preemption recovery
@@ -220,6 +224,90 @@ To resume, set `desired=running` and start the controller. Disks remain
 available for restart; removing them ends their storage charges. Use
 `CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config` with these commands.
 
-The maintained handoff, deployed commits, context/load checks, and app
-chat receipt are recorded below after deployment. The expiry in the
-initial qualification section describes the earlier development service.
+## Live Pylon qualification, 2026-10-21
+
+[Deployment receipt](verification/flint-pylon-2026-10-21/receipt.json) pins
+the executables, evidence files, and raw GCS archive by SHA-256.
+
+The maintained native worker, Pylon, and recovery controller use source
+`9d34624102`. The website image uses `4f6cd516e0`, which contains the
+composer and router integration. Its digest is
+`sha256:0c1f43ae3e17ad7226d614ff15a60b94dd015fd7418053e729baa2f58cd54648`;
+production revision `coder-web-0c1f43ae3e-20261021200638` serves it.
+
+The [profile results](verification/flint-pylon-2026-10-21/profile-summary.json)
+record 22 full-checkpoint checks. Arithmetic, Spanish, conversation
+history, and a generated Rust function pass; the function compiles and
+passes four assertions. Retrieval from a 2,039-token prompt passes in
+73.01 seconds. A 2,003-token prompt plus 6,144 generated tokens reaches
+8,147 total tokens without exceeding the 900-second deadline, in
+345.66 seconds. The worker refuses an oversized prompt with
+`context_length_exceeded`. Twelve sequential requests pass. A disconnected
+caller keeps its generation slot: a second HTTP request receives 429,
+then a fresh request succeeds after the original generation ends.
+Maximum sampled process memory across this run is 79,018 MiB.
+
+The [public relay check](verification/flint-pylon-2026-10-21/relay.json)
+returns `42` from **Flint on GCP**, pinned to the CUDA artifact. Its long
+request lasts 328.33 seconds, with 10 processing heartbeats and four relay
+connections. It reaches the output cap and returns `limit_exceeded`, with
+no partial answer delivered. Its advertised and admitted deadline is
+900 seconds.
+
+The [freeze check](verification/flint-pylon-2026-10-21/watchdog.json)
+temporarily shortens systemd's watchdog to 15 seconds, starts a Pylon
+generation, and sends `SIGSTOP` to the native process. Systemd kills the
+frozen process before starting a replacement. Readiness returns in
+62.95 seconds; sampling observes at most one GPU process. The interrupted
+job fails visibly, a competing job receives `rate_limited: no free slot`,
+and a follow-up returns `42`. The normal 960-second watchdog is restored.
+
+The [VM recovery check](verification/flint-pylon-2026-10-21/vm-recovery.json)
+stops the GPU VM with `desired=stopped`. The controller leaves it stopped
+for 75 seconds. After `desired=running`, the same numeric instance ID is
+running again in 30.21 seconds. Both enabled services recover without an
+SSH start command; native readiness is observed at 249.34 seconds after
+the restart request, including checkpoint verification and loading. A
+fresh pinned relay request returns `42`. Both VMs have no scheduled expiry
+or temporary-run ownership labels in the
+[maintained settings](verification/flint-pylon-2026-10-21/vm-settings.json).
+
+The [CUDA test log](verification/flint-pylon-2026-10-21/cuda-tests.log)
+passes nine library tests and the server watchdog test, with no ignored
+tests. Focused local checks pass: Pylon's library (161 passed, one ignored),
+two Flint relay fixtures, nine serial-recovery tests, 13 web router tests,
+eight composer tests, and both Pylons view crates. The composer and Pylons
+layer also pass WASM checks. An initial concurrent serial fixture missed
+its one-second startup limit; its complete serial rerun passes.
+
+The older staging smoke reports 80 passed, 13 failed, and two skipped:
+the failures inspect the previous homepage/composer layout. They are
+recorded as failures, not a passing deployment gate. The targeted browser
+and [public route checks](verification/flint-pylon-2026-10-21/public-routes.json)
+exercise the Grid at `/`, chat at `/chat`, and the `/home` and `/new`
+redirects. This qualification does not cover broad coding benchmarks,
+streaming, tools, or the separate INT4 Metal profile.
+
+The [production browser check](verification/flint-pylon-2026-10-21/browser-chat.json)
+walks to the shared terminal and clicks **Flint**. The real composer sends
+`X-OpenAgents-Pylon-Model: flint` and the Home surface header. Its first
+answer is `42`; a follow-up asking to subtract five returns `37`, with
+both answers attributed to **Flint on GCP · Flint**. The saved conversation
+and rendered [first answer](verification/flint-pylon-2026-10-21/production-first-answer.png)
+and [follow-up](verification/flint-pylon-2026-10-21/production-followup.png)
+agree. Reasoning is absent from the displayed final content.
+
+The isolated browser uses the declared dedicated account's app API key,
+attached through DevTools only to same-origin chat/history requests,
+including the unchanged EventSource stream. This checks the composer,
+router, native generation, saved conversation, and live updates. It does
+not test WorkOS login. An earlier fixture authenticated the POST but
+missed the event stream; that setup was corrected and the test repeated.
+[Cleanup](verification/flint-pylon-2026-10-21/cleanup.json) deletes both
+disposable conversations with HTTP 204. No owner account is used.
+
+A fresh visit to [the production homepage](https://openagents.com/)
+shows **Flint on GCP**, **Online · GPU · 0 of 1 busy**, in its
+[live Pylon list](verification/flint-pylon-2026-10-21/homepage.json) and
+[Grid overview](verification/flint-pylon-2026-10-21/production-homepage.png).
+The service remains running with the temporary expiry removed.

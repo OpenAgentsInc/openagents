@@ -1,0 +1,59 @@
+[
+  {
+    "name": "oa-flint-12419",
+    "id": "8464999274901750287",
+    "status": "RUNNING",
+    "scheduling": {
+      "automaticRestart": false,
+      "instanceTerminationAction": "STOP",
+      "onHostMaintenance": "TERMINATE",
+      "preemptible": true,
+      "provisioningModel": "SPOT"
+    },
+    "labels": {
+      "desired": "running",
+      "issue": "12425",
+      "lifecycle": "maintained",
+      "service": "psionic-flint"
+    },
+    "lastStartTimestamp": "2026-10-21T13:31:25.606-07:00",
+    "zone": "asia-northeast1-b",
+    "machine_type": "g4-standard-48",
+    "disks": [
+      {
+        "boot": true,
+        "autoDelete": false,
+        "type": "PERSISTENT",
+        "diskSizeGb": "250"
+      }
+    ]
+  },
+  {
+    "name": "oa-flint-control-12425",
+    "id": "2891710606211330122",
+    "status": "RUNNING",
+    "scheduling": {
+      "automaticRestart": true,
+      "onHostMaintenance": "MIGRATE",
+      "preemptible": false,
+      "provisioningModel": "STANDARD"
+    },
+    "labels": {
+      "desired": "running",
+      "issue": "12425",
+      "lifecycle": "maintained",
+      "service": "psionic-flint-control"
+    },
+    "lastStartTimestamp": "2026-10-21T12:55:44.364-07:00",
+    "zone": "us-central1-a",
+    "machine_type": "e2-micro",
+    "disks": [
+      {
+        "boot": true,
+        "autoDelete": true,
+        "type": "PERSISTENT",
+        "diskSizeGb": "10"
+      }
+    ]
+  }
+]

@@ -1,0 +1,45 @@
+a9a7f069178eb3ebaafd98e813f3a27168568f81bc5853c71bb29ad43148d1ea  /home/christopherdavid/flint-builds/9d34624102/psionic-flint
+d7e22519ae18d65f41d8c94ae5a15208b7d92869b9c651a695e4a911bfeb000e  /home/christopherdavid/flint-builds/9d34624102/pylon
+# /etc/systemd/system/psionic-flint.service
+[Unit]
+Description=Psionic native Flint
+After=network-online.target
+
+[Service]
+Type=notify
+User=christopherdavid
+Environment=LD_LIBRARY_PATH=/usr/local/cuda/lib64
+ExecStart=/home/christopherdavid/flint-builds/9d34624102/psionic-flint serve --weights /home/christopherdavid/flint-weights --backend cuda --context 8192 --listen 127.0.0.1:8080
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=600
+WatchdogSec=960
+WatchdogSignal=SIGKILL
+LimitCORE=0
+TimeoutStopSec=30
+KillMode=control-group
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+
+# /etc/systemd/system/pylon-flint.service
+[Unit]
+Description=Flint Pylon on GCP
+Wants=network-online.target psionic-flint.service
+After=network-online.target psionic-flint.service
+StartLimitIntervalSec=0
+
+[Service]
+User=christopherdavid
+WorkingDirectory=/home/christopherdavid
+Environment=OPENAGENTS_PYLON_HOME=/home/christopherdavid/.openagents/pylon-flint
+ExecStart=/home/christopherdavid/flint-builds/9d34624102/pylon serve --text-profile flint --engine http://127.0.0.1:8080 --pylon flint-gcp --label "Flint on GCP" --dedicated --allow-any --rate 10 --total-rate 6
+Restart=always
+RestartSec=5
+TimeoutStopSec=120
+KillMode=control-group
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
