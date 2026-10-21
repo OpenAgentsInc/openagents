@@ -4844,14 +4844,21 @@ dependencies = [
 name = "psionic-backend-metal"
 version = "1.0.0"
 dependencies = [
+ "half",
+ "hex",
  "metal 0.33.0",
  "objc",
  "psionic-backend-cpu",
+ "psionic-backend-cuda",
  "psionic-backend-tests",
  "psionic-compiler",
  "psionic-core",
  "psionic-ir",
+ "psionic-models",
  "psionic-runtime",
+ "serde",
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

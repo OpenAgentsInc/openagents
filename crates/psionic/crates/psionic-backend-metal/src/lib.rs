@@ -16198,3 +16198,7 @@ pub mod small_models;
 /// Flint with MLX INT4 weights on Metal; see `kernels/flint.metal`.
 #[cfg(target_os = "macos")]
 pub mod flint;
+
+/// DeepSeek-V4.1 stage kernels on Metal (#12420); see `kernels/v41/`.
+#[cfg(all(target_os = "macos", feature = "v41"))]
+pub mod v41;
