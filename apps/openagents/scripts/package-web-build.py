@@ -80,9 +80,11 @@ def contributors(module, limit=15):
     return sorted(sizes.items(), key=lambda pair: -pair[1])[:limit]
 
 
-def check(directory, module):
-    """Refuse `module` over its brotli budget, naming its largest crates."""
-    measured = measure(Path(directory), module)
+def check(directory, module, measured=None):
+    """Refuse `module` over its brotli budget, naming its largest crates.
+    `measured` is the module's measure() result when the caller has one."""
+    if measured is None:
+        measured = measure(Path(directory), module)
     cap = budget(module)
     if measured["brotli_bytes"] > cap:
         lines = [f"{module}: {measured['brotli_bytes']} bytes brotli exceeds the {cap} byte budget."]
@@ -113,7 +115,7 @@ def package(directory, name, *later):
     (directory / "size.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report), flush=True)
     for module in measured:
-        check(directory, module["module"])
+        check(directory, module["module"], module)
 
     assets = {}
 

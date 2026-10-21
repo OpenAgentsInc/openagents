@@ -155,9 +155,13 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
     && test -s /build/cloud/coder_browser_web_bg.wasm
 
 # The opt-in browser wallet: Rust SDK, Rust UI, and generated Wasm loader only.
+# Its script loads scripts/dev/cargo-build-env.sh, which keeps kache local
+# unless OA_BUILD_CACHE=remote; without it this build missed the shared
+# cache on every crate, about 690 a build (#12417).
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
     --mount=type=cache,target=/var/cache/openagents-wallet-cargo,sharing=locked \
-    CARGO_TARGET_DIR=/var/cache/openagents-wallet-cargo oa-kache run scripts/build-spark-wallet-web.sh /build/wallet
+    CARGO_TARGET_DIR=/var/cache/openagents-wallet-cargo OA_BUILD_CACHE=remote \
+        oa-kache run scripts/build-spark-wallet-web.sh /build/wallet
 
 # Grow Little Bunny, which /games/grow-little-bunny serves: the glue, the
 # module, the start script, and gzip copies of each.
@@ -286,6 +290,8 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
     && oa-kache run cargo build --locked --manifest-path /build/apps/openagents/web/Cargo.toml \
         -p openagents-first-frame-capture --bin first-frame-capture --profile capture
 
+# Three stages from the same dependency layer, so BuildKit builds them side
+# by side: the chat alone builds about 50 modules (#12417).
 FROM gpuiweb-deps AS gpuiweb
 COPY . .
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -exec touch -c {} + \
@@ -295,6 +301,13 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/gpui-demo/openagents_web_demo.js \
     && test -s /build/gpui-demo/openagents_web_demo_bg.wasm \
     && test -s /build/gpui-demo/start.js \
+    && scripts/fetch-hand-landmarker.sh /build/lander9/hands \
+    && test -s /build/lander9/hands/hand_landmarker.task.br \
+    && test -s /build/lander9/hands/wasm/vision_wasm_internal.wasm.br
+
+FROM gpuiweb-deps AS gpuiweb-graph
+COPY . .
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -exec touch -c {} + \
     && oa-kache run apps/openagents/scripts/build-web-demo.sh --app agent-graph /build/agent-graph \
     && test -s /build/agent-graph/openagents_web_agent_graph.js \
     && test -s /build/agent-graph/openagents_web_agent_graph_bg.wasm \
@@ -303,20 +316,21 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/agent-graph/first-frame/painter.wasm.gz \
     && test -s /build/agent-graph/first-frame/foreman-desktop.ffs.gz \
     && test -x /build/agent-graph/first-frame/first-frame-capture \
-    && oa-kache run apps/openagents/scripts/build-web-chat.sh /build/gpui-chat \
-    && test -s /build/gpui-chat/openagents_web_chat.js \
-    && test -s /build/gpui-chat/openagents_web_chat_bg.wasm \
-    && test -s /build/gpui-chat/start.js \
-    && test -s /build/gpui-chat/fonts/Geist.ttf \
     && oa-kache run apps/openagents/scripts/build-web-pylon-card.sh /build/pylons-card \
     && test -s /build/pylons-card/webgpu/openagents_web_pylon_card_bg.wasm.br \
     && test -s /build/pylons-card/webgl/openagents_web_pylon_card_bg.wasm.br \
     && oa-kache run apps/openagents/scripts/build-web-lander-chat.sh /build/lander8 \
     && test -s /build/lander8/webgpu/openagents_web_lander_chat_bg.wasm.br \
-    && test -s /build/lander8/webgl/openagents_web_lander_chat_bg.wasm.br \
-    && scripts/fetch-hand-landmarker.sh /build/lander9/hands \
-    && test -s /build/lander9/hands/hand_landmarker.task.br \
-    && test -s /build/lander9/hands/wasm/vision_wasm_internal.wasm.br
+    && test -s /build/lander8/webgl/openagents_web_lander_chat_bg.wasm.br
+
+FROM gpuiweb-deps AS gpuiweb-chat
+COPY . .
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -path ./target-gpuiweb -prune -o -exec touch -c {} + \
+    && oa-kache run apps/openagents/scripts/build-web-chat.sh /build/gpui-chat \
+    && test -s /build/gpui-chat/openagents_web_chat.js \
+    && test -s /build/gpui-chat/openagents_web_chat_bg.wasm \
+    && test -s /build/gpui-chat/start.js \
+    && test -s /build/gpui-chat/fonts/Geist.ttf
 
 # Every dependency layer, and nothing else: cloudbuild.yaml builds this
 # target first and exports it to the registry cache.
@@ -354,12 +368,12 @@ COPY --from=everglade /build/sand /srv/sand
 COPY --from=everglade /build/layertree /srv/layertree
 COPY --from=everglade /build/lander5 /srv/lander5
 COPY --from=gpuiweb /build/gpui-demo /srv/gpui-demo
-COPY --from=gpuiweb /build/agent-graph /srv/agent-graph
+COPY --from=gpuiweb-graph /build/agent-graph /srv/agent-graph
 COPY --from=gpuiweb /build/gpui-fonts /srv/gpui-fonts
-COPY --from=gpuiweb /build/gpui-chat /srv/gpui-chat
+COPY --from=gpuiweb-chat /build/gpui-chat /srv/gpui-chat
 COPY --from=everglade /build/pylons-layer /srv/pylons/layer
-COPY --from=gpuiweb /build/pylons-card /srv/pylons/card
-COPY --from=gpuiweb /build/lander8 /srv/lander8
+COPY --from=gpuiweb-graph /build/pylons-card /srv/pylons/card
+COPY --from=gpuiweb-graph /build/lander8 /srv/lander8
 COPY --from=gpuiweb /build/lander9 /srv/lander9
 
 # Build contexts can carry private file modes. The runtime user must read
