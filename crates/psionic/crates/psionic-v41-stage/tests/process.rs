@@ -172,3 +172,80 @@ fn wrong_generation_and_stale_state_are_refused_before_use() {
         "{reasons:#?}"
     );
 }
+
+#[test]
+fn an_oversized_request_is_rejected_before_any_stage_runs_it() {
+    let root = tempfile::tempdir().unwrap();
+    let split = [(0, 20), (20, 40)];
+    let manifest = weights(root.path(), &split).display().to_string();
+    let mut front = Front::start_with(
+        root.path(),
+        &manifest,
+        &split,
+        None,
+        &["--max-context", "64", "--max-input-tokens", "4"],
+        "psionic-v41-stage/1",
+    );
+    for stage in &front.stages {
+        let limits = &stage.hello["limits"];
+        assert_eq!(limits["max_context_tokens"], 64, "{limits}");
+        assert_eq!(limits["max_input_tokens"], 4, "{limits}");
+        assert_eq!(limits["modes"], json!(["thinking", "chat"]), "{limits}");
+    }
+    let next = front.stages[1].hello["listen"].clone();
+    let step = |request: &str, prompt: serde_json::Value, max_tokens: u64| {
+        json!({
+            "kind": "step", "generation": 1, "request_id": request, "attempt": 1,
+            "stage": 0, "step": 0, "prompt": prompt, "max_tokens": max_tokens,
+            "mode": "chat", "next": next,
+        })
+    };
+    // Six prompt tokens, over the operator's four.
+    let long = json!([{"role": "user", "content": "tok3 tok5 tok0 tok6 tok4 tok7"}]);
+    let message = step("big", long, 5);
+    front.stages[0].send(&message);
+    let rejected = front.stages[0].recv();
+    assert_eq!(rejected["kind"], "rejected", "{rejected}");
+    assert_eq!(rejected["code"], "request_limit");
+    assert_eq!(rejected["request_id"], "big");
+    assert_eq!(
+        (rejected["limit"].as_u64(), rejected["actual"].as_u64()),
+        (Some(4), Some(6))
+    );
+    // A short prompt whose answer could pass the context.
+    let short = json!([{"role": "user", "content": "tok3 tok5"}]);
+    let message = step("long", short.clone(), 63);
+    front.stages[0].send(&message);
+    let rejected = front.stages[0].recv();
+    assert_eq!(
+        (rejected["kind"].as_str(), rejected["code"].as_str()),
+        (Some("rejected"), Some("request_limit"))
+    );
+    assert_eq!(
+        (rejected["limit"].as_u64(), rejected["actual"].as_u64()),
+        (Some(64), Some(65))
+    );
+    // A prompt the stage can't read is rejected too, not left to time out.
+    let message = step("bad", json!("not a conversation"), 5);
+    front.stages[0].send(&message);
+    let rejected = front.stages[0].recv();
+    assert_eq!(
+        (rejected["kind"].as_str(), rejected["code"].as_str()),
+        (Some("rejected"), Some("invalid_request"))
+    );
+    // The stages stay healthy and answer the next request as before.
+    let expected = reference(root.path(), &short, 4);
+    assert_eq!(front.run(&short, 4), expected);
+    let events = events(root.path());
+    assert_eq!(
+        events.iter().filter(|e| e["event"] == "rejected").count(),
+        3,
+        "{events:#?}"
+    );
+    assert!(
+        !events
+            .iter()
+            .any(|e| e["event"] == "step" && e["stage"] == "s1" && e["request"] == "big"),
+        "{events:#?}"
+    );
+}

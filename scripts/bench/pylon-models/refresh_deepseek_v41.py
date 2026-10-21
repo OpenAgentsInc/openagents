@@ -9,6 +9,8 @@ match its SHA-256 pin. The script then:
   encoder reproduces each expected output;
 - records the official tokenizer's token IDs for each expected output and for
   the streaming cases that the Rust mock-backend tests replay;
+- checks that the official tokenizer encodes each oracle prompt that a
+  stage test renders (`ORACLE_PROMPTS`) to the oracle's own token IDs;
 - writes a reduced tokenizer that keeps every vocabulary entry and merge these
   texts can use, with their original IDs, and checks that it encodes and
   decodes every text exactly as the full tokenizer does. It is a fixture, not
@@ -65,6 +67,22 @@ THINK_END = "</think>"
 VOCABULARY_SIZE = 128000
 LONG_QUERY = ("weather \"history\" for Beijing, Shanghai and Guangzhou\nwith a\\backslash, "
               "温度和湿度 " * 12).strip()
+
+# Oracle prompts as the V4.1 template renders them in chat mode, with the
+# SHA-256 of the rendered text and the token IDs from the oracle's manifest
+# (gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/dump/manifest.json).
+# psionic-v41-stage's tests render them and compare the IDs.
+ORACLE_PROMPTS = {
+    "p2-code": (
+        "<｜begin▁of▁sentence｜><｜User｜>Write a Rust function `fn fib(n: u32) -> Option<u128>` "
+        "that returns the n-th Fibonacci number, using checked arithmetic so it returns None on "
+        "overflow.<｜Assistant｜></think>",
+        "9967ee5de3771e56791192382556d86fe6319eb104f9ab4aadaa61bff659137d",
+        [0, 128803, 21750, 260, 58408, 2019, 3608, 28952, 10150, 3913, 28, 549, 2111, 11, 6248,
+         30397, 30, 87, 7833, 80225, 396, 10340, 270, 313, 7784, 26509, 1167, 14, 1812, 21002,
+         29568, 832, 436, 10340, 9952, 377, 37126, 16, 128804, 128822],
+    ),
+}
 
 # Each streaming case is a list of (kind, text) pieces: plain text encodes
 # without the added vocabulary, and a special piece is one added-token ID.
@@ -196,7 +214,14 @@ def main():
             ids.extend([added[text]] if kind == "special" else plain.encode(text, add_special_tokens=False).ids)
         stream_cases.append(dict(name=name, pieces=[list(piece) for piece in pieces], token_ids=ids))
 
+    for name, (text, digest, ids) in ORACLE_PROMPTS.items():
+        if hashlib.sha256(text.encode()).hexdigest() != digest:
+            raise RuntimeError(f"The oracle prompt {name} isn't the text the oracle rendered")
+        if full.encode(text, add_special_tokens=False).ids != ids:
+            raise RuntimeError(f"The tokenizer encodes the oracle prompt {name} differently")
+
     corpus_texts = [case_output.decode() for name, case_output in raw.items() if "test_output" in name]
+    corpus_texts += [text for text, _, _ in ORACLE_PROMPTS.values()]
     corpus_texts += [text for pieces in STREAM_CASES.values() for kind, text in pieces if kind == "plain"]
     reduced = reduced_tokenizer(definition, [text.encode() for text in corpus_texts])
     if len(definition["model"]["vocab"]) != VOCABULARY_SIZE:

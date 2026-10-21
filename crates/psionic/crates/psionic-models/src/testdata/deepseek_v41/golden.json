@@ -24,9 +24,9 @@
  "reduced_tokenizer": {
   "file": "tokenizer.reduced.json",
   "vocabulary_size": 128000,
-  "sha256": "35d0a20113d647a9a1d24c5e23b7d513f2ad3561c8c8e2a30ed286c8257acc68",
-  "vocabulary": 2174,
-  "merges": 1915
+  "sha256": "3ec50686039edf0b72ea403ff83b5b9b40735aecb7cf5e782d044aeb18810963",
+  "vocabulary": 2278,
+  "merges": 2019
  },
  "prompt_cases": [
   {

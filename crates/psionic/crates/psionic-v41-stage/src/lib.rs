@@ -67,7 +67,7 @@ use psionic_models::{
     },
     deepseek_v41_stage::{
         EngramLocation, GROUP_MANIFEST_SCHEMA, V41_STAGE_PROTOCOL, V41EngramPlacement,
-        V41GroupManifest, V41StageEntry,
+        V41GroupManifest, V41StageEntry, V41StageGeometry, stage_contract,
     },
     deepseek_v41_stage_cpu::{
         LayerRangeRuntime, RangeConfig, V41CpuStageExecutor,
@@ -152,10 +152,170 @@ impl Backend {
     }
 }
 
+/// How stage 0 renders a conversation and the last stage parses the answer:
+/// the V4.1 template's thinking mode, which opens the assistant turn in
+/// reasoning, or its chat mode, which closes the reasoning at once and
+/// answers directly. The oracle's p2 code prompt is chat mode.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum PromptMode {
+    /// The default when a request names no mode, as before modes existed.
+    #[default]
+    Thinking,
+    Chat,
+}
+
+impl PromptMode {
+    /// Every mode a stage serves.
+    pub const ALL: [Self; 2] = [Self::Thinking, Self::Chat];
+
+    /// Parses `thinking` or `chat`.
+    ///
+    /// # Errors
+    ///
+    /// Refuses other names.
+    pub fn parse(value: &str) -> Result<Self, Refused> {
+        match value {
+            "thinking" => Ok(Self::Thinking),
+            "chat" => Ok(Self::Chat),
+            other => refuse(format!("the prompt mode {other} is not thinking or chat")),
+        }
+    }
+
+    /// The mode a step or link frame names in its `mode` field; thinking
+    /// when it names none.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a mode that isn't text or isn't known.
+    pub fn of(message: &Value) -> Result<Self, Refused> {
+        match message.get("mode") {
+            None | Some(Value::Null) => Ok(Self::Thinking),
+            Some(Value::String(mode)) => Self::parse(mode),
+            Some(_) => refuse("the prompt mode is not text"),
+        }
+    }
+
+    /// The mode's name on the wire.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Thinking => "thinking",
+            Self::Chat => "chat",
+        }
+    }
+
+    /// Whether the V4.1 template renders the conversation in thinking mode.
+    #[must_use]
+    pub const fn thinking(self) -> bool {
+        matches!(self, Self::Thinking)
+    }
+}
+
+/// The request sizes a group serves, from its stages' real wire sizes and
+/// context capacity. Every stage of a group computes the same budget from
+/// the manifest, its backend's wire geometry, and its settings, and
+/// announces it in its `hello`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Budget {
+    /// Positions one request may fill: its prompt and its answer together.
+    pub max_context_tokens: u64,
+    /// The most prompt tokens one request may send. The prompt is one
+    /// prefill step, so this is the largest prefill every boundary of the
+    /// group carries under the codec's limits, below the context and the
+    /// operator's `--max-input-tokens`.
+    pub max_input_tokens: u64,
+    /// The largest prefill the wire alone carries, before the context and
+    /// the operator's cap.
+    pub max_prefill_tokens: u64,
+}
+
+/// Request IDs the budget allows for: the codec's longest.
+const BUDGET_REQUEST_ID_BYTES: usize = 128;
+
+/// The budget of a group with `manifest`, whose stages send state in
+/// `geometry`, with `max_context` positions per request and an optional
+/// operator cap on prompt tokens.
+#[must_use]
+pub fn budget(
+    manifest: &V41GroupManifest,
+    geometry: &V41StageGeometry,
+    max_context: usize,
+    max_input: Option<usize>,
+) -> Budget {
+    let limits = CodecLimits::default();
+    let request_id = BUDGET_REQUEST_ID_BYTES.min(limits.max_request_id_bytes);
+    let prefill = manifest
+        .stages
+        .iter()
+        .skip(1)
+        .map(|s| stage_contract(geometry, s.stage, s.layers()).max_step_tokens(&limits, request_id))
+        .fold(limits.max_tokens as u64, u64::min);
+    let context = max_context as u64;
+    // One position stays free for the answer's first token.
+    let mut input = prefill.min(context.saturating_sub(1));
+    if let Some(cap) = max_input {
+        input = input.min(cap as u64);
+    }
+    Budget {
+        max_context_tokens: context,
+        max_input_tokens: input,
+        max_prefill_tokens: prefill,
+    }
+}
+
+/// Why a request is larger than the group serves. Stage 0 refuses such a
+/// request before any stage runs it, and the front fails only that request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestLimit {
+    pub reason: String,
+    /// The bound the request crossed.
+    pub limit: u64,
+    /// What the request asked for.
+    pub actual: u64,
+}
+
+impl Budget {
+    /// Checks a request of `input` prompt tokens and up to `output` answer
+    /// tokens.
+    ///
+    /// # Errors
+    ///
+    /// Names the bound the request crosses.
+    pub fn check(&self, input: u64, output: u64) -> Result<(), RequestLimit> {
+        if input > self.max_input_tokens {
+            return Err(RequestLimit {
+                reason: format!(
+                    "the prompt is {input} tokens; this group takes at most {}",
+                    self.max_input_tokens
+                ),
+                limit: self.max_input_tokens,
+                actual: input,
+            });
+        }
+        let total = input.saturating_add(output.max(1));
+        if total > self.max_context_tokens {
+            return Err(RequestLimit {
+                reason: format!(
+                    "the prompt of {input} tokens and up to {} answer tokens need {total} positions; this group has {}",
+                    output.max(1),
+                    self.max_context_tokens
+                ),
+                limit: self.max_context_tokens,
+                actual: total,
+            });
+        }
+        Ok(())
+    }
+}
+
 /// What the serving loop needs from an executor beyond W9's trait: a backend
 /// that samples on its own device takes the step's settings first and
 /// returns the token instead of logits.
 pub trait StageBackend: StageExecutor {
+    /// The shapes and dtypes this backend sends between stages, from which
+    /// the group's [`Budget`] follows.
+    fn geometry(&self) -> V41StageGeometry;
+
     /// The last stage's sampling settings for the next step.
     fn prepare(&self, _sampling: Sampling, _step: u64) {}
 
@@ -177,7 +337,11 @@ pub trait StageBackend: StageExecutor {
     }
 }
 
-impl StageBackend for V41CpuStageExecutor<'_> {}
+impl StageBackend for V41CpuStageExecutor<'_> {
+    fn geometry(&self) -> V41StageGeometry {
+        V41CpuStageExecutor::geometry(self)
+    }
+}
 
 /// A stage's command line.
 #[derive(Debug, Clone)]
@@ -197,6 +361,9 @@ pub struct Options {
     /// arithmetic is [`CUDA_PROFILE`].
     pub arithmetic: Option<Arithmetic>,
     pub max_context: usize,
+    /// An operator's cap on prompt tokens, below what the wire and the
+    /// context allow (`--max-input-tokens`).
+    pub max_input: Option<usize>,
     /// Where the stage listens for state from the stage before it.
     pub listen: String,
     /// An optional JSON-lines file of what the stage did, for tests.
@@ -433,7 +600,7 @@ impl Options {
                 "--weights" | "--layers" | "--gpu" | "--manifest" | "--stage" | "--generation"
                 | "--front" | "--token" | "--backend" | "--arithmetic" | "--max-context"
                 | "--listen" | "--events" | "--data-listen" | "--data-advertise" | "--record"
-                | "--control" => {
+                | "--control" | "--max-input-tokens" => {
                     let Some(value) = args.get(i + 1) else {
                         return refuse(format!("{flag} needs a value"));
                     };
@@ -478,6 +645,13 @@ impl Options {
                 .map_err(|_| Refused("--max-context must be a number".into()))?,
             None => 8192,
         };
+        let max_input = values
+            .remove("--max-input-tokens")
+            .map(|v| {
+                v.parse()
+                    .map_err(|_| Refused("--max-input-tokens must be a number".into()))
+            })
+            .transpose()?;
         Ok(Self {
             weights,
             layers,
@@ -492,6 +666,7 @@ impl Options {
             backend,
             arithmetic,
             max_context,
+            max_input,
             listen: values
                 .remove("--listen")
                 .unwrap_or_else(|| "127.0.0.1:0".into()),
@@ -550,13 +725,20 @@ impl Vocabulary {
         }
     }
 
-    /// Encodes a conversation (`[{"role", "content"}, ...]`). With no
-    /// conversation, the prompt is the single token `default`.
+    /// Encodes a conversation (`[{"role", "content"}, ...]`) in `mode`.
+    /// With no conversation, the prompt is the single token `default`. The
+    /// synthetic vocabulary has no template, so its tokens don't depend on
+    /// the mode.
     ///
     /// # Errors
     ///
     /// Refuses a malformed conversation or one the template can't render.
-    pub fn encode(&self, prompt: Option<&Value>, default: u32) -> Result<Vec<u32>, Refused> {
+    pub fn encode(
+        &self,
+        prompt: Option<&Value>,
+        default: u32,
+        mode: PromptMode,
+    ) -> Result<Vec<u32>, Refused> {
         let Some(prompt) = prompt else {
             return Ok(vec![default]);
         };
@@ -585,7 +767,10 @@ impl Vocabulary {
                 Ok(ids)
             }
             Self::V41(protocol) => {
-                let mut conversation = Conversation::default();
+                let mut conversation = Conversation {
+                    thinking_mode: mode.thinking(),
+                    ..Conversation::default()
+                };
                 for (role, content) in messages {
                     conversation.messages.push(match role.as_str() {
                         "system" => InputMessage::System {
@@ -907,6 +1092,9 @@ pub fn stage_info<'a>(
         ),
         events: options.events.clone(),
         record: options.record.clone(),
+        max_context: options.max_context,
+        max_input: options.max_input,
+        inbox: serve::InboxBounds::default(),
     }
 }
 
@@ -1071,6 +1259,7 @@ pub struct ReferenceAnswer {
 pub fn reference(
     model: &Model,
     prompt: Option<&Value>,
+    mode: PromptMode,
     steps: u64,
     sampling: Sampling,
     arithmetic: Arithmetic,
@@ -1085,7 +1274,9 @@ pub fn reference(
     )
     .map_err(|e| Refused(e.to_string()))?;
     let tokenizer = model.vocabulary.tokenizer();
-    let mut input = model.vocabulary.encode(prompt, model.config.pad_token)?;
+    let mut input = model
+        .vocabulary
+        .encode(prompt, model.config.pad_token, mode)?;
     let mut text = TextStream::default();
     let mut answer = ReferenceAnswer {
         tokens: Vec::new(),
@@ -1159,19 +1350,22 @@ fn ready_items<S: Stream>(stream: S) -> Result<Vec<S::Item>, Refused> {
 pub struct AnswerParser {
     tokenizer: Arc<Tokenizer>,
     eos: u32,
+    mode: PromptMode,
     ids: Vec<u32>,
     reasoning: String,
     content: String,
 }
 
 impl AnswerParser {
-    /// A parser for a V4.1 answer in thinking mode with no tools, which is
-    /// how stage 0 renders a conversation.
+    /// A parser for a V4.1 answer with no tools, rendered in `mode`. In
+    /// thinking mode the answer starts in reasoning; in chat mode the prompt
+    /// already closed the reasoning, so every token is answer text.
     #[must_use]
-    pub fn new(tokenizer: Arc<Tokenizer>, eos: u32) -> Self {
+    pub fn new(tokenizer: Arc<Tokenizer>, eos: u32, mode: PromptMode) -> Self {
         Self {
             tokenizer,
             eos,
+            mode,
             ids: Vec::new(),
             reasoning: String::new(),
             content: String::new(),
@@ -1209,7 +1403,11 @@ impl AnswerParser {
                 },
             });
         }
-        let options = deepseek_v41_parsing_options(&Conversation::default(), Vec::new());
+        let conversation = Conversation {
+            thinking_mode: self.mode.thinking(),
+            ..Conversation::default()
+        };
+        let options = deepseek_v41_parsing_options(&conversation, Vec::new());
         let stream = StreamProcessor::new(Collect, options)
             .with_tokenizer(Arc::clone(&self.tokenizer))
             .into_protocol_stream(tokio_stream::iter(input));

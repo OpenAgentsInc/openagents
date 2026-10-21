@@ -50,8 +50,8 @@ use serde_json::Value;
 use tokenizers::Tokenizer;
 
 use crate::{
-    Backend, Control, Options, ReferenceAnswer, Refused, SYNTHETIC_FILE, Sampling, StageBackend,
-    TextStream, Vocabulary, Weights, check_weights, load_model_for, serve,
+    Backend, Control, Options, PromptMode, ReferenceAnswer, Refused, SYNTHETIC_FILE, Sampling,
+    StageBackend, TextStream, Vocabulary, Weights, check_weights, load_model_for, serve,
 };
 
 /// The longest Engram n-gram; the history carries one fewer token.
@@ -355,6 +355,10 @@ impl StageExecutor for V41CudaStageExecutor {
 }
 
 impl StageBackend for V41CudaStageExecutor {
+    fn geometry(&self) -> V41StageGeometry {
+        self.geometry
+    }
+
     fn prepare(&self, sampling: Sampling, _step: u64) {
         // The device draw is seeded by the seed and the token's position.
         self.sampling.set(V41Sampling {
@@ -761,6 +765,9 @@ pub fn run_stage(
         profile: crate::profile_name(Backend::Cuda, None),
         events: options.events.clone(),
         record: options.record.clone(),
+        max_context: options.max_context,
+        max_input: options.max_input,
+        inbox: serve::InboxBounds::default(),
     };
     serve::serve(stage, worker, options.generation)
 }
@@ -775,6 +782,7 @@ pub fn run_stage(
 pub fn reference(
     dir: &Path,
     prompt: Option<&Value>,
+    mode: PromptMode,
     steps: u64,
     sampling: Sampling,
     max_context: usize,
@@ -783,7 +791,7 @@ pub fn reference(
     let mut backend = cuda_backend()?;
     let mut stage = model.stage(&mut backend, 0..40, max_context)?;
     let tokenizer: Arc<Tokenizer> = model.vocabulary.tokenizer();
-    let mut input = model.vocabulary.encode(prompt, model.pad)?;
+    let mut input = model.vocabulary.encode(prompt, model.pad, mode)?;
     let mut position = 0;
     let mut text = TextStream::default();
     let mut answer = ReferenceAnswer {

@@ -18,6 +18,18 @@
 //!   only the last stage acknowledges, with its token. A lost link is
 //!   reported as `link_failed`, a refused frame as `refused`, and stage 0
 //!   starts a cancel frame down the chain.
+//!
+//! Readers hand stage state to the worker's thread through one queue bounded
+//! by [`InboxBounds`], in frames and in bytes. A reader that finds the queue
+//! full waits, so it stops reading its connection and the stage before it
+//! feels the pressure; after [`InboxBounds::wait`] it gives up. The front's
+//! messages, link cancellations, and link reports skip the bound and go
+//! before queued state, so a cancellation or a fence is served next.
+//!
+//! The stage announces its [`Budget`] in its `hello`. Stage 0 checks each
+//! request against it before any stage runs it, and a request it can't
+//! serve, or state a stage can't send, ends with a `rejected` message that
+//! fails only that request: the stage stays healthy.
 
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -25,10 +37,7 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
     path::PathBuf,
-    sync::{
-        Arc, Mutex,
-        mpsc::{self, Receiver, Sender},
-    },
+    sync::{Arc, Condvar, Mutex},
     time::{Duration, Instant},
 };
 
@@ -37,19 +46,46 @@ use stage_link::{Frame, Hop, Key, Kind, Limits, Listener, Refusal};
 use psionic_models::{
     deepseek_v41_stage::V41GroupManifest,
     stage_state::{
-        CodecLimits, SectionKind, StageExecutor, StageMessage, StageWorker, StepKind, WorkerError,
-        decode, encode,
+        CodecLimits, SectionKind, StageExecutor, StageMessage, StageRefusal, StageWorker, StepKind,
+        WorkerError, decode, encode,
     },
 };
 use serde_json::{Value, json};
 use tokenizers::Tokenizer;
 
 use crate::{
-    AnswerParser, PROTOCOL, Refused, Sampling, StageBackend, TextStream, Vocabulary, sample,
+    AnswerParser, Budget, PROTOCOL, PromptMode, Refused, RequestLimit, Sampling, StageBackend,
+    TextStream, Vocabulary, budget, sample,
 };
 
-/// Encoded frames from earlier stages kept while their step hasn't come.
+/// Decoded frames from earlier stages kept while their step hasn't come; their
+/// bytes are bounded by [`InboxBounds::bytes`] too.
 const BUFFERED_FRAMES: usize = 32;
+
+/// How much stage state may wait between a stage's readers and its worker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InboxBounds {
+    /// Frames queued for the worker.
+    pub frames: usize,
+    /// Their bytes. One frame larger than this still passes when nothing
+    /// else waits, so a full prefill step always fits.
+    pub bytes: usize,
+    /// How long a reader waits for room before it drops its connection.
+    pub wait: Duration,
+}
+
+impl Default for InboxBounds {
+    /// Four frames and 512 MiB: two of the largest messages the codec
+    /// allows. The front runs one step at a time, so a healthy group keeps
+    /// at most one frame here.
+    fn default() -> Self {
+        Self {
+            frames: 4,
+            bytes: 2 * CodecLimits::default().max_message_bytes,
+            wait: Duration::from_secs(30),
+        }
+    }
+}
 
 /// What the stage tells the front and the stages after it.
 pub struct Stage<'a> {
@@ -88,6 +124,12 @@ pub struct Stage<'a> {
     /// Qualification (#12405): where each step's logits (last stage) and
     /// observations are written; the ack names the files.
     pub record: Option<PathBuf>,
+    /// Positions one request may use, as the executor was built with.
+    pub max_context: usize,
+    /// The operator's cap on prompt tokens.
+    pub max_input: Option<usize>,
+    /// How much stage state may wait for the worker.
+    pub inbox: InboxBounds,
 }
 
 enum Event {
@@ -104,6 +146,139 @@ enum Event {
     /// The link to the next stage opened, or couldn't be opened.
     Connected(u64, Result<stage_link::Sender, String>),
     Closed,
+}
+
+/// Why a reader couldn't queue stage state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Blocked {
+    /// The worker stopped taking events.
+    Closed,
+    /// The queue stayed full for the reader's whole wait.
+    Full(String),
+}
+
+#[derive(Default)]
+struct Queue {
+    control: VecDeque<Event>,
+    data: VecDeque<(Event, usize)>,
+    bytes: usize,
+    open: bool,
+    /// The most frames and bytes that were ever queued, for tests.
+    peak: (usize, usize),
+}
+
+/// The worker's events: control events, unbounded and served first, and
+/// stage state, bounded by [`InboxBounds`].
+#[derive(Clone)]
+struct Events {
+    shared: Arc<(Mutex<Queue>, Condvar)>,
+    bounds: InboxBounds,
+}
+
+impl Events {
+    fn new(bounds: InboxBounds) -> Self {
+        let queue = Queue {
+            open: true,
+            ..Queue::default()
+        };
+        Self {
+            shared: Arc::new((Mutex::new(queue), Condvar::new())),
+            bounds,
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Queue> {
+        self.shared
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Queues a control event; false once the worker has stopped.
+    fn control(&self, event: Event) -> bool {
+        let mut queue = self.lock();
+        if !queue.open {
+            return false;
+        }
+        queue.control.push_back(event);
+        drop(queue);
+        self.shared.1.notify_all();
+        true
+    }
+
+    /// Queues `bytes` of stage state, waiting for room up to the bound's
+    /// wait.
+    fn data(&self, event: Event, bytes: usize) -> Result<(), Blocked> {
+        let bounds = self.bounds;
+        let full = |q: &mut Queue| {
+            q.open
+                && !q.data.is_empty()
+                && (q.data.len() >= bounds.frames || q.bytes.saturating_add(bytes) > bounds.bytes)
+        };
+        let queue = self.lock();
+        let (mut queue, timeout) = self
+            .shared
+            .1
+            .wait_timeout_while(queue, bounds.wait, full)
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !queue.open {
+            return Err(Blocked::Closed);
+        }
+        if timeout.timed_out() && full(&mut queue) {
+            return Err(Blocked::Full(format!(
+                "the stage's inbox held {} frames and {} bytes for {} ms",
+                queue.data.len(),
+                queue.bytes,
+                bounds.wait.as_millis()
+            )));
+        }
+        queue.bytes += bytes;
+        queue.data.push_back((event, bytes));
+        let depth = (queue.data.len(), queue.bytes);
+        queue.peak = (queue.peak.0.max(depth.0), queue.peak.1.max(depth.1));
+        drop(queue);
+        self.shared.1.notify_all();
+        Ok(())
+    }
+
+    /// The next event, control first.
+    fn recv(&self) -> Option<Event> {
+        let queue = self.lock();
+        let mut queue = self
+            .shared
+            .1
+            .wait_while(queue, |q| {
+                q.open && q.control.is_empty() && q.data.is_empty()
+            })
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let event = if let Some(event) = queue.control.pop_front() {
+            Some(event)
+        } else if let Some((event, bytes)) = queue.data.pop_front() {
+            queue.bytes -= bytes;
+            Some(event)
+        } else {
+            None
+        };
+        drop(queue);
+        self.shared.1.notify_all();
+        event
+    }
+
+    /// Stops taking events and wakes every waiting reader.
+    fn close(&self) {
+        let mut queue = self.lock();
+        queue.open = false;
+        queue.control.clear();
+        queue.data.clear();
+        queue.bytes = 0;
+        drop(queue);
+        self.shared.1.notify_all();
+    }
+
+    /// The most frames and bytes ever queued.
+    fn peak(&self) -> (usize, usize) {
+        self.lock().peak
+    }
 }
 
 #[derive(Clone)]
@@ -166,7 +341,7 @@ pub fn write_frame(stream: &mut TcpStream, bytes: &[u8]) -> std::io::Result<()> 
     stream.flush()
 }
 
-fn read_frames(mut stream: TcpStream, events: Sender<Event>) {
+fn read_frames(mut stream: TcpStream, events: &Events) {
     let limit = CodecLimits::default().max_message_bytes;
     loop {
         let mut len = [0u8; 4];
@@ -178,7 +353,12 @@ fn read_frames(mut stream: TcpStream, events: Sender<Event>) {
             return;
         }
         let mut bytes = vec![0; len];
-        if stream.read_exact(&mut bytes).is_err() || events.send(Event::Frame(bytes)).is_err() {
+        if stream.read_exact(&mut bytes).is_err() {
+            return;
+        }
+        // A full inbox drops the connection: the stage before sees its
+        // write fail and reports it.
+        if events.data(Event::Frame(bytes), len).is_err() {
             return;
         }
     }
@@ -200,6 +380,10 @@ struct Step {
     next: Option<String>,
     /// The output limit ends the answer after this step.
     last: bool,
+    /// How stage 0 renders the prompt and the last stage parses the answer.
+    mode: PromptMode,
+    /// The most answer tokens the front may ask for (step 0 only).
+    max_tokens: Option<u64>,
 }
 
 impl Step {
@@ -228,19 +412,39 @@ impl Step {
                 .and_then(|s| serde_json::from_value(s.clone()).ok()),
             next: message["next"].as_str().map(str::to_owned),
             last: message["final"].as_bool().unwrap_or(false),
+            mode: PromptMode::of(message).ok()?,
+            max_tokens: message["max_tokens"].as_u64(),
         })
     }
 
     /// The settings a direct link carries to the next stage with the state.
     fn meta(&self) -> Vec<u8> {
-        serde_json::to_vec(&json!({"sampling": self.sampling, "final": self.last}))
-            .unwrap_or_default()
+        serde_json::to_vec(&json!({
+            "sampling": self.sampling,
+            "final": self.last,
+            "mode": self.mode.as_str(),
+        }))
+        .unwrap_or_default()
     }
 
     fn matches(&self, message: &StageMessage) -> bool {
         message.request_id == self.request
             && message.attempt == self.attempt
             && message.step == self.step
+    }
+}
+
+/// Why stage 0 won't start a step.
+enum Rejected {
+    /// The request is larger than the group serves.
+    Limit(RequestLimit),
+    /// The request can't be served as sent.
+    Invalid(Refused),
+}
+
+impl From<Refused> for Rejected {
+    fn from(refused: Refused) -> Self {
+        Self::Invalid(refused)
     }
 }
 
@@ -290,11 +494,7 @@ struct Direct {
 }
 
 impl Direct {
-    fn start(
-        listen: &str,
-        advertise: Option<String>,
-        events: Sender<Event>,
-    ) -> Result<Self, Refused> {
+    fn start(listen: &str, advertise: Option<String>, events: Events) -> Result<Self, Refused> {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .enable_all()
@@ -344,7 +544,7 @@ async fn accept_links(
     listener: Listener,
     config: Arc<Mutex<Option<LinkConfig>>>,
     inbound: Arc<Mutex<Option<tokio::task::AbortHandle>>>,
-    events: Sender<Event>,
+    events: Events,
 ) {
     let handshake = Limits::default();
     loop {
@@ -370,9 +570,30 @@ async fn accept_links(
         let reader = tokio::spawn(async move {
             loop {
                 match receiver.recv().await {
-                    Ok(frame) => {
-                        if events.send(Event::Link(generation, frame)).is_err() {
+                    Ok(frame) if frame.kind == Kind::Cancel => {
+                        // A cancellation goes before queued state.
+                        if !events.control(Event::Link(generation, frame)) {
                             return;
+                        }
+                    }
+                    Ok(frame) => {
+                        // Waiting for room stops this reader, so the link's
+                        // sender fills its bounded queue and then fails.
+                        let bytes = frame.state.len() + frame.meta.len();
+                        let queued = tokio::task::block_in_place(|| {
+                            events.data(Event::Link(generation, frame), bytes)
+                        });
+                        match queued {
+                            Ok(()) => {}
+                            Err(Blocked::Closed) => return,
+                            Err(Blocked::Full(reason)) => {
+                                events.control(Event::LinkLost {
+                                    generation,
+                                    peer: "self",
+                                    reason,
+                                });
+                                return;
+                            }
                         }
                     }
                     Err(error) => {
@@ -382,7 +603,7 @@ async fn accept_links(
                             }
                             other => other.to_string(),
                         };
-                        let _ = events.send(Event::LinkLost {
+                        events.control(Event::LinkLost {
                             generation,
                             peer: "prev",
                             reason,
@@ -415,7 +636,11 @@ struct Server<'a, E: StageExecutor> {
     answer: Option<((String, u32), AnswerParser)>,
     direct: Option<Direct>,
     /// Where link tasks report back (direct transport).
-    events: Option<Sender<Event>>,
+    events: Option<Events>,
+    /// The request sizes the group serves.
+    budget: Budget,
+    /// Bounds on decoded frames kept in `frames`.
+    bounds: InboxBounds,
 }
 
 /// Connects to the front and serves steps until the front closes the
@@ -429,7 +654,14 @@ where
     E: StageBackend,
     E::Error: Display,
 {
-    let (events, inbox) = mpsc::channel();
+    let bounds = stage.inbox;
+    let events = Events::new(bounds);
+    let budget = budget(
+        &stage.manifest,
+        &worker.executor().geometry(),
+        stage.max_context,
+        stage.max_input,
+    );
     let first = stage.index == 0;
     let direct = match &stage.data_listen {
         Some(listen) => Some(Direct::start(
@@ -452,7 +684,7 @@ where
         std::thread::spawn(move || {
             for stream in listener.incoming().flatten() {
                 let events = events.clone();
-                std::thread::spawn(move || read_frames(stream, events));
+                std::thread::spawn(move || read_frames(stream, &events));
             }
         });
         Some(address)
@@ -464,7 +696,8 @@ where
     let writer = Arc::new(Mutex::new(stream));
     let reader_writer = Writer(Arc::clone(&writer));
     let link_events = direct.as_ref().map(|_| events.clone());
-    std::thread::spawn(move || read_front(reader, &reader_writer, &events));
+    let front_events = events.clone();
+    std::thread::spawn(move || read_front(reader, &reader_writer, &front_events));
     let log = Log {
         stage: stage.name.clone(),
         path: stage.events.clone(),
@@ -484,13 +717,19 @@ where
         answer: None,
         events: link_events,
         direct,
+        budget,
+        bounds,
     };
     server.log.record("spawn", generation, json!({}));
     server.hello();
-    server.run(&inbox);
-    server
-        .log
-        .record("front-closed", server.generation, json!({}));
+    server.run(&events);
+    let (frames, bytes) = events.peak();
+    events.close();
+    server.log.record(
+        "front-closed",
+        server.generation,
+        json!({"peak_frames": frames, "peak_bytes": bytes}),
+    );
     Ok(())
 }
 
@@ -500,7 +739,7 @@ impl Stage<'_> {
     }
 }
 
-fn read_front(stream: TcpStream, writer: &Writer, events: &Sender<Event>) {
+fn read_front(stream: TcpStream, writer: &Writer, events: &Events) {
     for line in BufReader::new(stream).lines() {
         let Ok(line) = line else { break };
         let Ok(message) = serde_json::from_str::<Value>(&line) else {
@@ -519,13 +758,13 @@ fn read_front(stream: TcpStream, writer: &Writer, events: &Sender<Event>) {
                 }));
             }
             _ => {
-                if events.send(Event::Front(message)).is_err() {
+                if !events.control(Event::Front(message)) {
                     return;
                 }
             }
         }
     }
-    let _ = events.send(Event::Closed);
+    events.control(Event::Closed);
 }
 
 impl<E> Server<'_, E>
@@ -548,6 +787,12 @@ where
             "protocol": PROTOCOL,
             "build": crate::build_identity(),
             "profile": self.stage.profile,
+            "limits": {
+                "max_context_tokens": self.budget.max_context_tokens,
+                "max_input_tokens": self.budget.max_input_tokens,
+                "max_prefill_tokens": self.budget.max_prefill_tokens,
+                "modes": PromptMode::ALL.map(PromptMode::as_str),
+            },
         });
         if let Some(listen) = &self.listen {
             hello["listen"] = json!(listen);
@@ -564,8 +809,8 @@ where
         self.log.record("refused", self.generation, data);
     }
 
-    fn run(&mut self, inbox: &Receiver<Event>) {
-        while let Ok(event) = inbox.recv() {
+    fn run(&mut self, inbox: &Events) {
+        while let Some(event) = inbox.recv() {
             match event {
                 Event::Closed => return,
                 Event::Frame(bytes) => self.frame(&bytes),
@@ -669,8 +914,23 @@ where
             // A step this stage already took.
             return self.stale(&message);
         }
-        if self.frames.len() == BUFFERED_FRAMES {
-            self.frames.pop_front();
+        let bytes = message.wire_bytes();
+        while !self.frames.is_empty()
+            && (self.frames.len() >= BUFFERED_FRAMES
+                || self
+                    .frames
+                    .iter()
+                    .map(StageMessage::wire_bytes)
+                    .sum::<usize>()
+                    + bytes
+                    > self.bounds.bytes)
+        {
+            if let Some(old) = self.frames.pop_front() {
+                self.refused(
+                    "the stage dropped buffered state to stay within its bounds",
+                    json!({"request": old.request_id, "step": old.step}),
+                );
+            }
         }
         self.frames.push_back(message);
     }
@@ -697,7 +957,12 @@ where
         self.log.record(
             "step",
             self.generation,
-            json!({"request": step.request, "attempt": step.attempt, "step": step.step}),
+            json!({
+                "request": step.request,
+                "attempt": step.attempt,
+                "step": step.step,
+                "mode": step.mode.as_str(),
+            }),
         );
         if let Some((request, attempt, _, _)) = self.worker.inbox().summary().active
             && (request != step.request || attempt != step.attempt)
@@ -710,8 +975,14 @@ where
         if self.stage.index == 0 {
             match self.first_message(&step) {
                 Ok(message) => self.run_step(&step, message),
-                Err(refusal) => {
-                    self.refused(refusal, json!({"request": step.request, "step": step.step}));
+                Err(Rejected::Limit(limit)) => self.reject(
+                    &step,
+                    "request_limit",
+                    &limit.reason,
+                    Some((limit.limit, limit.actual)),
+                ),
+                Err(Rejected::Invalid(refusal)) => {
+                    self.reject(&step, "invalid_request", &refusal.0, None);
                 }
             }
             return;
@@ -761,30 +1032,37 @@ where
         );
     }
 
-    fn first_message(&self, step: &Step) -> Result<StageMessage, Refused> {
+    fn first_message(&self, step: &Step) -> Result<StageMessage, Rejected> {
         let (tokens, position) = if step.step == 0 {
             let tokens = match &step.prompt_ids {
                 Some(_) if self.stage.record.is_none() => {
-                    return Err(Refused(
+                    return Err(Rejected::Invalid(Refused(
                         "prompt token IDs are taken only by a recording stage".into(),
-                    ));
+                    )));
                 }
                 Some(ids) if ids.is_empty() => {
-                    return Err(Refused("the prompt has no token IDs".into()));
+                    return Err(Rejected::Invalid(Refused(
+                        "the prompt has no token IDs".into(),
+                    )));
                 }
                 Some(ids) => ids.clone(),
-                None => self
-                    .stage
-                    .vocabulary
-                    .encode(step.prompt.as_ref(), self.stage.default_token)?,
+                None => self.stage.vocabulary.encode(
+                    step.prompt.as_ref(),
+                    self.stage.default_token,
+                    step.mode,
+                )?,
             };
+            // Checked before any stage runs the request.
+            self.budget
+                .check(tokens.len() as u64, step.max_tokens.unwrap_or(1))
+                .map_err(Rejected::Limit)?;
             (tokens, 0)
         } else {
             let Some(token) = step.token else {
-                return Err(Refused(format!(
+                return Err(Rejected::Invalid(Refused(format!(
                     "step {} came without the previous token",
                     step.step
-                )));
+                ))));
             };
             let position = match self.worker.inbox().summary().active {
                 Some((request, attempt, _, position))
@@ -793,12 +1071,22 @@ where
                     position
                 }
                 _ => {
-                    return Err(Refused(format!(
+                    return Err(Rejected::Invalid(Refused(format!(
                         "step {} of request {} came before its first step",
                         step.step, step.request
-                    )));
+                    ))));
                 }
             };
+            if position >= self.budget.max_context_tokens {
+                return Err(Rejected::Limit(RequestLimit {
+                    reason: format!(
+                        "the answer reached the group's {} positions",
+                        self.budget.max_context_tokens
+                    ),
+                    limit: self.budget.max_context_tokens,
+                    actual: position + 1,
+                }));
+            }
             (vec![token], position)
         };
         let entry = &self.stage.manifest.stages[0];
@@ -915,7 +1203,8 @@ where
             }
             if matches!(self.stage.vocabulary, Vocabulary::V41(_)) {
                 if self.answer.as_ref().is_none_or(|(r, _)| *r != request) {
-                    let parser = AnswerParser::new(Arc::clone(&self.tokenizer), self.stage.eos);
+                    let parser =
+                        AnswerParser::new(Arc::clone(&self.tokenizer), self.stage.eos, step.mode);
                     self.answer = Some((request.clone(), parser));
                 }
                 let parsed = match self.answer.as_mut() {
@@ -946,7 +1235,7 @@ where
             };
             let bytes = match encode(&hop, &CodecLimits::default()) {
                 Ok(bytes) => bytes,
-                Err(refusal) => return self.refused(refusal, json!({})),
+                Err(refusal) => return self.unsendable(step, &refusal),
             };
             if let Err(error) = self.forward(&address, &bytes) {
                 return self.refused(
@@ -1006,6 +1295,46 @@ where
     // -----------------------------------------------------------------------
     // The direct transport (W12)
     // -----------------------------------------------------------------------
+
+    /// Ends one request without blaming the stage: the front fails the
+    /// request with `code` and keeps the group.
+    fn reject(&self, step: &Step, code: &str, reason: &str, limit: Option<(u64, u64)>) {
+        let mut message = json!({
+            "kind": "rejected",
+            "code": code,
+            "generation": self.generation,
+            "request_id": step.request,
+            "attempt": step.attempt,
+            "step": step.step,
+            "reason": reason,
+        });
+        if let Some((limit, actual)) = limit {
+            message["limit"] = json!(limit);
+            message["actual"] = json!(actual);
+        }
+        self.log.record(
+            "rejected",
+            self.generation,
+            json!({"request": step.request, "step": step.step, "code": code, "reason": reason}),
+        );
+        self.writer.send(&message);
+    }
+
+    /// State this stage made but can't send: over the codec's limits, the
+    /// request is too large for the group; anything else is this request's
+    /// fault too, since the stage only encodes what it computed.
+    fn unsendable(&self, step: &Step, refusal: &StageRefusal) {
+        let reason = format!("the stage state can't be sent: {refusal}");
+        match refusal {
+            StageRefusal::Oversize { limit, actual, .. } => self.reject(
+                step,
+                "request_limit",
+                &reason,
+                Some((*limit as u64, *actual as u64)),
+            ),
+            _ => self.reject(step, "invalid_state", &reason, None),
+        }
+    }
 
     fn refuse_frame(&self, reason: impl Display, data: Value) {
         let reason = reason.to_string();
@@ -1081,7 +1410,7 @@ where
                     Err(_) => tokio::time::sleep(Duration::from_millis(50)).await,
                 }
             };
-            let _ = events.send(Event::Connected(generation, result));
+            events.control(Event::Connected(generation, result));
         });
     }
 
@@ -1107,7 +1436,7 @@ where
     fn forward_link(&mut self, step: &Step, hop: &StageMessage, compute_us: u64) {
         let state = match encode(hop, &CodecLimits::default()) {
             Ok(bytes) => bytes,
-            Err(refusal) => return self.refused(refusal, json!({})),
+            Err(refusal) => return self.unsendable(step, &refusal),
         };
         let generation = self.generation;
         let frame = Frame {
@@ -1218,6 +1547,15 @@ where
             );
         }
         let meta: Value = serde_json::from_slice(&frame.meta).unwrap_or(Value::Null);
+        let mode = match PromptMode::of(&meta) {
+            Ok(mode) => mode,
+            Err(refusal) => {
+                return self.refuse_frame(
+                    refusal,
+                    json!({"request": frame.request_id, "step": frame.step}),
+                );
+            }
+        };
         let step = Step {
             generation,
             request: frame.request_id,
@@ -1232,11 +1570,18 @@ where
                 .and_then(|s| serde_json::from_value(s.clone()).ok()),
             next: None,
             last: meta["final"].as_bool().unwrap_or(false),
+            mode,
+            max_tokens: None,
         };
         self.log.record(
             "step",
             self.generation,
-            json!({"request": step.request, "attempt": step.attempt, "step": step.step}),
+            json!({
+                "request": step.request,
+                "attempt": step.attempt,
+                "step": step.step,
+                "mode": step.mode.as_str(),
+            }),
         );
         if let Some((request, attempt, _, _)) = self.worker.inbox().summary().active
             && (request != step.request || attempt != step.attempt)
@@ -1266,4 +1611,417 @@ where
 /// Microseconds since `started`.
 fn micros(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_micros()).unwrap_or(u64::MAX)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    //! The worker's handoff under a stalled executor (audit F7): the real
+    //! serving loop, the real link, and the CPU executor behind a gate.
+
+    use std::{
+        io::{BufRead, BufReader, Write},
+        net::{TcpListener, TcpStream},
+        sync::{Arc, Condvar, Mutex},
+        time::{Duration, Instant},
+    };
+
+    use psionic_models::{
+        deepseek_v41_stage::{V41GroupManifest, V41StageGeometry},
+        stage_state::{
+            RowRule, Section, StageExecutor, StageInbox, StageMessage, StageWorker, StepKind,
+            encode,
+        },
+    };
+    use serde_json::{Value, json};
+    use stage_link::{Frame, Hop, Key, Kind, Limits};
+
+    use super::{InboxBounds, Stage, serve};
+    use crate::{
+        Model, RUNTIME, Sampling, StageBackend, cpu_worker, load_model, synthetic_manifest,
+        write_synthetic,
+    };
+
+    /// A gate the executor waits at until the test opens it.
+    #[derive(Clone, Default)]
+    struct Gate(Arc<(Mutex<(bool, usize)>, Condvar)>);
+
+    impl Gate {
+        fn enter(&self) {
+            let (lock, wake) = &*self.0;
+            let mut state = lock.lock().unwrap();
+            state.1 += 1;
+            wake.notify_all();
+            let _state = wake.wait_while(state, |s| !s.0).unwrap();
+        }
+
+        fn wait_entered(&self, n: usize, limit: Duration) {
+            let (lock, wake) = &*self.0;
+            let state = lock.lock().unwrap();
+            let (state, _) = wake.wait_timeout_while(state, limit, |s| s.1 < n).unwrap();
+            assert!(state.1 >= n, "the executor never started step {n}");
+        }
+
+        fn open(&self) {
+            let (lock, wake) = &*self.0;
+            lock.lock().unwrap().0 = true;
+            wake.notify_all();
+        }
+    }
+
+    struct OpenOnDrop(Gate);
+
+    impl Drop for OpenOnDrop {
+        fn drop(&mut self) {
+            self.0.open();
+        }
+    }
+
+    /// The real CPU executor, stalled at the gate before each step.
+    struct Stalled<E> {
+        inner: E,
+        gate: Gate,
+    }
+
+    impl<E: StageExecutor> StageExecutor for Stalled<E> {
+        type Error = E::Error;
+
+        fn step(&mut self, message: &StageMessage) -> Result<Vec<Section>, Self::Error> {
+            self.gate.enter();
+            self.inner.step(message)
+        }
+
+        fn reset(&mut self, request_id: &str) {
+            self.inner.reset(request_id);
+        }
+    }
+
+    impl<E: StageBackend> StageBackend for Stalled<E> {
+        fn geometry(&self) -> V41StageGeometry {
+            self.inner.geometry()
+        }
+    }
+
+    fn rss_kib() -> u64 {
+        let out = std::process::Command::new("ps")
+            .args(["-o", "rss=", "-p", &std::process::id().to_string()])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().parse().unwrap()
+    }
+
+    /// Stage 0's real state for `request`'s first step at `generation`.
+    fn first_hop(
+        model: &'static Model,
+        manifest: &V41GroupManifest,
+        generation: u64,
+        request: &str,
+    ) -> Vec<u8> {
+        let mut first = cpu_worker(
+            model,
+            manifest,
+            &manifest.stages[0],
+            model.arithmetic,
+            64,
+            generation,
+        )
+        .unwrap();
+        let message = StageMessage {
+            manifest_digest: manifest.digest(),
+            generation,
+            request_id: request.into(),
+            attempt: 1,
+            stage: 0,
+            layers: 0..20,
+            step: 0,
+            kind: StepKind::Prefill,
+            position: 0,
+            tokens: vec![3, 5, 0, 6],
+            sections: Vec::new(),
+        };
+        let sections = first.step(message.clone()).unwrap();
+        encode(&message.next_hop(1, 20..40, sections), &Default::default()).unwrap()
+    }
+
+    /// A valid encoded prefill of `tokens` tokens for stage 1, at `step`.
+    fn big_hop(stage: &StageInbox, manifest: &V41GroupManifest, step: u64, tokens: u32) -> Vec<u8> {
+        let sections = stage
+            .contract()
+            .sections
+            .iter()
+            .map(|spec| {
+                let rows = match spec.rows {
+                    RowRule::PerToken => tokens,
+                    RowRule::Append { ratio } => tokens / ratio.max(1),
+                    RowRule::Fixed(rows) => rows,
+                };
+                let mut shape = vec![rows];
+                shape.extend_from_slice(&spec.inner);
+                let elements: usize = shape.iter().map(|d| *d as usize).product();
+                Section {
+                    kind: spec.kind,
+                    dtype: spec.dtype,
+                    shape,
+                    first_row: 0,
+                    data: vec![0; elements * spec.dtype.bytes()],
+                }
+            })
+            .collect();
+        let message = StageMessage {
+            manifest_digest: manifest.digest(),
+            generation: 1,
+            request_id: "r".into(),
+            attempt: 1,
+            stage: 1,
+            layers: 20..40,
+            step,
+            kind: StepKind::Prefill,
+            position: 0,
+            tokens: vec![0; tokens as usize],
+            sections,
+        };
+        encode(&message, &Default::default()).unwrap()
+    }
+
+    struct FrontConn {
+        reader: BufReader<TcpStream>,
+        writer: TcpStream,
+    }
+
+    impl FrontConn {
+        fn send(&mut self, message: &Value) {
+            self.writer
+                .write_all(format!("{message}\n").as_bytes())
+                .unwrap();
+        }
+
+        /// The next message of `kind`, skipping others.
+        fn next(&mut self, kind: &str) -> Value {
+            loop {
+                let mut line = String::new();
+                assert!(
+                    self.reader.read_line(&mut line).unwrap() > 0,
+                    "the stage hung up"
+                );
+                let message: Value = serde_json::from_str(&line).unwrap();
+                if message["kind"] == kind {
+                    return message;
+                }
+            }
+        }
+
+        fn link(&mut self, generation: u64, key: &Key) {
+            self.send(&json!({
+                "kind": "link", "generation": generation, "key": key.to_hex(), "group": "g",
+                "stage": 1, "stages": 2, "next": null, "queue": 2, "send_timeout_ms": 1000,
+            }));
+            assert_eq!(self.next("linked")["generation"], generation);
+        }
+    }
+
+    fn state(step: u64, generation: u64, request: &str, state: Vec<u8>) -> Frame {
+        let sampling = Sampling::GREEDY;
+        Frame {
+            kind: Kind::State,
+            generation,
+            request_id: request.into(),
+            attempt: 1,
+            step,
+            meta: serde_json::to_vec(
+                &json!({"sampling": sampling, "final": false, "mode": "chat"}),
+            )
+            .unwrap(),
+            state,
+        }
+    }
+
+    #[test]
+    fn a_stalled_executor_holds_the_link_to_its_bounds_and_recovers() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().to_path_buf();
+        write_synthetic(&dir, "synthetic").unwrap();
+        let model: &'static Model = Box::leak(Box::new(load_model(&dir).unwrap()));
+        let manifest = synthetic_manifest(&[0..20, 20..40]).unwrap();
+        let (inbox, executor) = cpu_worker(
+            model,
+            &manifest,
+            &manifest.stages[1],
+            model.arithmetic,
+            64,
+            1,
+        )
+        .unwrap()
+        .into_parts();
+        let gate = Gate::default();
+        let big = big_hop(&inbox, &manifest, 1, 8192);
+        let bounds = InboxBounds {
+            frames: 3,
+            bytes: 3 << 19,
+            wait: Duration::from_secs(2),
+        };
+        // The byte bound, not the frame bound, stops the third frame.
+        assert!(
+            big.len() > 600_000 && 3 * big.len() > bounds.bytes,
+            "{}",
+            big.len()
+        );
+        let worker = StageWorker::new(
+            inbox,
+            Stalled {
+                inner: executor,
+                gate: gate.clone(),
+            },
+        );
+        let front = TcpListener::bind("127.0.0.1:0").unwrap();
+        let stage = Stage {
+            name: "s1".into(),
+            token: "t1".into(),
+            weights: model.digest.clone(),
+            manifest: manifest.clone(),
+            index: 1,
+            vocabulary: &model.vocabulary,
+            eos: model.config.eos_token,
+            default_token: model.config.pad_token,
+            front: front.local_addr().unwrap().to_string(),
+            listen: "127.0.0.1:0".into(),
+            data_listen: Some("127.0.0.1:0".into()),
+            data_advertise: None,
+            runtime: RUNTIME,
+            profile: crate::profile_name(crate::Backend::Cpu, Some(model.arithmetic)),
+            events: Some(dir.join("events.jsonl")),
+            max_context: 64,
+            max_input: None,
+            inbox: bounds,
+            record: None,
+        };
+        let first = first_hop(model, &manifest, 1, "r");
+        let recovery = first_hop(model, &manifest, 2, "r2");
+        // The test drives the stage from another thread; the stage serves
+        // on this one until the front hangs up.
+        let driver = std::thread::spawn(move || {
+            // A failed check still frees the executor, so the stage ends.
+            let _free = OpenOnDrop(gate.clone());
+            let (stream, _) = front.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(60)))
+                .unwrap();
+            let mut conn = FrontConn {
+                reader: BufReader::new(stream.try_clone().unwrap()),
+                writer: stream,
+            };
+            let hello = conn.next("hello");
+            assert_eq!(hello["limits"]["max_context_tokens"], 64);
+            assert_eq!(hello["limits"]["max_input_tokens"], 63);
+            assert_eq!(hello["limits"]["modes"], json!(["thinking", "chat"]));
+            let data = hello["data"].as_str().unwrap().to_owned();
+            let runtime = tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .enable_all()
+                .build()
+                .unwrap();
+            let key = Key::generate().unwrap();
+            conn.link(1, &key);
+            let limits = Limits {
+                max_state: 256 << 20,
+                queue: 2,
+                send_timeout: Duration::from_secs(1),
+                ..Limits::default()
+            };
+            let hop = |generation| Hop {
+                group: "g".into(),
+                generation,
+                from: 0,
+                to: 1,
+            };
+            let mut sender = runtime
+                .block_on(stage_link::connect(data.as_str(), &key, &hop(1), &limits))
+                .unwrap();
+            runtime
+                .block_on(sender.send(&state(0, 1, "r", first)))
+                .unwrap();
+            gate.wait_entered(1, Duration::from_secs(30));
+            // The executor is stuck in step 0. Flood the link with valid
+            // 690 KB frames: unbounded, 300 of them would queue 200 MB.
+            let before = rss_kib();
+            let (mut sent, mut failed) = (0, None);
+            for step in 1..=300 {
+                let started = Instant::now();
+                match runtime.block_on(sender.send(&state(step, 1, "r", big.clone()))) {
+                    Ok(_) => sent += 1,
+                    Err(error) => {
+                        failed = Some((started.elapsed(), error.to_string()));
+                        break;
+                    }
+                }
+            }
+            let grown = rss_kib().saturating_sub(before);
+            let (waited, error) = failed.expect("the link never pushed back");
+            // The sender blocks, then fails within its one-second deadline.
+            assert!(waited < Duration::from_secs(3), "{waited:?}: {error}");
+            // Only the inbox, the sender's queue, and socket buffers hold
+            // frames: a few, not hundreds.
+            assert!(sent < 40, "{sent} frames were accepted");
+            assert!(grown < 64 << 10, "the process grew {grown} KiB");
+            // Cancel the request while its state is queued, then free the
+            // executor: the cancellation goes before the queued state.
+            conn.send(&json!({"kind": "cancel", "request_id": "r", "attempt": 1}));
+            gate.open();
+            assert_eq!(conn.next("ack")["step"], 0);
+            assert_eq!(conn.next("stopped")["request_id"], "r");
+            // The broken link is reported: by the reader that gave up
+            // waiting (`self`), or that found the sender gone (`prev`).
+            let lost = conn.next("link_failed");
+            assert!(lost["peer"] == "self" || lost["peer"] == "prev", "{lost}");
+            // Recovery: the front fences, links again, and a new request
+            // runs.
+            conn.send(&json!({"kind": "fence", "generation": 2}));
+            assert_eq!(conn.next("hello")["generation"], 2);
+            let key = Key::generate().unwrap();
+            conn.link(2, &key);
+            let mut sender = runtime
+                .block_on(stage_link::connect(data.as_str(), &key, &hop(2), &limits))
+                .unwrap();
+            runtime
+                .block_on(sender.send(&state(0, 2, "r2", recovery)))
+                .unwrap();
+            let ack = conn.next("ack");
+            assert_eq!(
+                (ack["request_id"].as_str(), ack["step"].as_u64()),
+                (Some("r2"), Some(0))
+            );
+            assert!(ack["token"].is_u64());
+            sent
+        });
+        serve(stage, worker, 1).unwrap();
+        let sent = match driver.join() {
+            Ok(sent) => sent,
+            Err(panic) => std::panic::resume_unwind(panic),
+        };
+        let events: Vec<Value> = std::fs::read_to_string(dir.join("events.jsonl"))
+            .unwrap()
+            .lines()
+            .map(|l| serde_json::from_str(l).unwrap())
+            .collect();
+        let closed = events
+            .iter()
+            .find(|e| e["event"] == "front-closed")
+            .unwrap();
+        let (frames, bytes) = (
+            closed["peak_frames"].as_u64().unwrap(),
+            closed["peak_bytes"].as_u64().unwrap(),
+        );
+        assert!(frames <= 2 && bytes <= 3 << 19, "{closed}; {sent} sent");
+        // The stop came before any queued state was looked at.
+        let stopped = events.iter().position(|e| e["event"] == "stopped").unwrap();
+        let first_stale = events
+            .iter()
+            .position(|e| e["event"] == "refused" && e["step"].as_u64() > Some(0));
+        assert!(first_stale.is_none_or(|i| i > stopped), "{events:#?}");
+        assert!(
+            events
+                .iter()
+                .any(|e| e["event"] == "step" && e["mode"] == "chat"),
+            "{events:#?}"
+        );
+    }
 }

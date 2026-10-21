@@ -1576,3 +1576,89 @@ fn pylon_placement_manifests_match_the_committed_files() {
         );
     }
 }
+
+/// A zero-filled prefill message of real shape: `tokens` tokens at position 0.
+fn zero_prefill(contract: &StageContract, tokens: u32) -> StageMessage {
+    let sections = contract
+        .sections
+        .iter()
+        .map(|spec| {
+            let rows = match spec.rows {
+                RowRule::PerToken => tokens,
+                RowRule::Append { ratio } => tokens / ratio.max(1),
+                RowRule::Fixed(rows) => rows,
+            };
+            let mut shape = vec![rows];
+            shape.extend_from_slice(&spec.inner);
+            let elements: usize = shape.iter().map(|d| *d as usize).product();
+            Section {
+                kind: spec.kind,
+                dtype: spec.dtype,
+                shape,
+                first_row: 0,
+                data: vec![0; elements * spec.dtype.bytes()],
+            }
+        })
+        .collect();
+    StageMessage {
+        manifest_digest: [0; 32],
+        generation: 1,
+        request_id: "r".repeat(128),
+        attempt: 1,
+        stage: contract.stage,
+        layers: contract.layers.clone(),
+        step: 0,
+        kind: StepKind::Prefill,
+        position: 0,
+        tokens: vec![0; tokens as usize],
+        sections,
+    }
+}
+
+#[test]
+fn prefill_sizes_match_encoded_messages_and_bound_the_step() {
+    let limits = CodecLimits::default();
+    // The CUDA stage's wire: F32 residuals and BF16 cache rows.
+    let cuda = V41StageGeometry::flash().with_dtypes(WireDtype::F32, WireDtype::Bf16);
+    for split in [even(4), even(8)] {
+        for (k, layers) in split.iter().enumerate().skip(1) {
+            let contract = stage_contract(&cuda, k as u16, layers.clone());
+            for tokens in [1, 2, 7, 128, 1000] {
+                let message = zero_prefill(&contract, tokens);
+                let (total, largest) = contract.step_bytes(128, u64::from(tokens), 0);
+                assert_eq!(total, encode(&message, &limits).unwrap().len());
+                assert_eq!(
+                    largest,
+                    message.sections.iter().map(|s| s.data.len()).max().unwrap()
+                );
+            }
+            let most = contract.max_step_tokens(&limits, 128);
+            let fits = zero_prefill(&contract, most as u32);
+            assert!(encode(&fits, &limits).is_ok(), "boundary {}", layers.start);
+            let over = zero_prefill(&contract, most as u32 + 1);
+            assert!(matches!(
+                encode(&over, &limits),
+                Err(StageRefusal::Oversize { .. })
+            ));
+        }
+    }
+    // The residual alone, `[tokens, 4, 5120]` in F32, passes 256 MiB at
+    // 3,277 tokens, so no CUDA boundary carries that many in one step.
+    let residual = |tokens: u64| tokens * 4 * 5120 * 4;
+    assert!(residual(3276) <= limits.max_section_bytes as u64);
+    assert!(residual(3277) > limits.max_section_bytes as u64);
+    for split in [even(4), even(8)] {
+        for (k, layers) in split.iter().enumerate().skip(1) {
+            let most =
+                stage_contract(&cuda, k as u16, layers.clone()).max_step_tokens(&limits, 128);
+            assert!(most < 3277, "boundary {}: {most}", layers.start);
+        }
+    }
+    // A step never carries more tokens than the codec allows.
+    let synthetic = V41StageGeometry::synthetic();
+    let contract = stage_contract(&synthetic, 1, 20..40);
+    assert_eq!(
+        contract.max_step_tokens(&limits, 128),
+        limits.max_tokens as u64
+    );
+}

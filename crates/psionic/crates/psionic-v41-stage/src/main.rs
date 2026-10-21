@@ -4,8 +4,9 @@
 //! psionic-v41-stage --weights DIR --layers A-B --gpu N --manifest D [--embeddings] [--head]
 //!     --stage NAME --generation G --front ADDR --token T
 //!     [--backend cpu|cuda] [--arithmetic f32|bf16|bf16-tp8|device] [--max-context N]
-//!     [--listen ADDR] [--data-listen ADDR [--data-advertise ADDR]] [--events FILE]
-//! psionic-v41-stage reference --weights DIR [--prompt JSON] [--steps N]
+//!     [--max-input-tokens N] [--listen ADDR] [--data-listen ADDR [--data-advertise ADDR]]
+//!     [--events FILE]
+//! psionic-v41-stage reference --weights DIR [--prompt JSON] [--mode thinking|chat] [--steps N]
 //!     [--temperature T --top-p P --seed S] [--arithmetic A] [--max-context N]
 //!     [--backend cpu|cuda]
 //! psionic-v41-stage manifest --split 0-10,10-20,20-30,30-40
@@ -23,8 +24,8 @@
 use std::{io::Write, path::Path, process::ExitCode};
 
 use psionic_v41_stage::{
-    Backend, Options, Refused, Sampling, load_manifest, load_model, load_model_for, parse_layers,
-    parse_profile, reference, serve, synthetic_manifest, write_synthetic,
+    Backend, Options, PromptMode, Refused, Sampling, load_manifest, load_model, load_model_for,
+    parse_layers, parse_profile, reference, serve, synthetic_manifest, write_synthetic,
 };
 
 fn main() -> ExitCode {
@@ -103,6 +104,10 @@ fn run_reference(args: &[String]) -> Result<(), Refused> {
         top_p: number(args, "--top-p", 1.0)?,
         seed: number(args, "--seed", 0)?,
     };
+    let mode = flag(args, "--mode")
+        .map(PromptMode::parse)
+        .transpose()?
+        .unwrap_or_default();
     let steps = number(args, "--steps", 8)?;
     let max_context = number(args, "--max-context", 8192)?;
     let backend = flag(args, "--backend")
@@ -119,6 +124,7 @@ fn run_reference(args: &[String]) -> Result<(), Refused> {
         Backend::Cuda => psionic_v41_stage::cuda::reference(
             Path::new(weights),
             prompt.as_ref(),
+            mode,
             steps,
             sampling,
             max_context,
@@ -129,6 +135,7 @@ fn run_reference(args: &[String]) -> Result<(), Refused> {
             reference(
                 &model,
                 prompt.as_ref(),
+                mode,
                 steps,
                 sampling,
                 arithmetic,

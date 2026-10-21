@@ -942,6 +942,68 @@ impl StageContract {
             .sum();
         MESSAGE_HEADER_BYTES + request_id_bytes + 4 + sections
     }
+
+    /// Bytes of one step's message under this contract, for `tokens` tokens
+    /// starting at `position` of a new request, and the bytes of its largest
+    /// section. A prefill step at position 0 is the largest message a request
+    /// sends across this boundary.
+    #[must_use]
+    pub fn step_bytes(
+        &self,
+        request_id_bytes: usize,
+        tokens: u64,
+        position: u64,
+    ) -> (usize, usize) {
+        let mut largest = 0;
+        let sections: usize = self
+            .sections
+            .iter()
+            .map(|spec| {
+                let rows = spec.expected_rows(tokens, position, position_rows(spec, position));
+                let elements =
+                    rows as usize * spec.inner.iter().map(|d| *d as usize).product::<usize>();
+                let data = elements * spec.dtype.bytes();
+                largest = largest.max(data);
+                SECTION_HEADER_BYTES + 4 * (1 + spec.inner.len()) + data
+            })
+            .sum();
+        let total = MESSAGE_HEADER_BYTES + request_id_bytes + 4 * tokens as usize + sections;
+        (total, largest)
+    }
+
+    /// The most tokens one step from `position` may carry across this
+    /// boundary under `limits`, for request IDs up to `request_id_bytes`:
+    /// the message, its largest section, and its token count all fit.
+    #[must_use]
+    pub fn max_step_tokens(&self, limits: &CodecLimits, request_id_bytes: usize) -> u64 {
+        let fits = |tokens: u64| {
+            let (total, largest) = self.step_bytes(request_id_bytes, tokens, 0);
+            total <= limits.max_message_bytes && largest <= limits.max_section_bytes
+        };
+        let (mut low, mut high) = (0, limits.max_tokens as u64);
+        if fits(high) {
+            return high;
+        }
+        // Message bytes grow with tokens, so the largest fitting count is a
+        // boundary a binary search finds.
+        while low + 1 < high {
+            let mid = low + (high - low) / 2;
+            if fits(mid) {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+        low
+    }
+}
+
+/// Rows of an appended section a request holds before `position`.
+fn position_rows(spec: &SectionSpec, position: u64) -> u64 {
+    match spec.rows {
+        RowRule::Append { ratio } => position / u64::from(ratio.max(1)),
+        RowRule::PerToken | RowRule::Fixed(_) => 0,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1321,6 +1383,11 @@ impl<E: StageExecutor> StageWorker<E> {
     /// The executor.
     pub fn executor(&self) -> &E {
         &self.executor
+    }
+
+    /// The inbox and the executor, to wrap the executor in another.
+    pub fn into_parts(self) -> (StageInbox, E) {
+        (self.inbox, self.executor)
     }
 
     /// Decodes, admits, and runs one step.
