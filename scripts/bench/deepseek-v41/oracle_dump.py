@@ -624,6 +624,21 @@ def install_attention_diagnostics(model, rec: Recorder, model_mod):
         return quantize(x, *args, **kwargs)
 
     model_mod.act_quant = observed_quantize
+    reduce = model_mod.dist.all_reduce
+
+    def observed_reduce(tensor, *args, **kwargs):
+        import torch
+
+        layer = active["layer"]
+        if layer is not None and tensor.dim() == 3:
+            prefix = f"layers.{layer}.attn"
+            if tensor.dtype == torch.bfloat16:
+                rec.put_rows(f"{prefix}.indexer.rank_partial.rank{rec.rank}", tensor, replicated=False)
+            elif tensor.size(-1) == model.layers[layer].attn.dim:
+                rec.put_rows(f"{prefix}.output.rank_partial.rank{rec.rank}", tensor, replicated=False)
+        return reduce(tensor, *args, **kwargs)
+
+    model_mod.dist.all_reduce = observed_reduce
 
 
 def environment(reference: Path) -> dict:
@@ -636,6 +651,9 @@ def environment(reference: Path) -> dict:
         "gpu": torch.cuda.get_device_name(0),
         "gpu_capability": list(torch.cuda.get_device_capability(0)),
         "gpu_count": torch.cuda.device_count(),
+        "nccl_version": torch.cuda.nccl.version(),
+        "collective_controls": {name: os.getenv(name) for name in
+            ["NCCL_ALGO", "NCCL_PROTO", "NCCL_NVLS_ENABLE", "NCCL_DEBUG", "NCCL_DEBUG_SUBSYS"]},
         "packages": {},
     }
     for name in ["tilelang", "safetensors", "transformers", "tokenizers", "numpy", "sympy", "triton"]:
