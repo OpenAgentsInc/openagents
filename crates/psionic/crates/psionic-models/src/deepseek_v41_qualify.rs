@@ -279,6 +279,13 @@ pub struct Policy {
     pub top1: DecisionRule,
     pub router: DecisionRule,
     pub index: DecisionRule,
+    /// Connected routing: per layer, the largest fraction of rows whose
+    /// expert set may differ from the oracle's. Under the oracle's
+    /// connected drift a per-row budget is unbounded, so the limit is set
+    /// against an arithmetic-only reference instead. `None` leaves the
+    /// check pending.
+    #[serde(default)]
+    pub router_layer_mismatch: Option<Vec<f64>>,
 }
 
 impl Policy {

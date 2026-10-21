@@ -186,6 +186,9 @@ pub struct LayerRangeRuntime<'a> {
     hash: Option<NgramHashState>,
     recent: VecDeque<u32>,
     position: usize,
+    /// The last forward's selected experts, per layer, six per token in
+    /// token order (G1 v2 router checks, #12405).
+    routes: BTreeMap<usize, Vec<u32>>,
 }
 
 impl<'a> LayerRangeRuntime<'a> {
@@ -286,6 +289,7 @@ impl<'a> LayerRangeRuntime<'a> {
             hash,
             recent: VecDeque::new(),
             position: 0,
+            routes: BTreeMap::new(),
         })
     }
 
@@ -435,6 +439,7 @@ impl<'a> LayerRangeRuntime<'a> {
         if chunk.candidates.as_ref().is_some_and(|r| r.len() != count) {
             return Err(CpuError::Invalid("candidate masks per token"));
         }
+        self.routes.clear();
         for layer in self.config.layers.clone() {
             let block = TextBlock::new(self.weights, layer, c.block, self.config.arithmetic)?
                 .with_reference_rows(count);
@@ -471,6 +476,10 @@ impl<'a> LayerRangeRuntime<'a> {
                     &mixes[i],
                 )?;
                 let output = block.feed_forward(&attended, &mixes[i].pre)?;
+                self.routes
+                    .entry(layer)
+                    .or_default()
+                    .extend(output.routing.indices.iter().map(|id| *id as u32));
                 residuals[i] = output.residual;
                 pre_mixes[i] = output.next_pre;
             }
@@ -899,6 +908,12 @@ impl<'a> V41CpuStageExecutor<'a> {
     #[must_use]
     pub fn geometry(&self) -> V41StageGeometry {
         self.geometry
+    }
+
+    /// The last step's selected experts per layer, six per token.
+    #[must_use]
+    pub fn routes(&self) -> &BTreeMap<usize, Vec<u32>> {
+        &self.runtime.routes
     }
 
     /// The runtime.

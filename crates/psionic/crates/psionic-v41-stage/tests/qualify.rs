@@ -114,6 +114,7 @@ fn strict_policy(root: &Path) -> String {
         top1: rule,
         router: rule,
         index: rule,
+        router_layer_mismatch: None,
     };
     let path = root.join("policy.json");
     std::fs::write(&path, serde_json::to_vec(&policy).unwrap()).unwrap();

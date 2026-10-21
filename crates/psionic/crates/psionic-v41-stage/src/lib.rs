@@ -402,6 +402,17 @@ impl StageBackend for V41CpuStageExecutor<'_> {
     fn geometry(&self) -> V41StageGeometry {
         V41CpuStageExecutor::geometry(self)
     }
+
+    /// The CPU port's router selections, named as the CUDA stage names them,
+    /// for the G1 v2 reference control (#12405).
+    fn observations(&self, _tokens: usize) -> Option<Vec<(String, Vec<u32>)>> {
+        Some(
+            self.routes()
+                .iter()
+                .map(|(layer, ids)| (format!("L{layer}.ExpertIds"), ids.clone()))
+                .collect(),
+        )
+    }
 }
 
 /// A stage's command line.

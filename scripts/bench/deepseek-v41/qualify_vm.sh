@@ -81,7 +81,7 @@ run-gpu() {
   for control in wrong-weights wrong-routing wrong-rope stale-cache; do
     name=control-$control
     gcloud storage ls "$RESULTS/$name/report.json" >/dev/null 2>&1 && continue
-    qualify $ROOT/out/$name --gpus 0,1,2,3 --cases p1-chat-thinking --control $control
+    qualify $ROOT/out/$name --observe --gpus 0,1,2,3 --cases p1-chat-thinking --control $control
   done
   log "GPU runs done"
 }
@@ -90,7 +90,7 @@ run-gpu() {
 # shorter cases; the 2k and 20k prompts take more than a day on CPU.
 run-cpu() {
   : "${MANIFEST:?}" "${RESULTS:?}"
-  qualify $ROOT/out/reference-cpu --backend cpu --arithmetic bf16-tp8 --step-secs 36000 \
+  qualify $ROOT/out/reference-cpu --backend cpu --arithmetic bf16-tp8 --observe --step-secs 36000 \
     --cases p1-chat-thinking,p2-code,e-window-127,e-window-128,e-window-129,e-engram
   log "CPU reference done"
 }

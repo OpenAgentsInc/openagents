@@ -905,6 +905,7 @@ fn router_case(
     }
     let rule = policy.router;
     let mut layers = Vec::new();
+    let mut over = Vec::new();
     let (mut same, mut substituted, mut failed, mut unresolved) = (0usize, 0, 0, 0);
     let mut examples = Vec::new();
     for layer in 0..LAYERS {
@@ -978,12 +979,25 @@ fn router_case(
         substituted += layer_counts[1];
         failed += layer_counts[2];
         unresolved += layer_counts[3];
+        let rows = layer_counts.iter().sum::<usize>().max(1);
+        let mismatch = (rows - layer_counts[0]) as f64 / rows as f64;
+        let limit = policy
+            .router_layer_mismatch
+            .as_ref()
+            .and_then(|l| l.get(layer).copied());
+        if limit.is_some_and(|l| mismatch > l) {
+            over.push(json!({"layer": layer, "mismatch": mismatch, "limit": limit}));
+        }
         layers.push(
             json!({"layer": layer, "same": layer_counts[0], "substituted": layer_counts[1],
-            "failed": layer_counts[2], "unresolved": layer_counts[3]}),
+            "failed": layer_counts[2], "unresolved": layer_counts[3], "mismatch": mismatch,
+            "limit": limit}),
         );
     }
     let total = same + substituted + failed + unresolved;
+    // v2.1: under connected drift the per-row rule stays unresolved; the
+    // per-layer mismatch limit decides, and a structural failure always fails.
+    let layer_limits = policy.router_layer_mismatch.is_some();
     let fraction_ok = rule
         .max_substituted_fraction
         .map(|f| (substituted as f64) <= f * total.max(1) as f64);
@@ -994,7 +1008,14 @@ fn router_case(
         "failed": failed,
         "unresolved": unresolved,
         "substituted_fraction_within_limit": fraction_ok,
-        "passed": total > 0 && failed == 0 && unresolved == 0 && fraction_ok == Some(true),
+        "layers_over_limit": over,
+        "passed": total > 0
+            && failed == 0
+            && if layer_limits {
+                over.is_empty()
+            } else {
+                unresolved == 0 && fraction_ok == Some(true)
+            },
         "layers": layers,
         "examples": examples,
     }))
@@ -1156,6 +1177,7 @@ pub fn pending_policy() -> Policy {
         top1: rule,
         router: rule,
         index: rule,
+        router_layer_mismatch: None,
     }
 }
 
@@ -1323,8 +1345,11 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
 /// Headroom over the reference control's largest error.
 const HEADROOM: f64 = 2.0;
 
-/// Derives policy v2.0 from calibration reports (#12405). The rule was
-/// committed before any calibration ran:
+/// Derives policy v2.1 from calibration reports (#12405). Version 2.0 of
+/// this rule was committed before any calibration ran; on the calibration it
+/// refused, because the wrong-routing control passed every distribution
+/// limit. Version 2.1 adds the per-layer router limit, still taken from the
+/// reference alone, before any holdout case has run:
 ///
 /// - `reference` reports come from an independent implementation that differs
 ///   from the oracle only in arithmetic: the Psionic CPU port in the
@@ -1337,8 +1362,10 @@ const HEADROOM: f64 = 2.0;
 ///   error: the largest logit change arithmetic alone produced. At most one
 ///   substitution per position, and a substituted fraction of [`HEADROOM`]
 ///   times the reference's, at least one position in 33.
-/// - Router and index budgets stay unset: neither control measures a score
-///   error, so those checks remain pending.
+/// - Per-row router and index budgets stay unset: under connected drift the
+///   uncertainty of a row's scores is unmeasured. Instead, each layer's
+///   router mismatch fraction may be at most [`HEADROOM`] times the
+///   reference's largest, at least [`ROUTER_FLOOR`] (`router_limits`).
 /// - `controls` are negative-control reports. Each must fail the derived
 ///   policy, or the derivation refuses.
 ///
@@ -1399,7 +1426,7 @@ pub fn derive_policy(reference: &[Value], controls: &[Value]) -> Result<(Policy,
     let floor = 1.0 / 33.0;
     let policy = Policy {
         schema: q::POLICY_SCHEMA.into(),
-        version: "2.0".into(),
+        version: "2.1".into(),
         distribution: q::DistributionLimits {
             total_variation: Some(tv_limit),
             jensen_shannon: Some(HEADROOM * js),
@@ -1425,6 +1452,7 @@ pub fn derive_policy(reference: &[Value], controls: &[Value]) -> Result<(Policy,
             max_substitutions: 2,
             max_substituted_fraction: None,
         },
+        router_layer_mismatch: router_limits(reference)?,
     };
     let mut detected = Vec::new();
     for report in controls {
@@ -1434,6 +1462,15 @@ pub fn derive_policy(reference: &[Value], controls: &[Value]) -> Result<(Policy,
             if case["refused"].is_string() {
                 // The stages' exact checks refused the defect's state.
                 failures += 1;
+            }
+            if let Some(limits) = &policy.router_layer_mismatch {
+                for layer in case["router"]["layers"].as_array().into_iter().flatten() {
+                    let l = layer["layer"].as_u64().unwrap_or_default() as usize;
+                    let m = layer["mismatch"].as_f64().unwrap_or_default();
+                    if limits.get(l).is_some_and(|limit| m > *limit) {
+                        failures += 1;
+                    }
+                }
             }
             for mode in case["modes"].as_array().into_iter().flatten() {
                 let ps: Vec<PositionResult> = mode["positions"]
@@ -1474,6 +1511,38 @@ pub fn derive_policy(reference: &[Value], controls: &[Value]) -> Result<(Policy,
         "controls": detected,
     });
     Ok((policy, evidence))
+}
+
+/// The smallest per-layer router mismatch limit: the oracle's own near ties
+/// make a few rows ambiguous even without drift.
+const ROUTER_FLOOR: f64 = 0.05;
+
+/// Per layer, [`HEADROOM`] times the reference's largest router mismatch
+/// fraction over its cases, at least [`ROUTER_FLOOR`] and at most 1.
+fn router_limits(reference: &[Value]) -> Result<Option<Vec<f64>>, Refused> {
+    let mut worst = vec![None::<f64>; LAYERS];
+    for report in reference {
+        for case in report["cases"].as_array().into_iter().flatten() {
+            for layer in case["router"]["layers"].as_array().into_iter().flatten() {
+                let l = layer["layer"].as_u64().unwrap_or(u64::MAX) as usize;
+                if let (Some(slot), Some(m)) = (worst.get_mut(l), layer["mismatch"].as_f64()) {
+                    *slot = Some(slot.map_or(m, |w: f64| w.max(m)));
+                }
+            }
+        }
+    }
+    if worst.iter().all(Option::is_none) {
+        return Ok(None);
+    }
+    worst
+        .into_iter()
+        .enumerate()
+        .map(|(l, w)| {
+            w.map(|w| (HEADROOM * w).clamp(ROUTER_FLOOR, 1.0))
+                .ok_or_else(|| refused(format!("the reference has no router rows for layer {l}")))
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
 }
 
 /// `qualify-derive --reference R[,R...] --control C[,C...] --out FILE`.

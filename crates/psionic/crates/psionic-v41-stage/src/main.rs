@@ -66,10 +66,8 @@ fn run_stage(args: &[String]) -> Result<(), Refused> {
     if options.backend == Backend::Cuda {
         return psionic_v41_stage::cuda::run_stage(&options, &manifest, &entry, selection.as_ref());
     }
-    if options.observe || options.control.is_some() {
-        return Err(Refused(
-            "--observe and --control run only on the CUDA backend".into(),
-        ));
+    if options.control.is_some() {
+        return Err(Refused("--control runs only on the CUDA backend".into()));
     }
     let model: &'static _ = Box::leak(Box::new(load_model_for(
         &options.weights,
