@@ -1632,6 +1632,7 @@ async fn routed(
     settings.budget = ask.wait;
     settings.want = Some(want);
     settings.deadline = within.map(|w| w.budget);
+    settings.publish_receipt = ask.publish_receipt;
     let mut turns = history.to_vec();
     turns.push(Turn {
         role: "user".into(),

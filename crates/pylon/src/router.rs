@@ -362,6 +362,8 @@ pub struct Settings {
     /// The caller's budget for one answer under `pylon.deadline.v1`; `None`
     /// keeps the ordinary 90-second profile.
     pub deadline: Option<Duration>,
+    /// Whether each try publishes a job receipt ([`Ask::publish_receipt`]).
+    pub publish_receipt: bool,
 }
 
 impl Settings {
@@ -378,6 +380,7 @@ impl Settings {
             tries: 3,
             want: None,
             deadline: None,
+            publish_receipt: true,
         }
     }
 }
@@ -685,7 +688,7 @@ pub async fn route(
             pylon: Some(candidate.provider.clone()),
             prompt: prompt.clone(),
             wait: settings.try_wait.min(left),
-            publish_receipt: true,
+            publish_receipt: settings.publish_receipt,
             home: settings.home.clone(),
             checkers: settings.checkers.clone(),
             pay: None,
