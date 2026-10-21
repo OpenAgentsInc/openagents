@@ -54,6 +54,8 @@ pub const FILE: &str = "cloud.json";
 pub const RUNTIME: &str = "psionic-v41-stage/1";
 /// The runtime it announces on the CUDA backend, which a cloud group runs.
 pub const RUNTIME_CUDA: &str = "psionic-v41-stage/1+cuda";
+/// The runtime a stage on this computer's Apple GPU announces (#12420).
+pub const RUNTIME_METAL: &str = "psionic-v41-stage/1+metal";
 /// The image a stage machine boots: CUDA 12.9 with the NVIDIA 580 driver.
 pub const IMAGE_FAMILY: &str = "common-cu129-ubuntu-2404-nvidia-580";
 pub const IMAGE_PROJECT: &str = "deeplearning-platform-release";
@@ -270,6 +272,12 @@ pub struct Up {
     /// Run each stage on this computer with this program and arguments
     /// instead of over ssh: tests' synthetic stages.
     pub local_stages: Option<(PathBuf, Vec<String>)>,
+    /// The Metal stage worker (`psionic-v41-stage --features metal`) for a
+    /// placement's stages on this computer (host `local`, #12420).
+    pub local_worker: Option<PathBuf>,
+    /// The checkpoint folder those stages read: the pinned shards of their
+    /// layers and the tokenizer files.
+    pub local_weights: Option<PathBuf>,
     /// How long the stages may take to load before the launch gives up.
     pub ready_timeout: Duration,
     /// End the group this long before the first machine's expiry.
@@ -331,6 +339,8 @@ impl Up {
             stage_runtime: RUNTIME_CUDA.into(),
             stage_backend: Some("cuda".into()),
             local_stages: None,
+            local_worker: None,
+            local_weights: None,
             ready_timeout: Duration::from_secs(1_800),
             expiry_margin: Duration::from_secs(300),
             every: Duration::from_secs(1),
@@ -383,6 +393,8 @@ pub struct MachinePlan {
 pub struct Plan {
     pub placement: Placement,
     pub machines: Vec<MachinePlan>,
+    /// Stages on this computer, beside the head (#12420).
+    pub local: Vec<StagePlan>,
 }
 
 /// Where a launch keeps the group's ssh key for a head in the zone.
@@ -444,9 +456,40 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
     let keys = key_dir(up).join("ssh-keys");
     let disk_gb = |stages: usize| 100 + 250 * stages;
     let pylon = up.pylon.clone().unwrap_or_else(|| "unset".into());
+    let stage_plan = |s: &placement::Stage| StagePlan {
+        name: format!("s{}", s.stage),
+        stage: s.stage,
+        from: s.first_layer,
+        to: s.end_layer,
+        gpu: s.gpu,
+        embeddings: s.embeddings,
+        head: s.head,
+        device: s.device.as_ref().map(|d| d.class.clone()),
+    };
+    let local: Vec<StagePlan> = placement
+        .hosts
+        .iter()
+        .filter(|h| h.host == placement::LOCAL_HOST)
+        .flat_map(|h| h.stages.iter().map(stage_plan))
+        .collect();
+    if !local.is_empty() {
+        if up.local_worker.is_none() || up.local_weights.is_none() {
+            return Err(format!(
+                "placement {} runs stages on this computer; name its Metal worker and weights with --local-worker and --local-weights",
+                placement.name
+            ));
+        }
+        if up.transport != Transport::Direct {
+            return Err("a stage on this computer needs --transport direct: the stage before it reaches it over its ssh session".into());
+        }
+        if up.head.remote() {
+            return Err("a stage on this computer needs the head here too (--head local)".into());
+        }
+    }
     let mut machines: Vec<MachinePlan> = placement
         .hosts
         .iter()
+        .filter(|h| h.host != placement::LOCAL_HOST)
         .map(|host| {
             let name = format!("oa-{}-{}", up.group, host.host);
             let stages: Vec<StagePlan> = host
@@ -604,6 +647,7 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
     Ok(Plan {
         placement,
         machines,
+        local,
     })
 }
 
@@ -876,100 +920,147 @@ struct Observed {
 /// The stage group lane for `plan`.
 pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
     let artifact = plan.placement.manifest.artifact();
-    let stages = plan
+    // Every stage in step order, with the machine it runs on, or none for a
+    // stage on this computer (#12420).
+    let mut ordered: Vec<(Option<&MachinePlan>, &StagePlan)> = plan
         .machines
         .iter()
         .flat_map(|machine| {
-            machine.stages.iter().map(move |stage| {
-                let mut extra = vec![
-                    "--layers".to_string(),
-                    format!("{}-{}", stage.from, stage.to),
-                    "--gpu".into(),
-                    stage.gpu.to_string(),
-                    "--manifest".into(),
-                    format!("sha256:{}", plan.placement.digest),
-                ];
-                extra.extend(["--max-context".into(), up.max_context.to_string()]);
-                if let Some(n) = up.max_step_tokens {
-                    extra.extend(["--max-step-tokens".into(), n.to_string()]);
-                }
-                if let Some(n) = up.prefill_chunk {
-                    extra.extend(["--prefill-chunk".into(), n.to_string()]);
-                }
-                if let Some(n) = up.max_input_tokens {
-                    extra.extend(["--max-input-tokens".into(), n.to_string()]);
-                }
-                if let Some(backend) = &up.stage_backend {
-                    extra.extend(["--backend".into(), backend.clone()]);
-                }
-                if stage.embeddings {
-                    extra.push("--embeddings".into());
-                }
-                if stage.head {
-                    extra.push("--head".into());
-                }
-                let port = DATA_PORT + stage.stage;
-                if up.transport == Transport::Direct {
-                    // Each stage listens for the previous stage's link.
-                    match &up.local_stages {
-                        Some(_) => extra.extend(["--data-listen".into(), "127.0.0.1:0".into()]),
-                        None => extra.extend([
-                            "--data-listen".into(),
-                            format!("0.0.0.0:{port}"),
-                            "--data-advertise".into(),
-                            format!("{}:{port}", internal(up, &machine.name)),
-                        ]),
-                    }
-                }
-                let (program, args) = match &up.local_stages {
-                    Some((program, args)) => {
-                        (program.clone(), args.iter().cloned().chain(extra).collect())
-                    }
-                    // The head runs on this machine: start the stage here.
-                    None if up.head.remote() && machine.head => {
-                        (PathBuf::from("/opt/openagents/stage-run"), extra)
-                    }
-                    // The head runs in the zone: plain ssh with the
-                    // group's key to the machine's internal name.
-                    None if up.head.remote() => (
-                        PathBuf::from("/opt/openagents/stage-ssh"),
-                        [
-                            "--ssh".to_string(),
-                            format!("{}/{}", cloud_head::HOME_TOKEN, cloud_head::SSH_KEY),
-                            format!("{}@{}", cloud_head::SSH_USER, internal(up, &machine.name)),
-                            (REMOTE_PORT + stage.stage).to_string(),
-                            "--".into(),
-                        ]
-                        .into_iter()
-                        .chain(extra)
-                        .collect(),
-                    ),
-                    None => (
-                        up.repo.join("scripts/pylon/v41-stage-ssh.sh"),
-                        [
-                            machine.name.clone(),
-                            machine.zone.clone(),
-                            up.project.clone(),
-                            (REMOTE_PORT + stage.stage).to_string(),
-                            "--".into(),
-                        ]
-                        .into_iter()
-                        .chain(extra)
-                        .collect(),
-                    ),
-                };
-                GroupStage {
+            machine
+                .stages
+                .iter()
+                .map(move |stage| (Some(machine), stage))
+        })
+        .chain(plan.local.iter().map(|stage| (None, stage)))
+        .collect();
+    ordered.sort_by_key(|(_, stage)| stage.stage);
+    let local_ports: BTreeSet<u16> = plan.local.iter().map(|s| s.stage).collect();
+    let stages = ordered
+        .into_iter()
+        .map(|(machine, stage)| {
+            let mut extra = vec![
+                "--layers".to_string(),
+                format!("{}-{}", stage.from, stage.to),
+                "--gpu".into(),
+                stage.gpu.to_string(),
+                "--manifest".into(),
+                format!("sha256:{}", plan.placement.digest),
+            ];
+            extra.extend(["--max-context".into(), up.max_context.to_string()]);
+            if let Some(n) = up.max_step_tokens {
+                extra.extend(["--max-step-tokens".into(), n.to_string()]);
+            }
+            if let Some(n) = up.prefill_chunk {
+                extra.extend(["--prefill-chunk".into(), n.to_string()]);
+            }
+            if let Some(n) = up.max_input_tokens {
+                extra.extend(["--max-input-tokens".into(), n.to_string()]);
+            }
+            if stage.embeddings {
+                extra.push("--embeddings".into());
+            }
+            if stage.head {
+                extra.push("--head".into());
+            }
+            let port = DATA_PORT + stage.stage;
+            let Some(machine) = machine else {
+                // A stage on this computer's Apple GPU. The stage before
+                // it reaches its link listener through that stage's ssh
+                // session, which forwards the port back here.
+                let weights = up.local_weights.clone().unwrap_or_default();
+                let mut args = vec!["--weights".to_string(), weights.display().to_string()];
+                args.extend(extra);
+                // The manifest file beside the weights, by digest.
+                args.extend([
+                    "--backend".into(),
+                    "metal".into(),
+                    "--data-listen".into(),
+                    format!("127.0.0.1:{port}"),
+                    "--data-advertise".into(),
+                    format!("127.0.0.1:{port}"),
+                ]);
+                return GroupStage {
                     name: stage.name.clone(),
-                    program,
+                    program: up.local_worker.clone().unwrap_or_default(),
                     args,
                     from: stage.from,
                     to: stage.to,
                     identity: crate::stage_group::StageIdentity {
                         device: stage.device.clone(),
+                        runtime: Some(RUNTIME_METAL.into()),
                         ..Default::default()
                     },
+                };
+            };
+            if let Some(backend) = &up.stage_backend {
+                extra.extend(["--backend".into(), backend.clone()]);
+            }
+            if up.transport == Transport::Direct {
+                // Each stage listens for the previous stage's link.
+                match &up.local_stages {
+                    Some(_) => extra.extend(["--data-listen".into(), "127.0.0.1:0".into()]),
+                    None => extra.extend([
+                        "--data-listen".into(),
+                        format!("0.0.0.0:{port}"),
+                        "--data-advertise".into(),
+                        format!("{}:{port}", internal(up, &machine.name)),
+                    ]),
                 }
-            })
+            }
+            // The control port forwarded back to the head, and the next
+            // stage's link port when that stage runs on this computer.
+            let mut forwards = (REMOTE_PORT + stage.stage).to_string();
+            if local_ports.contains(&(stage.stage + 1)) {
+                forwards = format!("{forwards},{}", DATA_PORT + stage.stage + 1);
+            }
+            let (program, args) = match &up.local_stages {
+                Some((program, args)) => {
+                    (program.clone(), args.iter().cloned().chain(extra).collect())
+                }
+                // The head runs on this machine: start the stage here.
+                None if up.head.remote() && machine.head => {
+                    (PathBuf::from("/opt/openagents/stage-run"), extra)
+                }
+                // The head runs in the zone: plain ssh with the
+                // group's key to the machine's internal name.
+                None if up.head.remote() => (
+                    PathBuf::from("/opt/openagents/stage-ssh"),
+                    [
+                        "--ssh".to_string(),
+                        format!("{}/{}", cloud_head::HOME_TOKEN, cloud_head::SSH_KEY),
+                        format!("{}@{}", cloud_head::SSH_USER, internal(up, &machine.name)),
+                        (REMOTE_PORT + stage.stage).to_string(),
+                        "--".into(),
+                    ]
+                    .into_iter()
+                    .chain(extra)
+                    .collect(),
+                ),
+                None => (
+                    up.repo.join("scripts/pylon/v41-stage-ssh.sh"),
+                    [
+                        machine.name.clone(),
+                        machine.zone.clone(),
+                        up.project.clone(),
+                        forwards,
+                        "--".into(),
+                    ]
+                    .into_iter()
+                    .chain(extra)
+                    .collect(),
+                ),
+            };
+            GroupStage {
+                name: stage.name.clone(),
+                program,
+                args,
+                from: stage.from,
+                to: stage.to,
+                identity: crate::stage_group::StageIdentity {
+                    device: stage.device.clone(),
+                    ..Default::default()
+                },
+            }
         })
         .collect();
     GroupLane {
@@ -1117,6 +1208,17 @@ pub async fn launch(up: &Up) -> Result<Launched, String> {
     // Every refusal the guard can give for the set comes before anything
     // is created.
     dry_run(up, &plan)?;
+    if let (false, Some(weights)) = (plan.local.is_empty(), &up.local_weights) {
+        // The stages on this computer find the group manifest by digest.
+        let bytes = placement::named_bytes(&plan.placement.name)
+            .ok_or("the placement's manifest is not a named one")?;
+        let dir = weights.join("manifests");
+        std::fs::create_dir_all(&dir)
+            .and_then(|()| {
+                std::fs::write(dir.join(format!("{}.json", plan.placement.digest)), bytes)
+            })
+            .map_err(|e| format!("can't write the group manifest beside the local weights: {e}"))?;
+    }
     // The stage machines carry the group key's public half from birth.
     let key = if up.head.remote() {
         Some(cloud_head::make_key(&key_dir(up), &up.group)?)
@@ -1609,8 +1711,10 @@ checkout on the one host that allocates for the budget.
                             until `down`, the machines' expiry, the budget's
                             cap, or the loss of a machine. Placements:
                             four-single (4 x g4-standard-48), two-dual
-                            (2 x g4-standard-96), and one-quad (1 x
-                            g4-standard-192).
+                            (2 x g4-standard-96), one-quad (1 x
+                            g4-standard-192), and quad-mac (layers 0-38
+                            on 1 x g4-standard-192, the last two on this
+                            Mac's GPU; a development group).
       --dry-run             Print each machine's guard and gcloud commands
                             and the budget total; create nothing.
       --worker GS_URL       The stage worker binary in a bucket (required to
@@ -1673,6 +1777,12 @@ checkout on the one host that allocates for the budget.
                             head, the default) or direct (stage to stage
                             over authenticated links inside the zone).
       --backend B           The stage backend: cuda (the default) or cpu.
+      --local-worker PATH   The Metal stage worker (psionic-v41-stage built
+                            with --features metal) for a placement's stages
+                            on this computer (quad-mac).
+      --local-weights DIR   The checkpoint folder those stages read; the
+                            group manifest is written into its manifests/
+                            folder.
   down                      Drain the group, publish its beacons offline,
                             and delete its machines through the guard.
   status                    The group, its stages, its machines, and the
@@ -1745,8 +1855,10 @@ pub fn parse_up(
     let pylon = value(&mut words, "--pylon")?;
     let transport = value(&mut words, "--transport")?;
     let backend = value(&mut words, "--backend")?;
+    let local_worker = value(&mut words, "--local-worker")?;
+    let local_weights = value(&mut words, "--local-weights")?;
     let Some(placement) = words.first().cloned() else {
-        return Err("name a placement: four-single, two-dual, or one-quad".into());
+        return Err("name a placement: four-single, two-dual, one-quad, or quad-mac".into());
     };
     if let Some(extra) = words.get(1) {
         return Err(format!("unexpected argument `{extra}`"));
@@ -1754,6 +1866,8 @@ pub fn parse_up(
     let mut up = Up::new(&placement, repo, home);
     up.relay = relay.into();
     up.worker = worker;
+    up.local_worker = local_worker.map(PathBuf::from);
+    up.local_weights = local_weights.map(PathBuf::from);
     up.pylon = pylon;
     if let Some(weights) = weights {
         if !weights.starts_with("gs://") {

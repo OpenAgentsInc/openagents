@@ -1472,3 +1472,104 @@ fn the_stage_launcher_gives_up_at_once_on_a_machine_that_is_gone() {
         "{output:?}"
     );
 }
+
+/// quad-mac (#12420) plans one g4-standard-192 for layers 0-38 and runs the
+/// last two layers on this computer's Apple GPU: the lane starts the Metal
+/// worker here with its own runtime and device class, and the stage before
+/// it forwards that stage's link port back over its ssh session.
+#[test]
+fn a_mac_stage_runs_beside_the_head_and_its_link_comes_back_over_ssh() {
+    let words = |extra: &[&str]| -> Vec<String> {
+        ["quad-mac", "--transport", "direct"]
+            .iter()
+            .chain(extra)
+            .map(|w| (*w).to_owned())
+            .collect()
+    };
+    let parse = |extra: &[&str]| {
+        cloud::parse_up(
+            &words(extra),
+            &repo(),
+            Path::new("/home/me"),
+            "wss://relay.example",
+        )
+        .unwrap()
+        .0
+    };
+    // Without the Metal worker and weights, nothing is planned.
+    assert!(cloud::plan(&parse(&[])).is_err());
+    let up = parse(&[
+        "--local-worker",
+        "/opt/mac/psionic-v41-stage",
+        "--local-weights",
+        "/opt/mac/weights",
+    ]);
+    let plan = cloud::plan(&up).unwrap();
+    assert_eq!(plan.machines.len(), 1, "one rented machine");
+    assert_eq!(plan.machines[0].machine_type, "g4-standard-192");
+    assert_eq!(plan.machines[0].stages.len(), 4);
+    assert_eq!(plan.local.len(), 1);
+    assert_eq!((plan.local[0].from, plan.local[0].to), (38, 40));
+    let lane = cloud::group_lane(&up, &plan);
+    assert_eq!(lane.stages.len(), 5);
+    let mac = &lane.stages[4];
+    assert_eq!(mac.program, PathBuf::from("/opt/mac/psionic-v41-stage"));
+    assert_eq!(mac.identity.runtime.as_deref(), Some(cloud::RUNTIME_METAL));
+    assert_eq!(mac.identity.device.as_deref(), Some("metal-apple10"));
+    let has = |args: &[String], pair: [&str; 2]| args.windows(2).any(|w| w == pair);
+    assert!(has(&mac.args, ["--backend", "metal"]));
+    assert!(has(&mac.args, ["--weights", "/opt/mac/weights"]));
+    assert!(has(&mac.args, ["--data-advertise", "127.0.0.1:47204"]));
+    assert!(mac.args.iter().any(|a| a == "--head"));
+    // The stage before it forwards port 47204 back to this computer.
+    let before = &lane.stages[3];
+    assert!(before.program.ends_with("scripts/pylon/v41-stage-ssh.sh"));
+    assert_eq!(before.args[3], "47103,47204");
+    assert!(has(&before.args, ["--backend", "cuda"]));
+    for stage in &lane.stages[..4] {
+        assert_eq!(stage.identity.runtime, None);
+        assert_eq!(stage.identity.device.as_deref(), Some("cuda-sm_120"));
+    }
+    // The Mac stage needs direct links and the head here.
+    let mut front = up.clone();
+    front.transport = Transport::Front;
+    assert!(cloud::plan(&front).is_err());
+    let mut remote = up.clone();
+    remote.head = HeadPlacement::Stage0;
+    assert!(cloud::plan(&remote).is_err());
+}
+
+#[test]
+fn the_ssh_launcher_forwards_the_next_stages_link_port_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let output = std::process::Command::new(repo().join("scripts/pylon/v41-stage-ssh.sh"))
+        .args([
+            "oa-v41-quad-mac-m0",
+            "us-east1-b",
+            "openagentsgemini",
+            "47103,47204",
+            "--",
+            "--layers",
+            "30-38",
+            "--front",
+            "127.0.0.1:53111",
+        ])
+        .env("OA_GCLOUD", fixture("fake_gcloud.py"))
+        .env("FAKE_GCLOUD_ROOT", dir.path())
+        .env("OA_STAGE_SSH_WAIT", "0")
+        .output()
+        .unwrap();
+    assert!(!output.status.success(), "the fake refuses ssh");
+    let calls = std::fs::read_to_string(dir.path().join("calls.jsonl")).unwrap();
+    let args: Vec<String> = serde_json::from_str(calls.lines().next().unwrap()).unwrap();
+    assert!(args.contains(&"127.0.0.1:47103:127.0.0.1:53111".into()));
+    assert!(args.contains(&"127.0.0.1:47204:127.0.0.1:47204".into()));
+    assert!(args.last().unwrap().contains("'--front' '127.0.0.1:47103'"));
+    // A port list with anything but numbers is refused.
+    let bad = std::process::Command::new(repo().join("scripts/pylon/v41-stage-ssh.sh"))
+        .args(["m", "z", "p", "47103,x", "--", "--front", "127.0.0.1:1"])
+        .env("OA_STAGE_SSH_WAIT", "0")
+        .output()
+        .unwrap();
+    assert!(!bad.status.success());
+}

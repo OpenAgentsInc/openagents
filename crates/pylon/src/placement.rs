@@ -27,6 +27,11 @@ pub const LAYERS: u32 = 40;
 pub const WEIGHTS: &str =
     "gs://openagents-psionic-models/deepseek-ai/DeepSeek-V4.1-Flash-1017/1bae0e1/";
 
+/// The host name a manifest gives the computer that heads the group: its
+/// stages run there beside the head, not on a rented machine, such as a Mac
+/// stage on Metal (#12420).
+pub const LOCAL_HOST: &str = "local";
+
 /// One Engram table in a manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Engram {
@@ -154,7 +159,7 @@ pub fn shape(machine_type: &str) -> Option<Shape> {
 }
 
 /// The named placements and their default machine types.
-pub const NAMED: [(&str, &str, &str); 3] = [
+pub const NAMED: [(&str, &str, &str); 4] = [
     (
         "four-single",
         "g4-standard-48",
@@ -170,7 +175,24 @@ pub const NAMED: [(&str, &str, &str); 3] = [
         "g4-standard-192",
         include_str!("../placements/deepseek-v41/one-quad.json"),
     ),
+    // A development group (#12420): layers 0-38 on one g4-standard-192 and
+    // the last two layers with the head and sampler on this computer's
+    // Apple GPU.
+    (
+        "quad-mac",
+        "g4-standard-192",
+        include_str!("../placements/deepseek-v41/quad-mac.json"),
+    ),
 ];
+
+/// The manifest file of the named placement `name`.
+#[must_use]
+pub fn named_bytes(name: &str) -> Option<&'static str> {
+    NAMED
+        .iter()
+        .find(|(n, _, _)| *n == name)
+        .map(|(_, _, json)| *json)
+}
 
 /// One machine of a placement and the stages it runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -266,6 +288,26 @@ pub fn place(name: &str, machine_type: &str, bytes: &[u8]) -> Result<Placement, 
     }
     let mut engram: BTreeMap<&str, u64> = BTreeMap::new();
     for host in &hosts {
+        if host.host == LOCAL_HOST {
+            // This computer's stages run on its Apple GPU, which the
+            // manifest planned from its own memory.
+            if let Some(stage) = host.stages.iter().find(|s| {
+                !s.device
+                    .as_ref()
+                    .is_some_and(|d| d.class.starts_with("metal-"))
+            }) {
+                return Err(format!(
+                    "placement {name}: stage {} on this computer must be planned for a metal- device",
+                    stage.stage
+                ));
+            }
+            if host.stages.iter().any(|s| !s.engram.is_empty()) {
+                return Err(format!(
+                    "placement {name}: a stage on this computer holds no Engram table"
+                ));
+            }
+            continue;
+        }
         let gpus = host.stages.len();
         if gpus > shape.gpus as usize || host.stages.iter().any(|s| s.gpu >= shape.gpus) {
             return Err(format!(

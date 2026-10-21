@@ -11,6 +11,11 @@
 # tunnel, so the front stays on loopback. Killing this process group ends the
 # session and the remote stage; a lost machine ends the session within 15
 # seconds.
+#
+# REMOTE_PORT may list more ports after a comma (PORT,P2,...): each Pn on the
+# machine's loopback is forwarded back to the same port here, so a stage
+# reaches the next stage's link listener when that stage runs on the head's
+# own computer, such as a Mac stage on Metal (#12420).
 set -eu
 usage() {
   echo "usage: $0 MACHINE ZONE PROJECT REMOTE_PORT -- STAGE ARGS..." >&2
@@ -24,6 +29,16 @@ else
   machine=$1 zone=$2 project=$3 port=$4 mode=gcloud
 fi
 shift 5
+forwards=
+case $port in
+  *,*)
+    for extra in $(printf %s "${port#*,}" | tr , ' '); do
+      case $extra in ''|*[!0-9]*) usage ;; esac
+      forwards="$forwards -R 127.0.0.1:$extra:127.0.0.1:$extra"
+    done
+    port=${port%%,*} ;;
+esac
+case $port in ''|*[!0-9]*) usage ;; esac
 quote() { printf "'%s'" "$(printf %s "$1" | sed "s/'/'\\\\''/g")"; }
 remote=/opt/openagents/stage-run front= prev=
 for arg; do
@@ -75,8 +90,8 @@ if [ "$mode" = ssh ]; then
   # shellcheck disable=SC2086
   exec "${OA_SSH:-ssh}" -i "$key" -tt -o BatchMode=yes \
     -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$key.known_hosts" \
-    $keepalive -R "127.0.0.1:$port:127.0.0.1:$front" "$target" "$remote"
+    $keepalive -R "127.0.0.1:$port:127.0.0.1:$front" $forwards "$target" "$remote"
 fi
 # shellcheck disable=SC2086
 exec "${OA_GCLOUD:-gcloud}" compute ssh "$machine" --zone "$zone" --project "$project" --quiet -- \
-  -tt $keepalive -R "127.0.0.1:$port:127.0.0.1:$front" "$remote"
+  -tt $keepalive -R "127.0.0.1:$port:127.0.0.1:$front" $forwards "$remote"

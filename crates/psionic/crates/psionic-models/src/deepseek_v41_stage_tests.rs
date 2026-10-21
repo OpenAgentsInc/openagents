@@ -1575,6 +1575,43 @@ fn pylon_placement_manifests_match_the_committed_files() {
             path.display()
         );
     }
+    // quad-mac (#12420): layers 0-38 on one g4-standard-192 and the last
+    // two on this computer's Apple GPU (host `local`, 60 GB of an M5 Max's
+    // unified memory), planned from the measured memory.
+    let memory = MeasuredMemory::flash(8192).unwrap();
+    let mut slots: Vec<DeviceSlot> = (0..4)
+        .map(|gpu| slot("m0", gpu, "cuda-sm_120", DeviceKind::Gpu, 101_973_819_392))
+        .collect();
+    slots.push(slot(
+        "local",
+        0,
+        "metal-apple10",
+        DeviceKind::Gpu,
+        60_000_000_000,
+    ));
+    let hosts = [
+        HostRam {
+            host: "m0".into(),
+            bytes: 720 * GIB,
+        },
+        HostRam {
+            host: "local".into(),
+            bytes: 60_000_000_000,
+        },
+    ];
+    let split = [0..10, 10..20, 20..30, 30..38, 38..40];
+    let manifest = plan_devices(&memory, &slots, &hosts, Some(&split)).unwrap();
+    manifest.validate().unwrap();
+    let bytes = serde_json::to_vec(&manifest).unwrap();
+    let path = dir.join("quad-mac.json");
+    if std::env::var_os("PYLON_PLACEMENTS_WRITE").is_some() {
+        std::fs::write(&path, &bytes).unwrap();
+    }
+    assert!(
+        std::fs::read(&path).unwrap_or_default() == bytes,
+        "{} is stale; regenerate with PYLON_PLACEMENTS_WRITE=1",
+        path.display()
+    );
 }
 
 /// A zero-filled prefill message of real shape: `tokens` tokens at position 0.
