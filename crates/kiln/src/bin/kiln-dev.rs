@@ -91,6 +91,7 @@ mod serve {
         let mut dir = std::env::var("KILN_WEB").unwrap_or_else(|_| "dist".into());
         let mut runner = String::new();
         let mut repo = String::new();
+        let mut relay = "wss://relay.openagents.com".to_string();
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
             match arg.as_str() {
@@ -98,6 +99,7 @@ mod serve {
                 "--dir" => dir = args.next().unwrap_or(dir),
                 "--runner" => runner = args.next().unwrap_or_default(),
                 "--repo" => repo = args.next().unwrap_or_default(),
+                "--relay" => relay = args.next().unwrap_or(relay),
                 _ => {
                     eprintln!(
                         "usage: kiln-dev [--port N] [--dir DIR] [--runner KEY] [--repo 30617:KEY:ID]"
@@ -119,9 +121,10 @@ mod serve {
         println!("Kiln is at http://127.0.0.1:{port}/ (serving {dir})");
         // The page reads the runner's key from here; it is public.
         let config = format!(
-            "{{\"runner\": \"{}\", \"repo\": \"{}\"}}",
+            "{{\"runner\": \"{}\", \"repo\": \"{}\", \"relay\": \"{}\"}}",
             runner.replace('"', ""),
-            repo.replace('"', "")
+            repo.replace('"', ""),
+            relay.replace('"', "")
         );
         for stream in listener.incoming().flatten() {
             let root = root.clone();

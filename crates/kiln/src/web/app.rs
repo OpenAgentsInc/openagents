@@ -120,15 +120,25 @@ pub async fn run() {
         web_sys::UrlSearchParams::new_with_str(&window.location().search().unwrap_or_default())
             .ok();
     let param = |name: &str| params.as_ref().and_then(|p| p.get(name));
-    if let Ok(bytes) = fetch_bytes("config.json").await
-        && let Ok(config) = serde_json::from_slice::<Value>(&bytes)
-        && let Some(runner) = config["runner"].as_str()
-    {
-        let input: HtmlInputElement = el(&app.doc, "runner").unchecked_into();
-        input.set_value(runner);
+    // The host names the runner, the repository, and the relay in
+    // `config.json` beside the page; every URL here is relative, so the
+    // page works under a path prefix such as `/admin/kiln/`.
+    if let Ok(config) = fetch_json("config.json").await {
+        if let Some(runner) = config["runner"].as_str().filter(|r| !r.is_empty()) {
+            let input: HtmlInputElement = el(&app.doc, "runner").unchecked_into();
+            input.set_value(runner);
+        }
         if let Some(repo) = config["repo"].as_str() {
             *app.repo_address.borrow_mut() = repo.to_string();
         }
+        if let Some(relay) = config["relay"].as_str().filter(|r| !r.is_empty()) {
+            let input: HtmlInputElement = el(&app.doc, "relay").unchecked_into();
+            input.set_value(relay);
+        }
+    }
+    if let Some(relay) = param("relay") {
+        let input: HtmlInputElement = el(&app.doc, "relay").unchecked_into();
+        input.set_value(&relay);
     }
     if let Some(runner) = param("runner") {
         let input: HtmlInputElement = el(&app.doc, "runner").unchecked_into();
@@ -827,6 +837,7 @@ impl App {
         let mut failing = BTreeSet::new();
         // A tighter prompt budget after a pylon refused one as too long.
         let mut cap: Option<usize> = None;
+        let mut published = false;
         let run_started = now_ms();
         for step in 1..=MAX_STEPS {
             if self.stop.get() {
@@ -980,7 +991,9 @@ impl App {
                 "answer_ms": asked.answer_ms,
                 "usage": asked.usage,
             }));
-            let commands = agent.plan(&asked.text);
+            let mut commands = agent.plan(&asked.text);
+            // Run `done` last, so a reply that says done and publish does both.
+            commands.sort_by_key(|c| matches!(c, Command::Done(_)));
             if commands.is_empty() {
                 self.log(
                     "error",
@@ -995,6 +1008,17 @@ impl App {
             let tools_started = now_ms();
             for command in &commands {
                 if let Command::Done(summary) = command {
+                    // A Rust change that passed its tests and was never
+                    // published is published now, under the summary.
+                    if !published
+                        && let Some(repo) = self.repo()
+                        && self.green.borrow().as_deref() == Some(self.slice_digest(&repo).as_str())
+                        && !self.repo_address.borrow().is_empty()
+                    {
+                        self.log("cmd", &format!("$ publish patch: {summary}"));
+                        let run = self.publish(summary, "").await;
+                        self.log(if run.code == 0 { "done" } else { "err" }, &run.output);
+                    }
                     agent.observe(command, 0, String::new());
                     self.log("done", &format!("Done: {summary}"));
                     break;
@@ -1002,6 +1026,7 @@ impl App {
                 if let Command::Publish { subject, body } = command {
                     self.log("cmd", &format!("$ {}", command.label()));
                     let run = self.publish(subject, body).await;
+                    published |= run.code == 0;
                     self.log(if run.code == 0 { "done" } else { "err" }, &run.output);
                     agent.observe(command, run.code, run.output);
                     continue;

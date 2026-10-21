@@ -119,5 +119,7 @@ filesystem while both run; see [findings](findings.md).
 - [measurements.md](measurements.md): measured numbers.
 - [rust-tests.md](rust-tests.md): a crate from this repository in the tab,
   with `cargo test` on a sandboxed runner over Nostr.
+- [production.md](production.md): serving the page under a path prefix
+  such as `/admin/kiln/`, and how it reaches a runner over the relay.
 - [workstation.md](workstation.md): the spec for the Kiln workstation in the
   Verse, and NIP-34 patches and pull requests from it.
