@@ -16,7 +16,10 @@ linked identities and Nostr sign-in kept. It is built behind
 `OPENAGENTS_AUTH=legacy|dual|workos` (`legacy` by default): with it on,
 `/login` and `/signup` offer the methods the environment has on in WorkOS
 (GitHub, Google, SSO, email and password, an emailed code) beside the Nostr
-key sign-in. Where it is off, this README describes what runs.
+key sign-in. Production and staging run `workos` since 2026-10-21 (#12324):
+WorkOS is the session authority for people, as [Session
+authority](#session-authority) describes. Where the switch is `legacy`, the
+rest of this README describes what runs.
 
 **GitHub sign-in is deprecated (#12005).** It signs in accounts made with it
 before and makes no new accounts: the account service answers a GitHub user
@@ -361,6 +364,34 @@ in. GitHub stays the connection for repositories, issues, and pull requests.
 
 `POST /cloud/sign-out` with its CSRF ticket (the account menu's Sign out)
 ends the session at the account service and clears the cookies. Unchanged.
+
+### Session authority
+
+With `OPENAGENTS_AUTH=workos` (production and staging since 2026-10-21,
+#12324), WorkOS holds the sessions of people:
+
+- **Browsers** get only the sealed `oa_workos` cookie, refreshed with its
+  WorkOS refresh token. No browser `sess_` is issued, and an old
+  `oa_cloud_session` cookie is cleared. Sign-out revokes the WorkOS session.
+- **Apps that send `X-OpenAgents-Auth: workos`** (the SDK and
+  `openagents login`) get a WorkOS access token and refresh token from key
+  sign-in, and refresh them at `POST /v1/device/refresh`. Key sign-in
+  exchanges a server-side Magic Auth code, so WorkOS Magic Auth stays on in
+  both environments, with WorkOS's own Magic Auth email off. Codes a person
+  asks for at `/login/code` are sent through Resend.
+- **Two issuers still mint `sess_`:** Coder 1.0.0's device code
+  (`issued_via=device_code`) and key sign-in from apps that don't send the
+  header (`issued_via=legacy_app`). Each such session belongs to an account
+  linked to a WorkOS User.
+- **Our own store keeps** `oa_sk_` sign-in keys, `oak_` API keys, the visitor
+  lane (`oa_visitor`, `ovis_`, `onb_public`), spent NIP-98 proofs, and
+  recovery tokens.
+
+The old browser rows were retired on 2026-10-21 through
+`POST /v1/admin/workos/retire-sessions`, which writes a private snapshot
+before it removes them. To roll back, set `OPENAGENTS_AUTH=dual` on the web
+and gateway containers, then call `POST /v1/admin/workos/restore-sessions`
+with that snapshot's basename. Both routes need the gateway admin token.
 
 ### Sessions
 
