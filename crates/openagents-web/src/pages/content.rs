@@ -377,7 +377,8 @@ async fn doc(Path(slug): Path<String>, headers: HeaderMap) -> Response {
     if let Some(name) = slug.strip_suffix(".md")
         && let Some((name, source)) = DOCS.iter().find(|(slug, _)| *slug == name)
     {
-        return crate::agent_ready::guide_md(name, source);
+        let source = crate::live_content::text(&format!("content/docs/{name}.md"), source);
+        return crate::agent_ready::guide_md(name, &source);
     }
     doc_page(&headers, &slug)
 }
@@ -393,7 +394,8 @@ pub fn doc_page(headers: &HeaderMap, slug: &str) -> Response {
             ("/docs", "All docs"),
         );
     };
-    let (_, source) = DOCS[index];
+    let live = crate::live_content::text(&format!("content/docs/{slug}.md"), DOCS[index].1);
+    let source = live.as_ref();
     let previous = index.checked_sub(1).map(|i| DOCS[i]);
     let next = DOCS.get(index + 1).copied();
     let content = PageColumn::new(html! {
@@ -443,10 +445,11 @@ async fn terms(headers: HeaderMap) -> Response {
 }
 
 pub fn terms_page(headers: &HeaderMap) -> Response {
+    let terms = crate::live_content::text("content/legal/terms.md", TERMS);
     article(
-        markdown::title(TERMS, "Terms of Service"),
+        markdown::title(&terms, "Terms of Service"),
         "/terms",
-        TERMS,
+        &terms,
         headers,
     )
 }
@@ -456,10 +459,11 @@ async fn privacy(headers: HeaderMap) -> Response {
 }
 
 pub fn privacy_page(headers: &HeaderMap) -> Response {
+    let privacy = crate::live_content::text("content/legal/privacy.md", PRIVACY);
     article(
-        markdown::title(PRIVACY, "Privacy Policy"),
+        markdown::title(&privacy, "Privacy Policy"),
         "/privacy",
-        PRIVACY,
+        &privacy,
         headers,
     )
 }

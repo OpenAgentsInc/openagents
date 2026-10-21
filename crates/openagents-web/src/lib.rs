@@ -141,6 +141,7 @@ pub mod landing;
 pub mod layout;
 mod lightning_address;
 mod link_preview;
+pub mod live_content;
 pub mod mac_jobs;
 #[doc(hidden)]
 pub mod mac_jobs_actor;
@@ -1232,14 +1233,18 @@ async fn host_guard(hosts: Hosts, mut request: Request, next: Next) -> Response 
 /// bundled font faces, Coder Noir tokens, then their rules. Every other page
 /// is styled by `openagents-ui` alone.
 fn legacy_css() -> String {
-    with_fonts(&palette::stylesheet(include_str!(
-        "../static/legacy-demo.css"
+    with_fonts(&palette::stylesheet(&live_content::text(
+        "static/legacy-demo.css",
+        include_str!("../static/legacy-demo.css"),
     )))
 }
 
 /// Prefix a web surface's rules with the shared system font stacks.
 pub fn with_fonts(rules: &str) -> String {
-    format!("{}{rules}", include_str!("../static/fonts.css"))
+    format!(
+        "{}{rules}",
+        live_content::text("static/fonts.css", include_str!("../static/fonts.css"))
+    )
 }
 
 /// The homepage composer's script.

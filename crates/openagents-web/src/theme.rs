@@ -23,7 +23,7 @@ pub const TOGGLE_PATH: &str = "/theme";
 pub fn style_tag() -> String {
     format!(
         "<link rel=\"stylesheet\" href=\"{STYLESHEET_PATH}?v={}\">",
-        openagents_ui::stylesheet_version()
+        crate::live_content::ui_stylesheet().version
     )
 }
 
@@ -36,7 +36,7 @@ pub fn script_tags() -> String {
     format!(
         "<script src=\"{SCRIPT_PATH}?v={}\" defer></script>\
 <script src=\"{ALPINE_PATH}\" defer></script>",
-        openagents_ui::script_version(),
+        crate::live_content::ui_script().version,
     )
 }
 
@@ -53,7 +53,7 @@ pub fn from_headers(headers: &HeaderMap) -> Option<Theme> {
         .and_then(|(_, value)| Theme::from_cookie(value))
 }
 
-fn asset(content_type: &'static str, body: &'static str) -> Response {
+fn asset(content_type: &'static str, body: std::borrow::Cow<'static, str>) -> Response {
     (
         [
             (header::CONTENT_TYPE, content_type),
@@ -64,18 +64,22 @@ fn asset(content_type: &'static str, body: &'static str) -> Response {
         .into_response()
 }
 
+/// The stylesheet, from the live manifest when one is loaded
+/// ([`crate::live_content`]).
 pub async fn stylesheet() -> Response {
-    asset("text/css; charset=utf-8", openagents_ui::stylesheet())
+    let part = crate::live_content::ui_stylesheet();
+    asset("text/css; charset=utf-8", part.text.clone())
 }
 
 pub async fn script() -> Response {
-    asset("text/javascript; charset=utf-8", openagents_ui::script())
+    let part = crate::live_content::ui_script();
+    asset("text/javascript; charset=utf-8", part.text.clone())
 }
 
 pub async fn alpine() -> Response {
     asset(
         "text/javascript; charset=utf-8",
-        openagents_ui::assets::ALPINE_CSP_JS,
+        openagents_ui::assets::ALPINE_CSP_JS.into(),
     )
 }
 

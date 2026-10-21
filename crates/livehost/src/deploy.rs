@@ -182,7 +182,11 @@ pub async fn current(
     let Some(pointer) = newest else {
         return Ok(None);
     };
-    let manifest = Manifest::open(&store.get(&pointer.manifest).await?, &pointer.manifest)?;
+    let bytes = match &pointer.body {
+        Some(body) => body.clone(),
+        None => store.get(&pointer.manifest).await?,
+    };
+    let manifest = Manifest::open(&bytes, &pointer.manifest)?;
     Ok(Some((pointer, manifest)))
 }
 
@@ -346,17 +350,6 @@ pub async fn deploy(root: &Path, target: &Target<'_>, options: &Options<'_>) -> 
         }
     }
     phase("compress", &mut mark);
-    let results =
-        futures_util::future::try_join_all(uploads.iter().map(|bytes| target.store.put(bytes)))
-            .await?;
-    for ((_, written), bytes) in results.iter().zip(&uploads) {
-        if *written {
-            uploaded += 1;
-            uploaded_bytes += bytes.len();
-        }
-    }
-    phase("upload", &mut mark);
-
     let manifest = Manifest {
         schema: SCHEMA.into(),
         tenant: tenant.clone(),
@@ -387,12 +380,36 @@ pub async fn deploy(root: &Path, target: &Target<'_>, options: &Options<'_>) -> 
             total_ms: ms_since(started),
         });
     }
+    // The manifest names objects by hash, so it uploads with them, and the
+    // pointer carries it too.
     let bytes = manifest.to_bytes();
-    let (hash, _) = target.store.put(&bytes).await?;
-    phase("manifest", &mut mark);
+    let hash = crate::sha256_hex(&bytes);
+    uploads.push(bytes.clone());
+
+    let results =
+        futures_util::future::try_join_all(uploads.iter().map(|bytes| target.store.put(bytes)))
+            .await?;
+    for ((written_hash, written), bytes) in results.iter().zip(&uploads) {
+        if *written_hash == hash {
+            continue;
+        }
+        if *written {
+            uploaded += 1;
+            uploaded_bytes += bytes.len();
+        }
+    }
+    phase("upload", &mut mark);
 
     let prev_pointer = previous.as_ref().map(|(pointer, _)| pointer);
-    publish(&mut relay, target, &tenant, &hash, prev_pointer).await?;
+    publish(
+        &mut relay,
+        target,
+        &tenant,
+        &hash,
+        prev_pointer,
+        Some(&bytes),
+    )
+    .await?;
     phase("publish", &mut mark);
 
     Ok(Report {
@@ -438,7 +455,15 @@ pub async fn rollback(tenant: &str, target: &Target<'_>, to: Option<&str>) -> Re
         bail!("manifest {destination} belongs to tenant {}", older.tenant);
     }
     let mark = Instant::now();
-    publish(&mut relay, target, tenant, &destination, Some(&pointer)).await?;
+    publish(
+        &mut relay,
+        target,
+        tenant,
+        &destination,
+        Some(&pointer),
+        None,
+    )
+    .await?;
     Ok(Report {
         tenant: tenant.to_owned(),
         channel: target.channel.to_owned(),
@@ -462,19 +487,21 @@ async fn publish(
     tenant: &str,
     manifest: &str,
     previous: Option<&Pointer>,
+    body: Option<&[u8]>,
 ) -> Result<()> {
     let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
     // A relay keeps the newest pointer by created_at, in whole seconds, so
     // a second deploy within the same second must still sort after the
     // first.
     let created_at = previous.map_or(now, |pointer| now.max(pointer.created_at + 1));
-    let event = pointer::sign(
+    let event = pointer::sign_with_body(
         target.signer,
         tenant,
         target.channel,
         manifest,
         previous.map(|pointer| pointer.manifest.as_str()),
         created_at,
+        body,
     )?;
     relay.publish(&event).await
 }

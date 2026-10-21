@@ -108,3 +108,28 @@ impl Handler {
 fn wasm<T>(result: wasmtime::Result<T>) -> Result<T> {
     result.map_err(|error| anyhow::anyhow!("{error:?}"))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// How long the host takes to compile a component, for the design
+    /// doc's measurements: `LIVEHOST_COMPONENT=path cargo test -p livehost
+    /// --release compile_time -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "measures a component named by LIVEHOST_COMPONENT"]
+    fn compile_time() {
+        let path = std::env::var("LIVEHOST_COMPONENT").expect("LIVEHOST_COMPONENT");
+        let bytes = std::fs::read(&path).unwrap();
+        let runtime = Runtime::new().unwrap();
+        for run in 0..5 {
+            let started = std::time::Instant::now();
+            runtime.load(&format!("run-{run}"), &bytes).unwrap();
+            println!(
+                "{path}: {} bytes compiled in {:.1} ms",
+                bytes.len(),
+                crate::ms_since(started)
+            );
+        }
+    }
+}

@@ -5,6 +5,10 @@
 //! pointer per signer and `d` tag. The `d` tag is `TENANT/CHANNEL`; the
 //! tenant's own key signs it.
 //!
+//! The content is empty, or the manifest itself when it is small enough
+//! ([`MAX_INLINE_MANIFEST`]), so a follower skips one store round trip. A
+//! follower uses inline content only when it hashes to `m`.
+//!
 //! ```json
 //! {"kind": 30440, "content": "",
 //!  "tags": [["d", "site/staging"], ["tenant", "site"], ["channel", "staging"],
@@ -17,6 +21,9 @@ use nostr::domain::{Event, RelaySigner, Tag};
 /// The prototype's event kind for a deploy pointer.
 pub const KIND: u16 = 30440;
 
+/// The largest manifest a pointer carries inline.
+pub const MAX_INLINE_MANIFEST: usize = 48 * 1024;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pointer {
     pub tenant: String,
@@ -26,6 +33,9 @@ pub struct Pointer {
     pub created_at: u64,
     pub id: String,
     pub pubkey: String,
+    /// The manifest's bytes, when the pointer carried them and they hash
+    /// to `manifest`.
+    pub body: Option<Vec<u8>>,
 }
 
 pub fn d_tag(tenant: &str, channel: &str) -> String {
@@ -53,6 +63,20 @@ pub fn sign(
     prev: Option<&str>,
     created_at: u64,
 ) -> Result<Event> {
+    sign_with_body(signer, tenant, channel, manifest, prev, created_at, None)
+}
+
+/// Like [`sign`], carrying the manifest's bytes when they are UTF-8 and at
+/// most [`MAX_INLINE_MANIFEST`] long.
+pub fn sign_with_body(
+    signer: &RelaySigner,
+    tenant: &str,
+    channel: &str,
+    manifest: &str,
+    prev: Option<&str>,
+    created_at: u64,
+    body: Option<&[u8]>,
+) -> Result<Event> {
     check_name("tenant", tenant)?;
     check_name("channel", channel)?;
     let mut tags = vec![
@@ -64,7 +88,12 @@ pub fn sign(
     if let Some(prev) = prev {
         tags.push(tag(&["prev", prev]));
     }
-    Ok(signer.sign(created_at, KIND, tags, String::new()))
+    let content = body
+        .filter(|body| body.len() <= MAX_INLINE_MANIFEST)
+        .and_then(|body| std::str::from_utf8(body).ok())
+        .unwrap_or_default()
+        .to_owned();
+    Ok(signer.sign(created_at, KIND, tags, content))
 }
 
 fn tag(values: &[&str]) -> Tag {
@@ -110,6 +139,9 @@ pub fn verify(event: &Event, authorized: &str, tenant: &str, channel: &str) -> R
     if manifest.len() != 64 || !manifest.bytes().all(|b| b.is_ascii_hexdigit()) {
         bail!("pointer's manifest is not a SHA-256");
     }
+    let body = (!event.content.is_empty()
+        && crate::sha256_hex(event.content.as_bytes()) == manifest)
+        .then(|| event.content.clone().into_bytes());
     Ok(Pointer {
         tenant: tenant.to_owned(),
         channel: channel.to_owned(),
@@ -118,6 +150,7 @@ pub fn verify(event: &Event, authorized: &str, tenant: &str, channel: &str) -> R
         created_at: event.created_at,
         id: event.id.clone(),
         pubkey: event.pubkey.clone(),
+        body,
     })
 }
 
@@ -146,6 +179,24 @@ mod tests {
         let mut tampered = event.clone();
         tampered.tags[3] = tag(&["m", &"cd".repeat(32)]);
         assert!(verify(&tampered, site.pubkey(), "site", "staging").is_err());
+    }
+
+    #[test]
+    fn a_pointer_carries_its_manifest_only_when_it_matches() {
+        let site = signer("11");
+        let body = br#"{"schema": "x"}"#;
+        let hash = crate::sha256_hex(body);
+        let event = sign_with_body(&site, "site", "staging", &hash, None, 1, Some(body)).unwrap();
+        let pointer = verify(&event, site.pubkey(), "site", "staging").unwrap();
+        assert_eq!(pointer.body.as_deref(), Some(&body[..]));
+        let other = "ab".repeat(32);
+        let event = sign_with_body(&site, "site", "staging", &other, None, 1, Some(body)).unwrap();
+        assert!(
+            verify(&event, site.pubkey(), "site", "staging")
+                .unwrap()
+                .body
+                .is_none()
+        );
     }
 
     #[test]

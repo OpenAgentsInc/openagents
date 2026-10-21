@@ -1,0 +1,15 @@
+[package]
+name = "livehost-pylons-route"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# The /pylons list rendered as a handler component, to measure how fast a
+# real route over shared crates rebuilds for wasm32-wasip2 (#12435).
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pylons-view = { path = "../../../pylons-view" }
+serde_json = "1"
+wit-bindgen = "0.57.1"

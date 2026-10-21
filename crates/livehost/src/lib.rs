@@ -7,11 +7,17 @@
 //! key, manifest history, and channels; objects live in one store that all
 //! tenants share. See `docs/audits/2026-10-21-web-deploys-in-seconds.md`.
 
+#[cfg(feature = "host")]
 pub mod bench;
+#[cfg(feature = "host")]
 pub mod deploy;
+pub mod follow;
+#[cfg(feature = "host")]
 pub mod handler;
+#[cfg(feature = "host")]
 pub mod host;
 pub mod keys;
+#[cfg(feature = "host")]
 pub mod load;
 pub mod manifest;
 pub mod pointer;

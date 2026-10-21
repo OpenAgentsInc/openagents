@@ -3,8 +3,10 @@
 
 use std::path::PathBuf;
 
+use std::time::{Duration, Instant};
+
 use anyhow::{Context, Result, bail};
-use tokio::sync::OnceCell;
+use tokio::sync::Mutex;
 
 use crate::sha256_hex;
 
@@ -19,7 +21,8 @@ pub struct Gcs {
     bucket: String,
     prefix: String,
     client: reqwest::Client,
-    token: OnceCell<String>,
+    /// An access token and when to stop using it.
+    token: Mutex<Option<(String, Instant)>>,
 }
 
 impl Store {
@@ -34,7 +37,7 @@ impl Store {
                 bucket: bucket.to_owned(),
                 prefix: prefix.trim_matches('/').to_owned(),
                 client: reqwest::Client::new(),
-                token: OnceCell::new(),
+                token: Mutex::new(None),
             }));
         }
         let root = PathBuf::from(spec);
@@ -99,22 +102,44 @@ impl Gcs {
         }
     }
 
-    /// An access token from `gcloud`, which reads `CLOUDSDK_CONFIG`.
-    async fn token(&self) -> Result<&str> {
-        self.token
-            .get_or_try_init(|| async {
-                let output = tokio::process::Command::new("gcloud")
-                    .args(["auth", "print-access-token"])
-                    .output()
-                    .await
-                    .context("running gcloud")?;
-                if !output.status.success() {
-                    bail!("gcloud auth print-access-token failed");
-                }
-                Ok(String::from_utf8(output.stdout)?.trim().to_owned())
-            })
+    /// An access token: from the metadata server on Cloud Run (`K_SERVICE`
+    /// is set), else from `gcloud`, which reads `CLOUDSDK_CONFIG`. Tokens
+    /// are reused until five minutes before they expire.
+    async fn token(&self) -> Result<String> {
+        let mut cached = self.token.lock().await;
+        if let Some((token, until)) = cached.as_ref()
+            && Instant::now() < *until
+        {
+            return Ok(token.clone());
+        }
+        let (token, lifetime) = if std::env::var_os("K_SERVICE").is_some() {
+            self.metadata_token().await?
+        } else {
+            gcloud_token().await?
+        };
+        let until = Instant::now() + lifetime.saturating_sub(Duration::from_secs(300));
+        *cached = Some((token.clone(), until));
+        Ok(token)
+    }
+
+    async fn metadata_token(&self) -> Result<(String, Duration)> {
+        #[derive(serde::Deserialize)]
+        struct Token {
+            access_token: String,
+            expires_in: u64,
+        }
+        let token: Token = self
+            .client
+            .get("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token")
+            .header("Metadata-Flavor", "Google")
+            .timeout(Duration::from_secs(5))
+            .send()
             .await
-            .map(String::as_str)
+            .context("asking the metadata server for a token")?
+            .error_for_status()?
+            .json()
+            .await?;
+        Ok((token.access_token, Duration::from_secs(token.expires_in)))
     }
 
     async fn get(&self, hash: &str) -> Result<Vec<u8>> {
@@ -157,6 +182,22 @@ impl Gcs {
             status => bail!("writing gs object {hash}: {status}"),
         }
     }
+}
+
+async fn gcloud_token() -> Result<(String, Duration)> {
+    let output = tokio::process::Command::new("gcloud")
+        .args(["auth", "print-access-token"])
+        .output()
+        .await
+        .context("running gcloud")?;
+    if !output.status.success() {
+        bail!("gcloud auth print-access-token failed");
+    }
+    // gcloud doesn't say; its tokens last an hour.
+    Ok((
+        String::from_utf8(output.stdout)?.trim().to_owned(),
+        Duration::from_secs(3600),
+    ))
 }
 
 fn encode(name: &str) -> String {

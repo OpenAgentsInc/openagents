@@ -6,26 +6,37 @@ rust-version.workspace = true
 description = "A prototype of web deploys in seconds: a stable host that serves content-addressed manifests named by a signed Nostr pointer, with runtime templates, browser modules by hash, WebAssembly component handlers, and live reload."
 publish.workspace = true
 
+[features]
+default = ["host"]
+# The host, deploy tool, and benchmark. Without it the crate is the light
+# follower a site links to read content from a manifest (`follow`).
+host = ["dep:axum", "dep:brotli", "dep:clap", "dep:flate2", "dep:wasmtime", "dep:wasmtime-wasi"]
+
+[[bin]]
+name = "livehost"
+path = "src/main.rs"
+required-features = ["host"]
+
 [dependencies]
 anyhow = "1"
-axum = "0.8"
-brotli = { version = "8", default-features = false, features = ["std"] }
-flate2 = "1"
-clap = { version = "4", features = ["derive"] }
+axum = { version = "0.8", optional = true }
+brotli = { version = "8", default-features = false, features = ["std"], optional = true }
+flate2 = { version = "1", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
 futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
 getrandom = "0.3"
 hex = "0.4"
 nostr = { path = "../nostr" }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 tokio = { version = "1", features = ["full"] }
-tokio-tungstenite = "0.30.0"
+tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }
 # Handlers are WebAssembly components (wasm32-wasip2). Apache-2.0 WITH
 # LLVM-exception, already allowed in deny.toml for `plugin`.
-wasmtime = "48.0.4"
-wasmtime-wasi = "48.0.4"
+wasmtime = { version = "48.0.4", optional = true }
+wasmtime-wasi = { version = "48.0.4", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
@@ -36,3 +47,7 @@ workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
 openagents-workspace-hack = { version = "0.1" }
+
+[[test]]
+name = "host"
+required-features = ["host"]

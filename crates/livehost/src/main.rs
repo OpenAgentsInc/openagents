@@ -89,6 +89,19 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Print the manifest a tenant's channel points at.
+    Status {
+        #[arg(long)]
+        tenant: String,
+        #[arg(long)]
+        store: String,
+        #[arg(long)]
+        relay: String,
+        #[arg(long)]
+        key: PathBuf,
+        #[arg(long, default_value = "staging")]
+        channel: String,
+    },
     /// Send load to a host and report requests per second and latency.
     Load {
         #[arg(long)]
@@ -208,6 +221,27 @@ async fn main() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&report)?);
             } else {
                 report.print();
+            }
+        }
+        Command::Status {
+            tenant,
+            store,
+            relay,
+            key,
+            channel,
+        } => {
+            let (store, signer) = (Store::parse(&store)?, keys::load(&key)?);
+            let mut relay = livehost::relay::Relay::connect(&relay).await?;
+            match deploy::current(&mut relay, &store, &signer, &tenant, &channel).await? {
+                Some((pointer, manifest)) => println!(
+                    "{tenant}/{channel}: {} ({} objects, parent {}), pointer {} at {}",
+                    pointer.manifest,
+                    manifest.objects.len(),
+                    manifest.parent.as_deref().unwrap_or("none"),
+                    pointer.id,
+                    pointer.created_at
+                ),
+                None => println!("{tenant}/{channel}: no deploy"),
             }
         }
         Command::Load {

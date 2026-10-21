@@ -248,7 +248,10 @@ impl Host {
         {
             return Ok(None);
         }
-        let bytes = self.store.get(&pointer.manifest).await?;
+        let bytes = match &pointer.body {
+            Some(body) => body.clone(),
+            None => self.store.get(&pointer.manifest).await?,
+        };
         let manifest = Manifest::open(&bytes, &pointer.manifest)?;
         if manifest.tenant != tenant.config.name {
             bail!(

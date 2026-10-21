@@ -13599,6 +13599,7 @@ dependencies = [
  "lander5-web",
  "libc",
  "lightning-invoice 0.34.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "livehost",
  "mac-jobs",
  "markdown-stream",
  "maud",

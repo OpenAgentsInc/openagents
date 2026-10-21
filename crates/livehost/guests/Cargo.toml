@@ -2,7 +2,7 @@
 # and one handler component (wasm32-wasip2). Its own workspace, so `livehost
 # deploy` builds it without the root workspace's lock or target settings.
 [workspace]
-members = ["module", "handler"]
+members = ["module", "handler", "pylons-route"]
 resolver = "2"
 
 # Deploys build these incrementally in release mode.

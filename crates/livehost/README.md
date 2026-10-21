@@ -20,10 +20,20 @@ object two tenants use is stored once.
 | --- | --- |
 | Object | Any file, named by the SHA-256 of its bytes. Stored at `objects/<sha256>` in a directory or `gs://BUCKET/PREFIX`. |
 | Manifest | JSON (`openagents.livehost.manifest.v1`) listing a tenant's objects by path, routes, browser modules, handler components, compressed copies, an optional `meta` object, and the `parent` manifest. Itself an object. |
-| Pointer | A Nostr event of kind `30440`, signed by the tenant's key, with tags `d` = `TENANT/CHANNEL`, `tenant`, `channel`, `m` = manifest hash, and `prev`. The relay keeps the newest one per key and `d`. |
+| Pointer | A Nostr event of kind `30440`, signed by the tenant's key, with tags `d` = `TENANT/CHANNEL`, `tenant`, `channel`, `m` = manifest hash, and `prev`. Its content is the manifest itself when that is under 48 KiB, which saves a follower one store round trip; a follower uses it only when it hashes to `m`. The relay keeps the newest pointer per key and `d`. |
 | Host | `livehost serve`: follows each tenant's pointer, refuses pointers from any other key, loads the manifest, and swaps it in. Each request keeps the manifest it started with. |
 | Handler | A WebAssembly component (`wasm32-wasip2`) implementing [`wit/livehost.wit`](wit/livehost.wit). Compiled once per hash with wasmtime and instantiated per request, with no files, network, or environment. |
 | Browser module | A `wasm32-unknown-unknown` module referenced by hash from a template. |
+
+## Following content from another server
+
+With `default-features = false`, the crate is only the follower: no
+wasmtime, axum, or deploy tool. `livehost::follow::Follower::start` follows
+one tenant's pointer and keeps the newest manifest's files in memory;
+`follower.current()` returns them by path. `openagents-web` uses it to read
+its docs, legal text, and stylesheet from the `openagents` tenant
+(`crates/openagents-web/src/live_content.rs`, #12435). On Cloud Run the
+Cloud Storage token comes from the metadata server; elsewhere from `gcloud`.
 
 ## Routes the host serves
 
@@ -62,6 +72,7 @@ a prefix, else empty).
 livehost deploy DIR --tenant NAME --channel staging \
   --store STORE --relay ws://127.0.0.1:7448 --key TENANT.key [--meta meta.json] [--force]
 livehost rollback --tenant NAME --channel staging --store STORE --relay URL --key TENANT.key [--to SHA256]
+livehost status --tenant NAME --channel staging --store STORE --relay URL --key TENANT.key
 ```
 
 Every file under `DIR` becomes an object by its relative path, whatever its

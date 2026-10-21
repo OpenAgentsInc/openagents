@@ -516,6 +516,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // First-party, cookieless counts (#11153): written every minute to
     // OPENAGENTS_WEB_ANALYTICS_BUCKET (or _DIR), and once more when the
     // server stops.
+    // Docs, legal text, and the design-language bundle from the content
+    // tier's livehost manifest, when OPENAGENTS_LIVE_* name one (#12435).
+    match openagents_web::live_content::start_from_env() {
+        Ok(true) => println!("Following live content"),
+        Ok(false) => {}
+        Err(error) => eprintln!("openagents-web: {error}; serving compiled-in content"),
+    }
     let analytics = std::sync::Arc::new(openagents_web::analytics::Analytics::from_env()?);
     if analytics.has_store() {
         analytics.spawn();

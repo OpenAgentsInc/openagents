@@ -424,7 +424,8 @@ async fn guide(State(app): State<App>, Path(slug): Path<String>, headers: Header
         );
     };
     let (_, stored) = API_DOCS[index];
-    let source = source(&app, stored).await;
+    let stored = crate::live_content::text(&format!("content/docs/api/{name}.md"), stored);
+    let source = source(&app, &stored).await;
     if raw {
         return text(source, "text/markdown; charset=utf-8");
     }

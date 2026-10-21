@@ -30,6 +30,7 @@
 //! script binds to ([`shell::THEME_TOGGLE_ATTR`]).
 
 pub mod actions;
+pub mod bundle;
 pub mod catalog;
 pub mod content;
 pub mod css_classes;
