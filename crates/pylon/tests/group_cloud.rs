@@ -1038,8 +1038,15 @@ fn the_launchers_reach_stages_and_the_head_inside_the_zone() {
     let calls = std::fs::read_to_string(dir.path().join("calls.jsonl")).unwrap();
     let probe: Vec<String> = serde_json::from_str(calls.lines().next().unwrap()).unwrap();
     assert_eq!(
-        probe[probe.len() - 3..],
-        ["test", "-x", "/opt/openagents/head-run"]
+        probe[probe.len() - 6..],
+        [
+            "test",
+            "-x",
+            "/opt/openagents/head-run",
+            "-a",
+            "-f",
+            "/mnt/stage/ready"
+        ]
     );
     assert!(!calls.contains("\"-T\""));
 

@@ -64,21 +64,27 @@ md() {
     "http://metadata.google.internal/computeMetadata/v1/instance/attributes/$1"
 }
 optional() { md "$1" 2>/dev/null || true; }
-if [ "$(optional oa-group-head)" = 1 ]; then
+# The budget host starts the head as soon as head-run exists, and the head
+# checks every stage program at once, so head-run comes after stage-run and
+# before the long weight copy (stage-run waits for the weights itself).
+install_head() {
+  [ "$(optional oa-group-head)" = 1 ] || return 0
   "$gcloud" storage cp "$(md oa-pylon)" "$opt/pylon"
   chmod 755 "$opt/pylon"
   md oa-stage-ssh >"$opt/stage-ssh"
   chmod 755 "$opt/stage-ssh"
-  cat >"$opt/head-run" <<RUN
+  cat >"$opt/head-run.new" <<RUN
 #!/bin/sh
 # Head the group in the foreground of the budget host's ssh session; the
 # launch arrives on standard input, and the session ending stops the head.
 exec $opt/pylon cloud head --home "\$HOME/.openagents/v41-head"
 RUN
-  chmod 755 "$opt/head-run"
+  chmod 755 "$opt/head-run.new"
+  mv "$opt/head-run.new" "$opt/head-run"
   echo "oa-stage: the group head can start here"
-fi
+}
 if [ "$(optional oa-role)" = head ]; then
+  install_head
   touch "$root/ready"
   exit 0
 fi
@@ -103,6 +109,25 @@ case $worker in
     fi
     ;;
 esac
+"$gcloud" storage cp "$worker" "$opt/stage-worker"
+chmod 755 "$opt/stage-worker"
+mkdir -p "$opt/lib"
+"$gcloud" storage cp "${worker%/*}/lib/*" "$opt/lib/"
+cat >"$opt/stage-run" <<RUN
+#!/bin/sh
+# Wait for this machine's weights, then run one stage worker in the
+# foreground of the head's ssh session; the session ending ends it.
+i=0
+while [ ! -f $root/ready ]; do
+  i=\$((i + 1))
+  [ "\$i" -le 3600 ] || { echo "the stage weights are not ready" >&2; exit 1; }
+  sleep 1
+done
+export LD_LIBRARY_PATH=$opt/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}
+exec $opt/stage-worker --weights $root/weights "\$@"
+RUN
+chmod 755 "$opt/stage-run"
+install_head
 "$gcloud" storage cp "${weights}model.safetensors.index.json" "${weights}config.json" \
   "${weights}tokenizer.json" "${weights}tokenizer_config.json" "$root/weights/"
 python3 - "$root/weights/model.safetensors.index.json" "$layers" "$embeddings" "$head" \
@@ -128,23 +153,5 @@ if [ "$got" != "$manifest" ]; then
   echo "oa-stage: the group manifest hashes to $got, not $manifest"
   exit 1
 fi
-"$gcloud" storage cp "$worker" "$opt/stage-worker"
-chmod 755 "$opt/stage-worker"
-mkdir -p "$opt/lib"
-"$gcloud" storage cp "${worker%/*}/lib/*" "$opt/lib/"
-cat >"$opt/stage-run" <<RUN
-#!/bin/sh
-# Wait for this machine's weights, then run one stage worker in the
-# foreground of the head's ssh session; the session ending ends it.
-i=0
-while [ ! -f $root/ready ]; do
-  i=\$((i + 1))
-  [ "\$i" -le 1800 ] || { echo "the stage weights are not ready" >&2; exit 1; }
-  sleep 1
-done
-export LD_LIBRARY_PATH=$opt/lib\${LD_LIBRARY_PATH:+:\$LD_LIBRARY_PATH}
-exec $opt/stage-worker --weights $root/weights "\$@"
-RUN
-chmod 755 "$opt/stage-run"
 touch "$root/ready"
 echo "oa-stage: ready with $(wc -l <"$root/shards") shards"

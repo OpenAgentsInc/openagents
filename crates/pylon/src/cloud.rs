@@ -63,6 +63,9 @@ pub const REMOTE_PORT: u16 = 47_100;
 /// The first port a stage's link listener uses on its machine under the
 /// direct transport; stage `i` uses this plus `i`.
 pub const DATA_PORT: u16 = 47_200;
+/// A stage machine's boot-disk throughput in MiB/s: Hyperdisk Balanced's
+/// maximum for one disk.
+pub const DISK_MIBPS: u32 = 2_400;
 /// The image a head-only machine boots.
 pub const HEAD_IMAGE_FAMILY: &str = "debian-12";
 pub const HEAD_IMAGE_PROJECT: &str = "debian-cloud";
@@ -470,6 +473,9 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
                 format!("--metadata={metadata}"),
                 format!("--boot-disk-size={}GB", disk_gb(stages.len())),
                 "--boot-disk-type=hyperdisk-balanced".into(),
+                // The weights load from this disk; its default throughput
+                // would take most of an hour for a whole checkpoint.
+                format!("--boot-disk-provisioned-throughput={DISK_MIBPS}"),
                 format!("--image-family={IMAGE_FAMILY}"),
                 format!("--image-project={IMAGE_PROJECT}"),
                 "--scopes=storage-ro".into(),
