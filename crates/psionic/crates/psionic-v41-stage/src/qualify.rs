@@ -1572,6 +1572,19 @@ pub fn run_derive(args: &[String]) -> Result<(), Refused> {
     let (policy, evidence) = derive_policy(&reference, &controls)?;
     let mut value = serde_json::to_value(&policy).map_err(|e| refused(e.to_string()))?;
     value["derivation"] = evidence;
+    value["launch_profile"] = json!({
+        "prompt_tokens": 2872, "context": 8192, "output_cap": 4096,
+        "deadline_seconds": 600, "step_seconds": 75, "prefill": "unchunked",
+        "decided": "owner scope decision 91c68c4281, before any G1 v2 result",
+    });
+    // G2 v2's quality budget, frozen here before any v2 result.
+    value["g2_quality"] = json!({
+        "rule": "non-inferiority to the oracle: on the frozen task suite, the served runtime's \
+            task pass count is at least the oracle's, and every individual failure is reported",
+        "known_shared_failures": ["p2-code: fib(186) returns None although F(186) fits in u128; \
+            it counts against both the oracle and the runtime and is listed in the report"],
+        "decided": "decided by the owner's instruction to finish, 2026-10-21",
+    });
     std::fs::write(
         &out,
         serde_json::to_vec_pretty(&value).map_err(|e| refused(e.to_string()))?,
