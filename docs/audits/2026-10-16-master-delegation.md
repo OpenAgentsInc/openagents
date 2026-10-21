@@ -485,6 +485,13 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12408: on an RTX PRO 6000 group (`four-single` or `two-dual`), run
+  `group_stage_worker` with `PSIONIC_V41_STAGE_REQUIRED=1`,
+  `PSIONIC_V41_STAGE_BACKEND=cuda`, and the build's
+  `PSIONIC_V41_STAGE_SHA256`; send a 2,872-token prompt (accepted) and a
+  2,873-token one (refused `limit_exceeded`, no stage replaced); recount
+  W14's "3,022-token" prompt with the checkpoint tokenizer; and check that
+  the head beacon carries `request_limits`.
 - #12399 and #12401: once the G1 v2 runtime is qualified (#12405) and
   #12408's context budget and bounded queue land, rerun both placements
   (`pylon cloud up four-single|two-dual --head stage0 --transport direct
