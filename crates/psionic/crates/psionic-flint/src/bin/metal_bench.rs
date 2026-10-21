@@ -31,6 +31,13 @@ struct Request {
     top_k: Option<usize>,
     #[serde(default)]
     seed: Option<u64>,
+    /// Teacher-forced continuation and its reference log-probabilities.
+    #[serde(default)]
+    continuation: Vec<u32>,
+    #[serde(default)]
+    reference_logprobs: Vec<f64>,
+    #[serde(default)]
+    stepped: bool,
 }
 fn default_tokens() -> usize {
     256
@@ -86,6 +93,88 @@ fn main() -> Result<()> {
                     json!({"position": position, "token": token, "logits": logits})
                 );
             }
+        }
+        "prefill-check" => {
+            // Chunked prefill against token-by-token decode on the same prompt.
+            let prompt: Vec<u32> = if request.token_ids.is_empty() {
+                let text = render(&request.messages)?;
+                tokenizer
+                    .encode(text, false)
+                    .map_err(|e| anyhow::anyhow!(e.to_string()))?
+                    .get_ids()
+                    .to_vec()
+            } else {
+                request.token_ids.clone()
+            };
+            let (mut chunked, mut stepped) = (Vec::new(), Vec::new());
+            let mut session = model.session(context)?;
+            model.prefill(&mut session, &prompt)?;
+            model.logits(&mut chunked);
+            let mut session = model.session(context)?;
+            for token in &prompt {
+                model.prefill(&mut session, &[*token])?;
+            }
+            model.logits(&mut stepped);
+            let top = |v: &[f32]| {
+                (0..v.len())
+                    .max_by(|a, b| v[*a].total_cmp(&v[*b]).then(b.cmp(a)))
+                    .unwrap_or(0)
+            };
+            let softmax = |v: &[f32]| {
+                let m = v.iter().copied().fold(f32::MIN, f32::max) as f64;
+                let e: Vec<f64> = v.iter().map(|x| (*x as f64 - m).exp()).collect();
+                let z: f64 = e.iter().sum();
+                e.into_iter().map(|x| x / z).collect::<Vec<_>>()
+            };
+            let (a, b) = (softmax(&chunked), softmax(&stepped));
+            let tv: f64 = a.iter().zip(&b).map(|(x, y)| (x - y).abs()).sum::<f64>() / 2.0;
+            let max_abs = chunked
+                .iter()
+                .zip(&stepped)
+                .map(|(x, y)| (x - y).abs())
+                .fold(0f32, f32::max);
+            println!(
+                "{}",
+                json!({"prompt_tokens": prompt.len(), "top_chunked": top(&chunked), "top_stepped": top(&stepped),
+                       "total_variation": tv, "max_abs_logit_difference": max_abs})
+            );
+        }
+        "teacher" => {
+            // Feed a reference continuation; report this path's view of each token.
+            let text = render(&request.messages)?;
+            let prompt = tokenizer
+                .encode(text, false)
+                .map_err(|e| anyhow::anyhow!(e.to_string()))?
+                .get_ids()
+                .to_vec();
+            let mut session = model.session(context)?;
+            if request.stepped {
+                for token in &prompt {
+                    model.prefill(&mut session, &[*token])?;
+                }
+            } else {
+                model.prefill(&mut session, &prompt)?;
+            }
+            let mut logits = Vec::new();
+            let mut rows = Vec::new();
+            for (i, token) in request.continuation.iter().enumerate() {
+                model.logits(&mut logits);
+                let top = (0..logits.len())
+                    .max_by(|a, b| logits[*a].total_cmp(&logits[*b]).then(b.cmp(a)))
+                    .unwrap_or(0);
+                let m = logits.iter().copied().fold(f32::MIN, f32::max) as f64;
+                let z: f64 = logits.iter().map(|x| (*x as f64 - m).exp()).sum();
+                let logprob = logits[*token as usize] as f64 - m - z.ln();
+                rows.push(
+                    json!({"i": i, "top": top, "token": token, "logprob": logprob,
+                    "reference": request.reference_logprobs.get(i)}),
+                );
+                model.decode(&mut session, *token)?;
+            }
+            println!(
+                "{}",
+                json!({"prompt_tokens": prompt.len(), "stepped": request.stepped, "rows": rows})
+            );
         }
         "generate" => {
             let prompt: Vec<u32> = if request.token_ids.is_empty() {

@@ -11,6 +11,10 @@
 // rec runs them inside one persistent MLX kernel. Changes are Psionic's.
 
 #include <metal_stdlib>
+#if defined(__HAVE_TENSOR__)
+#include <metal_tensor>
+#include <MetalPerformancePrimitives/MetalPerformancePrimitives.h>
+#endif
 using namespace metal;
 
 typedef bfloat bf16;
@@ -571,15 +575,18 @@ struct GemmParams {
     uint k;          // reduction size, a multiple of 64
     uint ldx;        // X row stride in elements
     uint ldy;        // Y row stride in elements
-    uint mode;       // 0 store, 1 residual add into Y, 2 SwiGLU of (gate, up) pairs
+    uint mode;       // 0 store, 1 residual add into Y, 2 SwiGLU of (gate, up) pairs,
+                     // 3 BF16 router weights with sigmoid FP32 output
     uint gathered;   // 0 dense; 1 expert tiles with X rows from `rows`; 2 expert tiles, X by slot
     uint tiles;      // tile count when gathered
     uint expert_stride_w; // bytes between experts in W
     uint expert_stride_g; // elements between experts in scales and biases
 };
 
-// INT4 matrix product Y = X W^T, 32x32 tiles, four SIMD groups of 16x16.
-// In mode 2 W holds gate rows and W2 up rows; Y receives SwiGLU(gate, up).
+// INT4 matrix product Y = X W^T on BF16 simdgroup matrices with FP32
+// accumulation. 64x64 tiles; four SIMD groups of 32x32. Weights dequantize to
+// BF16 as MLX's qmm does: bf16(bf16(scale * q) + bias). In mode 2 a tile holds
+// 32 gate rows (W) and the same 32 up rows (W2), and Y gets SwiGLU(gate, up).
 kernel void flint_gemm_q4(const device bf16* x [[buffer(0)]],
                           const device uchar* w [[buffer(1)]], const device bf16* s [[buffer(2)]], const device bf16* b [[buffer(3)]],
                           const device uchar* w2 [[buffer(4)]], const device bf16* s2 [[buffer(5)]], const device bf16* b2 [[buffer(6)]],
@@ -590,101 +597,189 @@ kernel void flint_gemm_q4(const device bf16* x [[buffer(0)]],
                           uint2 tg [[threadgroup_position_in_grid]],
                           uint tid [[thread_index_in_threadgroup]],
                           uint sg [[simdgroup_index_in_threadgroup]]) {
-    threadgroup float xs[32 * 64];
-    threadgroup float ws[32 * 64];
-    threadgroup float ws2[32 * 64];
-    uint n0 = tg.x * 32;
+    threadgroup float stage[64 * 64];
+    threadgroup bf16* xs = (threadgroup bf16*)stage;
+    threadgroup bf16* ws = xs + 64 * 64;
+    bool swiglu_mode = P.mode == 2;
+    uint out_cols = swiglu_mode ? 32 : 64;
+    uint n0 = tg.x * out_cols;
     uint m0, m_end, expert = 0;
     if (P.gathered) {
         if (tg.y >= tiles[0]) return;
-        uint e = tiles[1 + tg.y * 3], start = tiles[2 + tg.y * 3], count = tiles[3 + tg.y * 3];
-        expert = e; m0 = start; m_end = start + count;
+        expert = tiles[1 + tg.y * 3];
+        m0 = tiles[2 + tg.y * 3];
+        m_end = m0 + tiles[3 + tg.y * 3];
     } else {
-        m0 = tg.y * 32; m_end = min(m0 + 32, P.m);
+        m0 = tg.y * 64; m_end = min(m0 + 64, P.m);
     }
     if (m0 >= m_end || n0 >= P.n) return;
-    bool swiglu_mode = P.mode == 2;
-    const device uchar* we = w + size_t(expert) * P.expert_stride_w;
-    const device bf16* se = s + size_t(expert) * P.expert_stride_g;
-    const device bf16* be = b + size_t(expert) * P.expert_stride_g;
-    const device uchar* we2 = w2 + size_t(expert) * P.expert_stride_w;
-    const device bf16* se2 = s2 + size_t(expert) * P.expert_stride_g;
-    const device bf16* be2 = b2 + size_t(expert) * P.expert_stride_g;
-    uint sm = sg / 2, sn = sg % 2;
-    simdgroup_float8x8 acc[2][2], acc2[2][2];
-    for (uint i = 0; i < 2; ++i) for (uint j = 0; j < 2; ++j) {
-        acc[i][j] = simdgroup_float8x8(0.0f); acc2[i][j] = simdgroup_float8x8(0.0f);
-    }
     uint groups = P.k / 64;
+    // This thread's load assignment: one row half (32 values) of each tile.
+    uint lr = tid / 2, lc = (tid % 2) * 32;
+    uint mrow = m0 + lr;
+    bool x_valid = mrow < m_end;
+    const device bf16* xrow = x;
+    if (x_valid) xrow = x + size_t(P.gathered == 1 ? rows[mrow] : mrow) * P.ldx;
+    bool up_row = swiglu_mode && lr >= 32;
+    uint nrow = swiglu_mode ? n0 + lr % 32 : n0 + lr;
+    bool w_valid = nrow < P.n;
+    const device uchar* wb = (up_row ? w2 : w) + size_t(expert) * P.expert_stride_w + size_t(nrow) * (P.k / 2);
+    const device bf16* sb = (up_row ? s2 : s) + size_t(expert) * P.expert_stride_g + size_t(nrow) * groups;
+    const device bf16* bb = (up_row ? b2 : b) + size_t(expert) * P.expert_stride_g + size_t(nrow) * groups;
+    uint sm = sg / 2, sn = sg % 2;
+    simdgroup_float8x8 acc[4][4];
+    for (uint i = 0; i < 4; ++i) for (uint j = 0; j < 4; ++j) acc[i][j] = simdgroup_float8x8(0.0f);
     for (uint kb = 0; kb < P.k; kb += 64) {
-        // X tile: 32 rows x 64, 16 values per thread.
-        {
-            uint r = tid / 4, c = (tid % 4) * 16;
-            uint mrow = m0 + r;
-            if (mrow < m_end) {
-                uint src = P.gathered == 1 ? rows[mrow] : mrow;
-                const device bf16* xp = x + size_t(src) * P.ldx + kb + c;
-                for (uint j = 0; j < 16; ++j) xs[r * 64 + c + j] = float(xp[j]);
-            } else {
-                for (uint j = 0; j < 16; ++j) xs[r * 64 + c + j] = 0.0f;
-            }
+        threadgroup bf16* xd = xs + lr * 64 + lc;
+        if (x_valid) {
+            const device bf16* xp = xrow + kb + lc;
+            for (uint j = 0; j < 32; ++j) xd[j] = xp[j];
+        } else {
+            for (uint j = 0; j < 32; ++j) xd[j] = bf16(0.0f);
         }
-        // W tile: 32 rows x 64 nibbles, 16 per thread.
-        {
-            uint r = tid / 4, c = (tid % 4) * 16;
-            uint nrow = n0 + r;
-            if (nrow < P.n) {
-                size_t gi = size_t(nrow) * groups + kb / 64;
-                float sc = float(se[gi]), bi = float(be[gi]);
-                const device uchar* wp = we + size_t(nrow) * (P.k / 2) + (kb + c) / 2;
-                for (uint j = 0; j < 8; ++j) {
-                    uchar byte = wp[j];
-                    ws[r * 64 + c + 2 * j] = sc * float(byte & 15u) + bi;
-                    ws[r * 64 + c + 2 * j + 1] = sc * float(byte >> 4) + bi;
-                }
-                if (swiglu_mode) {
-                    float sc2 = float(se2[gi]), bi2 = float(be2[gi]);
-                    const device uchar* wp2 = we2 + size_t(nrow) * (P.k / 2) + (kb + c) / 2;
+        threadgroup bf16* wd = ws + lr * 64 + lc;
+        if (w_valid && P.mode == 3) {
+            const device bf16* wp = (const device bf16*)w + size_t(nrow) * P.k + kb + lc;
+            for (uint j = 0; j < 32; ++j) wd[j] = wp[j];
+        } else if (w_valid) {
+            float sc = float(sb[kb / 64]), bi = float(bb[kb / 64]);
+            const device uint2* wp = (const device uint2*)(wb + (kb + lc) / 2);
+            for (uint part = 0; part < 2; ++part) {
+                uint2 packed = wp[part];
+                for (uint word = 0; word < 2; ++word) {
+                    uint bits = packed[word];
                     for (uint j = 0; j < 8; ++j) {
-                        uchar byte = wp2[j];
-                        ws2[r * 64 + c + 2 * j] = sc2 * float(byte & 15u) + bi2;
-                        ws2[r * 64 + c + 2 * j + 1] = sc2 * float(byte >> 4) + bi2;
+                        float q = float((bits >> (4 * j)) & 15u);
+                        wd[part * 16 + word * 8 + j] = bf16(float(bf16(sc * q)) + bi);
                     }
                 }
-            } else {
-                for (uint j = 0; j < 16; ++j) { ws[r * 64 + c + j] = 0.0f; ws2[r * 64 + c + j] = 0.0f; }
             }
+        } else {
+            for (uint j = 0; j < 32; ++j) wd[j] = bf16(0.0f);
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
         for (uint kk = 0; kk < 64; kk += 8) {
-            simdgroup_float8x8 a[2], bm[2];
-            for (uint i = 0; i < 2; ++i) simdgroup_load(a[i], xs + (sm * 16 + i * 8) * 64 + kk, 64);
-            for (uint j = 0; j < 2; ++j) simdgroup_load(bm[j], ws + (sn * 16 + j * 8) * 64 + kk, 64, ulong2(0, 0), true);
-            for (uint i = 0; i < 2; ++i) for (uint j = 0; j < 2; ++j) simdgroup_multiply_accumulate(acc[i][j], a[i], bm[j], acc[i][j]);
-            if (swiglu_mode) {
-                for (uint j = 0; j < 2; ++j) simdgroup_load(bm[j], ws2 + (sn * 16 + j * 8) * 64 + kk, 64, ulong2(0, 0), true);
-                for (uint i = 0; i < 2; ++i) for (uint j = 0; j < 2; ++j) simdgroup_multiply_accumulate(acc2[i][j], a[i], bm[j], acc2[i][j]);
-            }
+            simdgroup_matrix<bf16, 8, 8> a[4], bm[4];
+            for (uint i = 0; i < 4; ++i) simdgroup_load(a[i], xs + (sm * 32 + i * 8) * 64 + kk, 64);
+            for (uint j = 0; j < 4; ++j) simdgroup_load(bm[j], ws + (sn * 32 + j * 8) * 64 + kk, 64, ulong2(0, 0), true);
+            for (uint i = 0; i < 4; ++i) for (uint j = 0; j < 4; ++j) simdgroup_multiply_accumulate(acc[i][j], a[i], bm[j], acc[i][j]);
         }
         threadgroup_barrier(mem_flags::mem_threadgroup);
     }
-    // Stage results through threadgroup memory.
-    for (uint i = 0; i < 2; ++i) for (uint j = 0; j < 2; ++j) {
-        simdgroup_store(acc[i][j], xs + (sm * 16 + i * 8) * 32 + sn * 16 + j * 8, 32);
-        if (swiglu_mode) simdgroup_store(acc2[i][j], ws + (sm * 16 + i * 8) * 32 + sn * 16 + j * 8, 32);
-    }
+    for (uint i = 0; i < 4; ++i) for (uint j = 0; j < 4; ++j)
+        simdgroup_store(acc[i][j], stage + (sm * 32 + i * 8) * 64 + sn * 32 + j * 8, 64);
     threadgroup_barrier(mem_flags::mem_threadgroup);
-    for (uint e = tid; e < 32 * 32; e += 128) {
-        uint r = e / 32, c = e % 32;
-        uint mrow = m0 + r, ncol = n0 + c;
-        if (mrow >= m_end || ncol >= P.n) continue;
-        device bf16* out = y + size_t(mrow) * P.ldy + ncol;
-        float v = xs[r * 32 + c];
-        if (P.mode == 1) *out = bf16(float(*out) + float(bf16(v)));
-        else if (swiglu_mode) *out = swiglu(bf16(v), bf16(ws[r * 32 + c]), P.gathered != 0);
+    for (uint e = tid; e < 64 * out_cols; e += 128) {
+        uint r = e / out_cols, c = e % out_cols;
+        uint row = m0 + r, col = n0 + c;
+        if (row >= m_end || col >= P.n) continue;
+        device bf16* out = y + size_t(row) * P.ldy + col;
+        float v = stage[r * 64 + c];
+        if (P.mode == 3) ((device float*)y)[size_t(row) * P.ldy + col] = sigmoid_precise(float(bf16(v)));
+        else if (P.mode == 1) *out = bf16(float(*out) + float(bf16(v)));
+        else if (swiglu_mode) *out = swiglu(bf16(v), bf16(stage[r * 64 + 32 + c]), P.gathered != 0);
         else *out = bf16(v);
     }
 }
+
+
+#if defined(__HAVE_TENSOR__)
+// The same INT4 product with the multiply on Metal 4 tensor ops, which use the
+// GPU's matrix units where the chip has them. Staging and epilogue match
+// flint_gemm_q4.
+kernel void flint_gemm_q4_tensor(const device bf16* x [[buffer(0)]],
+                          const device uchar* w [[buffer(1)]], const device bf16* s [[buffer(2)]], const device bf16* b [[buffer(3)]],
+                          const device uchar* w2 [[buffer(4)]], const device bf16* s2 [[buffer(5)]], const device bf16* b2 [[buffer(6)]],
+                          device bf16* y [[buffer(7)]],
+                          constant GemmParams& P [[buffer(8)]],
+                          const device uint* rows [[buffer(9)]],
+                          const device uint* tiles [[buffer(10)]],
+                          uint2 tg [[threadgroup_position_in_grid]],
+                          uint tid [[thread_index_in_threadgroup]]) {
+    using namespace mpp::tensor_ops;
+    threadgroup float stage[64 * 64];
+    threadgroup bf16* xs = (threadgroup bf16*)stage;
+    threadgroup bf16* ws = xs + 64 * 64;
+    bool swiglu_mode = P.mode == 2;
+    uint out_cols = swiglu_mode ? 32 : 64;
+    uint n0 = tg.x * out_cols;
+    uint m0, m_end, expert = 0;
+    if (P.gathered) {
+        if (tg.y >= tiles[0]) return;
+        expert = tiles[1 + tg.y * 3];
+        m0 = tiles[2 + tg.y * 3];
+        m_end = m0 + tiles[3 + tg.y * 3];
+    } else {
+        m0 = tg.y * 64; m_end = min(m0 + 64, P.m);
+    }
+    if (m0 >= m_end || n0 >= P.n) return;
+    uint groups = P.k / 64;
+    uint lr = tid / 2, lc = (tid % 2) * 32;
+    uint mrow = m0 + lr;
+    bool x_valid = mrow < m_end;
+    const device bf16* xrow = x;
+    if (x_valid) xrow = x + size_t(P.gathered == 1 ? rows[mrow] : mrow) * P.ldx;
+    bool up_row = swiglu_mode && lr >= 32;
+    uint nrow = swiglu_mode ? n0 + lr % 32 : n0 + lr;
+    bool w_valid = nrow < P.n;
+    const device uchar* wb = (up_row ? w2 : w) + size_t(expert) * P.expert_stride_w + size_t(nrow) * (P.k / 2);
+    const device bf16* sb = (up_row ? s2 : s) + size_t(expert) * P.expert_stride_g + size_t(nrow) * groups;
+    const device bf16* bb = (up_row ? b2 : b) + size_t(expert) * P.expert_stride_g + size_t(nrow) * groups;
+    auto tx = tensor<threadgroup bf16, dextents<int32_t, 2>, tensor_inline>(xs, dextents<int32_t, 2>(64, 64));
+    auto tw = tensor<threadgroup bf16, dextents<int32_t, 2>, tensor_inline>(ws, dextents<int32_t, 2>(64, 64));
+    constexpr auto desc = matmul2d_descriptor(64, 64, 64, false, true, false, matmul2d_descriptor::mode::multiply_accumulate);
+    matmul2d<desc, execution_simdgroups<4>> op;
+    auto acc = op.get_destination_cooperative_tensor<decltype(tx), decltype(tw), float>();
+    #pragma clang loop unroll(full)
+    for (uint16_t i = 0; i < acc.get_capacity(); ++i) if (acc.is_valid_element(i)) acc[i] = 0.0f;
+    for (uint kb = 0; kb < P.k; kb += 64) {
+        threadgroup bf16* xd = xs + lr * 64 + lc;
+        if (x_valid) {
+            const device bf16* xp = xrow + kb + lc;
+            for (uint j = 0; j < 32; ++j) xd[j] = xp[j];
+        } else {
+            for (uint j = 0; j < 32; ++j) xd[j] = bf16(0.0f);
+        }
+        threadgroup bf16* wd = ws + lr * 64 + lc;
+        if (w_valid && P.mode == 3) {
+            const device bf16* wp = (const device bf16*)w + size_t(nrow) * P.k + kb + lc;
+            for (uint j = 0; j < 32; ++j) wd[j] = wp[j];
+        } else if (w_valid) {
+            float sc = float(sb[kb / 64]), bi = float(bb[kb / 64]);
+            const device uint2* wp = (const device uint2*)(wb + (kb + lc) / 2);
+            for (uint part = 0; part < 2; ++part) {
+                uint2 packed = wp[part];
+                for (uint word = 0; word < 2; ++word) {
+                    uint bits = packed[word];
+                    for (uint j = 0; j < 8; ++j) {
+                        float q = float((bits >> (4 * j)) & 15u);
+                        wd[part * 16 + word * 8 + j] = bf16(float(bf16(sc * q)) + bi);
+                    }
+                }
+            }
+        } else {
+            for (uint j = 0; j < 32; ++j) wd[j] = bf16(0.0f);
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        op.run(tx, tw, acc);
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    auto ts = tensor<threadgroup float, dextents<int32_t, 2>, tensor_inline>(stage, dextents<int32_t, 2>(64, 64));
+    acc.store(ts);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint e = tid; e < 64 * out_cols; e += 128) {
+        uint r = e / out_cols, c = e % out_cols;
+        uint row = m0 + r, col = n0 + c;
+        if (row >= m_end || col >= P.n) continue;
+        device bf16* out = y + size_t(row) * P.ldy + col;
+        float v = stage[r * 64 + c];
+        if (P.mode == 3) ((device float*)y)[size_t(row) * P.ldy + col] = sigmoid_precise(float(bf16(v)));
+        else if (P.mode == 1) *out = bf16(float(*out) + float(bf16(v)));
+        else if (swiglu_mode) *out = swiglu(bf16(v), bf16(stage[r * 64 + 32 + c]), P.gathered != 0);
+        else *out = bf16(v);
+    }
+}
+#endif
 
 struct RowParams {
     uint start;  // absolute position of the first row
@@ -724,68 +819,134 @@ kernel void flint_rows_store_kv(const device bf16* qkv [[buffer(0)]],
     kv[((size_t(which) * 4 + head) * P.cap + slot) * 128 + dim] = qkv[size_t(row) * 5120 + 4096 + i];
 }
 
-// Causal attention for a chunk with a sink, one SIMD group per (row, query head).
-// Keys before the chunk come from the cache; chunk keys from qkv.
+// Position of this thread's two elements in an 8x8 simdgroup matrix: row fm,
+// columns fn and fn + 1 (the layout MLX's steel kernels use).
+inline short2 frag_coord(ushort lane) {
+    short qid = lane / 4;
+    short fm = (qid & 4) + ((lane / 2) % 4);
+    short fn = (qid & 2) * 2 + (lane % 2) * 2;
+    return short2(fn, fm);
+}
+
+// Causal flash attention for a chunk with a learned sink. A threadgroup owns
+// one KV head and eight query positions; each of its eight SIMD groups owns
+// one position as an 8-row tile whose rows are that KV head's eight query
+// heads, so the tile shares one causal limit. Queries stay in registers and
+// the threadgroup shares each 32-key block of K and V. Keys before the chunk
+// come from the cache (ring slots on sliding layers); chunk keys from qkv.
 kernel void flint_rows_attention(const device bf16* qkv [[buffer(0)]],
                                  const device bf16* kv [[buffer(1)]],
                                  const device bf16* sinks [[buffer(2)]],
                                  device bf16* out [[buffer(3)]],
                                  constant RowParams& P [[buffer(4)]],
                                  constant uint& window [[buffer(5)]],
-                                 uint group [[threadgroup_position_in_grid]],
-                                 uint lane [[thread_index_in_simdgroup]],
-                                 uint sg [[simdgroup_index_in_threadgroup]]) {
-    uint task = group * 8 + sg;
-    uint row = task / 32, head = task % 32;
-    if (row >= P.count) return;
-    uint position = P.start + row, kvh = head / 8;
-    uint lo = P.global ? 0 : (position + 1 > window ? position + 1 - window : 0);
-    float query[4];
-    for (uint j = 0; j < 4; ++j) query[j] = float(qkv[size_t(row) * 5120 + head * 128 + lane * 4 + j]) * 0.08838834764831845f;
-    float hi = float(sinks[head]), z = 1.0f;
-    float acc[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-    const device bf16* ck = kv + size_t(kvh) * P.cap * 128 + lane * 4;
-    const device bf16* cv = kv + size_t(4 + kvh) * P.cap * 128 + lane * 4;
-    for (uint t = lo; t <= position; ++t) {
-        const device bf16* kp;
-        const device bf16* vp;
-        if (t >= P.start) {
-            size_t at = size_t(t - P.start) * 5120 + kvh * 128 + lane * 4;
-            kp = qkv + 4096 + at; vp = qkv + 4608 + at;
-        } else {
-            uint slot = P.global ? t : t % P.cap;
-            kp = ck + size_t(slot) * 128; vp = cv + size_t(slot) * 128;
+                                 uint2 tg [[threadgroup_position_in_grid]],
+                                 uint tid [[thread_index_in_threadgroup]],
+                                 ushort lane [[thread_index_in_simdgroup]],
+                                 ushort sg [[simdgroup_index_in_threadgroup]]) {
+    threadgroup bf16 ks[32 * 128];
+    threadgroup bf16 vs[32 * 128];
+    uint g = tg.y, pb = tg.x * 8;
+    if (pb >= P.count) return;
+    uint rows = min(8u, P.count - pb);
+    short2 xy = frag_coord(lane);
+    short fn = xy.x, fm = xy.y;
+    bool live = sg < rows;
+    uint pos = P.start + pb + sg;
+    uint lo = P.global ? 0 : (pos + 1 > window ? pos + 1 - window : 0);
+    // Scores are kept in base-2 units so the softmax can use exp2.
+    const float log2e = 1.4426950408889634f;
+    float m = float(sinks[g * 8 + fm]) * log2e, l = 1.0f;
+    simdgroup_float8x8 o[16];
+    simdgroup_matrix<bf16, 8, 8> qa[16];
+    const device bf16* q = qkv + size_t(pb + (live ? sg : 0)) * 5120 + g * 8 * 128;
+    for (uint d = 0; d < 16; ++d) {
+        o[d] = simdgroup_float8x8(0.0f);
+        simdgroup_load(qa[d], q + d * 8, 128);
+    }
+    uint p_first = P.start + pb, p_last = P.start + pb + rows - 1;
+    uint k_first = P.global ? 0 : (p_first + 1 > window ? p_first + 1 - window : 0);
+    const device bf16* ck = kv + size_t(g) * P.cap * 128;
+    const device bf16* cv = kv + size_t(4 + g) * P.cap * 128;
+    const float scale = 0.08838834764831845f * log2e;
+    for (uint kb = k_first; kb <= p_last; kb += 32) {
+        for (uint i = tid; i < 32 * 16; i += 256) {
+            uint j = i / 16, c = (i % 16) * 8, t = kb + j;
+            threadgroup bf16* kd = ks + j * 128 + c;
+            threadgroup bf16* vd = vs + j * 128 + c;
+            if (t <= p_last) {
+                const device bf16* kp;
+                const device bf16* vp;
+                if (t >= P.start) {
+                    size_t at = size_t(t - P.start) * 5120 + g * 128 + c;
+                    kp = qkv + 4096 + at; vp = qkv + 4608 + at;
+                } else {
+                    uint slot = P.global ? t : t % P.cap;
+                    kp = ck + size_t(slot) * 128 + c; vp = cv + size_t(slot) * 128 + c;
+                }
+                *(threadgroup uint4*)kd = *(const device uint4*)kp;
+                *(threadgroup uint4*)vd = *(const device uint4*)vp;
+            } else {
+                *(threadgroup uint4*)kd = uint4(0);
+                *(threadgroup uint4*)vd = uint4(0);
+            }
         }
-        float score = 0.0f;
-        for (uint j = 0; j < 4; ++j) score += query[j] * float(kp[j]);
-        score = simd_sum(score);
-        float next = max(hi, score);
-        float old = metal::fast::exp(hi - next), add = metal::fast::exp(score - next);
-        z = z * old + add; hi = next;
-        for (uint j = 0; j < 4; ++j) acc[j] = acc[j] * old + add * float(vp[j]);
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        if (live && kb <= pos && kb + 32 > lo) {
+            simdgroup_float8x8 sc[4];
+            for (uint t = 0; t < 4; ++t) sc[t] = simdgroup_float8x8(0.0f);
+            for (uint d = 0; d < 16; ++d) {
+                for (uint t = 0; t < 4; ++t) {
+                    simdgroup_matrix<bf16, 8, 8> kf;
+                    simdgroup_load(kf, ks + (t * 8) * 128 + d * 8, 128, ulong2(0, 0), true);
+                    simdgroup_multiply_accumulate(sc[t], qa[d], kf, sc[t]);
+                }
+            }
+            float top = -INFINITY;
+            for (uint t = 0; t < 4; ++t) {
+                for (uint e = 0; e < 2; ++e) {
+                    uint key = kb + t * 8 + fn + e;
+                    float v = sc[t].thread_elements()[e] * scale;
+                    v = (key >= lo && key <= pos) ? v : -INFINITY;
+                    sc[t].thread_elements()[e] = v;
+                    top = max(top, v);
+                }
+            }
+            top = max(top, simd_shuffle_xor(top, 1));
+            top = max(top, simd_shuffle_xor(top, 8));
+            float next = max(m, top);
+            float factor = metal::exp2(m - next);
+            float sum = 0.0f;
+            simdgroup_matrix<bf16, 8, 8> pm[4];
+            for (uint t = 0; t < 4; ++t) {
+                for (uint e = 0; e < 2; ++e) {
+                    float p = metal::exp2(sc[t].thread_elements()[e] - next);
+                    sum += p;
+                    pm[t].thread_elements()[e] = bf16(p);
+                }
+            }
+            sum += simd_shuffle_xor(sum, 1);
+            sum += simd_shuffle_xor(sum, 8);
+            l = l * factor + sum;
+            m = next;
+            for (uint d = 0; d < 16; ++d) {
+                o[d].thread_elements()[0] *= factor;
+                o[d].thread_elements()[1] *= factor;
+                for (uint t = 0; t < 4; ++t) {
+                    simdgroup_matrix<bf16, 8, 8> vf;
+                    simdgroup_load(vf, vs + (t * 8) * 128 + d * 8, 128);
+                    simdgroup_multiply_accumulate(o[d], pm[t], vf, o[d]);
+                }
+            }
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
     }
-    for (uint j = 0; j < 4; ++j) out[size_t(row) * 4096 + head * 128 + lane * 4 + j] = bf16(acc[j] / z);
-}
-
-// Router probabilities for a chunk: one SIMD group per (row, expert).
-kernel void flint_rows_router(const device bf16* n [[buffer(0)]],
-                              const device bf16* router [[buffer(1)]],
-                              device float* probs [[buffer(2)]],
-                              constant uint& count [[buffer(3)]],
-                              uint group [[threadgroup_position_in_grid]],
-                              uint lane [[thread_index_in_simdgroup]],
-                              uint sg [[simdgroup_index_in_threadgroup]]) {
-    uint task = group * 8 + sg;
-    uint row = task / 256, expert = task % 256;
-    if (row >= count) return;
-    const device bf16* x = n + size_t(row) * 2048;
-    float a = 0.0f;
-    for (uint blk = 0; blk < 16; ++blk) {
-        uint at = blk * 128 + lane * 4;
-        for (uint j = 0; j < 4; ++j) a += float(router[expert * 2048 + at + j]) * float(x[at + j]);
+    if (!live) return;
+    device bf16* dst = out + size_t(pb + sg) * 4096 + (g * 8 + fm) * 128 + fn;
+    for (uint d = 0; d < 16; ++d) {
+        dst[d * 8] = bf16(o[d].thread_elements()[0] / l);
+        dst[d * 8 + 1] = bf16(o[d].thread_elements()[1] / l);
     }
-    for (ushort d = 16; d >= 1; d >>= 1) a += simd_shuffle_down(a, d);
-    if (lane == 0) probs[size_t(row) * 256 + expert] = sigmoid_precise(float(bf16(a)));
 }
 
 // Top-6 per row: ids and weights into `routes` (row * 6 + rank), and per-expert counts.
@@ -810,7 +971,7 @@ kernel void flint_rows_route(const device float* probs [[buffer(0)]],
     }
 }
 
-// One threadgroup: exclusive offsets per expert and a 32-row tile list.
+// One threadgroup: exclusive offsets per expert and a 64-row tile list.
 // tiles[0] = tile count, then (expert, start, count) triples.
 kernel void flint_rows_plan(device uint* counts [[buffer(0)]],
                             device uint* offsets [[buffer(1)]],
@@ -821,10 +982,10 @@ kernel void flint_rows_plan(device uint* counts [[buffer(0)]],
     for (uint e = 0; e < 256; ++e) {
         uint c = counts[e];
         offsets[e] = total;
-        for (uint s = 0; s < c; s += 32) {
+        for (uint s = 0; s < c; s += 64) {
             tiles[1 + ntiles * 3] = e;
             tiles[2 + ntiles * 3] = total + s;
-            tiles[3 + ntiles * 3] = min(32u, c - s);
+            tiles[3 + ntiles * 3] = min(64u, c - s);
             ++ntiles;
         }
         total += c;

@@ -6,10 +6,19 @@
 //! definition (configuration, template, tokenizer, sampling) lives in
 //! `psionic-flint`; this module only runs the network on the GPU.
 use metal::{
-    Buffer, CommandBufferRef, CommandQueue, CompileOptions, ComputeCommandEncoderRef,
-    ComputePipelineState, Device, MTLLanguageVersion, MTLResourceOptions, MTLSize,
+    Buffer, CommandBuffer, CommandBufferRef, CommandQueue, CompileOptions, ComputeCommandEncoder,
+    ComputeCommandEncoderRef, ComputePipelineState, Device, MTLLanguageVersion, MTLResourceOptions,
+    MTLSize,
 };
-use std::{collections::BTreeMap, ffi::c_void, fs::File, io::Read, path::Path};
+use objc::{msg_send, sel, sel_impl};
+use std::{
+    cell::{Cell, RefCell},
+    collections::BTreeMap,
+    ffi::c_void,
+    fs::File,
+    io::Read,
+    path::Path,
+};
 
 pub const HIDDEN: usize = 2048;
 pub const HEADS: usize = 32;
@@ -212,7 +221,6 @@ const PIPELINES: &[&str] = &[
     "flint_rows_head_norm",
     "flint_rows_store_kv",
     "flint_rows_attention",
-    "flint_rows_router",
     "flint_rows_route",
     "flint_rows_plan",
     "flint_rows_scatter",
@@ -243,14 +251,31 @@ fn attention_schedule(global: bool, count: usize) -> (usize, bool, usize) {
     (parts, rounded, heads)
 }
 
-/// Compile the Flint kernels; used by tests that exercise single kernels.
+/// Kernels present only when the compiler has Metal 4 tensor operations.
+const TENSOR_PIPELINES: &[&str] = &["flint_gemm_q4_tensor"];
+
+/// Compile the Flint kernels, with Metal 4 tensor operations when available.
 pub fn compile(device: &Device) -> Result<BTreeMap<&'static str, ComputePipelineState>, String> {
+    let source = include_str!("kernels/flint.metal");
     let options = CompileOptions::new();
-    options.set_language_version(MTLLanguageVersion::V3_1);
     options.set_fast_math_enabled(false);
-    let library = device.new_library_with_source(include_str!("kernels/flint.metal"), &options)?;
+    // Metal Shading Language 4.0 (0x40000); metal-rs 0.33 has no constant for it.
+    // SAFETY: setLanguageVersion: takes an NSUInteger version on MTLCompileOptions.
+    unsafe {
+        let _: () = msg_send![options.as_ref(), setLanguageVersion: 0x40000u64];
+    }
+    let (library, tensor) = match device.new_library_with_source(source, &options) {
+        Ok(library) => (library, true),
+        Err(_) => {
+            options.set_language_version(MTLLanguageVersion::V3_1);
+            (device.new_library_with_source(source, &options)?, false)
+        }
+    };
     let mut pipelines = BTreeMap::new();
-    for name in PIPELINES {
+    let names = PIPELINES
+        .iter()
+        .chain(if tensor { TENSOR_PIPELINES } else { &[] });
+    for name in names {
         let function = library.get_function(name, None)?;
         let pipeline = device.new_compute_pipeline_state_with_function(&function)?;
         if pipeline.thread_execution_width() != 32 {
@@ -261,6 +286,16 @@ pub fn compile(device: &Device) -> Result<BTreeMap<&'static str, ComputePipeline
     Ok(pipelines)
 }
 
+/// The prefill matrix kernel: tensor operations unless PSIONIC_FLINT_TENSOR=0.
+fn gemm_kernel(pipelines: &BTreeMap<&'static str, ComputePipelineState>) -> &'static str {
+    let allowed = std::env::var("PSIONIC_FLINT_TENSOR").map_or(true, |v| v != "0");
+    if allowed && pipelines.contains_key("flint_gemm_q4_tensor") {
+        "flint_gemm_q4_tensor"
+    } else {
+        "flint_gemm_q4"
+    }
+}
+
 pub(crate) fn shared_buffer(device: &Device, bytes: usize) -> Buffer {
     let bytes = bytes.max(16);
     let buffer = device.new_buffer(bytes as u64, MTLResourceOptions::StorageModeShared);
@@ -269,10 +304,29 @@ pub(crate) fn shared_buffer(device: &Device, bytes: usize) -> Buffer {
     buffer
 }
 
-/// Encoder helper: binds buffers and constants, then dispatches.
+/// Per-kernel GPU time, gathered when `PSIONIC_FLINT_PROFILE` is set.
+struct Profile {
+    queue: CommandQueue,
+    command: RefCell<CommandBuffer>,
+    times: RefCell<BTreeMap<&'static str, (f64, u32)>>,
+}
+
+/// Encoder helper: binds buffers and constants, then dispatches. When
+/// profiling, each dispatch runs in its own command buffer and is timed.
 pub(crate) struct Pass<'a> {
-    encoder: &'a ComputeCommandEncoderRef,
+    encoder: RefCell<ComputeCommandEncoder>,
     pipelines: &'a BTreeMap<&'static str, ComputePipelineState>,
+    current: Cell<&'static str>,
+    profile: Option<Profile>,
+}
+
+fn gpu_seconds(command: &CommandBufferRef) -> f64 {
+    // SAFETY: GPUStartTime and GPUEndTime are read-only properties of a completed buffer.
+    unsafe {
+        let start: f64 = msg_send![command, GPUStartTime];
+        let end: f64 = msg_send![command, GPUEndTime];
+        end - start
+    }
 }
 
 impl<'a> Pass<'a> {
@@ -280,19 +334,30 @@ impl<'a> Pass<'a> {
         encoder: &'a ComputeCommandEncoderRef,
         pipelines: &'a BTreeMap<&'static str, ComputePipelineState>,
     ) -> Self {
-        Self { encoder, pipelines }
+        Self {
+            encoder: RefCell::new(encoder.to_owned()),
+            pipelines,
+            current: Cell::new(""),
+            profile: None,
+        }
     }
     pub(crate) fn kernel(&self, name: &str) -> &Self {
-        self.encoder
-            .set_compute_pipeline_state(&self.pipelines[name]);
+        let (key, pipeline) = self
+            .pipelines
+            .get_key_value(name)
+            .expect("known Flint kernel");
+        self.current.set(key);
+        self.encoder.borrow().set_compute_pipeline_state(pipeline);
         self
     }
     pub(crate) fn buf(&self, index: u64, buffer: &Buffer, offset: u64) -> &Self {
-        self.encoder.set_buffer(index, Some(buffer), offset);
+        self.encoder
+            .borrow()
+            .set_buffer(index, Some(buffer), offset);
         self
     }
     pub(crate) fn val<T: Copy>(&self, index: u64, value: &T) -> &Self {
-        self.encoder.set_bytes(
+        self.encoder.borrow().set_bytes(
             index,
             std::mem::size_of::<T>() as u64,
             (value as *const T).cast::<c_void>(),
@@ -301,11 +366,29 @@ impl<'a> Pass<'a> {
     }
     pub(crate) fn groups(&self, groups: (usize, usize), threads: usize) {
         self.encoder
+            .borrow()
             .dispatch_thread_groups(size(groups.0, groups.1, 1), size(threads, 1, 1));
+        self.after_dispatch();
     }
     pub(crate) fn threads(&self, total: (usize, usize), threads: usize) {
         self.encoder
+            .borrow()
             .dispatch_threads(size(total.0, total.1, 1), size(threads, 1, 1));
+        self.after_dispatch();
+    }
+    fn after_dispatch(&self) {
+        let Some(profile) = &self.profile else { return };
+        self.encoder.borrow().end_encoding();
+        let command = profile.command.borrow().clone();
+        command.commit();
+        command.wait_until_completed();
+        let mut times = profile.times.borrow_mut();
+        let entry = times.entry(self.current.get()).or_insert((0.0, 0));
+        entry.0 += gpu_seconds(&command);
+        entry.1 += 1;
+        let next = profile.queue.new_command_buffer().to_owned();
+        *self.encoder.borrow_mut() = next.new_compute_command_encoder().to_owned();
+        *profile.command.borrow_mut() = next;
     }
 }
 
@@ -371,7 +454,7 @@ impl FlintMetal {
             weights: shared_buffer(&device, slots * 4),
             counts: shared_buffer(&device, EXPERTS * 4),
             offsets: shared_buffer(&device, (EXPERTS + 1) * 4),
-            tiles: shared_buffer(&device, (1 + 3 * (slots / 32 + EXPERTS + 1)) * 4),
+            tiles: shared_buffer(&device, (1 + 3 * (slots / 64 + EXPERTS + 1)) * 4),
             slot_rows: shared_buffer(&device, slots * 4),
             slot_of: shared_buffer(&device, slots * 4),
             expert_act: shared_buffer(&device, slots * EXPERT_FF * 2),
@@ -500,13 +583,34 @@ impl FlintMetal {
 
     fn run<F: FnOnce(&Pass<'_>)>(&self, encode: F) -> Result<(), String> {
         objc::rc::autoreleasepool(|| {
-            let command: &CommandBufferRef = self.queue.new_command_buffer();
+            let command = self.queue.new_command_buffer().to_owned();
             let encoder = command.new_compute_command_encoder();
-            let pass = Pass::new(encoder, &self.pipelines);
+            let mut pass = Pass::new(encoder, &self.pipelines);
+            if std::env::var_os("PSIONIC_FLINT_PROFILE").is_some() {
+                pass.profile = Some(Profile {
+                    queue: self.queue.clone(),
+                    command: RefCell::new(command.clone()),
+                    times: RefCell::new(BTreeMap::new()),
+                });
+            }
             encode(&pass);
-            encoder.end_encoding();
+            pass.encoder.borrow().end_encoding();
+            let command = match &pass.profile {
+                Some(profile) => profile.command.borrow().clone(),
+                None => command.clone(),
+            };
             command.commit();
             command.wait_until_completed();
+            if let Some(profile) = &pass.profile {
+                let times = profile.times.borrow();
+                let total: f64 = times.values().map(|t| t.0).sum();
+                let mut rows: Vec<_> = times.iter().collect();
+                rows.sort_by(|a, b| b.1.0.total_cmp(&a.1.0));
+                eprintln!("flint profile: {:.2} ms GPU", total * 1e3);
+                for (name, (seconds, calls)) in rows {
+                    eprintln!("  {name:28} {:9.3} ms {calls:5} calls", seconds * 1e3);
+                }
+            }
             match command.status() {
                 metal::MTLCommandBufferStatus::Completed => Ok(()),
                 status => Err(format!("Metal command failed: {status:?}")),
@@ -730,14 +834,20 @@ impl FlintMetal {
         tile_rows: usize,
     ) {
         let c = &self.chunk;
-        pass.kernel("flint_gemm_q4").buf(0, x.0, x.1);
+        pass.kernel(gemm_kernel(&self.pipelines)).buf(0, x.0, x.1);
         self.bind_quant(pass, 1, w);
         self.bind_quant(pass, 4, w2.unwrap_or(w));
         pass.buf(7, y.0, y.1)
             .val(8, &params)
             .buf(9, &c.slot_rows, 0)
             .buf(10, &c.tiles, 0)
-            .groups(((params.n as usize).div_ceil(32), tile_rows), 128);
+            .groups(
+                (
+                    (params.n as usize).div_ceil(if params.mode == 2 { 32 } else { 64 }),
+                    tile_rows,
+                ),
+                128,
+            );
     }
 
     fn encode_chunk(&self, pass: &Pass<'_>, session: &FlintSession, count: usize) {
@@ -751,7 +861,7 @@ impl FlintMetal {
             .buf(4, &c.tokens, 0)
             .val(5, &t)
             .threads((HIDDEN, count), 256);
-        let row_tiles = count.div_ceil(32);
+        let row_tiles = count.div_ceil(64);
         let dense = |m: usize, n: usize, k: usize, ldx: usize, ldy: usize, mode: u32| GemmParams {
             m: m as u32,
             n: n as u32,
@@ -812,7 +922,7 @@ impl FlintMetal {
                 .buf(3, &c.a, 0)
                 .val(4, &rows)
                 .val(5, &window)
-                .groups(((count * 32).div_ceil(8), 1), 256);
+                .groups((count.div_ceil(8), KV_HEADS), 256);
             pass.kernel("flint_rows_store_kv")
                 .buf(0, &c.qkv, 0)
                 .buf(1, kv, 0)
@@ -863,13 +973,21 @@ impl FlintMetal {
                     shared_up,
                     shared_down,
                 } => {
-                    let (rb, ro) = self.t(*router);
-                    pass.kernel("flint_rows_router")
-                        .buf(0, &c.n, 0)
-                        .buf(1, rb, ro)
-                        .buf(2, &c.probs, 0)
-                        .val(3, &t)
-                        .groups(((count * EXPERTS).div_ceil(8), 1), 256);
+                    // Router logits as a BF16 matrix product; mode 3 applies the sigmoid.
+                    let router_quant = FlintQuant {
+                        weight: *router,
+                        scales: *router,
+                        biases: *router,
+                    };
+                    self.gemm(
+                        pass,
+                        (&c.n, 0),
+                        &router_quant,
+                        None,
+                        (&c.probs, 0),
+                        dense(count, EXPERTS, HIDDEN, HIDDEN, EXPERTS, 3),
+                        row_tiles,
+                    );
                     pass.kernel("flint_rows_route")
                         .buf(0, &c.probs, 0)
                         .buf(1, &c.ids, 0)
@@ -890,7 +1008,7 @@ impl FlintMetal {
                         .val(4, &t)
                         .threads((EXPERTS, 1), 256);
                     let slots = count * TOP_K;
-                    let max_tiles = slots / 32 + EXPERTS;
+                    let max_tiles = slots / 64 + EXPERTS;
                     let expert =
                         |n: usize, k: usize, ldx: usize, ldy: usize, mode: u32, gathered: u32| {
                             GemmParams {

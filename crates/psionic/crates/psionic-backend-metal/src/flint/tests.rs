@@ -68,8 +68,9 @@ impl Gpu {
     fn run(&self, encode: impl FnOnce(&Pass<'_>)) {
         let command = self.queue.new_command_buffer();
         let encoder = command.new_compute_command_encoder();
-        encode(&Pass::new(encoder, &self.pipelines));
-        encoder.end_encoding();
+        let pass = Pass::new(encoder, &self.pipelines);
+        encode(&pass);
+        pass.encoder.borrow().end_encoding();
         command.commit();
         command.wait_until_completed();
         assert_eq!(command.status(), metal::MTLCommandBufferStatus::Completed);
@@ -95,7 +96,6 @@ struct Matrix {
     codes: Vec<u8>,
     scales: Vec<f32>,
     biases: Vec<f32>,
-    dense: Vec<f32>,
 }
 fn matrix(rng: &mut Rng, rows: usize, cols: usize) -> Matrix {
     let groups = cols / 64;
@@ -106,20 +106,16 @@ fn matrix(rng: &mut Rng, rows: usize, cols: usize) -> Matrix {
         .map(|_| round(-0.08 * rng.unit().abs()))
         .collect::<Vec<_>>();
     let mut codes = vec![0u8; rows * cols / 2];
-    let mut dense = vec![0f32; rows * cols];
     for r in 0..rows {
         for c in 0..cols {
             let q = (rng.next() % 16) as u8;
             codes[(r * cols + c) / 2] |= q << ((c % 2) * 4);
-            let g = r * groups + c / 64;
-            dense[r * cols + c] = scales[g] * q as f32 + biases[g];
         }
     }
     Matrix {
         codes,
         scales,
         biases,
-        dense,
     }
 }
 impl Matrix {
@@ -130,12 +126,19 @@ impl Matrix {
             gpu.bf16s(&self.biases),
         ]
     }
+    /// Product with weights rounded to BF16 as MLX's qmm dequantizes them.
     fn matvec(&self, rows: usize, x: &[f32]) -> Vec<f32> {
         let cols = x.len();
+        let groups = cols / 64;
         (0..rows)
             .map(|r| {
                 (0..cols)
-                    .map(|c| self.dense[r * cols + c] as f64 * x[c] as f64)
+                    .map(|c| {
+                        let q = (self.codes[(r * cols + c) / 2] >> ((c % 2) * 4)) & 15;
+                        let g = r * groups + c / 64;
+                        let w = round(round(self.scales[g] * q as f32) + self.biases[g]);
+                        w as f64 * x[c] as f64
+                    })
                     .sum::<f64>() as f32
             })
             .collect()
@@ -217,7 +220,11 @@ fn int4_gemm_matches_cpu_in_each_mode() {
     let xb = gpu.bf16s(&x);
     let rows = gpu.u32s(&[0]);
     let tiles = gpu.u32s(&[0]);
-    for mode in 0..3u32 {
+    let kernels: Vec<&str> = ["flint_gemm_q4", "flint_gemm_q4_tensor"]
+        .into_iter()
+        .filter(|k| gpu.pipelines.contains_key(k))
+        .collect();
+    for (kernel, mode) in kernels.iter().flat_map(|k| (0..3u32).map(move |m| (*k, m))) {
         let yb = gpu.bf16s(&base);
         let params = GemmParams {
             m: m as u32,
@@ -232,14 +239,17 @@ fn int4_gemm_matches_cpu_in_each_mode() {
             expert_stride_g: 0,
         };
         gpu.run(|p| {
-            p.kernel("flint_gemm_q4").buf(0, &xb, 0);
+            p.kernel(kernel).buf(0, &xb, 0);
             bind3(p, 1, &wb);
             bind3(p, 4, &w2b);
             p.buf(7, &yb, 0)
                 .val(8, &params)
                 .buf(9, &rows, 0)
                 .buf(10, &tiles, 0)
-                .groups((n.div_ceil(32), m.div_ceil(32)), 128);
+                .groups(
+                    (n.div_ceil(if mode == 2 { 32 } else { 64 }), m.div_ceil(64)),
+                    128,
+                );
         });
         let got = read_bf16(&yb, m * n);
         for r in 0..m {
@@ -257,8 +267,67 @@ fn int4_gemm_matches_cpu_in_each_mode() {
                 };
                 assert!(
                     close(got[r * n + c], expected, 1.0 / 64.0),
-                    "mode {mode} ({r},{c}): {} vs {expected}",
+                    "{kernel} mode {mode} ({r},{c}): {} vs {expected}",
                     got[r * n + c]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn router_product_applies_sigmoid() {
+    let Some(gpu) = Gpu::new() else { return };
+    let mut rng = Rng(29);
+    let (m, n, k) = (70, 256, 2048);
+    let w = rng.vec(n * k, 0.05);
+    let x = rng.vec(m * k, 1.0);
+    let (wb, xb) = (gpu.bf16s(&w), gpu.bf16s(&x));
+    let rows = gpu.u32s(&[0]);
+    let tiles = gpu.u32s(&[0]);
+    let params = GemmParams {
+        m: m as u32,
+        n: n as u32,
+        k: k as u32,
+        ldx: k as u32,
+        ldy: n as u32,
+        mode: 3,
+        gathered: 0,
+        tiles: 0,
+        expert_stride_w: 0,
+        expert_stride_g: 0,
+    };
+    for kernel in ["flint_gemm_q4", "flint_gemm_q4_tensor"] {
+        if !gpu.pipelines.contains_key(kernel) {
+            continue;
+        }
+        let probs = gpu.zeros(m * n * 4);
+        gpu.run(|p| {
+            p.kernel(kernel)
+                .buf(0, &xb, 0)
+                .buf(1, &wb, 0)
+                .buf(2, &wb, 0)
+                .buf(3, &wb, 0)
+                .buf(4, &wb, 0)
+                .buf(5, &wb, 0)
+                .buf(6, &wb, 0)
+                .buf(7, &probs, 0)
+                .val(8, &params)
+                .buf(9, &rows, 0)
+                .buf(10, &tiles, 0)
+                .groups((n.div_ceil(64), m.div_ceil(64)), 128);
+        });
+        let got: Vec<f32> = read(&probs, m * n);
+        for r in 0..m {
+            for e in 0..n {
+                let dot: f64 = (0..k)
+                    .map(|i| w[e * k + i] as f64 * x[r * k + i] as f64)
+                    .sum();
+                let want = 1.0 / (1.0 + (-round(dot as f32)).exp());
+                assert!(
+                    (got[r * n + e] - want).abs() < 4e-3,
+                    "{kernel} ({r},{e}): {} vs {want}",
+                    got[r * n + e]
                 );
             }
         }
@@ -513,7 +582,7 @@ fn chunk_attention_reads_cache_and_chunk() {
                 .buf(3, &out, 0)
                 .val(4, &params)
                 .val(5, &(WINDOW as u32))
-                .groups(((count * 32).div_ceil(8), 1), 256);
+                .groups((count.div_ceil(8), 4), 256);
         });
         let got = read_bf16(&out, count * 4096);
         for row in [0, 17, count - 1] {
@@ -573,7 +642,7 @@ fn expert_plan_groups_slots_by_expert() {
     let idb = gpu.u32s(&ids);
     let cb = gpu.u32s(&counts);
     let offsets = gpu.zeros(257 * 4);
-    let tiles = gpu.zeros((1 + 3 * (rows * 6 / 32 + 257)) * 4);
+    let tiles = gpu.zeros((1 + 3 * (rows * 6 / 64 + 257)) * 4);
     let slot_rows = gpu.zeros(rows * 6 * 4);
     let slot_of = gpu.zeros(rows * 6 * 4);
     gpu.run(|p| {
@@ -592,7 +661,7 @@ fn expert_plan_groups_slots_by_expert() {
     });
     let slot_rows: Vec<u32> = read(&slot_rows, rows * 6);
     let slot_of: Vec<u32> = read(&slot_of, rows * 6);
-    let tiles: Vec<u32> = read(&tiles, 1 + 3 * (rows * 6 / 32 + 257));
+    let tiles: Vec<u32> = read(&tiles, 1 + 3 * (rows * 6 / 64 + 257));
     let after: Vec<u32> = read(&cb, 256);
     assert!(
         after.iter().all(|c| *c == 0),
@@ -605,7 +674,7 @@ fn expert_plan_groups_slots_by_expert() {
             tiles[2 + tile * 3],
             tiles[3 + tile * 3],
         );
-        assert!(n >= 1 && n <= 32);
+        assert!((1..=64).contains(&n));
         for slot in start..start + n {
             let row = slot_rows[slot as usize] as usize;
             let rank = (0..6)
@@ -616,4 +685,47 @@ fn expert_plan_groups_slots_by_expert() {
         }
     }
     assert_eq!(covered, rows * 6);
+}
+
+/// Times chunk attention on one long-context chunk. Run with
+/// `cargo test --release -- --ignored attention_speed --nocapture`.
+#[test]
+#[ignore]
+fn attention_speed() {
+    let Some(gpu) = Gpu::new() else { return };
+    let mut rng = Rng(31);
+    let (count, start, cap) = (2048usize, 14336usize, 16384usize);
+    let qkv = gpu.bf16s(&rng.vec(count * 5120, 1.0));
+    let kv = gpu.bf16s(&rng.vec(2 * 4 * cap * 128, 1.0));
+    let sinks = gpu.bf16s(&rng.vec(32, 1.0));
+    let out = gpu.zeros(count * 4096 * 2);
+    let params = RowParams {
+        start: start as u32,
+        cap: cap as u32,
+        rotary: 0,
+        global: 1,
+        count: count as u32,
+    };
+    for round in 0..3 {
+        for (kernel, threads) in [("flint_rows_attention", 256)] {
+            let command = gpu.queue.new_command_buffer();
+            let encoder = command.new_compute_command_encoder();
+            let pass = Pass::new(encoder, &gpu.pipelines);
+            pass.kernel(kernel)
+                .buf(0, &qkv, 0)
+                .buf(1, &kv, 0)
+                .buf(2, &sinks, 0)
+                .buf(3, &out, 0)
+                .val(4, &params)
+                .val(5, &(WINDOW as u32))
+                .groups((count.div_ceil(8), 4), threads);
+            pass.encoder.borrow().end_encoding();
+            command.commit();
+            command.wait_until_completed();
+            eprintln!(
+                "round {round} {kernel}: {:.1} ms",
+                gpu_seconds(command) * 1e3
+            );
+        }
+    }
 }
