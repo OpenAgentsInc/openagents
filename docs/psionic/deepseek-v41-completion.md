@@ -20,12 +20,19 @@ evidence in the repository or the oracle bucket. A gate is about evidence,
 not issue state: closing a child issue doesn't pass a gate whose check is
 listed as an after-close check.
 
+**Qualification revision, 2026-10-21:** the table now describes the planned
+v2 release contract: qualify the served GPU runtime directly against the
+oracle. The [review addendum](#qualification-review-addendum-2026-10-21)
+defines the required evidence and the transition from v1. G1 v1 remains
+failed; G1 v2 is pending a frozen numerical policy, harness, and full run.
+No existing result becomes a pass through this revision.
+
 | Gate | Passes when | Evidence |
 | --- | --- | --- |
-| **G1. Reference parity on CPU** | The Rust CPU model, on the original weights, matches the oracle: decode against the reference's decode and replay against its replay, at every recorded position of the four main prompts and the edge cases; router ids match except at recorded exact ties; full logits within tolerances set before the comparison runs. | A parity report committed under `testdata/deepseek_v41/` and summarized in the plan |
-| **G2. Complete answers on CPU** | Greedy decoding on the original weights reproduces the reference's complete answers for prompts 1 and 2 (122 and 268 tokens), with reasoning and final text split correctly by the #12372 adapter. | The same report |
+| **G1. Served-runtime numerical qualification** | The original-weight GPU runtime passes a versioned, prospectively frozen policy against same-mode oracle tokens: full-vocabulary distribution error, margin-aware token and routing checks, exact structural checks, and complete declared coverage. The four main prompts, edge cases, and a separate holdout are required. | Policy and corpus hashes, full comparison report, and runtime identity; v1 CPU failures retained separately |
+| **G2. Complete answers and task quality** | The served runtime finishes the original chat and code prompts and a frozen task suite to EOS within its output cap, passes task assertions and the declared quality budget, and splits reasoning and final text correctly with the #12372 adapter. CPU generation is a separately reported diagnostic. | Complete token/text traces, stop reasons, task results, and paired oracle results |
 | **G3. Kernel parity on GPU** | Each CUDA kernel matches the CPU reference on real tensors, on the RTX 4080 (SM89) and on the target GPU. | Per-kernel test results for both GPUs |
-| **G4. One stage on one GPU** | A stage process holding a contiguous layer range runs device-resident (no per-token host stepping) and matches G1 for its layers given the oracle's stage inputs. | Stage parity results, memory peak, per-token latency |
+| **G4. One stage on one GPU** | A stage process holding a contiguous layer range runs device-resident (no per-token host stepping), passes its stated arithmetic bounds and G1's structural and routing checks on identical oracle stage inputs, and reports connected error separately. | Stage comparison results, memory peak, per-token latency |
 | **G5. A full group on one machine** | Stage Pylons, one per GPU, run the whole model over loopback and pass G1's decode checks, G2's complete answers, and DS0's six runtime checks, with speed and per-GPU memory recorded. | Group report from a cloud run through the spend guard |
 | **G6. A group across machines** | The same group passes the same checks across separate machines in two genuinely different placements, for example four single-GPU machines and two two-GPU machines. Per-hop latency and stage-state bytes per token are recorded. | Group reports for both placements |
 | **G7. Lifecycle and recovery** | A group is advertised only when every stage is loaded and checked. Killing or freezing any stage fails the request visibly, never replays it after tokens reached the caller, and the group recovers under a new generation. A restarted stage can't serve a stale request. Caller cancellation keeps the group busy until work stops. | Fault-injection results on a real group |
@@ -33,16 +40,18 @@ listed as an after-close check.
 
 Gate progress (2026-10-21):
 
-- **G1, original-weight CPU parity (W1, #12388; #12404): failed.** G1
-  qualifies the `ReferenceBf16Tp8` profile, the eight-B200 TP8 oracle's
-  arithmetic; GPU stages that must match G1 follow that order. #12404 got a
+- **G1 v1, original-weight CPU parity (W1, #12388; #12404): failed.
+  G1 v2, served GPU qualification: pending.** The v1 runner checks the
+  `ReferenceBf16Tp8` CPU profile against the eight-B200 TP8 oracle. #12404 got a
   new B200 capture, showed that same-mode oracle reruns are bit-identical,
   measured the tensor-core, `MUFU.EX2`, and `expf` arithmetic on the device,
   and made layer-0 attention equal the oracle bit for bit. The first limit
   failure is now the layer-1 attention pre-mix, caused by layer-0
   hyper-connection mix values that differ by about one F32 ulp.
   [#12405](https://github.com/OpenAgentsInc/openagents/issues/12405) owns the
-  remaining device arithmetic. W2 and W3 stay blocked on it.
+  remaining investigation. Exact B200 arithmetic emulation is no longer a
+  prerequisite for GPU qualification or provisional W3 measurements; the
+  review addendum specifies the new work and issue changes.
 - **G5–G7, stage contract (W9, #12396).** One message type carries the
   manifest digest, group generation, request, attempt, stage and layers,
   step, position, tokens, and typed sections. A stage refuses duplicate,
@@ -145,8 +154,8 @@ Gate progress (2026-10-21):
   through sources 2 and 20 and consumers 3, 21, and 24 reads the sources on
   the device and equals the CPU components stage by stage. Results:
   [`sm89-2026-10-20.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_attention/sm89-2026-10-20.json).
-- **G4, one stage on one GPU (W7, #12394): not passed, pending on
-  #12404.** The stage runs device-resident: per decode step one graph
+- **G4, one stage on one GPU (W7, #12394): v1 comparison failed;
+  v2 qualification pending.** The stage runs device-resident: per decode step one graph
   launch, one wait, and about six small copies, with no kernel launched
   outside the graph. Layers 0–4 on the RTX PRO 6000 decode in 4.13 ms per
   token (4.21 ms after a 2,124-token prompt) and prefill 242 tokens/s, in
@@ -156,13 +165,13 @@ Gate progress (2026-10-21):
   from layer 1 a float32 mix exceeds it (3.8e-4 against 3.5e-4) and router
   sets then differ. Against the oracle, the GPU fails 180 of 625 checks and
   the CPU stage 191, with the same first failure (layer 1's router set at
-  position 0). The stage should adopt the order #12404 qualifies, and an
+  position 0). Direct qualification of this stage remains required; an
   isolated per-layer check must separate amplification from a defect.
   Sequential dense products and norms take 2.1 ms of a 4.06 ms step; a
   bounded parallel sum is the first speedup. Results:
   [`sm120-2026-10-21.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_stage/sm120-2026-10-21.json).
 - **G5, a full group on one machine (W11, #12398): runs end to end;
-  parity pending on #12404.** `pylon cloud up one-quad --head stage0
+  numerical and runtime acceptance pending.** `pylon cloud up one-quad --head stage0
   --transport direct` ran the four CUDA stages on one spot
   `g4-standard-192` (4 RTX PRO 6000, 720 GiB) in us-west3-a, with the head
   on the same machine and jobs sent over the relay with `pylon ask`. The
@@ -177,8 +186,9 @@ Gate progress (2026-10-21):
   prompt ids exactly, and its final answer diverges at the 10th content
   token ("scattered by molecules" against "scattered by gas molecules"),
   the divergence W7 recorded for the default arithmetic order. G1's decode
-  checks, DS0's runtime checks, and G7's faults on this group wait for
-  #12404's order. The run cost $1.47 ($2.27 with the failed attempts).
+  checks, DS0's runtime checks, and G7's faults were not run. Runtime and
+  fault checks can proceed before numerical qualification, with the runtime
+  labeled unqualified. The run cost $1.47 ($2.27 with the failed attempts).
   Receipt:
   [`deepseek-v41-g5-one-quad-2026-10-21.json`](verification/deepseek-v41-g5-one-quad-2026-10-21.json).
 - **G3 on SM120 (W8, #12395): passed.** On W7's `g4-standard-48` (one
@@ -268,13 +278,13 @@ Each item is a proposed issue under #12369. Sizes: S under a day, M one to
 three days, L longer (split before claiming). "Cloud" items run through the
 spend guard from the one budget host.
 
-### Phase 2 finish: the CPU model against the real model (G1, G2)
+### Phase 2 finish: qualification and model measurements (G1, G2)
 
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
 | W1 | **Original-weight CPU parity report.** Compared original weights with the frozen policy. Complete chat diagnostics and first-failure runs report every case, mode, and recorded position, including untested positions. G1 fails; #12404 tracks the divergence and missing observations. | M, cloud | #12385–#12387 | Report retained; closing W1 does not pass G1. |
-| W2 | **Complete answers on CPU.** Greedy to EOS for prompts 1 and 2 with the #12372 parser. | S, a later cost-capped run | W1, #12404, #12405 | G2 passes; wall time per token is recorded. |
-| W3 | **Measure the model.** Peak memory per layer range, KV and indexer bytes per token at each compression ratio, Engram lookup cost from RAM, and active parameters per token. | S, a later cost-capped run | W1, #12404, #12405 | Numbers replace the estimates in the plan; placement inputs for W9 exist. |
+| W2 | **Complete answers and quality.** Qualify the served GPU runtime's complete answers with the #12372 parser and task assertions. Keep the originally requested CPU answers as diagnostic evidence, without requiring B200 token identity. | S, cloud; quality suite may need a separate estimate | GPU runner; frozen G2 policy for acceptance | G2 v2 passes; CPU evidence and its limitations are reported separately. |
+| W3 | **Measure the model.** Peak memory per layer range, KV and indexer bytes per token at each compression ratio, Engram lookup cost from RAM, and active parameters per token. | S, cloud | Existing loader and running stages; no numerical-parity blocker | Measured placement inputs name the runtime and context range; provisional measurements are repeated if qualification fixes change allocation or performance. |
 
 ### Phase 3: CUDA (G3, G4)
 
@@ -292,7 +302,7 @@ spend guard from the one budget host.
 | --- | --- | --- | --- | --- |
 | W9 | **Done (#12396).** Stage-state codec and group manifest: `psionic_models::stage_state` (message, codec, `StageInbox` admission, `StageWorker`) and `psionic_models::deepseek_v41_stage` (V4.1 boundary contracts, wire sizes, `V41GroupManifest`, `plan_group`); `psionic_serve::pipeline_stage` adapts the Gemma 4 step to the same message. Placement reads header-derived bytes through the `PlacementMemory` trait until W3's measured input implements it. | M | W3 for measured placement only | Codec fault tests (duplicate, stale, missing, reordered, cross-request, malformed, oversize) pass with a synthetic 40-layer executor; every split matches the unsplit run bit for bit. |
 | W10 | **Group lifecycle.** Done (#12397) on synthetic stages: `pylon::stage_group` runs each stage as a managed worker under the serial supervisor's process-group owner and restart budget. A group is ready only when every stage agrees on weights, runtime, protocol, and generation and passes a check. A replacement bumps the generation and fences the survivors; failures and cancellation hold admission until every stage stops or is reaped. The front's control identity is W9's (generation, request ID, attempt, stage, step). `StageGroup` implements W13's `GroupReadiness`. The last stage samples with the front's settings and returns token IDs, not logits. `crates/pylon/tests/group_lifecycle.rs` covers G7's fault list; G7 still needs it on a real group (W11, W12). | L | W9, #12364 | G7's fault checks pass on a local or synthetic group. |
-| W11 | **A full group on one machine.** All stages on one 4- or 8-GPU machine over loopback. **Part 1 done (#12398): the stage worker.** `psionic-v41-stage` (`crates/psionic/crates/psionic-v41-stage`) takes `pylon cloud up`'s arguments (`--weights DIR --layers A-B --gpu N --manifest D [--embeddings] [--head]`, then `--stage --generation --front --token`), speaks W10's control protocol, and announces `psionic-v41-stage/1`. Stage state is W9's message, sent as length-prefixed frames to the next stage's loopback listener, whose `listen` address the front now passes as `next` with each step; the front also passes the previous token to stage 0. Stage 0 encodes the conversation with the #12372 adapter; the last stage samples greedily or with the front's temperature, top-p, and seed, and returns the token, its text, the end flag, and (W14) reasoning and final text from the adapter's streaming parser with a `stop` or `length` finish. The executor is W9's `StageExecutor`; `--backend cpu` runs `psionic_models::deepseek_v41_stage_cpu`, the CPU port cut at a layer range. Tests: Psionic process groups of 2–4 stages and Pylon's real front over loopback match the unsplit model's tokens; W10's lifecycle faults (kill, stop, cancel, other weights) pass against it; refusals cover wrong generation, stale state, missing weights, and a layer range that doesn't match the manifest. **Part 2a done (#12398):** `--backend cuda` (the `cuda` feature) runs W7's `V41Stage` as W9's executor: residuals and pre-mixes cross as `F32`, KV rows and index keys as BF16, selections as `I32`, and layer-20 candidates as `U32`, and the last stage samples on the device and returns the token. A CUDA stage announces `psionic-v41-stage/1+cuda` and a CPU stage `psionic-v41-stage/1`, so the front never makes a mixed group ready. The worker also speaks W12's direct transport (`--data-listen`, `--data-advertise`; `link`, `linked`, `link_failed`, `forwarded`, `refused`, and a cancel frame from stage 0) over `crates/stage-link`, which Psionic links by path. A checkpoint stage opens only its own shards (`DeepSeekV41Checkpoint::open_stage`) and hashes them against the pin. `v41-stage-startup.sh` also copies the group manifest beside the shards and the tokenizer files, and refuses a worker built for another GPU; `scripts/pylon/v41-stage-build.sh` builds the worker for linux/x86_64 in Docker with CUDA 13.0 on a GPU host and uploads it, with its CUDA libraries, under `gs://openagents-psionic-models/bin/psionic-v41-stage/COMMIT/sm_NN/`; its `test` mode runs the crate's tests on that host's GPU. On the RTX 4080 (sm_89), CUDA process groups of two and three stages answer like the unsplit CUDA stage, greedy and sampled. The process tests bound every wait, so a stage that exits or never connects fails the test with its log. **Part 2b done (#12398):** the `one-quad` placement puts all four stages on one `g4-standard-192`, and `pylon cloud up one-quad --head stage0 --transport direct` ran the whole model there and answered jobs over the relay (G5 above: 1.3 s to the first token of a 41-token prompt, then about 29.7 tokens/s). The run fixed the zone head's launch (the budget host no longer checks stage programs that live on the stage machine, and the head starts once the machine's weights are in place), priced the `g4-standard-192` in the guard, provisioned boot-disk throughput, added `--temperature`, `--top-p`, `--ready-secs`, and `--step-secs`, and logs each answer's first-token time and decode rate. `v41-stage-build.sh` reuses a persistent source folder, so an unchanged worker rebuilds in under a second, and its `pylon` mode builds the head's Linux binary. Parity with the oracle waits on G1. | M, cloud (G4 spot, about 20 h) | W7, W10 | G5 passes. |
+| W11 | **A full group on one machine.** All stages on one 4- or 8-GPU machine over loopback. **Part 1 done (#12398): the stage worker.** `psionic-v41-stage` (`crates/psionic/crates/psionic-v41-stage`) takes `pylon cloud up`'s arguments (`--weights DIR --layers A-B --gpu N --manifest D [--embeddings] [--head]`, then `--stage --generation --front --token`), speaks W10's control protocol, and announces `psionic-v41-stage/1`. Stage state is W9's message, sent as length-prefixed frames to the next stage's loopback listener, whose `listen` address the front now passes as `next` with each step; the front also passes the previous token to stage 0. Stage 0 encodes the conversation with the #12372 adapter; the last stage samples greedily or with the front's temperature, top-p, and seed, and returns the token, its text, the end flag, and (W14) reasoning and final text from the adapter's streaming parser with a `stop` or `length` finish. The executor is W9's `StageExecutor`; `--backend cpu` runs `psionic_models::deepseek_v41_stage_cpu`, the CPU port cut at a layer range. Tests: Psionic process groups of 2–4 stages and Pylon's real front over loopback match the unsplit model's tokens; W10's lifecycle faults (kill, stop, cancel, other weights) pass against it; refusals cover wrong generation, stale state, missing weights, and a layer range that doesn't match the manifest. **Part 2a done (#12398):** `--backend cuda` (the `cuda` feature) runs W7's `V41Stage` as W9's executor: residuals and pre-mixes cross as `F32`, KV rows and index keys as BF16, selections as `I32`, and layer-20 candidates as `U32`, and the last stage samples on the device and returns the token. A CUDA stage announces `psionic-v41-stage/1+cuda` and a CPU stage `psionic-v41-stage/1`, so the front never makes a mixed group ready. The worker also speaks W12's direct transport (`--data-listen`, `--data-advertise`; `link`, `linked`, `link_failed`, `forwarded`, `refused`, and a cancel frame from stage 0) over `crates/stage-link`, which Psionic links by path. A checkpoint stage opens only its own shards (`DeepSeekV41Checkpoint::open_stage`) and hashes them against the pin. `v41-stage-startup.sh` also copies the group manifest beside the shards and the tokenizer files, and refuses a worker built for another GPU; `scripts/pylon/v41-stage-build.sh` builds the worker for linux/x86_64 in Docker with CUDA 13.0 on a GPU host and uploads it, with its CUDA libraries, under `gs://openagents-psionic-models/bin/psionic-v41-stage/COMMIT/sm_NN/`; its `test` mode runs the crate's tests on that host's GPU. On the RTX 4080 (sm_89), CUDA process groups of two and three stages answer like the unsplit CUDA stage, greedy and sampled. The process tests bound every wait, so a stage that exits or never connects fails the test with its log. **Part 2b done (#12398):** the `one-quad` placement puts all four stages on one `g4-standard-192`, and `pylon cloud up one-quad --head stage0 --transport direct` ran the whole model there and answered jobs over the relay (G5 above: 1.3 s to the first token of a 41-token prompt, then about 29.7 tokens/s). The run fixed the zone head's launch (the budget host no longer checks stage programs that live on the stage machine, and the head starts once the machine's weights are in place), priced the `g4-standard-192` in the guard, provisioned boot-disk throughput, added `--temperature`, `--top-p`, `--ready-secs`, and `--step-secs`, and logs each answer's first-token time and decode rate. `v41-stage-build.sh` reuses a persistent source folder, so an unchanged worker rebuilds in under a second, and its `pylon` mode builds the head's Linux binary. Direct oracle qualification remains pending under G1 v2; runtime and fault checks can proceed independently. | M, cloud (G4 spot, about 20 h) | W7, W10 | G5 passes. |
 | W12 | **A group across machines.** Two placements across separate machines in one zone. **Part 1 done (#12399), locally:** `crates/stage-link` sends W9's stage-state bytes straight from stage to stage over an authenticated, bounded TCP link keyed per group generation, and `pylon::stage_group`'s `direct` transport uses it: the head sends each step to the first stage only and hears only the last stage's token, while it keeps admission, sampling, cancellation, fencing, and readiness. `pylon cloud up --head stage0\|vm --transport direct` runs the head on the stage-0 machine or a small machine in the zone, with the budget host keeping the spend guard and talking only to the head. `tests/group_transport.rs` covers a dropped link, an old generation's link, a duplicated frame, a partitioned middle stage, a slow stage behind a bounded queue, a stalled stage, and cancellation down the chain on fake stages in separate processes. W11's worker speaks `stage_link` with `--data-listen` and `--data-advertise` (#12398 part 2a). **Part 2 needs:** the real run of both placements in one zone, recording per-hop latency and stage-state bytes per token and repeating G7's faults. | M, cloud | W11 | G6 passes; G7's fault checks repeat on the cross-machine group. |
 
 ### Phase 5: launch and visibility (G8)
@@ -335,32 +345,34 @@ started first.
 | Phase | Estimate |
 | --- | --- |
 | Spent: oracle and weights | $36.85, plus a $200 reserve for storage and transfer |
-| W1–W3 CPU parity and measurements | W1 used $12.46 and #12404 $3.30 plus $48.78 (one A4 spot capture and probe session, one CPU machine) in compute. A complete 20k-prompt run needs more than a day of one CPU machine (more than $130 per mode); #12405 budgets it. |
+| W1–W3 qualification and measurements | W1 used $12.46 and #12404 $3.30 plus $48.78 (one A4 spot capture and probe session, one CPU machine) in compute. A complete 20k-prompt CPU run is estimated at more than a day (more than $130 per mode). Re-estimate direct GPU qualification before allocating; exhaustive CPU emulation is not a launch requirement. |
 | W8 target GPU check | under $50 |
 | W11 one-machine group development and runs | about $300 (a `g4-standard-384` at $13.31/h spot, about 20 h) |
 | W12 cross-machine placements | about $200 |
 | W15–W16 launch and recording runs | about $150 |
-| Expected total | Original estimate: about $1,000. CPU follow-up needs a revised estimate; the spend guard's $3,000 cap still applies. |
+| Expected total | Original estimate: about $1,000. The v2 qualification work needs a revised estimate; the spend guard's $3,000 cap still applies. |
 
 ## Who can do what in parallel
 
-- **Codex (DeepSeek chat)** holds the CPU work: #12385–#12388, then #12404
-  before W2 and W3 can qualify the model.
+- **CPU investigation:** #12385–#12388 are closed; #12404 and #12405 retain
+  the failed CPU comparisons and remaining arithmetic investigation. Check
+  the current issue claim before starting work. These issues no longer
+  block provisional W3 measurements or independent GPU/runtime checks.
 - **Stage work:** W9 (#12396), W10 (#12397), and W13 (#12400) are closed
   with synthetic or fixture evidence. Their real-model integration remains
   in W11, W12, and W15, with the blockers in the work table above.
 - **CUDA (W5–W7)** can use identical-input component checks while G1 is
   unresolved. Each result must name its CPU/oracle inputs and numerical
   bounds. W4 and W6 have such isolated evidence; connected stages still need
-  G1 through #12404. W1's closure cannot establish that the CPU model matches
-  the original-weight oracle.
+  direct oracle qualification under G1 v2. W1's closure cannot establish
+  that the CPU model or the served runtime matches the original-weight oracle.
 
 ## Open questions
 
-- Tolerances for G1: the [fixed CPU policy](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/tolerance-policy.json)
-  uses per-component arithmetic limits. Same-mode repeatability is currently
-  unmeasured; the cross-mode gap grants no allowance. Do not loosen bounds
-  after a failure.
+- Tolerances for G1 v2: freeze the new policy before qualification as
+  specified in the review addendum. The [fixed v1 CPU policy](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/tolerance-policy.json)
+  stays unchanged. Same-mode B200 repeatability is now measured as exact;
+  neither that result nor the cross-mode gap determines cross-hardware limits.
 - Host RAM per stage for the Engram tables (about 101 GB each, layers 1 and
   14) on single-GPU machines. On the one-machine `g4-standard-192`, both
   tables and the page cache fit in its 720 GiB.
@@ -384,7 +396,8 @@ has every run.
   `--flex-start`.
 - **Oracle repeatability.** A full rerun on the same B200 setup equals the
   #12371 dump in all 18,000 shared tensors, every residual hash, and every
-  logit hash. Same-mode repeatability grants no tolerance.
+  logit hash. This measures repeatability, not a zero cross-implementation
+  error budget; the frozen v1 float limits remain nonzero.
 - **Fixed.** Layer-0 attention now equals the oracle bit for bit: the TP8
   profile reproduces the B200's BF16 tensor-core sums, `MUFU.EX2`, CUDA `expf`,
   TileLang's reductions, FP8 GEMM blocks, and the `wo_a` einsum (b390516b13).
@@ -400,6 +413,164 @@ has every run.
   modes. A complete 20k run is estimated at more than a day on one CPU
   machine; #12405 budgets it after the next fix.
 
-W2 (#12389) and W3 (#12390) stay blocked on #12405. Cost for this session:
+At the end of that run, W2 (#12389) and W3 (#12390) were blocked on #12405.
+The review below changes the proposed dependencies. Cost for that session:
 $26.55 for the A4 spot machine (0.67 h) and $22.23 for the
 `n2d-highmem-96` CPU machine (4.06 h), both deleted.
+
+## Qualification review addendum (2026-10-21)
+
+**Decision: qualify the runtime that serves users directly.** A CPU model
+that emulates every B200 instruction and collective is useful for diagnosis,
+but it is not a launch prerequisite. Retain the CPU components, original-weight
+loader, and existing arithmetic regressions. Investigate additional B200
+instructions when a bounded experiment can explain a failed accuracy check;
+do not make exhaustive hardware emulation the default next task.
+
+### Correct the premise and preserve the failed evidence
+
+The v1 policy never required every floating-point value to match bit for bit.
+Its rule is `abs(actual-reference) <= atol + rtol*abs(reference)`:
+
+| Family | Absolute limit | Relative limit |
+| --- | --- | --- |
+| F32 mixing and router scores | 0.0002 | 0.0002 |
+| BF16 activations and residuals | 0.015625 | 0.015625 |
+| F32 logits | 0.03125 | 0.015625 |
+
+Exact checks apply to embeddings, integers, and specified quantized conversions
+on identical inputs. Selection sets use only recorded exact-tie exceptions.
+The oracle's exact rerun adds no observed stochastic variation; it does not
+replace the table with zeros. Floating-point operation order can differ across
+devices and batch shapes even without randomness, as described in
+[PyTorch's numerical accuracy notes](https://docs.pytorch.org/docs/2.14/notes/numerical_accuracy.html).
+
+The connected CPU model genuinely fails those nonzero bounds. Neither the
+plausible sky answer nor the zero-repeatability correction passes v1. Keep the
+v1 policy with SHA-256
+`38ac6a059ae1385838d0188506912850bc29ba4ffc29f28dea592365deb036c5`
+and all W1/#12404 reports unchanged. The former G1 checked original-weight CPU
+parity, and the former G2 required the reference's exact complete chat/code
+answers. Record new results as **G1 v2/G2 v2**, never relabel a v1 failure.
+
+### Freeze a measurable v2 contract before qualification
+
+The next deliverable is a machine-readable policy and a GPU comparison harness,
+not a passing badge. Numerical thresholds are **not established by this review**.
+A missing threshold or required observation leaves the gate pending.
+
+1. **Identify the execution.** Record checkpoint, tokenizer and template hashes,
+   source and binary hashes, GPU architecture, compiler/libraries, precision,
+   quantizers, reduction profile, batch size, prefill chunks, cache layout,
+   placement, and decode settings. Compare decode with decode and replay with
+   replay. A changed chunk schedule is a separately labeled configuration; a
+   decode/replay gap never supplies an error allowance.
+2. **Separate calibration from qualification.** The four main prompts and four
+   edge cases have already guided fixes; they are regression/calibration data.
+   Retain complete declared coverage of them, and add a separate frozen holdout
+   with short/long contexts, window/compression boundaries, Engram, chat, and
+   code. Freeze sample counts, positions, seeds, scoring rules, numerical
+   limits, and the policy/corpus hashes before inspecting holdout results. Use
+   local arithmetic error bounds, independently validated reference controls,
+   and a stated task-quality budget to justify limits. Candidate failures and
+   the old cross-mode gap cannot set them. If a policy changes, retain the
+   failure and use a new holdout for the revised claim.
+3. **Compare full distributions on a common prefix.** Force the same oracle
+   token sequence through both executions, retaining full-vocabulary logits at
+   every required recorded position. Compute temperature-1 probabilities with
+   stable log-softmax, total variation `0.5*sum(abs(p-q))`, Jensen–Shannon
+   divergence, reference-token log-probability error, and top-1 agreement.
+   Freeze per-position ceilings and per-prompt/tail limits, not only an overall
+   mean. Report centered-logit errors separately so a uniform logit offset is
+   distinguishable from changed probabilities. Top-k dumps cannot establish a
+   full-distribution bound. Invalid shapes, nonfinite model logits, and missing
+   required positions fail.
+4. **Use margins without waiving routing.** On identical component inputs,
+   derive a score-error budget `epsilon` before the comparison. If the oracle's
+   selection-boundary gap exceeds `2*epsilon`, require the same selected set.
+   Otherwise permit only substitutions inside that uncertainty band, with a
+   frozen cap on their frequency and oracle-score regret: the oracle's sum of
+   selected scores minus the sum for Psionic's selected IDs. Always check
+   cardinality, unique valid IDs, weights, masks, and candidate reuse. Apply the
+   same principle to attention selection and top-1 logits, with their own
+   justified budgets. Connected routing also needs measured upstream error;
+   an identical-input local bound cannot justify connected-state changes. A
+   margin of 1.1e-4 at the known 20k failure is not automatically an allowed
+   near tie. Unknown uncertainty leaves that check unresolved.
+5. **Keep exact structural checks.** Check tokenizer/template IDs, shard hashes,
+   packed-weight decoding and specified conversions on identical inputs,
+   Engram hashes and gathered rows, positions, causal/window masks, cache owner
+   and lifetime, and stage/request/generation identity exactly. Exact CPU
+   split-versus-unsplit tests remain valuable. Keep same-implementation
+   deterministic checks where operation order is unchanged; use declared
+   arithmetic bounds where a GPU schedule changes it. Do not demand identical
+   connected FP8 codes after already different floating-point inputs.
+6. **Check free-running answers separately.** Teacher forcing isolates numerical
+   error but cannot establish answer quality after a different token. Run the
+   same frozen tasks independently to EOS on the oracle and served runtime.
+   Require all designated must-pass task assertions, code compilation/execution
+   tests, correct stop/cap behavior, and token-level reasoning/final parsing.
+   Predeclare a paired quality noninferiority margin and uncertainty method for
+   the broader suite; report prompt-level outcomes and sample size. Preserve
+   exact token match as a diagnostic, not the only definition of correctness.
+
+For the token-10 sky divergence, capture both logits on the common prefix and
+measure its margin and distribution error. The text alone establishes neither
+a defect nor acceptable numerical drift. The one-machine code answer used
+thinking mode whereas the oracle's p2 used chat mode, so that answer is not
+paired p2 qualification evidence.
+
+The current CUDA path's 180/625 failed v1 stage checks and CPU's 191/625 failures
+also remain evidence to investigate. Similar failure counts do not prove equal
+quality. Run direct, identical-input stage checks to locate arithmetic defects,
+then connected full-model checks to measure amplification. Validate the harness
+with deliberately wrong weights, RoPE positions, routing, and stale cache state;
+these negative controls must fail. The policy must detect implementation bugs
+as well as tolerate justified arithmetic differences.
+
+### Apply the review to all eight open issues
+
+This is the issue snapshot at review time; existing claims continue to apply.
+Comments should explain these changes before a claimed issue's owner updates
+its implementation scope.
+
+| Issue | Change or next action |
+| --- | --- |
+| #12404 | Retain the failed CPU report and missing long-context coverage. Add this policy correction; do not close it as a G1 pass. Track the v2 policy/harness and complete coverage explicitly with #12405. |
+| #12405, claimed | Replace exhaustive B200 emulation as the launch prerequisite with a bounded v2 policy/harness and direct SM120 qualification. Preserve useful measured arithmetic fixes. The owner should revise the issue body, estimate, and acceptance checklist before continuing; changing policy alone does not finish the issue. |
+| #12389 (W2) | Keep CPU generation as an explicit diagnostic deliverable. Add complete GPU answers and the G2 v2 task suite, with separate status for CPU evidence and served-runtime acceptance. Do not require exact B200 token identity for release. |
+| #12390 (W3) | Remove #12404/#12405 as numerical-parity blockers. Measure the current original-weight runtime now, label results provisional, and provide allocation inputs for placement. Repeat affected measurements after fixes. |
+| #12399 (W12), claimed | Continue transport, placement, and real-group fault checks on an explicitly unqualified runtime. G6's final numerical acceptance still needs the qualified runtime in both placements. |
+| #12401 (W14), claimed | Continue answer, cancellation, and deadline measurements now. Pair the actual oracle chat/code modes; freeze caps/deadlines before acceptance. Report TTFT and total answer time for short and long inputs. Final G2/quality evidence still needs the qualified runtime. |
+| #12403 (W16) | Keep the launch blocked on G1–G8 evidence under the versioned contract, not CPU hardware emulation. A visible group and a plausible answer alone do not pass it. |
+| #12369 | Update the epic's gate summary to G1/G2 v2 and retain the failed v1 record. Psionic remains the only serving engine; CPU component checks remain part of G3. |
+
+Priority: freeze the v2 policy and build the direct GPU comparator first;
+run provisional measurements and lifecycle/deadline checks independently;
+then complete numerical/quality qualification and both placements before launch.
+New B200 time should buy missing oracle evidence, calibration controls, or a
+specific diagnostic experiment, rather than an open-ended instruction inventory.
+
+### Billing and prefill follow-ups
+
+The billing guard fix already landed in `d85e58b2f0`: flex-start settlement
+uses the machine's start time rather than its queued-request time. The native
+plan's earlier sentence that queue time is charged is superseded. Google's
+[capacity documentation](https://docs.cloud.google.com/ai-hypercomputer/docs/obtain-capacity)
+states that flex-start resources are charged when in use. This does not verify
+the disputed $136.53 against the bill. Reconcile
+`oa-dsv41-12405-europewest4b` using its instance ID, audit start/stop events,
+and billing export by SKU/time, separating GPU/CPU usage from disks and other
+charges. Keep budget reservations, estimated settlement, and actual billed
+usage distinct; do not refund a ledger entry solely from an absent running VM.
+
+The [one-machine receipt](verification/deepseek-v41-g5-one-quad-2026-10-21.json)
+records 35.6 s TTFT for 1,072 tokens and about 120 tokens/s per serial stage.
+First test batched prefill within one stage, then bounded chunk overlap across
+the four stages. These are separate optimizations: measure GPU utilization,
+memory, stage/link time, TTFT, and total answer latency for each. With one
+request's dependent chunks, respect KV/compressor/indexer and Engram state
+order and the serial group's cancellation/admission rules. Requalify any
+changed arithmetic schedule. Freeze the W14 deadline target and context range
+first; make a prefill change a launch blocker only if that profile misses its
+declared budget. Keep larger-context throughput work separately scoped.

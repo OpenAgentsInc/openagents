@@ -1642,6 +1642,11 @@ guard's ledger, deleted.
 
 ## #12404: B200 capture, device arithmetic, and the next divergence (2026-10-21 UTC)
 
+This section records the v1 investigation. The
+[qualification review below](#qualification-review-addendum-2026-10-21)
+supersedes its requirement that every serving stage adopt B200 arithmetic.
+Its failed comparisons and measured device behavior remain unchanged.
+
 **G1 still fails, with a new first cause.** G1 qualifies the
 `ReferenceBf16Tp8` profile: the eight-B200 TP8 oracle's arithmetic, including
 reductions whose layout depends on how many rows a forward processes. The
@@ -1656,8 +1661,9 @@ the machine type: us-central1-b refused with `ZONE_RESOURCE_POOL_EXHAUSTED`
 (STOCKOUT) at 04:44:48Z, and us-east1-b granted capacity at 04:45:02Z on the
 second attempt. Flex-start, Vertex AI, and other GPUs were not needed. For a
 later shortage, the guard now takes `--flex-start --queue-hours H`: it queues
-the request through the Dynamic Workload Scheduler and counts the queue time
-plus the run at the A4 flex-start price ($64.44/h, Billing Catalog
+the request through the Dynamic Workload Scheduler. Queue time extends the
+guard's expiry reservation; compute settlement starts when the VM runs
+(`d85e58b2f0`), at the A4 flex-start price ($64.44/h, Billing Catalog
 2026-10-21). The spot machine ran 0.67 h for **$26.55** and was deleted.
 
 ### Capture and repeatability
@@ -1674,8 +1680,9 @@ NCCL tuning logs. Uploaded to
 **Same-mode repeatability is exact.** `oracle_repeat.py` compares the rerun
 with the #12371 dump: all 18,000 shared tensors, every per-layer residual hash
 (1,360 per main prompt, 400 per edge case), every decode logit hash, and every
-generated token are equal. The oracle grants no repeatability allowance; the
-frozen limits stay as they are. NCCL used ring LL over ranks 0..7 below
+generated token are equal. This establishes zero observed repeat variation,
+not zero cross-implementation error limits; the frozen nonzero v1 float
+limits stay as they are. NCCL used ring LL over ranks 0..7 below
 2.76 MB and NVLS (switch reduction) above.
 
 ### Device arithmetic, measured
@@ -1766,3 +1773,41 @@ follows `sm100::sparse_attention`, FP8 projections use one fused sum per 32
 inputs, and `wo_a` depends on whether the chunk has one row; the API is
 additive, and the earlier TP8 attention remains as
 `sparse_attention_bf16_tp8_sequential`.
+
+## Qualification review addendum (2026-10-21)
+
+**Qualify the served RTX PRO 6000 runtime directly against the oracle.**
+The [completion checklist's review](deepseek-v41-completion.md#qualification-review-addendum-2026-10-21)
+defines the planned G1/G2 v2 contract and its effect on all eight open issues.
+It supersedes earlier launch instructions that require a bit-exact CPU model
+of every B200 instruction, cuBLAS reduction, and NVSwitch collective. The CPU
+port remains a component reference and a useful independent diagnostic path;
+existing B200 arithmetic fixes and regressions remain useful evidence.
+
+The frozen W1 float limits were nonzero even before the exact oracle repeat.
+Do not reinterpret repeatability as an instruction to set those limits to zero.
+The connected CPU model still fails the unchanged v1 policy, and those reports
+stay failed. G1 v2 is **pending**, with no new numerical limits or passing run
+established by this review. Freeze a versioned policy and separate holdout
+before qualification; never enlarge the existing policy to relabel a failure.
+
+The GPU harness must compare full-vocabulary distributions and margin-aware
+top-1/routing decisions on common oracle token prefixes, with exact format,
+position, mask, cache, and state checks. Near ties need a justified score-error
+budget and bounded substitutions, not a blanket exception. Independently
+generated complete answers must also pass task and stop/format checks;
+teacher forcing alone cannot establish free-running quality. Keep decode and
+replay separate and identify each precision and prefill schedule explicitly.
+
+#12405's owner should rescope its next work to that policy, harness, and direct
+GPU qualification, using new B200 time for missing evidence or bounded
+diagnosis. W3 memory/allocation measurements can proceed provisionally, and
+W12/W14 can run transport, recovery, and deadline checks before numerical
+acceptance. Neither their progress nor a plausible sky answer passes the
+release gates. W16 and the epic still require all eight gates with evidence.
+
+The billing guard's queued-request fix is already on main in `d85e58b2f0`;
+an actual-bill reconciliation remains separate. For prefill, compare batching
+within a stage before overlapping bounded chunks across stages, preserving
+request-owned state order. Any changed schedule needs its own qualification;
+use the measured W14 context range and deadline to decide launch priority.
