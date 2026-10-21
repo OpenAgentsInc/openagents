@@ -86,3 +86,23 @@ The `half_life_hours` task on `memory-stream`, every step on
 | DeepSeek answer per step (4 to 6 KiB prompts) | 85 to 95 s |
 | The group's prompt limit | 2,872 tokens; a 13 KiB prompt was refused |
 | Remote `cargo test` | 1 run, 6 passed, 7.7 s on the runner |
+
+## The publish run
+
+The same task with publishing, end to end on 2026-10-21 (commit
+`e21ed111f1` of `main`):
+
+| What | Value |
+| --- | --- |
+| Load `crates/memory-stream` | 1.03 s (0.70 s for the commit and tree) |
+| Steps | 8, every one on `DeepSeek-V4.1 w16-g5c` |
+| DeepSeek answers | 24.5, 32.5, 74.1, 72.0, 104.9, 94.5, 84.6, 91.4 s |
+| Remote `cargo test` on the edited file | 6.9 s from the page, 6.5 s on the runner |
+| The runner's check of the published patch (`git apply`, then `cargo test`) | 5.7 s on the runner |
+| Total, task to published and checked patch | 614 s |
+
+The patch, event `3b06062ede4f3d0c097f2c21cd6e92896113d923e96bacb69f54a24578dd80a6`
+on `wss://relay.openagents.com`, adds `half_life_hours()` with a doc
+comment and the test `half_life_is_where_recency_reaches_one_half` to
+`crates/memory-stream/src/lib.rs` (14 insertions). `review.html` reads it
+back with its diff, "open", and the runner's "tests pass" check.

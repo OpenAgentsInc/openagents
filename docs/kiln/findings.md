@@ -158,3 +158,21 @@ What this run shows, and what it doesn't:
   `xcrun` wants a cache file under `/var/folders`, which the boundary
   refuses with a harmless warning. The runner grants the config files
   read-only and switches the wrapper off.
+
+## The NIP-34 demo milestone
+
+From the Kiln page, an agent on DeepSeek V4.1 added a function and a test
+to `crates/memory-stream`, got a green remote `cargo test`, and published
+the change as a kind `1617` patch. The runner applied that exact patch
+with `git apply`, tested it again, and signed a "tests pass" comment on it;
+`review.html` shows the patch as reviewable. What's still missing for real
+use, in phase order in [workstation.md](workstation.md#phases):
+
+- The patch is signed by the page's throwaway key and labelled "unverified
+  author"; player signing (NIP-07 or NIP-46) and agent mandates are phase 3.
+- The repository announcement is the runner's demo announcement, not the
+  owner's `openagents` one.
+- No one can merge from Nostr yet: `openagents git apply EVENT` and the
+  GitHub bridge are phases 4 and 5.
+- The runner admits any key; it needs an admission list and quotas before
+  a public page uses it.
