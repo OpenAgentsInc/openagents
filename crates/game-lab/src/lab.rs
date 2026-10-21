@@ -45,6 +45,9 @@ pub struct Lab {
     pub base: String,
     build: Mutex<Build>,
     writes: Mutex<()>,
+    /// The command run after each saved edit ([`Lab::on_save`]); from
+    /// `GAME_LAB_ON_SAVE` when the Lab opens.
+    pub on_save: Option<std::ffi::OsString>,
 }
 
 fn now() -> u64 {
@@ -103,6 +106,7 @@ impl Lab {
             base: "http://127.0.0.1:8793".into(),
             build: Mutex::new(Build::Building),
             writes: Mutex::new(()),
+            on_save: std::env::var_os("GAME_LAB_ON_SAVE"),
         };
         if lab.latest(ICE_CREAM_MAN).is_none() {
             let original = doc::original();
@@ -566,6 +570,7 @@ impl Lab {
         }
         let author = args["author"].as_str().unwrap_or("the chat");
         let (n, saved) = self.save(game, &after, summary, author, Some(base))?;
+        let published = self.on_save(game, n);
         let lines: Vec<String> = changes
             .iter()
             .map(|(path, x, y)| format!("{path}: {} → {}", short(x), short(y)))
@@ -580,7 +585,40 @@ impl Lab {
             "differences": differences(&record["stats"], &saved["stats"]),
             "text": format!("Saved version {n}. {}", measured.line()),
             "card": self.card(game, n, None)?,
+            "published": published,
         }))
+    }
+
+    /// Runs [`Lab::on_save`] (`GAME_LAB_ON_SAVE`), when set, after an edit
+    /// is saved, with `GAME_LAB_GAME`, `GAME_LAB_VERSION`, and `GAME_LAB_DIR`
+    /// in its environment. The Ice Cream Man's live zone uses it to publish
+    /// each new version to players in seconds
+    /// (`docs/verse/ice-cream-man-live.md`). Its last output line, as JSON
+    /// when it is JSON, goes back with the edit; a failure is reported, and
+    /// the saved version stands.
+    fn on_save(&self, game: &str, n: u64) -> Value {
+        let Some(command) = &self.on_save else {
+            return Value::Null;
+        };
+        let output = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .env("GAME_LAB_GAME", game)
+            .env("GAME_LAB_VERSION", n.to_string())
+            .env("GAME_LAB_DIR", &self.root)
+            .stdin(std::process::Stdio::null())
+            .output();
+        match output {
+            Ok(out) if out.status.success() => {
+                let text = String::from_utf8_lossy(&out.stdout);
+                let last = text.lines().last().unwrap_or_default();
+                serde_json::from_str(last).unwrap_or_else(|_| json!(last))
+            }
+            Ok(out) => json!({
+                "error": String::from_utf8_lossy(&out.stderr).lines().last().unwrap_or("it failed"),
+            }),
+            Err(e) => json!({ "error": e.to_string() }),
+        }
     }
 
     fn versions_tool(&self, game: &str) -> Value {
@@ -905,7 +943,9 @@ mod tests {
     fn lab() -> (tempdir::Dir, Lab) {
         let dir = tempdir::Dir::new();
         let repo = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
-        let lab = Lab::open(dir.path.clone(), repo).unwrap();
+        let mut lab = Lab::open(dir.path.clone(), repo).unwrap();
+        // A developer's own hook never runs in tests.
+        lab.on_save = None;
         (dir, lab)
     }
 
@@ -978,6 +1018,32 @@ mod tests {
         assert_eq!(compared["card"]["compare"]["a"]["version"], 1);
         // Both sides of a compare play the same house.
         assert_eq!(compared["card"]["compare"]["a"]["fragment"], "seed=7");
+    }
+
+    #[test]
+    fn a_saved_edit_runs_the_on_save_command_with_its_version() {
+        let (_dir, mut lab) = lab();
+        lab.on_save = Some(
+            "echo starting; echo \"{\\\"live\\\": \\\"$GAME_LAB_GAME v$GAME_LAB_VERSION\\\"}\""
+                .into(),
+        );
+        let patch = "[{\"op\":\"replace\",\"path\":\"/layout/extra_closets\",\"value\":4}]";
+        let edited = lab.run(
+            "game_edit",
+            &json!({"game": ICE_CREAM_MAN, "patch": patch, "summary": "Two more hiding spots"}),
+        );
+        assert_eq!(
+            edited["published"]["live"], "the-ice-cream-man v2",
+            "{edited}"
+        );
+        lab.on_save = Some("exit 3".into());
+        let patch = "[{\"op\":\"replace\",\"path\":\"/layout/extra_closets\",\"value\":3}]";
+        let edited = lab.run(
+            "game_edit",
+            &json!({"game": ICE_CREAM_MAN, "patch": patch, "summary": "One fewer"}),
+        );
+        assert_eq!(edited["saved"], true);
+        assert!(edited["published"]["error"].is_string(), "{edited}");
     }
 
     #[test]
