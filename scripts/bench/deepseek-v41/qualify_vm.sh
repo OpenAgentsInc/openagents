@@ -12,7 +12,10 @@
 #                         local SSDs; both upload everything under RESULTS
 #
 # Environment: WORKER (the build's gs:// folder, .../COMMIT/sm_120),
-# MANIFEST (the one-quad group manifest's SHA-256), RESULTS (gs:// folder).
+# BUILD (the BUILD.json SHA-256 v41-stage-build.sh printed: the independent
+# pin, never read from the bucket), MANIFEST (the one-quad group manifest's
+# SHA-256), RESULTS (gs:// folder). v41-build-check.py from scripts/pylon/
+# sits beside this script on the machine.
 set -euo pipefail
 
 ROOT=/mnt/stage
@@ -23,7 +26,7 @@ export LD_LIBRARY_PATH=$ROOT/bin/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 log() { printf '%s %s\n' "$(date -u +%H:%M:%SZ)" "$*"; }
 
 setup() {
-  : "${WORKER:?}" "${MANIFEST:?}"
+  : "${WORKER:?}" "${BUILD:?}" "${MANIFEST:?}"
   command -v mdadm >/dev/null || { sudo apt-get -qq update && sudo apt-get -qq install -y mdadm >/dev/null; }
   if ! mountpoint -q $ROOT && ! ls /dev/disk/by-id/google-local-nvme-ssd-* >/dev/null 2>&1; then
     # No local SSDs (a G4 without Titanium SSDs): use the boot disk.
@@ -40,6 +43,8 @@ setup() {
   gcloud storage cp -q "$WORKER/lib/*" $ROOT/bin/lib/
   gcloud storage cp -q "$WORKER/manifests/$MANIFEST.json" $ROOT/weights/manifests/
   chmod 755 $BIN
+  # The bundle must match the pin (#12410): BUILD.json, the worker, every library.
+  python3 "$(dirname "$0")/v41-build-check.py" build $ROOT/bin "$MANIFEST" --pin "$BUILD"
   gcloud storage rsync -q -r $ORACLE $ROOT/oracle &
   gcloud storage rsync -q -r $MODELS $ROOT/weights
   wait
@@ -58,7 +63,7 @@ setup() {
 
 qualify() {
   local out=$1; shift
-  timeout 21600 $BIN qualify --weights $ROOT/weights --manifest "sha256:$MANIFEST" \
+  timeout 21600 $BIN qualify --weights $ROOT/weights --manifest "sha256:$MANIFEST" --worker-build "$BUILD" \
     --oracle $ROOT/oracle --out "$out" --max-context 2560 "$@" > "$out.log" 2>&1 \
     || log "qualify $out exited $?"
   gcloud storage rsync -q -r -x 'record/.*\.u32$' $ROOT/out "$RESULTS" || true
