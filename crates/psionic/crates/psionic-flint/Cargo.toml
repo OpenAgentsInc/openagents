@@ -1,0 +1,30 @@
+[package]
+name = "psionic-flint"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Native Rust Flint safetensors inference for Psionic"
+
+[lints]
+workspace = true
+
+[features]
+default = []
+cuda = ["candle/cuda", "candle-nn/cuda"]
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+candle = { package = "candle-core", version = "0.9.2" }
+candle-nn = "0.9.2"
+rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokenizers = { version = "0.23.1", default-features = false, features = ["onig"] }
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

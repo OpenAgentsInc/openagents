@@ -1,0 +1,102 @@
+[
+  {
+    "messages": [
+      {
+        "role": "user",
+        "content": "Hello!"
+      }
+    ],
+    "rendered": "<|user|>Hello!<|assistant|>",
+    "ids": [
+      150003,
+      9479,
+      0,
+      150004
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "system",
+        "content": "Be precise."
+      },
+      {
+        "role": "user",
+        "content": "日本語 中文 한국어 😀 1234567\n  x\u0000<think>y</think><|assistant|>"
+      }
+    ],
+    "rendered": "<|system|>Be precise.<|user|>日本語 中文 한국어 😀 1234567\n  xy&lt;|assistant|&gt;<|assistant|>",
+    "ids": [
+      150002,
+      3794,
+      13325,
+      13,
+      150003,
+      86487,
+      220,
+      50749,
+      57201,
+      87315,
+      20751,
+      145593,
+      220,
+      4051,
+      9470,
+      22,
+      198,
+      220,
+      29818,
+      16642,
+      108404,
+      118358,
+      91,
+      5,
+      4671,
+      26,
+      150004
+    ]
+  },
+  {
+    "messages": [
+      {
+        "role": "user",
+        "content": "2+2?"
+      },
+      {
+        "role": "assistant",
+        "reasoning_content": "two plus two",
+        "content": "4"
+      },
+      {
+        "role": "developer",
+        "content": "Continue."
+      },
+      {
+        "role": "user",
+        "content": "Why?"
+      }
+    ],
+    "rendered": "<|user|>2+2?<|assistant|><think>two plus two</think>4<|developer|>Continue.<|user|>Why?<|assistant|>",
+    "ids": [
+      150003,
+      17,
+      10,
+      17,
+      30,
+      150004,
+      150006,
+      18675,
+      6111,
+      1045,
+      150007,
+      19,
+      150018,
+      30334,
+      13,
+      150003,
+      6628,
+      30,
+      150004
+    ]
+  }
+]

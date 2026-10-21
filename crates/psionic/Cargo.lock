@@ -5013,6 +5013,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-flint"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "candle-core",
+ "candle-nn",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "tokenizers",
+ "tokio",
+]
+
+[[package]]
 name = "psionic-inference"
 version = "1.0.0"
 dependencies = [
