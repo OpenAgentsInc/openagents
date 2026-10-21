@@ -66,6 +66,9 @@ pub const DATA_PORT: u16 = 47_200;
 /// A stage machine's boot-disk throughput in MiB/s: Hyperdisk Balanced's
 /// maximum for one disk.
 pub const DISK_MIBPS: u32 = 2_400;
+/// The IOPS that throughput needs: Hyperdisk Balanced moves at most
+/// 256 KiB per operation, and provisioning one needs both.
+pub const DISK_IOPS: u32 = 12_000;
 /// The image a head-only machine boots.
 pub const HEAD_IMAGE_FAMILY: &str = "debian-12";
 pub const HEAD_IMAGE_PROJECT: &str = "debian-cloud";
@@ -476,6 +479,7 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
                 // The weights load from this disk; its default throughput
                 // would take most of an hour for a whole checkpoint.
                 format!("--boot-disk-provisioned-throughput={DISK_MIBPS}"),
+                format!("--boot-disk-provisioned-iops={DISK_IOPS}"),
                 format!("--image-family={IMAGE_FAMILY}"),
                 format!("--image-project={IMAGE_PROJECT}"),
                 "--scopes=storage-ro".into(),
