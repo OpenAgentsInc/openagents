@@ -1267,3 +1267,26 @@ fn a_one_machine_group_heads_itself_and_takes_its_limits() {
     };
     assert!(step("76").is_err());
 }
+
+/// `--mode chat` heads the group in the model's chat mode (W2, #12389), as
+/// the oracle's p2 prompt needs; a thinking-mode lane serializes as before.
+#[test]
+fn a_cloud_group_head_takes_its_prompt_mode() {
+    let parse = |words: &[&str]| {
+        let words: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
+        cloud::parse_up(
+            &words,
+            &repo(),
+            Path::new("/home/me"),
+            "wss://relay.example",
+        )
+    };
+    let (up, _) = parse(&["one-quad"]).unwrap();
+    let lane = cloud::group_lane(&up, &cloud::plan(&up).unwrap());
+    assert!(serde_json::to_value(&lane).unwrap().get("mode").is_none());
+    let (up, _) = parse(&["one-quad", "--mode", "chat"]).unwrap();
+    let lane = cloud::group_lane(&up, &cloud::plan(&up).unwrap());
+    assert_eq!(lane.mode, pylon::stage_group::PromptMode::Chat);
+    assert_eq!(serde_json::to_value(&lane).unwrap()["mode"], "chat");
+    assert!(parse(&["one-quad", "--mode", "terse"]).is_err());
+}

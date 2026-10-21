@@ -248,6 +248,8 @@ pub struct Up {
     pub deadline_secs: u64,
     pub max_output_tokens: u32,
     pub sampling: Sampling,
+    /// How the stages render prompts and parse answers (`--mode`).
+    pub mode: crate::stage_group::PromptMode,
     pub relay: String,
     /// Keys that may send jobs; `None` admits any key.
     pub allow: Option<BTreeSet<String>>,
@@ -308,6 +310,7 @@ impl Up {
             deadline_secs: 90,
             max_output_tokens: 1_024,
             sampling: Sampling::new(0.6, 0.95, 0).unwrap_or_else(|_| unreachable!()),
+            mode: crate::stage_group::PromptMode::default(),
             relay: DEFAULT_RELAY.into(),
             allow: None,
             guard: Guard::new(repo),
@@ -940,7 +943,7 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
         deadline_secs: up.deadline_secs,
         max_output_tokens: up.max_output_tokens,
         sampling: up.sampling,
-        mode: crate::stage_group::PromptMode::default(),
+        mode: up.mode,
         stages,
         transport: up.transport,
         links: crate::stage_group::LinkPolicy::default(),
@@ -1586,6 +1589,8 @@ checkout on the one host that allocates for the budget.
       --temperature T       The head's sampling temperature (default 0.6;
                             0 samples greedily).
       --top-p P             The head's top-p (default 0.95).
+      --mode MODE           Render prompts in the model's thinking mode
+                            (the default) or its chat mode (chat).
       --ready-secs N        How long the launch waits for every stage to
                             load, weights copy included (default 1800).
       --step-secs N         How long one step may take, a long prompt's
@@ -1665,6 +1670,7 @@ pub fn parse_up(
     let step = take_number(&mut words, "--step-secs")?;
     let temperature = value(&mut words, "--temperature")?;
     let top_p = value(&mut words, "--top-p")?;
+    let mode = value(&mut words, "--mode")?;
     let allow = take_values(&mut words, "--allow")?;
     let head = value(&mut words, "--head")?;
     let head_machine_type = value(&mut words, "--head-machine-type")?;
@@ -1754,6 +1760,12 @@ pub fn parse_up(
             number(top_p, "--top-p", 0.95)?,
             0,
         )?;
+    }
+    match mode.as_deref() {
+        None => {}
+        Some("thinking") => up.mode = crate::stage_group::PromptMode::Thinking,
+        Some("chat") => up.mode = crate::stage_group::PromptMode::Chat,
+        Some(other) => return Err(format!("--mode {other} is not thinking or chat")),
     }
     if let Some(ready) = ready {
         if ready == 0 {
