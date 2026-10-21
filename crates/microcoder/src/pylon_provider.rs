@@ -301,6 +301,11 @@ impl Generate for PylonGenerator {
                 };
                 free(action, model, used)
             }
+            Outcome::Busy => free(
+                Err("every pylon serving this model is busy; try again shortly".into()),
+                self.model.clone(),
+                (0, 0),
+            ),
             Outcome::Declined => free(
                 Err("the pylon router handed the step back".into()),
                 self.model.clone(),

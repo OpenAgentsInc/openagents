@@ -1728,13 +1728,13 @@ mod tests {
     }
 
     /// The phone's read-only list is the owner's list the worker's CLI
-    /// route offers from (`coder::cli_route::gate::PHONE_COMMANDS`), which
+    /// route offers from (`coder_router::cli_route::gate::PHONE_COMMANDS`), which
     /// this crate cannot depend on: read it from its source. It also takes
     /// `ext list`, the wire name the worker sends for `plugin list`
     /// (`coder::cli_route::tree::WIRE_NAMES`).
     #[test]
     fn the_read_only_list_matches_the_worker_phone_list() {
-        let gate = include_str!("../../coder/src/cli_route/gate.rs");
+        let gate = include_str!("../../coder-router/src/cli_route/gate.rs");
         let start = gate
             .find("pub const PHONE_COMMANDS")
             .expect("the worker's phone list");
