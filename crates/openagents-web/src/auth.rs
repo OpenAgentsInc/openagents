@@ -46,8 +46,12 @@ pub(crate) fn routes() -> Router<App> {
             get(crate::workos_auth::callback),
         )
         .route(
-            "/v1/admin/workos/{operation}",
-            post(crate::workos_auth::admin_sessions),
+            "/v1/admin/workos/retire-sessions",
+            post(crate::workos_auth::retire_sessions),
+        )
+        .route(
+            "/v1/admin/workos/restore-sessions",
+            post(crate::workos_auth::restore_sessions),
         )
         .route("/login/code", post(crate::workos_auth::send_code))
         .route(

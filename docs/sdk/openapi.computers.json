@@ -1336,7 +1336,7 @@
     },
     "securitySchemes": {
       "appBearer": {
-        "description": "A live app sess_ session or oa_sk_ sign-in key. Account-bound oak_ keys are accepted only where the operation declares them and their scopes permit it. API cookies are ignored.",
+        "description": "A WorkOS access JWT, live app sess_ session, or oa_sk_ sign-in key. Account-bound oak_ keys are accepted only where the operation declares them and their scopes permit it. API cookies are ignored.",
         "scheme": "bearer",
         "type": "http"
       }
@@ -1350,7 +1350,7 @@
   "paths": {
     "/v1/account": {
       "get": {
-        "description": "Existing account and current workspace memberships. Accepts app sess_ sessions, oa_sk_ sign-in keys, and account-bound oak_ API keys. Credential prefixes alone do not prove authorization.",
+        "description": "Existing account and current workspace memberships. Accepts WorkOS access JWTs, app sess_ sessions, oa_sk_ sign-in keys, and account-bound oak_ API keys with the required scopes. API cookies are ignored. Credential prefixes alone do not prove authorization.",
         "operationId": "getAccount",
         "responses": {
           "200": {

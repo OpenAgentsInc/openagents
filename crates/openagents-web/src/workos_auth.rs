@@ -1505,13 +1505,29 @@ pub(crate) async fn layer(State(app): State<App>, mut request: Request, next: Ne
 
 /// Forward the operator's own bearer; the gateway checks its admin token.
 /// Browser cookies are never substituted for this credential.
-pub(crate) async fn admin_sessions(
+pub(crate) async fn retire_sessions(
     State(app): State<App>,
-    Path(operation): Path<String>,
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Response {
-    if !matches!(operation.as_str(), "retire-sessions" | "restore-sessions") {
+    admin_sessions(app, "retire-sessions", headers, body).await
+}
+
+pub(crate) async fn restore_sessions(
+    State(app): State<App>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    admin_sessions(app, "restore-sessions", headers, body).await
+}
+
+async fn admin_sessions(
+    app: App,
+    operation: &str,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    if !matches!(operation, "retire-sessions" | "restore-sessions") {
         return StatusCode::NOT_FOUND.into_response();
     }
     let Some((service, _)) = on(&app) else {

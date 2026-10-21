@@ -59,9 +59,25 @@ pub fn document() -> Value {
         }
         paths[path] = json!({"post": operation});
     }
+    paths["/v1/device/refresh"] = json!({"post": {
+        "operationId": "refreshAppSession", "tags": ["App authentication"], "security": [],
+        "description": "Refresh a capable app's WorkOS credentials. Send the refresh token as JSON; no Authorization header or browser cookie is required. Save both returned tokens together and use the returned refresh token for the next request, even if it is unchanged. The response has no account field; use GET /v1/account with the new access token to read the account. Legacy sess_ credentials do not use this operation.",
+        "requestBody": {"required": true, "content": {"application/json": {"schema": reference("RefreshRequest")}}},
+        "responses": {
+            "200": response("RefreshedSession", "The refreshed WorkOS credentials. Do not cache or log tokens."),
+            "400": response("AccountError", "Missing or invalid refresh_token, or an expired grant."),
+            "401": response("AccountError", "Expired, revoked, or already used refresh token, or an unlinked WorkOS user."),
+            "403": response("AccountError", "WorkOS requires another sign-in step."),
+            "404": response("AccountError", "WorkOS sign-in is disabled or the requested user no longer exists."),
+            "413": response("AccountError", "The request exceeds 16384 bytes."),
+            "429": response("AccountError", "WorkOS asks the app to wait before trying again."),
+            "503": response("AccountError", "Sign-in is temporarily unavailable."),
+            "default": response("AccountError", "Another account-service refusal.")
+        }
+    }});
     paths["/v1/account"] = json!({"get": {
         "operationId": "getAccount", "tags": ["Account"], "security": [{"appBearer": []}],
-        "description": "Existing account and current workspace memberships. Accepts app sess_ sessions, oa_sk_ sign-in keys, and account-bound oak_ API keys. Credential prefixes alone do not prove authorization.",
+        "description": "Existing account and current workspace memberships. Accepts WorkOS access JWTs, app sess_ sessions, oa_sk_ sign-in keys, and account-bound oak_ API keys with the required scopes. API cookies are ignored. Credential prefixes alone do not prove authorization.",
         "responses": {
             "200": response("AccountView", "The authenticated account."),
             "401": response("AccountError", "Missing, expired, invalid, or revoked credential."),
@@ -76,7 +92,7 @@ pub fn document() -> Value {
         "servers": [{"url": "https://api.openagents.com"}],
         "paths": paths,
         "components": {
-            "securitySchemes": {"appBearer": {"type": "http", "scheme": "bearer", "description": "A live app sess_ session or oa_sk_ sign-in key. Account-bound oak_ keys are accepted only where the operation declares them and their scopes permit it. API cookies are ignored."}},
+            "securitySchemes": {"appBearer": {"type": "http", "scheme": "bearer", "description": "A WorkOS access JWT, live app sess_ session, or oa_sk_ sign-in key. Account-bound oak_ keys are accepted only where the operation declares them and their scopes permit it. API cookies are ignored."}},
             "schemas": {
                 "AppDeviceRequest": {"type": "object", "required": ["computer"], "properties": {
                     "app": {"type": "string", "maxLength": 64, "default": "Coder"},
@@ -95,6 +111,16 @@ pub fn document() -> Value {
                 "AppSession": {"type": "object", "required": ["access_token", "token_type", "expires_in", "account"], "properties": {
                     "access_token": {"type": "string", "x-sensitive": true}, "token_type": {"const": "Bearer"},
                     "expires_in": {"type": "integer", "minimum": 0, "maximum": 2592000}, "account": reference("Account")
+                }},
+                "AppRefreshRequest": {"type": "object", "required": ["refresh_token"], "properties": {
+                    "refresh_token": {"type": "string", "minLength": 1, "maxLength": 8192, "x-sensitive": true}
+                }},
+                "AppRefreshedSession": {"type": "object", "required": ["v", "access_token", "refresh_token", "token_type", "expires_in"], "properties": {
+                    "v": {"const": "openagents.accounts.v1"},
+                    "access_token": {"type": "string", "description": "The new WorkOS access JWT.", "x-sensitive": true},
+                    "refresh_token": {"type": "string", "description": "The returned refresh token; save and use it for the next request, even if unchanged.", "x-sensitive": true},
+                    "token_type": {"const": "Bearer"},
+                    "expires_in": {"type": "integer", "minimum": 0}
                 }},
                 "AppSignedOut": {"type": "object", "required": ["signed_out"], "properties": {"signed_out": {"const": true}}},
                 "AppAccount": {"type": "object", "required": ["id", "label"], "properties": {

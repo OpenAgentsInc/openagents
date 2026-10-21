@@ -180,6 +180,118 @@
         "description": "Revoke this app session. Already expired/revoked sessions are signed out. A sign-in key is a session too; revoking it here is not a local forget operation."
       }
     },
+    "/v1/device/refresh": {
+      "post": {
+        "operationId": "refreshAppSession",
+        "tags": [
+          "App authentication"
+        ],
+        "security": [],
+        "description": "Refresh a capable app's WorkOS credentials. Send the refresh token as JSON; no Authorization header or browser cookie is required. Save both returned tokens together and use the returned refresh token for the next request, even if it is unchanged. The response has no account field; use GET /v1/account with the new access token to read the account. Legacy sess_ credentials do not use this operation.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AppRefreshRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The refreshed WorkOS credentials. Do not cache or log tokens.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRefreshedSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing or invalid refresh_token, or an expired grant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Expired, revoked, or already used refresh token, or an unlinked WorkOS user.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "WorkOS requires another sign-in step.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "WorkOS sign-in is disabled or the requested user no longer exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request exceeds 16384 bytes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "WorkOS asks the app to wait before trying again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Sign-in is temporarily unavailable.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Another account-service refusal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppAccountError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/account": {
       "get": {
         "operationId": "getAccount",
@@ -191,7 +303,7 @@
             "appBearer": []
           }
         ],
-        "description": "Existing account and current workspace memberships. Accepts app sess_ sessions, oa_sk_ sign-in keys, and account-bound oak_ API keys. Credential prefixes alone do not prove authorization.",
+        "description": "Existing account and current workspace memberships. Accepts WorkOS access JWTs, app sess_ sessions, oa_sk_ sign-in keys, and account-bound oak_ API keys with the required scopes. API cookies are ignored. Credential prefixes alone do not prove authorization.",
         "responses": {
           "200": {
             "description": "The authenticated account.",
@@ -27112,7 +27224,7 @@
       "appBearer": {
         "type": "http",
         "scheme": "bearer",
-        "description": "A live app sess_ session or oa_sk_ sign-in key. Account-bound oak_ keys are accepted only where the operation declares them and their scopes permit it. API cookies are ignored."
+        "description": "A WorkOS access JWT, live app sess_ session, or oa_sk_ sign-in key. Account-bound oak_ keys are accepted only where the operation declares them and their scopes permit it. API cookies are ignored."
       },
       "labWorkerBearer": {
         "type": "http",
@@ -27234,6 +27346,52 @@
           },
           "account": {
             "$ref": "#/components/schemas/AppAccount"
+          }
+        }
+      },
+      "AppRefreshRequest": {
+        "type": "object",
+        "required": [
+          "refresh_token"
+        ],
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192,
+            "x-sensitive": true
+          }
+        }
+      },
+      "AppRefreshedSession": {
+        "type": "object",
+        "required": [
+          "v",
+          "access_token",
+          "refresh_token",
+          "token_type",
+          "expires_in"
+        ],
+        "properties": {
+          "v": {
+            "const": "openagents.accounts.v1"
+          },
+          "access_token": {
+            "type": "string",
+            "description": "The new WorkOS access JWT.",
+            "x-sensitive": true
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "The returned refresh token; save and use it for the next request, even if unchanged.",
+            "x-sensitive": true
+          },
+          "token_type": {
+            "const": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
