@@ -27,6 +27,20 @@ defines the required evidence and the transition from v1. G1 v1 remains
 failed; G1 v2 is pending a frozen numerical policy, harness, and full run.
 No existing result becomes a pass through this revision.
 
+**Launch scope revision, 2026-10-21 (owner decision):** the launch uses the
+short served profile: prompts of up to **2,872 tokens** (the checked
+four-stage CUDA budget, #12408), an 8,192-position context, a 4,096-token
+output cap, a 75 s step limit, and a 600 s deadline (W14). For G1 and G2,
+"complete declared coverage" means coverage of that profile: the oracle's
+chat, code and 2k prompts (p1–p3, all within 2,872 tokens), the edge cases,
+and the holdout, each within the profile. The 19,989-token p4 prompt and
+chunked prefill are out of the launch scope and move to
+[#12414](https://github.com/OpenAgentsInc/openagents/issues/12414). The
+served profile and the beacon's `request_limits` must advertise the
+2,872-token bound, and a 2,873-token request must be refused before any
+stage runs it. Revised before any G1 v2 result was observed; no failed
+result becomes a pass through it.
+
 | Gate | Passes when | Evidence |
 | --- | --- | --- |
 | **G1. Served-runtime numerical qualification** | The original-weight GPU runtime passes a versioned, prospectively frozen policy against same-mode oracle tokens: full-vocabulary distribution error, margin-aware token and routing checks, exact structural checks, and complete declared coverage. The four main prompts, edge cases, and a separate holdout are required. | Policy and corpus hashes, full comparison report, and runtime identity; v1 CPU failures retained separately |
@@ -795,8 +809,10 @@ length it qualifies.
 
 Chunked prefill isn't implemented. Each front step is one inbox step today,
 so a chunk schedule needs a step mapping between the front and the stages,
-cancellation across chunks, and its own qualification; it stays follow-up
-work for a profile that needs longer prompts.
+cancellation across chunks, and its own qualification. The owner decided on
+2026-10-21 to launch with the 2,872-token profile; longer prompts, p4, and
+step buffers sized by chunk are follow-up work in
+[#12414](https://github.com/OpenAgentsInc/openagents/issues/12414).
 
 ### Advertising and refusing
 
@@ -868,7 +884,7 @@ our group engine currently buffers the answer and keeps reasoning private.
 For prefill, qualify bounded chunks, batched computation, and cross-stage
 overlap as separate changes. Prefix reuse must restore V4.1's complete stage
 state, including compressors, indexer/candidates, and Engram history.
-Keep the serial profile and current gates; a narrower context release needs
-an explicit prospective contract revision. Multiuser batching, expert
+Keep the serial profile and current gates. The narrower context release now
+has that explicit revision (see "Launch scope revision" under the gates). Multiuser batching, expert
 parallelism, and prefill/decode disaggregation remain workload-driven
 follow-ups. The reading introduces no new benchmark result or passing gate.
