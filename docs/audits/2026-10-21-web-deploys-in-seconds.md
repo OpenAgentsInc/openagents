@@ -211,3 +211,147 @@ Not built yet. These are the demos to prepare for:
   channel needs a separate key and a confirmed build hash.
 - **Cost:** a warm builder and one bucket cost about the same as today's
   Cloud Build runs.
+
+## Prototype measurements
+
+Phase 1 is built: [`crates/livehost`](../../crates/livehost/README.md)
+(#12430), landed in `8790fc1893` with the benchmark fix in `d5d61b6f37`.
+The numbers below come from `d5d61b6f37` on the owner's Mac (Apple
+silicon, macOS 26.4), measured on 2026-10-21 while other agents were
+building (load average 25–55).
+
+### What the prototype is
+
+- **Host:** `livehost serve`, an axum server with wasmtime 48. It follows
+  one signed pointer per tenant and channel over a local `nostr-relay`
+  (Postgres 16), loads the manifest it names, and swaps it in memory. Each
+  request keeps the manifest it started with.
+- **Tenants:** two, signed by different keys: `site` (runtime templates,
+  copy, a stylesheet, a browser module, and a handler component) and
+  `game` (a plain directory with an SVG sprite). Both share one object
+  store.
+- **Pointer:** kind `30440`, `d` = `TENANT/CHANNEL`, `m` = the manifest's
+  SHA-256. The host refused a pointer that another key signed for `game`,
+  and its state didn't change.
+- **Deploy:** `livehost deploy` digests every file and each guest
+  package's sources, rebuilds only a changed guest with incremental
+  `cargo build --release`, uploads new objects with `br` and `gzip`
+  copies, writes the manifest, and publishes the pointer.
+- **Browser:** headless Chrome from `openagents browser run`, with three
+  tabs open (`/`, `/hello`, and the game). The page's live client reports
+  each update it shows, after the stylesheet loads or after the reloaded
+  page and its module finish. The bench times each edit from the moment
+  it writes the file.
+
+### Edit to live, local store
+
+Five measured runs per case, after one unmeasured warm-up run per case.
+Times are median / worst.
+
+| Change | Deploy command | Edit to host serving | Edit to browser updated | How the browser updated |
+| --- | --- | --- | --- | --- |
+| Stylesheet | 6 / 19 ms | 7 / 21 ms | 8 / 25 ms | Swapped in place, no reload |
+| Copy (page data) | 6 / 6 ms | 7 / 8 ms | 23 / 42 ms | Reload |
+| Template | 6 / 18 ms | 7 / 19 ms | 24 / 38 ms | Reload |
+| Browser module (`wasm32-unknown-unknown`, 3 KB) | 129 / 172 ms | 131 / 173 ms | 150 / 190 ms | Reload |
+| Handler component (`wasm32-wasip2`, 57 KB) | 190 / 287 ms | 199 / 298 ms | 212 / 318 ms | Reload |
+| Game sprite, second tenant | 5 / 8 ms | 5 / 10 ms | 19 / 25 ms | Reload; `site` kept its manifest in all 5 runs |
+| Rollback to the previous manifest | 3 / 4 ms | 4 / 4 ms | 18 / 21 ms | Reload |
+
+Build time is almost all of the module and handler cases: 121–158 ms for
+the module and 163–274 ms for the handler. The host compiled the new
+handler component in 10–19 ms. Every other phase took 1–3 ms.
+
+### Serving during swaps
+
+64 connections for 20 s, spread over `/` (template), `/hello` (handler
+component, one instance per request), and the game's page:
+
+| Run | Requests/s | p50 | p99 | Max | Errors | Mixed-version responses |
+| --- | --- | --- | --- | --- | --- | --- |
+| No swaps | 56,276 | 0.92 ms | 3.60 ms | 47 ms | 0 | 0 |
+| 31 swaps (copy, stylesheet, template, and handler changes) | 55,003 | 0.95 ms | 3.74 ms | 76 ms | 0 | 0 |
+
+"Mixed-version" counts responses whose body named a different manifest
+than their header; there were none across 33 manifests.
+
+### With Cloud Storage
+
+A second host read from `gs://openagents-bench-artifacts/livehost-bench-12430`
+(since deleted) on its own channel, with no browser. Three runs per case,
+median / worst:
+
+| Change | Deploy command | Edit to host serving |
+| --- | --- | --- |
+| Stylesheet | 693 / 851 ms | 918 / 1,067 ms |
+| Copy | 396 / 435 ms | 649 / 683 ms |
+| Browser module | 457 / 518 ms | 663 / 742 ms |
+| Handler component | 732 / 908 ms | 1,027 / 1,149 ms |
+| Game sprite | 346 / 349 ms | 541 / 557 ms |
+| Rollback | 189 / 225 ms | 272 / 311 ms |
+
+Each Cloud Storage round trip from the Mac cost 75–300 ms. A deploy makes
+three in sequence (read the current manifest, upload, write the manifest),
+and the host two (manifest, then objects). The first full upload of the
+site, 10 objects and 107 KB, took 974 ms.
+
+### Commands
+
+```sh
+export CARGO_TARGET_DIR=~/work/openagents-target-1 CARGO_BUILD_JOBS=6
+. scripts/dev/cargo-build-env.sh
+cargo build --release -p livehost -p nostr-relay
+PATH=/opt/homebrew/opt/postgresql@16/bin:$PATH crates/livehost/scripts/relay.sh &
+export LIVEHOST_GUEST_TARGET=~/work/openagents-target-1-livehost
+crates/livehost/scripts/demo.sh WORK &      # host on :8090; prints the deploy commands
+# Deploy each tenant once with the printed commands, then:
+openagents browser run --timeout 60 -- "$CARGO_TARGET_DIR/release/livehost" bench \
+  --host 127.0.0.1:8090 --store WORK/store --relay ws://127.0.0.1:7448 \
+  --site WORK/src/demo/site --site-key WORK/site.key \
+  --game WORK/src/demo/game --game-key WORK/game.key \
+  --runs 5 --load 64,20 --out WORK/bench.json
+# Cloud Storage: a host with --store gs://BUCKET/PREFIX and a host config on
+# channel "gcs", then the same bench with --host 127.0.0.1:8091
+# --store gs://BUCKET/PREFIX --channel gcs --runs 3, outside the browser.
+```
+
+### What the numbers mean
+
+- **Content changes are bounded by the network, not the deploy.** Locally,
+  everything from the edit to a visible browser change takes tens of
+  milliseconds; the deploy itself takes under 10 ms. With Cloud Storage,
+  it takes about a second, all of it in round trips we can remove.
+- **Code tiers are bounded by build time.** The demo's guests are tiny, so
+  they build in 0.1–0.3 s. A real browser module or handler from
+  `openagents-web` would take as long as its incremental rebuild, which
+  this prototype doesn't measure.
+- **Swaps don't hurt serving.** Throughput and p99 barely moved during 31
+  swaps, with no errors and no mixed versions. A handler instance per
+  request is cheap enough at this size.
+
+### What phase 2 needs
+
+- **Measure real code.** Time an incremental rebuild of one real browser
+  module (such as the pylon layer) and one real route compiled as a
+  component. That decides whether the module and handler tiers meet their
+  10–40 s and 15–30 s targets.
+- **Fewer Cloud Storage round trips.** Cache the current manifest beside
+  the deploy key so a deploy needn't read it back, upload the manifest in
+  parallel with the objects, and send the manifest's object list with the
+  pointer so a host fetches everything at once. Hosts in Cloud Run sit
+  next to the bucket, so their reads should be faster than from the Mac.
+- **Move the real site's content.** Load `openagents-web`'s templates,
+  CSS, and documents from a manifest, with compiled-in copies as the
+  fallback, and route through the host's per-request pin.
+- **Pick the template language.** The prototype's own interpreter has
+  values, loops, conditions, partials, and asset URLs. The real pages
+  need whatever their Rust renderers do today.
+- **A host interface for handlers.** The WIT boundary has no imports yet.
+  Real handlers need sessions, the chat store, and Nostr, kept narrow.
+- **Hosting:** per-tenant quotas, moderation pins, promotion from
+  `staging` to `live` with a separate key and a confirmed build hash, and
+  object eviction in the host.
+- **Pointer timestamps.** A relay orders pointers by `created_at` in whole
+  seconds, so a deploy stamps one second past the previous pointer.
+  Several deploys a second run the stamp ahead of the clock. A sequence
+  tag would fix it.
