@@ -10,6 +10,8 @@
 #   oracle_vm.sh dump     run the four prompts on eight GPUs and upload the dumps
 #   oracle_vm.sh capture  rerun the cases with attention diagnostics and rank partials
 #                         (#12404) and upload them beside the original dump
+#   oracle_vm.sh holdout  run the frozen G1 v2 holdout corpus (#12405), with every
+#                         row's best router scores, and upload it as its own dump
 #
 # Environment: SCRIPTS (this directory on the VM), DUMP_TOOL_COMMIT (recorded in the report);
 # for capture, CAPTURE (bucket folder under the oracle prefix), EXTRA_ROWS and ONLY
@@ -134,6 +136,19 @@ capture() {
   $PY -I $SCRIPTS/oracle_manifest.py --dump $OUT/$CAPTURE --out $OUT/$CAPTURE/manifest.json
   gcloud storage rsync -r -x '^patched/__pycache__/' $OUT/$CAPTURE $ORACLE/$CAPTURE
   log "capture done"
+}
+
+holdout() {
+  : "${CORPUS:?set CORPUS, the frozen holdout corpus JSON}"
+  log "holdout"
+  local out=$OUT/g1-v2-holdout dest=$ORACLE/g1-v2/holdout
+  DUMP_TOOL_COMMIT=${DUMP_TOOL_COMMIT:-} $VENV/bin/torchrun --nproc-per-node 8 $SCRIPTS/oracle_dump.py \
+    --ckpt $TP8 --reference $REF --out $out --upload $dest \
+    --cases-file "$CORPUS" --router-tops 8 --captures-only
+  $PY -I $SCRIPTS/oracle_manifest.py --dump $out --out $out/manifest.json
+  cp "$CORPUS" $out/holdout-corpus.json
+  gcloud storage rsync -r -x '^patched/__pycache__/' $out $dest
+  log "holdout done"
 }
 
 "$@"
