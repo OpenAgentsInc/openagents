@@ -73,6 +73,8 @@ header nav a.solid:hover{background:#fff}\
 #pylons-panel button{all:unset}\
 #pylons-field{visibility:hidden;position:fixed;inset:0;z-index:2;pointer-events:none;overflow:hidden}\
 .world-ready #pylons-field{visibility:visible}\
+html:is([data-verse-place=zone],[data-verse-place=loading]) :is(#pylons-field,#grid-controls){visibility:hidden!important}\
+html:has(#game-lab-play:not([hidden])) :is(#pylons-field,#grid-controls,#pylon-card){visibility:hidden!important}\
 .pylon{all:unset;position:absolute;left:0;top:0;box-sizing:border-box;cursor:pointer;pointer-events:auto;width:var(--hw);height:var(--h);transform:translate3d(calc(var(--x) - var(--hw) / 2),calc(var(--y) - var(--h)),0);opacity:0;transition:opacity .7s ease,transform .6s cubic-bezier(.2,.8,.2,1)}\
 .pylon.in{opacity:1}\
 .pylon.out,.pylon.hid{opacity:0;pointer-events:none}\
@@ -593,6 +595,21 @@ mod tests {
         ] {
             assert!(oa_copy::violations(copy, &[]).is_empty(), "{copy}");
         }
+    }
+
+    #[test]
+    fn the_pylon_overlay_hides_away_from_the_grid_plaza() {
+        // Verse marks the root with where the player is (#12438): the
+        // pillars, labels, and walking hint show on the plaza only.
+        let rule = "html:is([data-verse-place=zone],[data-verse-place=loading]) \
+                    :is(#pylons-field,#grid-controls){visibility:hidden!important}";
+        assert!(STYLE.contains(rule));
+        assert!(STYLE.contains(".world-ready #pylons-field{visibility:visible}"));
+        // Game Lab's full-screen Play view hides them too.
+        assert!(STYLE.contains(
+            "html:has(#game-lab-play:not([hidden])) \
+             :is(#pylons-field,#grid-controls,#pylon-card){visibility:hidden!important}"
+        ));
     }
 
     #[test]

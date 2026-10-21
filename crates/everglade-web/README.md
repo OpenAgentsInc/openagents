@@ -125,6 +125,34 @@ player's npub prefix over their name ([the Grid on
 players through `verse_players()` and turn the player with
 `verse_face(x, z)`; `scripts/dev/check-grid-home-players.py` uses both.
 
+#### Portals, the load screen, and the page's events
+
+Walking through the Grid's Lagrange 1 or Lagrange 2 arch (or calling
+`verse_portal("lagrange2")`) puts a load screen over the canvas. Its bar
+moves as each real step finishes: the zone's world is built, the GPU device
+opens, the zone's renderer is ready with the world uploaded, and the first
+frame is drawn. Then the screen fades and the player can move. Going back
+through the zone's arch, its **The Grid** button, or `F` at the arch shows
+the same screen while the Grid's engine opens again. The page holds the
+player still while the screen is up.
+
+The module tells the page where the player is:
+
+- `data-verse-zone` (`grid`, `lagrange1`, `lagrange2`, `hosted` while a
+  hosted zone is open, ...) and `data-verse-place` (`grid`, `loading`, or
+  `zone`) on the root element.
+- A `verse-zone` event on the window when either changes, with the detail
+  `{zone, place}`. The Pylons layer hides its labels, pillars, walking hint,
+  and card unless `place` is `grid`.
+- `verse-zone-load` events for analytics, with the detail `{phase, zone,
+  direction, ms}`: `phase` is `start`, `ready`, or `failed` (with `error`),
+  `direction` is `enter` or `return`, and `ms` is the time since `start`.
+  The screen's start and ready are also `performance` marks,
+  `verse-zone-load-start` and `verse-zone-load-ready`.
+
+`verse_where()` reports the place, the control scheme, the trip's step, and
+the zone panel's buttons for checks.
+
 Once a second the module logs `Grid frames {...}` to the console: frame
 times, the players drawn, and the session's status and refusals. The
 receipt is `docs/verse/verification/2026-10-05-grid-browser/`.
@@ -154,6 +182,15 @@ The shared controller, mapped as on desktop:
   buttons walk forward, and the wheel zooms.
 - On a touch screen, one finger turns the character and tilts the camera,
   and two fingers walk forward; pinching them zooms.
+
+In Lagrange 1 and Lagrange 2 the zone keeps the desktop's controls: the
+EVA pack or the factory's visitor flies along the view (`W`/`S` along it,
+`A`/`D` turn, `Q`/`E` strafe, tilt the view to climb or dive, `Space`
+climbs, `Shift` is fast), the zone panel at the bottom carries the zone's
+buttons (Lagrange 1's **Grab**, **Unclip**, **Forces**, **Art**, and
+**The Grid**; Lagrange 2's **Slower**, **Faster**, **Pause**, **New ship**,
+**Forces**, **Art**, and **The Grid**), and `F` at an arch goes through
+it. On `/`, `A`/`D` strafe on the Grid only.
 
 In the Grove, keys `1` to `9` cast the druid's spells on the hotbar
 (Thunderwave, Gust of Wind, Wind Wall, Wall of Stone, Reverse Gravity, Fire

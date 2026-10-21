@@ -27,6 +27,10 @@ mod hosted;
 #[cfg(target_arch = "wasm32")]
 mod input;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+mod load_screen;
+#[cfg(target_arch = "wasm32")]
+mod load_view;
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod overview;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod presence_ui;
@@ -36,6 +40,8 @@ mod pylon_bay;
 mod transit;
 #[cfg(target_arch = "wasm32")]
 mod web;
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+mod zone_ui;
 
 #[cfg(target_arch = "wasm32")]
 mod terminal;

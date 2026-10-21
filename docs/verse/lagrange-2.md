@@ -313,7 +313,10 @@ and the arms start a new ship.
   and switches back on return.
 - **Web.** `crates/everglade-web/src/web.rs` swaps the canvas from the
   Grid engine to the legacy renderer when the Grid page walks into a zone,
-  and back again. The page keeps ticking while the next renderer opens.
+  and back again. The page keeps ticking while the next renderer opens, under
+  a load screen that lifts once the first frame is drawn. The zone panel
+  carries the controls above, and the Grid's Pylon layer hides while the
+  player is away (#12438; `crates/everglade-web/README.md`).
 - **Phones.** The phones already reopen their surface between the Grid and
   the legacy zones (`reopen_for_zone`), so the arch works there with no
   phone-specific code.

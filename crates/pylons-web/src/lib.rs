@@ -17,6 +17,11 @@
 //!   offline or its beacon expires, pulsing when a receipt for one of its
 //!   jobs arrives).
 //!
+//! - The layer belongs to the Grid plaza. When Verse leaves it for a zone
+//!   (its `verse-zone` event and `data-verse-place` on the page's root,
+//!   #12438), the labels, pillars, walking hint, and card hide, and come
+//!   back on return; [`shown_in`] decides.
+//!
 //! The site (`openagents-web`, `src/pages/pylons.rs`) serves the build
 //! (`scripts/build-pylons-web.sh`) and loads it after the Grid's first
 //! frame.
@@ -30,3 +35,23 @@ mod terminal_web;
 
 #[cfg(target_arch = "wasm32")]
 mod web;
+
+/// Whether the layer shows while Verse is at `place`, the page root's
+/// `data-verse-place`: on the Grid plaza (`grid`), or before Verse says
+/// where it is (empty), and never over a zone (`zone`) or its load screen
+/// (`loading`).
+#[must_use]
+pub fn shown_in(place: &str) -> bool {
+    matches!(place, "" | "grid")
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_layer_shows_on_the_grid_only() {
+        assert!(super::shown_in("grid"));
+        assert!(super::shown_in(""));
+        assert!(!super::shown_in("zone"));
+        assert!(!super::shown_in("loading"));
+    }
+}

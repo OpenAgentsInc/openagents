@@ -15,6 +15,8 @@ const FLINT_READY_GLOBAL: &str = "openagentsPylonFlintReady";
 pub struct Terminal {
     hint: HtmlElement,
     near: bool,
+    /// Verse is in a zone, away from the Grid and its terminal.
+    away: bool,
     group: bool,
     flint: bool,
 }
@@ -41,6 +43,7 @@ impl Terminal {
         Some(Self {
             hint,
             near: false,
+            away: false,
             group: false,
             flint: false,
         })
@@ -73,16 +76,36 @@ impl Terminal {
         );
     }
 
+    /// Verse left the Grid for a zone (`true`) or came back: away, the
+    /// walking hint hides and the chat closes.
+    pub fn away(&mut self, away: bool) {
+        if away == self.away {
+            return;
+        }
+        self.away = away;
+        if away {
+            self.frame(None, None);
+        }
+        self.show_hint();
+    }
+
+    fn show_hint(&self) {
+        let hidden = self.near || self.away;
+        let _ = self
+            .hint
+            .style()
+            .set_property("visibility", if hidden { "hidden" } else { "visible" });
+    }
+
     pub fn frame(&mut self, camera: Option<WorldCamera>, player: Option<[f64; 3]>) {
-        let near = camera.is_some() && player.is_some_and(|p| terminal::in_reach(p, self.near));
+        let near = !self.away
+            && camera.is_some()
+            && player.is_some_and(|p| terminal::in_reach(p, self.near));
         if near == self.near {
             return;
         }
         self.near = near;
-        let _ = self
-            .hint
-            .style()
-            .set_property("visibility", if near { "hidden" } else { "visible" });
+        self.show_hint();
         if let Ok(callback) = js_sys::Reflect::get(&js_sys::global(), &"homeTerminal".into())
             && let Some(callback) = callback.dyn_ref::<js_sys::Function>()
         {

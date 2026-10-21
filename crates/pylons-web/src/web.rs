@@ -71,6 +71,9 @@ struct Layer {
     bay_mode: bool,
     /// The pillar under the pointer.
     hover: Option<String>,
+    /// Verse is away from the Grid plaza, in a zone or its load screen:
+    /// the layer hides (#12438).
+    away: bool,
     /// Boxes pylons stay out of: the list panel and anything the page marks
     /// `data-pylons-keep` (`/lander10`'s chat).
     keep: Vec<Keep>,
@@ -119,6 +122,7 @@ fn run() -> Option<()> {
         layout: Layout::default(),
         bay_mode: false,
         hover: None,
+        away: false,
         keep: Vec::new(),
         leaving: Vec::new(),
         offset: 0.0,
@@ -146,6 +150,9 @@ fn run() -> Option<()> {
                         return;
                     };
                     let mut layer = layer.borrow_mut();
+                    if layer.away {
+                        return;
+                    }
                     layer.world = Some(camera);
                     if !layer.bay_mode && layer.verse_draws_bay() {
                         layer.bay_mode = true;
@@ -180,6 +187,25 @@ fn run() -> Option<()> {
             .add_event_listener_with_callback("verse-stopped", fallback.as_ref().unchecked_ref())
             .ok()?;
         fallback.forget();
+    }
+
+    // Verse says where it is: the layer belongs to the Grid plaza, and
+    // hides over a zone and the load screen on the way (#12438).
+    {
+        let layer = layer.clone();
+        let on_zone = Closure::<dyn FnMut()>::new(move || {
+            let place = layer
+                .borrow()
+                .document
+                .document_element()
+                .and_then(|root| root.get_attribute("data-verse-place"))
+                .unwrap_or_default();
+            set_away(&layer, !crate::shown_in(&place));
+        });
+        window
+            .add_event_listener_with_callback("verse-zone", on_zone.as_ref().unchecked_ref())
+            .ok()?;
+        on_zone.forget();
     }
 
     let source = EventSource::new(LIVE).ok()?;
@@ -473,7 +499,7 @@ fn leave(layer: &Shared, id: &str, announce: bool) {
 
 fn open(layer: &Shared, id: &str, opener: Option<HtmlElement>) {
     let mut l = layer.borrow_mut();
-    let Some(entry) = l.entries.get(id) else {
+    let Some(entry) = l.entries.get(id).filter(|_| !l.away) else {
         return;
     };
     let shown = Shown {
@@ -524,6 +550,30 @@ fn close(layer: &Shared) {
     {
         // The close button, clicked: don't leave focus in a hidden card.
         let _ = focused.blur();
+    }
+}
+
+/// Hides the layer while Verse is away from the Grid plaza, or shows it
+/// again: the pillars and labels, the walking hint, and an open card.
+fn set_away(layer: &Shared, away: bool) {
+    if layer.borrow().away == away {
+        return;
+    }
+    if away && layer.borrow().open.is_some() {
+        close(layer);
+    }
+    let mut l = layer.borrow_mut();
+    l.away = away;
+    if let Some(field) = l.field.dyn_ref::<HtmlElement>() {
+        let style = field.style();
+        let _ = if away {
+            style.set_property("visibility", "hidden")
+        } else {
+            style.remove_property("visibility").map(|_| ())
+        };
+    }
+    if let Some(terminal) = &mut l.terminal {
+        terminal.away(away);
     }
 }
 

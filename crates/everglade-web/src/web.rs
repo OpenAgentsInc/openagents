@@ -20,6 +20,9 @@ use web_sys::{
 
 use crate::grid::{self, Presence};
 use crate::input::Input;
+use crate::load_screen::{self, Load, Stage, Way};
+use crate::load_view::LoadView;
+use crate::zone_ui::{self, Place, Scheme};
 
 /// The page's canvas.
 const CANVAS_ID: &str = "everglade-canvas";
@@ -99,6 +102,50 @@ fn web_support(zone: zones::ZoneId) -> crate::transit::Support {
         zones::ZoneId::Lagrange1 | zones::ZoneId::Lagrange2 => crate::transit::Support::Web,
         _ => crate::transit::Support::DesktopOnly,
     }
+}
+
+/// The page's name for `zone`: what [`verse_portal`] takes, the
+/// `data-verse-zone` attribute, and the zone in `verse-zone` and
+/// `verse-zone-load` events.
+fn zone_name(zone: zones::ZoneId) -> &'static str {
+    match zone {
+        zones::ZoneId::Plaza => zone_ui::GRID,
+        zones::ZoneId::Lagrange1 => "lagrange1",
+        zones::ZoneId::Lagrange2 => "lagrange2",
+        zones::ZoneId::Everglade => "everglade",
+        other => other.world_id(),
+    }
+}
+
+/// Fires `name` on the window with `detail`, a JSON object, for the page's
+/// own layers and analytics.
+fn custom_event(name: &str, detail: &str) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let init = web_sys::CustomEventInit::new();
+    init.set_detail(&js_sys::JSON::parse(detail).unwrap_or(JsValue::NULL));
+    if let Ok(event) = web_sys::CustomEvent::new_with_event_init_dict(name, &init) {
+        let _ = window.dispatch_event(&event);
+    }
+}
+
+/// Tells the page where the player is (#12438): `data-verse-zone` and
+/// `data-verse-place` on the root element, then a `verse-zone` event whose
+/// detail is `{zone, place}`. The Grid's layers (the Pylons) hide away from
+/// the plaza.
+fn place_event(zone: &str, place: Place) {
+    if let Some(root) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.document_element())
+    {
+        let _ = root.set_attribute("data-verse-zone", zone);
+        let _ = root.set_attribute("data-verse-place", place.name());
+    }
+    custom_event(
+        "verse-zone",
+        &serde_json::json!({"zone": zone, "place": place.name()}).to_string(),
+    );
 }
 
 /// Tells the page Verse stopped (`verse-stopped` on the window), so it can
@@ -338,7 +385,13 @@ async fn open_grid(
     atlas: &Atlas,
     width: u32,
     height: u32,
+    stage: Option<StageCell>,
 ) -> Result<GridEngine, String> {
+    let reach = |reached: Stage| {
+        if let Some(stage) = &stage {
+            stage.set(Some(reached));
+        }
+    };
     // Three tasks, not one (#12319: the start blocked the page for 167 ms):
     // the pack's meshes on the CPU, the GPU's adapter and device, then the
     // upload. The page gets a turn between each.
@@ -348,6 +401,7 @@ async fn open_grid(
         verse::grid_engine::Content::grid()?
     };
     mark("verse-grid-content");
+    reach(Stage::World);
     yield_to_page().await;
     let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle(Box::new(WebDisplay));
     descriptor.backends = backends;
@@ -357,6 +411,7 @@ async fn open_grid(
         .map_err(|e| format!("cannot draw on the canvas: {e}"))?;
     let gpu = Gpu::open_async(instance, &surface).await?;
     mark("verse-grid-gpu");
+    reach(Stage::Device);
     yield_to_page().await;
     let engine = GridEngine::on_surface_with(gpu, surface, content, atlas, width, height)?;
     mark("verse-grid-engine");
@@ -437,6 +492,7 @@ async fn open_zone(
     atmosphere: zones::Atmosphere,
     width: u32,
     height: u32,
+    stage: StageCell,
 ) -> Result<Draw, String> {
     let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle(Box::new(WebDisplay));
     descriptor.backends = backends;
@@ -444,7 +500,7 @@ async fn open_zone(
     let surface = instance
         .create_surface(wgpu::SurfaceTarget::Canvas(canvas))
         .map_err(|e| format!("cannot draw on the canvas: {e}"))?;
-    let mut renderer = Renderer::from_surface_async(
+    let mut renderer = Renderer::from_surface_async_with(
         instance,
         surface,
         width,
@@ -455,6 +511,7 @@ async fn open_zone(
             max_extent: MAX_SIDE,
             ..RenderOptions::default()
         },
+        || stage.set(Some(Stage::Device)),
     )
     .await?;
     renderer.set_atmosphere(atmosphere)?;
@@ -478,6 +535,28 @@ impl raw_window_handle::HasDisplayHandle for WebDisplay {
 fn first_line(error: &str) -> String {
     let line = error.lines().next().unwrap_or(error);
     line.chars().take(240).collect()
+}
+
+/// A step the renderer opening on its own task has finished, for the load
+/// screen; the frame loop takes it.
+type StageCell = Rc<std::cell::Cell<Option<Stage>>>;
+
+/// The way between the Grid and a zone (#12438): the load screen, and the
+/// zone panel that carries a zone's own controls.
+#[derive(Default)]
+struct Trip {
+    /// The trip under way, while its load screen is up.
+    load: Option<Load>,
+    view: Option<LoadView>,
+    /// When the load screen began fading out, ms.
+    fading: Option<f64>,
+    /// The step the opening renderer reached.
+    stage: StageCell,
+    /// The zone and place the page was last told.
+    told: Option<(&'static str, Place)>,
+    /// The zone panel: Lagrange's controls, as on the desktop.
+    hud: zones::hud::Hud,
+    panel: Option<zones::hud::Snapshot>,
 }
 
 /// Everything the frame loop owns.
@@ -533,6 +612,8 @@ pub(crate) struct Page {
     /// `/home` (#12406): where the visitor is between the overview and
     /// their avatar.
     arrival: Arrival,
+    /// The load screen and the zone panel (#12438).
+    trip: Trip,
 }
 
 /// `/home`'s camera as the visitor joins (#12406).
@@ -870,6 +951,7 @@ async fn run() -> Result<(), String> {
         draw_atlas: None,
         transit: Default::default(),
         zoom: Default::default(),
+        trip: Trip::default(),
         arrival: Arrival::Joined,
     }));
     listen(&window, &page)?;
@@ -929,7 +1011,7 @@ async fn run_grid(
     let atlas = Atlas::new((14.0 * scale).round());
     mark("verse-grid-atlas");
     yield_to_page().await;
-    let engine = open_grid(&canvas, backends, &atlas, width, height).await?;
+    let engine = open_grid(&canvas, backends, &atlas, width, height, None).await?;
     web_sys::console::info_1(&JsValue::from_str(&format!(
         "Grid: engine renderer on {}",
         engine.adapter_name()
@@ -983,6 +1065,7 @@ async fn run_grid(
         draw_atlas: Some(atlas.clone()),
         transit: Default::default(),
         zoom: Default::default(),
+        trip: Trip::default(),
         arrival: if HOME.with(std::cell::Cell::get) {
             Arrival::Watching
         } else {
@@ -1258,7 +1341,10 @@ impl Page {
         if HOME.with(|home| home.get()) {
             thread_local! { static GAME_NEAR: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
             let near = GAME_NEAR.with(|old| {
-                let near = zones::game_place::in_reach(self.runtime.player.pos, old.get());
+                // Game Lab stands on the Grid plaza only, never in a zone
+                // (#12438).
+                let near = self.runtime.is_plaza()
+                    && zones::game_place::in_reach(self.runtime.player.pos, old.get());
                 (old.replace(near) != near).then_some(near)
             });
             if let Some(near) = near {
@@ -1269,6 +1355,7 @@ impl Page {
                 }
             }
         }
+        self.advance_trip(now);
         if let Some(frames) = &mut self.frames {
             let ended = web_sys::window()
                 .and_then(|w| w.performance())
@@ -1329,6 +1416,9 @@ impl Page {
                 _ => None,
             };
             if let Some(grid) = swap {
+                if grid && self.trip.load.is_none() {
+                    self.begin_load(Way::Back, zone_ui::GRID, "the Grid", now);
+                }
                 self.reopen(grid);
             } else {
                 match &mut self.renderer {
@@ -1364,6 +1454,7 @@ impl Page {
             match opened {
                 Some(Ok(draw)) => {
                     self.renderer = draw;
+                    self.reach(Stage::Renderer);
                     // It already holds that revision's world; a zone that
                     // changed again while it opened differs from it. (A
                     // second upload of the same world was refused as too
@@ -1380,6 +1471,16 @@ impl Page {
                     let label = self.runtime.zone_label();
                     let step = self.transit.failed(label, now);
                     self.show(step);
+                    // The load screen stays up for the way back, and says
+                    // why.
+                    self.load_failed(&error, now);
+                    self.begin_load(Way::Back, zone_ui::GRID, "the Grid", now);
+                    if let Some(load) = &mut self.trip.load {
+                        load.note = Some(crate::transit::failed_text(label));
+                        if let Some(view) = &self.trip.view {
+                            view.update(load);
+                        }
+                    }
                     let _ = self.runtime.zone_intent(zones::Intent::Return);
                     self.rendered_revision = self.runtime.zone_revision;
                     self.reopen(true);
@@ -1433,7 +1534,12 @@ impl Page {
             .filter(|zone| self.runtime.grid_portal_zones().contains(zone));
         if let Some(zone) = asked {
             let step = self.transit.ask(zone, web_support(zone), zone.label(), now);
-            self.show(step);
+            if self.transit.busy() {
+                // The load screen says what loads, rather than a line.
+                self.begin_load(Way::In, zone_name(zone), zone.label(), now);
+            } else {
+                self.show(step);
+            }
         }
         let opening = matches!(self.renderer, Draw::Opening { .. });
         let step = self.transit.frame(now, opening);
@@ -1445,9 +1551,12 @@ impl Page {
             web_sys::console::info_1(&JsValue::from_str(&format!(
                 "Verse: built {zone:?} in {took:.0} ms"
             )));
-            if !entered {
+            if entered {
+                self.reach(Stage::World);
+            } else {
                 let step = self.transit.failed(zone.label(), now);
                 self.show(step);
+                self.load_failed("the zone did not open", now);
             }
         } else {
             self.show(step);
@@ -1465,11 +1574,33 @@ impl Page {
         }
         // The hosted zone's arch: prefetch, open, and come back.
         let hosted_open = crate::hosted::frame(&mut self.runtime);
-        if hosted_open || self.transit.busy() {
+        if hosted_open || self.transit.busy() || self.trip.load.is_some() {
             input = verse::controller::InputState::default();
         }
+        let place = self.tell_place(hosted_open);
         let state = serde_json::json!({
             "zone": self.runtime.zone_label(),
+            "place": place.name(),
+            "scheme": format!("{:?}", self.scheme()),
+            "trip": self.trip.load.as_ref().map(|load| format!("{:?}", load.stage)),
+            "panel": self
+                .trip
+                .panel
+                .as_ref()
+                .filter(|panel| panel.visible)
+                .map(|panel| {
+                    panel
+                        .buttons
+                        .iter()
+                        .map(|b| serde_json::json!({"label": b.label, "frame": b.frame}))
+                        .collect::<Vec<_>>()
+                }),
+            "player": [
+                self.runtime.player.pos.x,
+                self.runtime.player.pos.y,
+                self.runtime.player.pos.z,
+                self.runtime.player.yaw,
+            ],
             "draw": match &self.renderer {
                 Draw::Legacy(_) => "legacy",
                 Draw::Grid(_) => "grid",
@@ -1641,6 +1772,20 @@ impl Page {
                 arena,
                 zones::arena::hud::CONTROLS_WEB,
             );
+        }
+        // Lagrange's zone panel: the zone's caption and buttons, as on the
+        // desktop (#12438).
+        self.trip.panel = None;
+        if self.scheme().zone_panel()
+            && self.trip.load.is_none()
+            && let Some(atlas) = &self.layout
+        {
+            let snapshot = self.runtime.zone_snapshot(aspect);
+            let _ = self.trip.hud.set_bottom_clearance(16.0);
+            let panel = self.trip.hud.snapshot(css, &snapshot, true);
+            ui.vertices
+                .extend(self.trip.hud.draw(atlas, &panel, 1.0).vertices);
+            self.trip.panel = Some(panel);
         }
         if let Some(atlas) = &self.layout {
             super::terminal::draw(&mut ui, atlas, css);
@@ -1970,13 +2115,17 @@ impl Page {
         let (width, height) = (canvas.width(), canvas.height());
         let world = self.runtime.world.mesh.clone();
         let atmosphere = zones::atmosphere(self.runtime.zone);
+        let stage = self.trip.stage.clone();
         wasm_bindgen_futures::spawn_local(async move {
             let opened = if grid {
-                open_grid(&canvas, backends, &atlas, width, height)
+                open_grid(&canvas, backends, &atlas, width, height, Some(stage))
                     .await
                     .map(Draw::Grid)
             } else {
-                open_zone(canvas, backends, world, atlas, atmosphere, width, height).await
+                open_zone(
+                    canvas, backends, world, atlas, atmosphere, width, height, stage,
+                )
+                .await
             };
             *next.borrow_mut() = Some(opened);
         });
@@ -1992,6 +2141,119 @@ impl Page {
                 }
             }
             _ => {}
+        }
+    }
+
+    /// The zone's page name, `grid` on the Grid plaza.
+    fn zone_name(&self) -> &'static str {
+        if self.runtime.is_plaza() {
+            zone_ui::GRID
+        } else {
+            zone_name(self.runtime.zone)
+        }
+    }
+
+    /// How the keys, mouse, and zone panel steer here (#12438).
+    fn scheme(&self) -> Scheme {
+        zone_ui::scheme(self.zone_name(), HOME.with(std::cell::Cell::get))
+    }
+
+    /// Tells the page where the player is when that changed; returns it.
+    /// A hosted zone open over the Grid (`hosted`) counts as a zone.
+    fn tell_place(&mut self, hosted: bool) -> Place {
+        let zone = if hosted { "hosted" } else { self.zone_name() };
+        let place = Place::of(zone, self.transit.busy() || self.trip.load.is_some());
+        if self.trip.told != Some((zone, place)) {
+            self.trip.told = Some((zone, place));
+            place_event(zone, place);
+        }
+        place
+    }
+
+    /// Puts the load screen up for a trip `way` to `zone`, labeled
+    /// `label`, and fires `verse-zone-load`'s `start`.
+    fn begin_load(&mut self, way: Way, zone: &'static str, label: &str, now: f64) {
+        let load = Load::new(way, zone, label, now);
+        if self.trip.view.is_none() {
+            self.trip.view = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| LoadView::new(&d));
+        }
+        if let Some(view) = &self.trip.view {
+            view.show(&load);
+        }
+        custom_event(
+            "verse-zone-load",
+            &load.event(load_screen::Event::Start, now, None),
+        );
+        self.trip.stage.set(None);
+        self.trip.fading = None;
+        self.trip.load = Some(load);
+        mark("verse-zone-load-start");
+    }
+
+    /// The trip under way finished `stage`.
+    fn reach(&mut self, stage: Stage) {
+        if let Some(load) = &mut self.trip.load
+            && load.reach(stage)
+            && let Some(view) = &self.trip.view
+        {
+            view.update(load);
+        }
+    }
+
+    /// The trip under way failed: `verse-zone-load`'s `failed`, and the
+    /// screen lifts.
+    fn load_failed(&mut self, error: &str, now: f64) {
+        if let Some(load) = self.trip.load.take() {
+            custom_event(
+                "verse-zone-load",
+                &load.event(load_screen::Event::Failed, now, Some(error)),
+            );
+            if let Some(view) = &self.trip.view {
+                view.fade();
+            }
+            self.trip.fading = Some(now);
+        }
+    }
+
+    /// After a frame: takes the opening renderer's steps, notes the first
+    /// frame drawn by the new place's renderer, and lifts the screen.
+    fn advance_trip(&mut self, now: f64) {
+        if let Some(stage) = self.trip.stage.take() {
+            self.reach(stage);
+        }
+        let drawn = !self.stopped && !matches!(self.renderer, Draw::Opening { .. });
+        if drawn
+            && self
+                .trip
+                .load
+                .as_ref()
+                .is_some_and(|load| load.stage >= Stage::Renderer)
+        {
+            self.reach(Stage::Drawn);
+        }
+        if let Some(load) = self.trip.load.take_if(|load| load.done()) {
+            custom_event(
+                "verse-zone-load",
+                &load.event(load_screen::Event::Ready, now, None),
+            );
+            mark("verse-zone-load-ready");
+            if let Some(view) = &self.trip.view {
+                view.fade();
+            }
+            self.trip.fading = Some(now);
+        }
+        if self.stopped && self.trip.load.is_some() {
+            self.load_failed("Verse stopped", now);
+        }
+        if let Some(since) = self.trip.fading
+            && now - since >= load_screen::FADE_MS
+        {
+            self.trip.fading = None;
+            if let Some(view) = &self.trip.view {
+                view.hide();
+            }
         }
     }
 
@@ -2109,19 +2371,32 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 "Minus" | "NumpadSubtract" => -1.0,
                 _ => 0.0,
             };
-            if zoom != 0.0 && !chord && page.runtime.is_plaza() {
+            if zoom != 0.0 && !chord && (page.runtime.is_plaza() || page.scheme().zone_panel()) {
                 page.zoom.held = if down { zoom } else { 0.0 };
+                event.prevent_default();
+                return;
+            }
+            // Lagrange's F goes through a nearby arch, or into Snap
+            // Station, as on the desktop (#12438).
+            let scheme = page.scheme();
+            if down && !chord && scheme.arch_key() && event.code() == "KeyF" {
+                if page.runtime.snap_arch_near() {
+                    let _ = page.runtime.zone_intent(zones::Intent::Interact);
+                } else {
+                    let aspect = page.renderer.aspect();
+                    let portal = page.runtime.zone_snapshot(aspect).portal;
+                    if portal.near && portal.visible {
+                        let _ = page.runtime.zone_intent(zones::Intent::Return);
+                    }
+                }
                 event.prevent_default();
                 return;
             }
             let modifiers = [event.shift_key(), event.ctrl_key(), event.alt_key()];
             let used = page.hotbar_key(&event.code(), down, modifiers);
             let code = event.code();
-            let code = match (home, code.as_str()) {
-                (true, "KeyA") => "KeyQ",
-                (true, "KeyD") => "KeyE",
-                _ => &code,
-            };
+            // `/` strafes with A and D (#12353); a zone keeps its own keys.
+            let code = scheme.key(&code);
             if used || (!chord && page.input.key(code, down)) {
                 event.prevent_default();
             }
@@ -2158,6 +2433,13 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             // On `/home`, a click on the overview joins the Grid (#12406).
             if HOME.with(std::cell::Cell::get) && !walking() && event.is_primary() {
                 WALK.with(|walk| walk.set(true));
+                return;
+            }
+            // Lagrange's zone panel takes a press on it (#12438).
+            let id = u64::from(event.pointer_id() as u32);
+            if let Some(panel) = page.trip.panel.clone()
+                && page.trip.hud.down(id, on_canvas, &panel)
+            {
                 return;
             }
             if page.press_hotbar(on_canvas, Some(event.pointer_id()), touch, now) {
@@ -2204,6 +2486,13 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 return;
             }
             let mut page = page.borrow_mut();
+            let id = u64::from(event.pointer_id() as u32);
+            if page.trip.hud.captured(id) {
+                page.trip
+                    .hud
+                    .moved(id, [event.offset_x() as f32, event.offset_y() as f32]);
+                return;
+            }
             // A card follows a resting mouse, not a drag that turns the view.
             if event.pointer_type() == "mouse" {
                 page.hover = (event.buttons() == 0)
@@ -2230,6 +2519,16 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 return;
             }
             let mut page = page.borrow_mut();
+            // A button on Lagrange's zone panel acts when it lifts.
+            let id = u64::from(event.pointer_id() as u32);
+            if page.trip.hud.captured(id) {
+                let at = [event.offset_x() as f32, event.offset_y() as f32];
+                let cancelled = event.type_() == "pointercancel";
+                if let Some(intent) = page.trip.hud.up(id, at, cancelled) {
+                    let _ = page.runtime.zone_intent(intent);
+                }
+                return;
+            }
             page.release_climb(Some(event.pointer_id()), None);
             let now = event.time_stamp();
             page.lift_hotbar(event.pointer_id(), event.type_() == "pointercancel", now);

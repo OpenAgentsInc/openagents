@@ -517,9 +517,47 @@ impl Renderer {
         atlas: &Atlas,
         options: RenderOptions,
     ) -> Result<Self, String> {
-        let mut renderer =
-            Self::from_surface_color_async(instance, surface, width, height, world, atlas, options)
-                .await?;
+        Self::from_surface_async_with(
+            instance,
+            surface,
+            width,
+            height,
+            world,
+            atlas,
+            options,
+            || {},
+        )
+        .await
+    }
+
+    /// [`Self::from_surface_async`], calling `opened` once the adapter and
+    /// device are open and before the world uploads, so a page's load
+    /// screen can show how far it is.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn from_surface_async_with(
+        instance: wgpu::Instance,
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+        world: &Mesh,
+        atlas: &Atlas,
+        options: RenderOptions,
+        opened: impl FnOnce(),
+    ) -> Result<Self, String> {
+        let options = options.validate()?;
+        validate_extent(width, height, options.max_extent)?;
+        let device = open_async(&instance, Some(&surface)).await?;
+        opened();
+        let mut renderer = *Self::assemble(
+            instance,
+            Arc::new(surface),
+            device,
+            width,
+            height,
+            world,
+            atlas,
+            options,
+        )?;
         renderer.physical_error = renderer
             .scene
             .prepare_photo_async(&renderer.device, &renderer.queue)
