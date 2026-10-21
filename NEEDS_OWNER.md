@@ -21,101 +21,25 @@ Verify the opt-in `/wallet/restore` page with a separately funded test wallet:
 receive a small invoice, review and send one payment, reload/forget, and restore
 again. Do not use the owner's recovery words for this check.
 
-## WorkOS sign-in: the steps only you can take (#12320 to #12323) (2026-10-20)
+## WorkOS sign-in: done; two optional steps (#12324) (2026-10-21)
 
-WorkOS sign-in is built and switched off in production. The switch is
-`OPENAGENTS_AUTH` (`legacy`, `dual`, or `workos`); setting it back to `legacy`
-is the whole rollback.
+Production and staging run `OPENAGENTS_AUTH=workos`. The backfill linked all
+15 people accounts in production (14 new Users, and your own existing User),
+and the old browser sessions were retired with a snapshot kept. Rollback and
+the remaining `sess_` issuers are in `docs/auth/README.md` under "Session
+authority". Keep WorkOS Magic Auth **on** in both environments with only
+WorkOS's own Magic Auth email off: key sign-in in the apps needs it.
 
-1. **Staging keys.** The two keys you gave are both for the production
-   environment, and there are no staging keys yet. In the WorkOS dashboard,
-   switch to Staging, open **API Keys**, and copy the secret key and the
-   client ID. Then add them to Secret Manager (or save them to
-   `~/work/.secrets/workos-staging.env` as `WORKOS_API_KEY=` and
-   `WORKOS_CLIENT_ID=` and ask an agent to):
-
-   ```sh
-   export CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config
-   printf %s "$STAGING_KEY" | gcloud secrets create openagents-web-workos-staging-api-key --project openagentsgemini --data-file=-
-   printf %s "$STAGING_CLIENT_ID" | gcloud secrets create openagents-web-workos-staging-client-id --project openagentsgemini --data-file=-
-   for s in openagents-web-workos-staging-api-key openagents-web-workos-staging-client-id; do
-     gcloud secrets add-iam-policy-binding "$s" --project openagentsgemini \
-       --member serviceAccount:oa-vertex-inference@openagentsgemini.iam.gserviceaccount.com \
-       --role roles/secretmanager.secretAccessor
-   done
-   ```
-
-   The next `scripts/deploy/web.sh stage` then turns WorkOS on in `dual` mode
-   on staging with GitHub, Google, email and password, emailed codes, and SSO.
-   An agent then runs the staging end-to-end check (a throwaway email user
-   signs up and signs in with an emailed code, then is deleted) and the
-   staging backfill (`OPENAGENTS_WORKOS_BACKFILL=dry-run`, then `apply`, on
-   the staging gateway container).
-
-2. **Staging dashboard.** In the Staging environment: under **Redirects**, add
-   `https://staging.openagents.com/auth/callback` as a redirect URI and set the
-   **Password reset URL** to `https://staging.openagents.com/login/reset`.
-   An agent can add the redirect URI through the API once the staging key
-   exists; the reset URL is dashboard only.
-
-3. **Production dashboard.** We added the redirect URI
-   `https://openagents.com/auth/callback` through the API. Under **Redirects**,
-   set the **Password reset URL** to `https://openagents.com/login/reset`, so
-   the reset email links to our page instead of the hosted AuthKit page.
-   Keep WorkOS's own emails on: the verification and sign-in emails carry
-   the codes people type on our pages. Optional: under **Roles**, add an
-   `owner` role. Until it exists, a workspace owner is an `admin` in WorkOS;
-   our own store still decides who owns what.
-
-4. **Ask WorkOS about the Magic Auth workaround.** Send WorkOS support this
-   question and paste the written answer into
-   `docs/auth/2026-10-20-workos-source-of-truth.md`: "We verify a person
-   ourselves with a signed Nostr event. Is it supported for our server to
-   call `POST /user_management/magic_auth` for that User and immediately
-   exchange the returned code at `POST /user_management/authenticate`
-   (grant `urn:workos:oauth:grant-type:magic-auth:code`) to start a session,
-   with WorkOS's default emails off? Is a supported custom-authentication or
-   token-exchange grant planned?" Until WorkOS confirms it, key sign-ins keep
-   our own session tied to the account's WorkOS User.
-
-5. **Production: turn on `dual`.** After staging passes, and once a
-   production build with WorkOS is serving (any web deploy at
-   `33e20c815f` or later), add the keys and the switch to both containers of the
-   production service:
-
-   ```sh
-   export CLOUDSDK_CONFIG=~/work/.secrets/gcloud-sa-config
-   for c in web gateway; do
-     gcloud run services update coder --region us-central1 --project openagentsgemini --container "$c" \
-       --update-secrets WORKOS_API_KEY=openagents-web-workos-api-key:latest,WORKOS_CLIENT_ID=openagents-web-workos-client-id:latest \
-       --update-env-vars '^@^OPENAGENTS_AUTH=dual@WORKOS_METHODS=github,password,magic_code'
-   done
-   ```
-
-   Rollback: the same command with `OPENAGENTS_AUTH=legacy`, or remove the
-   variables. `workos` mode (a WorkOS session that ends ends ours too) is the
-   same command with `OPENAGENTS_AUTH=workos`, after `dual` has run cleanly.
-
-6. **Production backfill (one time, reviewed).** With production in `dual`,
-   run the dry run first, read its report, then apply:
-
-   ```sh
-   gcloud run services update coder --region us-central1 --project openagentsgemini --container gateway \
-     --update-env-vars OPENAGENTS_WORKOS_BACKFILL=dry-run
-   # Read the "workos: backfill (dry-run)" line in the gateway's logs, and the
-   # full report in workos-backfill-dry-run.json beside the account stores.
-   gcloud run services update coder --region us-central1 --project openagentsgemini --container gateway \
-     --update-env-vars OPENAGENTS_WORKOS_BACKFILL=apply
-   ```
-
-   Each value runs once (its report file marks it done). The backfill
-   creates a WorkOS User for every account, with the account's verified
-   GitHub email or the synthetic `acct_…@id.openagents.com`, links existing
-   Users by external ID or email, and makes an Organization for each shared
-   workspace. Agent accounts are skipped. Production WorkOS already holds
-   more than 100 Users from an earlier product; the backfill only links one of
-   them when its email is the verified GitHub email of an account. Undo by
-   deleting the Users and Organizations whose external ID is one of ours.
+1. **Optional: rotate the production database password.** During the W4
+   audit an agent's tool output showed the `openagents-production-pg-dsn`
+   password. It went nowhere else. To rotate it, set a new password for
+   `openagents_app` on `openagents-production-pg`, add a new version of the
+   secret, and redeploy the `coder` service.
+2. **Optional: ask WorkOS about the Magic Auth key bridge.** Key sign-in
+   creates a Magic Auth code on our server and exchanges it at once. Ask
+   WorkOS support whether that's supported long term, and whether a
+   custom-authentication grant is planned. Paste the answer into
+   `docs/auth/2026-10-20-workos-source-of-truth.md`.
 
 ## Listen to the GPUI web chat with VoiceOver and NVDA (#12220)
 
