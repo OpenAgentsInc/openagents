@@ -168,6 +168,15 @@ class CloudBudgetTests(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertAlmostEqual(self.report(T0 + 4 * 3600)["spent"], 64.44, places=4)
 
+    def test_sync_settles_an_unfulfilled_flex_request_at_no_cost(self):
+        self.assertEqual(self.create("flex-x", "--flex-start", hours="2", spot=False).returncode, 0)
+        ops = json.dumps([{"operationType": "insert", "insertTime": "2027-01-15T08:00:01Z",
+                           "error": {"errors": [{"code": "ZONE_RESOURCE_POOL_EXHAUSTED_WITH_DETAILS"}]}}])
+        r = self.run_guard("sync", "--budget", "test", at=T0 + 7200, FAKE_DESCRIBE="GONE", FAKE_OPS=ops)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.records()[-1]["reason"], "never-started")
+        self.assertEqual(self.report(T0 + 7200)["spent"], 0)
+
     def test_create_records_start_labels_the_run_and_prints_the_vm(self):
         r = self.create("oa-dsv41-oracle-1", "--on-expiry", "stop")
         self.assertEqual(r.returncode, 0, r.stderr)

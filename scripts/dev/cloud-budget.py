@@ -621,6 +621,22 @@ def end_time(m: dict) -> float | None:
     return min(ends) if ends else None
 
 
+def never_started(m: dict) -> bool:
+    """Whether a flex-start request ended without a machine: its insert operation finished
+    with an error (capacity never found, or the request was cancelled), so Google billed
+    nothing."""
+    if m.get("provisioning") != "flex-start":
+        return False
+    r = gcloud("compute", "operations", "list", f"--project={m['project']}", f"--zones={m['zone']}",
+               f"--filter=targetLink~/instances/{m['vm']}$", "--format=json(operationType,insertTime,error)")
+    ops = _json(r.stdout) if r.returncode == 0 else None
+    if not isinstance(ops, list):
+        return False
+    inserts = [o for o in ops if o.get("operationType") == "insert"
+               and (parse_time(o.get("insertTime", "")) or 0) >= m["start_epoch"] - SAME_MACHINE_SECONDS]
+    return bool(inserts) and all(o.get("error") for o in inserts)
+
+
 def label_epoch(text: str) -> float | None:
     m = re.match(r"^(\d{4})-(\d\d)-(\d\d)t(\d\d)-(\d\d)-(\d\d)z$", text or "")
     if not m:
@@ -707,6 +723,8 @@ def sync(budget: str, quiet: bool = False, project: str = DEFAULT_PROJECT) -> in
         if status in ("GONE", "TERMINATED", "STOPPED"):
             at = end_time(m)
             reason = "gone" if status == "GONE" else "stopped"
+            if status == "GONE" and never_started(m):
+                at, reason = at or now(), "never-started"
             if at is None:
                 # Google's records don't say when it ended. Never release money on a guess: it
                 # counts in full until its expiry, and is settled at the expiry after that.
@@ -719,11 +737,12 @@ def sync(budget: str, quiet: bool = False, project: str = DEFAULT_PROJECT) -> in
             with locked(budget) as path:
                 still = [x for x in machines(read_ledger(path)) if x["id"] == m["id"] and x.get("stop_epoch") is None]
                 if still:
+                    c = cost({**m, "stop_epoch": at, "reason": reason}, at)
                     append(path, {"event": "stop", "id": m["id"], "vm": m["vm"], "stop_epoch": at,
-                                  "stop": iso(at), "reason": reason, "cost": cost({**m, "stop_epoch": at}, at)})
+                                  "stop": iso(at), "reason": reason, "cost": c})
                     ended += 1
                     if not quiet:
-                        print(f"{m['vm']}: {reason} at {iso(at)}, cost {money(cost({**m, 'stop_epoch': at}, at))}")
+                        print(f"{m['vm']}: {reason} at {iso(at)}, cost {money(c)}")
     return ended
 
 
