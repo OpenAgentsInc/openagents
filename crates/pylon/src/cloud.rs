@@ -50,8 +50,10 @@ use crate::{DEFAULT_RELAY, now};
 pub const SCHEMA: &str = "openagents.pylon.cloud.v1";
 /// The launch record in the pylon home.
 pub const FILE: &str = "cloud.json";
-/// The runtime a V4.1 stage worker announces.
+/// The runtime a V4.1 stage worker announces on the CPU backend.
 pub const RUNTIME: &str = "psionic-v41-stage/1";
+/// The runtime it announces on the CUDA backend, which a cloud group runs.
+pub const RUNTIME_CUDA: &str = "psionic-v41-stage/1+cuda";
 /// The image a stage machine boots: CUDA 12.9 with the NVIDIA 580 driver.
 pub const IMAGE_FAMILY: &str = "common-cu129-ubuntu-2404-nvidia-580";
 pub const IMAGE_PROJECT: &str = "deeplearning-platform-release";
@@ -223,6 +225,8 @@ pub struct Up {
     /// The weights digest and runtime every stage must announce.
     pub stage_weights: Option<String>,
     pub stage_runtime: String,
+    /// The `--backend` each stage runs, if any.
+    pub stage_backend: Option<String>,
     /// Run each stage on this computer with this program and arguments
     /// instead of over ssh: tests' synthetic stages.
     pub local_stages: Option<(PathBuf, Vec<String>)>,
@@ -273,7 +277,8 @@ impl Up {
             repo: repo.into(),
             home: home.into(),
             stage_weights: None,
-            stage_runtime: RUNTIME.into(),
+            stage_runtime: RUNTIME_CUDA.into(),
+            stage_backend: Some("cuda".into()),
             local_stages: None,
             ready_timeout: Duration::from_secs(1_800),
             expiry_margin: Duration::from_secs(300),
@@ -792,6 +797,9 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
                     "--manifest".into(),
                     format!("sha256:{}", plan.placement.digest),
                 ];
+                if let Some(backend) = &up.stage_backend {
+                    extra.extend(["--backend".into(), backend.clone()]);
+                }
                 if stage.embeddings {
                     extra.push("--embeddings".into());
                 }
@@ -1445,6 +1453,7 @@ checkout on the one host that allocates for the budget.
       --transport HOW       How stage state travels: front (through the
                             head, the default) or direct (stage to stage
                             over authenticated links inside the zone).
+      --backend B           The stage backend: cuda (the default) or cpu.
   down                      Drain the group, publish its beacons offline,
                             and delete its machines through the guard.
   status                    The group, its stages, its machines, and the
@@ -1502,6 +1511,7 @@ pub fn parse_up(
     let head_machine_type = value(&mut words, "--head-machine-type")?;
     let pylon = value(&mut words, "--pylon")?;
     let transport = value(&mut words, "--transport")?;
+    let backend = value(&mut words, "--backend")?;
     let Some(placement) = words.first().cloned() else {
         return Err("name a placement: four-single or two-dual".into());
     };
@@ -1527,6 +1537,15 @@ pub fn parse_up(
             "direct" => Transport::Direct,
             _ => return Err("--transport takes front or direct".into()),
         };
+    }
+    if let Some(backend) = backend {
+        up.stage_runtime = match backend.as_str() {
+            "cuda" => RUNTIME_CUDA,
+            "cpu" => RUNTIME,
+            _ => return Err("--backend takes cuda or cpu".into()),
+        }
+        .into();
+        up.stage_backend = Some(backend);
     }
     up.spot = !on_demand;
     up.machine_type = machine_type;

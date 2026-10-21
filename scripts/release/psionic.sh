@@ -171,7 +171,10 @@ mkdir -p "$dist"
 source=$(mktemp -d "${TMPDIR:-/tmp}/psionic-release-source.XXXXXX")
 trap 'rm -rf "$source"' EXIT
 echo "Psionic engine $version from $short ($(git -C "$repo_root" log -1 --format=%s "$sha"))"
-git -C "$repo_root" archive --format=tar "$sha" crates/psionic rust-toolchain.toml | (cd "$source" && tar -xf -)
+# The Psionic workspace links crates/stage-link by path, and that crate takes
+# its package fields from the root manifest.
+git -C "$repo_root" archive --format=tar "$sha" crates/psionic crates/stage-link Cargo.toml \
+  rust-toolchain.toml | (cd "$source" && tar -xf -)
 target_dir=${CARGO_TARGET_DIR:-"$source/crates/psionic/target"}
 
 signing_loaded=0

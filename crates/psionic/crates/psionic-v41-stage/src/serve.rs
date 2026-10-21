@@ -1,13 +1,26 @@
 //! The stage's side of Pylon's stage-group control protocol.
 //!
 //! One thread reads the front's lines and answers pings and checks at once,
-//! so a stage stays healthy while it computes. Listener threads read
-//! length-prefixed stage-state frames from the stage before. Everything
-//! else, the steps, cancellations, and fences, runs in order on the thread
-//! that owns the [`StageWorker`].
+//! so a stage stays healthy while it computes. Everything else, the steps,
+//! cancellations, fences, and stage state, runs in order on the thread that
+//! owns the [`StageWorker`].
+//!
+//! Stage state travels one of two ways, as the front's transport says:
+//!
+//! - **Front** (W10): the front sends every stage its step and the next
+//!   stage's address. Listener threads read length-prefixed frames from the
+//!   stage before, and every stage acknowledges every step.
+//! - **Direct** (W12, `--data-listen`): the front sends each step only to
+//!   stage 0. A `link` message gives every stage the generation's key and
+//!   the next stage's link address; each stage sends its state to the next
+//!   over an authenticated [`stage_link`] connection with the step's
+//!   settings as the frame's meta, reports `forwarded` with the bytes, and
+//!   only the last stage acknowledges, with its token. A lost link is
+//!   reported as `link_failed`, a refused frame as `refused`, and stage 0
+//!   starts a cancel frame down the chain.
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     fmt::Display,
     io::{BufRead, BufReader, Read, Write},
     net::{TcpListener, TcpStream},
@@ -16,8 +29,10 @@ use std::{
         Arc, Mutex,
         mpsc::{self, Receiver, Sender},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
+
+use stage_link::{Frame, Hop, Key, Kind, Limits, Listener, Refusal};
 
 use psionic_models::{
     deepseek_v41_stage::V41GroupManifest,
@@ -29,7 +44,9 @@ use psionic_models::{
 use serde_json::{Value, json};
 use tokenizers::Tokenizer;
 
-use crate::{AnswerParser, PROTOCOL, RUNTIME, Refused, Sampling, TextStream, Vocabulary, sample};
+use crate::{
+    AnswerParser, PROTOCOL, Refused, Sampling, StageBackend, TextStream, Vocabulary, sample,
+};
 
 /// Encoded frames from earlier stages kept while their step hasn't come.
 const BUFFERED_FRAMES: usize = 32;
@@ -54,8 +71,16 @@ pub struct Stage<'a> {
     pub default_token: u32,
     /// The front's control address.
     pub front: String,
-    /// Where to listen for state.
+    /// Where to listen for state from the front transport.
     pub listen: String,
+    /// Where to listen for the direct transport's link; `None` serves only
+    /// the front transport.
+    pub data_listen: Option<String>,
+    /// The link address the stage announces, when it differs from the bound
+    /// one (a machine's internal name).
+    pub data_advertise: Option<String>,
+    /// The runtime it announces, with its backend.
+    pub runtime: &'static str,
     /// Where to record what the stage does.
     pub events: Option<PathBuf>,
 }
@@ -63,9 +88,20 @@ pub struct Stage<'a> {
 enum Event {
     Front(Value),
     Frame(Vec<u8>),
+    /// A frame from the previous stage's direct link at a generation.
+    Link(u64, Frame),
+    /// A link of a generation broke; `peer` is `next` or `prev`.
+    LinkLost {
+        generation: u64,
+        peer: &'static str,
+        reason: String,
+    },
+    /// The link to the next stage opened, or couldn't be opened.
+    Connected(u64, Result<stage_link::Sender, String>),
     Closed,
 }
 
+#[derive(Clone)]
 struct Writer(Arc<Mutex<TcpStream>>);
 
 impl Writer {
@@ -179,10 +215,172 @@ impl Step {
         })
     }
 
+    /// The settings a direct link carries to the next stage with the state.
+    fn meta(&self) -> Vec<u8> {
+        serde_json::to_vec(&json!({"sampling": self.sampling, "final": self.last}))
+            .unwrap_or_default()
+    }
+
     fn matches(&self, message: &StageMessage) -> bool {
         message.request_id == self.request
             && message.attempt == self.attempt
             && message.step == self.step
+    }
+}
+
+/// One generation's link settings, from the front's `link` message.
+#[derive(Clone)]
+struct LinkConfig {
+    generation: u64,
+    key: Key,
+    group: String,
+    stage: u16,
+    next: Option<String>,
+    limits: Limits,
+}
+
+impl LinkConfig {
+    fn parse(message: &Value) -> Option<Self> {
+        let queue = message["queue"].as_u64().unwrap_or(4);
+        let send_timeout_ms = message["send_timeout_ms"].as_u64().unwrap_or(10_000);
+        Some(Self {
+            generation: message["generation"].as_u64()?,
+            key: Key::from_hex(message["key"].as_str()?).ok()?,
+            group: message["group"].as_str()?.to_owned(),
+            stage: u16::try_from(message["stage"].as_u64()?).ok()?,
+            next: message["next"].as_str().map(str::to_owned),
+            limits: Limits {
+                // A prefill step's state may be as large as W9's codec allows.
+                max_state: u32::try_from(CodecLimits::default().max_message_bytes)
+                    .unwrap_or(u32::MAX),
+                queue: usize::try_from(queue).unwrap_or(4).max(1),
+                send_timeout: Duration::from_millis(send_timeout_ms),
+                ..Limits::default()
+            },
+        })
+    }
+}
+
+/// The direct transport's links (W12): an inbound listener, the current
+/// inbound reader, and the link to the next stage.
+struct Direct {
+    runtime: tokio::runtime::Runtime,
+    advertise: String,
+    config: Arc<Mutex<Option<LinkConfig>>>,
+    inbound: Arc<Mutex<Option<tokio::task::AbortHandle>>>,
+    out: Option<(u64, stage_link::Sender)>,
+    /// Requests whose cancellation this stage has passed down the chain.
+    cancels: BTreeSet<(String, u32)>,
+}
+
+impl Direct {
+    fn start(
+        listen: &str,
+        advertise: Option<String>,
+        events: Sender<Event>,
+    ) -> Result<Self, Refused> {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .map_err(|e| Refused(format!("can't start the link runtime: {e}")))?;
+        let listener = runtime
+            .block_on(Listener::bind(listen))
+            .map_err(|e| Refused(format!("can't listen for links on {listen}: {e}")))?;
+        let bound = listener
+            .local_addr()
+            .map_err(|e| Refused(e.to_string()))?
+            .to_string();
+        let config = Arc::new(Mutex::new(None));
+        let inbound = Arc::new(Mutex::new(None));
+        runtime.spawn(accept_links(
+            listener,
+            Arc::clone(&config),
+            Arc::clone(&inbound),
+            events,
+        ));
+        Ok(Self {
+            runtime,
+            advertise: advertise.unwrap_or(bound),
+            config,
+            inbound,
+            out: None,
+            cancels: BTreeSet::new(),
+        })
+    }
+
+    /// Drops every link, as a fence or a new generation's `link` requires.
+    fn unlink(&mut self) {
+        if let Ok(mut config) = self.config.lock() {
+            *config = None;
+        }
+        if let Some(reader) = self.inbound.lock().ok().and_then(|mut r| r.take()) {
+            reader.abort();
+        }
+        self.out = None;
+        self.cancels.clear();
+    }
+}
+
+/// Accepts the previous stage's link for the current generation, and reads
+/// its frames into the stage's events. A new link replaces the old reader.
+async fn accept_links(
+    listener: Listener,
+    config: Arc<Mutex<Option<LinkConfig>>>,
+    inbound: Arc<Mutex<Option<tokio::task::AbortHandle>>>,
+    events: Sender<Event>,
+) {
+    let handshake = Limits::default();
+    loop {
+        let Ok(offer) = listener.accept(&handshake).await else {
+            continue;
+        };
+        let current = config.lock().ok().and_then(|c| c.clone());
+        let Some(current) = current.filter(|c| c.stage > 0) else {
+            offer.refuse(Refusal::Generation).await;
+            continue;
+        };
+        let expected = Hop {
+            group: current.group.clone(),
+            generation: current.generation,
+            from: current.stage - 1,
+            to: current.stage,
+        };
+        let Ok(mut receiver) = offer.accept(&current.key, &expected, &current.limits).await else {
+            continue;
+        };
+        let events = events.clone();
+        let generation = current.generation;
+        let reader = tokio::spawn(async move {
+            loop {
+                match receiver.recv().await {
+                    Ok(frame) => {
+                        if events.send(Event::Link(generation, frame)).is_err() {
+                            return;
+                        }
+                    }
+                    Err(error) => {
+                        let reason = match error {
+                            stage_link::LinkError::Closed => {
+                                "the previous stage closed the link".to_owned()
+                            }
+                            other => other.to_string(),
+                        };
+                        let _ = events.send(Event::LinkLost {
+                            generation,
+                            peer: "prev",
+                            reason,
+                        });
+                        return;
+                    }
+                }
+            }
+        });
+        if let Ok(mut slot) = inbound.lock()
+            && let Some(old) = slot.replace(reader.abort_handle())
+        {
+            old.abort();
+        }
     }
 }
 
@@ -199,6 +397,9 @@ struct Server<'a, E: StageExecutor> {
     frames: VecDeque<StageMessage>,
     text: Option<((String, u32), TextStream)>,
     answer: Option<((String, u32), AnswerParser)>,
+    direct: Option<Direct>,
+    /// Where link tasks report back (direct transport).
+    events: Option<Sender<Event>>,
 }
 
 /// Connects to the front and serves steps until the front closes the
@@ -209,12 +410,20 @@ struct Server<'a, E: StageExecutor> {
 /// Refuses when the front or the listener can't be reached.
 pub fn serve<E>(stage: Stage<'_>, worker: StageWorker<E>, generation: u64) -> Result<(), Refused>
 where
-    E: StageExecutor,
+    E: StageBackend,
     E::Error: Display,
 {
     let (events, inbox) = mpsc::channel();
     let first = stage.index == 0;
-    let listen = if first {
+    let direct = match &stage.data_listen {
+        Some(listen) => Some(Direct::start(
+            listen,
+            stage.data_advertise.clone(),
+            events.clone(),
+        )?),
+        None => None,
+    };
+    let listen = if first || direct.is_some() {
         None
     } else {
         let listener = TcpListener::bind(&stage.listen)
@@ -238,6 +447,7 @@ where
     let reader = stream.try_clone().map_err(|e| Refused(e.to_string()))?;
     let writer = Arc::new(Mutex::new(stream));
     let reader_writer = Writer(Arc::clone(&writer));
+    let link_events = direct.as_ref().map(|_| events.clone());
     std::thread::spawn(move || read_front(reader, &reader_writer, &events));
     let log = Log {
         stage: stage.name.clone(),
@@ -256,6 +466,8 @@ where
         frames: VecDeque::new(),
         text: None,
         answer: None,
+        events: link_events,
+        direct,
     };
     server.log.record("spawn", generation, json!({}));
     server.hello();
@@ -302,7 +514,7 @@ fn read_front(stream: TcpStream, writer: &Writer, events: &Sender<Event>) {
 
 impl<E> Server<'_, E>
 where
-    E: StageExecutor,
+    E: StageBackend,
     E::Error: Display,
 {
     fn last(&self) -> bool {
@@ -316,11 +528,14 @@ where
             "token": self.stage.token,
             "generation": self.generation,
             "weights": self.stage.weights,
-            "runtime": RUNTIME,
+            "runtime": self.stage.runtime,
             "protocol": PROTOCOL,
         });
         if let Some(listen) = &self.listen {
             hello["listen"] = json!(listen);
+        }
+        if let Some(direct) = &self.direct {
+            hello["data"] = json!(direct.advertise);
         }
         self.writer.send(&hello);
     }
@@ -336,6 +551,17 @@ where
             match event {
                 Event::Closed => return,
                 Event::Frame(bytes) => self.frame(&bytes),
+                Event::Link(generation, frame) => self.link_frame(generation, frame),
+                Event::LinkLost {
+                    generation,
+                    peer,
+                    reason,
+                } => {
+                    if generation == self.generation {
+                        self.link_failed(generation, peer, &reason);
+                    }
+                }
+                Event::Connected(generation, result) => self.connected(generation, result),
                 Event::Front(message) => match message["kind"].as_str() {
                     Some("step") => match Step::parse(&message) {
                         Some(step) => self.step(step),
@@ -350,6 +576,7 @@ where
                         let generation = message["generation"].as_u64().unwrap_or_default();
                         self.fence(generation);
                     }
+                    Some("link") => self.link(&message),
                     _ => {}
                 },
             }
@@ -366,6 +593,10 @@ where
         }
         self.frames.retain(|m| m.request_id != request);
         self.worker.reset(request, attempt);
+        if self.stage.index == 0 {
+            // The first stage starts the cancellation down the chain.
+            self.pass_cancel(request, attempt);
+        }
         self.log
             .record("stopped", self.generation, json!({"request": request}));
         self.writer.send(&json!({
@@ -386,6 +617,9 @@ where
         self.frames.clear();
         self.text = None;
         self.answer = None;
+        if let Some(direct) = &mut self.direct {
+            direct.unlink();
+        }
         self.log.record("fenced", self.generation, json!({}));
         self.hello();
     }
@@ -561,8 +795,20 @@ where
     fn run_step(&mut self, step: &Step, message: StageMessage) {
         self.pending = None;
         let request = (step.request.clone(), step.attempt);
+        if self.last() {
+            self.worker
+                .executor()
+                .prepare(step.sampling.unwrap_or(Sampling::GREEDY), step.step);
+        }
         let sections = match self.worker.step(message.clone()) {
             Ok(sections) => sections,
+            Err(WorkerError::Refused(refusal)) if self.direct.is_some() => {
+                // Direct state arrives only once: report it to the front.
+                return self.refuse_frame(
+                    refusal,
+                    json!({"request": message.request_id, "step": message.step}),
+                );
+            }
             Err(WorkerError::Refused(refusal)) => {
                 // Not this step's state after all; keep waiting for it.
                 self.refused(
@@ -591,20 +837,25 @@ where
             "step": step.step,
         });
         if self.last() {
-            let Some(logits) = sections
-                .iter()
-                .find(|s| s.kind == SectionKind::Logits)
-                .and_then(|s| s.to_f32().ok())
-            else {
-                return self.refused("the last stage made no logits", json!({}));
-            };
-            let token = match sample(
-                &logits,
-                step.sampling.unwrap_or(Sampling::GREEDY),
-                step.step,
-            ) {
-                Ok(token) => token,
-                Err(refusal) => return self.refused(refusal, json!({})),
+            let token = if let Some(token) = self.worker.executor().sampled() {
+                // The backend sampled on its device with the step's settings.
+                token
+            } else {
+                let Some(logits) = sections
+                    .iter()
+                    .find(|s| s.kind == SectionKind::Logits)
+                    .and_then(|s| s.to_f32().ok())
+                else {
+                    return self.refused("the last stage made no logits", json!({}));
+                };
+                match sample(
+                    &logits,
+                    step.sampling.unwrap_or(Sampling::GREEDY),
+                    step.step,
+                ) {
+                    Ok(token) => token,
+                    Err(refusal) => return self.refused(refusal, json!({})),
+                }
             };
             if self.text.as_ref().is_none_or(|(r, _)| *r != request) {
                 self.text = Some((request.clone(), TextStream::default()));
@@ -643,6 +894,9 @@ where
             let next = usize::from(self.stage.index) + 1;
             let layers = self.stage.manifest.stages[next].layers();
             let hop = message.next_hop(next as u16, layers, sections);
+            if self.direct.is_some() {
+                return self.forward_link(step, &hop);
+            }
             let Some(address) = step.next.clone() else {
                 return self.refused("the front sent no address for the next stage", json!({}));
             };
@@ -658,6 +912,248 @@ where
             }
         }
         self.writer.send(&ack);
+    }
+
+    // -----------------------------------------------------------------------
+    // The direct transport (W12)
+    // -----------------------------------------------------------------------
+
+    fn refuse_frame(&self, reason: impl Display, data: Value) {
+        let reason = reason.to_string();
+        self.refused(&reason, data);
+        self.writer
+            .send(&json!({"kind": "refused", "reason": reason}));
+    }
+
+    fn link_failed(&self, generation: u64, peer: &str, reason: &str) {
+        self.log.record(
+            "link-failed",
+            generation,
+            json!({"peer": peer, "reason": reason}),
+        );
+        self.writer.send(&json!({
+            "kind": "link_failed",
+            "generation": generation,
+            "peer": peer,
+            "reason": reason,
+        }));
+    }
+
+    /// The front's `link`: this generation's key and the next stage's link
+    /// address. The last stage links at once; the others once the next
+    /// stage accepts.
+    fn link(&mut self, message: &Value) {
+        let Some(config) = LinkConfig::parse(message) else {
+            return self.refused("a malformed link message", json!({}));
+        };
+        if config.generation != self.generation || config.stage != self.stage.index {
+            return self.refused(
+                format!(
+                    "a link for stage {} at generation {}",
+                    config.stage, config.generation
+                ),
+                json!({}),
+            );
+        }
+        let Some(direct) = &mut self.direct else {
+            return self.refused("a link message, but no --data-listen", json!({}));
+        };
+        direct.unlink();
+        if let Ok(mut current) = direct.config.lock() {
+            *current = Some(config.clone());
+        }
+        let generation = config.generation;
+        let Some(next) = config.next.clone() else {
+            self.log.record("linked", generation, json!({}));
+            self.writer
+                .send(&json!({"kind": "linked", "generation": generation}));
+            return;
+        };
+        let (Some(events), hop) = (
+            self.events.clone(),
+            Hop {
+                group: config.group.clone(),
+                generation,
+                from: config.stage,
+                to: config.stage + 1,
+            },
+        ) else {
+            return;
+        };
+        direct.runtime.spawn(async move {
+            // The next stage may not have its own link message yet.
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let result = loop {
+                match stage_link::connect(next.as_str(), &config.key, &hop, &config.limits).await {
+                    Ok(sender) => break Ok(sender),
+                    Err(error) if Instant::now() >= deadline => {
+                        break Err(format!("can't reach the next stage at {next}: {error}"));
+                    }
+                    Err(_) => tokio::time::sleep(Duration::from_millis(50)).await,
+                }
+            };
+            let _ = events.send(Event::Connected(generation, result));
+        });
+    }
+
+    fn connected(&mut self, generation: u64, result: Result<stage_link::Sender, String>) {
+        if generation != self.generation {
+            return;
+        }
+        let Some(direct) = &mut self.direct else {
+            return;
+        };
+        match result {
+            Ok(sender) => {
+                direct.out = Some((generation, sender));
+                self.log.record("linked", generation, json!({}));
+                self.writer
+                    .send(&json!({"kind": "linked", "generation": generation}));
+            }
+            Err(reason) => self.link_failed(generation, "next", &reason),
+        }
+    }
+
+    /// Sends a step's state to the next stage and tells the front.
+    fn forward_link(&mut self, step: &Step, hop: &StageMessage) {
+        let state = match encode(hop, &CodecLimits::default()) {
+            Ok(bytes) => bytes,
+            Err(refusal) => return self.refused(refusal, json!({})),
+        };
+        let generation = self.generation;
+        let frame = Frame {
+            kind: Kind::State,
+            generation,
+            request_id: step.request.clone(),
+            attempt: step.attempt,
+            step: step.step,
+            meta: step.meta(),
+            state,
+        };
+        let Some(direct) = &mut self.direct else {
+            return;
+        };
+        let sent = match &mut direct.out {
+            Some((g, sender)) if *g == generation => direct
+                .runtime
+                .block_on(sender.send(&frame))
+                .map_err(|e| e.to_string()),
+            _ => Err("no link to the next stage".to_owned()),
+        };
+        match sent {
+            Ok(bytes) => {
+                self.log.record(
+                    "forwarded",
+                    generation,
+                    json!({"request": step.request, "step": step.step, "bytes": bytes}),
+                );
+                self.writer.send(&json!({
+                    "kind": "forwarded",
+                    "generation": generation,
+                    "request_id": step.request,
+                    "attempt": step.attempt,
+                    "step": step.step,
+                    "bytes": bytes,
+                }));
+            }
+            Err(reason) => self.link_failed(generation, "next", &reason),
+        }
+    }
+
+    /// Passes a request's cancellation to the next stage, once.
+    fn pass_cancel(&mut self, request: &str, attempt: u32) {
+        let generation = self.generation;
+        let Some(direct) = &mut self.direct else {
+            return;
+        };
+        if !direct.cancels.insert((request.to_owned(), attempt)) {
+            return;
+        }
+        if let Some((g, sender)) = &mut direct.out
+            && *g == generation
+        {
+            let frame = Frame {
+                kind: Kind::Cancel,
+                generation,
+                request_id: request.to_owned(),
+                attempt,
+                step: 0,
+                meta: Vec::new(),
+                state: Vec::new(),
+            };
+            let _ = direct.runtime.block_on(sender.send(&frame));
+            self.log
+                .record("cancel-passed", generation, json!({"request": request}));
+        }
+    }
+
+    /// A frame from the previous stage's link.
+    fn link_frame(&mut self, generation: u64, frame: Frame) {
+        if generation != self.generation || frame.generation != self.generation {
+            return self.refused(
+                format!(
+                    "a link frame from generation {} at generation {}",
+                    frame.generation, self.generation
+                ),
+                json!({"request": frame.request_id, "step": frame.step}),
+            );
+        }
+        if frame.kind == Kind::Cancel {
+            self.pending = None;
+            self.frames.retain(|m| m.request_id != frame.request_id);
+            self.worker.reset(&frame.request_id, frame.attempt);
+            self.log.record(
+                "cancel-frame",
+                self.generation,
+                json!({"request": frame.request_id}),
+            );
+            return self.pass_cancel(&frame.request_id, frame.attempt);
+        }
+        let message = match decode(&frame.state, &CodecLimits::default()) {
+            Ok(message) => message,
+            Err(refusal) => {
+                return self.refuse_frame(
+                    refusal,
+                    json!({"request": frame.request_id, "step": frame.step}),
+                );
+            }
+        };
+        if message.request_id != frame.request_id
+            || message.attempt != frame.attempt
+            || message.step != frame.step
+        {
+            return self.refuse_frame(
+                "a link frame whose stage state names another step",
+                json!({"request": frame.request_id, "step": frame.step}),
+            );
+        }
+        let meta: Value = serde_json::from_slice(&frame.meta).unwrap_or(Value::Null);
+        let step = Step {
+            generation,
+            request: frame.request_id,
+            attempt: frame.attempt,
+            stage: self.stage.index,
+            step: frame.step,
+            prompt: None,
+            token: None,
+            sampling: meta
+                .get("sampling")
+                .and_then(|s| serde_json::from_value(s.clone()).ok()),
+            next: None,
+            last: meta["final"].as_bool().unwrap_or(false),
+        };
+        self.log.record(
+            "step",
+            self.generation,
+            json!({"request": step.request, "attempt": step.attempt, "step": step.step}),
+        );
+        if let Some((request, attempt, _, _)) = self.worker.inbox().summary().active
+            && (request != step.request || attempt != step.attempt)
+            && step.step == 0
+        {
+            self.worker.reset(&request, attempt);
+        }
+        self.run_step(&step, message);
     }
 
     fn forward(&mut self, address: &str, bytes: &[u8]) -> std::io::Result<()> {

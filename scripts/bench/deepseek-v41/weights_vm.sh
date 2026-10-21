@@ -89,7 +89,7 @@ rustcheck() {
   . "$HOME/.cargo/env"
   if [ ! -d $SSD/openagents ]; then
     git clone -q --depth 1 --filter=blob:none --sparse https://github.com/OpenAgentsInc/openagents $SSD/openagents
-    git -C $SSD/openagents sparse-checkout set crates/psionic
+    git -C $SSD/openagents sparse-checkout set crates/psionic crates/stage-link
   fi
   git -C $SSD/openagents pull -q --depth 1 origin main
   git -C $SSD/openagents rev-parse HEAD > $OUT/rustcheck-commit.txt

@@ -1038,3 +1038,197 @@ fn retained_report_counts_match_the_index() {
         assert_eq!(report["report"]["ranges"][i]["tensors"], count);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Stage-only opening (#12398)
+// ---------------------------------------------------------------------------
+
+/// A pin for the synthetic checkpoint in `dir`, with each shard's real size
+/// and SHA-256.
+fn synthetic_pin(dir: &Path) -> CheckpointPin {
+    let index = std::fs::read(dir.join(SAFETENSORS_INDEX_FILE)).unwrap();
+    let shards = ["a.safetensors", "b.safetensors"]
+        .into_iter()
+        .map(|name| {
+            let path = dir.join(name);
+            (
+                name.to_owned(),
+                PinnedShard {
+                    size: std::fs::metadata(&path).unwrap().len(),
+                    sha256: sha256_file(&path).unwrap(),
+                },
+            )
+        })
+        .collect();
+    CheckpointPin {
+        schema: String::from("synthetic"),
+        repo: String::from("synthetic"),
+        revision: String::from("synthetic"),
+        index_file: SAFETENSORS_INDEX_FILE.into(),
+        index_size: index.len() as u64,
+        index_sha256: hex::encode(Sha256::digest(&index)),
+        shards,
+    }
+}
+
+#[test]
+fn a_stage_opens_only_its_shards_and_verifies_them() {
+    let dir = tempfile::tempdir().unwrap();
+    write_checkpoint(dir.path(), None);
+    let pin = synthetic_pin(dir.path());
+    // Layer 1 lives in `b` only; `a` may be absent.
+    std::fs::remove_file(dir.path().join("a.safetensors")).unwrap();
+    let pinned = CheckpointOpenOptions {
+        headers_only: false,
+        pin: Some(pin.clone()),
+        check_model_map: false,
+    };
+    let selection = V41StageSelection::layers(1..2);
+    let checkpoint =
+        DeepSeekV41Checkpoint::open_stage(dir.path(), pinned.clone(), &selection).unwrap();
+    assert_eq!(checkpoint.stage(), Some(&selection));
+    assert!(checkpoint.shard_header("a.safetensors").is_none());
+    assert_eq!(
+        checkpoint
+            .read_tensor("layers.1.engram.embed.scale")
+            .unwrap()
+            .len(),
+        10
+    );
+    assert!(matches!(
+        checkpoint.entry("layers.0.attn.wkv.weight"),
+        Err(V41WeightsError::OutsideStage { shard, .. }) if shard == "a.safetensors"
+    ));
+    assert!(matches!(
+        checkpoint.entry("layers.9.attn.wkv.weight"),
+        Err(V41WeightsError::NoSuchTensor(_))
+    ));
+    // The full opener still needs every shard.
+    assert!(DeepSeekV41Checkpoint::open(dir.path(), pinned.clone()).is_err());
+    // A stage whose own shard is missing is refused.
+    assert!(matches!(
+        DeepSeekV41Checkpoint::open_stage(
+            dir.path(),
+            pinned.clone(),
+            &V41StageSelection::layers(0..1)
+        ),
+        Err(V41WeightsError::Io { .. })
+    ));
+    // An opened shard whose bytes don't match the pin is refused.
+    let mut wrong = pin;
+    wrong.shards.get_mut("b.safetensors").unwrap().sha256 = "0".repeat(64);
+    let refused = DeepSeekV41Checkpoint::open_stage(
+        dir.path(),
+        CheckpointOpenOptions {
+            pin: Some(wrong),
+            ..pinned
+        },
+        &selection,
+    );
+    assert!(
+        matches!(&refused, Err(V41WeightsError::PinMismatch(m)) if m.contains("b.safetensors")),
+        "{refused:?}"
+    );
+}
+
+#[test]
+fn real_stage_shards_follow_the_index() {
+    let index = real_index();
+    assert_eq!(
+        index
+            .stage_shards(&V41StageSelection::layers(14..15))
+            .unwrap(),
+        BTreeSet::from([SHARD_14.to_owned(), ENGRAM_14.to_owned()])
+    );
+    let first = index
+        .stage_shards(&V41StageSelection {
+            embeddings: true,
+            ..V41StageSelection::layers(0..10)
+        })
+        .unwrap();
+    assert!(first.contains(ENGRAM_1), "{first:?}");
+    let last = index
+        .stage_shards(&V41StageSelection {
+            head: true,
+            ..V41StageSelection::layers(30..40)
+        })
+        .unwrap();
+    assert!(!last.contains(ENGRAM_1) && !last.contains(ENGRAM_14));
+    // Every shard but the two Engram tables' belongs to some layer range.
+    let all = index
+        .stage_shards(&V41StageSelection {
+            embeddings: true,
+            head: true,
+            mtp: true,
+            vision: true,
+            ..V41StageSelection::layers(0..40)
+        })
+        .unwrap();
+    assert_eq!(all.len(), 48);
+}
+
+/// The real, pinned index with only layer 14's two shard headers present
+/// opens as a headers-only stage checkpoint; the 46 missing shards are fine.
+#[test]
+fn real_headers_open_as_a_layer_14_stage() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join(SAFETENSORS_INDEX_FILE),
+        gunzip("model.safetensors.index.json.gz"),
+    )
+    .unwrap();
+    for shard in [SHARD_14, ENGRAM_14] {
+        std::fs::write(
+            dir.path().join(shard),
+            gunzip(&format!("{shard}.header.gz")),
+        )
+        .unwrap();
+    }
+    let selection = V41StageSelection::layers(14..15);
+    let checkpoint = DeepSeekV41Checkpoint::open_stage(
+        dir.path(),
+        CheckpointOpenOptions::pinned_flash_headers_only().unwrap(),
+        &selection,
+    )
+    .unwrap();
+    assert_eq!(
+        checkpoint
+            .block_format("layers.14.attn.wkv.weight")
+            .unwrap(),
+        V41BlockFormat::Fp8Block32x32
+    );
+    assert_eq!(
+        checkpoint
+            .entry("layers.14.engram.embed.weight")
+            .unwrap()
+            .shape,
+        vec![384_016_682, 256]
+    );
+    let stage = checkpoint.select(&selection).unwrap();
+    let report: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(Path::new(FIXTURES).join("weights_report_headers.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(report["report"]["layers"][14]["bytes"], stage.total_bytes);
+    assert!(matches!(
+        checkpoint.entry("layers.13.attn.wkv.weight"),
+        Err(V41WeightsError::OutsideStage { .. })
+    ));
+    // The full opener refuses the same directory.
+    assert!(
+        DeepSeekV41Checkpoint::open(
+            dir.path(),
+            CheckpointOpenOptions::pinned_flash_headers_only().unwrap()
+        )
+        .is_err()
+    );
+    // A layer whose shard is absent is refused.
+    assert!(
+        DeepSeekV41Checkpoint::open_stage(
+            dir.path(),
+            CheckpointOpenOptions::pinned_flash_headers_only().unwrap(),
+            &V41StageSelection::layers(13..14),
+        )
+        .is_err()
+    );
+}

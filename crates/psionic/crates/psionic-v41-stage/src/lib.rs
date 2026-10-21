@@ -24,9 +24,16 @@
 //! it ends the answer.
 //!
 //! The model half is W9's [`StageExecutor`] trait. [`Backend::Cpu`] runs
-//! [`V41CpuStageExecutor`], the CPU port's layer range; a CUDA executor
-//! implements the same trait and plugs into [`serve`].
+//! [`V41CpuStageExecutor`], the CPU port's layer range; [`Backend::Cuda`]
+//! (the `cuda` feature) runs W7's device-resident stage, which samples on the
+//! device. Each backend announces its own runtime, so a group never mixes
+//! them.
+//!
+//! A checkpoint stage opens only the shards its layers read
+//! ([`load_model_for`]) and checks their SHA-256 against the pin.
 
+#[cfg(feature = "cuda")]
+pub mod cuda;
 pub mod serve;
 
 use std::{
@@ -65,7 +72,7 @@ use psionic_models::{
         LayerRangeRuntime, RangeConfig, V41CpuStageExecutor,
         synthetic::{self, SyntheticWeights},
     },
-    deepseek_v41_weights::{CheckpointOpenOptions, DeepSeekV41Checkpoint},
+    deepseek_v41_weights::{CheckpointOpenOptions, DeepSeekV41Checkpoint, V41StageSelection},
     stage_state::{CodecLimits, StageInbox, StageWorker},
 };
 use serde_json::Value;
@@ -75,8 +82,13 @@ use tokio_stream::Stream;
 
 pub use psionic_models::stage_state::{StageExecutor, StageMessage};
 
-/// The runtime every stage of a V4.1 group announces.
+/// The runtime every CPU stage of a V4.1 group announces.
 pub const RUNTIME: &str = "psionic-v41-stage/1";
+/// The runtime every CUDA stage announces. The CUDA executor samples on the
+/// device and sends BF16 cache rows, while the CPU executor sends `F32`, so a
+/// group runs one backend: Pylon's front makes a group ready only when every
+/// stage announces the same runtime.
+pub const RUNTIME_CUDA: &str = "psionic-v41-stage/1+cuda";
 /// The control protocol version, as Pylon's `stage_group::PROTOCOL`.
 pub const PROTOCOL: u32 = 1;
 /// The file that marks a synthetic weights directory.
@@ -107,7 +119,52 @@ fn refuse<T>(message: impl Into<String>) -> Result<T, Refused> {
 pub enum Backend {
     /// The CPU port, `psionic_models::deepseek_v41_stage_cpu`.
     Cpu,
+    /// W7's device-resident stage, `psionic_backend_cuda::v41_stage`
+    /// (the `cuda` feature).
+    Cuda,
 }
+
+impl Backend {
+    /// The runtime a stage on this backend announces.
+    #[must_use]
+    pub const fn runtime(self) -> &'static str {
+        match self {
+            Self::Cpu => RUNTIME,
+            Self::Cuda => RUNTIME_CUDA,
+        }
+    }
+
+    /// Parses `cpu` or `cuda`.
+    ///
+    /// # Errors
+    ///
+    /// Refuses other names, and `cuda` in a build without the `cuda` feature.
+    pub fn parse(value: &str) -> Result<Self, Refused> {
+        match value {
+            "cpu" => Ok(Self::Cpu),
+            "cuda" if cfg!(feature = "cuda") => Ok(Self::Cuda),
+            "cuda" => refuse(
+                "this build has no CUDA stage executor; build psionic-v41-stage with --features cuda",
+            ),
+            other => refuse(format!("--backend {other} is not cpu or cuda")),
+        }
+    }
+}
+
+/// What the serving loop needs from an executor beyond W9's trait: a backend
+/// that samples on its own device takes the step's settings first and
+/// returns the token instead of logits.
+pub trait StageBackend: StageExecutor {
+    /// The last stage's sampling settings for the next step.
+    fn prepare(&self, _sampling: Sampling, _step: u64) {}
+
+    /// The token the last step sampled, when the backend samples itself.
+    fn sampled(&self) -> Option<u32> {
+        None
+    }
+}
+
+impl StageBackend for V41CpuStageExecutor<'_> {}
 
 /// A stage's command line.
 #[derive(Debug, Clone)]
@@ -129,6 +186,11 @@ pub struct Options {
     pub listen: String,
     /// An optional JSON-lines file of what the stage did, for tests.
     pub events: Option<PathBuf>,
+    /// Where to listen for the previous stage's direct link (W12); without
+    /// it the stage serves only the front transport.
+    pub data_listen: Option<String>,
+    /// The link address to announce, such as the machine's internal name.
+    pub data_advertise: Option<String>,
 }
 
 /// Parses `A-B`, end exclusive, as Pylon writes a layer range.
@@ -181,7 +243,7 @@ impl Options {
                 "--head" => head = true,
                 "--weights" | "--layers" | "--gpu" | "--manifest" | "--stage" | "--generation"
                 | "--front" | "--token" | "--backend" | "--arithmetic" | "--max-context"
-                | "--listen" | "--events" => {
+                | "--listen" | "--events" | "--data-listen" | "--data-advertise" => {
                     let Some(value) = args.get(i + 1) else {
                         return refuse(format!("{flag} needs a value"));
                     };
@@ -212,14 +274,9 @@ impl Options {
                 .map_err(|_| Refused("--gpu must be a number".into()))?,
             None => 0,
         };
-        let backend = match values.remove("--backend").as_deref() {
-            None | Some("cpu") => Backend::Cpu,
-            Some("cuda") => {
-                return refuse(
-                    "this build has no CUDA stage executor yet; W7 (#12394) adds it; use --backend cpu",
-                );
-            }
-            Some(other) => return refuse(format!("--backend {other} is not cpu")),
+        let backend = match values.remove("--backend") {
+            None => Backend::Cpu,
+            Some(value) => Backend::parse(&value)?,
         };
         let arithmetic = values
             .remove("--arithmetic")
@@ -249,6 +306,8 @@ impl Options {
                 .remove("--listen")
                 .unwrap_or_else(|| "127.0.0.1:0".into()),
             events: values.remove("--events").map(PathBuf::from),
+            data_listen: values.remove("--data-listen"),
+            data_advertise: values.remove("--data-advertise"),
         })
     }
 }
@@ -286,7 +345,9 @@ pub enum Vocabulary {
 }
 
 impl Vocabulary {
-    fn tokenizer(&self) -> Arc<Tokenizer> {
+    /// The tokenizer that turns tokens into text.
+    #[must_use]
+    pub fn tokenizer(&self) -> Arc<Tokenizer> {
         match self {
             Self::Synthetic(t) => Arc::new(t.clone()),
             Self::V41(p) => p.tokenizer(),
@@ -399,6 +460,19 @@ pub fn write_synthetic(dir: &Path, name: &str) -> std::io::Result<()> {
 /// Refuses a directory with neither a synthetic file nor a checkpoint, and
 /// any weights or tokenizer the CPU port can't use.
 pub fn load_model(dir: &Path) -> Result<Model, Refused> {
+    load_model_for(dir, None)
+}
+
+/// Loads the weights and tokenizer in `dir` for one stage. A checkpoint
+/// opens only the shards `selection` reads and checks their SHA-256 against
+/// the pin, so a stage machine holds only its own shards; with no selection
+/// every shard is opened (and not hashed), as [`load_model`] does.
+///
+/// # Errors
+///
+/// As [`load_model`], plus a selected shard that is missing or doesn't
+/// match the pin.
+pub fn load_model_for(dir: &Path, selection: Option<&V41StageSelection>) -> Result<Model, Refused> {
     let synthetic_file = dir.join(SYNTHETIC_FILE);
     if synthetic_file.is_file() {
         let bytes = read(&synthetic_file)?;
@@ -435,14 +509,19 @@ pub fn load_model(dir: &Path) -> Result<Model, Refused> {
     .map_err(|e| Refused(format!("the checkpoint's tokenizer: {e}")))?;
     let options = CheckpointOpenOptions::pinned_flash()
         .map_err(|e| Refused(format!("the checkpoint pin: {e}")))?;
-    let checkpoint = DeepSeekV41Checkpoint::open(dir, options).map_err(|e| {
+    let checkpoint = match selection {
+        Some(selection) => DeepSeekV41Checkpoint::open_stage(dir, options, selection),
+        None => DeepSeekV41Checkpoint::open(dir, options),
+    }
+    .map_err(|e| {
         Refused(format!(
             "the weights in {} can't be used: {e}",
             dir.display()
         ))
     })?;
     let config = TransformerConfig::flash().map_err(|e| Refused(e.to_string()))?;
-    let map = CompressedTokenMap::build(&protocol.tokenizer(), config.vocabulary)
+    // The Engram hash's compressed vocabulary (99,092), not the output one.
+    let map = CompressedTokenMap::build(&protocol.tokenizer(), config.engram.compressed_vocab_size)
         .map_err(|e| Refused(e.to_string()))?;
     Ok(Model {
         weights: Weights::Checkpoint(Box::new(checkpoint)),
@@ -588,6 +667,48 @@ pub fn find_stage(
     Ok(entry.clone())
 }
 
+/// Refuses weights other than the ones the manifest names.
+///
+/// # Errors
+///
+/// When the manifest names a checkpoint index and `digest` isn't it.
+pub fn check_weights(manifest: &V41GroupManifest, digest: &str) -> Result<(), Refused> {
+    if !manifest.index_sha256.is_empty() && digest != format!("sha256:{}", manifest.index_sha256) {
+        return refuse(format!(
+            "the weights are {digest}; the manifest needs sha256:{}",
+            manifest.index_sha256
+        ));
+    }
+    Ok(())
+}
+
+/// What a stage tells the front and the stages after it.
+#[must_use]
+pub fn stage_info<'a>(
+    options: &Options,
+    manifest: &V41GroupManifest,
+    entry: &V41StageEntry,
+    model: &'a Model,
+    backend: Backend,
+) -> serve::Stage<'a> {
+    serve::Stage {
+        name: options.stage.clone(),
+        token: options.token.clone(),
+        weights: model.digest.clone(),
+        index: entry.stage,
+        manifest: manifest.clone(),
+        vocabulary: &model.vocabulary,
+        eos: model.config.eos_token,
+        default_token: model.config.pad_token,
+        front: options.front.clone(),
+        listen: options.listen.clone(),
+        data_listen: options.data_listen.clone(),
+        data_advertise: options.data_advertise.clone(),
+        runtime: backend.runtime(),
+        events: options.events.clone(),
+    }
+}
+
 /// Builds the CPU executor's worker for one stage.
 ///
 /// # Errors
@@ -627,7 +748,7 @@ pub fn cpu_worker(
 // ---------------------------------------------------------------------------
 
 /// The front's sampling settings for one step.
-#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize, serde::Serialize)]
 pub struct Sampling {
     pub temperature: f64,
     pub top_p: f64,

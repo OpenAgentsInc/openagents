@@ -3,10 +3,11 @@
 //! ```text
 //! psionic-v41-stage --weights DIR --layers A-B --gpu N --manifest D [--embeddings] [--head]
 //!     --stage NAME --generation G --front ADDR --token T
-//!     [--backend cpu] [--arithmetic f32|bf16|bf16-tp8] [--max-context N]
-//!     [--listen ADDR] [--events FILE]
+//!     [--backend cpu|cuda] [--arithmetic f32|bf16|bf16-tp8] [--max-context N]
+//!     [--listen ADDR] [--data-listen ADDR [--data-advertise ADDR]] [--events FILE]
 //! psionic-v41-stage reference --weights DIR [--prompt JSON] [--steps N]
 //!     [--temperature T --top-p P --seed S] [--arithmetic A] [--max-context N]
+//!     [--backend cpu|cuda]
 //! psionic-v41-stage manifest --split 0-10,10-20,20-30,30-40
 //! psionic-v41-stage synthetic DIR [NAME]
 //! ```
@@ -14,8 +15,8 @@
 use std::{io::Write, path::Path, process::ExitCode};
 
 use psionic_v41_stage::{
-    Backend, Options, Refused, Sampling, load_manifest, load_model, parse_arithmetic, parse_layers,
-    reference, serve, synthetic_manifest, write_synthetic,
+    Backend, Options, Refused, Sampling, load_manifest, load_model, load_model_for,
+    parse_arithmetic, parse_layers, reference, serve, synthetic_manifest, write_synthetic,
 };
 
 fn main() -> ExitCode {
@@ -39,42 +40,27 @@ fn run_stage(args: &[String]) -> Result<(), Refused> {
     let options = Options::parse(args)?;
     let manifest = load_manifest(&options.manifest, &options.weights)?;
     let entry = psionic_v41_stage::find_stage(&manifest, &options)?;
-    let model: &'static _ = Box::leak(Box::new(load_model(&options.weights)?));
-    if !manifest.index_sha256.is_empty()
-        && model.digest != format!("sha256:{}", manifest.index_sha256)
-    {
-        return Err(Refused(format!(
-            "the weights are {}; the manifest needs sha256:{}",
-            model.digest, manifest.index_sha256
-        )));
+    let selection = manifest.selection(usize::from(entry.stage));
+    #[cfg(feature = "cuda")]
+    if options.backend == Backend::Cuda {
+        return psionic_v41_stage::cuda::run_stage(&options, &manifest, &entry, selection.as_ref());
     }
+    let model: &'static _ = Box::leak(Box::new(load_model_for(
+        &options.weights,
+        selection.as_ref(),
+    )?));
+    psionic_v41_stage::check_weights(&manifest, &model.digest)?;
     let arithmetic = options.arithmetic.unwrap_or(model.arithmetic);
-    let stage = serve::Stage {
-        name: options.stage.clone(),
-        token: options.token.clone(),
-        weights: model.digest.clone(),
-        index: entry.stage,
-        manifest: manifest.clone(),
-        vocabulary: &model.vocabulary,
-        eos: model.config.eos_token,
-        default_token: model.config.pad_token,
-        front: options.front.clone(),
-        listen: options.listen.clone(),
-        events: options.events.clone(),
-    };
-    match options.backend {
-        Backend::Cpu => {
-            let worker = psionic_v41_stage::cpu_worker(
-                model,
-                &manifest,
-                &entry,
-                arithmetic,
-                options.max_context,
-                options.generation,
-            )?;
-            serve::serve(stage, worker, options.generation)
-        }
-    }
+    let stage = psionic_v41_stage::stage_info(&options, &manifest, &entry, model, Backend::Cpu);
+    let worker = psionic_v41_stage::cpu_worker(
+        model,
+        &manifest,
+        &entry,
+        arithmetic,
+        options.max_context,
+        options.generation,
+    )?;
+    serve::serve(stage, worker, options.generation)
 }
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
@@ -93,7 +79,6 @@ fn number<T: std::str::FromStr>(args: &[String], name: &str, default: T) -> Resu
 
 fn run_reference(args: &[String]) -> Result<(), Refused> {
     let weights = flag(args, "--weights").ok_or_else(|| Refused("--weights is required".into()))?;
-    let model = load_model(Path::new(weights))?;
     let prompt = flag(args, "--prompt")
         .map(|p| serde_json::from_str(p).map_err(|e| Refused(format!("--prompt: {e}"))))
         .transpose()?;
@@ -102,18 +87,37 @@ fn run_reference(args: &[String]) -> Result<(), Refused> {
         top_p: number(args, "--top-p", 1.0)?,
         seed: number(args, "--seed", 0)?,
     };
-    let arithmetic = flag(args, "--arithmetic")
-        .map(parse_arithmetic)
+    let steps = number(args, "--steps", 8)?;
+    let max_context = number(args, "--max-context", 8192)?;
+    let backend = flag(args, "--backend")
+        .map(Backend::parse)
         .transpose()?
-        .unwrap_or(model.arithmetic);
-    let answer = reference(
-        &model,
-        prompt.as_ref(),
-        number(args, "--steps", 8)?,
-        sampling,
-        arithmetic,
-        number(args, "--max-context", 8192)?,
-    )?;
+        .unwrap_or(Backend::Cpu);
+    let answer = match backend {
+        #[cfg(feature = "cuda")]
+        Backend::Cuda => psionic_v41_stage::cuda::reference(
+            Path::new(weights),
+            prompt.as_ref(),
+            steps,
+            sampling,
+            max_context,
+        )?,
+        _ => {
+            let model = load_model(Path::new(weights))?;
+            let arithmetic = flag(args, "--arithmetic")
+                .map(parse_arithmetic)
+                .transpose()?
+                .unwrap_or(model.arithmetic);
+            reference(
+                &model,
+                prompt.as_ref(),
+                steps,
+                sampling,
+                arithmetic,
+                max_context,
+            )?
+        }
+    };
     let json = serde_json::to_string(&answer).map_err(|e| Refused(e.to_string()))?;
     let _ = writeln!(std::io::stdout(), "{json}");
     Ok(())

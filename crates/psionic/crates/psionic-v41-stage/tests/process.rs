@@ -4,221 +4,14 @@
 //! Pylon's stage-group control protocol. Pylon's own front runs these
 //! processes in `crates/pylon/tests/group_stage_worker.rs`.
 
-use std::{
-    io::{BufRead, BufReader, Write},
-    net::{TcpListener, TcpStream},
-    path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
-    time::Duration,
-};
+mod common;
 
+use std::{net::TcpStream, process::Command, time::Duration};
+
+use common::{BIN, Front, LIMIT, args, events, reference, run_bounded, weights};
 use psionic_models::stage_state::{CodecLimits, StageMessage, StepKind, encode};
 use psionic_v41_stage::{cpu_worker, load_model, serve::write_frame, synthetic_manifest};
-use serde_json::{Value, json};
-
-const BIN: &str = env!("CARGO_BIN_EXE_psionic-v41-stage");
-
-fn weights(dir: &Path, split: &[(u32, u32)]) -> PathBuf {
-    let status = Command::new(BIN)
-        .args(["synthetic", &dir.display().to_string()])
-        .status()
-        .unwrap();
-    assert!(status.success());
-    let split: Vec<_> = split.iter().map(|(a, b)| *a..*b).collect();
-    let manifest = synthetic_manifest(&split).unwrap();
-    let path = dir.join("group-manifest.json");
-    std::fs::write(&path, serde_json::to_vec(&manifest).unwrap()).unwrap();
-    path
-}
-
-fn args(dir: &Path, manifest: &str, split: &[(u32, u32)], i: usize) -> Vec<String> {
-    let (a, b) = split[i];
-    let mut args = vec![
-        "--weights".into(),
-        dir.display().to_string(),
-        "--layers".into(),
-        format!("{a}-{b}"),
-        "--gpu".into(),
-        i.to_string(),
-        "--manifest".into(),
-        manifest.into(),
-        "--events".into(),
-        dir.join("events.jsonl").display().to_string(),
-    ];
-    if i == 0 {
-        args.push("--embeddings".into());
-    }
-    if i + 1 == split.len() {
-        args.push("--head".into());
-    }
-    args
-}
-
-struct Conn {
-    reader: BufReader<TcpStream>,
-    writer: TcpStream,
-    hello: Value,
-}
-
-impl Conn {
-    fn send(&mut self, message: &Value) {
-        self.writer
-            .write_all(format!("{message}\n").as_bytes())
-            .unwrap();
-    }
-
-    /// The next message that isn't a pong.
-    fn recv(&mut self) -> Value {
-        loop {
-            let mut line = String::new();
-            assert!(
-                self.reader.read_line(&mut line).unwrap() > 0,
-                "stage hung up"
-            );
-            let message: Value = serde_json::from_str(&line).unwrap();
-            if message["kind"] != "pong" {
-                return message;
-            }
-        }
-    }
-}
-
-/// A minimal front: it starts the stages and drives one request.
-struct Front {
-    stages: Vec<Conn>,
-    children: Vec<Child>,
-}
-
-impl Front {
-    fn start(dir: &Path, manifest: &str, split: &[(u32, u32)], only: Option<usize>) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap().to_string();
-        let indices: Vec<usize> = only.map_or((0..split.len()).collect(), |i| vec![i]);
-        let mut children = Vec::new();
-        for &i in &indices {
-            let mut a = args(dir, manifest, split, i);
-            a.extend([
-                "--stage".into(),
-                format!("s{i}"),
-                "--generation".into(),
-                "1".into(),
-                "--front".into(),
-                address.clone(),
-                "--token".into(),
-                format!("t{i}"),
-            ]);
-            children.push(
-                Command::new(BIN)
-                    .args(&a)
-                    .stderr(Stdio::null())
-                    .spawn()
-                    .unwrap(),
-            );
-        }
-        let mut stages: Vec<Conn> = Vec::new();
-        for _ in &indices {
-            let (stream, _) = listener.accept().unwrap();
-            stream
-                .set_read_timeout(Some(Duration::from_secs(30)))
-                .unwrap();
-            let mut conn = Conn {
-                reader: BufReader::new(stream.try_clone().unwrap()),
-                writer: stream,
-                hello: Value::Null,
-            };
-            conn.hello = conn.recv();
-            assert_eq!(conn.hello["kind"], "hello");
-            assert_eq!(conn.hello["runtime"], "psionic-v41-stage/1");
-            conn.send(&json!({"kind": "check", "nonce": 1, "input": 20}));
-            assert_eq!(conn.recv()["output"], 41);
-            stages.push(conn);
-        }
-        stages.sort_by_key(|c| c.hello["stage"].as_str().unwrap().to_owned());
-        Self { stages, children }
-    }
-
-    /// Runs `steps` steps of one request and returns the tokens and text.
-    fn run(&mut self, prompt: &Value, steps: u64) -> (Vec<u32>, String) {
-        let n = self.stages.len();
-        let (mut tokens, mut text) = (Vec::new(), String::new());
-        for step in 0..steps {
-            for i in 0..n {
-                let mut message = json!({
-                    "kind": "step", "generation": 1, "request_id": "r", "attempt": 1,
-                    "stage": i, "step": step,
-                });
-                if i == 0 && step == 0 {
-                    message["prompt"] = prompt.clone();
-                }
-                if i == 0 && step > 0 {
-                    message["token"] = json!(tokens.last().unwrap());
-                }
-                if i + 1 < n {
-                    message["next"] = self.stages[i + 1].hello["listen"].clone();
-                } else {
-                    message["sampling"] = json!({"temperature": 0.0, "top_p": 1.0, "seed": 0});
-                }
-                self.stages[i].send(&message);
-                let ack = self.stages[i].recv();
-                assert_eq!(
-                    (ack["kind"].as_str(), ack["step"].as_u64()),
-                    (Some("ack"), Some(step))
-                );
-                if i + 1 == n {
-                    tokens.push(ack["token"].as_u64().unwrap() as u32);
-                    text.push_str(ack["text"].as_str().unwrap());
-                    if ack["end"] == true {
-                        return (tokens, text);
-                    }
-                }
-            }
-        }
-        (tokens, text)
-    }
-}
-
-impl Drop for Front {
-    fn drop(&mut self) {
-        for child in &mut self.children {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    }
-}
-
-fn reference(dir: &Path, prompt: &Value, steps: u64) -> (Vec<u32>, String) {
-    let out = Command::new(BIN)
-        .args([
-            "reference",
-            "--weights",
-            &dir.display().to_string(),
-            "--prompt",
-            &prompt.to_string(),
-            "--steps",
-            &steps.to_string(),
-        ])
-        .output()
-        .unwrap();
-    assert!(out.status.success());
-    let answer: Value = serde_json::from_slice(&out.stdout).unwrap();
-    (
-        answer["tokens"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|t| t.as_u64().unwrap() as u32)
-            .collect(),
-        answer["text"].as_str().unwrap().to_owned(),
-    )
-}
-
-fn events(dir: &Path) -> Vec<Value> {
-    std::fs::read_to_string(dir.join("events.jsonl"))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| serde_json::from_str(l).ok())
-        .collect()
-}
+use serde_json::json;
 
 #[test]
 fn groups_of_two_to_four_processes_answer_like_the_unsplit_model() {
@@ -247,7 +40,7 @@ fn groups_of_two_to_four_processes_answer_like_the_unsplit_model() {
 }
 
 fn refusal(args: &[String]) -> String {
-    let out = Command::new(BIN).args(args).output().unwrap();
+    let out = run_bounded(Command::new(BIN).args(args), LIMIT);
     assert_eq!(out.status.code(), Some(2));
     String::from_utf8(out.stderr).unwrap()
 }
@@ -289,9 +82,11 @@ fn missing_weights_and_a_mismatched_layer_range_are_refused() {
     assert!(refusal(&with_front(a)).contains("command line disagrees"));
     let a = args(root.path(), "sha256:00", &split, 0);
     assert!(refusal(&with_front(a)).contains("no group manifest with digest"));
-    let mut a = args(root.path(), &manifest, &split, 0);
-    a.extend(["--backend".into(), "cuda".into()]);
-    assert!(refusal(&with_front(a)).contains("no CUDA stage executor"));
+    if cfg!(not(feature = "cuda")) {
+        let mut a = args(root.path(), &manifest, &split, 0);
+        a.extend(["--backend".into(), "cuda".into()]);
+        assert!(refusal(&with_front(a)).contains("no CUDA stage executor"));
+    }
 }
 
 #[test]
@@ -335,6 +130,7 @@ fn wrong_generation_and_stale_state_are_refused_before_use() {
     let stage = &mut front.stages[0];
     let listen = stage.hello["listen"].as_str().unwrap().to_owned();
     let mut link = TcpStream::connect(&listen).unwrap();
+    link.set_write_timeout(Some(LIMIT)).unwrap();
     let limits = CodecLimits::default();
     stage.send(&json!({
         "kind": "step", "generation": 1, "request_id": "r", "attempt": 1, "stage": 1, "step": 0,

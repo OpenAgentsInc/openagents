@@ -6,6 +6,7 @@ members = [
     "vendor/deepseek-recipe/deepseek-recipe-core",
     "vendor/deepseek-recipe/deepseek-recipe-encoding",
     "vendor/deepseek-recipe/deepseek-recipe-macros",
+    "vendor/openagents-workspace-hack",
 ]
 
 [workspace.lints.rust]
@@ -110,6 +111,12 @@ serde_json = "1"
 sha2 = "0.10"
 thiserror = "2.0.12"
 tokio = { version = "1", features = ["full"] }
+
+# `crates/stage-link` (the root workspace's direct stage links, linked by
+# path into `psionic-v41-stage`) names the root's hakari package; here it is
+# an empty stand-in.
+[patch.crates-io]
+openagents-workspace-hack = { path = "vendor/openagents-workspace-hack" }
 
 [profile.dev]
 opt-level = 1

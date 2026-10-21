@@ -452,3 +452,99 @@ async fn a_stage_with_other_weights_is_never_advertised() {
     assert!(status.stages.iter().all(|s| s.pid.is_none()));
     rig.close().await;
 }
+
+/// W12's direct transport against the real worker: the front sends each
+/// step to stage 0 only, stage state goes stage to stage over authenticated
+/// `stage_link` connections, and only the last stage answers.
+fn direct(config: &mut StageGroupConfig) {
+    config.transport = Transport::Direct;
+    for stage in &mut config.stages {
+        stage
+            .args
+            .extend(["--data-listen".into(), "127.0.0.1:0".into()]);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn direct_groups_pass_state_stage_to_stage_and_answer_like_the_unsplit_model() {
+    let bin = worker_or_skip!();
+    for split in [
+        vec![(0, 20), (20, 40)],
+        vec![(0, 10), (10, 20), (20, 30), (30, 40)],
+    ] {
+        let rig = Rig::with(bin.clone(), &split, |config, _| direct(config)).await;
+        let status = rig.ready(1).await;
+        assert_eq!(status.transport, Transport::Direct);
+        let expected = rig.reference(&prompt(), 12, (0.0, 1.0, 0));
+        assert_eq!(rig.answer(Some(prompt()), 12, greedy()).await, expected);
+        let expected = rig.reference(&prompt(), 12, (0.9, 0.95, 11));
+        assert_eq!(
+            rig.answer(Some(prompt()), 12, Sampling::new(0.9, 0.95, 11).unwrap())
+                .await,
+            expected
+        );
+        let status = rig.status();
+        assert_eq!((status.generation, status.failures), (1, 0), "{status:?}");
+        // Every stage but the last passed each of the 24 steps on. A
+        // request's last `forwarded` report can reach the front after the
+        // last stage's answer has ended it, so it may not be counted.
+        let last = split.len() - 1;
+        for (i, stage) in status.stages.iter().enumerate() {
+            if i == last {
+                assert_eq!(stage.forwarded, 0, "{status:?}");
+            } else {
+                assert!((22..=24).contains(&stage.forwarded), "{status:?}");
+                assert!(stage.forwarded_bytes > 22 * 100, "{status:?}");
+            }
+        }
+        rig.close().await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_direct_group_relinks_after_a_killed_stage_and_cancels_down_the_chain() {
+    let bin = worker_or_skip!();
+    let split = [(0, 10), (10, 25), (25, 40)];
+    let rig = Rig::with(bin, &split, |config, _| direct(config)).await;
+    rig.ready(1).await;
+    let before = rig.answer(Some(prompt()), 6, greedy()).await;
+    let pids = rig.pids();
+    unsafe { libc::kill(pids[1] as i32, libc::SIGKILL) };
+    rig.ready(2).await;
+    assert_eq!(rig.answer(Some(prompt()), 6, greedy()).await, before);
+    let linked: Vec<_> = rig
+        .events()
+        .into_iter()
+        .filter(|e| e["event"] == "linked" && e["generation"] == 2)
+        .map(|e| e["stage"].as_str().unwrap().to_owned())
+        .collect();
+    for stage in ["s0", "s1", "s2"] {
+        assert!(linked.iter().any(|s| s == stage), "{linked:?}");
+    }
+    // A caller that goes away: stage 0 sends the cancellation down the chain.
+    let mut run = rig
+        .group()
+        .generate_prompt(prompt(), 200, greedy())
+        .await
+        .unwrap();
+    assert!(run.tokens.recv().await.is_some());
+    drop(run.tokens);
+    assert!(run.done.await.unwrap().unwrap_err().cancelled);
+    let status = rig.until("a free slot", |s| !s.busy).await;
+    assert!(status.ready && status.generation == 2, "{status:?}");
+    let events = rig.events();
+    assert!(
+        events
+            .iter()
+            .any(|e| e["event"] == "cancel-passed" && e["stage"] == "s0"),
+        "{events:#?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|e| e["event"] == "cancel-frame" && e["stage"] == "s1"),
+        "{events:#?}"
+    );
+    assert_eq!(rig.answer(Some(prompt()), 6, greedy()).await, before);
+    rig.close().await;
+}

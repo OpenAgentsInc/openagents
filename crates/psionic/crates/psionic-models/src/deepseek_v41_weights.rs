@@ -229,6 +229,14 @@ pub enum V41WeightsError {
     /// An oracle manifest is invalid.
     #[error("invalid oracle parity manifest: {0}")]
     InvalidOracle(String),
+    /// A tensor lives in a shard the stage checkpoint didn't open.
+    #[error("tensor `{tensor}` is in `{shard}`, outside this stage's shards")]
+    OutsideStage {
+        /// Tensor name.
+        tensor: String,
+        /// The shard that holds it.
+        shard: String,
+    },
 }
 
 fn io_error(path: &Path, error: impl fmt::Display) -> V41WeightsError {
@@ -511,6 +519,27 @@ impl SafetensorsIndex {
             weight_map: raw.weight_map,
             sha256: hex::encode(Sha256::digest(bytes)),
         })
+    }
+
+    /// The shards that hold a tensor `selection` includes: what one stage
+    /// copies and opens. Tensor roles come from the V4.1 model map, so no
+    /// shard header is needed.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a tensor name the model map doesn't know.
+    pub fn stage_shards(
+        &self,
+        selection: &V41StageSelection,
+    ) -> Result<BTreeSet<String>, V41WeightsError> {
+        let map = V41ModelMap::new(&V41WeightConfig::flash());
+        let mut shards = BTreeSet::new();
+        for (name, shard) in &self.weight_map {
+            if selection.includes(map.role(name)?) {
+                shards.insert(shard.clone());
+            }
+        }
+        Ok(shards)
     }
 
     /// Returns the distinct shard file names, sorted.
@@ -941,6 +970,13 @@ pub struct DeepSeekV41Checkpoint {
     pin: Option<CheckpointPin>,
     headers_only: bool,
     roles: Option<V41ModelMap>,
+    stage: Option<V41StageSelection>,
+}
+
+fn read_index(root: &Path) -> Result<SafetensorsIndex, V41WeightsError> {
+    let index_path = root.join(SAFETENSORS_INDEX_FILE);
+    let index_bytes = std::fs::read(&index_path).map_err(|error| io_error(&index_path, error))?;
+    SafetensorsIndex::parse(&index_bytes)
 }
 
 impl DeepSeekV41Checkpoint {
@@ -954,10 +990,91 @@ impl DeepSeekV41Checkpoint {
     /// doesn't map, a total that doesn't match, a pin mismatch, and, when
     /// requested, a model map mismatch.
     pub fn open(root: &Path, options: CheckpointOpenOptions) -> Result<Self, V41WeightsError> {
-        let index_path = root.join(SAFETENSORS_INDEX_FILE);
-        let index_bytes =
-            std::fs::read(&index_path).map_err(|error| io_error(&index_path, error))?;
-        let index = SafetensorsIndex::parse(&index_bytes)?;
+        let index = read_index(root)?;
+        Self::open_index(root, index, options, None)
+    }
+
+    /// Opens only the shards one stage reads: those that hold a tensor
+    /// `selection` includes. The index must still match the pin, and each
+    /// opened shard must hold what the index maps to it. Shards outside the
+    /// selection may be missing; their tensors can't be read, and their
+    /// [`Self::entry`] is [`V41WeightsError::OutsideStage`].
+    ///
+    /// Unless `options` reads headers only, every opened shard is hashed
+    /// against the pin (in parallel), so a stage reads only verified bytes.
+    /// [`Self::open`] leaves hashing to [`Self::verify_shard_hashes`].
+    ///
+    /// # Errors
+    ///
+    /// Everything [`Self::open`] refuses for the opened shards, a tensor name
+    /// the model map doesn't know, a missing selected shard, and a shard
+    /// whose SHA-256 doesn't match the pin.
+    pub fn open_stage(
+        root: &Path,
+        options: CheckpointOpenOptions,
+        selection: &V41StageSelection,
+    ) -> Result<Self, V41WeightsError> {
+        let index = read_index(root)?;
+        let shards = index.stage_shards(selection)?;
+        let verify = options.pin.is_some() && !options.headers_only;
+        let mut checkpoint = Self::open_index(root, index, options, Some(&shards))?;
+        checkpoint.stage = Some(selection.clone());
+        if verify {
+            checkpoint.verify_opened_shards()?;
+        }
+        Ok(checkpoint)
+    }
+
+    /// The stage selection the checkpoint was opened for, if any.
+    #[must_use]
+    pub fn stage(&self) -> Option<&V41StageSelection> {
+        self.stage.as_ref()
+    }
+
+    /// Hashes every opened shard in parallel and checks it against the pin.
+    fn verify_opened_shards(&self) -> Result<(), V41WeightsError> {
+        let Some(pin) = &self.pin else {
+            return Ok(());
+        };
+        let results: Vec<(String, Result<String, V41WeightsError>)> = std::thread::scope(|scope| {
+            let handles: Vec<_> = self
+                .shards
+                .iter()
+                .map(|(name, file)| scope.spawn(move || (name.clone(), sha256_file(&file.path))))
+                .collect();
+            handles
+                .into_iter()
+                .map(|handle| {
+                    handle.join().unwrap_or_else(|_| {
+                        (
+                            String::new(),
+                            Err(V41WeightsError::PinMismatch(String::from(
+                                "a shard hash thread panicked",
+                            ))),
+                        )
+                    })
+                })
+                .collect()
+        });
+        for (name, actual) in results {
+            let actual = actual?;
+            let wanted = pin.shards.get(&name).map(|shard| shard.sha256.as_str());
+            if wanted != Some(actual.as_str()) {
+                return Err(V41WeightsError::PinMismatch(format!(
+                    "`{name}` hashes to {actual}, pin wants {}",
+                    wanted.unwrap_or("nothing")
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    fn open_index(
+        root: &Path,
+        index: SafetensorsIndex,
+        options: CheckpointOpenOptions,
+        only: Option<&BTreeSet<String>>,
+    ) -> Result<Self, V41WeightsError> {
         if let Some(pin) = &options.pin {
             if index.sha256 != pin.index_sha256 {
                 return Err(V41WeightsError::PinMismatch(format!(
@@ -974,6 +1091,9 @@ impl DeepSeekV41Checkpoint {
         }
         let mut shards = BTreeMap::new();
         for shard in index.shard_names() {
+            if only.is_some_and(|only| !only.contains(shard)) {
+                continue;
+            }
             let path = root.join(shard);
             let pinned = options
                 .pin
@@ -1001,6 +1121,9 @@ impl DeepSeekV41Checkpoint {
             shards.insert(shard.to_owned(), ShardFile { header, path, file });
         }
         for (tensor, shard) in &index.weight_map {
+            if only.is_some_and(|only| !only.contains(shard)) {
+                continue;
+            }
             let holds = shards
                 .get(shard)
                 .is_some_and(|file| file.header.tensors.contains_key(tensor));
@@ -1023,7 +1146,7 @@ impl DeepSeekV41Checkpoint {
             }
             actual += file.header.tensor_bytes();
         }
-        if let Some(declared) = index.total_size {
+        if let (Some(declared), None) = (index.total_size, only) {
             if declared != actual {
                 return Err(V41WeightsError::TotalSizeMismatch { declared, actual });
             }
@@ -1035,11 +1158,15 @@ impl DeepSeekV41Checkpoint {
             pin: options.pin,
             headers_only: options.headers_only,
             roles: None,
+            stage: None,
         };
         if options.check_model_map {
             let map = V41ModelMap::new(&V41WeightConfig::flash());
             map.check_names(checkpoint.index.weight_map.keys().map(String::as_str))?;
-            for name in checkpoint.index.weight_map.keys() {
+            for (name, shard) in &checkpoint.index.weight_map {
+                if only.is_some_and(|only| !only.contains(shard)) {
+                    continue;
+                }
                 let entry = checkpoint.entry(name)?;
                 let role = map.role(name)?;
                 if entry.dtype != role.dtype {
@@ -1162,11 +1289,20 @@ impl DeepSeekV41Checkpoint {
     ///
     /// Returns [`V41WeightsError::NoSuchTensor`] for an unknown name.
     pub fn entry(&self, name: &str) -> Result<&ShardTensorEntry, V41WeightsError> {
-        self.index
+        let shard = self
+            .index
             .weight_map
             .get(name)
-            .and_then(|shard| self.shards.get(shard))
-            .and_then(|file| file.header.tensors.get(name))
+            .ok_or_else(|| V41WeightsError::NoSuchTensor(name.to_owned()))?;
+        let Some(file) = self.shards.get(shard) else {
+            return Err(V41WeightsError::OutsideStage {
+                tensor: name.to_owned(),
+                shard: shard.clone(),
+            });
+        };
+        file.header
+            .tensors
+            .get(name)
             .ok_or_else(|| V41WeightsError::NoSuchTensor(name.to_owned()))
     }
 

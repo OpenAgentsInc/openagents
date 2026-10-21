@@ -1630,5 +1630,12 @@ stage returns `token`, which W10's `StepAck` carries. A stage with an
 Engram layer needs 101 GB of host RAM for the table. The CUDA 12.9 image
 needed an include shim for CCCL at the time; W8 removed the need.
 
+W11 part 2a (#12398) wires this in: `psionic-v41-stage --backend cuda`
+runs one `V41Stage` per process as W9's executor, opens only that stage's
+shards, and announces `psionic-v41-stage/1+cuda`. On the RTX 4080, CUDA
+process groups of two and three stages over loopback match the unsplit
+CUDA stage token for token. The one-machine G5 run on a G4 machine is
+part 2b.
+
 **Cost:** one `g4-standard-48` spot machine for 0.47 h, $0.79 in the
 guard's ledger, deleted.

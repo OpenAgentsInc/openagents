@@ -14,12 +14,22 @@ workspace = true
 name = "psionic-v41-stage"
 path = "src/main.rs"
 
+[features]
+# W7's device-resident stage behind `--backend cuda`. It builds anywhere;
+# the kernels link only where nvcc is installed (psionic-backend-cuda).
+cuda = ["dep:psionic-backend-cuda", "dep:psionic-runtime", "dep:half"]
+
 [dependencies]
+half = { version = "2.4.1", optional = true }
 hex = { workspace = true }
+psionic-backend-cuda = { path = "../psionic-backend-cuda", optional = true }
+psionic-runtime = { path = "../psionic-runtime", optional = true }
 psionic-models = { path = "../psionic-models", features = ["deepseek-v41-fixtures"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+stage-link = { path = "../../../stage-link" }
+tokio = { workspace = true }
 tokio-stream = "0.1.17"
 tokenizers = { version = "0.23.1", default-features = false, features = ["onig"] }
 

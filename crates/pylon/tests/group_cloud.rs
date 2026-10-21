@@ -725,6 +725,8 @@ fn dry_runs_plan_a_head_in_the_zone_and_direct_links() {
         .map(|s| s["launch"].as_str().unwrap())
         .collect();
     let host = |i: usize| format!("oa-v41-four-single-m{i}.us-east1-b.c.openagentsgemini.internal");
+    // A cloud group runs every stage on CUDA and expects its runtime.
+    assert!(launches.iter().all(|l| l.contains("--backend cuda")));
     assert!(launches[0].starts_with("/opt/openagents/stage-run --layers 0-10"));
     assert!(launches[0].ends_with(&format!(
         "--data-listen 0.0.0.0:47200 --data-advertise {}:47200",
@@ -1034,4 +1036,24 @@ fn the_launchers_reach_stages_and_the_head_inside_the_zone() {
     );
     assert!(args.contains(&"-T".into()));
     assert_eq!(args.last().unwrap(), "/opt/openagents/head-run");
+}
+
+#[test]
+fn a_cloud_group_runs_cuda_stages_unless_told_otherwise() {
+    let parse = |words: &[&str]| {
+        let words: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
+        cloud::parse_up(
+            &words,
+            &repo(),
+            Path::new("/home/me"),
+            "wss://relay.example",
+        )
+    };
+    let (up, _) = parse(&["two-dual"]).unwrap();
+    assert_eq!(up.stage_backend.as_deref(), Some("cuda"));
+    assert_eq!(up.stage_runtime, cloud::RUNTIME_CUDA);
+    let (up, _) = parse(&["two-dual", "--backend", "cpu"]).unwrap();
+    assert_eq!(up.stage_backend.as_deref(), Some("cpu"));
+    assert_eq!(up.stage_runtime, cloud::RUNTIME);
+    assert!(parse(&["two-dual", "--backend", "rocm"]).is_err());
 }
