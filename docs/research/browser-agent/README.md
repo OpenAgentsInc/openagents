@@ -10,6 +10,11 @@ Each section separates **facts**, cited to a file or a URL, from
 to the upstream repository named in that section. Paths that start with
 `crates/`, `docs/`, `nips/`, or `apps/` are in this repository.
 
+Update, 2026-10-21: a Kiln tech demo is built ([`docs/kiln/`](../../kiln/README.md)),
+and the owner's direction for a Kiln workstation in front of the Pylon Bay,
+with NIP-34 patches and pull requests, is specced in
+[`docs/kiln/workstation.md`](../../kiln/workstation.md).
+
 Working name for our version: **Kiln**. "Forge" is taken
 (`docs/forge/README.md`), and a repository search finds no other use of
 "Kiln".

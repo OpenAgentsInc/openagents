@@ -112,8 +112,12 @@ the difference and saves it. Every call is synchronous inside the worker,
 and no call waits on the page. The cost is that two tools can't share a
 filesystem while both run; see [findings](findings.md).
 
-## Status
+## Status and documents
 
-What works, and what's still fake or missing, is in
-[findings.md](findings.md). Measured numbers are in
-[measurements.md](measurements.md).
+- [findings.md](findings.md): what works, and what's still fake or
+  missing.
+- [measurements.md](measurements.md): measured numbers.
+- [rust-tests.md](rust-tests.md): a crate from this repository in the tab,
+  with `cargo test` on a sandboxed runner over Nostr.
+- [workstation.md](workstation.md): the spec for the Kiln workstation in the
+  Verse, and NIP-34 patches and pull requests from it.

@@ -4,7 +4,7 @@ Kiln's second milestone (#12437): the agent works on a real crate from this
 repository. The tab holds the crate's files and edits them; a runner on a
 computer we control builds and tests the change, and the result comes back
 over Nostr. Compiling the workspace in the browser isn't realistic (see
-[the `rustc` experiment](#experiment-rustc-in-the-tab)), so this is the
+[the `rustc` experiment](workstation.md#experiment-rustc-in-the-tab)), so this is the
 hybrid.
 
 ## How it works
