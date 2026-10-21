@@ -25,6 +25,7 @@
 //! model in checkpoint form ([`synthetic`]), with V4.1's 40-layer layout,
 //! FP8 and FP4 blocks, and a 64-token vocabulary (`t0` to `t63`).
 
+pub mod chain;
 pub mod synthetic;
 
 use std::{cell::Cell, fmt, fs::File, ops::Range, os::unix::fs::FileExt, path::Path, sync::Arc};
@@ -155,6 +156,12 @@ impl V41CudaStageExecutor {
     #[must_use]
     pub fn stage(&self) -> &V41Stage {
         &self.stage
+    }
+
+    /// The stage's CUDA backend.
+    #[must_use]
+    pub fn backend(&self) -> &CudaBackend {
+        &self.backend
     }
 
     fn output(
@@ -610,6 +617,35 @@ impl CudaModel {
         observe: bool,
         control: Option<Control>,
     ) -> Result<V41Stage, Refused> {
+        self.stage_with(backend, layers, max_context, max_context, observe, control)
+    }
+
+    /// Loads `layers` onto the GPU with step buffers for `max_step_tokens`
+    /// tokens. A group's front sends a prompt as one step, so a serving
+    /// stage sizes them for `max_context`.
+    ///
+    /// # Errors
+    ///
+    /// Refuses missing tensors and device failures.
+    pub fn stage_sized(
+        &self,
+        backend: &mut CudaBackend,
+        layers: Range<usize>,
+        max_context: usize,
+        max_step_tokens: usize,
+    ) -> Result<V41Stage, Refused> {
+        self.stage_with(backend, layers, max_context, max_step_tokens, false, None)
+    }
+
+    fn stage_with(
+        &self,
+        backend: &mut CudaBackend,
+        layers: Range<usize>,
+        max_context: usize,
+        max_step_tokens: usize,
+        observe: bool,
+        control: Option<Control>,
+    ) -> Result<V41Stage, Refused> {
         let bad = |e: RuntimeError| Refused(format!("layers {layers:?} can't load: {e}"));
         match &self.kind {
             CudaWeights::Synthetic(store) => {
@@ -620,7 +656,7 @@ impl CudaModel {
                         shape: synthetic::shape(),
                         layers: layers.clone(),
                         max_context,
-                        max_step_tokens: max_context,
+                        max_step_tokens,
                         engram: engram_hashes(&synthetic::layout()),
                         token_map: Some(token_map(&synthetic::token_map()?, self.pad)?),
                         observe,
@@ -646,7 +682,7 @@ impl CudaModel {
                         shape: V41StageShape::flash(),
                         layers: layers.clone(),
                         max_context,
-                        max_step_tokens: max_context,
+                        max_step_tokens,
                         engram: engram_hashes(&layout),
                         token_map: Some(token_map(map, self.pad)?),
                         observe,

@@ -4068,9 +4068,18 @@ impl CudaBackend {
     /// CUDA runtime substrate is available.
     #[must_use]
     pub fn new() -> Self {
+        Self::with_device_index(0)
+    }
+
+    /// Creates a CUDA backend on the `index`th discovered device. A process
+    /// that drives several devices creates one backend per device and calls
+    /// each from one thread: the runtime selects the backend's device for
+    /// that thread when the backend is created.
+    #[must_use]
+    pub fn with_device_index(index: usize) -> Self {
         match discovery_report_internal() {
             Ok(report) => {
-                let Some(descriptor) = report.devices.first().cloned() else {
+                let Some(descriptor) = report.devices.get(index).cloned() else {
                     return Self {
                         state: CudaBackendState::Unavailable(report.health),
                     };

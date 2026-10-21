@@ -23,8 +23,9 @@
 //! [`V41GroupManifest`] names each stage's layers, GPU, and Engram tables.
 //! [`plan_group`] fits stages to GPU and host memory through a
 //! [`PlacementMemory`] input. [`HeaderBytes`] derives it from the checkpoint
-//! headers today; a measured input from W3 implements the same trait. Four
-//! stages are evaluated before eight.
+//! headers; [`MeasuredMemory`] reads W3's measurements of the CUDA runtime
+//! (#12390), which are provisional until numerical qualification passes.
+//! Four stages are evaluated before eight.
 
 use std::{collections::BTreeMap, fmt, ops::Range};
 
@@ -595,8 +596,7 @@ impl V41GroupManifest {
 // ---------------------------------------------------------------------------
 
 /// Memory a placement counts. [`HeaderBytes`] implements it from checkpoint
-/// headers; W3's measured peaks implement it later without changing
-/// [`plan_group`].
+/// headers and [`MeasuredMemory`] from W3's measured runtime.
 pub trait PlacementMemory {
     /// A short label recorded in the manifest.
     fn source(&self) -> String;
@@ -717,6 +717,245 @@ impl PlacementMemory for HeaderBytes {
     fn stage_runtime_bytes(&self, layers: Range<u32>) -> u64 {
         self.reserve.per_stage_bytes
             + self.reserve.per_layer_bytes * u64::from(layers.end - layers.start)
+    }
+}
+
+/// Schema label of [`MeasuredMemory`]'s file.
+pub const MEASURED_MEMORY_SCHEMA: &str = "psionic.deepseek_v41.placement_memory.v1";
+
+/// The runtime a measured placement input describes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeasuredRuntime {
+    /// Such as `psionic-v41-stage/1+cuda`.
+    pub name: String,
+    /// The source commit the stage worker was built from.
+    pub commit: String,
+    /// SHA-256 of the stage worker binary.
+    pub binary_sha256: String,
+    /// The GPU and its architecture.
+    pub gpu: String,
+    /// Weight, activation, cache, and residual precision, and the reduction
+    /// order.
+    pub precision: String,
+}
+
+/// One decoder layer as the runtime loaded it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeasuredLayer {
+    pub layer: u32,
+    /// Weight and scale bytes on the GPU, routed experts included.
+    pub gpu_weight_bytes: u64,
+    /// The layer's own request state on the GPU (window ring and mixes).
+    pub gpu_state_bytes: u64,
+    /// Page-locked host bytes of the layer's Engram table.
+    pub engram_host_bytes: u64,
+}
+
+/// How a stage's runtime bytes grow, beyond its weights.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeasuredRuntimeBytes {
+    /// Bytes every stage needs whatever its layers or context: the CUDA
+    /// context, kernels, constants, fixed scratch, captured graphs, and
+    /// selections. The largest residual across the measured stages.
+    pub per_stage_bytes: u64,
+    /// KV and indexer-key bytes per stored row of a KV source; a source of
+    /// ratio `r` stores `max_context / r + 1` rows.
+    pub source_row_bytes: u64,
+    /// The compressor's pending group, per unit of ratio, on a stage that
+    /// holds its source layer.
+    pub compressor_bytes_per_ratio: u64,
+    /// Scratch bytes per row of the stage's largest KV source (index and
+    /// block scores).
+    pub score_bytes_per_row: u64,
+    /// Step buffer bytes per token a step may carry.
+    pub step_token_bytes: u64,
+}
+
+/// A measured stage peak the model is checked against.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeasuredCheck {
+    pub first_layer: u32,
+    pub end_layer: u32,
+    pub max_context: u64,
+    pub max_step_tokens: u64,
+    /// Device bytes in use at the stage's peak, from `cudaMemGetInfo`.
+    pub peak_used_bytes: u64,
+}
+
+/// The measured placement input file (W3, #12390).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeasuredMemoryFile {
+    /// [`MEASURED_MEMORY_SCHEMA`].
+    pub schema: String,
+    /// `provisional` until numerical qualification passes.
+    pub status: String,
+    pub runtime: MeasuredRuntime,
+    pub repo: String,
+    pub revision: String,
+    pub index_sha256: String,
+    /// Where each part lives: GPU weights and caches, Engram on the host.
+    pub host_gpu_split: String,
+    /// Contexts the stages were loaded with.
+    pub measured_contexts: Vec<u64>,
+    /// The longest prompt a group's front can send in its one prefill step.
+    pub served_max_prompt_tokens: u64,
+    /// Decoder layers in order.
+    pub layers: Vec<MeasuredLayer>,
+    pub embeddings_bytes: u64,
+    pub head_bytes: u64,
+    pub runtime_bytes: MeasuredRuntimeBytes,
+    /// Stage peaks the model must cover.
+    pub checks: Vec<MeasuredCheck>,
+}
+
+/// Placement memory from W3's measurements of the original-weight CUDA
+/// runtime, at one context and step size. A group's front sends a prompt
+/// in one step, so a serving stage's step size equals its context.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MeasuredMemory {
+    file: MeasuredMemoryFile,
+    max_context: u64,
+    max_step_tokens: u64,
+}
+
+/// The measured file for the pinned Flash checkpoint on the RTX PRO 6000.
+const FLASH_MEASURED: &str =
+    include_str!("testdata/deepseek_v41_weights/placement_memory_measured.json");
+
+impl MeasuredMemory {
+    /// Reads a [`MEASURED_MEMORY_SCHEMA`] file for stages loaded with
+    /// `max_context` positions and steps of `max_step_tokens`.
+    ///
+    /// # Errors
+    ///
+    /// Refuses another schema, another checkpoint, a file without 40
+    /// layers, and a zero context or step size.
+    pub fn from_json(
+        json: &str,
+        max_context: u64,
+        max_step_tokens: u64,
+    ) -> Result<Self, ManifestError> {
+        let file: MeasuredMemoryFile = serde_json::from_str(json)
+            .map_err(|e| ManifestError(format!("measured memory: {e}")))?;
+        if file.schema != MEASURED_MEMORY_SCHEMA {
+            return Err(ManifestError(format!(
+                "measured memory schema {}",
+                file.schema
+            )));
+        }
+        if file.repo != DEEPSEEK_V41_FLASH_REPO
+            || file.revision != DEEPSEEK_V41_FLASH_REVISION
+            || file.index_sha256 != DEEPSEEK_V41_FLASH_INDEX_SHA256
+        {
+            return Err(ManifestError(String::from(
+                "measured memory is for another checkpoint",
+            )));
+        }
+        if file.layers.len() != V41_LAYERS as usize
+            || file
+                .layers
+                .iter()
+                .enumerate()
+                .any(|(i, l)| l.layer as usize != i)
+        {
+            return Err(ManifestError(String::from(
+                "measured memory needs layers 0 to 39 in order",
+            )));
+        }
+        if max_context == 0 || max_step_tokens == 0 || max_step_tokens > max_context {
+            return Err(ManifestError(format!(
+                "context {max_context} with steps of {max_step_tokens}"
+            )));
+        }
+        Ok(Self {
+            file,
+            max_context,
+            max_step_tokens,
+        })
+    }
+
+    /// The pinned Flash checkpoint's measurements, for a serving stage of
+    /// `max_context` positions (its step size equals its context).
+    ///
+    /// # Errors
+    ///
+    /// Only if the retained file is damaged, or `max_context` is zero.
+    pub fn flash(max_context: u64) -> Result<Self, ManifestError> {
+        Self::from_json(FLASH_MEASURED, max_context, max_context)
+    }
+
+    /// The measurements.
+    #[must_use]
+    pub fn file(&self) -> &MeasuredMemoryFile {
+        &self.file
+    }
+
+    /// The runtime bytes a stage running `layers` needs at a context and
+    /// step size.
+    #[must_use]
+    pub fn runtime_bytes_at(
+        &self,
+        layers: Range<u32>,
+        max_context: u64,
+        max_step_tokens: u64,
+    ) -> u64 {
+        let r = self.file.runtime_bytes;
+        let mut sources = Vec::new();
+        for layer in layers.clone() {
+            if compress_ratio(layer) == 0 {
+                continue;
+            }
+            if let Some(owner) = kv_owner(layer).filter(|o| !sources.contains(o)) {
+                sources.push(owner);
+            }
+        }
+        let mut bytes = r.per_stage_bytes;
+        let mut largest = 0;
+        for owner in sources {
+            let ratio = u64::from(compress_ratio(owner).max(1));
+            let rows = max_context / ratio + 1;
+            largest = largest.max(rows);
+            bytes += rows * r.source_row_bytes;
+            if layers.contains(&owner) {
+                bytes += ratio * r.compressor_bytes_per_ratio;
+            }
+        }
+        bytes += largest.max(1) * r.score_bytes_per_row;
+        bytes += max_step_tokens * r.step_token_bytes;
+        bytes
+            + layers
+                .map(|l| self.file.layers[l as usize].gpu_state_bytes)
+                .sum::<u64>()
+    }
+}
+
+impl PlacementMemory for MeasuredMemory {
+    fn source(&self) -> String {
+        format!(
+            "measured:{}@{}:context {}:{}",
+            self.file.runtime.name, self.file.runtime.commit, self.max_context, self.file.status
+        )
+    }
+    fn layer_gpu_bytes(&self, layer: u32) -> u64 {
+        self.file
+            .layers
+            .get(layer as usize)
+            .map_or(0, |l| l.gpu_weight_bytes)
+    }
+    fn layer_engram_bytes(&self, layer: u32) -> u64 {
+        self.file
+            .layers
+            .get(layer as usize)
+            .map_or(0, |l| l.engram_host_bytes)
+    }
+    fn embeddings_bytes(&self) -> u64 {
+        self.file.embeddings_bytes
+    }
+    fn head_bytes(&self) -> u64 {
+        self.file.head_bytes
+    }
+    fn stage_runtime_bytes(&self, layers: Range<u32>) -> u64 {
+        self.runtime_bytes_at(layers, self.max_context, self.max_step_tokens)
     }
 }
 

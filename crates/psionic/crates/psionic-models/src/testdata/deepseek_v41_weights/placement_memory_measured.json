@@ -1,0 +1,556 @@
+{
+ "schema": "psionic.deepseek_v41.placement_memory.v1",
+ "status": "provisional",
+ "runtime": {
+  "name": "psionic-v41-stage/1+cuda",
+  "commit": "6e59f4de54",
+  "binary_sha256": "c3376fa3a61b497ebf0d2ea5ab5c9d358d0b736194377803d336462f29459ec7",
+  "gpu": "NVIDIA RTX PRO 6000 Blackwell Server Edition (sm_120, 96 GB)",
+  "precision": "FP8 E4M3 dense and FP4 E2M1 routed-expert weights with UE8M0 scales, some small BF16 weights widened to F32 on the device; BF16 KV and indexer keys; F32 residual streams; ReferenceBf16 reduction order"
+ },
+ "repo": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+ "revision": "1bae0e1088993b9b82de08f59de5be5a34e42170",
+ "index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+ "host_gpu_split": "every decoder layer's weights, caches, and scratch on its stage's GPU; the Engram tables of layers 1 and 14 in page-locked host memory of the machine running that layer, read over PCIe row by row",
+ "measured_contexts": [
+  8192,
+  16384,
+  32768,
+  131072,
+  1048576
+ ],
+ "served_max_prompt_tokens": 3276,
+ "layers": [
+  {
+   "layer": 0,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 1,
+   "gpu_weight_bytes": 7547127256,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 101377628352
+  },
+  {
+   "layer": 2,
+   "gpu_weight_bytes": 7416204248,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 3,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 4,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 5,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 6,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 7,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 8,
+   "gpu_weight_bytes": 7416204248,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 9,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 10,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 11,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 12,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 13,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 14,
+   "gpu_weight_bytes": 7573808088,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 101380404048
+  },
+  {
+   "layer": 15,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 16,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 17,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 18,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 19,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 20,
+   "gpu_weight_bytes": 7400475608,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 21,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 22,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 23,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 24,
+   "gpu_weight_bytes": 7395099096,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 25,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 26,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 27,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 28,
+   "gpu_weight_bytes": 7395099096,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 29,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 30,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 31,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 32,
+   "gpu_weight_bytes": 7395099096,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 33,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 34,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 35,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 36,
+   "gpu_weight_bytes": 7395099096,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 37,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 38,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  },
+  {
+   "layer": 39,
+   "gpu_weight_bytes": 7389523416,
+   "gpu_state_bytes": 131264,
+   "engram_host_bytes": 0
+  }
+ ],
+ "embeddings_bytes": 1323827200,
+ "head_bytes": 1323847680,
+ "runtime_bytes": {
+  "per_stage_bytes": 1154617355,
+  "source_row_bytes": 1280,
+  "compressor_bytes_per_ratio": 4096,
+  "score_bytes_per_row": 5,
+  "step_token_bytes": 184356
+ },
+ "checks": [
+  {
+   "first_layer": 0,
+   "end_layer": 10,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 78102331392
+  },
+  {
+   "first_layer": 10,
+   "end_layer": 20,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76747571200
+  },
+  {
+   "first_layer": 20,
+   "end_layer": 30,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76537856000
+  },
+  {
+   "first_layer": 30,
+   "end_layer": 40,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 77850673152
+  },
+  {
+   "first_layer": 0,
+   "end_layer": 10,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 78102331392
+  },
+  {
+   "first_layer": 10,
+   "end_layer": 20,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76747571200
+  },
+  {
+   "first_layer": 20,
+   "end_layer": 30,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76537856000
+  },
+  {
+   "first_layer": 30,
+   "end_layer": 40,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 77850673152
+  },
+  {
+   "first_layer": 0,
+   "end_layer": 10,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 78102331392
+  },
+  {
+   "first_layer": 10,
+   "end_layer": 20,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76747571200
+  },
+  {
+   "first_layer": 20,
+   "end_layer": 30,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76537856000
+  },
+  {
+   "first_layer": 30,
+   "end_layer": 40,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 77850673152
+  },
+  {
+   "first_layer": 0,
+   "end_layer": 10,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 78102331392
+  },
+  {
+   "first_layer": 10,
+   "end_layer": 20,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76747571200
+  },
+  {
+   "first_layer": 20,
+   "end_layer": 30,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76537856000
+  },
+  {
+   "first_layer": 30,
+   "end_layer": 40,
+   "max_context": 8192,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 77850673152
+  },
+  {
+   "first_layer": 0,
+   "end_layer": 10,
+   "max_context": 1048576,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 79417245696
+  },
+  {
+   "first_layer": 10,
+   "end_layer": 20,
+   "max_context": 1048576,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 78064582656
+  },
+  {
+   "first_layer": 20,
+   "end_layer": 30,
+   "max_context": 1048576,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 77877936128
+  },
+  {
+   "first_layer": 30,
+   "end_layer": 40,
+   "max_context": 1048576,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 79190753280
+  },
+  {
+   "first_layer": 0,
+   "end_layer": 10,
+   "max_context": 131072,
+   "max_step_tokens": 131072,
+   "peak_used_bytes": 100892082176
+  },
+  {
+   "first_layer": 10,
+   "end_layer": 20,
+   "max_context": 131072,
+   "max_step_tokens": 131072,
+   "peak_used_bytes": 99539419136
+  },
+  {
+   "first_layer": 20,
+   "end_layer": 30,
+   "max_context": 131072,
+   "max_step_tokens": 131072,
+   "peak_used_bytes": 99350675456
+  },
+  {
+   "first_layer": 30,
+   "end_layer": 40,
+   "max_context": 131072,
+   "max_step_tokens": 131072,
+   "peak_used_bytes": 100663492608
+  },
+  {
+   "first_layer": 0,
+   "end_layer": 10,
+   "max_context": 131072,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 78238646272
+  },
+  {
+   "first_layer": 10,
+   "end_layer": 20,
+   "max_context": 131072,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76885983232
+  },
+  {
+   "first_layer": 20,
+   "end_layer": 30,
+   "max_context": 131072,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76697239552
+  },
+  {
+   "first_layer": 30,
+   "end_layer": 40,
+   "max_context": 131072,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 78010056704
+  },
+  {
+   "first_layer": 0,
+   "end_layer": 10,
+   "max_context": 32768,
+   "max_step_tokens": 32768,
+   "peak_used_bytes": 82642665472
+  },
+  {
+   "first_layer": 10,
+   "end_layer": 20,
+   "max_context": 32768,
+   "max_step_tokens": 32768,
+   "peak_used_bytes": 81290002432
+  },
+  {
+   "first_layer": 20,
+   "end_layer": 30,
+   "max_context": 32768,
+   "max_step_tokens": 32768,
+   "peak_used_bytes": 81101258752
+  },
+  {
+   "first_layer": 30,
+   "end_layer": 40,
+   "max_context": 32768,
+   "max_step_tokens": 32768,
+   "peak_used_bytes": 82414075904
+  },
+  {
+   "first_layer": 0,
+   "end_layer": 10,
+   "max_context": 32768,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 78112817152
+  },
+  {
+   "first_layer": 10,
+   "end_layer": 20,
+   "max_context": 32768,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76758056960
+  },
+  {
+   "first_layer": 20,
+   "end_layer": 30,
+   "max_context": 32768,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 76569313280
+  },
+  {
+   "first_layer": 30,
+   "end_layer": 40,
+   "max_context": 32768,
+   "max_step_tokens": 8192,
+   "peak_used_bytes": 77882130432
+  },
+  {
+   "first_layer": 0,
+   "end_layer": 10,
+   "max_context": 16384,
+   "max_step_tokens": 2048,
+   "peak_used_bytes": 76984549376
+  },
+  {
+   "first_layer": 10,
+   "end_layer": 20,
+   "max_context": 16384,
+   "max_step_tokens": 2048,
+   "peak_used_bytes": 75629789184
+  },
+  {
+   "first_layer": 20,
+   "end_layer": 30,
+   "max_context": 16384,
+   "max_step_tokens": 2048,
+   "peak_used_bytes": 75415879680
+  },
+  {
+   "first_layer": 30,
+   "end_layer": 40,
+   "max_context": 16384,
+   "max_step_tokens": 2048,
+   "peak_used_bytes": 76728696832
+  }
+ ]
+}

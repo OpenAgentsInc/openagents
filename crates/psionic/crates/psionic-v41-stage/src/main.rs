@@ -14,6 +14,9 @@
 //! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR [...]
 //! psionic-v41-stage qualify-derive --reference R[,R] --control C[,C] --out FILE
 //! psionic-v41-stage build-info
+//! psionic-v41-stage chain --weights DIR [--split A-B,...] [--gpus N,...]
+//!     [--max-context N] [--max-step-tokens N] [--prompt JSON | --prompt-file F]
+//!     [--mode thinking|chat] [--max-tokens N] [--prefill-chunk N] [--load-only]
 //! ```
 //!
 //! `--arithmetic` takes `f32`, `bf16`, or `bf16-tp8` on the CPU backend and
@@ -37,6 +40,7 @@ fn main() -> ExitCode {
         Some("qualify") => run_qualify(&args[1..]),
         Some("qualify-derive") => psionic_v41_stage::qualify::run_derive(&args[1..]),
         Some("build-info") => run_build_info(),
+        Some("chain") => run_chain(&args[1..]),
         _ => run_stage(&args),
     };
     match result {
@@ -160,6 +164,20 @@ fn run_build_info() -> Result<(), Refused> {
     });
     let _ = writeln!(std::io::stdout(), "{info}");
     Ok(())
+}
+
+#[cfg(feature = "cuda")]
+fn run_chain(args: &[String]) -> Result<(), Refused> {
+    let options = psionic_v41_stage::cuda::chain::ChainOptions::parse(args)?;
+    let report = psionic_v41_stage::cuda::chain::run(&options)?;
+    let json = serde_json::to_string(&report).map_err(|e| Refused(e.to_string()))?;
+    let _ = writeln!(std::io::stdout(), "{json}");
+    Ok(())
+}
+
+#[cfg(not(feature = "cuda"))]
+fn run_chain(_args: &[String]) -> Result<(), Refused> {
+    Err(Refused("chain needs a build with --features cuda".into()))
 }
 
 fn run_manifest(args: &[String]) -> Result<(), Refused> {

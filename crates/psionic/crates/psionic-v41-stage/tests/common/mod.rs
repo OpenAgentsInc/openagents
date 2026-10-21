@@ -67,7 +67,7 @@ pub fn run_bounded(command: &mut Command, limit: Duration) -> Output {
 /// The device a CUDA stage child uses. A test machine may have one GPU, so
 /// every child shares the device the test found, the parent's own
 /// `CUDA_VISIBLE_DEVICES` or the first device, as `--gpu 0`.
-fn visible_devices() -> String {
+pub fn visible_devices() -> String {
     std::env::var("CUDA_VISIBLE_DEVICES").unwrap_or_else(|_| "0".into())
 }
 

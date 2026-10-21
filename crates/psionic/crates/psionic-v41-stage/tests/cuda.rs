@@ -108,3 +108,75 @@ fn a_cuda_stage_announces_a_runtime_a_cpu_group_refuses() {
         gpu.stages[0].hello["runtime"]
     );
 }
+
+/// `chain` (W2, W3) runs the group's stages as threads of one process and
+/// answers as the unsplit CUDA stage does; its memory ledger adds up to the
+/// stage's device bytes.
+#[test]
+fn a_chained_group_answers_like_the_unsplit_cuda_stage_and_reports_its_memory() {
+    if !cuda() {
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let split = [(0, 13), (13, 40)];
+    weights(root.path(), &split);
+    let expected = reference_with(
+        root.path(),
+        &prompt(),
+        12,
+        &["--backend", "cuda", "--max-context", CONTEXT],
+    );
+    let out = common::run_bounded(
+        std::process::Command::new(common::BIN)
+            .args([
+                "chain",
+                "--weights",
+                &root.path().display().to_string(),
+                "--split",
+                "0-13,13-40",
+                "--gpus",
+                "0,0",
+                "--max-context",
+                CONTEXT,
+                "--max-step-tokens",
+                "16",
+                "--prompt",
+                &prompt().to_string(),
+                "--max-tokens",
+                "12",
+                "--engram-lookups",
+                "8",
+            ])
+            .env("CUDA_VISIBLE_DEVICES", common::visible_devices()),
+        common::LIMIT,
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let ids: Vec<u32> = report["answer"]["ids"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|v| v.as_u64().unwrap() as u32)
+        .collect();
+    assert_eq!(ids, expected.0);
+    let stages = report["stages"].as_array().unwrap();
+    assert_eq!(stages.len(), 2);
+    for stage in stages {
+        let ledger = &stage["ledger"];
+        let device = &stage["device_bytes"];
+        assert_eq!(
+            ledger["device_total"].as_u64().unwrap(),
+            device["weights"].as_u64().unwrap() + device["state"].as_u64().unwrap(),
+            "{stage}"
+        );
+        assert_eq!(ledger["max_step_tokens"], 16);
+        // Layer 1's Engram lives on stage 0; layer 14's on stage 1.
+        assert_eq!(stage["engram"].as_array().unwrap().len(), 1, "{stage}");
+        assert!(stage["per_decode_token"]["parameters"].as_u64().unwrap() > 0);
+        assert!(stage["run"]["step_ms"].as_array().unwrap().len() >= 12);
+    }
+}

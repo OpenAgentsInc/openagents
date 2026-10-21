@@ -701,6 +701,85 @@ pub struct V41StepOutput {
     pub stats: V41StepStats,
 }
 
+/// Device bytes and parameters of one decoder layer, as the stage loaded it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct V41LayerMemory {
+    pub layer: usize,
+    /// Weight and scale bytes on the device, routed experts included.
+    pub weight_bytes: usize,
+    /// The routed experts' share of `weight_bytes`.
+    pub routed_expert_bytes: usize,
+    /// Parameters (logical elements, scales excluded) in `weight_bytes`.
+    pub parameters: u64,
+    /// The routed experts' share of `parameters`.
+    pub routed_expert_parameters: u64,
+    /// The layer's own request state: its window ring and mix buffers.
+    pub state_bytes: usize,
+}
+
+/// One shared KV source's device state.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct V41SourceMemory {
+    /// The KV source layer.
+    pub layer: usize,
+    /// Its compression ratio: one stored row per `ratio` positions.
+    pub ratio: usize,
+    /// Rows allocated: `max_context / ratio + 1`.
+    pub capacity: usize,
+    /// Compressed KV rows, BF16.
+    pub kv_bytes: usize,
+    /// Indexer keys, BF16.
+    pub index_key_bytes: usize,
+    /// The compressor's pending group, when the source layer is in the stage.
+    pub compressor_state_bytes: usize,
+}
+
+/// Where a loaded stage's device and pinned host bytes went. The parts add
+/// up to [`V41Stage::device_bytes`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct V41StageMemory {
+    pub max_context: usize,
+    pub max_step_tokens: usize,
+    pub layers: Vec<V41LayerMemory>,
+    pub embedding_bytes: usize,
+    pub embedding_parameters: u64,
+    /// The final norm and output head.
+    pub head_bytes: usize,
+    pub head_parameters: u64,
+    /// RoPE tables, the Engram token map, and its hash constants.
+    pub constant_bytes: usize,
+    pub sources: Vec<V41SourceMemory>,
+    /// Index selections that layers in the stage reuse.
+    pub selection_bytes: usize,
+    /// Scratch and step buffers.
+    pub work_bytes: usize,
+    /// The part of `work_bytes` that grows with `max_step_tokens`.
+    pub work_step_bytes: usize,
+    /// Page-locked host bytes of the stage's Engram tables.
+    pub engram_host_bytes: usize,
+}
+
+impl V41StageMemory {
+    /// Sum of the device parts.
+    #[must_use]
+    pub fn device_total(&self) -> usize {
+        self.layers
+            .iter()
+            .map(|l| l.weight_bytes + l.state_bytes)
+            .sum::<usize>()
+            + self.embedding_bytes
+            + self.head_bytes
+            + self.constant_bytes
+            + self
+                .sources
+                .iter()
+                .map(|s| s.kv_bytes + s.index_key_bytes + s.compressor_state_bytes)
+                .sum::<usize>()
+            + self.selection_bytes
+            + self.work_bytes
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Device weights and state
 // ---------------------------------------------------------------------------
@@ -952,6 +1031,7 @@ pub struct V41Stage {
     history: Vec<u32>,
     weight_bytes: usize,
     state_bytes: usize,
+    memory: V41StageMemory,
 }
 
 impl std::fmt::Debug for V41Stage {
@@ -968,6 +1048,10 @@ struct Loader<'a> {
     backend: &'a mut CudaBackend,
     source: &'a dyn V41TensorSource,
     bytes: usize,
+    /// Parameters loaded: logical weight elements, scales excluded.
+    params: u64,
+    /// Bytes of request state and scratch among `bytes`.
+    state: usize,
 }
 
 impl Loader<'_> {
@@ -991,6 +1075,12 @@ impl Loader<'_> {
     fn zeros(&mut self, bytes: usize) -> Result<CudaBuffer, RuntimeError> {
         self.bytes += bytes.max(4);
         self.backend.byte_buffer(&vec![0; bytes.max(4)])
+    }
+
+    /// Zeroed request state or scratch.
+    fn state_zeros(&mut self, bytes: usize) -> Result<CudaBuffer, RuntimeError> {
+        self.state += bytes.max(4);
+        self.zeros(bytes)
     }
 
     fn upload(&mut self, bytes: &[u8]) -> Result<CudaBuffer, RuntimeError> {
@@ -1049,6 +1139,7 @@ impl Loader<'_> {
             V41TensorDtype::F32
         };
         let tensor = self.tensor(name, dtype, shape)?;
+        self.params += shape.iter().product::<usize>() as u64;
         if bf16 {
             let values: Vec<f32> = tensor
                 .bytes
@@ -1063,6 +1154,7 @@ impl Loader<'_> {
 
     fn bf16_words(&mut self, name: &str, shape: &[usize]) -> Result<CudaBuffer, RuntimeError> {
         let tensor = self.tensor(name, V41TensorDtype::Bf16, shape)?;
+        self.params += shape.iter().product::<usize>() as u64;
         self.upload(&tensor.bytes)
     }
 
@@ -1100,6 +1192,7 @@ impl Loader<'_> {
         };
         let mut weights = self.alloc(weight_bytes * stems.len())?;
         let mut scales = self.alloc(scale_bytes * stems.len())?;
+        self.params += (rows * cols * stems.len()) as u64;
         for (i, stem) in stems.iter().enumerate() {
             let w = self.tensor(&format!("{stem}.weight"), weight_dtype, &weight_shape)?;
             let s = self.tensor(
@@ -1205,11 +1298,20 @@ impl V41Stage {
             backend,
             source,
             bytes: 0,
+            params: 0,
+            state: 0,
+        };
+        let mut memory = V41StageMemory {
+            max_context: config.max_context,
+            max_step_tokens: config.max_step_tokens,
+            ..V41StageMemory::default()
         };
         let fp8 = V41MatvecFormat::Fp8Block32x32;
         let fp4 = V41MatvecFormat::Fp4E2M1Row32;
         let mut layers = Vec::new();
         for layer in config.layers.clone() {
+            let (layer_bytes, layer_params, layer_state) =
+                (loader.bytes, loader.params, loader.state);
             let ratio = v41_compress_ratio(layer).ok_or_else(|| invalid("layer"))?;
             let name = |part: &str| format!("layers.{layer}.{part}");
             let hc = |loader: &mut Loader<'_>, part: &str| -> Result<HcWeights, RuntimeError> {
@@ -1301,6 +1403,7 @@ impl V41Stage {
                 V41TensorDtype::F8E4M3,
                 &[wo_rows, wo_cols],
             )?;
+            loader.params += (wo_rows * wo_cols) as u64;
             let wo_a_scales = loader.tensor(
                 &name("attn.wo_a.scale"),
                 V41TensorDtype::F8E8M0,
@@ -1312,6 +1415,12 @@ impl V41Stage {
             let w = |part: &str| -> Vec<String> {
                 experts.iter().map(|e| format!("{e}.{part}")).collect()
             };
+            let (routed_bytes, routed_params) = (loader.bytes, loader.params);
+            let w1 = loader.stack(&w("w1"), fp4, shape.expert_width, h)?;
+            let w2 = loader.stack(&w("w2"), fp4, h, shape.expert_width)?;
+            let w3 = loader.stack(&w("w3"), fp4, shape.expert_width, h)?;
+            let (routed_bytes, routed_params) =
+                (loader.bytes - routed_bytes, loader.params - routed_params);
             let mut observed = Vec::new();
             if config.observe {
                 let mut sites = vec![
@@ -1338,7 +1447,7 @@ impl V41Stage {
                     sites.push((V41Site::Selection, g.index_top_k));
                 }
                 for (site, words) in sites {
-                    let buffer = loader.zeros(4 * words * config.max_step_tokens)?;
+                    let buffer = loader.state_zeros(4 * words * config.max_step_tokens)?;
                     observed.push((site, buffer, words));
                 }
             }
@@ -1361,26 +1470,39 @@ impl V41Stage {
                 indexer,
                 gate: loader.bf16_words(&name("ffn.gate.weight"), &[shape.router.experts, h])?,
                 bias: loader.f32s(&name("ffn.gate.bias"), &[shape.router.experts], false)?,
-                w1: loader.stack(&w("w1"), fp4, shape.expert_width, h)?,
-                w2: loader.stack(&w("w2"), fp4, h, shape.expert_width)?,
-                w3: loader.stack(&w("w3"), fp4, shape.expert_width, h)?,
+                w1,
+                w2,
+                w3,
                 shared: [
                     loader.packed(&name("ffn.shared_experts.w1"), fp8, shape.expert_width, h)?,
                     loader.packed(&name("ffn.shared_experts.w2"), fp8, h, shape.expert_width)?,
                     loader.packed(&name("ffn.shared_experts.w3"), fp8, shape.expert_width, h)?,
                 ],
                 engram,
-                ring: loader.zeros(g.window * g.head_dim * 2)?,
-                mixes_attn: loader.zeros(4 * shape.hc.mixes())?,
-                mixes_ffn: loader.zeros(4 * shape.hc.mixes())?,
+                ring: loader.state_zeros(g.window * g.head_dim * 2)?,
+                mixes_attn: loader.state_zeros(4 * shape.hc.mixes())?,
+                mixes_ffn: loader.state_zeros(4 * shape.hc.mixes())?,
                 observed,
             });
+            let state_bytes = loader.state - layer_state;
+            memory.layers.push(V41LayerMemory {
+                layer,
+                weight_bytes: loader.bytes - layer_bytes - state_bytes,
+                routed_expert_bytes: routed_bytes,
+                parameters: loader.params - layer_params,
+                routed_expert_parameters: routed_params,
+                state_bytes,
+            });
         }
+        let (bytes, params) = (loader.bytes, loader.params);
         let embed = if config.embeds() {
             Some(loader.bf16_words("embed.weight", &[shape.vocabulary, h])?)
         } else {
             None
         };
+        memory.embedding_bytes = loader.bytes - bytes;
+        memory.embedding_parameters = loader.params - params;
+        let (bytes, params) = (loader.bytes, loader.params);
         let head = if config.samples() {
             Some((
                 loader.bf16_words("head.weight", &[shape.vocabulary, h])?,
@@ -1389,6 +1511,8 @@ impl V41Stage {
         } else {
             None
         };
+        memory.head_bytes = loader.bytes - bytes;
+        memory.head_parameters = loader.params - params;
         let weight_bytes = loader.bytes;
 
         // Shared request state.
@@ -1401,11 +1525,24 @@ impl V41Stage {
                 }
                 let ratio = v41_compress_ratio(owner).ok_or_else(|| invalid("source"))?;
                 let capacity = config.max_context / ratio + 1;
+                let state_bytes = 4 * 2 * ratio * g.head_dim;
                 let state = if config.layers.contains(&owner) {
-                    Some(loader.zeros(4 * 2 * ratio * g.head_dim)?)
+                    Some(loader.zeros(state_bytes)?)
                 } else {
                     None
                 };
+                memory.sources.push(V41SourceMemory {
+                    layer: owner,
+                    ratio,
+                    capacity,
+                    kv_bytes: (capacity * g.head_dim * 2).max(4),
+                    index_key_bytes: (capacity * g.index_dim * 2).max(4),
+                    compressor_state_bytes: if state.is_some() {
+                        state_bytes.max(4)
+                    } else {
+                        0
+                    },
+                });
                 sources.insert(
                     owner,
                     SourceState {
@@ -1418,6 +1555,7 @@ impl V41Stage {
                 );
             }
         }
+        let selections_start = loader.bytes;
         let mut selections = BTreeMap::new();
         for layer in config.layers.clone() {
             if let Some(owners) = V41LayerOwners::for_layer(layer) {
@@ -1430,6 +1568,8 @@ impl V41Stage {
                 }
             }
         }
+        memory.selection_bytes = loader.bytes - selections_start;
+        let constants_start = loader.bytes;
         let mut rope_window =
             loader.floats(&v41_rope_frequencies(V41RopeConfig::window(g.rope_dim))?)?;
         let mut rope_compressed = loader.floats(&v41_rope_frequencies(
@@ -1461,6 +1601,7 @@ impl V41Stage {
                 Some(loader.upload(&le_bytes(&params, u64::to_le_bytes))?),
             )
         };
+        memory.constant_bytes = loader.bytes - constants_start;
         let max_capacity = sources.values().map(|s| s.capacity).max().unwrap_or(1);
         let block_capacity = max_capacity.div_ceil(shape.candidate_block_size);
         let t = config.max_step_tokens;
@@ -1475,6 +1616,10 @@ impl V41Stage {
         .into_iter()
         .max()
         .unwrap_or(h);
+        let work_start = loader.bytes;
+        // The step buffers below, per token of `max_step_tokens`.
+        let step_floats = 1 + 2 * s * h + 2 * s + 2 * g.index_top_k + 2 * shape.candidate_blocks;
+        memory.work_step_bytes = 4 * step_floats * t;
         let mut f = |n: usize| loader.zeros(4 * n);
         let work = Work {
             index: f(1)?,
@@ -1544,6 +1689,11 @@ impl V41Stage {
             token: f(1)?,
         };
         let state_bytes = loader.bytes - weight_bytes;
+        memory.work_bytes = loader.bytes - work_start;
+        memory.engram_host_bytes = engram_tables
+            .iter()
+            .map(|t| t.codes.byte_len() + t.scales.byte_len())
+            .sum();
         Ok(Self {
             config,
             layers,
@@ -1563,6 +1713,7 @@ impl V41Stage {
             history: Vec::new(),
             weight_bytes,
             state_bytes,
+            memory,
         })
     }
 
@@ -1576,6 +1727,18 @@ impl V41Stage {
     #[must_use]
     pub fn device_bytes(&self) -> (usize, usize) {
         (self.weight_bytes, self.state_bytes)
+    }
+
+    /// Where the device and pinned host bytes went.
+    #[must_use]
+    pub fn memory(&self) -> &V41StageMemory {
+        &self.memory
+    }
+
+    /// The stage's page-locked Engram tables.
+    #[must_use]
+    pub fn engram_tables(&self) -> &[V41EngramHostTable] {
+        &self.engram_tables
     }
 
     fn rope(&self, layer: usize) -> V41RopeTable<'_> {

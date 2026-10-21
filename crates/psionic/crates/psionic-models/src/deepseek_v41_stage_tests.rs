@@ -1662,3 +1662,92 @@ fn prefill_sizes_match_encoded_messages_and_bound_the_step() {
         limits.max_tokens as u64
     );
 }
+
+// ---------------------------------------------------------------------------
+// W3's measured placement input (#12390)
+// ---------------------------------------------------------------------------
+
+/// An RTX PRO 6000's device memory, as `cudaMemGetInfo` reports it.
+const RTX_PRO_6000: u64 = 101_973_819_392;
+
+fn stage_weights(memory: &dyn PlacementMemory, first: u32, end: u32) -> u64 {
+    stage_weight_bytes(memory, &(first..end), first == 0, end == V41_LAYERS)
+}
+
+#[test]
+fn measured_memory_covers_every_measured_stage_peak() {
+    let memory = MeasuredMemory::flash(8192).unwrap();
+    let file = memory.file();
+    assert_eq!(file.status, "provisional");
+    assert!(!file.checks.is_empty());
+    for check in &file.checks {
+        let at =
+            MeasuredMemory::from_json(FLASH_MEASURED, check.max_context, check.max_step_tokens)
+                .unwrap();
+        let layers = check.first_layer..check.end_layer;
+        let need = stage_weights(&at, check.first_layer, check.end_layer)
+            + at.stage_runtime_bytes(layers.clone());
+        assert!(need >= check.peak_used_bytes, "{check:?}: {need}");
+        // The model is a bound, not a guess: within 1 GiB of every peak.
+        assert!(need - check.peak_used_bytes < 1 << 30, "{check:?}: {need}");
+    }
+    assert!(
+        memory.source().starts_with("measured:"),
+        "{}",
+        memory.source()
+    );
+    assert!(memory.source().ends_with(":provisional"));
+}
+
+#[test]
+fn measured_memory_places_the_served_group_on_one_quad() {
+    // A serving stage's step equals its context (one prefill step).
+    let memory = MeasuredMemory::flash(8192).unwrap();
+    let card = RTX_PRO_6000;
+    let request = PlacementRequest::new(gpus(&["m0"], 4, card), ram(&["m0"], 700 * GB));
+    let placement = plan_group(&memory, &request).unwrap();
+    let m = &placement.manifest;
+    m.validate().unwrap();
+    assert_eq!(m.stages.len(), 4);
+    assert!(m.memory_source.starts_with("measured:"));
+    assert_eq!(m.split(), [0..10, 10..20, 20..30, 30..40]);
+    for s in &m.stages {
+        assert!(s.gpu_weight_bytes + s.gpu_runtime_bytes <= card);
+    }
+}
+
+#[test]
+fn measured_step_buffers_push_long_served_contexts_to_eight_stages() {
+    // A one-step prefill of 262,144 positions needs about 48 GB of step
+    // buffers per stage: four cards no longer hold the model, eight do.
+    let memory = MeasuredMemory::flash(262_144).unwrap();
+    let hosts = ["a", "b", "c", "d"];
+    let request = PlacementRequest::new(gpus(&hosts, 2, RTX_PRO_6000), ram(&hosts, 360 * GB));
+    let placement = plan_group(&memory, &request).unwrap();
+    assert!(matches!(
+        placement.candidates[0].outcome,
+        CandidateOutcome::GpuShort { .. }
+    ));
+    assert_eq!(placement.manifest.stages.len(), 8);
+    // With 8,192-token steps (chunked prefill) the same context fits four.
+    let chunked = MeasuredMemory::from_json(FLASH_MEASURED, 262_144, 8192).unwrap();
+    let request = PlacementRequest::new(gpus(&hosts, 1, RTX_PRO_6000), ram(&hosts, 360 * GB));
+    assert_eq!(
+        plan_group(&chunked, &request)
+            .unwrap()
+            .manifest
+            .stages
+            .len(),
+        4
+    );
+}
+
+#[test]
+fn measured_memory_refuses_another_file() {
+    let other = FLASH_MEASURED.replace(MEASURED_MEMORY_SCHEMA, "other.v1");
+    assert!(MeasuredMemory::from_json(&other, 8192, 8192).is_err());
+    let other = FLASH_MEASURED.replace(DEEPSEEK_V41_FLASH_REVISION, "0000");
+    assert!(MeasuredMemory::from_json(&other, 8192, 8192).is_err());
+    assert!(MeasuredMemory::from_json(FLASH_MEASURED, 8192, 16_384).is_err());
+    assert!(MeasuredMemory::from_json(FLASH_MEASURED, 0, 0).is_err());
+}
