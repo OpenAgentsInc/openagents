@@ -829,7 +829,7 @@ independent implementation work. The next children of #12369 are:
 | Issue | Scope | Local implementation |
 | --- | --- | --- |
 | [#12385](https://github.com/OpenAgentsInc/openagents/issues/12385) | Complete text-block wiring | Named mHC projections and pre-mix propagation, collapse/norm/expand, routed/shared experts, and Engram lookup/gating with explicit arithmetic modes. Independent nonuniform block fixtures check intermediate residuals, attention input/mixes, router choices/weights, and output. |
-| [#12386](https://github.com/OpenAgentsInc/openagents/issues/12386) | Full 40-layer CPU transformer | Filed; follows #12385. |
+| [#12386](https://github.com/OpenAgentsInc/openagents/issues/12386) | Full 40-layer CPU transformer | Embedding, both Engram layers, all 40 text blocks, final collapse/norm/head, explicit selected-layer traces, and request-owned state. Full synthetic-model logits and intermediate residuals/routing match independent NumPy equations. |
 | [#12387](https://github.com/OpenAgentsInc/openagents/issues/12387) | Greedy decoding and pinned checkpoint runner | Filed; follows #12386. |
 
 The [transformer fixture generator](../../scripts/dev/deepseek-v41-transformer-fixtures.py)
@@ -842,3 +842,14 @@ All 48 accumulated CPU tests pass, including a connected BF16 Engram check.
 Only selected experts and requested Engram rows are read. The local fixtures
 qualify composition; the original checkpoint and device comparisons remain
 with #12371's oracle and the after-close checks.
+
+The complete transformer passes all 52 accumulated CPU tests. Full-model
+float32 residuals, pre-mixes, router choices/weights, and last-token vocabulary
+logits match the independent fixture within `2e-4 + 3e-5 * abs(expected)`.
+Whole prefill and single-token replay agree; the connected BF16 model also
+agrees exactly across split prefill. Both Engram layers and every routed/shared
+FFN run in these tests. A failure in layer 39 rolls back all attention caches,
+n-gram history, and positions. Invalid tokens, trace layers, and context lengths
+are rejected before mutation. The forward result retains only the last token's
+logits unless the caller explicitly requests selected-layer activation traces.
+These are complete tiny-model checks, not original-weight qualification.

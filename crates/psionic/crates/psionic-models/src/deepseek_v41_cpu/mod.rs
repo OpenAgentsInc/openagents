@@ -17,6 +17,7 @@ pub mod projection;
 pub mod quantization;
 pub mod rope;
 pub mod shared_state;
+pub mod transformer;
 
 use thiserror::Error;
 
