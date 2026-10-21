@@ -863,4 +863,80 @@ mod tests {
             assert_eq!(step["logits"]["bit_equal"], step["logits"]["count"]);
         }
     }
+
+    /// Layers 38-40 of the real checkpoint on this Mac's GPU: load time,
+    /// memory, and the time of a prefill and of decode steps, on made-up
+    /// inputs. `V41_WEIGHTS=DIR cargo test --release -p psionic-v41-stage
+    /// --features metal -- --ignored real_last_layers --nocapture`.
+    #[test]
+    #[ignore = "measurement; needs the checkpoint's last shards"]
+    fn real_last_layers_step_times() {
+        use psionic_backend_metal::v41::stage::{V41SourceRows, V41StepInput};
+        let Some(dir) = std::env::var_os("V41_WEIGHTS") else {
+            return;
+        };
+        let dir = std::path::PathBuf::from(dir);
+        let manifest = crate::synthetic_manifest(&[0..38, 38..40]).unwrap();
+        let mut real = manifest.clone();
+        real.repo = psionic_models::deepseek_v41_weights::DEEPSEEK_V41_FLASH_REPO.into();
+        real.revision = psionic_models::deepseek_v41_weights::DEEPSEEK_V41_FLASH_REVISION.into();
+        real.index_sha256 =
+            psionic_models::deepseek_v41_weights::DEEPSEEK_V41_FLASH_INDEX_SHA256.into();
+        let model = MetalModel::load(&dir, real.selection(1).as_ref()).unwrap();
+        let metal = metal_device().unwrap();
+        let started = std::time::Instant::now();
+        let mut stage = model.stage(&metal, 38..40, 4096, 512, false, None).unwrap();
+        eprintln!(
+            "load {:.1} s, bytes {:?}, allocated {}",
+            started.elapsed().as_secs_f64(),
+            stage.device_bytes(),
+            metal.allocated_bytes()
+        );
+        let shape = stage.config().shape;
+        let (s, h) = (shape.hc.streams, shape.hidden);
+        let g = shape.attention;
+        let mut position = 0;
+        for (k, t) in [64_usize, 1, 1, 1, 1, 1, 1, 1, 1].into_iter().enumerate() {
+            let tokens: Vec<u32> = (0..t as u32).map(|i| 100 + i).collect();
+            let residual: Vec<f32> = (0..t * s * h)
+                .map(|i| ((i * 2_654_435_761) % 1000) as f32 / 1000.0 - 0.5)
+                .collect();
+            let pre: Vec<f32> = (0..t).flat_map(|_| [1.0, 0.0, 0.0, 0.0]).collect();
+            let rows = V41SourceRows {
+                layer: 20,
+                first_row: position,
+                kv: vec![0x3c00; t * g.head_dim],
+                index_keys: None,
+            };
+            let selection: Vec<i32> = (0..t)
+                .flat_map(|i| {
+                    let visible = (position + i + 1) as i32;
+                    (0..g.index_top_k as i32).map(move |j| if j < visible { j } else { -1 })
+                })
+                .collect();
+            let input = V41StepInput {
+                position,
+                tokens: &tokens,
+                residual: Some(&residual),
+                pre_mix: Some(&pre),
+                source_rows: Some(&rows),
+                selection: Some(&selection),
+                // Layer 38's boundary carries no candidates: no index
+                // source follows it.
+                candidates: None,
+                sampling: V41Sampling::greedy(),
+            };
+            let started = std::time::Instant::now();
+            let out = stage.step(&metal, &input, false).unwrap();
+            eprintln!(
+                "step {k}: {t} tokens, {:.2} ms wall, {:.2} ms GPU, token {:?}",
+                started.elapsed().as_secs_f64() * 1e3,
+                stage.last_gpu_seconds() * 1e3,
+                out.token
+            );
+            position += t;
+        }
+        let (body, tail) = stage.recorded_kernels();
+        eprintln!("body {body:?}\ntail {tail:?}");
+    }
 }
