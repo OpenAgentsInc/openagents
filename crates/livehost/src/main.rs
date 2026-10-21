@@ -89,6 +89,29 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Point a channel (signed by its own key) at the manifest another
+    /// channel serves, once that manifest's hash is confirmed.
+    Promote {
+        #[arg(long)]
+        tenant: String,
+        #[arg(long)]
+        store: String,
+        #[arg(long)]
+        relay: String,
+        /// The destination channel's key.
+        #[arg(long)]
+        key: PathBuf,
+        #[arg(long, default_value = "live")]
+        channel: String,
+        #[arg(long, default_value = "staging")]
+        from: String,
+        /// The source channel's public key.
+        #[arg(long)]
+        from_pubkey: String,
+        /// The manifest hash that was checked; promotion refuses any other.
+        #[arg(long)]
+        confirm: String,
+    },
     /// Print the manifest a tenant's channel points at.
     Status {
         #[arg(long)]
@@ -222,6 +245,27 @@ async fn main() -> Result<()> {
             } else {
                 report.print();
             }
+        }
+        Command::Promote {
+            tenant,
+            store,
+            relay,
+            key,
+            channel,
+            from,
+            from_pubkey,
+            confirm,
+        } => {
+            let (store, signer) = (Store::parse(&store)?, keys::load(&key)?);
+            let target = Target {
+                store: &store,
+                relay: &relay,
+                signer: &signer,
+                channel: &channel,
+            };
+            deploy::promote(&tenant, &target, &from, &from_pubkey, &confirm)
+                .await?
+                .print();
         }
         Command::Status {
             tenant,

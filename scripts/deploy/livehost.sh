@@ -10,12 +10,17 @@
 #   scripts/deploy/livehost.sh deploy     # build the content tier and point staging at it
 #   scripts/deploy/livehost.sh rollback   # point staging back at the previous manifest
 #   scripts/deploy/livehost.sh status     # what staging points at
+#   scripts/deploy/livehost.sh promote HASH
+#                     # point `live` at staging's manifest HASH, signed with
+#                     # the separate live key; refused unless staging serves
+#                     # exactly HASH. No production server follows `live` yet.
 #
 # Environment (defaults in brackets):
 #   LIVEHOST_CHANNEL  [staging]; `live` is refused until promotion exists
 #   LIVEHOST_STORE    [gs://openagentsgemini-livehost]
 #   LIVEHOST_RELAY    [wss://relay.openagents.com]
 #   LIVEHOST_KEY      [~/work/.secrets/livehost-openagents-staging.key]
+#   LIVEHOST_LIVE_KEY [~/work/.secrets/livehost-openagents-live.key], promote only
 #   CLOUDSDK_CONFIG   for the bucket [~/work/.secrets/gcloud-sa-config]
 #   LIVEHOST_TOOLS_TARGET  where the deploy tools build
 #                     [~/work/openagents-target-1-livehost-tools]. A target of
@@ -57,12 +62,20 @@ case "${1:-}" in
     livehost rollback --tenant openagents --channel "$channel" \
       --store "$store" --relay "$relay" --key "$key"
     ;;
+  promote)
+    confirm="${2:?usage: livehost.sh promote MANIFEST_HASH}"
+    live_key="${LIVEHOST_LIVE_KEY:-$HOME/work/.secrets/livehost-openagents-live.key}"
+    [[ -f "$live_key" ]] || { echo "livehost.sh: no live key at $live_key" >&2; exit 66; }
+    livehost promote --tenant openagents --channel live --from "$channel" \
+      --from-pubkey "$(livehost pubkey --key "$key")" --confirm "$confirm" \
+      --store "$store" --relay "$relay" --key "$live_key"
+    ;;
   status)
     livehost status --tenant openagents --channel "$channel" \
       --store "$store" --relay "$relay" --key "$key"
     ;;
   *)
-    echo "usage: livehost.sh deploy|rollback|status" >&2
+    echo "usage: livehost.sh deploy|rollback|status|promote HASH" >&2
     exit 64
     ;;
 esac

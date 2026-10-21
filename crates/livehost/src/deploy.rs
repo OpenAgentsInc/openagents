@@ -481,6 +481,83 @@ pub async fn rollback(tenant: &str, target: &Target<'_>, to: Option<&str>) -> Re
     })
 }
 
+/// Points `target`'s channel (signed by its own key) at the manifest that
+/// `from_channel` serves, as signed by `from_pubkey`. `confirm` must name
+/// that manifest: promotion moves only a build someone has checked, and
+/// never what the source channel moved to since.
+pub async fn promote(
+    tenant: &str,
+    target: &Target<'_>,
+    from_channel: &str,
+    from_pubkey: &str,
+    confirm: &str,
+) -> Result<Report> {
+    let started = Instant::now();
+    if from_pubkey == target.signer.pubkey() {
+        bail!("promotion needs the destination channel's own key, not the source's");
+    }
+    let mut relay = Relay::connect(target.relay).await?;
+    let events = relay
+        .query(json!({
+            "kinds": [pointer::KIND],
+            "authors": [from_pubkey],
+            "#d": [pointer::d_tag(tenant, from_channel)],
+            "limit": 1,
+        }))
+        .await?;
+    let source = events
+        .iter()
+        .filter_map(|event| pointer::verify(event, from_pubkey, tenant, from_channel).ok())
+        .max_by(|a, b| (a.created_at, &a.id).cmp(&(b.created_at, &b.id)))
+        .with_context(|| format!("{tenant}/{from_channel} has no deploy"))?;
+    if source.manifest != confirm {
+        bail!(
+            "{tenant}/{from_channel} serves {}, not the confirmed {confirm}",
+            source.manifest
+        );
+    }
+    let bytes = match &source.body {
+        Some(body) => body.clone(),
+        None => target.store.get(&source.manifest).await?,
+    };
+    let manifest = Manifest::open(&bytes, &source.manifest)?;
+    if manifest.tenant != tenant {
+        bail!("manifest {confirm} belongs to tenant {}", manifest.tenant);
+    }
+    let previous = current(
+        &mut relay,
+        target.store,
+        target.signer,
+        tenant,
+        target.channel,
+    )
+    .await?;
+    let found = ms_since(started);
+    let mark = Instant::now();
+    let prev_pointer = previous.as_ref().map(|(pointer, _)| pointer);
+    publish(
+        &mut relay,
+        target,
+        tenant,
+        confirm,
+        prev_pointer,
+        Some(&bytes),
+    )
+    .await?;
+    Ok(Report {
+        tenant: tenant.to_owned(),
+        channel: target.channel.to_owned(),
+        tiers: vec![format!("promote from {from_channel}")],
+        manifest: Some(confirm.to_owned()),
+        previous: prev_pointer.map(|pointer| pointer.manifest.clone()),
+        objects_uploaded: 0,
+        bytes_uploaded: 0,
+        warnings: Vec::new(),
+        phases: vec![("check".into(), found), ("publish".into(), ms_since(mark))],
+        total_ms: ms_since(started),
+    })
+}
+
 async fn publish(
     relay: &mut Relay,
     target: &Target<'_>,
