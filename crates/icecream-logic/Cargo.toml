@@ -1,0 +1,21 @@
+[package]
+name = "icecream-logic"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The Ice Cream Man's rules as a swappable WebAssembly module: a plain wasm32 core module with a small JSON ABI that steps a game state the page keeps."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+icecream-rules = { path = "../icecream-rules" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }
