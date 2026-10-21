@@ -13,6 +13,7 @@ workspace = true
 [features]
 default = []
 cuda = ["candle/cuda", "candle-nn/cuda"]
+metal = ["dep:psionic-backend-metal"]
 
 [dependencies]
 anyhow = "1"
@@ -26,5 +27,13 @@ sha2.workspace = true
 tokenizers = { version = "0.23.1", default-features = false, features = ["onig"] }
 tokio.workspace = true
 
+[target.'cfg(target_os = "macos")'.dependencies]
+psionic-backend-metal = { path = "../psionic-backend-metal", optional = true }
+
 [dev-dependencies]
 tempfile = "3"
+
+[[bin]]
+name = "psionic-flint-metal-bench"
+path = "src/bin/metal_bench.rs"
+required-features = ["metal"]

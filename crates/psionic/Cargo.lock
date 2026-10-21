@@ -5020,6 +5020,7 @@ dependencies = [
  "axum",
  "candle-core",
  "candle-nn",
+ "psionic-backend-metal",
  "rand 0.9.2",
  "serde",
  "serde_json",

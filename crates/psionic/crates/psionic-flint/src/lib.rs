@@ -659,7 +659,8 @@ impl Sampling {
         );
         Ok(())
     }
-    fn choose(&self, logits: &[f32], rng: &mut StdRng) -> Result<u32> {
+    /// Pick a token from vocabulary logits: greedy at temperature zero, else top-k then top-p.
+    pub fn choose(&self, logits: &[f32], rng: &mut StdRng) -> Result<u32> {
         ensure!(
             !logits.is_empty() && logits.iter().all(|x| x.is_finite()),
             "invalid vocabulary logits"
@@ -771,6 +772,9 @@ pub fn generate(
         prefill_seconds,
     })
 }
+
+#[cfg(all(feature = "metal", target_os = "macos"))]
+pub mod metal;
 
 #[cfg(test)]
 mod tests;

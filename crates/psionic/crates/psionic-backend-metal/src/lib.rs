@@ -16194,3 +16194,7 @@ pub mod small_models;
 #[cfg(not(target_os = "macos"))]
 #[path = "small_models_stub.rs"]
 pub mod small_models;
+
+/// Flint with MLX INT4 weights on Metal; see `kernels/flint.metal`.
+#[cfg(target_os = "macos")]
+pub mod flint;
