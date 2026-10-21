@@ -260,5 +260,8 @@ Without the prefetch, the same first play moves 497 KB.
   the new module until its shell is redeployed.
 - **The Ice Cream Man has no texture or audio files**, so the asset chunks
   are meshes; a recolour (`palette.json`) stands in for a texture change.
+- **A hidden window waits.** The page applies a version from its frame
+  loop, and Chrome stops drawing a tab or window that is hidden behind
+  others, so it fetches and applies the version when it is shown again.
 - **Game Lab** checks an edit with 24 bot runs before saving it, which is
   most of a chat edit's time to live.
