@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Generate independent NumPy Flint transformer fixtures (no model download)."""
 import json
+import sys
 from pathlib import Path
 import numpy as np
 
@@ -58,6 +59,12 @@ def ffn(x, key):
     return (g / (1 + np.exp(-g)) * (x @ w[key + ".up_proj.weight"].T)) @ w[key + ".down_proj.weight"].T
 
 
+if "--bf16" in sys.argv:
+    for name, array in w.items():
+        bits = array.view(np.uint32)
+        rounded = (bits + np.uint32(0x7fff) + ((bits >> 16) & 1)) & np.uint32(0xffff0000)
+        w[name] = rounded.view(np.float32)
+
 cache = [[] for _ in range(3)]
 logits = []
 tokens = [1, 3, 2, 5, 4]
@@ -98,7 +105,8 @@ for pos, token in enumerate(tokens):
         x += out
     logits.append((norm(x, "model.norm.weight") @ w["lm_head.weight"].T).tolist())
 
-dest = Path(__file__).resolve().parents[2] / "crates/psionic/crates/psionic-flint/testdata/tiny.json"
+filename = "tiny-bf16.json" if "--bf16" in sys.argv else "tiny.json"
+dest = Path(__file__).resolve().parents[2] / "crates/psionic/crates/psionic-flint/testdata" / filename
 dest.parent.mkdir(parents=True, exist_ok=True)
 dest.write_text(json.dumps(dict(config=c, weights={n: dict(shape=list(a.shape), values=a.flatten().tolist()) for n, a in w.items()}, tokens=tokens, logits=logits), indent=2) + "\n")
 print(dest)

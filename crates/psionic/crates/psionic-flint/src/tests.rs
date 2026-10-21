@@ -6,7 +6,11 @@ fn tiny() -> Result<(Model, Vec<u32>, Vec<Vec<f32>>)> {
 }
 
 fn tiny_on(device: Device, dtype: DType) -> Result<(Model, Vec<u32>, Vec<Vec<f32>>)> {
-    let fixture: serde_json::Value = serde_json::from_str(include_str!("../testdata/tiny.json"))?;
+    let fixture: serde_json::Value = serde_json::from_str(if dtype == DType::BF16 {
+        include_str!("../testdata/tiny-bf16.json")
+    } else {
+        include_str!("../testdata/tiny.json")
+    })?;
     let config: Config = serde_json::from_value(fixture["config"].clone())?;
     let mut weights = HashMap::new();
     for (name, value) in fixture["weights"].as_object().context("weights")? {
@@ -31,14 +35,14 @@ fn tiny_on(device: Device, dtype: DType) -> Result<(Model, Vec<u32>, Vec<Vec<f32
 
 #[cfg(feature = "cuda")]
 #[test]
-fn cuda_bf16_transformer_matches_independent_fixture() -> Result<()> {
+fn cuda_bf16_weights_f32_compute_matches_independent_fixture() -> Result<()> {
     let (model, tokens, expected) = tiny_on(Device::new_cuda(0)?, DType::BF16)?;
     let mut session = model.session(16)?;
     for (position, token) in tokens.iter().enumerate() {
         let actual = model.forward(*token, &mut session)?;
         for (a, e) in actual.iter().zip(&expected[position]) {
             ensure!(
-                (a - e).abs() <= 0.02 + 0.02 * e.abs(),
+                (a - e).abs() <= 2e-5,
                 "BF16 position {position}: {a} != {e}"
             );
         }

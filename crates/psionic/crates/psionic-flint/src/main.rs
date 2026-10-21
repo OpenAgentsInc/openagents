@@ -103,7 +103,7 @@ fn run(runtime: &Runtime, request: Request) -> Result<Value> {
             "reasoning_content": result.answer.reasoning_content}, "finish_reason": result.finish_reason}],
         "usage": {"prompt_tokens": result.prompt_tokens, "completion_tokens": result.token_ids.len(), "total_tokens": result.prompt_tokens + result.token_ids.len()},
         "psionic": {"engine": "rust_candle_flint", "backend": if runtime.model.device.is_cpu() { "cpu" } else { "cuda" },
-            "revision": REVISION, "config_sha256": runtime.model.config_sha256,
+            "revision": REVISION, "config_sha256": runtime.model.config_sha256, "numerical_profile":"bf16_weights_f32_compute_v1",
             "elapsed_seconds": result.elapsed_seconds, "prefill_seconds": result.prefill_seconds,
             "token_ids": result.token_ids}
     }))

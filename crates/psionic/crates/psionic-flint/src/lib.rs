@@ -4,7 +4,13 @@
 //! SGLang port at 37bc771d2b253e2d87d27ace71297154874ee3b4. This is a new
 //! implementation using Candle, not a wrapper around an upstream server.
 
-use std::{collections::BTreeSet, fs, io::Read, path::Path, time::Instant};
+use std::{
+    collections::BTreeSet,
+    fs,
+    io::{Read, Write},
+    path::Path,
+    time::Instant,
+};
 
 use anyhow::{Context, Result, bail, ensure};
 use candle::{D, DType, Device, Module, Tensor};
@@ -251,9 +257,21 @@ impl Mlp {
         })
     }
     fn forward(&self, x: &Tensor) -> candle::Result<Tensor> {
-        self.down
-            .forward(&(candle_nn::ops::silu(&self.gate.forward(x)?)? * self.up.forward(x)?)?)
+        project(
+            &self.down,
+            &(candle_nn::ops::silu(&project(&self.gate, x)?)? * project(&self.up, x)?)?,
+        )
     }
+}
+
+// Keep the checkpoint resident in BF16 and expand only the projection in use.
+// FP32 activations avoid repeated BF16 rounding across the 49-layer MoE.
+fn project(linear: &Linear, x: &Tensor) -> candle::Result<Tensor> {
+    Linear::new(linear.weight().to_dtype(x.dtype())?, None).forward(x)
+}
+
+fn norm(x: &Tensor, weight: &Tensor, eps: f32) -> candle::Result<Tensor> {
+    candle_nn::ops::rms_norm(x, &weight.to_dtype(x.dtype())?, eps)
 }
 
 struct Layer {
@@ -429,26 +447,24 @@ impl Model {
 
     fn step(&self, token: u32, state: &mut Session) -> Result<Vec<f32>> {
         let c = &self.config;
-        let mut x = self.embed.forward(&Tensor::new(&[token], &self.device)?)?;
+        let trace = std::env::var_os("PSIONIC_FLINT_TRACE");
+        let mut x = self
+            .embed
+            .forward(&Tensor::new(&[token], &self.device)?)?
+            .to_dtype(DType::F32)?;
         for (id, l) in self.layers.iter().enumerate() {
-            let n = candle_nn::ops::rms_norm(&x, &l.input_norm, c.rms_norm_eps as f32)?;
-            let q =
-                l.q.forward(&n)?
-                    .reshape((c.num_attention_heads, c.head_dim))?;
-            let k =
-                l.k.forward(&n)?
-                    .reshape((c.num_key_value_heads, c.head_dim))?;
-            let mut q =
-                candle_nn::ops::rms_norm(&q.contiguous()?, &l.q_norm, c.rms_norm_eps as f32)?;
-            let mut k =
-                candle_nn::ops::rms_norm(&k.contiguous()?, &l.k_norm, c.rms_norm_eps as f32)?;
+            trace_tensor(&trace, state.position, id, "input", &x)?;
+            let n = norm(&x, &l.input_norm, c.rms_norm_eps as f32)?;
+            trace_tensor(&trace, state.position, id, "input_norm", &n)?;
+            let q = project(&l.q, &n)?.reshape((c.num_attention_heads, c.head_dim))?;
+            let k = project(&l.k, &n)?.reshape((c.num_key_value_heads, c.head_dim))?;
+            let mut q = norm(&q.contiguous()?, &l.q_norm, c.rms_norm_eps as f32)?;
+            let mut k = norm(&k.contiguous()?, &l.k_norm, c.rms_norm_eps as f32)?;
             if !c.no_rope_layer_indices.contains(&id) {
                 q = rope(&q, state.position, c.rope_theta)?;
                 k = rope(&k, state.position, c.rope_theta)?;
             }
-            let v =
-                l.v.forward(&n)?
-                    .reshape((c.num_key_value_heads, 1, c.head_dim))?;
+            let v = project(&l.v, &n)?.reshape((c.num_key_value_heads, 1, c.head_dim))?;
             let k = k.unsqueeze(1)?;
             let (mut keys, mut values) = match &state.cache[id] {
                 Some((pk, pv)) => (Tensor::cat(&[pk, &k], 1)?, Tensor::cat(&[pv, &v], 1)?),
@@ -470,17 +486,20 @@ impl Model {
                 &l.sink,
                 c.num_attention_heads / c.num_key_value_heads,
             )?;
+            trace_tensor(&trace, state.position, id, "attention", &attention)?;
             state.cache[id] = Some((keys, values));
             x = (&x
-                + l.o
-                    .forward(&attention.reshape((1, c.num_attention_heads * c.head_dim))?)?)?;
-            let n = candle_nn::ops::rms_norm(&x, &l.post_norm, c.rms_norm_eps as f32)?;
+                + project(
+                    &l.o,
+                    &attention.reshape((1, c.num_attention_heads * c.head_dim))?,
+                )?)?;
+            let n = norm(&x, &l.post_norm, c.rms_norm_eps as f32)?;
+            trace_tensor(&trace, state.position, id, "post_norm", &n)?;
             let mlp = match &l.dense {
                 Some(dense) => dense.forward(&n)?,
                 None => {
                     let gate = l.gate.as_ref().context("missing expert router")?;
-                    let scores = gate
-                        .forward(&n)?
+                    let scores = project(gate, &n)?
                         .to_dtype(DType::F32)?
                         .flatten_all()?
                         .to_vec1::<f32>()?;
@@ -499,9 +518,10 @@ impl Model {
                     (sum.to_dtype(x.dtype())? + shared)?
                 }
             };
+            trace_tensor(&trace, state.position, id, "mlp", &mlp)?;
             x = (&x + mlp)?;
         }
-        let n = candle_nn::ops::rms_norm(&x, &self.norm, c.rms_norm_eps as f32)?;
+        let n = norm(&x, &self.norm, c.rms_norm_eps as f32)?;
         let logits = self
             .head
             .forward(&n.to_dtype(DType::F32)?)?
@@ -513,6 +533,31 @@ impl Model {
         );
         Ok(logits)
     }
+}
+
+fn trace_tensor(
+    path: &Option<std::ffi::OsString>,
+    position: usize,
+    layer: usize,
+    name: &str,
+    tensor: &Tensor,
+) -> Result<()> {
+    if let Some(path) = path {
+        let values = tensor
+            .to_dtype(DType::F32)?
+            .flatten_all()?
+            .to_vec1::<f32>()?;
+        let mut file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
+        writeln!(
+            file,
+            "{}",
+            serde_json::json!({"position":position,"layer":layer,"name":name,"values":values})
+        )?;
+    }
+    Ok(())
 }
 
 fn rope(x: &Tensor, position: usize, theta: f64) -> candle::Result<Tensor> {
