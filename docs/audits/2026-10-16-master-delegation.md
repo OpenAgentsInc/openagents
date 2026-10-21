@@ -584,6 +584,19 @@ The status lines below summarize each issue and its comments. Open the issue for
   tokens into the final answer, not inside reasoning. Remaining: G1 v2's
   numerical checks and G2 v2. Receipt: `docs/psionic/verification/deepseek-v41-w16-groups-2026-10-21.json`.
 
+- #12418: qualify each new V4.1 device class under the frozen G1 v2 policy
+  (#12405) before any mixed group is advertised as qualified, and pin
+  each stage of such a group to its qualified bundle in its own lane
+  entry: `cuda-sm_90` (H100, bundle built from `b13ec37306`), `cuda-sm_80`
+  (A100, build an `sm_80` bundle with `v41-stage-build.sh build --arch
+  sm_80`), `cuda-sm_89` (RTX 4080, bundle
+  `6331bafa6fb83efdeff62425154021d9ef3bf30808aa8eb3f35a885572dc8f8e`,
+  including its `--experts host` placement), and `cpu-x86_64` (CPU stages
+  with `--wire cuda --arithmetic bf16`). The kernel parity suites already
+  pass on sm_80, sm_89, sm_90 (`docs/psionic/verification/deepseek-v41-mixed-device-2026-10-21.json`);
+  G1 v2 needs the oracle comparison per class. Then rerun a mixed group
+  with every stage pinned and the W14 harness.
+
 - #12394: rerun G4 on layers 0–4 and 0–9 with
   `scripts/bench/deepseek-v41/stage_vm.sh` under the G1 v2 direct-runtime
   contract (#12405), not the CPU's B200 arithmetic order, adding an isolated

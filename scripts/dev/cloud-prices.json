@@ -9,6 +9,13 @@
     "catalog-2026-10-21": "Cloud Billing Catalog API, service 6F81-5844-456A (Compute Engine), us-central1, read 2026-10-21"
   },
   "machines": {
+    "a3-highgpu-2g": {
+      "standard": 21.9581,
+      "spot": 12.4548,
+      "flex": 10.7665,
+      "math": "2 H100 80GB + 52 vCPU + 468 GiB: 2 x 9.79655 + 52 x 0.02550 + 468 x 0.00222 on demand; 2 x 5.55610 + 52 x 0.01448 + 468 x 0.00126 spot; flex-start (DWS Defined Duration GPU) 2 x 4.20076 + 52 x 0.02550 + 468 x 0.00222",
+      "source": "catalog-2026-10-21"
+    },
     "a2-highgpu-1g": {
       "standard": 3.6736,
       "spot": 2.2038,

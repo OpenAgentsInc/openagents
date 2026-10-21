@@ -1010,3 +1010,80 @@ recovery. They run with a required worker and CUDA backend, with zero skips.
 distinguish these development checks from the still-pending original-weight
 p3/p4, long holdout, fresh device peaks, and larger W14 deadline. Those live
 checks are listed in the master delegation document's After-close checks.
+
+## Mixed-device groups (#12418, 2026-10-21)
+
+A V4.1 group no longer has to run one GPU type. Each stage is checked
+against its own entry, so a group can combine RTX PRO 6000 (`sm_120`), H100
+(`sm_90`), A100 (`sm_80`), and RTX 4080 (`sm_89`) stages with CPU stages.
+Every such group is a **development group** until each device class is
+qualified under G1 v2; the After-close checks list that work.
+
+- **Per-stage identity.** A lane stage (`GroupStage.identity`, Pylon's
+  `StageIdentity`) declares its device class (`cuda-sm_NN` or
+  `cpu-ARCH`), and, when they differ from the group's, its runtime, bundle
+  pin, and numerical profile. The front checks each stage against its own
+  entry; only stages that declare nothing still have to match the first
+  such stage (#12407). Every stage must announce the same stage-state
+  dtypes (`wire`). A group is `pinned`, and so can be qualified, only when
+  every stage has a bundle pin, its own or the group's (#12410). Psionic's
+  manifest may name each stage's device (`V41StageEntry.device`), a
+  stage refuses an entry planned for another class or expert placement,
+  and Pylon's cloud plans carry the class into the lane. Manifests without
+  devices keep their digests.
+- **Hello and beacons.** A stage's hello announces `device` (class, GPU
+  name, memory, and where its routed experts live) and `wire`. Each stage
+  beacon carries what its stage announced in its inert `meta` as
+  `stage_device`, and the field shows it per stage, so the Grid can show a
+  mixed group.
+- **Small GPUs.** `--experts host` keeps a CUDA stage's routed experts in
+  page-locked host memory, which kernels read over PCIe through unified
+  addressing (`CudaBackend::mapped_buffer`). A layer then needs about
+  0.17 GB of device memory instead of 7.4 GB, so an RTX 4080 with 5.5 GB
+  free holds four layers and the head. Tokens and logits equal device
+  experts bit for bit (`host_experts_equal_device_experts`).
+- **CPU stages between CUDA stages.** `--wire cuda` makes a CPU stage send
+  and take BF16 cache rows like a CUDA stage, converting at its
+  boundaries.
+- **Placement.** `plan_devices` (and `psionic-v41-stage plan`) places
+  layers over GPUs of any architecture, GPUs with host experts, and CPU
+  stages from W3's measured memory, counting host memory for Engram tables
+  and host experts, and a class's own fixed cost per stage when measured.
+  It balances memory only; give an explicit `--split` when stages differ in
+  speed, such as a CPU stage.
+- **Architectures.** `v41-stage-build.sh build --arch sm_90` and `sm_80`
+  build bundles (an `sm_90` worker may also hold the Hopper kernels'
+  `sm_90a`). `tests --arch sm_NN` packs the GPU tests for a machine
+  without build tools. All four kernel suites pass on each architecture
+  with the tolerances fixed before the SM89 runs: W4 matvec 9, W6 mix 15,
+  W5 attention 14, and W7 stage 9 (including host experts), plus the stage
+  worker's CUDA tests, on an A100-SXM4-40GB (`sm_80`), an H100 80GB HBM3
+  (`sm_90`), and the RTX 4080 (`sm_89`). The G4 target's `sm_120` result is
+  W8's.
+
+**A mixed group answered V4.1 chat through Pylon** (development group,
+unqualified). Five stages on four device classes, each pinned to its own
+bundle: layers 0–12 and 12–24 on the two RTX PRO 6000s of a spot
+`g4-standard-96` (us-west3-a, the only US zone with G4 capacity that hour),
+24–34 on a flex-start H100 (us-central1-c), 34–36 on a CPU stage on an
+`m1-ultramem-40` (us-central1-c), and 36–40 with the head on the RTX 4080
+at home, with its routed experts in host memory beside the production
+services (about 3.7 GB of device memory, 28.9 GB pinned). The head ran on
+the budget host. Three questions through `pylon ask` answered correctly
+("…scattered by gas molecules…", "391", "Red, blue, yellow") at 1.07–1.15
+tokens/s, 25.6–30.5 s to the first token. A decode token took 872–933 ms:
+the stages 9.5, 9.7, 13.8, 569–577 (CPU), and 27.5 ms (RTX 4080), and the
+links and head 243–300 ms, since the token crosses home and two regions
+(head to G4 about 60 ms round trip, G4 to H100 20 ms, H100 to CPU 0.5 ms,
+CPU to the RTX 4080 through ssh tunnels via the budget host). 362,705
+bytes of stage state cross per token. Each stage beacon carried its
+`stage_device`. Prefill on the CPU stage took 21–25 s of the first-token
+time, so CPU stages suit a layer or two, not a share of the model. The run
+cost $10.05. Receipt:
+[`deepseek-v41-mixed-device-2026-10-21.json`](verification/deepseek-v41-mixed-device-2026-10-21.json).
+
+**Metal.** [`v41-metal-plan.md`](v41-metal-plan.md) scopes a Metal stage
+backend from what Psionic's Metal backend already has (MXFP4 expert
+kernels, top-k, norms, RoPE, command reuse) and estimates 15–20 agent-days;
+[#12420](https://github.com/OpenAgentsInc/openagents/issues/12420) tracks
+it.
