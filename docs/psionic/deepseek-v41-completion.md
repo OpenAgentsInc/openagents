@@ -134,6 +134,56 @@ Gate progress (2026-10-21):
   twice per stage; `--head stage0` leaves the first stage's step and the
   last stage's token as the only hops through the head, both inside the
   zone. G6 and G7 still need the real cross-machine run (W12 part 2).
+- **G6, a group across machines (W12 part 2, #12399): runs in both
+  placements on the unqualified runtime; numerical acceptance waits for
+  G1 v2.** `pylon cloud up four-single|two-dual --head stage0 --transport
+  direct` ran the four CUDA stages on four spot `g4-standard-48` machines
+  and on two spot `g4-standard-96` machines in us-west3-a, at $6.65/h each.
+  Both placements answered all nine W14 qualification prompts through Pylon
+  with the same greedy text as the one-machine group. Each stage now reports
+  its own time per step, so the head splits a decode token: 33.9 ms in both
+  placements, of which the stages compute 7.9–8.8 ms each and the links plus
+  the head's round trip take 0.87 ms (four-single, three machine crossings)
+  or 0.83 ms (two-dual, one). A crossing costs about 20 µs a token; a 44 KB
+  TCP round trip between the machines takes 55–60 µs against 9 µs on
+  loopback. Short answers decode at 29.1–29.7 tokens/s in both placements,
+  the same as one-quad's 29.7. The three hops carry 261,032 bytes of stage
+  state a token, nearly twice W9's BF16 estimate, because the CUDA stages
+  send residuals and pre-mixes as F32. Receipt:
+  [`deepseek-v41-g6-g7-cross-machine-2026-10-21.json`](verification/deepseek-v41-g6-g7-cross-machine-2026-10-21.json).
+- **G7, lifecycle on the cross-machine groups (W12 part 2, #12399):
+  passed on the unqualified runtime.** A killed stage failed the request
+  visibly with the tokens already delivered (327 and 322) and no replay; a
+  frozen stage failed it after its 10 s health limit (260, 265, and 275
+  tokens); late messages from the old generation were refused; and each
+  group came back under a new generation and answered again with the same
+  text. A replaced stage reloads in about 15 s when its weights stay in the
+  page cache, and in 6–8.5 minutes on a machine that also holds a 101 GB
+  Engram table. An 8 s buyer deadline cancelled a long answer, and the slot
+  freed only after every stage stopped. Deleting a stage machine, as a spot
+  reclaim does, used up the restart budget within a minute; the group went
+  offline and `up` deleted the other machine. `pylon cloud down` drained the
+  head, published offline beacons, and deleted every machine. The run found
+  one defect: a killed CUDA stage on the head's own machine was not reaped
+  within the 3 s stop limit, so the head stopped the whole group; cloud
+  groups now wait 30 s, and the rerun recovered. The runs cost $7.84.
+- **G8, the deadline and answer profile (W14 part 2, #12401): frozen and
+  met on the unqualified runtime.** The head declares a 600 s deadline and
+  a 4,096-token output limit, needs `--step-secs 75` (it times the whole
+  prompt step), and supports prompts of up to 3,022 tokens, the longest
+  measured, below the 256 MiB stage-state codec's limit of about 3,277
+  (#12408 replaces this with a checked budget); the 20k case is not
+  claimed. All nine qualification prompts passed in both placements:
+  extended, `stop`, a final answer split off at the model's own token, and
+  complete in 3.1–9.2 s against the 600 s deadline. A 1,072-token prompt
+  took 36 s to the first token and 64 s in all; a 3,022-token prompt took
+  52 s and 131 s. An answer whose reasoning reached 4,096 tokens took
+  156 s and was refused `limit_exceeded`. The last stage slows from 8.8 ms
+  to 10.9 ms a token over 4,096 tokens, consistent with `AnswerParser::push`
+  reparsing the prefix. The head's beacon carries its measured profile as
+  `answer_profile` in its inert `meta`. These are thinking-mode answers, so
+  none pairs with the oracle's chat-mode p2. Receipt:
+  [`deepseek-v41-w14-answer-profile-2026-10-21.json`](verification/deepseek-v41-w14-answer-profile-2026-10-21.json).
 - **G3, attention kernels (W5, #12392), RTX 4080; SM120 below.** Checked against
   the CPU path's default `ReferenceBf16` order (window rows oldest first);
   the `ReferenceBf16Tp8` order is W7's choice. Tolerances were fixed before
@@ -303,14 +353,14 @@ spend guard from the one budget host.
 | W9 | **Done (#12396).** Stage-state codec and group manifest: `psionic_models::stage_state` (message, codec, `StageInbox` admission, `StageWorker`) and `psionic_models::deepseek_v41_stage` (V4.1 boundary contracts, wire sizes, `V41GroupManifest`, `plan_group`); `psionic_serve::pipeline_stage` adapts the Gemma 4 step to the same message. Placement reads header-derived bytes through the `PlacementMemory` trait until W3's measured input implements it. | M | W3 for measured placement only | Codec fault tests (duplicate, stale, missing, reordered, cross-request, malformed, oversize) pass with a synthetic 40-layer executor; every split matches the unsplit run bit for bit. |
 | W10 | **Group lifecycle.** Done (#12397) on synthetic stages: `pylon::stage_group` runs each stage as a managed worker under the serial supervisor's process-group owner and restart budget. A group is ready only when every stage agrees on weights, runtime, protocol, and generation and passes a check. A replacement bumps the generation and fences the survivors; failures and cancellation hold admission until every stage stops or is reaped. The front's control identity is W9's (generation, request ID, attempt, stage, step). `StageGroup` implements W13's `GroupReadiness`. The last stage samples with the front's settings and returns token IDs, not logits. `crates/pylon/tests/group_lifecycle.rs` covers G7's fault list; G7 still needs it on a real group (W11, W12). | L | W9, #12364 | G7's fault checks pass on a local or synthetic group. |
 | W11 | **A full group on one machine.** All stages on one 4- or 8-GPU machine over loopback. **Part 1 done (#12398): the stage worker.** `psionic-v41-stage` (`crates/psionic/crates/psionic-v41-stage`) takes `pylon cloud up`'s arguments (`--weights DIR --layers A-B --gpu N --manifest D [--embeddings] [--head]`, then `--stage --generation --front --token`), speaks W10's control protocol, and announces `psionic-v41-stage/1`. Stage state is W9's message, sent as length-prefixed frames to the next stage's loopback listener, whose `listen` address the front now passes as `next` with each step; the front also passes the previous token to stage 0. Stage 0 encodes the conversation with the #12372 adapter; the last stage samples greedily or with the front's temperature, top-p, and seed, and returns the token, its text, the end flag, and (W14) reasoning and final text from the adapter's streaming parser with a `stop` or `length` finish. The executor is W9's `StageExecutor`; `--backend cpu` runs `psionic_models::deepseek_v41_stage_cpu`, the CPU port cut at a layer range. Tests: Psionic process groups of 2–4 stages and Pylon's real front over loopback match the unsplit model's tokens; W10's lifecycle faults (kill, stop, cancel, other weights) pass against it; refusals cover wrong generation, stale state, missing weights, and a layer range that doesn't match the manifest. **Part 2a done (#12398):** `--backend cuda` (the `cuda` feature) runs W7's `V41Stage` as W9's executor: residuals and pre-mixes cross as `F32`, KV rows and index keys as BF16, selections as `I32`, and layer-20 candidates as `U32`, and the last stage samples on the device and returns the token. A CUDA stage announces `psionic-v41-stage/1+cuda` and a CPU stage `psionic-v41-stage/1`, so the front never makes a mixed group ready. The worker also speaks W12's direct transport (`--data-listen`, `--data-advertise`; `link`, `linked`, `link_failed`, `forwarded`, `refused`, and a cancel frame from stage 0) over `crates/stage-link`, which Psionic links by path. A checkpoint stage opens only its own shards (`DeepSeekV41Checkpoint::open_stage`) and hashes them against the pin. `v41-stage-startup.sh` also copies the group manifest beside the shards and the tokenizer files, and refuses a worker built for another GPU; `scripts/pylon/v41-stage-build.sh` builds the worker for linux/x86_64 in Docker with CUDA 13.0 on a GPU host and uploads it, with its CUDA libraries, under `gs://openagents-psionic-models/bin/psionic-v41-stage/COMMIT/sm_NN/`; its `test` mode runs the crate's tests on that host's GPU. On the RTX 4080 (sm_89), CUDA process groups of two and three stages answer like the unsplit CUDA stage, greedy and sampled. The process tests bound every wait, so a stage that exits or never connects fails the test with its log. **Part 2b done (#12398):** the `one-quad` placement puts all four stages on one `g4-standard-192`, and `pylon cloud up one-quad --head stage0 --transport direct` ran the whole model there and answered jobs over the relay (G5 above: 1.3 s to the first token of a 41-token prompt, then about 29.7 tokens/s). The run fixed the zone head's launch (the budget host no longer checks stage programs that live on the stage machine, and the head starts once the machine's weights are in place), priced the `g4-standard-192` in the guard, provisioned boot-disk throughput, added `--temperature`, `--top-p`, `--ready-secs`, and `--step-secs`, and logs each answer's first-token time and decode rate. `v41-stage-build.sh` reuses a persistent source folder, so an unchanged worker rebuilds in under a second, and its `pylon` mode builds the head's Linux binary. Direct oracle qualification remains pending under G1 v2; runtime and fault checks can proceed independently. | M, cloud (G4 spot, about 20 h) | W7, W10 | G5 passes. |
-| W12 | **A group across machines.** Two placements across separate machines in one zone. **Part 1 done (#12399), locally:** `crates/stage-link` sends W9's stage-state bytes straight from stage to stage over an authenticated, bounded TCP link keyed per group generation, and `pylon::stage_group`'s `direct` transport uses it: the head sends each step to the first stage only and hears only the last stage's token, while it keeps admission, sampling, cancellation, fencing, and readiness. `pylon cloud up --head stage0\|vm --transport direct` runs the head on the stage-0 machine or a small machine in the zone, with the budget host keeping the spend guard and talking only to the head. `tests/group_transport.rs` covers a dropped link, an old generation's link, a duplicated frame, a partitioned middle stage, a slow stage behind a bounded queue, a stalled stage, and cancellation down the chain on fake stages in separate processes. W11's worker speaks `stage_link` with `--data-listen` and `--data-advertise` (#12398 part 2a). **Part 2 needs:** the real run of both placements in one zone, recording per-hop latency and stage-state bytes per token and repeating G7's faults. | M, cloud | W11 | G6 passes; G7's fault checks repeat on the cross-machine group. |
+| W12 | **A group across machines.** Two placements across separate machines in one zone. **Part 1 done (#12399), locally:** `crates/stage-link` sends W9's stage-state bytes straight from stage to stage over an authenticated, bounded TCP link keyed per group generation, and `pylon::stage_group`'s `direct` transport uses it: the head sends each step to the first stage only and hears only the last stage's token, while it keeps admission, sampling, cancellation, fencing, and readiness. `pylon cloud up --head stage0\|vm --transport direct` runs the head on the stage-0 machine or a small machine in the zone, with the budget host keeping the spend guard and talking only to the head. `tests/group_transport.rs` covers a dropped link, an old generation's link, a duplicated frame, a partitioned middle stage, a slow stage behind a bounded queue, a stalled stage, and cancellation down the chain on fake stages in separate processes. W11's worker speaks `stage_link` with `--data-listen` and `--data-advertise` (#12398 part 2a). **Part 2 done (#12399):** `four-single` and `two-dual` ran across machines in us-west3-a with the CUDA worker and the direct transport, answered every qualification prompt, and passed G7's kill, freeze, cancellation, machine-loss, and `down` checks (G6 and G7 above). Stages report each step's own time, and the head's answer log splits a decode token into stage compute and link time. A killed CUDA stage now gets 30 s to be reaped. G6's numerical acceptance waits for the G1 v2 runtime. | M, cloud | W11 | G6 passes; G7's fault checks repeat on the cross-machine group. |
 
 ### Phase 5: launch and visibility (G8)
 
 | ID | Work | Size | Depends on | Done when |
 | --- | --- | --- | --- | --- |
 | W13 | **Group beacon and routing.** Done (#12400): the group publishes one routable beacon (one serial slot, the exact model artifact, its declared deadline and output limit); stage beacons are visible but not routable. The router matches requested model and group readiness. W10 feeds readiness through `pylon::group::GroupReadiness`, and W15 publishes the beacons. | M | W10 | Router tests pick the group only for V4.1 requests and only when it's ready. |
-| W14 | **Deadline and answer profile.** Part 1, the transport, is done (#12401): `pylon.deadline.v1` in NIP-PYLON. The buyer states its budget; the job runs for the smaller of that and the beacon's ceiling, enforced inside execution from admission; heartbeats renew nothing; a missed deadline holds a group's slot until its stages stop; old providers and long models refuse the other side's form at once, with recorded fixtures both ways; ordinary jobs keep 90 seconds; group mode declares up to 3,600 seconds. The harness (`run.py --v41-group`, through the router's `Settings::want`) passes a slow synthetic group and fails one past its deadline. Part 2 is open: qualify a V4.1 reasoning profile (output cap, deadline) whose real answers finish within the declared deadline, after W11. | M | W11, W13 | Complete answers for the qualification prompts through Pylon within the declared deadline. |
+| W14 | **Deadline and answer profile.** Part 1, the transport, is done (#12401): `pylon.deadline.v1` in NIP-PYLON. The buyer states its budget; the job runs for the smaller of that and the beacon's ceiling, enforced inside execution from admission; heartbeats renew nothing; a missed deadline holds a group's slot until its stages stop; old providers and long models refuse the other side's form at once, with recorded fixtures both ways; ordinary jobs keep 90 seconds; group mode declares up to 3,600 seconds. The harness (`run.py --v41-group`, through the router's `Settings::want`) passes a slow synthetic group and fails one past its deadline. **Part 2 done (#12401):** the frozen profile is a 600 s deadline, a 4,096-token output limit, a 75 s step limit, and prompts of up to 3,022 tokens; every qualification prompt answered completely within it in both cross-machine placements (G8 above). The head publishes its measured `answer_profile` in its beacon's `meta` and counts complete answers only. Requalify it on the G1 v2 runtime or after any arithmetic or prefill change. | M | W11, W13 | Complete answers for the qualification prompts through Pylon within the declared deadline. |
 | W15 | **Built (#12402) on synthetic stages; the cold launch is an after-close check that W16 runs.** `pylon cloud up four-single\|two-dual` plans the machines from Psionic's manifest file, creates each through `scripts/dev/cloud-budget.py` with an expiry and labels, heads the group from the allocating host in group mode (`pylon::group_serve`: W10's `StageGroup`, one W13 head beacon, a beacon per stage, NIP-CJ jobs driven through the stages), and ends it on `cloud down`, expiry, the budget's cap, or a lost machine, deleting every machine through the guard. Stages run over `gcloud compute ssh` with the control connection tunneled back; `scripts/pylon/v41-stage-startup.sh` copies a machine's shards. `tests/group_cloud.rs` covers launch to answer to `down`, dry-run plans, guard refusals, spot loss, expiry, and the cap. | M | W12, W13 | A cold launch to a first answer, then a clean stop, with costs in the ledger. |
 | W16 | **Show it.** Run the launched group with the `/home` Pylon layer open and record the transcript, router log, and capture. | S, cloud | W15 | G8's evidence is committed and the epic can close. |
 
@@ -378,8 +428,9 @@ started first.
   tables and the page cache fit in its 720 GiB.
 - Redistribution terms of the checkpoint's license for stage packages
   derived from it, before any stage package leaves our buckets.
-- The deadline a V4.1 reasoning answer actually needs through Pylon, which
-  sets W14.
+- The deadline a V4.1 reasoning answer actually needs through Pylon:
+  W14's frozen profile (600 s, 4,096 tokens, prompts up to 3,022 tokens)
+  holds on the current runtime, and the G1 v2 runtime must requalify it.
 
 ## CPU follow-up status (2026-10-21 UTC)
 

@@ -1,0 +1,875 @@
+{
+  "schema": "openagents.deepseek_v41.group_run.v1",
+  "issue": 12399,
+  "gates": [
+    "G6",
+    "G7"
+  ],
+  "date": "2026-10-21",
+  "result": "both cross-machine placements ran the whole model, answered every qualification prompt through Pylon with the same text, and recovered from a killed stage, a frozen stage, a missed deadline, and a lost machine; the runtime is unqualified (G1 v2 is open), so G6's numerical acceptance waits for it",
+  "build": {
+    "source_commit": "7e12746cf6 (before rebase; the same change is 6a8616adcd on main)",
+    "stage_worker": {
+      "url": "gs://openagents-psionic-models/bin/psionic-v41-stage/7e12746cf6/sm_120/psionic-v41-stage",
+      "sha256": "b126466df6233e5f7dc1b31451042b87b4926dda2c27ba98e1789f64c177d71e",
+      "features": [
+        "cuda"
+      ],
+      "arch": "sm_120"
+    },
+    "pylon": [
+      {
+        "url": "gs://openagents-psionic-models/bin/pylon/7e12746cf6/pylon",
+        "sha256": "0c5c9fedfaaf19149a498062f4cd54194054e5b1cdb5c16e017edd2c28ce5067",
+        "runs": [
+          "four-single",
+          "two-dual"
+        ]
+      },
+      {
+        "url": "gs://openagents-psionic-models/bin/pylon/8ac1ebaa0a/pylon",
+        "sha256": "24d78e01b8cc7f5a3aef77c7b4babe99f78872ec464e514ce165ef91f008eb92",
+        "runs": [
+          "two-dual-b"
+        ],
+        "change": "30 s stop limit for a killed CUDA stage (e3f1d43089 on main)"
+      }
+    ]
+  },
+  "launch": {
+    "command": "pylon cloud up PLACEMENT --worker URL --pylon URL --head stage0 --transport direct --hours 2 --temperature 0 --deadline-secs 600 --max-output-tokens 4096 --ready-secs 3600 --step-secs 75 --allow BUYER --zone us-west3-a",
+    "zone": "us-west3-a",
+    "provisioning": "spot",
+    "capacity": "the first zone tried had capacity for both placements",
+    "links": "stage_link over each machine's internal name (NAME.ZONE.c.PROJECT.internal), ports 47200+i; the head on the stage-0 machine starts the other machines' stages over ssh with the group's own key"
+  },
+  "placements": {
+    "four-single": {
+      "machines": "4 x g4-standard-48 (1 RTX PRO 6000, 48 vCPU, 180 GiB)",
+      "price_per_hour": 6.654,
+      "stages": "one stage a machine: 0-10, 10-20, 20-30, 30-40; Engram tables of layers 1 and 14 in host memory on m0 and m1",
+      "crossings_per_decode_token": "3 stage-state hops between machines, plus the last stage's token back to the head over ssh",
+      "cost_usd": 3.84,
+      "summary": {
+        "short_answers": 11,
+        "median_decode_token_ms": 33.92,
+        "median_links_and_head_ms": 0.87,
+        "median_decode_tokens_per_s": 29.48
+      },
+      "answers": [
+        {
+          "tokens": 121,
+          "reasoning_tokens": 72,
+          "first_token_ms": 1333,
+          "decode_tokens_per_s": 29.51,
+          "decode_token_ms": 33.89,
+          "stage_compute_ms": [
+            8.18,
+            7.87,
+            8.17,
+            8.79
+          ],
+          "links_and_head_ms": 0.87,
+          "stage_state_bytes_per_token": 261032,
+          "prefill_stage_ms": [
+            338,
+            325,
+            327,
+            312
+          ],
+          "prompt": "p1 sky (oracle prompt, 41 tokens)"
+        },
+        {
+          "tokens": 49,
+          "reasoning_tokens": 30,
+          "first_token_ms": 2157,
+          "decode_tokens_per_s": 29.57,
+          "decode_token_ms": 33.81,
+          "stage_compute_ms": [
+            8.18,
+            7.87,
+            8.15,
+            8.73
+          ],
+          "links_and_head_ms": 0.88,
+          "stage_state_bytes_per_token": 261032,
+          "prefill_stage_ms": [
+            546,
+            525,
+            539,
+            517
+          ],
+          "prompt": "extract"
+        },
+        {
+          "tokens": 122,
+          "reasoning_tokens": 101,
+          "first_token_ms": 2597,
+          "decode_tokens_per_s": 29.27,
+          "decode_token_ms": 34.17,
+          "stage_compute_ms": [
+            8.22,
+            7.92,
+            8.27,
+            8.9
+          ],
+          "links_and_head_ms": 0.86,
+          "stage_state_bytes_per_token": 261028,
+          "prefill_stage_ms": [
+            659,
+            633,
+            649,
+            622
+          ],
+          "prompt": "summary"
+        },
+        {
+          "tokens": 32,
+          "reasoning_tokens": 29,
+          "first_token_ms": 1926,
+          "decode_tokens_per_s": 29.66,
+          "decode_token_ms": 33.72,
+          "stage_compute_ms": [
+            8.17,
+            7.85,
+            8.11,
+            8.69
+          ],
+          "links_and_head_ms": 0.89,
+          "stage_state_bytes_per_token": 261049,
+          "prefill_stage_ms": [
+            489,
+            469,
+            481,
+            461
+          ],
+          "prompt": "arithmetic"
+        },
+        {
+          "tokens": 133,
+          "reasoning_tokens": 127,
+          "first_token_ms": 2530,
+          "decode_tokens_per_s": 29.22,
+          "decode_token_ms": 34.22,
+          "stage_compute_ms": [
+            8.23,
+            7.92,
+            8.27,
+            8.92
+          ],
+          "links_and_head_ms": 0.89,
+          "stage_state_bytes_per_token": 261032,
+          "prefill_stage_ms": [
+            643,
+            617,
+            632,
+            606
+          ],
+          "prompt": "percent"
+        },
+        {
+          "tokens": 196,
+          "reasoning_tokens": 138,
+          "first_token_ms": 2308,
+          "decode_tokens_per_s": 29.14,
+          "decode_token_ms": 34.32,
+          "stage_compute_ms": [
+            8.24,
+            7.94,
+            8.3,
+            8.97
+          ],
+          "links_and_head_ms": 0.88,
+          "stage_state_bytes_per_token": 261035,
+          "prefill_stage_ms": [
+            586,
+            562,
+            576,
+            553
+          ],
+          "prompt": "code"
+        },
+        {
+          "tokens": 84,
+          "reasoning_tokens": 57,
+          "first_token_ms": 2022,
+          "decode_tokens_per_s": 29.48,
+          "decode_token_ms": 33.92,
+          "stage_compute_ms": [
+            8.19,
+            7.89,
+            8.19,
+            8.78
+          ],
+          "links_and_head_ms": 0.87,
+          "stage_state_bytes_per_token": 261026,
+          "prefill_stage_ms": [
+            513,
+            492,
+            505,
+            484
+          ],
+          "prompt": "logic"
+        },
+        {
+          "tokens": 37,
+          "reasoning_tokens": 33,
+          "first_token_ms": 2085,
+          "decode_tokens_per_s": 29.63,
+          "decode_token_ms": 33.75,
+          "stage_compute_ms": [
+            8.17,
+            7.86,
+            8.13,
+            8.73
+          ],
+          "links_and_head_ms": 0.87,
+          "stage_state_bytes_per_token": 261032,
+          "prefill_stage_ms": [
+            529,
+            508,
+            521,
+            499
+          ],
+          "prompt": "grounding"
+        },
+        {
+          "tokens": 42,
+          "reasoning_tokens": 38,
+          "first_token_ms": 2853,
+          "decode_tokens_per_s": 29.46,
+          "decode_token_ms": 33.94,
+          "stage_compute_ms": [
+            8.21,
+            7.9,
+            8.18,
+            8.77
+          ],
+          "links_and_head_ms": 0.88,
+          "stage_state_bytes_per_token": 261020,
+          "prefill_stage_ms": [
+            724,
+            696,
+            714,
+            683
+          ],
+          "prompt": "injection"
+        },
+        {
+          "tokens": 160,
+          "reasoning_tokens": 115,
+          "first_token_ms": 2020,
+          "decode_tokens_per_s": 29.26,
+          "decode_token_ms": 34.18,
+          "stage_compute_ms": [
+            8.22,
+            7.92,
+            8.26,
+            8.92
+          ],
+          "links_and_head_ms": 0.87,
+          "stage_state_bytes_per_token": 261035,
+          "prefill_stage_ms": [
+            514,
+            492,
+            505,
+            484
+          ],
+          "prompt": "short_draft"
+        },
+        {
+          "tokens": 121,
+          "reasoning_tokens": 72,
+          "first_token_ms": 1296,
+          "decode_tokens_per_s": 29.49,
+          "decode_token_ms": 33.91,
+          "stage_compute_ms": [
+            8.19,
+            7.87,
+            8.17,
+            8.81
+          ],
+          "links_and_head_ms": 0.87,
+          "stage_state_bytes_per_token": 261038,
+          "prefill_stage_ms": [
+            328,
+            315,
+            325,
+            309
+          ],
+          "prompt": "p1 again after a stage replacement"
+        },
+        {
+          "tokens": 757,
+          "reasoning_tokens": 431,
+          "first_token_ms": 36359,
+          "decode_tokens_per_s": 27.46,
+          "decode_token_ms": 36.42,
+          "stage_compute_ms": [
+            8.7,
+            8.49,
+            8.75,
+            9.61
+          ],
+          "links_and_head_ms": 0.87,
+          "stage_state_bytes_per_token": 261038,
+          "prefill_stage_ms": [
+            9038,
+            8800,
+            9143,
+            8739
+          ],
+          "prompt": "1,072-token prompt"
+        },
+        {
+          "tokens": 2154,
+          "reasoning_tokens": 1317,
+          "first_token_ms": 51918,
+          "decode_tokens_per_s": 27.04,
+          "decode_token_ms": 36.98,
+          "stage_compute_ms": [
+            8.72,
+            8.5,
+            8.75,
+            10.14
+          ],
+          "links_and_head_ms": 0.87,
+          "stage_state_bytes_per_token": 261038,
+          "prefill_stage_ms": [
+            12981,
+            12579,
+            12948,
+            12507
+          ],
+          "prompt": "3,022-token prompt"
+        }
+      ]
+    },
+    "two-dual": {
+      "machines": "2 x g4-standard-96 (2 RTX PRO 6000, 96 vCPU, 360 GiB)",
+      "price_per_hour": 6.654,
+      "stages": "m0: 0-10, 10-20 (GPUs 0, 1); m1: 20-30, 30-40",
+      "crossings_per_decode_token": "1 stage-state hop between machines (10-20 to 20-30), 2 on loopback, plus the last stage's token back to the head over ssh",
+      "cost_usd": {
+        "first launch": 1.82,
+        "second launch": 2.18
+      },
+      "summary": {
+        "short_answers": 10,
+        "median_decode_token_ms": 33.88,
+        "median_links_and_head_ms": 0.83,
+        "median_decode_tokens_per_s": 29.515
+      },
+      "answers": [
+        {
+          "tokens": 121,
+          "reasoning_tokens": 72,
+          "first_token_ms": 1323,
+          "decode_tokens_per_s": 29.57,
+          "decode_token_ms": 33.82,
+          "stage_compute_ms": [
+            8.15,
+            7.88,
+            8.15,
+            8.83
+          ],
+          "links_and_head_ms": 0.82,
+          "stage_state_bytes_per_token": 261032,
+          "prefill_stage_ms": [
+            337,
+            317,
+            327,
+            311
+          ],
+          "prompt": "p1 sky (oracle prompt, 41 tokens)"
+        },
+        {
+          "tokens": 49,
+          "reasoning_tokens": 30,
+          "first_token_ms": 2153,
+          "decode_tokens_per_s": 29.64,
+          "decode_token_ms": 33.74,
+          "stage_compute_ms": [
+            8.15,
+            7.87,
+            8.12,
+            8.77
+          ],
+          "links_and_head_ms": 0.83,
+          "stage_state_bytes_per_token": 261032,
+          "prefill_stage_ms": [
+            543,
+            524,
+            538,
+            516
+          ],
+          "prompt": "extract"
+        },
+        {
+          "tokens": 122,
+          "reasoning_tokens": 101,
+          "first_token_ms": 2591,
+          "decode_tokens_per_s": 29.32,
+          "decode_token_ms": 34.1,
+          "stage_compute_ms": [
+            8.2,
+            7.92,
+            8.24,
+            8.93
+          ],
+          "links_and_head_ms": 0.82,
+          "stage_state_bytes_per_token": 261028,
+          "prefill_stage_ms": [
+            656,
+            631,
+            648,
+            621
+          ],
+          "prompt": "summary"
+        },
+        {
+          "tokens": 32,
+          "reasoning_tokens": 29,
+          "first_token_ms": 1922,
+          "decode_tokens_per_s": 29.73,
+          "decode_token_ms": 33.64,
+          "stage_compute_ms": [
+            8.14,
+            7.85,
+            8.09,
+            8.73
+          ],
+          "links_and_head_ms": 0.83,
+          "stage_state_bytes_per_token": 261049,
+          "prefill_stage_ms": [
+            487,
+            468,
+            480,
+            461
+          ],
+          "prompt": "arithmetic"
+        },
+        {
+          "tokens": 133,
+          "reasoning_tokens": 127,
+          "first_token_ms": 2521,
+          "decode_tokens_per_s": 29.31,
+          "decode_token_ms": 34.12,
+          "stage_compute_ms": [
+            8.2,
+            7.93,
+            8.24,
+            8.93
+          ],
+          "links_and_head_ms": 0.81,
+          "stage_state_bytes_per_token": 261032,
+          "prefill_stage_ms": [
+            640,
+            615,
+            631,
+            605
+          ],
+          "prompt": "percent"
+        },
+        {
+          "tokens": 196,
+          "reasoning_tokens": 138,
+          "first_token_ms": 2301,
+          "decode_tokens_per_s": 29.2,
+          "decode_token_ms": 34.24,
+          "stage_compute_ms": [
+            8.21,
+            7.94,
+            8.28,
+            8.98
+          ],
+          "links_and_head_ms": 0.83,
+          "stage_state_bytes_per_token": 261035,
+          "prefill_stage_ms": [
+            583,
+            561,
+            576,
+            552
+          ],
+          "prompt": "code"
+        },
+        {
+          "tokens": 84,
+          "reasoning_tokens": 57,
+          "first_token_ms": 2016,
+          "decode_tokens_per_s": 29.52,
+          "decode_token_ms": 33.88,
+          "stage_compute_ms": [
+            8.17,
+            7.89,
+            8.16,
+            8.81
+          ],
+          "links_and_head_ms": 0.85,
+          "stage_state_bytes_per_token": 261026,
+          "prefill_stage_ms": [
+            511,
+            491,
+            504,
+            483
+          ],
+          "prompt": "logic"
+        },
+        {
+          "tokens": 37,
+          "reasoning_tokens": 33,
+          "first_token_ms": 2081,
+          "decode_tokens_per_s": 29.68,
+          "decode_token_ms": 33.69,
+          "stage_compute_ms": [
+            8.15,
+            7.86,
+            8.11,
+            8.74
+          ],
+          "links_and_head_ms": 0.84,
+          "stage_state_bytes_per_token": 261032,
+          "prefill_stage_ms": [
+            527,
+            507,
+            520,
+            498
+          ],
+          "prompt": "grounding"
+        },
+        {
+          "tokens": 42,
+          "reasoning_tokens": 38,
+          "first_token_ms": 2847,
+          "decode_tokens_per_s": 29.51,
+          "decode_token_ms": 33.88,
+          "stage_compute_ms": [
+            8.18,
+            7.9,
+            8.17,
+            8.8
+          ],
+          "links_and_head_ms": 0.84,
+          "stage_state_bytes_per_token": 261020,
+          "prefill_stage_ms": [
+            721,
+            694,
+            713,
+            682
+          ],
+          "prompt": "injection"
+        },
+        {
+          "tokens": 160,
+          "reasoning_tokens": 115,
+          "first_token_ms": 2016,
+          "decode_tokens_per_s": 29.33,
+          "decode_token_ms": 34.1,
+          "stage_compute_ms": [
+            8.2,
+            7.92,
+            8.23,
+            8.92
+          ],
+          "links_and_head_ms": 0.83,
+          "stage_state_bytes_per_token": 261035,
+          "prefill_stage_ms": [
+            511,
+            491,
+            504,
+            483
+          ],
+          "prompt": "short_draft"
+        },
+        {
+          "tokens": 757,
+          "reasoning_tokens": 431,
+          "first_token_ms": 36028,
+          "decode_tokens_per_s": 27.51,
+          "decode_token_ms": 36.35,
+          "stage_compute_ms": [
+            8.66,
+            8.49,
+            8.74,
+            9.62
+          ],
+          "links_and_head_ms": 0.84,
+          "stage_state_bytes_per_token": 261038,
+          "prefill_stage_ms": [
+            8987,
+            8689,
+            9110,
+            8612
+          ],
+          "prompt": "1,072-token prompt"
+        },
+        {
+          "tokens": 2154,
+          "reasoning_tokens": 1317,
+          "first_token_ms": 51242,
+          "decode_tokens_per_s": 27.14,
+          "decode_token_ms": 36.84,
+          "stage_compute_ms": [
+            8.67,
+            8.5,
+            8.74,
+            10.1
+          ],
+          "links_and_head_ms": 0.83,
+          "stage_state_bytes_per_token": 261038,
+          "prefill_stage_ms": [
+            12776,
+            12449,
+            12884,
+            12244
+          ],
+          "prompt": "3,022-token prompt"
+        },
+        {
+          "tokens": 121,
+          "reasoning_tokens": 72,
+          "first_token_ms": 1322,
+          "decode_tokens_per_s": 29.68,
+          "decode_token_ms": 33.7,
+          "stage_compute_ms": [
+            8.13,
+            7.86,
+            8.19,
+            8.74
+          ],
+          "links_and_head_ms": 0.77,
+          "stage_state_bytes_per_token": 261032,
+          "prefill_stage_ms": [
+            337,
+            316,
+            328,
+            308
+          ],
+          "prompt": "p1 sky (second two-dual launch)"
+        },
+        {
+          "tokens": 4096,
+          "reasoning_tokens": 4096,
+          "first_token_ms": 2492,
+          "decode_tokens_per_s": 26.73,
+          "decode_token_ms": 37.41,
+          "stage_compute_ms": [
+            8.58,
+            8.42,
+            8.74,
+            10.86
+          ],
+          "links_and_head_ms": 0.81,
+          "stage_state_bytes_per_token": 261032,
+          "prefill_stage_ms": [
+            629,
+            611,
+            627,
+            593
+          ],
+          "prompt": "hash-map tutorial (reasoning reached the 4,096-token cap; refused limit_exceeded)"
+        }
+      ]
+    }
+  },
+  "one_quad_baseline": {
+    "receipt": "deepseek-v41-g5-one-quad-2026-10-21.json",
+    "decode_tokens_per_s": 29.73,
+    "decode_token_ms": 33.64,
+    "note": "no per-stage timing in that build"
+  },
+  "network": {
+    "tool": "a TCP round trip of a 44,389-byte message (one hop's framed stage state at layer 10) and a 4-byte reply, 2,000 times after 20 warmups",
+    "four-single": {
+      "m0 -> m1": {
+        "ping": {
+          "bytes": 4,
+          "median_us": 30,
+          "p90_us": 35,
+          "min_us": 28,
+          "n": 2000
+        },
+        "state": {
+          "bytes": 44389,
+          "median_us": 57,
+          "p90_us": 60,
+          "min_us": 55,
+          "n": 2000
+        },
+        "icmp_rtt_ms_min_avg_max": [
+          " 0.038",
+          "0.076",
+          "0.689"
+        ]
+      },
+      "m1 -> m2": {
+        "ping": {
+          "bytes": 4,
+          "median_us": 28,
+          "p90_us": 31,
+          "min_us": 26,
+          "n": 2000
+        },
+        "state": {
+          "bytes": 44389,
+          "median_us": 54,
+          "p90_us": 56,
+          "min_us": 51,
+          "n": 2000
+        },
+        "icmp_rtt_ms_min_avg_max": [
+          " 0.042",
+          "0.076",
+          "0.595"
+        ]
+      },
+      "m2 -> m3": {
+        "ping": {
+          "bytes": 4,
+          "median_us": 29,
+          "p90_us": 30,
+          "min_us": 27,
+          "n": 2000
+        },
+        "state": {
+          "bytes": 44389,
+          "median_us": 56,
+          "p90_us": 58,
+          "min_us": 54,
+          "n": 2000
+        },
+        "icmp_rtt_ms_min_avg_max": [
+          " 0.037",
+          "0.068",
+          "0.623"
+        ]
+      },
+      "m0 -> m0": {
+        "ping": {
+          "bytes": 4,
+          "median_us": 7,
+          "p90_us": 7,
+          "min_us": 6,
+          "n": 2000
+        },
+        "state": {
+          "bytes": 44389,
+          "median_us": 9,
+          "p90_us": 10,
+          "min_us": 8,
+          "n": 2000
+        },
+        "icmp_rtt_ms_min_avg_max": [
+          " 0.003",
+          "0.005",
+          "0.009"
+        ]
+      }
+    },
+    "two-dual": {
+      "m0 -> m1": {
+        "ping": {
+          "bytes": 4,
+          "median_us": 38,
+          "p90_us": 40,
+          "min_us": 36,
+          "n": 2000
+        },
+        "state": {
+          "bytes": 44389,
+          "median_us": 60,
+          "p90_us": 64,
+          "min_us": 58,
+          "n": 2000
+        },
+        "icmp_rtt_ms_min_avg_max": [
+          " 0.051",
+          "0.089",
+          "0.663"
+        ]
+      }
+    }
+  },
+  "crossing_cost": {
+    "per_hop_wire": "about 28 us one way for a 44 KB hop between machines (half the 55-60 us round trip), against about 5 us on loopback; the real hops carry about 87 KB each, twice the probe's message",
+    "per_token": "links and head: 0.87 ms a decode token in four-single, 0.83 ms in two-dual (0.81-0.85); two more machine crossings add about 0.04 ms, about 20 us each, in line with the wire measurement",
+    "tokens_per_s": "short answers decode at 29.1-29.7 tokens/s in both placements, the same as one-quad's 29.7; crossing machines costs under 0.2% of a token",
+    "what_dominates": "each stage's compute (7.9-8.8 ms a token for 10 layers); links and the head's round trip are about 2.6% of a token"
+  },
+  "stage_state": {
+    "bytes_per_decode_token": 261032,
+    "note": "the three hops together, framing and MAC included: about 87 KB a hop, nearly twice W9's 138,340-byte BF16 estimate, because the CUDA stages send residuals and pre-mixes as F32 (#12398 part 2a)"
+  },
+  "faults": [
+    {
+      "placement": "four-single",
+      "fault": "SIGKILL stage s2 (m2) mid-answer",
+      "seen": "the buyer got 'unavailable: the model failed' 14 s after asking; head: 'stage s2 failed: its connection to the front closed after 327 delivered tokens'; no replay",
+      "recovery": "generation 2, s2 restarted over ssh, ready within about 15 s (its weights stayed in the page cache); the next p1 answer had the same text"
+    },
+    {
+      "placement": "four-single",
+      "fault": "SIGSTOP stage s1 (m1) while idle",
+      "seen": "'stage s1 failed: it stopped answering health checks'",
+      "recovery": "generation 3, ready about 8 min later: m1 also holds the 101 GB Engram table of layer 14 in host memory, so the stage reloads from disk"
+    },
+    {
+      "placement": "four-single",
+      "fault": "SIGSTOP stage s1 (m1) mid-answer",
+      "seen": "failed after 260 delivered tokens, about 11 s after the freeze (health limit 10 s); late messages from generation 3 refused",
+      "recovery": "generation 4, ready about 8.5 min later"
+    },
+    {
+      "placement": "four-single",
+      "fault": "buyer deadline of 8 s on a long answer",
+      "seen": "'request 14 cancelled; waiting for 4 stages to stop', then 'has stopped on every stage'; the buyer got limit_exceeded at +9 s and the slot freed only after every stage stopped"
+    },
+    {
+      "placement": "four-single",
+      "fault": "pylon cloud down",
+      "seen": "the head drained and published offline beacons; the guard deleted the four machines one after another (about 50 s each); `cloud down` itself returned 'still stopping' after its 3.5 min wait while `up` finished the deletions",
+      "cost_usd": 3.84
+    },
+    {
+      "placement": "two-dual",
+      "fault": "SIGKILL stage s3 (m1) mid-answer",
+      "seen": "failed after 322 delivered tokens; late forwarded reports from generation 1 refused",
+      "recovery": "generation 2 ready within about 15 s"
+    },
+    {
+      "placement": "two-dual",
+      "fault": "SIGSTOP stage s1 on the head's own machine (m0) mid-answer",
+      "seen": "failed after 265 delivered tokens, then the head could not confirm the killed stage's exit within its 3 s stop limit and stopped the whole group, which went offline and was deleted",
+      "fix": "a killed CUDA stage frees about 75 GB of device memory before it is reaped; cloud groups now wait 30 s (e3f1d43089)"
+    },
+    {
+      "placement": "two-dual (second launch, with the fix)",
+      "fault": "SIGSTOP stage s1 on the head's machine mid-answer",
+      "seen": "failed after 275 delivered tokens",
+      "recovery": "generation 2, ready about 6 min later (Engram stage)"
+    },
+    {
+      "placement": "two-dual (second launch)",
+      "fault": "an answer whose reasoning reached the 4,096-token output limit",
+      "seen": "refused limit_exceeded ('the answer reached its output limit before it finished'), never delivered"
+    },
+    {
+      "placement": "two-dual (second launch)",
+      "fault": "machine m1 deleted through the spend guard, as a spot reclaim does",
+      "seen": "s2 and s3 failed (ssh connection reset), restarts failed, the restart budget ran out, the group stopped for good, its five beacons went offline at generation 6, and `up` deleted m0, within a minute of the deletion"
+    }
+  ],
+  "parity": {
+    "note": "not required here; G1 v2 is open (#12405). Greedy answers are the same text in one-quad, four-single, and two-dual, and equal the one-machine group's p1 answer, which diverges from the oracle at its 10th content token as recorded for G5"
+  },
+  "not_run": [
+    "G6's numerical acceptance on the qualified runtime (G1 v2)",
+    "#12408's queue bound and context budget, which have not landed"
+  ],
+  "cost_usd": {
+    "four-single": 3.84,
+    "two-dual": 1.82,
+    "two-dual-b": 2.18,
+    "total": 7.84
+  }
+}

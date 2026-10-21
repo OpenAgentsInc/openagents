@@ -485,6 +485,18 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12399 and #12401: once the G1 v2 runtime is qualified (#12405) and
+  #12408's context budget and bounded queue land, rerun both placements
+  (`pylon cloud up four-single|two-dual --head stage0 --transport direct
+  --deadline-secs 600 --max-output-tokens 4096 --step-secs 75`, spot in
+  us-west3-a, with schema v2 builds from `scripts/pylon/v41-stage-build.sh`
+  pinned by `--worker-build` and `--pylon-build`) with that worker: G6's numerical checks, G7's kill, freeze,
+  cancel, and machine-loss checks, a request past #12408's budget, and the
+  W14 harness (`run.py --v41-group --v41-budget 600`) to requalify the
+  profile. Receipts for the first runs:
+  `docs/psionic/verification/deepseek-v41-g6-g7-cross-machine-2026-10-21.json`
+  and `docs/psionic/verification/deepseek-v41-w14-answer-profile-2026-10-21.json`.
+
 - #12407: rebuild the stage worker for `sm_120` (`scripts/pylon/v41-stage-build.sh
   build`) and pylon (`... pylon`) so `BUILD.json` is schema v2, then launch the
   next group with `--worker-build` and `--pylon-build` set to the printed

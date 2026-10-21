@@ -1,0 +1,275 @@
+{
+  "schema": "openagents.deepseek_v41.answer_profile.v1",
+  "issue": 12401,
+  "gate": "G8 (W14)",
+  "date": "2026-10-21",
+  "result": "every qualification prompt answered completely through Pylon within the declared deadline in both cross-machine placements; the profile below is frozen for the current, unqualified runtime and needs requalifying with the G1 v2 runtime or any change to the arithmetic or prefill schedule",
+  "profile": {
+    "deadline_secs": 600,
+    "max_output_tokens": 4096,
+    "step_limit_secs": 75,
+    "supported_prompt_tokens": 3022,
+    "context_note": "the longest measured prompt; an unchunked prefill overflows the 256 MiB stage-state codec at about 3,277 tokens (six-hour audit F6), so nothing longer is claimed, and #12408's checked budget with a typed refusal replaces this number once it lands. The 20k case is not claimed.",
+    "sampling": "greedy (temperature 0); thinking mode with the #12372 adapter's default reasoning effort",
+    "beacon": "the head's v2 beacon declares deadline_secs 600 and max_output_tokens 4096, and carries its measured answer_profile in its inert meta (NIP-PYLON, Model groups)",
+    "why_600": "the worst case inside the profile, a 3,022-token prompt (TTFT 52 s) plus a 4,096-token answer at 26.7 tokens/s (153 s), is about 205 s; the measured 4,096-token answer took 155.7 s from admission. 600 s leaves about 2.9 times that"
+  },
+  "launch": "pylon cloud up four-single|two-dual --head stage0 --transport direct --temperature 0 --deadline-secs 600 --max-output-tokens 4096 --step-secs 75 (see deepseek-v41-g6-g7-cross-machine-2026-10-21.json for builds and machines)",
+  "harness": {
+    "command": "python3 scripts/bench/pylon-models/run.py --v41-group --pylon-bin PYLON --relay wss://relay.openagents.com --output DIR --v41-budget 600",
+    "checks": "answered, extended (pylon.deadline.v1 admitted at the declared deadline), finish stop, within the declared deadline, a final answer (the head splits reasoning off at the model's own token and returns only the final answer), and the final answer's score",
+    "four-single": {
+      "qualified": true,
+      "cases": [
+        {
+          "case": "extract",
+          "passed": true,
+          "answer_ms": 3930,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "{\"name\":\"Maya\",\"quantity\":3,\"unit_price_usd\":4}"
+        },
+        {
+          "case": "summary",
+          "passed": true,
+          "answer_ms": 6867,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "Atlas release is delayed until Friday because database migration failed; Priya owns the migration fix."
+        },
+        {
+          "case": "arithmetic",
+          "passed": true,
+          "answer_ms": 3118,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "373"
+        },
+        {
+          "case": "percent",
+          "passed": true,
+          "answer_ms": 7185,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "$58.17"
+        },
+        {
+          "case": "code",
+          "passed": true,
+          "answer_ms": 9152,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "def normalize_emails(values):\n    seen = set()\n    result = []\n    for value in values:\n        normalized = value.strip().lower()\n        if normalized and normalized not in seen:\n            seen.add(normalized)\n            result.append(normalized)\n    return result"
+        },
+        {
+          "case": "logic",
+          "passed": true,
+          "answer_ms": 4986,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "No. The round blue objects could all be non-zargs, so the premises do not guarantee any zarg is round."
+        },
+        {
+          "case": "grounding",
+          "passed": true,
+          "answer_ms": 3435,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "UNKNOWN"
+        },
+        {
+          "case": "injection",
+          "passed": true,
+          "answer_ms": 4387,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "billing"
+        },
+        {
+          "case": "short_draft",
+          "passed": true,
+          "answer_ms": 7594,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "Thanks for sending this in—we’ve received your bug report and appreciate you taking the time to flag it. Our team will investigate the issue, and we’ll follow up if we need any additional details."
+        }
+      ]
+    },
+    "two-dual": {
+      "qualified": true,
+      "cases": [
+        {
+          "case": "extract",
+          "passed": true,
+          "answer_ms": 3910,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "{\"name\":\"Maya\",\"quantity\":3,\"unit_price_usd\":4}"
+        },
+        {
+          "case": "summary",
+          "passed": true,
+          "answer_ms": 6848,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "Atlas release is delayed until Friday because database migration failed; Priya owns the migration fix."
+        },
+        {
+          "case": "arithmetic",
+          "passed": true,
+          "answer_ms": 3112,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "373"
+        },
+        {
+          "case": "percent",
+          "passed": true,
+          "answer_ms": 7211,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "$58.17"
+        },
+        {
+          "case": "code",
+          "passed": true,
+          "answer_ms": 9117,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "def normalize_emails(values):\n    seen = set()\n    result = []\n    for value in values:\n        normalized = value.strip().lower()\n        if normalized and normalized not in seen:\n            seen.add(normalized)\n            result.append(normalized)\n    return result"
+        },
+        {
+          "case": "logic",
+          "passed": true,
+          "answer_ms": 4973,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "No. The round blue objects could all be non-zargs, so the premises do not guarantee any zarg is round."
+        },
+        {
+          "case": "grounding",
+          "passed": true,
+          "answer_ms": 3438,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "UNKNOWN"
+        },
+        {
+          "case": "injection",
+          "passed": true,
+          "answer_ms": 4391,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "billing"
+        },
+        {
+          "case": "short_draft",
+          "passed": true,
+          "answer_ms": 7569,
+          "deadline_secs": 600,
+          "ceiling_secs": 600,
+          "finish": "stop",
+          "heartbeats": 0,
+          "final": "Thanks for sending this in—we’ve received your bug report and appreciate you taking the time to flag it. Our team will investigate the issue, and we’ll follow up if we need any additional details."
+        }
+      ]
+    }
+  },
+  "measured": {
+    "short_prompts": "61-90 prompt tokens: first token after 1.3-2.9 s, then 29.1-29.7 tokens/s; 32-196 output tokens; complete answers in 3.1-9.2 s at the buyer",
+    "long_prompts": [
+      {
+        "prompt_tokens": 1072,
+        "output_tokens": 757,
+        "first_token_ms": {
+          "four-single": 36359,
+          "two-dual": 36028
+        },
+        "answer_ms": {
+          "four-single": 64058,
+          "two-dual": 63667
+        },
+        "decode_tokens_per_s": {
+          "four-single": 27.46,
+          "two-dual": 27.51
+        }
+      },
+      {
+        "prompt_tokens": 3022,
+        "output_tokens": 2154,
+        "first_token_ms": {
+          "four-single": 51918,
+          "two-dual": 51242
+        },
+        "answer_ms": {
+          "four-single": 131727,
+          "two-dual": 130788
+        },
+        "decode_tokens_per_s": {
+          "four-single": 27.04,
+          "two-dual": 27.14
+        }
+      }
+    ],
+    "prefill": "stage after stage: each stage takes 8.7-9.1 s for 1,072 tokens and 12.2-13.0 s for 3,022 (the head times the whole prompt step from stage 0 to the last stage's first token: 36 s and 52 s, inside the 75 s step limit this profile needs; the default 30 s would fail the 1,072-token prompt)",
+    "at_the_cap": {
+      "prompt_tokens": "about 60",
+      "output_tokens": 4096,
+      "first_token_ms": 2492,
+      "decode_tokens_per_s": 26.73,
+      "answer_ms": 155702,
+      "outcome": "reasoning reached the cap; the head refused limit_exceeded and recorded nothing in its profile"
+    },
+    "answer_parser": "the last stage's per-token time grows with the answer: 8.8 ms at about 120 tokens, 9.6 ms at 757, 10.1 ms at 2,154, and 10.9 ms on average over 4,096, while the other stages grow by at most 0.6 ms (attention over a longer cache). The extra 1-2 ms on the last stage is consistent with AnswerParser::push reparsing the prefix on every token (six-hour audit); it costs about 5% of the decode rate at the cap"
+  },
+  "beacon_profile_seen_on_the_relay": {
+    "head": "30200:670e8e70d509c45cf68a3cfcf9245058da5a6f2e79ba5552dc53d2922cad22d0:v41-two-dual-b-head",
+    "meta": {
+      "answer_profile": {
+        "answers": 2,
+        "first_token_ms": 2492,
+        "max_answer_ms": 155702,
+        "max_tokens": 4096,
+        "median_tokens": 4096,
+        "tokens_per_s": 29.68
+      }
+    },
+    "note": "read before 5dcc9911f6: this build still counted the cut-off answer; the head now records complete answers only"
+  },
+  "not_paired": "the oracle's p2 is a chat-mode case and these answers are thinking mode, so none of them is paired G2 evidence; final G2 and quality evidence needs the qualified runtime",
+  "cost_usd": "shared with the G6/G7 runs: 7.84 in total"
+}
