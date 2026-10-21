@@ -36,6 +36,29 @@ for arg; do
 done
 [ -n "$front" ] || { echo "no --front address" >&2; exit 2; }
 keepalive="-o ExitOnForwardFailure=yes -o ServerAliveInterval=5 -o ServerAliveCountMax=3"
+# A stage machine created after the head's may still be booting, adding the
+# group's key, or copying its shards (W16, #12403): wait for its stage-run and
+# a ready mark from its current boot, as v41-head-ssh.sh does for the head,
+# for at most OA_STAGE_SSH_WAIT seconds (default 840, inside the head's
+# 900 s stage start limit; 0 skips the wait).
+wait=${OA_STAGE_SSH_WAIT:-840}
+probe="test -x /opt/openagents/stage-run && test \"\$(head -n 1 /mnt/stage/ready 2>/dev/null)\" = \"boot \$(cat /proc/sys/kernel/random/boot_id)\""
+start=$(date +%s)
+while [ "$wait" -gt 0 ]; do
+  if [ "$mode" = ssh ]; then
+    "${OA_SSH:-ssh}" -i "$key" -o BatchMode=yes -o ConnectTimeout=10 \
+      -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$key.known_hosts" \
+      "$target" "$probe" </dev/null >/dev/null 2>&1 && break
+  else
+    "${OA_GCLOUD:-gcloud}" compute ssh "$machine" --zone "$zone" --project "$project" --quiet -- \
+      -o ConnectTimeout=10 "$probe" </dev/null >/dev/null 2>&1 && break
+  fi
+  if [ $(($(date +%s) - start)) -ge "$wait" ]; then
+    echo "the stage machine was not ready within $wait s" >&2
+    exit 1
+  fi
+  sleep 5
+done
 if [ "$mode" = ssh ]; then
   # shellcheck disable=SC2086
   exec "${OA_SSH:-ssh}" -i "$key" -tt -o BatchMode=yes \

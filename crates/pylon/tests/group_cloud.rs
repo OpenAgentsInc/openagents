@@ -607,6 +607,7 @@ fn the_ssh_launcher_tunnels_the_control_connection_to_the_machine() {
         ])
         .env("OA_GCLOUD", fixture("fake_gcloud.py"))
         .env("FAKE_GCLOUD_ROOT", dir.path())
+        .env("OA_STAGE_SSH_WAIT", "0")
         .output()
         .unwrap();
     assert!(!output.status.success(), "the fake refuses ssh");
@@ -1007,6 +1008,7 @@ fn the_launchers_reach_stages_and_the_head_inside_the_zone() {
         ])
         .env("OA_SSH", fixture("fake_gcloud.py"))
         .env("FAKE_GCLOUD_ROOT", dir.path())
+        .env("OA_STAGE_SSH_WAIT", "0")
         .output()
         .unwrap();
     assert!(!output.status.success(), "the fake refuses ssh");
@@ -1359,4 +1361,48 @@ fn a_cloud_group_takes_a_regional_weights_copy() {
     let args = serde_json::to_string(&cloud::dry_run(&up, &plan).unwrap()).unwrap();
     assert!(args.contains("oa-weights=gs://copy/v41/1bae0e1/"), "{args}");
     assert!(parse(&["one-quad", "--weights", "/local/dir"]).is_err());
+}
+
+/// A stage machine created after the head's isn't started until it is ready
+/// (W16, #12403): the launcher probes for its stage-run and a ready mark of
+/// the current boot, and gives up visibly after its wait.
+#[test]
+fn the_stage_launcher_waits_for_its_machine() {
+    let dir = tempfile::tempdir().unwrap();
+    let started = std::time::Instant::now();
+    let output = std::process::Command::new(repo().join("scripts/pylon/v41-stage-ssh.sh"))
+        .args([
+            "--ssh",
+            "/home/me/.openagents/v41-head/group-ssh",
+            "oa-stage@oa-v41-four-single-m3.us-east1-b.c.openagentsgemini.internal",
+            "47103",
+            "--",
+            "--layers",
+            "30-40",
+            "--front",
+            "127.0.0.1:53111",
+        ])
+        .env("OA_SSH", fixture("fake_gcloud.py"))
+        .env("FAKE_GCLOUD_ROOT", dir.path())
+        .env("OA_STAGE_SSH_WAIT", "1")
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(started.elapsed() < Duration::from_secs(20));
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("was not ready within 1 s"),
+        "{output:?}"
+    );
+    let calls = std::fs::read_to_string(dir.path().join("calls.jsonl")).unwrap();
+    for line in calls.lines() {
+        let args: Vec<String> = serde_json::from_str(line).unwrap();
+        assert!(
+            !args.contains(&"-tt".into()),
+            "no session before the machine is ready"
+        );
+        assert!(
+            args.iter().any(|a| a.contains("/mnt/stage/ready")),
+            "{args:?}"
+        );
+    }
 }
