@@ -27,8 +27,12 @@
 # driver runs CUDA 13.0. Only the committed source of COMMIT
 # (default HEAD) goes to the host: crates/psionic, crates/stage-link, and the
 # root manifest it inherits from. Caches stay on the host under
-# ~/work/agent-targets/openagents-crates-psionic-docker-cuda. The upload uses
-# CLOUDSDK_CONFIG (default ~/work/.secrets/gcloud-sa-config).
+# ~/work/agent-targets/openagents-crates-psionic-docker-cuda, with the source
+# in its src/ folder: each build syncs the commit into that folder by
+# checksum, so files that didn't change keep their times and Cargo rebuilds
+# only the crates a commit touched. A lock on the host runs one build at a
+# time. The upload uses CLOUDSDK_CONFIG (default
+# ~/work/.secrets/gcloud-sa-config).
 set -euo pipefail
 
 mode=build
@@ -83,10 +87,21 @@ cleanup() {
 trap cleanup EXIT
 
 echo "v41-stage-build: $mode of $short on $host"
+# Absolute paths, so the quoted commands below need no tilde expansion.
+rhome=$(ssh "$host" 'printf %s "$HOME"')
+remote_cache=${remote_cache/#\~/$rhome}
+remote_src=${remote_src/#\~/$rhome}
 git -C "$repo" archive --format=tar.gz -o "$scratch/src.tar.gz" "$sha" \
   crates/psionic crates/stage-link Cargo.toml rust-toolchain.toml
-ssh "$host" "mkdir -p $remote_src $remote_cache"
+ssh "$host" "mkdir -p $remote_src/work $remote_cache/src"
 scp -q "$scratch/src.tar.gz" "$host:$remote_src/src.tar.gz"
+# `git archive` stamps every file with the commit's time, which would make
+# Cargo rebuild every crate. Copy only files whose bytes changed into the
+# persistent source folder (without -t, a copied file gets the current
+# time), under the host's build lock.
+lock="$remote_cache/build.lock"
+sync_src="tar -xzf $remote_src/src.tar.gz -C $remote_src/work && \
+  rsync -rlc --delete $remote_src/work/ $remote_cache/src/"
 
 # Runs inside the container: /src is the source, /cache the caches.
 inner=$(cat <<'INNER'
@@ -95,8 +110,7 @@ export RUSTUP_HOME=/cache/rustup CARGO_HOME=/cache/cargo PATH=/cache/cargo/bin:$
 if ! [ -x /cache/cargo/bin/rustup ]; then
   curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --default-toolchain none
 fi
-mkdir -p /src/work && tar -xzf /src/src.tar.gz -C /src/work
-cd /src/work/crates/psionic
+cd /cache/src/crates/psionic
 export CARGO_TARGET_DIR=/cache/target CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=4
 export NVCC=/usr/local/cuda/bin/nvcc
 if [ -n "$ARCH" ]; then
@@ -132,9 +146,9 @@ if [[ $mode == test ]]; then
   gpu=(--device nvidia.com/gpu=all)
 fi
 # shellcheck disable=SC2029
-ssh "$host" "docker run --rm ${gpu[*]} --user \$(id -u):\$(id -g) -e HOME=/cache/home \
-  -e MODE=$mode -e ARCH=${arch} -v $remote_src:/src -v $remote_cache:/cache $builder \
-  bash -c $(printf %q "$inner")"
+ssh "$host" "flock $lock sh -c $(printf %q "$sync_src && docker run --rm ${gpu[*]} \
+  --user \$(id -u):\$(id -g) -e HOME=/cache/home -e MODE=$mode -e ARCH=${arch} \
+  -v $remote_src:/src -v $remote_cache:/cache $builder bash -c $(printf %q "$inner")")"
 if [[ $mode == test ]]; then
   echo "v41-stage-build: tests passed on $host"
   exit 0

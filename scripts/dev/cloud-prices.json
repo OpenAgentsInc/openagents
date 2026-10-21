@@ -17,6 +17,12 @@
       "also": "muse-2026-10-15",
       "flex": 64.44
     },
+    "g4-standard-192": {
+      "standard": 17.9997,
+      "spot": 6.654,
+      "math": "4 RTX PRO 6000 + 192 vCPU + 720 GiB: 4 x 1.09565 + 192 x 0.04891 + 720 x 0.00587 on demand; 4 x 0.4503 + 192 x 0.01743 + 720 x 0.002092 spot",
+      "source": "catalog-2026-10-20"
+    },
     "g4-standard-384": {
       "standard": 35.9994,
       "spot": 13.308,

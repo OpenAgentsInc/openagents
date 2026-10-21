@@ -1542,11 +1542,13 @@ fn pylon_placement_manifests_match_the_committed_files() {
     let memory = HeaderBytes::flash(RESERVE).unwrap();
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../pylon/placements/deepseek-v41");
-    // RTX PRO 6000 machines: g4-standard-48 (1 GPU, 180 GiB) and
-    // g4-standard-96 (2 GPUs, 360 GiB).
+    // RTX PRO 6000 machines: g4-standard-48 (1 GPU, 180 GiB),
+    // g4-standard-96 (2 GPUs, 360 GiB), and g4-standard-192 (4 GPUs,
+    // 720 GiB).
     for (name, hosts, per_host, host_ram) in [
         ("four-single", &["m0", "m1", "m2", "m3"][..], 1, 180 * GIB),
         ("two-dual", &["m0", "m1"][..], 2, 360 * GIB),
+        ("one-quad", &["m0"][..], 4, 720 * GIB),
     ] {
         let request = PlacementRequest {
             gpus: gpus(hosts, per_host, 96 * GB),

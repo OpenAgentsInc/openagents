@@ -144,7 +144,7 @@ pub fn shape(machine_type: &str) -> Option<Shape> {
 }
 
 /// The named placements and their default machine types.
-pub const NAMED: [(&str, &str, &str); 2] = [
+pub const NAMED: [(&str, &str, &str); 3] = [
     (
         "four-single",
         "g4-standard-48",
@@ -154,6 +154,11 @@ pub const NAMED: [(&str, &str, &str); 2] = [
         "two-dual",
         "g4-standard-96",
         include_str!("../placements/deepseek-v41/two-dual.json"),
+    ),
+    (
+        "one-quad",
+        "g4-standard-192",
+        include_str!("../placements/deepseek-v41/one-quad.json"),
     ),
 ];
 
@@ -265,6 +270,12 @@ mod tests {
         let two = named("two-dual", None).unwrap();
         assert_eq!(two.hosts.len(), 2);
         assert!(two.hosts.iter().all(|h| h.stages.len() == 2));
+        // One machine, four GPUs, and both Engram tables in its 720 GiB.
+        let one = named("one-quad", None).unwrap();
+        assert_eq!(one.machine_type, "g4-standard-192");
+        assert_eq!(one.hosts.len(), 1);
+        assert_eq!(one.hosts[0].stages.len(), 4);
+        assert!(named("one-quad", Some("g4-standard-96")).is_err());
         assert_eq!(
             two.manifest.artifact(),
             "sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"

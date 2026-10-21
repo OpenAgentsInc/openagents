@@ -195,7 +195,7 @@ impl Guard {
 /// What `pylon cloud up` launches.
 #[derive(Debug, Clone)]
 pub struct Up {
-    /// `four-single` or `two-dual`.
+    /// `four-single`, `two-dual`, or `one-quad`.
     pub placement: String,
     /// Another machine type for the placement.
     pub machine_type: Option<String>,
@@ -1421,8 +1421,9 @@ checkout on the one host that allocates for the budget.
                             stage is ready, publish the group, and serve it
                             until `down`, the machines' expiry, the budget's
                             cap, or the loss of a machine. Placements:
-                            four-single (4 x g4-standard-48) and two-dual
-                            (2 x g4-standard-96).
+                            four-single (4 x g4-standard-48), two-dual
+                            (2 x g4-standard-96), and one-quad (1 x
+                            g4-standard-192).
       --dry-run             Print each machine's guard and gcloud commands
                             and the budget total; create nothing.
       --worker GS_URL       The stage worker binary in a bucket (required to
@@ -1513,7 +1514,7 @@ pub fn parse_up(
     let transport = value(&mut words, "--transport")?;
     let backend = value(&mut words, "--backend")?;
     let Some(placement) = words.first().cloned() else {
-        return Err("name a placement: four-single or two-dual".into());
+        return Err("name a placement: four-single, two-dual, or one-quad".into());
     };
     if let Some(extra) = words.get(1) {
         return Err(format!("unexpected argument `{extra}`"));
