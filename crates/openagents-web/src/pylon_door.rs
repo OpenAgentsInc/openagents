@@ -230,11 +230,30 @@ fn asks_for_group(headers: &HeaderMap) -> bool {
         .is_some_and(|v| v.trim() == GROUP_MODEL)
 }
 
+/// Whether the turn names Flint in [`MODEL_HEADER`]: the bare model, or
+/// one exact artifact as `flint@sha256:` and 64 lowercase hex digits
+/// (#12436). Anything else is ignored, and the turn routes as a default
+/// one.
 fn asks_for_flint(headers: &HeaderMap) -> bool {
     headers
         .get(MODEL_HEADER)
         .and_then(|v| v.to_str().ok())
-        .is_some_and(|v| v.trim() == pylon::flint::MODEL || v.trim().starts_with("flint@sha256:"))
+        .is_some_and(|v| is_flint_choice(v.trim()))
+}
+
+fn is_flint_choice(value: &str) -> bool {
+    if value == pylon::flint::MODEL {
+        return true;
+    }
+    value
+        .strip_prefix(pylon::flint::MODEL)
+        .and_then(|rest| rest.strip_prefix("@sha256:"))
+        .is_some_and(|hex| {
+            hex.len() == 64
+                && hex
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        })
 }
 
 impl PylonDoor {

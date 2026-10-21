@@ -433,7 +433,10 @@ impl LanderChat {
         let value = if is_game_lab() {
             JsValue::UNDEFINED
         } else if self.ask_flint {
-            JsValue::from_str(model::FLINT_MODEL)
+            let pin = js_sys::Reflect::get(&js_sys::global(), &model::FLINT_PIN_GLOBAL.into())
+                .ok()
+                .and_then(|v| v.as_string());
+            JsValue::from_str(model::flint_choice(pin.as_deref()))
         } else if self.group_ready && self.ask_group {
             JsValue::from_str(model::GROUP_MODEL)
         } else {

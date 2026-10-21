@@ -472,16 +472,42 @@ fn flint_is_a_separate_explicit_model_choice() {
     assert!(!asks_for_group(&headers));
     headers.insert(MODEL_HEADER, pylon::flint::advertised().parse().unwrap());
     assert!(asks_for_flint(&headers));
-    headers.insert(MODEL_HEADER, "flint@sha256:other".parse().unwrap());
     // An unavailable artifact stays an explicit request, with no fallback.
+    headers.insert(MODEL_HEADER, UNKNOWN_FLINT.parse().unwrap());
     assert!(asks_for_flint(&headers));
+}
+
+/// A well-formed Flint pin no pylon serves.
+const UNKNOWN_FLINT: &str =
+    "flint@sha256:0000000000000000000000000000000000000000000000000000000000000000";
+
+#[test]
+fn only_an_exact_flint_artifact_pin_is_a_flint_choice() {
+    let pin = format!("flint@sha256:{}", "ab12".repeat(16));
+    assert_eq!(pin.len(), 77);
+    assert!(is_flint_choice(&pin));
+    assert!(is_flint_choice(UNKNOWN_FLINT));
+    for refused in [
+        "flint@sha256:other",
+        "flint@sha256:",
+        &format!("flint@sha256:{}", "AB12".repeat(16)),
+        &format!("flint@sha256:{}", "ab12".repeat(15)),
+        &format!("flint@sha256:{}0", "ab12".repeat(16)),
+        &format!("flint@sha1:{}", "ab12".repeat(16)),
+        &format!("flintx@sha256:{}", "ab12".repeat(16)),
+        &format!("other@sha256:{}", "ab12".repeat(16)),
+        "Flint",
+        "",
+    ] {
+        assert!(!is_flint_choice(refused), "{refused}");
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn unavailable_flint_never_uses_hosted_chat_or_another_model() {
     let (relay, _pylon) = relay(true).await;
     let world = world(relay).await;
-    for (number, model) in [(7, "flint"), (8, "flint@sha256:other")] {
+    for (number, model) in [(7, "flint"), (8, UNKNOWN_FLINT)] {
         let events = ask_for(&world, number, "hello", true, Some(model)).await;
         assert!(
             !events.contains("Answer to hello") && !events.contains("echo:"),

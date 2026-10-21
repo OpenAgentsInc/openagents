@@ -16,6 +16,8 @@ pub mod event;
 pub mod features;
 /// Moving a chat to a cloud computer and back (#12282).
 pub mod moves;
+/// What the Grid terminal may send as its model header (#12436).
+pub mod pylon_model;
 pub mod types;
 /// Every computer's chats, from the account's registry (#12265).
 pub mod workspace;

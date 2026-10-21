@@ -347,7 +347,8 @@ impl Client {
                     .map_err(js_error)?;
                 // The Grid terminal's model pick (#12403): the page sets
                 // `openagentsPylonModel` while a person asks the V4.1 group,
-                // and the site routes the turn to it (#12416).
+                // and the site routes the turn to it (#12416). A Flint
+                // artifact pin is longer than a plain name (#12436).
                 if js_sys::Reflect::get(&js_sys::global(), &"openagentsLab".into())
                     .ok()
                     .and_then(|v| v.as_string())
@@ -360,7 +361,7 @@ impl Client {
                     js_sys::Reflect::get(&js_sys::global(), &"openagentsPylonModel".into())
                         .ok()
                         .and_then(|v| v.as_string())
-                        .filter(|m| !m.is_empty() && m.len() <= 64)
+                        .filter(|m| crate::pylon_model::sendable(m))
                 {
                     headers
                         .set("x-openagents-pylon-model", &model)

@@ -45,6 +45,26 @@ pub const PICK_ANY_SHORT: &str = "Any";
 pub const GROUP_READY_GLOBAL: &str = "openagentsPylonGroupReady";
 /// The page global the chat's client sends as `X-OpenAgents-Pylon-Model`.
 pub const MODEL_GLOBAL: &str = "openagentsPylonModel";
+/// The page global that pins the Flint choice to one artifact, as
+/// `flint@sha256:` and 64 lowercase hex digits (#12436). A check sets it to
+/// reach one Flint Pylon; without it, the choice asks for any Flint.
+pub const FLINT_PIN_GLOBAL: &str = "openagentsPylonFlintPin";
+
+/// What the Flint choice names: the pin when `pin` is an exact Flint
+/// artifact, else [`FLINT_MODEL`].
+pub fn flint_choice(pin: Option<&str>) -> &str {
+    pin.filter(|pin| {
+        pin.strip_prefix(FLINT_MODEL)
+            .and_then(|rest| rest.strip_prefix("@sha256:"))
+            .is_some_and(|hex| {
+                hex.len() == 64
+                    && hex
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            })
+    })
+    .unwrap_or(FLINT_MODEL)
+}
 /// Where a chat's choice is kept in this browser, followed by its id.
 pub const PICK_KEY: &str = "openagents.grid.pick.";
 
@@ -455,6 +475,21 @@ mod tests {
             assert!(!offers_kiln(base, false, true), "{base}");
         }
         assert!(oa_copy::violations(KILN, &[]).is_empty());
+    }
+
+    #[test]
+    fn the_flint_choice_takes_only_an_exact_artifact_pin() {
+        let pin = format!("flint@sha256:{}", "0f".repeat(32));
+        assert_eq!(flint_choice(Some(&pin)), pin);
+        assert_eq!(flint_choice(None), FLINT_MODEL);
+        for other in [
+            "flint@sha256:short",
+            &format!("flint@sha256:{}", "0F".repeat(32)),
+            &format!("other@sha256:{}", "0f".repeat(32)),
+            "deepseek-v4.1-flash",
+        ] {
+            assert_eq!(flint_choice(Some(other)), FLINT_MODEL, "{other}");
+        }
     }
 
     #[test]

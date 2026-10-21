@@ -14,7 +14,7 @@ p = argparse.ArgumentParser(description=__doc__)
 p.add_argument("--url", default="http://127.0.0.1:4341/home")
 p.add_argument("--out", required=True, type=Path)
 p.add_argument("--click-pick", action="store_true", help="Click the Flint segment (a bundle with #12425).")
-p.add_argument("--pin", help="Pin one Flint artifact: rewrite the turn's model header to flint@ARTIFACT, the door's exact-artifact form, which the page's 64-character header cap can't carry.")
+p.add_argument("--pin", help="Pin one Flint artifact: the page sends flint@ARTIFACT, the door's exact-artifact form, through its openagentsPylonFlintPin global (#12436).")
 p.add_argument("--text", default="In two sentences explain why lighthouses use a rotating beam")
 args = p.parse_args()
 args.out.mkdir(parents=True, exist_ok=True)
@@ -39,28 +39,9 @@ def ev(e):
         raise RuntimeError(r["exceptionDetails"])
     return r["result"].get("value")
 
-pinned = []
-
-def service():
-    """Answer paused requests, pinning the turn's model when asked."""
-    for event in list(cdp.events):
-        if event.get("method") != "Fetch.requestPaused" or event.get("handled"):
-            continue
-        event["handled"] = True
-        request = event["params"]["request"]
-        headers = [{"name": k, "value": v} for k, v in request["headers"].items()]
-        if request["method"] == "POST" and any(h["name"].lower() == "x-openagents-pylon-model" for h in headers):
-            for h in headers:
-                if h["name"].lower() == "x-openagents-pylon-model":
-                    pinned.append({"from": h["value"], "to": "flint@" + args.pin})
-                    h["value"] = "flint@" + args.pin
-        cdp.call("Fetch.continueRequest", {"requestId": event["params"]["requestId"], "headers": headers})
-
 def wait_for(cond, label, timeout=120):
     end = time.monotonic() + timeout
     while not cond():
-        if args.pin:
-            service()
         if time.monotonic() > end:
             raise TimeoutError(label)
         time.sleep(.1)
@@ -76,6 +57,7 @@ def shot(name):
     (args.out / name).write_bytes(base64.b64decode(cdp.call("Page.captureScreenshot", {"format": "png"})["data"]))
 
 panel = 'document.querySelector("#pylon-composer")'
+model = "flint@" + args.pin if args.pin else "flint"
 cdp.call("Page.navigate", {"url": args.url})
 wait_for(lambda: ev('performance.getEntriesByName("verse-visible").length > 0'), "world visible")
 wait_for(lambda: ev("globalThis.openagentsPylonFlintReady === true"), "a Flint pylon online")
@@ -94,6 +76,8 @@ shot("terminal.png")
 # An older bundle lacks it but still sends the page's model global, which the
 # pick sets, so set that instead and record which way the turn was routed.
 pick_mode = "page-global"
+if args.pin:
+    ev(f"globalThis.openagentsPylonFlintPin = {json.dumps(model)}")
 if args.click_pick:
     for x in range(1050, 820, -8):
         for kind in ("mousePressed", "mouseReleased"):
@@ -112,10 +96,8 @@ for ch in args.text:
 wait_for(lambda: int(ev(panel + '.dataset.draftChars')) == len(args.text), "typed draft")
 shot("flint-pick.png")
 if pick_mode == "page-global":
-    ev('globalThis.openagentsPylonModel = "flint"')
-if args.pin:
-    cdp.call("Fetch.enable", {"patterns": [{"urlPattern": "*/v1/threads*", "requestStage": "Request"}]})
-assert ev("globalThis.openagentsPylonModel") == "flint"
+    ev(f"globalThis.openagentsPylonModel = {json.dumps(model)}")
+assert ev("globalThis.openagentsPylonModel") == model
 sent = time.time()
 key("Enter", True); key("Enter", False)
 wait_for(lambda: int(ev(panel + '.dataset.messageCount')) >= 2 and ev(panel + '.dataset.chatState') == "ready", "Flint reply", timeout=900)
@@ -126,13 +108,12 @@ posts = [e["params"]["request"] for e in cdp.events if e.get("method") == "Netwo
          and e["params"]["request"]["method"] == "POST" and "/v1/threads" in e["params"]["request"]["url"]]
 headers = [{k.lower(): v for k, v in post["headers"].items()} for post in posts]
 chat = ev('new URLSearchParams(location.search).get("chat")')
-result = {"url": args.url, "chat": chat, "seconds": seconds, "pick_mode": pick_mode, "pinned": pinned, "pick": ev(panel + '.dataset.pylonPick'),
+result = {"url": args.url, "chat": chat, "seconds": seconds, "pick_mode": pick_mode, "model": model, "pick": ev(panel + '.dataset.pylonPick'),
           "messages": int(ev(panel + '.dataset.messageCount')),
           "posts": [{"url": post["url"], "body": json.loads(post.get("postData") or "{}"),
                      "pylon_model": h.get("x-openagents-pylon-model"), "surface": h.get("x-openagents-chat-surface")}
                     for post, h in zip(posts, headers)]}
-assert any(p["pylon_model"] == "flint" and p["surface"] == "home" for p in result["posts"]), result
-assert not args.pin or pinned, "the pin was not applied"
+assert any(p["pylon_model"] == model and p["surface"] == "home" for p in result["posts"]), result
 assert not args.click_pick or pick_mode == "clicked", "the Flint segment was not found"
 (args.out / "flint-turn.json").write_text(json.dumps(result, indent=2) + "\n")
 print(json.dumps(result))
