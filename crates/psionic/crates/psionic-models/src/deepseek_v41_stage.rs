@@ -3,7 +3,8 @@
 //! The model-independent message, codec, and admission live in
 //! [`crate::stage_state`]. This module says what crosses a V4.1 boundary:
 //!
-//! - the four hyper-connection residual streams;
+//! - the four hyper-connection residual streams and the last FFN sub-block's
+//!   pre-mix, which the next layer's attention collapses them with;
 //! - rows of the KV source that layers past the boundary reuse (layers 3–7,
 //!   9–13, and 15–19 reuse layers 2, 8, and 14; layers 21–39 reuse 20);
 //! - that source's indexer keys when an index-source layer past the boundary
@@ -15,7 +16,7 @@
 //! - Engram token history, when an Engram layer (1 or 14) is past the
 //!   boundary.
 //!
-//! A boundary at layer 20 carries only the residual. [`stage_contract`]
+//! A boundary at layer 20 carries only the residual and the pre-mix. [`stage_contract`]
 //! builds the inbound contract for any layer range, and [`wire_report`]
 //! measures the bytes per decode token by encoding real-shaped messages.
 //!
@@ -163,12 +164,20 @@ pub fn boundary_sections(geometry: &V41StageGeometry, boundary: u32) -> Vec<Sect
     if boundary == 0 || boundary >= V41_LAYERS {
         return Vec::new();
     }
-    let mut specs = vec![SectionSpec {
-        kind: SectionKind::Residual,
-        dtype: geometry.residual_dtype,
-        inner: vec![geometry.streams, geometry.hidden],
-        rows: RowRule::PerToken,
-    }];
+    let mut specs = vec![
+        SectionSpec {
+            kind: SectionKind::Residual,
+            dtype: geometry.residual_dtype,
+            inner: vec![geometry.streams, geometry.hidden],
+            rows: RowRule::PerToken,
+        },
+        SectionSpec {
+            kind: SectionKind::PreMix,
+            dtype: WireDtype::F32,
+            inner: vec![geometry.streams],
+            rows: RowRule::PerToken,
+        },
+    ];
     if let Some(source) = kv_owner(boundary).filter(|s| *s < boundary) {
         specs.push(SectionSpec {
             kind: SectionKind::SourceKv { layer: source },

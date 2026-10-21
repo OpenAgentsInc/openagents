@@ -100,6 +100,17 @@ impl StageExecutor for SyntheticStage {
                 .to_f32()
                 .map_err(|e| err(e.to_string()))?
         };
+        // Each token's last pre-mix: the next layer collapses with it.
+        let mut pre: Vec<f32> = if first_stage {
+            (0..tokens)
+                .flat_map(|_| (0..streams).map(|s| if s == 0 { 1.0 } else { 0.0 }))
+                .collect()
+        } else {
+            m.section(SectionKind::PreMix)
+                .ok_or_else(|| err("no pre-mix"))?
+                .to_f32()
+                .map_err(|e| err(e.to_string()))?
+        };
         let mut selections: BTreeMap<u32, Vec<Vec<i32>>> = BTreeMap::new();
         let mut candidates: Option<Vec<Vec<u32>>> = None;
         let mut before: Vec<u32> = Vec::new();
@@ -252,6 +263,14 @@ impl StageExecutor for SyntheticStage {
                         *v += 0.01 * attend[j % hd];
                     }
                 }
+                let q = &mut pre[i * streams..(i + 1) * streams];
+                let collapsed: f32 = (0..streams).map(|s| q[s] * r[s * hidden]).sum();
+                for v in r.iter_mut() {
+                    *v += 0.01 * collapsed;
+                }
+                for (s, w) in q.iter_mut().enumerate() {
+                    *w = 0.5 * *w + 0.1 * r[s * hidden + layer as usize % hidden];
+                }
                 let copy = r.to_vec();
                 for s in 0..streams {
                     for d in 0..hidden {
@@ -301,6 +320,13 @@ impl StageExecutor for SyntheticStage {
                     vec![tokens as u32, g.streams, g.hidden],
                     0,
                     &residual,
+                ),
+                SectionKind::PreMix => Section::floats(
+                    spec.kind,
+                    spec.dtype,
+                    vec![tokens as u32, g.streams],
+                    0,
+                    &pre,
                 ),
                 SectionKind::SourceKv { layer } | SectionKind::SourceIndexKeys { layer } => {
                     let (table, w) = if matches!(spec.kind, SectionKind::SourceKv { .. }) {
@@ -487,11 +513,12 @@ fn kinds(boundary: u32) -> Vec<SectionKind> {
 fn boundaries_carry_what_later_layers_read() {
     use SectionKind::*;
     assert!(kinds(0).is_empty());
-    assert_eq!(kinds(1), [Residual, EngramHistory]);
+    assert_eq!(kinds(1), [Residual, PreMix, EngramHistory]);
     assert_eq!(
         kinds(3),
         [
             Residual,
+            PreMix,
             SourceKv { layer: 2 },
             IndexSelection { layer: 2 },
             EngramHistory
@@ -501,26 +528,29 @@ fn boundaries_carry_what_later_layers_read() {
         kinds(10),
         [
             Residual,
+            PreMix,
             SourceKv { layer: 8 },
             IndexSelection { layer: 8 },
             EngramHistory
         ]
     );
-    assert_eq!(kinds(14), [Residual, EngramHistory]);
+    assert_eq!(kinds(14), [Residual, PreMix, EngramHistory]);
     assert_eq!(
         kinds(15),
         [
             Residual,
+            PreMix,
             SourceKv { layer: 14 },
             IndexSelection { layer: 14 }
         ]
     );
     // Layer 20 produces everything layers 20-39 read.
-    assert_eq!(kinds(20), [Residual]);
+    assert_eq!(kinds(20), [Residual, PreMix]);
     assert_eq!(
         kinds(30),
         [
             Residual,
+            PreMix,
             SourceKv { layer: 20 },
             SourceIndexKeys { layer: 20 },
             Candidates { layer: 20 },
@@ -531,6 +561,7 @@ fn boundaries_carry_what_later_layers_read() {
         kinds(24),
         [
             Residual,
+            PreMix,
             SourceKv { layer: 20 },
             SourceIndexKeys { layer: 20 },
             Candidates { layer: 20 }
@@ -541,6 +572,7 @@ fn boundaries_carry_what_later_layers_read() {
         kinds(37),
         [
             Residual,
+            PreMix,
             SourceKv { layer: 20 },
             IndexSelection { layer: 36 }
         ]
@@ -1199,8 +1231,9 @@ fn wire_bytes_per_token_for_both_geometries() {
         |shape: usize, bytes: usize| crate::stage_state::SECTION_HEADER_BYTES + 4 * shape + bytes;
     // Flash, BF16, four stages: boundaries at 10, 20, and 30.
     let r = &reports[2].2;
-    let residual = section(3, 4 * 5120 * 2);
-    assert_eq!(residual, 40_996);
+    // The residual streams (BF16) and the pre-mix (F32) cross every boundary.
+    let residual = section(3, 4 * 5120 * 2) + section(2, 4 * 4);
+    assert_eq!(residual, 40_996 + 48);
     let at10 = header + residual + section(2, 512 * 2) + section(2, 512 * 4) + section(1, 3 * 4);
     let at20 = header + residual;
     let at30 = header
@@ -1216,7 +1249,7 @@ fn wire_bytes_per_token_for_both_geometries() {
             .collect::<Vec<_>>(),
         [at10, at20, at30]
     );
-    assert_eq!(r.boundaries[1].peak_bytes, 41_124);
+    assert_eq!(r.boundaries[1].peak_bytes, 41_172);
     let logits = header + section(2, 129_280 * 4);
     assert_eq!(r.logits_return_bytes, logits);
     assert_eq!(r.token_peak_bytes, at10 + at20 + at30 + logits);
@@ -1227,7 +1260,7 @@ fn wire_bytes_per_token_for_both_geometries() {
     );
     // Synthetic, four stages.
     let r = &reports[0].2;
-    let residual = section(3, 4 * 8 * 4);
+    let residual = section(3, 4 * 8 * 4) + section(2, 4 * 4);
     assert_eq!(
         r.boundaries
             .iter()

@@ -509,6 +509,18 @@ impl CudaGraphExec {
             encoded_operations: self.encoded_operations,
         })
     }
+
+    /// Enqueues the captured CUDA graph on its stream without waiting, so
+    /// several launches run back to back with no host round trip between
+    /// them. Call [`Self::synchronize`] before reading their results.
+    pub fn launch_enqueued(&self) -> Result<(), RuntimeError> {
+        self.platform.launch_enqueued()
+    }
+
+    /// Waits until every launch enqueued on the graph's stream has finished.
+    pub fn synchronize(&self) -> Result<(), RuntimeError> {
+        self.platform.synchronize()
+    }
 }
 
 /// Explicit per-call counters for one quantized CUDA matvec request.
@@ -1014,6 +1026,41 @@ impl CudaHostBuffer {
             )));
         }
         self.platform.write_bytes(bytes)
+    }
+
+    /// Writes raw bytes into part of the pinned host buffer, starting at
+    /// `offset`, so a large table can be filled in bounded pieces.
+    pub fn write_bytes_at_offset(
+        &mut self,
+        offset: usize,
+        bytes: &[u8],
+    ) -> Result<(), RuntimeError> {
+        if offset
+            .checked_add(bytes.len())
+            .is_none_or(|end| end > self.byte_len)
+        {
+            return Err(RuntimeError::Backend(format!(
+                "cuda host buffer write of {} bytes at {offset} exceeds {} bytes",
+                bytes.len(),
+                self.byte_len
+            )));
+        }
+        let base = self.platform.raw_host_ptr();
+        if base.is_null() {
+            return Err(RuntimeError::Backend(String::from(
+                "cuda host buffers need the Linux CUDA runtime",
+            )));
+        }
+        // SAFETY: the range was checked against the allocation above, and
+        // `&mut self` excludes other writers on the host.
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                bytes.as_ptr(),
+                base.cast::<u8>().add(offset),
+                bytes.len(),
+            );
+        }
+        Ok(())
     }
 
     /// Reads raw bytes from the pinned host buffer.
@@ -16316,6 +16363,22 @@ mod platform {
     }
 
     impl PlatformGraphExec {
+        pub(super) fn launch_enqueued(&self) -> Result<(), RuntimeError> {
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe { (self.runtime.cuda_graph_launch)(self.instance, self.stream) },
+                "cudaGraphLaunch",
+            )
+        }
+
+        pub(super) fn synchronize(&self) -> Result<(), RuntimeError> {
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe { (self.runtime.cuda_stream_synchronize)(self.stream) },
+                "cudaStreamSynchronize",
+            )
+        }
+
         pub(super) fn launch(
             &self,
             wait: CudaCommandWait,
@@ -19221,6 +19284,18 @@ mod platform {
     }
 
     impl PlatformGraphExec {
+        pub(super) fn launch_enqueued(&self) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn synchronize(&self) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
         pub(super) fn launch(
             &self,
             _wait: CudaCommandWait,
@@ -19247,6 +19322,7 @@ pub mod encoder;
 pub mod v41_attention;
 pub mod v41_matvec;
 pub mod v41_mix;
+pub mod v41_stage;
 
 #[cfg(test)]
 mod tests {

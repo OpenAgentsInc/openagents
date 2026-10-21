@@ -98,6 +98,10 @@ impl WireDtype {
 pub enum SectionKind {
     /// Residual streams, `[tokens, streams, hidden]`.
     Residual,
+    /// The last sub-block's pre-mix for each token, `[tokens, streams]`. A
+    /// layer's attention collapses its input streams with the previous
+    /// layer's FFN pre-mix, so the mix crosses with the residual.
+    PreMix,
     /// Rows of a source layer's KV that later layers reuse, `[rows, width]`,
     /// appended at the section's `first_row`. For a model with separate keys
     /// and values, these are the keys.
@@ -131,6 +135,7 @@ impl SectionKind {
             Self::IndexSelection { layer } => (6, layer),
             Self::EngramHistory => (7, 0),
             Self::Logits => (8, 0),
+            Self::PreMix => (9, 0),
         }
     }
 
@@ -144,6 +149,7 @@ impl SectionKind {
             (6, layer) => Some(Self::IndexSelection { layer }),
             (7, 0) => Some(Self::EngramHistory),
             (8, 0) => Some(Self::Logits),
+            (9, 0) => Some(Self::PreMix),
             _ => None,
         }
     }
@@ -160,6 +166,7 @@ impl fmt::Display for SectionKind {
             Self::IndexSelection { layer } => write!(f, "layer {layer} index selection"),
             Self::EngramHistory => f.write_str("Engram history"),
             Self::Logits => f.write_str("logits"),
+            Self::PreMix => f.write_str("pre-mix"),
         }
     }
 }
