@@ -295,3 +295,25 @@ started first.
   derived from it, before any stage package leaves our buckets.
 - The deadline a V4.1 reasoning answer actually needs through Pylon, which
   sets W14.
+
+## CPU follow-up status (2026-10-21 UTC)
+
+[#12404](https://github.com/OpenAgentsInc/openagents/issues/12404) remains open.
+Its [retained report](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/w12404-2026-10-21.json)
+records a normalization fix, expanded observations, and failed connected
+qualification. Unequal BF16 normalization values fall from 17 to 3 across 560
+identical-input captures. All 800 isolated router-score comparisons and 320
+conversion comparisons pass the original policy.
+
+The full chat replay reaches all 40 layers and checks 33 full-vocabulary logits,
+but 638 tensor comparisons and 926 router rows fail. Seventy captures remain
+unobserved in that run; 30 have a subsequent trace-name correction that still
+needs an original-weight rerun. Complete coverage and the other seven cases
+remain required. W2 (#12389), W3 (#12390), and connected GPU qualification stay
+blocked on G1.
+
+The immediate next step is the extended same-mode TP8 oracle capture to locate
+the first attention difference and measure the indexer's precision boundaries.
+B200 allocation attempts failed in this session; no new GPU capture was obtained.
+The dedicated CPU VM and its disks were deleted after retaining the evidence.
+Compute cost was $3.302949, within the existing spend cap and noncompute reserve.

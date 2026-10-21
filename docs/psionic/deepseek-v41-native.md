@@ -1395,3 +1395,64 @@ original shard hashes passed before comparisons. Results, source, binaries,
 and cleanup records are retained under
 `gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/cpu-qualification/w1/run-20261020-201630-7f29/`.
 The committed compressed raw reports preserve every missing tensor name.
+
+## W1 follow-up: normalization and deeper observations (2026-10-21 UTC)
+
+**G1 still fails; #12404 remains open.** The [follow-up report](../../crates/psionic/crates/psionic-models/src/testdata/deepseek_v41/cpu_qualification/w12404-2026-10-21.json)
+and its compressed raw evidence retain the failures and missing coverage. The
+frozen policy hash remains `38ac6a059ae1385838d0188506912850bc29ba4ffc29f28dea592365deb036c5`.
+All 48 original shard hashes passed again.
+
+`f23547d141` removes an extra F32 rounding boundary from reference RMSNorm:
+compute reciprocal square root before rounding to F32, rather than rounding
+square root and its reciprocal separately. Across 560 identical-input oracle
+tensors, unequal BF16 values fall from 17 to 3. Two retained scalar examples
+test the BF16 ties that this fixes. This result does not establish bit parity
+or fix the first connected attention failure.
+
+`bc78a63ec9` adds observations for router scores, shared and selected experts,
+Engram rows, compressor groups, index scores, selected positions, and candidate
+blocks. Query normalization, projection, RoPE, sparse heads, and grouped output
+boundaries are also observable. Index score masks are decoded and compared
+exactly before applying the unchanged bounds to finite scores. Unexpected
+nonfinite scores fail. Selection exceptions still require an oracle-recorded
+exact tie.
+
+| Check | Result |
+| --- | --- |
+| Router scores and biased scores on identical oracle inputs | 800 comparisons, zero failures |
+| FP8 codes and scales on identical oracle inputs | 320 comparisons, all exact |
+| Chat decode prefill | Same first reported layer-1 mixing failure; maximum error `0.0011644363403320312` |
+| Full chat replay, all 40 layers and 73 input positions | 1,064 tensors checked; 638 fail; 926 router rows differ; three recorded exact-tie rows waived |
+| Full replay vocabulary logits | All 33 tensors checked; maximum error `3.3777535557746887` |
+
+The newly observed replay router score fails first at
+`p1-chat-thinking.replay.g2.layers.0.ffn.gate.scores`, with maximum error
+`0.00037348270416259766`. The identical-input router checks pass, which points
+to incoming state drift. The attention operation that first introduces it
+still needs direct evidence.
+
+The full replay used `bc78a63ec9` and leaves 70 captures unobserved. Thirty are
+expert projection names: `fc6bbce8d6` corrects their suffixes to `w1_out`,
+`w2_out`, and `w3_out`, with a contract regression, but a fresh original-weight
+run is still required. The other 40 are connected FP8 code/scale captures;
+the isolated conversion checks are recorded separately. The other seven
+required cases were not rerun. This run is diagnostic, not a W3 benchmark.
+
+Sixteen guarded B200 allocation attempts in this run failed across multiple
+zones, including capacity failures and an on-demand quota refusal. The oracle
+extension is syntax-checked but has not run on a GPU. It captures rank partials,
+records NCCL versions and controls, and pins the packages used for #12371.
+The next capture must also identify the actual collective kernel: NCCL has
+both BF16 pairwise addition and NVLS reductions with F32 accumulation in its
+[reduction implementation](https://github.com/NVIDIA/nccl/blob/master/src/device/reduce_kernel.h).
+That distinction prevents assuming one rank reduction from the tensor dtype.
+TP8 indexer intermediate/rank arithmetic remains unresolved.
+
+The dedicated CPU VM and its disks were deleted. Compute cost was **$3.302949**;
+the existing $200 reserve covers noncompute costs. Source, binaries, locks,
+raw comparisons, and cleanup evidence are retained under
+`gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/cpu-qualification/w12404/codex-12404-20261021/`.
+Validation: 64 CPU library tests, six qualifier tests, changed-file formatting,
+Python compilation, and shell syntax checks passed. W2 and W3 remain blocked
+on #12404 and complete same-mode qualification.
