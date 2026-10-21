@@ -1,0 +1,96 @@
+{
+  "schema": "openagents.deepseek_v41.six_hour_audit.v1",
+  "reviewed_head": "30ba21cb1efab4097872a7b49e438e1d947924e7",
+  "tested_head": "30ba21cb1efab4097872a7b49e438e1d947924e7",
+  "window_utc": [
+    "2026-10-21T07:03:36Z",
+    "2026-10-21T13:03:36Z"
+  ],
+  "source_sha256": {
+    "scripts/dev/cloud-budget.py": "2db9a65128067b6ec13a6667a48614b07818c593783718b22d4c15d7100eceb3",
+    "scripts/pylon/v41-stage-startup.sh": "fcbcd9a46fb4e438cd5137afabb2ab368b45000596ca25784aaa0cc4a2e1e935",
+    "scripts/pylon/v41-stage-build.sh": "93e8bd77b59603d239390b271d2332e1dfe74fcadba2cc3662b6da56acdbf9c7",
+    "crates/psionic/crates/psionic-backend-cuda/build.rs": "23fba215cce55026cd50d0fc14f59f66b32ce92823733b63ea9ea1f0fdab2f5b",
+    "crates/psionic/crates/psionic-v41-stage/src/cuda.rs": "eb21f07e40c920dbb5e303a80ea26f06c4ac2ae0bfaa0ad534552ac9cded160b",
+    "crates/psionic/crates/psionic-v41-stage/src/cuda/synthetic.rs": "f100bbb906b6a97b317947f72ef9d94b2044987565b42cbb2e8bcd03565b9916",
+    "crates/psionic/crates/psionic-v41-stage/src/serve.rs": "1d14a2a19bab3b2184f3a3e96fb1f85466d9d13bc37014941999cad1b7691093",
+    "crates/psionic/crates/psionic-v41-stage/src/lib.rs": "89f8af082d8e4931d8fb8247ab9bc5d71b37dc99b877a88ba8d96b0d997bc1db",
+    "crates/psionic/crates/psionic-models/src/stage_state.rs": "d505f2e485d7596f88197290edab98a8c0e6df9d76196c41ad0732ee9bc7f845"
+  },
+  "baseline_guard_tests": {
+    "returncode": 0,
+    "output": "..........................\n----------------------------------------------------------------------\nRan 26 tests in 13.071s\n\nOK"
+  },
+  "billing": {
+    "flex_sync_after_a_real_start": {
+      "requested_at": "2027-01-15T08:00:00Z",
+      "started_at": "2027-01-15T09:00:00Z",
+      "ended_at": "2027-01-15T10:00:00Z",
+      "expected_compute_usd": 64.44,
+      "actual_ledger_usd": 128.88,
+      "stop_record": {
+        "cost": 128.88,
+        "event": "stop",
+        "id": "ee630f59ef9148e1828bc294839f9b3c",
+        "reason": "stopped",
+        "stop": "2027-01-15T10:00:00Z",
+        "stop_epoch": 1800007200.0,
+        "vm": "audit-flex-sync"
+      }
+    },
+    "pending_to_running_before_delete": {
+      "kind": "fault injection; not an observed Google Cloud transition",
+      "transition_injected": true,
+      "actual_ledger_usd": 0.0,
+      "reason": "never-started",
+      "expected": "Do not assert never-started from a pre-delete snapshot."
+    }
+  },
+  "startup": {
+    "stale_ready_marker": {
+      "first_boot_returncode": 0,
+      "second_boot_returncode": 1,
+      "ready_marker_after_failed_boot": true,
+      "stage_run_after_failed_boot": "original-worker"
+    },
+    "unverified_worker_identity": {
+      "boot_returncode_with_replaced_worker": 0,
+      "build_record_worker_sha256": "37c2bdd3550b20656c982b912457f6ec69a1dbb40f1d08a493e6ee5cb8444cfa",
+      "installed_worker_sha256": "ae1fbd5a687ff1cdd10f92129dea0adb7c9909afc7d0d49dbab8255a1192138a",
+      "stage_run": "replacement-worker",
+      "scope": "Shell worker substitutes test artifact pin enforcement, not CUDA execution."
+    }
+  },
+  "synthetic_rng": {
+    "min": -0.9990982,
+    "max": 2.9971955,
+    "mean": 0.9934648680705322,
+    "outside_declared_range": 2063,
+    "samples": 4096,
+    "seed": 11,
+    "method": "Compile the unchanged Rng implementation extracted from synthetic.rs.",
+    "compiler": "rustc 1.97.1 (8bab26f4f 2026-07-14)"
+  },
+  "cuda_arch_invalidation": {
+    "kind": "Source inspection; no CUDA build performed.",
+    "tracked_environment": [
+      "NVCC",
+      "PSIONIC_CUDA"
+    ],
+    "untracked_architecture_environment": [
+      "CUDAARCHS",
+      "PSI_CUDA_ARCH"
+    ]
+  },
+  "cuda_prefill_wire_lower_bound": {
+    "tokens": 3277,
+    "streams": 4,
+    "hidden": 5120,
+    "bytes_per_f32": 4,
+    "residual_only_bytes": 268451840,
+    "codec_max_section_bytes": 268435456,
+    "worker_default_max_context": 8192,
+    "kind": "Dimension calculation from source; no GPU or large allocation."
+  },
+  "cloud_access": false
+}

@@ -1,0 +1,113 @@
+{
+  "window_utc": [
+    "2026-10-21T07:03:36Z",
+    "2026-10-21T13:03:36Z"
+  ],
+  "selection": "Reachable from origin/main at 30ba21cb1e, selected by committer timestamp with git log --since-as-filter.",
+  "reviewed_head": "30ba21cb1efab4097872a7b49e438e1d947924e7",
+  "agent_commits": [
+    {
+      "commit": "20ec8240ef6bf34fa32c58cf3bd91406778d8fcc",
+      "committed": "2026-10-21T07:45:30-05:00",
+      "authored": "2026-10-21T07:45:29-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Settle unfulfilled flex-start requests at no cost in sync (#12405)"
+    },
+    {
+      "commit": "d85e58b2f02661f3df807a0ef55760ec1f39eedd",
+      "committed": "2026-10-21T05:31:23-05:00",
+      "authored": "2026-10-21T05:31:20-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Bill flex-start machines from their start, not their queued request (#12405)"
+    },
+    {
+      "commit": "9b624aa209e756e14b9d5fabeb211ce7e0f7adbb",
+      "committed": "2026-10-21T04:42:11-05:00",
+      "authored": "2026-10-21T04:42:11-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Record the first one-machine V4.1 group run (#12398)"
+    },
+    {
+      "commit": "3f0f8f99279fa8081bb1281549e2dd0e0e31e077",
+      "committed": "2026-10-21T04:39:41-05:00",
+      "authored": "2026-10-21T04:25:58-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Provision IOPS with a stage disk's throughput (#12398)"
+    },
+    {
+      "commit": "0019ec6d4e3aa1473a81d1c4cc5d0e2c882f60a9",
+      "committed": "2026-10-21T04:39:41-05:00",
+      "authored": "2026-10-21T04:22:38-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Start a zone head only after its machine's weights are in place (#12398)"
+    },
+    {
+      "commit": "76934e3fbba92ab3a37be7e7d018a2c26dcef4a4",
+      "committed": "2026-10-21T04:39:41-05:00",
+      "authored": "2026-10-21T04:16:35-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Wait for a new head machine to answer ssh before the launch (#12398)"
+    },
+    {
+      "commit": "3b6c028dce0b102d214d2b9488f0eff90e38e670",
+      "committed": "2026-10-21T04:39:41-05:00",
+      "authored": "2026-10-21T03:43:46-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Check only a remote head's settings on the budget host (#12398)"
+    },
+    {
+      "commit": "b3162d369d5d295cef1a954a2e80e5329d4831d0",
+      "committed": "2026-10-21T04:39:41-05:00",
+      "authored": "2026-10-21T03:38:26-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Send the whole checkout but Psionic and assets to the pylon build (#12398)"
+    },
+    {
+      "commit": "dbca2c2573c123a81a96736f64c36890eec2de04",
+      "committed": "2026-10-21T04:39:41-05:00",
+      "authored": "2026-10-21T03:36:24-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Take the group head's temperature and top-p in pylon cloud up (#12398)"
+    },
+    {
+      "commit": "4b3beab4c75ee8bf5bfc6caf87bb6b21a8b63667",
+      "committed": "2026-10-21T04:39:41-05:00",
+      "authored": "2026-10-21T03:34:24-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Time group answers and take launch and step limits in pylon cloud up (#12398)"
+    },
+    {
+      "commit": "3e3372ee0cfd9dc7a3bdd637d7ee215e810c3343",
+      "committed": "2026-10-21T04:39:41-05:00",
+      "authored": "2026-10-21T03:31:17-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Mount G4 local SSDs for stage weights and build a Linux pylon (#12398)"
+    },
+    {
+      "commit": "28d40ece393967c4b10e59d6a682296d99f7230f",
+      "committed": "2026-10-21T04:39:41-05:00",
+      "authored": "2026-10-21T03:29:54-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Add the one-machine one-quad V4.1 placement (#12398)"
+    },
+    {
+      "commit": "93496b2929a21590239c9313c364ab2c06ad11ec",
+      "committed": "2026-10-21T03:57:26-05:00",
+      "authored": "2026-10-21T03:57:25-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Record the V4.1 B200 capture, device arithmetic, and G1 rerun (#12404)"
+    },
+    {
+      "commit": "2d929ceba404fc17d92ec32505ca024843df08e9",
+      "committed": "2026-10-21T03:21:29-05:00",
+      "authored": "2026-10-21T03:16:17-05:00",
+      "author": "AtlantisPleb",
+      "subject": "Run V4.1 stages on CUDA and link them directly (#12398)"
+    }
+  ],
+  "generated_update": "3f7a76cdf9ddbc621f29d75c721cf4d3d706332d",
+  "excluded_reviewers_own_commits": [
+    "9d873415d7d52dc10308911c095df1170de39a18",
+    "30ba21cb1efab4097872a7b49e438e1d947924e7"
+  ]
+}
