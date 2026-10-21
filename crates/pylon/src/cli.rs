@@ -471,7 +471,11 @@ fn dispatch(
         emit(json_out, &json!({"usage": USAGE}), USAGE);
         return Err(Outcome::Usage("name a command".into()));
     };
-    if command == "--help" || command == "help" {
+    // `pylon ask --help` must print the usage, not send "--help" as a prompt.
+    if command == "--help"
+        || command == "help"
+        || rest.iter().any(|word| word == "--help" || word == "-h")
+    {
         emit(json_out, &json!({"usage": USAGE}), USAGE);
         return Ok(());
     }
