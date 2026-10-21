@@ -148,6 +148,14 @@ holdout() {
   $PY -I $SCRIPTS/oracle_manifest.py --dump $out --out $out/manifest.json
   cp "$CORPUS" $out/holdout-corpus.json
   gcloud storage rsync -r -x '^patched/__pycache__/' $out $dest
+  if [ -n "${SUITE:-}" ]; then
+    # G2 v2: the frozen task suite's complete greedy answers, to the end token or cap
+    local g2=$OUT/g2-v2-oracle g2dest=$ORACLE/g2-v2/oracle
+    DUMP_TOOL_COMMIT=${DUMP_TOOL_COMMIT:-} $VENV/bin/torchrun --nproc-per-node 8 $SCRIPTS/oracle_dump.py \
+      --ckpt $TP8 --reference $REF --out $g2 --upload $g2dest --cases-file "$SUITE"
+    cp "$SUITE" $g2/task-suite.json
+    gcloud storage rsync -r -x '^patched/__pycache__/' $g2 $g2dest
+  fi
   log "holdout done"
 }
 

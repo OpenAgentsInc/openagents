@@ -179,9 +179,13 @@ def holdout_cases(spec, reference: Path, generate, tokenizer, args) -> list[dict
                      if isinstance(m["content"], list) else m["content"]} for m in c["messages"]]
         prompt, tokens, _t, images = generate.prepare_case({"messages": messages}, c["thinking_mode"], tokenizer, args)
         assert images is None or not any(images)
+        complete = bool(c.get("complete"))
+        # A G2 task (complete) runs to the end token or its cap; teacher-forced captures
+        # keep the usual 32 positions.
         cases.append({"id": c["id"], "thinking_mode": c["thinking_mode"], "messages": messages, "prompt": prompt,
-                      "tokens": list(tokens), "n_gen": c["n_gen"], "replay": True, "chunked": False,
-                      "complete": False})
+                      "tokens": list(tokens), "n_gen": 32 if complete else c["n_gen"],
+                      "cap": c["n_gen"] if complete else None, "replay": not complete,
+                      "chunked": False, "complete": complete})
     return cases
 
 
@@ -879,7 +883,8 @@ def run_case(model, rec, case, tokenizer, args, generate):
 
     pid, tokens, n_gen = case["id"], list(case["tokens"]), case["n_gen"]
     L = len(tokens)
-    assert L + COMPLETE_CAP + 2 <= args.max_seq_len or not case.get("complete")
+    cap = case.get("cap") or COMPLETE_CAP
+    assert L + cap + 2 <= args.max_seq_len or not case.get("complete")
     assert L + n_gen + 1 <= args.max_seq_len
     labeled = labels_for(L, n_gen, case.get("extra_rows", ()))
     gen_label = {pos - L + 1: label for label, pos in labeled if pos >= L - 1 and label != "last"}
@@ -915,7 +920,7 @@ def run_case(model, rec, case, tokenizer, args, generate):
         generated.append(token)
         start += inp.size(1)
         step += 1
-        if step > n_gen and (not case.get("complete") or eos in generated or len(generated) >= COMPLETE_CAP):
+        if step > n_gen and (not case.get("complete") or eos in generated or len(generated) >= cap):
             break
         inp = torch.tensor([[token]], dtype=torch.long)
     torch.cuda.synchronize()
@@ -930,8 +935,8 @@ def run_case(model, rec, case, tokenizer, args, generate):
         result["generated_text_raw"] = tokenizer.decode(text_ids)
         result["prompt_text"] = case.get("prompt", "")
     if case.get("complete"):
-        full = generated[: generated.index(eos) + 1] if eos in generated else generated[:COMPLETE_CAP]
-        answer = {"ids": full, "finished": eos in full, "cap": COMPLETE_CAP, "tokens": len(full)}
+        full = generated[: generated.index(eos) + 1] if eos in generated else generated[:cap]
+        answer = {"ids": full, "finished": eos in full, "cap": cap, "tokens": len(full)}
         if tokenizer is not None:
             answer["text"] = tokenizer.decode(full)
             try:
