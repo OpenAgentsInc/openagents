@@ -635,7 +635,7 @@ impl Layer {
                 .as_ref()
                 .is_some_and(|g| g.id == group.id && g.role == "head")
         })?;
-        let offset = (f64::from(part) - (f64::from(group.parts) + 1.0) / 2.0) * 3.2;
+        let offset = (f64::from(part) - (f64::from(group.parts) + 1.0) / 2.0) * 4.5;
         Some([
             head.anchor[0] + offset,
             head.anchor[1],
@@ -708,18 +708,32 @@ impl Layer {
                 }
             })
             .collect();
+        // A part's tag is short, so a row of them stays readable.
+        let (title, small) = match &pylon.group {
+            Some(group) if group.role == "head" => (
+                pylon.name.clone(),
+                format!("{} · {}", group.words(), pylon.slots_words()),
+            ),
+            Some(group) => (
+                group.part.map_or_else(
+                    || group.words(),
+                    |part| format!("Part {part} of {}", group.parts),
+                ),
+                group.layers.map_or_else(
+                    || pylon.class_words().to_owned(),
+                    |[from, to]| format!("Layers {from}–{to}"),
+                ),
+            ),
+            None => (
+                pylon.name.clone(),
+                format!("{} · {}", pylon.class_words(), pylon.slots_words()),
+            ),
+        };
         entry.pillar.set_inner_html(&format!(
             "<span class=\"ring\"></span><span class=\"base\"></span><span class=\"beam\"></span>\
-<span class=\"tag\"><b>{}</b><small>{} · {}</small><span class=\"slots\">{slots}</span></span>",
-            escape(&pylon.name),
-            escape(&match &pylon.group {
-                Some(group) if group.role == "head" => group.words(),
-                _ => pylon.class_words().to_owned(),
-            }),
-            escape(&match &pylon.group {
-                Some(group) if group.role != "head" => group.words(),
-                _ => pylon.slots_words(),
-            }),
+<span class=\"tag\"><b>{}</b><small>{}</small><span class=\"slots\">{slots}</span></span>",
+            escape(&title),
+            escape(&small),
         ));
         entry.item.set_inner_html(&format!(
             "<button type=\"button\" class=\"n\" data-pylon=\"{}\" aria-haspopup=\"dialog\">{}</button> \

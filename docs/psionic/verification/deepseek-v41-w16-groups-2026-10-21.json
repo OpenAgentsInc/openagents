@@ -865,7 +865,23 @@
   "pylon_ask": "pylon router: want deepseek-v4.1-flash; answered by DeepSeek-V4.1 w16-td (npub1u3a77se2947a32kndjw890yx2hswacve8lfs8crkytjmfjsq4l7qgcylem); ranked (the request asks for one model); 2 candidates, 0 failed, 7287 ms",
   "website_local_f16e902818": "openagents-web: pylon router: answered by 30200:e47bef432a2d7dd8aad36c9c72bc8655e0eee1993fd303e07622e5b4ca00affc:w16-td-head; ranked (the request asks for one model); 2 candidates, 4 deciders, 0 failed, 8186 ms (anonymous visitor, X-OpenAgents-Chat-Surface: home, X-OpenAgents-Pylon-Model: deepseek-v4.1-flash; 8.4 s end to end)",
   "website_local_67fcfd6d95": "openagents-web: pylon router: answered by 30200:14725e0bc112bb5d215a8e646471653ced9c1046451b49c4bb325c7609438b68:w16-g5-head; ranked (the request asks for one model); 2 candidates, 4 deciders, 0 failed, 6321 ms",
-  "grid_list": "the local site at / listed each group as 'Online · Model group · 4 parts · 0 of 1 busy' followed by 'Part N of 4 · layers A–B' for each stage (660793b87f)"
+  "grid_list": "the local site at / listed each group as 'Online · Model group · 4 parts · 0 of 1 busy' followed by 'Part N of 4 · layers A–B' for each stage (660793b87f)",
+  "staging": {
+   "url": "https://staging.openagents.com/",
+   "deployed_from": "7846c0b3e4 (includes f16e902818)",
+   "grid": "/ listed 'DeepSeek-V4.1 w16-g5b · Online · Model group · 4 parts · 0 of 1 busy' and its four parts, and drew the head with its parts in a row behind it (deepseek-v41-w16-staging-grid-2026-10-21.png, headless Chrome under openagents browser run, scripts/dev/check-grid-home.py)",
+   "terminal_turn": {
+    "headers": "X-OpenAgents-Chat-Surface: home, X-OpenAgents-Pylon-Model: deepseek-v4.1-flash (what the terminal's 'Ask DeepSeek V4.1' button sends)",
+    "visitor": "anonymous",
+    "total_s": 7.74,
+    "outcome": "answered",
+    "answered_by": {
+     "label": "DeepSeek-V4.1 w16-g5b",
+     "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae"
+    },
+    "answer": "**DeepSeek-V4.1 w16-g5b** · deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae\n\nI’m a pylon—a computer on the OpenAgents network—running in the OpenAgents Grid environment where you typed at the terminal."
+   }
+  }
  },
  "raw": "deepseek-v41-w16-raw-2026-10-21.json.gz (head transcripts, DS0 rows, fault rows, harness results, limit rows)",
  "cost_usd": {
