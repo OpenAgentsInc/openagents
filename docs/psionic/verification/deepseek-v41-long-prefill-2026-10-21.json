@@ -254,5 +254,13 @@
     "deployed": false,
     "note": "The previous build script ignored --no-upload in pylon mode; corrected in 41c07961ad."
   },
-  "after_close_checks": "docs/audits/2026-10-16-master-delegation.md#after-close-checks"
+  "after_close_checks": "docs/audits/2026-10-16-master-delegation.md#after-close-checks",
+  "oracle_p4": {
+    "case": "p4-20k",
+    "prompt_tokens": 19989,
+    "rendered_prompt_characters": 71410,
+    "rendered_prompt_utf8_bytes": 71426,
+    "rendered_prompt_sha256": "bd220fb0bc531df47c1bdbb43bee13d78218ac183dd9fce7ecad443ef42d1cc4",
+    "source": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/dump/p4-20k/run.json"
+  }
 }
