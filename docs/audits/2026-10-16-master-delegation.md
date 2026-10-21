@@ -485,6 +485,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12423: deploy the Pylon Bay (website, `everglade-web`, and `pylons-web`
+  from the same commit) and check `/` on staging with
+  `scripts/dev/check-grid-home-bay.py` and `scripts/dev/check-grid-home.py`.
 - #12414: the optional long-prompt profile remains **unqualified**. With the
   frozen G1 v2 policy from #12405 and available RTX PRO 6000 capacity, rebuild
   and pin both bundles, run `qualify --cases p3-2k,p4-20k --max-context 32768
