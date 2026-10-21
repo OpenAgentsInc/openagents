@@ -1,6 +1,8 @@
 //! Original-weight CPU comparisons against the retained V4.1 oracle (#12388).
 //! Reports missing coverage explicitly. Reference tokens are teacher-forced so
 //! one divergent choice does not change every later input to the comparison.
+#[path = "deepseek_v41_cpu_qualify/resident.rs"]
+mod resident;
 use psionic_models::{
     deepseek_v41_cpu::{
         CpuError,
@@ -473,6 +475,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tokenizers::Tokenizer::from_bytes(&tokenizer_bytes).map_err(|e| e.to_string())?;
     let map = Arc::new(CompressedTokenMap::build(&tokenizer, 99092)?);
     let oracle = Oracle::open(&oracle_dir)?;
+    let resident = resident::ResidentCheckpoint::new(&checkpoint);
     let mut cases: Vec<_> = fs::read_dir(&oracle_dir)?
         .filter_map(Result::ok)
         .map(|e| e.path())
@@ -482,7 +485,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let id = p.file_name().and_then(|x| x.to_str()).unwrap_or("");
         (if id == "p1-chat-thinking" { 0 } else { 1 }, id.to_string())
     });
-    let mut report = json!({"schema":"psionic.deepseek_v41.cpu_parity.v1","oracle_manifest_sha256":hex::encode(Sha256::digest(fs::read(oracle_dir.join("manifest.json"))?)),"policy_sha256":hex::encode(Sha256::digest(POLICY.as_bytes())),"checkpoint_identity":identity,"teacher_forced_reference_tokens":true,"source_commit":env::var("V41_SOURCE_COMMIT").ok(),"runs":[]});
+    let mut report = json!({"schema":"psionic.deepseek_v41.cpu_parity.v1","oracle_manifest_sha256":hex::encode(Sha256::digest(fs::read(oracle_dir.join("manifest.json"))?)),"policy_sha256":hex::encode(Sha256::digest(POLICY.as_bytes())),"checkpoint_identity":identity,"teacher_forced_reference_tokens":true,"arithmetic":"reference_bf16_tp8","source_commit":env::var("V41_SOURCE_COMMIT").ok(),"runs":[]});
     for case in cases {
         let run: Value = serde_json::from_slice(&fs::read(case.join("run.json"))?)?;
         let id = run["id"].as_str().ok_or("prompt ID absent")?;
@@ -526,11 +529,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 stop_on_first_failure,
             };
             let mut model = CpuTransformer::new(
-                &checkpoint,
+                &resident,
                 TransformerConfig::flash()?,
                 map.clone(),
                 prompt.len() + generated.len() + 1,
-                Arithmetic::ReferenceBf16,
+                Arithmetic::ReferenceBf16Tp8,
             )?;
             let mut steps = Vec::new();
             let mut error = None;
@@ -574,7 +577,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .filter(|n| !compare.checked.contains(*n))
                 .cloned()
                 .collect();
-            let summary = json!({"prompt":id,"mode":current,"seconds":start.elapsed().as_secs_f64(),"processed_tokens":model.position(),"checked_tensors":compare.checked.len(),"failed_tensors":compare.failed,"router_rows":compare.router_rows,"router_failed":compare.router_failed,"exact_tie_rows":compare.exact_ties,"first_failure":compare.first_failure,"error":error,"steps":steps,"unobserved_tensors":missing,"coverage_complete":missing.is_empty(),"passed":compare.failed==0&&compare.router_failed==0&&error.is_none()&&missing.is_empty()});
+            let summary = json!({"prompt":id,"mode":current,"seconds":start.elapsed().as_secs_f64(),"peak_decoded_matrix_bytes":resident.peak_decoded_matrix_bytes(),"processed_tokens":model.position(),"checked_tensors":compare.checked.len(),"failed_tensors":compare.failed,"router_rows":compare.router_rows,"router_failed":compare.router_failed,"exact_tie_rows":compare.exact_ties,"first_failure":compare.first_failure,"error":error,"steps":steps,"unobserved_tensors":missing,"coverage_complete":missing.is_empty(),"passed":compare.failed==0&&compare.router_failed==0&&error.is_none()&&missing.is_empty()});
             report["runs"]
                 .as_array_mut()
                 .ok_or("runs invalid")?

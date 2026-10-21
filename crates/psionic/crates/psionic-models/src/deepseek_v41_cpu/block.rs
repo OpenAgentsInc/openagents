@@ -84,7 +84,7 @@ impl<'a> TextBlock<'a> {
         compress_ratio(layer)?;
         super::projection::AttentionProjections::new(weights, layer, config.geometry)?
             .with_arithmetic(arithmetic)?;
-        if arithmetic == Arithmetic::ReferenceBf16 && !config.expert_width.is_multiple_of(32) {
+        if arithmetic.is_bf16() && !config.expert_width.is_multiple_of(32) {
             return Err(CpuError::Invalid(
                 "reference expert width must be a multiple of 32",
             ));
@@ -101,7 +101,7 @@ impl<'a> TextBlock<'a> {
     }
     fn finish(&self, values: Vec<f32>) -> Result<Vec<f32>, CpuError> {
         finite("block output", &values)?;
-        if self.arithmetic == Arithmetic::ReferenceBf16 {
+        if self.arithmetic.is_bf16() {
             quantization::round_bf16(&values)
         } else {
             Ok(values)
@@ -109,7 +109,7 @@ impl<'a> TextBlock<'a> {
     }
     fn norm(&self, part: &str, values: &[f32]) -> Result<Vec<f32>, CpuError> {
         let weight = self.weights.vector(&self.name(part))?;
-        let weight = if self.arithmetic == Arithmetic::ReferenceBf16 {
+        let weight = if self.arithmetic.is_bf16() {
             quantization::round_bf16(&weight)?
         } else {
             weight

@@ -10,6 +10,16 @@ use std::sync::OnceLock;
 pub enum Arithmetic {
     Float32,
     ReferenceBf16,
+    /// Preserves the eight-rank oracle's BF16 row-parallel output boundaries.
+    ReferenceBf16Tp8,
+}
+impl Arithmetic {
+    pub fn is_bf16(self) -> bool {
+        self != Self::Float32
+    }
+    pub fn reference_shards(self) -> usize {
+        if self == Self::ReferenceBf16Tp8 { 8 } else { 1 }
+    }
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MatrixPrecision {
@@ -177,6 +187,22 @@ pub fn linear(
     input: &[f32],
     arithmetic: Arithmetic,
 ) -> Result<Vec<f32>, CpuError> {
+    linear_with_shards(matrix, input, arithmetic, 1)
+}
+/// Applies the row-parallel BF16 partial outputs used by the TP8 oracle.
+pub fn linear_row_parallel(
+    matrix: &dyn MatrixRows,
+    input: &[f32],
+    arithmetic: Arithmetic,
+) -> Result<Vec<f32>, CpuError> {
+    linear_with_shards(matrix, input, arithmetic, arithmetic.reference_shards())
+}
+fn linear_with_shards(
+    matrix: &dyn MatrixRows,
+    input: &[f32],
+    arithmetic: Arithmetic,
+    shards: usize,
+) -> Result<Vec<f32>, CpuError> {
     if arithmetic == Arithmetic::Float32 || matrix.precision() == MatrixPrecision::F32 {
         return matvec(matrix, input);
     }
@@ -189,7 +215,17 @@ pub fn linear(
     } else {
         input
     };
-    let out = matrix.multiply(&activation, matrix.precision() == MatrixPrecision::Bf16)?;
+    let block = matches!(
+        matrix.precision(),
+        MatrixPrecision::Fp8 | MatrixPrecision::Fp4
+    )
+    .then_some(32);
+    let out = matrix.multiply_partitioned(
+        &activation,
+        matrix.precision() == MatrixPrecision::Bf16,
+        block,
+        shards,
+    )?;
     round_bf16(&out)
 }
 
@@ -279,6 +315,55 @@ mod tests {
         indices: Vec<i32>,
         sinks: Vec<f32>,
         attention: Vec<f32>,
+    }
+    #[test]
+    fn tp8_row_parallel_rounds_each_rank_before_float32_reduction() -> Result<(), CpuError> {
+        struct Row(Vec<f32>);
+        impl MatrixRows for Row {
+            fn dimensions(&self) -> (usize, usize) {
+                (1, self.0.len())
+            }
+            fn precision(&self) -> MatrixPrecision {
+                MatrixPrecision::Fp8
+            }
+            fn row(&self, index: usize) -> Result<Vec<f32>, CpuError> {
+                if index != 0 {
+                    return Err(CpuError::Invalid("test row index"));
+                }
+                Ok(self.0.clone())
+            }
+        }
+        let mut row = vec![0.0; 256];
+        row[0] = 1.0;
+        row[1] = 1.0 / 256.0;
+        row[32] = -1.0;
+        row[33] = 1.0 / 256.0;
+        let matrix = Row(row);
+        let input = vec![1.0; 256];
+        assert_eq!(
+            linear_row_parallel(&matrix, &input, Arithmetic::ReferenceBf16Tp8)?,
+            vec![1.0 / 256.0]
+        );
+        assert_eq!(
+            linear_row_parallel(&matrix, &input, Arithmetic::ReferenceBf16)?,
+            vec![1.0 / 128.0]
+        );
+        assert!(
+            matrix
+                .multiply_partitioned(&input, false, Some(32), 3)
+                .is_err()
+        );
+        assert!(
+            matrix
+                .multiply_partitioned(&input, false, Some(0), 8)
+                .is_err()
+        );
+        assert!(
+            matrix
+                .multiply_partitioned(&input, false, Some(32), 0)
+                .is_err()
+        );
+        Ok(())
     }
     #[test]
     fn codes_scales_and_decoded_values_match_independent_fixture()

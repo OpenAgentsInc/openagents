@@ -218,7 +218,7 @@ impl<'a> AttentionRuntime<'a> {
         Ok(output)
     }
     fn cache_form(&self, value: &[f32], kind: Quantization) -> Result<Vec<f32>, CpuError> {
-        if self.arithmetic == Arithmetic::ReferenceBf16 {
+        if self.arithmetic.is_bf16() {
             quantization::inplace_bf16(value, kind)
         } else {
             Ok(value.to_vec())
@@ -251,7 +251,7 @@ impl<'a> AttentionRuntime<'a> {
         let mut outputs = Vec::with_capacity(input.len());
         for (i, x) in input.chunks_exact(g.hidden).enumerate() {
             let position = start + i;
-            let x = if self.arithmetic == Arithmetic::ReferenceBf16 {
+            let x = if self.arithmetic.is_bf16() {
                 quantization::round_bf16(x)?
             } else {
                 x.to_vec()

@@ -233,7 +233,7 @@ impl CompressionState {
                         .sum();
                 }
             }
-            let reference = self.arithmetic == super::quantization::Arithmetic::ReferenceBf16;
+            let reference = self.arithmetic.is_bf16();
             if reference {
                 pooled = super::quantization::round_bf16(&pooled)?;
             }

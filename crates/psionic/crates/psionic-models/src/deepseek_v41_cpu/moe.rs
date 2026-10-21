@@ -105,7 +105,7 @@ pub fn expert_with_arithmetic(
     limit: f32,
     arithmetic: super::quantization::Arithmetic,
 ) -> Result<Vec<f32>, CpuError> {
-    use super::quantization::{self, Arithmetic};
+    use super::quantization;
     let (intermediate, width) = w1.dimensions();
     if w3.dimensions() != (intermediate, width)
         || w2.dimensions() != (width, intermediate)
@@ -130,7 +130,7 @@ pub fn expert_with_arithmetic(
             (g * sigmoid(g) * u) * route_weight
         })
         .collect();
-    let hidden = if arithmetic == Arithmetic::ReferenceBf16 {
+    let hidden = if arithmetic.is_bf16() {
         quantization::round_bf16(&hidden)?
     } else {
         hidden

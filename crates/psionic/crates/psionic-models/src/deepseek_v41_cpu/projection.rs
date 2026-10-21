@@ -114,7 +114,7 @@ pub struct AttentionProjections<'a> {
 impl<'a> AttentionProjections<'a> {
     pub fn with_arithmetic(mut self, arithmetic: Arithmetic) -> Result<Self, CpuError> {
         let g = self.geometry;
-        if arithmetic == Arithmetic::ReferenceBf16
+        if arithmetic.is_bf16()
             && [
                 g.hidden,
                 g.q_rank,
@@ -134,7 +134,7 @@ impl<'a> AttentionProjections<'a> {
         Ok(self)
     }
     pub(crate) fn finish(&self, values: Vec<f32>) -> Result<Vec<f32>, CpuError> {
-        if self.arithmetic == Arithmetic::ReferenceBf16 {
+        if self.arithmetic.is_bf16() {
             quantization::round_bf16(&values)
         } else {
             Ok(values)
@@ -174,7 +174,7 @@ impl<'a> AttentionProjections<'a> {
         if weight.dimensions() != (rows, cols) {
             return Err(CpuError::Invalid("attention projection shape"));
         }
-        if self.arithmetic == Arithmetic::ReferenceBf16
+        if self.arithmetic.is_bf16()
             && compress_ratio(self.layer)? > 1
             && part.starts_with("compressor.")
         {
@@ -186,7 +186,7 @@ impl<'a> AttentionProjections<'a> {
     }
     fn norm(&self, part: &str, input: &[f32]) -> Result<Vec<f32>, CpuError> {
         let weight = self.weights.vector(&self.name(part))?;
-        let weight = if self.arithmetic == Arithmetic::ReferenceBf16 {
+        let weight = if self.arithmetic.is_bf16() {
             quantization::round_bf16(&weight)?
         } else {
             weight
@@ -271,7 +271,7 @@ impl<'a> AttentionProjections<'a> {
         let g = self.geometry;
         let width = product(g.heads, g.head_dim)? / g.o_groups;
         shape("attention heads", heads, product(g.heads, g.head_dim)?)?;
-        let heads = if self.arithmetic == Arithmetic::ReferenceBf16 {
+        let heads = if self.arithmetic.is_bf16() {
             quantization::inplace_bf16(heads, Quantization::Fp8)?
         } else {
             heads.to_vec()
@@ -280,33 +280,14 @@ impl<'a> AttentionProjections<'a> {
         if weight.dimensions() != (product(g.o_groups, g.o_rank)?, width) {
             return Err(CpuError::Invalid("grouped output projection shape"));
         }
-        let mut low_rank = Vec::with_capacity(g.o_groups * g.o_rank);
-        for group in 0..g.o_groups {
-            for rank in 0..g.o_rank {
-                let row = weight.row(group * g.o_rank + rank)?;
-                // wo_a is dequantized to BF16 by the official converter.
-                let row = if self.arithmetic == Arithmetic::ReferenceBf16 {
-                    quantization::round_bf16(&row)?
-                } else {
-                    row
-                };
-                shape("grouped output row", &row, width)?;
-                low_rank.push(
-                    row.iter()
-                        .zip(&heads[group * width..(group + 1) * width])
-                        .map(|(w, x)| w * x)
-                        .sum(),
-                );
-            }
-        }
+        let low_rank = weight.multiply_grouped(&heads, g.o_groups, self.arithmetic.is_bf16())?;
         finite("grouped output", &low_rank)?;
         let low_rank = self.finish(low_rank)?;
-        self.project(
-            "wo_b.weight",
-            &low_rank,
-            g.hidden,
-            product(g.o_groups, g.o_rank)?,
-        )
+        let weight = self.weights.matrix(&self.name("wo_b.weight"))?;
+        if weight.dimensions() != (g.hidden, product(g.o_groups, g.o_rank)?) {
+            return Err(CpuError::Invalid("wo_b dimensions"));
+        }
+        quantization::linear_row_parallel(weight.as_ref(), &low_rank, self.arithmetic)
     }
 }
 
@@ -373,13 +354,13 @@ pub fn final_input_with_arithmetic(
         ..HyperConnections::flash()
     };
     let hidden = hc.collapse(residual, pre_mix)?;
-    let hidden = if arithmetic == Arithmetic::ReferenceBf16 {
+    let hidden = if arithmetic.is_bf16() {
         quantization::round_bf16(&hidden)?
     } else {
         hidden
     };
     let normalized = rms_norm(&hidden, &weights.vector("norm.weight")?, epsilon)?;
-    let normalized = if arithmetic == Arithmetic::ReferenceBf16 {
+    let normalized = if arithmetic.is_bf16() {
         quantization::round_bf16(&normalized)?
     } else {
         normalized

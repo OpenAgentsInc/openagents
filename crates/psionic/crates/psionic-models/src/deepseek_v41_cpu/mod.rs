@@ -81,7 +81,39 @@ pub(crate) fn sigmoid(x: f32) -> f32 {
 pub trait MatrixRows {
     /// Independent rows may run concurrently; each row keeps its float32 sum order.
     fn multiply(&self, input: &[f32], bf16_weights: bool) -> Result<Vec<f32>, CpuError> {
-        multiply_rows(self, input, bf16_weights)
+        self.multiply_partitioned(input, bf16_weights, None, 1)
+    }
+    /// Optional K blocks and per-rank BF16 partials preserve oracle GEMM boundaries.
+    fn multiply_partitioned(
+        &self,
+        input: &[f32],
+        bf16_weights: bool,
+        block: Option<usize>,
+        shards: usize,
+    ) -> Result<Vec<f32>, CpuError> {
+        multiply_rows(self, input, bf16_weights, block, shards)
+    }
+    /// Block-diagonal output projection: a row reads only its group's input.
+    fn multiply_grouped(
+        &self,
+        input: &[f32],
+        groups: usize,
+        bf16_weights: bool,
+    ) -> Result<Vec<f32>, CpuError> {
+        let (rows, cols) = self.dimensions();
+        validate_groups(rows, cols, input.len(), groups)?;
+        (0..rows)
+            .map(|i| {
+                let group = i / (rows / groups);
+                multiply_row(
+                    &self.row(i)?,
+                    &input[group * cols..(group + 1) * cols],
+                    bf16_weights,
+                    None,
+                    1,
+                )
+            })
+            .collect()
     }
     fn dimensions(&self) -> (usize, usize);
     fn row(&self, index: usize) -> Result<Vec<f32>, CpuError>;
@@ -147,9 +179,16 @@ impl MatrixRows for CheckpointMatrix<'_> {
     fn dimensions(&self) -> (usize, usize) {
         self.dimensions
     }
-    fn multiply(&self, input: &[f32], bf16_weights: bool) -> Result<Vec<f32>, CpuError> {
+    fn multiply_partitioned(
+        &self,
+        input: &[f32],
+        bf16_weights: bool,
+        block: Option<usize>,
+        shards: usize,
+    ) -> Result<Vec<f32>, CpuError> {
         use rayon::prelude::*;
         shape("checkpoint matrix input", input, self.dimensions.1)?;
+        validate_reduction(input.len(), block, shards)?;
         // Decoded BF16 checkpoint rows are already exactly BF16. Parallelism
         // changes the order between rows only, never the sum within a row.
         let out: Result<Vec<_>, CpuError> = (0..self.dimensions.0)
@@ -161,12 +200,35 @@ impl MatrixRows for CheckpointMatrix<'_> {
                 } else {
                     row
                 };
-                Ok(row.iter().zip(input).map(|(w, x)| w * x).sum::<f32>())
+                Ok(row_product(&row, input, block, shards))
             })
             .collect();
         let out = out?;
         finite("checkpoint matrix output", &out)?;
         Ok(out)
+    }
+    fn multiply_grouped(
+        &self,
+        input: &[f32],
+        groups: usize,
+        bf16_weights: bool,
+    ) -> Result<Vec<f32>, CpuError> {
+        use rayon::prelude::*;
+        let (rows, cols) = self.dimensions;
+        validate_groups(rows, cols, input.len(), groups)?;
+        (0..rows)
+            .into_par_iter()
+            .map(|i| {
+                let group = i / (rows / groups);
+                multiply_row(
+                    &self.row(i)?,
+                    &input[group * cols..(group + 1) * cols],
+                    bf16_weights,
+                    None,
+                    1,
+                )
+            })
+            .collect()
     }
     fn row(&self, index: usize) -> Result<Vec<f32>, CpuError> {
         if index >= self.dimensions.0 {
@@ -215,12 +277,15 @@ fn multiply_rows<M: MatrixRows + ?Sized>(
     matrix: &M,
     input: &[f32],
     bf16_weights: bool,
+    block: Option<usize>,
+    shards: usize,
 ) -> Result<Vec<f32>, CpuError> {
     let (rows, cols) = matrix.dimensions();
     if rows == 0 || cols == 0 {
         return Err(CpuError::Invalid("empty matrix"));
     }
     shape("matrix input", input, cols)?;
+    validate_reduction(cols, block, shards)?;
     let mut out = Vec::with_capacity(rows);
     for i in 0..rows {
         let mut row = matrix.row(i)?;
@@ -228,10 +293,78 @@ fn multiply_rows<M: MatrixRows + ?Sized>(
         if bf16_weights {
             row = quantization::round_bf16(&row)?;
         }
-        out.push(row.iter().zip(input).map(|(w, x)| w * x).sum());
+        out.push(row_product(&row, input, block, shards));
     }
     finite("matrix output", &out)?;
     Ok(out)
+}
+
+fn validate_groups(rows: usize, cols: usize, input: usize, groups: usize) -> Result<(), CpuError> {
+    if groups == 0
+        || rows == 0
+        || cols == 0
+        || !rows.is_multiple_of(groups)
+        || cols.checked_mul(groups) != Some(input)
+    {
+        return Err(CpuError::Invalid("grouped matrix shape"));
+    }
+    Ok(())
+}
+/// One row's explicit reduction, shared by checkpoint and resident CPU weights.
+pub fn multiply_row(
+    row: &[f32],
+    input: &[f32],
+    bf16_weights: bool,
+    block: Option<usize>,
+    shards: usize,
+) -> Result<f32, CpuError> {
+    if row.len() != input.len() {
+        return Err(CpuError::Invalid("matrix row/input lengths"));
+    }
+    validate_reduction(row.len(), block, shards)?;
+    let rounded;
+    let row = if bf16_weights {
+        rounded = quantization::round_bf16(row)?;
+        &rounded
+    } else {
+        row
+    };
+    let output = row_product(row, input, block, shards);
+    if !output.is_finite() {
+        return Err(CpuError::NonFinite("matrix row product"));
+    }
+    Ok(output)
+}
+
+fn validate_reduction(cols: usize, block: Option<usize>, shards: usize) -> Result<(), CpuError> {
+    if shards == 0
+        || cols == 0
+        || !cols.is_multiple_of(shards)
+        || block.is_some_and(|b| b == 0 || !(cols / shards).is_multiple_of(b))
+    {
+        return Err(CpuError::Invalid("matrix reduction block or shard width"));
+    }
+    Ok(())
+}
+fn row_product(row: &[f32], input: &[f32], block: Option<usize>, shards: usize) -> f32 {
+    let width = row.len() / shards;
+    let mut total = 0.0;
+    for (w, x) in row.chunks_exact(width).zip(input.chunks_exact(width)) {
+        let part = if let Some(block) = block {
+            w.chunks_exact(block)
+                .zip(x.chunks_exact(block))
+                .map(|(w, x)| w.iter().zip(x).map(|(w, x)| w * x).sum::<f32>())
+                .sum::<f32>()
+        } else {
+            w.iter().zip(x).map(|(w, x)| w * x).sum::<f32>()
+        };
+        total += if shards > 1 {
+            quantization::bf16(part)
+        } else {
+            part
+        };
+    }
+    total
 }
 
 /// Per-vector RMS normalization; the checkpoint uses epsilon `1e-20`.

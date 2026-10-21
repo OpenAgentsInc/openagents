@@ -234,7 +234,7 @@ impl<'a> CpuTransformer<'a> {
         Ok(output)
     }
     fn finish(&self, values: Vec<f32>) -> Result<Vec<f32>, CpuError> {
-        if self.arithmetic == Arithmetic::ReferenceBf16 {
+        if self.arithmetic.is_bf16() {
             quantization::round_bf16(&values)
         } else {
             Ok(values)

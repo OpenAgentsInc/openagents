@@ -464,7 +464,7 @@ impl EngramGate {
         enabled: bool,
         arithmetic: super::quantization::Arithmetic,
     ) -> Result<Vec<f32>, CpuError> {
-        use super::quantization::{self, Arithmetic};
+        use super::quantization;
         let count = self.validate(residual)?;
         shape("Engram query weight", q_weight, count)?;
         shape("Engram key weight", k_weight, count)?;
@@ -486,7 +486,7 @@ impl EngramGate {
         for id in hash_ids {
             let row = table.row(*id as usize)?;
             shape("Engram table row", &row, width)?;
-            embedding.extend(if arithmetic == Arithmetic::ReferenceBf16 {
+            embedding.extend(if arithmetic.is_bf16() {
                 quantization::round_bf16(&row)?
             } else {
                 row
@@ -501,7 +501,7 @@ impl EngramGate {
             k_weight,
             true,
         )?;
-        if arithmetic == Arithmetic::ReferenceBf16 {
+        if arithmetic.is_bf16() {
             quantization::round_bf16(&output)
         } else {
             Ok(output)

@@ -1039,3 +1039,27 @@ tests pass with `PSI_CUDA_ARCH=sm_120` and CUDA 13 (SM120 needs CUDA 12.8 or
 later), that subnormals aren't flushed, and the decode bandwidth. Prefill
 with many tokens runs the matrix once per slot; a batched tensor-core path is
 separate work.
+
+## W1 original-weight probe and TP8 correction (2026-10-20)
+
+The first original-weight probe found layer-0 router-set differences at prompt
+positions 13, 24, and 36 and a selected-weight error above the fixed bound. It
+stopped after 28.56 seconds; this is failed diagnostic evidence, not G1. All 48
+shard hashes passed beforehand. Separately, all 320 recorded expert input/down
+FP8 conversion cases match the oracle's code and scale bytes exactly.
+
+The oracle's TP8 arithmetic includes a boundary absent from the initial CPU
+path: each rank's `wo_b` projection rounds its partial output to BF16 before
+float32 reduction and the final BF16 cast. `Arithmetic::ReferenceBf16Tp8` makes
+that profile explicit without introducing distributed execution. Quantized
+products also retain the reference's 32-wide K-block accumulation. Qualification
+uses this profile; the single-rank BF16 profile remains available. The corrected
+implementation still needs original-weight verification under the unchanged
+limits. Local checks pass 60 CPU tests and three comparator/cache tests.
+
+The qualification runner caches decoded matrices for the current layer and
+releases them when the layer changes. The head persists between steps; embedding
+and Engram tables keep row reads. The cache and grouped projection use the same
+library reduction helpers, with row parallelism and no reassociation within a
+row. Reports include peak decoded-matrix bytes; this is not a total-process
+memory measurement or a W3 result.
