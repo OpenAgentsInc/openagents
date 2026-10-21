@@ -712,6 +712,11 @@ def main():
         parser.error("--thinking on needs --engine llama-cpp")
     args.output.mkdir(parents=True,exist_ok=True)
     rows=json.loads(Path(__file__).with_name("models.json").read_text())
+    # MLX safetensors rows are served by psionic-flint, not by this GGUF runner.
+    native = {r["id"] for r in rows if r.get("format") == "mlx-safetensors"}
+    if args.models and native & set(args.models):
+        parser.error(", ".join(sorted(native & set(args.models)))+" is served by psionic-flint --backend metal; see docs/psionic/flint-native.md")
+    rows=[r for r in rows if r["id"] not in native]
     if args.models:
         rows=[r for r in rows if r["id"] in args.models]
         if {r["id"] for r in rows} != set(args.models):
