@@ -151,13 +151,23 @@ to{opacity:0;transform:translate(-50%,50%) scale(4.5)}\
 \
 ";
 
-/// The mark and the name as the page's heading, and the account links.
-fn heading() -> String {
+/// The mark and the name as the page's heading, and the account links
+/// when `account` is on ([`crate::features::Feature::HomeAccount`]). The
+/// empty `<nav>` stays either way: the loader fills it for a signed-in
+/// visitor.
+fn heading(account: bool) -> String {
+    let links = if account {
+        format!(
+            "<a href=\"/login?return_to={BACK}\">Log in</a><a class=\"solid\" href=\"/signup?return_to={BACK}\">Sign up</a>"
+        )
+    } else {
+        String::new()
+    };
     format!(
         "<header data-pylons-keep><h1><svg viewBox=\"0 0 386 386\" fill=\"currentColor\" aria-hidden=\"true\">\
 <path d=\"M292.64 54.39A181 181 0 1 1 93.36 54.39A21 21 0 0 1 116.48 89.46A139 139 0 1 0 269.52 89.46A21 21 0 0 1 292.64 54.39ZM172 21A21 21 0 0 1 214 21V165.5A21 21 0 0 1 172 165.5Z\"/>\
 </svg>OpenAgents</h1><nav id=\"home-account\" aria-label=\"Account\">\
-<a href=\"/login?return_to={BACK}\">Log in</a><a class=\"solid\" href=\"/signup?return_to={BACK}\">Sign up</a></nav></header>"
+{links}</nav></header>"
     )
 }
 
@@ -353,7 +363,7 @@ const ADDITION: Addition = Addition {
 };
 
 /// The last document and the live list it came from.
-static KEPT: Mutex<Option<(String, Arc<Document>)>> = Mutex::new(None);
+static KEPT: Mutex<Option<((String, bool), Arc<Document>)>> = Mutex::new(None);
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -379,29 +389,30 @@ fn head() -> String {
 
 /// `<main>` for this response: the top bar, the list as it stands, and the
 /// rest.
-fn main_html(list: &str) -> String {
+fn main_html(list: &str, account: bool) -> String {
     format!(
         "{}<section id=\"pylons-panel\" aria-labelledby=\"pylons-count\">{list}</section>{AFTER_LIST}",
-        heading()
+        heading(account)
     )
 }
 
-fn document(list: String) -> Arc<Document> {
+fn document(list: String, account: bool) -> Arc<Document> {
     if let Ok(kept) = KEPT.lock()
-        && let Some((kept_list, document)) = kept.as_ref()
+        && let Some(((kept_list, kept_account), document)) = kept.as_ref()
         && *kept_list == list
+        && *kept_account == account
     {
         return document.clone();
     }
     let document = Arc::new(assemble_page_with_head(
         None,
         Some(&ADDITION),
-        Some(&main_html(&list)),
+        Some(&main_html(&list, account)),
         (TITLE, DESCRIPTION),
         Some(&head()),
     ));
     if let Ok(mut kept) = KEPT.lock() {
-        *kept = Some((list, document.clone()));
+        *kept = Some(((list, account), document.clone()));
     }
     document
 }
@@ -414,14 +425,18 @@ async fn page(State(app): State<App>, request: HeaderMap) -> Response {
         Some(relay) => list_html(&field(relay).current()),
         None => UNAVAILABLE.to_owned(),
     };
+    let account = app
+        .config
+        .features
+        .on(crate::features::Feature::HomeAccount);
     let fallback = list.clone();
-    let document = tokio::task::spawn_blocking(move || document(list))
+    let document = tokio::task::spawn_blocking(move || document(list, account))
         .await
         .unwrap_or_else(|_| {
             Arc::new(assemble_page_with_head(
                 None,
                 Some(&ADDITION),
-                Some(&main_html(&fallback)),
+                Some(&main_html(&fallback, account)),
                 (TITLE, DESCRIPTION),
                 Some(&head()),
             ))
@@ -486,12 +501,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn production_hides_the_account_links_but_keeps_the_nav() {
+        let html = main_html("<ul></ul>", false);
+        assert!(html.contains("<nav id=\"home-account\" aria-label=\"Account\"></nav>"));
+        assert!(!html.contains("/login") && !html.contains("/signup"));
+        assert!(!crate::features::Features::default().on(crate::features::Feature::HomeAccount));
+    }
+
+    #[test]
     fn the_page_has_a_heading_account_links_list_and_lazy_gpui_chat() {
         let list = "<h2 id=\"pylons-count\">1 pylon online</h2><ul id=\"pylons-list\"></ul>";
         let document = assemble_page_with_head(
             None,
             Some(&ADDITION),
-            Some(&main_html(list)),
+            Some(&main_html(list, true)),
             (TITLE, DESCRIPTION),
             Some(&head()),
         );
@@ -522,7 +545,7 @@ mod tests {
         );
         assert!(!policy.contains("unsafe-inline"));
         for copy in [
-            heading().as_str(),
+            heading(true).as_str(),
             AFTER_LIST,
             TITLE,
             DESCRIPTION,
@@ -540,7 +563,7 @@ mod tests {
         assert!(LOADER.contains("loadLayer().then(verse)"));
         assert!(!LOADER.contains("lander5Runner"));
         assert!(!LOADER.contains("transferControlToOffscreen"));
-        assert!(!document(UNAVAILABLE.to_owned()).html.contains("x-shader"));
+        assert!(!document(UNAVAILABLE.to_owned(), true).html.contains("x-shader"));
         assert!(LOADER.contains("globalThis.pylonsCard"));
         assert!(LOADER.contains(super::super::pylons::CARD_WASM));
         assert!(LOADER.contains("/home/me"));

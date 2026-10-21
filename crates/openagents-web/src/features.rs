@@ -66,10 +66,13 @@ pub enum Feature {
     /// choose (#12226): no `?ui=` and no `oa_chat_ui` cookie. Phones and
     /// HTMX swaps keep the HTML chat; `?ui=off` keeps it for a browser.
     GpuiDefault,
+    /// Log in and Sign up on the Grid homepage at `/`. Off in production
+    /// until sign-in works there; staging turns it on.
+    HomeAccount,
 }
 
 impl Feature {
-    pub const ALL: [Feature; 10] = [
+    pub const ALL: [Feature; 11] = [
         Feature::Wallet,
         Feature::Earn,
         Feature::Billing,
@@ -80,6 +83,7 @@ impl Feature {
         Feature::VerseHands,
         Feature::MoveToCloud,
         Feature::GpuiDefault,
+        Feature::HomeAccount,
     ];
 
     /// The feature's name in [`ENV`] and in the meta tag.
@@ -96,6 +100,7 @@ impl Feature {
             Feature::VerseHands => "verse_hands",
             Feature::MoveToCloud => "move_to_cloud",
             Feature::GpuiDefault => "gpui_default",
+            Feature::HomeAccount => "home_account",
         }
     }
 
@@ -133,7 +138,8 @@ impl Feature {
             | Feature::AgentReplies
             | Feature::VerseHands
             | Feature::MoveToCloud
-            | Feature::GpuiDefault => false,
+            | Feature::GpuiDefault
+            | Feature::HomeAccount => false,
         }
     }
 }

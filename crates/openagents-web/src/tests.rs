@@ -1839,12 +1839,15 @@ async fn the_grid_homepage_is_at_the_root_and_the_new_chat_at_chat() {
     let (status, _, classic) = get_with(router(config.clone()), "/home/classic", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert!(!classic.contains("data-ambient"));
-    // The new page is independent of the chat UI default and hidden features.
+    // With every feature off, as production starts, the page is the same
+    // except that Log in and Sign up are hidden (`home_account`).
     let mut off = config.clone();
     off.features = crate::features::Features::none();
     let (status, _, no_features) = get_with(router(off), "/", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(no_features, html);
+    assert!(!no_features.contains("/login?") && !no_features.contains("/signup?"));
+    assert!(no_features.contains("<nav id=\"home-account\" aria-label=\"Account\"></nav>"));
+    assert!(no_features.contains("data-ambient"));
     assert!(!html.contains("<input") && !html.contains("<textarea"));
     // A new chat starts at `/chat`, and posts there as before.
     let (status, _, chat) = get_with(router(config.clone()), "/chat?ui=html", LOCAL).await;
