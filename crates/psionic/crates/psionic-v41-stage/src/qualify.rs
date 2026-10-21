@@ -425,6 +425,8 @@ struct Group {
     executable: String,
     /// Where the stages write their event logs.
     record: PathBuf,
+    /// The prompt mode the steps name (`thinking` or `chat`), when set.
+    mode: Option<String>,
 }
 
 impl Drop for Group {
@@ -550,6 +552,7 @@ impl Group {
             build: String::new(),
             executable: String::new(),
             record: record.to_owned(),
+            mode: None,
         };
         while writers.iter().any(Option::is_none) {
             if Instant::now() > deadline {
@@ -677,6 +680,10 @@ impl Group {
                 });
                 if let Some(next) = self.listens.get(i + 1).cloned().flatten() {
                     message["next"] = json!(next);
+                }
+                if let Some(mode) = &self.mode {
+                    // The last stage's parser splits reasoning only in thinking mode.
+                    message["mode"] = json!(mode);
                 }
                 if i == 0 {
                     if wire_step == 0
@@ -1208,6 +1215,8 @@ pub fn run_answers(opts: &QualifyOptions, cap: usize) -> Result<Value, Refused> 
         }
         let started = Instant::now();
         let request = format!("{case}-answer");
+        // The oracle's mode, so the runtime's parser splits the answer the same way.
+        group.mode = run["thinking_mode"].as_str().map(str::to_owned);
         let (mut tokens, mut reasoning, mut content) = (Vec::new(), String::new(), String::new());
         let mut finish = Value::Null;
         let mut ack = group.step(&request, 0, Some(&prompt), None)?;
