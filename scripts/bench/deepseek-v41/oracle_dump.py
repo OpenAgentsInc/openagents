@@ -159,6 +159,32 @@ def build_cases(reference: Path, generate, tokenizer, args) -> list[dict]:
     return cases
 
 
+def holdout_cases(spec, reference: Path, generate, tokenizer, args) -> list[dict]:
+    """G1 v2 holdout cases (#12405). A case has messages and a thinking mode, or
+    names an earlier case (`prompt_of`) and keeps its first `cut` tokens. A message's
+    content may be a list of strings and {"reference_file": PATH} parts, joined."""
+    def text(part):
+        if isinstance(part, str):
+            return part
+        return (reference / part["reference_file"]).read_text()
+
+    cases = []
+    for c in spec["cases"]:
+        if "prompt_of" in c:
+            base = next(x for x in cases if x["id"] == c["prompt_of"])
+            cases.append({"id": c["id"], "thinking_mode": None, "prompt": "", "tokens": base["tokens"][: c["cut"]],
+                          "n_gen": c["n_gen"], "replay": True, "chunked": False, "complete": False})
+            continue
+        messages = [{"role": m["role"], "content": "".join(text(p) for p in m["content"])
+                     if isinstance(m["content"], list) else m["content"]} for m in c["messages"]]
+        prompt, tokens, _t, images = generate.prepare_case({"messages": messages}, c["thinking_mode"], tokenizer, args)
+        assert images is None or not any(images)
+        cases.append({"id": c["id"], "thinking_mode": c["thinking_mode"], "messages": messages, "prompt": prompt,
+                      "tokens": list(tokens), "n_gen": c["n_gen"], "replay": True, "chunked": False,
+                      "complete": False})
+    return cases
+
+
 MODES = {
     "decode": "prefill the prompt in one forward, then one decode step per generated token (cached decode)",
     "replay": "one prefill over the fixed sequence (prompt plus the decode run's greedy tokens): "
@@ -232,6 +258,9 @@ class Recorder:
         self.ties: list[dict] = []
         self.margins: dict[str, float] = {}
         self.gate_indices = None  # current layer's [n, topk] from the gate hook
+        self.router_tops = 0  # extra scores past top-k kept per row (--router-tops)
+        self.router_tops_scores: dict[str, list] = {}
+        self.router_tops_ids: dict[str, list] = {}
         self.expert_targets: dict[int, list[tuple[str, int]]] = {}  # expert id -> [(label, row)]
 
     def begin(self, prompt: str, mode: str, step: int, rows, tracking: bool, full_logit_rows=()):
@@ -321,6 +350,13 @@ def install_hooks(model, rec: Recorder, kernel, args_cfg, shared_attn):
                 biased = F.softplus(F.linear(x.float(), m.weight.float()) / m.gate_temp).sqrt() + m.bias
                 top = biased.topk(m.topk + 1, dim=-1).values
                 rec.margin("gate", i, top[:, m.topk - 1] - top[:, m.topk], GATE_TIE_EPS)
+                if rec.router_tops and rec.rank == 0:
+                    # G1 v2 (#12405): every row's best scores and ids, so a near-tie
+                    # substitution's oracle-score regret can be computed
+                    tops = biased.topk(m.topk + rec.router_tops, dim=-1)
+                    k = f"{rec.prompt}.{rec.mode}.router_tops.layers.{i}"
+                    rec.router_tops_scores.setdefault(k, []).append(tops.values.detach().float().cpu())
+                    rec.router_tops_ids.setdefault(k, []).append(tops.indices.detach().to("cpu", torch.int32))
             # each labeled row's top-1 expert is the one whose steps get recorded
             rec.expert_targets = {}
             if i in EXPERT_LAYERS:
@@ -699,6 +735,11 @@ def main() -> int:
     parser.add_argument("--extra-rows", default="",
                         help="diagnostic positions captured beside the standard labels, ID:A-B,C;ID2:D")
     parser.add_argument("--upload", default="", help="gs:// prefix to copy each finished prompt to")
+    parser.add_argument("--cases-file", type=Path,
+                        help="run these cases instead (G1 v2 holdout, #12405): a JSON list of id, "
+                             "thinking_mode, and messages, or prompt_of and cut for a cut prompt")
+    parser.add_argument("--router-tops", type=int, default=0,
+                        help="also keep each row's best top-k + N biased router scores and ids (#12405)")
     opts = parser.parse_args()
 
     world_size = int(os.getenv("WORLD_SIZE", "1"))
@@ -743,6 +784,7 @@ def main() -> int:
     load_seconds = time.time() - t0
 
     rec = Recorder(rank)
+    rec.router_tops = opts.router_tops
     install_hooks(model, rec, kernel, args, model_mod.shared_attn)
     if opts.attention_diagnostics:
         install_attention_diagnostics(model, rec, model_mod)
@@ -774,6 +816,8 @@ def main() -> int:
             {"id": "s2", "tokens": torch.randint(0, args.vocab_size, (300,), generator=g, device="cpu").tolist(), "n_gen": 4,
              "replay": True, "chunked": False, "complete": False},
         ]
+    elif opts.cases_file:
+        cases = holdout_cases(json.loads(opts.cases_file.read_text()), opts.reference, generate, tokenizer, args)
     else:
         cases = build_cases(opts.reference, generate, tokenizer, args)
     if opts.only:
@@ -951,6 +995,11 @@ def save_case(opts, rec, case_dir, result, rank, world_size):
     if rank == 0:
         for k, v in rec.router_ids.items():
             rec.tensors[k] = torch.cat(v)
+        for k, v in rec.router_tops_scores.items():
+            rec.tensors[k + ".scores"] = torch.cat(v)
+        for k, v in rec.router_tops_ids.items():
+            rec.tensors[k + ".ids"] = torch.cat(v)
+        rec.router_tops_scores, rec.router_tops_ids = {}, {}
     save_file(dict(rec.tensors), str(case_dir / f"tensors-rank{rank}.safetensors"))
     n_tensors = len(rec.tensors)
     rec.tensors, rec.router_ids = {}, {}
