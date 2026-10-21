@@ -485,18 +485,21 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
-- #12398: once #12404 settles the qualified arithmetic order and the CUDA
-  stage adopts it, rerun the one-machine group (`pylon cloud up one-quad
-  --head stage0 --transport direct --temperature 0`, sweeping zones for
-  spot `g4-standard-192`) and finish G5: G1's decode checks and G2's
-  complete answers through the group, DS0's six runtime checks, and G7's
-  faults on the real group. Receipt for the first run:
+- #12398: after #12407 binds the build and arithmetic identity and #12405
+  lands the direct GPU comparison harness under the frozen G1 v2 policy,
+  rerun the one-machine group (`pylon cloud up one-quad --head stage0
+  --transport direct --temperature 0`, sweeping zones for spot
+  `g4-standard-192`) and finish G5 under that contract: direct-runtime
+  numerical checks, G2 v2 complete answers (chat-mode p2 needs #12408),
+  DS0's six runtime checks, and G7's faults on the real group. The lifecycle
+  checks don't wait for numerical qualification. Receipt for the first run:
   `docs/psionic/verification/deepseek-v41-g5-one-quad-2026-10-21.json`.
 
-- #12394: once #12404 settles the qualified arithmetic order, move the W7
-  stage's kernels to it and rerun G4 on layers 0–4 and 0–9 with
-  `scripts/bench/deepseek-v41/stage_vm.sh`, adding an isolated per-layer
-  check (the CPU fed the GPU's layer inputs and state).
+- #12394: rerun G4 on layers 0–4 and 0–9 with
+  `scripts/bench/deepseek-v41/stage_vm.sh` under the G1 v2 direct-runtime
+  contract (#12405), not the CPU's B200 arithmetic order, adding an isolated
+  per-layer check (the CPU fed the GPU's layer inputs and state) as a
+  diagnostic.
 
 - #12375: rebuild the website with its wallet builder included in the upload.
   The Cloud Build file chooser includes the executable script, and the build
