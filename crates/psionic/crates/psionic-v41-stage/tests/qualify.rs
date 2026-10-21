@@ -270,6 +270,7 @@ fn cuda_observations_match_and_every_negative_control_fails() {
     args.extend(["--policy", &policy]);
     let report = qualify(root.path(), &manifest, &same, "same", &args);
     assert_eq!(report["passed"], json!(true), "{report:#}");
+    let mut passed = Vec::new();
     for control in [
         "wrong-weights",
         "wrong-routing",
@@ -285,7 +286,15 @@ fn cuda_observations_match_and_every_negative_control_fails() {
             &format!("control-{control}"),
             &args,
         );
-        assert_eq!(report["passed"], json!(false), "{control} passed");
         assert_eq!(report["control"], json!(control));
+        let case = &report["cases"][0];
+        eprintln!(
+            "{control}: passed {} max tv {} router {}",
+            report["passed"], case["modes"][0]["max_total_variation"], case["router"]["failed"]
+        );
+        if report["passed"] == json!(true) {
+            passed.push(control);
+        }
     }
+    assert!(passed.is_empty(), "controls that passed: {passed:?}");
 }
