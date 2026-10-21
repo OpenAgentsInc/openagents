@@ -2,6 +2,7 @@
 # One deploy image build on Cloud Build with a registry layer cache (#12177):
 #
 #   scripts/deploy/cloud-buildx.sh DOCKERFILE IMAGE CACHE [docker build flags...]
+#   scripts/deploy/cloud-buildx.sh DOCKERFILE type=tar,dest=FILE CACHE --target T
 #
 # Run from the build context's root inside a gcr.io/cloud-builders/docker
 # step. Cloud Build starts every build on a fresh machine, so BuildKit's own
@@ -26,9 +27,12 @@ shift 3
 # The builder runs on Cloud Build's network, and its RUN steps that ask for
 # the host network reach the metadata server: scripts/deploy/oa-kache.sh
 # reads the build account's credentials there for the shared compile cache.
-docker buildx create --name oa-deploy --driver docker-container \
-    --driver-opt network=cloudbuild \
-    --buildkitd-flags '--allow-insecure-entitlement network.host' --use > /dev/null
+# A later step of the same build reuses the builder, and with it every layer
+# the earlier step built.
+docker buildx use oa-deploy 2> /dev/null ||
+    docker buildx create --name oa-deploy --driver docker-container \
+        --driver-opt network=cloudbuild \
+        --buildkitd-flags '--allow-insecure-entitlement network.host' --use > /dev/null
 started=$(date +%s)
 # First the dependency layers, from the registry cache or compiled. The
 # image's stages start from them, so nothing waits that wouldn't anyway.
@@ -58,9 +62,14 @@ if [ -n "$export_cache" ]; then
         . > "$log" 2>&1 &
     deps=$!
 fi
+# IMAGE may instead be an output (`type=tar,dest=FILE`), with `--target` in
+# the flags, for a build that makes files rather than an image.
+case $image in
+    type=*) output=(--output "$image") ;;
+    *) output=(--provenance=false --sbom=false -t "$image" --push) ;;
+esac
 docker buildx build --progress=plain --allow network.host -f "$dockerfile" \
-    --cache-from "type=registry,ref=$cache" \
-    --provenance=false --sbom=false "$@" -t "$image" --push .
+    --cache-from "type=registry,ref=$cache" "$@" "${output[@]}" .
 echo "cloud-buildx: the image took $(( $(date +%s) - started )) s"
 # The cache export never fails the build: a stale cache only makes the next
 # build slower.

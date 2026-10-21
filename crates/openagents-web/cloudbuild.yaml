@@ -85,19 +85,44 @@ steps:
   # (docs/deployment/2026-10-09-faster-deploys.md), with the dependency
   # layers kept in a registry cache between builds and the image pushed by
   # buildx (scripts/deploy/cloud-buildx.sh, #12177).
+  # _MODULES_ONLY=1 skips the image: the modules-only deploy path
+  # (scripts/deploy/web.sh, #12427) needs only the next two steps.
+  - name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        if [ "${_MODULES_ONLY}" = 1 ]; then exit 0; fi
+        exec bash scripts/deploy/cloud-buildx.sh crates/openagents-web/Dockerfile \
+          us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG} \
+          openagents-web --build-arg OPENAGENTS_COMMIT=${_COMMIT}
+  # The browser modules as the image's /srv lays them out (the Dockerfile's
+  # `modules` target), for livehost: on the same builder, so after an image
+  # build every layer is already there.
   - name: gcr.io/cloud-builders/docker
     entrypoint: bash
     args:
       - scripts/deploy/cloud-buildx.sh
       - crates/openagents-web/Dockerfile
-      - us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web:${_TAG}
+      - type=tar,dest=/workspace/modules.tar
       - openagents-web
-      - --build-arg
-      - OPENAGENTS_COMMIT=${_COMMIT}
+      - --target
+      - modules
+  - name: gcr.io/cloud-builders/gcloud
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        set -e
+        gcloud storage cp /workspace/modules.tar \
+          "gs://openagentsgemini-rust-build-cache/web-modules/sets/${_TAG}.tar"
+        echo "modules: $$(du -h /workspace/modules.tar | cut -f1) at web-modules/sets/${_TAG}.tar"
 substitutions:
   _TAG: latest
   # A commit on GitHub to fetch the source from; empty to use the upload.
   _SOURCE_COMMIT: ""
+  # 1 builds only the browser modules' tarball, not the image.
+  _MODULES_ONLY: "0"
   # The full commit the context was exported from (scripts/deploy/web.sh).
   _COMMIT: unknown
 options:

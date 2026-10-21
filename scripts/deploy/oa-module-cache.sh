@@ -15,6 +15,10 @@
 # runs, and its OUTDIRs and its fresh input list are stored for the next
 # build.
 #
+# Each build or reuse also stores the module's input list as
+# web-modules/NAME/inputs-latest. OA_MODULE_RECORD=1 runs CMD and stores
+# only that list, for a build that is never reused (the server's).
+#
 # Builds are stored in the shared compile cache's bucket under
 # web-modules/NAME/, through the Cloud Build machine's metadata server
 # (the RUN needs --network=host, as for scripts/deploy/oa-kache.sh). Any
@@ -146,12 +150,15 @@ digest_inputs() { # LIST [BEFORE]
     } | sha256sum | cut -c1-40
 }
 
-# A stored build for this recipe and these sources: restore it.
-if fetch "$prefix/inputs" "$work/inputs" && [ -s "$work/inputs" ]; then
+# A stored build for this recipe and these sources: restore it. With
+# OA_MODULE_RECORD=1 (the server's build) nothing is restored or stored but
+# the input list.
+if [ "${OA_MODULE_RECORD:-}" != 1 ] && fetch "$prefix/inputs" "$work/inputs" && [ -s "$work/inputs" ]; then
     : > "$work/missing"
     inputs=$(digest_inputs "$work/inputs")
     if fetch "$prefix/$inputs.tar.gz" "$work/build.tar.gz"; then
         if tar -xzf "$work/build.tar.gz" -C / 2> /dev/null; then
+            store "$work/inputs" "web-modules/$name/inputs-latest" || true
             say "reused build $recipe/$inputs ($(( $(date +%s) - started )) s)"
             exit 0
         fi
@@ -187,6 +194,13 @@ xargs cat < "$work/depinfo" | sed 's/\\$//' | tr ' ' '\n' | sed -n 's/:$//; /^\/
     done | LC_ALL=C sort -u | LC_ALL=C comm -12 - "$work/before" > "$work/inputs"
 if [ ! -s "$work/inputs" ]; then
     say "built in $(( built - started )) s; no source inputs found, so the build is not stored"
+    exit 0
+fi
+# The newest input list for each name, which scripts/deploy/web.sh reads to
+# tell a module change from a server change.
+store "$work/inputs" "web-modules/$name/inputs-latest" || true
+if [ "${OA_MODULE_RECORD:-}" = 1 ]; then
+    say "built in $(( built - started )) s; recorded $(wc -l < "$work/inputs" | tr -d " ") input paths"
     exit 0
 fi
 : > "$work/missing"

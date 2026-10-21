@@ -183,12 +183,102 @@ content_only() { # FROM TO
         END { exit bad }'
 }
 
+MODULE_INPUTS=gs://openagentsgemini-rust-build-cache/web-modules
+
+# What the changes from FROM to TO need: `modules` when every change is in
+# a browser module's inputs or the content tier and none is in the
+# server's, else `image`. The input lists are the newest each build
+# recorded (scripts/deploy/oa-module-cache.sh, web-modules/NAME/inputs-latest):
+# package directories and single files. A change in neither, such as the
+# lock file or a build script, needs the image.
+change_kind() { # FROM TO
+    lists=$(mktemp -d)
+    g storage ls "$MODULE_INPUTS/*/inputs-latest" 2> /dev/null |
+        while IFS= read -r url; do
+            name=$(basename "$(dirname "$url")")
+            g storage cat "$url" > "$lists/$name" 2> /dev/null || rm -f "$lists/$name"
+        done
+    if [ ! -s "$lists/server" ]; then rm -rf "$lists"; echo image; return; fi
+    git -C "$ROOT" diff --name-only "$1" "$2" | awk -v lists="$lists" '
+        function under(path, list,    line, found) {
+            found = 0
+            while ((getline line < list) > 0)
+                if (path == line || index(path, line "/") == 1) { found = 1 }
+            close(list)
+            return found
+        }
+        BEGIN {
+            cmd = "ls " lists
+            while ((cmd | getline f) > 0) if (f != "server") modules[f] = lists "/" f
+            close(cmd)
+        }
+        {
+            if ($0 ~ /^crates\/openagents-web\/content\// || $0 ~ /^crates\/openagents-ui\/static\//) { next }
+            if (under($0, lists "/server")) { kind = "image"; exit }
+            hit = 0
+            for (m in modules) if (under($0, modules[m])) { hit = 1; break }
+            if (!hit) { kind = "image"; exit }
+            any = 1
+        }
+        END { print (kind == "image" || !any) ? "image" : "modules" }'
+    rm -rf "$lists"
+}
+
+# The modules path: build only the browser modules (unchanged ones come
+# from the module cache), then deploy them with REF's content to the
+# livehost staging pointer, which the staging server follows.
+stage_modules() { # FULL SHA CTX
+    t=$(now)
+    set -- "$1" "$2" "$3" "mod-$2"
+    say "  modules only: building the browser modules (log: $STATE/build-modules-$2.log)"
+    if fetch_source "$1"; then
+        g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
+            --config "$3/crates/openagents-web/cloudbuild.yaml" --no-source \
+            --substitutions "_TAG=$4,_COMMIT=$1,_SOURCE_COMMIT=$1,_MODULES_ONLY=1" > "$STATE/build-modules-$2.log" 2>&1
+    else
+        (cd "$3" && g builds submit --project "$PROJECT" --service-account "$BUILD_SA" \
+            --config crates/openagents-web/cloudbuild.yaml \
+            --ignore-file crates/openagents-web/web.gcloudignore \
+            --substitutions "_TAG=$4,_COMMIT=$1,_MODULES_ONLY=1" . > "$STATE/build-modules-$2.log" 2>&1)
+    fi || { say "The modules build failed; see the log."; exit 1; }
+    report_modules "$STATE/build-modules-$2.log"
+    took "modules build" "$t"
+    publish_modules "$4" "$3"
+}
+
+# Print what a build's module cache reused and built.
+report_modules() { # LOG
+    reused=$(grep -c 'oa-module-cache [a-z0-9-]*: reused' "$1" || true)
+    built=$(sed -n 's/.*oa-module-cache \([a-z0-9-]*\): built in \([0-9]*\) s.*/\1 (\2 s)/p' "$1" | sort -u | tr '\n' ' ')
+    say "  browser modules: $reused reused; built: ${built:-none}"
+}
+
+# Deploy the modules tarball TAG, with CTX's content, through livehost.
+publish_modules() { # TAG CTX
+    t=$(now)
+    modules=$(mktemp -d)
+    g storage cp "$MODULE_INPUTS/sets/$1.tar" "$modules/set.tar" > /dev/null 2>&1 ||
+        { say "No modules tarball for $1"; rm -rf "$modules"; return 1; }
+    mkdir "$modules/tree" && tar -xf "$modules/set.tar" -C "$modules/tree" && rm "$modules/set.tar"
+    LIVEHOST_MODULES_DIR=$modules/tree WEB_CONTENT_SOURCE=$2 "$ROOT/scripts/deploy/livehost.sh" deploy >&2
+    rm -rf "$modules"
+    took "livehost deploy (modules and content)" "$t"
+}
+
+# Whether this checkout's content tier ships modules (the livehost side of
+# #12427 reads LIVEHOST_MODULES_DIR in web-content.sh).
+livehost_modules() {
+    grep -q LIVEHOST_MODULES_DIR "$ROOT/scripts/deploy/web-content.sh"
+}
+
 # The content path: deploy REF's content tier to the livehost staging
 # pointer, which the staging server follows without a new revision, wait
 # until a changed guide is served, and run the smoke.
 stage_content() { # FULL SHA CTX FROM
     t=$(now)
     say "  content only since staging's $(printf '%s' "$4" | cut -c1-10): deploying the livehost content tier"
+    # Without LIVEHOST_MODULES_DIR the deploy keeps the modules the last
+    # manifest carried (livehost's side of #12427).
     WEB_CONTENT_SOURCE=$3 "$ROOT/scripts/deploy/livehost.sh" deploy >&2
     took "content deploy" "$t"
     doc=$(git -C "$ROOT" diff --name-only "$4" "$1" |
@@ -235,6 +325,18 @@ stage() {
         say "Staging serves $sha's content. Production follows no livehost pointer yet; ship it with the next image."
         return 0
     fi
+    if [ -n "$from" ] && livehost_modules && [ "$(change_kind "$from" "$full")" = modules ]; then
+        stage_modules "$full" "$sha" "$ctx"
+        t=$(now)
+        smoke=0
+        "$ctx/scripts/smoke/staging.sh" || smoke=$?
+        took smoke "$t"
+        took "stage total" "$started"
+        rm -rf "$ctx"
+        [ "$smoke" -eq 0 ] || { say "The staging smoke failed after the modules deploy; roll back with scripts/deploy/livehost.sh rollback."; exit 1; }
+        say "Staging serves $sha's browser modules. Production follows no livehost pointer yet; ship them with the next image."
+        return 0
+    fi
     say "  path: image (staging runs ${from:-an unknown commit})"
     web=$REPO/openagents-web:stg-$sha
     stack=$REPO/openagents-stack:$sha
@@ -279,11 +381,7 @@ stage() {
     done
     took build "$t"
     # What the web build reused and what it built (scripts/deploy/oa-module-cache.sh).
-    if [ -f "$STATE/build-web-$sha.log" ]; then
-        reused=$(grep -c 'oa-module-cache [a-z0-9-]*: reused' "$STATE/build-web-$sha.log" || true)
-        built=$(sed -n 's/.*oa-module-cache \([a-z0-9-]*\): built in \([0-9]*\) s.*/\1 (\2 s)/p' "$STATE/build-web-$sha.log" | sort -u | tr '\n' ' ')
-        say "  browser modules: $reused reused; built: ${built:-none}"
-    fi
+    if [ -f "$STATE/build-web-$sha.log" ]; then report_modules "$STATE/build-web-$sha.log"; fi
     web_digest=$(digest "$web")
     [ -n "$web_digest" ] || { say "No digest for the web image"; exit 1; }
     t=$(now)
@@ -358,6 +456,11 @@ print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
     traffic_to "$revision" "$spec"
     took "staging deploy" "$t"
     printf '%s\n' "$web_digest" > "$STATE/staged-$sha"
+    # The livehost manifest's modules would hide this image's newer copies on
+    # disk, so the image's modules go out with REF's content too.
+    if [ -z "$keep" ] && livehost_modules; then
+        publish_modules "stg-$sha" "$ctx" || say "  livehost: the modules were not published; staging serves the manifest's older copies"
+    fi
     t=$(now)
     if [ "$smoke_ref" != "$full" ]; then
         rm -rf "$ctx/scripts/smoke"

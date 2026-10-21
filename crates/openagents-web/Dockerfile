@@ -42,9 +42,12 @@ COPY . .
 # The CAD engine (crates/cad-lab) beside it: the site runs CAD Lab's tools
 # for signed-in people in a child process (crates/openagents-web/src/cad_web.rs,
 # #11653). Every source file is touched first, so no stand-in the deps
-# stage compiled can look newer than the real crate.
+# stage compiled can look newer than the real crate. oa-module-cache only
+# records the files this build read (web-modules/server/inputs-latest), so
+# scripts/deploy/web.sh can tell a server change from a module change.
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private find . -path ./target -prune -o -exec touch -c {} + \
-    && oa-kache run cargo build --locked --release -p openagents-web-site --bin openagents-web -p openagents-web --bin lab-cad-copy \
+    && OA_MODULE_RECORD=1 sh scripts/deploy/oa-module-cache.sh server /build/target/release -- \
+        oa-kache run cargo build --locked --release -p openagents-web-site --bin openagents-web -p openagents-web --bin lab-cad-copy \
         -p cad-lab --bin cad-lab \
     && strip target/release/openagents-web target/release/cad-lab target/release/lab-cad-copy
 
@@ -359,6 +362,35 @@ COPY --from=builder-deps /build/Cargo.lock /builder-deps.lock
 COPY --from=everglade-deps /build/Cargo.lock /everglade-deps.lock
 COPY --from=cadweb-deps /build/Cargo.lock /cadweb-deps.lock
 COPY --from=gpuiweb-deps /build/gpuiweb.lock /gpuiweb-deps.lock
+
+# The browser modules alone, laid out as the image's /srv, for a deploy that
+# ships modules without a new image (#12427): cloudbuild.yaml exports this
+# target as a tarball to web-modules/sets/TAG.tar. Keep it in step with the
+# last stage's /srv copies.
+FROM scratch AS modules
+COPY --from=everglade /build/everglade /everglade
+COPY --from=everglade /build/components /components
+COPY --from=everglade /build/cloud /cloud
+COPY --from=everglade /build/chat /chat
+COPY --from=everglade /build/wallet /wallet
+COPY --from=everglade /build/bunny /bunny
+COPY --from=everglade /build/icecream /icecream
+COPY --from=everglade /build/snap /snap
+COPY --from=everglade /build/robot /robot
+COPY --from=everglade /build/att /att
+COPY --from=cadweb /build/cad /cad
+COPY --from=everglade /build/sand /sand
+COPY --from=everglade /build/layertree /layertree
+COPY --from=everglade /build/lander5 /lander5
+COPY --from=gpuiweb /build/gpui-demo /gpui-demo
+COPY --from=gpuiweb-graph /build/agent-graph /agent-graph
+COPY --from=gpuiweb /build/gpui-fonts /gpui-fonts
+COPY --from=gpuiweb-chat /build/gpui-chat /gpui-chat
+COPY --from=everglade /build/pylons-layer /pylons/layer
+COPY --from=everglade /build/kiln /kiln
+COPY --from=gpuiweb-graph /build/pylons-card /pylons/card
+COPY --from=gpuiweb-graph /build/lander8 /lander8
+COPY --from=gpuiweb /build/lander9 /lander9
 
 FROM debian:13-slim
 
