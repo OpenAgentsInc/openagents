@@ -21,6 +21,7 @@
 //! RoPE reads host-computed `cos` and `sin` tables, and the sampler adds in
 //! a software binary64.
 
+pub mod attention;
 pub mod matvec;
 pub mod mix;
 
@@ -33,10 +34,11 @@ use psionic_runtime::RuntimeError;
 use std::{collections::BTreeMap, ffi::c_void, sync::Mutex};
 
 /// Every V4.1 kernel source, in compile order.
-const SOURCES: [&str; 4] = [
+const SOURCES: [&str; 5] = [
     include_str!("../kernels/v41/common.metal"),
     include_str!("../kernels/v41/matvec.metal"),
     include_str!("../kernels/v41/mix.metal"),
+    include_str!("../kernels/v41/attention.metal"),
     include_str!("../kernels/v41/checks.metal"),
 ];
 
@@ -61,6 +63,18 @@ const PIPELINES: &[&str] = &[
     "v41_route",
     "v41_swiglu",
     "v41_moe_combine",
+    "v41_rope",
+    "v41_cache_quant",
+    "v41_window_store",
+    "v41_dense",
+    "v41_rms_norm",
+    "v41_compress",
+    "v41_compress_state",
+    "v41_compressed_store",
+    "v41_index_scores",
+    "v41_select",
+    "v41_block_max",
+    "v41_sparse_attention",
     "v41_check_exp",
     "v41_check_log1p",
     "v41_check_double",
