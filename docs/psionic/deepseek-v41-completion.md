@@ -65,7 +65,7 @@ Gate progress (2026-10-21):
   last stage samples with the front's settings and returns the
   token ID, 4 bytes. The synthetic geometry's numbers are in the W9 test
   output.
-- **G3, block-scaled matrix-vector kernels (W4, #12391), RTX 4080 only.**
+- **G3, block-scaled matrix-vector kernels (W4, #12391), RTX 4080; SM120 below.**
   FP8 and FP4 weight kernels and the FP8 activation quantizer match the CPU
   path on real rows of `layers.2.attn.wq_a`, the layer-2 shared expert's w1
   and w2, and routed expert 222's w1 and w2. The tolerance, fixed before the
@@ -76,9 +76,9 @@ Gate progress (2026-10-21):
   (64 of 64). Activation codes and scales equal the reference's `act_quant`
   output bit for bit, and the device matches a host model of its arithmetic
   bit for bit in every case, including NaN and extreme scales. The RTX PRO
-  6000 (SM120) half of G3 is W8. Results:
+  6000 (SM120) half passed in W8. Results:
   [`sm89-2026-10-20.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_matvec/sm89-2026-10-20.json).
-- **G3, mixing, Engram, and routing kernels (W6, #12393), RTX 4080 only.**
+- **G3, mixing, Engram, and routing kernels (W6, #12393), RTX 4080; SM120 below.**
   Tolerances were fixed before the first GPU run. Collapse, expand, the
   Engram gather, and the expert sum repeat the CPU's operations in its order
   and equal it exactly. Reductions in another order use the same summation
@@ -123,7 +123,7 @@ Gate progress (2026-10-21):
   twice per stage; `--head stage0` leaves the first stage's step and the
   last stage's token as the only hops through the head, both inside the
   zone. G6 and G7 still need the real cross-machine run (W12 part 2).
-- **G3, attention kernels (W5, #12392), RTX 4080 only.** Checked against
+- **G3, attention kernels (W5, #12392), RTX 4080; SM120 below.** Checked against
   the CPU path's default `ReferenceBf16` order (window rows oldest first);
   the `ReferenceBf16Tp8` order is W7's choice. Tolerances were fixed before
   the first GPU run. Kernels without a transcendental repeat the CPU's
@@ -159,9 +159,18 @@ Gate progress (2026-10-21):
   Sequential dense products and norms take 2.1 ms of a 4.06 ms step; a
   bounded parallel sum is the first speedup. Results:
   [`sm120-2026-10-21.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_stage/sm120-2026-10-21.json).
-- **G3 on SM120 (W8 evidence from W7's machine).** W4's 9, W6's 15, and
-  W5's 14 kernel tests pass on the RTX PRO 6000 with CUDA 12.9 and
-  `PSI_CUDA_ARCH=sm_120`; the numbers are on #12395.
+- **G3 on SM120 (W8, #12395): passed.** On W7's `g4-standard-48` (one
+  RTX PRO 6000, CUDA 12.9, driver 580.178.04, `PSI_CUDA_ARCH=sm_120`), W4's
+  9, W6's 15, W5's 14, and W7's 7 tests pass with the tolerances fixed
+  before the SM89 runs. That includes every bit-for-bit host-model check,
+  so the double-precision `exp`, `cos`, `sin`, and `log1p` round as on the
+  host, and float32 subnormals aren't flushed. Decode matrix-vector
+  products read 1,086–1,139 GB/s on the large FP8 matrices (`wq_b`,
+  `wo_b`) and 1,001 GB/s for six FP4 experts in one launch, about 60% of
+  the card's ~1.8 TB/s; small matrices read 515–824 GB/s. Both GPUs build
+  from one source: `quantized_matvec.cu` takes CUB from CUDA 13's
+  `include/cccl` or CUDA 12's `include/cub`, so the stage machines no
+  longer need an include shim. Numbers and logs are on #12395.
 - **Placement from header bytes.** Layers 0–9, 10–19, 20–29, and 30–39
   need 75.41, 74.07, 73.92, and 75.23 GB of GPU weights, as the plan's
   table says, and the Engram tables (101.38 GB each) go to host memory on
@@ -253,7 +262,7 @@ spend guard from the one budget host.
 | W5 | **Done on SM89 (#12392).** `psionic_backend_cuda::v41_attention`: tail RoPE and YaRN, the window ring and cache quantizers, window and compressed latent attention with the sink, the ratio-1 and ratio-2 compressor and compressed-row store, dense products in the CPU's order, index scores, top-512 selection, and layer-20 candidate blocks, with consumers reading the KV sources on the device. Parity on the RTX 4080 against the CPU path's default `ReferenceBf16` order, including the 127/128/129 prompts and 20,021 positions; selections equal the oracle's at all eight index sources. One decode step's attention takes 82–84 µs on a layer with 512 selected rows. SM120 parity moves to W8. | L (split per mode) | W1 | Per-kernel parity on both GPUs, including the 127/128/129 cases. |
 | W6 | **Done on SM89 (#12393).** `psionic_backend_cuda::v41_mix`: hyper-connection mixes (joint RMS projection, pre/post, 20-iteration Sinkhorn), collapse, and expand; the Engram gather from page-locked host memory and the Engram gate; router logits, routing with ties to the lower id written as `V41Slots` ids, clamped SwiGLU, and the expert sum. Parity with the CPU path on real weights and oracle inputs on the RTX 4080; one decode step's kernels take 1.8–12.7 µs each. SM120 parity moves to W8. | M | — (checked against the CPU components, as W4) | Per-kernel parity on both GPUs. |
 | W7 | **Built (#12394); G4 not passed.** `psionic_backend_cuda::v41_stage::V41Stage` runs a contiguous layer range on one GPU: embeddings, Engram (page-locked host tables, hashing on the device), mixes, attention, MoE, and on the last stage the head and sampling. All request state stays on the device; each token is one captured CUDA graph, and a decode step is one launch and one wait (`nsys`). W9's contract gained the pre-mix. On the RTX PRO 6000: layers 0–4 decode in 4.13 ms per token and prefill 242 tokens/s in 39.5 GB; layers 0–9 in 8.06 ms and 122 tokens/s in 76.6 GB. Default `ReferenceBf16` order; the connected comparison with the CPU stage fails the frozen policy from layer 1 (mixes, then router sets), and GPU and CPU fail the oracle alike. | L | W4–W6 | G4 passes for a 5- or 10-layer stage on the target GPU; per-token latency and peak memory are recorded. |
-| W8 | **Target GPU choice.** Confirm the kernels on the RTX PRO 6000 (SM120, G4 machines) and decide whether B200 (SM100) needs a separate profile. W4's SM120 run: build with `PSI_CUDA_ARCH=sm_120` and run `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_matvec`, then the ignored `v41_decode_bandwidth`; W6's SM120 run: `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_mix`, then the ignored `v41_mix_decode_latency`; W5's: `--lib v41_attention`, then the ignored `v41_attention_decode_latency`. | S, cloud | W7 | A recorded decision with parity on the chosen GPU. |
+| W8 | **Done (#12395): the RTX PRO 6000 (SM120, G4 machines) is the target GPU; B200 gets no separate profile.** On SM120, the `v41_matvec`, `v41_mix`, `v41_attention`, and `v41_stage` suites pass (9, 15, 14, 7 tests), bit-exact host-model checks included; large FP8 matrices decode at about 1.1 TB/s; W7's layers 0–4 take 4.13 ms per token in 39.5 GB and layers 0–9 8.06 ms in 76.6 GB, so a 10-layer stage fits one 96 GB card. A `g4-standard-48` costs $1.66/h spot ($4.50 on demand) and a `g4-standard-384` $13.31/h spot, against $39.63/h spot for an `a4-highgpu-8g`; spot quota is 16 RTX PRO 6000 GPUs per region. The portable kernels use no SM100-only feature, and B200 was needed only for the reference oracle. Reopen a B200 profile for throughput work (batching or expert parallelism, V9), for kernels that use `tcgen05` or other `sm_100a` features, or if G4 spot capacity or quota can't hold a group. Pinned toolkit: image family `common-cu129-ubuntu-2404-nvidia-580` (CUDA 12.9, driver 580), checked by `stage_vm.sh`. `quantized_matvec.cu` now builds with CUDA 12.x and 13.x include layouts. | S, cloud | W7 | A recorded decision with parity on the chosen GPU. |
 
 ### Phase 4: stage Pylons (G5, G6, G7)
 
@@ -330,8 +339,6 @@ started first.
   uses per-component arithmetic limits. Same-mode repeatability is currently
   unmeasured; the cross-mode gap grants no allowance. Do not loosen bounds
   after a failure.
-- Whether the RTX PRO 6000 (SM120) runs the kernels at useful speed, or the
-  group needs B200 machines.
 - Host RAM per stage for the Engram tables (about 101 GB each, layers 1 and
   14) on single-GPU machines.
 - Redistribution terms of the checkpoint's license for stage packages

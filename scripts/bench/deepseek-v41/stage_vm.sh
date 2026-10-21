@@ -22,9 +22,10 @@ CKPT=$ROOT/checkpoint
 SRCDIR=$ROOT/src
 export PATH="$HOME/.cargo/bin:/usr/local/cuda/bin:$PATH"
 export CARGO_TARGET_DIR=$ROOT/target CARGO_INCREMENTAL=0 PSI_CUDA_ARCH=sm_120
-# The image's CUDA 12.9 keeps CCCL at include/cub; Psionic's kernels include
-# CUDA 13's include/cccl/cub layout.
-export NVCC_PREPEND_FLAGS="-I$ROOT/cccl-shim"
+# W8 (#12395) pins the stage machines' toolkit: image family
+# common-cu129-ubuntu-2404-nvidia-580 (project deeplearning-platform-release),
+# CUDA 12.9 with driver 580. SM120 needs CUDA 12.8 or later.
+CUDA_RELEASE=12.9
 log() { printf '%s %s\n' "$(date -u +%H:%M:%SZ)" "$*" | tee -a "$OUT/log.txt"; }
 
 setup() {
@@ -38,10 +39,12 @@ setup() {
   if ! [ -x "$HOME/.cargo/bin/rustup" ]; then
     curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --default-toolchain 1.97.1
   fi
-  mkdir -p "$ROOT/cccl-shim"
-  ln -sfn /usr/local/cuda/include "$ROOT/cccl-shim/cccl"
   rustc -vV > "$OUT/machine.txt"
   nvcc --version >> "$OUT/machine.txt"
+  if ! nvcc --version | grep -q "release $CUDA_RELEASE,"; then
+    echo "stage_vm.sh: expected CUDA $CUDA_RELEASE; use the pinned image family" >&2
+    exit 1
+  fi
   nvidia-smi >> "$OUT/machine.txt"
   lscpu >> "$OUT/machine.txt"
   free -g >> "$OUT/machine.txt"

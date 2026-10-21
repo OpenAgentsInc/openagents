@@ -1,8 +1,14 @@
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
+// CUDA 13 moved CCCL under include/cccl; CUDA 12.x keeps it at include/cub.
+#if __has_include(<cccl/cub/block/block_radix_sort.cuh>)
 #include <cccl/cub/block/block_radix_sort.cuh>
 #include <cccl/cub/device/device_radix_sort.cuh>
+#else
+#include <cub/block/block_radix_sort.cuh>
+#include <cub/device/device_radix_sort.cuh>
+#endif
 
 #include <cfloat>
 #include <stdint.h>

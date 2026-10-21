@@ -192,10 +192,10 @@ or quota-limited; existing production GPUs aren't spare capacity.
 
 | Option | Memory | Fits | Price we have on record | Use |
 | --- | --- | --- | --- | --- |
-| `g4-standard-384`, 8× RTX PRO 6000 Blackwell, PCIe | 768 GB | Everything, with about 250 GB to spare | $36.04/h on demand ([Muse serving notes][Muse]) | Recommended first target: eight stage Pylons over loopback on one machine, with the same card a contributor could own. Spot quota is 16 GPUs per region. |
-| `a4-highgpu-8g`, 8× B200, NVLink | about 1,440 GB usable | Everything | $39.63/h spot ([Muse serving notes][Muse]) | Throughput work (V9) and the oracle run. Spot only; quota 64 B200 per region. |
+| `g4-standard-384`, 8× RTX PRO 6000 Blackwell, PCIe | 768 GB | Everything, with about 250 GB to spare | $13.31/h spot, $36.00/h on demand (`scripts/dev/cloud-prices.json`) | The target (W8): eight stage Pylons over loopback on one machine, with the same card a contributor could own. Spot quota is 16 GPUs per region. |
+| `a4-highgpu-8g`, 8× B200, NVLink | about 1,440 GB usable | Everything | $39.63/h spot ([Muse serving notes][Muse]) | Throughput work (V9) and the oracle run. Spot only; quota 64 B200 per region. No serving profile (W8). |
 | `a3-ultragpu-8g`, 8× H200 | 1,128 GB | Everything | $83.37/h on demand ([Muse serving notes][Muse]) | Fallback if G4 and A4 spot capacity is unavailable. |
-| Several single-GPU G4 machines, 1× RTX PRO 6000 each | 96 GB each | Eight machines hold everything, with Engram in host memory | Not recorded | Stage Pylons across machines (V8). Check each machine's host RAM for the Engram stages. |
+| Several single-GPU G4 machines, 1× RTX PRO 6000 each | 96 GB each | Eight machines hold everything, with Engram in host memory | `g4-standard-48`: $1.66/h spot, $4.50/h on demand | Stage Pylons across machines (V8). A `g4-standard-48` has 180 GiB of host RAM, enough for one 101 GB Engram table. |
 | RTX 4080 (coderos-4080) | 16 GB | One layer's tensors at a time | Owned | Kernel parity tests (V5). |
 
 Before renting, check the current spot price and capacity, and set a cost cap
@@ -205,6 +205,36 @@ label it with the run (`agent-run.py label-vm`).
 The full CPU reference (V4) needs about 510 GB of readable weights. It can
 memory-map them from local SSD on a smaller machine, more slowly, or run on a
 host with enough RAM: a `g4-standard-384` host has 1,440 GiB and an A4 host about 3.9 TiB, so the GPU machine can also run the CPU reference.
+
+### Target GPU (W8, #12395)
+
+Serial stage serving targets the **RTX PRO 6000 Blackwell (SM120)** on G4
+machines:
+
+- **Parity.** W4–W7's `v41_matvec`, `v41_mix`, `v41_attention`, and
+  `v41_stage` suites pass on SM120 with the tolerances fixed before the SM89
+  runs, including every bit-for-bit host-model check.
+- **Speed.** Decode matrix-vector products on the large FP8 matrices read
+  about 1.1 TB/s, about 60% of the card's ~1.8 TB/s. One stage of layers
+  0–4 decodes in 4.13 ms per token in 39.5 GB; layers 0–9 take 8.06 ms in
+  76.6 GB, so a 10-layer stage fits one 96 GB card (W7).
+- **Cost and quota.** A `g4-standard-384` is $13.31/h spot against $39.63/h
+  for an `a4-highgpu-8g`. Spot quota is 16 RTX PRO 6000 GPUs per region
+  ([inventory](assets/gcp-inventory-2026-10-20.json)), enough for two
+  eight-stage groups.
+
+**B200 (SM100) gets no separate profile now.** The kernels are portable CUDA
+with no SM100-only features, and B200 was needed only to run the reference
+oracle. Reopen this for throughput work (batching or expert parallelism,
+V9), for kernels that use `tcgen05` or other `sm_100a` features, or if G4
+spot capacity or quota can't hold the groups we need.
+
+**Toolkit.** Stage machines use the image family
+`common-cu129-ubuntu-2404-nvidia-580` from `deeplearning-platform-release`
+(CUDA 12.9, driver 580) and build with `PSI_CUDA_ARCH=sm_120`; SM120 needs
+CUDA 12.8 or later. `scripts/bench/deepseek-v41/stage_vm.sh` refuses
+another CUDA release. The kernels also build with CUDA 13 (the RTX 4080
+runs 13.2): `quantized_matvec.cu` takes CUB from either include layout.
 
 ### How to use the cloud spend guard
 
@@ -1597,8 +1627,8 @@ n-gram history). Chunk the prompt to `max_step_tokens`. Map W9's sections
 to `V41StepInput` and `V41StepOutput` (BF16 residual on the wire, F32 in
 the executor; candidate ids as `u32` with `u32::MAX` for -1). The last
 stage returns `token`, which W10's `StepAck` carries. A stage with an
-Engram layer needs 101 GB of host RAM for the table, and the CUDA 12.9 image
-needs an include shim for CCCL (see W8's comment).
+Engram layer needs 101 GB of host RAM for the table. The CUDA 12.9 image
+needed an include shim for CCCL at the time; W8 removed the need.
 
 **Cost:** one `g4-standard-48` spot machine for 0.47 h, $0.79 in the
 guard's ledger, deleted.
