@@ -701,6 +701,116 @@ fn expert_checks(
     fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
     Ok(report)
 }
+fn ffn_checks(
+    oracle: &Oracle,
+    checkpoint: &DeepSeekV41Checkpoint,
+    out: &Path,
+) -> Result<Value, Box<dyn std::error::Error>> {
+    use psionic_models::deepseek_v41_cpu::{
+        moe::{self, ExpertProvider, Router},
+        projection::WeightSource,
+        quantization::round_bf16,
+    };
+    struct Experts<'a> {
+        weights: &'a dyn WeightSource,
+        layer: &'a str,
+    }
+    impl ExpertProvider for Experts<'_> {
+        fn forward(
+            &self,
+            id: Option<usize>,
+            input: &[f32],
+            weight: f32,
+            limit: f32,
+        ) -> Result<Vec<f32>, CpuError> {
+            let name = id.map_or_else(|| "shared_experts".to_owned(), |i| format!("experts.{i}"));
+            let stem = format!("layers.{}.ffn.{name}", self.layer);
+            moe::expert_with_arithmetic(
+                input,
+                self.weights.matrix(&format!("{stem}.w1.weight"))?.as_ref(),
+                self.weights.matrix(&format!("{stem}.w2.weight"))?.as_ref(),
+                self.weights.matrix(&format!("{stem}.w3.weight"))?.as_ref(),
+                weight,
+                limit,
+                Arithmetic::ReferenceBf16Tp8,
+            )
+        }
+    }
+    let resident = resident::ResidentCheckpoint::new(checkpoint);
+    let policy: Value = serde_json::from_str(POLICY)?;
+    let bounds = &policy["families"]["bf16_activation_and_residual"];
+    let mut log = File::create(out.join("ffns.jsonl"))?;
+    let (mut checked, mut failed, mut router_failed, mut differing) = (0, 0, 0, 0);
+    let mut first_failure = None;
+    for e in oracle
+        .entries
+        .values()
+        .filter(|e| e.name.ends_with(".ffn.gate.in"))
+    {
+        let prefix = e.name.strip_suffix("gate.in").ok_or("FFN suffix missing")?;
+        let layer = e.name.split('.').nth(4).ok_or("FFN layer missing")?;
+        let input = oracle.tensor(&e.name)?;
+        let gate = resident.matrix(&format!("layers.{layer}.ffn.gate.weight"))?;
+        let bias = resident.vector(&format!("layers.{layer}.ffn.gate.bias"))?;
+        let (routing, output) = moe::forward(
+            &input,
+            gate.as_ref(),
+            &bias,
+            Router::flash(),
+            &Experts {
+                weights: &resident,
+                layer,
+            },
+            10.0,
+        )?;
+        let mut ids: Vec<_> = routing.indices.iter().map(|i| *i as u64).collect();
+        let mut expected_ids = oracle.integers(&format!("{prefix}gate.ids"))?;
+        ids.sort_unstable();
+        expected_ids.sort_unstable();
+        let mut ranked = oracle.tensor(&format!("{prefix}gate.biased_scores"))?;
+        ranked.sort_by(|a, b| b.total_cmp(a));
+        let margin = ranked[5] - ranked[6];
+        let router_passed = ids == expected_ids || margin == 0.0;
+        if !router_passed {
+            router_failed += 1;
+        }
+        let name = format!("{prefix}out");
+        let actual = round_bf16(&output)?;
+        let expected = oracle.tensor(&name)?;
+        let unequal = actual.iter().zip(&expected).filter(|(a, b)| a != b).count();
+        differing += unequal;
+        let mut row = differences(
+            &actual,
+            &expected,
+            bounds["atol"]
+                .as_f64()
+                .ok_or("FFN absolute bound missing")?,
+            bounds["rtol"]
+                .as_f64()
+                .ok_or("FFN relative bound missing")?,
+        );
+        row["tensor"] = json!(name);
+        row["bf16_mismatches"] = json!(unequal);
+        row["scope"] = json!("identical_oracle_normalized_input");
+        row["router_passed"] = json!(router_passed);
+        row["actual_ids"] = json!(ids);
+        row["reference_ids"] = json!(expected_ids);
+        row["oracle_selection_margin"] = json!(margin);
+        checked += 1;
+        if row["passed"] != true || !router_passed {
+            failed += 1;
+            if first_failure.is_none() {
+                first_failure = Some(row.clone());
+            }
+        }
+        serde_json::to_writer(&mut log, &row)?;
+        writeln!(log)?;
+        log.flush()?;
+    }
+    let report = json!({"schema":"psionic.deepseek_v41.cpu_ffn_probe.v1","source_commit":env::var("V41_SOURCE_COMMIT").ok(),"policy_sha256":hex::encode(Sha256::digest(POLICY.as_bytes())),"checked":checked,"failed":failed,"router_failed":router_failed,"bf16_mismatches":differing,"first_failure":first_failure,"model_qualification_passed":false});
+    fs::write(out.join("report.json"), serde_json::to_vec_pretty(&report)?)?;
+    Ok(report)
+}
 fn mixing_checks(
     oracle: &Oracle,
     checkpoint: &DeepSeekV41Checkpoint,
@@ -780,6 +890,7 @@ fn mixing_checks(
     Ok(report)
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut ffns_only = false;
     let mut experts_only = false;
     let mut mixing_only = false;
     let mut swiglu_only = false;
@@ -804,6 +915,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--swiglu-only" => swiglu_only = true,
             "--mixing-only" => mixing_only = true,
             "--experts-only" => experts_only = true,
+            "--ffns-only" => ffns_only = true,
             "--stop-on-first-failure" => stop_on_first_failure = true,
             _ => return Err(format!("Unknown argument {arg}").into()),
         }
@@ -823,6 +935,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         serde_json::to_vec_pretty(&identity)?,
     )?;
     if identity_only {
+        return Ok(());
+    }
+    if ffns_only {
+        ffn_checks(&Oracle::open(&oracle_dir)?, &checkpoint, &out)?;
         return Ok(());
     }
     if experts_only {
