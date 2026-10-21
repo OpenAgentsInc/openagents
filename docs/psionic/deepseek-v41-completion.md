@@ -858,3 +858,17 @@ a worker whose SHA-256 differs from `PSIONIC_V41_STAGE_SHA256`, or, with
 `PSIONIC_V41_STAGE_BACKEND=cuda`, a machine without a GPU fails every test.
 Each test prints the executed, skipped, and failed counts, and
 `PSIONIC_V41_STAGE_REPORT=FILE` collects one JSON line per test.
+
+## Inference Engineering reading addendum (2026-10-21)
+
+The [book adaptation](inference-engineering-lessons.md) maps Philip Kiely's
+*Inference Engineering* to this implementation and the existing issues.
+Measure internal first-token time separately from complete buyer answers;
+our group engine currently buffers the answer and keeps reasoning private.
+For prefill, qualify bounded chunks, batched computation, and cross-stage
+overlap as separate changes. Prefix reuse must restore V4.1's complete stage
+state, including compressors, indexer/candidates, and Engram history.
+Keep the serial profile and current gates; a narrower context release needs
+an explicit prospective contract revision. Multiuser batching, expert
+parallelism, and prefill/decode disaggregation remain workload-driven
+follow-ups. The reading introduces no new benchmark result or passing gate.

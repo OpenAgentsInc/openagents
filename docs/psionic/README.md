@@ -132,6 +132,11 @@ summarizes DeepSeek's description of its production service (wide-EP decode,
 shared KV-cache storage, bounded replay, and DSpark) and what it means for
 our serial stage Pylons.
 
+The [Inference Engineering reading](inference-engineering-lessons.md) adapts
+Philip Kiely's book to the current DeepSeek/Pylon plan: useful-answer latency,
+bounded and batched prefill, complete prefix snapshots, measured parallelism,
+and a prioritized sequence tied to the existing qualification gates.
+
 The [Mesh-LLM review](mesh-llm-lessons.md) compares distributed placement,
 stage packages, activation transport, readiness, and cache-aware routing with
 Psionic's cluster and serving contracts.
