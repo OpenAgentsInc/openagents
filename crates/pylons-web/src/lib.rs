@@ -28,6 +28,7 @@
 
 pub mod camera;
 pub use pylons_view::terminal;
+pub mod visit;
 pub mod world_camera;
 
 #[cfg(target_arch = "wasm32")]

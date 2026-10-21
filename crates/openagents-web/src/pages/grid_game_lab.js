@@ -6,8 +6,12 @@ const gameSignIn = document.getElementById('game-lab-signin');
 const gamePlay = document.getElementById('game-lab-play');
 const gameFrame = document.getElementById('game-lab-play-frame');
 let gameOpen = false, gameNear = false, gameSuppressed = false;
+// The visit's Game Lab events (#12439): what was done, never what was typed.
+let gameOpenedAt = 0, gameChecking = false;
+const gameSeen = new Set();
 const setGameOpen = async open => {
   if (!open) {
+    if (gameOpen) track('game_lab_closed', {time: Math.round(performance.now() - gameOpenedAt)});
     gameOpen = false;
     globalThis.openagentsLab = undefined;
     gamePanel.hidden = true;
@@ -21,6 +25,7 @@ const setGameOpen = async open => {
   }
   if (gameOpen || gamePanel.hasAttribute('data-off')) return;
   gameOpen = true;
+  gameOpenedAt = performance.now();
   gamePanel.hidden = false;
   gameStatus.textContent = 'Opening Game Lab…';
   gameSignIn.hidden = true;
@@ -30,6 +35,7 @@ const setGameOpen = async open => {
     if (response.status === 401 || response.status === 403) {
       gameStatus.textContent = 'Sign in to make your own version.';
       gameSignIn.hidden = false;
+      track('game_lab_opened', {result: 'sign_in'});
       return;
     }
     if (!response.ok) throw new Error('Game Lab could not open');
@@ -38,7 +44,9 @@ const setGameOpen = async open => {
     gameCard.src = '/labs/game/card';
     gameCard.hidden = false;
     homeTerminal(true);
+    track('game_lab_opened', {result: 'open'});
   } catch (_) {
+    track('game_lab_opened', {result: 'failed'});
     gameStatus.textContent = 'Game Lab couldn’t open. Close it and try again.';
   }
 };
@@ -54,6 +62,9 @@ globalThis.homeGameCards = data => {
     const cards = Array.isArray(value) ? value : value.cards || [];
     const card = cards.find(card => card.card === 'game_lab' && card._hosted);
     if (!card) return;
+    if (card.compare) track('game_lab_compared');
+    else if (gameChecking && !card.autoplay && !gameSeen.has(card.version)) track('game_lab_version_saved');
+    gameSeen.add(card.version);
     const query = new URLSearchParams({v:String(card.version)});
     if (card.compare) query.set('a',String(card.compare.a.version));
     gameCard.src = '/labs/game/card?' + query;
@@ -61,6 +72,7 @@ globalThis.homeGameCards = data => {
     if (card.autoplay) {
       gameFrame.src = '/games/the-ice-cream-man#' + card.fragment + '&skip';
       gamePlay.hidden = false; homeTerminal(false);
+      track('game_lab_played', {from: 'chat'});
     }
   } catch (_) {}
 };
@@ -78,6 +90,7 @@ addEventListener('message',event => {
   const url = new URL(event.data.src,location.origin);
   if (url.origin !== location.origin || url.pathname !== '/games/the-ice-cream-man') return;
   gameFrame.src = url.href; gamePlay.hidden = false; homeTerminal(false);
+  track('game_lab_played', {from: 'card'});
 });
 const gameEscape = event => {
   if (event.key !== 'Escape' || !gameOpen) return;
@@ -100,8 +113,13 @@ gameCard.addEventListener('load',() => {
   }
 });
 new MutationObserver(() => {
+  const checking = composer.dataset.chatState === 'streaming' || composer.dataset.chatState === 'sending';
+  if (gameOpen && globalThis.openagentsLab === 'game') {
+    if (checking && !gameChecking) track('game_lab_check');
+    gameChecking = checking;
+  }
   if (gameOpen && globalThis.openagentsLab === 'game') gameStatus.textContent =
-    composer.dataset.chatState === 'streaming' || composer.dataset.chatState === 'sending' ? 'Checking…' : 'Tell us what you want to change.';
+    checking ? 'Checking…' : 'Tell us what you want to change.';
 }).observe(composer,{attributes:true,attributeFilter:['data-chat-state']});
 if (new URLSearchParams(location.search).get('lab') === 'game') {
   const openWhenReady = new MutationObserver(() => {

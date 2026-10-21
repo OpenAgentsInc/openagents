@@ -22,7 +22,7 @@ pub(crate) mod gpui_build;
 pub(crate) mod gpui_chat;
 pub(crate) mod gpui_demo;
 pub(crate) mod gpui_fonts;
-mod grid_home;
+pub(crate) mod grid_home;
 pub mod home;
 mod icecream;
 mod icecream_guide;

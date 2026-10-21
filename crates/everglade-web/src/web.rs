@@ -76,6 +76,9 @@ thread_local! {
     static PLAYERS: RefCell<String> = const { RefCell::new(String::new()) };
     /// A ground point the player should turn to face, from [`verse_face`].
     static FACE: RefCell<Option<[f32; 2]>> = const { RefCell::new(None) };
+    /// What the Grid homepage's visit records of joining (#12439). Zone
+    /// trips reach it through `verse-zone-load`.
+    static JOURNEY: RefCell<crate::visit::Journey> = RefCell::default();
 }
 
 /// Goes through the Grid's portal to `name` (`lagrange1`, `lagrange2`,
@@ -146,6 +149,14 @@ fn place_event(zone: &str, place: Place) {
         "verse-zone",
         &serde_json::json!({"zone": zone, "place": place.name()}).to_string(),
     );
+}
+
+/// Runs `f` on the visit's journey and sends what it returns.
+fn journey<E: IntoIterator<Item = crate::visit::Event>>(
+    f: impl FnOnce(&mut crate::visit::Journey) -> E,
+) {
+    let events = JOURNEY.with(|j| f(&mut j.borrow_mut()));
+    crate::visit::send(events);
 }
 
 /// Tells the page Verse stopped (`verse-stopped` on the window), so it can
@@ -1404,6 +1415,8 @@ impl Page {
             }
         }
         self.runtime.zone_tick();
+        let first_person = self.runtime.first_person();
+        journey(|j| j.first_person(first_person));
         if self.runtime.zone_revision != self.rendered_revision {
             let on_grid = self.runtime.is_bare() && self.runtime.is_plaza();
             let walks = self.draw_atlas.is_some();
@@ -1834,8 +1847,13 @@ impl Page {
                 self.runtime.set_occupied(true);
                 self.arrival = Arrival::Gliding(overview::shot(seconds), seconds);
                 mark("home-joined");
+                journey(|j| j.joined(now));
             }
             Arrival::Watching => {
+                journey(|j| {
+                    j.watching(now);
+                    None::<crate::visit::Event>
+                });
                 self.runtime.set_occupied(false);
                 self.runtime.set_shot(Some(overview::shot(seconds)));
                 return true;
@@ -2091,6 +2109,9 @@ impl Page {
 
     fn apply(&mut self, action: Option<Action>) {
         if let Some(action) = action {
+            if matches!(action, Action::PinchZoom { .. }) {
+                journey(|j| j.zoomed("pinch"));
+            }
             let _ = self.runtime.apply(action);
         }
     }
@@ -2317,6 +2338,12 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                         | "ArrowRight"
                 )
             {
+                if !walking() {
+                    journey(|j| {
+                        j.join_by(crate::visit::JoinBy::Keys);
+                        None::<crate::visit::Event>
+                    });
+                }
                 WALK.with(|walk| walk.set(true));
             }
             if !walking() {
@@ -2372,6 +2399,9 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 _ => 0.0,
             };
             if zoom != 0.0 && !chord && (page.runtime.is_plaza() || page.scheme().zone_panel()) {
+                if down {
+                    journey(|j| j.zoomed("keys"));
+                }
                 page.zoom.held = if down { zoom } else { 0.0 };
                 event.prevent_default();
                 return;
@@ -2432,6 +2462,15 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             }
             // On `/home`, a click on the overview joins the Grid (#12406).
             if HOME.with(std::cell::Cell::get) && !walking() && event.is_primary() {
+                let by = if touch {
+                    crate::visit::JoinBy::Touch
+                } else {
+                    crate::visit::JoinBy::Click
+                };
+                journey(|j| {
+                    j.join_by(by);
+                    None::<crate::visit::Event>
+                });
                 WALK.with(|walk| walk.set(true));
                 return;
             }
@@ -2571,6 +2610,7 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             let lines = (-pixels / 100.0).clamp(-10.0, 10.0) as f32;
             // Applied over the next few frames, so a wheel notch glides.
             page.borrow_mut().zoom.add(lines);
+            journey(|j| j.zoomed("wheel"));
         })?;
     }
     {

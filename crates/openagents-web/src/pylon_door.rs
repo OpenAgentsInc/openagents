@@ -22,6 +22,9 @@
 //! that fit (#12434). While the group answers someone else, the turn shows
 //! [`WAITING`] and waits up to [`GROUP_QUEUE`] for it, then says DeepSeek
 //! is busy. It is never answered by another model.
+//!
+//! Who answered each turn is counted in the site's hourly totals as
+//! `grid_answer` ([`answer_source`], #12439): never who asked or what.
 
 use std::future::Future;
 use std::path::PathBuf;
@@ -157,6 +160,19 @@ pub(crate) struct PylonDoor {
     pub fallback: Option<Box<dyn Door>>,
     /// How long a V4.1 turn waits while the group is busy.
     pub queue: Duration,
+    /// Where who answered is counted ([`answer_source`]).
+    pub analytics: Option<Arc<crate::analytics::Analytics>>,
+}
+
+/// What `grid_answer` counts for a turn: a pylon, a model group, the
+/// hosted chat, or nobody.
+pub(crate) fn answer_source(answered: bool, group: bool, hosted: bool) -> &'static str {
+    match (answered, group, hosted) {
+        (true, true, _) => "group",
+        (true, false, _) => "pylon",
+        (false, _, true) => "hosted",
+        (false, _, false) => "unavailable",
+    }
 }
 
 /// The pylon door for a turn, when it came from the Grid terminal, this
@@ -199,6 +215,7 @@ pub(crate) fn door(app: &App, headers: &HeaderMap, payer: &str) -> Option<PylonD
         decide: Arc::new(Api { client }),
         fallback: None,
         queue: GROUP_QUEUE,
+        analytics: Some(app.config.analytics.clone()),
     })
 }
 
@@ -374,14 +391,20 @@ impl Door for PylonDoor {
             .as_ref()
             .filter(|_| self.settings.want.is_none())
             .map(|door| door.ask(turns.clone(), context, reply.clone()));
-        let (settings, buyer, decide, queue) = (
+        let (settings, buyer, decide, queue, analytics) = (
             self.settings.clone(),
             self.buyer.clone(),
             self.decide.clone(),
             self.queue,
+            self.analytics.clone(),
         );
         let wants_group =
             matches!(&settings.want, Some(pylon::group::Want::Model(m)) if m == GROUP_MODEL);
+        let count = move |source: &'static str| {
+            if let Some(analytics) = &analytics {
+                analytics.event("grid_answer", source);
+            }
+        };
         Box::pin(async move {
             // Earlier answers go without the line naming who answered, which
             // a small model otherwise copies, with its answer, into the next
@@ -473,6 +496,7 @@ impl Door for PylonDoor {
                 );
             }
             if let Outcome::Answered(answer) = routed.outcome {
+                count(answer_source(true, routed.group.is_some(), false));
                 let slug = answer.pylon.rsplit(':').next().unwrap_or_default();
                 let mut reply = basic_coder::lock(&reply);
                 reply.text = shown(
@@ -488,7 +512,10 @@ impl Door for PylonDoor {
                 return;
             }
             match fallback {
-                Some(job) => job.await,
+                Some(job) => {
+                    count(answer_source(false, false, true));
+                    job.await;
+                }
                 None => {
                     // The person chose this model: say why it didn't
                     // answer, and never answer from another one.
@@ -498,6 +525,11 @@ impl Door for PylonDoor {
                         (true, false) => "busy",
                         (false, _) => "pylon_unavailable",
                     };
+                    count(if busy {
+                        "busy"
+                    } else {
+                        answer_source(false, false, false)
+                    });
                     let mut reply = basic_coder::lock(&reply);
                     reply.text.clear();
                     reply.failure = Some(Failure::Refused {

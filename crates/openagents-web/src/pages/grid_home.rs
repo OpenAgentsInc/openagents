@@ -221,11 +221,45 @@ const AFTER_LIST: &str = concat!(
 /// card loads on click. Only the focused GPUI chat input pauses world
 /// controls: the card has nothing to type into, so a click on it hands the
 /// keyboard straight back to the world (#12415).
+///
+/// First, unless the browser sends Do Not Track or Global Privacy Control,
+/// it starts the visit's events (#12439, [`crate::analytics::visits`]): a
+/// random visit id in this tab's `sessionStorage`, each event numbered
+/// and queued, and the queue sent to `/a/v` every 20 seconds, when the tab
+/// is hidden, and when the page is left. Zone trips come from Verse's
+/// `verse-zone-load` events (#12438); `globalThis.oaTrack(name, detail)`
+/// is how Verse, the Pylons layer, Game Lab, and the chat add the rest.
 const LOADER: &str = concat!(
     "\
+const track=(()=>{const nav=navigator;\n\
+if(nav.doNotTrack===\"1\"||window.doNotTrack===\"1\"||nav.globalPrivacyControl===true||typeof nav.sendBeacon!==\"function\"||!window.crypto)return()=>{};\n\
+const keep=(k,v)=>{try{if(v===undefined)return sessionStorage.getItem(k);sessionStorage.setItem(k,v)}catch(e){}return null};\n\
+let id=keep(\"oa.visit\");\n\
+if(!/^[0-9a-f]{16}$/.test(id||\"\")){id=Array.from(crypto.getRandomValues(new Uint8Array(8)),b=>b.toString(16).padStart(2,\"0\")).join(\"\");keep(\"oa.visit\",id);keep(\"oa.visit.n\",\"0\")}\n\
+let n=+keep(\"oa.visit.n\")||0,queue=[],shown=0,since=document.hidden?null:performance.now(),next=0;\n\
+const marks=[1e3,3e3,1e4,3e4,6e4,18e4,6e5,18e5];\n\
+const seen=()=>Math.round(shown+(since===null?0:performance.now()-since));\n\
+const flush=()=>{while(queue.length){try{nav.sendBeacon(\"/a/v\",JSON.stringify({v:id,r:\"/\",e:queue.splice(0,50)}))}catch(e){queue=[]}}};\n\
+const send=(name,detail)=>{n++;keep(\"oa.visit.n\",String(n));queue.push(detail?[name,n,detail]:[name,n]);if(queue.length>=50)flush()};\n\
+setInterval(()=>{if(next<marks.length&&seen()>=marks[next]){while(next<marks.length&&seen()>=marks[next])next++;send(\"heartbeat\",{time:seen()})}flush()},20000);\n\
+document.addEventListener(\"visibilitychange\",()=>{if(document.hidden){if(since!==null)shown+=performance.now()-since;since=null;send(\"tab_hidden\",{time:seen()});flush()}else since=performance.now()});\n\
+addEventListener(\"pagehide\",()=>{send(\"tab_left\",{time:seen()});flush()});\n\
+let zoneFrom=\"grid\";\n\
+addEventListener(\"verse-zone-load\",e=>{const d=e.detail||{},z=[\"grid\",\"lagrange1\",\"lagrange2\",\"everglade\",\"hosted\"].includes(d.zone)?d.zone:\"other\",time=Math.round(+d.ms||0);\n\
+if(d.direction===\"return\"){if(d.phase===\"ready\")send(\"plaza_returned\",{from:zoneFrom});else if(d.phase===\"failed\")send(\"zone_failed\",{zone:zoneFrom,reason:\"return\"});return}\n\
+if(d.phase===\"start\"){zoneFrom=z;send(\"portal_entered\",{zone:z});send(\"zone_load_start\",{zone:z})}\n\
+else if(d.phase===\"ready\")send(\"zone_ready\",{zone:z,time});else if(d.phase===\"failed\")send(\"zone_failed\",{zone:z,reason:\"load\"})});\n\
+globalThis.oaTrack=(name,detail)=>{try{send(String(name),typeof detail===\"string\"?JSON.parse(detail||\"{}\"):detail)}catch(e){}};\n\
+document.getElementById(\"home-account\").addEventListener(\"click\",e=>{const a=e.target.closest&&e.target.closest(\"a[href]\");\n\
+if(!a)return;const h=a.getAttribute(\"href\");\n\
+if(h.startsWith(\"/login\")||h.startsWith(\"/signup\")){keep(\"oa.visit.signin\",\"1\");send(h.startsWith(\"/login\")?\"login_clicked\":\"signup_clicked\");flush()}});\n\
+globalThis.oaSignedIn=()=>{if(keep(\"oa.visit.signin\")===\"1\"){keep(\"oa.visit.signin\",\"0\");send(\"signin_completed\")}};\n\
+send(\"page_view\");\n\
+return send})();\n\
 const still=matchMedia(\"(prefers-reduced-motion: reduce)\").matches;\
 const idle=t=>new Promise(r=>(window.requestIdleCallback||(f=>setTimeout(f,1)))(r,{timeout:t}));\
 const account=()=>fetch(\"/home/me\").then(r=>r.ok?r.json():null).then(me=>{if(!me||!me.signed_in)return;\
+globalThis.oaSignedIn&&oaSignedIn();\
 const grid=document.getElementById(\"everglade-canvas\");\
 if(me.verse_name)grid.dataset.name=me.verse_name;\
 if(me.csrf)grid.dataset.csrf=me.csrf;\
@@ -248,11 +282,12 @@ const onMount=f=>{const next=mounting.then(f);\
 mounting=next.catch(()=>{});\
 return next};\
 \nconst chatBox=document.getElementById(\"home-chat-mount\"),composer=document.getElementById(\"pylon-composer\"),keep=document.getElementById(\"lander-chat-keep\"),chatStatus=document.getElementById(\"home-chat-status\");\
-let terminalNear=false,chatReady=false,chatField=null,chatLoad=null,chatAssets=null,focusPending=false;\n\
+let terminalNear=false,chatReady=false,chatField=null,chatLoad=null,chatAssets=null,focusPending=false,chatShown=false;\n\
 const held=new Set(),blocked=new Set();\n\
 const world=document.getElementById(\"everglade-canvas\");\n\
 const syncFocus=()=>world.toggleAttribute(\"data-composing\",chatReady&&terminalNear&&document.activeElement===chatField);\n\
 const syncChat=()=>{const show=terminalNear&&chatReady;\n\
+if(show&&!chatShown)track(\"terminal_opened\");chatShown=show;\n\
 composer.classList.toggle(\"open\",show);\n\
 composer.setAttribute(\"aria-hidden\",String(!show));\n\
 composer.inert=!show;\n\
@@ -297,8 +332,9 @@ performance.mark(\"home-chat-ready\");\n\
 syncChat();ok()},{once:true});\n\
 performance.mark(\"home-chat-mounting\");glue.mount(still)}));\n\
 return glue})().catch(error=>{chatStatus.textContent=\"Chat couldn't open. Reload to try again.\";\n\
-console.warn(error);focusPending=false;syncFocus();throw error}));\n\
-globalThis.homeTerminal=near=>{near=(globalThis.openagentsLab===\"game\"||near)&&world.classList.contains(\"ready\");terminalNear=near;focusPending=near;\n\
+console.warn(error);track(\"terminal_failed\");focusPending=false;syncFocus();throw error}));\n\
+globalThis.homeTerminal=near=>{const walked=near&&globalThis.openagentsLab!==\"game\";near=(globalThis.openagentsLab===\"game\"||near)&&world.classList.contains(\"ready\");\n\
+if(walked&&near&&!terminalNear)track(\"terminal_reached\",{time:Math.round(performance.now())});terminalNear=near;focusPending=near;\n\
 syncChat();\n\
 if(near)loadChat().catch(()=>{})};\n\
 world.addEventListener(\"pointerdown\",()=>{focusPending=false;\n\
@@ -338,30 +374,42 @@ await glue.default({module_or_path:module});\
 glue.start(still);\
 document.documentElement.classList.add(\"js\");\
 performance.mark(\"pylons-layer\")}catch(e){}};\
-const verse=async()=>{try{await idle(800);\
+const verse=async()=>{let stage=\"download\",gpu=\"webgl\",shown=false;try{await idle(800);\
+gpu=await variant();\
 performance.mark(\"verse-start\");\
+track(\"verse_load_start\",{gpu});\
+addEventListener(\"verse-stopped\",()=>track(\"verse_load_failed\",{gpu,reason:shown?\"stopped\":\"gpu\"}),{once:true});\
 const canvas=document.getElementById(\"everglade-canvas\"),status=document.getElementById(\"everglade-status\");\
 const drawn=new Promise(r=>new MutationObserver((list,observer)=>{if(status.style.display===\"none\"){observer.disconnect();\
 r()}}).observe(status,{attributes:true,attributeFilter:[\"style\"]}));\
 const [module,glue]=await Promise.all([WebAssembly.compileStreaming(fetch(\"/everglade/everglade_web_bg.wasm\",{priority:\"low\"})),import(\"/everglade/everglade_web.js\")]);\
 performance.mark(\"verse-compiled\");\
+stage=\"start\";\
 prepareChat().catch(()=>{});\
 await idle(600);\
 await glue.default({module_or_path:module});\
 performance.mark(\"verse-instantiated\");\
 await drawn;\
+track(\"verse_first_frame\",{gpu,time:Math.round(performance.now())});\
 await new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)));\
 performance.mark(\"verse-first-frame\");\
 canvas.addEventListener(\"transitionend\",()=>performance.mark(\"verse-visible\"),{once:true});\
 canvas.classList.add(\"ready\");\
 document.documentElement.classList.add(\"world-ready\");\
+shown=true;track(\"verse_ready\",{gpu,time:Math.round(performance.now())});\
 idle(1200).then(()=>loadChat()).catch(()=>{});\
-addEventListener(\"verse-stopped\",()=>{canvas.classList.remove(\"ready\");document.documentElement.classList.remove(\"world-ready\");homeTerminal(false)},{once:true})}catch(e){}};\
+addEventListener(\"verse-stopped\",()=>{canvas.classList.remove(\"ready\");document.documentElement.classList.remove(\"world-ready\");homeTerminal(false)},{once:true})}catch(e){track(\"verse_load_failed\",{gpu,reason:stage})}};\
 account();\
 loadLayer().then(verse);\
 ",
     include_str!("grid_game_lab.js")
 );
+
+/// The loader, for the analytics tests.
+#[cfg(test)]
+pub(crate) fn loader() -> &'static str {
+    LOADER
+}
 
 /// The relay the Grid's players meet on, which the page's policy admits
 /// (#12406).

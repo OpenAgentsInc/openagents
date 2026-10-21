@@ -86,6 +86,9 @@ struct Layer {
     seen: bool,
     open: Option<String>,
     opener: Option<HtmlElement>,
+    /// The pylons pointed at in this page, so the visit records each once
+    /// (#12439).
+    pointed: std::collections::BTreeSet<String>,
 }
 
 type Shared = Rc<RefCell<Layer>>;
@@ -131,6 +134,7 @@ fn run() -> Option<()> {
         seen: false,
         open: None,
         opener: None,
+        pointed: Default::default(),
     }));
     layer.borrow_mut().layout();
 
@@ -288,6 +292,14 @@ fn run() -> Option<()> {
                 .and_then(|p| p.get_attribute("data-pylon"));
             let mut l = layer.borrow_mut();
             let hover = if over { id } else { None };
+            if let Some(id) = &hover
+                && !l.pointed.contains(id)
+                && let Some(entry) = l.entries.get(id)
+            {
+                let kind = crate::visit::kind(entry.shape);
+                l.pointed.insert(id.clone());
+                crate::visit::send("pylon_hovered", &format!("{{\"kind\":\"{kind}\"}}"));
+            }
             if l.hover != hover {
                 l.hover = hover;
                 l.publish();
@@ -331,6 +343,18 @@ fn run() -> Option<()> {
                     .flatten()
                     .and_then(|b| b.dyn_into().ok())
                     .filter(|_| keyboard);
+                let from = if found.closest("#pylons-panel").ok().flatten().is_some() {
+                    "list"
+                } else {
+                    "world"
+                };
+                if let Some(entry) = layer.borrow().entries.get(&id) {
+                    let kind = crate::visit::kind(entry.shape);
+                    crate::visit::send(
+                        "pylon_opened",
+                        &format!("{{\"kind\":\"{kind}\",\"from\":\"{from}\"}}"),
+                    );
+                }
                 open(&layer, &id, opener);
             }
         });

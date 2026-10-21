@@ -686,7 +686,20 @@ fn group_door(url: &str, home: &std::path::Path, queue: Duration) -> PylonDoor {
         decide: Arc::new(NoDecision),
         fallback: Some(Box::new(Hosted)),
         queue,
+        analytics: None,
     }
+}
+
+#[test]
+fn who_answered_is_counted_by_a_fixed_word() {
+    assert_eq!(answer_source(true, true, false), "group");
+    assert_eq!(answer_source(true, false, true), "pylon");
+    assert_eq!(answer_source(false, false, true), "hosted");
+    assert_eq!(answer_source(false, false, false), "unavailable");
+    for word in ["group", "pylon", "hosted", "unavailable", "busy"] {
+        assert!(crate::analytics::GRID_ANSWER.contains(&word));
+    }
+    assert!(crate::analytics::EVENTS.contains(&"grid_answer"));
 }
 
 fn said(role: Role, text: String) -> Turn {

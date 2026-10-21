@@ -40,6 +40,9 @@ struct Live {
     /// The fade on the text now arriving.
     started: Instant,
     stopping: bool,
+    /// When the first words arrived, ms after the message was sent: for
+    /// the Grid homepage's visit (#12439).
+    first_ms: Option<u128>,
     _follow: Follow,
     _task: Task<()>,
 }
@@ -86,6 +89,10 @@ pub struct LanderChat {
     ask_group: bool,
     flint_ready: bool,
     ask_flint: bool,
+    /// When the last message was sent, and how many this page has sent,
+    /// for the visit's events.
+    sent_at: Option<Instant>,
+    sent_count: u32,
     _ticker: Task<()>,
 }
 
@@ -146,6 +153,8 @@ impl LanderChat {
             ask_group: true,
             flint_ready: false,
             ask_flint: false,
+            sent_at: None,
+            sent_count: 0,
             _ticker: ticker,
         };
         let kept = kept_pick(this.current.as_deref());
@@ -426,6 +435,13 @@ impl LanderChat {
     fn pick(&mut self, pick: &str, cx: &mut Context<Self>) {
         self.ask_group = pick == "group";
         self.ask_flint = pick == "flint";
+        track(
+            "model_chosen",
+            &format!(
+                "{{\"model\":\"{}\"}}",
+                model::pick_word(self.ask_group, self.ask_flint)
+            ),
+        );
         if let Some(chat) = &self.current {
             keep_pick(chat, self.ask_group, self.ask_flint);
         }
@@ -473,6 +489,7 @@ impl LanderChat {
                     text: model::LOST.into(),
                     sign_in: false,
                 });
+                track("answer_failed", "{\"why\":\"lost\"}");
                 return;
             }
         };
@@ -493,6 +510,7 @@ impl LanderChat {
             messages: BTreeMap::new(),
             started: Instant::now(),
             stopping: false,
+            first_ms: None,
             _follow: follow,
             _task: task,
         });
@@ -527,6 +545,7 @@ impl LanderChat {
                     && live.messages.values().all(|(_, t)| t.trim().is_empty())
                 {
                     mark("lander8-first-token");
+                    live.first_ms = self.sent_at.map(|at| at.elapsed().as_millis());
                 }
                 let slot = live
                     .messages
@@ -548,8 +567,36 @@ impl LanderChat {
                     }
                 }
             }
-            Event::Done { outcome, .. } => self.finish(outcome == "stopped", None),
-            Event::Error { error, .. } => self.finish(false, Some(error.message)),
+            Event::Done { outcome, .. } => {
+                if outcome == "stopped" {
+                    track("answer_failed", "{\"why\":\"stopped\"}");
+                } else {
+                    let text = live
+                        .messages
+                        .values()
+                        .find(|(_, text)| !text.trim().is_empty())
+                        .map_or("", |(_, text)| text.as_str());
+                    let (source, family) = model::answer_source(text);
+                    let ms = live
+                        .first_ms
+                        .or_else(|| self.sent_at.map(|at| at.elapsed().as_millis()))
+                        .unwrap_or_default();
+                    track(
+                        "answered",
+                        &format!(
+                            "{{\"source\":\"{source}\",\"family\":\"{family}\",\"time\":{ms}}}"
+                        ),
+                    );
+                }
+                self.finish(outcome == "stopped", None)
+            }
+            Event::Error { error, .. } => {
+                track(
+                    "answer_failed",
+                    &format!("{{\"why\":\"{}\"}}", stream_why(&error.code)),
+                );
+                self.finish(false, Some(error.message))
+            }
         }
         cx.notify();
     }
@@ -610,6 +657,20 @@ impl LanderChat {
         self.notice = None;
         let current = self.current.clone();
         mark("lander8-send");
+        self.sent_at = Some(Instant::now());
+        self.sent_count += 1;
+        track(
+            "message_sent",
+            &format!(
+                "{{\"model\":\"{}\",\"nth\":\"{}\"}}",
+                model::pick_word(self.group_ready && self.ask_group, self.ask_flint),
+                if self.sent_count == 1 {
+                    "first"
+                } else {
+                    "later"
+                }
+            ),
+        );
         cx.spawn(async move |this, cx| {
             let sent = match &current {
                 Some(id) => client.reply(id, &request, &text).await.map(|()| id.clone()),
@@ -635,6 +696,11 @@ impl LanderChat {
                             this.entries.pop();
                         }
                         this.put_back(&text, cx);
+                        let code = error.downcast_ref::<Refusal>().map(|r| r.code.as_str());
+                        track(
+                            "answer_failed",
+                            &format!("{{\"why\":\"{}\"}}", model::failure_word(code)),
+                        );
                         this.refused(&error, Some(&text), cx);
                     }
                 }
@@ -1186,6 +1252,32 @@ fn take_draft() -> Option<String> {
     let draft = storage.get_item(model::DRAFT_KEY).ok().flatten()?;
     let _ = storage.remove_item(model::DRAFT_KEY);
     (!draft.trim().is_empty()).then_some(draft)
+}
+
+/// What a turn that ended in a refusal is recorded as (#12439).
+fn stream_why(code: &openagents_web_client::RefusalCode) -> &'static str {
+    use openagents_web_client::RefusalCode as Code;
+    match code {
+        Code::Busy | Code::RateLimited => "busy",
+        Code::Unavailable => "unavailable",
+        Code::AccessLost => "sign_in",
+        Code::QuotaExhausted => "refused",
+        Code::Timeout | Code::StreamTimeout => "error",
+        Code::Other(code) if code == "disconnected" => "lost",
+        Code::Other(code) => model::failure_word(Some(code)),
+    }
+}
+
+/// Adds one event to the Grid homepage's visit (#12439) through the
+/// page's `globalThis.oaTrack`, which only that page defines, and only
+/// when the browser didn't ask not to be tracked. `detail` is JSON of
+/// fixed words and durations, never what anyone typed.
+fn track(name: &str, detail: &str) {
+    if let Ok(callback) = js_sys::Reflect::get(&js_sys::global(), &"oaTrack".into())
+        && let Some(callback) = callback.dyn_ref::<js_sys::Function>()
+    {
+        let _ = callback.call2(&JsValue::UNDEFINED, &name.into(), &detail.into());
+    }
 }
 
 /// A performance mark the page's timing checks read.

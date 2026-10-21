@@ -24,6 +24,31 @@ The web container reads `OPENAGENTS_WEB_ANALYTICS_BUCKET` and
 `scripts/deploy/web.sh promote` add both. A development server can use
 `OPENAGENTS_WEB_ANALYTICS_DIR=DIR` instead of a bucket.
 
+## Grid homepage visits (#12439)
+
+The Grid homepage (`/`) is the one page whose events carry a visit id: a
+random 16-hex-digit number its loader makes per tab and keeps in
+`sessionStorage` (never a cookie), sent with each event to `POST /a/v` in
+batches (every 20 seconds, on tab hide, and on `pagehide`). The fixed list
+of events and their allowed details is `EVENTS` in
+`crates/openagents-web/src/analytics/visits.rs`; anything else is refused.
+Durations arrive in milliseconds and are kept only as buckets. No IP
+address, account, cookie, message text, key, or Pylon name is kept, and
+`DNT` or `Sec-GPC` means no id and no events. Verse (`everglade-web`), the
+Pylons layer (`pylons-web`), the terminal chat, and Game Lab send theirs
+through the page's `globalThis.oaTrack`. The terminal's answers are also
+counted server-side, without a visit id, as `grid_answer` (`pylon`,
+`group`, `hosted`, or `unavailable`).
+
+Each instance rewrites `visits/YYYY-MM-DD/HH/INSTANCE.json` (that hour's
+rows) every minute. The hourly task deletes days older than 30 days; also
+add a bucket lifecycle rule deleting `visits/` objects after 31 days, since
+the `raw/` rule doesn't match this prefix. The dashboard's **Grid visits**
+section shows the funnel, top paths, zones and load times, Pylons, Game
+Lab, the terminal's chat, time on the page, and the latest visits;
+`/admin/analytics?visit=ID` is one visit's timeline, and `?days=1|7|30`
+picks the window.
+
 ## Opening the dashboard
 
 Sign in on <https://openagents.com> with GitHub as a site admin (an

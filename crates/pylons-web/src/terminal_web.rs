@@ -19,6 +19,8 @@ pub struct Terminal {
     away: bool,
     group: bool,
     flint: bool,
+    /// Whether the player stands in the Pylon Bay, for the visit (#12439).
+    in_bay: bool,
 }
 
 impl Terminal {
@@ -46,6 +48,7 @@ impl Terminal {
             away: false,
             group: false,
             flint: false,
+            in_bay: false,
         })
     }
 
@@ -98,6 +101,11 @@ impl Terminal {
     }
 
     pub fn frame(&mut self, camera: Option<WorldCamera>, player: Option<[f64; 3]>) {
+        let in_bay = !self.away && player.is_some_and(|p| crate::visit::in_bay(p, self.in_bay));
+        if in_bay && !self.in_bay {
+            crate::visit::send("pylon_bay_entered", "{}");
+        }
+        self.in_bay = in_bay;
         let near = !self.away
             && camera.is_some()
             && player.is_some_and(|p| terminal::in_reach(p, self.near));

@@ -15,12 +15,20 @@
 //! What is never read or kept: IP addresses (`X-Forwarded-For` is not
 //! read), cookies, account ids, message text, query strings, full referrer
 //! addresses, or any identifier of a person or browser. Nothing is set in
-//! the browser. There is no visitor count: no row can tell two visits by
-//! one person from visits by two people.
+//! the browser. There is no visitor count in these totals: no row can tell
+//! two visits by one person from visits by two people.
+//!
+//! The one exception is the Grid homepage (`/`, #12439, [`visits`]): its
+//! page makes a random id for each visit, keeps it in the tab's
+//! `sessionStorage` (gone when the tab closes; never a cookie), and sends
+//! it with each event of a fixed list to `POST /a/v`, so the dashboard can
+//! show what a visit did in order. The id is never joined to an account,
+//! an IP address, or a cookie, every detail comes from a fixed list or a
+//! time bucket, and the rows are deleted after 30 days.
 //!
 //! `DNT: 1` or `Sec-GPC: 1`: the page view is counted (route, traffic
 //! class, status, latency) and nothing else: no referrer, no device, no
-//! event.
+//! event, and on the Grid homepage no visit id.
 //!
 //! Counts are kept in memory and written every minute to the store
 //! ([`store`]); the dashboard is `/admin/analytics` ([`dashboard`]).
@@ -32,9 +40,11 @@
 
 mod classify;
 pub mod dashboard;
+pub mod grid;
 pub mod store;
 #[cfg(test)]
 mod tests;
+pub mod visits;
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -61,7 +71,7 @@ pub const SCRIPT: &str = "/static/a.js";
 pub const DASHBOARD: &str = "/admin/analytics";
 
 /// Every product event name a row may carry.
-pub const EVENTS: [&str; 23] = [
+pub const EVENTS: [&str; 24] = [
     "lab_entered",
     "lab_version_saved",
     "lab_edit_refused",
@@ -92,7 +102,13 @@ pub const EVENTS: [&str; 23] = [
     "app_first_answer",
     "app_first_answer_failed",
     "app_visitor_signed_in_after_limit",
+    // Who answered a message from the Grid's terminal (#12439): a pylon, a
+    // model group, the hosted chat, nobody, or the chosen model was busy.
+    "grid_answer",
 ];
+
+/// The fixed detail of `grid_answer`.
+pub const GRID_ANSWER: [&str; 5] = ["pylon", "group", "hosted", "unavailable", "busy"];
 
 /// The fixed detail of `app_first_answer`: how many seconds passed from the
 /// message's admission to its answer's first words.
@@ -181,7 +197,9 @@ impl Row {
     pub fn valid(&self) -> bool {
         bounded(&self.name)
             && bounded(&self.detail)
-            && (self.series != Series::Event || EVENTS.contains(&self.name.as_str()))
+            && (self.series != Series::Event
+                || EVENTS.contains(&self.name.as_str())
+                || visits::is_counted_name(&self.name))
     }
 }
 
@@ -243,6 +261,13 @@ pub fn hour_now() -> u64 {
         .map_or(0, |d| d.as_secs() / 3600)
 }
 
+/// The current minute, in minutes since 1970 UTC.
+pub fn minute_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() / 60)
+}
+
 /// `YYYY-MM-DD` of a day (days since 1970).
 pub fn date(day: u64) -> String {
     // Howard Hinnant's civil_from_days.
@@ -283,6 +308,7 @@ fn ignored(template: &str) -> bool {
             "/favicon.svg" | "/favicon.ico" | "/health" | "/theme" | "/account/avatar"
         )
         || template == BEACON
+        || template == visits::BEACON
         || template == DASHBOARD
         || template == crate::attribution::SCOREBOARD
 }
@@ -396,6 +422,8 @@ pub struct Analytics {
     /// SHA-256 of the dashboard key, the bearer fallback for scripts.
     key: Option<[u8; 32]>,
     flushing: tokio::sync::Mutex<()>,
+    /// The Grid homepage's per-visit rows not yet written ([`visits`]).
+    visits: Mutex<visits::Buffer>,
 }
 
 impl Default for Analytics {
@@ -415,6 +443,7 @@ impl Analytics {
                 .filter(|key| !key.trim().is_empty())
                 .map(|key| sha(key.trim())),
             flushing: tokio::sync::Mutex::new(()),
+            visits: Mutex::new(visits::Buffer::default()),
         }
     }
 
@@ -480,6 +509,35 @@ impl Analytics {
         }
     }
 
+    /// Keeps a beacon's admitted per-visit events, and counts each in the
+    /// hourly totals as [`visits::counted_name`]. Returns how many were
+    /// kept.
+    pub fn visit(&self, admitted: &visits::Admitted) -> usize {
+        let minute = minute_now();
+        let kept = self
+            .visits
+            .lock()
+            .map(|mut buffer| buffer.add(admitted, minute))
+            .unwrap_or_default();
+        for (_, name, _) in admitted.events.iter().take(kept) {
+            self.count(
+                minute / 60,
+                Series::Event,
+                visits::counted_name(name),
+                String::new(),
+            );
+        }
+        kept
+    }
+
+    /// The per-visit rows held in memory and not yet dropped.
+    pub fn visit_snapshot(&self) -> Vec<visits::VisitRow> {
+        self.visits
+            .lock()
+            .map(|buffer| buffer.rows().to_vec())
+            .unwrap_or_default()
+    }
+
     /// Everything counted in memory and not yet dropped, as rows.
     pub fn snapshot(&self) -> Vec<Row> {
         self.counts
@@ -515,7 +573,34 @@ impl Analytics {
         if let Ok(mut counts) = self.counts.lock() {
             counts.retain(|key, _| !(written.contains(&key.hour) && key.hour + 1 < now));
         }
+        let held = self.visit_snapshot();
+        let written = visits::write(store, &held, &self.instance).await?;
+        if let Ok(mut buffer) = self.visits.lock() {
+            buffer.forget(&written, now);
+        }
         Ok(())
+    }
+
+    /// The Grid homepage's per-visit rows for the last `days` days (at
+    /// most [`visits::KEEP_DAYS`]), with what this process holds.
+    pub async fn load_visits(&self, days: u64) -> Result<Vec<visits::VisitRow>, store::Error> {
+        let today = hour_now() / 24;
+        let first = today
+            .saturating_sub(days.clamp(1, visits::KEEP_DAYS) - 1)
+            .max(visits::first_kept(today));
+        let Some(store) = &self.store else {
+            return Ok(self
+                .visit_snapshot()
+                .into_iter()
+                .filter(|row| row.day() >= first && visits::kept(row, today))
+                .collect());
+        };
+        self.flush().await?;
+        let mut rows = Vec::new();
+        for day in first..=today {
+            rows.extend(visits::read_day(store, day).await?);
+        }
+        Ok(rows)
     }
 
     /// Writes counts every minute and remakes the last two days' rollups
@@ -537,6 +622,11 @@ impl Analytics {
                 if rolled.elapsed() >= ROLLUP_EVERY {
                     rolled = Instant::now();
                     let today = hour_now() / 24;
+                    if let Some(store) = &me.store
+                        && let Err(error) = visits::prune(store, today).await
+                    {
+                        eprintln!("analytics: deleting old visits: {error}");
+                    }
                     for day in [today - 1, today - 2] {
                         if let Some(store) = &me.store
                             && let Err(error) = rollup(store, day).await
@@ -687,6 +777,7 @@ pub(crate) async fn observe(State(app): State<App>, request: Request, next: Next
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(BEACON, post(beacon))
+        .route(visits::BEACON, post(visit_beacon))
         .route(SCRIPT, get(script))
         .route("/v1/admin/analytics", get(dashboard::api))
         .route(DASHBOARD, get(dashboard::show).fallback(crate::not_found))
@@ -775,6 +866,35 @@ async fn beacon(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Resp
             }
         }
     };
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response
+}
+
+/// `POST /a/v`: a batch of the Grid homepage's per-visit events
+/// ([`visits`]). Answers `204` when every event was one the page may send
+/// (kept, or dropped for `DNT`, `Sec-GPC`, a bot, or a limit), `400` when
+/// the body isn't a batch or any event or detail was refused (the rest are
+/// kept). Sets nothing and keeps nothing of the request but the batch's
+/// checked events.
+async fn visit_beacon(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
+    let client = Client::from_headers(&headers);
+    let status = match visits::parse(&body) {
+        _ if body.len() > visits::MOST_BYTES => StatusCode::PAYLOAD_TOO_LARGE,
+        None => StatusCode::BAD_REQUEST,
+        Some(admitted) => {
+            if !client.quiet && client.traffic == Traffic::Human {
+                app.config.analytics.visit(&admitted);
+            }
+            if admitted.refused == 0 {
+                StatusCode::NO_CONTENT
+            } else {
+                StatusCode::BAD_REQUEST
+            }
+        }
+    };
+    let mut response = status.into_response();
     response
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));

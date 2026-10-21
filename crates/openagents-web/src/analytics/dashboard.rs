@@ -38,13 +38,70 @@ pub(super) async fn show(
         return guarded(page);
     }
     let analytics = &app.config.analytics;
-    let content = match analytics.load(30).await {
-        Ok(counts) => report(&counts, hour_now(), analytics.has_store()),
-        Err(_) => html! {
+    let asked = Asked::from_query(query.as_deref());
+    let couldnt = || {
+        html! {
             (MarkdownRoot::new(html! { h1 { "Analytics" } p { "The counts couldn't be read. Try again in a minute." } }))
-        },
+        }
+    };
+    if let Some(visit) = &asked.visit {
+        let content = match analytics.load_visits(super::visits::KEEP_DAYS).await {
+            Ok(rows) => html! {
+                (MarkdownRoot::new(html! { h1 { "Analytics" } }))
+                (super::grid::timeline(&rows, visit))
+            },
+            Err(_) => couldnt(),
+        };
+        return guarded(page(&headers, StatusCode::OK, content));
+    }
+    let content = match (
+        analytics.load(30).await,
+        analytics.load_visits(asked.days).await,
+    ) {
+        (Ok(counts), Ok(rows)) => report_with(
+            &counts,
+            hour_now(),
+            analytics.has_store(),
+            super::grid::report(&rows, asked.days),
+        ),
+        _ => couldnt(),
     };
     guarded(page(&headers, StatusCode::OK, content))
+}
+
+/// What the dashboard's address asks for: one visit's timeline
+/// (`?visit=ID`), or the visits of the last `days` days (`?days=1|7|30`,
+/// 7 when not given).
+#[derive(Debug, PartialEq, Eq)]
+pub struct Asked {
+    pub visit: Option<String>,
+    pub days: u64,
+}
+
+impl Asked {
+    pub fn from_query(query: Option<&str>) -> Self {
+        let mut asked = Self {
+            visit: None,
+            days: 7,
+        };
+        for (key, value) in url::form_urlencoded::parse(query.unwrap_or_default().as_bytes()) {
+            match key.as_ref() {
+                "visit" if super::visits::valid_id(&value) => {
+                    asked.visit = Some(value.into_owned())
+                }
+                "days" => {
+                    if let Some((days, _)) = super::grid::DAYS
+                        .iter()
+                        .find(|(d, _)| d.to_string() == value)
+                    {
+                        asked.days = *days;
+                    }
+                }
+                _ => {}
+            }
+        }
+        asked
+    }
 }
 
 /// A bearer dashboard key that matches, or a signed-in site admin. A
@@ -234,6 +291,11 @@ fn bars(caption: &str, points: &[(String, u64)]) -> Markup {
 
 /// The whole report for `counts`, as of `hour`.
 pub(super) fn report(counts: &Counts, hour: u64, stored: bool) -> Markup {
+    report_with(counts, hour, stored, html! {})
+}
+
+/// The report with the Grid homepage's visits after the headline numbers.
+pub(super) fn report_with(counts: &Counts, hour: u64, stored: bool, grid: Markup) -> Markup {
     let w = Window {
         counts,
         today: hour / 24,
@@ -378,7 +440,8 @@ pub(super) fn report(counts: &Counts, hour: u64, stored: bool) -> Markup {
         (MarkdownRoot::new(html! {
             h1 { "Analytics" }
             p {
-                "Counts only: no cookies, no IP addresses, no message text, no accounts. "
+                "No cookies, no IP addresses, no message text, no accounts. Counts only, "
+                "except the Grid homepage's visits, which each have a random id. "
                 "Times are UTC. "
                 @if stored { "Updated every minute." } @else { "This server keeps counts in memory only." }
             }
@@ -388,6 +451,7 @@ pub(super) fn report(counts: &Counts, hour: u64, stored: bool) -> Markup {
             }
         }))
         (facts)
+        (grid)
         h2 { "People, last 30 days" }
         (bars("Page views by people per day", &day_points(&views("human"))))
         h2 { "People, today by hour" }
@@ -450,12 +514,13 @@ pub(super) async fn api(State(app): State<App>, headers: HeaderMap) -> Response 
             "Not found.",
         ));
     }
-    match app.config.analytics.load(30).await {
-        Ok(counts) => guarded(crate::coder_sync::answer(
+    let analytics = &app.config.analytics;
+    match (analytics.load(30).await, analytics.load_visits(7).await) {
+        (Ok(counts), Ok(rows)) => guarded(crate::coder_sync::answer(
             StatusCode::OK,
-            report_json(&counts, hour_now(), app.config.analytics.has_store()),
+            report_json(&counts, &rows, hour_now(), analytics.has_store()),
         )),
-        Err(_) => guarded(crate::coder_sync::refused(
+        _ => guarded(crate::coder_sync::refused(
             StatusCode::SERVICE_UNAVAILABLE,
             "unavailable",
             "The counts couldn't be read. Try again in a minute.",
@@ -463,8 +528,13 @@ pub(super) async fn api(State(app): State<App>, headers: HeaderMap) -> Response 
     }
 }
 
-/// Aggregate report for shared Rust Native rows; no per-person data.
-fn report_json(counts: &Counts, hour: u64, stored: bool) -> Value {
+/// Aggregate report for shared Rust Native rows; no visit ids.
+fn report_json(
+    counts: &Counts,
+    visits: &[super::visits::VisitRow],
+    hour: u64,
+    stored: bool,
+) -> Value {
     let w = Window {
         counts,
         today: hour / 24,
@@ -620,6 +690,10 @@ fn report_json(counts: &Counts, hour: u64, stored: bool) -> Value {
         }).collect();
         sections.push(json!({"title": title, "rows": rows}));
     }
+    let grid = super::grid::visits(visits);
+    let funnel = super::grid::funnel(&grid);
+    sections.push(json!({"title": "Grid funnel, 7 days", "rows": super::grid::FUNNEL.iter().zip(funnel).map(|((label, _), n)| json!({"label": label, "detail": format!("{} visits", number(n))})).collect::<Vec<_>>()}));
+    sections.push(json!({"title": "Grid paths, 7 days", "rows": super::grid::top_paths(&grid, 15).into_iter().map(|(path, n)| json!({"label": path, "detail": format!("{} visits", number(n))})).collect::<Vec<_>>()}));
     for (title, points) in [
         (
             "People, last 30 days",
@@ -694,7 +768,7 @@ mod gpui_tests {
                 100,
             ),
         ]);
-        let report = report_json(&counts, today, false);
+        let report = report_json(&counts, &[], today, false);
         let sections = report["sections"].as_array().unwrap();
         let people = sections
             .iter()

@@ -10,6 +10,10 @@
 //! - `daily/YYYY-MM-DD.json`: the sum of a day's raw files, per hour, made
 //!   by [`super::rollup`]. Any instance may make it; the inputs are the same,
 //!   so concurrent writers write the same sum. Kept 400 days (13 months).
+//! - `visits/YYYY-MM-DD/HH/INSTANCE.json`: one instance's per-visit events
+//!   for one hour ([`super::visits`]), rewritten whole at each flush.
+//!   Deleted after 30 days by [`super::visits::prune`] (and a bucket
+//!   lifecycle rule).
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -129,6 +133,21 @@ impl Store {
                 Err(_) => Err(Error("The analytics file could not be read.")),
             },
             Self::Gcs(gcs) => gcs.get(name).await,
+        }
+    }
+
+    /// Deletes `name`; a name that isn't there is already deleted.
+    pub async fn delete(&self, name: &str) -> Result<(), Error> {
+        if !valid_name(name) {
+            return Err(Error("The analytics object name is invalid."));
+        }
+        match self {
+            Self::Disk(root) => match tokio::fs::remove_file(root.join(name)).await {
+                Ok(()) => Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                Err(_) => Err(Error("The analytics file could not be deleted.")),
+            },
+            Self::Gcs(gcs) => gcs.delete(name).await,
         }
     }
 
@@ -259,6 +278,21 @@ impl Gcs {
             return Err(Error("An analytics object is too large."));
         }
         Ok(Some(bytes.to_vec()))
+    }
+
+    async fn delete(&self, name: &str) -> Result<(), Error> {
+        let response = self
+            .client
+            .delete(self.object_url(name)?)
+            .bearer_auth(self.bearer().await?)
+            .send()
+            .await
+            .map_err(|_| Error("The analytics delete did not finish."))?;
+        if response.status().is_success() || response.status() == reqwest::StatusCode::NOT_FOUND {
+            Ok(())
+        } else {
+            Err(Error("The analytics delete was refused."))
+        }
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<String>, Error> {

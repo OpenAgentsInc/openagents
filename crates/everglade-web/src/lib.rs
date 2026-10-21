@@ -38,6 +38,8 @@ mod presence_ui;
 mod pylon_bay;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod transit;
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+mod visit;
 #[cfg(target_arch = "wasm32")]
 mod web;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]

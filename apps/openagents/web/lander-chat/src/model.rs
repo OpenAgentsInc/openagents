@@ -68,6 +68,60 @@ pub fn asks_flint(kept: Option<&str>) -> bool {
     kept == Some("flint")
 }
 
+/// The word the Grid homepage's visit records a model choice as
+/// (#12439): `deepseek`, `flint`, or `any`.
+pub fn pick_word(group: bool, flint: bool) -> &'static str {
+    if flint {
+        "flint"
+    } else if group {
+        "deepseek"
+    } else {
+        "any"
+    }
+}
+
+/// Who answered, from the line the site puts over a pylon's answer
+/// (`**DeepSeek V4.1** · group ...` or `**NAME** · MODEL`): the source
+/// (`group`, `pylon`, or `hosted`) and the model's family, a fixed word.
+/// Never the pylon's name.
+pub fn answer_source(text: &str) -> (&'static str, &'static str) {
+    let first = text.trim_start().lines().next().unwrap_or_default();
+    let Some((name, from)) = first
+        .strip_prefix("**")
+        .and_then(|line| line.split_once("** · "))
+    else {
+        return ("hosted", "other");
+    };
+    if from.starts_with("group ") {
+        return ("group", family(name));
+    }
+    ("pylon", family(from))
+}
+
+/// The family of a model name: one of a fixed list, or `other`.
+pub fn family(model: &str) -> &'static str {
+    let model = model.to_ascii_lowercase();
+    [
+        "deepseek", "flint", "gemma", "qwen", "llama", "mistral", "gpt", "claude", "gemini",
+    ]
+    .into_iter()
+    .find(|family| model.contains(family))
+    .unwrap_or("other")
+}
+
+/// The word a refused message is recorded as: `busy`, `sign_in`,
+/// `unavailable` (no pylon could answer), or `refused`; `error` when the
+/// site gave no reason.
+pub fn failure_word(code: Option<&str>) -> &'static str {
+    match code {
+        Some(code) if asks_sign_in(code) => "sign_in",
+        Some("busy" | "deepseek_busy" | "rate_limited" | "http_429" | "http_409") => "busy",
+        Some("pylon_unavailable") => "unavailable",
+        Some(_) => "refused",
+        None => "error",
+    }
+}
+
 /// The line over the composer before the first message.
 pub const WELCOME: &str = "What can we help with?";
 pub const PLACEHOLDER: &str = "Message OpenAgents";
@@ -475,6 +529,33 @@ mod tests {
         ] {
             assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
         }
+    }
+
+    #[test]
+    fn the_visit_records_who_answered_by_fixed_words_only() {
+        assert_eq!(
+            answer_source("**DeepSeek V4.1** · group w16-g5 (4 parts)\n\nHello"),
+            ("group", "deepseek")
+        );
+        assert_eq!(
+            answer_source("**alice-mac** · gemma-3-4b-it\n\nHi"),
+            ("pylon", "gemma")
+        );
+        assert_eq!(answer_source("**Box** · Flint\n\nHi"), ("pylon", "flint"));
+        assert_eq!(
+            answer_source("**Box** · my-model\n\nHi"),
+            ("pylon", "other")
+        );
+        assert_eq!(answer_source("Hello there"), ("hosted", "other"));
+        assert_eq!(pick_word(true, false), "deepseek");
+        assert_eq!(pick_word(true, true), "flint");
+        assert_eq!(pick_word(false, false), "any");
+        assert_eq!(failure_word(Some("busy")), "busy");
+        assert_eq!(failure_word(Some("deepseek_busy")), "busy");
+        assert_eq!(failure_word(Some("pylon_unavailable")), "unavailable");
+        assert_eq!(failure_word(Some("signed_out")), "sign_in");
+        assert_eq!(failure_word(Some("too_long")), "refused");
+        assert_eq!(failure_word(None), "error");
     }
 
     #[test]

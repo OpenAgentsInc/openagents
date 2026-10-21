@@ -91,10 +91,23 @@ for it.
   copying the install command, and logging in.
 - **What we don't:** your IP address, cookies, your account, what you
   write, or anything that tells one visitor from another. We keep hourly
-  totals, so we can't tell whether two visits came from one person.
+  totals, so we can't tell whether two visits came from one person. The
+  Grid homepage's visit number, below, tells one tab's visit from
+  another, never who you are.
+- **On the Grid homepage:** the page makes a random number for your
+  visit and keeps it in that browser tab until you close it (not a
+  cookie). With it we record the steps of your visit in order: the Grid
+  loading, joining, walking to the terminal, opening a Pylon (only its
+  kind), going through a portal, Game Lab, choosing a model, sending a
+  message and whether an answer came, clicking Log in or Sign up, and
+  roughly how long you stayed. Never what you type, your account, your IP
+  address, keys, or Pylon names, and the number is never tied to your
+  account or a cookie.
 - **Do Not Track and Global Privacy Control:** with either one on in your
-  browser, we count only that the page was opened, and nothing else.
-- **How long:** the hourly totals are kept for 13 months.
+  browser, we count only that the page was opened, and nothing else. The
+  Grid homepage makes no visit number.
+- **How long:** the hourly totals are kept for 13 months, and the Grid
+  homepage's visit steps for 30 days.
 
 Our hosting provider's request logs, which keep the site running and
 secure, do see IP addresses; they're deleted after 30 days.

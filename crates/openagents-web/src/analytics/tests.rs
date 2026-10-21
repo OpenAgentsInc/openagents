@@ -593,3 +593,6 @@ fn first_answer_times_are_four_fixed_buckets() {
         assert!(EVENTS.contains(&name) && !BEACON_EVENTS.contains(&name));
     }
 }
+
+#[path = "visits_tests.rs"]
+mod visits_tests;
