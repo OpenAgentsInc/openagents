@@ -78,6 +78,12 @@ fn follower() -> Option<Arc<Follower>> {
     FOLLOWER.get().cloned()
 }
 
+/// Uses `follower` for live content on this test thread only.
+#[cfg(test)]
+pub(crate) fn install_for_this_thread(follower: Option<Arc<Follower>>) {
+    TEST_FOLLOWER.with(|cell| *cell.borrow_mut() = follower);
+}
+
 #[cfg(test)]
 thread_local! {
     /// A follower for one test thread, so other tests keep the compiled copies.
@@ -97,6 +103,33 @@ pub fn text(path: &str, fallback: &'static str) -> Cow<'static, str> {
 pub fn manifest() -> Option<String> {
     let content = follower()?.current()?;
     Some(content.manifest_hash.clone())
+}
+
+/// The live copy of a browser module's build file: `directory/file` on
+/// disk (under `OPENAGENTS_LIVE_MODULE_ROOT`, default `/srv`) is
+/// `modules/<directory relative to the root>/<file>` in the manifest.
+/// Returns its hash and bytes, loaded on first request.
+pub async fn module_file(directory: &std::path::Path, file: &str) -> Option<(String, Arc<[u8]>)> {
+    let follower = follower()?;
+    let content = follower.current()?;
+    let root = std::env::var_os("OPENAGENTS_LIVE_MODULE_ROOT").map_or_else(
+        || std::path::PathBuf::from("/srv"),
+        std::path::PathBuf::from,
+    );
+    let relative = directory.strip_prefix(&root).ok()?.to_str()?;
+    let path = if relative.is_empty() {
+        format!("modules/{file}")
+    } else {
+        format!("modules/{relative}/{file}")
+    };
+    let hash = content.manifest.objects.get(&path)?.clone();
+    match follower.object(&content, &path).await {
+        Ok(bytes) => bytes.map(|bytes| (hash, bytes)),
+        Err(error) => {
+            eprintln!("openagents-web: live module {path}: {error:#}");
+            None
+        }
+    }
 }
 
 static SITE_RUNTIME: OnceLock<Option<livehost::site::SiteRuntime>> = OnceLock::new();

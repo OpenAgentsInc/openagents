@@ -25,6 +25,12 @@ cp -R "$web/content" "$out/content"
 cp "$web/static/fonts.css" "$web/static/legacy-demo.css" "$out/static/"
 cargo run --quiet --locked --manifest-path "$root/Cargo.toml" -p openagents-ui \
   --bin openagents-ui-bundle -- "$out" "$source_root/crates/openagents-ui"
+# Browser module builds, laid out as under /srv in the image (for example
+# pylons/layer/pylons_web_bg.wasm with its .br and .gz), ship as
+# modules/... and the server reads them from the manifest first.
+if [[ -n "${LIVEHOST_MODULES_DIR:-}" ]]; then
+  cp -R "$LIVEHOST_MODULES_DIR" "$out/modules"
+fi
 cat > "$out/site.json" <<JSON
 {
   "tenant": "openagents",

@@ -434,6 +434,9 @@ pub(super) async fn serve_build_cached(
     request: &HeaderMap,
     cache: &'static str,
 ) -> Response {
+    if let Some(response) = serve_live(directory, file, content_type, request).await {
+        return response;
+    }
     // The build stage writes compressed copies beside each file; the wasm
     // is about a third of its size gzipped and less again with brotli.
     for (accepted, extension, coding) in [
@@ -462,6 +465,55 @@ pub(super) async fn serve_build_cached(
         .headers_mut()
         .insert(header::VARY, HeaderValue::from_static("accept-encoding"));
     response
+}
+
+/// A build file from the content manifest (#12435), when it has one: the
+/// compressed copy the request accepts, revalidated by its hash, so a new
+/// module reaches the next page load without waiting out a cache.
+async fn serve_live(
+    directory: &Path,
+    file: &str,
+    content_type: &'static str,
+    request: &HeaderMap,
+) -> Option<Response> {
+    let candidates = [
+        (accepts(request, "br"), format!("{file}.br"), Some("br")),
+        (accepts_gzip(request), format!("{file}.gz"), Some("gzip")),
+        (true, file.to_owned(), None),
+    ];
+    for (accepted, name, coding) in candidates {
+        if !accepted {
+            continue;
+        }
+        let Some((hash, bytes)) = crate::live_content::module_file(directory, &name).await else {
+            continue;
+        };
+        let etag = format!("\"{hash}\"");
+        let fresh = request
+            .get(header::IF_NONE_MATCH)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.split(',').any(|tag| tag.trim() == etag));
+        let mut response = if fresh {
+            StatusCode::NOT_MODIFIED.into_response()
+        } else {
+            (
+                [(header::CONTENT_TYPE, content_type)],
+                axum::body::Bytes::from_owner(bytes),
+            )
+                .into_response()
+        };
+        let headers = response.headers_mut();
+        headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
+        headers.insert(header::VARY, HeaderValue::from_static("accept-encoding"));
+        if let Ok(value) = HeaderValue::from_str(&etag) {
+            headers.insert(header::ETAG, value);
+        }
+        if let Some(coding) = coding {
+            headers.insert(header::CONTENT_ENCODING, HeaderValue::from_static(coding));
+        }
+        return Some(response);
+    }
+    None
 }
 
 /// Whether the request's `Accept-Encoding` admits `coding` by name (not
@@ -644,6 +696,94 @@ async fn serve(path: PathBuf, content_type: &'static str, cache: &'static str) -
             .into_response(),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => crate::not_found().await,
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+#[cfg(test)]
+mod live_tests {
+    use std::collections::BTreeMap;
+
+    use livehost::follow::{FollowConfig, Follower};
+    use livehost::manifest::{HOST_VERSION, Manifest, SCHEMA};
+    use livehost::store::Store;
+    use nostr::domain::RelaySigner;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn a_module_in_the_live_manifest_wins_over_the_disk_copy() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().to_str().unwrap();
+        let store = Store::parse(path).unwrap();
+        let mut objects = BTreeMap::new();
+        for (name, body) in [
+            ("modules/pylons/layer/pylons_web.js", "live glue"),
+            ("modules/pylons/layer/pylons_web.js.br", "live glue, brotli"),
+        ] {
+            objects.insert(name.to_owned(), store.put(body.as_bytes()).await.unwrap().0);
+        }
+        let manifest = Manifest {
+            schema: SCHEMA.into(),
+            tenant: crate::live_content::TENANT.into(),
+            host_min: HOST_VERSION,
+            parent: None,
+            objects: objects.clone(),
+            routes: Vec::new(),
+            modules: BTreeMap::new(),
+            handlers: BTreeMap::new(),
+            encodings: BTreeMap::new(),
+            meta: None,
+        };
+        let (hash, _) = store.put(&manifest.to_bytes()).await.unwrap();
+        let key = RelaySigner::from_secret_hex(&"3d".repeat(32)).unwrap();
+        let follower = Follower::new(FollowConfig {
+            relay: "ws://127.0.0.1:9".into(),
+            store: Store::parse(path).unwrap(),
+            tenant: crate::live_content::TENANT.into(),
+            channel: "staging".into(),
+            pubkey: key.pubkey().into(),
+            lazy_prefixes: vec!["modules/".into()],
+            lazy_budget: livehost::follow::LAZY_BUDGET,
+        })
+        .unwrap();
+        let event =
+            livehost::pointer::sign(&key, crate::live_content::TENANT, "staging", &hash, None, 1)
+                .unwrap();
+        follower.receive(&event).await.unwrap();
+        crate::live_content::install_for_this_thread(Some(follower));
+
+        let layer = Path::new("/srv/pylons/layer");
+        let mut request = HeaderMap::new();
+        request.insert(
+            header::ACCEPT_ENCODING,
+            HeaderValue::from_static("gzip, br"),
+        );
+        let response = serve_build(layer, "pylons_web.js", "text/javascript", &request).await;
+        assert_eq!(response.headers()[header::CONTENT_ENCODING], "br");
+        let etag = response.headers()[header::ETAG].clone();
+        assert_eq!(
+            etag,
+            format!("\"{}\"", objects["modules/pylons/layer/pylons_web.js.br"])
+        );
+        let body = axum::body::to_bytes(response.into_body(), 1 << 20)
+            .await
+            .unwrap();
+        assert_eq!(&body[..], b"live glue, brotli");
+
+        request.insert(header::IF_NONE_MATCH, etag);
+        let response = serve_build(layer, "pylons_web.js", "text/javascript", &request).await;
+        assert_eq!(response.status(), StatusCode::NOT_MODIFIED);
+
+        // A file the manifest lacks still comes from disk (here, nowhere).
+        let response = serve_build(
+            layer,
+            "pylons_web_bg.wasm",
+            "application/wasm",
+            &HeaderMap::new(),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        crate::live_content::install_for_this_thread(None);
     }
 }
 
