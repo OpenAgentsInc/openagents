@@ -704,8 +704,15 @@ async fn manifest_document(
     }
 }
 
+/// The largest ack a browser may send. Its fields pass through to the ack
+/// stream as sent, plus `tenant` and `at_ms`.
+pub const ACK_MAX_BYTES: usize = 16 * 1024;
+
 /// A browser reports that it shows a manifest.
 async fn ack(State(host): State<Arc<Host>>, headers: HeaderMap, body: Bytes) -> StatusCode {
+    if body.len() > ACK_MAX_BYTES {
+        return StatusCode::PAYLOAD_TOO_LARGE;
+    }
     let Ok(Value::Object(mut report)) = serde_json::from_slice::<Value>(&body) else {
         return StatusCode::BAD_REQUEST;
     };

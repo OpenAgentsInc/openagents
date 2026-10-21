@@ -1,7 +1,9 @@
 // livehost's live-reload client, injected into every page. It follows the
 // host's manifest stream, swaps changed stylesheets in place, and reloads
 // for anything else. It reports each update to /_livehost/ack so a
-// benchmark can time it.
+// benchmark can time it. A page whose <html> has data-livehost-self applies
+// updates itself (it follows the stream on its own and acks what it
+// applied), so for it this client only keeps track and never reloads.
 (() => {
   const { manifest, tenant } = document.currentScript.dataset;
   let current = manifest;
@@ -23,6 +25,10 @@
   new EventSource(`/t/${tenant}/_live`).onmessage = (message) => {
     const update = JSON.parse(message.data);
     if (update.manifest === current) return;
+    if (document.documentElement.hasAttribute("data-livehost-self")) {
+      current = update.manifest;
+      return;
+    }
     const links = [...document.querySelectorAll("link[data-asset]")];
     const patch = update.from === current && update.css;
     if (!patch || !Object.keys(patch).every((asset) => links.some((l) => l.dataset.asset === asset))) {

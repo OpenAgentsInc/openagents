@@ -186,3 +186,90 @@ async fn tenants_swap_independently_and_refuse_other_keys() {
         StatusCode::NOT_FOUND
     );
 }
+
+fn host_with_game(dir: &std::path::Path) -> std::sync::Arc<Host> {
+    let config = HostConfig {
+        tenants: vec![TenantConfig {
+            name: "game".into(),
+            pubkey: signer("22").pubkey().into(),
+            channel: "live".into(),
+            hosts: vec!["game.localhost".into()],
+        }],
+    };
+    Host::new(config, Store::parse(dir.to_str().unwrap()).unwrap()).unwrap()
+}
+
+#[tokio::test]
+async fn a_page_that_updates_itself_is_never_reloaded() {
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::parse(dir.path().to_str().unwrap()).unwrap();
+    let manifest = publish(
+        &store,
+        "game",
+        &[(
+            "index.html",
+            "<html data-livehost-self><body>game</body></html>",
+        )],
+        vec![],
+    )
+    .await;
+    let host = host_with_game(dir.path());
+    host.receive(pointer::sign(&signer("22"), "game", "live", &manifest, None, 10).unwrap())
+        .await;
+    let (status, _, body) = get(&host, "/t/game/", "127.0.0.1").await;
+    assert_eq!(status, StatusCode::OK);
+    // The page still gets the client, and the client checks the attribute
+    // before it would reload.
+    let opt_out = body.find("hasAttribute(\"data-livehost-self\")").unwrap();
+    let reload = body.find("location.reload()").unwrap();
+    assert!(opt_out < reload);
+    let guard = &body[opt_out..reload];
+    assert!(guard.contains("current = update.manifest;") && guard.contains("return;"));
+}
+
+#[tokio::test]
+async fn acks_pass_their_fields_through_up_to_a_cap() {
+    use futures_util::StreamExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let host = host_with_game(dir.path());
+    let stream = host
+        .router()
+        .oneshot(Request::get("/_livehost/acks").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    let mut events = stream.into_body().into_data_stream();
+    let post = |body: String| {
+        host.router().oneshot(
+            Request::post("/_livehost/ack")
+                .header(header::HOST, "game.localhost")
+                .body(Body::from(body))
+                .unwrap(),
+        )
+    };
+    let sent = r#"{"tenant":"game","manifest":"m1","kind":"swap","tick":42,"bytes":1234}"#;
+    assert_eq!(
+        post(sent.into()).await.unwrap().status(),
+        StatusCode::NO_CONTENT
+    );
+    let event = String::from_utf8(events.next().await.unwrap().unwrap().to_vec()).unwrap();
+    let data = event
+        .lines()
+        .find_map(|line| line.strip_prefix("data:"))
+        .unwrap();
+    let ack: serde_json::Value = serde_json::from_str(data.trim()).unwrap();
+    assert_eq!(
+        (&ack["kind"], &ack["tick"], &ack["bytes"]),
+        (&"swap".into(), &42.into(), &1234.into())
+    );
+    assert!(ack["at_ms"].is_number());
+
+    let big = format!(
+        r#"{{"tenant":"game","pad":"{}"}}"#,
+        "x".repeat(livehost::host::ACK_MAX_BYTES)
+    );
+    assert_eq!(
+        post(big).await.unwrap().status(),
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+}

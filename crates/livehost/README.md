@@ -40,6 +40,12 @@ A path resolves in this order: a manifest route (template or handler), then a
 manifest object at that path, then `PATH/index.html`. HTML responses get the
 live-reload client ([`src/client.js`](src/client.js)), which swaps changed
 stylesheets in place and reloads the page for anything else.
+A page that applies updates itself, such as a game that swaps its logic
+between ticks, opts out of the reload with `<html data-livehost-self>`:
+the client then only tracks the current manifest and never reloads, and the
+page follows `/t/TENANT/_live` and posts its own acks. An ack body is at
+most 16 KiB; its fields reach `/_livehost/acks` as sent, with `tenant` and
+`at_ms` added.
 
 ## Templates
 
