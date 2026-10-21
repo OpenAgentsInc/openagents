@@ -455,8 +455,13 @@ impl Provider {
             pools: self.config.pools.clone(),
             group: None,
         };
-        if self.config.text_profile.as_deref() == Some(crate::flint::MODEL) {
-            crate::flint::describe(&mut beacon);
+        if let Some(profile) = self
+            .config
+            .text_profile
+            .as_deref()
+            .and_then(crate::flint::profile)
+        {
+            crate::flint::describe(&mut beacon, profile);
         }
         match &self.config.group {
             Some(group) => {
@@ -834,13 +839,20 @@ impl Provider {
         // The job's deadline: refused before any work when an ordinary
         // request reaches a model that takes longer than 90 seconds.
         let request = request.and_then(|request| {
-            if self.config.text_profile.as_deref() == Some(crate::flint::MODEL)
+            if let Some(profile) = self
+                .config
+                .text_profile
+                .as_deref()
+                .and_then(crate::flint::profile)
                 && request.turns.iter().map(|t| t.content.len()).sum::<usize>()
-                    > crate::flint::INPUT_BYTES
+                    > profile.input_bytes
             {
                 return Err(Refusal::new(
                     "limit_exceeded",
-                    "Flint accepts at most 8 KiB of conversation text",
+                    format!(
+                        "Flint accepts at most {} KiB of conversation text",
+                        profile.input_bytes / 1024
+                    ),
                 ));
             }
             deadline::admit(request.profile, self.config.job_timeout.as_secs())

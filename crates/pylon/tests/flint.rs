@@ -142,3 +142,17 @@ fn release_manifest_still_binds_the_profile() {
     let value: Value = serde_json::from_slice(bytes).unwrap();
     assert_eq!(value["revision"], flint::REVISION);
 }
+
+#[test]
+fn int4_manifest_still_binds_the_metal_profile() {
+    use sha2::{Digest, Sha256};
+    let bytes =
+        include_bytes!("../../psionic/crates/psionic-flint/testdata/mlx-int4-artifact.json");
+    assert_eq!(
+        flint::METAL.artifact,
+        format!("sha256:{:x}", Sha256::digest(bytes))
+    );
+    let value: Value = serde_json::from_slice(bytes).unwrap();
+    assert_eq!(value["revision"], flint::METAL.revision);
+    assert_eq!(value["repository"], flint::METAL.served_id);
+}

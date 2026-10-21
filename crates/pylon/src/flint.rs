@@ -1,8 +1,13 @@
-//! The original-weight CUDA Flint service (#12425).
+//! The original-weight CUDA Flint service (#12425) and the MLX INT4 Metal
+//! service on Apple silicon (#12422).
 //!
 //! Systemd owns the native worker and Pylon separately. The worker keeps its
 //! generation lock after a caller disconnects; Pylon stays unavailable while
 //! that worker is busy or does not report the pinned checkpoint and profile.
+//!
+//! Both profiles are routed as the model `flint`. Each advertises its own
+//! artifact hash and numerical profile, in the beacon's model string and its
+//! `native_model` metadata, so a buyer can tell them apart or pin one.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -24,29 +29,102 @@ pub const OUTPUT: u32 = 6144;
 pub const DEADLINE: Duration = Duration::from_secs(900);
 pub const INPUT_BYTES: usize = 8192;
 
+/// One pinned native Flint worker: its checkpoint identity and served limits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Profile {
+    /// The `--text-profile` name.
+    pub name: &'static str,
+    /// The model ID the worker lists at `/v1/models`.
+    pub served_id: &'static str,
+    pub revision: &'static str,
+    pub artifact: &'static str,
+    pub numerical_profile: &'static str,
+    pub backend: &'static str,
+    pub context: u64,
+    pub output: u32,
+    pub deadline: Duration,
+    pub input_bytes: usize,
+    /// The memory class the beacon reports by default.
+    pub vram_gb: u64,
+}
+
+/// The original BF16 checkpoint on one CUDA GPU (#12419, #12425).
+pub const CUDA: Profile = Profile {
+    name: MODEL,
+    served_id: "RecursiveSI/flint",
+    revision: REVISION,
+    artifact: ARTIFACT,
+    numerical_profile: PROFILE,
+    backend: "cuda",
+    context: CONTEXT,
+    output: OUTPUT,
+    deadline: DEADLINE,
+    input_bytes: INPUT_BYTES,
+    vram_gb: 96,
+};
+
+/// Recursive's MLX INT4 checkpoint (`RecursiveSI/flint-int4`) on Apple
+/// silicon through Psionic's Metal kernels (#12422). The artifact is the
+/// SHA-256 of `psionic-flint/testdata/mlx-int4-artifact.json`, which binds
+/// every shard's digest. 32,768 tokens of context hold a 16,384-token
+/// answer, enough for Flint's 4.3K-token median reasoning and its long tail.
+pub const METAL: Profile = Profile {
+    name: "flint-metal",
+    served_id: "RecursiveSI/flint-int4",
+    revision: "3b93f9053b530488405ae9fca51d4900d6ce21f0",
+    artifact: "sha256:83be6d422b14b0e19070133ac4bfcffdfcd4265847305a68503193e06a3cd8da",
+    numerical_profile: "mlx_int4_metal_v1",
+    backend: "metal",
+    context: 32_768,
+    output: 16_384,
+    deadline: Duration::from_secs(900),
+    input_bytes: 65_536,
+    vram_gb: 128,
+};
+
+/// The profile a `--text-profile` name selects.
+#[must_use]
+pub fn profile(name: &str) -> Option<&'static Profile> {
+    [&CUDA, &METAL].into_iter().find(|p| p.name == name)
+}
+
+impl Profile {
+    /// The beacon's model string: the routed family and this artifact.
+    #[must_use]
+    pub fn advertised(&self) -> String {
+        format!("{MODEL}@{}", self.artifact)
+    }
+}
+
 #[must_use]
 pub fn advertised() -> String {
-    format!("{MODEL}@{ARTIFACT}")
+    CUDA.advertised()
 }
 
 /// Configure only the tested original-weight CUDA profile.
 pub fn configure(config: &mut Config) {
+    configure_profile(config, &CUDA);
+}
+
+/// Configure a pinned profile: one slot, its answer allowance and deadline.
+pub fn configure_profile(config: &mut Config, profile: &Profile) {
     config.slots = 1;
-    config.max_tokens = OUTPUT;
-    config.job_timeout = DEADLINE;
-    config.text_profile = Some(MODEL.into());
+    config.max_tokens = profile.output;
+    config.job_timeout = profile.deadline;
+    config.text_profile = Some(profile.name.into());
 }
 
 /// Attach the complete model's declared limits without making it a model group.
-pub(crate) fn describe(beacon: &mut Beacon) {
+pub(crate) fn describe(beacon: &mut Beacon, profile: &Profile) {
     let meta = beacon.meta.get_or_insert_with(|| json!({}));
-    meta[crate::job::INPUT_LIMIT] = json!(INPUT_BYTES);
-    meta["deadline_secs"] = json!(DEADLINE.as_secs());
-    meta["max_output_tokens"] = json!(OUTPUT);
-    meta["native_model"] =
-        json!({"revision":REVISION,"artifact":ARTIFACT,"numerical_profile":PROFILE});
-    meta["request_limits"] = json!({"max_context_tokens":CONTEXT,"max_input_tokens":CONTEXT-u64::from(OUTPUT),
-        "max_input_bytes":INPUT_BYTES,"modes":["thinking"]});
+    meta[crate::job::INPUT_LIMIT] = json!(profile.input_bytes);
+    meta["deadline_secs"] = json!(profile.deadline.as_secs());
+    meta["max_output_tokens"] = json!(profile.output);
+    meta["native_model"] = json!({"revision":profile.revision,"artifact":profile.artifact,
+        "numerical_profile":profile.numerical_profile});
+    meta["request_limits"] = json!({"max_context_tokens":profile.context,
+        "max_input_tokens":profile.context-u64::from(profile.output),
+        "max_input_bytes":profile.input_bytes,"modes":["thinking"]});
     meta["sampling"] = json!({"temperature":1.0,"top_p":0.95,"top_k":20,"seed":42});
 }
 
@@ -66,22 +144,23 @@ pub fn deadline(beacon: &Beacon) -> Option<u64> {
         })
 }
 
-fn qualified(body: &Value, own_generation: bool) -> bool {
+fn qualified(body: &Value, own_generation: bool, profile: &Profile) -> bool {
     let info = &body["psionic"];
     body["data"]
         .as_array()
-        .is_some_and(|models| models.len() == 1 && models[0]["id"] == "RecursiveSI/flint")
-        && info["revision"] == REVISION
-        && info["artifact"] == ARTIFACT
-        && info["numerical_profile"] == PROFILE
-        && info["backend"] == "cuda"
+        .is_some_and(|models| models.len() == 1 && models[0]["id"] == profile.served_id)
+        && info["revision"] == profile.revision
+        && info["artifact"] == profile.artifact
+        && info["numerical_profile"] == profile.numerical_profile
+        && info["backend"] == profile.backend
         && info["max_context_tokens"]
             .as_u64()
-            .is_some_and(|n| n >= CONTEXT)
+            .is_some_and(|n| n >= profile.context)
         && (info["busy"] == false || (own_generation && info["busy"] == true))
 }
 
 pub struct Native {
+    profile: &'static Profile,
     inner: Psionic,
     models: String,
     client: reqwest::Client,
@@ -98,6 +177,14 @@ impl Drop for Active<'_> {
 impl Native {
     /// Connect to a loopback native worker; never expose its HTTP endpoint publicly.
     pub fn connect(base: &str) -> Result<Arc<dyn Engine>, String> {
+        Self::connect_profile(base, &CUDA)
+    }
+
+    /// Connect to a loopback worker that must report `profile`'s checkpoint.
+    pub fn connect_profile(
+        base: &str,
+        profile: &'static Profile,
+    ) -> Result<Arc<dyn Engine>, String> {
         let url = reqwest::Url::parse(base).map_err(|e| e.to_string())?;
         if url.scheme() != "http"
             || url.host_str() != Some("127.0.0.1")
@@ -110,10 +197,11 @@ impl Native {
             return Err("Flint needs --engine http://127.0.0.1:PORT".into());
         }
         Ok(Arc::new(Self {
-            inner: Psionic::new(base, &advertised())?
+            profile,
+            inner: Psionic::new(base, &profile.advertised())?
                 .with_sampling(Sampling::new(1.0, 0.95, 42)?)
                 .with_top_k(20)
-                .with_request_timeout(DEADLINE + Duration::from_secs(10)),
+                .with_request_timeout(profile.deadline + Duration::from_secs(10)),
             models: format!("{}/v1/models", base.trim_end_matches('/')),
             active: std::sync::atomic::AtomicBool::new(false),
             client: reqwest::Client::builder()
@@ -141,6 +229,7 @@ impl Engine for Native {
                     qualified(
                         &body,
                         self.active.load(std::sync::atomic::Ordering::Acquire),
+                        self.profile,
                     )
                 })
         })
@@ -151,7 +240,7 @@ impl Engine for Native {
         max_tokens: u32,
     ) -> Pending<'a, Result<Generation, String>> {
         Box::pin(async move {
-            if max_tokens != OUTPUT {
+            if max_tokens != self.profile.output {
                 return Err("Flint answer allowance differs from its served profile".into());
             }
             if !self.healthy().await {
@@ -197,11 +286,11 @@ mod tests {
         let body = json!({"data":[{"id":"RecursiveSI/flint"}],"psionic":{
             "revision":REVISION,"artifact":ARTIFACT,"numerical_profile":PROFILE,
             "max_context_tokens":CONTEXT,"busy":false,"backend":"cuda"}});
-        assert!(qualified(&body, false));
+        assert!(qualified(&body, false, &CUDA));
         let mut busy = body.clone();
         busy["psionic"]["busy"] = json!(true);
-        assert!(!qualified(&busy, false));
-        assert!(qualified(&busy, true));
+        assert!(!qualified(&busy, false, &CUDA));
+        assert!(qualified(&busy, true, &CUDA));
         for (key, wrong) in [
             ("revision", json!("other")),
             ("artifact", json!("other")),
@@ -212,8 +301,25 @@ mod tests {
         ] {
             let mut changed = body.clone();
             changed["psionic"][key] = wrong;
-            assert!(!qualified(&changed, false), "{key}");
+            assert!(!qualified(&changed, false, &CUDA), "{key}");
         }
         assert!(Native::connect("http://0.0.0.0:8080").is_err());
+    }
+
+    #[test]
+    fn each_profile_accepts_only_its_own_worker() {
+        let metal = json!({"data":[{"id":"RecursiveSI/flint-int4"}],"psionic":{
+            "revision":METAL.revision,"artifact":METAL.artifact,"numerical_profile":METAL.numerical_profile,
+            "max_context_tokens":METAL.context,"busy":false,"backend":"metal"}});
+        assert!(qualified(&metal, false, &METAL));
+        assert!(!qualified(&metal, false, &CUDA));
+        let mut claims_bf16 = metal.clone();
+        claims_bf16["psionic"]["artifact"] = json!(ARTIFACT);
+        assert!(!qualified(&claims_bf16, false, &METAL));
+        assert_ne!(METAL.advertised(), CUDA.advertised());
+        assert!(METAL.advertised().starts_with("flint@sha256:"));
+        assert_eq!(profile("flint"), Some(&CUDA));
+        assert_eq!(profile("flint-metal"), Some(&METAL));
+        assert_eq!(profile("other"), None);
     }
 }
