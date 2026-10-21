@@ -19,7 +19,7 @@ const setGameOpen = async open => {
     world.focus({preventScroll:true});
     return;
   }
-  if (gameOpen) return;
+  if (gameOpen || gamePanel.hasAttribute('data-off')) return;
   gameOpen = true;
   gamePanel.hidden = false;
   gameStatus.textContent = 'Opening Game Lab…';

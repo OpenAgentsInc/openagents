@@ -163,10 +163,17 @@ fn heading(account: bool) -> String {
     } else {
         String::new()
     };
+    // Game Lab needs a signed-in account, so it shows only where sign-in
+    // does (the same switch as the account links).
+    let game_lab = if account {
+        "<nav aria-label=\"Game Lab\"><a id=\"game-lab-open\" href=\"/?lab=game\">Game Lab</a></nav>"
+    } else {
+        ""
+    };
     format!(
         "<header data-pylons-keep><h1><svg viewBox=\"0 0 386 386\" fill=\"currentColor\" aria-hidden=\"true\">\
 <path d=\"M292.64 54.39A181 181 0 1 1 93.36 54.39A21 21 0 0 1 116.48 89.46A139 139 0 1 0 269.52 89.46A21 21 0 0 1 292.64 54.39ZM172 21A21 21 0 0 1 214 21V165.5A21 21 0 0 1 172 165.5Z\"/>\
-</svg>OpenAgents</h1><nav aria-label=\"Game Lab\"><a id=\"game-lab-open\" href=\"/?lab=game\">Game Lab</a></nav><nav id=\"home-account\" aria-label=\"Account\">\
+</svg>OpenAgents</h1>{game_lab}<nav id=\"home-account\" aria-label=\"Account\">\
 {links}</nav></header>"
     )
 }
@@ -396,8 +403,19 @@ fn head() -> String {
 /// `<main>` for this response: the top bar, the list as it stands, and the
 /// rest.
 fn main_html(list: &str, account: bool) -> String {
+    let after = if account {
+        AFTER_LIST.to_owned()
+    } else {
+        // The Game Lab script finds its panel either way; `data-off` keeps
+        // it from opening.
+        AFTER_LIST.replacen(
+            "<section id=\"game-lab-panel\"",
+            "<section id=\"game-lab-panel\" data-off",
+            1,
+        )
+    };
     format!(
-        "{}<section id=\"pylons-panel\" aria-labelledby=\"pylons-count\">{list}</section>{AFTER_LIST}",
+        "{}<section id=\"pylons-panel\" aria-labelledby=\"pylons-count\">{list}</section>{after}",
         heading(account)
     )
 }
@@ -523,6 +541,8 @@ mod tests {
         assert!(html.contains("<nav id=\"home-account\" aria-label=\"Account\"></nav>"));
         assert!(!html.contains(">Log in</a>") && !html.contains(">Sign up</a>"));
         assert!(html.contains("id=\"game-lab-signin\""));
+        assert!(!html.contains("game-lab-open"));
+        assert!(html.contains("<section id=\"game-lab-panel\" data-off"));
         assert!(!crate::features::Features::default().on(crate::features::Feature::HomeAccount));
     }
 

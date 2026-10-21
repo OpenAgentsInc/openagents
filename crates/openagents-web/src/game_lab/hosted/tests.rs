@@ -44,7 +44,9 @@ impl AccountsFixture {
             axum::serve(listener, auth).await.unwrap();
         });
         let root = tempfile::tempdir().unwrap();
-        let private = root.path().join("private");
+        // The cloud session refuses paths through a symlink, and macOS's
+        // temporary directory is under /var, a link to /private/var.
+        let private = root.path().canonicalize().unwrap().join("private");
         std::fs::create_dir(&private).unwrap();
         let key = private.join("csrf");
         std::fs::write(&key, [7; 32]).unwrap();
