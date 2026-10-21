@@ -345,6 +345,19 @@ impl Client {
                 headers
                     .set("x-openagents-chat-surface", surface)
                     .map_err(js_error)?;
+                // The Grid terminal's model pick (#12403): the page sets
+                // `openagentsPylonModel` while a person asks the V4.1 group,
+                // and the site routes the turn to it (#12416).
+                if let Some(model) =
+                    js_sys::Reflect::get(&js_sys::global(), &"openagentsPylonModel".into())
+                        .ok()
+                        .and_then(|v| v.as_string())
+                        .filter(|m| !m.is_empty() && m.len() <= 64)
+                {
+                    headers
+                        .set("x-openagents-pylon-model", &model)
+                        .map_err(js_error)?;
+                }
             }
         }
         if let Some(body) = body {

@@ -1,6 +1,31 @@
 //! The shared computer in front of the pylons, with a short approach range.
 
 pub const ENTER_RANGE: f64 = 3.0;
+
+/// The model a terminal turn may ask for by name: DeepSeek V4.1 Flash,
+/// served by a model group of pylons (#12403). The site sends it as
+/// `X-OpenAgents-Pylon-Model` (#12416).
+pub const GROUP_MODEL: &str = "deepseek-v4.1-flash";
+/// The terminal's control for asking that group, off and on.
+pub const PICK_OFF: &str = "Ask DeepSeek V4.1";
+pub const PICK_ON: &str = "Asking DeepSeek V4.1 · answers take up to a few minutes";
+
+/// Whether `snapshot` holds an online, ready group head serving
+/// [`GROUP_MODEL`]: only then does the terminal offer it.
+#[must_use]
+pub fn group_ready(snapshot: &crate::Snapshot) -> bool {
+    snapshot.pylons.iter().any(|pylon| {
+        pylon.status == "online"
+            && pylon
+                .group
+                .as_ref()
+                .is_some_and(|g| g.role == "head" && g.state.as_deref() == Some("ready"))
+            && pylon
+                .services
+                .iter()
+                .any(|s| s.model.split('@').next() == Some(GROUP_MODEL))
+    })
+}
 pub const LEAVE_RANGE: f64 = 3.8;
 
 /// Centered on the approach from spawn toward the pylons.
@@ -59,7 +84,33 @@ pub fn faces() -> Vec<[[f64; 3]; 4]> {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
     use super::*;
+
+    #[test]
+    fn the_terminal_offers_v41_only_while_a_ready_group_serves_it() {
+        let snapshot: crate::Snapshot = serde_json::from_value(serde_json::json!({
+            "now": 10, "synced": true, "pylons": [{
+                "id": "30200:ab:v41-head", "name": "V4.1", "slug": "v41-head", "npub": "npub1x",
+                "status": "online", "family": "gpu", "memory_gb": 96, "busy": 0, "total": 1,
+                "since": 1, "observed_at": 9, "expires_at": 200,
+                "services": [{"model": "deepseek-v4.1-flash@sha256:ab", "kinds": ["Chat"]}],
+                "free": true, "pools": [],
+                "group": {"id": "ab:v41", "role": "head", "parts": 4, "state": "ready"}
+            }]
+        }))
+        .unwrap();
+        assert!(group_ready(&snapshot));
+        let mut starting = snapshot.clone();
+        starting.pylons[0].group.as_mut().unwrap().state = Some("starting".into());
+        assert!(!group_ready(&starting));
+        let mut other = snapshot.clone();
+        other.pylons[0].services[0].model = "clef-flash".into();
+        assert!(!group_ready(&other));
+        for line in [PICK_OFF, PICK_ON] {
+            assert!(oa_copy::violations(line, &[]).is_empty(), "{line}");
+        }
+    }
 
     #[test]
     fn approach_has_hysteresis_and_requires_the_same_floor() {

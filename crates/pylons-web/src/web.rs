@@ -315,6 +315,10 @@ fn apply(layer: &Shared, snapshot: Snapshot) {
         }
         first
     };
+    let ready = crate::terminal::group_ready(&snapshot);
+    if let Some(terminal) = &mut layer.borrow_mut().terminal {
+        terminal.group(ready);
+    }
     let ids: Vec<String> = snapshot.pylons.iter().map(|p| p.id.clone()).collect();
     let gone: Vec<String> = layer
         .borrow()
