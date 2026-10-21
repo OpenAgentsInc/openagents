@@ -219,6 +219,16 @@ debug = false
 # The landing pages' raw WebGL2 runners (scripts/build-lander5-web.sh): a
 # page inlines its module in the HTML, so every byte is on the first
 # response. No native build uses it.
+# The Ice Cream Man's live zone (`docs/verse/ice-cream-man-live.md`): a
+# swappable WebAssembly module rebuilt on every deploy, so it trades LTO's
+# last few percent of size for a rebuild in seconds.
+[profile.live-wasm]
+inherits = "release"
+lto = false
+codegen-units = 16
+incremental = true
+strip = true
+
 [profile.wasm-tiny]
 inherits = "release"
 opt-level = "z"

@@ -6843,6 +6843,7 @@ dependencies = [
  "futures-util",
  "glam",
  "gloo-timers",
+ "icecream-zone",
  "js-sys",
  "log",
  "nostr",
@@ -8737,6 +8738,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "icecream-live"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "futures-util",
+ "game-lab",
+ "hex",
+ "icecream-rules",
+ "icecream-web",
+ "icecream-zone",
+ "livehost",
+ "nostr",
+ "openagents-workspace-hack",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+]
+
+[[package]]
 name = "icecream-logic"
 version = "1.0.0"
 dependencies = [
@@ -8762,11 +8787,24 @@ dependencies = [
  "console_error_panic_hook",
  "glam",
  "icecream-rules",
+ "icecream-zone",
  "js-sys",
  "oa-copy",
  "openagents-workspace-hack",
+ "serde",
+ "serde_json",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "icecream-zone"
+version = "1.0.0"
+dependencies = [
+ "openagents-workspace-hack",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

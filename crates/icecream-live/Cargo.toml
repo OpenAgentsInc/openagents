@@ -1,0 +1,38 @@
+[package]
+name = "icecream-live"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The Ice Cream Man's live zone tooling: bake the game's meshes into chunks, write the tenant directory, deploy and roll back through livehost, and measure edit-to-live."
+
+[[bin]]
+name = "icecream-live"
+path = "src/main.rs"
+
+[dependencies]
+game-lab = { path = "../game-lab" }
+icecream-rules = { path = "../icecream-rules" }
+icecream-web = { path = "../icecream-web" }
+icecream-zone = { path = "../icecream-zone" }
+livehost = { path = "../livehost" }
+nostr = { path = "../nostr" }
+anyhow = "1"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+hex = "0.4"
+bytes = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tokio = { version = "1", features = ["full"] }
+tokio-tungstenite = "0.30"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }
