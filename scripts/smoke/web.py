@@ -642,9 +642,12 @@ def run(base, only, install, production=False, restart=None, invite_only=False,
                    and "?ui=html" in default.text)
             assets = sorted(set(re.findall(r'(?:src|href)="(/gpui/build/[^"?]+\.(?:js|wasm))"',
                                            default.text)))
-            record("home: GPUI page names its loader, JavaScript, and WASM",
-                   len(assets) == 3 and any("/start." in path for path in assets)
-                   and any(path.endswith(".wasm") for path in assets))
+            # The lazy loader selects its backend; older shells preload JS and WASM.
+            record("home: GPUI page names its hashed loader",
+                   any(re.fullmatch(r"/gpui/build/start\.[0-9a-f]{64}\.js", path)
+                       for path in assets)
+                   and (len(assets) == 1 or (len(assets) == 3
+                        and any(path.endswith(".wasm") for path in assets))))
             for path in assets:
                 asset = visitor.get(path, cookies=False)
                 expected = re.search(r"\.([0-9a-f]{64})\.(?:js|wasm)$", path)
