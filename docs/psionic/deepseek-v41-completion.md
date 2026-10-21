@@ -63,6 +63,23 @@ Gate progress (2026-10-21):
   bit for bit in every case, including NaN and extreme scales. The RTX PRO
   6000 (SM120) half of G3 is W8. Results:
   [`sm89-2026-10-20.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_matvec/sm89-2026-10-20.json).
+- **G3, mixing, Engram, and routing kernels (W6, #12393), RTX 4080 only.**
+  Tolerances were fixed before the first GPU run. Collapse, expand, the
+  Engram gather, and the expert sum repeat the CPU's operations in its order
+  and equal it exactly. Reductions in another order use the same summation
+  bound as W4; `exp` and `log1p` (rounded once from double precision on the
+  device) may differ from the CPU's float functions by 2 ulp, and later
+  steps carry that difference through their derivatives or, for the
+  Sinkhorn iterations, through a weighted norm that grows by at most
+  `sqrt(1 / s)` per normalization. Every kernel also equals a host model
+  bit for bit. Results: real mixes (layer 0 attention, layer 39 FFN) reach
+  0.0008 of their bound; collapse and expand at all seven recorded layers
+  equal the CPU, and their BF16 outputs equal the oracle's; the 24 Engram
+  rows at layers 1 and 14 equal the oracle's rows; router ids equal the CPU
+  and the oracle at layers 0, 2, 14, 20, and 39 (no recorded exact ties at
+  this step); the SwiGLU output of experts 222 and 180 equals the oracle's
+  BF16 down-projection input in 2,304 of 2,304 values. Results:
+  [`sm89-2026-10-20.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_mix/sm89-2026-10-20.json).
 - **Placement from header bytes.** Layers 0–9, 10–19, 20–29, and 30–39
   need 75.41, 74.07, 73.92, and 75.23 GB of GPU weights, as the plan's
   table says, and the Engram tables (101.38 GB each) go to host memory on
@@ -148,9 +165,9 @@ spend guard from the one budget host.
 | --- | --- | --- | --- | --- |
 | W4 | **Done on SM89 (#12391).** `psionic_backend_cuda::v41_matvec`: `v41_act_quant_fp8` and `v41_block_matvec` over packed FP8 32×32-block and FP4 per-32 weights, with device-selected matrices from a stack for routed experts and no host round trip. Parity on the RTX 4080 against the CPU path on committed real rows; decode reads 409–591 GB/s (57–82% of the 4080's 717 GB/s). SM120 parity moves to W8. | M | — (checked against the CPU path, which is bit-exact against the reference's dequantization) | Parity with the CPU path on real rows on the 4080 and the target GPU. |
 | W5 | **Attention kernels.** Window attention with sink, compressed attention at ratios 1 and 2, the indexer, candidate selection, and the shared-source reads. | L (split per mode) | W1 | Per-kernel parity on both GPUs, including the 127/128/129 cases. |
-| W6 | **Mixing, Engram, and routing kernels.** Sinkhorn mixing, the Engram gather from host-pinned memory, the gate and top-k with the documented tie rule, SwiGLU with clamps. | M | W1 | Per-kernel parity on both GPUs. |
+| W6 | **Done on SM89 (#12393).** `psionic_backend_cuda::v41_mix`: hyper-connection mixes (joint RMS projection, pre/post, 20-iteration Sinkhorn), collapse, and expand; the Engram gather from page-locked host memory and the Engram gate; router logits, routing with ties to the lower id written as `V41Slots` ids, clamped SwiGLU, and the expert sum. Parity with the CPU path on real weights and oracle inputs on the RTX 4080; one decode step's kernels take 1.8–12.7 µs each. SM120 parity moves to W8. | M | — (checked against the CPU components, as W4) | Per-kernel parity on both GPUs. |
 | W7 | **Device-resident step.** One stage's whole decode step on the GPU, with embeddings, norms, rotation, and sampling on the device, and CUDA graphs for decode. | L | W4–W6 | G4 passes for a 5- or 10-layer stage on the target GPU; per-token latency and peak memory are recorded. |
-| W8 | **Target GPU choice.** Confirm the kernels on the RTX PRO 6000 (SM120, G4 machines) and decide whether B200 (SM100) needs a separate profile. W4's SM120 run: build with `PSI_CUDA_ARCH=sm_120` and run `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_matvec`, then the ignored `v41_decode_bandwidth`. | S, cloud | W7 | A recorded decision with parity on the chosen GPU. |
+| W8 | **Target GPU choice.** Confirm the kernels on the RTX PRO 6000 (SM120, G4 machines) and decide whether B200 (SM100) needs a separate profile. W4's SM120 run: build with `PSI_CUDA_ARCH=sm_120` and run `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_matvec`, then the ignored `v41_decode_bandwidth`; W6's SM120 run: `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_mix`, then the ignored `v41_mix_decode_latency`. | S, cloud | W7 | A recorded decision with parity on the chosen GPU. |
 
 ### Phase 4: stage Pylons (G5, G6, G7)
 

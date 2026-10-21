@@ -1076,3 +1076,109 @@ single-rank BF16 equation APIs retain their previous reduction. This is a
 numerical implementation fix, not a tolerance change; same-mode full-model
 checks remain required. Local verification passes 61 CPU tests and three
 comparator/cache tests.
+
+## Mixing, Engram, and routing kernels (W6, 2026-10-20)
+
+[#12393](https://github.com/OpenAgentsInc/openagents/issues/12393) adds
+`psionic_backend_cuda::v41_mix`, the per-token kernels around W4's
+matrix-vector products. Like W4's, every call only enqueues work: none
+allocates or synchronizes, so W7 can record them into a CUDA graph. Callers
+own every buffer, including the mixing projection's scratch.
+
+| Call | What it does |
+| --- | --- |
+| `v41_hc_mixes(V41HyperConfig, V41HcWeights, residual, scratch, mixes)` | The joint RMS of the four streams, the F32 `hc_*_fn` projection, and the pre and post coefficients and the 20-iteration Sinkhorn comb, as `HyperConnections::mixes`. Two launches. Mixes are `[pre, post, comb[source, target]]`, 24 floats. |
+| `v41_hc_split_sinkhorn` | The same mixes from already projected values. |
+| `v41_hc_collapse(..., previous_mixes, ...)`, `v41_hc_expand` | Collapse with the previous sub-block's pre-mix, and expansion with `comb[source, target]`, optionally rounded to BF16. |
+| `v41_engram_gather(V41EngramTable, ids, count, out)` | Reads the requested FP8 rows and their per-32 UE8M0 scales from page-locked host memory (`CudaHostBuffer`), one warp per row, and dequantizes them. The device `i64` ids come from the CPU's n-gram hashes. |
+| `v41_engram_gate(V41EngramGate, residual, projected, q, k, out)` | The per-stream signed-square-root gate on the `wkv` output (keys, then value), as `EngramGate::apply`. |
+| `v41_gate_logits(weight, input, logits, experts, cols)` | The BF16 router weight times the F32 input, in F32. |
+| `v41_route(V41Router, logits, bias, ids, weights)` | `sqrtsoftplus` scores, the bias for selection only, top 6 of 384 with ties to the lower id, and weights from the unbiased scores, normalized and scaled by 1.5. Writes the ids as device `i32` in ascending order, the order the reference adds expert outputs, so they're the `V41Slots::ids` of the expert launches. |
+| `v41_swiglu(gate, up, route_weights, slots, width, limit, out)` | Clamped SwiGLU (up clamped on both sides, gate above only, limit 10), times each slot's route weight before the BF16 cast and the down projection. Without weights it's the shared expert. |
+| `v41_moe_combine(routed, slots, shared, width, out)` | The routed outputs in slot order from 0, then the shared expert. |
+
+A token's MoE step runs on the device with no host round trip:
+`v41_gate_logits`, `v41_route`, W4's `v41_act_quant_fp8` and
+`v41_block_matvec` for w1 and w3 with `V41Slots { ids: Some(&ids), .. }`,
+`v41_swiglu` with the route weights, the activation quantizer again, w2 with
+per-slot inputs, the shared expert, and `v41_moe_combine`. The
+`moe_step_runs_from_device_ids` test runs exactly that in one submission.
+
+Each kernel repeats the CPU's operations in the CPU's order where that keeps
+it parallel: element-wise steps, the Sinkhorn normalization, the four-term
+stream sums, the top-k rule, and the expert sum. Long reductions use a fixed
+parallel order, and `exp` and `log1p` run in double precision and are rounded
+to float once. The `*_host` functions repeat the device arithmetic and match
+it bit for bit, except in the rare case (about one evaluation in 2^28) where
+a double-precision result falls within one rounding error of a float
+rounding boundary. Nonfinite input writes NaN where the CPU path returns an
+error: NaN mixes, a NaN Engram stream, and id -1 with NaN weights from the
+router, which make W4's expert launches write NaN.
+
+**Tolerances,** fixed before the first GPU run (the test file's header has
+the derivation):
+
+- Collapse, expand, the Engram gather, and the expert sum must equal the CPU.
+- Reductions that add the CPU's rounded terms in another order:
+  `(gamma(K - 1) + gamma(d)) * sum |t_i|`, `d` being the device's longest
+  addition chain, as in W4.
+- `exp` and `log1p` may differ from the platform's float functions by 2 ulp:
+  12 u relative for a sigmoid and 6 u for a `sqrtsoftplus` score
+  (u = 2^-24). Later steps carry differences through their derivatives or,
+  for monotone steps, through their values at both ends of the interval.
+- The Sinkhorn comb's relative error is carried in the norm
+  `sqrt(sum x_ij e_ij^2)`; a normalization by a sum `s` grows it by at most
+  `sqrt(1 / s)` and adds 10 u per entry, giving `sqrt(comb) * E + E^2` at
+  the end.
+- A BF16 output may differ only where its F32 bound reaches a rounding
+  boundary. Expert ids must match exactly unless the bound lets a selected
+  and an unselected expert swap; such cases are reported. Oracle ids are
+  compared except at the oracle's exact ties.
+
+**Results on the RTX 4080 (SM89).** The `deepseek_v41_mix_rows` example
+fetched the fixture with ranged reads (9.5 MB): `layers.0.hc_attn_fn` and
+`layers.39.hc_ffn_fn` with their scales and bases, the layer-14 router and
+five router biases, the Engram query and key weights and the 24 table rows at
+the oracle's hash ids for layers 1 and 14, and the chat prompt's first decode
+step from the oracle. All 15 W6 tests and W4's 9 pass:
+
+| Check | Result |
+| --- | --- |
+| Mixes on real weights and oracle residuals (layer 0 attention, layer 39 FFN) | Largest error 0.0008 of the bound; within 0.0006 of the W1 policy against the oracle's pre, post, and comb |
+| Mixes on synthetic inputs (1 to 4 streams, residuals scaled by 1e-12 to 1e12, zero residual) and Sinkhorn on 37 identical-input cases (extreme, equal, and one-hot logits) | Largest errors 0.0007 and 0.0013 of the bound; NaN and infinite input give NaN mixes |
+| Collapse and expand at layers 0, 1, 2, 14, 20, 21, and 39 from the oracle's inputs and mixes | Equal to the CPU; BF16 outputs equal the oracle's |
+| Engram gather of the 24 rows at layers 1 and 14 from a host table whose other rows hold NaN | Equal to the CPU loader and to the oracle's BF16 rows; ids outside the table give NaN rows |
+| Engram gate on the oracle's residuals with the real query and key weights (synthetic keys and value; the oracle records no `wkv` output), zero streams, a zero dot, and NaN | Largest error 0.39 of the bound; 20 BF16 outputs at a rounding boundary |
+| Router logits from layer 14's real BF16 router | 0.0023 of the bound; ids equal the oracle's (one selected/unselected pair lies within the bound, and the ids still equal the CPU's) |
+| Routing at layers 0, 2, 14, 20, and 39 from logits rebuilt from the oracle's scores | Ids equal the CPU's and the oracle's; this step has no recorded exact ties |
+| Routing edge cases: ties, equal and extreme logits, the softplus threshold, top-1, 1,024 experts with top 32, NaN and infinite input | Equal to the host model; ties go to the lower id |
+| SwiGLU of experts 222 (layer 2) and 180 (layer 20) on the oracle's w1 and w3 outputs | BF16 output equals the oracle's down-projection input in 2,304 of 2,304 values each |
+| Expert sum against `moe::forward` | Equal |
+| A whole MoE step from device ids, FP4 routed and FP8 shared experts | Equal to the host models' chain; ids equal `moe::forward`'s; output within 0.12 of the W1 BF16 policy |
+
+One decode step's latency on the shared 4080, mean over 200 launches with
+enqueue overhead: mixes 10.2 µs, collapse 1.8, expand 2.2, Engram gate 4.5,
+router logits 6.4, routing 12.6, SwiGLU 3.6, expert sum 1.9, and the
+24-row Engram gather 3.2 µs from both a 16 MiB and a 1,056 MiB host table;
+reading the whole larger table over PCIe would take about 40 ms, so the
+gather reads only the requested rows. Routing is the slowest: its six
+selection rounds each synchronize all 1,024 threads. W7's CUDA graphs remove
+most of the launch overhead. Evidence:
+[`sm89-2026-10-20.json`](../../crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_mix/sm89-2026-10-20.json).
+
+**For SM120 (W8).** The kernels use no tensor cores, FP8 conversion
+instructions, or architecture-specific features, and build without fast
+math. On the RTX PRO 6000, confirm:
+
+- `PSIONIC_REQUIRE_CUDA=1 cargo test -p psionic-backend-cuda --lib v41_mix`
+  passes with `PSI_CUDA_ARCH=sm_120` and CUDA 12.8 or later, and the ignored
+  `v41_mix_decode_latency`.
+- Double-precision `exp` and `log1p` still round to the host model's values.
+  SM120 workstation parts have reduced FP64 throughput; the kernels make at
+  most 13,824 such calls a step, but measure the SwiGLU and routing times.
+- Kernels reach page-locked host memory through unified addressing, and the
+  gather time stays flat as the table grows. A real 101 GB table needs about
+  101 GB of page-locked host RAM per Engram stage; registering a memory-mapped
+  checkpoint file instead (`cudaHostRegister`) is W7 work.
+- Float32 subnormals aren't flushed (Engram rows with small scales rely on
+  them).

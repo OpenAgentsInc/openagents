@@ -247,3 +247,6 @@ bench/terminal-bench/traces/try--coder-one-tunable-v7--targets-9568b/production-
 bench/terminal-bench/traces/try--coder-one-tunable-v7--targets-9568b/production-planning__rmraruG.json
 bench/terminal-bench/traces/try--coder-one-tunable-v7--targets-9568b/wal-recovery-ordering__rojNpSF.episode/trajectory.atif.json
 bench/terminal-bench/traces/try--coder-one-tunable-v7--targets-9568b/wal-recovery-ordering__rojNpSF.json
+# Real DeepSeek-V4.1 weights and oracle activations the W6 kernel parity
+# tests read (#12393); regenerate with the deepseek_v41_mix_rows example.
+crates/psionic/crates/psionic-backend-cuda/testdata/deepseek_v41_mix/rows.bin

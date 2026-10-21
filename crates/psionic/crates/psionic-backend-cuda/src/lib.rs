@@ -1021,6 +1021,12 @@ impl CudaHostBuffer {
         self.platform.read_bytes(self.byte_len)
     }
 
+    /// The allocation's address, which kernels can also read through
+    /// unified addressing. Null where the CUDA runtime is unavailable.
+    pub(crate) fn raw_host_ptr(&self) -> *mut std::ffi::c_void {
+        self.platform.raw_host_ptr()
+    }
+
     /// Reads a byte prefix from the pinned host buffer into `output`.
     pub fn read_bytes_prefix_into(&self, output: &mut [u8]) -> Result<(), RuntimeError> {
         if output.len() > self.byte_len {
@@ -17224,6 +17230,14 @@ mod platform {
         }
     }
 
+    impl PlatformHostBuffer {
+        /// The page-locked allocation's address. With unified addressing it
+        /// is also the device's address for the same memory.
+        pub(super) fn raw_host_ptr(&self) -> *mut c_void {
+            self.inner.host_ptr
+        }
+    }
+
     impl PlatformSubmission {
         pub(super) fn raw_stream(&self) -> Result<*mut c_void, RuntimeError> {
             self.runtime.set_device()?;
@@ -17440,6 +17454,12 @@ mod platform {
 
     impl PlatformBuffer {
         pub(super) fn raw_device_ptr(&self) -> *mut std::ffi::c_void {
+            std::ptr::null_mut()
+        }
+    }
+
+    impl PlatformHostBuffer {
+        pub(super) fn raw_host_ptr(&self) -> *mut std::ffi::c_void {
             std::ptr::null_mut()
         }
     }
@@ -19225,6 +19245,7 @@ pub mod clef_prefill;
 pub mod digit;
 pub mod encoder;
 pub mod v41_matvec;
+pub mod v41_mix;
 
 #[cfg(test)]
 mod tests {
