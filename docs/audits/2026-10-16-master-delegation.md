@@ -485,6 +485,13 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12440: after the next web deploy, confirm the image log builds or
+  reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
+  `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test
+  account, `/admin` and `/admin/kiln/` answer the staff-only page and
+  `/admin/kiln/config.json` answers `404`. As an admin, `/admin/kiln/`
+  reports "cross-origin isolated: yes", the Grid terminal shows **Kiln**,
+  and one Kiln task finishes.
 - #12438: on staging and then production, walk through the Lagrange 2 arch
   on `/`. Confirm three things: the load screen shows with its bar moving,
   the zone panel and `A` turning work, and there is no Pylon overlay. Then
