@@ -1,0 +1,46 @@
+{
+ "issue": 12422,
+ "reference": "rec v0.1.0 (MLX INT4) greedy, temperature 0, logprobs, same Mac",
+ "prompts": "short: a Fibonacci request; medium and long: llama.cpp's llama-model.cpp source with an explanation request",
+ "free_running": {
+  "short": {
+   "prompt_tokens": 19,
+   "match": 82,
+   "of": 128,
+   "rec_p_at_divergence": 0.427
+  },
+  "medium": {
+   "prompt_tokens": 1985,
+   "match": 87,
+   "of": 128,
+   "rec_p_at_divergence": 0.28
+  },
+  "long": {
+   "prompt_tokens": 16427,
+   "match": 75,
+   "of": 128,
+   "rec_p_at_divergence": 0.361
+  }
+ },
+ "teacher_forced_chunked_prefill": {
+  "short": {
+   "top1_agree": 127,
+   "of": 128,
+   "mean_abs_logprob_difference": 0.0094,
+   "max": 0.1269
+  },
+  "medium": {
+   "top1_agree": 126,
+   "of": 128,
+   "mean_abs_logprob_difference": 0.0215,
+   "max": 0.189
+  },
+  "long": {
+   "top1_agree": 126,
+   "of": 128,
+   "mean_abs_logprob_difference": 0.0285,
+   "max": 0.3817
+  }
+ },
+ "source_commit": "de0de7fc2e"
+}

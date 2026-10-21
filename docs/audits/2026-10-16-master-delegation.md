@@ -490,6 +490,19 @@ The status lines below summarize each issue and its comments. Open the issue for
   modules the commit didn't touch, and the staging smoke passes. Then
   confirm `/att/release.json` and `/vault/release.json` report the deployed
   commit, now read at run time.
+- #12422: on a quiet Mac (load under about 10), start `rec` for about 15
+  minutes and run `scripts/psionic/flint-rec-compare.py
+  ../flint/llama.cpp/src/llama-model.cpp` against `psionic-flint serve
+  --backend metal` on 127.0.0.1:18431. It alternates the two engines at
+  three prompt sizes. Then `rec stop`, and replace the "conditions
+  differed" rows in `docs/psionic/flint-metal.md` with the
+  same-conditions medians.
+- #12422: when the CUDA host is up, compute BF16 reference logits
+  (`scripts/psionic/flint-reference.py`, FP32 compute) for
+  `crates/psionic/crates/psionic-flint/testdata/int4-reference-request.json`,
+  then run `flint-compare.py` on the Metal logits from position 18 on, with
+  `--total-variation-max 0.10 --centered-logit-max 1.5` (declared before
+  measuring), and record the result in `docs/psionic/flint-metal.md`.
 - #12426: on a quiet Mac, start `rec` briefly, run the three scratch tasks
   in `docs/coder/measurements/2026-10-21-microcoder-flint-pylon.md` with
   `--provider openai-compatible --model flint`, add the rows, then
@@ -996,5 +1009,6 @@ Already in `NEEDS_OWNER.md`, and they don't block closing: the CAD history copy 
 
 - #12419: original-weight CUDA qualification passed; [initial receipt](../psionic/verification/flint-2026-10-21/receipt.json). The later #12425 qualification covers the public context/deadline, load, and app flow and replaces the development expiry with a maintained service. Metal and MLX weights remain separate in #12422.
 - #12425: completed on GCP and production: 22 full-checkpoint profile checks, a 328-second relay job, frozen-worker recovery without overlapping GPU processes, stopped-VM recovery, and a dedicated-account two-turn Grid chat (`42`, then `37`). The homepage lists **Flint on GCP** online. Both test chats were deleted (204); [results and evidence](../psionic/flint-native.md#live-pylon-qualification-2026-10-21). Source `9d34624102` serves the model/Pylon/controller; web image `4f6cd516e0` is live. Spot capacity remains a restart limitation; compute is about $53.60/day before disks and network.
+- #12422: Flint's MLX INT4 checkpoint runs natively on the Mac through Psionic's Metal kernels, which adapt `rec`'s decode design. It serves through `psionic-flint serve --backend metal` and `pylon serve --text-profile flint-metal`. Kernel tests pass. Teacher-forced top-1 agrees with `rec` on 126–127 of 128 tokens. Decode measured 135/154/119 tok/s against `rec`'s recorded 125/140/109, under different load. 16K prefill is 1.7 times slower than `rec`. Six-position INT4-vs-BF16 logits fail the declared limits at user-text positions; the assistant-position check is in After-close checks. A Grid terminal turn was answered by the temporary **Mac M5 Max Flint** Pylon. A permanent Mac service is in `NEEDS_OWNER.md`. [Details](../psionic/flint-metal.md).
 
 - #12433: deploy matching web, Everglade, lander-chat, and Ice Cream Man builds. With the dedicated test accounts, walk into GAME LAB from `/`, sign in and return there, edit → play → compare, check account isolation and five concurrent edits, and return to the same Grid position. Promote after staging passes. Local Chromium checks use synthetic accounts and a scripted model; captures and results are in `docs/verse/captures/2026-10-21-game-lab/`.

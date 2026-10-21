@@ -1,3 +1,18 @@
+## Decide whether this Mac serves Flint permanently (#12422) (2026-10-21)
+
+Psionic now serves Flint on the Mac's GPU from Recursive's MLX INT4 weights
+(`psionic-flint serve --backend metal`), and a Pylon can publish it with
+`pylon serve --text-profile flint-metal`. For the #12422 check, a temporary
+Pylon, **Mac M5 Max Flint**, answered a Grid terminal turn, and was then
+stopped. Steps and limits are in
+[`docs/psionic/flint-metal.md`](docs/psionic/flint-metal.md).
+
+If you want it running all the time, say so. An agent will install the
+worker and its Pylon as launchd agents with their own home, beside the
+existing network-lane Pylon. It holds 22.6 GB of GPU memory and one Flint
+slot. With **Flint on GCP** also online, the Grid's Flint choice goes to
+either one (#12436).
+
 ## Self-hosted Lightning addresses (#12307)
 
 The address service needs a private LNURL backend and PostgreSQL before

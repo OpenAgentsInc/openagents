@@ -2,6 +2,8 @@
 
 Issues: [#12419](https://github.com/OpenAgentsInc/openagents/issues/12419) and
 [#12425](https://github.com/OpenAgentsInc/openagents/issues/12425).
+The Apple silicon counterpart, with Recursive's MLX INT4 weights on Metal,
+is [Native Flint on Apple silicon](flint-metal.md) (#12422).
 
 `psionic-flint` executes Recursive's original Flint checkpoint in Rust through
 Candle on one CUDA GPU. Python supplies offline test references; it is absent

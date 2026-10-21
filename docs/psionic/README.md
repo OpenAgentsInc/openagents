@@ -71,7 +71,10 @@ analysis is kept separate from the final answer.
 [`psionic-flint`](flint-native.md) is the native Rust safetensors path for
 Recursive Flint on GCP CUDA. It keeps the original BF16 weights resident and
 uses FP32 computation. It serves bounded text requests through its own HTTP
-endpoint; GGUF, Metal, tools, and streaming are outside this first profile.
+endpoint; GGUF, tools, and streaming are outside this first profile. With
+its `metal` feature, the same crate serves Recursive's MLX INT4 checkpoint
+on Apple silicon through Metal kernels in `psionic-backend-metal`; see
+[Native Flint on Apple silicon](flint-metal.md).
 
 Pylon can also explicitly supervise a local llama.cpp server for families
 without a native GPU decoder. See [model selection and qualification](../compute/pylon.md#choose-another-text-model)

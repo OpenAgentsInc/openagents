@@ -1,9 +1,15 @@
 # Recursive Flint on OpenAgents Pylons
 
-Status: research note, 2026-10-21. Nothing here is implemented. Sources were
-read on the day Flint was released, so upstream runtime support is moving;
-recheck the pull requests listed in [Runtime support](#runtime-support)
-before you start the work.
+Status: research note, 2026-10-21. Sources were read on the day Flint was
+released, so upstream runtime support is moving; recheck the pull requests
+listed in [Runtime support](#runtime-support) before you start the work.
+
+Since this note was written, Psionic serves Flint natively on both targets:
+the original BF16 weights on GCP CUDA ([Native Flint on GCP](../../psionic/flint-native.md),
+#12419 and #12425), and Recursive's MLX INT4 weights on Apple silicon
+([Native Flint on Apple silicon](../../psionic/flint-metal.md), #12422),
+each behind a pinned Pylon profile. See
+[Native Psionic on this Mac](#native-psionic-on-this-mac).
 
 Flint is Recursive SI's first model: an open-weights coding model for local
 hardware. This note records what Recursive published about it, then works out
@@ -680,6 +686,21 @@ Inference and estimates:
 - The `mlx-lm` PR branch (#1998) was installed in a scratch virtual
   environment but not measured, because `rec` already covers the MLX INT4
   weights.
+
+## Native Psionic on this Mac
+
+#12422 put Flint on Psionic's Metal backend, reading the MLX INT4 shards
+directly. Its decode kernels adapt `rec`'s design, credited in
+[`flint-metal.md`](../../psionic/flint-metal.md#credit-adapted-from-rec)
+and in the kernel source under `rec`'s Apache-2.0 notice. Nothing from `rec`,
+MLX, llama.cpp, or Python runs at serving time. That page records:
+
+- kernel tests against a CPU reference;
+- greedy and teacher-forced agreement with `rec`;
+- a comparison with the BF16 reference;
+- decode and prefill speed beside the `rec` numbers above;
+- a Grid terminal turn answered by a Mac Pylon through the `flint-metal`
+  profile.
 
 ## Open questions
 
