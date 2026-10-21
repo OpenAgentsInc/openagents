@@ -1,5 +1,6 @@
 //! The page's address: under the base the page names (`/gpui` by default,
-//! in its `openagents-chat-base` meta tag), the base is a new chat and
+//! in its `openagents-chat-base` meta tag), the base is a new chat (`/chat`
+//! when the base is empty, #12413) and
 //! `{base}/chat/{id}` an open one. Opening a chat pushes its address, and
 //! Back and Forward come back through [`watch`].
 
@@ -19,7 +20,7 @@ pub const SIGNED_IN_META: &str = "openagents-signed-in";
 pub fn regular(chat: Option<&str>) -> String {
     match chat {
         Some(id) => format!("/chat/{id}?ui=html"),
-        None => "/new?ui=html".to_owned(),
+        None => "/chat?ui=html".to_owned(),
     }
 }
 
@@ -54,7 +55,7 @@ pub fn settings_path(base: &str, page: openagents_chat_view::settings_forms::Pag
 pub fn path_for(base: &str, chat: Option<&str>) -> String {
     match chat {
         Some(id) => format!("{base}/chat/{id}"),
-        None if base.is_empty() => "/".to_owned(),
+        None if base.is_empty() => "/chat".to_owned(),
         None => base.to_owned(),
     }
 }
@@ -230,7 +231,8 @@ mod tests {
         assert_eq!(path_for(BASE, None), "/gpui");
         // At the regular addresses, once swapped in.
         assert_eq!(chat_of("", "/chat/abc"), Some("abc".into()));
-        assert_eq!(path_for("", None), "/");
+        assert_eq!(path_for("", None), "/chat");
+        assert_eq!(chat_of("", "/chat"), None);
     }
 
     #[test]
@@ -244,12 +246,12 @@ mod tests {
         assert_eq!(settings_of("?settings=nope"), None);
         assert_eq!(settings_of(""), None);
         assert_eq!(settings_path(BASE, Page::General), "/gpui?settings=general");
-        assert_eq!(settings_path("", Page::Files), "/?settings=files");
+        assert_eq!(settings_path("", Page::Files), "/chat?settings=files");
     }
 
     #[test]
     fn the_regular_chat_is_asked_for_by_name() {
         assert_eq!(regular(Some("abc")), "/chat/abc?ui=html");
-        assert_eq!(regular(None), "/new?ui=html");
+        assert_eq!(regular(None), "/chat?ui=html");
     }
 }

@@ -303,7 +303,7 @@ mod tests {
         let world = world().await;
         let mut browser = Browser::default();
         browser.sign_in(&world, "octo-local").await;
-        let page = browser.get(&world, "/new?ui=html").await;
+        let page = browser.get(&world, "/chat?ui=html").await;
         let csrf = page_csrf(&page.body);
         let initial = api(&mut browser, &world, "GET", "/v1/terminal", "", json!(null)).await;
         let initial: serde_json::Value = serde_json::from_str(&initial.body).unwrap();

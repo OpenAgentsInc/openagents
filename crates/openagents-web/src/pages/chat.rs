@@ -40,12 +40,8 @@ const LEASE_SECONDS: u64 = 180;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
-        // `/chat` has no page of its own: a new chat starts on the home page.
-        .route(
-            "/chat",
-            get(|| async { crate::chat_html::protect(Redirect::to("/").into_response()) })
-                .post(send_new),
-        )
+        // A new chat starts at `/chat` (#12413); `/` is the Grid homepage.
+        .route(super::home::NEW, get(super::home::new_chat).post(send_new))
         .route("/chat/{id}", get(show).post(send_follow))
         .route("/chat/{id}/workspace", get(workspace))
         .route("/chat/{id}/delete", get(confirm_delete).post(delete))
@@ -1665,7 +1661,7 @@ async fn delete(
         Err(r) => return r,
     };
     match remove_owned(&app, &owner, &record).await {
-        Ok(()) => crate::chat_html::protect(Redirect::to("/").into_response()),
+        Ok(()) => crate::chat_html::protect(Redirect::to(super::home::NEW).into_response()),
         Err(Removed::Busy) => not_deleted(
             &id,
             StatusCode::CONFLICT,

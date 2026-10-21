@@ -41,9 +41,9 @@ Windows Terminal tell `Ctrl+Enter` apart.
 
 ## On the website
 
-The [web chat](/new) takes the same keys, with `⌘+Enter` on a Mac.
+The [web chat](/chat) takes the same keys, with `⌘+Enter` on a Mac.
 
-- Queued messages show above the [message box](/new). Click one to change
+- Queued messages show above the [message box](/chat). Click one to change
   its words, or press **Remove** to drop it.
 - `Enter` (or **Send**) while a reply is being written stops that reply
   and sends your message now. What the reply wrote so far stays, marked

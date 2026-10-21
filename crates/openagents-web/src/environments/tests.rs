@@ -697,13 +697,13 @@ async fn on_a_public_host_environments_are_for_the_site_admin_and_their_own() {
         assert_eq!(page.status, StatusCode::SEE_OTHER, "{path}: {}", page.body);
         assert_eq!(page.location(), format!("/login?return_to={back}"));
     }
-    let home = visitor.get(&world, "/").await;
+    let home = visitor.get(&world, "/chat").await;
     assert!(!home.body.contains("href=\"/environments\""));
 
     // Invited but not an admin: no link, and nothing at the address.
     let mut quiet = Browser::default();
     quiet.sign_in(&world, "quiet-local").await;
-    let home = quiet.get(&world, "/").await;
+    let home = quiet.get(&world, "/chat").await;
     assert_eq!(home.status, StatusCode::OK);
     assert!(
         !home.body.contains("href=\"/environments\""),
@@ -733,7 +733,7 @@ async fn on_a_public_host_environments_are_for_the_site_admin_and_their_own() {
             Some(&world.account_of("octo-local")),
         )
         .unwrap();
-    let home = octo.get(&world, "/").await;
+    let home = octo.get(&world, "/chat").await;
     assert!(
         home.body.contains("href=\"/environments\""),
         "{}",

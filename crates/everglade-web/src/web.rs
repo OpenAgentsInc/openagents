@@ -642,7 +642,8 @@ async fn run() -> Result<(), String> {
             window
                 .location()
                 .pathname()
-                .is_ok_and(|p| p.trim_end_matches('/') == "/home"),
+                // The Grid homepage: `/`, or `/home` before it moved (#12413).
+                .is_ok_and(|p| matches!(p.trim_end_matches('/'), "" | "/home")),
         );
     });
     if grid {

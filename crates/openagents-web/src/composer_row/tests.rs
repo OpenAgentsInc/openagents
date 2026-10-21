@@ -375,9 +375,9 @@ fn claude_code_before_claude_is_connected_shows_the_connect_card() {
     assert_eq!(card.matches("<a ").count(), 2, "{card}");
     assert!(!card.contains("subscription"), "{card}");
     assert!(
-        card.contains(r#"href="/environments/env-1/sign-in?back=%2F""#)
+        card.contains(r#"href="/environments/env-1/sign-in?back=%2Fchat""#)
             && card.contains(
-                r#"hx-post="/environments/env-1/sign-in?back=%2F&amp;part=dialog" hx-target="body" hx-swap="beforeend""#
+                r#"hx-post="/environments/env-1/sign-in?back=%2Fchat&amp;part=dialog" hx-target="body" hx-swap="beforeend""#
             ),
         "{card}"
     );

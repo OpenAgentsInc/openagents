@@ -9,7 +9,7 @@ CAD on your own computer is free; see the end of this guide.
 
 ## 1. Ask for a part
 
-Log in at [openagents.com/login](https://openagents.com/login), start a [new chat](/new), and
+Log in at [openagents.com/login](https://openagents.com/login), start a [new chat](/chat), and
 describe the part with its sizes:
 
 ```text

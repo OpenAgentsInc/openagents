@@ -917,7 +917,7 @@ async fn sharing_on_the_website() {
     assert!(theirs.body.contains("Leave this project"));
     for absent in [
         format!("/projects/{id}/edit"),
-        format!("/?project={id}"),
+        format!("/chat?project={id}"),
         "Invite a".to_owned(),
         "Make primary".to_owned(),
         "Add a repository".to_owned(),
@@ -927,7 +927,7 @@ async fn sharing_on_the_website() {
     }
     crate::copy_guard::assert_plain(&format!("/projects/{id}"), &theirs.body);
     // The left panel lists it, marked.
-    let home = other.get(&world, "/").await;
+    let home = other.get(&world, "/chat").await;
     assert!(
         home.body.contains("garden") && home.body.contains("Shared · viewer"),
         "{}",

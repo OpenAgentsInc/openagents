@@ -26,7 +26,7 @@ async fn add_project(browser: &mut Browser, world: &World, repository: &str) -> 
         .await;
     assert_eq!(added.status, StatusCode::SEE_OTHER, "{}", added.body);
     let page = browser.get(world, PAGE).await;
-    page.body[page.body.find("/?project=prj_").unwrap() + 10..][..20].to_string()
+    page.body[page.body.find("/chat?project=prj_").unwrap() + 14..][..20].to_string()
 }
 
 async fn online(world: &World, owner: &str, computer: &str) {
@@ -49,7 +49,7 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
 
     // Signed out: the plain composer.
     let mut visitor = Browser::default();
-    let home = visitor.get(&world, "/new").await;
+    let home = visitor.get(&world, "/chat").await;
     assert_eq!(home.status, StatusCode::OK);
     assert!(home.body.contains(r#"id="chat-form""#));
     assert!(!home.body.contains("composer-row"), "{}", home.body);
@@ -61,7 +61,7 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
     // repository.
     let mut quiet = Browser::default();
     quiet.sign_in(&world, "quiet-local").await;
-    let home = quiet.get(&world, "/").await;
+    let home = quiet.get(&world, "/chat").await;
     assert!(
         home.body.contains(r#"aria-label="Project: No project""#),
         "{}",
@@ -121,7 +121,7 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
     );
     assert!(branches.body.contains(">main<"));
     // The group's New chat preselects it.
-    let home = octo.get(&world, &format!("/?project={project}")).await;
+    let home = octo.get(&world, &format!("/chat?project={project}")).await;
     assert!(
         home.body.contains(r#"aria-label="Branch: main""#),
         "{}",
@@ -195,7 +195,7 @@ async fn the_row_offers_only_what_works_and_sending_uses_each_pick() {
 
     // Coder with sync on checked in: Where it runs offers it.
     online(&world, &owner, "studio-mac").await;
-    let home = octo.get(&world, "/").await;
+    let home = octo.get(&world, "/chat").await;
     assert!(
         home.body
             .contains(r#"aria-label="Where it runs: Answer here""#),
@@ -430,7 +430,7 @@ async fn serve_for_screenshots() {
     let project = add_project(&mut octo, &world, "octo-local/hello-world").await;
     let owner = account_owner_of(&world, "octo-local");
     online(&world, &owner, "studio-mac").await;
-    let home = octo.get(&world, "/").await;
+    let home = octo.get(&world, "/chat").await;
     let csrf = chat_csrf(&home.body);
     let sent = octo
         .post(

@@ -205,7 +205,8 @@ async fn connecting_google_and_attaching_a_drive_folder_to_a_project() {
         )
         .await;
     let projects = browser.get(&world, crate::projects::PAGE).await;
-    let id = projects.body[projects.body.find("/?project=prj_").unwrap() + 10..][..20].to_string();
+    let id =
+        projects.body[projects.body.find("/chat?project=prj_").unwrap() + 14..][..20].to_string();
     let here = super::sources::href(&id);
     assert!(projects.body.contains(&here), "{}", projects.body);
     let sources = browser.get(&world, &here).await;

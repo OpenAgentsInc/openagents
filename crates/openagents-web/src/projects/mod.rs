@@ -565,7 +565,7 @@ pub fn view_with(
                             }
                             span.oa-page-actions {
                                 @if role.edits() {
-                                    (ButtonLink::new("New chat", format!("/?project={}", project.id))
+                                    (ButtonLink::new("New chat", format!("/chat?project={}", project.id))
                                         .size(ControlSize::Sm)
                                         .variant(ButtonVariant::Soft)
                                         .color(Color::Secondary))

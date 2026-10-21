@@ -61,7 +61,7 @@ place. Type `/help` in Coder to see the short list there.
 | `Ctrl+Enter` (`⌘+Enter` on a Mac) | Queue for later. |
 | `Shift+Enter` | A new line. |
 
-Type `/export` in the [web chat](/new)'s message box and send it to save
+Type `/export` in the [web chat](/chat)'s message box and send it to save
 the chat to a file.
 
 ## The Verse in your browser

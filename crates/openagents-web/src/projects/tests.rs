@@ -518,11 +518,11 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
     assert_eq!(added.status, StatusCode::SEE_OTHER, "{}", added.body);
     let page = browser.get(&world, PAGE).await;
     assert!(page.body.contains("Your projects"), "{}", page.body);
-    let id = page.body[page.body.find("/?project=prj_").unwrap() + 10..][..20].to_string();
+    let id = page.body[page.body.find("/chat?project=prj_").unwrap() + 14..][..20].to_string();
     assert!(oa_auth::repos::project_id(&id), "{id}");
 
     // The home page offers the project, preselected from a group's New chat.
-    let home = browser.get(&world, &format!("/?project={id}")).await;
+    let home = browser.get(&world, &format!("/chat?project={id}")).await;
     assert_eq!(home.status, StatusCode::OK);
     assert!(
         home.body
@@ -549,7 +549,7 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
         .create(&chat(LOOSE, &owner, "Plan the week", None))
         .await
         .unwrap();
-    let home = browser.get(&world, "/").await;
+    let home = browser.get(&world, "/chat").await;
     let at = |text: &str| {
         home.body
             .find(text)
@@ -633,7 +633,7 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
     // Signed out (same browser, no session): the account's chats and
     // project names stay with the account.
     let mut out = Browser::default();
-    let home = out.get(&world, "/").await;
+    let home = out.get(&world, "/chat").await;
     assert!(!home.body.contains("Fix the login"), "{}", home.body);
     assert!(!home.body.contains("storefront"), "{}", home.body);
     assert!(!home.body.contains("acme/"));
@@ -641,7 +641,7 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
     // Another account in that browser sees no names either.
     let mut other = Browser::default();
     other.sign_in(&world, "quiet-local").await;
-    let home = other.get(&world, "/").await;
+    let home = other.get(&world, "/chat").await;
     assert!(!home.body.contains("storefront"), "{}", home.body);
     assert!(home.body.contains("Make a project"));
 
@@ -652,7 +652,7 @@ async fn connecting_github_adds_a_project_that_groups_chats_for_its_owner_only()
     let page = browser.get(&world, PAGE).await;
     assert!(page.body.contains("GitHub access ended"), "{}", page.body);
     assert!(page.body.contains("storefront"));
-    let home = browser.get(&world, "/").await;
+    let home = browser.get(&world, "/chat").await;
     assert!(home.body.contains("Reconnect GitHub"), "{}", home.body);
     assert!(home.body.contains("Fix the login"));
 }
@@ -854,7 +854,7 @@ async fn pick(browser: &mut Browser, world: &World, repository: &str) -> Answer 
 async fn the_composer_reads_github_as_the_person_and_keeps_branch_lists() {
     let world = world().await;
     let mut visitor = Browser::default();
-    visitor.get(&world, "/new").await;
+    visitor.get(&world, "/chat").await;
     let picked = pick(&mut visitor, &world, "octo-local/hello-world").await;
     assert!(
         picked.body.contains("Selection updated."),

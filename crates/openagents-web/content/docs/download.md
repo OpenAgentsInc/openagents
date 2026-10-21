@@ -117,7 +117,7 @@ Running the install command again also updates Coder.
    `rm -rf ~/.openagents/coder` (on Windows,
    `Remove-Item -Recurse "$env:USERPROFILE\.openagents\coder"`). Chats you
    synced to your account stay there until you delete them on
-   [openagents.com](/).
+   [openagents.com/chat](/chat).
 
 ## Windows
 
@@ -126,7 +126,7 @@ task services and background automation need macOS or Linux for now.
 
 ## Web and phone
 
-Nothing to install for the web: chat at [openagents.com](/) in any
+Nothing to install for the web: chat at [openagents.com/chat](/chat) in any
 browser. The iPhone app is in beta on TestFlight; see
 [OpenAgents for iPhone](/docs/iphone). The
 [desktop app](/docs/mac) and the Android app are coming soon.

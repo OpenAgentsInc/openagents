@@ -727,7 +727,11 @@ async fn upload(
             .into_response(),
         ),
         Err(Refused::Plain(status, text)) => failed(status, text, None),
-        Err(Refused::Full) => failed(StatusCode::CONFLICT, FULL, Some(("/", "New chat"))),
+        Err(Refused::Full) => failed(
+            StatusCode::CONFLICT,
+            FULL,
+            Some((crate::pages::home::NEW, "New chat")),
+        ),
         Err(Refused::Stored(error)) => unavailable(error),
     }
 }

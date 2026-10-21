@@ -115,7 +115,7 @@ async fn remove(
         Err(r) => return r,
     };
     match delete_all(&app.config.chat_store, &owner).await {
-        Ok(0) => crate::chat_html::protect(Redirect::to("/").into_response()),
+        Ok(0) => crate::chat_html::protect(Redirect::to(crate::pages::home::NEW).into_response()),
         Ok(left) => crate::chat_html::protect(problem(
             StatusCode::CONFLICT,
             "Some chats weren't deleted",

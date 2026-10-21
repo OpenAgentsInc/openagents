@@ -179,7 +179,7 @@ fn build(app: &App) -> Option<&Path> {
 async fn moved(OriginalUri(uri): OriginalUri) -> Redirect {
     let path = uri.path().strip_prefix(GPUI_CHAT_PATH).unwrap_or("");
     let path = if path.is_empty() || path == "/" {
-        "/"
+        super::home::NEW
     } else {
         path
     };
@@ -433,13 +433,13 @@ async fn page_with_fallback(
 ) -> Response {
     let path = match &chat {
         Some(id) => format!("{base}/chat/{id}"),
-        None if base.is_empty() => "/".to_owned(),
+        None if base.is_empty() => super::home::NEW.to_owned(),
         None => base.to_owned(),
     };
     // The HTML page, for a browser that can't draw the canvas.
     let regular = fallback.unwrap_or_else(|| match &chat {
         Some(id) => format!("/chat/{id}?{UI_QUERY}=html"),
-        None => format!("/new?{UI_QUERY}=html"),
+        None => format!("{}?{UI_QUERY}=html", super::home::NEW),
     });
     if build(app).is_none() {
         return unavailable(headers, &path, &regular);
@@ -454,7 +454,7 @@ async fn page_with_fallback(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "Chat",
                 "We couldn't check your login. Try again in a minute.",
-                ("Open the regular chat", "/"),
+                ("Open the regular chat", "/chat?ui=html"),
             );
         }
     };
@@ -588,7 +588,11 @@ fn shell(page: &Shell<'_>) -> Markup {
         path if path.starts_with("/projects/") && path.ends_with("/vault") => Some("vault"),
         _ => None,
     };
-    let new_chat = if base.is_empty() { "/" } else { base };
+    let new_chat = if base.is_empty() {
+        super::home::NEW
+    } else {
+        base
+    };
     html! {
         (DOCTYPE)
         // The canvas is dark, so the HTML chat's parts beside it are too.
@@ -850,7 +854,7 @@ mod tests {
             csrf: "x",
             rows: &rows,
             current: None,
-            regular: "/new?ui=html",
+            regular: "/chat?ui=html",
             base: "",
             signed_in: false,
             fonts: None,
@@ -861,7 +865,7 @@ mod tests {
         .into_string();
         assert!(html.contains("name=\"openagents-chat-base\" content=\"\""));
         assert!(html.contains("name=\"openagents-signed-in\" content=\"0\""));
-        assert!(html.contains("class=\"g-new\" href=\"/\""));
+        assert!(html.contains("class=\"g-new\" href=\"/chat\""));
         assert!(html.contains("href=\"/chat/c1\""));
     }
 
@@ -904,7 +908,7 @@ mod tests {
             csrf: "x",
             rows: &rows,
             current: None,
-            regular: "/new?ui=html",
+            regular: "/chat?ui=html",
             base: "",
             signed_in: true,
             fonts: None,
@@ -1059,7 +1063,7 @@ mod tests {
             csrf: "x",
             rows: &rows,
             current: None,
-            regular: "/new?ui=html",
+            regular: "/chat?ui=html",
             base: GPUI_CHAT_PATH,
             signed_in: false,
             fonts: None,

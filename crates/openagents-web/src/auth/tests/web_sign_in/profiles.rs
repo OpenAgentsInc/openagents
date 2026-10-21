@@ -193,7 +193,7 @@ async fn a_key_names_itself_publishes_its_profile_and_shows_it_publicly() {
     assert_eq!(me["name"], "pat-test");
     assert_eq!(me["profile"], "/@pat-test");
     // /new applies the chat feature flags and the person's saved UI choice.
-    assert_eq!(me["chat"], "/new");
+    assert_eq!(me["chat"], "/chat");
     // The Grid's avatar carries the profile name and can ask for its
     // owner tag (#12406).
     assert_eq!(me["verse_name"], "pat-test");
@@ -1535,7 +1535,7 @@ async fn verse_labels_avatars_and_the_chat_never_loads_it() {
     assert!(names["names"].get(nobody.pubkey()).is_none());
     let verse = anyone.get(&world, "/verse").await;
     assert_eq!(verse.status, StatusCode::OK);
-    for page in ["/", "/home/classic", "/lander10", "/explore"] {
+    for page in ["/chat", "/home/classic", "/lander10", "/explore"] {
         let body = anyone.get(&world, page).await.body;
         assert!(!body.contains("everglade"), "{page} loads Verse");
     }

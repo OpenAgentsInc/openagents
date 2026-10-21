@@ -1,17 +1,18 @@
-//! `/home`: the Grid homepage. The production `/` route stays unchanged.
+//! `/`: the Grid homepage. `/home`, where it started, redirects here.
 //!
 //! The header and accessible pylon list are HTML. The live pylons and Verse
 //! load in separate chunks; only Verse draws the world. Once it paints,
 //! the page prepares the GPUI chat so approaching the shared terminal
 //! does not wait for its download and first frame.
 //!
-//! Approaching the shared terminal opens the GPUI lander chat. [`me`] (`GET /home/me`) tells the top
+//! Approaching the shared terminal opens the GPUI lander chat. [`me`] (`GET /home/me`, kept at its
+//! first address because the page and older clients call it) tells the top
 //! bar who is signed in, so the page itself stays one cached document:
 //! signed in, the bar shows the person's name linking to
 //! their profile, and Open chat.
 //!
-//! `/home` used to be the classic home page; that moved to
-//! [`super::home::HOME`].
+//! `/` used to be the new-chat page; that moved to [`super::home::NEW`]
+//! (`/chat`), and the classic home page to [`super::home::HOME`].
 
 use std::sync::{Arc, Mutex};
 
@@ -22,12 +23,15 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use serde_json::json;
 
-use super::lander5::{Addition, Document, assemble_page, send};
+use super::lander5::{Addition, Document, assemble_page_with_head, send};
 use super::pylons_field::{field, list_html};
 use crate::App;
 
 /// The page.
-pub(crate) const GRID_HOME_PATH: &str = "/home";
+pub(crate) const GRID_HOME_PATH: &str = "/";
+/// The page's first address, which redirects to [`GRID_HOME_PATH`] with
+/// its query (`?chat=` names the terminal's open chat).
+pub(crate) const OLD_GRID_HOME_PATH: &str = "/home";
 /// Who is signed in, for the top bar.
 pub(crate) const GRID_HOME_ME: &str = "/home/me";
 
@@ -35,7 +39,7 @@ const TITLE: &str = "OpenAgents";
 const DESCRIPTION: &str = "OpenAgents: agents, pylons, and the Grid where they meet.";
 
 /// Where Log in and Sign up return to.
-const BACK: &str = "%2Fhome";
+const BACK: &str = "%2F";
 /// The chat entry point respects the feature flags and saved UI choice.
 const CHAT: &str = super::home::NEW;
 
@@ -339,7 +343,23 @@ static KEPT: Mutex<Option<(String, Arc<Document>)>> = Mutex::new(None);
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route(GRID_HOME_PATH, get(page))
+        .route(OLD_GRID_HOME_PATH, get(moved))
         .route(GRID_HOME_ME, get(me))
+}
+
+/// `/home`, permanently at `/` now, with the query kept.
+async fn moved(uri: axum::http::Uri) -> axum::response::Redirect {
+    let to = match uri.query() {
+        Some(query) => format!("{GRID_HOME_PATH}?{query}"),
+        None => GRID_HOME_PATH.to_owned(),
+    };
+    axum::response::Redirect::permanent(&to)
+}
+
+/// The page's metadata: description, link preview, canonical address,
+/// Markdown twin, and the site's JSON-LD, as every page of the site has.
+fn head() -> String {
+    crate::agent_ready::head(TITLE, Some(DESCRIPTION), Some(GRID_HOME_PATH))
 }
 
 /// `<main>` for this response: the top bar, the list as it stands, and the
@@ -358,11 +378,12 @@ fn document(list: String) -> Arc<Document> {
     {
         return document.clone();
     }
-    let document = Arc::new(assemble_page(
+    let document = Arc::new(assemble_page_with_head(
         None,
         Some(&ADDITION),
         Some(&main_html(&list)),
         (TITLE, DESCRIPTION),
+        Some(&head()),
     ));
     if let Ok(mut kept) = KEPT.lock() {
         *kept = Some((list, document.clone()));
@@ -382,11 +403,12 @@ async fn page(State(app): State<App>, request: HeaderMap) -> Response {
     let document = tokio::task::spawn_blocking(move || document(list))
         .await
         .unwrap_or_else(|_| {
-            Arc::new(assemble_page(
+            Arc::new(assemble_page_with_head(
                 None,
                 Some(&ADDITION),
                 Some(&main_html(&fallback)),
                 (TITLE, DESCRIPTION),
+                Some(&head()),
             ))
         });
     let mut response = send(&document, &request);
@@ -451,18 +473,25 @@ mod tests {
     #[test]
     fn the_page_has_a_heading_account_links_list_and_lazy_gpui_chat() {
         let list = "<h2 id=\"pylons-count\">1 pylon online</h2><ul id=\"pylons-list\"></ul>";
-        let document = assemble_page(
+        let document = assemble_page_with_head(
             None,
             Some(&ADDITION),
             Some(&main_html(list)),
             (TITLE, DESCRIPTION),
+            Some(&head()),
         );
         let html = &document.html;
         assert!(
             html.contains("</svg>OpenAgents</h1><nav id=\"home-account\" aria-label=\"Account\">")
         );
-        assert!(html.contains("href=\"/login?return_to=%2Fhome\">Log in</a>"));
-        assert!(html.contains("href=\"/signup?return_to=%2Fhome\">Sign up</a>"));
+        assert!(html.contains("href=\"/login?return_to=%2F\">Log in</a>"));
+        assert!(html.contains("href=\"/signup?return_to=%2F\">Sign up</a>"));
+        // `/` carries the site's metadata: its preview, canonical address,
+        // and Markdown twin.
+        assert!(html.contains("<link rel=\"canonical\" href=\"https://openagents.com/\">"));
+        assert!(html.contains("href=\"/index.md\""));
+        assert!(html.contains("og:image"));
+        assert_eq!(html.matches("name=\"description\"").count(), 1);
         assert!(html.contains(list));
         assert!(html.contains("<canvas id=\"everglade-canvas\" data-ambient"));
         // The GPUI chat is lazy; there is no HTML composer.

@@ -1,13 +1,13 @@
 # Chat on openagents.com
 
-The [homepage](/) has a message box. Type what you want to ask and send it.
+The [new chat page](/chat) has a message box. Type what you want to ask and send it.
 The site opens a new chat at an address under `/chat/`.
 
 `Enter` sends the message. `Ctrl+Enter` (`⌘+Enter` on a Mac) queues it for
 later, and `Shift+Enter` inserts a line. The hint under the message box says
 so: "Enter to send, Ctrl+Enter to queue for later".
 
-Queued messages show above the [message box](/new). Click one to change its words,
+Queued messages show above the [message box](/chat). Click one to change its words,
 or press **Remove** to drop it. They send in order, one after each answer.
 
 `Enter` (or **Send**) while a reply is being written stops that reply and

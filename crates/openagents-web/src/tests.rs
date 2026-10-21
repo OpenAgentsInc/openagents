@@ -80,7 +80,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 /// script) don't apply. Its own test below holds it to the same policy
 /// rules: no inline script or style, scripts from this site only.
 const PAGES: [&str; 64] = [
-    "/new",
+    "/chat",
     "/agent/foreman",
     "/blog",
     "/blog/coder-1-0",
@@ -241,11 +241,11 @@ async fn every_public_page_answers_in_development() {
         // only where a Robot Lab is set up, which this test's server isn't.)
         // The download page also loads the shell's scripts (the design kit's
         // among them, for the install commands' Copy buttons).
-        let script = uri == "/new" || uri == "/live" || uri == "/download";
+        let script = uri == "/chat" || uri == "/live" || uri == "/download";
         assert_eq!(
             scripts(&lower),
             match uri {
-                "/new" => 12,
+                "/chat" => 12,
                 "/download" => 4,
                 _ => usize::from(script),
             },
@@ -278,7 +278,7 @@ async fn every_public_page_answers_in_development() {
         // Only the home page shows the legal links (along its bottom).
         assert_eq!(
             body.contains("class=\"oa-home-legal\""),
-            uri == "/new",
+            uri == "/chat",
             "{uri}: legal links only on home"
         );
         // The UiPage shell's wordmark (UI-12; the legacy header is gone, UI-13).
@@ -738,7 +738,7 @@ async fn the_legal_pages_carry_the_published_text() {
 async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().into()));
-    let (_, home) = get(site.clone(), "/new").await;
+    let (_, home) = get(site.clone(), "/chat").await;
     // Download is a pill link in the header's top-right actions (and, at
     // phone width only, a row in the drawer instead).
     let actions = home.find("class=\"oa-main-header-actions\"").unwrap();
@@ -759,7 +759,8 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
     assert!(home.find("class=\"oa-sidebar-corner\"").unwrap() < toggle);
     assert!(toggle < home.find("</aside>").unwrap());
     // No Chat or Cloud entries; "New chat" heads the left panel.
-    assert!(!home.contains("href=\"/chat\"") && !home.contains("href=\"/cloud/app\""));
+    assert!(!home.contains("href=\"/cloud/app\""));
+    assert!(home.contains("href=\"/chat\" aria-current=\"page\""));
     assert!(home.contains(">New chat</span>"));
     assert!(!home.contains("[ Download OpenAgents ]") && !home.contains("<h1>OpenAgents</h1>"));
     assert!(!home.contains("/install"), "every link says /download");
@@ -837,7 +838,7 @@ async fn the_homepage_links_one_download_page_and_starts_a_chat() {
 async fn the_homepage_composer_is_the_design_language_component() {
     let root = tempfile::tempdir().unwrap();
     let site = router(config(root.path().into()));
-    let (_, home) = get(site.clone(), "/new").await;
+    let (_, home) = get(site.clone(), "/chat").await;
     // UI-09: the homepage renders through `UiPage`, styled by `/static/ui.css`
     // alone; the legacy site, Tailwind and chat stylesheets are not loaded.
     assert!(home.contains("<link rel=\"stylesheet\" href=\"/static/ui.css?v="));
@@ -982,7 +983,7 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
     let mut configured = config(root.path().join("tasks"));
     configured.chat = Arc::new(OfflineChat);
     let site = router(configured);
-    let (_, home_headers, home) = get_with(site.clone(), "/new", LOCAL).await;
+    let (_, home_headers, home) = get_with(site.clone(), "/chat", LOCAL).await;
     let visitor = home_headers[header::SET_COOKIE]
         .to_str()
         .unwrap()
@@ -1104,7 +1105,7 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
         "the conversation list"
     );
     assert!(html.contains("id=\"chat-feedback\""));
-    let (_, home) = get(site.clone(), "/new").await;
+    let (_, home) = get(site.clone(), "/chat").await;
     assert!(home.contains("class=\"oa-home-legal\""));
     assert!(home.contains("href=\"/terms\"") && home.contains("href=\"/privacy\""));
     // The homepage lists the same visitor's chats as plain links.
@@ -1112,7 +1113,7 @@ async fn posting_the_homepage_composer_opens_a_chat_page() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/new")
+                .uri("/chat")
                 .header(header::HOST, LOCAL)
                 .header(header::COOKIE, visitor)
                 .body(Body::empty())
@@ -1802,19 +1803,20 @@ async fn the_lander11_page_has_the_chat_over_verse() {
     }
 }
 
-/// `/home`: the Grid homepage: one response with the heading, Log in and
-/// Sign up back to `/home`, the pylons' list, and Verse's ambient canvas;
-/// `/home/me` answers a visitor as signed out; the classic home page moved
-/// to `/home/classic`.
+/// `/`: the Grid homepage (#12413): one response with the heading, Log in
+/// and Sign up back to `/`, the pylons' list, and Verse's ambient canvas;
+/// `/home` redirects there with its query; `/home/me` answers a visitor as
+/// signed out; the new chat is at `/chat` and the classic home page at
+/// `/home/classic`.
 #[tokio::test]
-async fn the_grid_homepage_is_at_home_and_the_classic_one_moved() {
+async fn the_grid_homepage_is_at_the_root_and_the_new_chat_at_chat() {
     let root = tempfile::tempdir().unwrap();
     let config = config(root.path().join("tasks"));
-    let (status, headers, html) = get_with(router(config.clone()), "/home", LOCAL).await;
+    let (status, headers, html) = get_with(router(config.clone()), "/", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert!(html.contains("</svg>OpenAgents</h1>"), "{html}");
-    assert!(html.contains("href=\"/login?return_to=%2Fhome\""));
-    assert!(html.contains("href=\"/signup?return_to=%2Fhome\""));
+    assert!(html.contains("href=\"/login?return_to=%2F\""));
+    assert!(html.contains("href=\"/signup?return_to=%2F\""));
     assert!(html.contains("id=\"pylons-panel\"") && html.contains("data-ambient"));
     let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
     // The Grid's players meet on the public relay (#12406).
@@ -1823,7 +1825,12 @@ async fn the_grid_homepage_is_at_home_and_the_classic_one_moved() {
             && !policy.contains("unsafe-inline"),
         "{policy}"
     );
-    crate::copy_guard::assert_plain("/home", &html);
+    crate::copy_guard::assert_plain("/", &html);
+    for (old, to) in [("/home", "/"), ("/home?chat=abc-1", "/?chat=abc-1")] {
+        let (status, headers, _) = get_with(router(config.clone()), old, LOCAL).await;
+        assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{old}");
+        assert_eq!(headers[header::LOCATION], to, "{old}");
+    }
     let (status, headers, me) = get_with(router(config.clone()), "/home/me", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(headers[header::CACHE_CONTROL], "no-store");
@@ -1834,15 +1841,17 @@ async fn the_grid_homepage_is_at_home_and_the_classic_one_moved() {
     // The new page is independent of the chat UI default and hidden features.
     let mut off = config.clone();
     off.features = crate::features::Features::none();
-    let (status, _, no_features) = get_with(router(off), "/home", LOCAL).await;
+    let (status, _, no_features) = get_with(router(off), "/", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(no_features, html);
     assert!(!html.contains("<input") && !html.contains("<textarea"));
-    let (status, _, home) = get_with(router(config.clone()), "/", LOCAL).await;
+    // A new chat starts at `/chat`, and posts there as before.
+    let (status, _, chat) = get_with(router(config.clone()), "/chat?ui=html", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(home.contains("id=\"chat-input\""));
+    assert!(chat.contains("id=\"chat-input\""));
+    assert!(chat.contains("action=\"/chat\""));
     assert!(classic.contains("id=\"chat-input\""));
-    for path in ["/home", "/home/me", "/home/classic"] {
+    for path in ["/", "/home", "/home/me", "/home/classic", "/chat", "/new"] {
         assert!(crate::upstream::owned(path), "{path}");
     }
 }
@@ -2809,10 +2818,10 @@ async fn the_retired_question_route_links_to_the_homepage_without_naming_a_visit
             .starts_with("text/html")
     );
     assert_eq!(headers[header::CACHE_CONTROL], "no-store, private");
-    assert_eq!(headers[header::LINK], "</>; rel=\"alternate\"");
+    assert_eq!(headers[header::LINK], "</chat>; rel=\"alternate\"");
     assert!(headers.get(header::SET_COOKIE).is_none());
     assert!(
-        body.contains("Start a chat") && body.contains("href=\"/\""),
+        body.contains("Start a chat") && body.contains("href=\"/chat\""),
         "{body}"
     );
     assert!(!body.contains("what is OpenAgents?"));
@@ -4806,45 +4815,32 @@ async fn the_pylons_page_lists_pylons_and_serves_its_builds() {
     }
 }
 
-/// #12260: with the front door on, `/` is `/lander10` for a visitor, the
-/// older landers always move to `/home`. The flag only changes `/`.
+/// #12260, #12413: the older landers move to the Grid homepage at `/`,
+/// and the classic home page still answers.
 #[tokio::test]
-async fn the_front_door_is_lander10_only_when_turned_on() {
+async fn the_older_landers_move_to_the_grid_homepage() {
     let root = tempfile::tempdir().unwrap();
-    let off = crate::router(crate::Config::development(root.path().join("tasks")));
-    let (_, _, home) = get_with(off.clone(), "/", LOCAL).await;
-    let (status, _, _) = get_with(off.clone(), "/lander5", LOCAL).await;
-    assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
-    assert!(!home.contains("lander-chat-keep"));
-    let (status, _, classic) = get_with(off.clone(), "/home/classic", LOCAL).await;
-    assert_eq!(status, StatusCode::OK);
-    assert!(classic.contains("id=\"chat-input\""));
-    for link in ["href=\"/explore\"", "href=\"/pylons\""] {
-        let (_, _, page) = get_with(off.clone(), "/docs", LOCAL).await;
-        assert!(page.contains(link), "{link}");
-    }
-
-    let mut config = crate::Config::development(root.path().join("tasks"));
-    config.front_door = true;
-    let on = crate::router(config);
-    let (status, _, door) = get_with(on.clone(), "/", LOCAL).await;
-    assert_eq!(status, StatusCode::OK);
-    let (_, _, lander10) = get_with(on.clone(), "/lander10", LOCAL).await;
-    assert_eq!(door, lander10);
+    let site = crate::router(crate::Config::development(root.path().join("tasks")));
+    let (_, _, home) = get_with(site.clone(), "/", LOCAL).await;
+    assert!(home.contains("lander-chat-keep"));
     for old in [
         "/lander3", "/lander4", "/lander5", "/lander6", "/lander7", "/lander8", "/lander9",
     ] {
-        let (status, headers, _) = get_with(on.clone(), old, LOCAL).await;
+        let (status, headers, _) = get_with(site.clone(), old, LOCAL).await;
         assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{old}");
-        assert_eq!(headers[header::LOCATION], "/home", "{old}");
+        assert_eq!(headers[header::LOCATION], "/", "{old}");
     }
     let id = "0".repeat(32);
-    let (status, headers, _) = get_with(on.clone(), &format!("/lander8/chat/{id}"), LOCAL).await;
+    let (status, headers, _) = get_with(site.clone(), &format!("/lander8/chat/{id}"), LOCAL).await;
     assert_eq!(status, StatusCode::PERMANENT_REDIRECT);
     assert_eq!(headers[header::LOCATION], format!("/chat/{id}").as_str());
-    let (status, _, classic) = get_with(on.clone(), "/home/classic", LOCAL).await;
+    let (status, _, classic) = get_with(site.clone(), "/home/classic", LOCAL).await;
     assert_eq!(status, StatusCode::OK);
     assert!(classic.contains("id=\"chat-input\""));
+    for link in ["href=\"/explore\"", "href=\"/pylons\""] {
+        let (_, _, page) = get_with(site.clone(), "/docs", LOCAL).await;
+        assert!(page.contains(link), "{link}");
+    }
 }
 
 /// #12309: /verse offers hand input only when the hand landmarker is
@@ -4961,27 +4957,30 @@ async fn retired_pages_permanently_redirect_and_keep_queries_on_chats() {
     let root = tempfile::tempdir().unwrap();
     let mut settings = config(root.path().join("tasks"));
     settings.public_hosts.push("openagents.com".into());
-    for front_door in [false, true] {
-        settings.front_door = front_door;
+    {
         let site = router(settings.clone());
         for host in [LOCAL, "openagents.com"] {
             for (old, to) in [
-                ("/lander3", "/home"),
-                ("/lander3/", "/home"),
-                ("/lander3/scene.json", "/home"),
-                ("/lander4", "/home"),
-                ("/lander5", "/home"),
-                ("/lander6", "/home"),
-                ("/lander6/card/webgpu/openagents_web_card.js", "/home"),
-                ("/lander7", "/home"),
-                ("/lander8", "/home"),
-                ("/lander8/", "/home"),
-                ("/lander9", "/home"),
-                ("/landing", "/home"),
-                ("/landing/landing.css", "/home"),
-                ("/gpui", "/"),
-                ("/gpui/", "/"),
-                ("/gpui?ui=html&project=p1", "/?ui=html&project=p1"),
+                ("/lander3", "/"),
+                ("/lander3/", "/"),
+                ("/lander3/scene.json", "/"),
+                ("/lander4", "/"),
+                ("/lander5", "/"),
+                ("/lander6", "/"),
+                ("/lander6/card/webgpu/openagents_web_card.js", "/"),
+                ("/lander7", "/"),
+                ("/lander8", "/"),
+                ("/lander8/", "/"),
+                ("/lander9", "/"),
+                ("/landing", "/"),
+                ("/landing/landing.css", "/"),
+                ("/gpui", "/chat"),
+                ("/gpui/", "/chat"),
+                ("/gpui?ui=html&project=p1", "/chat?ui=html&project=p1"),
+                ("/home", "/"),
+                ("/home?chat=abc-1&gl", "/?chat=abc-1&gl"),
+                ("/new", "/chat"),
+                ("/new?project=p1", "/chat?project=p1"),
                 (
                     "/gpui/chat/00000000-0000-4000-8000-000000000001?ui=html",
                     "/chat/00000000-0000-4000-8000-000000000001?ui=html",

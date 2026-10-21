@@ -440,10 +440,12 @@ fn accounts(world: &World) -> tenancy::Store {
 async fn signed_out_header_offers_log_in_and_sign_up_and_login_offers_github() {
     let world = world(true).await;
     let mut browser = Browser::default();
-    let home = browser.get(&world, "/new").await;
+    let home = browser.get(&world, "/chat").await;
     assert_eq!(home.status, StatusCode::OK);
-    assert!(home.body.contains(">Log in<") && home.body.contains("href=\"/signup\""));
-    assert!(home.body.contains("href=\"/login\""));
+    // Log in and Sign up come back to the new chat.
+    assert!(home.body.contains(">Log in<"));
+    assert!(home.body.contains("href=\"/signup?return_to=%2Fchat\""));
+    assert!(home.body.contains("href=\"/login?return_to=%2Fchat\""));
 
     let login = browser.get(&world, "/login?return_to=%2Fcloud%2Fapp").await;
     assert_eq!(login.status, StatusCode::OK);
@@ -521,7 +523,7 @@ async fn signed_out_links_preview_the_page_they_open_not_the_sign_in_page() {
             og(&login.body, "og:url"),
             format!("https://openagents.com{path}")
         );
-        assert!(og(&login.body, "og:image").ends_with(&format!("/og/{kind}.png?v=1")));
+        assert!(og(&login.body, "og:image").ends_with(&format!("/og/{kind}.png?v=2")));
         assert!(login.body.contains("content=\"summary_large_image\""));
     }
     // A plain sign-in link keeps the sign-in page's own preview.
@@ -567,7 +569,7 @@ async fn first_github_sign_in_creates_the_account_and_signs_the_browser_in() {
     assert!(browser.0["oa_cloud_session"].starts_with("sess_"));
 
     // Signed in: the account menu shows the GitHub name; no Log in button.
-    let home = browser.get(&world, "/").await;
+    let home = browser.get(&world, "/chat").await;
     assert!(
         home.body
             .contains("<span class=\"oa-account-name\">Octo Local</span>")
@@ -776,7 +778,7 @@ async fn an_email_less_github_user_signs_in_under_the_login() {
         .through_github(&world, "%2F", "login=quiet-local")
         .await;
     assert_eq!(done.status, StatusCode::OK, "{}", done.body);
-    let home = browser.get(&world, "/").await;
+    let home = browser.get(&world, "/chat").await;
     assert!(
         home.body
             .contains("<span class=\"oa-account-name\">quiet-local</span>")

@@ -118,12 +118,12 @@ pub fn retired_page(headers: &HeaderMap) -> Response {
         headers,
         StatusCode::GONE,
         "This page has moved",
-        "Start a chat from the homepage.",
-        ("/", "Start a chat"),
+        "Start a new chat instead.",
+        (crate::pages::home::NEW, "Start a chat"),
     ));
     response.headers_mut().insert(
         header::LINK,
-        HeaderValue::from_static("</>; rel=\"alternate\""),
+        HeaderValue::from_static("</chat>; rel=\"alternate\""),
     );
     response
 }

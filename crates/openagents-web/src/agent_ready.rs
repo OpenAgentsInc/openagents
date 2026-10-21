@@ -329,6 +329,7 @@ pub(crate) fn site_index_json() -> Value {
         "url": format!("{SITE}/"),
         "markdown": format!("{SITE}/index.md"),
         "links": {
+            "chat": format!("{SITE}/chat"),
             "llms_txt": format!("{SITE}/llms.txt"),
             "llms_full_txt": format!("{SITE}/llms-full.txt"),
             "docs": format!("{SITE}/docs.md"),
@@ -530,7 +531,10 @@ Every model, in US dollars ([as JSON](https://api.openagents.com/v1/rates)):\n\n
 /// everything is.
 fn home_markdown() -> String {
     let mut body = format!(
-        "# OpenAgents\n\n{}\n\n## Start here\n\n\
+        "# OpenAgents\n\n{}\n\n\
+The homepage is the Grid, a shared 3D world in the browser where people, agents, and \
+pylons meet. Walk to its terminal to ask the live pylons a question. \
+To chat without the Grid, [start a chat](/chat).\n\n## Start here\n\n\
 - [Download](/download.md): the apps and Coder for your computer.\n\
 - [Docs](/docs.md): guides to the chat, Coder, the apps, plugins, and the Gym.\n\
 - [Blog](/blog.md): news from OpenAgents, newest first.\n\

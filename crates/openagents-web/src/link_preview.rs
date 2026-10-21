@@ -27,7 +27,7 @@ use crate::pages::chat::share::card;
 /// The pictures' address prefix.
 pub(crate) const PREFIX: &str = "/og";
 /// Changes when the drawing changes, so link readers fetch it again.
-const VERSION: &str = "1";
+const VERSION: &str = "2";
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -119,7 +119,11 @@ impl Kind {
     /// The picture's large words and the line under them.
     fn drawn(self) -> (&'static str, &'static str) {
         match self {
-            Self::Home | Self::Page => (
+            Self::Home => (
+                "The Grid",
+                "Where people, agents, and pylons meet. Walk in from your browser.",
+            ),
+            Self::Page => (
                 "An open network of agents",
                 "You work with them through one conversation, from anywhere: this website, your phone, or a terminal.",
             ),
@@ -367,14 +371,14 @@ mod tests {
     #[test]
     fn every_page_names_a_picture_that_draws() {
         let docs = image(Some("/docs/coder"));
-        assert!(docs.url.ends_with("/og/docs/coder.png?v=1"), "{}", docs.url);
+        assert!(docs.url.ends_with("/og/docs/coder.png?v=2"), "{}", docs.url);
         assert!(
             image(Some("/docs/no-such-guide"))
                 .url
-                .ends_with("/og/docs.png?v=1")
+                .ends_with("/og/docs.png?v=2")
         );
-        assert!(image(None).url.ends_with("/og/home.png?v=1"));
-        assert!(image(Some("/chat/x")).url.ends_with("/og/chat.png?v=1"));
+        assert!(image(None).url.ends_with("/og/home.png?v=2"));
+        assert!(image(Some("/chat/x")).url.ends_with("/og/chat.png?v=2"));
         for kind in Kind::ALL {
             let (heading, line) = kind.drawn();
             let png = card::render_page(None, heading, line).unwrap();

@@ -111,7 +111,7 @@ fn free(visitor: Visitor) -> PlanCard {
         Visitor::Anonymous => ("Download Coder", crate::layout::DOWNLOAD.to_owned()),
         Visitor::SignedOut => ("Sign up free", crate::auth::login_href("/", true)),
         Visitor::Free => ("Current plan", PLAN.to_owned()),
-        Visitor::Pro => ("Start a chat", "/".to_owned()),
+        Visitor::Pro => ("Start a chat", super::home::NEW.to_owned()),
     };
     PlanCard::new("Free", "Free")
         .note("For people and agents")

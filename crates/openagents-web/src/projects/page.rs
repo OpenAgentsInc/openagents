@@ -482,7 +482,7 @@ pub fn view(
         }
         div.oa-page-actions {
             @if role.edits() {
-                (ButtonLink::new("New chat", format!("/?project={}", project.id)).size(ControlSize::Sm))
+                (ButtonLink::new("New chat", format!("/chat?project={}", project.id)).size(ControlSize::Sm))
             }
             @if sources && home {
                 (ButtonLink::new("Sources", crate::connections::sources::href(&project.id))

@@ -1,4 +1,4 @@
-//! The homepage, which is every new chat: it looks like a chat page, with
+//! The new-chat page at [`NEW`] (`/chat`): it looks like a chat page, with
 //! the composer docked at the bottom (the four starter questions over it)
 //! and, where the thread would be, a grid of "learn about" cards
 //! ([`learn`]). Sending a message starts a chat at `/chat/{uuid}`, which
@@ -6,6 +6,13 @@
 //! header links `/download`; for a signed-out visitor the legal links sit
 //! centered under the composer (only here); the Grid's screenshot is on
 //! `/docs/the-grid`.
+//!
+//! **Deprecated as the homepage (#12413).** This page was `/` until the
+//! Grid homepage ([`super::grid_home`]) took that address. It stays the
+//! place a chat starts, at `/chat`, for the sidebar's New chat, project
+//! links, and older clients. `/new` and [`HOME`] (`/home/classic`) still
+//! answer for addresses saved before the move. Don't build new entry
+//! points on it: new homepage work belongs on the Grid.
 
 use axum::Router;
 use axum::extract::{Query, RawQuery, State};
@@ -23,9 +30,8 @@ use crate::ui_page::UiPage;
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
-        .route("/", get(home))
         .route(HOME, get(classic))
-        .route(NEW, get(new_chat))
+        .route(OLD_NEW, get(old_new))
 }
 
 /// The new chat's "learn about" cards: the one shared list
@@ -56,31 +62,36 @@ pub fn learn_cards() -> LinkCards {
 }
 
 #[derive(Default, Deserialize)]
-struct Home {
+pub(crate) struct Home {
     /// A project to start the chat in (a project group's "New chat").
     #[serde(default)]
     project: Option<String>,
 }
 
-/// The home page as it was before the one front door (#12260), whatever
-/// `/` shows. `/home` is the new Grid homepage ([`super::grid_home`]).
+/// The classic home page: the HTML new chat whatever the chat UI choice.
+/// Deprecated; kept for saved addresses (#12413).
 pub(crate) const HOME: &str = "/home/classic";
 
-/// A new chat for anyone, signed in or not: the homepage's chat when the
-/// homepage shows the landing page instead.
-pub(crate) const NEW: &str = "/new";
+/// A new chat for anyone, signed in or not (`GET /chat`, mounted beside
+/// `POST /chat` in [`super::chat`]).
+pub(crate) const NEW: &str = "/chat";
 
-/// Whether `/` shows the Grid front door: to a visitor
-/// with no session, decided from the request itself so every kind of
-/// request agrees (an in-page navigation, an API client, a page load).
-/// Anyone with a session gets their new chat, as before; a project's "New
-/// chat" link (`?project=`) always opens the chat. A session that has
-/// expired still gets the chat page, which asks them to log in again.
-fn shows_landing(headers: &HeaderMap, project: Option<&str>) -> bool {
-    project.is_none() && !crate::account::has_session(headers)
+/// The new chat's address before it moved to [`NEW`]; it redirects there
+/// with its query.
+const OLD_NEW: &str = "/new";
+
+/// `/new`, permanently at `/chat` now.
+async fn old_new(RawQuery(raw): RawQuery) -> axum::response::Redirect {
+    let to = match raw {
+        Some(query) => format!("{NEW}?{query}"),
+        None => NEW.to_owned(),
+    };
+    axum::response::Redirect::permanent(&to)
 }
 
-async fn new_chat(
+/// `GET /chat`: the GPUI chat's new chat when the person chose it, else
+/// the HTML one.
+pub(crate) async fn new_chat(
     State(app): State<App>,
     headers: HeaderMap,
     RawQuery(raw): RawQuery,
@@ -97,36 +108,7 @@ async fn new_chat(
     response
 }
 
-/// The composer docks at the bottom as on a chat page, with the starter
-/// questions over it; the cards fill the middle; the left panel lists the
-/// visitor's recent chats. A signed-in person picks a project, a branch,
-/// and where the message runs above the composer.
-async fn home(
-    State(app): State<App>,
-    headers: HeaderMap,
-    RawQuery(raw): RawQuery,
-    query: Result<Query<Home>, axum::extract::rejection::QueryRejection>,
-) -> Response {
-    // The GPUI chat's new chat, signed in or not, when the person turned
-    // it on (#12222); it takes the landing page's place too.
-    let choice = super::gpui_chat::choice(app.config.features, &headers, raw.as_deref());
-    if choice.serves(&app, &headers) {
-        let mut response = super::gpui_chat::new_page(&app, &headers, raw.as_deref()).await;
-        choice.remember(&app, &mut response);
-        return response;
-    }
-    // The one front door, when it's on: `/lander10` for a visitor with no
-    // session; signed in, the new chat as before.
-    let project = query.as_ref().ok().and_then(|q| q.0.project.clone());
-    if app.config.front_door && shows_landing(&headers, project.as_deref()) {
-        return super::lander10::front_door(State(app), headers).await;
-    }
-    let mut response = home_html(&app, &headers, query).await;
-    choice.remember(&app, &mut response);
-    response
-}
-
-/// `/home`: the home page without the front door.
+/// `/home/classic`: the HTML new chat. Deprecated (#12413).
 async fn classic(
     State(app): State<App>,
     headers: HeaderMap,
@@ -159,8 +141,9 @@ pub fn stage(dock: Markup) -> UiPage {
         }
     };
     UiPage::new("OpenAgents")
-        .section("/")
-        .path("/")
+        .section(NEW)
+        .path(NEW)
+        .without_breadcrumb()
         .app()
         .head(crate::chat_html::head())
         .boosted()
@@ -207,32 +190,4 @@ pub(crate) async fn page(
     let mut response = crate::chat_html::protect(page.respond(&headers));
     super::chat::cookie(&app, &owner, fresh.is_some(), &mut response);
     response
-}
-
-#[cfg(test)]
-mod landing_tests {
-    use super::*;
-    use axum::http::{HeaderValue, header};
-
-    fn with_cookie(cookie: &str) -> HeaderMap {
-        let mut headers = HeaderMap::new();
-        headers.insert(header::COOKIE, HeaderValue::from_str(cookie).unwrap());
-        headers
-    }
-
-    /// `/` is the landing page only to a visitor with no session, whatever
-    /// kind of request it is; a session (even one sent by a client that
-    /// asks for no HTML) gets the chat, and a project link always does.
-    #[test]
-    fn the_landing_page_is_for_visitors_without_a_session() {
-        let session = format!("{}=abc", crate::account::SESSION_COOKIE);
-        assert!(shows_landing(&HeaderMap::new(), None));
-        assert!(shows_landing(&with_cookie("theme=dark"), None));
-        assert!(!shows_landing(&with_cookie(&session), None));
-        assert!(!shows_landing(
-            &with_cookie(&format!("a=b; {session}")),
-            None
-        ));
-        assert!(!shows_landing(&HeaderMap::new(), Some("prj_1")));
-    }
 }

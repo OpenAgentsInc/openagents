@@ -3,12 +3,12 @@
 // which is parsed inert and swapped through HTMX.
 import init, { start } from '/chat/assets/coder_chat_web.js';
 
-// The new chat (`/`) and a chat's page (`/chat/{id}`) share one <head>, so
+// The new chat (`/chat`; `/` is the Grid homepage since #12413) and a chat's page (`/chat/{id}`) share one <head>, so
 // moving between them is boosted (`hx-boost` on <body>): HTMX swaps the body
 // and pushes the URL, and the left panel's list and the page's live stream
 // come back with it. Every other address of this site has its own <head>
 // (styles, scripts, policy), so a boosted link or form there loads in full.
-const FAMILY = /^\/(chat(\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)?$/;
+const FAMILY = /^\/chat(\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$/;
 const VERBS = ['hx-get', 'hx-post', 'hx-put', 'hx-patch', 'hx-delete'];
 
 function inFamily(path) {
@@ -43,8 +43,7 @@ document.addEventListener('htmx:confirm', (event) => {
   HTMLFormElement.prototype.submit.call(elt);
 });
 
-// Moving in place (#11322). "New chat" (and Control+N), the wordmark, and
-// a chat's row swap only the main surface (.oa-main-surface: header,
+// Moving in place (#11322). "New chat" (and Control+N) and a chat's row swap only the main surface (.oa-main-surface: header,
 // thread, composer). The left panel stays the same element, with its
 // scroll, its folds and its live stream, and no script runs again.
 // - The new chat is loaded ahead of the click (X-OA-Part: prefetch, idle
@@ -57,7 +56,9 @@ document.addEventListener('htmx:confirm', (event) => {
 // - Back and forward between addresses moved to here swap the same way.
 // Anything unexpected (no HTMX, a refused or redirected answer) loads the
 // address in full. Without JavaScript these are plain links.
-const MOVE = /^\/(chat\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$/;
+const MOVE = /^\/chat(\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?$/;
+// The new chat's address.
+const NEW = '/chat';
 const FRESH_MS = 60_000;
 let ahead = null; // { html, title, path, at }: the new chat, loaded ahead
 let loading = null;
@@ -83,7 +84,7 @@ async function fetchMain(href, part) {
 
 function loadAhead() {
   if (!loading) {
-    loading = fetchMain('/', 'prefetch')
+    loading = fetchMain(NEW, 'prefetch')
       .then((part) => { ahead = part; return part; })
       .finally(() => { loading = null; });
     loading.catch(() => {});
@@ -129,7 +130,7 @@ function show(part, push) {
   if (part.title) document.title = part.title;
   window.htmx.swap(surface, part.html, { swapStyle: 'outerHTML', swapDelay: 0, settleDelay: 0 });
   // A new chat never reuses the id of one loaded before.
-  if (part.path === '/' && window.crypto && crypto.randomUUID) {
+  if (part.path === NEW && window.crypto && crypto.randomUUID) {
     for (const field of document.querySelectorAll('input[name="request_id"]')) {
       field.value = crypto.randomUUID();
     }
@@ -144,13 +145,13 @@ async function move(url, push) {
   closeDrawer();
   markCurrent(path);
   let part;
-  if (path === '/' && ahead) {
+  if (path === NEW && ahead) {
     part = ahead;
     ahead = null;
   } else {
     try {
-      part = path === '/' ? await (loading || fetchMain(url.href, 'main')) : await fetchMain(url.href, 'main');
-      if (path === '/') ahead = null;
+      part = path === NEW ? await (loading || fetchMain(url.href, 'main')) : await fetchMain(url.href, 'main');
+      if (path === NEW) ahead = null;
     } catch {
       if (turn === moves) location.assign(url.href);
       return;
@@ -158,7 +159,7 @@ async function move(url, push) {
   }
   if (turn !== moves) return;
   show(part, push);
-  if (path === '/' || !ahead) soon(loadAhead);
+  if (path === NEW || !ahead) soon(loadAhead);
 }
 
 document.addEventListener('click', (event) => {
@@ -196,10 +197,10 @@ document.addEventListener('htmx:afterRequest', (event) => {
   }
 });
 document.addEventListener('pointerover', (event) => {
-  const link = event.target instanceof Element ? event.target.closest('a[href="/"]') : null;
+  const link = event.target instanceof Element ? event.target.closest('a[href="/chat"]') : null;
   if (link && (!ahead || Date.now() - ahead.at > FRESH_MS)) loadAhead();
 });
-if (document.querySelector('.oa-main-surface') && document.querySelector('a.oa-nav-item[href="/"]')) {
+if (document.querySelector('.oa-main-surface') && document.querySelector('a.oa-nav-item[href="/chat"]')) {
   soon(loadAhead);
 }
 

@@ -95,7 +95,7 @@ async fn gpui_settings_routes_and_cookie_google_connect_remove() {
             .body
             .contains("/settings/connections?problem=denied&amp;ui=html")
     );
-    let page = browser.get(&world, "/new?ui=html").await;
+    let page = browser.get(&world, "/chat?ui=html").await;
     let csrf = csrf(&page.body);
     let request = |method, path| {
         Request::builder()

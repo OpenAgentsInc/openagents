@@ -127,7 +127,7 @@ async fn admin_pages_authorize_before_redirect_and_cookie_api_checks_every_actio
         let shell = request(
             &f.site,
             Method::GET,
-            &format!("/?ui=gpui&page={page}"),
+            &format!("/chat?ui=gpui&page={page}"),
             &admin,
             None,
             None,
@@ -138,7 +138,7 @@ async fn admin_pages_authorize_before_redirect_and_cookie_api_checks_every_actio
         let denied = request(
             &f.site,
             Method::GET,
-            &format!("/?ui=gpui&page={page}"),
+            &format!("/chat?ui=gpui&page={page}"),
             &plain,
             None,
             None,
@@ -166,7 +166,7 @@ async fn admin_pages_authorize_before_redirect_and_cookie_api_checks_every_actio
             StatusCode::FORBIDDEN
         );
     }
-    let shell = request(&f.site, Method::GET, "/?ui=gpui", &admin, None, None).await;
+    let shell = request(&f.site, Method::GET, "/chat?ui=gpui", &admin, None, None).await;
     let csrf = shell
         .body
         .split("name=\"openagents-csrf\" content=\"")

@@ -43,9 +43,9 @@ running on that computer.
 
 ## 3. Open it on your phone
 
-1. On your phone, open [openagents.com](/) and log in with the same
+1. On your phone, open [openagents.com/chat](/chat) and log in with the same
    account.
-2. Tap **Open menu** at the top left of [openagents.com](/) to see your
+2. Tap **Open menu** at the top left of [openagents.com/chat](/chat) to see your
    chats. A chat from Coder is marked with your computer's name.
 3. The chat shows Coder's steps: its edits, its commands, and their
    results.

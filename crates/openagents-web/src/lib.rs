@@ -526,11 +526,6 @@ pub struct Config {
     /// on (#12336). Every one is on in a config built in code; the binary
     /// reads `OPENAGENTS_WEB_FEATURES`, where every one starts off.
     pub features: features::Features,
-    /// Whether `/` is the one front door for signed-out visitors: `/lander10`
-    /// (`OPENAGENTS_WEB_FRONT_DOOR=on`; #12260), with the older landers
-    /// moving to `/`. Off by default until the owner confirms; the current
-    /// home stays at `/home` either way.
-    pub front_door: bool,
     /// Whether agent pages read the published Gym leaderboard (#12302).
     /// On in the binary, off for tests.
     pub gym_results: bool,
@@ -686,7 +681,6 @@ impl Config {
             xp_referees: Vec::new(),
             agent_replies: false,
             features: features::Features::all(),
-            front_door: false,
             gym_results: false,
             lander8: None,
             lander9: None,

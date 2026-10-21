@@ -406,7 +406,7 @@ async fn gpui_cad_routes_keep_html_and_cookie_authority() {
     let shell = send(
         site,
         Method::GET,
-        "/?ui=gpui&page=cad/bracket/1//configurator",
+        "/chat?ui=gpui&page=cad/bracket/1//configurator",
         &alice,
         None,
         &[],

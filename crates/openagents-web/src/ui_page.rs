@@ -283,9 +283,9 @@ impl UiPage {
             .label("Main")
             .brand(html! { a class="oa-wordmark" href="/" { "OpenAgents" } })
             .nav(
-                NavItem::new("New chat", "/")
+                NavItem::new("New chat", crate::pages::home::NEW)
                     .icon(Icon::ComposeEditSquare.size(IconSize::Md))
-                    .current(current == Some("/"))
+                    .current(current == Some(crate::pages::home::NEW))
                     .shortcut("Control+N", "⌃N"),
             );
         for nav in NAV {
@@ -699,8 +699,9 @@ mod tests {
     #[test]
     fn carries_assets_navigation_toggle_and_marks_the_section() {
         let html = UiPage::new("OpenAgents")
-            .section("/")
-            .path("/")
+            .section(crate::pages::home::NEW)
+            .path(crate::pages::home::NEW)
+            .without_breadcrumb()
             .app()
             .content(html! { p { "x" } })
             .render(&HeaderMap::new())
@@ -711,7 +712,7 @@ mod tests {
             theme::ALPINE_PATH,
             "data-oa-theme-toggle",
             "data-oa-sidebar-toggle",
-            "href=\"/\" aria-current=\"page\"",
+            "href=\"/chat\" aria-current=\"page\"",
             ">New chat</span>",
             "aria-keyshortcuts=\"Control+N\"",
             "<kbd class=\"oa-nav-shortcut\" aria-hidden=\"true\">⌃N</kbd>",
@@ -720,7 +721,8 @@ mod tests {
         }
         // No Chat or Cloud entries, no main-header menu button.
         assert!(!html.contains(">Chat</span>") && !html.contains(">Cloud</span>"));
-        assert!(!html.contains("href=\"/chat\"") && !html.contains("href=\"/cloud/app\""));
+        assert!(!html.contains("href=\"/cloud/app\""));
+        assert_eq!(html.matches("href=\"/chat\"").count(), 1);
         assert_eq!(html.matches("data-oa-sidebar-toggle").count(), 1);
         assert!(!html.contains("Open sidebar") && !html.contains("Close sidebar"));
         assert!(html.contains("data-sidebar=\"expanded\""));

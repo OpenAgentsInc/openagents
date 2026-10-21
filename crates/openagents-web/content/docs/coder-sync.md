@@ -37,7 +37,7 @@ deletes it in the other.
 
 ## Read and reply on the web and phone
 
-Synced chats appear in the sidebar on [openagents.com](/), marked with
+Synced chats appear in the sidebar on [openagents.com/chat](/chat), marked with
 this computer's name.
 
 While Coder is open on that computer, you can reply there: Coder picks up

@@ -213,7 +213,7 @@ pub fn build(list: ChatList, rows: &[Conversation], csrf: &str, view: View<'_>) 
                 project.name.clone(),
                 // A viewer starts no chat there: the group opens the project.
                 if crate::projects::api::role_of(project).edits() {
-                    format!("/?project={}", project.id)
+                    format!("/chat?project={}", project.id)
                 } else {
                     crate::projects::page::href(&project.id)
                 },

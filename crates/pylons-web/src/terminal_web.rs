@@ -13,7 +13,9 @@ pub struct Terminal {
 impl Terminal {
     pub fn new(document: &Document) -> Option<Self> {
         let window = document.default_view()?;
-        if window.location().pathname().ok()?.trim_end_matches('/') != "/home" {
+        // Only on the Grid homepage: `/`, or `/home` before it moved (#12413).
+        let path = window.location().pathname().ok()?;
+        if !matches!(path.trim_end_matches('/'), "" | "/home") {
             return None;
         }
         let hint = document

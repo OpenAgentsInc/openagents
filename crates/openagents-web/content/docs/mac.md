@@ -13,7 +13,7 @@ the [download page](/download).
 - **Your phone:** [OpenAgents for iPhone](/docs/iphone) connects to your
   computer. Run `openagents connect invite` on the computer and scan the
   code it shows; see [Connect a computer](/docs/connect-a-computer).
-- **Chat in a browser:** [openagents.com](/) works in any browser.
+- **Chat in a browser:** [openagents.com/chat](/chat) works in any browser.
 
 To try the desktop app before it's published, build it from
 [source](https://github.com/OpenAgentsInc/openagents/tree/main/apps/openagents).

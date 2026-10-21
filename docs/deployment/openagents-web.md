@@ -1238,3 +1238,33 @@ image production already served applied the no-traffic candidate
 2 skipped, and 8 waiting for traffic. The tag was removed afterwards.
 `coder-web-e8c3eeb00a-20261017185349` kept 100% of traffic; `/health`,
 `/openapi.json` and `/docs` answered 200 before and after.
+
+## 2026-10-21: the Grid homepage at `/` (#12413)
+
+The Grid homepage moved from `/home` to `/`. The page is the same: the
+45-degree overview of the Grid with live players, joining with a click or
+WASD, and the shared Pylon terminal. Its routes:
+
+| Address | Now |
+| --- | --- |
+| `/` | The Grid homepage (`pages::grid_home`). |
+| `/home` | `308` to `/`, keeping the query (`/home?chat=ID` becomes `/?chat=ID`). |
+| `/home/me` | Unchanged; the page still calls it. |
+| `GET /chat` | The new-chat page that `/` used to show (`pages::home`). |
+| `/new` | `308` to `/chat`, keeping the query. |
+| `/home/classic` | Unchanged: the HTML new chat. |
+| `POST /chat`, `/chat/{id}`, every API route | Unchanged. |
+| `/landing`, `/lander3` through `/lander9` | `308` to `/` (was `/home`). |
+| `/gpui` | `308` to `/chat` (was `/`). |
+
+New chat links, project "New chat" links (`/chat?project=ID`), the deleted-chat
+redirect, error fallbacks, and the GPUI chat's new-chat address now use
+`/chat`. The Grid page carries the site's page metadata, so `/` keeps its
+link preview, canonical address, and `/index.md` twin, which now describes
+the Grid and links `/chat`.
+
+**Deprecated:** the old chat start flow as the homepage. `pages::home` stays
+as the new-chat page at `/chat`; `/new` and `/home/classic` answer only for
+saved addresses. The `OPENAGENTS_WEB_FRONT_DOOR` switch (#12260) is removed:
+`/` no longer depends on it, and the variable is ignored if a spec still
+sets it.

@@ -255,7 +255,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.profile_relays.retain(|relay| relay != "off");
     // Published agents answer mentions and private messages only when asked.
     config.gym_results = std::env::var("OPENAGENTS_WEB_GYM_RESULTS").map_or(true, |v| v != "off");
-    config.front_door = std::env::var("OPENAGENTS_WEB_FRONT_DOOR").is_ok_and(|v| v == "on");
     // Features that aren't ready start off (#12336): OPENAGENTS_WEB_FEATURES
     // lists the ones to turn on.
     config.features = openagents_web::features::Features::from_env();

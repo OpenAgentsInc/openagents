@@ -283,7 +283,7 @@ async fn a_chat_shares_by_link_reads_signed_out_and_stops() {
     // Another account can't share, stop, or even see the step.
     let mut quiet = Browser::default();
     quiet.sign_in(&world, "quiet-local").await;
-    let theirs = quiet.get(&world, "/").await;
+    let theirs = quiet.get(&world, "/chat").await;
     let quiet_csrf = chat_csrf(&theirs.body);
     let stopped = quiet
         .post(&world, &step, &[("csrf", &quiet_csrf), ("shared", "false")])
@@ -416,7 +416,7 @@ async fn signed_out_chats_and_only_you_projects_are_never_shared() {
     let world = world().await;
     // A chat kept by a signed-out browser has no Share button.
     let mut visitor = Browser::default();
-    let home = visitor.get(&world, "/new").await;
+    let home = visitor.get(&world, "/chat").await;
     let browser_owner = visitor
         .0
         .get("oa_visitor")

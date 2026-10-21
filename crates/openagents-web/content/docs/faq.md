@@ -79,7 +79,7 @@ press **Join** on their Projects page. See
 ## Can I follow Coder from my phone?
 
 Yes. Log in with `coder login`, turn on `/sync on`, and open the chat on
-[openagents.com](/) in your phone's browser. You can reply while Coder is
+[openagents.com/chat](/chat) in your phone's browser. You can reply while Coder is
 open on your computer. See
 [Follow a run from your phone](/docs/follow-from-your-phone).
 

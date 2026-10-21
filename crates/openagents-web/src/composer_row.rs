@@ -577,7 +577,10 @@ pub fn row(
 /// With `keys` (this server keeps people's own keys), Use a key.
 pub fn connect_card(env: &str, subscription: bool, keys: bool, chat: Option<&str>) -> Markup {
     use crate::settings::subscription::PATH;
-    let back = chat.map_or_else(|| "/".to_owned(), |chat| format!("/chat/{chat}"));
+    let back = chat.map_or_else(
+        || crate::pages::home::NEW.to_owned(),
+        |chat| format!("/chat/{chat}"),
+    );
     let page = href(PATH, &[("back", back.clone())]);
     let dialog = href(
         PATH,
@@ -610,7 +613,7 @@ pub fn connect_card(env: &str, subscription: bool, keys: bool, chat: Option<&str
     }
 }
 
-/// The row for the home page (`project` preselected from `/?project=`).
+/// The row for the home page (`project` preselected from `/chat?project=`).
 pub(crate) async fn home(
     app: &App,
     headers: &HeaderMap,

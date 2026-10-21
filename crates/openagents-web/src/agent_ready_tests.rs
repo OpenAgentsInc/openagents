@@ -530,6 +530,9 @@ async fn plain_text_json_and_the_root_skill_answer_in_their_types() {
         kind(&headers)
     );
     assert!(body.contains("# OpenAgents"), "{body}");
+    // `/` is the Grid; the twin says so and where a chat starts (#12413).
+    assert!(body.contains("The homepage is the Grid"), "{body}");
+    assert!(body.contains("[start a chat](/chat)"), "{body}");
     // `/` as JSON is the site index, with no top-level error.
     let (status, headers, body) = fetch(site(root.path()), "/", Some("application/json")).await;
     assert_eq!(status, StatusCode::OK);
@@ -579,14 +582,22 @@ async fn plain_text_json_and_the_root_skill_answer_in_their_types() {
 }
 
 #[tokio::test]
-async fn the_chat_homepage_has_one_heading_and_agent_discovery_links() {
+async fn the_grid_homepage_has_one_heading_and_agent_discovery_links() {
     let root = tempfile::tempdir().unwrap();
     let (status, _, html) = fetch(site(root.path()), "/", Some("text/html")).await;
     assert_eq!(status, StatusCode::OK);
-    // The HTML chat fallback keeps one heading and the agent metadata.
+    // The Grid homepage (#12413) keeps one heading and the agent metadata,
+    // with its Markdown twin.
     assert_eq!(html.matches("<h1").count(), 1, "{html}");
-    assert!(html.contains("id=\"chat-input\""));
-    assert!(html.contains("action=\"/chat\""));
+    assert!(html.contains("data-ambient"));
+    assert!(html.contains("<link rel=\"alternate\" type=\"text/markdown\" href=\"/index.md\">"));
+    // The new chat, at `/chat`, keeps them too.
+    let (status, _, chat) = fetch(site(root.path()), "/chat?ui=html", Some("text/html")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(chat.matches("<h1").count(), 1, "{chat}");
+    assert!(chat.contains("id=\"chat-input\""));
+    assert!(chat.contains("action=\"/chat\""));
+    assert!(chat.contains("\"contactPoint\""));
     for file in ["/llms.txt", "/llms-full.txt"] {
         assert!(
             html.contains(&format!(

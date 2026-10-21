@@ -192,6 +192,23 @@ pub(super) fn assemble_page(
     main: Option<&str>,
     (title, description): (&str, &str),
 ) -> Document {
+    assemble_page_with_head(build, addition, main, (title, description), None)
+}
+
+/// [`assemble_page`] with `head` in place of the plain description: the
+/// site's page metadata ([`crate::agent_ready::head`]) for a page that
+/// stands for the site, such as `/`.
+pub(super) fn assemble_page_with_head(
+    build: Option<(String, Vec<u8>)>,
+    addition: Option<&Addition>,
+    main: Option<&str>,
+    (title, description): (&str, &str),
+    head: Option<&str>,
+) -> Document {
+    let head = match head {
+        Some(head) => head.to_owned(),
+        None => format!("<meta name=\"description\" content=\"{description}\">"),
+    };
     let style = addition.map_or(STYLE, |addition| addition.style);
     let in_main = addition.map_or("", |addition| addition.in_main);
     let main = match (main, addition.and_then(|addition| addition.main)) {
@@ -227,8 +244,7 @@ for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);const ready=__wbg_init({{module_
     let mut html = format!(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
 <meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">\
-<meta name=\"color-scheme\" content=\"dark\"><title>{title}</title>\
-<meta name=\"description\" content=\"{description}\">\
+<meta name=\"color-scheme\" content=\"dark\"><title>{title}</title>{head}\
 <link rel=\"icon\" type=\"image/svg+xml\" href=\"{ICON}\">\
 <style>{style}</style></head><body>\
 <canvas id=\"{canvas}\" aria-hidden=\"true\"></canvas>\

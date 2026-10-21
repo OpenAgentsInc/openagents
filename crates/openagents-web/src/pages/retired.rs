@@ -32,7 +32,7 @@ pub(crate) fn routes() -> Router<App> {
 }
 
 async fn home() -> Redirect {
-    Redirect::permanent("/home")
+    Redirect::permanent("/")
 }
 
 async fn chat(OriginalUri(uri): OriginalUri) -> Redirect {
@@ -47,6 +47,6 @@ async fn chat(OriginalUri(uri): OriginalUri) -> Redirect {
 async fn lander9(OriginalUri(uri): OriginalUri) -> Redirect {
     match uri.path().strip_prefix("/lander9/hands/") {
         Some(file) => Redirect::permanent(&format!("/verse/hands/{file}")),
-        None => Redirect::permanent("/home"),
+        None => Redirect::permanent("/"),
     }
 }

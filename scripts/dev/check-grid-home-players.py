@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Check /home with several signed-out players on one local relay (#12406).
+"""Check the Grid homepage (`/`, formerly /home) with several signed-out players on one local relay (#12406).
 
-    check-grid-home-players.py --url http://127.0.0.1:PORT/home \\
+    check-grid-home-players.py --url http://127.0.0.1:PORT/ \\
         --relay ws://127.0.0.1:RELAY_PORT --out DIR [--players 3]
 
 Starts one `openagents browser run` per player, each with its own Chrome
@@ -34,7 +34,7 @@ RADIUS = 0.45
 SPAWN_SPACING = RADIUS * 2 + 1.2
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument("--url", default="http://127.0.0.1:4331/home")
+parser.add_argument("--url", default="http://127.0.0.1:4331/")
 parser.add_argument("--relay", required=True)
 parser.add_argument("--out", required=True, type=Path)
 parser.add_argument("--players", type=int, default=3)

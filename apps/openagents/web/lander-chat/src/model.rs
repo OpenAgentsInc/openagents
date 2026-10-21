@@ -12,8 +12,11 @@ use serde::Deserialize;
 /// The pages the chat is on: `/lander8`, and `/lander10` with the live
 /// pylons around it.
 pub const BASE: &str = "/lander8";
-pub const BASES: [&str; 4] = ["/lander8", "/lander10", "/lander11", "/home"];
-pub const HOME_BASE: &str = "/home";
+pub const BASES: [&str; 3] = ["/lander8", "/lander10", "/lander11"];
+/// The Grid homepage, `/` (#12413).
+pub const HOME_BASE: &str = "/";
+/// The Grid homepage's first address, which now redirects to [`HOME_BASE`].
+const OLD_HOME_BASE: &str = "/home";
 /// `/lander10`: the pylons share the page.
 pub const PYLONS_BASE: &str = "/lander10";
 /// `/lander11`: Verse's Grid draws behind the chat.
@@ -51,7 +54,7 @@ pub fn chat_of(path: &str) -> Option<String> {
     (!id.is_empty() && !id.contains('/')).then(|| id.to_owned())
 }
 
-/// /home keeps the conversation in the query so it stays on the Grid page.
+/// The Grid homepage keeps the conversation in the query so it stays on the Grid page.
 pub fn home_chat(search: &str) -> Option<String> {
     search.trim_start_matches('?').split('&').find_map(|part| {
         let id = part.strip_prefix("chat=")?;
@@ -84,6 +87,9 @@ pub fn card_alpha(base: &str) -> f32 {
 
 /// Which of [`BASES`] the address `path` is under (`/lander8` when none).
 pub fn base_of(path: &str) -> &'static str {
+    if path.is_empty() || path == HOME_BASE || path.trim_end_matches('/') == OLD_HOME_BASE {
+        return HOME_BASE;
+    }
     BASES
         .into_iter()
         .find(|base| {
@@ -342,8 +348,12 @@ mod tests {
 
     #[test]
     fn home_chat_stays_on_the_grid_and_restores_its_query() {
+        assert_eq!(base_of("/"), HOME_BASE);
         assert_eq!(base_of("/home"), HOME_BASE);
-        assert_eq!(path_for(HOME_BASE, Some("abc-123")), "/home?chat=abc-123");
+        assert_eq!(base_of("/lander8"), BASE);
+        assert_eq!(base_of("/chat/abc"), BASE);
+        assert_eq!(path_for(HOME_BASE, Some("abc-123")), "/?chat=abc-123");
+        assert_eq!(path_for(HOME_BASE, None), "/");
         assert_eq!(home_chat("?gl&chat=abc-123"), Some("abc-123".into()));
         assert_eq!(home_chat("?chat="), None);
         assert_eq!(home_chat("?chat=x/y"), None);
