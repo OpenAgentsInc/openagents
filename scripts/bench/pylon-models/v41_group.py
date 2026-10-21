@@ -23,11 +23,16 @@ the owner's home, and no receipts are published.
 """
 
 import json
+import time
 from pathlib import Path
 
 # The V4.1 thinking markers of the #12372 adapter (`deepseek_v41.rs`).
 THINK_END = "</think>"
 END_OF_SENTENCE = "<｜end▁of▁sentence｜>"
+# What `pylon ask` says when no ready group has its slot free.
+NO_PYLON = "no live pylon serves the requested model"
+BUSY_RETRIES = 12
+BUSY_WAIT_SECS = 5
 
 
 def split(text):
@@ -97,6 +102,13 @@ def qualify(args, cases, score, cli):
             command = ["ask", prompt, "--model", args.v41_want, "--deadline", str(args.v41_budget),
                        "--no-receipt", "--relay", args.relay]
             answer = cli(args.pylon_bin, home, command, timeout=args.v41_budget + 60)
+            # The head's beacon says its one slot is busy for a moment after
+            # an answer; discovery then finds no free group. Ask again.
+            for _ in range(BUSY_RETRIES):
+                if NO_PYLON not in str(answer["response"].get("summary")):
+                    break
+                time.sleep(BUSY_WAIT_SECS)
+                answer = cli(args.pylon_bin, home, command, timeout=args.v41_budget + 60)
             rows = check(name, answer["response"], score)
             case = {"name": name, "prompt": prompt, "cli": answer,
                     "checks": [{"name": n, "passed": bool(p), **d} for n, p, d in rows],

@@ -464,10 +464,10 @@ impl StageGroupConfig {
         if !(ms(10)..=secs(75)).contains(&self.step_timeout)
             || !(ms(10)..=secs(30)).contains(&self.health_timeout)
             || !(ms(10)..=secs(900)).contains(&self.startup_timeout)
-            || !(ms(10)..=secs(5)).contains(&self.stop_timeout)
+            || !(ms(10)..=secs(60)).contains(&self.stop_timeout)
             || !(1..=10).contains(&self.max_restarts)
         {
-            return Err("use step limits up to 75 seconds, health limits up to 30 seconds, startup limits up to 900 seconds, stop limits up to 5 seconds, and 1–10 restarts".into());
+            return Err("use step limits up to 75 seconds, health limits up to 30 seconds, startup limits up to 900 seconds, stop limits up to 60 seconds, and 1–10 restarts".into());
         }
         if !(1..=64).contains(&self.links.queue)
             || !(10..=60_000).contains(&self.links.send_timeout_ms)
@@ -2269,7 +2269,9 @@ mod tests {
         budget.max_restarts = 11;
         assert!(budget.validate().is_err());
         let mut stop = config(vec![stage("a")]);
-        stop.stop_timeout = Duration::from_secs(6);
+        stop.stop_timeout = Duration::from_secs(30);
+        assert!(stop.validate().is_ok());
+        stop.stop_timeout = Duration::from_secs(61);
         assert!(stop.validate().is_err());
     }
 }

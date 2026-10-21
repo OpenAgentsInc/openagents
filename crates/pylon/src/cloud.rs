@@ -69,6 +69,8 @@ pub const DISK_MIBPS: u32 = 2_400;
 /// The IOPS that throughput needs: Hyperdisk Balanced moves at most
 /// 256 KiB per operation, and provisioning one needs both.
 pub const DISK_IOPS: u32 = 12_000;
+/// How long the head waits for a killed stage to be reaped, in ms.
+pub const STOP_MS: u64 = 30_000;
 /// The image a head-only machine boots.
 pub const HEAD_IMAGE_FAMILY: &str = "debian-12";
 pub const HEAD_IMAGE_PROJECT: &str = "debian-cloud";
@@ -921,7 +923,10 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
         step_timeout_ms: millis(up.step_timeout),
         health_timeout_ms: 10_000.min(millis(up.step_timeout)),
         startup_timeout_ms: millis(up.startup_timeout),
-        stop_timeout_ms: 3_000,
+        // A killed CUDA stage frees about 75 GB of device memory before
+        // the kernel reaps it, which took longer than 3 s on a G4 machine
+        // (#12399); a stage that can't be confirmed gone stops the group.
+        stop_timeout_ms: STOP_MS,
         max_restarts: up.max_restarts,
         backoff_ms: 1_000,
         max_backoff_ms: 30_000,
