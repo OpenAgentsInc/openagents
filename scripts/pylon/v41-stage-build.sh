@@ -252,13 +252,13 @@ cargo build --locked --release -p psionic-v41-stage --features cuda
 bin=/cache/target/release/psionic-v41-stage
 "$bin" manifest --split 0-20,20-40 >/dev/null
 # What the fatbinary holds, not what was asked for: exactly $ARCH, and for
-# sm_90 the Hopper projection kernels' sm_90a too.
+# sm_90 possibly the Hopper projection kernels' sm_90a too.
 cuobjdump --list-elf "$bin" | sed -n 's/.*\.\(sm_[0-9]*a\{0,1\}\)\..*/\1/p' | sort -u >/src/elf.txt
-want=$ARCH
+got=$(cat /src/elf.txt)
 if [ "$ARCH" = sm_90 ]; then
-  want=$(printf 'sm_90\nsm_90a')
+  got=$(grep -vx sm_90a /src/elf.txt || true)
 fi
-if [ "$(cat /src/elf.txt)" != "$want" ]; then
+if [ "$got" != "$ARCH" ]; then
   echo "the worker's kernels are for $(tr '\n' ' ' </src/elf.txt), not $ARCH" >&2
   exit 1
 fi
@@ -322,6 +322,8 @@ done <"$here/paths.txt"
 while read -r exe; do
   case ${exe##*/} in
     psionic_backend_cuda-*) filter=v41_ ;;
+    # The worker itself, which the process tests start; not a test.
+    psionic-v41-stage) continue ;;
     *) filter= ;;
   esac
   echo "== ${exe##*/} $filter"

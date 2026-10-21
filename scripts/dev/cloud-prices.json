@@ -18,8 +18,9 @@
     "a3-highgpu-1g": {
       "standard": 10.979,
       "spot": 6.2274,
-      "math": "1 H100 80GB + 26 vCPU + 234 GiB: 9.79655 + 26 x 0.02550 + 234 x 0.00222 on demand; 5.55610 + 26 x 0.01448 + 234 x 0.00126 spot",
-      "source": "catalog-2026-10-21"
+      "math": "1 H100 80GB + 26 vCPU + 234 GiB: 9.79655 + 26 x 0.02550 + 234 x 0.00222 on demand; 5.55610 + 26 x 0.01448 + 234 x 0.00126 spot; flex-start (DWS Defined Duration GPU) 4.20076 + 26 x 0.02550 + 234 x 0.00222",
+      "source": "catalog-2026-10-21",
+      "flex": 5.3832
     },
     "a4-highgpu-8g": {
       "standard": 128.88,

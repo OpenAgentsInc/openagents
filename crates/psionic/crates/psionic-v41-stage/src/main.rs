@@ -11,6 +11,8 @@
 //!     [--temperature T --top-p P --seed S] [--arithmetic A] [--max-context N]
 //!     [--backend cpu|cuda]
 //! psionic-v41-stage manifest --split 0-10,10-20,20-30,30-40
+//! psionic-v41-stage plan --device HOST:GPU:CLASS:BYTES[:host-experts][:fixed=BYTES] ...
+//!     --ram HOST:BYTES ... [--split A-B,...] [--max-context N] [--max-step-tokens N]
 //! psionic-v41-stage synthetic DIR [NAME]
 //! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR [...]
 //! psionic-v41-stage qualify-derive --reference R[,R] --control C[,C] --out FILE
@@ -38,6 +40,7 @@ fn main() -> ExitCode {
     let result = match args.first().map(String::as_str) {
         Some("reference") => run_reference(&args[1..]),
         Some("manifest") => run_manifest(&args[1..]),
+        Some("plan") => run_plan(&args[1..]),
         Some("synthetic") => run_synthetic(&args[1..]),
         Some("qualify") => run_qualify(&args[1..]),
         Some("qualify-derive") => psionic_v41_stage::qualify::run_derive(&args[1..]),
@@ -191,6 +194,82 @@ fn run_manifest(args: &[String]) -> Result<(), Refused> {
         .map(parse_layers)
         .collect::<Result<Vec<_>, _>>()?;
     let manifest = synthetic_manifest(&split)?;
+    let json = serde_json::to_vec(&manifest).map_err(|e| Refused(e.to_string()))?;
+    let _ = std::io::stdout().write_all(&json);
+    Ok(())
+}
+
+/// Plans a group over devices of different types from W3's measured memory
+/// (#12418) and prints its manifest. A device is
+/// `HOST:GPU:CLASS:BYTES[:host-experts][:fixed=BYTES]`, where CLASS is
+/// `cuda-sm_NN` or `cpu-ARCH`, BYTES the memory the stage may use (a GPU's
+/// free memory, or host memory for a CPU stage), `host-experts` keeps a
+/// GPU's routed experts in host memory, and `fixed` is the class's measured
+/// fixed cost per stage.
+fn run_plan(args: &[String]) -> Result<(), Refused> {
+    use psionic_models::deepseek_v41_stage::{
+        DeviceKind, DeviceSlot, ExpertMemory, HostRam, MeasuredMemory, plan_devices,
+    };
+    let bad = |what: &str, v: &str| Refused(format!("{what} {v} is not valid"));
+    let number = |v: &str| -> Result<u64, Refused> { v.parse().map_err(|_| bad("number", v)) };
+    let mut slots = Vec::new();
+    let mut hosts = Vec::new();
+    let mut i = 0;
+    while i < args.len() {
+        let value = args.get(i + 1).map(String::as_str).unwrap_or_default();
+        match args[i].as_str() {
+            "--device" => {
+                let parts: Vec<&str> = value.split(':').collect();
+                if parts.len() < 4 {
+                    return Err(bad("--device", value));
+                }
+                let kind = if parts[2].starts_with("cpu") {
+                    DeviceKind::Cpu
+                } else {
+                    DeviceKind::Gpu
+                };
+                let mut slot = DeviceSlot {
+                    host: parts[0].into(),
+                    gpu: number(parts[1])? as u32,
+                    class: parts[2].into(),
+                    kind,
+                    bytes: number(parts[3])?,
+                    experts: ExpertMemory::Device,
+                    per_stage_bytes: None,
+                };
+                for extra in &parts[4..] {
+                    match extra.split_once('=') {
+                        None if *extra == "host-experts" => slot.experts = ExpertMemory::Host,
+                        Some(("fixed", n)) => slot.per_stage_bytes = Some(number(n)?),
+                        _ => return Err(bad("--device", value)),
+                    }
+                }
+                slots.push(slot);
+            }
+            "--ram" => {
+                let (host, bytes) = value.split_once(':').ok_or_else(|| bad("--ram", value))?;
+                hosts.push(HostRam {
+                    host: host.into(),
+                    bytes: number(bytes)?,
+                });
+            }
+            "--split" | "--max-context" | "--max-step-tokens" => {}
+            other => return Err(Refused(format!("plan doesn't take {other}"))),
+        }
+        i += 2;
+    }
+    let context = number(flag(args, "--max-context").unwrap_or("8192"))?;
+    let step = number(flag(args, "--max-step-tokens").unwrap_or("8192"))?;
+    let memory = MeasuredMemory::flash_sized(context, step).map_err(|e| Refused(e.to_string()))?;
+    let split = flag(args, "--split")
+        .map(|s| {
+            s.split(',')
+                .map(parse_layers)
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .transpose()?;
+    let manifest = plan_devices(&memory, &slots, &hosts, split.as_deref())
+        .map_err(|e| Refused(e.to_string()))?;
     let json = serde_json::to_vec(&manifest).map_err(|e| Refused(e.to_string()))?;
     let _ = std::io::stdout().write_all(&json);
     Ok(())

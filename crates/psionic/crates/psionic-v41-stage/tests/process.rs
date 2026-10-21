@@ -75,6 +75,79 @@ fn cpu_stages_on_the_cuda_wire_announce_it_and_answer() {
     let _ = native.run(&prompt, 10);
 }
 
+/// `plan` places a group over mixed device types from the measured memory
+/// and prints a manifest whose stages name their devices (#12418).
+#[test]
+fn plan_places_a_mixed_device_group() {
+    let out = run_bounded(
+        Command::new(BIN).args([
+            "plan",
+            "--device",
+            "g4:0:cuda-sm_120:101973819392",
+            "--device",
+            "g4:1:cuda-sm_120:101973819392",
+            "--device",
+            "h100:0:cuda-sm_90:84000000000",
+            "--device",
+            "cpu:0:cpu-x86_64:400000000000",
+            "--device",
+            "home:0:cuda-sm_89:5500000000:host-experts",
+            "--ram",
+            "g4:380000000000",
+            "--ram",
+            "h100:240000000000",
+            "--ram",
+            "cpu:900000000000",
+            "--ram",
+            "home:60000000000",
+            "--split",
+            "0-12,12-24,24-34,34-36,36-40",
+        ]),
+        LIMIT,
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let manifest: psionic_models::deepseek_v41_stage::V41GroupManifest =
+        serde_json::from_slice(&out.stdout).unwrap();
+    manifest.validate().unwrap();
+    let classes: Vec<_> = manifest
+        .stages
+        .iter()
+        .map(|s| s.device.as_ref().unwrap().class.as_str())
+        .collect();
+    assert_eq!(
+        classes,
+        [
+            "cuda-sm_120",
+            "cuda-sm_120",
+            "cuda-sm_90",
+            "cpu-x86_64",
+            "cuda-sm_89"
+        ]
+    );
+    // Without its experts on the host, the 16 GB card can't hold four layers.
+    let short = run_bounded(
+        Command::new(BIN).args([
+            "plan",
+            "--device",
+            "a:0:cuda-sm_89:5500000000",
+            "--device",
+            "b:0:cuda-sm_120:101973819392",
+            "--ram",
+            "a:60000000000",
+            "--ram",
+            "b:380000000000",
+            "--split",
+            "0-4,4-40",
+        ]),
+        LIMIT,
+    );
+    assert_eq!(short.status.code(), Some(2));
+}
+
 fn refusal(args: &[String]) -> String {
     let out = run_bounded(Command::new(BIN).args(args), LIMIT);
     assert_eq!(out.status.code(), Some(2));
