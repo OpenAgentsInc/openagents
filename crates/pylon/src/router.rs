@@ -583,9 +583,10 @@ fn token_budget(settings: &Settings, candidate: &Candidate) -> Option<usize> {
 }
 
 /// Whether a pylon's reason for not answering is that it was busy: its
-/// `busy` refusal, as [`client`] words it.
+/// `busy` refusal, or an older pylon's `rate_limited` one for a full slot,
+/// as [`client`] words them.
 fn refused_busy(why: &str) -> bool {
-    why.starts_with("busy:")
+    why.starts_with("busy:") || why.ends_with(": no free slot")
 }
 
 /// The order to try `candidates` in, and how it was chosen: the decision
@@ -1180,6 +1181,7 @@ mod tests {
         let free = Want::Model("model-rig".into());
         assert!(!busy_for(&book, AT, &failing, &free));
         assert!(refused_busy("busy: no free slot"));
+        assert!(refused_busy("rate_limited: no free slot"));
         assert!(!refused_busy("rate_limited: too many jobs"));
     }
 
