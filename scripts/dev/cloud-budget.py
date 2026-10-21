@@ -365,11 +365,17 @@ def ledger_reserve(records: list[dict]) -> float:
     return amount
 
 
-def totals(ms: list[dict], at: float, reserve: float = 0.0) -> dict:
+def ledger_charges(records: list[dict]) -> float:
+    """Spend that isn't a machine, such as network transfer or bucket copies (`charge`)."""
+    return round(sum(float(r["amount"]) for r in records if r.get("event") == "charge"), 6)
+
+
+def totals(ms: list[dict], at: float, reserve: float = 0.0, charges: float = 0.0) -> dict:
     done = [m for m in ms if m.get("stop_epoch") is not None]
     live = [m for m in ms if m.get("stop_epoch") is None]
     return {
-        "spent": round(sum(cost(m, at) for m in done), 6),
+        "spent": round(sum(cost(m, at) for m in done) + charges, 6),
+        "charges": round(charges, 6),
         "running": round(sum(cost(m, at) for m in live), 6),
         "running_committed": round(sum(committed(m, at) for m in live), 6),
         "reserve": round(reserve, 6),
@@ -380,8 +386,9 @@ def totals(ms: list[dict], at: float, reserve: float = 0.0) -> dict:
 
 # ---------------------------------------------------------------- admission
 
-def admit(ms: list[dict], cap: float, price: float, hours: float, at: float, reserve: float = 0.0) -> dict:
-    t = totals(ms, at, reserve)
+def admit(ms: list[dict], cap: float, price: float, hours: float, at: float, reserve: float = 0.0,
+          charges: float = 0.0) -> dict:
+    t = totals(ms, at, reserve, charges)
     request = round(price * hours, 6)
     after = t["spent"] + t["running_committed"] + t["reserve"] + request
     if after > cap + 1e-9:
@@ -555,7 +562,7 @@ def cmd_create(a: argparse.Namespace) -> int:
             raise Refused(f"{name} is already running in budget {a.budget}")
         at = now()
         reserve = ledger_reserve(records)
-        verdict = admit(ms, cap, price, hours, at, reserve)
+        verdict = admit(ms, cap, price, hours, at, reserve, ledger_charges(records))
         expires = at + booked
         labels = {"run-id": rid, "run-host": rhost, "budget": a.budget,
                   "expires-at": label_time(expires), **extra_labels}
@@ -1046,7 +1053,7 @@ def cmd_report(a: argparse.Namespace) -> int:
     cap = ledger_cap(records) or (a.cap if a.cap is not None else DEFAULT_CAP)
     at = now()
     ms = machines(records)
-    t = totals(ms, at, ledger_reserve(records))
+    t = totals(ms, at, ledger_reserve(records), ledger_charges(records))
     remaining = cap - t["spent"] - t["running_committed"] - t["reserve"]
     owner = ledger_owner(records)
     rows = [{"vm": m["vm"], "zone": m["zone"], "machine_type": m["machine_type"],
@@ -1054,7 +1061,8 @@ def cmd_report(a: argparse.Namespace) -> int:
              "age_seconds": int(at - m["start_epoch"]), "expires_at": m["expires_at"],
              "cost_so_far": cost(m, at), "cost_to_expiry": committed(m, at)} for m in t["live"]]
     if a.json:
-        print(json.dumps({"budget": a.budget, "cap": cap, "spent": t["spent"], "running": t["running"],
+        print(json.dumps({"budget": a.budget, "cap": cap, "spent": t["spent"], "charges": t["charges"],
+                          "running": t["running"],
                           "running_committed": t["running_committed"], "reserve": t["reserve"],
                           "remaining": round(remaining, 6), "finished": t["finished"],
                           "owner": owner, "corrupt_lines": records.corrupt, "running_machines": rows}, indent=1))
@@ -1063,7 +1071,8 @@ def cmd_report(a: argparse.Namespace) -> int:
     if records.corrupt:
         print(f"CORRUPT    line {', '.join(map(str, records.corrupt))} of {records.path} can't be read; "
               "the totals below leave it out, and create refuses until it is repaired")
-    print(f"spent      {money(t['spent'])}  ({t['finished']} finished)")
+    print(f"spent      {money(t['spent'])}  ({t['finished']} finished"
+          + (f", {money(t['charges'])} of it charges other than machines" if t["charges"] else "") + ")")
     print(f"running    {money(t['running'])} so far, up to {money(t['running_committed'])} by expiry "
           f"({len(rows)} running)")
     print(f"reserve    {money(t['reserve'])}" + ("" if t["reserve"] else
@@ -1099,12 +1108,44 @@ def cmd_reserve(a: argparse.Namespace) -> int:
                           "host": host_id(), "ledger": str(path.resolve())})
         append(path, {"event": "reserve", "budget": a.budget, "amount": round(a.amount, 6),
                       "why": a.why.strip(), "at": iso(at), "host": host_id()})
-        t = totals(machines(records), at, a.amount)
+        t = totals(machines(records), at, a.amount, ledger_charges(records))
     left = cap - t["spent"] - t["running_committed"] - t["reserve"]
     print(f"reserve {money(a.amount)} for {a.why.strip()}; remaining {money(left)} of {money(cap)}")
     if left < 0:
         print("cloud-budget: the reserve is more than the budget has left; create refuses until "
               "machines finish", file=sys.stderr)
+    return 0
+
+
+def cmd_charge(a: argparse.Namespace) -> int:
+    """Record spend that isn't a machine, such as network transfer, as spent."""
+    if not (a.amount > 0):
+        raise Refused("a charge must be more than zero")
+    if not a.why.strip():
+        raise Refused("say what the charge is for with --why")
+    with locked(a.budget) as path:
+        records = read_ledger(path)
+        records.refuse_if_corrupt()
+        at = now()
+        cap = ledger_cap(records)
+        if a.cap is not None and cap is not None and abs(a.cap - cap) > 1e-9:
+            raise Refused(f"budget {a.budget} was opened with cap {money(cap)}; it can't change here")
+        cap = cap if cap is not None else (a.cap if a.cap is not None else DEFAULT_CAP)
+        for note in claim_authority(a.budget, path, records, a.take_over, at):
+            append(path, note)
+        if ledger_cap(records) is None:
+            append(path, {"event": "budget", "budget": a.budget, "cap": cap, "at": iso(at),
+                          "host": host_id(), "ledger": str(path.resolve())})
+        entry = {"event": "charge", "budget": a.budget, "amount": round(a.amount, 6),
+                 "why": a.why.strip(), "at": iso(at), "host": host_id()}
+        if a.estimate:
+            entry["estimate"] = True
+        append(path, entry)
+        records = read_ledger(path, quiet=True)
+        t = totals(machines(records), at, ledger_reserve(records), ledger_charges(records))
+    left = cap - t["spent"] - t["running_committed"] - t["reserve"]
+    print(f"charged {money(a.amount)} for {a.why.strip()}; spent {money(t['spent'])}, "
+          f"remaining {money(left)} of {money(cap)}")
     return 0
 
 
@@ -1164,6 +1205,13 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("amount", type=float)
     v.add_argument("--why", required=True)
     v.add_argument("--take-over", action="store_true")
+    g = sub.add_parser("charge", parents=[common],
+                       help="record spend that isn't a machine, such as network transfer or a bucket copy")
+    g.add_argument("amount", type=float)
+    g.add_argument("--why", required=True)
+    g.add_argument("--estimate", action="store_true",
+                   help="the amount is an estimate, to correct from the bill")
+    g.add_argument("--take-over", action="store_true")
     r = sub.add_parser("report", parents=[common])
     r.add_argument("--offline", action="store_true")
     r.add_argument("--json", action="store_true")
@@ -1184,6 +1232,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_reserve(a)
         if a.cmd == "correct":
             return cmd_correct(a)
+        if a.cmd == "charge":
+            return cmd_charge(a)
         if a.cmd == "report":
             return cmd_report(a)
         return cmd_prices(a)

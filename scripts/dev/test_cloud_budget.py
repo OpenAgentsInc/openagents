@@ -477,6 +477,22 @@ class CloudBudgetTests(unittest.TestCase):
         self.assertEqual(rep["reserve"], 300)
         self.assertAlmostEqual(rep["remaining"], 600 - 300 - A4_SPOT * 7, places=4)
 
+    def test_a_charge_counts_as_spent_and_against_admission(self):
+        # Network transfer isn't a machine; a charge records it as spent (W16, #12403).
+        r = self.run_guard("charge", "300", "--why", "weights transfer", "--estimate",
+                           "--budget", "test", "--cap", "600")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.records()[-1]["event"], "charge")
+        self.assertTrue(self.records()[-1]["estimate"])
+        rep = self.report(T0)
+        self.assertEqual(rep["spent"], 300)
+        self.assertEqual(rep["charges"], 300)
+        # 8 h of A4 spot is $317.07; after $300 of charges it no longer fits in $600.
+        self.assertEqual(self.create("vm-a", cap="600").returncode, 2)
+        self.assertEqual(self.create("vm-a", hours="7", cap="600").returncode, 0)
+        self.assertEqual(self.run_guard("charge", "0", "--why", "x", "--budget", "test").returncode, 2)
+        self.assertEqual(self.run_guard("charge", "5", "--why", " ", "--budget", "test").returncode, 2)
+
     # ------------------------------------------------------------- #12409
 
     def flex(self, name, at=T0, hours="2"):
