@@ -889,5 +889,11 @@
   "note": "probes, the failed four-single attempt, and all six groups, with w16-g5b and w16-td2 still running for the owner; the final figure goes in the closing comment",
   "transfer_estimate": "each launch copies about 467 GB from the us-central1 weights bucket: four asia-northeast1 launches plus the failed one (about 2.3 TB at about $0.08/GB, about $190), two southamerica-east1 launches (about 0.95 TB, about $0.08-0.14/GB, up to about $130), and the one-time europe-west1 copy (0.51 TB, about $25): about $300-345 in all, outside the guard's machine ledger. Launch in a US zone, or copy the weights into the zone's region once, when capacity allows",
   "regional_copy": "gs://openagents-psionic-models-euw1 (europe-west1), complete, unused because europe-west1-b stocked out before the first launch; delete it when W16 ends"
+ },
+ "sm120_cuda_tests": {
+  "pack": "gs://openagents-psionic-models/bin/psionic-v41-tests/70af56e80c/sm_120/tests.tar.gz (sha256 d4aaca26aad92af6fe40f8a8685b05efc890b20d7e0316be892e3a96b8a8c0a5), built by v41-stage-build.sh tests --arch sm_120 --commit 70af56e80c, the pinned worker's commit",
+  "machine": "oa-w16-cudatest, g4-standard-48 spot, asia-northeast1-b: NVIDIA RTX PRO 6000 Blackwell Server Edition, driver 580.178.04, compute capability 12.0",
+  "result": "every test binary passed with PSIONIC_REQUIRE_CUDA=1: psionic-backend-cuda v41_ 46 passed (3 ignored), the stage crate's answer 8, budget 5, cuda 3, handoff 1, identity 5, process 4, lib 8 (1 ignored), qualify 2; 82 passed, 0 failed",
+  "log": "deepseek-v41-w16-sm120-tests-2026-10-21.log"
  }
 }

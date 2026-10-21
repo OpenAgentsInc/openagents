@@ -551,8 +551,10 @@ The status lines below summarize each issue and its comments. Open the issue for
   comparisons there with the corrected generator.
   **W16 (2026-10-21): launch checks done.** Each ready mark named the boot,
   manifest, and build. Each group logged "runs build bundle 185eb68c…
-  (sm_120) with profile cuda-device-sm_120, as pinned". Remaining: the CUDA
-  tests and the synthetic split comparisons on an RTX PRO 6000.
+  (sm_120) with profile cuda-device-sm_120, as pinned". The pinned
+  commit's `sm_120` test pack (`v41-stage-build.sh tests`) passed on an
+  RTX PRO 6000: 82 passed, 0 failed, including the split comparisons
+  (`deepseek-v41-w16-sm120-tests-2026-10-21.log`). Nothing remains.
 
 - #12410 and #12412: rebuild the `sm_120` worker and pylon from a commit
   that includes them, then run the pinned bundle on the RTX PRO 6000
