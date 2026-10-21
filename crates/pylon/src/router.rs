@@ -458,6 +458,9 @@ pub struct Routed {
     pub failed: Vec<(String, String)>,
     /// The model group that answered, when a group head did.
     pub group: Option<AnsweredGroup>,
+    /// The answered job's size by [`estimate_tokens`]: its instructions,
+    /// earlier turns, and prompt.
+    pub sent_tokens: Option<usize>,
 }
 
 /// The model group behind an answer: its id and how many stages it runs
@@ -500,6 +503,7 @@ impl Routed {
             deciders: 0,
             failed: Vec::new(),
             group: None,
+            sent_tokens: None,
         }
     }
 }
@@ -750,6 +754,7 @@ pub async fn route(
             deciders,
             failed: Vec::new(),
             group: None,
+            sent_tokens: None,
         };
     };
     let started = Instant::now();
@@ -779,6 +784,12 @@ pub async fn route(
             ));
             continue;
         };
+        let sent = instructions.map_or(0, estimate_tokens)
+            + estimate_tokens(&prompt)
+            + history
+                .iter()
+                .map(|t| estimate_tokens(&t.content))
+                .sum::<usize>();
         let ask = Ask {
             relay: settings.relay.clone(),
             pylon: Some(candidate.provider.clone()),
@@ -813,6 +824,7 @@ pub async fn route(
                     deciders,
                     failed,
                     group: answered_group(&book, &candidate),
+                    sent_tokens: Some(sent),
                 };
             }
             Ok(answer) => failed.push((
@@ -837,6 +849,7 @@ pub async fn route(
         deciders,
         failed,
         group: None,
+        sent_tokens: None,
     }
 }
 

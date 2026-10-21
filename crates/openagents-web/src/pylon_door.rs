@@ -307,17 +307,13 @@ fn repeats(turns: &[pylon::engine::Turn], answer: &str) -> bool {
 /// How routing went, for the log: never the message or the answer.
 fn log_line(routed: &router::Routed, ms: u128) -> String {
     let outcome = match &routed.outcome {
-        // How long the answer took and how many prompt tokens the pylon
-        // read, to size V4.1 turns (#12434).
+        // How long the answer took and about how many prompt tokens it
+        // sent, to size V4.1 turns (#12434).
         Outcome::Answered(answer) => format!(
-            "answered by {} in {} ms, {} prompt tokens",
+            "answered by {} in {} ms, about {} prompt tokens",
             answer.pylon,
             answer.answer_ms.unwrap_or_default(),
-            answer
-                .usage
-                .as_ref()
-                .and_then(|u| u["input"].as_u64())
-                .map_or_else(|| "unknown".into(), |n| n.to_string())
+            routed.sent_tokens.unwrap_or_default()
         ),
         Outcome::Declined => "handed to the hosted chat".into(),
         Outcome::Busy => "every pylon serving the model is busy".into(),

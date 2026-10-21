@@ -584,6 +584,7 @@ fn the_log_line_never_holds_the_message() {
         deciders: 1,
         failed: vec![],
         group: None,
+        sent_tokens: None,
     };
     assert_eq!(
         log_line(&routed, 45),
@@ -609,6 +610,7 @@ fn the_log_line_names_each_failed_pylon_and_why() {
             ("30200:bb:rig".into(), "no answer within\n30 s".into()),
         ],
         group: None,
+        sent_tokens: None,
     };
     assert_eq!(
         log_line(&routed, 900),
