@@ -181,15 +181,74 @@ impl PylonDoor {
     }
 }
 
-/// The reply's text: the pylon's name and model over its answer.
-fn shown(label: &str, model: &str, text: &str) -> String {
-    let plain = |s: &str| {
-        s.chars()
-            .filter(|c| !matches!(c, '*' | '_' | '`' | '[' | ']' | '\n'))
-            .take(64)
-            .collect::<String>()
+/// The reply's text: one line naming who answered, over the answer.
+/// A V4.1 group reads "DeepSeek V4.1 · group w16-g5 (4 parts)"; any other
+/// pylon reads its name and its model, exactly as its beacon gives them.
+fn shown(label: &str, model: &str, group: Option<&router::AnsweredGroup>, text: &str) -> String {
+    let source = match group {
+        Some(group) => format!(
+            "**{GROUP_NAME}** · group {}{}",
+            literal(&group.id),
+            match group.stages {
+                0 => String::new(),
+                1 => " (1 part)".into(),
+                n => format!(" ({n} parts)"),
+            }
+        ),
+        None => format!("**{}** · {}", literal(label), literal(model)),
     };
-    format!("**{}** · {}\n\n{}", plain(label), plain(model), text.trim())
+    let body = match without_source(text).trim() {
+        "" => text.trim(),
+        body => body,
+    };
+    format!("{source}\n\n{body}")
+}
+
+/// What a person calls [`GROUP_MODEL`].
+const GROUP_NAME: &str = "DeepSeek V4.1";
+
+/// `text` on one line, at most 64 characters, with Markdown's marks
+/// escaped so it shows as written: `q8_0` stays `q8_0`.
+fn literal(text: &str) -> String {
+    let mut out = String::new();
+    for c in text
+        .chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .take(64)
+    {
+        if matches!(c, '\\' | '*' | '_' | '`' | '[' | ']' | '<' | '>' | '#') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// `text` without the source lines [`shown`] puts over an answer: what an
+/// earlier answer in the conversation carries, and what a small model may
+/// copy from one. Earlier turns go to a pylon without them (#12421).
+pub(crate) fn without_source(text: &str) -> &str {
+    let mut rest = text.trim_start();
+    while let Some(line) = rest.strip_prefix("**") {
+        let (first, after) = line.split_once('\n').unwrap_or((line, ""));
+        let Some((name, from)) = first.split_once("** · ") else {
+            break;
+        };
+        if name.is_empty() || from.trim().is_empty() || name.len() > 160 || from.len() > 160 {
+            break;
+        }
+        rest = after.trim_start();
+    }
+    rest
+}
+
+/// Whether `answer` repeats an earlier answer in `turns` word for word.
+fn repeats(turns: &[pylon::engine::Turn], answer: &str) -> bool {
+    let answer = without_source(answer).trim();
+    !answer.is_empty()
+        && turns
+            .iter()
+            .any(|t| t.role == "assistant" && without_source(&t.content).trim() == answer)
 }
 
 /// How routing went, for the log: never the message or the answer.
@@ -240,6 +299,15 @@ impl Door for PylonDoor {
         context: Context,
         reply: Arc<Mutex<Reply>>,
     ) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        let turns: Vec<Turn> = turns
+            .into_iter()
+            .map(|mut turn| {
+                if turn.role == Role::Assistant {
+                    turn.text = without_source(&turn.text).to_owned();
+                }
+                turn
+            })
+            .collect();
         let fallback = self
             .fallback
             .as_ref()
@@ -250,19 +318,25 @@ impl Door for PylonDoor {
             self.decide.clone(),
         );
         Box::pin(async move {
+            // Earlier answers go without the line naming who answered, which
+            // a small model otherwise copies, with its answer, into the next
+            // one (#12421).
             let jobs: Vec<pylon::engine::Turn> = turns
                 .iter()
-                .map(|turn| pylon::engine::Turn {
-                    role: match turn.role {
-                        Role::User => "user",
-                        Role::Assistant => "assistant",
-                    }
-                    .into(),
-                    content: turn.text.clone(),
+                .map(|turn| match turn.role {
+                    Role::User => pylon::engine::Turn {
+                        role: "user".into(),
+                        content: turn.text.clone(),
+                    },
+                    Role::Assistant => pylon::engine::Turn {
+                        role: "assistant".into(),
+                        content: without_source(&turn.text).to_owned(),
+                    },
                 })
+                .filter(|turn| !turn.content.trim().is_empty())
                 .collect();
             let started = Instant::now();
-            let routed = router::route(
+            let mut routed = router::route(
                 &buyer,
                 &settings,
                 decide.as_ref(),
@@ -271,12 +345,35 @@ impl Door for PylonDoor {
             )
             .await;
             eprintln!("{}", log_line(&routed, started.elapsed().as_millis()));
+            // A small model can answer a new message with its last answer,
+            // word for word. Ask once more with only what the person wrote,
+            // which it doesn't copy.
+            if let Outcome::Answered(answer) = &routed.outcome
+                && repeats(&jobs, answer.text.as_deref().unwrap_or_default())
+            {
+                let theirs: Vec<pylon::engine::Turn> =
+                    jobs.iter().filter(|t| t.role == "user").cloned().collect();
+                let again = Instant::now();
+                routed = router::route(
+                    &buyer,
+                    &settings,
+                    decide.as_ref(),
+                    &theirs,
+                    Some(INSTRUCTIONS),
+                )
+                .await;
+                eprintln!(
+                    "{} (asked again: the first answer repeated an earlier one)",
+                    log_line(&routed, again.elapsed().as_millis())
+                );
+            }
             if let Outcome::Answered(answer) = routed.outcome {
                 let slug = answer.pylon.rsplit(':').next().unwrap_or_default();
                 let mut reply = basic_coder::lock(&reply);
                 reply.text = shown(
                     &answer.label,
                     &answer.model,
+                    routed.group.as_ref(),
                     answer.text.as_deref().unwrap_or_default(),
                 );
                 reply.model = Some(answer.model.clone());

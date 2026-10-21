@@ -271,8 +271,11 @@ async fn a_home_turn_that_asks_for_v41_goes_only_to_the_group() {
     let (relay, _running) = relay_with_group().await;
     let world = world(relay).await;
     let events = ask_for(&world, 4, "hello", true, Some(GROUP_MODEL)).await;
+    // Named once, as the group, never as the head's own label.
     assert!(
-        events.contains("**V41 group**") && events.contains("echo: olleh"),
+        events.contains("**DeepSeek V4.1** · group v41-a")
+            && events.contains("echo: olleh")
+            && !events.contains("V41 group"),
         "{events}"
     );
     // A default turn never reaches the group: the ordinary pylon answers.
@@ -284,6 +287,161 @@ async fn a_home_turn_that_asks_for_v41_goes_only_to_the_group() {
     // Another model name is ignored, and the turn routes as a default one.
     let events = ask_for(&world, 6, "hello", true, Some("gpt-x")).await;
     assert!(events.contains("**Rig** · echo"), "{events}");
+}
+
+/// A pylon whose small model answers with its last answer whenever the
+/// conversation holds one, as the owner's 0.8B model did (#12421), and
+/// otherwise names the message it answers. It records what it was sent.
+struct Parrot(Arc<Mutex<Vec<Vec<pylon::engine::Turn>>>>);
+
+impl pylon::engine::Engine for Parrot {
+    fn model(&self) -> &str {
+        "qwen3.5-0.8b-q8_0"
+    }
+
+    fn healthy(&self) -> pylon::engine::Pending<'_, bool> {
+        Box::pin(async { true })
+    }
+
+    fn generate<'a>(
+        &'a self,
+        turns: &'a [pylon::engine::Turn],
+        _: u32,
+    ) -> pylon::engine::Pending<'a, Result<pylon::engine::Generation, String>> {
+        self.0.lock().unwrap().push(turns.to_vec());
+        let text = turns
+            .iter()
+            .rev()
+            .find(|t| t.role == "assistant")
+            .map_or_else(
+                || format!("Answer to {}", turns.last().unwrap().content),
+                |t| t.content.clone(),
+            );
+        Box::pin(async move {
+            Ok(pylon::engine::Generation {
+                text,
+                input_tokens: Some(1),
+                output_tokens: Some(1),
+                model: "qwen3.5-0.8b-q8_0".into(),
+                finish: pylon::engine::Finish::Stop,
+            })
+        })
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn each_turn_sends_the_latest_message_and_its_history() {
+    let (url, hub) = pylon::fixture::relay().await.unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let mut config = pylon::provider::Config::new(&url, "mac", home.path().to_path_buf());
+    config.label = "Mac M5 Max".into();
+    config.allow = None;
+    config.rate_per_minute = 600;
+    let sent = Arc::new(Mutex::new(Vec::new()));
+    let provider = pylon::provider::Provider::new(
+        config,
+        Identity::generate(),
+        Arc::new(Parrot(sent.clone())),
+    )
+    .unwrap();
+    let (_stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    tokio::spawn(provider.run(async {
+        let _ = stopped.await;
+    }));
+    for _ in 0..200 {
+        if hub.lock().await.stored.iter().any(|e| e.kind == 30_200) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    let world = world(url).await;
+    let (_, headers, session) =
+        send(&world, "", None, "GET", "/lander8/session", None, false).await;
+    let cookie = headers[header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let csrf = session["csrf"].as_str().unwrap().to_owned();
+    let chat = "5e1f0c3a-7d2b-4c4e-9a1b-000000000021";
+    let messages = [
+        "who are you",
+        "ok i want to atlk to deepseek",
+        "wtf u mean deepseek qwen goddammit",
+    ];
+    let mut answers = Vec::new();
+    for (n, text) in messages.iter().enumerate() {
+        let request = format!("5e1f0c3a-7d2b-4c4e-9a1b-00000000002{}", n + 1);
+        let request = if n == 0 { chat.to_owned() } else { request };
+        let path = if n == 0 {
+            "/v1/threads".to_owned()
+        } else {
+            format!("/v1/threads/{chat}/messages")
+        };
+        let (status, _, started) = send(
+            &world,
+            &cookie,
+            Some(&csrf),
+            "POST",
+            &path,
+            Some(json!({"request_id": request, "text": text})),
+            true,
+        )
+        .await;
+        assert!(matches!(status, 200..=202), "{status} {started}");
+        let (_, _, events) = send(
+            &world,
+            &cookie,
+            None,
+            "GET",
+            &format!("/v1/threads/{chat}/events?request_id={request}"),
+            None,
+            true,
+        )
+        .await;
+        let events = events.as_str().unwrap_or_default().to_owned();
+        assert!(events.contains(&format!("Answer to {text}")), "{events}");
+        answers.push(events);
+    }
+    // One source per answer, with the model's id as written.
+    for events in &answers {
+        assert_eq!(events.matches("** · ").count(), 1, "{events}");
+        assert!(events.contains("qwen3.5-0.8b-q8\\\\_0"), "{events}");
+    }
+    let sent = sent.lock().unwrap().clone();
+    let last = sent.last().unwrap();
+    let words: Vec<(&str, &str)> = last
+        .iter()
+        .map(|t| (t.role.as_str(), t.content.as_str()))
+        .collect();
+    // The third message, last and whole, after the two before it; asked
+    // again with only what the person wrote, since the first try repeated.
+    assert_eq!(
+        &words[words.len() - 3..],
+        &[
+            ("user", messages[0]),
+            ("user", messages[1]),
+            ("user", messages[2]),
+        ]
+    );
+    let first_try = &sent[sent.len() - 2];
+    let words: Vec<(&str, &str)> = first_try
+        .iter()
+        .map(|t| (t.role.as_str(), t.content.as_str()))
+        .collect();
+    assert_eq!(
+        &words[words.len() - 5..],
+        &[
+            ("user", messages[0]),
+            ("assistant", "Answer to who are you"),
+            ("user", messages[1]),
+            ("assistant", "Answer to ok i want to atlk to deepseek"),
+            ("user", messages[2]),
+        ],
+        "earlier answers go without their source lines"
+    );
 }
 
 #[test]
@@ -309,10 +467,70 @@ async fn other_pages_never_ask_the_pylons() {
 #[test]
 fn a_pylon_answer_is_shown_under_its_name() {
     assert_eq!(
-        shown("Rig *B*", "qwen3.5-0.8b", " Hi. \n"),
-        "**Rig B** · qwen3.5-0.8b\n\nHi."
+        shown("Rig *B*", "qwen3.5-0.8b", None, " Hi. \n"),
+        "**Rig \\*B\\*** · qwen3.5-0.8b\n\nHi."
     );
-    assert!(oa_copy::violations(&shown("Rig", "echo", "Hi."), &[]).is_empty());
+    // The model's id as its beacon gives it: `q8_0`, never `q80`.
+    assert_eq!(
+        shown(
+            "Mac M5 Max (network lane)",
+            "qwen3.5-0.8b-q8_0",
+            None,
+            "Hi."
+        ),
+        "**Mac M5 Max (network lane)** · qwen3.5-0.8b-q8\\_0\n\nHi."
+    );
+    // A V4.1 group is named once, with its group and its parts.
+    let group = router::AnsweredGroup {
+        id: "w16-g5".into(),
+        stages: 4,
+    };
+    assert_eq!(
+        shown("W16 G5", GROUP_MODEL, Some(&group), "Hi."),
+        "**DeepSeek V4.1** · group w16-g5 (4 parts)\n\nHi."
+    );
+    // A source line the model copied is dropped: one source per answer.
+    assert_eq!(
+        shown(
+            "Mac",
+            "qwen",
+            None,
+            "**DeepSeek (network lane)** · qwen3.5-0.8b-q80\n\nHi."
+        ),
+        "**Mac** · qwen\n\nHi."
+    );
+    for text in [
+        shown("Rig", "echo", None, "Hi."),
+        shown("W16 G5", GROUP_MODEL, Some(&group), "Hi."),
+    ] {
+        assert!(oa_copy::violations(&text, &[]).is_empty(), "{text}");
+    }
+}
+
+#[test]
+fn earlier_answers_lose_their_source_lines() {
+    // The owner's chat (#12421): the second answer carried a copied line.
+    let second = "**Mac M5 Max (network lane)** · qwen3.5-0.8b-q80\n\n**DeepSeek (network \
+lane)** · qwen3.5-0.8b-q80\n\nI am a computer on the OpenAgents network.";
+    assert_eq!(
+        without_source(second),
+        "I am a computer on the OpenAgents network."
+    );
+    assert_eq!(
+        without_source("**Bold** start.\n\nMore."),
+        "**Bold** start.\n\nMore."
+    );
+    assert_eq!(without_source("Plain."), "Plain.");
+    let turn = |role: &str, content: &str| pylon::engine::Turn {
+        role: role.into(),
+        content: content.into(),
+    };
+    let turns = [turn("user", "who are you"), turn("assistant", second)];
+    assert!(repeats(
+        &turns,
+        "I am a computer on the OpenAgents network."
+    ));
+    assert!(!repeats(&turns, "DeepSeek V4.1 is a model group."));
 }
 
 #[test]
@@ -329,6 +547,7 @@ fn the_log_line_never_holds_the_message() {
         candidates: 2,
         deciders: 1,
         failed: vec![],
+        group: None,
     };
     assert_eq!(
         log_line(&routed, 45),
@@ -353,6 +572,7 @@ fn the_log_line_names_each_failed_pylon_and_why() {
             ),
             ("30200:bb:rig".into(), "no answer within\n30 s".into()),
         ],
+        group: None,
     };
     assert_eq!(
         log_line(&routed, 900),

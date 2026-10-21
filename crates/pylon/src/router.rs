@@ -420,6 +420,39 @@ pub struct Routed {
     pub deciders: usize,
     /// Each pylon tried and why it gave no answer, in order.
     pub failed: Vec<(String, String)>,
+    /// The model group that answered, when a group head did.
+    pub group: Option<AnsweredGroup>,
+}
+
+/// The model group behind an answer: its id and how many stages it runs
+/// on, as their beacons say.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnsweredGroup {
+    pub id: String,
+    pub stages: usize,
+}
+
+/// The group `candidate` heads in `book`, if it heads one.
+fn answered_group(book: &BeaconBook, candidate: &Candidate) -> Option<AnsweredGroup> {
+    let head = book
+        .iter()
+        .map(|(_, beacon)| beacon)
+        .find(|b| b.provider == candidate.provider && b.pylon == candidate.pylon)?
+        .group_head()?;
+    let stages = book
+        .iter()
+        .filter_map(|(_, beacon)| beacon.group.as_ref())
+        .filter(|g| {
+            g.role == pylon::GroupRole::Stage
+                && g.id == head.id
+                && g.generation == head.generation
+                && g.artifact == head.artifact
+        })
+        .count();
+    Some(AnsweredGroup {
+        id: head.id.clone(),
+        stages,
+    })
 }
 
 impl Routed {
@@ -430,6 +463,7 @@ impl Routed {
             candidates: 0,
             deciders: 0,
             failed: Vec::new(),
+            group: None,
         }
     }
 }
@@ -621,6 +655,7 @@ pub async fn route(
             candidates: admitted,
             deciders,
             failed: Vec::new(),
+            group: None,
         };
     };
     let started = Instant::now();
@@ -678,6 +713,7 @@ pub async fn route(
                     candidates: admitted,
                     deciders,
                     failed,
+                    group: answered_group(&book, &candidate),
                 };
             }
             Ok(answer) => failed.push((
@@ -693,6 +729,7 @@ pub async fn route(
         candidates: admitted,
         deciders,
         failed,
+        group: None,
     }
 }
 
