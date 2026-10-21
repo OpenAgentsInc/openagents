@@ -117,8 +117,6 @@ scp -q "$scratch/src.tar.gz" "$host:$remote_src/src.tar.gz"
 # persistent source folder (without -t, a copied file gets the current
 # time), under the host's build lock.
 lock="$remote_cache/build.lock"
-sync_src="tar -xzf $remote_src/src.tar.gz -C $remote_src/work && \
-  rsync -rlc --delete $remote_src/work/ $remote_cache/$src_dir/"
 
 # Runs inside the container: /src is the source, /cache the caches.
 inner=$(cat <<'INNER'
@@ -170,10 +168,20 @@ gpu=()
 if [[ $mode == test ]]; then
   gpu=(--device nvidia.com/gpu=all)
 fi
+# The host's part and the container's part travel as files, so neither
+# needs another layer of shell quoting.
+printf '%s\n' "$inner" >"$scratch/inner.sh"
+cat >"$scratch/host.sh" <<HOST
+set -eu
+tar -xzf $remote_src/src.tar.gz -C $remote_src/work
+rsync -rlc --delete $remote_src/work/ $remote_cache/$src_dir/
+docker run --rm ${gpu[*]} --user \$(id -u):\$(id -g) -e HOME=/cache/home \\
+  -e MODE=$mode -e ARCH=$arch -v $remote_src:/src -v $remote_cache:/cache $builder \\
+  bash /src/inner.sh
+HOST
+scp -q "$scratch/inner.sh" "$scratch/host.sh" "$host:$remote_src/"
 # shellcheck disable=SC2029
-ssh "$host" "flock $lock sh -c $(printf %q "$sync_src && docker run --rm ${gpu[*]} \
-  --user \$(id -u):\$(id -g) -e HOME=/cache/home -e MODE=$mode -e ARCH=${arch} \
-  -v $remote_src:/src -v $remote_cache:/cache $builder bash -c $(printf %q "$inner")")"
+ssh "$host" "flock $lock sh $remote_src/host.sh"
 if [[ $mode == test ]]; then
   echo "v41-stage-build: tests passed on $host"
   exit 0

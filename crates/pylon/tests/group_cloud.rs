@@ -402,8 +402,23 @@ async fn refusals_create_nothing() {
     let why = refused(&rig).await;
     assert!(why.contains("> cap $10.00"), "{why}");
 
-    // A machine type the guard has no price for.
+    // A machine type the guard has no price for: a price table without
+    // the g4-standard-192.
     let mut rig = Rig::new("four-single", "wss://relay.example");
+    let mut prices: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(repo().join("scripts/dev/cloud-prices.json")).unwrap(),
+    )
+    .unwrap();
+    prices["machines"]
+        .as_object_mut()
+        .unwrap()
+        .remove("g4-standard-192");
+    let table = rig.path("prices.json");
+    std::fs::write(&table, prices.to_string()).unwrap();
+    rig.up
+        .guard
+        .env
+        .push(("OA_CLOUD_PRICES".into(), table.display().to_string()));
     rig.up.machine_type = Some("g4-standard-192".into());
     let why = refused(&rig).await;
     assert!(why.contains("price"), "{why}");

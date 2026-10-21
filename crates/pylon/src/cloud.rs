@@ -1439,6 +1439,10 @@ checkout on the one host that allocates for the budget.
                             at most 3600; past 90 it takes only
                             pylon.deadline.v1 jobs).
       --max-output-tokens N The output limit it declares (default 1024).
+      --ready-secs N        How long the launch waits for every stage to
+                            load, weights copy included (default 1800).
+      --step-secs N         How long one step may take, a long prompt's
+                            prefill included (default 30, at most 75).
       --allow NPUB          A key that may send jobs (repeatable); default
                             any key.
       --relay URL           The relay (default wss://relay.openagents.com).
@@ -1507,6 +1511,8 @@ pub fn parse_up(
     let cap = value(&mut words, "--cap")?;
     let deadline = take_number(&mut words, "--deadline-secs")?;
     let max_output = take_number(&mut words, "--max-output-tokens")?;
+    let ready = take_number(&mut words, "--ready-secs")?;
+    let step = take_number(&mut words, "--step-secs")?;
     let allow = take_values(&mut words, "--allow")?;
     let head = value(&mut words, "--head")?;
     let head_machine_type = value(&mut words, "--head-machine-type")?;
@@ -1570,6 +1576,19 @@ pub fn parse_up(
     }
     if let Some(max_output) = max_output {
         up.max_output_tokens = max_output;
+    }
+    if let Some(ready) = ready {
+        if ready == 0 {
+            return Err("--ready-secs must be more than zero".into());
+        }
+        up.ready_timeout = Duration::from_secs(u64::from(ready));
+    }
+    if let Some(step) = step {
+        // The group's own check bounds a step at 75 s.
+        if !(1..=75).contains(&step) {
+            return Err("--step-secs takes 1 to 75".into());
+        }
+        up.step_timeout = Duration::from_secs(u64::from(step));
     }
     if !allow_any && !allow.is_empty() {
         let mut keys = BTreeSet::new();

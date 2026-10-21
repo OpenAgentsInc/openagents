@@ -35,6 +35,8 @@ pub struct GroupEngine {
     model: String,
     sampling: Sampling,
     max_output: u32,
+    /// Where each answer's timing goes: first-token time and decode rate.
+    log: Option<Log>,
 }
 
 impl GroupEngine {
@@ -45,7 +47,15 @@ impl GroupEngine {
             model,
             sampling,
             max_output,
+            log: None,
         }
+    }
+
+    /// Log each answer's first-token time and decode rate to `log`.
+    #[must_use]
+    pub fn with_log(mut self, log: Log) -> Self {
+        self.log = Some(log);
+        self
     }
 }
 
@@ -72,6 +82,8 @@ impl Engine for GroupEngine {
                     .map(|t| json!({"role": t.role, "content": t.content}))
                     .collect::<Vec<_>>()
             );
+            let started = std::time::Instant::now();
+            let mut first: Option<std::time::Instant> = None;
             let mut run = self
                 .group
                 .generate_prompt(prompt, u64::from(steps), self.sampling)
@@ -82,7 +94,10 @@ impl Engine for GroupEngine {
             while tokens_open || text_open || answer_open {
                 tokio::select! {
                     token = run.tokens.recv(), if tokens_open => match token {
-                        Some(token) => ids.push(token),
+                        Some(token) => {
+                            first.get_or_insert_with(std::time::Instant::now);
+                            ids.push(token);
+                        }
                         None => tokens_open = false,
                     },
                     piece = run.text.recv(), if text_open => match piece {
@@ -104,6 +119,19 @@ impl Engine for GroupEngine {
                 .await
                 .map_err(|_| "the stage group stopped".to_string())?
                 .map_err(|failure| failure.to_string())?;
+            if let (Some(log), Some(first)) = (&self.log, first) {
+                let decode = first.elapsed().as_secs_f64();
+                let rate = if ids.len() > 1 && decode > 0.0 {
+                    (ids.len() - 1) as f64 / decode
+                } else {
+                    0.0
+                };
+                log(format!(
+                    "model group answered {} tokens: first token after {} ms, then {rate:.2} tokens/s",
+                    ids.len(),
+                    (first - started).as_millis()
+                ));
+            }
             // A last stage that parses the answer (W11's V4.1 worker) splits
             // reasoning from the final answer at the model's own `</think>`
             // token and says how the answer ended.
@@ -233,12 +261,15 @@ pub(crate) async fn run(
                 .collect(),
         });
         let identity = Identity::load_or_create(&home.join("provider.key"))?;
-        let engine = Arc::new(GroupEngine::new(
-            Arc::clone(&group),
-            format!("{}@{}", lane.model, lane.artifact),
-            lane.sampling,
-            lane.max_output_tokens,
-        ));
+        let engine = Arc::new(
+            GroupEngine::new(
+                Arc::clone(&group),
+                format!("{}@{}", lane.model, lane.artifact),
+                lane.sampling,
+                lane.max_output_tokens,
+            )
+            .with_log(Arc::clone(&log)),
+        );
         let machine: Arc<dyn Machine> = if settings.dedicated {
             Arc::new(Dedicated)
         } else {
