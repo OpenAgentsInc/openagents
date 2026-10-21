@@ -13,6 +13,8 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+import importlib.util
 
 SCRIPT = Path(__file__).with_name("cloud-budget.py").resolve()
 PRICES = Path(__file__).with_name("cloud-prices.json").resolve()
@@ -52,6 +54,8 @@ if args[:3] == ["compute", "instances", "describe"]:
         info["id"] = os.environ["FAKE_ID"]
     if os.environ.get("FAKE_STARTED"):
         info["lastStartTimestamp"] = os.environ["FAKE_STARTED"]
+    if os.environ.get("FAKE_STOPPED"):
+        info["lastStopTimestamp"] = os.environ["FAKE_STOPPED"]
     print(json.dumps(info))
     sys.exit(0)
 if args[:3] == ["compute", "operations", "list"]:
@@ -662,6 +666,86 @@ class CloudBudgetTests(unittest.TestCase):
                                         "--why", "x", at=T0 + 7600).returncode, 2)
         self.assertEqual(self.run_guard("correct", start["id"], "--budget", "test", "--why", "x").returncode, 2)
 
+
+    # Instance 111's request failed at 08:05; instance 222 took the name at 08:10, inside the
+    # 30-minute start window, and ran until 09:00 (review R2, #12411).
+    RAPID_OPS = json.dumps([
+        {"operationType": "insert", "status": "DONE", "insertTime": "2027-01-15T08:00:01Z",
+         "endTime": "2027-01-15T08:05:00Z", "targetId": "111",
+         "error": {"errors": [{"code": "ZONE_RESOURCE_POOL_EXHAUSTED"}]}},
+        {"operationType": "insert", "status": "DONE", "insertTime": "2027-01-15T08:09:30Z",
+         "endTime": "2027-01-15T08:10:00Z", "targetId": "222"}])
+    REPLACEMENT = {"FAKE_ID": "222", "FAKE_CREATED": "2027-01-15T08:10:00Z",
+                   "FAKE_STARTED": "2027-01-15T08:10:00Z"}
+
+    def test_a_rapidly_reused_name_lends_no_timestamps(self):
+        self.flex("flex-rapid")
+        r = self.run_guard("sync", "--budget", "test", at=T0 + 4 * 3600, FAKE_DESCRIBE="TERMINATED",
+                           FAKE_STOPPED="2027-01-15T09:00:00Z", FAKE_OPS=self.RAPID_OPS, **self.REPLACEMENT)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        stop = [x for x in self.records() if x.get("event") == "stop"][-1]
+        self.assertEqual((stop["reason"], stop["cost"], stop["instance_id"], stop["stop_epoch"]),
+                         ("never-started", 0.0, "111", T0 + 300))
+        self.assertEqual(self.report(T0 + 4 * 3600)["spent"], 0)
+
+    def test_settle_rejects_another_instances_snapshot(self):
+        # The review's fixture, through the module's own functions: the record knows its ID.
+        spec = importlib.util.spec_from_file_location("cloud_budget_r2", SCRIPT)
+        budget = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(budget)
+        record = {"id": "old-ledger-entry", "instance_id": "111", "vm": "reused", "project": "fixture",
+                  "zone": "fixture", "start_epoch": T0, "provisioning": "flex-start",
+                  "price_per_hour": 64.44, "expires_epoch": T0 + 7200}
+        replacement = {"id": "222", "status": "TERMINATED", "creationTimestamp": "2027-01-15T08:10:00Z",
+                       "lastStartTimestamp": "2027-01-15T08:10:00Z",
+                       "lastStopTimestamp": "2027-01-15T09:00:00Z"}
+        reply = subprocess.CompletedProcess([], 0, json.dumps(replacement), "")
+        with patch.object(budget, "gcloud", return_value=reply):
+            seen = budget.describe(record)
+        self.assertEqual(seen, {"status": "GONE", "other_id": "222"})
+        events = [{"kind": "insert", "at": T0 + 300, "begun": T0 + 1, "done": True, "ok": False,
+                   "instance_id": "111"}]
+        # Settlement checks the snapshot itself, so even the unvalidated one lends nothing.
+        raw = {"status": "TERMINATED", "id": "222", "created": T0 + 600, "last_start": T0 + 600,
+               "last_stop": T0 + 3600}
+        for snapshot in (seen, raw):
+            done = budget.settle(record, snapshot, events)
+            self.assertEqual((done["reason"], done["instance_id"], done["stop_epoch"]),
+                             ("never-started", "111", T0 + 300))
+            self.assertEqual(budget.stop_record(record, done)["cost"], 0)
+
+    def test_stop_never_deletes_a_replacement(self):
+        self.flex("flex-swap")
+        r = self.run_guard("stop", "flex-swap", "--budget", "test", at=T0 + 1800, FAKE_DESCRIBE="RUNNING",
+                           FAKE_OPS=self.RAPID_OPS, **self.REPLACEMENT)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("didn't delete it", r.stderr)
+        self.assertFalse([c for c in self.calls() if c.startswith('["compute", "instances", "delete"')])
+        stop = self.records()[-1]
+        self.assertEqual((stop["event"], stop["reason"], stop["cost"], stop["instance_id"]),
+                         ("stop", "never-started", 0.0, "111"))
+        # A standard machine that a delete ended at 08:05 is settled there, and its replacement stays.
+        self.assertEqual(self.create("vm-swap", hours="2").returncode, 0)
+        ops = json.dumps([
+            {"operationType": "insert", "status": "DONE", "insertTime": "2027-01-15T08:00:01Z",
+             "endTime": "2027-01-15T08:00:30Z", "targetId": "333"},
+            {"operationType": "delete", "status": "DONE", "endTime": "2027-01-15T08:05:00Z", "targetId": "333"},
+            {"operationType": "insert", "status": "DONE", "insertTime": "2027-01-15T08:09:30Z",
+             "endTime": "2027-01-15T08:10:00Z", "targetId": "444"}])
+        r = self.run_guard("stop", "vm-swap", "--budget", "test", at=T0 + 1800, FAKE_DESCRIBE="RUNNING",
+                           FAKE_OPS=ops, FAKE_ID="444", FAKE_CREATED="2027-01-15T08:10:00Z")
+        self.assertEqual(r.returncode, 1)
+        self.assertFalse([c for c in self.calls() if c.startswith('["compute", "instances", "delete"')])
+        stop = self.records()[-1]
+        self.assertEqual((stop["event"], stop["instance_id"]), ("stop", "333"))
+        self.assertAlmostEqual(stop["cost"], A4_SPOT * 5 / 60, places=4)
+        # With no record of when it ended, it stays counted and nothing is deleted.
+        self.assertEqual(self.create("vm-swap2", hours="2").returncode, 0)
+        r = self.run_guard("stop", "vm-swap2", "--budget", "test", at=T0 + 1800, FAKE_DESCRIBE="RUNNING",
+                           FAKE_ID="444", FAKE_CREATED="2027-01-15T09:00:00Z")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(self.records()[-1]["event"], "start")
+        self.assertFalse([c for c in self.calls() if c.startswith('["compute", "instances", "delete"')])
 
 if __name__ == "__main__":
     unittest.main()

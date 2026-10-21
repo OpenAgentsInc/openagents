@@ -44,6 +44,11 @@ record after its delete, and `sync` settles it later. A finished record that
 holds a wrong cost gets a `correction` record, which supersedes its stop without
 rewriting the ledger.
 
+A reused name is another machine (#12411). A described machine whose instance ID
+differs from the record's, or from its creation operation's when the record has
+none, lends no timestamps to the record. `stop` never deletes such a replacement:
+it settles the record from Google's records, or leaves it counted, and exits 1.
+
 Before admitting, `create` runs `sync`, which also records machines that carry
 the budget's label but have no running record (a lost create reply), so they
 count.
@@ -636,8 +641,10 @@ def _kind(method: str) -> str | None:
 
 def describe(m: dict) -> dict:
     """The machine as Google sees it now: {"status": ..., "id": ..., "last_start": ..., ...}.
-    The status is GONE when the name is not found or names a newer machine (a reused name), and
-    None when gcloud could not answer."""
+    The status is GONE when the name is not found or names another machine (a reused name), and
+    None when gcloud could not answer. Another machine is one whose instance ID differs from the
+    record's, or, when the record has no ID, from its creation operation's, or one created outside
+    the record's start window; its timestamps are never returned, only its ID as `other_id`."""
     r = gcloud("compute", "instances", "describe", m["vm"], f"--project={m['project']}",
                f"--zone={m['zone']}",
                "--format=json(id,status,creationTimestamp,lastStartTimestamp,lastStopTimestamp)")
@@ -647,10 +654,15 @@ def describe(m: dict) -> dict:
     info = _json(r.stdout or "{}")
     if not isinstance(info, dict):
         return {"status": None}
+    ident = str(info.get("id") or "") or None
     created = parse_time(info.get("creationTimestamp", ""))
     if not same_machine(m, created):
-        return {"status": "GONE", "other_id": str(info.get("id") or "") or None}
-    return {"status": info.get("status"), "id": str(info.get("id") or "") or None, "created": created,
+        return {"status": "GONE", "other_id": ident}
+    if ident:
+        ours = m.get("instance_id") or creation_id(m, lifecycle_events(m, audit=False))
+        if ours and ours != ident:
+            return {"status": "GONE", "other_id": ident}
+    return {"status": info.get("status"), "id": ident, "created": created,
             "last_start": parse_time(info.get("lastStartTimestamp") or ""),
             "last_stop": parse_time(info.get("lastStopTimestamp") or "")}
 
@@ -705,13 +717,8 @@ def lifecycle_events(m: dict, audit: bool = True) -> list[dict]:
     return events
 
 
-def instance_of(m: dict, events: list[dict], seen: dict) -> str | None:
-    """The instance ID behind record `m`: the one Google describes for it, else the insert that
-    began nearest its start record."""
-    if m.get("instance_id"):
-        return m["instance_id"]
-    if seen.get("id"):
-        return seen["id"]
+def creation_id(m: dict, events: list[dict]) -> str | None:
+    """The instance ID of the insert that began nearest record `m`'s start, if one is on record."""
     inserts = [e for e in events if e["kind"] == "insert" and e.get("instance_id")
                and (e.get("begun") or e.get("at")) is not None
                and m["start_epoch"] - EARLY_SLACK_SECONDS <= (e.get("begun") or e["at"])
@@ -719,6 +726,21 @@ def instance_of(m: dict, events: list[dict], seen: dict) -> str | None:
     if not inserts:
         return None
     return min(inserts, key=lambda e: abs((e.get("begun") or e["at"]) - m["start_epoch"]))["instance_id"]
+
+
+def instance_of(m: dict, events: list[dict], seen: dict) -> str | None:
+    """The instance ID behind record `m`: the record's own, else its creation operation's, else
+    the one Google describes for it."""
+    return m.get("instance_id") or creation_id(m, events) or seen.get("id")
+
+
+def validated(m: dict, seen: dict, ident: str | None) -> dict:
+    """The describe snapshot when it is record `m`'s machine, else a bare GONE: a snapshot of
+    another instance ID, or of a machine created outside the start window, lends no timestamps."""
+    if seen.get("other_id") or (ident and seen.get("id") and seen["id"] != ident) \
+            or not same_machine(m, seen.get("created")):
+        return {"status": "GONE"}
+    return seen
 
 
 def settle(m: dict, seen: dict, events: list[dict], deleted_at: float | None = None) -> dict | None:
@@ -733,6 +755,7 @@ def settle(m: dict, seen: dict, events: list[dict], deleted_at: float | None = N
     no start is on record. Other machines bill from their start record, as before. `deleted_at` is
     when this guard deleted the machine: it bounds the end."""
     ident = instance_of(m, events, seen)
+    seen = validated(m, seen, ident)
     if ident:
         events = [e for e in events if e.get("instance_id") in (None, "", ident)]
     floor = m["start_epoch"] - EARLY_SLACK_SECONDS
@@ -908,8 +931,23 @@ def cmd_stop(a: argparse.Namespace) -> int:
     flex = m.get("provisioning") == "flex-start"
     # A queued flex-start request costs nothing until Google starts the machine. The snapshot
     # before the delete only names the machine: it may start between it and the delete.
-    seen = describe(m) if flex else {}
-    if seen.get("status") == "GONE":
+    seen = describe(m)
+    if seen.get("other_id"):
+        # The ledger's machine is gone and another machine now has its name: never delete that one.
+        done = resolve(m, {"status": "GONE"})
+        print(f"cloud-budget: {m['vm']} is now another machine (instance {seen['other_id']}); the "
+              "ledger's machine is gone, so stop didn't delete it", file=sys.stderr)
+        if done is None:
+            print(f"cloud-budget: Google's records don't yet say when the ledger's {m['vm']} ran; it "
+                  "counts until `cloud-budget.py sync` settles it", file=sys.stderr)
+            return 1
+        with locked(a.budget) as path:
+            if any(x["id"] == m["id"] and x.get("stop_epoch") is None for x in machines(read_ledger(path))):
+                record = stop_record(m, done)
+                append(path, record)
+                print(f"{m['vm']}: {record['reason']} at {record['stop']}, cost {money(record['cost'])}")
+        return 1
+    if seen.get("status") == "GONE" or not flex:
         seen = {}
     if not a.keep_machine:
         r = gcloud("compute", "instances", "delete", m["vm"], f"--project={m['project']}",
