@@ -93,6 +93,12 @@ pause as in a zone; closing it puts the player back in front of the arch.
 `verse --no-ritual` hides the arch. The chamber window needs a `verse`
 built with `--features remote-chamber,imported-desktop`.
 
+On the web, `?hosted=TENANT` adds an arch to a zone hosted on livehost on
+the same origin. It prefetches the zone's first play when the player comes
+within 24 m and opens the zone's own page over the Grid when they walk
+through. The Grid draws the arch and runs none of the zone's code
+([The Ice Cream Man, live](ice-cream-man-live.md)).
+
 On the phone, a `ritual.json` in the app's zone cache directory opens the
 same arch on the Grid. Walking through it plays the chamber on the Grid's
 engine surface, signed by the phone's world identity: the left stick moves,
