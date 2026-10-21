@@ -83,4 +83,4 @@ options:
   # three Rust stages at once.
   diskSizeGb: 200
   logging: CLOUD_LOGGING_ONLY
-timeout: 3600s
+timeout: 7200s
