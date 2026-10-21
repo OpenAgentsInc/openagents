@@ -11,6 +11,7 @@
 //! psionic-v41-stage manifest --split 0-10,10-20,20-30,30-40
 //! psionic-v41-stage synthetic DIR [NAME]
 //! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR [...]
+//! psionic-v41-stage qualify-derive --reference R[,R] --control C[,C] --out FILE
 //! ```
 
 use std::{io::Write, path::Path, process::ExitCode};
@@ -27,6 +28,7 @@ fn main() -> ExitCode {
         Some("manifest") => run_manifest(&args[1..]),
         Some("synthetic") => run_synthetic(&args[1..]),
         Some("qualify") => run_qualify(&args[1..]),
+        Some("qualify-derive") => psionic_v41_stage::qualify::run_derive(&args[1..]),
         _ => run_stage(&args),
     };
     match result {

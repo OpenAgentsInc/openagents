@@ -1115,3 +1115,230 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
     .map_err(|e| refused(e.to_string()))?;
     Ok(report)
 }
+
+// ---------------------------------------------------------------------------
+// Deriving the policy
+// ---------------------------------------------------------------------------
+
+/// Headroom over the reference control's largest error.
+const HEADROOM: f64 = 2.0;
+
+/// Derives policy v2.0 from calibration reports (#12405). The rule was
+/// committed before any calibration ran:
+///
+/// - `reference` reports come from an independent implementation that differs
+///   from the oracle only in arithmetic: the Psionic CPU port in the
+///   `bf16-tp8` profile, run through this harness. Each per-position limit is
+///   [`HEADROOM`] times the largest value it reached; the case-mean limit is
+///   [`HEADROOM`] times its largest case mean; the tail threshold is half the
+///   per-position limit, with a tail fraction of [`HEADROOM`] times the
+///   largest observed fraction, at least one position in 33 and at most half.
+/// - The top-1 budget `epsilon` is the reference's largest centered-logit
+///   error: the largest logit change arithmetic alone produced. At most one
+///   substitution per position, and a substituted fraction of [`HEADROOM`]
+///   times the reference's, at least one position in 33.
+/// - Router and index budgets stay unset: neither control measures a score
+///   error, so those checks remain pending.
+/// - `controls` are negative-control reports. Each must fail the derived
+///   policy, or the derivation refuses.
+///
+/// The candidate's own results never enter.
+///
+/// # Errors
+///
+/// Missing reference positions, or a control the policy would pass.
+pub fn derive_policy(reference: &[Value], controls: &[Value]) -> Result<(Policy, Value), Refused> {
+    let mut tv = 0.0f64;
+    let mut js = 0.0f64;
+    let mut lp = 0.0f64;
+    let mut centered = 0.0f64;
+    let mut case_mean = 0.0f64;
+    let mut positions = 0usize;
+    let mut substituted = 0usize;
+    let mut cases = Vec::new();
+    for report in reference {
+        for case in report["cases"].as_array().into_iter().flatten() {
+            for mode in case["modes"].as_array().into_iter().flatten() {
+                let ps = mode["positions"].as_array().cloned().unwrap_or_default();
+                if ps.is_empty() {
+                    continue;
+                }
+                let mut tvs = Vec::new();
+                for p in &ps {
+                    let m = &p["metrics"];
+                    let t = m["total_variation"].as_f64().unwrap_or(f64::NAN);
+                    tvs.push(t);
+                    tv = tv.max(t);
+                    js = js.max(m["jensen_shannon"].as_f64().unwrap_or(f64::NAN));
+                    lp = lp.max(
+                        m["reference_logprob_error"]
+                            .as_f64()
+                            .unwrap_or(f64::NAN)
+                            .abs(),
+                    );
+                    centered = centered.max(m["centered_logit_error"].as_f64().unwrap_or(f64::NAN));
+                    if m["oracle_top1"] != m["candidate_top1"] {
+                        substituted += 1;
+                    }
+                }
+                positions += ps.len();
+                case_mean = case_mean.max(tvs.iter().sum::<f64>() / tvs.len() as f64);
+                cases.push((tvs, mode["case"].clone(), mode["mode"].clone()));
+            }
+        }
+    }
+    if positions == 0 || [tv, js, lp, centered].iter().any(|v| !v.is_finite()) {
+        return Err(refused("the reference control has no complete positions"));
+    }
+    let tv_limit = HEADROOM * tv;
+    let tail = tv_limit / 2.0;
+    let tail_fraction = cases
+        .iter()
+        .map(|(t, _, _)| t.iter().filter(|v| **v > tail).count() as f64 / t.len() as f64)
+        .fold(0.0, f64::max);
+    let floor = 1.0 / 33.0;
+    let policy = Policy {
+        schema: q::POLICY_SCHEMA.into(),
+        version: "2.0".into(),
+        distribution: q::DistributionLimits {
+            total_variation: Some(tv_limit),
+            jensen_shannon: Some(HEADROOM * js),
+            reference_logprob_error: Some(HEADROOM * lp),
+            case_mean_total_variation: Some(HEADROOM * case_mean),
+            tail_total_variation: Some(tail),
+            tail_fraction: Some((HEADROOM * tail_fraction).clamp(floor, 0.5)),
+        },
+        top1: DecisionRule {
+            epsilon: Some(centered),
+            max_substitutions: 1,
+            max_substituted_fraction: Some(
+                (HEADROOM * substituted as f64 / positions as f64).max(floor),
+            ),
+        },
+        router: DecisionRule {
+            epsilon: None,
+            max_substitutions: 1,
+            max_substituted_fraction: None,
+        },
+        index: DecisionRule {
+            epsilon: None,
+            max_substitutions: 2,
+            max_substituted_fraction: None,
+        },
+    };
+    let mut detected = Vec::new();
+    for report in controls {
+        let control = report["control"].as_str().unwrap_or("unnamed").to_owned();
+        let mut failures = 0usize;
+        for case in report["cases"].as_array().into_iter().flatten() {
+            for mode in case["modes"].as_array().into_iter().flatten() {
+                let ps: Vec<PositionResult> = mode["positions"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|p| {
+                        serde_json::from_value::<q::Distribution>(p["metrics"].clone()).ok()
+                    })
+                    .enumerate()
+                    .map(|(i, m)| q::judge_position(&policy, &format!("p{i}"), m))
+                    .collect();
+                let judged = q::judge_case(
+                    &policy,
+                    mode["case"].as_str().unwrap_or_default(),
+                    mode["mode"].as_str().unwrap_or_default(),
+                    ps,
+                    Vec::new(),
+                );
+                failures += judged.failures.len();
+            }
+        }
+        if failures == 0 {
+            return Err(refused(format!(
+                "the derived policy would pass the {control} negative control"
+            )));
+        }
+        detected.push(json!({"control": control, "failures": failures}));
+    }
+    let evidence = json!({
+        "rule": "derive_policy in crates/psionic/crates/psionic-v41-stage/src/qualify.rs",
+        "headroom": HEADROOM,
+        "reference_positions": positions,
+        "reference_max": {"total_variation": tv, "jensen_shannon": js,
+            "reference_logprob_error": lp, "centered_logit_error": centered,
+            "case_mean_total_variation": case_mean, "tail_fraction": tail_fraction,
+            "top1_substitutions": substituted},
+        "controls": detected,
+    });
+    Ok((policy, evidence))
+}
+
+/// `qualify-derive --reference R[,R...] --control C[,C...] --out FILE`.
+///
+/// # Errors
+///
+/// Unreadable reports, or a derivation refusal.
+pub fn run_derive(args: &[String]) -> Result<(), Refused> {
+    let flag = |name: &str| -> Option<String> {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1).cloned())
+    };
+    let read = |list: Option<String>| -> Result<Vec<Value>, Refused> {
+        list.unwrap_or_default()
+            .split(',')
+            .filter(|p| !p.is_empty())
+            .map(|p| {
+                let bytes = std::fs::read(p).map_err(|e| refused(format!("{p}: {e}")))?;
+                serde_json::from_slice(&bytes).map_err(|e| refused(format!("{p}: {e}")))
+            })
+            .collect()
+    };
+    let reference = read(flag("--reference"))?;
+    let controls = read(flag("--control"))?;
+    let out = flag("--out").ok_or_else(|| refused("--out is required"))?;
+    let (policy, evidence) = derive_policy(&reference, &controls)?;
+    let mut value = serde_json::to_value(&policy).map_err(|e| refused(e.to_string()))?;
+    value["derivation"] = evidence;
+    std::fs::write(
+        &out,
+        serde_json::to_vec_pretty(&value).map_err(|e| refused(e.to_string()))?,
+    )
+    .map_err(|e| refused(format!("{out}: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn report(tvs: &[(f64, u32)], control: Option<&str>) -> Value {
+        let positions: Vec<Value> = tvs
+            .iter()
+            .map(|(tv, top)| {
+                json!({"metrics": {"total_variation": tv, "jensen_shannon": tv / 10.0,
+                "reference_logprob_error": -tv, "centered_logit_error": tv * 3.0,
+                "oracle_top1": 5, "candidate_top1": top, "oracle_top1_gap": 1.0,
+                "top1_regret": if *top == 5 { 0.0 } else { 0.5 }}})
+            })
+            .collect();
+        json!({"control": control, "cases": [{"modes": [
+            {"case": "c", "mode": "decode", "positions": positions}]}]})
+    }
+
+    #[test]
+    fn the_policy_follows_the_reference_and_must_catch_every_control() {
+        let reference = report(&[(0.01, 5), (0.03, 5), (0.02, 6)], None);
+        let control = report(&[(0.5, 9), (0.4, 9)], Some("wrong-weights"));
+        let (policy, evidence) = derive_policy(&[reference.clone()], &[control]).unwrap();
+        let d = policy.distribution;
+        assert!((d.total_variation.unwrap() - 0.06).abs() < 1e-12);
+        assert!((d.jensen_shannon.unwrap() - 0.006).abs() < 1e-12);
+        assert!((d.case_mean_total_variation.unwrap() - 0.04).abs() < 1e-12);
+        assert!((policy.top1.epsilon.unwrap() - 0.09).abs() < 1e-12);
+        assert!(policy.router.epsilon.is_none() && policy.index.epsilon.is_none());
+        assert_eq!(evidence["controls"][0]["control"], "wrong-weights");
+        // A control as small as the reference is not detected: refuse.
+        let weak = report(&[(0.01, 5)], Some("wrong-rope"));
+        assert!(derive_policy(&[reference], &[weak]).is_err());
+        assert!(derive_policy(&[report(&[], None)], &[]).is_err());
+    }
+}
