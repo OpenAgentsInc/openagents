@@ -839,7 +839,10 @@ impl App {
         let mut cap: Option<usize> = None;
         let mut published = false;
         let run_started = now_ms();
-        for step in 1..=MAX_STEPS {
+        // Steps count model answers; waiting on a busy pylon or a dropped
+        // connection doesn't use one, within an overall hour.
+        let mut step = 0;
+        while step < MAX_STEPS && now_ms() - run_started < 3_600_000.0 {
             if self.stop.get() {
                 self.log("info", "Stopped.");
                 break;
@@ -910,7 +913,7 @@ impl App {
                     }
                 }
             }
-            self.log("step", &format!("Step {step}"));
+            self.log("step", &format!("Step {}", step + 1));
             let files = self.listing();
             let snapshot = agent.clone();
             let prompt = move |budget: usize| {
@@ -955,7 +958,7 @@ impl App {
                     }
                     if error.message.contains("rate_limited") || error.message.contains("busy") {
                         // The pylon is full, not broken: wait and ask again.
-                        sleep(5_000).await;
+                        sleep(10_000).await;
                         book_at = f64::NEG_INFINITY;
                         continue;
                     }
@@ -969,6 +972,7 @@ impl App {
                     continue;
                 }
             };
+            step += 1;
             let model_ms = now_ms() - step_started;
             self.log(
                 "info",

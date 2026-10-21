@@ -130,3 +130,31 @@ What this run shows, and what it doesn't:
   passed on the first run, so the run didn't exercise a fix loop. The
   self-test plants a bug to show fail, patch, and pass; the agent itself
   hasn't yet had to repair a failing test in a measured run.
+
+## The Rust milestone (#12437)
+
+- **The hybrid works.** The tab loads a crate at a commit, the agent edits
+  real Rust there, and `cargo test` runs on `kiln-runner` inside
+  `coder-boundary` and comes back over the relay in seconds once the
+  runner's target is warm.
+- **The model's window is the constraint.** The DeepSeek V4.1 group head
+  refuses prompts over 2,872 tokens, so the agent can't see a 378-line
+  file at once. Kiln now reads the head's `max_input_tokens`, asks again
+  smaller when refused, and gives the agent `view PATH START END` so it
+  reads ranges found with `grep`.
+- **The model doesn't always follow the reply format.** Seen in real runs:
+  two JSON objects in one reply (the next step planned ahead), commands
+  written as tool objects (`{"view": PATH, "start": N, "end": M}`), and
+  DeepSeek's own tool-call markup (`<｜DSML｜ calls>`) instead of JSON. The
+  parser now takes the first object and reads tool objects; markup replies
+  are skipped and cost a step.
+- **Small models can't do this.** When the DeepSeek slot was taken, the
+  first version fell back to `gemma-4-e4b` and `qwen3.5-0.8b`, which wrote
+  invalid JSON every step. Kiln now waits for the preferred model and
+  treats `rate_limited` as "wait", not as a broken pylon.
+- **The runner's sandbox needed two reads it didn't expect:** Cargo reads
+  the `config.toml` in every directory above the worktree (including the
+  owner's `~/.cargo/config.toml`, which names the `kache` wrapper), and
+  `xcrun` wants a cache file under `/var/folders`, which the boundary
+  refuses with a harmless warning. The runner grants the config files
+  read-only and switches the wrapper off.

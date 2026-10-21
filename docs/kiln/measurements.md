@@ -55,3 +55,34 @@ From the page's first agent run (fib task), all on DeepSeek V4.1 group
 | Roman numerals, 300-number round trip (before the wait-for-slot fix) | 12 | 230 s | 9 steps went to the small model | under 0.1 s a step |
 
 Almost all of an agent step is model time. The sandbox costs milliseconds.
+
+## Rust tests on the runner (#12437)
+
+Measured on 2026-10-21 with `kiln-runner --jobs 4` on the owner's Mac,
+under load from other builds (load average 7 to 35).
+
+| What | Time |
+| --- | --- |
+| Load `crates/memory-stream` (2 files, 12 KiB): commit and tree API calls | 0.63 to 1.08 s |
+| The same, with every raw file fetched and saved to OPFS | 1.0 to 2.2 s |
+| Runner setup: shallow bare clone and one worktree | about 3 GB on disk, one time |
+| `cargo test -p memory-stream`, cold target | 320 s on the runner (5 min 11 s of compiling) |
+| `cargo test -p memory-stream`, warm target, one changed file | 7.7 s on the runner (4.7 s of Cargo) |
+| Page to runner and back, beyond the runner's own time | under 1 s |
+
+The cold build is slow because `memory-stream`, like every crate here,
+depends on `openagents-workspace-hack`, which unifies the features of about
+400 crates for the whole workspace. A runner should keep its target warm.
+
+## The Rust agent run
+
+The `half_life_hours` task on `memory-stream`, every step on
+`DeepSeek-V4.1 w16-g5c`:
+
+| What | Value |
+| --- | --- |
+| Steps | 8, plus two replies in the model's own tool-call markup that the loop skipped |
+| Total | 630 s |
+| DeepSeek answer per step (4 to 6 KiB prompts) | 85 to 95 s |
+| The group's prompt limit | 2,872 tokens; a 13 KiB prompt was refused |
+| Remote `cargo test` | 1 run, 6 passed, 7.7 s on the runner |
