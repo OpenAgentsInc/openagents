@@ -34,6 +34,16 @@ after #12376 appends to an older ledger; ~/.openagents/cloud-budget-authority.js
 names the ledger path each budget uses on this host. `create` from another
 host or path refuses unless --take-over, which is recorded.
 
+Manual `stop`, `sync`, and adoption settle a machine the same way (#12409), from
+Google's records for that instance ID: `describe`, the zone's operations, and the
+audit log once operations age out. A flex-start request bills from when its
+machine started (its insert finished, or `lastStartTimestamp`), and costs nothing
+only when its insert ended with an error and nothing shows it started. When the
+records can't yet say, the machine stays counted: `stop` writes a `pending`
+record after its delete, and `sync` settles it later. A finished record that
+holds a wrong cost gets a `correction` record, which supersedes its stop without
+rewriting the ledger.
+
 Before admitting, `create` runs `sync`, which also records machines that carry
 the budget's label but have no running record (a lost create reply), so they
 count.
@@ -43,6 +53,8 @@ count.
         [--json] [-- EXTRA GCLOUD FLAGS ...]
     cloud-budget.py stop NAME [--keep-machine]   delete the machine, record cost
     cloud-budget.py sync                         record machines that ended or appeared
+    cloud-budget.py correct ID --why TEXT (--never-started | --from-google | --end T [--run-start T])
+                                                 append a correction to a finished record
     cloud-budget.py reserve DOLLARS --why TEXT   set the reserve for storage and network
     cloud-budget.py report [--offline] [--json]  spent, running, reserve, remaining
     cloud-budget.py prices                       the price table
@@ -210,8 +222,10 @@ def _well_formed(r) -> bool:
     if r.get("event") == "start":
         return (isinstance(r.get("id"), str) and isinstance(r.get("vm"), str)
                 and all(isinstance(r.get(k), num) for k in ("price_per_hour", "start_epoch", "expires_epoch")))
-    if r.get("event") == "stop":
+    if r.get("event") in ("stop", "correction"):
         return isinstance(r.get("id"), str) and isinstance(r.get("stop_epoch"), num)
+    if r.get("event") == "pending":
+        return isinstance(r.get("id"), str) and isinstance(r.get("deleted_epoch"), num)
     if r.get("event") == "budget":
         return isinstance(r.get("cap"), num)
     if r.get("event") == "reserve":
@@ -288,11 +302,22 @@ def machines(records: list[dict]) -> list[dict]:
             cap = r.get("cap")
         elif r.get("event") == "start" and r.get("id"):
             by_id[r["id"]] = dict(r)
-        elif r.get("event") == "stop" and r.get("id") in by_id:
+        elif r.get("event") in ("stop", "correction") and r.get("id") in by_id:
+            # A later stop or correction for the same machine supersedes the earlier settlement.
             m = by_id[r["id"]]
             m["stop_epoch"], m["stop"], m["reason"] = r["stop_epoch"], r.get("stop"), r.get("reason")
             if r.get("run_start_epoch") is not None:
                 m["run_start_epoch"] = r["run_start_epoch"]
+            elif r.get("event") == "correction":
+                m.pop("run_start_epoch", None)
+            if r.get("instance_id"):
+                m["instance_id"] = r["instance_id"]
+        elif r.get("event") == "pending" and r.get("id") in by_id:
+            # `stop` deleted it but couldn't yet tell whether it started; sync settles it.
+            m = by_id[r["id"]]
+            m["deleted_epoch"] = r.get("deleted_epoch")
+            if r.get("instance_id"):
+                m["instance_id"] = r["instance_id"]
     return list(by_id.values())
 
 
@@ -586,6 +611,9 @@ def cmd_create(a: argparse.Namespace) -> int:
 # --------------------------------------------------------------- reconcile
 
 ENDING_OPS = ("delete", "stop", "preempted", "suspend")
+STARTING_OPS = ("start", "resume")
+# Records this long before a start record belong to an earlier machine of the same name.
+EARLY_SLACK_SECONDS = 300
 
 
 def _json(text: str):
@@ -595,46 +623,150 @@ def _json(text: str):
         return None
 
 
-def end_time(m: dict) -> float | None:
-    """When a machine that no longer runs stopped, from Google's records: its zone's operations,
-    then the audit log (operations age out). Expiry shows as `compute.instances.deferredDelete`
-    (or a stop) run by `system`, sometimes minutes after the expiry."""
-    ends: list[float | None] = []
+def _kind(method: str) -> str | None:
+    method = method.lower()
+    if "insert" in method:
+        return "insert"
+    if any(k in method for k in ENDING_OPS):
+        return "end"
+    if any(k in method.rsplit(".", 1)[-1] for k in STARTING_OPS):
+        return "start"
+    return None
+
+
+def describe(m: dict) -> dict:
+    """The machine as Google sees it now: {"status": ..., "id": ..., "last_start": ..., ...}.
+    The status is GONE when the name is not found or names a newer machine (a reused name), and
+    None when gcloud could not answer."""
+    r = gcloud("compute", "instances", "describe", m["vm"], f"--project={m['project']}",
+               f"--zone={m['zone']}",
+               "--format=json(id,status,creationTimestamp,lastStartTimestamp,lastStopTimestamp)")
+    if r.returncode != 0:
+        gone = "was not found" in r.stderr or "notFound" in r.stderr
+        return {"status": "GONE" if gone else None}
+    info = _json(r.stdout or "{}")
+    if not isinstance(info, dict):
+        return {"status": None}
+    created = parse_time(info.get("creationTimestamp", ""))
+    if not same_machine(m, created):
+        return {"status": "GONE", "other_id": str(info.get("id") or "") or None}
+    return {"status": info.get("status"), "id": str(info.get("id") or "") or None, "created": created,
+            "last_start": parse_time(info.get("lastStartTimestamp") or ""),
+            "last_stop": parse_time(info.get("lastStopTimestamp") or "")}
+
+
+def lifecycle_events(m: dict, audit: bool = True) -> list[dict]:
+    """Google's lifecycle records for the machine's name: its zone's operations and, because
+    operations age out, the audit log. Each event is {"kind": insert|start|end, "at", "done",
+    "ok", "instance_id", "begun"}; an insert's `at` is when it finished, which for a flex-start
+    request is when the machine started."""
+    events: list[dict] = []
     r = gcloud("compute", "operations", "list", f"--project={m['project']}", f"--zones={m['zone']}",
-               f"--filter=targetLink~/instances/{m['vm']}$", "--format=json(operationType,endTime)")
+               f"--filter=targetLink~/instances/{m['vm']}$",
+               "--format=json(operationType,status,insertTime,endTime,targetId,error)")
     ops = _json(r.stdout) if r.returncode == 0 else None
-    if isinstance(ops, list):
-        ends = [parse_time(o.get("endTime", "")) for o in ops
-                if any(k in o.get("operationType", "").lower() for k in ENDING_OPS)]
-    ends = [e for e in ends if e and e >= m["start_epoch"]]
-    if not ends:
+    for o in ops if isinstance(ops, list) else []:
+        kind = _kind(str(o.get("operationType", "")))
+        if not kind:
+            continue
+        begun = parse_time(o.get("insertTime", "") or "")
+        ended = parse_time(o.get("endTime", "") or "")
+        failed = bool(o.get("error"))
+        done = o.get("status") == "DONE" or ended is not None or failed
+        events.append({"kind": kind, "at": ended or (begun if failed else None), "done": done,
+                       "ok": not failed, "instance_id": str(o.get("targetId") or "") or None,
+                       "begun": begun, "source": "operation"})
+    if audit:
         query = (f'resource.type="gce_instance" AND protoPayload.resourceName:"instances/{m["vm"]}" '
-                 f'AND timestamp>="{iso(m["start_epoch"])}"')
+                 f'AND timestamp>="{iso(m["start_epoch"] - EARLY_SLACK_SECONDS)}"')
         r = gcloud("logging", "read", query, f"--project={m['project']}", "--freshness=400d",
-                   "--format=json(timestamp,protoPayload.methodName,operation.last)")
+                   "--format=json(timestamp,severity,protoPayload.methodName,protoPayload.resourceName,"
+                   "protoPayload.status,operation,resource.labels.instance_id)")
         entries = _json(r.stdout) if r.returncode == 0 else None
-        if isinstance(entries, list):
-            ends = [parse_time(e.get("timestamp", "")) for e in entries
-                    if any(k in str((e.get("protoPayload") or {}).get("methodName", "")).lower() for k in ENDING_OPS)
-                    and (e.get("operation") or {}).get("last", True)]
-            ends = [e for e in ends if e and e >= m["start_epoch"]]
-    return min(ends) if ends else None
+        for e in entries if isinstance(entries, list) else []:
+            payload = e.get("protoPayload") or {}
+            resource = str(payload.get("resourceName", ""))
+            if resource and not resource.endswith(f"/instances/{m['vm']}"):
+                continue  # a longer name that shares this prefix
+            kind = _kind(str(payload.get("methodName", "")))
+            at = parse_time(e.get("timestamp", "") or "")
+            if not kind or at is None:
+                continue
+            op = e.get("operation") or {}
+            failed = bool((payload.get("status") or {}).get("code")) or e.get("severity") == "ERROR"
+            if op.get("first") and not op.get("last"):
+                events.append({"kind": kind, "at": None, "done": False, "ok": True, "begun": at,
+                               "instance_id": ((e.get("resource") or {}).get("labels") or {}).get("instance_id"),
+                               "source": "audit"})
+                continue
+            events.append({"kind": kind, "at": at, "done": True, "ok": not failed, "begun": None,
+                           "instance_id": ((e.get("resource") or {}).get("labels") or {}).get("instance_id"),
+                           "source": "audit"})
+    return events
 
 
-def never_started(m: dict) -> bool:
-    """Whether a flex-start request ended without a machine: its insert operation finished
-    with an error (capacity never found, or the request was cancelled), so Google billed
-    nothing."""
-    if m.get("provisioning") != "flex-start":
-        return False
-    r = gcloud("compute", "operations", "list", f"--project={m['project']}", f"--zones={m['zone']}",
-               f"--filter=targetLink~/instances/{m['vm']}$", "--format=json(operationType,insertTime,error)")
-    ops = _json(r.stdout) if r.returncode == 0 else None
-    if not isinstance(ops, list):
-        return False
-    inserts = [o for o in ops if o.get("operationType") == "insert"
-               and (parse_time(o.get("insertTime", "")) or 0) >= m["start_epoch"] - SAME_MACHINE_SECONDS]
-    return bool(inserts) and all(o.get("error") for o in inserts)
+def instance_of(m: dict, events: list[dict], seen: dict) -> str | None:
+    """The instance ID behind record `m`: the one Google describes for it, else the insert that
+    began nearest its start record."""
+    if m.get("instance_id"):
+        return m["instance_id"]
+    if seen.get("id"):
+        return seen["id"]
+    inserts = [e for e in events if e["kind"] == "insert" and e.get("instance_id")
+               and (e.get("begun") or e.get("at")) is not None
+               and m["start_epoch"] - EARLY_SLACK_SECONDS <= (e.get("begun") or e["at"])
+               <= m["start_epoch"] + SAME_MACHINE_SECONDS]
+    if not inserts:
+        return None
+    return min(inserts, key=lambda e: abs((e.get("begun") or e["at"]) - m["start_epoch"]))["instance_id"]
+
+
+def settle(m: dict, seen: dict, events: list[dict], deleted_at: float | None = None) -> dict | None:
+    """The one lifecycle settlement that manual stop, sync, and adoption share.
+
+    Given the ledger record, the describe snapshot, and Google's lifecycle events, return the stop
+    record's fields ({"stop_epoch", "reason", "run_start_epoch", "instance_id", "evidence"}), or
+    None while the evidence can't say what the machine cost; it then stays counted.
+
+    A flex-start request bills from when its machine started (its insert finished without an
+    error, or `lastStartTimestamp`), and costs nothing when its insert finished with an error and
+    no start is on record. Other machines bill from their start record, as before. `deleted_at` is
+    when this guard deleted the machine: it bounds the end."""
+    ident = instance_of(m, events, seen)
+    if ident:
+        events = [e for e in events if e.get("instance_id") in (None, "", ident)]
+    floor = m["start_epoch"] - EARLY_SLACK_SECONDS
+    events = [e for e in events if (e.get("at") or e.get("begun") or floor) >= floor]
+    flex = m.get("provisioning") == "flex-start"
+    inserts = [e for e in events if e["kind"] == "insert" and e["done"]]
+    started = sorted(e["at"] for e in events if e["at"] is not None and e["ok"] and e["done"]
+                     and e["kind"] in ("insert", "start"))
+    run_start = m.get("run_start_epoch") or seen.get("last_start")
+    if flex and run_start is None and started:
+        run_start = started[0]
+    failed = [e for e in inserts if not e["ok"]]
+    begin = run_start if (flex and run_start) else m["start_epoch"]
+    ends = sorted(e["at"] for e in events if e["kind"] == "end" and e["ok"] and e["done"]
+                  and e["at"] is not None and e["at"] >= begin)
+    if seen.get("status") in ("TERMINATED", "STOPPED") and (seen.get("last_stop") or 0) >= begin:
+        ends.append(seen["last_stop"])
+        ends.sort()
+    out = {"instance_id": ident}
+    if flex and run_start is None and failed and not any(e["ok"] for e in inserts):
+        # The request left the queue without a machine: capacity never came, or it was cancelled.
+        at = min(e["at"] for e in failed if e["at"] is not None) if any(e["at"] for e in failed) else None
+        at = at or deleted_at or now()
+        return {**out, "stop_epoch": at, "reason": "never-started", "run_start_epoch": None,
+                "evidence": "insert ended with an error and no start is on record"}
+    if flex and run_start is None:
+        return None  # it may have started before it ended; wait for the insert's outcome
+    end = ends[0] if ends else None
+    if deleted_at is not None:
+        end = min(end, deleted_at) if end is not None else deleted_at
+    if end is None:
+        return None
+    return {**out, "stop_epoch": end, "reason": "gone", "run_start_epoch": run_start if flex else None,
+            "evidence": "lifecycle records"}
 
 
 def label_epoch(text: str) -> float | None:
@@ -654,7 +786,8 @@ def adopt(budget: str, project: str, quiet: bool) -> int:
     """Record machines labeled with this budget that have no running record, such as a create
     whose reply was lost, so they count. Returns how many it recorded."""
     r = gcloud("compute", "instances", "list", f"--project={project}", f"--filter=labels.budget={budget}",
-               "--format=json(name,zone,machineType,status,creationTimestamp,labels,scheduling)")
+               "--format=json(id,name,zone,machineType,status,creationTimestamp,lastStartTimestamp,labels,"
+               "scheduling)")
     found = _json(r.stdout) if r.returncode == 0 else None
     if not isinstance(found, list):
         print(f"cloud-budget: couldn't list machines labeled budget={budget}; only the ledger's "
@@ -667,9 +800,11 @@ def adopt(budget: str, project: str, quiet: bool) -> int:
         for inst in found:
             name, zone = inst.get("name", ""), str(inst.get("zone", "")).rsplit("/", 1)[-1]
             created = parse_time(inst.get("creationTimestamp", ""))
-            if inst.get("status") not in LIVE_STATUSES or PROTECTED.match(name) or created is None:
+            ident = str(inst.get("id") or "") or None
+            if inst.get("status") not in LIVE_STATUSES + ("PENDING",) or PROTECTED.match(name) or created is None:
                 continue
-            if any(m["vm"] == name and m["zone"] == zone and same_machine(m, created) for m in live):
+            if any(m["vm"] == name and m["zone"] == zone and same_machine(m, created)
+                   and (not ident or not m.get("instance_id") or m["instance_id"] == ident) for m in live):
                 continue
             mtype = str(inst.get("machineType", "")).rsplit("/", 1)[-1]
             model = (inst.get("scheduling") or {}).get("provisioningModel")
@@ -690,12 +825,34 @@ def adopt(budget: str, project: str, quiet: bool) -> int:
                       "hours_requested": round((expires - created) / 3600, 6), "on_expiry": "unknown",
                       "start_epoch": created, "start": iso(created), "expires_epoch": expires,
                       "expires_at": iso(expires)}
+            if ident:
+                record["instance_id"] = ident
+            started = parse_time(inst.get("lastStartTimestamp") or "")
+            if model == "FLEX_START" and started:
+                record["run_start_epoch"] = started  # it bills from its start, not its queued request
             append(path, record)
             live.append(record)
             added += 1
             print(f"cloud-budget: {name} carries budget={budget} but had no running record; it now "
                   f"counts from {iso(created)} to {iso(expires)} at {money(price)}/h", file=sys.stderr)
     return added
+
+
+def resolve(m: dict, seen: dict, deleted_at: float | None = None) -> dict | None:
+    """Settle from the zone's operations, and read the slower audit log only when they can't."""
+    done = settle(m, seen, lifecycle_events(m, audit=False), deleted_at)
+    return done if done is not None else settle(m, seen, lifecycle_events(m, audit=True), deleted_at)
+
+
+def stop_record(m: dict, done: dict) -> dict:
+    at = done["stop_epoch"]
+    c = cost({**m, "stop_epoch": at, "reason": done["reason"], "run_start_epoch": done.get("run_start_epoch")}, at)
+    record = {"event": "stop", "id": m["id"], "vm": m["vm"], "stop_epoch": at, "stop": iso(at),
+              "reason": done["reason"], "cost": c}
+    for key in ("run_start_epoch", "instance_id"):
+        if done.get(key) is not None:
+            record[key] = done[key]
+    return record
 
 
 def sync(budget: str, quiet: bool = False, project: str = DEFAULT_PROJECT) -> int:
@@ -708,41 +865,35 @@ def sync(budget: str, quiet: bool = False, project: str = DEFAULT_PROJECT) -> in
         live = [m for m in machines(read_ledger(path, quiet=True)) if m.get("stop_epoch") is None]
     ended = 0
     for m in live:
-        r = gcloud("compute", "instances", "describe", m["vm"], f"--project={m['project']}",
-                   f"--zone={m['zone']}", "--format=json(status,lastStopTimestamp,creationTimestamp)")
-        status = None
-        if r.returncode == 0:
-            info = _json(r.stdout or "{}") or {}
-            created = parse_time(info.get("creationTimestamp", "")) if isinstance(info, dict) else None
-            if not same_machine(m, created):
-                status = "GONE"  # a newer machine reuses the name; ours is gone
-            else:
-                status = info.get("status")
-        elif "was not found" in r.stderr or "notFound" in r.stderr:
-            status = "GONE"
-        if status in ("GONE", "TERMINATED", "STOPPED"):
-            at = end_time(m)
-            reason = "gone" if status == "GONE" else "stopped"
-            if status == "GONE" and never_started(m):
-                at, reason = at or now(), "never-started"
-            if at is None:
-                # Google's records don't say when it ended. Never release money on a guess: it
-                # counts in full until its expiry, and is settled at the expiry after that.
-                if now() < m["expires_epoch"]:
-                    if not quiet:
-                        print(f"{m['vm']}: {reason}, but Google's records don't say when; it counts "
-                              f"until its expiry {m['expires_at']}")
-                    continue
-                at, reason = m["expires_epoch"], reason + "-at-expiry"
-            with locked(budget) as path:
-                still = [x for x in machines(read_ledger(path)) if x["id"] == m["id"] and x.get("stop_epoch") is None]
-                if still:
-                    c = cost({**m, "stop_epoch": at, "reason": reason}, at)
-                    append(path, {"event": "stop", "id": m["id"], "vm": m["vm"], "stop_epoch": at,
-                                  "stop": iso(at), "reason": reason, "cost": c})
-                    ended += 1
-                    if not quiet:
-                        print(f"{m['vm']}: {reason} at {iso(at)}, cost {money(c)}")
+        seen = describe(m)
+        status = seen.get("status")
+        if status not in ("GONE", "TERMINATED", "STOPPED") and m.get("deleted_epoch") is None:
+            continue
+        if status is None or status in LIVE_STATUSES or status == "PENDING":
+            continue  # deleted by `stop`, but Google still has it
+        done = resolve(m, seen, m.get("deleted_epoch"))
+        label = "gone" if status == "GONE" else "stopped"
+        if done is not None and done["reason"] == "gone":
+            done["reason"] = label
+        if done is None:
+            # Google's records don't say when it started or ended. Never release money on a guess:
+            # it counts in full until its expiry, and is settled at the expiry (or this guard's
+            # delete, if earlier) from its start record after that.
+            if now() < m["expires_epoch"]:
+                if not quiet:
+                    print(f"{m['vm']}: {label}, but Google's records don't say when it ran; it counts "
+                          f"until its expiry {m['expires_at']}")
+                continue
+            end = min(m["expires_epoch"], m.get("deleted_epoch") or m["expires_epoch"])
+            done = {"stop_epoch": end, "reason": label + "-at-expiry", "run_start_epoch": None}
+        with locked(budget) as path:
+            still = [x for x in machines(read_ledger(path)) if x["id"] == m["id"] and x.get("stop_epoch") is None]
+            if still:
+                record = stop_record(m, done)
+                append(path, record)
+                ended += 1
+                if not quiet:
+                    print(f"{m['vm']}: {record['reason']} at {record['stop']}, cost {money(record['cost'])}")
     return ended
 
 
@@ -754,18 +905,12 @@ def cmd_stop(a: argparse.Namespace) -> int:
     if not live:
         raise Refused(f"{a.name} is not running in budget {a.budget}")
     m = live[-1]
-    run_start, never_started = None, False
-    if m.get("provisioning") == "flex-start":
-        # A queued flex-start request costs nothing until Google starts the machine.
-        r = gcloud("compute", "instances", "describe", m["vm"], f"--project={m['project']}",
-                   f"--zone={m['zone']}", "--format=json(status,lastStartTimestamp)")
-        if r.returncode == 0:
-            info = _json(r.stdout or "{}") or {}
-            started = info.get("lastStartTimestamp") if isinstance(info, dict) else None
-            if started:
-                run_start = parse_time(started)
-            elif isinstance(info, dict) and info.get("status") in ("PENDING", "PROVISIONING"):
-                never_started = True
+    flex = m.get("provisioning") == "flex-start"
+    # A queued flex-start request costs nothing until Google starts the machine. The snapshot
+    # before the delete only names the machine: it may start between it and the delete.
+    seen = describe(m) if flex else {}
+    if seen.get("status") == "GONE":
+        seen = {}
     if not a.keep_machine:
         r = gcloud("compute", "instances", "delete", m["vm"], f"--project={m['project']}",
                    f"--zone={m['zone']}", "--quiet")
@@ -773,15 +918,85 @@ def cmd_stop(a: argparse.Namespace) -> int:
             print(r.stderr.strip()[-2000:], file=sys.stderr)
             return 1
     at = min(now(), m["expires_epoch"])
-    reason = "never-started" if never_started else ("kept" if a.keep_machine else "deleted")
+    if a.keep_machine:
+        # The machine stays, so nothing ends it: count it until now, from its start if Google says
+        # it started, else from its start record.
+        done = {"stop_epoch": at, "reason": "kept", "instance_id": seen.get("id"),
+                "run_start_epoch": seen.get("last_start") if flex else None}
+    elif flex:
+        done = resolve(m, seen, deleted_at=at)
+        if done is not None and done["reason"] != "never-started":
+            done["reason"] = "deleted"
+    else:
+        done = {"stop_epoch": at, "reason": "deleted", "run_start_epoch": None}
+    if done is None:
+        with locked(a.budget) as path:
+            append(path, {"event": "pending", "id": m["id"], "vm": m["vm"], "deleted_epoch": at,
+                          "deleted": iso(at), "reason": "start-unknown", "instance_id": seen.get("id")})
+        print(f"{m['vm']}: deleted at {iso(at)}; Google's records don't yet say whether it started, so "
+              f"it counts until `cloud-budget.py sync` settles it")
+        return 0
     with locked(a.budget) as path:
-        c = cost({**m, "stop_epoch": at, "reason": reason, "run_start_epoch": run_start}, at)
-        record = {"event": "stop", "id": m["id"], "vm": m["vm"], "stop_epoch": at, "stop": iso(at),
-                  "reason": reason, "cost": c}
-        if run_start is not None:
-            record["run_start_epoch"] = run_start
+        record = stop_record(m, done)
         append(path, record)
-    print(f"{m['vm']}: stopped at {iso(at)}, cost {money(c)}")
+    print(f"{m['vm']}: stopped at {record['stop']}, cost {money(record['cost'])}")
+    return 0
+
+
+def find_closed(records: list[dict], key: str) -> dict:
+    ms = [m for m in machines(records) if m.get("stop_epoch") is not None]
+    hits = [m for m in ms if m["id"] == key] or [m for m in ms if len(key) >= 6 and m["id"].startswith(key)]
+    if not hits:
+        hits = [m for m in ms if m["vm"] == key and m.get("reason") != "create-failed"]
+    if not hits:
+        raise Refused(f"no finished machine in the ledger has the ID or name {key}")
+    if len(hits) > 1:
+        raise Refused(f"{key} matches {len(hits)} finished records; name one by ID: "
+                      + ", ".join(f"{m['id'][:12]} ({m['vm']}, {m.get('start')})" for m in hits))
+    return hits[0]
+
+
+def cmd_correct(a: argparse.Namespace) -> int:
+    """Append a correction to a finished machine's settlement. History is never rewritten: the
+    correction is a new record, and the ledger reads it in place of the earlier stop."""
+    if not a.why.strip():
+        raise Refused("say why the record is wrong with --why")
+    chosen = [bool(a.never_started), bool(a.from_google), a.end is not None]
+    if sum(chosen) != 1:
+        raise Refused("choose one of --never-started, --from-google, or --end TIME [--run-start TIME]")
+    with locked(a.budget) as path:
+        records = read_ledger(path)
+    m = find_closed(records, a.record)
+    if a.never_started:
+        done = {"stop_epoch": m["stop_epoch"], "reason": "never-started", "run_start_epoch": None}
+    elif a.from_google:
+        # Settle from Google's records alone, not from the settlement being corrected.
+        fresh = {k: v for k, v in m.items() if k not in ("run_start_epoch", "stop_epoch", "stop", "reason")}
+        done = resolve(fresh, describe(fresh))
+        if done is None:
+            raise Refused(f"Google's records don't say when {m['vm']} ran; correct it with --end and "
+                          "--run-start from the billing console")
+        done["reason"] = "corrected" if done["reason"] in ("gone", "stopped") else done["reason"]
+    else:
+        end = parse_time(a.end)
+        run_start = parse_time(a.run_start) if a.run_start else None
+        if end is None or (a.run_start and run_start is None):
+            raise Refused("--end and --run-start take ISO times, such as 2026-10-21T10:00:00Z")
+        done = {"stop_epoch": end, "reason": "corrected", "run_start_epoch": run_start}
+    before = cost(m, m["stop_epoch"])
+    record = stop_record(m, done)
+    if (abs(record["cost"] - before) < 1e-6 and record["reason"] == m.get("reason")
+            and record.get("run_start_epoch") == m.get("run_start_epoch")):
+        print(f"{m['vm']} ({m['id'][:12]}): already settled at {money(before)}; nothing to correct")
+        return 0
+    record.update({"event": "correction", "previous_cost": before, "previous_reason": m.get("reason"),
+                   "why": a.why.strip(), "at": iso(now()), "host": host_id()})
+    if a.dry_run:
+        print(json.dumps(record, indent=1, sort_keys=True))
+        return 0
+    with locked(a.budget) as path:
+        append(path, record)
+    print(f"{m['vm']} ({m['id'][:12]}): corrected from {money(before)} to {money(record['cost'])}")
     return 0
 
 
@@ -895,6 +1110,15 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("stop", parents=[common])
     s.add_argument("name")
     s.add_argument("--keep-machine", action="store_true", help="record the stop without deleting the machine")
+    k = sub.add_parser("correct", parents=[common],
+                       help="append a correction to a finished machine's cost; history is never rewritten")
+    k.add_argument("record", help="the start record's ID (or a unique prefix of 6+), or the machine name")
+    k.add_argument("--why", required=True)
+    k.add_argument("--never-started", action="store_true", help="it never ran: no cost")
+    k.add_argument("--from-google", action="store_true", help="settle again from Google's lifecycle records")
+    k.add_argument("--run-start", help="flex-start: when the machine started running (ISO time)")
+    k.add_argument("--end", help="when the machine stopped (ISO time)")
+    k.add_argument("--dry-run", action="store_true")
     y = sub.add_parser("sync", parents=[common])
     y.add_argument("--project", default=os.environ.get("OA_PROJECT", DEFAULT_PROJECT))
     v = sub.add_parser("reserve", parents=[common],
@@ -920,6 +1144,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if a.cmd == "reserve":
             return cmd_reserve(a)
+        if a.cmd == "correct":
+            return cmd_correct(a)
         if a.cmd == "report":
             return cmd_report(a)
         return cmd_prices(a)

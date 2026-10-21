@@ -24,6 +24,14 @@ import json, os, sys, time
 with open(os.environ["FAKE_LOG"], "a") as fh:
     fh.write(json.dumps(sys.argv[1:]) + "\n")
 args = sys.argv[1:]
+deleted = os.path.join(os.path.dirname(os.environ["FAKE_LOG"]), "deleted")
+if args[:3] == ["compute", "instances", "delete"]:
+    open(deleted, "w").close()
+    sys.exit(0)
+after = os.path.exists(deleted)
+if after and os.environ.get("FAKE_AFTER_DELETE"):
+    for k, v in json.loads(os.environ["FAKE_AFTER_DELETE"]).items():
+        os.environ[k] = v
 if args[:3] == ["compute", "instances", "create"]:
     time.sleep(float(os.environ.get("FAKE_CREATE_SLEEP", "0")))
     sys.exit(int(os.environ.get("FAKE_CREATE_RC", "0")))
@@ -40,6 +48,8 @@ if args[:3] == ["compute", "instances", "describe"]:
         sys.exit(1)
     created = os.environ.get("FAKE_CREATED", "2027-01-15T08:00:00Z")
     info = {"status": state, "creationTimestamp": created}
+    if os.environ.get("FAKE_ID"):
+        info["id"] = os.environ["FAKE_ID"]
     if os.environ.get("FAKE_STARTED"):
         info["lastStartTimestamp"] = os.environ["FAKE_STARTED"]
     print(json.dumps(info))
@@ -158,13 +168,19 @@ class CloudBudgetTests(unittest.TestCase):
 
     def test_flex_start_bills_from_its_start_and_never_for_a_queued_request(self):
         self.assertEqual(self.create("flex-q", "--flex-start", hours="2", spot=False).returncode, 0)
-        r = self.run_guard("stop", "flex-q", "--budget", "test", at=T0 + 1800, FAKE_DESCRIBE="PENDING")
+        # The delete cancels the queued insert, which then ends with an error.
+        cancelled = json.dumps({"FAKE_OPS": json.dumps([{
+            "operationType": "insert", "status": "DONE", "insertTime": "2027-01-15T08:00:01Z",
+            "endTime": "2027-01-15T08:30:00Z", "error": {"errors": [{"code": "OPERATION_CANCELED_BY_USER"}]}}])})
+        r = self.run_guard("stop", "flex-q", "--budget", "test", at=T0 + 1800, FAKE_DESCRIBE="PENDING",
+                           FAKE_AFTER_DELETE=cancelled)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.records()[-1]["reason"], "never-started")
         self.assertEqual(self.report(T0 + 3600)["spent"], 0)
         self.assertEqual(self.create("flex-r", "--flex-start", hours="2", spot=False, at=T0 + 3600).returncode, 0)
         r = self.run_guard("stop", "flex-r", "--budget", "test", at=T0 + 3 * 3600,
-                           FAKE_DESCRIBE="RUNNING", FAKE_STARTED="2027-01-15T10:00:00Z")
+                           FAKE_DESCRIBE="RUNNING", FAKE_STARTED="2027-01-15T10:00:00Z",
+                           FAKE_CREATED="2027-01-15T09:00:00Z")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertAlmostEqual(self.report(T0 + 4 * 3600)["spent"], 64.44, places=4)
 
@@ -456,6 +472,195 @@ class CloudBudgetTests(unittest.TestCase):
         rep = self.report(T0 + 60)
         self.assertEqual(rep["reserve"], 300)
         self.assertAlmostEqual(rep["remaining"], 600 - 300 - A4_SPOT * 7, places=4)
+
+    # ------------------------------------------------------------- #12409
+
+    def flex(self, name, at=T0, hours="2"):
+        r = self.create(name, "--flex-start", hours=hours, spot=False, at=at)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return [x for x in self.records() if x.get("event") == "start"][-1]
+
+    def test_sync_bills_a_queued_flex_start_from_its_start_at_expiry(self):
+        # Requested 08:00, started 09:00, deleted at the end of its run at 10:00: one hour.
+        self.flex("flex-exp")
+        ops = json.dumps([{"operationType": "compute.instances.deferredDelete", "status": "DONE",
+                           "endTime": "2027-01-15T10:00:00Z"}])
+        r = self.run_guard("sync", "--budget", "test", at=T0 + 7200, FAKE_DESCRIBE="TERMINATED",
+                           FAKE_STARTED="2027-01-15T09:00:00Z", FAKE_OPS=ops)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertAlmostEqual(self.report(T0 + 7200)["spent"], 64.44, places=4)
+        self.assertEqual(self.records()[-1]["run_start_epoch"], T0 + 3600)
+
+    def test_sync_bills_a_preempted_flex_start_from_its_insert(self):
+        # The machine is gone, so describe has no lastStartTimestamp; the insert's end is its start.
+        self.flex("flex-pre")
+        ops = json.dumps([{"operationType": "insert", "status": "DONE", "insertTime": "2027-01-15T08:00:01Z",
+                           "endTime": "2027-01-15T09:00:00Z", "targetId": "111"},
+                          {"operationType": "compute.instances.preempted", "status": "DONE",
+                           "endTime": "2027-01-15T09:30:00Z", "targetId": "111"}])
+        r = self.run_guard("sync", "--budget", "test", at=T0 + 7200, FAKE_DESCRIBE="GONE", FAKE_OPS=ops)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertAlmostEqual(self.report(T0 + 7200)["spent"], 64.44 / 2, places=4)
+        self.assertEqual(self.records()[-1]["instance_id"], "111")
+
+    def test_a_start_between_describe_and_delete_is_not_waived(self):
+        # Describe says PENDING; the machine starts before the delete lands. Nothing on record yet
+        # says whether it started, so the stop waives nothing and the machine stays counted.
+        self.flex("flex-race")
+        r = self.run_guard("stop", "flex-race", "--budget", "test", at=T0 + 1800, FAKE_DESCRIBE="PENDING")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        last = self.records()[-1]
+        self.assertEqual((last["event"], last["reason"]), ("pending", "start-unknown"))
+        rep = self.report(T0 + 1800)
+        self.assertEqual(rep["spent"], 0)
+        self.assertEqual([m["vm"] for m in rep["running_machines"]], ["flex-race"])
+        self.assertAlmostEqual(rep["running_committed"], 64.44 * 4, places=4)
+        # Google's records then show it started at 08:25 and the delete ended it at 08:30.
+        ops = json.dumps([{"operationType": "insert", "status": "DONE", "insertTime": "2027-01-15T08:00:01Z",
+                           "endTime": "2027-01-15T08:25:00Z"},
+                          {"operationType": "delete", "status": "DONE", "endTime": "2027-01-15T08:30:00Z"}])
+        r = self.run_guard("sync", "--budget", "test", at=T0 + 2400, FAKE_DESCRIBE="GONE", FAKE_OPS=ops)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertAlmostEqual(self.report(T0 + 2400)["spent"], 64.44 * 300 / 3600, places=4)
+        self.assertEqual(self.records()[-1]["reason"], "gone")
+
+    def test_a_start_seen_after_the_delete_settles_the_stop(self):
+        self.flex("flex-race2")
+        started = json.dumps({"FAKE_OPS": json.dumps([
+            {"operationType": "insert", "status": "DONE", "insertTime": "2027-01-15T08:00:01Z",
+             "endTime": "2027-01-15T08:20:00Z"},
+            {"operationType": "delete", "status": "DONE", "endTime": "2027-01-15T08:29:00Z"}])})
+        r = self.run_guard("stop", "flex-race2", "--budget", "test", at=T0 + 1800, FAKE_DESCRIBE="PENDING",
+                           FAKE_AFTER_DELETE=started)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        last = self.records()[-1]
+        self.assertEqual((last["event"], last["reason"]), ("stop", "deleted"))
+        self.assertAlmostEqual(self.report(T0 + 1800)["spent"], 64.44 * 540 / 3600, places=4)
+
+    def test_missing_timestamps_keep_the_machine_counted_until_expiry(self):
+        self.flex("flex-blank")
+        r = self.run_guard("sync", "--budget", "test", at=T0 + 3600, FAKE_DESCRIBE="GONE")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.report(T0 + 3600)["finished"], 0)
+        # An insert with no outcome (still open, or its end aged out) is not evidence either.
+        ops = json.dumps([{"operationType": "insert", "status": "RUNNING", "insertTime": "2027-01-15T08:00:01Z"}])
+        self.run_guard("sync", "--budget", "test", at=T0 + 3600, FAKE_DESCRIBE="GONE", FAKE_OPS=ops)
+        self.assertEqual(self.report(T0 + 3600)["finished"], 0)
+        # After its expiry (2 h queue + 2 h run) it settles at the expiry, at the most it could cost.
+        self.run_guard("sync", "--budget", "test", at=T0 + 5 * 3600, FAKE_DESCRIBE="GONE", FAKE_OPS=ops)
+        rep = self.report(T0 + 5 * 3600)
+        self.assertAlmostEqual(rep["spent"], 64.44 * 4, places=4)
+        self.assertEqual(self.records()[-1]["reason"], "gone-at-expiry")
+
+    def test_an_unsettled_delete_settles_at_the_delete_after_expiry(self):
+        self.flex("flex-gap")
+        self.run_guard("stop", "flex-gap", "--budget", "test", at=T0 + 1800, FAKE_DESCRIBE="PENDING")
+        self.run_guard("sync", "--budget", "test", at=T0 + 5 * 3600, FAKE_DESCRIBE="GONE")
+        self.assertAlmostEqual(self.report(T0 + 5 * 3600)["spent"], 64.44 / 2, places=4)
+
+    def test_a_reused_name_does_not_lend_its_start_to_an_older_flex_request(self):
+        # Our request (instance 111) ended with an error at 08:30. A new machine with the same name
+        # (instance 222) started at 09:00 and still runs.
+        self.flex("flex-reuse")
+        ops = json.dumps([
+            {"operationType": "insert", "status": "DONE", "insertTime": "2027-01-15T08:00:01Z",
+             "endTime": "2027-01-15T08:30:00Z", "targetId": "111",
+             "error": {"errors": [{"code": "ZONE_RESOURCE_POOL_EXHAUSTED"}]}},
+            {"operationType": "insert", "status": "DONE", "insertTime": "2027-01-15T08:59:00Z",
+             "endTime": "2027-01-15T09:00:00Z", "targetId": "222"},
+            {"operationType": "delete", "status": "DONE", "endTime": "2027-01-15T10:00:00Z", "targetId": "222"}])
+        r = self.run_guard("sync", "--budget", "test", at=T0 + 4 * 3600, FAKE_DESCRIBE="RUNNING",
+                           FAKE_CREATED="2027-01-15T09:00:00Z", FAKE_ID="222", FAKE_OPS=ops)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        stop = [x for x in self.records() if x.get("event") == "stop"][-1]
+        self.assertEqual((stop["reason"], stop["cost"], stop["instance_id"]), ("never-started", 0.0, "111"))
+
+    def test_aged_out_operations_settle_from_the_audit_log(self):
+        self.flex("flex-old")
+        name = "projects/openagentsgemini/zones/us-central1-b/instances/flex-old"
+        audit = json.dumps([
+            {"timestamp": "2027-01-15T08:00:02Z", "protoPayload": {"methodName": "v1.compute.instances.insert",
+             "resourceName": name}, "operation": {"first": True}, "resource": {"labels": {"instance_id": "111"}}},
+            {"timestamp": "2027-01-15T09:00:00Z", "protoPayload": {"methodName": "v1.compute.instances.insert",
+             "resourceName": name}, "operation": {"last": True}, "resource": {"labels": {"instance_id": "111"}}},
+            {"timestamp": "2027-01-15T10:00:00Z", "protoPayload": {"methodName": "v1.compute.instances.delete",
+             "resourceName": name}, "operation": {"last": True}, "resource": {"labels": {"instance_id": "111"}}},
+            # A longer name that shares the prefix is another machine.
+            {"timestamp": "2027-01-15T08:10:00Z", "protoPayload": {"methodName": "v1.compute.instances.insert",
+             "resourceName": name + "-2"}, "operation": {"last": True}}])
+        r = self.run_guard("sync", "--budget", "test", at=T0 + 4 * 3600, FAKE_DESCRIBE="GONE", FAKE_AUDIT=audit)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertAlmostEqual(self.report(T0 + 4 * 3600)["spent"], 64.44, places=4)
+
+    def test_audit_log_shows_a_cancelled_request_never_ran(self):
+        # The disputed record's shape: a delete cancels the queued insert, which ends with an error.
+        self.flex("flex-cxl")
+        name = "projects/openagentsgemini/zones/us-central1-b/instances/flex-cxl"
+        audit = json.dumps([
+            {"timestamp": "2027-01-15T08:00:02Z", "protoPayload": {"methodName": "v1.compute.instances.insert",
+             "resourceName": name}, "operation": {"first": True}},
+            {"timestamp": "2027-01-15T09:50:00Z", "protoPayload": {"methodName": "v1.compute.instances.delete",
+             "resourceName": name}, "operation": {"first": True}},
+            {"timestamp": "2027-01-15T10:05:00Z", "severity": "ERROR", "protoPayload": {
+             "methodName": "v1.compute.instances.insert", "resourceName": name,
+             "status": {"code": 1, "message": "OPERATION_CANCELED_BY_USER"}}, "operation": {"last": True}},
+            {"timestamp": "2027-01-15T10:05:01Z", "protoPayload": {"methodName": "v1.compute.instances.delete",
+             "resourceName": name}, "operation": {"last": True}}])
+        self.run_guard("sync", "--budget", "test", at=T0 + 3 * 3600, FAKE_DESCRIBE="GONE", FAKE_AUDIT=audit)
+        self.assertEqual(self.records()[-1]["reason"], "never-started")
+        self.assertEqual(self.report(T0 + 3 * 3600)["spent"], 0)
+
+    def test_adoption_bills_a_flex_start_machine_from_its_start(self):
+        listing = json.dumps([{"id": "333", "name": "flex-lost", "zone": "projects/p/zones/us-central1-b",
+                               "machineType": "zones/us-central1-b/machineTypes/a4-highgpu-8g",
+                               "status": "RUNNING", "creationTimestamp": "2027-01-15T08:00:00Z",
+                               "lastStartTimestamp": "2027-01-15T09:00:00Z",
+                               "labels": {"budget": "test", "expires-at": "2027-01-15t12-00-00z"},
+                               "scheduling": {"provisioningModel": "FLEX_START"}}])
+        r = self.run_guard("sync", "--budget", "test", at=T0 + 2 * 3600, FAKE_LIST=listing)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        start = [x for x in self.records() if x.get("event") == "start"][-1]
+        self.assertEqual((start["run_start_epoch"], start["instance_id"]), (T0 + 3600, "333"))
+        self.assertAlmostEqual(self.report(T0 + 2 * 3600)["running"], 64.44, places=4)
+        ops = json.dumps([{"operationType": "delete", "status": "DONE", "endTime": "2027-01-15T10:00:00Z",
+                           "targetId": "333"}])
+        self.run_guard("sync", "--budget", "test", at=T0 + 3 * 3600, FAKE_DESCRIBE="GONE", FAKE_OPS=ops)
+        self.assertAlmostEqual(self.report(T0 + 3 * 3600)["spent"], 64.44, places=4)
+
+    def test_correct_appends_a_correction_and_never_rewrites_history(self):
+        start = self.flex("flex-old-est")
+        # The old sync settled it from the queued request: 08:00 to 10:00, $128.88.
+        self.ledger.write_text(self.ledger.read_text() + json.dumps(
+            {"event": "stop", "id": start["id"], "vm": "flex-old-est", "stop_epoch": T0 + 7200,
+             "stop": "2027-01-15T10:00:00Z", "reason": "gone", "cost": 128.88}) + "\n")
+        self.assertAlmostEqual(self.report(T0 + 7200)["spent"], 128.88, places=4)
+        before = self.ledger.read_bytes()
+        r = self.run_guard("correct", start["id"][:8], "--budget", "test", "--run-start", "2027-01-15T09:00:00Z",
+                           "--end", "2027-01-15T10:00:00Z", "--why", "billed from its queued request",
+                           at=T0 + 7300)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(self.ledger.read_bytes().startswith(before))
+        last = self.records()[-1]
+        self.assertEqual((last["event"], last["previous_cost"], last["cost"]), ("correction", 128.88, 64.44))
+        self.assertAlmostEqual(self.report(T0 + 7300)["spent"], 64.44, places=4)
+        # The same correction again appends nothing.
+        n = len(self.records())
+        r = self.run_guard("correct", "flex-old-est", "--budget", "test", "--run-start", "2027-01-15T09:00:00Z",
+                           "--end", "2027-01-15T10:00:00Z", "--why", "again", at=T0 + 7400)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len(self.records()), n)
+        # From Google's records: the insert was cancelled, so it never ran.
+        ops = json.dumps([{"operationType": "insert", "status": "DONE", "insertTime": "2027-01-15T08:00:01Z",
+                           "endTime": "2027-01-15T10:00:00Z", "error": {"errors": [{"code": "X"}]}}])
+        r = self.run_guard("correct", start["id"], "--budget", "test", "--from-google", "--why", "audit",
+                           at=T0 + 7500, FAKE_DESCRIBE="GONE", FAKE_OPS=ops)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.report(T0 + 7500)["spent"], 0)
+        # A running machine, or no choice of correction, is refused.
+        self.flex("flex-live", at=T0 + 7600)
+        self.assertEqual(self.run_guard("correct", "flex-live", "--budget", "test", "--never-started",
+                                        "--why", "x", at=T0 + 7600).returncode, 2)
+        self.assertEqual(self.run_guard("correct", start["id"], "--budget", "test", "--why", "x").returncode, 2)
 
 
 if __name__ == "__main__":

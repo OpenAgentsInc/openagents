@@ -3177,3 +3177,15 @@ gcloud billing budgets list --billing-account=01D15C-64524A-1062EA
 
 The guard's own cap of $3,000 doesn't depend on these alerts:
 `python3 scripts/dev/cloud-budget.py report` shows what the work has spent.
+
+## Check the europe-west4-b flex-start charge on the billing console (#12409) (2026-10-21)
+
+The guard first recorded $136.53 for `oa-dsv41-12405-europewest4b` (instance
+ID `4420272737960143461`), then $0. Google's audit log and operation records
+show the request never ran: the queued insert began at 10:31:37 UTC, the
+delete at 12:23:33 cancelled it (`OPERATION_CANCELED_BY_USER`) at 12:38:42, and
+no start or guest log exists for that ID. The service account can't read
+billing data, and the project has no billing export. In the Cloud Billing
+console, open Reports for project `openagentsgemini` on 2026-10-21, filter to
+Compute Engine in europe-west4, and confirm there is no A4 (B200) charge. If
+there is one, open a new issue with the amount.
