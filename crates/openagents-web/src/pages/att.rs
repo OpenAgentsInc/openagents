@@ -334,7 +334,7 @@ async fn release(State(app): State<App>) -> Response {
         StatusCode::OK,
         &json!({
             "v": "openagents.att-page-release.v1",
-            "commit": option_env!("OPENAGENTS_COMMIT").unwrap_or("unknown"),
+            "commit": crate::release_commit(),
             "source": "crates/att-web (built by scripts/build-att-web.sh)",
             "page": {"path": ATT_PATH, "sha256": format!("{:x}", Sha256::digest(page.as_bytes()))},
             "files": files,

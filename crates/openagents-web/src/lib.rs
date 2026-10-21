@@ -13,6 +13,21 @@
 //! service's site, reimplemented here.
 
 pub mod account;
+
+/// The commit this server was built from, for `/att/release.json` and
+/// `/vault/release.json`: `OPENAGENTS_COMMIT` from the environment the
+/// image sets, or "unknown". Read at run time rather than compiled in, so a
+/// new commit doesn't change this crate's build and the compile cache keeps
+/// it (#12427).
+pub fn release_commit() -> &'static str {
+    static COMMIT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    COMMIT.get_or_init(|| {
+        std::env::var("OPENAGENTS_COMMIT")
+            .ok()
+            .filter(|commit| !commit.trim().is_empty())
+            .unwrap_or_else(|| "unknown".to_owned())
+    })
+}
 mod account_delete;
 mod account_export;
 #[doc(hidden)]

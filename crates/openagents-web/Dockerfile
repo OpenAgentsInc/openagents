@@ -39,11 +39,6 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
 
 FROM builder-deps AS builder
 COPY . .
-# The commit the image is built from, compiled in for /att/release.json and
-# /vault/release.json (option_env!("OPENAGENTS_COMMIT")); "unknown" when the
-# build names none.
-ARG OPENAGENTS_COMMIT=unknown
-ENV OPENAGENTS_COMMIT=${OPENAGENTS_COMMIT}
 # The CAD engine (crates/cad-lab) beside it: the site runs CAD Lab's tools
 # for signed-in people in a child process (crates/openagents-web/src/cad_web.rs,
 # #11653). Every source file is touched first, so no stand-in the deps
@@ -395,6 +390,12 @@ COPY --from=gpuiweb /build/lander9 /srv/lander9
 # every browser asset, including fonts and their compressed copies.
 RUN chmod -R a+rX /srv
 USER 10001:10001
+# The commit the image is built from, which /att/release.json and
+# /vault/release.json report (openagents_web::release_commit); "unknown"
+# when the build names none. Set here, not in the builder, so a new commit
+# doesn't change the server's compile and the compile cache keeps it.
+ARG OPENAGENTS_COMMIT=unknown
+ENV OPENAGENTS_COMMIT=${OPENAGENTS_COMMIT}
 RUN unreadable="$(find /srv ! -readable -print -quit)" && test -z "$unreadable"
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/openagents-web"]

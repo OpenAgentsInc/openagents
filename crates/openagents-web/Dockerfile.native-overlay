@@ -8,13 +8,14 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 COPY . .
-ARG OPENAGENTS_COMMIT=unknown
-ENV OPENAGENTS_COMMIT=${OPENAGENTS_COMMIT}
 RUN cargo build --locked --release -p openagents-web-site --bin openagents-web -p openagents-web \
     && strip target/release/openagents-web
 
 FROM ${LIVE_WEB_IMAGE} AS site
 USER 0:0
+# The server reads its commit at run time (openagents_web::release_commit).
+ARG OPENAGENTS_COMMIT=unknown
+ENV OPENAGENTS_COMMIT=${OPENAGENTS_COMMIT}
 COPY --from=builder /build/target/release/openagents-web /usr/local/bin/openagents-web
 
 # Repair private source modes in retained browser assets too.

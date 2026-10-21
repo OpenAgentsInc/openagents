@@ -139,7 +139,7 @@ pub(crate) async fn release(State(app): State<App>) -> Response {
         [(header::CACHE_CONTROL, "no-cache")],
         axum::Json(serde_json::json!({
             "v": "openagents.vault-release.v1",
-            "commit": option_env!("OPENAGENTS_COMMIT").unwrap_or("unknown"),
+            "commit": crate::release_commit(),
             "files": files,
         })),
     )
