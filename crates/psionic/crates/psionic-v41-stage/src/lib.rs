@@ -1215,26 +1215,65 @@ pub fn sample(logits: &[f32], sampling: Sampling, step: u64) -> Result<u32, Refu
 
 /// Turns sampled tokens into text one token at a time. A token that ends
 /// inside a character waits for the next one.
+///
+/// Each push decodes only a short window: the tokens since the last text
+/// came out, plus the tokens of that text for context, so a push costs the
+/// same at the first token and the 4,096th (#12412). Its output equals the
+/// difference between decoding the whole answer before and after the token.
 #[derive(Default)]
 pub struct TextStream {
+    /// The window: the context tokens, then the tokens not yet emitted.
     ids: Vec<u32>,
-    emitted: String,
+    /// The context tokens' text, which the next decode starts with.
+    prefix: String,
+    /// How many of `ids` are context.
+    prefix_index: usize,
+    /// Token IDs passed to the tokenizer so far, for the cost tests.
+    decoded: usize,
 }
 
 impl TextStream {
     /// The text the token adds, possibly empty.
     #[must_use]
     pub fn push(&mut self, tokenizer: &Tokenizer, token: u32) -> String {
+        if self.prefix.is_empty() && !self.ids.is_empty() {
+            // The context decoded to nothing whole yet, such as a partial
+            // character: try again with what it holds now.
+            if let Some(prefix) = self.decode(tokenizer)
+                && !prefix.ends_with('\u{fffd}')
+            {
+                self.prefix = prefix;
+                self.prefix_index = self.ids.len();
+            }
+        }
         self.ids.push(token);
-        let Ok(text) = tokenizer.decode(&self.ids, false) else {
+        let Some(text) = self.decode(tokenizer) else {
             return String::new();
         };
-        if text.ends_with('\u{fffd}') || !text.starts_with(&self.emitted) {
+        if text.len() <= self.prefix.len()
+            || text.ends_with('\u{fffd}')
+            || !text.starts_with(&self.prefix)
+        {
             return String::new();
         }
-        let piece = text[self.emitted.len()..].to_owned();
-        self.emitted = text;
+        let piece = text[self.prefix.len()..].to_owned();
+        // The tokens that made this text become the next window's context.
+        let context = self.ids.len() - self.prefix_index;
+        self.ids.drain(..self.prefix_index);
+        self.prefix = self.decode(tokenizer).unwrap_or_default();
+        self.prefix_index = context;
         piece
+    }
+
+    /// How many token IDs this stream has passed to the tokenizer.
+    #[must_use]
+    pub fn decoded_ids(&self) -> usize {
+        self.decoded
+    }
+
+    fn decode(&mut self, tokenizer: &Tokenizer) -> Option<String> {
+        self.decoded += self.ids.len();
+        tokenizer.decode(&self.ids, false).ok()
     }
 }
 
@@ -1588,6 +1627,132 @@ mod parser_tests {
         assert!(!thinking.reasoning.is_empty() && !thinking.content.is_empty());
         let chat = whole(PromptMode::Chat, &cases[0].1, false);
         assert!(chat.reasoning.is_empty() && !chat.content.is_empty());
+    }
+
+    /// The raw text as the stream made it before #12412: every push decodes
+    /// the whole answer and emits what follows the text already out.
+    fn whole_text(tokenizer: &Tokenizer, ids: &[u32]) -> (Vec<String>, usize) {
+        let (mut pieces, mut emitted, mut decoded) = (Vec::new(), String::new(), 0);
+        for end in 1..=ids.len() {
+            decoded += end;
+            let text = tokenizer.decode(&ids[..end], false).unwrap();
+            if text.ends_with('\u{fffd}') || !text.starts_with(&emitted) {
+                pieces.push(String::new());
+                continue;
+            }
+            pieces.push(text[emitted.len()..].to_owned());
+            emitted = text;
+        }
+        (pieces, decoded)
+    }
+
+    fn streamed_text(tokenizer: &Tokenizer, ids: &[u32]) -> (Vec<String>, usize) {
+        let mut stream = TextStream::default();
+        let pieces = ids.iter().map(|id| stream.push(tokenizer, *id)).collect();
+        (pieces, stream.decoded_ids())
+    }
+
+    /// Split characters, special tokens, and the same characters written
+    /// as text: each token's text is what the whole-answer decode gave it.
+    #[test]
+    fn the_text_stream_matches_decoding_the_whole_answer() {
+        let crab = fixture::stream_case("split_utf8");
+        let mut split_then_end = crab[..crab.len() - 1].to_vec();
+        split_then_end.push(END_THINKING);
+        split_then_end.extend(fixture::stream_case("reasoning_then_final"));
+        let cases = [
+            fixture::stream_case("reasoning_then_final"),
+            fixture::stream_case("literal_markers_in_text"),
+            crab.clone(),
+            fixture::stream_case("truncated_reasoning"),
+            fixture::stream_case("tool_call_long_arguments"),
+            split_then_end,
+            crab[..3].to_vec(),
+        ];
+        let v41 = fixture::protocol().tokenizer();
+        let synthetic = synthetic::tokenizer().unwrap();
+        for (i, ids) in cases.iter().enumerate() {
+            let (want, _) = whole_text(&v41, ids);
+            let (got, _) = streamed_text(&v41, ids);
+            assert_eq!(got, want, "case {i}");
+        }
+        let all: String = streamed_text(&v41, &crab).0.concat();
+        assert!(all.contains("Crab: \u{1f980} and \u{1d518}."), "{all:?}");
+        assert!(!all.contains('\u{fffd}'));
+        let special = streamed_text(&v41, &[5, END_THINKING, 5]).0.concat();
+        assert!(special.contains("</think>"), "{special:?}");
+        // The synthetic vocabulary joins its words with spaces.
+        let words: Vec<u32> = (2..40).collect();
+        assert_eq!(
+            streamed_text(&synthetic, &words).0,
+            whole_text(&synthetic, &words).0
+        );
+    }
+
+    /// A 4,096-token answer: the stream passes a bounded window to the
+    /// tokenizer at each token, where the whole-answer decode passed
+    /// 8,390,656 token IDs in all.
+    #[test]
+    fn the_text_stream_decodes_a_bounded_window_per_token() {
+        let ids = long_answer(4_096);
+        let tokenizer = fixture::protocol().tokenizer();
+        let (want, before) = whole_text(&tokenizer, &ids);
+        let (got, after) = streamed_text(&tokenizer, &ids);
+        assert_eq!(got, want);
+        assert_eq!(before, 8_390_656);
+        assert!(after < 8 * ids.len(), "{after} token IDs decoded");
+    }
+
+    /// The reasoning, split characters, and answer cases repeated to `len`
+    /// tokens, with no end token.
+    fn long_answer(len: usize) -> Vec<u32> {
+        let mut unit = fixture::stream_case("split_utf8");
+        unit.extend(fixture::stream_case("reasoning_then_final"));
+        unit.retain(|id| *id != EOS && *id != END_THINKING);
+        unit.into_iter().cycle().take(len).collect()
+    }
+
+    /// The last stage's parsing at the output cap, as `Server::run_step`
+    /// does it: the raw text stream, then the answer parser, per token.
+    /// Run with `--ignored --nocapture` to print the cost before and after
+    /// #12412; the timing depends on the machine, so nothing is asserted.
+    #[test]
+    #[ignore = "prints a timing"]
+    fn measure_parsing_at_the_output_cap() {
+        let ids = long_answer(4_096);
+        let tokenizer = fixture::protocol().tokenizer();
+        let parse = |text: &mut dyn FnMut(u32)| {
+            let started = std::time::Instant::now();
+            let mut parser = AnswerParser::new(Arc::clone(&tokenizer), EOS, PromptMode::Thinking);
+            for (i, id) in ids.iter().enumerate() {
+                text(*id);
+                parser.push(*id, i + 1 == ids.len()).unwrap();
+            }
+            started.elapsed()
+        };
+        let mut emitted = String::new();
+        let mut seen = Vec::new();
+        let before = parse(&mut |id| {
+            seen.push(id);
+            let text = tokenizer.decode(&seen, false).unwrap();
+            if !text.ends_with('\u{fffd}') && text.starts_with(&emitted) {
+                emitted = text;
+            }
+        });
+        let mut stream = TextStream::default();
+        let after = parse(&mut |id| {
+            let _ = stream.push(&tokenizer, id);
+        });
+        let parser_only = parse(&mut |_| {});
+        eprintln!(
+            "token IDs decoded: whole-answer text {}, incremental text {}",
+            ids.len() * (ids.len() + 1) / 2,
+            stream.decoded_ids()
+        );
+        eprintln!(
+            "{} tokens: whole-answer text {before:?}, incremental text {after:?}, parser alone {parser_only:?}",
+            ids.len()
+        );
     }
 
     #[test]
