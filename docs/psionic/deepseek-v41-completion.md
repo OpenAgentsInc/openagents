@@ -47,15 +47,22 @@ Gate progress (2026-10-21):
   stale, missing, reordered, cross-request, malformed, and oversize
   messages before it consumes any state. With a synthetic executor that
   keeps V4.1's 40-layer sharing layout, four-stage, eight-stage, uneven, and
-  one-layer-per-stage splits match the unsplit run bit for bit.
+  one-layer-per-stage splits match the unsplit run bit for bit. W7
+  (#12394) and W11 (#12398) each found that the hyper-connection pre-mix
+  must cross beside the residual (`SectionKind::PreMix`, four F32 weights
+  per token): the next layer collapses the streams with it and can't
+  recompute it. With it, the CPU port's layer ranges
+  (`deepseek_v41_stage_cpu`) match the unsplit transformer bit for bit at
+  every split, one layer per stage included.
 - **G6, stage-state bytes per decode token,** from encoded messages of the
-  real shapes (BF16 residual and cache rows, a 36-byte request ID): 44,300
-  bytes at a boundary of 10 (43,788 on average, since layer 8's KV adds a
-  row every other token), 41,124 at 20 (the residual only), and 52,772 at
-  30. The four-stage forward path is 138,196 bytes per token; eight stages
-  are 332,300. Returning full F32 logits to the front adds 517,280 bytes
-  per token, more than every forward hop together, so W10 (#12397) decided
-  that the last stage samples with the front's settings and returns the
+  real shapes (BF16 residual and cache rows, a 36-byte request ID): 44,348
+  bytes at a boundary of 10 (43,836 on average, since layer 8's KV adds a
+  row every other token), 41,172 at 20 (the residual and its pre-mix only),
+  and 52,820 at 30, each including the pre-mix's 48 bytes. The four-stage
+  forward path is 138,340 bytes per token; eight stages are 332,636.
+  Returning full F32 logits to the front adds 517,280 bytes per token,
+  more than every forward hop together, so W10 (#12397) decided that the
+  last stage samples with the front's settings and returns the
   token ID, 4 bytes. The synthetic geometry's numbers are in the W9 test
   output.
 - **G3, block-scaled matrix-vector kernels (W4, #12391), RTX 4080 only.**
@@ -219,7 +226,7 @@ spend guard from the one budget host.
 | --- | --- | --- | --- | --- |
 | W9 | **Done (#12396).** Stage-state codec and group manifest: `psionic_models::stage_state` (message, codec, `StageInbox` admission, `StageWorker`) and `psionic_models::deepseek_v41_stage` (V4.1 boundary contracts, wire sizes, `V41GroupManifest`, `plan_group`); `psionic_serve::pipeline_stage` adapts the Gemma 4 step to the same message. Placement reads header-derived bytes through the `PlacementMemory` trait until W3's measured input implements it. | M | W3 for measured placement only | Codec fault tests (duplicate, stale, missing, reordered, cross-request, malformed, oversize) pass with a synthetic 40-layer executor; every split matches the unsplit run bit for bit. |
 | W10 | **Group lifecycle.** Done (#12397) on synthetic stages: `pylon::stage_group` runs each stage as a managed worker under the serial supervisor's process-group owner and restart budget. A group is ready only when every stage agrees on weights, runtime, protocol, and generation and passes a check. A replacement bumps the generation and fences the survivors; failures and cancellation hold admission until every stage stops or is reaped. The front's control identity is W9's (generation, request ID, attempt, stage, step). `StageGroup` implements W13's `GroupReadiness`. The last stage samples with the front's settings and returns token IDs, not logits. `crates/pylon/tests/group_lifecycle.rs` covers G7's fault list; G7 still needs it on a real group (W11, W12). | L | W9, #12364 | G7's fault checks pass on a local or synthetic group. |
-| W11 | **A full group on one machine.** All stages on one 4- or 8-GPU machine over loopback. | M, cloud (G4 spot, about 20 h) | W7, W10 | G5 passes. |
+| W11 | **A full group on one machine.** All stages on one 4- or 8-GPU machine over loopback. **Part 1 done (#12398): the stage worker.** `psionic-v41-stage` (`crates/psionic/crates/psionic-v41-stage`) takes `pylon cloud up`'s arguments (`--weights DIR --layers A-B --gpu N --manifest D [--embeddings] [--head]`, then `--stage --generation --front --token`), speaks W10's control protocol, and announces `psionic-v41-stage/1`. Stage state is W9's message, sent as length-prefixed frames to the next stage's loopback listener, whose `listen` address the front now passes as `next` with each step; the front also passes the previous token to stage 0. Stage 0 encodes the conversation with the #12372 adapter; the last stage samples greedily or with the front's temperature, top-p, and seed, and returns the token, its text, the end flag, and (W14) reasoning and final text from the adapter's streaming parser with a `stop` or `length` finish. The executor is W9's `StageExecutor`; `--backend cpu` runs `psionic_models::deepseek_v41_stage_cpu`, the CPU port cut at a layer range. Tests: Psionic process groups of 2–4 stages and Pylon's real front over loopback match the unsplit model's tokens; W10's lifecycle faults (kill, stop, cancel, other weights) pass against it; refusals cover wrong generation, stale state, missing weights, and a layer range that doesn't match the manifest. **Part 2 needs:** W7's CUDA stage executor behind `--backend cuda` (`psionic_backend_cuda::v41_stage::V41Stage` landed in part 1 of #12394; its step input and output map onto the W9 sections, it samples on the device, and it sends KV rows as BF16 and candidates as `i32`, while the CPU executor sends `F32` and `u32`, so a group runs one backend); opening only a stage's shards (the checkpoint opener reads every shard, while `v41-stage-startup.sh` copies a stage's own, plus `tokenizer.json`, `tokenizer_config.json`, and the manifest file into the weights folder); and the one-machine cloud group run that passes G5. | M, cloud (G4 spot, about 20 h) | W7, W10 | G5 passes. |
 | W12 | **A group across machines.** Two placements across separate machines in one zone. | M, cloud | W11 | G6 passes; G7's fault checks repeat on the cross-machine group. |
 
 ### Phase 5: launch and visibility (G8)

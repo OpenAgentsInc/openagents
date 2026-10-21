@@ -12,6 +12,7 @@ pub mod deepseek_v41;
 pub mod deepseek_v41_cpu;
 pub mod deepseek_v41_oracle;
 pub mod deepseek_v41_stage;
+pub mod deepseek_v41_stage_cpu;
 pub mod deepseek_v41_weights;
 mod fixtures;
 mod harmony;

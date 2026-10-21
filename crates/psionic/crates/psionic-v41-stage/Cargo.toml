@@ -1,0 +1,27 @@
+[package]
+name = "psionic-v41-stage"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "The DeepSeek-V4.1 stage worker that a Pylon stage group starts"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "psionic-v41-stage"
+path = "src/main.rs"
+
+[dependencies]
+hex = { workspace = true }
+psionic-models = { path = "../psionic-models", features = ["deepseek-v41-fixtures"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tokio-stream = "0.1.17"
+tokenizers = { version = "0.23.1", default-features = false, features = ["onig"] }
+
+[dev-dependencies]
+tempfile = "3"

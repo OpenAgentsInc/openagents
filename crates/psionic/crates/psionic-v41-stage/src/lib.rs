@@ -1,0 +1,932 @@
+//! The DeepSeek-V4.1 stage worker that a Pylon stage group starts.
+//!
+//! A V4.1 group splits the model's 40 layers across stage processes. Pylon's
+//! `stage_group` front starts each stage as
+//!
+//! ```text
+//! psionic-v41-stage --weights DIR --layers A-B --gpu N --manifest D
+//!     [--embeddings] [--head] --stage NAME --generation G --front ADDR --token T
+//! ```
+//!
+//! and drives it over the front's line-delimited JSON control protocol
+//! (`crates/pylon/src/stage_group.rs`). The stage announces runtime
+//! [`RUNTIME`], answers health pings and checks, runs one step at a time,
+//! and obeys cancellation and generation fences.
+//!
+//! Stage-to-stage state is W9's [`StageMessage`], encoded with
+//! [`psionic_models::stage_state::encode`] and sent as length-prefixed
+//! frames to the next stage's loopback listener, whose address the front
+//! passes with each step. Each stage admits what it receives through its
+//! [`StageInbox`], so stale, duplicate, reordered, cross-request, and
+//! wrong-generation state is refused before it is used. Stage 0 turns the
+//! conversation into tokens with the V4.1 adapter, and the last stage samples
+//! with the front's settings and returns the token ID, its text, and whether
+//! it ends the answer.
+//!
+//! The model half is W9's [`StageExecutor`] trait. [`Backend::Cpu`] runs
+//! [`V41CpuStageExecutor`], the CPU port's layer range; a CUDA executor
+//! implements the same trait and plugs into [`serve`].
+
+pub mod serve;
+
+use std::{
+    collections::BTreeMap,
+    fmt,
+    ops::Range,
+    path::{Path, PathBuf},
+    sync::Arc,
+    task::{Context, Poll, Waker},
+};
+
+use psionic_models::{
+    deepseek_v41::{
+        DeepSeekV41Protocol,
+        deepseek_recipe::stream::{
+            ChunkGenerator, FinishReason, InferenceChunk, InferenceFinishReason, OutputChunk,
+            PromptUsage, StreamProcessor,
+        },
+        deepseek_recipe_core::conversation::Conversation,
+        deepseek_recipe_core::messages::InputMessage,
+        deepseek_recipe_core::prompt::Prompt,
+        deepseek_v41_parsing_options,
+    },
+    deepseek_v41_cpu::{
+        engram::CompressedTokenMap,
+        generation::argmax,
+        projection::WeightSource,
+        quantization::Arithmetic,
+        transformer::{CpuTransformer, TransformerConfig},
+    },
+    deepseek_v41_stage::{
+        EngramLocation, GROUP_MANIFEST_SCHEMA, V41_STAGE_PROTOCOL, V41EngramPlacement,
+        V41GroupManifest, V41StageEntry,
+    },
+    deepseek_v41_stage_cpu::{
+        LayerRangeRuntime, RangeConfig, V41CpuStageExecutor,
+        synthetic::{self, SyntheticWeights},
+    },
+    deepseek_v41_weights::{CheckpointOpenOptions, DeepSeekV41Checkpoint},
+    stage_state::{CodecLimits, StageInbox, StageWorker},
+};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use tokenizers::Tokenizer;
+use tokio_stream::Stream;
+
+pub use psionic_models::stage_state::{StageExecutor, StageMessage};
+
+/// The runtime every stage of a V4.1 group announces.
+pub const RUNTIME: &str = "psionic-v41-stage/1";
+/// The control protocol version, as Pylon's `stage_group::PROTOCOL`.
+pub const PROTOCOL: u32 = 1;
+/// The file that marks a synthetic weights directory.
+pub const SYNTHETIC_FILE: &str = "synthetic.json";
+/// The schema of [`SYNTHETIC_FILE`].
+pub const SYNTHETIC_SCHEMA: &str = "psionic.deepseek_v41.synthetic.v1";
+/// The checkpoint index a real weights directory holds.
+pub const INDEX_FILE: &str = "model.safetensors.index.json";
+
+/// A stage's refusal to start or to continue, in words for the operator.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Refused(pub String);
+
+impl fmt::Display for Refused {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Refused {}
+
+fn refuse<T>(message: impl Into<String>) -> Result<T, Refused> {
+    Err(Refused(message.into()))
+}
+
+/// Which executor runs the stage's layers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Backend {
+    /// The CPU port, `psionic_models::deepseek_v41_stage_cpu`.
+    Cpu,
+}
+
+/// A stage's command line.
+#[derive(Debug, Clone)]
+pub struct Options {
+    pub weights: PathBuf,
+    pub layers: Range<u32>,
+    pub gpu: u32,
+    pub manifest: String,
+    pub embeddings: bool,
+    pub head: bool,
+    pub stage: String,
+    pub generation: u64,
+    pub front: String,
+    pub token: String,
+    pub backend: Backend,
+    pub arithmetic: Option<Arithmetic>,
+    pub max_context: usize,
+    /// Where the stage listens for state from the stage before it.
+    pub listen: String,
+    /// An optional JSON-lines file of what the stage did, for tests.
+    pub events: Option<PathBuf>,
+}
+
+/// Parses `A-B`, end exclusive, as Pylon writes a layer range.
+///
+/// # Errors
+///
+/// Refuses anything else.
+pub fn parse_layers(value: &str) -> Result<Range<u32>, Refused> {
+    let parsed = value
+        .split_once('-')
+        .and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?)));
+    match parsed {
+        Some((a, b)) if a < b && b <= 40 => Ok(a..b),
+        _ => refuse(format!(
+            "--layers {value} is not a layer range like 0-10 within 0-40"
+        )),
+    }
+}
+
+/// Parses an arithmetic name: `f32`, `bf16`, or `bf16-tp8`.
+///
+/// # Errors
+///
+/// Refuses other names.
+pub fn parse_arithmetic(value: &str) -> Result<Arithmetic, Refused> {
+    match value {
+        "f32" => Ok(Arithmetic::Float32),
+        "bf16" => Ok(Arithmetic::ReferenceBf16),
+        "bf16-tp8" => Ok(Arithmetic::ReferenceBf16Tp8),
+        _ => refuse(format!(
+            "--arithmetic {value} is not one of f32, bf16, bf16-tp8"
+        )),
+    }
+}
+
+impl Options {
+    /// Parses a stage's arguments, without the program name.
+    ///
+    /// # Errors
+    ///
+    /// Names the missing or invalid argument.
+    pub fn parse(args: &[String]) -> Result<Self, Refused> {
+        let mut values: BTreeMap<&str, String> = BTreeMap::new();
+        let (mut embeddings, mut head) = (false, false);
+        let mut i = 0;
+        while i < args.len() {
+            let flag = args[i].as_str();
+            match flag {
+                "--embeddings" => embeddings = true,
+                "--head" => head = true,
+                "--weights" | "--layers" | "--gpu" | "--manifest" | "--stage" | "--generation"
+                | "--front" | "--token" | "--backend" | "--arithmetic" | "--max-context"
+                | "--listen" | "--events" => {
+                    let Some(value) = args.get(i + 1) else {
+                        return refuse(format!("{flag} needs a value"));
+                    };
+                    values.insert(flag, value.clone());
+                    i += 1;
+                }
+                other => return refuse(format!("unknown argument {other}")),
+            }
+            i += 1;
+        }
+        let mut take = |flag: &str| {
+            values
+                .remove(flag)
+                .ok_or_else(|| Refused(format!("{flag} is required")))
+        };
+        let weights = PathBuf::from(take("--weights")?);
+        let layers = parse_layers(&take("--layers")?)?;
+        let manifest = take("--manifest")?;
+        let stage = take("--stage")?;
+        let generation = take("--generation")?
+            .parse()
+            .map_err(|_| Refused("--generation must be a number".into()))?;
+        let front = take("--front")?;
+        let token = take("--token")?;
+        let gpu = match values.remove("--gpu") {
+            Some(v) => v
+                .parse()
+                .map_err(|_| Refused("--gpu must be a number".into()))?,
+            None => 0,
+        };
+        let backend = match values.remove("--backend").as_deref() {
+            None | Some("cpu") => Backend::Cpu,
+            Some("cuda") => {
+                return refuse(
+                    "this build has no CUDA stage executor yet; W7 (#12394) adds it; use --backend cpu",
+                );
+            }
+            Some(other) => return refuse(format!("--backend {other} is not cpu")),
+        };
+        let arithmetic = values
+            .remove("--arithmetic")
+            .map(|v| parse_arithmetic(&v))
+            .transpose()?;
+        let max_context = match values.remove("--max-context") {
+            Some(v) => v
+                .parse()
+                .map_err(|_| Refused("--max-context must be a number".into()))?,
+            None => 8192,
+        };
+        Ok(Self {
+            weights,
+            layers,
+            gpu,
+            manifest,
+            embeddings,
+            head,
+            stage,
+            generation,
+            front,
+            token,
+            backend,
+            arithmetic,
+            max_context,
+            listen: values
+                .remove("--listen")
+                .unwrap_or_else(|| "127.0.0.1:0".into()),
+            events: values.remove("--events").map(PathBuf::from),
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Weights, tokenizer, and manifest
+// ---------------------------------------------------------------------------
+
+/// Where a stage's weights come from.
+pub enum Weights {
+    /// The tiny synthetic model, for tests and local groups.
+    Synthetic(SyntheticWeights),
+    /// A V4.1 checkpoint directory.
+    Checkpoint(Box<DeepSeekV41Checkpoint>),
+}
+
+impl Weights {
+    /// The weights as the CPU port reads them.
+    #[must_use]
+    pub fn source(&self) -> &dyn WeightSource {
+        match self {
+            Self::Synthetic(w) => w,
+            Self::Checkpoint(w) => w.as_ref(),
+        }
+    }
+}
+
+/// How the stage turns a conversation into tokens and tokens into text.
+pub enum Vocabulary {
+    /// `tok0`–`tok7`: words in the conversation that name a token become
+    /// that token, and any other word becomes `tok0`.
+    Synthetic(Tokenizer),
+    /// The checkpoint's tokenizer and the V4.1 chat template.
+    V41(Box<DeepSeekV41Protocol>),
+}
+
+impl Vocabulary {
+    fn tokenizer(&self) -> Arc<Tokenizer> {
+        match self {
+            Self::Synthetic(t) => Arc::new(t.clone()),
+            Self::V41(p) => p.tokenizer(),
+        }
+    }
+
+    /// Encodes a conversation (`[{"role", "content"}, ...]`). With no
+    /// conversation, the prompt is the single token `default`.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a malformed conversation or one the template can't render.
+    pub fn encode(&self, prompt: Option<&Value>, default: u32) -> Result<Vec<u32>, Refused> {
+        let Some(prompt) = prompt else {
+            return Ok(vec![default]);
+        };
+        let turns = prompt
+            .as_array()
+            .ok_or_else(|| Refused("the prompt is not a list of messages".into()))?;
+        let mut messages = Vec::with_capacity(turns.len());
+        for turn in turns {
+            let role = turn["role"].as_str().unwrap_or_default();
+            let content = turn["content"]
+                .as_str()
+                .ok_or_else(|| Refused("a message has no text content".into()))?;
+            messages.push((role.to_owned(), content.to_owned()));
+        }
+        match self {
+            Self::Synthetic(tokenizer) => {
+                let mut ids = Vec::new();
+                for (_, content) in &messages {
+                    for word in content.split_whitespace() {
+                        ids.push(tokenizer.token_to_id(word).unwrap_or(0));
+                    }
+                }
+                if ids.is_empty() {
+                    ids.push(default);
+                }
+                Ok(ids)
+            }
+            Self::V41(protocol) => {
+                let mut conversation = Conversation::default();
+                for (role, content) in messages {
+                    conversation.messages.push(match role.as_str() {
+                        "system" => InputMessage::System {
+                            content: Prompt::plain(content),
+                            image_sources: Vec::new(),
+                            tools: None,
+                        },
+                        "user" => InputMessage::User {
+                            content: Prompt::plain(content),
+                            image_sources: Vec::new(),
+                        },
+                        "assistant" => InputMessage::Assistant {
+                            content,
+                            reasoning_content: None,
+                            tool_calls: None,
+                            prefix: false,
+                        },
+                        other => return refuse(format!("unknown message role {other}")),
+                    });
+                }
+                protocol
+                    .encode(&conversation)
+                    .map_err(|e| Refused(format!("the prompt can't be encoded: {e}")))
+            }
+        }
+    }
+}
+
+/// A loaded model: what every stage of the group shares.
+pub struct Model {
+    pub weights: Weights,
+    pub config: TransformerConfig,
+    pub map: Arc<CompressedTokenMap>,
+    pub vocabulary: Vocabulary,
+    /// `sha256:…` of the checkpoint index, or of the synthetic file.
+    pub digest: String,
+    /// Default arithmetic: `f32` for the synthetic model, the oracle's
+    /// `bf16-tp8` for a checkpoint.
+    pub arithmetic: Arithmetic,
+}
+
+fn sha256(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
+}
+
+fn read(path: &Path) -> Result<Vec<u8>, Refused> {
+    std::fs::read(path).map_err(|e| Refused(format!("can't read {}: {e}", path.display())))
+}
+
+/// Writes a synthetic weights directory: [`SYNTHETIC_FILE`] with `name`,
+/// which only changes the digest.
+///
+/// # Errors
+///
+/// Any write error.
+pub fn write_synthetic(dir: &Path, name: &str) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    std::fs::write(
+        dir.join(SYNTHETIC_FILE),
+        serde_json::to_vec(&serde_json::json!({"schema": SYNTHETIC_SCHEMA, "name": name}))?,
+    )
+}
+
+/// Loads the weights and tokenizer in `dir`.
+///
+/// # Errors
+///
+/// Refuses a directory with neither a synthetic file nor a checkpoint, and
+/// any weights or tokenizer the CPU port can't use.
+pub fn load_model(dir: &Path) -> Result<Model, Refused> {
+    let synthetic_file = dir.join(SYNTHETIC_FILE);
+    if synthetic_file.is_file() {
+        let bytes = read(&synthetic_file)?;
+        let value: Value = serde_json::from_slice(&bytes)
+            .map_err(|e| Refused(format!("{} is not JSON: {e}", synthetic_file.display())))?;
+        if value["schema"] != SYNTHETIC_SCHEMA {
+            return refuse(format!(
+                "{} is not a {SYNTHETIC_SCHEMA} file",
+                synthetic_file.display()
+            ));
+        }
+        let model_error = |e: psionic_models::deepseek_v41_cpu::CpuError| Refused(e.to_string());
+        return Ok(Model {
+            weights: Weights::Synthetic(synthetic::weights().map_err(model_error)?),
+            config: synthetic::config().map_err(model_error)?,
+            map: synthetic::map().map_err(model_error)?,
+            vocabulary: Vocabulary::Synthetic(synthetic::tokenizer().map_err(model_error)?),
+            digest: format!("sha256:{}", sha256(&bytes)),
+            arithmetic: Arithmetic::Float32,
+        });
+    }
+    let index = dir.join(INDEX_FILE);
+    if !index.is_file() {
+        return refuse(format!(
+            "the weights are missing: {} has neither {SYNTHETIC_FILE} nor {INDEX_FILE}",
+            dir.display()
+        ));
+    }
+    let digest = format!("sha256:{}", sha256(&read(&index)?));
+    let protocol = DeepSeekV41Protocol::from_checkpoint_files(
+        &read(&dir.join("tokenizer.json"))?,
+        &read(&dir.join("tokenizer_config.json"))?,
+    )
+    .map_err(|e| Refused(format!("the checkpoint's tokenizer: {e}")))?;
+    let options = CheckpointOpenOptions::pinned_flash()
+        .map_err(|e| Refused(format!("the checkpoint pin: {e}")))?;
+    let checkpoint = DeepSeekV41Checkpoint::open(dir, options).map_err(|e| {
+        Refused(format!(
+            "the weights in {} can't be used: {e}",
+            dir.display()
+        ))
+    })?;
+    let config = TransformerConfig::flash().map_err(|e| Refused(e.to_string()))?;
+    let map = CompressedTokenMap::build(&protocol.tokenizer(), config.vocabulary)
+        .map_err(|e| Refused(e.to_string()))?;
+    Ok(Model {
+        weights: Weights::Checkpoint(Box::new(checkpoint)),
+        config,
+        map: Arc::new(map),
+        vocabulary: Vocabulary::V41(Box::new(protocol)),
+        digest,
+        arithmetic: Arithmetic::ReferenceBf16Tp8,
+    })
+}
+
+/// A manifest for a local synthetic group with this split; every stage is on
+/// host `local`, one GPU ordinal each.
+///
+/// # Errors
+///
+/// Refuses a split that doesn't cover layers 0–40 in order.
+pub fn synthetic_manifest(split: &[Range<u32>]) -> Result<V41GroupManifest, Refused> {
+    let last = split.len().saturating_sub(1);
+    let manifest = V41GroupManifest {
+        schema: GROUP_MANIFEST_SCHEMA.into(),
+        repo: "synthetic".into(),
+        revision: "synthetic".into(),
+        index_sha256: String::new(),
+        protocol_version: V41_STAGE_PROTOCOL,
+        memory_source: "synthetic".into(),
+        stages: split
+            .iter()
+            .enumerate()
+            .map(|(i, layers)| V41StageEntry {
+                stage: i as u16,
+                first_layer: layers.start,
+                end_layer: layers.end,
+                embeddings: i == 0,
+                head: i == last,
+                host: "local".into(),
+                gpu: i as u32,
+                gpu_capacity_bytes: 1,
+                gpu_weight_bytes: 0,
+                gpu_runtime_bytes: 0,
+                engram: [1, 14]
+                    .into_iter()
+                    .filter(|l| layers.contains(l))
+                    .map(|layer| V41EngramPlacement {
+                        layer,
+                        location: EngramLocation::HostMemory,
+                        host: "local".into(),
+                        bytes: 0,
+                    })
+                    .collect(),
+            })
+            .collect(),
+    };
+    manifest
+        .validate()
+        .map_err(|e| Refused(format!("the split can't make a manifest: {e}")))?;
+    Ok(manifest)
+}
+
+fn parse_manifest(bytes: &[u8]) -> Option<V41GroupManifest> {
+    let manifest: V41GroupManifest = serde_json::from_slice(bytes).ok()?;
+    (manifest.schema == GROUP_MANIFEST_SCHEMA).then_some(manifest)
+}
+
+/// Finds the group manifest: `spec` is a manifest file, or `sha256:DIGEST`
+/// of a manifest file in the weights directory or its `manifests/` folder.
+///
+/// # Errors
+///
+/// Refuses a missing or invalid manifest, or a digest no file has.
+pub fn load_manifest(spec: &str, weights: &Path) -> Result<V41GroupManifest, Refused> {
+    let manifest = if let Some(digest) = spec.strip_prefix("sha256:") {
+        let mut found = None;
+        for dir in [weights.to_path_buf(), weights.join("manifests")] {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "json")
+                    && let Some(manifest) =
+                        std::fs::read(&path).ok().and_then(|b| parse_manifest(&b))
+                    && manifest.digest_hex() == digest
+                {
+                    found = Some(manifest);
+                }
+            }
+        }
+        found.ok_or_else(|| {
+            Refused(format!(
+                "no group manifest with digest {digest} is in {} or its manifests folder",
+                weights.display()
+            ))
+        })?
+    } else {
+        parse_manifest(&read(Path::new(spec))?)
+            .ok_or_else(|| Refused(format!("{spec} is not a V4.1 group manifest")))?
+    };
+    manifest.validate().map_err(|e| Refused(e.to_string()))?;
+    Ok(manifest)
+}
+
+/// The manifest's entry for this stage's layers, after checking that the
+/// stage's flags agree with it.
+///
+/// # Errors
+///
+/// Refuses a layer range the manifest doesn't have, and embeddings or head
+/// flags that disagree with it.
+pub fn find_stage(
+    manifest: &V41GroupManifest,
+    options: &Options,
+) -> Result<V41StageEntry, Refused> {
+    let Some(entry) = manifest
+        .stages
+        .iter()
+        .find(|s| s.layers() == options.layers)
+    else {
+        return refuse(format!(
+            "layers {}-{} don't match a stage of the manifest, which splits the model as {}",
+            options.layers.start,
+            options.layers.end,
+            manifest
+                .split()
+                .iter()
+                .map(|r| format!("{}-{}", r.start, r.end))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+    };
+    if entry.embeddings != options.embeddings || entry.head != options.head {
+        return refuse(format!(
+            "stage {} of the manifest {} the embeddings and {} the head; the command line disagrees",
+            entry.stage,
+            if entry.embeddings {
+                "holds"
+            } else {
+                "doesn't hold"
+            },
+            if entry.head { "holds" } else { "doesn't hold" },
+        ));
+    }
+    Ok(entry.clone())
+}
+
+/// Builds the CPU executor's worker for one stage.
+///
+/// # Errors
+///
+/// Refuses weights the layer range can't run on.
+pub fn cpu_worker(
+    model: &'static Model,
+    manifest: &V41GroupManifest,
+    entry: &V41StageEntry,
+    arithmetic: Arithmetic,
+    max_context: usize,
+    generation: u64,
+) -> Result<StageWorker<V41CpuStageExecutor<'static>>, Refused> {
+    let runtime = LayerRangeRuntime::new(
+        model.weights.source(),
+        RangeConfig {
+            transformer: model.config.clone(),
+            layers: entry.first_layer as usize..entry.end_layer as usize,
+            max_context,
+            arithmetic,
+        },
+        Arc::clone(&model.map),
+    )
+    .map_err(|e| Refused(format!("layers {:?} can't run: {e}", entry.layers())))?;
+    let executor = V41CpuStageExecutor::new(runtime, entry.stage);
+    let inbox = StageInbox::new(
+        manifest.digest(),
+        generation,
+        executor.contract(),
+        CodecLimits::default(),
+    );
+    Ok(StageWorker::new(inbox, executor))
+}
+
+// ---------------------------------------------------------------------------
+// Sampling and text
+// ---------------------------------------------------------------------------
+
+/// The front's sampling settings for one step.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
+pub struct Sampling {
+    pub temperature: f64,
+    pub top_p: f64,
+    pub seed: u32,
+}
+
+impl Sampling {
+    /// Greedy decoding.
+    pub const GREEDY: Self = Self {
+        temperature: 0.0,
+        top_p: 1.0,
+        seed: 0,
+    };
+}
+
+fn splitmix(mut x: u64) -> u64 {
+    x = x.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    x ^ (x >> 31)
+}
+
+/// Samples one token. Temperature 0 is greedy (the lowest ID among equal
+/// maxima). Otherwise the draw is nucleus sampling at `top_p`, from a
+/// generator seeded by the seed and the step, so a run repeats exactly.
+///
+/// # Errors
+///
+/// Refuses empty or nonfinite logits and settings out of range.
+pub fn sample(logits: &[f32], sampling: Sampling, step: u64) -> Result<u32, Refused> {
+    if !(0.0..=2.0).contains(&sampling.temperature)
+        || !(sampling.top_p > 0.0 && sampling.top_p <= 1.0)
+    {
+        return refuse("sampling settings are out of range");
+    }
+    if sampling.temperature == 0.0 {
+        return argmax(logits).map_err(|e| Refused(e.to_string()));
+    }
+    if logits.is_empty() || logits.iter().any(|x| !x.is_finite()) {
+        return refuse("the logits are empty or not finite");
+    }
+    let max = logits.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+    let mut order: Vec<(usize, f64)> = logits
+        .iter()
+        .enumerate()
+        .map(|(i, x)| {
+            (
+                i,
+                ((f64::from(*x) - f64::from(max)) / sampling.temperature).exp(),
+            )
+        })
+        .collect();
+    let total: f64 = order.iter().map(|(_, p)| p).sum();
+    order.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
+    let mut kept = Vec::new();
+    let mut mass = 0.0;
+    for (i, p) in order {
+        let p = p / total;
+        kept.push((i, p));
+        mass += p;
+        if mass >= sampling.top_p {
+            break;
+        }
+    }
+    let draw = splitmix((u64::from(sampling.seed) << 32) ^ splitmix(step)) >> 11;
+    let mut target = (draw as f64 / (1u64 << 53) as f64) * mass;
+    for (i, p) in &kept {
+        if target < *p {
+            return Ok(*i as u32);
+        }
+        target -= p;
+    }
+    Ok(kept.last().map_or(0, |(i, _)| *i as u32))
+}
+
+/// Turns sampled tokens into text one token at a time. A token that ends
+/// inside a character waits for the next one.
+#[derive(Default)]
+pub struct TextStream {
+    ids: Vec<u32>,
+    emitted: String,
+}
+
+impl TextStream {
+    /// The text the token adds, possibly empty.
+    #[must_use]
+    pub fn push(&mut self, tokenizer: &Tokenizer, token: u32) -> String {
+        self.ids.push(token);
+        let Ok(text) = tokenizer.decode(&self.ids, false) else {
+            return String::new();
+        };
+        if text.ends_with('\u{fffd}') || !text.starts_with(&self.emitted) {
+            return String::new();
+        }
+        let piece = text[self.emitted.len()..].to_owned();
+        self.emitted = text;
+        piece
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Reference: the unsplit model
+// ---------------------------------------------------------------------------
+
+/// What the unsplit model answers.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ReferenceAnswer {
+    pub tokens: Vec<u32>,
+    pub text: String,
+}
+
+/// Runs the unsplit CPU transformer as a group would: the prompt as one
+/// step, then one token per step, up to `steps` tokens or the end of the
+/// answer.
+///
+/// # Errors
+///
+/// Any refusal of the model or the prompt.
+pub fn reference(
+    model: &Model,
+    prompt: Option<&Value>,
+    steps: u64,
+    sampling: Sampling,
+    arithmetic: Arithmetic,
+    max_context: usize,
+) -> Result<ReferenceAnswer, Refused> {
+    let mut transformer = CpuTransformer::new(
+        model.weights.source(),
+        model.config.clone(),
+        Arc::clone(&model.map),
+        max_context,
+        arithmetic,
+    )
+    .map_err(|e| Refused(e.to_string()))?;
+    let tokenizer = model.vocabulary.tokenizer();
+    let mut input = model.vocabulary.encode(prompt, model.config.pad_token)?;
+    let mut text = TextStream::default();
+    let mut answer = ReferenceAnswer {
+        tokens: Vec::new(),
+        text: String::new(),
+    };
+    for step in 0..steps {
+        let logits = transformer
+            .forward_tokens(&input)
+            .map_err(|e| Refused(e.to_string()))?
+            .logits;
+        let token = sample(&logits, sampling, step)?;
+        answer.tokens.push(token);
+        answer.text.push_str(&text.push(&tokenizer, token));
+        if token == model.config.eos_token {
+            break;
+        }
+        input = vec![token];
+    }
+    Ok(answer)
+}
+
+// ---------------------------------------------------------------------------
+// Answer parsing
+// ---------------------------------------------------------------------------
+
+/// Reasoning and final-answer text one token adds, and how the answer
+/// ended on its last token.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AnswerPiece {
+    pub reasoning: String,
+    pub content: String,
+    /// `stop`, `length`, or the parser's other finish reasons.
+    pub finish: Option<String>,
+}
+
+struct Collect;
+
+impl ChunkGenerator for Collect {
+    type Chunk = OutputChunk;
+
+    async fn generate(&mut self, chunk: OutputChunk) -> Vec<OutputChunk> {
+        vec![chunk]
+    }
+}
+
+/// Runs a stream whose items are all ready, as the recipe's processor is
+/// over an in-memory input.
+fn ready_items<S: Stream>(stream: S) -> Result<Vec<S::Item>, Refused> {
+    let mut stream = std::pin::pin!(stream);
+    let mut cx = Context::from_waker(Waker::noop());
+    let mut items = Vec::new();
+    for _ in 0..1_000_000 {
+        match stream.as_mut().poll_next(&mut cx) {
+            Poll::Ready(Some(item)) => items.push(item),
+            Poll::Ready(None) => return Ok(items),
+            Poll::Pending => {}
+        }
+    }
+    refuse("the answer parser didn't finish")
+}
+
+/// The #12372 adapter's streaming output parser over the tokens a last
+/// stage samples. The checkpoint tokenizer decodes each special token as its
+/// own piece, so only the model's `</think>` token ends the reasoning; the
+/// same characters written as text stay text.
+///
+/// Each push parses the whole answer again and returns what it adds, so the
+/// parser's held-back text (a partial character or marker) comes out when
+/// it completes. That is quadratic in the answer's length, and small next to
+/// a model step.
+pub struct AnswerParser {
+    tokenizer: Arc<Tokenizer>,
+    eos: u32,
+    ids: Vec<u32>,
+    reasoning: String,
+    content: String,
+}
+
+impl AnswerParser {
+    /// A parser for a V4.1 answer in thinking mode with no tools, which is
+    /// how stage 0 renders a conversation.
+    #[must_use]
+    pub fn new(tokenizer: Arc<Tokenizer>, eos: u32) -> Self {
+        Self {
+            tokenizer,
+            eos,
+            ids: Vec::new(),
+            reasoning: String::new(),
+            content: String::new(),
+        }
+    }
+
+    /// Adds one sampled token. `last` says the output limit ends the answer
+    /// after it.
+    ///
+    /// # Errors
+    ///
+    /// Refuses tokens the tokenizer can't decode.
+    pub fn push(&mut self, token: u32, last: bool) -> Result<AnswerPiece, Refused> {
+        let end = token == self.eos;
+        if !end {
+            // The end-of-sentence token is the finish, not text.
+            self.ids.push(token);
+        }
+        let mut input = vec![
+            InferenceChunk::Ready {
+                system_fingerprint: None,
+                prompt_usage: PromptUsage::default(),
+            },
+            InferenceChunk::Tokens {
+                token_ids: self.ids.clone(),
+                logprobs: None,
+            },
+        ];
+        if end || last {
+            input.push(InferenceChunk::Finish {
+                finish_reason: if end {
+                    InferenceFinishReason::Stop
+                } else {
+                    InferenceFinishReason::Length
+                },
+            });
+        }
+        let options = deepseek_v41_parsing_options(&Conversation::default(), Vec::new());
+        let stream = StreamProcessor::new(Collect, options)
+            .with_tokenizer(Arc::clone(&self.tokenizer))
+            .into_protocol_stream(tokio_stream::iter(input));
+        let (mut reasoning, mut content, mut finish) = (String::new(), String::new(), None);
+        for chunk in ready_items(stream)? {
+            match chunk.map_err(|e| Refused(format!("the answer can't be parsed: {e}")))? {
+                OutputChunk::Reasoning { content: piece, .. } => reasoning.push_str(&piece),
+                OutputChunk::Content { content: piece, .. } => content.push_str(&piece),
+                // Without a finish in the input, the processor still ends its
+                // stream with one; only the answer's last token has a finish.
+                OutputChunk::Finish { finish_reason, .. } if end || last => {
+                    finish = Some(
+                        match finish_reason {
+                            FinishReason::Stop | FinishReason::StopSequence => "stop",
+                            FinishReason::Length => "length",
+                            FinishReason::ToolCalls => "tool_calls",
+                            FinishReason::ContentFilter => "content_filter",
+                            FinishReason::EndOfStream => "end_of_stream",
+                        }
+                        .to_owned(),
+                    );
+                }
+                _ => {}
+            }
+        }
+        let added = |all: String, before: &mut String| {
+            let piece = all
+                .strip_prefix(before.as_str())
+                .map(str::to_owned)
+                .unwrap_or_default();
+            if all.starts_with(before.as_str()) {
+                *before = all;
+            }
+            piece
+        };
+        Ok(AnswerPiece {
+            reasoning: added(reasoning, &mut self.reasoning),
+            content: added(content, &mut self.content),
+            finish,
+        })
+    }
+}

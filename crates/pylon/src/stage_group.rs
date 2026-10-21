@@ -7,7 +7,10 @@
 //! settings, and the token stream. Stage-state messages (#12396,
 //! `psionic_models::stage_state`) travel from stage to stage; each stage
 //! acknowledges its step to the front, and the last stage samples with the
-//! front's settings and returns only the token id.
+//! front's settings and returns only the token id. A stage that takes state
+//! announces a `listen` address; the front passes it to the stage before as
+//! `next` with each step, and passes the previous token to the first stage as
+//! `token`.
 //!
 //! - **Readiness.** The group is ready only when every stage is running,
 //!   has announced the expected weights digest, runtime, protocol version,
@@ -96,6 +99,26 @@ pub struct StepAck {
     /// with this token.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub end: bool,
+    /// The reasoning text this token adds, when the last stage parses the
+    /// answer with the model's output parser.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
+    /// The final-answer text this token adds, parsed the same way. A
+    /// literal `</think>` in the text stays text; only the model's special
+    /// token ends the reasoning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    /// How the answer ended, on its last token: `stop` for the end of the
+    /// answer, `length` when the front's output limit cut it off.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish: Option<String>,
+}
+
+/// Parsed answer text from one token.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AnswerPiece {
+    pub reasoning: String,
+    pub content: String,
 }
 
 impl StepIdentity for StepAck {
@@ -466,6 +489,8 @@ pub struct Done {
     pub request: String,
     pub generation: u64,
     pub tokens: u64,
+    /// How the last stage said the answer ended, when it parses answers.
+    pub finish: Option<String>,
 }
 
 /// One admitted request. Dropping `tokens` cancels it.
@@ -477,6 +502,9 @@ pub struct Run {
     pub tokens: tokio::sync::mpsc::UnboundedReceiver<u32>,
     /// Each token's text, in order, when the last stage sends it.
     pub text: tokio::sync::mpsc::UnboundedReceiver<String>,
+    /// Each token's reasoning and final-answer text, when the last stage
+    /// parses the answer.
+    pub answer: tokio::sync::mpsc::UnboundedReceiver<AnswerPiece>,
     pub done: tokio::sync::oneshot::Receiver<Result<Done, Failure>>,
 }
 
@@ -502,6 +530,10 @@ mod runtime {
         weights: String,
         runtime: String,
         protocol: u32,
+        /// Where the stage takes state from the stage before it. The front
+        /// passes it to that stage with each step.
+        #[serde(default)]
+        listen: Option<String>,
     }
 
     #[derive(Debug, Clone, Deserialize)]
@@ -745,6 +777,8 @@ mod runtime {
         broken: Option<String>,
         exited: Option<(Instant, String)>,
         replacements: u32,
+        /// The address the joined instance announced for incoming state.
+        listen: Option<String>,
     }
 
     impl Slot {
@@ -758,6 +792,7 @@ mod runtime {
             self.checked = false;
             self.check = None;
             self.ping = None;
+            self.listen = None;
         }
     }
 
@@ -779,8 +814,11 @@ mod runtime {
         steps: u64,
         sampling: Sampling,
         delivered: u64,
+        /// The last token delivered, which the first stage embeds next.
+        last_token: Option<u32>,
         tokens: mpsc::UnboundedSender<u32>,
         text: mpsc::UnboundedSender<String>,
+        answer: mpsc::UnboundedSender<AnswerPiece>,
         done: Option<oneshot::Sender<Result<Done, Failure>>>,
         phase: Phase,
     }
@@ -826,6 +864,7 @@ mod runtime {
                     broken: None,
                     exited: None,
                     replacements: 0,
+                    listen: None,
                 })
                 .collect();
             let stages = u16::try_from(config.stages.len()).expect("at most 16 stages");
@@ -951,6 +990,7 @@ mod runtime {
                     let id = self.next_request.to_string();
                     let (tokens, token_rx) = mpsc::unbounded_channel();
                     let (text, text_rx) = mpsc::unbounded_channel();
+                    let (answer, answer_rx) = mpsc::unbounded_channel();
                     let (done, done_rx) = oneshot::channel();
                     self.fence.begin(&id, 1);
                     self.active = Some(Active {
@@ -960,8 +1000,10 @@ mod runtime {
                         steps,
                         sampling,
                         delivered: 0,
+                        last_token: None,
                         tokens,
                         text,
+                        answer,
                         done: Some(done),
                         phase: Phase::Running {
                             sent: Instant::now(),
@@ -972,6 +1014,7 @@ mod runtime {
                         generation: self.fence.generation(),
                         tokens: token_rx,
                         text: text_rx,
+                        answer: answer_rx,
                         done: done_rx,
                     }));
                     self.send_step(0, 0).await;
@@ -1015,6 +1058,19 @@ mod runtime {
             if index + 1 == self.slots.len() {
                 // The last stage samples with the front's settings.
                 message["sampling"] = serde_json::json!(active.sampling);
+                if step + 1 >= active.steps {
+                    // The output limit ends the answer after this token.
+                    message["final"] = serde_json::json!(true);
+                }
+            } else if let Some(next) = &self.slots[index + 1].listen {
+                // Where this stage sends its state for the next one.
+                message["next"] = serde_json::json!(next);
+            }
+            if index == 0
+                && let Some(token) = active.last_token
+            {
+                // The first stage embeds the token the last stage sampled.
+                message["token"] = serde_json::json!(token);
             }
             if index == 0
                 && step == 0
@@ -1119,6 +1175,7 @@ mod runtime {
             }
             let slot = &mut self.slots[index];
             slot.joined = true;
+            slot.listen = hello.listen;
             slot.checked = false;
             self.nonce += 1;
             let (nonce, input) = (self.nonce, self.nonce.wrapping_mul(7919) % 1_000_003);
@@ -1189,7 +1246,7 @@ mod runtime {
                         Ok(Accepted::Next(next)) => self.send_step(next, ack.step).await,
                         Ok(Accepted::StepDone(step)) => {
                             let token = ack.token.unwrap_or_default();
-                            self.deliver(step, token, ack.text, ack.end).await;
+                            self.deliver(step, token, ack).await;
                         }
                         Err(refusal) => self.refuse(format!("stage {name}: {refusal}")),
                     }
@@ -1213,17 +1270,25 @@ mod runtime {
             }
         }
 
-        async fn deliver(&mut self, step: u64, token: u32, text: Option<String>, end: bool) {
+        async fn deliver(&mut self, step: u64, token: u32, ack: StepAck) {
             let Some(active) = &mut self.active else {
                 return;
             };
+            let end = ack.end;
             if active.tokens.send(token).is_err() {
                 return self.cancel().await;
             }
-            if let Some(text) = text {
+            if let Some(text) = ack.text {
                 let _ = active.text.send(text);
             }
+            if ack.reasoning.is_some() || ack.content.is_some() {
+                let _ = active.answer.send(AnswerPiece {
+                    reasoning: ack.reasoning.unwrap_or_default(),
+                    content: ack.content.unwrap_or_default(),
+                });
+            }
             active.delivered += 1;
+            active.last_token = Some(token);
             if active.delivered < active.steps && !end {
                 return self.send_step(0, step + 1).await;
             }
@@ -1231,6 +1296,7 @@ mod runtime {
                 request: active.id.clone(),
                 generation: self.fence.generation(),
                 tokens: active.delivered,
+                finish: ack.finish,
             };
             let reply = active.done.take();
             self.active = None;
@@ -1581,6 +1647,9 @@ mod tests {
             token: None,
             text: None,
             end: false,
+            reasoning: None,
+            content: None,
+            finish: None,
         }
     }
 

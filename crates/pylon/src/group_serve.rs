@@ -77,8 +77,9 @@ impl Engine for GroupEngine {
                 .generate_prompt(prompt, u64::from(steps), self.sampling)
                 .await?;
             let (mut ids, mut text) = (Vec::new(), String::new());
-            let (mut tokens_open, mut text_open) = (true, true);
-            while tokens_open || text_open {
+            let (mut reasoning, mut content, mut parsed) = (String::new(), String::new(), false);
+            let (mut tokens_open, mut text_open, mut answer_open) = (true, true, true);
+            while tokens_open || text_open || answer_open {
                 tokio::select! {
                     token = run.tokens.recv(), if tokens_open => match token {
                         Some(token) => ids.push(token),
@@ -88,6 +89,14 @@ impl Engine for GroupEngine {
                         Some(piece) => text.push_str(&piece),
                         None => text_open = false,
                     },
+                    piece = run.answer.recv(), if answer_open => match piece {
+                        Some(piece) => {
+                            parsed = true;
+                            reasoning.push_str(&piece.reasoning);
+                            content.push_str(&piece.content);
+                        }
+                        None => answer_open = false,
+                    },
                 }
             }
             let done = run
@@ -95,7 +104,29 @@ impl Engine for GroupEngine {
                 .await
                 .map_err(|_| "the stage group stopped".to_string())?
                 .map_err(|failure| failure.to_string())?;
-            if text.is_empty() {
+            // A last stage that parses the answer (W11's V4.1 worker) splits
+            // reasoning from the final answer at the model's own `</think>`
+            // token and says how the answer ended.
+            let reported = match done.finish.as_deref() {
+                None => None,
+                Some("stop") => Some(Finish::Stop),
+                Some("length") => Some(Finish::Length),
+                Some(other) => {
+                    return Err(format!(
+                        "the model ended its answer with {other}, not a final text answer"
+                    ));
+                }
+            };
+            if parsed || reported.is_some() {
+                if reported == Some(Finish::Stop) && content.trim().is_empty() {
+                    return Err(if reasoning.is_empty() {
+                        "model returned an empty answer".into()
+                    } else {
+                        "model returned reasoning without a final answer".into()
+                    });
+                }
+                text = content;
+            } else if text.is_empty() {
                 // Stages that decode nothing answer with the token ids.
                 text = ids.iter().map(u32::to_string).collect::<Vec<_>>().join(" ");
             }
@@ -106,7 +137,9 @@ impl Engine for GroupEngine {
                 model: self.model.clone(),
                 // Fewer tokens than asked for means the last stage sampled
                 // the end of the answer.
-                finish: if done.tokens < u64::from(steps) {
+                finish: if let Some(finish) = reported {
+                    finish
+                } else if done.tokens < u64::from(steps) {
                     Finish::Stop
                 } else {
                     Finish::Length
