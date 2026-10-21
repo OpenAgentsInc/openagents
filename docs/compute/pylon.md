@@ -278,15 +278,19 @@ failed while both Gemma and Clef remained loaded.
 The separate local HTTP check keeps both live engines running by placing
 four transformer blocks on GPU and the output weights in RAM:
 `llama-server --n-gpu-layers 5 --override-tensor '^output[.]weight$=CPU'`.
-With a context of 256 tokens, 16 threads, a batch of 64 tokens, and a
-microbatch of 32 tokens, Nemotron used 83.0 GiB resident RAM and 4.13 GiB
-process VRAM after its reply. Clef passed
-all eight self-check items. Nemotron returned `4` in 42.2 s, followed by an
-incomplete role marker at the output ceiling of eight tokens; the strict format
-check failed. [#12348](https://github.com/OpenAgentsInc/openagents/issues/12348)
-tracks the clean reply check with a budget of 16 tokens. The measurements retain load, placement,
-raw output, and quiet receipts; both live engine PIDs, restart counts, and
-settings stayed unchanged, and `verify` passed.
+The [shared answer check](https://github.com/OpenAgentsInc/openagents/issues/12348)
+used a context of 256 tokens, 16 threads, a batch of 64 tokens, a microbatch
+of 32 tokens, and `--no-warmup`. With a budget of 16 output tokens, Nemotron
+returned only `4` in 42.3 s with a normal stop, while Clef passed all eight
+self-check items. Nemotron used 83.0 GiB resident RAM and 4.13 GiB process
+VRAM after its reply. The budget lets the role-marker stop complete.
+
+Quiet was held for 154.6 s (294.2 s including acquisition wait), requested
+with no queued builds. Three existing Cargo processes remained; the start
+load averages were 11.28/9.74/10.39. The measurements retain raw replies,
+load, placement, and quiet receipts. Both live engine PIDs, restart counts,
+and settings stayed unchanged, Gemma remained the default, and `verify`
+passed.
 
 The original eight-model benchmark uses 2,048 output tokens
 and a 128-token throughput probe; the large Nemotron profile uses a
