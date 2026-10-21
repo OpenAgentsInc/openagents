@@ -8,8 +8,12 @@
 #                         tool's --self-test on one GPU: the FP8 and FP4 TileLang kernels
 #   oracle_vm.sh fetch    copy the reference sources and the converted TP8 files from the bucket
 #   oracle_vm.sh dump     run the four prompts on eight GPUs and upload the dumps
+#   oracle_vm.sh capture  rerun the cases with attention diagnostics and rank partials
+#                         (#12404) and upload them beside the original dump
 #
-# Environment: SCRIPTS (this directory on the VM), DUMP_TOOL_COMMIT (recorded in the report).
+# Environment: SCRIPTS (this directory on the VM), DUMP_TOOL_COMMIT (recorded in the report);
+# for capture, CAPTURE (bucket folder under the oracle prefix), EXTRA_ROWS and ONLY
+# (passed to oracle_dump.py).
 set -euo pipefail
 
 REPO=deepseek-ai/DeepSeek-V4.1-Flash-1017
@@ -115,6 +119,20 @@ dump() {
   gcloud storage rsync -r $OUT/fixtures $ORACLE/fixtures
   gcloud storage rsync -r -x '^patched/__pycache__/' $OUT/dump $ORACLE/dump
   log "dump done"
+}
+
+capture() {
+  : "${CAPTURE:?set CAPTURE, a folder name under $ORACLE}"
+  log "capture $CAPTURE"
+  # Record which NCCL algorithm and protocol each collective used; logging changes no arithmetic.
+  mkdir -p $OUT/$CAPTURE
+  NCCL_DEBUG=INFO NCCL_DEBUG_SUBSYS=INIT,TUNING,NVLS,COLL NCCL_DEBUG_FILE=$OUT/$CAPTURE/nccl.%h.%p.log \
+    DUMP_TOOL_COMMIT=${DUMP_TOOL_COMMIT:-} $VENV/bin/torchrun --nproc-per-node 8 $SCRIPTS/oracle_dump.py \
+    --ckpt $TP8 --reference $REF --out $OUT/$CAPTURE --upload $ORACLE/$CAPTURE \
+    --attention-diagnostics --captures-only --only "${ONLY:-}" --extra-rows "${EXTRA_ROWS:-}"
+  $PY -I $SCRIPTS/oracle_manifest.py --dump $OUT/$CAPTURE --out $OUT/$CAPTURE/manifest.json --fixtures $OUT/$CAPTURE-fixtures
+  gcloud storage rsync -r -x '^patched/__pycache__/' $OUT/$CAPTURE $ORACLE/$CAPTURE
+  log "capture done"
 }
 
 "$@"

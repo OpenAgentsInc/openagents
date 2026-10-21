@@ -137,6 +137,22 @@ class CloudBudgetTests(unittest.TestCase):
         self.assertEqual(self.calls(), [])
         self.assertFalse(self.ledger.exists())
 
+    def test_flex_start_queues_and_counts_the_queue_time(self):
+        r = self.create("oa-dsv41-flex", "--flex-start", "--queue-hours", "2", hours="3", spot=False)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        cmd = self.creates()[0]
+        self.assertIn("--provisioning-model=FLEX_START", cmd)
+        self.assertIn("--request-valid-for-duration=7200s", cmd)
+        self.assertIn("--reservation-affinity=none", cmd)
+        self.assertIn("--max-run-duration=10800s", cmd)
+        start = [x for x in self.records() if x.get("event") == "start"][-1]
+        self.assertEqual(start["provisioning"], "flex-start")
+        self.assertEqual(start["price_per_hour"], 64.44)
+        self.assertEqual(start["expires_epoch"], T0 + 5 * 3600)
+        refused = self.create("oa-dsv41-flex-2", "--flex-start", "--spot", hours="1", spot=False)
+        self.assertNotEqual(refused.returncode, 0)
+        self.assertIn("choose one", refused.stderr)
+
     def test_create_records_start_labels_the_run_and_prints_the_vm(self):
         r = self.create("oa-dsv41-oracle-1", "--on-expiry", "stop")
         self.assertEqual(r.returncode, 0, r.stderr)

@@ -696,6 +696,8 @@ def main() -> int:
                         help="capture query, KV, and sparse output boundaries on every rank")
     parser.add_argument("--captures-only", action="store_true",
                         help="omit completion-to-EOS and the separate chunked mode")
+    parser.add_argument("--extra-rows", default="",
+                        help="diagnostic positions captured beside the standard labels, ID:A-B,C;ID2:D")
     parser.add_argument("--upload", default="", help="gs:// prefix to copy each finished prompt to")
     opts = parser.parse_args()
 
@@ -779,6 +781,10 @@ def main() -> int:
     if opts.captures_only:
         for case in cases:
             case.update(complete=False, chunked=False)
+    for pid, rows in parse_extra_rows(opts.extra_rows).items():
+        for case in cases:
+            if case["id"] == pid:
+                case["extra_rows"] = rows
 
     for case in cases:
         pid = case["id"]
@@ -798,12 +804,30 @@ def main() -> int:
     return 0
 
 
-def labels_for(L: int, n_gen: int) -> list[tuple[str, int]]:
-    """Labeled positions in the fixed sequence: (label, position)."""
+def labels_for(L: int, n_gen: int, extra=()) -> list[tuple[str, int]]:
+    """Labeled positions in the fixed sequence: (label, position). `extra` adds
+    diagnostic positions: `pN` inside the prompt, `gK` from L on (the names the
+    CPU qualifier already gives every generated position)."""
     out = [("first", 0), ("last", L - 1)]
     for k in sorted({1, 2, n_gen}):
         out.append((f"g{k}", L + k - 1))
+    taken = {pos for _, pos in out}
+    for pos in sorted(set(extra)):
+        if pos in taken or not 0 <= pos < L + n_gen:
+            continue
+        out.append((f"p{pos}" if pos < L else f"g{pos - L + 1}", pos))
     return out
+
+
+def parse_extra_rows(spec: str) -> dict[str, list[int]]:
+    """`ID:A-B,C;ID2:D` -> {ID: [A..B, C], ID2: [D]}."""
+    rows: dict[str, list[int]] = {}
+    for part in filter(None, spec.split(";")):
+        pid, _, ranges = part.partition(":")
+        for r in filter(None, ranges.split(",")):
+            lo, _, hi = r.partition("-")
+            rows.setdefault(pid, []).extend(range(int(lo), int(hi or lo) + 1))
+    return rows
 
 
 def run_case(model, rec, case, tokenizer, args, generate):
@@ -813,8 +837,8 @@ def run_case(model, rec, case, tokenizer, args, generate):
     L = len(tokens)
     assert L + COMPLETE_CAP + 2 <= args.max_seq_len or not case.get("complete")
     assert L + n_gen + 1 <= args.max_seq_len
-    labeled = labels_for(L, n_gen)
-    gen_label = {pos - L + 1: label for label, pos in labeled if label.startswith("g")}
+    labeled = labels_for(L, n_gen, case.get("extra_rows", ()))
+    gen_label = {pos - L + 1: label for label, pos in labeled if pos >= L - 1 and label != "last"}
     result = {"id": pid, "thinking_mode": case.get("thinking_mode"), "prompt_tokens": L, "prompt_token_ids": tokens,
               "prompt_text_sha256": sha256(case.get("prompt", "").encode()), "n_gen": n_gen,
               "labels": dict(labeled)}
@@ -834,7 +858,7 @@ def run_case(model, rec, case, tokenizer, args, generate):
     while True:
         capture = step <= n_gen
         if step == 0:
-            rows = [("first", 0), ("last", L - 1)]
+            rows = [(label, pos) for label, pos in labeled if pos < L]
         else:
             rows = [(gen_label[step], 0)] if step in gen_label else []
         rec.begin(pid, "decode", step, rows if capture else [], tracking=capture)

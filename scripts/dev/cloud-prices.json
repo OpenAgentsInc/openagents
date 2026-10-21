@@ -5,15 +5,17 @@
   "notes": "List prices in us-central1 (Iowa or Americas SKUs). Sums use the guest vCPU, memory in GiB, and GPU counts that `gcloud compute machine-types describe` reports. A machine type missing here is refused. Re-check spot prices on the day you rent and update this file with the new date.",
   "sources": {
     "catalog-2026-10-20": "Cloud Billing Catalog API, service 6F81-5844-456A (Compute Engine), us-central1, read 2026-10-20",
-    "muse-2026-10-15": "docs/research/muse/2026-10-15-muse-spark-serving.md, section 3, Cloud Billing Catalog read 2026-10-15"
+    "muse-2026-10-15": "docs/research/muse/2026-10-15-muse-spark-serving.md, section 3, Cloud Billing Catalog read 2026-10-15",
+    "catalog-2026-10-21": "Cloud Billing Catalog API, service 6F81-5844-456A (Compute Engine), us-central1, read 2026-10-21"
   },
   "machines": {
     "a4-highgpu-8g": {
       "standard": 128.88,
       "spot": 39.6336,
-      "math": "8 B200 slices (VM included): 8 x 16.11 on demand, 8 x 4.9542 spot",
+      "math": "8 B200 slices (VM included): 8 x 16.11 on demand, 8 x 4.9542 spot; flex-start (DWS Defined Duration) 8 x 8.055, catalog-2026-10-21",
       "source": "catalog-2026-10-20",
-      "also": "muse-2026-10-15"
+      "also": "muse-2026-10-15",
+      "flex": 64.44
     },
     "g4-standard-384": {
       "standard": 35.9994,

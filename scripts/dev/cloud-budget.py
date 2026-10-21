@@ -90,7 +90,8 @@ DEFAULT_PROJECT = "openagentsgemini"
 PROTECTED = re.compile(r"^(clef-decisions-h100|clef-decisions-a100|oa-pylon-gpu-1|oa-att-.*)$")
 # Flags the guard sets itself; passing them as extra flags is refused.
 OWNED_FLAGS = ("--labels", "--max-run-duration", "--termination-time", "--instance-termination-action",
-               "--provisioning-model", "--preemptible", "--machine-type", "--zone", "--project")
+               "--provisioning-model", "--preemptible", "--machine-type", "--zone", "--project",
+               "--request-valid-for-duration", "--reservation-affinity")
 MIN_BILLED_SECONDS = 60  # Compute Engine bills per second with a one-minute minimum.
 LABEL_VALUE = re.compile(r"^[a-z0-9_-]{0,63}$")
 LABEL_KEY = re.compile(r"^[a-z][a-z0-9_-]{0,62}$")
@@ -152,11 +153,15 @@ def load_prices() -> dict:
     return json.loads(PRICES.read_text())
 
 
-def price_for(prices: dict, machine_type: str, spot: bool) -> tuple[float, str]:
+KIND_NAMES = {"spot": "spot", "standard": "on-demand", "flex": "flex-start"}
+
+
+def price_for(prices: dict, machine_type: str, spot: bool | str) -> tuple[float, str]:
+    """`spot` is True for spot, False for on demand, or a kind name: spot, standard, flex."""
+    kind = spot if isinstance(spot, str) else ("spot" if spot else "standard")
     entry = prices.get("machines", {}).get(machine_type)
-    kind = "spot" if spot else "standard"
     if not entry or not isinstance(entry.get(kind), (int, float)) or entry[kind] <= 0:
-        raise Refused(f"no {'spot' if spot else 'on-demand'} price for {machine_type} in {PRICES}; "
+        raise Refused(f"no {KIND_NAMES[kind]} price for {machine_type} in {PRICES}; "
                       "add it with its source and date before renting")
     source = entry.get("source", "")
     return float(entry[kind]), prices.get("sources", {}).get(source, source)
@@ -450,7 +455,16 @@ def build_command(name: str, a: argparse.Namespace, labels: dict[str, str], seco
            f"--instance-termination-action={a.on_expiry.upper()}"]
     if a.spot:
         cmd.append("--provisioning-model=SPOT")
+    if getattr(a, "flex_start", False):
+        # Dynamic Workload Scheduler: the request waits up to the queue time for capacity,
+        # then the machine runs at most its run duration.
+        cmd += ["--provisioning-model=FLEX_START", "--reservation-affinity=none",
+                f"--request-valid-for-duration={queue_seconds(a)}s"]
     return cmd + list(a.extra)
+
+
+def queue_seconds(a: argparse.Namespace) -> int:
+    return max(60, math.ceil(round(a.queue_hours * 3600) / 60) * 60) if getattr(a, "flex_start", False) else 0
 
 
 def cmd_create(a: argparse.Namespace) -> int:
@@ -462,10 +476,21 @@ def cmd_create(a: argparse.Namespace) -> int:
     if not (a.hours > 0):
         raise Refused("--hours must be more than zero")
     check_extra(a.extra)
+    flex = getattr(a, "flex_start", False)
+    if flex and a.spot:
+        raise Refused("--spot and --flex-start are separate provisioning models; choose one")
+    if flex and a.on_expiry != "delete":
+        raise Refused("a flex-start machine is deleted at the end of its run; --on-expiry stop is refused")
+    if flex and not (a.queue_hours > 0):
+        raise Refused("--queue-hours must be more than zero")
+    kind = "flex" if flex else ("spot" if a.spot else "standard")
     prices = load_prices()
-    price, source = price_for(prices, a.machine_type, a.spot)
+    price, source = price_for(prices, a.machine_type, kind)
     seconds = max(60, math.ceil(round(a.hours * 3600) / 60) * 60)
-    hours = seconds / 3600
+    # A queued flex-start request may start as late as the end of its queue time, so it counts
+    # from now until its queue time plus its run; sync settles it at the actual deletion.
+    booked = seconds + queue_seconds(a)
+    hours = booked / 3600
     try:
         rid, rhost = run_labels()
     except Refused:
@@ -497,14 +522,15 @@ def cmd_create(a: argparse.Namespace) -> int:
         at = now()
         reserve = ledger_reserve(records)
         verdict = admit(ms, cap, price, hours, at, reserve)
-        expires = at + seconds
+        expires = at + booked
         labels = {"run-id": rid, "run-host": rhost, "budget": a.budget,
                   "expires-at": label_time(expires), **extra_labels}
         command = build_command(name, a, labels, seconds)
         record = {
             "event": "start", "id": uuid.uuid4().hex, "budget": a.budget, "run_id": rid,
             "vm": name, "zone": a.zone, "project": a.project, "machine_type": a.machine_type,
-            "provisioning": "spot" if a.spot else "standard", "price_per_hour": price,
+            "provisioning": {"flex": "flex-start", "standard": "standard"}.get(kind, kind),
+            "price_per_hour": price,
             "price_source": source, "hours_requested": hours, "on_expiry": a.on_expiry,
             "start_epoch": at, "start": iso(at), "expires_epoch": expires, "expires_at": iso(expires),
         }
@@ -626,10 +652,11 @@ def adopt(budget: str, project: str, quiet: bool) -> int:
             if any(m["vm"] == name and m["zone"] == zone and same_machine(m, created) for m in live):
                 continue
             mtype = str(inst.get("machineType", "")).rsplit("/", 1)[-1]
-            spot = (inst.get("scheduling") or {}).get("provisioningModel") == "SPOT"
+            model = (inst.get("scheduling") or {}).get("provisioningModel")
+            spot = model == "SPOT"
             labels = inst.get("labels") or {}
             try:
-                price, source = price_for(prices, mtype, spot)
+                price, source = price_for(prices, mtype, "flex" if model == "FLEX_START" else spot)
             except Refused:
                 price = max(float(e.get("standard") or 0) for e in prices["machines"].values())
                 source = f"no price for {mtype}; counted at the highest listed price"
@@ -637,7 +664,8 @@ def adopt(budget: str, project: str, quiet: bool) -> int:
             expires = label_epoch(labels.get("expires-at", "")) or at + ADOPT_HOURS * 3600
             record = {"event": "start", "id": uuid.uuid4().hex, "budget": budget, "adopted": True,
                       "run_id": labels.get("run-id", ""), "vm": name, "zone": zone, "project": project,
-                      "machine_type": mtype, "provisioning": "spot" if spot else "standard",
+                      "machine_type": mtype,
+                      "provisioning": "flex-start" if model == "FLEX_START" else ("spot" if spot else "standard"),
                       "price_per_hour": price, "price_source": source,
                       "hours_requested": round((expires - created) / 3600, 6), "on_expiry": "unknown",
                       "start_epoch": created, "start": iso(created), "expires_epoch": expires,
@@ -814,6 +842,10 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--zone", required=True)
     c.add_argument("--hours", type=float, required=True)
     c.add_argument("--spot", action="store_true")
+    c.add_argument("--flex-start", action="store_true",
+                   help="queue for capacity through the Dynamic Workload Scheduler (FLEX_START)")
+    c.add_argument("--queue-hours", type=float, default=2.0,
+                   help="flex-start: how long the request may wait for capacity (default 2)")
     c.add_argument("--on-expiry", choices=["delete", "stop"], default="delete")
     c.add_argument("--label", action="append", default=[])
     c.add_argument("--project", default=os.environ.get("OA_PROJECT", DEFAULT_PROJECT))
