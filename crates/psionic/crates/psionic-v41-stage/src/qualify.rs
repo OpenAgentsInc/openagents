@@ -418,9 +418,8 @@ impl Group {
                 .args(&args)
                 .stdout(Stdio::null())
                 .stderr(Stdio::from(log));
-            if opts.backend == Backend::Cuda {
-                command.env("CUDA_VISIBLE_DEVICES", gpu.to_string());
-            }
+            // The stage narrows CUDA_VISIBLE_DEVICES to `--gpu` itself,
+            // counting within any mask this process inherited (#12407).
             children.push(
                 command
                     .spawn()
