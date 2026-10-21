@@ -485,6 +485,12 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12438: on staging and then production, walk through the Lagrange 2 arch
+  on `/`. Confirm three things: the load screen shows with its bar moving,
+  the zone panel and `A` turning work, and there is no Pylon overlay. Then
+  press **The Grid** and confirm the overlay comes back.
+  `scripts/dev/check-grid-home-lagrange.py` under `openagents browser run`
+  does this.
 - #12417: on the next `web.sh stage`, confirm the web image builds in about
   15 minutes or less, its log prints `oa-module-cache NAME: reused` for
   modules the commit didn't touch, and the staging smoke passes. Then
