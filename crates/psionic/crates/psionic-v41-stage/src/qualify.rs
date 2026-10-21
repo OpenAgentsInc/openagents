@@ -849,6 +849,109 @@ fn router_case(
     }))
 }
 
+/// The runtime's words of one site for one token of a step.
+fn site_row(
+    record: &Path,
+    files: &[String],
+    layer: usize,
+    site: &str,
+    token: usize,
+    tokens: usize,
+) -> Result<Option<Vec<u32>>, Refused> {
+    let Some(file) = files
+        .iter()
+        .find(|f| f.ends_with(&format!(".L{layer}.{site}.u32")))
+    else {
+        return Ok(None);
+    };
+    let words = read_u32(&record.join(file))?;
+    let per = words.len() / tokens.max(1);
+    Ok(words
+        .get(token * per..(token + 1) * per)
+        .map(<[u32]>::to_vec))
+}
+
+/// Exact checks at the oracle's captured positions: Engram hash IDs and
+/// gathered rows on layers 1 and 14. Also reports, without a limit, how far
+/// the router's input has drifted from the oracle's on each captured layer.
+fn exact_case(
+    oracle: &mut OracleDump,
+    run: &Value,
+    case: &str,
+    record: &Path,
+    rec: &Recorded,
+) -> Result<Value, Refused> {
+    let prompt = run["prompt_tokens"].as_u64().unwrap_or_default() as usize;
+    let mut checked = 0usize;
+    let mut failed = Vec::new();
+    let mut drift = Vec::new();
+    let labels = run["labels"].as_object().cloned().unwrap_or_default();
+    for (label, position) in &labels {
+        let Some(position) = position.as_u64().map(|p| p as usize) else {
+            continue;
+        };
+        let (step, token, tokens) = if position < prompt {
+            (0, position, prompt)
+        } else {
+            (position - prompt + 1, 0, 1)
+        };
+        let Some(files) = rec.records.get(step) else {
+            continue;
+        };
+        for layer in [1usize, 14] {
+            let ids_name = format!("{case}.decode.{label}.layers.{layer}.engram.hash_ids");
+            if oracle.has(&ids_name) {
+                let reference = oracle.integers(&ids_name)?;
+                let got = site_row(record, files, layer, "EngramIds", token, tokens)?.map(|w| {
+                    w.chunks_exact(2)
+                        .map(|p| (u64::from(p[0]) | (u64::from(p[1]) << 32)) as i64)
+                        .collect::<Vec<i64>>()
+                });
+                checked += 1;
+                if got.as_ref() != Some(&reference) {
+                    failed.push(format!("{label} layer {layer} Engram hash IDs"));
+                }
+            }
+            let rows_name = format!("{case}.decode.{label}.layers.{layer}.engram.rows");
+            if oracle.has(&rows_name) {
+                let reference = oracle.floats(&rows_name)?;
+                let got = site_row(record, files, layer, "EngramRows", token, tokens)?
+                    .map(|w| w.into_iter().map(f32::from_bits).collect::<Vec<f32>>());
+                checked += 1;
+                if got.as_ref() != Some(&reference) {
+                    failed.push(format!("{label} layer {layer} Engram rows"));
+                }
+            }
+        }
+        for layer in 0..LAYERS {
+            let name = format!("{case}.decode.{label}.layers.{layer}.ffn.gate.in");
+            if !oracle.has(&name) {
+                continue;
+            }
+            let reference = oracle.floats(&name)?;
+            if let Some(got) = site_row(record, files, layer, "FfnIn", token, tokens)? {
+                let got: Vec<f32> = got.into_iter().map(f32::from_bits).collect();
+                let max = reference
+                    .iter()
+                    .zip(&got)
+                    .map(|(a, b)| f64::from((a - b).abs()))
+                    .fold(0.0, f64::max);
+                drift.push(json!({"label": label, "layer": layer, "max_abs": max,
+                    "equal_values": reference.iter().zip(&got).filter(|(a, b)| a == b).count(),
+                    "values": reference.len()}));
+            }
+        }
+    }
+    Ok(json!({
+        "checked": checked,
+        "failed": failed,
+        // An oracle without captured positions (the synthetic tests) has
+        // nothing to check; the real oracle's captured rows must be checked.
+        "passed": failed.is_empty() && (checked > 0 || labels.is_empty()),
+        "router_input_drift": drift,
+    }))
+}
+
 fn sha256_file(path: &Path) -> String {
     std::fs::read(path)
         .map(|b| hex::encode(Sha256::digest(b)))
@@ -947,17 +1050,20 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
                 &next_tokens,
             )?);
         }
-        let router = if opts.observe {
-            Some(router_case(
-                &policy,
-                &mut oracle,
-                &run,
-                case,
-                &record,
-                &rec,
-            )?)
+        let (router, exact) = if opts.observe {
+            (
+                Some(router_case(
+                    &policy,
+                    &mut oracle,
+                    &run,
+                    case,
+                    &record,
+                    &rec,
+                )?),
+                Some(exact_case(&mut oracle, &run, case, &record, &rec)?),
+            )
         } else {
-            None
+            (None, None)
         };
         reports.push(json!({
             "case": case,
@@ -967,6 +1073,7 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
             "replay_equals_forced_decode": replay_equal,
             "modes": modes,
             "router": router,
+            "exact": exact,
         }));
         let partial = json!({"cases": reports});
         let _ = std::fs::write(
@@ -980,6 +1087,7 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
                 .as_array()
                 .is_some_and(|m| m.iter().all(|c| c["passed"] == json!(true)))
             && (r["router"].is_null() || r["router"]["passed"] == json!(true))
+            && (r["exact"].is_null() || r["exact"]["passed"] == json!(true))
     });
     let exe = std::env::current_exe().map_err(|e| refused(e.to_string()))?;
     let report = json!({
