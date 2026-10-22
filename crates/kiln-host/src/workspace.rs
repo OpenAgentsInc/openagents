@@ -611,7 +611,7 @@ pub async fn run(args: &[String]) -> Result<()> {
     let action = args.first().map(String::as_str).unwrap_or("help");
     if action == "help" || args.iter().any(|s| s == "--help") {
         println!(
-            "kiln-workspace init|advance|status|export|feedback|guide --state FILE\ninit --config FILE\nfeedback --input FILE (digest, code, output)\nguide --input FILE (up to 2000 bytes of UTF-8 text)"
+            "kiln-workspace init|advance|status|export|feedback|guide|focus --state FILE\ninit --config FILE\nfeedback --input FILE (digest, code, output)\nguide --input FILE (up to 2000 bytes of UTF-8 text)\nfocus --input FILE (up to 2000 bytes for the current step; resets added guidance)"
         );
         return Ok(());
     }
@@ -638,13 +638,22 @@ pub async fn run(args: &[String]) -> Result<()> {
     workspace.config.validate()?;
     match action {
         "advance" => workspace.advance(&path).await?,
-        "guide" => {
+        "guide" | "focus" => {
             let bytes = workspace_host::artifact::read(
                 &PathBuf::from(option("--input")?),
                 MAX_GUIDANCE_BYTES,
             )?;
-            let text = String::from_utf8(bytes).map_err(|_| "guidance must be UTF-8 text")?;
-            workspace.guide(&text)?;
+            let text = String::from_utf8(bytes).map_err(|_| "input must be UTF-8 text")?;
+            if action == "guide" {
+                workspace.guide(&text)?;
+            } else {
+                let text = text.trim();
+                if text.is_empty() || text.contains('\0') {
+                    return Err("current step must contain 1 to 2000 bytes of text".into());
+                }
+                workspace.agent.task = text.into();
+                workspace.agent.instructions = INSTRUCTIONS.into();
+            }
             save(&path, &workspace)?;
         }
         "feedback" => {
@@ -1014,6 +1023,87 @@ mod tests {
         assert_eq!(std::fs::read(&state).unwrap(), unchanged);
         let restored: Workspace = load(&state).unwrap();
         assert!(restored.agent.instructions.len() <= MAX_INSTRUCTION_BYTES);
+    }
+    #[tokio::test]
+    async fn focus_replaces_only_the_current_brief_under_the_workspace_lock() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
+        let mut workspace: Workspace =
+            serde_json::from_value(legacy_workspace(root.path())).unwrap();
+        workspace.agent.instructions = format!("{INSTRUCTIONS}\nOld coordinator guidance");
+        workspace.agent.task = "Broad task with earlier progress".into();
+        workspace.agent.done = Some("Earlier summary".into());
+        workspace.agent.budget = 8250;
+        workspace
+            .files
+            .insert("apps/haunt-preview/a.ts".into(), "new text".into());
+        workspace
+            .original
+            .insert("apps/haunt-preview/a.ts".into(), "old text".into());
+        workspace.phase = "awaiting-check".into();
+        workspace.checked = Some(workspace.digest());
+        workspace.pending = vec![Command::Run("check".into())];
+        workspace.turns = 95;
+        workspace.calls = 255;
+        workspace.until = now() - 1;
+        workspace.record_answer("fixture prompt", &Err("fixture refusal".into()), 1);
+        assert!(
+            workspace
+                .execute(&Command::Run("focus next step".into()))
+                .is_err()
+        );
+        let before = serde_json::to_value(&workspace).unwrap();
+        let state = root.path().join("workspace.json");
+        let note = root.path().join("note.txt");
+        let focused = "Keep the copied file. Replace its shared state with explicit input é.";
+        std::fs::write(&note, focused).unwrap();
+        save(&state, &workspace).unwrap();
+        let args = vec![
+            "focus".into(),
+            "--state".into(),
+            state.to_string_lossy().into_owned(),
+            "--input".into(),
+            note.to_string_lossy().into_owned(),
+        ];
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(state.with_extension("lock"))
+            .unwrap();
+        fs2::FileExt::try_lock_exclusive(&lock).unwrap();
+        assert_eq!(
+            run(&args).await.unwrap_err(),
+            "workspace is already running"
+        );
+        assert_eq!(
+            serde_json::to_value(load::<Workspace>(&state).unwrap()).unwrap(),
+            before
+        );
+        drop(lock);
+        run(&args).await.unwrap();
+        let restored: Workspace = load(&state).unwrap();
+        assert_eq!(restored.agent.task, focused);
+        assert_eq!(restored.agent.instructions, INSTRUCTIONS);
+        let mut after = serde_json::to_value(&restored).unwrap();
+        after["agent"]["task"] = before["agent"]["task"].clone();
+        after["agent"]["instructions"] = before["agent"]["instructions"].clone();
+        assert_eq!(after, before);
+        for invalid in [
+            vec![b'x'; MAX_GUIDANCE_BYTES + 1],
+            vec![0xff],
+            vec![0],
+            vec![b'\n'],
+        ] {
+            let unchanged = std::fs::read(&state).unwrap();
+            std::fs::write(&note, invalid).unwrap();
+            assert!(run(&args).await.is_err());
+            assert_eq!(std::fs::read(&state).unwrap(), unchanged);
+        }
+        let full = "é".repeat(MAX_GUIDANCE_BYTES / 2);
+        std::fs::write(&note, &full).unwrap();
+        run(&args).await.unwrap();
+        assert_eq!(load::<Workspace>(&state).unwrap().agent.task, full);
     }
     #[test]
     fn legacy_workspace_loads_without_answer_evidence() {
