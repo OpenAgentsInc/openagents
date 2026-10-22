@@ -1353,7 +1353,7 @@ failed or unresolved router decisions, or malformed numeric fields. The checker
 now requires valid counts, measured score errors, and consistent mismatch
 fractions. Every substituted row needs its own unique change record. Existing
 margin, regret, substitution, and fraction limits apply again at publication;
-within-margin swaps remain allowed. The stage package passes 66 tests, with
+within-margin swaps remain allowed. The stage package passes 61 tests, with
 one optional test ignored. The worker bundle and numerical limits do not change.
 See [the checker evidence](verification/deepseek-v41-gates-2026-10-22/router-publication-fix.json).
 

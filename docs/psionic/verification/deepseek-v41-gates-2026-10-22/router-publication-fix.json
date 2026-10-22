@@ -12,7 +12,7 @@
   ],
   "command": "cargo test -p psionic-v41-stage",
   "results": {
-    "passed": 66,
+    "passed": 61,
     "failed": 0,
     "ignored": 1
   },

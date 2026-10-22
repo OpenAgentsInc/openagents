@@ -607,6 +607,6 @@ do not close the pending full-model qualification.
 The second publication review found a remaining router acceptance gap. The
 checker now rejects failed/unresolved decisions, malformed counts or errors,
 inconsistent fractions, and missing changed-row evidence. Its positive control
-keeps valid within-margin substitutions. All 66 stage tests pass (one optional
+keeps valid within-margin substitutions. All 61 stage tests pass (one optional
 test ignored). This repairs gate enforcement; fresh GPU numerical acceptance
 is still pending.
