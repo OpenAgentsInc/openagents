@@ -37,6 +37,7 @@ pub mod award;
 pub mod feedback;
 pub mod report;
 pub mod session;
+pub mod suggestion;
 pub mod testflight;
 pub mod triage;
 

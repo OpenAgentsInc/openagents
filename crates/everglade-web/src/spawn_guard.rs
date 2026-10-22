@@ -29,11 +29,11 @@ fn flat(p: [f64; 3]) -> [f32; 2] {
     [p[0] as f32, p[2] as f32]
 }
 
-/// The Grid's triggers: the shared terminal, the help desk's counter, and
-/// the Game Lab arch at `game_lab` (`[x, z]`).
+/// The Grid's triggers: the shared terminal, the help desk's counter, the
+/// suggestion box, and the Game Lab arch at `game_lab` (`[x, z]`).
 #[must_use]
 #[allow(clippy::cast_possible_truncation)]
-pub fn triggers(game_lab: [f32; 2]) -> [Trigger; 3] {
+pub fn triggers(game_lab: [f32; 2]) -> [Trigger; 4] {
     [
         Trigger {
             at: flat(pylons_view::terminal::POSITION),
@@ -42,6 +42,10 @@ pub fn triggers(game_lab: [f32; 2]) -> [Trigger; 3] {
         Trigger {
             at: flat(grid_help_desk::world([0.0, 0.0, grid_help_desk::STAND])),
             reach: grid_help_desk::LEAVE_RANGE as f32,
+        },
+        Trigger {
+            at: flat(grid_suggestion_box::stand()),
+            reach: grid_suggestion_box::LEAVE_RANGE as f32,
         },
         Trigger {
             at: game_lab,
@@ -117,6 +121,7 @@ mod tests {
             let p = [f64::from(at[0]), 0.0, f64::from(at[1])];
             assert!(!pylons_view::terminal::in_reach(p, true), "{at:?}");
             assert!(!grid_help_desk::in_reach(p, true), "{at:?}");
+            assert!(!grid_suggestion_box::in_reach(p, true), "{at:?}");
         }
     }
 

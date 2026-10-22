@@ -5248,6 +5248,7 @@ dependencies = [
  "openagents-web-chat-view",
  "openagents-web-client",
  "openagents-web-kiln-transcript",
+ "playtest",
  "rust-native",
  "serde",
  "serde_json",
@@ -5706,6 +5707,18 @@ name = "pkg-config"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f6b464fbc74e149a392436b17d523f769e057cb6877f6a5c4618bc6f11800548"
+
+[[package]]
+name = "playtest"
+version = "1.0.0"
+dependencies = [
+ "nostr",
+ "openagents-workspace-hack",
+ "secp256k1",
+ "serde",
+ "serde_json",
+ "sha2 0.11.1",
+]
 
 [[package]]
 name = "plist"

@@ -2260,13 +2260,21 @@ fn event_key_rate_rejection(
         .auth
         .as_ref()
         .and_then(|auth| auth.virtual_owner_for(&event.pubkey));
-    event_key_rate_rejection_for(&context.state.rate, event, virtual_owner)
+    // A gift wrap's author is a one-time key: the sender is the
+    // connection's authenticated key, or else its address.
+    let sender = context
+        .auth
+        .as_ref()
+        .and_then(|auth| auth.authenticated_pubkeys().into_iter().min())
+        .unwrap_or_else(|| context.ip.to_string());
+    event_key_rate_rejection_for(&context.state.rate, event, virtual_owner, &sender)
 }
 
 fn event_key_rate_rejection_for(
     rate: &RateLimiter,
     event: &Event,
     virtual_owner: Option<&str>,
+    sender: &str,
 ) -> Option<EventKeyRateRejection> {
     let allowed = if is_pose_lane(event.kind) {
         rate.pose_from_pubkey(&event.pubkey)
@@ -2290,7 +2298,7 @@ fn event_key_rate_rejection_for(
     if event.kind == 1_059
         && !event
             .gift_wrap_recipient()
-            .is_some_and(|recipient| rate.gift_wrap_for_recipient(recipient))
+            .is_some_and(|recipient| rate.gift_wrap_for(recipient, sender))
     {
         return Some(EventKeyRateRejection::GiftWrapRecipient);
     }
@@ -2599,20 +2607,20 @@ mod tests {
         let first = "a".repeat(64);
         let second = "b".repeat(64);
         assert_eq!(
-            event_key_rate_rejection_for(&rate, &frame(&first, Some("verse-bare")), None),
+            event_key_rate_rejection_for(&rate, &frame(&first, Some("verse-bare")), None, "test"),
             None
         );
         assert_eq!(
-            event_key_rate_rejection_for(&rate, &frame(&second, Some("verse-bare")), None),
+            event_key_rate_rejection_for(&rate, &frame(&second, Some("verse-bare")), None, "test"),
             Some(EventKeyRateRejection::WorldFull)
         );
         // The same key in another world, and a frame naming no world, pass.
         assert_eq!(
-            event_key_rate_rejection_for(&rate, &frame(&second, Some("verse-ruins")), None),
+            event_key_rate_rejection_for(&rate, &frame(&second, Some("verse-ruins")), None, "test"),
             None
         );
         assert_eq!(
-            event_key_rate_rejection_for(&rate, &frame(&second, None), None),
+            event_key_rate_rejection_for(&rate, &frame(&second, None), None, "test"),
             None
         );
         assert_eq!(rate.world_population("verse-bare"), 1);

@@ -1372,6 +1372,13 @@ impl Page {
         self.draw_frame(now);
         if HOME.with(|home| home.get()) {
             crate::help_desk::frame(self.runtime.player.pos, self.runtime.is_plaza());
+            // The suggestion box on the landing plaza (#12460).
+            crate::suggestion_box::frame(
+                self.runtime.player.pos,
+                self.runtime.is_plaza(),
+                self.presence.as_mut(),
+                now,
+            );
             crate::foreman::frame(now);
             crate::foreman::talk_frame(self.runtime.player.pos, self.runtime.is_plaza());
             // Game Lab opens with E or a tap under its arch, on the Grid
@@ -1745,6 +1752,9 @@ impl Page {
             {
                 crate::help_desk::draw(&mut ui, atlas, css, view.view_proj);
                 if self.runtime.is_plaza() {
+                    crate::suggestion_box::draw(&mut ui, atlas, css, view.view_proj, view.eye);
+                }
+                if self.runtime.is_plaza() {
                     crate::foreman::draw(&mut ui, atlas, css, view.view_proj, view.eye, self.now);
                     crate::foreman::draw_prompt(&mut ui, atlas, css, view.view_proj);
                 }
@@ -1903,7 +1913,9 @@ impl Page {
     fn press_grid(&mut self, at: [f32; 2]) -> bool {
         // The help desk's prompt opens the chat (#12443).
         if HOME.with(std::cell::Cell::get)
-            && (crate::help_desk::press(at) || crate::foreman::press(at))
+            && (crate::help_desk::press(at)
+                || crate::suggestion_box::press(at)
+                || crate::foreman::press(at))
         {
             return true;
         }
@@ -2453,6 +2465,7 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 && !event.alt_key()
                 && !event.meta_key()
                 && (crate::help_desk::key(&event.code())
+                    || crate::suggestion_box::key(&event.code())
                     || crate::foreman::key(&event.code())
                     || crate::game_lab::key(&event.code()))
             {

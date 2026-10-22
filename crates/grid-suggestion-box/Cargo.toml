@@ -1,0 +1,25 @@
+[package]
+name = "grid-suggestion-box"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The Grid's suggestion box: where it stands, when a visitor is in reach, its words, and its model."
+
+[dependencies]
+glam = "0.30.10"
+verse-engine = { path = "../verse-engine" }
+
+[dev-dependencies]
+# Fingerprints the model, as the Grid's build does.
+verse-engine = { path = "../verse-engine", features = ["asset-io"] }
+oa-copy = { path = "../oa-copy" }
+# The plaza's other places, for the placement test.
+pylons-view = { path = "../pylons-view" }
+grid-help-desk = { path = "../grid-help-desk" }
+grid-foreman = { path = "../grid-foreman" }
+deploy-board = { path = "../deploy-board" }
+
+[lints]
+workspace = true
+

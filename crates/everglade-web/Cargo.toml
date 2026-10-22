@@ -29,6 +29,9 @@ deploy-board = { path = "../deploy-board" }
 grid-help-desk = { path = "../grid-help-desk" }
 # The Grid Foreman beside the terminal (#12444).
 grid-foreman = { path = "../grid-foreman" }
+# The suggestion box on the landing plaza, and its NIP-17 seal (#12460).
+grid-suggestion-box = { path = "../grid-suggestion-box" }
+playtest = { path = "../playtest" }
 coder-browser = { path = "../coder-browser" }
 coder-ui = { path = "../coder-ui" }
 coder-host-wire = { path = "../coder-host-wire" }
@@ -113,6 +116,7 @@ oa-copy = { path = "../oa-copy" }
 # The spawn guard's places and picker, checked natively (#12479).
 pylons-view = { path = "../pylons-view" }
 grid-help-desk = { path = "../grid-help-desk" }
+grid-suggestion-box = { path = "../grid-suggestion-box" }
 verse-world = { path = "../verse-world" }
 # The desk's `fingerprint` is under this feature; the page's build turns it on.
 verse-engine = { path = "../verse-engine", features = ["asset-io"] }

@@ -6857,6 +6857,7 @@ dependencies = [
  "gloo-timers",
  "grid-foreman",
  "grid-help-desk",
+ "grid-suggestion-box",
  "icecream-zone",
  "js-sys",
  "log",
@@ -6864,6 +6865,7 @@ dependencies = [
  "oa-copy",
  "openagents-web-hands",
  "openagents-workspace-hack",
+ "playtest",
  "pylons-view",
  "raw-window-handle",
  "secp256k1 0.31.1",
@@ -8211,6 +8213,19 @@ dependencies = [
  "oa-copy",
  "pylons-view",
  "sha2 0.10.9",
+ "verse-engine",
+]
+
+[[package]]
+name = "grid-suggestion-box"
+version = "1.0.0"
+dependencies = [
+ "deploy-board",
+ "glam",
+ "grid-foreman",
+ "grid-help-desk",
+ "oa-copy",
+ "pylons-view",
  "verse-engine",
 ]
 

@@ -240,6 +240,9 @@ pub(crate) fn apply_bodies(arrived: Vec<BodyIn>, bodies: &mut crate::ball::Ball)
     }
 }
 
+/// How many of the relay's answers to published events a session keeps.
+const ANSWERS_KEPT: usize = 64;
+
 /// A running session.
 pub struct Session {
     link: Link,
@@ -265,6 +268,9 @@ pub struct Session {
     frames_published: u64,
     /// `rate-limited:` refusals the relay answered.
     refusals: u64,
+    /// The relay's last answers to published events, newest last: the
+    /// event ID and whether it was taken (#12460).
+    answers: std::collections::VecDeque<(String, bool)>,
     /// The relay's last refusal or notice, verbatim.
     last_refusal: Option<String>,
     scan: Option<Scan>,
@@ -476,6 +482,7 @@ impl Session {
             backoff: BACKOFF,
             frames_published: 0,
             refusals: 0,
+            answers: std::collections::VecDeque::new(),
             last_refusal: None,
             scan: None,
             scans: 0,
@@ -579,6 +586,17 @@ impl Session {
     /// NIP-01 profile.
     pub fn publish(&self, event: nostr::domain::Event) {
         self.publish_now(event);
+    }
+
+    /// The relay's answer to a published event: `Some(true)` once it took
+    /// it, `Some(false)` when it refused, `None` before it answered.
+    #[must_use]
+    pub fn answer(&self, id: &str) -> Option<bool> {
+        self.answers
+            .iter()
+            .rev()
+            .find(|(sent, _)| sent == id)
+            .map(|(_, taken)| *taken)
     }
 
     /// A copy of this player's signer, for another relay reader to answer
@@ -1104,6 +1122,14 @@ impl Session {
     }
 
     fn handle(&mut self, message: In, now: Instant) {
+        if let In::Ok { id, accepted, .. } = &message
+            && self.auth_id.as_deref() != Some(id.as_str())
+        {
+            if self.answers.len() == ANSWERS_KEPT {
+                self.answers.pop_front();
+            }
+            self.answers.push_back((id.clone(), *accepted));
+        }
         match message {
             // A host's own subscriptions: unchecked here, the host checks.
             In::Event { sub, event } if self.watched.contains(&sub) => {
@@ -2229,6 +2255,38 @@ mod tests {
         }
         assert_eq!(session.status, Status::Online);
         session
+    }
+
+    /// #12460: the relay's answer to a published event is kept, so a
+    /// suggestion shows Delivered only once the relay took it.
+    #[test]
+    fn the_relays_answer_to_a_published_event_is_kept() {
+        let mut session = online_presence();
+        let now = Instant::now();
+        assert_eq!(session.answer("a"), None);
+        for (id, accepted) in [("a", true), ("b", false)] {
+            session.handle(
+                In::Ok {
+                    id: id.into(),
+                    accepted,
+                    message: String::new(),
+                },
+                now,
+            );
+        }
+        assert_eq!(session.answer("a"), Some(true));
+        assert_eq!(session.answer("b"), Some(false));
+        for i in 0..ANSWERS_KEPT {
+            session.handle(
+                In::Ok {
+                    id: format!("x{i}"),
+                    accepted: true,
+                    message: String::new(),
+                },
+                now,
+            );
+        }
+        assert_eq!(session.answer("a"), None);
     }
 
     #[test]

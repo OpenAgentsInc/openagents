@@ -105,6 +105,22 @@ it until a person writes the title and text in their own words. A TestFlight
 tester has no Nostr key, so a filed TestFlight entry is recorded but isn't
 among `log --acceptances` and backs no playtest award.
 
+## The suggestion box
+
+The Grid's suggestion box (#12460), a mailbox on the landing plaza at
+(12, -10), and `openagents suggest TEXT` send a suggestion as a NIP-17
+message sealed to the triage key, signed by the sender's own key
+(`crates/playtest/src/suggestion.rs`). `openagents playtest inbox` opens them
+beside reports and keeps each one once in `suggestions/SG-….json`.
+
+- Every well-formed suggestion is kept. Screening only decides who reads it:
+  a quarantined one (unsafe text, or text that tries to instruct an agent)
+  is for the owner only, with `openagents playtest suggestions --quarantined`.
+- `openagents playtest suggestions --agents` is all a delegated agent reads:
+  normal suggestions only, quoted as a player's words, never instructions.
+- The relay limits gift wraps per sender and recipient, so one sender's
+  flood never blocks another's suggestion.
+
 ## Drafts
 
 A draft is written in the repository's issue style: the surface and a

@@ -120,14 +120,18 @@ impl RateLimiter {
         )
     }
 
-    pub fn gift_wrap_for_recipient(&self, recipient: &str) -> bool {
+    /// Whether `sender` (the connection's authenticated key, or its IP
+    /// address) may send one more gift wrap to `recipient` this minute.
+    /// The limit is per sender, so one sender's flood to a shared inbox,
+    /// such as the suggestion box (#12460), never blocks another's.
+    pub fn gift_wrap_for(&self, recipient: &str, sender: &str) -> bool {
         let Ok(mut state) = self.inner.lock() else {
             return false;
         };
         state.cleanup();
         allow_string(
             &mut state.gift_wrap_recipient,
-            recipient,
+            &format!("{recipient} {sender}"),
             self.limits.gift_wraps_per_minute_recipient,
         )
     }
@@ -430,8 +434,8 @@ mod tests {
         assert!(!limiter.event_from_ip(ip));
         assert!(limiter.event_from_pubkey("a"));
         assert!(!limiter.event_from_pubkey("a"));
-        assert!(limiter.gift_wrap_for_recipient("recipient"));
-        assert!(!limiter.gift_wrap_for_recipient("recipient"));
+        assert!(limiter.gift_wrap_for("recipient", "a"));
+        assert!(!limiter.gift_wrap_for("recipient", "a"));
         assert!(limiter.observer_from_ip(ip));
         assert!(!limiter.observer_from_ip(ip));
         assert!(limiter.observer_from_agent("agent"));
@@ -487,8 +491,25 @@ mod tests {
         let gift_wrap = RateLimiter::new(limits);
         assert!(gift_wrap.event_from_ip(ip));
         assert!(gift_wrap.event_from_pubkey("outer-wrapper"));
-        assert!(gift_wrap.gift_wrap_for_recipient("recipient"));
-        assert!(!gift_wrap.gift_wrap_for_recipient("recipient"));
+        assert!(gift_wrap.gift_wrap_for("recipient", "a"));
+        assert!(!gift_wrap.gift_wrap_for("recipient", "a"));
+        // Another sender to the same inbox still gets through (#12460).
+        assert!(gift_wrap.gift_wrap_for("recipient", "b"));
+    }
+
+    /// #12460: one key flooding the suggestion box is slowed down, and a
+    /// second key's one suggestion is still delivered.
+    #[test]
+    fn a_flood_to_a_shared_inbox_never_blocks_another_sender() {
+        let limiter = RateLimiter::new(GatewayLimits::default());
+        let taken = (0..1_000)
+            .filter(|_| limiter.gift_wrap_for("inbox", "flooder"))
+            .count();
+        assert_eq!(
+            taken,
+            GatewayLimits::default().gift_wraps_per_minute_recipient as usize
+        );
+        assert!(limiter.gift_wrap_for("inbox", "player"));
     }
 
     #[test]

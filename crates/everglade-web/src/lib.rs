@@ -48,6 +48,8 @@ mod overview;
 mod presence_ui;
 #[cfg(target_arch = "wasm32")]
 mod pylon_bay;
+#[cfg(target_arch = "wasm32")]
+mod suggestion_box;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod transit;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]

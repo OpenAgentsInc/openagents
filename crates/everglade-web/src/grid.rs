@@ -207,6 +207,50 @@ impl Presence {
         )));
     }
 
+    /// Seals `suggestion` from this player's key to the suggestion box
+    /// (#12460): the box's wrap and the player's own copy, each with fresh
+    /// randomness.
+    ///
+    /// # Errors
+    ///
+    /// The stored key can't be read, or the suggestion can't be sealed.
+    pub fn seal_suggestion(
+        &self,
+        suggestion: &playtest::suggestion::Suggestion,
+    ) -> Result<playtest::suggestion::Sealed, String> {
+        use std::str::FromStr;
+        let hex = self
+            .storage
+            .as_ref()
+            .and_then(|s| s.get_item(SECRET_KEY).ok().flatten())
+            .ok_or("This browser's Grid key isn't stored.")?;
+        let secret = secp256k1::SecretKey::from_str(&hex)
+            .map_err(|_| "This browser's Grid key can't be read.")?;
+        let inbox = playtest::triage_key(None).ok_or("The suggestion box has no key.")?;
+        let random = || {
+            let hide = |n: [u8; 2]| u64::from(u16::from_le_bytes(n)) * 2;
+            playtest::report::Randomness {
+                wrapper: identity::random_secret(),
+                seal_nonce: identity::random_bytes(),
+                wrap_nonce: identity::random_bytes(),
+                seal_earlier: hide(identity::random_bytes()),
+                wrap_earlier: hide(identity::random_bytes()),
+            }
+        };
+        playtest::suggestion::wrap(suggestion, &secret, &inbox, &random(), &random())
+    }
+
+    /// Publishes `event` on this player's relay connection.
+    pub fn publish(&self, event: nostr::domain::Event) {
+        self.session.publish(event);
+    }
+
+    /// The relay's answer to a published event, once it gave one.
+    #[must_use]
+    pub fn answer(&self, id: &str) -> Option<bool> {
+        self.session.answer(id)
+    }
+
     /// Whether this player is in the world ([`Self::join`]).
     pub fn joined(&self) -> bool {
         self.joined
