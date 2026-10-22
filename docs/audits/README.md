@@ -7,6 +7,7 @@ Use the [master roadmap](../roadmap.md) for current work.
 
 | Document | Recorded topic |
 | --- | --- |
+| [2026-10-21-voice-infrastructure.md](2026-10-21-voice-infrastructure.md) | Voice infrastructure past and present: every voice system in this repository and other OpenAgentsInc repositories since 2024, a comparison table, what works today, leftover LiveKit infrastructure, lessons, and one Rust voice stack with draft issues V0 to V8 |
 | [2026-10-20-gpui-everywhere.md](2026-10-20-gpui-everywhere.md) | GPUI everywhere on openagents.com: every route classified SIMPLE, APP, or RETIRE, a readiness audit with the feature registry that hides unready features (`OPENAGENTS_WEB_FEATURES`), the flip plan for #12226, deprecations, the deploy checklist, and the page-group issues (#12325 to #12337) |
 | [../auth/2026-10-20-workos-source-of-truth.md](../auth/2026-10-20-workos-source-of-truth.md) | WorkOS as the one auth object: today's nine identity and session stores, one WorkOS User per person with Nostr keys linked in our table, whether a Nostr signature can start a WorkOS session (no direct API; a Magic Auth bridge or our own session as fallback), workos-rust, and phases W0 to W4 (#12320 to #12324) |
 | [2026-10-20-openagents-com-unified-plan.md](2026-10-20-openagents-com-unified-plan.md) | One openagents.com: every transcript theme with episodes and code, earlier synthesis and its conflicts, a Nostr-first plan for profiles, agent identities, social agent use, the browser wallet and the route map, and epics U1 to U8 (#12254 to #12261) |
