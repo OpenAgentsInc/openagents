@@ -52,6 +52,8 @@ fn main() -> ExitCode {
         Some("qualify-derive") => psionic_v41_stage::qualify::run_derive(&args[1..]),
         Some("isolate") => psionic_v41_stage::qualify::run_isolated(&args[1..]),
         Some("isolated-check") => psionic_v41_stage::qualify::run_isolated_check(&args[1..]),
+        Some("isolated-policy") => psionic_v41_stage::qualify::run_isolated_policy(&args[1..]),
+        Some("qualification-receipt") => psionic_v41_stage::qualify::run_receipt(&args[1..]),
         Some("index-check") => psionic_v41_stage::qualify::run_index_check(&args[1..]),
         Some("qualify-judge") => psionic_v41_stage::qualify::run_judge(&args[1..]),
         Some("build-info") => run_build_info(),

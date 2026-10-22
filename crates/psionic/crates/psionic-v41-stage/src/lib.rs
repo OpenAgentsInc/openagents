@@ -766,9 +766,9 @@ pub struct Options {
     pub token: String,
     pub backend: Backend,
     /// The CPU arithmetic asked for; `None` on device backends.
-    /// CUDA FP8 diagnostics use `cuda_fp8_reference`.
+    /// The optional CUDA FP8 mode uses `cuda_fp8_reference`.
     pub arithmetic: Option<Arithmetic>,
-    /// Diagnostic packed FP8 block sums and TP8 partial rounding on CUDA.
+    /// Optional packed FP8 block sums and TP8 partial rounding on CUDA.
     pub cuda_fp8_reference: bool,
     pub max_context: usize,
     pub max_step_tokens: usize,
@@ -882,7 +882,7 @@ pub fn parse_arithmetic(value: &str) -> Result<Arithmetic, Refused> {
 /// [`Arithmetic`] settings describe.
 pub const CUDA_PROFILE: &str = "device";
 
-/// Diagnostic CUDA FP8 arithmetic; other operations keep their device order.
+/// Optional CUDA FP8 arithmetic; other operations keep their device order.
 pub const CUDA_FP8_REFERENCE: &str = "fp8-mma-tp8";
 
 /// The name of a CPU arithmetic, as `--arithmetic` takes it.
@@ -897,7 +897,7 @@ pub const fn arithmetic_name(arithmetic: Arithmetic) -> &'static str {
 
 /// Parses `--arithmetic` for a backend, before any weights load. The CPU
 /// port implements `f32`, `bf16`, and `bf16-tp8`; the CUDA stage implements
-/// its own arithmetic and the bounded [`CUDA_FP8_REFERENCE`] diagnostic.
+/// its own arithmetic and the bounded [`CUDA_FP8_REFERENCE`] mode.
 /// The latter returns `None` here; [`Options::cuda_fp8_reference`] selects it.
 /// CPU arithmetic names remain refused on CUDA.
 ///

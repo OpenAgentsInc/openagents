@@ -226,7 +226,7 @@ def main():
               "answers_sha256": hashlib.sha256(Path(sys.argv[2]).read_bytes()).hexdigest(),
               "source": {k: source.get(k) for k in (
                   "runtime", "profile", "stage_bundle_sha256", "stage_executable_sha256",
-                  "expected_bundle_sha256", "launch", "manifest", "oracle_manifest_sha256", "cap")},
+                  "expected_bundle_sha256", "execution_config_sha256", "launch", "manifest", "oracle_manifest_sha256", "cap")},
               "oracle_passes": o_pass, "runtime_passes": r_pass, "tasks": len(suite["cases"]),
               "missing": [r["case"] for r in rows if r.get("missing")],
               "floor_held": all(r.get("runtime_must_pass_held") for r in rows if not r.get("missing")),

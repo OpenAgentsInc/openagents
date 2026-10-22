@@ -67,6 +67,8 @@ mod calibration;
 mod index;
 mod isolated;
 mod isolated_check;
+mod isolated_policy;
+mod receipt;
 mod scope;
 
 /// Collects isolated-stage output metrics on original oracle inputs.
@@ -85,6 +87,24 @@ pub fn run_isolated(args: &[String]) -> Result<(), Refused> {
 /// Refuses missing, changed, incomplete, or malformed boundary records.
 pub fn run_isolated_check(args: &[String]) -> Result<(), Refused> {
     isolated_check::run(args)
+}
+
+/// Derives independent isolated-stage limits or judges frozen confirmation.
+///
+/// # Errors
+///
+/// Refuses incomplete references, mismatched scopes, and failed confirmation.
+pub fn run_isolated_policy(args: &[String]) -> Result<(), Refused> {
+    isolated_policy::run(args)
+}
+
+/// Builds a Pylon numerical claim from successful matching G1, G2, and G4.
+///
+/// # Errors
+///
+/// Refuses failed, incomplete, unpinned, or mismatched evidence.
+pub fn run_receipt(args: &[String]) -> Result<(), Refused> {
+    receipt::run(args)
 }
 
 /// Rechecks hashed index observations against a complete oracle capture.
@@ -1667,9 +1687,6 @@ pub fn release_refusals(opts: &QualifyOptions, policy: &Policy, cases: &[Value])
     if opts.control.is_some() {
         out.push("a deliberate control cannot qualify for release".into());
     }
-    if opts.arithmetic.as_deref() == Some(crate::CUDA_FP8_REFERENCE) {
-        out.push("FP8 arithmetic diagnostics cannot qualify for release".into());
-    }
     if !opts.observe {
         out.push("release qualification needs --observe".into());
     }
@@ -1725,8 +1742,9 @@ pub fn release_refusals(opts: &QualifyOptions, policy: &Policy, cases: &[Value])
                 out.push(format!("{name} {}: no positions", mode["mode"]));
             }
         }
-        if policy.index_out_of_scope.is_none()
-            && (c["index"]["complete"] != true || c["index"]["passed"] != true)
+        if policy.index_out_of_scope.is_some()
+            || policy.index.epsilon.is_none()
+            || (c["index"]["complete"] != true || c["index"]["passed"] != true)
         {
             out.push(format!("{name}: index rule not evaluated or failed"));
         }
@@ -1775,6 +1793,9 @@ pub fn pending_policy() -> Policy {
 /// Any refusal of the oracle, the stages, or the files.
 pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
     if let Some(cap) = opts.answers {
+        if opts.release {
+            return Err(refused("answer collection is not G1 release qualification"));
+        }
         return run_answers(opts, cap);
     }
     let record = opts.out.join("record");
@@ -2957,7 +2978,12 @@ mod tests {
             "margin_verdict": false, "unresolved": 3, "failed": 0}, "exact": {"checked": 2}});
         let refusals = release_refusals(&opts, &pending_policy(), &[partial]);
         assert!(refusals.iter().any(|r| r.contains("deliberate control")));
-        assert!(refusals.iter().any(|r| r.contains("diagnostics cannot")));
+        // A named arithmetic mode still needs complete frozen evidence.
+        assert!(
+            refusals
+                .iter()
+                .any(|r| r.contains("index rule not evaluated"))
+        );
         assert!(
             refusals
                 .iter()

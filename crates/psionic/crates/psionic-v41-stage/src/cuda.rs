@@ -1029,9 +1029,9 @@ pub fn run_stage(
         options.control,
     )?;
     if options.cuda_fp8_reference {
-        if options.record.is_none() || options.tiers.any() {
+        if options.tiers.any() || options.experts != crate::Experts::Device {
             return Err(Refused(
-                "FP8 diagnostics need --record and ordinary device weights".into(),
+                "FP8 arithmetic requires resident CUDA stages with original weights.".into(),
             ));
         }
         loaded

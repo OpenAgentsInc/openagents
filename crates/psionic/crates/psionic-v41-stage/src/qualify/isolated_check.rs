@@ -219,7 +219,7 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
         if seen != expected {
             return Err(refused("isolated decode or replay coverage is incomplete"));
         }
-        cases.push(json!({"case":name,"steps":steps}));
+        cases.push(json!({"case":name,"prompt_tokens":ids(&run["prompt_token_ids"]).len(),"generated_tokens":generated.len(),"steps":steps}));
     }
     if cases.is_empty() {
         return Err(refused("empty isolated recording"));

@@ -227,8 +227,11 @@ pub(super) fn compare_output(
             SectionKind::IndexSelection { layer } => {
                 let expected = oracle.integers(&format!("{prefix}.selection"))?;
                 let got = section.to_i32().map_err(|e| refused(e.to_string()))?;
-                if expected.len() != got.len() {
-                    return Err(refused("isolated selection shape"));
+                if expected.len() != got.len()
+                    || expected.iter().any(|i| *i < -1)
+                    || got.iter().any(|i| *i < -1)
+                {
+                    return Err(refused("isolated selection shape or padding"));
                 }
                 let (position, tokens, _) = context_tokens(run, mode, step);
                 let raw = oracle.floats(&format!(
@@ -292,6 +295,9 @@ pub(super) fn compare_output(
                         .collect();
                     let actual: BTreeSet<_> =
                         b.iter().filter(|v| **v != u32::MAX).copied().collect();
+                    if actual.len() != b.iter().filter(|v| **v != u32::MAX).count() {
+                        return Err(refused("repeated isolated candidate block"));
+                    }
                     changed += usize::from(expected != actual);
                 }
                 json!({"rows":rows,"changed_rows":changed,"passed":changed==0})
@@ -358,6 +364,13 @@ fn collect<E: StageBackend>(
             return Err(refused("invalid case ID"));
         }
         let run = oracle.run(name)?;
+        if let Some(corpus) = &opts.corpus {
+            if run["corpus_sha256"] != checked_sha256(corpus)? {
+                return Err(refused(
+                    "isolated original input is not bound to this corpus",
+                ));
+            }
+        }
         let mut steps = Vec::new();
         for mode in ["decode", "replay"] {
             let count = if mode == "decode" {
@@ -482,7 +495,7 @@ fn collect<E: StageBackend>(
     }
     let report = json!({"schema":"psionic.deepseek_v41.isolated_calibration.v1","release":false,"passed":null,
         "purpose":"isolated-stage-calibration","stage":stage.stage,"layers":[stage.first_layer,stage.end_layer],
-        "backend":opts.backend.name(),"profile":profile,"execution_config_sha256":execution_config,"limits":limits,"build":crate::build_identity(),"manifest":opts.manifest,
+        "backend":opts.backend.name(),"weights":format!("sha256:{}",manifest.index_sha256),"corpus_sha256":opts.corpus.as_ref().map(|p|checked_sha256(p)).transpose()?,"profile":profile,"execution_config_sha256":execution_config,"limits":limits,"build":crate::build_identity(),"manifest":opts.manifest,
         "oracle_manifest_sha256":checked_sha256(&opts.oracle.join("manifest.json"))?,"control":opts.control.map(Control::name),
         "schedule":{"max_context":opts.max_context,"max_step_tokens":opts.max_step_tokens.unwrap_or(opts.max_context)},"cases":cases});
     std::fs::write(
