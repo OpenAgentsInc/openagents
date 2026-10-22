@@ -485,6 +485,12 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12443: after the next web deploy, run `openagents browser run --
+  python3 scripts/dev/check-grid-home-desk.py --url URL --out DIR` against
+  staging, then production (the script refuses a remote address; drop its
+  localhost check for that run or run it through a local proxy), as a
+  signed-out visitor, and confirm the help desk shows from the spawn, E
+  opens the chat, and the answer comes from the hosted agent.
 - #12435: production content deploys, once the owner approves them:
   create the live key (`~/work/.secrets/livehost-openagents-live.key`),
   set `OPENAGENTS_LIVE_RELAY`, `OPENAGENTS_LIVE_STORE`,
