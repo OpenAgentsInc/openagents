@@ -1714,7 +1714,6 @@ impl Page {
             let mut dynamic = grid_frame::dynamic(&self.runtime, &peers, &[]);
             if HOME.with(std::cell::Cell::get) && self.runtime.is_plaza() {
                 crate::pylon_bay::instances(self.now, &mut dynamic);
-                crate::arch_marks::web::instances(&self.runtime, &mut dynamic);
                 crate::foreman::instances(self.now, view.eye, &mut dynamic);
             }
             if let Some(board) = &mut self.board {
