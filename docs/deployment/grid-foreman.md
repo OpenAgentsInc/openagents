@@ -82,3 +82,27 @@ is in `NOSTR_RELAY_WORLD_POPULATION_EXEMPT` (a comma list of public keys),
 which defaults to the Foreman's key. An
 exempt key is never refused for a full world and never counted, so the Foreman
 never takes a visitor's place.
+
+### Deploying the relay for the exemption
+
+The exemption ships in the relay image from `6500eed27a` on (#12445). It
+matters only when the Grid is full, so a relay deploy can wait for a quiet
+window. Follow [the relay runbook](runbook-cloud-run.md), steps 2 to 4,
+from a clean checkout of `main` at or after that commit:
+
+```sh
+TAG=$(git rev-parse --short=10 HEAD)
+gcloud builds submit --project openagentsgemini \
+  --config deploy/nostr-relay.cloudbuild.yaml --substitutions _TAG=$TAG .
+gcloud run deploy openagents-nostr-relay \
+  --image us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/nostr-relay:$TAG \
+  --no-traffic --tag next --region us-central1 --project openagentsgemini
+# The runbook's step 3 smoke checks against the next tag, then:
+gcloud run services update-traffic openagents-nostr-relay \
+  --to-revisions <new-revision>=100 --region us-central1 --project openagentsgemini
+```
+
+No environment change is needed: `NOSTR_RELAY_WORLD_POPULATION_EXEMPT`
+defaults to the Foreman's key. Afterwards,
+`nak req -k 33301 -a 2d9fad1a83555dc66198d94d58a24ea1541ba8857d2407c456635a3421456f36 -l 1 wss://relay.openagents.com`
+still shows its state.

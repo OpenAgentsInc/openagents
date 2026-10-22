@@ -496,6 +496,10 @@ The status lines below summarize each issue and its comments. Open the issue for
   `EXCUSE ME`, and goes around; after 24 hours, check
   `journalctl -u grid-foreman` for restarts the watchdog didn't log. The host
   is already live on `oa-foreman-1` at `6500eed27a`.
+- #12445 (relay, deferred by the coordinator to a quiet window): deploy
+  the relay from `6500eed27a` or later so its world cap exempts the
+  Foreman's key; the exact steps are in `docs/deployment/grid-foreman.md`,
+  "Deploying the relay for the exemption". Only the coordinator deploys it.
 - #12444: after the next web and Everglade deploy, on staging and then
   production as a signed-out visitor: capture `/` with the Foreman robot
   (about 5.6 m) beside the terminal, `FOREMAN` over it and the status line
