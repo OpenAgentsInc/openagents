@@ -252,18 +252,15 @@ fn boxes() -> Vec<[f32; 4]> {
 struct Obstacles {
     discs: Vec<([f32; 2], f32)>,
     boxes: Vec<[f32; 4]>,
+    players: Vec<[f32; 2]>,
 }
 
 impl Obstacles {
     fn new(players: &[[f32; 2]]) -> Self {
-        let mut discs: Vec<([f32; 2], f32)> =
-            keep_outs().iter().map(|k| (k.at, k.radius)).collect();
-        for at in players {
-            discs.push((*at, BODY_RADIUS + verse::controller::RADIUS + 0.3));
-        }
         Self {
-            discs,
+            discs: keep_outs().iter().map(|k| (k.at, k.radius)).collect(),
             boxes: boxes(),
+            players: players.to_vec(),
         }
     }
 
@@ -278,6 +275,10 @@ impl Obstacles {
                 .boxes
                 .iter()
                 .all(|b| !(p[0] > b[0] && p[0] < b[2] && p[1] > b[1] && p[1] < b[3]))
+            && self
+                .players
+                .iter()
+                .all(|at| (p[0] - at[0]).hypot(p[1] - at[1]) >= BLOCK_RANGE - 1e-3)
     }
 
     fn segment_clear(&self, a: [f32; 2], b: [f32; 2]) -> bool {
@@ -285,6 +286,10 @@ impl Obstacles {
             .iter()
             .all(|(c, r)| to_segment(*c, a, b) >= *r - 1e-3)
             && self.boxes.iter().all(|bx| !segment_hits_box(a, b, *bx))
+            && self
+                .players
+                .iter()
+                .all(|p| to_segment(*p, a, b) >= player_clearance(a, *p) - 1e-3)
     }
 }
 
@@ -325,7 +330,12 @@ pub fn plan(from: [f32; 2], to: [f32; 2], players: &[[f32; 2]]) -> Option<Vec<[f
     }
     let mut nodes = vec![from, to];
     const AROUND: usize = 10;
-    for (c, r) in &obstacles.discs {
+    for (c, r) in obstacles
+        .discs
+        .iter()
+        .copied()
+        .chain(obstacles.players.iter().map(|at| (*at, BLOCK_RANGE)))
+    {
         let r = r + 0.35;
         for i in 0..AROUND {
             let a = std::f32::consts::TAU * i as f32 / AROUND as f32;
@@ -619,9 +629,10 @@ impl Walker {
             return;
         };
         let here = [self.pos.x, self.pos.z];
-        let blocked = players
-            .iter()
-            .any(|p| ahead_distance(here, path, *next, LOOK_AHEAD, [p.x, p.z]) < BLOCK_RANGE);
+        let blocked = players.iter().any(|p| {
+            let at = [p.x, p.z];
+            ahead_distance(here, path, *next, LOOK_AHEAD, at) < player_clearance(here, at) - 1e-3
+        });
         if blocked {
             *waited += dt;
             if *waited >= WAIT_SECONDS {
@@ -683,6 +694,12 @@ impl Walker {
 
 fn flat_distance(a: Vec3, b: Vec3) -> f32 {
     (a.x - b.x).hypot(a.z - b.z)
+}
+
+/// Keep the same room in plans and movement checks. If a player has
+/// already stepped closer, allow movement away without coming any closer.
+fn player_clearance(from: [f32; 2], player: [f32; 2]) -> f32 {
+    BLOCK_RANGE.min((from[0] - player[0]).hypot(from[1] - player[1]))
 }
 
 fn to_segment(p: [f32; 2], a: [f32; 2], b: [f32; 2]) -> f32 {
@@ -798,6 +815,12 @@ mod tests {
 
     #[test]
     fn it_waits_for_a_player_in_its_way_then_goes_around() {
+        for distance in [2.0, 4.0] {
+            walks_around_player(distance);
+        }
+    }
+
+    fn walks_around_player(distance: f32) {
         let mut walker = Walker::new();
         // Leave home.
         while walker.moment().at.is_some() {
@@ -810,7 +833,7 @@ mod tests {
         let target = path[*next];
         let here = walker.moment().pos;
         let toward = (Vec3::new(target[0], 0.0, target[1]) - here).normalize();
-        let player = here + toward * 2.0;
+        let player = here + toward * distance;
         let before = walker.moment().pos;
         for _ in 0..8 {
             walker.step(0.25, &[player]);
@@ -822,12 +845,36 @@ mod tests {
         }
         let status = walker.moment().status;
         assert!(status == EXCUSE_ME || walker.moment().pos != before);
-        // After the detour, it never stands within its body of the player.
+        // A detour must reach the next stop, not only avoid a collision.
+        let mut arrived = false;
         for _ in 0..400 {
             walker.step(0.25, &[player]);
             let d = flat_distance(walker.moment().pos, player);
             assert!(d > BODY_RADIUS, "{d}");
+            if walker.moment().at == Some(Stop::Bay) {
+                arrived = true;
+                break;
+            }
         }
+        assert!(arrived, "it stayed blocked: {:?}", walker.moment());
+    }
+
+    #[test]
+    fn it_can_walk_away_from_a_player_already_close_behind() {
+        let mut walker = Walker::new();
+        while walker.moment().at.is_some() {
+            walker.step(0.25, &[]);
+        }
+        let Phase::Walking { path, next, .. } = &walker.phase else {
+            panic!("not walking");
+        };
+        let target = path[*next];
+        let before = walker.moment().pos;
+        let toward = (Vec3::new(target[0], 0.0, target[1]) - before).normalize();
+        let player = before - toward * 2.0;
+        walker.step(0.25, &[player]);
+        assert!(flat_distance(walker.moment().pos, player) > 2.0);
+        assert!(walker.moment().speed > 0.0);
     }
 
     #[test]

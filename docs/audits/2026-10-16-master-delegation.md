@@ -485,6 +485,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12532: update the `grid-foreman` host on `oa-foreman-1` and confirm that it
+  walks around a stationary player and resumes its patrol.
+
 - #12530: deploy the Pylon detail distance change and confirm that token details
   show only within 3 meters of a Pylon, including when pointing at one farther away.
 
