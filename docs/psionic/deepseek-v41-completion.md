@@ -17,13 +17,14 @@ gates. Policy 2.3 failed, including one 38-token Engram case, and remains
 failed. The pinned `06e5158778` worker passes the frozen G2 suite at 5/6
 against the oracle's 5/6 on all three placements, with identical answers and
 the reasoning/completion floor held. G3 has current SM89 and SM120 component
-receipts. The private one-quad and two-dual Pylons each pass eight runtime
-checks; four-single has a retained five-check cloud run and a follow-up
-boundary run in progress. Stage crash, freeze, deadline, and full-VM watcher
+receipts. The private one-quad, two-dual, and four-single Pylons each pass the same
+eight runtime checks. Stage crash, freeze, deadline, and full-VM watcher
 recovery checks are retained. G1 and G4 numerical release acceptance and
 qualified G8 evidence remain outstanding: rule 2.4 is not frozen, and no
 fresh confirmation oracle has been captured. The separate Maya Pylons run
 Foreman's browser-editor work with an experimental consumer-q profile.
+G5 and G6 still depend on numerical acceptance and paired direct-pipeline
+answer checks; their runtime checks alone do not pass those gates.
 
 The entries below retain earlier checks; later sections record their reruns
 and the current worker's evidence.
@@ -1558,3 +1559,34 @@ fail under the resulting limits before fresh confirmation starts.
 The repeated C4 collection on C3D and N2D also matches all 1,836 saved tensor
 files byte for byte. See [the CPU repeat comparison](verification/deepseek-v41-gates-2026-10-22/cpu3-repeat-comparison.json).
 The repeat checks consistency; it does not count as another calibration case.
+
+### Complete runtime checks and calibration coverage (2026-10-22)
+
+Four-single now passes the same eight native Pylon runtime checks as one-quad
+and two-dual. Its exact 2,872-token request completed in 128.8 seconds; the
+2,873-token request was refused, and the next request answered normally.
+All four workers stopped. The earlier missing test-launcher attempt is retained
+as a failed setup attempt. See [the four-single runtime record](verification/deepseek-v41-gates-2026-10-22/four-single-runtime.json).
+The two cross-machine capped workloads measured 20.16 and 20.14 decode tokens/s;
+their recorded link-and-head overhead is aggregate, not a separate per-hop
+latency measurement.
+
+The unrelated-request cache control also fails numerically, with 80 numerical
+violations under the provisional short-reference policy. Replacing the fault
+report leaves every derived threshold identical. Its [record](verification/deepseek-v41-gates-2026-10-22/contrasting-cache-control.json)
+fixes the required fault cases before the remaining CPU calibration completes;
+every required fault must still fail the final CPU-only policy.
+
+All four stages now have complete CPU raw rechecks for the short Engram case,
+the 1,025-token boundary, and the 2,726-token long case. The redundant long-stage
+backup was cancelled after the first complete result uploaded and rechecked;
+its partial result is excluded. See [the complete CPU coverage](verification/deepseek-v41-gates-2026-10-22/g4-complete-cpu-rechecks.json).
+
+The `qualification_answers` example runs the unchanged frozen G2 suite through
+Pylon's direct `StageGroup` pipeline, including each case's prompt mode, native
+token IDs, and parsed reasoning. `v41-stage-build.sh group-answers` packages
+that separate tool. These native paired runs remain pending. The passive
+`observe_vm.py` sampler is ready for active GPU-memory and per-link TCP RTT
+observations; its [wiring checks](verification/deepseek-v41-gates-2026-10-22/observer-wiring-checks.json)
+use an idle GPU VM and existing CPU sockets, so they do not establish an active
+memory peak or GPU-link latency.

@@ -1,0 +1,382 @@
+{
+  "purpose": "Native original-weight four-single Pylon runtime and input-boundary checks; numerical release acceptance remains pending",
+  "runtime_checks_passed": true,
+  "numerically_qualified": false,
+  "worker_commit": "06e5158778",
+  "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+  "manifest": "sha256:cd2f590c7e8dae9a3773777b6136bf9e9e63b4714626dbfbb47a59e8a555977b",
+  "config_sha256": "07649fd2bcb8580c8573ecd0f64332b4f1a70828fc095c0dd3dfb8d161fb7c6e",
+  "pylon_commit": "5acadba64e",
+  "pylon_bundle": "2b15d2c47b20ef9378e057076883e1277ab546ef1b684eb74ebd7047358c501e",
+  "instance_ids": [
+    "3166132851485168852",
+    "2062917690589697165",
+    "4020854102420870242",
+    "5904155746562987091"
+  ],
+  "provider_pubkey": "1d23932b1310411692af874b51c97f3a070051a0521c14ad680d5165b923a347",
+  "runtime": {
+    "purpose": "native four-single private Pylon runtime checks; numerical qualification remains separate",
+    "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+    "manifest": "sha256:cd2f590c7e8dae9a3773777b6136bf9e9e63b4714626dbfbb47a59e8a555977b",
+    "passed": true,
+    "checks": [
+      {
+        "name": "arithmetic",
+        "seconds": 0.931641954000952,
+        "ok": true,
+        "file": "arithmetic.json"
+      },
+      {
+        "name": "repeated",
+        "seconds": 0.9231413880006585,
+        "ok": true,
+        "file": "repeated.json"
+      },
+      {
+        "name": "continuation",
+        "seconds": 1.7317231939996418,
+        "ok": true,
+        "file": "continuation.json"
+      },
+      {
+        "name": "output-cap",
+        "seconds": 204.3621040429989,
+        "ok": false,
+        "file": "output-cap.json"
+      },
+      {
+        "name": "after-cap",
+        "seconds": 1.9785042559997237,
+        "ok": true,
+        "file": "after-cap.json"
+      },
+      {
+        "name": "input-2872",
+        "seconds": 128.75782004999928,
+        "ok": true,
+        "file": "input-2872.json"
+      },
+      {
+        "name": "input-2873",
+        "seconds": 1.1776528580012382,
+        "ok": false,
+        "file": "input-2873.json"
+      },
+      {
+        "name": "after-input-refusal",
+        "seconds": 0.9111943679999968,
+        "ok": true,
+        "file": "after-input-refusal.json"
+      }
+    ],
+    "input_boundary_usage": null
+  },
+  "native_input_construction": {
+    "purpose": "exact input-boundary prompts using the native chat template",
+    "mode": "chat",
+    "tokenizer_sha256": "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b",
+    "tokenizer_config_sha256": "6ac8c8dc065ed118161d02dd532749ae3f52c243deac27872134fae2f50d8547",
+    "prompts": [
+      {
+        "input_tokens": 2872,
+        "prompt_sha256": "1a7144d7b282917a6fc0a3f7398b8340cbc860446975c619251d93a4a0e9d687",
+        "token_ids_sha256": "22133746217995b2702bd6672b92c2c6b0eeb380b860c3fe5f3bb1465bdbe760"
+      },
+      {
+        "input_tokens": 2873,
+        "prompt_sha256": "4a89865e5a3c0bba5a125a1f77e99f2721a8c7ad3180d204fe7504efc1ca26b8",
+        "token_ids_sha256": "da43b269801cd76112338c8cb76325a2c869d0a3ec83e9abd47453d4d57f93a0"
+      }
+    ]
+  },
+  "shutdown": {
+    "checked_at": "2026-10-22T22:05:47.318163+00:00",
+    "controller_exit": 0,
+    "all_four_workers_absent": true,
+    "worker_ips": [
+      "10.146.0.52",
+      "10.146.0.53",
+      "10.146.0.54",
+      "10.146.0.55"
+    ]
+  },
+  "unsuccessful_setup_attempt": {
+    "purpose": "Retain an unsuccessful test-launcher setup attempt",
+    "root": "private-four-v5",
+    "controller_exit": 0,
+    "status": {
+      "event": "stopped",
+      "reason": "the budget host asked",
+      "head": "30200:ddaae2fc5d9f16120487f34a16e2550b23807bfef365f3b33889e81949475dec:deepseek-gates-four-v5"
+    },
+    "cause": "The qualification-only /opt/openagents/qa-stage-run wrapper was absent on all four dedicated stage VMs. Each attempted process exited with status127.",
+    "repair": "After the controller stopped and no model workers remained, install the common per-GPU lock wrapper and start a fresh private-four-v6 controller.",
+    "model_inference_test_passed": false
+  },
+  "raw_prefix": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/calibration-20261022/private-four-runtime",
+  "raw_files_manifest_sha256": "1e43db27ef227dcb7906e7a93299aba710c21943d5b43b0b9fd28cbb5cd78e34",
+  "raw_files": [
+    {
+      "path": "after-cap.json",
+      "sha256": "e06bb908ef6ef5df64631ee018505ce8e6198cfdecf6deaf93677337af3d6e6c",
+      "bytes": 969
+    },
+    {
+      "path": "after-input-refusal.json",
+      "sha256": "a873bacb6ba44d47d17c5d40189fca82fc4bb76b8d8aec09fe88c71274a36e21",
+      "bytes": 967
+    },
+    {
+      "path": "arithmetic.json",
+      "sha256": "1bfa96d44ad87c8d8b905a0b01ed78a0b8dd0f64ca27b077ca8ea58977335840",
+      "bytes": 967
+    },
+    {
+      "path": "continuation.json",
+      "sha256": "5c5115b40b56f7e44c6a9b37a39c1a155b0f3d0f7675b97255377037db8d59da",
+      "bytes": 982
+    },
+    {
+      "path": "exit.status",
+      "sha256": "5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73a27fb57e9",
+      "bytes": 1
+    },
+    {
+      "path": "history.json",
+      "sha256": "911ebe87bbea13c16413f0785649c764369a81bda2a6aceb9fc876dff69182dc",
+      "bytes": 119
+    },
+    {
+      "path": "input-2872.json",
+      "sha256": "efa72fc958364e715c594d9b10676435fb74bc6228309ec54c1d28aed1f968a5",
+      "bytes": 6707
+    },
+    {
+      "path": "input-2873.json",
+      "sha256": "eaf406649827a4b90876e77296b66e614b7b57ddda220ec8b14acfa0f82df038",
+      "bytes": 6913
+    },
+    {
+      "path": "inputs/input-2872.json",
+      "sha256": "d906e69a2b503ca8e5ad768ed40aa3eabed3b5b81a8020101288ca425b425c40",
+      "bytes": 5832
+    },
+    {
+      "path": "inputs/input-2872.txt",
+      "sha256": "1a7144d7b282917a6fc0a3f7398b8340cbc860446975c619251d93a4a0e9d687",
+      "bytes": 5782
+    },
+    {
+      "path": "inputs/input-2873.json",
+      "sha256": "5894626953444decc4596f141397c15e86968ed2f44e8c432335595410e86301",
+      "bytes": 5834
+    },
+    {
+      "path": "inputs/input-2873.txt",
+      "sha256": "4a89865e5a3c0bba5a125a1f77e99f2721a8c7ad3180d204fe7504efc1ca26b8",
+      "bytes": 5784
+    },
+    {
+      "path": "inputs/inputs.json",
+      "sha256": "e20672049d1d94437361118e0e25215a45d6dbd5f6c635b390618b09df77635e",
+      "bytes": 752
+    },
+    {
+      "path": "launch.json",
+      "sha256": "759e18c98785dd810c3541836e38ee8666e8085a971f1968e47177f31dbce024",
+      "bytes": 3389
+    },
+    {
+      "path": "output-cap.json",
+      "sha256": "c560ad347c89b3f785103953cd1bffc409d79ba158c75037de038e8f13df0978",
+      "bytes": 1183
+    },
+    {
+      "path": "repeated.json",
+      "sha256": "4344f6a1439d747f2ac37a9ef30d1a9efacb3e89b2d364966fb2482d39fdd36a",
+      "bytes": 967
+    },
+    {
+      "path": "runtime-result.json",
+      "sha256": "0b241ec39ff9876c3110778c237b171147df3b6234e5ee4e33ecc356a6ac37aa",
+      "bytes": 1393
+    },
+    {
+      "path": "setup-attempt.json",
+      "sha256": "22b6716470698983ab6559e7d716b9b6bef083082dba6394e982859c9ab1d01b",
+      "bytes": 678
+    },
+    {
+      "path": "workers-stopped.json",
+      "sha256": "14fc74006f979fad02cf35970be84b9b94bf08d019ede4996eb1c16383437538",
+      "bytes": 182
+    }
+  ],
+  "limitations": [
+    "Pylon CLI usage is absent; input counts come from the native serving tokenizer and template.",
+    "Expected refusals have ok=false in the retained request results.",
+    "This private runtime check provides no numerical qualification receipt."
+  ],
+  "performance": {
+    "purpose": "Recorded native Pylon performance; network and head costs are aggregated",
+    "placement": "four-single",
+    "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+    "rows": [
+      {
+        "tokens": 2,
+        "first_token_ms": 787,
+        "decode_tokens_per_second": 21.94,
+        "decode_token_ms": 45.57,
+        "stage_ms": [
+          10.96,
+          10.52,
+          11.07,
+          11.49
+        ],
+        "links_and_head_ms": 1.53,
+        "stage_state_bytes_per_token": 260727,
+        "prefill_stage_ms": [
+          196,
+          192,
+          199,
+          190
+        ]
+      },
+      {
+        "tokens": 2,
+        "first_token_ms": 774,
+        "decode_tokens_per_second": 17.5,
+        "decode_token_ms": 57.15,
+        "stage_ms": [
+          10.91,
+          10.49,
+          11.06,
+          11.5
+        ],
+        "links_and_head_ms": 13.2,
+        "stage_state_bytes_per_token": 260727,
+        "prefill_stage_ms": [
+          194,
+          187,
+          196,
+          188
+        ]
+      },
+      {
+        "tokens": 2,
+        "first_token_ms": 1592,
+        "decode_tokens_per_second": 21.79,
+        "decode_token_ms": 45.88,
+        "stage_ms": [
+          11.03,
+          10.57,
+          11.11,
+          11.55
+        ],
+        "links_and_head_ms": 1.62,
+        "stage_state_bytes_per_token": 261751,
+        "prefill_stage_ms": [
+          400,
+          385,
+          404,
+          387
+        ]
+      },
+      {
+        "tokens": 4096,
+        "first_token_ms": 989,
+        "decode_tokens_per_second": 20.14,
+        "decode_token_ms": 49.64,
+        "stage_ms": [
+          11.54,
+          11.22,
+          11.81,
+          12.24
+        ],
+        "links_and_head_ms": 2.84,
+        "stage_state_bytes_per_token": 261247,
+        "prefill_stage_ms": [
+          249,
+          239,
+          251,
+          240
+        ]
+      },
+      {
+        "tokens": 2,
+        "first_token_ms": 775,
+        "decode_tokens_per_second": 15.6,
+        "decode_token_ms": 64.08,
+        "stage_ms": [
+          10.91,
+          10.49,
+          11.03,
+          11.49
+        ],
+        "links_and_head_ms": 20.17,
+        "stage_state_bytes_per_token": 260727,
+        "prefill_stage_ms": [
+          195,
+          187,
+          196,
+          188
+        ]
+      },
+      {
+        "tokens": 2,
+        "first_token_ms": 128607,
+        "decode_tokens_per_second": 17.62,
+        "decode_token_ms": 56.77,
+        "stage_ms": [
+          11.63,
+          11.37,
+          11.96,
+          12.34
+        ],
+        "links_and_head_ms": 9.46,
+        "stage_state_bytes_per_token": 260727,
+        "prefill_stage_ms": [
+          31702,
+          31210,
+          32561,
+          31436
+        ]
+      },
+      {
+        "tokens": 2,
+        "first_token_ms": 772,
+        "decode_tokens_per_second": 22.02,
+        "decode_token_ms": 45.41,
+        "stage_ms": [
+          10.89,
+          10.5,
+          11.04,
+          11.32
+        ],
+        "links_and_head_ms": 1.65,
+        "stage_state_bytes_per_token": 260727,
+        "prefill_stage_ms": [
+          195,
+          187,
+          196,
+          185
+        ]
+      }
+    ],
+    "raw_lines": [
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 787 ms, then 21.94 tokens/s; a decode token took 45.57 ms: stages 10.96 + 10.52 + 11.07 + 11.49 ms, links and head 1.53 ms, 260727 bytes of stage state a token; prefill stages 196 + 192 + 199 + 190 ms",
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 774 ms, then 17.50 tokens/s; a decode token took 57.15 ms: stages 10.91 + 10.49 + 11.06 + 11.50 ms, links and head 13.20 ms, 260727 bytes of stage state a token; prefill stages 194 + 187 + 196 + 188 ms",
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 1592 ms, then 21.79 tokens/s; a decode token took 45.88 ms: stages 11.03 + 10.57 + 11.11 + 11.55 ms, links and head 1.62 ms, 261751 bytes of stage state a token; prefill stages 400 + 385 + 404 + 387 ms",
+      "pylon head: model group answered 4096 tokens (0 of reasoning): first token after 989 ms, then 20.14 tokens/s; a decode token took 49.64 ms: stages 11.54 + 11.22 + 11.81 + 12.24 ms, links and head 2.84 ms, 261247 bytes of stage state a token; prefill stages 249 + 239 + 251 + 240 ms",
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 775 ms, then 15.60 tokens/s; a decode token took 64.08 ms: stages 10.91 + 10.49 + 11.03 + 11.49 ms, links and head 20.17 ms, 260727 bytes of stage state a token; prefill stages 195 + 187 + 196 + 188 ms",
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 128607 ms, then 17.62 tokens/s; a decode token took 56.77 ms: stages 11.63 + 11.37 + 11.96 + 12.34 ms, links and head 9.46 ms, 260727 bytes of stage state a token; prefill stages 31702 + 31210 + 32561 + 31436 ms",
+      "pylon head: model group answered 2 tokens (0 of reasoning): first token after 772 ms, then 22.02 tokens/s; a decode token took 45.41 ms: stages 10.89 + 10.50 + 11.04 + 11.32 ms, links and head 1.65 ms, 260727 bytes of stage state a token; prefill stages 195 + 187 + 196 + 185 ms"
+    ],
+    "limitations": [
+      "The links-and-head value is aggregate overhead, not separate one-way latencies for each network hop.",
+      "Short two-token answers have one decode step and are not sustained throughput measurements.",
+      "The4096-token workload ends with an honest output-cap refusal; it is not a complete answer."
+    ]
+  }
+}

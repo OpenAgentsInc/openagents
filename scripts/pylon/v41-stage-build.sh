@@ -7,6 +7,7 @@
 #   v41-stage-build.sh test [--host HOST] [--arch sm_NN] [--commit REV]
 #   v41-stage-build.sh tests --arch sm_NN [--host HOST] [--commit REV]
 #   v41-stage-build.sh pylon [--host HOST] [--commit REV]
+#   v41-stage-build.sh group-answers [--host HOST] [--commit REV]
 #
 # `build` (the default) builds the release binary for --arch (default
 # sm_120, the RTX PRO 6000 of a G4 machine) and uploads it with the group
@@ -64,6 +65,10 @@
 #
 #   gs://openagents-psionic-models/bin/pylon/COMMIT/pylon
 #
+# `group-answers` builds the native direct-pipeline qualification example
+# from the same root workspace and uploads `qualification_answers` under
+# `bin/pylon-qualification/COMMIT/`, with its own build manifest.
+#
 # The build runs on HOST (default coderos-4080) over ssh, inside the
 # nvidia/cuda Ubuntu 24.04 image with CUDA 13.0, so the binary links the
 # stage machines' glibc (common-cu129-ubuntu-2404). Psionic's kernels need
@@ -90,7 +95,7 @@ arch=
 commit=HEAD
 dry=0
 upload=1
-if [[ ${1:-} == build || ${1:-} == test || ${1:-} == tests || ${1:-} == pylon ]]; then
+if [[ ${1:-} == build || ${1:-} == test || ${1:-} == tests || ${1:-} == pylon || ${1:-} == group-answers ]]; then
   mode=$1
   shift
 fi
@@ -130,10 +135,15 @@ if [[ $mode == tests ]]; then
 fi
 # The root workspace's source and target stay apart from Psionic's.
 src_dir=src
+root_binary=pylon
 paths=(crates/psionic crates/stage-link crates/pylon/placements Cargo.toml rust-toolchain.toml scripts/dev/cargo-build-env.sh)
-if [[ $mode == pylon ]]; then
+if [[ $mode == pylon || $mode == group-answers ]]; then
   arch=
   dest=gs://openagents-psionic-models/bin/pylon/$short
+  if [[ $mode == group-answers ]]; then
+    dest=gs://openagents-psionic-models/bin/pylon-qualification/$short
+    root_binary=qualification_answers
+  fi
   src_dir=src-pylon
   # Crates read registry files from across the checkout at compile time,
   # so this sends everything but Psionic, the benchmark evidence, and
@@ -148,9 +158,9 @@ tree=$(git -C "$repo" rev-parse --verify "$sha^{tree}")
 if [[ $dry == 1 ]]; then
   echo "commit  $sha"
   echo "host    $host ($image)"
-  [[ $mode == pylon ]] && echo "mode    pylon" || echo "mode    $mode for ${arch:-the host GPU}"
+  [[ $mode == pylon || $mode == group-answers ]] && echo "mode    $mode" || echo "mode    $mode for ${arch:-the host GPU}"
   [[ $mode == build ]] && echo "upload  $dest/psionic-v41-stage"
-  [[ $mode == pylon ]] && echo "upload  $dest/pylon"
+  [[ $mode == pylon || $mode == group-answers ]] && echo "upload  $dest/$root_binary"
   exit 0
 fi
 
@@ -190,13 +200,18 @@ export RUSTUP_HOME=/cache/rustup CARGO_HOME=/cache/cargo PATH=/cache/cargo/bin:$
 if ! [ -x /cache/cargo/bin/rustup ]; then
   curl -sSf https://sh.rustup.rs | sh -s -- -y -q --profile minimal --default-toolchain none
 fi
-if [ "$MODE" = pylon ]; then
+if [ "$MODE" = pylon ] || [ "$MODE" = group-answers ]; then
   cd /cache/src-pylon
   export CARGO_TARGET_DIR=/cache/target-pylon CARGO_BUILD_JOBS=4
   . /cache/src-pylon/scripts/dev/cargo-build-env.sh
   export CARGO_INCREMENTAL=0
-  cargo build --locked --release -p pylon
-  cp /cache/target-pylon/release/pylon /src/pylon
+  if [ "$MODE" = group-answers ]; then
+    cargo build --locked --release -p pylon --example qualification_answers
+    cp /cache/target-pylon/release/examples/qualification_answers /src/qualification_answers
+  else
+    cargo build --locked --release -p pylon
+    cp /cache/target-pylon/release/pylon /src/pylon
+  fi
   rustc -V >/src/rustc.txt
   exit 0
 fi
@@ -367,9 +382,10 @@ build = {
     "builder_image_id": env["BUILDER_ID"],
     "rustc": text(f"{scratch}/rustc.txt"),
 }
-if kind == "pylon":
-    build["schema"] = "openagents.pylon.build.v1"
-    build["sha256"] = sha(f"{scratch}/pylon")
+if kind in ("pylon", "group-answers"):
+    binary = "pylon" if kind == "pylon" else "qualification_answers"
+    build["schema"] = "openagents.pylon.build.v1" if kind == "pylon" else "openagents.pylon.qualification.build.v1"
+    build["sha256"] = sha(f"{scratch}/{binary}")
 else:
     info = json.load(open(f"{scratch}/build-info.json"))
     if info.get("sha256") != sha(f"{scratch}/psionic-v41-stage"):
@@ -411,19 +427,21 @@ generations() {
   done
   printf '\n}\n'
 }
-if [[ $mode == pylon ]]; then
-  scp -q "$host:$remote_src/pylon" "$host:$remote_src/rustc.txt" "$scratch/"
-  write_build "$scratch/BUILD.json" pylon
+if [[ $mode == pylon || $mode == group-answers ]]; then
+  scp -q "$host:$remote_src/$root_binary" "$host:$remote_src/rustc.txt" "$scratch/"
+  write_build "$scratch/BUILD.json" "$mode"
   if [[ $upload == 0 ]]; then
     cat "$scratch/BUILD.json"
     exit 0
   fi
-  gcloud storage cp -q "$scratch/pylon" "$scratch/BUILD.json" "$dest/"
-  generations "$dest/pylon" "$dest/BUILD.json" >"$scratch/GENERATIONS.json"
+  gcloud storage cp -q "$scratch/$root_binary" "$scratch/BUILD.json" "$dest/"
+  generations "$dest/$root_binary" "$dest/BUILD.json" >"$scratch/GENERATIONS.json"
   gcloud storage cp -q "$scratch/GENERATIONS.json" "$dest/"
   cat "$scratch/GENERATIONS.json"
-  echo "v41-stage-build: uploaded $dest/pylon (sha256 $(shasum -a 256 "$scratch/pylon" | cut -d ' ' -f 1))"
-  echo "pylon cloud up ... --head stage0 --pylon $dest/pylon --pylon-build $(shasum -a 256 "$scratch/BUILD.json" | cut -d ' ' -f 1)"
+  echo "v41-stage-build: uploaded $dest/$root_binary (sha256 $(shasum -a 256 "$scratch/$root_binary" | cut -d ' ' -f 1))"
+  if [[ $mode == pylon ]]; then
+    echo "pylon cloud up ... --head stage0 --pylon $dest/pylon --pylon-build $(shasum -a 256 "$scratch/BUILD.json" | cut -d ' ' -f 1)"
+  fi
   exit 0
 fi
 

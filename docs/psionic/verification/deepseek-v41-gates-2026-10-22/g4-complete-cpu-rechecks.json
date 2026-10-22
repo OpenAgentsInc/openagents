@@ -1,0 +1,176 @@
+{
+  "purpose": "All four stages have complete original-input plain BF16 CPU raw rechecks; numerical envelopes are not frozen",
+  "numerical_release_passed": false,
+  "front_commit": "a723b380ce",
+  "front_bundle": "5ede580bbb298dc3767b91d715e6d8c0f2473355e9ee660e85d2e5d99ca293e8",
+  "files": [
+    {
+      "file": "cpu4-stage0.json",
+      "sha256": "52957233d563bff2ca78821484893424ac135b04c1e4ddef2b4039866fa4856a",
+      "source_report_sha256": "55230227a947507878968c744d1095908591c06d6f47483ccd96e1902775b08c",
+      "stage": 0,
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16,
+          "steps": 18
+        },
+        {
+          "case": "c8-window-1025",
+          "prompt_tokens": 1025,
+          "generated_tokens": 8,
+          "steps": 10
+        }
+      ]
+    },
+    {
+      "file": "cpu4-stage1.json",
+      "sha256": "9a03735cfebdff99866373c6cb80cc4606e006ef5de0618e9f1fe448717f7db2",
+      "source_report_sha256": "d917c7ef4fd54da770d1b3c133f078481086a4e6ecd097d2d8ff2431fe10f68a",
+      "stage": 1,
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16,
+          "steps": 18
+        },
+        {
+          "case": "c8-window-1025",
+          "prompt_tokens": 1025,
+          "generated_tokens": 8,
+          "steps": 10
+        }
+      ]
+    },
+    {
+      "file": "cpu4-stage2.json",
+      "sha256": "4793e165c9905c4a47c4591961bd60382e0b770aa9ef182e87606058b9cb39d7",
+      "source_report_sha256": "a75186d48dd935ce9beeaec0597dfbfcda43a6cae90e4b602d112212f32aea69",
+      "stage": 2,
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16,
+          "steps": 18
+        },
+        {
+          "case": "c8-window-1025",
+          "prompt_tokens": 1025,
+          "generated_tokens": 8,
+          "steps": 10
+        }
+      ]
+    },
+    {
+      "file": "cpu4-stage3.json",
+      "sha256": "105b452fde1f488d7e77e27570d56486a920c11d9db12ebe8b3a6ca1d3d9635e",
+      "source_report_sha256": "1e64d2dc7edbb9572f293ece1da07d7b9227915d6e6d6433930b37fb76a5f63a",
+      "stage": 3,
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16,
+          "steps": 18
+        },
+        {
+          "case": "c8-window-1025",
+          "prompt_tokens": 1025,
+          "generated_tokens": 8,
+          "steps": 10
+        }
+      ]
+    },
+    {
+      "file": "cpu5-stage0.json",
+      "sha256": "dd5c359b6bcebf7f13aac565bc7aca601545506ae47bd9d871806d537c94af5e",
+      "source_report_sha256": "616e11c93026cda895d361506f30d1ca5d33b154f18ab234bfda2140a7c5a086",
+      "stage": 0,
+      "cases": [
+        {
+          "case": "c6-convert-long",
+          "prompt_tokens": 2726,
+          "generated_tokens": 32,
+          "steps": 34
+        }
+      ]
+    },
+    {
+      "file": "cpu6-stage1.json",
+      "sha256": "39c306e06efe1de4c9216fd578bdcaba916700e30389c55d7dcca6ee86b8b72c",
+      "source_report_sha256": "f622c3177569ac4e3514a023d8aa6f8ff3ab824813796c01769ff3969f5a3b5e",
+      "stage": 1,
+      "cases": [
+        {
+          "case": "c6-convert-long",
+          "prompt_tokens": 2726,
+          "generated_tokens": 32,
+          "steps": 34
+        }
+      ]
+    },
+    {
+      "file": "cpu4-long-stage2.json",
+      "sha256": "0a9f4e529be225704c4f77e088710d3bbf46acefc8015c0e4994ab47cdb558f4",
+      "source_report_sha256": "37ed68d2e9bb6a4b77156e1be8dbcb9d4b58d47e2f98c9c37d5a623f76fa4e60",
+      "stage": 2,
+      "cases": [
+        {
+          "case": "c6-convert-long",
+          "prompt_tokens": 2726,
+          "generated_tokens": 32,
+          "steps": 34
+        }
+      ]
+    },
+    {
+      "file": "cpu8-stage3.json",
+      "sha256": "472a746c6e2c1c73cc7edc28c53e648f6ab531e12f0e650d7364f1fb102583b5",
+      "source_report_sha256": "7d3ece8b5d4c5f866046746f26b09fcc2d51eb0ed1f430051f33e4340fb24496",
+      "stage": 3,
+      "cases": [
+        {
+          "case": "c6-convert-long",
+          "prompt_tokens": 2726,
+          "generated_tokens": 32,
+          "steps": 34
+        }
+      ]
+    }
+  ],
+  "stage_coverage": {
+    "0": [
+      "c4-engram-variants",
+      "c6-convert-long",
+      "c8-window-1025"
+    ],
+    "1": [
+      "c4-engram-variants",
+      "c6-convert-long",
+      "c8-window-1025"
+    ],
+    "2": [
+      "c4-engram-variants",
+      "c6-convert-long",
+      "c8-window-1025"
+    ],
+    "3": [
+      "c4-engram-variants",
+      "c6-convert-long",
+      "c8-window-1025"
+    ]
+  },
+  "raw_prefix": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/calibration-20261022/g4-raw-rechecks",
+  "selected_long_stage2": "CPU4 completed, uploaded, and rechecked first; the redundant CPU7 attempt was cancelled and retained as incomplete.",
+  "redundant_backup": {
+    "instance_id": "7497511114989099100",
+    "record": "a12f5ec7bce54c2ead71da462f5a9de5",
+    "partial_process_status": 143,
+    "deleted_at": "2026-10-22T22:17:02Z",
+    "estimated_compute_cost_usd": 14.273371,
+    "accepted_as_calibration": false
+  }
+}
