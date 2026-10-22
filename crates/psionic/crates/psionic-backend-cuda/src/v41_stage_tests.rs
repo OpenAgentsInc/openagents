@@ -2209,19 +2209,52 @@ fn consumer_q_tiers_agree() -> TestResult {
     )?);
     let rows: Arc<dyn V41EngramRows> =
         Arc::new(V41OwnedEngram::from_source(&store, &[1, 14], ENGRAM_WIDTH)?);
-    for formats in [
-        [
-            V41MatvecFormat::Q2Row32,
-            V41MatvecFormat::Q3Row32,
-            V41MatvecFormat::Q2Row32,
-        ],
-        [V41MatvecFormat::Q3Row32; 3],
+    struct WiderEnds {
+        ordinary: V41OwnedExperts,
+        wide: V41OwnedExperts,
+    }
+    impl V41ExpertBytes for WiderEnds {
+        fn layer_formats(&self, layer: usize) -> Option<[V41MatvecFormat; 3]> {
+            matches!(layer, 0 | 39).then_some([V41MatvecFormat::Q3Row32; 3])
+        }
+        fn projection(
+            &self,
+            layer: usize,
+            expert: usize,
+            projection: usize,
+        ) -> Result<(&[u8], &[u8]), RuntimeError> {
+            if self.layer_formats(layer).is_some() {
+                self.wide.projection(layer, expert, projection)
+            } else {
+                self.ordinary.projection(layer, expert, projection)
+            }
+        }
+    }
+    let mixed = [
+        V41MatvecFormat::Q2Row32,
+        V41MatvecFormat::Q3Row32,
+        V41MatvecFormat::Q2Row32,
+    ];
+    for (formats, wider_ends) in [
+        (mixed, false),
+        ([V41MatvecFormat::Q3Row32; 3], false),
+        (mixed, true),
     ] {
         let dims = V41ExpertDims {
             formats,
             ..V41ExpertDims::fp4(sh.hidden, sh.expert_width, sh.swiglu_limit)
         };
-        let q: Arc<dyn V41ExpertBytes> = Arc::new(fp4.requantized(dims));
+        let q: Arc<dyn V41ExpertBytes> = if wider_ends {
+            Arc::new(WiderEnds {
+                ordinary: fp4.requantized(dims),
+                wide: fp4.requantized(V41ExpertDims {
+                    formats: [V41MatvecFormat::Q3Row32; 3],
+                    ..dims
+                }),
+            })
+        } else {
+            Arc::new(fp4.requantized(dims))
+        };
         let config = |slots: usize, batched: bool| {
             let mut c = V41ExpertCacheConfig::new(slots);
             c.miss_lane = V41MissLane::Host;
