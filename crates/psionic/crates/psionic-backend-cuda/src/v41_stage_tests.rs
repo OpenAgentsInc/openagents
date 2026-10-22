@@ -838,6 +838,62 @@ fn compare(
     (worst, compared, equal)
 }
 
+/// Reconstruct the actual picks from the recorded kernel scores and its
+/// packed candidate bytes. Padding scores are unspecified and ignored.
+fn check_index_observations(
+    observed: &BTreeMap<usize, BTreeMap<V41Site, Vec<u32>>>,
+    position: usize,
+    tokens: usize,
+) -> TestResult {
+    let g = geometry();
+    for layer in V41_STAGE_INDEX_SOURCES {
+        let sites = &observed[&layer];
+        let scores = &sites[&V41Site::IndexScores];
+        let width = MAX_CONTEXT / v41_compress_ratio(layer).ok_or("ratio")? + 1;
+        assert_eq!(scores.len(), tokens * width);
+        for row in 0..tokens {
+            let visible = (position + row + 1) / v41_compress_ratio(layer).ok_or("ratio")?;
+            let scores: Vec<f32> = scores[row * width..row * width + visible]
+                .iter()
+                .map(|w| f32::from_bits(*w))
+                .collect();
+            assert!(scores.iter().all(|s| s.is_finite()));
+            let flags: Vec<u8> = sites
+                .get(&V41Site::CandidateFlags)
+                .map(|words| {
+                    let stride = words.len() / tokens;
+                    words[row * stride..(row + 1) * stride]
+                        .iter()
+                        .flat_map(|w| w.to_le_bytes())
+                        .collect()
+                })
+                .unwrap_or_default();
+            let mask: Vec<bool> = (0..visible)
+                .map(|i| {
+                    flags
+                        .get(i / shape().candidate_block_size)
+                        .is_some_and(|b| *b != 0)
+                })
+                .collect();
+            let mut want = psionic_models::deepseek_v41_cpu::attention::select_indices(
+                &scores,
+                visible,
+                g.index_top_k,
+                0,
+                (layer > V41_STAGE_CANDIDATE_SOURCE).then_some(mask.as_slice()),
+            )?;
+            want.resize(g.index_top_k, -1);
+            let got: Vec<i32> = sites[&V41Site::Selection]
+                [row * g.index_top_k..(row + 1) * g.index_top_k]
+                .iter()
+                .map(|w| *w as i32)
+                .collect();
+            assert_eq!(got, want, "recorded index layer {layer} row {row}");
+        }
+    }
+    Ok(())
+}
+
 /// The whole synthetic model as one stage, prefill then decode, against the
 /// CPU stage under the frozen policy.
 #[test]
@@ -879,6 +935,7 @@ fn synthetic_stage_matches_the_cpu() -> TestResult {
             true,
         )?;
         let observed = gpu.observations(step.len())?;
+        check_index_observations(&observed, position, step.len())?;
         let (worst, compared, equal) = compare(
             &observed,
             &expected.observations,

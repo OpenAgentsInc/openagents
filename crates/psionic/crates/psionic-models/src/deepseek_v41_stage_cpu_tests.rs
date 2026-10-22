@@ -230,3 +230,97 @@ fn boundaries_carry_the_pre_mix() {
         assert_eq!(kinds[..2], [SectionKind::Residual, SectionKind::PreMix]);
     }
 }
+
+/// Recording uses the actual scores and picks, and changes no forward.
+#[test]
+fn index_observations_preserve_outputs_and_explain_every_selection() {
+    let w = weights();
+    let split = even(1);
+    let make = |observe| {
+        let runtime = LayerRangeRuntime::new(
+            w,
+            RangeConfig {
+                transformer: synthetic::config().unwrap(),
+                layers: 0..40,
+                max_context: CONTEXT,
+                arithmetic: Arithmetic::Float32,
+            },
+            synthetic::map().unwrap(),
+        )
+        .unwrap();
+        let executor = V41CpuStageExecutor::new(runtime, 0);
+        let executor = if observe {
+            executor.with_index_observations()
+        } else {
+            executor
+        };
+        let inbox = StageInbox::new(DIGEST, 1, executor.contract(), CodecLimits::default());
+        vec![StageWorker::new(inbox, executor)]
+    };
+    let mut plain = make(false);
+    let mut observed = make(true);
+    let mut position = 0;
+    let mut tokens = PROMPT.to_vec();
+    for step in 0..4 {
+        let msg = message(&split, "index", step, position, tokens.clone());
+        let a = step_group(&mut plain, &split, msg.clone());
+        let b = step_group(&mut observed, &split, msg);
+        assert_eq!(
+            a.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+            b.iter().map(|v| v.to_bits()).collect::<Vec<_>>()
+        );
+        assert!(plain[0].executor().index_observations().is_empty());
+        let g = observed[0]
+            .executor()
+            .runtime()
+            .config()
+            .transformer
+            .block
+            .geometry;
+        let traces = observed[0].executor().index_observations();
+        assert_eq!(traces.len(), 8);
+        for (layer, sites) in traces {
+            let ratio = compress_ratio(*layer).unwrap();
+            let width = CONTEXT / ratio + 1;
+            assert_eq!(sites["IndexScores"].len(), tokens.len() * width);
+            for row in 0..tokens.len() {
+                let visible = (position as usize + row + 1) / ratio;
+                let scores: Vec<f32> = sites["IndexScores"][row * width..row * width + visible]
+                    .iter()
+                    .map(|w| f32::from_bits(*w))
+                    .collect();
+                assert!(scores.iter().all(|v| v.is_finite()));
+                let flags: Vec<u8> = sites
+                    .get("CandidateFlags")
+                    .map(|words| {
+                        let stride = words.len() / tokens.len();
+                        words[row * stride..(row + 1) * stride]
+                            .iter()
+                            .flat_map(|w| w.to_le_bytes())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mask: Vec<bool> = (0..visible)
+                    .map(|i| flags.get(i / CANDIDATE_BLOCK_ROWS).is_some_and(|b| *b != 0))
+                    .collect();
+                let mut want = attention::select_indices(
+                    &scores,
+                    visible,
+                    g.index_top_k,
+                    0,
+                    (*layer > CANDIDATE_SOURCE as usize).then_some(mask.as_slice()),
+                )
+                .unwrap();
+                want.resize(g.index_top_k, -1);
+                let got: Vec<i32> = sites["Selection"]
+                    [row * g.index_top_k..(row + 1) * g.index_top_k]
+                    .iter()
+                    .map(|w| *w as i32)
+                    .collect();
+                assert_eq!(got, want, "layer {layer} row {row}");
+            }
+        }
+        position += tokens.len() as u64;
+        tokens = vec![argmax(&a).unwrap()];
+    }
+}

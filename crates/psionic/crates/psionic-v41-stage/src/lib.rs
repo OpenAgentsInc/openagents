@@ -728,7 +728,12 @@ impl StageBackend for V41CpuStageExecutor<'_> {
                 scores.iter().map(|v| v.to_bits()).collect(),
             )
         });
-        Some(ids.chain(scores).collect())
+        let index = self.index_observations().iter().flat_map(|(layer, sites)| {
+            sites
+                .iter()
+                .map(move |(site, words)| (format!("L{layer}.{site}"), words.clone()))
+        });
+        Some(ids.chain(scores).chain(index).collect())
     }
 }
 
@@ -1773,6 +1778,34 @@ pub fn cpu_worker_wired(
     generation: u64,
     wire: Wire,
 ) -> Result<StageWorker<V41CpuStageExecutor<'static>>, Refused> {
+    cpu_worker_wired_observed(
+        model,
+        manifest,
+        entry,
+        arithmetic,
+        max_context,
+        generation,
+        wire,
+        false,
+    )
+}
+
+/// [`cpu_worker_wired`] with read-only index observations for qualification.
+///
+/// # Errors
+///
+/// Refuses the same inputs as [`cpu_worker_wired`].
+#[allow(clippy::too_many_arguments)]
+pub fn cpu_worker_wired_observed(
+    model: &'static Model,
+    manifest: &V41GroupManifest,
+    entry: &V41StageEntry,
+    arithmetic: Arithmetic,
+    max_context: usize,
+    generation: u64,
+    wire: Wire,
+    observe: bool,
+) -> Result<StageWorker<V41CpuStageExecutor<'static>>, Refused> {
     let runtime = LayerRangeRuntime::new(
         model.weights.source(),
         RangeConfig {
@@ -1785,6 +1818,9 @@ pub fn cpu_worker_wired(
     )
     .map_err(|e| Refused(format!("layers {:?} can't run: {e}", entry.layers())))?;
     let mut executor = V41CpuStageExecutor::new(runtime, entry.stage);
+    if observe {
+        executor = executor.with_index_observations();
+    }
     if wire == Wire::Cuda {
         executor = executor.with_cache_dtype(psionic_models::stage_state::WireDtype::Bf16);
     }

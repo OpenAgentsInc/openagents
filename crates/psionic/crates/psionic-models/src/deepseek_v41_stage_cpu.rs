@@ -192,6 +192,8 @@ pub struct LayerRangeRuntime<'a> {
     /// The last step's biased router scores per layer, 384 per token, in the
     /// selection function's units (G1 v2 policy 2.2, #12405).
     router_scores: BTreeMap<usize, Vec<f32>>,
+    capture_index: bool,
+    index_observations: BTreeMap<usize, BTreeMap<String, Vec<u32>>>,
 }
 
 impl<'a> LayerRangeRuntime<'a> {
@@ -294,6 +296,8 @@ impl<'a> LayerRangeRuntime<'a> {
             position: 0,
             routes: BTreeMap::new(),
             router_scores: BTreeMap::new(),
+            capture_index: false,
+            index_observations: BTreeMap::new(),
         })
     }
 
@@ -445,6 +449,7 @@ impl<'a> LayerRangeRuntime<'a> {
         }
         self.routes.clear();
         self.router_scores.clear();
+        self.index_observations.clear();
         for layer in self.config.layers.clone() {
             let block = TextBlock::new(self.weights, layer, c.block, self.config.arithmetic)?
                 .with_reference_rows(count);
@@ -700,6 +705,47 @@ impl<'a> LayerRangeRuntime<'a> {
                     };
                     let selected =
                         attention::select_indices(&scores, visible, g.index_top_k, 0, candidates)?;
+                    if self.capture_index {
+                        let trace = self.index_observations.entry(layer).or_default();
+                        let width = self.config.max_context / ratio + 1;
+                        let recorded = trace.entry("IndexScores".into()).or_default();
+                        recorded.extend(scores.iter().map(|s| s.to_bits()));
+                        recorded.extend(std::iter::repeat_n(
+                            f32::NEG_INFINITY.to_bits(),
+                            width - scores.len(),
+                        ));
+                        let recorded = trace.entry("Selection".into()).or_default();
+                        recorded.extend(selected.iter().map(|i| *i as u32));
+                        recorded.extend(std::iter::repeat_n(
+                            u32::MAX,
+                            g.index_top_k - selected.len(),
+                        ));
+                        if layer >= CANDIDATE_SOURCE as usize {
+                            let mask = if layer == CANDIDATE_SOURCE as usize {
+                                candidate_rows.last().map(Vec::as_slice)
+                            } else {
+                                candidates
+                            }
+                            .ok_or(CpuError::Invalid("index observation candidates"))?;
+                            let bytes = (self.config.max_context + 1)
+                                .div_ceil(CANDIDATE_BLOCK_ROWS)
+                                .div_ceil(4)
+                                * 4;
+                            let mut flags = vec![0_u8; bytes];
+                            for (block, slot) in flags.iter_mut().enumerate() {
+                                *slot = u8::from(
+                                    mask.get(block * CANDIDATE_BLOCK_ROWS)
+                                        .copied()
+                                        .unwrap_or(false),
+                                );
+                            }
+                            trace.entry("CandidateFlags".into()).or_default().extend(
+                                flags
+                                    .chunks_exact(4)
+                                    .map(|b| u32::from_le_bytes(b.try_into().unwrap_or([0; 4]))),
+                            );
+                        }
+                    }
                     selected_rows.push(selected.clone());
                     selected
                 } else {
@@ -947,6 +993,20 @@ impl<'a> V41CpuStageExecutor<'a> {
     #[must_use]
     pub fn router_scores(&self) -> &BTreeMap<usize, Vec<f32>> {
         &self.runtime.router_scores
+    }
+
+    /// Records the actual index scores, selections, and candidate bytes.
+    /// It changes no model operation; ordinary stages leave this disabled.
+    #[must_use]
+    pub fn with_index_observations(mut self) -> Self {
+        self.runtime.capture_index = true;
+        self
+    }
+
+    /// The last step's per-layer index words, named as the CUDA sites.
+    #[must_use]
+    pub fn index_observations(&self) -> &BTreeMap<usize, BTreeMap<String, Vec<u32>>> {
+        &self.runtime.index_observations
     }
 
     /// The runtime.

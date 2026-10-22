@@ -1030,13 +1030,20 @@ pub enum V41Site {
     HcOut,
     /// The index selection (`i32`), on index source layers.
     Selection,
+    /// Raw causal index scores before candidate filtering; capacity per row.
+    IndexScores,
+    /// One byte per candidate block, stored as packed words (four per word).
+    CandidateFlags,
 }
 
 impl V41Site {
     /// Whether the site holds integers.
     #[must_use]
     pub const fn integer(self) -> bool {
-        matches!(self, Self::EngramIds | Self::ExpertIds | Self::Selection)
+        matches!(
+            self,
+            Self::EngramIds | Self::ExpertIds | Self::Selection | Self::CandidateFlags
+        )
     }
 }
 
@@ -1695,6 +1702,13 @@ impl V41Stage {
                 }
                 if V41_STAGE_INDEX_SOURCES.contains(&layer) {
                     sites.push((V41Site::Selection, g.index_top_k));
+                    sites.push((V41Site::IndexScores, config.max_context / ratio + 1));
+                    if layer >= V41_STAGE_CANDIDATE_SOURCE {
+                        let words = (config.max_context + 1)
+                            .div_ceil(shape.candidate_block_size)
+                            .div_ceil(4);
+                        sites.push((V41Site::CandidateFlags, words));
+                    }
                 }
                 for (site, words) in sites {
                     let buffer = loader.state_zeros(4 * words * config.max_step_tokens)?;
@@ -2973,6 +2987,10 @@ impl V41Stage {
                     if observe {
                         let lw_observed = lw;
                         self.observe(s, lw_observed, V41Site::Selection, selection)?;
+                        self.observe(s, lw_observed, V41Site::IndexScores, &wk.scores)?;
+                        if layer >= V41_STAGE_CANDIDATE_SOURCE {
+                            self.observe(s, lw_observed, V41Site::CandidateFlags, &wk.flags)?;
+                        }
                     }
                 }
                 Some(V41Compressed {
