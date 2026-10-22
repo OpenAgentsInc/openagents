@@ -250,7 +250,9 @@ stage_modules() { # FULL SHA CTX
     fi || { say "The modules build failed; see the log."; exit 1; }
     report_modules "$STATE/build-modules-$2.log"
     took "modules build" "$t"
-    publish_modules "$4" "$3"
+    deploy_event_step build_done
+    deploy_event_step deploying deploy_failed
+    publish_modules "$4" "$3" || { say "Publishing the modules failed."; exit 1; }
 }
 
 # Print what a build's module cache reused and built.
@@ -357,6 +359,9 @@ stage() {
     if [ -z "$keep" ] && [ "${WEB_PATH:-auto}" != image ]; then from=$(staging_commit); fi
     if [ -n "$from" ] && content_only "$from" "$full"; then
         deploy_event_watch staging content "$full"
+        # Content has no build; livehost.sh assembles it as it deploys.
+        deploy_event_step build_started build_failed
+        deploy_event_step build_done
         deploy_event_step deploying deploy_failed
         stage_content "$full" "$sha" "$ctx" "$from"
         t=$(now)
@@ -376,7 +381,6 @@ stage() {
         deploy_event_watch staging module "$full"
         deploy_event_step build_started build_failed
         stage_modules "$full" "$sha" "$ctx"
-        deploy_event_step build_done
         t=$(now)
         smoke=0
         deploy_event_step smoke_running smoke_failed
