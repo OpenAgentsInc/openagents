@@ -414,3 +414,48 @@ pub fn stage_options(
     }
     Ok((options, experts == Experts::Host))
 }
+
+/// The single-box memory plan a stage with host tiers settles on at load
+/// (#12467): device slots per layer and their bytes, the routed experts
+/// left to the host tier and whether the page cache can hold them beside
+/// the system, and the per-expert rate of each lane the load measured.
+#[must_use]
+pub fn memory_plan(stage: &psionic_backend_cuda::v41_stage::V41Stage) -> Option<Value> {
+    let stats = stage.expert_cache_stats()?;
+    let experts = stage.config().shape.router.experts;
+    let slot_bytes = stats.slots_per_layer * stats.layers;
+    let expert_bytes = if slot_bytes == 0 {
+        0
+    } else {
+        stats.device_bytes / slot_bytes
+    };
+    let host_tier_bytes =
+        experts.saturating_sub(stats.slots_per_layer) * stats.layers * expert_bytes;
+    let meminfo = std::fs::read_to_string("/proc/meminfo").unwrap_or_default();
+    let field = |name: &str| -> Option<u64> {
+        meminfo
+            .lines()
+            .find(|l| l.starts_with(name))
+            .and_then(|l| l.split_whitespace().nth(1))
+            .and_then(|kb| kb.parse::<u64>().ok())
+            .map(|kb| kb * 1024)
+    };
+    let (total, available) = (field("MemTotal:"), field("MemAvailable:"));
+    Some(json!({
+        "routed_experts_per_layer": experts,
+        "slots_per_layer": stats.slots_per_layer,
+        "resident_fraction": stats.slots_per_layer as f64 / experts.max(1) as f64,
+        "device_cache_bytes": stats.device_bytes,
+        "expert_bytes": expert_bytes,
+        "host_tier_bytes": host_tier_bytes,
+        "ram_total_bytes": total,
+        "ram_available_bytes": available,
+        "host_tier_fits_page_cache": available.map(|a| host_tier_bytes as u64 <= a),
+        "miss_lane": stats.miss_lane.map(|l| format!("{l:?}").to_lowercase()),
+        "expert_us": {
+            "device": stats.device_expert_us,
+            "bus": stats.bus_expert_us,
+            "host": stats.host_expert_us,
+        },
+    }))
+}

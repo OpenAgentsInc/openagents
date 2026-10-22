@@ -373,13 +373,17 @@ impl HostTiers {
     }
 
     /// The numerical profile a CUDA stage with these tiers announces: the
-    /// lossy `consumer-q` profile names itself, so it never joins a group
-    /// that expects the exact one.
+    /// lossy `consumer-q` profile and the bit-equal `consumer-exact` one
+    /// (any host tier) name themselves, so neither joins a group that
+    /// expects the qualified profile.
     #[must_use]
     pub fn profile(&self, exact: String) -> String {
         match (&self.consumer_q, self.fast_reductions) {
             (Some(_), true) => format!("consumer-q-fast-{exact}"),
             (Some(_), false) => format!("consumer-q-{exact}"),
+            // Bit-equal to the exact profile, but its own configuration:
+            // a single-box stage never joins a qualified group (#12467).
+            (None, _) if self.any() => format!("consumer-exact-{exact}"),
             (None, _) => exact,
         }
     }
@@ -2399,5 +2403,39 @@ mod parser_tests {
             Some("stop")
         );
         assert!(parser.push(5, false).is_err());
+    }
+}
+
+#[cfg(test)]
+mod tier_tests {
+    use super::*;
+
+    fn tiers(args: &[&str]) -> HostTiers {
+        let args: Vec<String> = args.iter().map(|a| (*a).to_string()).collect();
+        HostTiers::from_args(&args).expect("valid tiers")
+    }
+
+    /// A stage with any host tier names its own profile (#12465, #12467),
+    /// so it never joins a group that expects the qualified one.
+    #[test]
+    fn host_tiers_name_their_profiles() {
+        let exact = "cuda-device-sm_120".to_string();
+        assert_eq!(tiers(&[]).profile(exact.clone()), exact);
+        assert_eq!(
+            tiers(&["--expert-cache", "auto", "--engram", "file"]).profile(exact.clone()),
+            "consumer-exact-cuda-device-sm_120"
+        );
+        assert_eq!(
+            tiers(&["--prefill", "layer-major"]).profile(exact.clone()),
+            "consumer-exact-cuda-device-sm_120"
+        );
+        assert_eq!(
+            tiers(&["--expert-cache", "auto", "--consumer-q", "/q"]).profile(exact.clone()),
+            "consumer-q-cuda-device-sm_120"
+        );
+        assert_eq!(
+            tiers(&["--consumer-q", "/q", "--fast-reductions"]).profile(exact),
+            "consumer-q-fast-cuda-device-sm_120"
+        );
     }
 }

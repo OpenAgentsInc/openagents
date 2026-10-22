@@ -957,6 +957,10 @@ pub fn run_stage(
         options.control,
     )?;
     let device = device_info(&backend, options.experts);
+    if let Some(plan) = tiers::memory_plan(&loaded) {
+        // The single-box plan, once at load, for the operator's log (#12467).
+        eprintln!("{}", serde_json::json!({"memory_plan": plan}));
+    }
     let mut executor = V41CudaStageExecutor::new(backend, loaded, entry.stage);
     if options.control == Some(Control::StaleCache) {
         executor = executor.with_stale_cache();

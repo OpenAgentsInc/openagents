@@ -510,6 +510,7 @@ fn stage_thread(
     let (weight_bytes, state_bytes) = stage.device_bytes();
     let shape = stage.config().shape;
     let cache_at_load = stage.expert_cache_stats().map(|s| cache_json(&s));
+    let memory_plan = super::tiers::memory_plan(&stage);
     let executor = V41CudaStageExecutor::new(backend, stage, entry.stage);
     let inbox = StageInbox::new(
         manifest.digest(),
@@ -536,6 +537,7 @@ fn stage_thread(
         "engram": engram,
         "experts": options.experts.as_str(),
         "expert_cache_at_load": cache_at_load,
+        "memory_plan": memory_plan,
     })));
     let mut free_min = free_bench;
     let mut steps = Vec::new();
