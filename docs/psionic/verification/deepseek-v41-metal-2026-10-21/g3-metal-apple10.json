@@ -1,0 +1,340 @@
+{
+ "schema": "openagents.psionic.deepseek_v41_metal_parity.v1",
+ "issue": 12420,
+ "date": "2026-10-21",
+ "host": {
+  "name": "the owner's Mac (shared with other agents)",
+  "gpu": "Apple M5 Max",
+  "family": "apple10",
+  "memory_gb": 128,
+  "macos": "26.4 (25E246)",
+  "metal_language": "3.1, safe math, precise functions"
+ },
+ "source_commit": "a81e701f2c7d28e3bf495cfd0df2f18235120a06",
+ "command": "cargo test -p psionic-backend-metal --features v41 --lib v41:: -- --nocapture --test-threads=1",
+ "tolerance": "the CUDA tests' tolerances, fixed before the first CUDA run (see psionic-backend-cuda/src/v41_*_tests.rs); every kernel must equal its host model bit for bit, with float32 results below 2^-126 flushed to zero as Apple GPUs flush them",
+ "tests_passed": 48,
+ "tests_ignored_measurements": 3,
+ "tests": [
+  "v41::attention::tests::cache_quantizers_match_the_cpu",
+  "v41::attention::tests::compressed_attention_matches_the_cpu",
+  "v41::attention::tests::compressor_chunks_and_tails_match_the_cpu",
+  "v41::attention::tests::compressor_matches_the_cpu_on_real_inputs",
+  "v41::attention::tests::host_decoders_and_schedule_match_the_cpu",
+  "v41::attention::tests::host_models_match_the_cpu_components",
+  "v41::attention::tests::host_quantizers_match_the_cpu",
+  "v41::attention::tests::host_selection_matches_the_cpu",
+  "v41::attention::tests::indexer_matches_the_cpu",
+  "v41::attention::tests::real_inputs_cpu_and_host_models_agree",
+  "v41::attention::tests::rope_matches_the_cpu",
+  "v41::attention::tests::selection_and_candidates_match_the_oracle",
+  "v41::attention::tests::shared_sources_are_read_on_the_device",
+  "v41::attention::tests::v41_attention_decode_latency",
+  "v41::attention::tests::window_attention_matches_the_cpu",
+  "v41::checks::exp_once_equals_the_host_for_every_float",
+  "v41::checks::log1p_once_equals_the_host_for_every_nonnegative_float",
+  "v41::checks::software_double_rounds_as_f64",
+  "v41::matvec::tests::activation_quantization_edges_match_the_cpu_rule",
+  "v41::matvec::tests::dimension_checks_refuse_bad_shapes",
+  "v41::matvec::tests::exact_sums_match_the_cpu_path_bit_for_bit",
+  "v41::matvec::tests::extreme_scales_saturation_and_nan_match_the_host_model",
+  "v41::matvec::tests::real_rows_cpu_rule_and_host_model_agree",
+  "v41::matvec::tests::real_rows_match_the_cpu_path_on_device",
+  "v41::matvec::tests::stacked_matrices_follow_device_ids",
+  "v41::matvec::tests::synthetic_shapes_match_the_cpu_path_on_device",
+  "v41::matvec::tests::v41_decode_bandwidth",
+  "v41::mix::tests::collapse_and_expand_match_the_cpu_path_at_every_recorded_layer",
+  "v41::mix::tests::configurations_refuse_bad_shapes",
+  "v41::mix::tests::engram_gate_matches_the_cpu_path",
+  "v41::mix::tests::engram_gather_reads_only_the_requested_rows",
+  "v41::mix::tests::moe_step_runs_from_device_ids",
+  "v41::mix::tests::moe_sum_matches_the_cpu_forward",
+  "v41::mix::tests::real_inputs_cpu_and_host_models_agree",
+  "v41::mix::tests::real_mixes_match_the_cpu_path",
+  "v41::mix::tests::real_router_matches_the_cpu_path",
+  "v41::mix::tests::routing_edges_match_the_cpu_path",
+  "v41::mix::tests::routing_matches_the_cpu_path_on_oracle_scores",
+  "v41::mix::tests::sinkhorn_edges_match_the_cpu_path",
+  "v41::mix::tests::swiglu_matches_the_cpu_path_and_the_oracle",
+  "v41::mix::tests::synthetic_mixes_match_the_cpu_path",
+  "v41::mix::tests::v41_mix_decode_latency",
+  "v41::stage::tests::boundaries_match_the_stage_contract",
+  "v41::stage::tests::cpu_stage_matches_the_cpu_transformer",
+  "v41::stage::tests::decode_steps_stay_on_the_device",
+  "v41::stage::tests::engram_hash_matches_the_cpu",
+  "v41::stage::tests::intermediate_prompt_chunks_skip_the_head_and_preserve_the_answer",
+  "v41::stage::tests::sampling_equals_the_device_order_exactly",
+  "v41::stage::tests::sampling_matches_its_definition",
+  "v41::stage::tests::split_stages_equal_the_whole",
+  "v41::stage::tests::synthetic_stage_matches_the_cpu"
+ ],
+ "math": {
+  "exp_once": "equal to (x as f64).exp() as f32 for all 2,239,889,413 inputs from -104 to 89, both zeros, infinities, and NaN (12 hard cases listed in common.metal)",
+  "log1p_once": "equal to (x as f64).ln_1p() as f32 for all 2,130,706,434 nonnegative normal inputs, zero, and infinity (34 hard cases listed)",
+  "software_binary64": "add, subtract, multiply, and compare equal to f64 on 400,000 random and edge pairs",
+  "cos_sin": "host table of cos((double)(float(p) * f)) rounded to float, the CUDA kernels' device values"
+ },
+ "evidence": [
+  {
+   "mode": "compressed_attention",
+   "tokens_checked": 26,
+   "bf16_boundary_values": 0
+  },
+  {
+   "mode": "compressor_synthetic",
+   "latents": 16,
+   "ratio2_fallback_bounds": 1,
+   "ratio2_latents_differing": 0
+  },
+  {
+   "mode": "compressor_real",
+   "layers": [
+    {
+     "layer": 2,
+     "ratio": 2,
+     "groups": 7,
+     "oracle_policy_ratio": 0.0,
+     "fallback_bounds": 1,
+     "latents_differing": 0,
+     "index_key_blocks_at_rope_boundary": 0,
+     "kv_blocks_at_rope_boundary": 0
+    },
+    {
+     "layer": 20,
+     "ratio": 1,
+     "groups": 21,
+     "oracle_policy_ratio": 0.43537414965986393,
+     "fallback_bounds": 0,
+     "latents_differing": 0,
+     "index_key_blocks_at_rope_boundary": 1,
+     "kv_blocks_at_rope_boundary": 2
+    }
+   ]
+  },
+  {
+   "mode": "indexer",
+   "score_cases": 13,
+   "index_query_blocks_at_rope_boundary": 4
+  },
+  {
+   "mode": "cpu_real",
+   "latents": 28,
+   "latent_policy_ratio": 0.43537414965986393,
+   "selections": 224,
+   "tied_differences": 0
+  },
+  {
+   "mode": "rope",
+   "cases": 20952,
+   "real_latents": 21,
+   "max_error_over_bound": 0.35233541378727823,
+   "bf16_boundary_values": 0
+  },
+  {
+   "mode": "selection_oracle",
+   "steps": 28,
+   "selections": 224,
+   "largest_visible": 20021,
+   "selection_tied_indices_differing": 0,
+   "candidate_tied_blocks_differing": 0
+  },
+  {
+   "mode": "shared_sources",
+   "sources": [
+    {
+     "source": 2,
+     "ratio": 2,
+     "consumers": [
+      2,
+      3
+     ],
+     "tokens": 600,
+     "latent_fallback_bounds": 141,
+     "latents_differing": 0,
+     "attention_bf16_boundary_values": 0
+    },
+    {
+     "source": 20,
+     "ratio": 1,
+     "consumers": [
+      20,
+      21,
+      24
+     ],
+     "tokens": 600,
+     "latent_fallback_bounds": 0,
+     "latents_differing": 0,
+     "attention_bf16_boundary_values": 0
+    }
+   ]
+  },
+  {
+   "mode": "window",
+   "tokens_checked": 316,
+   "bf16_boundary_values": 0
+  },
+  {
+   "mode": "round_trips",
+   "steps": [
+    {
+     "step": 0,
+     "first": "V41StepStats { tokens: 21, graph_launches: 21, graph_captures: 1, host_to_device_copies: 3, host_to_device_bytes: 92, device_to_host_copies: 2, device_to_host_bytes: 43344, synchronizations: 1, seconds: 0.090661208, device_seconds: 0.090646125 }",
+     "last": "V41StepStats { tokens: 21, graph_launches: 22, graph_captures: 2, host_to_device_copies: 7, host_to_device_bytes: 43452, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.076218292, device_seconds: 0.0762085 }"
+    },
+    {
+     "step": 1,
+     "first": "V41StepStats { tokens: 1, graph_launches: 1, graph_captures: 0, host_to_device_copies: 3, host_to_device_bytes: 12, device_to_host_copies: 2, device_to_host_bytes: 2064, synchronizations: 1, seconds: 0.004093917, device_seconds: 0.004088791 }",
+     "last": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 7, host_to_device_bytes: 2092, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.003974084, device_seconds: 0.00397025 }"
+    },
+    {
+     "step": 2,
+     "first": "V41StepStats { tokens: 1, graph_launches: 1, graph_captures: 0, host_to_device_copies: 3, host_to_device_bytes: 12, device_to_host_copies: 2, device_to_host_bytes: 2064, synchronizations: 1, seconds: 0.003962375, device_seconds: 0.003958875 }",
+     "last": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 7, host_to_device_bytes: 2092, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.00387825, device_seconds: 0.003873792 }"
+    },
+    {
+     "step": 3,
+     "first": "V41StepStats { tokens: 1, graph_launches: 1, graph_captures: 0, host_to_device_copies: 3, host_to_device_bytes: 12, device_to_host_copies: 2, device_to_host_bytes: 2064, synchronizations: 1, seconds: 0.004027375, device_seconds: 0.004023 }",
+     "last": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 7, host_to_device_bytes: 2092, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.003947333, device_seconds: 0.00394425 }"
+    },
+    {
+     "step": 4,
+     "first": "V41StepStats { tokens: 1, graph_launches: 1, graph_captures: 0, host_to_device_copies: 3, host_to_device_bytes: 12, device_to_host_copies: 2, device_to_host_bytes: 2064, synchronizations: 1, seconds: 0.003935541, device_seconds: 0.003930875 }",
+     "last": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 7, host_to_device_bytes: 2092, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.003932875, device_seconds: 0.003929125 }"
+    },
+    {
+     "step": 5,
+     "first": "V41StepStats { tokens: 1, graph_launches: 1, graph_captures: 0, host_to_device_copies: 3, host_to_device_bytes: 12, device_to_host_copies: 2, device_to_host_bytes: 2064, synchronizations: 1, seconds: 0.003853708, device_seconds: 0.003850166 }",
+     "last": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 7, host_to_device_bytes: 2092, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.003958166, device_seconds: 0.00395475 }"
+    },
+    {
+     "step": 6,
+     "first": "V41StepStats { tokens: 1, graph_launches: 1, graph_captures: 0, host_to_device_copies: 3, host_to_device_bytes: 12, device_to_host_copies: 2, device_to_host_bytes: 2064, synchronizations: 1, seconds: 0.003768875, device_seconds: 0.003765375 }",
+     "last": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 7, host_to_device_bytes: 2092, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.004093084, device_seconds: 0.004090291 }"
+    }
+   ]
+  },
+  {
+   "mode": "synthetic_stage",
+   "steps": [
+    {
+     "step": 0,
+     "tokens": 21,
+     "worst_over_policy": 0.012928922236656024,
+     "compared": 1826160,
+     "bit_equal": 1798040,
+     "logits_worst_over_policy": 1.2772386101249099e-05,
+     "token": 28,
+     "stats": "V41StepStats { tokens: 21, graph_launches: 22, graph_captures: 2, host_to_device_copies: 5, host_to_device_bytes: 108, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.189463833, device_seconds: 0.189457 }"
+    },
+    {
+     "step": 1,
+     "tokens": 1,
+     "worst_over_policy": 0.012265413119737133,
+     "compared": 86960,
+     "bit_equal": 85608,
+     "logits_worst_over_policy": 1.2770044030712754e-05,
+     "token": 28,
+     "stats": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 5, host_to_device_bytes: 28, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.009284459, device_seconds: 0.009278334 }"
+    },
+    {
+     "step": 2,
+     "tokens": 1,
+     "worst_over_policy": 0.013139243070299251,
+     "compared": 86960,
+     "bit_equal": 85610,
+     "logits_worst_over_policy": 9.298427810202816e-06,
+     "token": 28,
+     "stats": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 5, host_to_device_bytes: 28, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.009164333, device_seconds: 0.009158417 }"
+    },
+    {
+     "step": 3,
+     "tokens": 1,
+     "worst_over_policy": 0.01092725754874132,
+     "compared": 86960,
+     "bit_equal": 85636,
+     "logits_worst_over_policy": 9.51660692517538e-06,
+     "token": 28,
+     "stats": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 5, host_to_device_bytes: 28, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.009213833, device_seconds: 0.009208458 }"
+    },
+    {
+     "step": 4,
+     "tokens": 1,
+     "worst_over_policy": 0.012306086395584451,
+     "compared": 86960,
+     "bit_equal": 85634,
+     "logits_worst_over_policy": 9.298588575957483e-06,
+     "token": 28,
+     "stats": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 5, host_to_device_bytes: 28, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.009097209, device_seconds: 0.009091875 }"
+    },
+    {
+     "step": 5,
+     "tokens": 1,
+     "worst_over_policy": 0.014792141296397242,
+     "compared": 86960,
+     "bit_equal": 85614,
+     "logits_worst_over_policy": 9.522279157516352e-06,
+     "token": 28,
+     "stats": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 5, host_to_device_bytes: 28, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.009181542, device_seconds: 0.00917575 }"
+    },
+    {
+     "step": 6,
+     "tokens": 1,
+     "worst_over_policy": 0.011827477672589421,
+     "compared": 86960,
+     "bit_equal": 85602,
+     "logits_worst_over_policy": 9.300579019172562e-06,
+     "token": 28,
+     "stats": "V41StepStats { tokens: 1, graph_launches: 2, graph_captures: 0, host_to_device_copies: 5, host_to_device_bytes: 28, device_to_host_copies: 1, device_to_host_bytes: 4, synchronizations: 1, seconds: 0.0091935, device_seconds: 0.009188542 }"
+    }
+   ]
+  }
+ ],
+ "reported_lines": [
+  "shared_w1: 32 rows x 5120 K, max |gpu - cpu| / bound 5.485e-5, BF16 equal to CPU linear 32/32 (0 at a rounding boundary)",
+  "shared_w2: 32 rows x 2304 K, max |gpu - cpu| / bound 7.386e-3, BF16 equal to CPU linear 32/32 (0 at a rounding boundary)",
+  "expert_w1: 32 rows x 5120 K, max |gpu - cpu| / bound 0.000e0, BF16 equal to CPU linear 32/32 (0 at a rounding boundary); BF16 equal to the reference 32/32, max relative difference 0.000e0",
+  "expert_w2: 32 rows x 2304 K, max |gpu - cpu| / bound 1.404e-3, BF16 equal to CPU linear 32/32 (0 at a rounding boundary); BF16 equal to the reference 32/32, max relative difference 0.000e0",
+  "layer 0 ffn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 0 attn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 0 ffn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 1 attn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 1 ffn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 1 attn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 2 attn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 2 ffn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 2 attn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 2 ffn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 14 attn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 14 ffn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 14 attn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 14 ffn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 20 attn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 20 ffn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 20 attn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 20 ffn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 21 attn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 21 ffn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 21 attn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 39 attn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 39 ffn collapse: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 39 attn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "layer 39 ffn expand: equal to the CPU; against the oracle, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "Engram gate, layer 1 keys x1: max |gpu - cpu| / bound 5.363e-2, BF16 boundary cases 10",
+  "Engram gate, layer 1 keys x30: max |gpu - cpu| / bound 8.520e-3, BF16 boundary cases 2",
+  "Engram gate, layer 1 keys = residual: max |gpu - cpu| / bound 4.506e-2, BF16 boundary cases 3",
+  "Engram gate, layer 14 keys x0.05: max |gpu - cpu| / bound 3.909e-1, BF16 boundary cases 0",
+  "Engram gate, layer 14 keys x1: max |gpu - cpu| / bound 1.729e-1, BF16 boundary cases 0",
+  "Engram gate, layer 14 keys x30: max |gpu - cpu| / bound 1.183e-2, BF16 boundary cases 0",
+  "Engram gate, layer 14 keys = residual: max |gpu - cpu| / bound 4.080e-1, BF16 boundary cases 2",
+  "Engram gate, zero stream, zero keys, negative dot: max |gpu - cpu| / bound 4.016e-4, BF16 boundary cases 3",
+  "layer 14: 24 rows (hash ids 14361964..) equal the oracle's BF16 rows and the CPU loader",
+  "layer 39 ffn mixes: max |gpu - cpu| / bound 6.119e-4; against the oracle, max error / (2e-4 + 2e-4 |x|) 5.921e-4",
+  "layer 14 router: logits max |gpu - cpu| / bound 2.274e-3; ids [12, 53, 187, 199, 274, 363] not compared with the CPU, equal the oracle; against the oracle, scores 3.140e-4 and weights 1.240e-4 of (2e-4 + 2e-4 |x|)",
+  "layer 2: ids [85, 101, 217, 222, 323, 365] equal the CPU, equal the oracle",
+  "layer 14: ids [12, 53, 187, 199, 274, 363] equal the CPU, equal the oracle",
+  "layer 20: ids [86, 103, 105, 180, 300, 353] equal the CPU, equal the oracle",
+  "layer 39: ids [14, 27, 70, 94, 173, 174] equal the CPU, equal the oracle",
+  "layer 20 expert 180: max |gpu - cpu| / bound 0.000e0, BF16 boundary cases 0; BF16 equal to the oracle's w2 input 2304/2304, max error / (2^-6 + 2^-6 |x|) 0.000e0",
+  "sampler: 60 draws at vocabulary 129280 equal the device-order model"
+ ]
+}
