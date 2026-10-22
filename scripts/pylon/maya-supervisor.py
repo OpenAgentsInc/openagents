@@ -282,14 +282,17 @@ class Backend:
         self.guard_call("stop", slot["vm"], "--record", slot["allocation"])
         if self.describe(slot) is not None:
             raise Refused("old native instance still exists")
+        self.disk_absent(slot)
+        slot.update(allocation=None, instance_id=None, disk_id=None, installed=False, pending=None)
+        self.save()
+
+    def disk_absent(self, slot):
         # A reused disk name blocks renewal; no name-only disk deletion is attempted.
         r = subprocess.run([self.config["gcloud"], "compute", "disks", "describe", slot["vm"],
                             "--project=" + PROJECT, "--zone=" + ZONE, "--format=value(id)"],
                            env=self.env, capture_output=True, text=True, timeout=180)
         if r.returncode == 0 or not ("was not found" in r.stderr or "notFound" in r.stderr):
             raise Refused("boot disk absence is not confirmed")
-        slot.update(allocation=None, instance_id=None, disk_id=None, installed=False, pending=None)
-        self.save()
 
     def adopt(self, slot):
         if slot.get("run_id") == self.state["run_id"]:
@@ -320,6 +323,17 @@ class Backend:
             raise Refused("capacity unavailable; the failed create is settled")
         found = self.describe({"vm": slot["vm"], "instance_id": machine.get("instance_id")})
         if found is None:
+            # A successful create may be reclaimed before its reply is observed.
+            # Ask the guard to settle that lifetime; never strand its pending
+            # record forever or infer a free reservation from a missing VM.
+            self.guard_call("sync", "--project", PROJECT)
+            current = [x for x in self.guard.machines(self.records()) if x["id"] == machine["id"]]
+            if len(current) == 1 and current[0].get("stop_epoch") is not None:
+                self.guard_call("stop", slot["vm"], "--record", machine["id"])
+                self.disk_absent(slot)
+                slot.update(pending=None, reservation=None)
+                self.save()
+                raise Refused("the unobserved lifetime ended; its disk is gone and renewal can retry")
             raise Refused("reserved create is not yet visible; no retry reservation made")
         candidate = {**slot, "instance_id": str(found["id"])}
         verify_instance(candidate, found, [pending["run_id"]])
