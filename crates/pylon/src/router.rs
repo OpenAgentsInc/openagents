@@ -456,11 +456,35 @@ pub struct Routed {
     pub deciders: usize,
     /// Each pylon tried and why it gave no answer, in order.
     pub failed: Vec<(String, String)>,
+    /// The same failures, with whether a request reached the client.
+    pub failures: Vec<Failure>,
     /// The model group that answered, when a group head did.
     pub group: Option<AnsweredGroup>,
     /// The answered job's size by [`estimate_tokens`]: its instructions,
     /// earlier turns, and prompt.
     pub sent_tokens: Option<usize>,
+}
+
+/// Whether routing stopped locally or called the Pylon client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureKind {
+    LocalRefusal,
+    RequestFailed,
+}
+
+/// A candidate that did not answer, without treating a local refusal as usage.
+#[derive(Debug, Clone)]
+pub struct Failure {
+    pub label: String,
+    pub reason: String,
+    pub kind: FailureKind,
+}
+
+fn legacy_failures(failures: &[Failure]) -> Vec<(String, String)> {
+    failures
+        .iter()
+        .map(|failure| (failure.label.clone(), failure.reason.clone()))
+        .collect()
 }
 
 /// The model group behind an answer: its id and how many stages it runs
@@ -502,6 +526,7 @@ impl Routed {
             candidates: 0,
             deciders: 0,
             failed: Vec::new(),
+            failures: Vec::new(),
             group: None,
             sent_tokens: None,
         }
@@ -753,12 +778,13 @@ pub async fn route(
             candidates: admitted,
             deciders,
             failed: Vec::new(),
+            failures: Vec::new(),
             group: None,
             sent_tokens: None,
         };
     };
     let started = Instant::now();
-    let mut failed = Vec::new();
+    let mut failures = Vec::new();
     // An extended request may take its whole budget on one try.
     let budget = settings.deadline.map_or(settings.budget, |deadline| {
         settings.budget.max(deadline + client::GRACE)
@@ -775,13 +801,14 @@ pub async fn route(
             token_budget(settings, &candidate),
             instructions.unwrap_or_default(),
         ) else {
-            failed.push((
-                candidate.address(),
-                format!(
+            failures.push(Failure {
+                label: candidate.address(),
+                reason: format!(
                     "the message is longer than this pylon accepts ({} KiB)",
                     candidate.max_input_bytes / 1024
                 ),
-            ));
+                kind: FailureKind::LocalRefusal,
+            });
             continue;
         };
         let sent = instructions.map_or(0, estimate_tokens)
@@ -822,20 +849,27 @@ pub async fn route(
                     how,
                     candidates: admitted,
                     deciders,
-                    failed,
+                    failed: legacy_failures(&failures),
+                    failures,
                     group: answered_group(&book, &candidate),
                     sent_tokens: Some(sent),
                 };
             }
-            Ok(answer) => failed.push((
-                candidate.address(),
-                answer.error.unwrap_or_else(|| "an empty answer".into()),
-            )),
-            Err(why) => failed.push((candidate.address(), why)),
+            Ok(answer) => failures.push(Failure {
+                label: candidate.address(),
+                reason: answer.error.unwrap_or_else(|| "an empty answer".into()),
+                kind: FailureKind::RequestFailed,
+            }),
+            Err(why) => failures.push(Failure {
+                label: candidate.address(),
+                reason: why,
+                kind: FailureKind::RequestFailed,
+            }),
         }
     }
     // A model asked for by name whose every try was refused as busy is
     // busy, not missing.
+    let failed = legacy_failures(&failures);
     let busy =
         want.is_some() && !failed.is_empty() && failed.iter().all(|(_, why)| refused_busy(why));
     Routed {
@@ -848,6 +882,7 @@ pub async fn route(
         candidates: admitted,
         deciders,
         failed,
+        failures,
         group: None,
         sent_tokens: None,
     }

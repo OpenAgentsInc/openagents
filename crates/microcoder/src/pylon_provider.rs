@@ -23,7 +23,7 @@ use microcoder_loop::models::{Basis, Generate, Generated};
 use microcoder_loop::state::cut;
 use pylon::group::Want;
 use pylon::identity::Identity;
-use pylon::router::{Decide, Deciding, Outcome, Question, Settings, route};
+use pylon::router::{Decide, Deciding, FailureKind, Outcome, Question, Routed, Settings, route};
 
 /// The model a run asks for when none is named.
 pub const MODEL: &str = "deepseek-v4.1-flash";
@@ -80,7 +80,7 @@ pub struct Attempt {
     pub model: String,
     /// The group or pylon label, when the router identified one.
     pub label: Option<String>,
-    /// `answered`, `failed`, `busy`, `declined`, `unavailable`, or `no_provider`.
+    /// `answered`, `failed`, `not_sent`, `busy`, `declined`, `unavailable`, or `no_provider`.
     pub result: String,
     /// The provider's reason for a failed or unavailable result.
     pub reason: Option<String>,
@@ -273,6 +273,94 @@ fn tokens(usage: Option<&serde_json::Value>) -> (Option<u64>, Option<u64>) {
     )
 }
 
+fn route_attempts(
+    routed: &Routed,
+    model: &str,
+    generation: usize,
+    route: usize,
+    route_ms: u64,
+) -> Vec<Attempt> {
+    let mut attempts = routed
+        .failures
+        .iter()
+        .map(|failure| {
+            let sent = match failure.kind {
+                FailureKind::LocalRefusal => false,
+                FailureKind::RequestFailed => true,
+            };
+            Attempt {
+                generation,
+                route,
+                model: model.to_owned(),
+                label: Some(failure.label.clone()),
+                result: if sent { "failed" } else { "not_sent" }.into(),
+                reason: Some(failure.reason.clone()),
+                prompt_tokens: (!sent).then_some(0),
+                completion_tokens: (!sent).then_some(0),
+                route_ms,
+            }
+        })
+        .collect::<Vec<_>>();
+    match &routed.outcome {
+        Outcome::Answered(answer) => {
+            let (prompt_tokens, completion_tokens) = tokens(answer.usage.as_ref());
+            attempts.push(Attempt {
+                generation,
+                route,
+                model: if answer.model.is_empty() {
+                    model.to_owned()
+                } else {
+                    answer.model.clone()
+                },
+                label: Some(answer.label.clone()),
+                result: "answered".into(),
+                reason: answer.error.clone(),
+                prompt_tokens,
+                completion_tokens,
+                route_ms,
+            });
+        }
+        Outcome::Busy | Outcome::Declined if attempts.is_empty() => {
+            attempts.push(Attempt {
+                generation,
+                route,
+                model: model.to_owned(),
+                label: None,
+                result: if matches!(routed.outcome, Outcome::Busy) {
+                    "busy"
+                } else {
+                    "declined"
+                }
+                .into(),
+                reason: None,
+                prompt_tokens: None,
+                completion_tokens: None,
+                route_ms,
+            });
+        }
+        Outcome::Unavailable(reason) if attempts.is_empty() => {
+            attempts.push(Attempt {
+                generation,
+                route,
+                model: model.to_owned(),
+                label: None,
+                result: if routed.candidates == 0 {
+                    "no_provider"
+                } else {
+                    "unavailable"
+                }
+                .into(),
+                reason: Some(reason.clone()),
+                prompt_tokens: None,
+                completion_tokens: None,
+                route_ms,
+            });
+        }
+        _ => {}
+    }
+    attempts
+}
+
 impl Generate for PylonGenerator {
     async fn generate(&self, system: &str, prompt: &str) -> Generated {
         let started = Instant::now();
@@ -300,78 +388,13 @@ impl Generate for PylonGenerator {
             )
             .await;
             let route_ms = u64::try_from(route_started.elapsed().as_millis()).unwrap_or(u64::MAX);
-            let mut attempts = routed
-                .failed
-                .iter()
-                .map(|(label, reason)| Attempt {
-                    generation,
-                    route: routes,
-                    model: self.model.clone(),
-                    label: Some(label.clone()),
-                    result: "failed".into(),
-                    reason: Some(reason.clone()),
-                    prompt_tokens: None,
-                    completion_tokens: None,
-                    route_ms,
-                })
-                .collect::<Vec<_>>();
-            match &routed.outcome {
-                Outcome::Answered(answer) => {
-                    let (prompt_tokens, completion_tokens) = tokens(answer.usage.as_ref());
-                    attempts.push(Attempt {
-                        generation,
-                        route: routes,
-                        model: if answer.model.is_empty() {
-                            self.model.clone()
-                        } else {
-                            answer.model.clone()
-                        },
-                        label: Some(answer.label.clone()),
-                        result: "answered".into(),
-                        reason: answer.error.clone(),
-                        prompt_tokens,
-                        completion_tokens,
-                        route_ms,
-                    });
-                }
-                Outcome::Busy | Outcome::Declined if attempts.is_empty() => {
-                    let (result, reason) = match &routed.outcome {
-                        Outcome::Busy => ("busy", None),
-                        Outcome::Declined => ("declined", None),
-                        _ => unreachable!(),
-                    };
-                    attempts.push(Attempt {
-                        generation,
-                        route: routes,
-                        model: self.model.clone(),
-                        label: None,
-                        result: result.into(),
-                        reason,
-                        prompt_tokens: None,
-                        completion_tokens: None,
-                        route_ms,
-                    });
-                }
-                Outcome::Unavailable(reason) if attempts.is_empty() => {
-                    attempts.push(Attempt {
-                        generation,
-                        route: routes,
-                        model: self.model.clone(),
-                        label: None,
-                        result: if routed.candidates == 0 {
-                            "no_provider".into()
-                        } else {
-                            "unavailable".into()
-                        },
-                        reason: Some(reason.clone()),
-                        prompt_tokens: None,
-                        completion_tokens: None,
-                        route_ms,
-                    });
-                }
-                _ => {}
-            }
-            self.attempts.borrow_mut().extend(attempts);
+            self.attempts.borrow_mut().extend(route_attempts(
+                &routed,
+                &self.model,
+                generation,
+                routes,
+                route_ms,
+            ));
             let over = routed.failed.iter().find_map(|(_, why)| refused_over(why));
             if let (Some((tokens, max_tokens)), Outcome::Unavailable(_)) = (over, &routed.outcome)
                 && shrunk < 2
@@ -643,6 +666,125 @@ mod tests {
         assert_eq!(usage.unreported_attempts, 0);
         assert_eq!(usage.prompt_tokens, Some(0));
         assert_eq!(usage.completion_tokens, Some(0));
+    }
+
+    fn routed(failures: Vec<pylon::router::Failure>, outcome: Outcome) -> Routed {
+        Routed {
+            outcome,
+            how: pylon::router::How::Ranked {
+                why: "fixture".into(),
+            },
+            candidates: failures.len() + 1,
+            deciders: 0,
+            failed: failures
+                .iter()
+                .map(|f| (f.label.clone(), f.reason.clone()))
+                .collect(),
+            failures,
+            group: None,
+            sent_tokens: None,
+        }
+    }
+
+    fn refusal(kind: FailureKind) -> pylon::router::Failure {
+        pylon::router::Failure {
+            label: "group-a".into(),
+            reason: match kind {
+                FailureKind::LocalRefusal => {
+                    "the message is longer than this pylon accepts (32 KiB)"
+                }
+                FailureKind::RequestFailed => "the request timed out",
+            }
+            .into(),
+            kind,
+        }
+    }
+
+    fn answer_with_usage() -> Outcome {
+        Outcome::Answered(Box::new(pylon::client::Answer {
+            pylon: "group-b".into(),
+            pylon_npub: String::new(),
+            label: "group-b".into(),
+            profile: "consumer-exact".into(),
+            lossy: false,
+            model: MODEL.into(),
+            prompt: String::new(),
+            text: Some("answer".into()),
+            outcome: "answered".into(),
+            error: None,
+            request: String::new(),
+            discover_ms: 0,
+            contact_ms: None,
+            answer_ms: Some(5),
+            usage: Some(serde_json::json!({"input": 7, "output": 2})),
+            reasoning: None,
+            receipt: None,
+            receipt_error: None,
+            receipt_event: None,
+            paid_msat: None,
+            declared: None,
+        }))
+    }
+
+    #[test]
+    fn local_fit_refusal_is_recorded_without_unknown_model_usage() {
+        let routed = routed(
+            vec![refusal(FailureKind::LocalRefusal)],
+            Outcome::Unavailable("no pylon answered".into()),
+        );
+        let generator = PylonGenerator::new(MODEL, RELAY, Identity::generate());
+        generator
+            .attempts
+            .borrow_mut()
+            .extend(route_attempts(&routed, MODEL, 1, 1, 5));
+        assert_eq!(generator.attempts()[0].result, "not_sent");
+        assert_eq!(generator.attempts()[0].prompt_tokens, Some(0));
+        let usage = generator.usage();
+        assert_eq!(usage.attempts, 0);
+        assert_eq!(usage.unreported_attempts, 0);
+        assert_eq!(
+            (usage.prompt_tokens, usage.completion_tokens),
+            (Some(0), Some(0))
+        );
+    }
+
+    #[test]
+    fn local_refusal_before_a_known_answer_preserves_known_totals() {
+        let routed = routed(
+            vec![refusal(FailureKind::LocalRefusal)],
+            answer_with_usage(),
+        );
+        let generator = PylonGenerator::new(MODEL, RELAY, Identity::generate());
+        generator
+            .attempts
+            .borrow_mut()
+            .extend(route_attempts(&routed, MODEL, 1, 1, 5));
+        let usage = generator.usage();
+        assert_eq!(generator.attempts().len(), 2);
+        assert_eq!(usage.attempts, 1);
+        assert_eq!(usage.unreported_attempts, 0);
+        assert_eq!(
+            (usage.prompt_tokens, usage.completion_tokens),
+            (Some(7), Some(2))
+        );
+    }
+
+    #[test]
+    fn an_actual_failed_request_still_makes_usage_unknown() {
+        let routed = routed(
+            vec![refusal(FailureKind::RequestFailed)],
+            Outcome::Unavailable("no pylon answered".into()),
+        );
+        let generator = PylonGenerator::new(MODEL, RELAY, Identity::generate());
+        generator
+            .attempts
+            .borrow_mut()
+            .extend(route_attempts(&routed, MODEL, 1, 1, 5));
+        assert_eq!(generator.attempts()[0].result, "failed");
+        let usage = generator.usage();
+        assert_eq!(usage.attempts, 1);
+        assert_eq!(usage.unreported_attempts, 1);
+        assert_eq!((usage.prompt_tokens, usage.completion_tokens), (None, None));
     }
 
     #[test]

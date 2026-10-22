@@ -114,7 +114,8 @@ records each router result in `pylon_attempts`, including refusals and
 cases with no available provider. `pylon_usage` reports aggregate Pylon
 token counts; a count is `null` if any model call did not report it. A reported
 zero stays zero, and router results that sent no model call do not affect the
-totals. Use these fields instead of treating missing token counts in the
+totals. Local prompt-fit refusals appear as `not_sent` with zero usage.
+Use these fields instead of treating missing token counts in the
 shared loop record as zero. The buyer key is new for each run;
 `--pylon-key home` uses the Pylon home's
 `buyer.key` instead, and receipts go to the Pylon home

@@ -233,6 +233,7 @@ async fn with_no_decision_model_the_ranking_chooses_and_fails_over() {
     // The extra-large pylon ranks first and refuses a stranger; the next
     // one answers.
     assert_eq!(routed.failed.len(), 1);
+    assert_eq!(routed.failures[0].kind, router::FailureKind::RequestFailed);
     assert!(routed.failed[0].0.contains(net.closed.key.pubkey()));
     assert!(
         routed.failed[0].1.starts_with("not_admitted"),
@@ -242,6 +243,38 @@ async fn with_no_decision_model_the_ranking_chooses_and_fails_over() {
     let answer = answered(&routed);
     assert!(answer.pylon.contains(net.rig.key.pubkey()));
     assert_eq!(answer.text.as_deref(), Some("echo: cba"));
+}
+
+#[tokio::test]
+async fn local_prompt_fit_refusals_send_no_model_request() {
+    let net = net(false).await;
+    let home = tempfile::tempdir().unwrap();
+    let buyer = Identity::generate();
+    let routed = router::route(
+        &buyer,
+        &settings(&net.relay, home.path()),
+        &Fixed::picks("p1", 1.0),
+        &turns(&"x".repeat(pylon::job::MAX_INPUT_BYTES + 1)),
+        None,
+    )
+    .await;
+    assert!(matches!(routed.outcome, Outcome::Unavailable(_)));
+    assert_eq!(routed.failed.len(), 2);
+    assert_eq!(routed.failures.len(), routed.failed.len());
+    for (failure, legacy) in routed.failures.iter().zip(&routed.failed) {
+        assert_eq!(failure.kind, router::FailureKind::LocalRefusal);
+        assert_eq!((&failure.label, &failure.reason), (&legacy.0, &legacy.1));
+        assert!(
+            failure
+                .reason
+                .starts_with("the message is longer than this pylon accepts")
+        );
+    }
+    assert!(
+        !net.hub.lock().await.stored.iter().any(|event| {
+            event.pubkey == buyer.pubkey() && event.kind == pylon::job::REQUEST_KIND
+        })
+    );
 }
 
 #[tokio::test]
