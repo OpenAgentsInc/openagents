@@ -2377,6 +2377,48 @@ pub fn derive_policy_v22(
     Ok((policy, evidence))
 }
 
+/// Rule 2.3 (#12405, owner choice of 2026-10-22): rule 2.2's derivation
+/// over a reference that isn't tuned to B200 arithmetic, the CPU port's
+/// plain BF16 profile (`cpu-bf16`), with an oracle that keeps every router
+/// score, so no changed expert set is unresolved for lack of evidence.
+///
+/// # Errors
+///
+/// A reference of another profile, or what [`derive_policy_v22`] refuses.
+pub fn derive_policy_v23(
+    reference: &[Value],
+    controls: &[Value],
+) -> Result<(Policy, Value), Refused> {
+    for r in reference {
+        if r["profile"] != json!("cpu-bf16") {
+            return Err(refused(format!(
+                "rule 2.3 takes the plain BF16 CPU reference, not {}",
+                r["profile"]
+            )));
+        }
+    }
+    let (mut policy, mut evidence) = derive_policy_v22(reference, controls)?;
+    policy.version = "2.3".into();
+    evidence["rule"] =
+        json!("derive_policy_v23 in crates/psionic/crates/psionic-v41-stage/src/qualify.rs");
+    evidence["rationale"] = json!(
+        "Successor to 2.1 and 2.2 (owner choice of 2026-10-22), frozen before any confirmation \
+         data is read; the 2.1 and 2.2 failures stay on record. 2.2's reference, the bf16-tp8 \
+         profile, reproduces B200 arithmetic (#12404) and so did not sample cross-hardware \
+         variation, and with 14 retained router scores its own changed expert sets were \
+         partly unresolved. 2.3's reference is the CPU port's plain BF16 profile (cpu-bf16, no \
+         B200 emulation), a different implementation on different hardware from both the \
+         oracle and the candidate. Its oracle keeps all 384 router scores. Limits are HEADROOM \
+         times what that reference shows against the B200 oracle, judged per case and mode; \
+         the router rule is the margin and regret rule with a per-layer score budget in the \
+         selection function's units, an empirical connected budget rather than a rigorous \
+         bound. h1-h6 are exposed and serve only as reference and regression cases; the \
+         confirmation corpus is the generalization test."
+    );
+    evidence["reference_profiles"] = json!(["cpu-bf16"]);
+    Ok((policy, evidence))
+}
+
 /// `qualify-judge --policy FILE --report R[,R...]`: every criterion each
 /// report violates under the policy, as JSON lines.
 ///
@@ -2434,7 +2476,8 @@ pub fn run_derive(args: &[String]) -> Result<(), Refused> {
     let (policy, evidence) = match flag("--rule").as_deref() {
         Some("2.1") => derive_policy(&reference, &controls)?,
         Some("2.2") => derive_policy_v22(&reference, &controls)?,
-        _ => return Err(refused("--rule takes 2.1 or 2.2")),
+        Some("2.3") => derive_policy_v23(&reference, &controls)?,
+        _ => return Err(refused("--rule takes 2.1, 2.2, or 2.3")),
     };
     let mut value = serde_json::to_value(&policy).map_err(|e| refused(e.to_string()))?;
     value["derivation"] = evidence;
@@ -2613,6 +2656,19 @@ mod tests {
         // Missing score evidence never passes.
         run["router"]["layers"][2]["score_error"] = Value::Null;
         assert!(!judge_report(&policy, &json!({"cases": [run]})).is_empty());
+    }
+
+    #[test]
+    fn rule_2_3_takes_only_the_plain_bf16_reference() {
+        let mut reference = json!({"profile": "cpu-bf16-tp8",
+            "cases": [case_report("a", &vec![(0.01, 5); 33], &[])]});
+        let control =
+            json!({"control": "c", "cases": [case_report("a", &vec![(0.4, 5); 33], &[])]});
+        assert!(derive_policy_v23(&[reference.clone()], &[control.clone()]).is_err());
+        reference["profile"] = json!("cpu-bf16");
+        let (policy, evidence) = derive_policy_v23(&[reference], &[control]).unwrap();
+        assert_eq!(policy.version, "2.3");
+        assert_eq!(evidence["reference_profiles"], json!(["cpu-bf16"]));
     }
 
     #[test]
