@@ -320,7 +320,22 @@ impl Relay {
         wait_secs: u64,
         on_progress: &dyn Fn(Option<&str>),
     ) -> Result<Exchanged, String> {
-        let request = key.seal_request(provider, body, random32(), unix())?;
+        self.exchange_tagged(key, provider, body, wait_secs, on_progress, &[])
+            .await
+    }
+
+    /// [`Self::exchange`] with `extra` tags on the request, such as an
+    /// agent's `auth` and `mandate` tags.
+    pub async fn exchange_tagged(
+        &mut self,
+        key: &Key,
+        provider: &str,
+        body: &Value,
+        wait_secs: u64,
+        on_progress: &dyn Fn(Option<&str>),
+        extra: &[nostr::domain::Tag],
+    ) -> Result<Exchanged, String> {
+        let request = key.seal_request_tagged(provider, body, random32(), unix(), extra)?;
         self.send(&json!([
             "REQ",
             "answer",

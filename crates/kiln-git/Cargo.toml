@@ -1,0 +1,22 @@
+[package]
+name = "kiln-git"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Maintainer and owner tools for Kiln's NIP-34 patches: the repository announcement, agent identities, applying patches, status events, and the GitHub bridge"
+publish.workspace = true
+
+[dependencies]
+kiln = { path = "../kiln" }
+nostr = { path = "../nostr" }
+nostr-transport = { path = "../nostr-transport" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tokio = { version = "1", features = ["macros", "rt", "time"] }
+
+[lints]
+workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

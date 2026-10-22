@@ -9973,6 +9973,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "kiln-git"
+version = "1.0.0"
+dependencies = [
+ "kiln",
+ "nostr",
+ "nostr-transport",
+ "openagents-workspace-hack",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "kiln-runner"
 version = "1.0.0"
 dependencies = [

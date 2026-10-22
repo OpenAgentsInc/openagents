@@ -11,8 +11,9 @@
 //! ```
 //!
 //! A job is admitted when its request is signed by a listed key, or by an
-//! agent key whose request carries a valid NIP-OA `auth` tag from a listed
-//! owner; an agent draws from its owner's quota. Keys on the runner's admin
+//! agent key whose request carries a valid NIP-OA `auth` tag and a mandate
+//! allowing `kiln.test` from a listed owner ([`crate::identity`]); an agent
+//! draws from its owner's quota. Keys on the runner's admin
 //! list are unlimited. A runner started with `--open` also takes jobs from
 //! unlisted keys, each within the small anonymous quota, which is how the
 //! local demo runs.
@@ -119,13 +120,11 @@ pub struct Holder {
     pub via: &'static str,
 }
 
-/// The NIP-OA owner a request carries, when its `auth` tag is valid.
+/// The owner a request names, when its `auth` tag and mandate are valid
+/// and the mandate allows `kiln.test` ([`crate::identity`]).
 #[must_use]
 pub fn request_owner(request: &Event) -> Option<String> {
-    nostr::domain::verify_owner_attestation(request)
-        .ok()
-        .flatten()
-        .map(|a| a.owner_pubkey)
+    crate::identity::authorized_owner(request).ok()
 }
 
 impl Policy {
@@ -297,7 +296,20 @@ mod tests {
         let agent = crate::cj::Key::from_bytes([9; 32]).unwrap();
         let minted =
             mint_owner_attestation(&owner, agent.pubkey(), "created_at<4000000000").unwrap();
-        let signed = agent.sign(25_900, vec![minted.tag()], String::new(), 1_792_540_800);
+        let bare_auth = agent.sign(25_900, vec![minted.tag()], String::new(), 1_792_540_800);
+        assert_eq!(
+            request_owner(&bare_auth),
+            None,
+            "an auth tag alone isn't a mandate"
+        );
+        let credential = crate::identity::mint(
+            &owner,
+            agent.pubkey(),
+            &[crate::identity::KILN_TEST],
+            4_000_000_000,
+        )
+        .unwrap();
+        let signed = agent.sign(25_900, credential.tags(), String::new(), 1_792_540_800);
         assert_eq!(
             request_owner(&signed).as_deref(),
             Some(minted.owner_pubkey.as_str())

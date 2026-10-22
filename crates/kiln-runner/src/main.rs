@@ -618,6 +618,7 @@ async fn main() {
     let mut open = false;
     let mut member_jobs: u32 = 30;
     let mut anonymous_jobs: u32 = 5;
+    let mut repository: Option<String> = None;
     let mut config = Config {
         state: PathBuf::new(),
         relay: "wss://relay.openagents.com".into(),
@@ -654,11 +655,13 @@ async fn main() {
             "--no-browser-smoke" => browser_smoke = false,
             "--allow" => allow_file = Some(PathBuf::from(value())),
             "--open" => open = true,
+            "--repository" => repository = Some(value()),
             "--member-jobs" => member_jobs = value().parse().unwrap_or(30),
             "--anonymous-jobs" => anonymous_jobs = value().parse().unwrap_or(5),
             _ => {
                 eprintln!(
                     "usage: kiln-runner --state DIR (--allow FILE | --open) [--relay URL] [--crates a,b | --crates-file FILE] [--reference CHECKOUT] [--timeout SECS] [--memory MB] [--jobs N] [--no-announce]\n\
+                     \x20 repository: --repository 30617:KEY:ID (accept patches to the owner's announcement; pair with --no-announce)\n\
                      \x20 admission: --allow FILE (keys that may run jobs, read for every job) [--member-jobs N] [--anonymous-jobs N] [--open]\n\
                      \x20 self-edit: --admins FILE --publish-store STORE --publish-key FILE [--publish-tenant NAME] [--publish-channel NAME] [--publish-prefix PREFIX] [--publish-relay URL] [--no-browser-smoke]"
                 );
@@ -719,12 +722,20 @@ async fn main() {
             .unwrap_or_default(),
         config.relay
     );
-    let repo = format!(
-        "{}:{}:{}",
-        kiln::patch::REPO_KIND,
-        key.pubkey(),
-        kiln::patch::DEMO_REPO_ID
-    );
+    // Patches to the owner's announcement (`--repository`), or else to the
+    // demo repository this runner announces.
+    let repo = repository.clone().unwrap_or_else(|| {
+        format!(
+            "{}:{}:{}",
+            kiln::patch::REPO_KIND,
+            key.pubkey(),
+            kiln::patch::DEMO_REPO_ID
+        )
+    });
+    if repo.split(':').count() != 3 || !repo.starts_with("30617:") {
+        eprintln!("kiln-runner: --repository is 30617:<owner key>:<id>");
+        std::process::exit(2);
+    }
     println!("repository {repo}");
     let _ = std::fs::write(config.state.join("repository"), format!("{repo}\n"));
     // Kiln's self-edit, when the runner is given somewhere to publish.

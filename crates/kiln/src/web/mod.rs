@@ -2,6 +2,7 @@
 //! relay socket (`relay`), and small helpers (`util`).
 
 mod app;
+mod identity;
 mod relay;
 mod review;
 mod util;

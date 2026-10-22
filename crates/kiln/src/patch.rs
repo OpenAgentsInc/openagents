@@ -243,6 +243,10 @@ pub fn announcement_tags(maintainers: &[&str], relay: &str) -> Vec<Tag> {
     let mut list = vec!["maintainers".to_string()];
     list.extend(maintainers.iter().map(|m| (*m).to_string()));
     tags.push(Tag::new(list));
+    // The demo runner announces itself, so its checks count.
+    let mut list = vec![crate::repo::RUNNER_TAG.to_string()];
+    list.extend(maintainers.iter().map(|m| (*m).to_string()));
+    tags.push(Tag::new(list));
     tags
 }
 

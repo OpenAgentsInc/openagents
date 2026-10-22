@@ -1,7 +1,10 @@
 # Kiln workstation: spec
 
 Status: spec, 2026-10-21. Owner direction relayed by the coordinator.
-Phase 1 is built (#12432, #12437); everything after it is a plan.
+Phases 1 and 2 are built (#12432, #12437). Phase 3's agent identities, the
+repository announcement, and runner admission are built (#12449, #12451;
+[maintainers.md](maintainers.md)); NIP-07 and NIP-46 signing for players
+are not.
 
 ## The vision
 

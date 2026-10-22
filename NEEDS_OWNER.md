@@ -1,3 +1,23 @@
+## Publish the openagents repository for Kiln and authorize your Kiln key (#12451) (2026-10-21)
+
+Kiln's patches go to a NIP-34 repository announcement, and its maintainers
+are the keys that count. Only you can sign it. Details:
+[`docs/kiln/maintainers.md`](docs/kiln/maintainers.md).
+
+1. **Make the repository key and announce.** In a checkout, with
+   `kiln-git` built (`cargo build --release -p kiln-git`):
+   `openagents key show --as kiln-repo` makes the key, then
+   `kiln-git announce --as kiln-repo --maintainer YOUR_KEY --runner
+   RUNNER_PUBKEY`, where YOUR_KEY is the hex `openagents key show` prints.
+   List every maintainer. It prints the repository address.
+2. **Point Kiln at it.** Set `OPENAGENTS_KILN_REPO` to that address at the
+   next web deploy, and restart the runner with `--repository ADDRESS
+   --no-announce`.
+3. **Make your Kiln key yours.** In `/admin/kiln/`, open **Settings**, copy
+   the **Admin key** npub, run `kiln-git own NPUB`, and paste the line it
+   prints into **Identity**. Your patches then show as "agent, authorized
+   by" you.
+
 ## Sign in at /admin and give Kiln a lasting runner (#12440) (2026-10-21)
 
 `openagents.com/admin` is the staff entrance, and Kiln opens from it and

@@ -1380,12 +1380,13 @@ impl App {
             }
         };
         let result = relay
-            .exchange(
+            .exchange_tagged(
                 &self.runner_key(),
                 &runner,
                 &body,
                 REMOTE_WAIT_SECS,
                 &progress,
+                &super::identity::tags(),
             )
             .await;
         *self.runner_relay.borrow_mut() = Some(relay);
@@ -1472,7 +1473,10 @@ impl App {
         if changes.is_empty() {
             return fail("nothing changed, so there's nothing to publish".into());
         }
-        let email = format!("{}@nostr", self.key.npub());
+        // Signed with this browser's lasting key, with the identity its
+        // owner gave it when there is one (#12451).
+        let signer = self.runner_key();
+        let email = format!("{}@nostr", signer.npub());
         let text = crate::patch::format_patch(
             &crate::patch::Header {
                 author: "Kiln agent",
@@ -1496,10 +1500,9 @@ impl App {
         // Every loaded crate the change touches is named and tested (#12450).
         let paths: Vec<String> = changes.iter().map(|c| c.path.to_string()).collect();
         let touched = crate::remote::touched_crates(&paths);
-        let tags = crate::patch::patch_tags(&address, &owner, &commit, &touched);
-        let event = self
-            .key
-            .sign(crate::patch::PATCH_KIND, tags, text, super::util::unix());
+        let mut tags = crate::patch::patch_tags(&address, &owner, &commit, &touched);
+        tags.extend(super::identity::tags());
+        let event = signer.sign(crate::patch::PATCH_KIND, tags, text, super::util::unix());
         let relay_url: HtmlInputElement = el(&self.doc, "relay").unchecked_into();
         let relay_url = relay_url.value();
         let mut relay = match self.runner_relay.borrow_mut().take() {
@@ -1556,12 +1559,13 @@ impl App {
             }
         };
         let checked = relay
-            .exchange(
+            .exchange_tagged(
                 &self.runner_key(),
                 &runner,
                 &body,
                 REMOTE_WAIT_SECS,
                 &progress,
+                &super::identity::tags(),
             )
             .await;
         *self.runner_relay.borrow_mut() = Some(relay);
@@ -1697,6 +1701,7 @@ impl App {
             if let Some(node) = self.doc.get_element_by_id("admin-key") {
                 node.set_text_content(Some(&key.npub()));
             }
+            super::identity::wire(&self.doc, key.pubkey());
             *self.admin_key.borrow_mut() = Some(key);
         }
     }

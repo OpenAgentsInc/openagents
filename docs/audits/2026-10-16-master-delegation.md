@@ -520,6 +520,13 @@ The status lines below summarize each issue and its comments. Open the issue for
   change both, and confirm the patch's check runs `cargo test -p atif -p
   xp-ledger` and passes. Add a crate to the file without a restart and
   confirm the next job accepts it.
+- #12451: after the next web deploy, in `/admin/kiln/` paste a `kiln-git
+  own` identity for the **Admin key** (made with the test account's own
+  profile key, not the owner's) and confirm the page says "Patches show as
+  an agent authorized by npub1...". Publish a patch and confirm
+  `review.html` shows "agent, authorized by npub1..." and counts the
+  runner's check. After the owner announces the repository (NEEDS_OWNER),
+  confirm `kiln-git show ADDRESS` lists the maintainers and runner.
 - #12440: after the next web deploy, confirm the image log builds or
   reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
   `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test

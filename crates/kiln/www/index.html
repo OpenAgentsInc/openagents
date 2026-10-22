@@ -94,7 +94,9 @@
       <label class="check"><input type="checkbox" id="fallback" checked> Fall back to any Pylon when no pylon serves this model</label>
       <label>Relay <input type="text" id="relay" value="wss://relay.openagents.com"></label>
       <label>Test runner key (hex or npub) <input type="text" id="runner" placeholder="from kiln-runner"></label>
-      <div class="sub">Admin key <span id="admin-key" class="key">…</span><br>The runner publishes Kiln only for keys on its admin list.</div>
+      <div class="sub">Admin key <span id="admin-key" class="key">…</span><br>Patches and test runs are signed with this key. The runner publishes Kiln only for keys on its admin list.</div>
+      <label>Identity <textarea id="credential" rows="2" placeholder="Paste what kiln-git own prints for the admin key"></textarea></label>
+      <div class="sub" id="identity">Patches show as from an unverified author until you add an identity.</div>
     </details>
     <section class="group">
       <h2>Workspace <span id="usage" class="sub"></span></h2>

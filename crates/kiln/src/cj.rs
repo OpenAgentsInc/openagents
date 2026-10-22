@@ -95,14 +95,28 @@ impl Key {
         nonce: [u8; 32],
         now: u64,
     ) -> Result<Event, String> {
+        self.seal_request_tagged(provider, body, nonce, now, &[])
+    }
+
+    /// [`Self::seal_request`] with `extra` tags, such as an agent's `auth`
+    /// and `mandate` tags.
+    ///
+    /// # Errors
+    ///
+    /// When the provider key is invalid or the body is too large.
+    pub fn seal_request_tagged(
+        &self,
+        provider: &str,
+        body: &Value,
+        nonce: [u8; 32],
+        now: u64,
+        extra: &[Tag],
+    ) -> Result<Event, String> {
         let key = self.conversation_key(provider)?;
         let content = nip44::encrypt(&body.to_string(), &key, nonce)?;
-        Ok(self.signer.sign(
-            now,
-            REQUEST_KIND,
-            vec![Tag::new(vec!["p".into(), provider.into()])],
-            content,
-        ))
+        let mut tags = vec![Tag::new(vec!["p".into(), provider.into()])];
+        tags.extend(extra.iter().cloned());
+        Ok(self.signer.sign(now, REQUEST_KIND, tags, content))
     }
 
     /// Encrypt `body` to `peer` and sign it as `kind` with `tags`.

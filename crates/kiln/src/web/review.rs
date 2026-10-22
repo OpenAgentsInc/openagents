@@ -2,8 +2,6 @@
 //! repository, read back from the relay, with their diffs, the runner's
 //! check comments, other NIP-22 comments, and the newest valid status.
 
-use std::collections::BTreeSet;
-
 use nostr::domain::Event;
 use serde_json::{Value, json};
 use wasm_bindgen::prelude::*;
@@ -93,9 +91,9 @@ pub async fn run() {
     };
     let owner = repo.split(':').nth(1).unwrap_or_default().to_string();
     let identifier = repo.split(':').nth(2).unwrap_or_default().to_string();
-    // Maintainers: the announcement's author and its `maintainers` tag.
-    let mut maintainers: BTreeSet<String> = BTreeSet::from([owner.clone()]);
-    let mut title = identifier.clone();
+    // Maintainers (the announcement's author and its `maintainers` tag) and
+    // the runners its `kiln-runner` tag lists.
+    let mut trust = crate::repo::Trust::of_address(&repo);
     if let Ok(found) = relay
         .query(
             "repo",
@@ -103,11 +101,12 @@ pub async fn run() {
         )
         .await
         && let Some(event) = found.iter().max_by_key(|e| e.created_at)
-        && let Ok(announced) = nostr::domain::open_repository(event)
+        && let Some(read) = crate::repo::read(event)
     {
-        maintainers.extend(announced.maintainers);
-        title = announced.name.unwrap_or(title);
+        trust = read;
     }
+    let maintainers = trust.maintainers.clone();
+    let title = trust.name.clone();
     if let Some(h) = doc.get_element_by_id("title") {
         h.set_text_content(Some(&format!("Patches to {title}")));
     }
@@ -145,19 +144,12 @@ pub async fn run() {
     let mut patches = patches;
     patches.sort_by_key(|p| std::cmp::Reverse(p.created_at));
     say(&format!(
-        "{} patches; checks and status count only from the repository's maintainers ({}).",
+        "{} patches; status counts only from the repository's {} maintainers, and checks only from its runners.",
         patches.len(),
         maintainers.len()
     ));
     for patch in &patches {
-        render(
-            &doc,
-            &root,
-            patch,
-            &replies,
-            &maintainers,
-            patch.id == wanted,
-        );
+        render(&doc, &root, patch, &replies, &trust, patch.id == wanted);
     }
     let _ = js_sys::Reflect::set(
         &window,
@@ -171,9 +163,10 @@ fn render(
     root: &web_sys::Element,
     patch: &Event,
     replies: &[Event],
-    maintainers: &BTreeSet<String>,
+    trust: &crate::repo::Trust,
     open: bool,
 ) {
+    let maintainers = &trust.maintainers;
     let card = el(doc, "details", "patch", "");
     let _ = card.set_attribute("id", &patch.id);
     if open {
@@ -196,7 +189,7 @@ fn render(
         });
     let check = about
         .iter()
-        .filter(|r| maintainers.contains(&r.pubkey))
+        .filter(|r| trust.counts_check(&r.pubkey))
         .filter_map(|r| crate::patch::read_check(r).map(|c| (r.created_at, c)))
         .max_by_key(|(at, _)| *at)
         .map(|(_, c)| c);
@@ -223,7 +216,6 @@ fn render(
             let _ = summary.append_child(&el(doc, "span", "badge none", "no check"));
         }
     }
-    let author = npub(&patch.pubkey);
     let crate_tag = patch
         .tag_values("t")
         .filter_map(|t| t.strip_prefix("crate:"))
@@ -234,8 +226,8 @@ fn render(
         "span",
         "meta",
         &format!(
-            "{} · {} · {} · unverified author",
-            short(&author),
+            "{} · {} · {}",
+            crate::identity::author(patch, maintainers).label(),
             crate_tag,
             when(patch.created_at)
         ),
