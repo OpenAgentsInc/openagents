@@ -43,6 +43,8 @@ web-time.workspace = true
 
 [dev-dependencies]
 oa-copy = { path = "../../../../crates/oa-copy" }
+# The suggestion box's words and categories, as the sealed message has them.
+playtest = { path = "../../../../crates/playtest" }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
 # The browser shapes and draws text (#12299): no cosmic-text or swash.

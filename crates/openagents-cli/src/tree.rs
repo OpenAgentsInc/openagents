@@ -408,6 +408,13 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             Some(crate::catalog::EXT_USAGE),
             crate::catalog::EXT_EFFECTS,
         ),
+        // `suggest` is `playtest suggest` (#12460).
+        GroupHelp {
+            name: "suggest",
+            usage: None,
+            declared: &[],
+            alias: true,
+        },
         // `ext` is the older name for `plugin`.
         GroupHelp {
             name: "ext",

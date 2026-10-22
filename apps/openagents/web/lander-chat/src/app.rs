@@ -72,6 +72,14 @@ pub struct LanderChat {
     /// site's free hosted agent through [`Self::plain`], with the visitor's
     /// usual limits, in a chat of its own.
     desk_mode: bool,
+    /// The chat is open at the suggestion box (#12460).
+    suggest_mode: bool,
+    /// The chosen category, an index into [`model::SUGGEST_CATEGORIES`].
+    suggest_category: usize,
+    /// How the last suggestion went: Verse's state and line.
+    suggest_status: Option<(String, String)>,
+    /// Where the suggestion box was last drawn, for the page's clip.
+    suggest_bounds: ScrollHandle,
     desk_chat: Option<String>,
     plain: Option<Client>,
     /// The Grid Foreman (#12446): while its chat is open, the chat asks the
@@ -156,6 +164,10 @@ impl LanderChat {
             game_chat: None,
             grid_chat: None,
             desk_mode: false,
+            suggest_mode: false,
+            suggest_category: 0,
+            suggest_status: None,
+            suggest_bounds: ScrollHandle::new(),
             desk_chat: None,
             foreman_mode: false,
             foreman_chat: None,
@@ -261,6 +273,28 @@ impl LanderChat {
                 self.current = Some(chat.clone());
                 push_path(Some(&chat));
                 self.load(chat, cx);
+            }
+        }
+        let suggest = is_suggest();
+        if suggest != self.suggest_mode {
+            self.suggest_mode = suggest;
+            self.suggest_status = None;
+            cx.notify();
+        }
+        if suggest {
+            let status = js_sys::Reflect::get(&js_sys::global(), &model::SUGGEST_STATUS.into())
+                .ok()
+                .and_then(|v| v.as_string())
+                .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+                .map(|v| {
+                    (
+                        v["state"].as_str().unwrap_or_default().to_owned(),
+                        v["line"].as_str().unwrap_or_default().to_owned(),
+                    )
+                });
+            if status.is_some() && status != self.suggest_status {
+                self.suggest_status = status;
+                cx.notify();
             }
         }
         let (desk, foreman) = (is_desk(), !is_desk() && is_foreman());
@@ -381,13 +415,21 @@ impl LanderChat {
         let Some(layout) = self.layout else {
             return;
         };
-        let shows_card = !self.entries.is_empty() || self.live.is_some() || self.sending;
+        let shows_card =
+            !self.suggest_mode && (!self.entries.is_empty() || self.live.is_some() || self.sending);
         let transcript = self.scroll.bounds();
         let mut top = if shows_card && f32::from(transcript.size.height) > 0. {
             f32::from(transcript.origin.y) - 1.
         } else {
             layout.composer.y
         };
+        // The suggestion box stands over the composer (#12460).
+        if self.suggest_mode {
+            let panel = self.suggest_bounds.bounds();
+            if f32::from(panel.size.height) > 0. {
+                top = top.min(f32::from(panel.origin.y) - 1.);
+            }
+        }
         if self.notice.is_some() {
             let notice = self.notice_bounds.bounds();
             if f32::from(notice.size.height) > 0. {
@@ -713,6 +755,33 @@ impl LanderChat {
     /// Sends `text` as the visitor's message; whether it went.
     pub(super) fn send_text(&mut self, text: String, cx: &mut Context<Self>) -> bool {
         let text = text.trim().to_owned();
+        // At the suggestion box, the message is a suggestion: Verse seals
+        // and sends it with the player's key (#12460).
+        if self.suggest_mode {
+            if text.is_empty() {
+                return false;
+            }
+            if text.chars().count() > model::SUGGEST_MAX {
+                self.put_back(&text, cx);
+                self.notice = Some(Notice {
+                    text: model::TOO_LONG.into(),
+                    sign_in: false,
+                });
+                cx.notify();
+                return false;
+            }
+            let (category, _) = model::SUGGEST_CATEGORIES[self.suggest_category];
+            let json = serde_json::json!({"text": text, "category": category}).to_string();
+            let _ = js_sys::Reflect::set(
+                &js_sys::global(),
+                &model::SUGGEST_OUT.into(),
+                &JsValue::from_str(&json),
+            );
+            self.notice = None;
+            self.suggest_status = Some(("sending".into(), model::SUGGEST_SENDING.into()));
+            cx.notify();
+            return true;
+        }
         if text.is_empty() || self.sending || self.live.is_some() {
             if !text.is_empty() {
                 self.put_back(&text, cx);
@@ -1177,6 +1246,69 @@ impl LanderChat {
         )
     }
 
+    /// The suggestion box over the composer: its name, what it's for, the
+    /// categories, and how the last suggestion went (#12460).
+    fn render_suggest(&self, cx: &mut Context<Self>) -> AnyElement {
+        let chips = model::SUGGEST_CATEGORIES
+            .iter()
+            .enumerate()
+            .map(|(i, (name, label))| {
+                button(
+                    SharedString::from(format!("suggest-{name}")),
+                    *label,
+                    i == self.suggest_category,
+                )
+                .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                    this.suggest_category = i;
+                    cx.notify();
+                }))
+            });
+        div()
+            .id("suggest-box")
+            .track_scroll(&self.suggest_bounds)
+            .flex_none()
+            .flex()
+            .flex_col()
+            .gap(px(10.))
+            .p(px(16.))
+            .rounded(px(16.))
+            .border_1()
+            .border_color(theme::border_strong())
+            .bg(gpui::hsla(0., 0., 0.035, 0.9))
+            .child(
+                div()
+                    .text_size(px(16.))
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(model::SUGGEST_TITLE),
+            )
+            .child(
+                div()
+                    .text_size(px(13.))
+                    .text_color(theme::text_muted())
+                    .child(model::SUGGEST_INTRO),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .flex_wrap()
+                    .gap(px(8.))
+                    .children(chips),
+            )
+            .children(self.suggest_status.as_ref().map(|(state, line)| {
+                div()
+                    .id("suggest-status")
+                    .text_size(px(13.))
+                    .text_color(if state == "error" {
+                        theme::danger()
+                    } else {
+                        theme::text()
+                    })
+                    .child(SharedString::from(line.clone()))
+            }))
+            .into_any_element()
+    }
+
     fn render_notice(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let notice = self.notice.as_ref()?;
         let line = div()
@@ -1233,7 +1365,9 @@ impl Render for LanderChat {
             .flex_col()
             .justify_end()
             .gap(px(if layout.narrow { 10. } else { 14. }));
-        if shows_card {
+        if self.suggest_mode && base() == model::HOME_BASE {
+            column = column.child(self.render_suggest(cx));
+        } else if shows_card {
             column = column.child(self.render_card(&layout, cx));
         } else if !self.loading && model::welcomes(base()) {
             column = column.child(
@@ -1465,6 +1599,14 @@ fn mark(name: &str) {
 /// Whether the chat is open with the Grid Foreman (#12446).
 fn is_foreman() -> bool {
     js_sys::Reflect::get(&js_sys::global(), &model::FOREMAN_GLOBAL.into())
+        .ok()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// Whether the chat is open at the Grid's suggestion box (#12460).
+fn is_suggest() -> bool {
+    js_sys::Reflect::get(&js_sys::global(), &model::SUGGEST_GLOBAL.into())
         .ok()
         .and_then(|v| v.as_bool())
         .unwrap_or(false)

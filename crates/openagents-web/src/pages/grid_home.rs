@@ -318,7 +318,7 @@ const held=new Set(),blocked=new Set();\n\
 const world=document.getElementById(\"everglade-canvas\");\n\
 const syncFocus=()=>world.toggleAttribute(\"data-composing\",chatReady&&terminalNear&&document.activeElement===chatField);\n\
 const syncChat=()=>{const show=terminalNear&&chatReady;\n\
-if(show&&!chatShown)track(globalThis.openagentsChatDesk?\"help_desk_opened\":globalThis.openagentsChatForeman?\"foreman_opened\":\"terminal_opened\");chatShown=show;\n\
+if(show&&!chatShown)track(globalThis.openagentsChatSuggest?\"suggestion_box_opened\":globalThis.openagentsChatDesk?\"help_desk_opened\":globalThis.openagentsChatForeman?\"foreman_opened\":\"terminal_opened\");chatShown=show;\n\
 globalThis.openagentsChatOpen=show;\n\
 composer.classList.toggle(\"open\",show);\n\
 composer.setAttribute(\"aria-hidden\",String(!show));\n\
@@ -384,16 +384,22 @@ syncChat();ok()},{once:true});\n\
 performance.mark(\"home-chat-mounting\");glue.mount(still)}));\n\
 return glue})().catch(error=>{chatStatus.textContent=\"Chat couldn't open. Reload to try again.\";\n\
 console.warn(error);track(\"terminal_failed\");focusPending=false;syncFocus();throw error}));\n\
-globalThis.homeTerminal=(near,step)=>{const walked=near&&step!==false&&globalThis.openagentsLab!==\"game\"&&!globalThis.openagentsChatDesk&&!globalThis.openagentsChatForeman;near=(globalThis.openagentsLab===\"game\"||near)&&world.classList.contains(\"ready\");\n\
-if(!near&&(globalThis.openagentsChatDesk||globalThis.openagentsChatForeman)){globalThis.openagentsChatDesk=false;globalThis.openagentsChatForeman=false;composer.setAttribute(\"aria-label\",\"Chat with the pylons\")}\n\
+globalThis.homeTerminal=(near,step)=>{const walked=near&&step!==false&&globalThis.openagentsLab!==\"game\"&&!globalThis.openagentsChatDesk&&!globalThis.openagentsChatForeman&&!globalThis.openagentsChatSuggest;near=(globalThis.openagentsLab===\"game\"||near)&&world.classList.contains(\"ready\");\n\
+if(!near&&(globalThis.openagentsChatDesk||globalThis.openagentsChatForeman||globalThis.openagentsChatSuggest)){globalThis.openagentsChatDesk=false;globalThis.openagentsChatForeman=false;globalThis.openagentsChatSuggest=false;composer.setAttribute(\"aria-label\",\"Chat with the pylons\")}\n\
 if(walked&&near&&!terminalNear)track(\"terminal_reached\",{time:Math.round(performance.now())});terminalNear=near;focusPending=near&&step!==false;\n\
 syncChat();\n\
 if(near)loadChat().catch(()=>{})};\n\
 globalThis.homeDesk=open=>{open=!!open&&world.classList.contains(\"ready\");\n\
-if(open){globalThis.openagentsChatForeman=false;globalThis.openagentsChatDesk=true;composer.setAttribute(\"aria-label\",\"Ask OpenAgents\")}\n\
+if(open){globalThis.openagentsChatForeman=false;globalThis.openagentsChatSuggest=false;globalThis.openagentsChatDesk=true;composer.setAttribute(\"aria-label\",\"Ask OpenAgents\")}\n\
+homeTerminal(open)};\n\
+// The suggestion box on the landing plaza (#12460): Verse opens it on E
+// or a tap; the GPUI chat draws it and hands a suggestion back to Verse,
+// which seals and sends it.\n\
+globalThis.homeSuggest=open=>{open=!!open&&world.classList.contains(\"ready\");\n\
+if(open){globalThis.openagentsChatDesk=false;globalThis.openagentsChatForeman=false;globalThis.openagentsChatSuggest=true;globalThis.openagentsSuggestStatus=undefined;composer.setAttribute(\"aria-label\",\"Leave a suggestion\")}\n\
 homeTerminal(open)};\n\
 globalThis.homeForeman=open=>{open=!!open&&world.classList.contains(\"ready\");\n\
-if(open){globalThis.openagentsChatDesk=false;globalThis.openagentsChatForeman=true;composer.setAttribute(\"aria-label\",\"Ask the Foreman\")}\n\
+if(open){globalThis.openagentsChatDesk=false;globalThis.openagentsChatSuggest=false;globalThis.openagentsChatForeman=true;composer.setAttribute(\"aria-label\",\"Ask the Foreman\")}\n\
 homeTerminal(open)};\n\
 world.addEventListener(\"pointerdown\",()=>{focusPending=false;\n\
 if(chatField&&document.activeElement===chatField)chatField.blur();\n\

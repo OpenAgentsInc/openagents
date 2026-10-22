@@ -346,6 +346,7 @@ Keys, relays, and money:
 
 Playtesting:
   playtest     Triage inbox: read reports, draft and file issues, keep the triage log.
+  suggest      Drop a suggestion in the suggestion box (playtest suggest).
 
 Plugins (NIP-EXT, NIP-EVAL):
   plugin       List published plugins, test a plugin with and without it,
@@ -659,6 +660,12 @@ fn main() -> ExitCode {
         "kb" => kb::run(&output, &rest),
         "reach" => reach::run(&output, &rest),
         "playtest" => playtest::run(&output, &rest),
+        // The suggestion box from a terminal (#12460).
+        "suggest" => {
+            let mut words = vec!["suggest".to_owned()];
+            words.extend(rest.iter().cloned());
+            playtest::run(&output, &words)
+        }
         "relay" => relay::run(&output, &rest),
         // `openagents pylon mcp`: this pylon as typed MCP tools (#12189).
         "pylon" if rest.first().is_some_and(|word| word == "mcp") => {

@@ -169,6 +169,28 @@ pub const DESK_GLOBAL: &str = "openagentsChatDesk";
 /// Foreman (#12446): the chat then names the `foreman` surface, so the site
 /// answers as the Foreman, in a chat of its own, with no model choice.
 pub const FOREMAN_GLOBAL: &str = "openagentsChatForeman";
+/// The page global that is `true` while the chat is open at the Grid's
+/// suggestion box (#12460): the chat then draws the box, and a message is
+/// a suggestion handed to Verse, which seals it with NIP-17 and sends it.
+pub const SUGGEST_GLOBAL: &str = "openagentsChatSuggest";
+/// Where the chat leaves a suggestion for Verse (JSON: text, category).
+pub const SUGGEST_OUT: &str = "openagentsSuggestOut";
+/// Where Verse says how it went (JSON: state, line).
+pub const SUGGEST_STATUS: &str = "openagentsSuggestStatus";
+/// The box's words, as `playtest::suggestion` has them.
+pub const SUGGEST_TITLE: &str = "Suggestion box";
+pub const SUGGEST_INTRO: &str = "Tell us what to fix, add, or keep. Only OpenAgents reads it.";
+pub const SUGGEST_SENDING: &str = "Sending\u{2026}";
+/// The most characters a suggestion holds.
+pub const SUGGEST_MAX: usize = 2_000;
+/// The box's categories: the wire name and the label.
+pub const SUGGEST_CATEGORIES: [(&str, &str); 4] = [
+    ("idea", "Idea"),
+    ("bug", "Bug"),
+    ("praise", "Praise"),
+    ("other", "Other"),
+];
+
 /// The page function that opens Kiln's panel.
 pub const OPEN_KILN: &str = "homeKiln";
 
@@ -905,6 +927,32 @@ mod tests {
             "/labs/game/card.json?v=3&a=1"
         );
         assert_eq!(game_card_path(None, true), "/labs/game/card.json");
+    }
+
+    /// #12460: the box says what `playtest::suggestion` says, in plain
+    /// words, and offers its categories.
+    #[test]
+    fn the_suggestion_box_matches_the_sealed_message() {
+        use playtest::suggestion as s;
+        assert_eq!(SUGGEST_TITLE, s::TITLE);
+        assert_eq!(SUGGEST_INTRO, s::INTRO);
+        assert_eq!(SUGGEST_SENDING, s::SENDING);
+        assert_eq!(SUGGEST_MAX, s::MAX_CHARS);
+        for (name, label) in SUGGEST_CATEGORIES {
+            assert_eq!(
+                s::Category::from_name(name).map(s::Category::label),
+                Some(label)
+            );
+        }
+        for text in [
+            SUGGEST_TITLE,
+            SUGGEST_INTRO,
+            s::DELIVERED,
+            s::SAVED,
+            s::EMPTY,
+        ] {
+            assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
+        }
     }
 
     #[test]

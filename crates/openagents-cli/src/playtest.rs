@@ -17,6 +17,7 @@ use std::time::Duration;
 use base64::Engine as _;
 use nostr::domain::{Event, RelaySigner};
 use playtest::report::{self, Opened};
+use playtest::suggestion;
 use playtest::triage::{
     self, Contribution, Decision, Draft, Entry, Format, Log, Severity, Verified,
 };
@@ -42,6 +43,15 @@ pub(crate) const USAGE: &str = "usage: openagents playtest COMMAND [OPTIONS]
   session --tester KEY --script NAME --format unmoderated|moderated|group|diary
         --build \"1.0.0 (15)\" [--code PT-…] [--moderator KEY]
   log [--acceptances | --pending]
+  suggest TEXT|- [--category bug|idea|praise|other] [--as PROFILE] [--relay URL]
+                                Drop a suggestion in the suggestion box: sealed
+                                to OpenAgents from your Verse profile's key.
+                                `openagents suggest` is the same.
+  suggestions [--agents | --quarantined]
+                                The suggestion box's messages the inbox kept:
+                                the team's view; --agents, what a delegated
+                                agent may read (quoted, never quarantined);
+                                --quarantined, the owner's view of the rest.
   award (CODE | --issue N [--verified] | --script NAME --tester KEY)
         --quest ID@VERSION [--session ID] [--triager KEY] [--commit SHA]
         [--referee-key PATH] [--relay URL] [--repo OWNER/REPO] [--publish]
@@ -57,7 +67,7 @@ pub(crate) const USAGE: &str = "usage: openagents playtest COMMAND [OPTIONS]
                                 ASC_API_PRIVATE_KEY_PATH variables.
 Files live in ~/.openagents/playtest (OPENAGENTS_PLAYTEST_HOME overrides):
 log.jsonl, and drafts/CODE.md (edit it before filing), .json, .report.json,
-and .jpg (private; never published).";
+and .jpg (private; never published); suggestions/SG-….json (private).";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -70,6 +80,8 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("verify", Effect::LocalWrite),
     Declared::computer("session", Effect::LocalWrite),
     Declared::computer("log", Effect::ReadOnly),
+    Declared::computer("suggestions", Effect::ReadOnly),
+    Declared::computer("suggest", Effect::Publishes),
     Declared::computer("award", Effect::Publishes),
     Declared::computer("testflight", Effect::LocalWrite),
 ];
@@ -99,6 +111,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             "help",
             "verified",
             "publish",
+            "agents",
+            "quarantined",
         ],
     ) {
         Ok(args) => args,
@@ -117,6 +131,8 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "verify" => verify(&home, &args),
         "session" => session(&home, &args),
         "log" => log(&home, &args),
+        "suggestions" => suggestions(&home, &args),
+        "suggest" => suggest(&args),
         "testflight" => testflight::run(&home, &args),
         "award" => award::run(&home, &args),
         other => return output.usage("playtest", &format!("unknown command `{other}`"), USAGE),
@@ -317,8 +333,11 @@ pub struct Ingested {
     pub feedback: Vec<String>,
     /// Deliveries the log already held.
     pub repeats: usize,
-    /// Wraps that weren't playtest reports for this key.
+    /// Wraps that weren't playtest reports or suggestions for this key.
     pub refused: usize,
+    /// New suggestions from the suggestion box (#12460), one line each:
+    /// a normal one with its text, a quarantined one without it.
+    pub suggestions: Vec<String>,
 }
 
 /// Opens `events` with the triage key, keeps the reports the log hasn't
@@ -332,15 +351,29 @@ pub fn ingest(
     let mut log = load(home)?;
     let mut result = Ingested::default();
     let mut opened: Vec<Opened> = Vec::new();
+    let box_dir = suggestions_dir(home);
     for event in events {
         match report::open(event, triage) {
             Ok(report) => opened.push(report),
-            Err(_) => result.refused += 1,
+            Err(_) => match suggestion::open(event, triage) {
+                Ok(found) => {
+                    // Every well-formed suggestion is kept, once.
+                    let path = box_dir.join(format!("{}.json", found.code));
+                    if path.exists() {
+                        result.repeats += 1;
+                        continue;
+                    }
+                    private_dir(&box_dir)?;
+                    private_file(&path, stored(&found, at).to_string().as_bytes())?;
+                    result.suggestions.push(suggestion_line(&found));
+                }
+                Err(_) => result.refused += 1,
+            },
         }
     }
     let total = opened.len();
     let fresh = triage::fresh(opened, &log);
-    result.repeats = total - fresh.len();
+    result.repeats += total - fresh.len();
     let dir = drafts(home);
     private_dir(&dir)?;
     for report in fresh {
@@ -356,6 +389,203 @@ pub fn ingest(
         result.new.push(report.code);
     }
     Ok(result)
+}
+
+fn suggestions_dir(home: &Path) -> PathBuf {
+    home.join("suggestions")
+}
+
+/// A kept suggestion as its file holds it.
+fn stored(found: &suggestion::Opened, at: u64) -> Value {
+    json!({
+        "code": found.code,
+        "received": at,
+        "sender": found.sender,
+        "rumor_id": found.rumor_id,
+        "wrap_id": found.wrap_id,
+        "screen": found.screen,
+        "suggestion": found.suggestion,
+    })
+}
+
+/// `SG-1A2B3C4D idea from verse-grid at (7.0, -8.0): the text`, or, held
+/// back, `SG-1A2B3C4D quarantined (why): …`.
+fn suggestion_line(found: &suggestion::Opened) -> String {
+    let s = &found.suggestion;
+    let place = s
+        .place
+        .map(|[x, z]| format!(" at ({x:.1}, {z:.1})"))
+        .unwrap_or_default();
+    match &found.screen {
+        suggestion::Screen::Normal => {
+            let flat = s.text.split_whitespace().collect::<Vec<_>>().join(" ");
+            let short: String = flat.chars().take(240).collect();
+            format!(
+                "{} {} from {}{place}: {short}",
+                found.code,
+                s.category.name(),
+                s.client.name()
+            )
+        }
+        suggestion::Screen::Quarantined(why) => format!(
+            "{} quarantined ({why}); read it with `openagents playtest suggestions --quarantined`",
+            found.code
+        ),
+    }
+}
+
+/// The kept suggestions, oldest first.
+fn kept_suggestions(home: &Path) -> Result<Vec<suggestion::Opened>, String> {
+    let dir = suggestions_dir(home);
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Err(error) => return Err(format!("reading {}: {error}", dir.display())),
+    };
+    let mut kept = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| format!("reading {}: {e}", path.display()))?;
+        let value: Value =
+            serde_json::from_str(&text).map_err(|e| format!("reading {}: {e}", path.display()))?;
+        let read = |name: &str| value[name].as_str().unwrap_or_default().to_owned();
+        let Ok(found) = serde_json::from_value(value["suggestion"].clone()) else {
+            continue;
+        };
+        let Ok(screen) = serde_json::from_value(value["screen"].clone()) else {
+            continue;
+        };
+        kept.push((
+            value["received"].as_u64().unwrap_or(0),
+            suggestion::Opened {
+                sender: read("sender"),
+                rumor_id: read("rumor_id"),
+                code: read("code"),
+                wrap_id: read("wrap_id"),
+                suggestion: found,
+                screen,
+            },
+        ));
+    }
+    kept.sort_by(|a, b| (a.0, &a.1.code).cmp(&(b.0, &b.1.code)));
+    Ok(kept.into_iter().map(|(_, found)| found).collect())
+}
+
+/// `openagents playtest suggest TEXT` (and `openagents suggest`): a
+/// suggestion sealed to the triage key from the Verse profile's key, with
+/// the sender's own copy, published to the relay (#12460).
+fn suggest(args: &Args) -> Result<Value, Failure> {
+    let [text] = args.positional() else {
+        return Err(usage(
+            "suggest takes the suggestion's text, or - to read it",
+        ));
+    };
+    let text = if text == "-" {
+        let mut text = String::new();
+        std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+            .map_err(|error| format!("cannot read stdin: {error}"))?;
+        text
+    } else {
+        text.clone()
+    };
+    let category = match args.option("category") {
+        Some(name) => suggestion::Category::from_name(name)
+            .ok_or_else(|| usage("--category is bug, idea, praise, or other"))?,
+        None => suggestion::Category::Idea,
+    };
+    let inbox = playtest::triage_key(std::env::var(playtest::TRIAGE_KEY_ENV).ok().as_deref())
+        .ok_or_else(|| "this build has no suggestion box key".to_owned())?;
+    let s = suggestion::Suggestion::new(
+        suggestion::Client::Cli,
+        category,
+        &text,
+        None,
+        Some(env!("CARGO_PKG_VERSION").to_owned()),
+        now(),
+    )
+    .map_err(usage)?;
+    let me = crate::relay::identity_for(args.option("as"))?;
+    let random = || report::Randomness {
+        wrapper: SecretKey::new(&mut secp256k1::rand::rng()),
+        seal_nonce: rand_bytes(),
+        wrap_nonce: rand_bytes(),
+        seal_earlier: u64::from(u16::from_le_bytes(rand_bytes::<2>())) * 2,
+        wrap_earlier: u64::from(u16::from_le_bytes(rand_bytes::<2>())) * 2,
+    };
+    let sealed = suggestion::wrap(&s, &me.secret, &inbox, &random(), &random())?;
+    let url = crate::relay::relay_url(args.option("relay"));
+    let mut client = crate::relay::Client::connect(&url, me.signer);
+    let mut refused = None;
+    for event in [sealed.wrap, sealed.copy] {
+        match client.publish(event, crate::relay::DEFAULT_WAIT) {
+            Ok(published) if published.accepted => {}
+            Ok(published) => {
+                refused = Some(published.message);
+                break;
+            }
+            Err(error) => {
+                refused = Some(error);
+                break;
+            }
+        }
+    }
+    client.close();
+    if let Some(reason) = refused {
+        return Err(Failure::Failed(format!("{url} didn't take it: {reason}")));
+    }
+    Ok(json!({
+        "code": sealed.code,
+        "relay": url,
+        "text": format!("Delivered as {}. Thank you!", sealed.code),
+    }))
+}
+
+fn rand_bytes<const N: usize>() -> [u8; N] {
+    let mut bytes = [0u8; N];
+    secp256k1::rand::RngCore::fill_bytes(&mut secp256k1::rand::rng(), &mut bytes);
+    bytes
+}
+
+/// `openagents playtest suggestions`: the team's view of the box, what an
+/// agent may read (`--agents`), or the owner's view of the quarantined ones
+/// (`--quarantined`).
+fn suggestions(home: &Path, args: &Args) -> Result<Value, Failure> {
+    let kept = kept_suggestions(home)?;
+    let quarantined = |f: &&suggestion::Opened| f.screen != suggestion::Screen::Normal;
+    if args.switch("agents") {
+        let views: Vec<String> = kept.iter().filter_map(suggestion::for_agents).collect();
+        return Ok(json!({"suggestions": views, "text": views.join("\n")}));
+    }
+    if args.switch("quarantined") {
+        let held: Vec<&suggestion::Opened> = kept.iter().filter(quarantined).collect();
+        let lines: Vec<String> = held
+            .iter()
+            .map(|f| {
+                let why = match &f.screen {
+                    suggestion::Screen::Quarantined(why) => why.as_str(),
+                    suggestion::Screen::Normal => "",
+                };
+                format!(
+                    "{} ({why}) from {}: {}",
+                    f.code, f.sender, f.suggestion.text
+                )
+            })
+            .collect();
+        return Ok(json!({
+            "quarantined": held.iter().map(|f| f.code.clone()).collect::<Vec<_>>(),
+            "text": if lines.is_empty() { "Nothing is held back.".to_owned() } else { lines.join("\n") },
+        }));
+    }
+    let lines: Vec<String> = kept.iter().map(suggestion_line).collect();
+    Ok(json!({
+        "count": kept.len(),
+        "quarantined": kept.iter().filter(quarantined).count(),
+        "text": if lines.is_empty() { "The suggestion box is empty.".to_owned() } else { lines.join("\n") },
+    }))
 }
 
 /// `PT-1A2B3C4D on “the selected text” (turn 3, model gpt-5.4): the comment`.
@@ -446,17 +676,21 @@ fn inbox(home: &Path, args: &Args) -> Result<Value, Failure> {
         "read": events.len(),
         "new": result.new,
         "feedback": result.feedback,
+        "suggestions": result.suggestions,
         "repeats": result.repeats,
         "refused": result.refused,
         "drafts": drafts(home).display().to_string(),
         "text": format!(
-            "{} wraps read from {relay}: {} new, {} already in the log, {} not reports.{}{}",
+            "{} wraps read from {relay}: {} new, {} already in the log, {} not reports.{}{}{}",
             events.len(), result.new.len(), result.repeats, result.refused,
             if result.new.is_empty() { String::new() } else {
                 format!("\nEdit the drafts in {} and file each with `openagents playtest file CODE --contribution … --approve`:\n  {}", drafts(home).display(), result.new.join("\n  "))
             },
             if result.feedback.is_empty() { String::new() } else {
                 format!("\nFeedback on selected text:\n  {}", result.feedback.join("\n  "))
+            },
+            if result.suggestions.is_empty() { String::new() } else {
+                format!("\nSuggestions:\n  {}", result.suggestions.join("\n  "))
             }
         ),
     }))
