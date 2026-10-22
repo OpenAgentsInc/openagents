@@ -91,6 +91,11 @@ SA_CONFIG=${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}
 STATE=${XDG_STATE_HOME:-$HOME/.local/state}/openagents-deploy
 ROOT=$(git rev-parse --show-toplevel)
 mkdir -p "$STATE"
+# The Grid's build billboard (#12442): best-effort announcements of each
+# phase, which never fail or hold up a deploy (scripts/deploy/deploy-event.sh).
+. "$ROOT/scripts/deploy/deploy-event.sh"
+DEPLOY_EVENT_ROOT=$ROOT
+[ -z "${DRY_RUN:-}" ] || DEPLOY_EVENTS=0
 
 g() { CLOUDSDK_CONFIG=$SA_CONFIG gcloud "$@"; }
 now() { date +%s; }
@@ -351,30 +356,43 @@ stage() {
     from=
     if [ -z "$keep" ] && [ "${WEB_PATH:-auto}" != image ]; then from=$(staging_commit); fi
     if [ -n "$from" ] && content_only "$from" "$full"; then
+        deploy_event_watch staging content "$full"
+        deploy_event_step deploying deploy_failed
         stage_content "$full" "$sha" "$ctx" "$from"
         t=$(now)
         smoke=0
+        deploy_event_step smoke_running smoke_failed
         "$ctx/scripts/smoke/staging.sh" || smoke=$?
         took smoke "$t"
         took "stage total" "$started"
         rm -rf "$ctx"
         [ "$smoke" -eq 0 ] || { say "The staging smoke failed after the content deploy; roll back with scripts/deploy/livehost.sh rollback."; exit 1; }
+        deploy_event_step smoke_passed
+        deploy_event_step live
         say "Staging serves $sha's content. Production follows no livehost pointer yet; ship it with the next image."
         return 0
     fi
     if [ -n "$from" ] && livehost_modules && [ "$(change_kind "$from" "$full")" = modules ]; then
+        deploy_event_watch staging module "$full"
+        deploy_event_step build_started build_failed
         stage_modules "$full" "$sha" "$ctx"
+        deploy_event_step build_done
         t=$(now)
         smoke=0
+        deploy_event_step smoke_running smoke_failed
         "$ctx/scripts/smoke/staging.sh" || smoke=$?
         took smoke "$t"
         took "stage total" "$started"
         rm -rf "$ctx"
         [ "$smoke" -eq 0 ] || { say "The staging smoke failed after the modules deploy; roll back with scripts/deploy/livehost.sh rollback."; exit 1; }
+        deploy_event_step smoke_passed
+        deploy_event_step live
         say "Staging serves $sha's browser modules. Production follows no livehost pointer yet; ship them with the next image."
         return 0
     fi
     say "  path: image (staging runs ${from:-an unknown commit})"
+    deploy_event_watch staging image "$full"
+    deploy_event_step build_started build_failed
     web=$REPO/openagents-web:stg-$sha
     stack=$REPO/openagents-stack:$sha
     t=$(now)
@@ -417,6 +435,8 @@ stage() {
         wait "$pid" || { say "A build failed; see the logs above."; exit 1; }
     done
     took build "$t"
+    _de_build=$(sed -n 's|.*/builds/\([0-9a-f-]\{36\}\).*|\1|p' "$STATE/build-web-$sha.log" 2> /dev/null | head -n 1)
+    deploy_event_step build_done
     # What the web build reused and what it built (scripts/deploy/oa-module-cache.sh).
     if [ -f "$STATE/build-web-$sha.log" ]; then report_modules "$STATE/build-web-$sha.log"; fi
     web_digest=$(digest "$web")
@@ -490,6 +510,7 @@ print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
     fi
     SERVICE=$STAGING
     TRAFFIC_ORIGIN=https://staging.openagents.com
+    deploy_event_step deploying deploy_failed
     traffic_to "$revision" "$spec"
     took "staging deploy" "$t"
     printf '%s\n' "$web_digest" > "$STATE/staged-$sha"
@@ -504,6 +525,7 @@ print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
         (umask 022; git -C "$ROOT" archive "$smoke_ref" scripts/smoke | tar -x -C "$ctx")
     fi
     say "  smoke ref: $smoke_ref"
+    deploy_event_step smoke_running smoke_failed
     smoke=0
     "$ctx/scripts/smoke/staging.sh" || smoke=$?
     browser_out="$(BROWSER=/usr/bin/true openagents scratch)/gpui-$sha"
@@ -514,6 +536,8 @@ print(json.dumps({"apiVersion": "serving.knative.dev/v1", "kind": "Service",
     rm -rf "$ctx"
     say "web image: $REPO/openagents-web@$web_digest"
     [ "$smoke" -eq 0 ] || { say "The staging smoke failed; do not promote."; exit 1; }
+    deploy_event_step smoke_passed
+    deploy_event_step live
     say "Promote with: scripts/deploy/web.sh promote $web_digest"
 }
 
@@ -537,6 +561,10 @@ promote() {
     want=${1##*@}
     case $want in sha256:*) ;; *) say "Not a digest: $1"; exit 2 ;; esac
     started=$(now)
+    # The commit stage built this digest from, for the billboard.
+    commit=$(grep -lx "$want" "$STATE"/staged-* 2> /dev/null | head -n 1 | sed 's|.*/staged-||')
+    deploy_event_watch production image "$commit"
+    deploy_event_step deploying deploy_failed
     image=$REPO/openagents-web@$want
     g artifacts docker images describe "$image" --format='value(image_summary.digest)' > /dev/null
     previous=$(serving_revision)
@@ -826,16 +854,20 @@ PY
     [ -z "${DRY_RUN:-}" ] || { say "  spec: $spec"; return 0; }
     printf '%s\n' "$previous" > "$STATE/$SERVICE.previous"
     printf '%s\n' "$name" > "$STATE/$SERVICE.candidate"
+    printf '%s %s %s\n' "$DEPLOY_EVENT_RUN" "$DEPLOY_EVENT_STARTED" "${commit:--}" > "$STATE/$SERVICE.deploy-event"
+    deploy_event_step promoted
     took "promote total" "$started"
     say "Candidate $name at $TAG_URL (no traffic)."
     if [ "${SMOKE:-1}" != 0 ]; then
         t=$(now)
+        deploy_event_step smoke_running smoke_failed
         if ! "$ROOT/scripts/smoke/staging.sh" "$TAG_URL" --candidate; then
             took "candidate smoke" "$t"
             say "The candidate failed checks that do not wait for traffic: do not shift."
             exit 1
         fi
         took "candidate smoke" "$t"
+        deploy_event_step smoke_passed
     fi
     say "Next: scripts/deploy/web.sh shift $name"
     say "Rollback: scripts/deploy/web.sh rollback $previous"
@@ -1021,16 +1053,31 @@ case ${1:-} in
             exit 1
         fi
         say "previous: $serving (rollback: scripts/deploy/web.sh rollback)"
+        # The billboard shows the shift as the end of promote's run.
+        shift_commit=
+        if [ "$rev" = "$candidate" ] && [ -r "$STATE/$SERVICE.deploy-event" ]; then
+            read -r DEPLOY_EVENT_RUN DEPLOY_EVENT_STARTED shift_commit < "$STATE/$SERVICE.deploy-event" || true
+            [ "$shift_commit" != - ] || shift_commit=
+        fi
+        deploy_event_watch production image "$shift_commit"
+        _de_fail=deploy_failed
         traffic_to "$rev"
-        after_shift ;;
+        deploy_event_step traffic_shifted smoke_failed
+        after_shift
+        deploy_event_step live ;;
     rollback)
         rev=${2:-$(cat "$STATE/$SERVICE.previous" 2> /dev/null || true)}
         [ -n "$rev" ] || { say "rollback needs a revision"; exit 2; }
-        traffic_to "$rev" ;;
+        traffic_to "$rev"
+        deploy_event_begin
+        deploy_event production rolled_back ;;
     shift-staging)
         [ -n "${2:-}" ] || { say "shift-staging needs a revision"; exit 2; }
         SERVICE=$STAGING
         TRAFFIC_ORIGIN=https://staging.openagents.com
-        traffic_to "$2" "${3:-}" ;;
+        traffic_to "$2" "${3:-}"
+        deploy_event_begin
+        deploy_event staging traffic_shifted
+        deploy_event staging live ;;
     *) sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2 ;;
 esac
