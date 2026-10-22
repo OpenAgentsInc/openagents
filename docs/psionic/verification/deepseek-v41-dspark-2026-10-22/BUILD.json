@@ -1,0 +1,63 @@
+{
+  "arch": "sm_120",
+  "build_info": {
+    "bundle": "no build record at /cache/target/release/BUILD.json: No such file or directory (os error 2)",
+    "bundle_sha256": null,
+    "cuda": true,
+    "cuda_arch": "sm_120",
+    "metal": false,
+    "metal_kernels_sha256": null,
+    "profiles": {
+      "cpu": [
+        "cpu-f32",
+        "cpu-bf16",
+        "cpu-bf16-tp8"
+      ],
+      "cuda": "cuda-device-sm_120",
+      "metal": null
+    },
+    "runtimes": {
+      "cpu": "psionic-v41-stage/1",
+      "cuda": "psionic-v41-stage/1+cuda",
+      "metal": null
+    },
+    "sha256": "922f940ffab6668d867337b30804213fa2f139278977f0925cbeae24329a2404",
+    "version": "1.0.0"
+  },
+  "builder_image_id": "sha256:9fbc8442bd07090a68a550d249ac5ab180c1983f2331ba9f6cee949f47145646",
+  "commit": "3f32d9abb69af530df9ee9af9851c6d43501bd4d",
+  "embedded_arch": [
+    "sm_120"
+  ],
+  "features": [
+    "cuda"
+  ],
+  "image": "nvidia/cuda:13.0.1-devel-ubuntu24.04",
+  "image_digest": "nvidia/cuda@sha256:7d2f6a8c2071d911524f95061a0db363e24d27aa51ec831fcccf9e76eb72bc92",
+  "libraries": {
+    "libcublas.so.13": "1d5f1452af53a0b1cf36bc7d8116d2a22a5f2cffbaa8fca25a1b70360a2e8d7a",
+    "libcublasLt.so.13": "4c15f403ac2a8040a3291d07f6c351b5c1f730b45f2ea41f302e415e9600655b",
+    "libcudart.so.13": "468a02b712c80445c88abbc9538d660926e68a8ce92835f87c857000d5dfb50e"
+  },
+  "manifests": {
+    "3a86d149c418f0bd82fbe928a8c1931c49ef878eb7e10ddbd96cbf9a558e220f": "crates/pylon/placements/deepseek-v41/one-quad.json",
+    "4b95bff01142a06dbcb4a7505d65960081adc6dd490f73801384d76dd507c5c1": "crates/pylon/placements/deepseek-v41/two-dual.json",
+    "73fd460b9d8cf110cca8cbec58b18ad7d674ec8ff549a4a29f6a917e06a1597f": "crates/pylon/placements/deepseek-v41/quad-mac.json",
+    "cd2f590c7e8dae9a3773777b6136bf9e9e63b4714626dbfbb47a59e8a555977b": "crates/pylon/placements/deepseek-v41/four-single.json",
+    "f5930eac25c509aba122908bb0ae4b0341763b63d80e21e6eced468ec70921e0": "crates/pylon/placements/deepseek-v41/one-box.json"
+  },
+  "nvcc": "Build cuda_13.0.r13.0/compiler.36424714_0",
+  "profile": "cuda-device-sm_120",
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "schema": "openagents.psionic_v41_stage.build.v2",
+  "sha256": "922f940ffab6668d867337b30804213fa2f139278977f0925cbeae24329a2404",
+  "source_paths": [
+    "crates/psionic",
+    "crates/stage-link",
+    "crates/pylon/placements",
+    "Cargo.toml",
+    "rust-toolchain.toml",
+    "scripts/dev/cargo-build-env.sh"
+  ],
+  "tree": "9cb9b6b563fb1c0a178ae5e4ebefaffcd1fcbff8"
+}
