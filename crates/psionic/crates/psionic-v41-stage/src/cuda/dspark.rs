@@ -238,6 +238,10 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
     )
     .map_err(bad)?;
     let mut snapshot = stage.dspark_snapshot(&mut backend).map_err(bad)?;
+    let cache_at_load = stage.expert_cache_stats().map(|s| {
+        json!({"slots_per_layer": s.slots_per_layer, "layers": s.layers,
+            "device_bytes": s.device_bytes, "staging_bytes": s.staging_bytes})
+    });
     let load_seconds = started.elapsed().as_secs_f64();
     let prompts = if let Some(ids) = &options.prompt_ids {
         vec![(ids.clone(), options.mode)]
@@ -389,7 +393,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
         let decode_seconds = started.elapsed().as_secs_f64();
         let mut stream = TextStream::default();
         let text: String = tokens.iter().map(|t| stream.push(&tokenizer, *t)).collect();
-        let answer = json!({"round": round, "prompt_tokens": prompt.len(), "mode": mode.as_str(),
+        let answer = json!({"round": round, "prompt_tokens": prompt.len(), "prompt_ids": prompt, "mode": mode.as_str(),
             "tokens": tokens, "text": text, "prefill_seconds": prefill_seconds,
             "decode_seconds": decode_seconds, "decode_tokens_per_second": tokens.len().saturating_sub(1) as f64 / decode_seconds,
             "dspark": {"blocks": blocks, "proposed": proposed, "accepted": kept,
@@ -412,6 +416,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
     }
     Ok(
         json!({"schema": "openagents.deepseek_v41.dspark_run.v1", "load_seconds": load_seconds,
+        "expert_cache_at_load": cache_at_load,
         "profile": model.tiers.profile(crate::device_class(crate::Backend::Cuda)),
         "draft_block_size": BLOCK, "answers": answers}),
     )
