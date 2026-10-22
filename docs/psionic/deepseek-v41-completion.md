@@ -1361,3 +1361,27 @@ The complete-answer acceptance rules were committed in `3244d4f7b0` at
 2026-10-22 19:12:12 UTC, before the candidate run. The `frozen_at` value of
 19:20 in `g2-quality-freeze.json` is a timestamp transcription error; the
 commit time records the actual freeze. The frozen rules and file remain intact.
+
+### Current candidate answer results and calibration rejudging (2026-10-22)
+
+The pinned original-weight `06e5158778` worker passed G2 on one quad:
+**5/6 runtime tasks, 5/6 oracle tasks, all mandatory checks held**. Every
+answer reached EOS within 4096 tokens. The shared `fib(186)` failure remains
+reported. The suite and scorer were fixed before this candidate run;
+[the result](verification/deepseek-v41-gates-2026-10-22/g2-candidate-06-quad.json)
+binds the actual manifest, worker bundle, and execution configuration. Other
+placements must repeat it under their own configuration.
+
+Independent review confirms the publication checker repair and valid
+within-margin swap controls; see
+[the review record](verification/deepseek-v41-gates-2026-10-22/router-independent-review.json).
+This is checker evidence, not numerical model acceptance.
+
+CPU calibration reports recorded before margins were set have verdict counters
+from that earlier policy. Calibration self-check now rejudges their retained
+score differences and every changed row under the newly derived rule, instead
+of copying the earlier verdict. A regression test rejects a changed row whose
+regret exceeds the derived rule. Publication still requires zero failed and
+unresolved decisions under the frozen release policy. All 33 stage unit tests
+pass, with one optional test ignored. The inference worker and limits stay
+unchanged.

@@ -2481,7 +2481,10 @@ pub fn router_margin_violations(
         }
     }
     if let Some(limit) = policy.router.max_substituted_fraction {
-        match (router["substituted"].as_u64(), router["rows"].as_u64()) {
+        match (
+            router["changes"].as_array().map(|v| v.len() as u64),
+            router["rows"].as_u64(),
+        ) {
             (Some(changed), Some(rows)) if rows > 0 && changed as f64 > limit * rows as f64 => out
                 .push(format!(
                     "{name}: router substituted fraction exceeds {limit}"
@@ -2565,6 +2568,16 @@ pub fn self_check(
             let mut r = r.clone();
             for c in r["cases"].as_array_mut().into_iter().flatten() {
                 c["exact"] = Value::Null;
+                // These counters were judged under the recording policy,
+                // which may have no margins yet. Rejudge every measured
+                // change below under the independently derived policy.
+                // Release publication still requires zero failed/unresolved
+                // counters through scope::complete_router.
+                if let Some(router) = c["router"].as_object_mut() {
+                    for field in ["failed", "unresolved", "over_budget"] {
+                        router.remove(field);
+                    }
+                }
             }
             if has_router_score_evidence(&r) {
                 judge_report(policy, &r)
@@ -3221,6 +3234,28 @@ sys.exit(subprocess.call([sys.executable, '-c', worker, sys.argv[1], sys.argv[2]
         // Missing score evidence never passes.
         run["router"]["layers"][2]["score_error"] = Value::Null;
         assert!(!judge_report(&policy, &json!({"cases": [run]})).is_empty());
+    }
+
+    #[test]
+    fn calibration_rejudges_pending_router_counters_without_weakening_publication() {
+        let mut r = json!({"cases":[case_report("a", &vec![(0.01, 5); 33], &[(0, 0.1)])]});
+        let router = &mut r["cases"][0]["router"];
+        router["failed"] = json!(1);
+        router["unresolved"] = json!(1);
+        router["over_budget"] = json!(1);
+        router["changes"] =
+            json!([{"layer":0,"row":1,"substitutions":1,"oracle_gap":0.001,"regret":0.001}]);
+        let control = json!({"control":"c","cases":[case_report("a", &vec![(0.4, 5);33], &[])]});
+        let (p, _) = derive_policy_v22(&[r.clone()], &[control.clone()]).unwrap();
+        // The old verdict cannot pass direct release/report judgement.
+        assert!(!judge_report(&p, &r).is_empty());
+        // Derivation evaluates retained measurements, not a pending verdict.
+        assert_eq!(
+            self_check(&p, &[r.clone()], &[control.clone()]).unwrap()["reference_passes"],
+            true
+        );
+        r["cases"][0]["router"]["changes"][0]["regret"] = json!(1.0);
+        assert!(self_check(&p, &[r], &[control]).is_err());
     }
 
     #[test]
