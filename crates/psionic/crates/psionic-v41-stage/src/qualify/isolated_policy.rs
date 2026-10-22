@@ -1,5 +1,42 @@
 //! Independent original-input stage envelopes and prospective confirmation.
 use super::*;
+use psionic_models::{
+    deepseek_v41_stage::{V41StageGeometry, stage_contract},
+    stage_state::{RowRule, SectionKind, WireDtype},
+};
+
+fn hash(v: &Value) -> bool {
+    v.as_str()
+        .is_some_and(|s| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit()))
+}
+
+fn layout(stage: u64, position: u64, tokens: u64) -> Vec<Value> {
+    let mut g = V41StageGeometry::flash();
+    g.residual_dtype = WireDtype::F32;
+    if stage == 3 {
+        return vec![
+            json!({"kind":SectionKind::Logits,"dtype":WireDtype::F32,"shape":[1,g.vocabulary],"first_row":0}),
+        ];
+    }
+    let next = stage as u16 + 1;
+    stage_contract(&g, next, 10 * u32::from(next)..10 * (u32::from(next) + 1))
+        .sections
+        .into_iter()
+        .map(|s| {
+            let (rows, first) = match s.rows {
+                RowRule::PerToken => (tokens, 0),
+                RowRule::Fixed(n) => (u64::from(n), 0),
+                RowRule::Append { ratio } => {
+                    let r = u64::from(ratio);
+                    ((position + tokens) / r - position / r, position / r)
+                }
+            };
+            let mut shape = vec![rows as u32];
+            shape.extend(s.inner);
+            json!({"kind":s.kind,"dtype":s.dtype,"shape":shape,"first_row":first})
+        })
+        .collect()
+}
 
 fn key(stage: u64, mode: &str, kind: &Value) -> Result<String, Refused> {
     Ok(format!(
@@ -14,6 +51,9 @@ fn number(v: &Value) -> Result<f64, Refused> {
 }
 
 fn complete(r: &Value) -> bool {
+    let Some(stage) = r["stage"].as_u64().filter(|s| *s < 4) else {
+        return false;
+    };
     r["cases"].as_array().is_some_and(|cases| {
         !cases.is_empty()
             && cases.iter().all(|c| {
@@ -24,7 +64,11 @@ fn complete(r: &Value) -> bool {
                     .map(|s| ("decode", s))
                     .chain(std::iter::once(("replay", 0)))
                     .collect();
-                c["prompt_tokens"].as_u64().is_some_and(|n| n > 0)
+                let Some(prompt) = c["prompt_tokens"].as_u64().filter(|n| *n > 0 && *n <= 8192)
+                else {
+                    return false;
+                };
+                prompt + generated <= 8192
                     && c["steps"].as_array().is_some_and(|steps| {
                         steps.len() == expected.len()
                             && steps
@@ -33,14 +77,30 @@ fn complete(r: &Value) -> bool {
                                 .collect::<BTreeSet<_>>()
                                 == expected
                             && steps.iter().all(|s| {
-                                s["input_message_sha256"]
-                                    .as_str()
-                                    .is_some_and(|h| h.len() == 64)
+                                let at = s["step"].as_u64().unwrap_or(u64::MAX);
+                                let (position, tokens) = if s["mode"] == "replay" {
+                                    (0, prompt + generated)
+                                } else if at == 0 {
+                                    (0, prompt)
+                                } else {
+                                    (prompt + at - 1, 1)
+                                };
+                                let expected = layout(stage, position, tokens);
+                                hash(&s["input_message_sha256"])
+                                    && s["position"].as_u64() == Some(position)
                                     && s["output"].as_array().is_some_and(|out| {
-                                        !out.is_empty()
-                                            && out.iter().all(|o| {
-                                                o["sha256"].as_str().is_some_and(|h| h.len() == 64)
+                                        out.len() == expected.len()
+                                            && expected.iter().all(|e| {
+                                                out.iter()
+                                                    .filter(|o| {
+                                                        ["kind", "dtype", "shape", "first_row"]
+                                                            .iter()
+                                                            .all(|k| o[*k] == e[*k])
+                                                    })
+                                                    .count()
+                                                    == 1
                                             })
+                                            && out.iter().all(|o| hash(&o["sha256"]))
                                     })
                             })
                     })
@@ -212,6 +272,7 @@ pub(super) fn confirmation_violations(
     document: &Value,
     policy: &Policy,
     reports: &[Value],
+    lengths: &BTreeMap<String, (u64, u64)>,
 ) -> Vec<String> {
     let scope = &document["release_scope"];
     let isolated = &document["isolated_stages"];
@@ -230,10 +291,12 @@ pub(super) fn confirmation_violations(
             || !stages.insert(stage)
             || r["schema"] != "psionic.deepseek_v41.isolated_recheck.v1"
             || r["manifest"] != scope["manifest"]
+            || r["weights"] != scope["weights"]
             || r["profile"] != scope["numerical_profile"]
             || r["build"]["bundle_sha256"] != scope["stage_bundle_sha256"]
             || r["execution_config_sha256"] != scope["execution_config_sha256"]
             || r["corpus_sha256"] != scope["corpus_sha256"]
+            || !hash(&r["oracle_manifest_sha256"])
             || !r["control"].is_null()
             || r["cases"].as_array().is_none_or(|cs| {
                 cs.len() != cases.len()
@@ -242,6 +305,14 @@ pub(super) fn confirmation_violations(
                         .filter_map(|c| c["case"].as_str())
                         .collect::<BTreeSet<_>>()
                         != cases
+                    || cs.iter().any(|c| {
+                        lengths.get(c["case"].as_str().unwrap_or("?")).is_none_or(
+                            |(prompt, generated)| {
+                                c["prompt_tokens"].as_u64() != Some(*prompt)
+                                    || c["generated_tokens"].as_u64() != Some(*generated)
+                            },
+                        )
+                    })
             })
         {
             failures.push(format!("stage {stage}: confirmation identity, corpus, or coverage differs from the frozen scope"));
@@ -253,7 +324,7 @@ pub(super) fn confirmation_violations(
     }
     let manifests: BTreeSet<_> = reports
         .iter()
-        .filter_map(|r| r["oracle_manifest_sha256"].as_str())
+        .map(|r| r["oracle_manifest_sha256"].as_str())
         .collect();
     if manifests.len() != 1 {
         failures.push("isolated stages do not share one oracle capture".into());
@@ -268,7 +339,17 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
         return Err(refused("isolated-policy needs flag/value pairs"));
     }
     for p in chunks {
-        if !["--policy", "--reference", "--candidate", "--out"].contains(&p[0].as_str())
+        if ![
+            "--policy",
+            "--reference",
+            "--candidate",
+            "--weights",
+            "--oracle",
+            "--manifest",
+            "--corpus",
+            "--out",
+        ]
+        .contains(&p[0].as_str())
             || flags.insert(p[0].as_str(), p[1].as_str()).is_some()
         {
             return Err(refused("unknown or repeated isolated-policy flag"));
@@ -285,15 +366,16 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
     let mut document: Value = serde_json::from_slice(&bytes).map_err(|e| refused(e.to_string()))?;
     let policy = Policy::parse(std::str::from_utf8(&bytes).map_err(|e| refused(e.to_string()))?)
         .map_err(|e| refused(e.to_string()))?;
-    let load = |paths: &str| -> Result<Vec<Value>, Refused> {
+    let load = |paths: &str, manifest: &str| -> Result<Vec<Value>, Refused> {
         paths
             .split(',')
             .map(|p| {
-                let b = std::fs::read(p).map_err(|e| refused(e.to_string()))?;
-                let mut v: Value =
-                    serde_json::from_slice(&b).map_err(|e| refused(e.to_string()))?;
-                v["recheck_report_sha256"] = json!(hex::encode(Sha256::digest(b)));
-                Ok(v)
+                isolated_check::evaluate(
+                    Path::new(value("--weights")?),
+                    manifest,
+                    Path::new(value("--oracle")?),
+                    Path::new(p),
+                )
             })
             .collect()
     };
@@ -304,18 +386,17 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
         if document.get("release_scope").is_some() || document.get("isolated_stages").is_some() {
             return Err(refused("cannot change a frozen scope or isolated policy"));
         }
-        let references = load(paths)?;
+        let references = load(paths, value("--manifest")?)?;
         let mut isolated = derive(&references, policy.index)?;
         isolated["reference_report_sha256"] = json!(
             references
                 .iter()
-                .map(|r| &r["recheck_report_sha256"])
+                .map(|r| &r["source_report_sha256"])
                 .collect::<Vec<_>>()
         );
         document["isolated_stages"] = isolated;
         document
     } else {
-        let reports = load(value("--candidate")?)?;
         let scope = &document["release_scope"];
         let isolated = &document["isolated_stages"];
         if isolated["schema"] != "psionic.deepseek_v41.isolated_policy.v1" || scope.is_null() {
@@ -323,7 +404,18 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
                 "confirmation needs a frozen isolated policy and release scope",
             ));
         }
-        let failures = confirmation_violations(&document, &policy, &reports);
+        let lengths = scope::confirmation_inputs(
+            &document,
+            Path::new(value("--corpus")?),
+            Path::new(value("--oracle")?),
+        )?;
+        let reports = load(
+            value("--candidate")?,
+            scope["manifest"]
+                .as_str()
+                .ok_or_else(|| refused("missing frozen manifest"))?,
+        )?;
+        let failures = confirmation_violations(&document, &policy, &reports, &lengths);
         let manifests: BTreeSet<_> = reports
             .iter()
             .filter_map(|r| r["oracle_manifest_sha256"].as_str())
@@ -343,6 +435,25 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
 }
 
 #[cfg(test)]
+pub(super) fn test_steps(stage: u64, prompt: u64, generated: u64) -> Vec<Value> {
+    (0..=generated).map(|s| ("decode", s)).chain(std::iter::once(("replay", 0))).map(|(mode, at)| {
+        let (position, tokens) = if mode == "replay" {(0, prompt + generated)} else if at == 0 {(0, prompt)} else {(prompt + at - 1, 1)};
+        let output: Vec<_> = layout(stage, position, tokens).into_iter().map(|mut o| {
+            o["sha256"] = json!("b".repeat(64));
+            o["metrics"] = if matches!(o["dtype"].as_str(), Some("F32" | "BF16")) {
+                let n:u64 = o["shape"].as_array().unwrap().iter().map(|n| n.as_u64().unwrap()).product();
+                json!({"values":n,"max_abs":0.1,"relative_l2":0.01})
+            } else if o["kind"].get("IndexSelection").is_some() {
+                json!({"rows":tokens,"changed_rows":1,"changed_fraction":1.0/tokens as f64,"max_row_substitutions":1,
+                    "changes":[{"valid":true,"substitutions":1,"boundary_gap":0.01,"regret":0.01}]})
+            } else { json!({"passed":true}) };
+            o
+        }).collect();
+        json!({"mode":mode,"step":at,"position":position,"input_message_sha256":"a".repeat(64),"output":output})
+    }).collect()
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     fn rule() -> DecisionRule {
@@ -353,14 +464,7 @@ mod tests {
         }
     }
     fn reference(stage: u64) -> Value {
-        let cases:Vec<_>=[38,2726].into_iter().map(|n|{
-            let steps:Vec<_>=["decode","replay"].into_iter().map(|mode|json!({"mode":mode,"step":0,"input_message_sha256":"a".repeat(64),"output":[
-                {"kind":"Residual","sha256":"b".repeat(64),"metrics":{"values":100,"max_abs":0.1,"relative_l2":0.01}},
-                {"kind":{"IndexSelection":{"layer":8}},"sha256":"c".repeat(64),"metrics":{"rows":n,"changed_rows":1,"changed_fraction":1.0/n as f64,"max_row_substitutions":1,
-                    "changes":[{"valid":true,"substitutions":1,"boundary_gap":0.01,"regret":0.01}]}},
-                {"kind":"EngramHistory","sha256":"d".repeat(64),"metrics":{"passed":true}}
-            ]})).collect();json!({"case":format!("c{n}"),"prompt_tokens":n,"generated_tokens":0,"steps":steps})
-        }).collect();
+        let cases: Vec<_> = [38,2726].into_iter().map(|n| json!({"case":format!("c{n}"),"prompt_tokens":n,"generated_tokens":2,"steps":test_steps(stage,n,2)})).collect();
         json!({"schema":"psionic.deepseek_v41.isolated_recheck.v1","stage":stage,"profile":"cpu-bf16","backend":"cpu","control":null,"source_report_sha256":"e".repeat(64),"cases":cases})
     }
     #[test]
@@ -375,13 +479,24 @@ mod tests {
         candidate = refs[0].clone();
         candidate["cases"][0]["steps"][0]["output"][0]["metrics"]["max_abs"] = json!(0.3);
         assert!(!violations(&policy, rule(), &candidate).is_empty());
-        candidate = refs[0].clone();
-        candidate["cases"][0]["steps"][0]["output"][1]["metrics"]["changes"][0]["regret"] =
-            json!(0.5);
-        assert!(!violations(&policy, rule(), &candidate).is_empty());
-        candidate = refs[0].clone();
-        candidate["cases"][0]["steps"][0]["output"][2]["metrics"]["passed"] = json!(false);
-        assert!(!violations(&policy, rule(), &candidate).is_empty());
+        for (kind, metric, value) in [
+            ("IndexSelection", "regret", json!(0.5)),
+            ("EngramHistory", "passed", json!(false)),
+        ] {
+            candidate = refs[0].clone();
+            let o = candidate["cases"][0]["steps"][0]["output"]
+                .as_array_mut()
+                .unwrap()
+                .iter_mut()
+                .find(|o| o["kind"] == kind || o["kind"].get(kind).is_some())
+                .unwrap();
+            if kind == "IndexSelection" {
+                o["metrics"]["changes"][0][metric] = value;
+            } else {
+                o["metrics"][metric] = value;
+            }
+            assert!(!violations(&policy, rule(), &candidate).is_empty());
+        }
         let mut bad = refs.clone();
         bad[0]["profile"] = json!("cuda-device-sm_120");
         assert!(derive(&bad, rule()).is_err());
@@ -389,5 +504,22 @@ mod tests {
         let mut incomplete = refs;
         incomplete[0]["cases"][0]["steps"] = json!([]);
         assert!(derive(&incomplete, rule()).is_err());
+    }
+    #[test]
+    fn missing_and_duplicate_boundary_sections_fail_even_with_passing_metrics() {
+        let r = reference(0);
+        assert!(complete(&r));
+        let mut bad = r.clone();
+        bad["cases"][0]["steps"][0]["output"]
+            .as_array_mut()
+            .unwrap()
+            .remove(0);
+        assert!(!complete(&bad));
+        let mut bad = r.clone();
+        bad["cases"][0]["steps"][0]["output"][0] = bad["cases"][0]["steps"][0]["output"][1].clone();
+        assert!(!complete(&bad));
+        let mut bad = r;
+        bad["cases"][0]["steps"][0]["output"][0]["shape"] = json!([1]);
+        assert!(!complete(&bad));
     }
 }

@@ -22,12 +22,20 @@ fn read(opts: &QualifyOptions) -> Result<Scope, Refused> {
     let value: Value =
         serde_json::from_slice(&std::fs::read(path).map_err(|e| refused(e.to_string()))?)
             .map_err(|e| refused(e.to_string()))?;
-    let scope: Scope = serde_json::from_value(value["release_scope"].clone())
+    parse(&value)
+}
+
+fn parse(document: &Value) -> Result<Scope, Refused> {
+    let scope: Scope = serde_json::from_value(document["release_scope"].clone())
         .map_err(|e| refused(format!("missing or malformed release scope: {e}")))?;
     let sha = |s: &str| s.len() == 64 && s.bytes().all(|b| b.is_ascii_hexdigit());
     if scope.schema != "psionic.deepseek_v41.release_scope.v1"
         || scope.cases.is_empty()
         || scope.cases.iter().collect::<BTreeSet<_>>().len() != scope.cases.len()
+        || scope.numerical_profile.is_empty()
+        || [&scope.weights, &scope.manifest]
+            .iter()
+            .any(|s| s.strip_prefix("sha256:").is_none_or(|s| !sha(s)))
         || ![
             &scope.stage_bundle_sha256,
             &scope.execution_config_sha256,
@@ -59,8 +67,27 @@ pub(super) fn preflight(opts: &QualifyOptions) -> Result<(), Refused> {
             "corpus, cases, manifest, or bundle differ from the frozen release scope",
         ));
     }
+    let document: Value = serde_json::from_slice(
+        &std::fs::read(opts.policy.as_ref().unwrap()).map_err(|e| refused(e.to_string()))?,
+    )
+    .map_err(|e| refused(e.to_string()))?;
+    confirmation_inputs(&document, path, &opts.oracle)?;
+    Ok(())
+}
+
+/// Verify the frozen corpus and hash-bound oracle lengths independently of reports.
+pub(super) fn confirmation_inputs(
+    document: &Value,
+    corpus_path: &Path,
+    oracle_root: &Path,
+) -> Result<BTreeMap<String, (u64, u64)>, Refused> {
+    let scope = &document["release_scope"];
+    parse(document)?;
+    if checked_sha256(corpus_path)? != scope["corpus_sha256"] {
+        return Err(refused("corpus differs from the frozen release scope"));
+    }
     let corpus: Value =
-        serde_json::from_slice(&std::fs::read(path).map_err(|e| refused(e.to_string()))?)
+        serde_json::from_slice(&std::fs::read(corpus_path).map_err(|e| refused(e.to_string()))?)
             .map_err(|e| refused(e.to_string()))?;
     let names: Vec<_> = corpus["cases"]
         .as_array()
@@ -72,27 +99,58 @@ pub(super) fn preflight(opts: &QualifyOptions) -> Result<(), Refused> {
                 .ok_or_else(|| refused("corpus case has no ID"))
         })
         .collect::<Result<_, _>>()?;
-    if names.len() != scope.cases.len()
+    let frozen = scope["cases"]
+        .as_array()
+        .ok_or_else(|| refused("missing frozen cases"))?;
+    if names.len() != frozen.len()
+        || names.iter().copied().collect::<BTreeSet<_>>().len() != names.len()
         || names.iter().copied().collect::<BTreeSet<_>>()
-            != scope
-                .cases
+            != frozen
                 .iter()
-                .map(String::as_str)
+                .filter_map(Value::as_str)
                 .collect::<BTreeSet<_>>()
     {
         return Err(refused("the corpus does not name exactly the frozen cases"));
     }
-    let oracle = OracleDump::open(&opts.oracle)?;
-    for name in &scope.cases {
+    let oracle = OracleDump::open(oracle_root)?;
+    let mut lengths = BTreeMap::new();
+    for case in corpus["cases"].as_array().unwrap() {
+        let name = case["id"].as_str().unwrap();
+        let run = oracle.run(name)?;
+        let prompt: Vec<u32> = serde_json::from_value(run["prompt_token_ids"].clone())
+            .map_err(|e| refused(format!("{name}: invalid oracle prompt IDs: {e}")))?;
+        let generated: Vec<u32> = serde_json::from_value(run["generated_ids"].clone())
+            .map_err(|e| refused(format!("{name}: invalid oracle generated IDs: {e}")))?;
+        let n_gen = case["n_gen"]
+            .as_u64()
+            .filter(|n| *n > 0 && *n <= 32768)
+            .ok_or_else(|| refused(format!("{name}: invalid frozen generation length")))?;
+        let labeled: BTreeSet<_> = run["labels"]
+            .as_object()
+            .into_iter()
+            .flat_map(|labels| labels.values().filter_map(Value::as_u64))
+            .collect();
         if !oracle.run_hashes.contains_key(&format!("{name}/run.json"))
-            || oracle.run(name)?["corpus_sha256"] != scope.corpus_sha256
+            || run["corpus_sha256"] != scope["corpus_sha256"]
+            || run["id"] != name
+            || prompt.is_empty()
+            || run["prompt_tokens"].as_u64() != Some(prompt.len() as u64)
+            || run["n_gen"].as_u64() != Some(n_gen)
+            || generated.len() as u64 != n_gen
+            || case["all_generated_rows"] == true
+                && (prompt.len() as u64..prompt.len() as u64 + n_gen)
+                    .any(|position| !labeled.contains(&position))
+            || case
+                .get("cut")
+                .is_some_and(|cut| cut.as_u64() != Some(prompt.len() as u64))
         {
             return Err(refused(format!(
-                "{name}: oracle capture is not bound to this corpus"
+                "{name}: oracle capture lengths or identity differ from the frozen corpus"
             )));
         }
+        lengths.insert(name.to_owned(), (prompt.len() as u64, n_gen));
     }
-    Ok(())
+    Ok(lengths)
 }
 
 pub(super) fn violations(opts: &QualifyOptions, group: &Group) -> Vec<String> {
@@ -128,7 +186,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let corpus = root.path().join("corpus.json");
         let policy = root.path().join("policy.json");
-        std::fs::write(&corpus, r#"{"cases":[{"id":"a"},{"id":"b"}]}"#).unwrap();
+        std::fs::write(
+            &corpus,
+            r#"{"cases":[{"id":"a","n_gen":2,"cut":1},{"id":"b","n_gen":2}]}"#,
+        )
+        .unwrap();
         let corpus_sha = checked_sha256(&corpus).unwrap();
         let mut hashes = BTreeMap::new();
         for name in ["a", "b"] {
@@ -136,7 +198,7 @@ mod tests {
             let path = root.path().join(name).join("run.json");
             std::fs::write(
                 &path,
-                serde_json::to_vec(&json!({"corpus_sha256":corpus_sha})).unwrap(),
+                serde_json::to_vec(&json!({"id":name,"corpus_sha256":corpus_sha,"n_gen":2,"prompt_tokens":1,"prompt_token_ids":[1],"generated_ids":[2,3]})).unwrap(),
             )
             .unwrap();
             hashes.insert(format!("{name}/run.json"), checked_sha256(&path).unwrap());
@@ -147,13 +209,13 @@ mod tests {
         )
         .unwrap();
         std::fs::write(&policy,serde_json::to_vec(&json!({"release_scope":{
-            "schema":"psionic.deepseek_v41.release_scope.v1","weights":"w","manifest":"m","numerical_profile":"cuda-device-sm_120",
+            "schema":"psionic.deepseek_v41.release_scope.v1","weights":format!("sha256:{}", "0".repeat(64)),"manifest":format!("sha256:{}", "1".repeat(64)),"numerical_profile":"cuda-device-sm_120",
             "stage_bundle_sha256":"a".repeat(64),"execution_config_sha256":"b".repeat(64),"corpus_sha256":corpus_sha,"cases":["a","b"]}})).unwrap()).unwrap();
         let mut o = QualifyOptions::parse(&[
             "--weights".into(),
             "w".into(),
             "--manifest".into(),
-            "m".into(),
+            format!("sha256:{}", "1".repeat(64)),
             "--oracle".into(),
             root.path().display().to_string(),
             "--out".into(),
@@ -176,6 +238,25 @@ mod tests {
         o.worker_build = Some("c".repeat(64));
         assert!(preflight(&o).is_err());
         o.worker_build = Some("a".repeat(64));
+        // Even a freshly hashed capture cannot shorten the frozen continuation.
+        let path = root.path().join("a/run.json");
+        let old = std::fs::read(&path).unwrap();
+        std::fs::write(&path, serde_json::to_vec(&json!({"id":"a","corpus_sha256":corpus_sha,"n_gen":0,"prompt_tokens":1,"prompt_token_ids":[1],"generated_ids":[]})).unwrap()).unwrap();
+        hashes.insert("a/run.json".into(), checked_sha256(&path).unwrap());
+        std::fs::write(
+            root.path().join("manifest.json"),
+            serde_json::to_vec(&json!({"tensors":[],"run_files_sha256":hashes})).unwrap(),
+        )
+        .unwrap();
+        assert!(preflight(&o).is_err());
+        std::fs::write(&path, old).unwrap();
+        hashes.insert("a/run.json".into(), checked_sha256(&path).unwrap());
+        std::fs::write(
+            root.path().join("manifest.json"),
+            serde_json::to_vec(&json!({"tensors":[],"run_files_sha256":hashes})).unwrap(),
+        )
+        .unwrap();
+        preflight(&o).unwrap();
         std::fs::write(root.path().join("a/run.json"), b"{}").unwrap();
         assert!(preflight(&o).is_err());
         std::fs::write(&corpus, b"{}").unwrap();

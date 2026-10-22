@@ -24,7 +24,31 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
             .copied()
             .ok_or_else(|| refused(format!("{n} is required")))
     };
-    let source = PathBuf::from(value("--report")?);
+    let result = evaluate(
+        Path::new(value("--weights")?),
+        value("--manifest")?,
+        Path::new(value("--oracle")?),
+        Path::new(value("--report")?),
+    )?;
+    std::fs::write(
+        value("--out")?,
+        serde_json::to_vec_pretty(&result).map_err(|e| refused(e.to_string()))?,
+    )
+    .map_err(|e| refused(e.to_string()))?;
+    println!(
+        "{}",
+        json!({"purpose":"isolated-stage-recheck","stage":result["stage"],"release":false,"out":value("--out")?})
+    );
+    Ok(())
+}
+
+/// Recompute measurements from the saved output bytes and original oracle inputs.
+pub(super) fn evaluate(
+    weights: &Path,
+    manifest_spec: &str,
+    oracle_root: &Path,
+    source: &Path,
+) -> Result<Value, Refused> {
     let root = source
         .parent()
         .ok_or_else(|| refused("report has no directory"))?;
@@ -32,11 +56,18 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
         serde_json::from_slice(&std::fs::read(&source).map_err(|e| refused(e.to_string()))?)
             .map_err(|e| refused(e.to_string()))?;
     if report["schema"] != "psionic.deepseek_v41.isolated_calibration.v1"
-        || report["manifest"] != value("--manifest")?
+        || report["manifest"] != manifest_spec
     {
         return Err(refused("wrong isolated recording schema or manifest"));
     }
-    let manifest = load_manifest(value("--manifest")?, Path::new(value("--weights")?))?;
+    let manifest = load_manifest(manifest_spec, weights)?;
+    if !report["weights"].is_null()
+        && report["weights"] != format!("sha256:{}", manifest.index_sha256)
+    {
+        return Err(refused(
+            "isolated recording weights differ from the manifest",
+        ));
+    }
     let stage = report["stage"]
         .as_u64()
         .and_then(|s| manifest.stages.get(s as usize))
@@ -55,7 +86,7 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
     let mut geometry = V41StageGeometry::flash();
     geometry.residual_dtype = WireDtype::F32;
     let contract = stage_contract(&geometry, stage.stage, stage.first_layer..stage.end_layer);
-    let mut oracle = OracleDump::open(Path::new(value("--oracle")?))?;
+    let mut oracle = OracleDump::open(oracle_root)?;
     let mut cases = Vec::new();
     let mut names = BTreeSet::new();
     for case in report["cases"]
@@ -227,22 +258,11 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
     let mut result = report;
     result["schema"] = json!("psionic.deepseek_v41.isolated_recheck.v1");
     result["source_report_sha256"] = json!(checked_sha256(&source)?);
-    result["oracle_manifest_sha256"] = json!(checked_sha256(
-        &Path::new(value("--oracle")?).join("manifest.json")
-    )?);
+    result["oracle_manifest_sha256"] = json!(checked_sha256(&oracle_root.join("manifest.json"))?);
     result["cases"] = json!(cases);
     result["passed"] = Value::Null;
     result["release"] = json!(false);
-    std::fs::write(
-        value("--out")?,
-        serde_json::to_vec_pretty(&result).map_err(|e| refused(e.to_string()))?,
-    )
-    .map_err(|e| refused(e.to_string()))?;
-    println!(
-        "{}",
-        json!({"purpose":"isolated-stage-recheck","stage":stage.stage,"release":false,"out":value("--out")?})
-    );
-    Ok(())
+    Ok(result)
 }
 
 #[cfg(test)]
@@ -368,6 +388,19 @@ mod tests {
         assert!(run(&args).unwrap_err().0.contains("original oracle state"));
         report["cases"][0]["steps"][0]["input_message_sha256"] =
             steps[0]["input_message_sha256"].clone();
+        report["cases"][0]["steps"][0]["output"] = json!([]);
+        std::fs::write(&path, serde_json::to_vec(&report).unwrap()).unwrap();
+        assert!(
+            run(&args)
+                .unwrap_err()
+                .0
+                .contains("complete stage boundary")
+        );
+        report["cases"][0]["steps"][0]["output"] = steps[0]["output"].clone();
+        report["weights"] = json!(format!("sha256:{}", "9".repeat(64)));
+        std::fs::write(&path, serde_json::to_vec(&report).unwrap()).unwrap();
+        assert!(run(&args).unwrap_err().0.contains("weights"));
+        report.as_object_mut().unwrap().remove("weights");
         std::fs::write(&path, serde_json::to_vec(&report).unwrap()).unwrap();
         std::fs::write(root.join("c-replay-00/0.bin"), [0_u8, 1, 2, 3]).unwrap();
         assert!(run(&args).unwrap_err().0.contains("hash"));

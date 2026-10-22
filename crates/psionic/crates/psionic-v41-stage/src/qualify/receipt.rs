@@ -26,6 +26,7 @@ fn check(
     answers: &Value,
     g4: &Value,
     suite: &Value,
+    lengths: &BTreeMap<String, (u64, u64)>,
 ) -> Result<Value, Refused> {
     let d = policy.distribution;
     let valid = |v: Option<f64>| v.is_some_and(|n| n.is_finite() && n >= 0.0);
@@ -166,7 +167,9 @@ fn check(
         ));
     }
     let isolated_reports = g4["reports"].as_array().unwrap();
-    if !isolated_policy::confirmation_violations(document, policy, isolated_reports).is_empty() {
+    if !isolated_policy::confirmation_violations(document, policy, isolated_reports, lengths)
+        .is_empty()
+    {
         return Err(refused(
             "G4 measurements do not pass the frozen isolated policy",
         ));
@@ -288,6 +291,10 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
             "--g2-suite",
             "--g2-checker",
             "--g4",
+            "--g4-records",
+            "--weights",
+            "--oracle",
+            "--corpus",
             "--out",
         ]
         .contains(&p[0].as_str())
@@ -327,7 +334,45 @@ pub(super) fn run(args: &[String]) -> Result<(), Refused> {
             "gate reports do not match frozen policy, suite, checker, or answer bytes",
         ));
     }
-    let mut receipt = check(&policy, &document, &g1, &g2, &answers, &g4, &suite)?;
+    let lengths = scope::confirmation_inputs(&document, path("--corpus")?, path("--oracle")?)?;
+    if g1["oracle_manifest_sha256"] != checked_sha256(&path("--oracle")?.join("manifest.json"))? {
+        return Err(refused("gate reports name a different oracle capture"));
+    }
+    let raw = flags
+        .get("--g4-records")
+        .ok_or_else(|| refused("--g4-records is required"))?;
+    let mut rechecked = BTreeMap::new();
+    for source in raw.split(',') {
+        let r = isolated_check::evaluate(
+            path("--weights")?,
+            document["release_scope"]["manifest"]
+                .as_str()
+                .ok_or_else(|| refused("missing frozen manifest"))?,
+            path("--oracle")?,
+            Path::new(source),
+        )?;
+        let stage = r["stage"]
+            .as_u64()
+            .ok_or_else(|| refused("missing raw G4 stage"))?;
+        if rechecked.insert(stage, r).is_some() {
+            return Err(refused("duplicate raw G4 stage"));
+        }
+    }
+    if rechecked.len() != 4
+        || g4["reports"].as_array().is_none_or(|reports| {
+            reports.len() != 4
+                || reports
+                    .iter()
+                    .any(|r| r["stage"].as_u64().and_then(|s| rechecked.get(&s)) != Some(r))
+        })
+    {
+        return Err(refused(
+            "G4 report differs from rechecked original-input output bytes",
+        ));
+    }
+    let mut receipt = check(
+        &policy, &document, &g1, &g2, &answers, &g4, &suite, &lengths,
+    )?;
     receipt["evidence"] = json!({"G1":checked_sha256(path("--g1")?)?,"G2":checked_sha256(path("--g2")?)?,"G4":checked_sha256(path("--g4")?)?});
     std::fs::write(
         path("--out")?,
@@ -382,13 +427,13 @@ mod tests {
             "cases":[{"case":"x","modes":modes,"replay_equals_forced_decode":true,"exact":{"passed":true,"checked":1},"index":index,"router":{"layers_compared":40,"layers_with_stage_scores":40,"layers":layers,"changes":[]}}]});
         let mut limits = serde_json::Map::new();
         let reports:Vec<_>=(0..4).map(|stage|{
-            let steps:Vec<_>=["decode","replay"].into_iter().map(|mode|{
-                limits.insert(format!(r#"{stage}/{mode}/"Logits""#),json!({"max_abs":0.1,"relative_l2":0.1}));
-                json!({"mode":mode,"step":0,"input_message_sha256":"1".repeat(64),"output":[{"kind":"Logits","sha256":"2".repeat(64),"metrics":{"values":2,"max_abs":0.0,"relative_l2":0.0}}]})
-            }).collect();
-            json!({"schema":"psionic.deepseek_v41.isolated_recheck.v1","stage":stage,"manifest":scope["manifest"],"profile":scope["numerical_profile"],"build":{"bundle_sha256":scope["stage_bundle_sha256"]},
+            let steps = isolated_policy::test_steps(stage, 1, 2);
+            for s in &steps {for o in s["output"].as_array().unwrap() {
+                limits.insert(format!("{stage}/{}/{}", s["mode"].as_str().unwrap(), serde_json::to_string(&o["kind"]).unwrap()),json!({"max_abs":0.2,"relative_l2":0.1,"changed_fraction":1.0,"max_substitutions":1}));
+            }}
+            json!({"schema":"psionic.deepseek_v41.isolated_recheck.v1","stage":stage,"weights":scope["weights"],"manifest":scope["manifest"],"profile":scope["numerical_profile"],"build":{"bundle_sha256":scope["stage_bundle_sha256"]},
                 "execution_config_sha256":scope["execution_config_sha256"],"corpus_sha256":scope["corpus_sha256"],"oracle_manifest_sha256":g1["oracle_manifest_sha256"],"control":null,
-                "cases":[{"case":"x","prompt_tokens":1,"generated_tokens":0,"steps":steps}]})
+                "cases":[{"case":"x","prompt_tokens":1,"generated_tokens":2,"steps":steps}]})
         }).collect();
         let g4 = json!({"schema":"psionic.deepseek_v41.isolated_qualification.v1","passed":true,"violations":[],"release_scope":scope,"oracle_manifest_sha256":g1["oracle_manifest_sha256"],"policy_sha256":g1["policy_sha256"],"reports":reports});
         let mut source = g1.clone();
@@ -402,27 +447,57 @@ mod tests {
         let document = json!({"release_scope":scope,"isolated_stages":{"schema":"psionic.deepseek_v41.isolated_policy.v1","limits":limits},"g2_quality":{"minimum_oracle_passes":1}});
         (policy, document, g1, g2, answers, g4, suite)
     }
+    fn lengths() -> BTreeMap<String, (u64, u64)> {
+        BTreeMap::from([("x".into(), (1, 2))])
+    }
     #[test]
     fn publication_requires_successful_matching_and_rejudged_evidence() {
         let (p, doc, g1, g2, answers, g4, suite) = fixture();
-        check(&p, &doc, &g1, &g2, &answers, &g4, &suite).unwrap();
+        check(&p, &doc, &g1, &g2, &answers, &g4, &suite, &lengths()).unwrap();
         let mut bad = g1.clone();
         bad["release_passed"] = json!(false);
-        assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite).is_err());
+        assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
         let mut bad = g1.clone();
         bad["cases"][0]["index"]["local_changed"] = json!(1);
-        assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite).is_err());
+        assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
         let mut bad = g2.clone();
         bad["source"]["execution_config_sha256"] = json!([]);
-        assert!(check(&p, &doc, &g1, &bad, &answers, &g4, &suite).is_err());
+        assert!(check(&p, &doc, &g1, &bad, &answers, &g4, &suite, &lengths()).is_err());
         let mut bad = g2.clone();
         bad["rows"][0]["runtime_checks"][0]["passed"] = json!(false);
-        assert!(check(&p, &doc, &g1, &bad, &answers, &g4, &suite).is_err());
+        assert!(check(&p, &doc, &g1, &bad, &answers, &g4, &suite, &lengths()).is_err());
         let mut bad = g4.clone();
         bad["reports"][2]["cases"][0]["steps"][0]["output"][0]["metrics"]["max_abs"] = json!(1.0);
-        assert!(check(&p, &doc, &g1, &g2, &answers, &bad, &suite).is_err());
+        assert!(check(&p, &doc, &g1, &g2, &answers, &bad, &suite, &lengths()).is_err());
         let mut bad = answers;
         bad["answers"][0]["reasoning"] = json!("");
-        assert!(check(&p, &doc, &g1, &g2, &bad, &g4, &suite).is_err());
+        assert!(check(&p, &doc, &g1, &g2, &bad, &g4, &suite, &lengths()).is_err());
+    }
+    #[test]
+    fn missing_oracle_hash_wrong_weights_and_cropped_continuations_cannot_publish() {
+        let (p, doc, g1, g2, answers, g4, suite) = fixture();
+        for field in ["weights", "oracle_manifest_sha256"] {
+            let mut bad = g4.clone();
+            for stage in 1..4 {
+                bad["reports"][stage].as_object_mut().unwrap().remove(field);
+            }
+            assert!(
+                check(&p, &doc, &g1, &g2, &answers, &bad, &suite, &lengths()).is_err(),
+                "{field}"
+            );
+            let mut bad = g4.clone();
+            bad["reports"][2][field] = json!("9".repeat(64));
+            assert!(
+                check(&p, &doc, &g1, &g2, &answers, &bad, &suite, &lengths()).is_err(),
+                "{field}"
+            );
+        }
+        let mut bad = g4;
+        for r in bad["reports"].as_array_mut().unwrap() {
+            r["cases"][0]["generated_tokens"] = json!(0);
+            let stage = r["stage"].as_u64().unwrap();
+            r["cases"][0]["steps"] = json!(isolated_policy::test_steps(stage, 1, 0));
+        }
+        assert!(check(&p, &doc, &g1, &g2, &answers, &bad, &suite, &lengths()).is_err());
     }
 }

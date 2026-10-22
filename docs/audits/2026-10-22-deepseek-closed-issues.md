@@ -584,3 +584,13 @@ the running stages' actual configuration and limits, separately from the legacy
 unqualified beacons. Local routing, cloud-launch, and website-consumer checks
 pass. The live preview has not been promoted; final qualified deployment and
 G1/G2/G4–G8 acceptance remain open under #12369.
+
+
+The follow-up checker review also found omissions in G4 summary validation.
+Policy derivation and publication now reread raw recorded tensors, enforce
+complete stage boundaries, and bind all four stages to matching weights,
+oracle hashes, and independently frozen corpus lengths. Missing or duplicated
+sections and shortened continuations fail local controls. The rebuilt CUDA
+package passes 144 checks (six optional checks ignored), with its source and
+log in the [receipt](../psionic/verification/deepseek-v41-gates-2026-10-22/sm120-receipt-components.json).
+Full-model gates remain open.

@@ -1280,3 +1280,32 @@ fits the 2,872-token step. A storage HTTP 503 interrupted calibration after
 seven saved cases; bounded upload retries and resumption preserve those
 records. The [retry controls](verification/deepseek-v41-gates-2026-10-22/collection-retry-controls.json)
 cover transient success and persistent failure.
+
+
+The rebuilt `06e5158778` SM120 package passes **144 checks, with no failures
+and six ignored optional checks** on the dedicated RTX PRO 6000. The
+[receipt](verification/deepseek-v41-gates-2026-10-22/sm120-receipt-components.json)
+binds its source, worker, test archive, and retained log. This is component
+evidence; full-model qualification remains open.
+
+Independent review found that the G4 policy command accepted edited recheck
+summaries with missing boundary sections, shortened continuations, or missing
+stage identities. Both `isolated-policy` and `qualification-receipt` now
+recompute G4 measurements from each original `report.json`, its saved binary
+outputs, and the original oracle input messages. They require the complete
+stage-specific shapes, one valid matching oracle hash per stage, and the
+frozen weight identity. The frozen corpus and hashed oracle metadata determine
+prompt and continuation lengths independently of the candidate report. Local
+negative controls cover each omission and a freshly hashed oracle with a
+shortened continuation. The policy remains unfrozen; no limits were changed.
+
+`isolated-policy` takes `--weights DIR --oracle DIR` and raw report paths in
+`--reference` or `--candidate`; derivation additionally takes `--manifest`,
+and confirmation takes `--corpus`. `qualification-receipt` also requires
+`--weights DIR --oracle DIR --corpus FILE --g4-records PATHS` and refuses a
+G4 summary that differs from the rechecked output bytes.
+
+GCP preempted the long connected CPU reference at 17:32 UTC before a complete
+case was saved. A bounded on-demand replacement is collecting that case;
+separate CPU machines continue the original-input stage references. An
+interrupted run supplies no passing evidence.
