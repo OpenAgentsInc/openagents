@@ -225,11 +225,38 @@ pub struct Group {
     /// Stage only.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub layers: Option<Layers>,
+    /// The group's serving profile, one of [`GROUP_PROFILES`]: `qualified`
+    /// when absent, as every group before profiles (#12468). A
+    /// `consumer-exact` group answers like the qualified one on its own
+    /// configuration; a `consumer-q` group serves a lossy quant whose
+    /// digest is its `artifact`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
 }
 
+/// A group's serving profiles (#12468).
+pub const GROUP_PROFILES: [&str; 3] = ["qualified", "consumer-exact", "consumer-q"];
+
+/// The profile a group without one serves.
+pub const QUALIFIED_PROFILE: &str = "qualified";
+
 impl Group {
+    /// The group's serving profile, `qualified` when it names none.
+    #[must_use]
+    pub fn profile(&self) -> &str {
+        self.profile.as_deref().unwrap_or(QUALIFIED_PROFILE)
+    }
+
     fn validate(&self) -> Result<(), String> {
         slug(&self.id, "group id")?;
+        if let Some(profile) = &self.profile
+            && !GROUP_PROFILES.contains(&profile.as_str())
+        {
+            return Err(format!(
+                "group profile {profile} is not one of {}",
+                GROUP_PROFILES.join(", ")
+            ));
+        }
         let digest = self
             .artifact
             .strip_prefix("sha256:")

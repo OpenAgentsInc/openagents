@@ -1098,6 +1098,7 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
         max_restarts: up.max_restarts,
         backoff_ms: 1_000,
         max_backoff_ms: 30_000,
+        profile: None,
     }
 }
 

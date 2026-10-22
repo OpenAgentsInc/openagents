@@ -292,6 +292,9 @@ Commands:
                             Ask for this model only: the router sends the job
                             to a pylon or a ready model group serving it, and
                             never to another model.
+      --profile NAME        With --model, the serving profile to ask for:
+                            consumer-exact or consumer-q (a lossy quant).
+                            Without it, only the qualified profile answers.
       --deadline SECS       Your budget for the answer (1 to 3600). The job
                             goes out under pylon.deadline.v1, so a model
                             whose deadline passes 90 seconds takes it; it
@@ -1522,6 +1525,21 @@ async fn ask(
             crate::group::Want::Model(model)
         }
     });
+    // A serving profile other than the qualified one is asked for by name
+    // (#12468); without one, a group answers only under the qualified one.
+    let want = match (want, args.value("--profile")?) {
+        (want, None) => want,
+        (Some(want), Some(profile)) => {
+            if !nostr::pylon::GROUP_PROFILES.contains(&profile.as_str()) {
+                return Err(format!(
+                    "--profile {profile} is not one of {}",
+                    nostr::pylon::GROUP_PROFILES.join(", ")
+                ));
+            }
+            Some(crate::group::Want::Profiled(Box::new(want), profile))
+        }
+        (None, Some(_)) => return Err("--profile needs --model".into()),
+    };
     let within = match args.value("--deadline")? {
         Some(secs) => {
             let secs: u64 = secs
@@ -1587,6 +1605,14 @@ async fn ask(
         "pylon   {} ({})\nmodel   {}\n",
         answer.label, answer.pylon_npub, answer.model
     );
+    if answer.lossy {
+        text.push_str(&format!(
+            "profile {} (a lossy quant; answers can differ from the full model's)\n",
+            answer.profile
+        ));
+    } else if answer.profile != nostr::pylon::QUALIFIED_PROFILE {
+        text.push_str(&format!("profile {}\n", answer.profile));
+    }
     match &answer.text {
         Some(t) => text.push_str(&format!("answer  {t}\n")),
         None => text.push_str(&format!(
@@ -1663,10 +1689,7 @@ async fn routed(
     };
     eprintln!(
         "pylon router: want {}; {outcome}; {how}; {} candidates, {} failed, {} ms",
-        match &settings.want {
-            Some(crate::group::Want::Artifact(a) | crate::group::Want::Model(a)) => a.as_str(),
-            None => "",
-        },
+        settings.want.as_ref().map_or("", |w| w.target()),
         routed.candidates,
         routed.failed.len(),
         started.elapsed().as_millis()

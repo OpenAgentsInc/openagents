@@ -51,6 +51,7 @@ fn spec(id: &str, artifact: &str) -> GroupSpec {
         artifact: artifact.into(),
         deadline_secs: 600,
         max_output_tokens: 4_096,
+        profile: None,
     }
 }
 
@@ -468,4 +469,100 @@ fn a_stage_beacon_carries_its_device_and_the_field_shows_it() {
         devices,
         [Some("cuda-sm_89".into()), Some("cpu-x86_64".into()), None]
     );
+}
+
+/// A qualified group, a `consumer-exact` group of the same weights, and a
+/// `consumer-q` group of a quant side by side (#12468): a request reaches
+/// only the profile it asks for, and one that names none only the
+/// qualified group.
+#[test]
+fn requests_reach_only_the_profile_they_ask_for() {
+    const QUANT: &str = "sha256:9999999999999999999999999999999999999999999999999999999999999999";
+    let (mut book, qualified, _) = network();
+    let profiled = |id: &str, artifact: &str, profile: &str| GroupSpec {
+        profile: Some(profile.into()),
+        ..spec(id, artifact)
+    };
+    let exact = Identity::generate();
+    let exact_spec = profiled("v41-x", V41, "consumer-exact");
+    offer(
+        &mut book,
+        &exact,
+        head_beacon(
+            &base(&exact, "v41-exact", "x"),
+            &exact_spec,
+            &ready(1),
+            false,
+        ),
+    );
+    let lossy = Identity::generate();
+    let lossy_spec = profiled("v41-q", QUANT, "consumer-q");
+    offer(
+        &mut book,
+        &lossy,
+        head_beacon(
+            &base(&lossy, "v41-lossy", "x"),
+            &lossy_spec,
+            &ready(1),
+            false,
+        ),
+    );
+    // Stage beacons carry the profile too.
+    let stage = stage_beacon(
+        &base(&lossy, "v41-q-stage", "x"),
+        &lossy_spec,
+        1,
+        Layers { from: 0, to: 40 },
+    );
+    assert_eq!(profile_of(&stage), "consumer-q");
+    let none = BTreeSet::new();
+    let model = || Want::Model("deepseek-v4.1-flash".into());
+    let profiled_want = |want: Want, profile: &str| Want::Profiled(Box::new(want), profile.into());
+    for (want, expect) in [
+        (model(), Some(qualified.pubkey())),
+        (Want::Artifact(V41.into()), Some(qualified.pubkey())),
+        (
+            profiled_want(model(), "qualified"),
+            Some(qualified.pubkey()),
+        ),
+        (
+            profiled_want(model(), "consumer-exact"),
+            Some(exact.pubkey()),
+        ),
+        (
+            profiled_want(Want::Artifact(V41.into()), "consumer-exact"),
+            Some(exact.pubkey()),
+        ),
+        (profiled_want(model(), "consumer-q"), Some(lossy.pubkey())),
+        (
+            profiled_want(Want::Artifact(QUANT.into()), "consumer-q"),
+            Some(lossy.pubkey()),
+        ),
+        // The quant's artifact under no profile, or the weights' under the
+        // lossy one, finds nothing.
+        (Want::Artifact(QUANT.into()), None),
+        (
+            profiled_want(Want::Artifact(V41.into()), "consumer-q"),
+            None,
+        ),
+    ] {
+        let chosen = choose_model(&book, AT, &none, Lane::CjConversation, &want);
+        assert_eq!(chosen.map(|b| b.provider).as_deref(), expect, "{want:?}");
+        let found = candidates_for(&book, AT, &none, Some(&want));
+        assert_eq!(found.len(), usize::from(expect.is_some()), "{want:?}");
+    }
+}
+
+/// A head beacon written before profiles reads as the qualified profile.
+#[test]
+fn a_beacon_without_a_profile_is_qualified() {
+    let (book, head, _) = network();
+    let beacon = book
+        .iter()
+        .map(|(_, b)| b)
+        .find(|b| b.provider == head.pubkey())
+        .unwrap();
+    let json = serde_json::to_value(beacon).unwrap();
+    assert!(json["group"].get("profile").is_none());
+    assert_eq!(profile_of(beacon), "qualified");
 }

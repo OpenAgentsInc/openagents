@@ -715,6 +715,7 @@ fn head(provider: &RelaySigner, observed_at: u64) -> Beacon {
         deadline_secs: Some(600),
         max_output_tokens: Some(4_096),
         layers: None,
+        profile: None,
     });
     body
 }
@@ -735,6 +736,7 @@ fn stage(provider: &RelaySigner, observed_at: u64) -> Beacon {
         deadline_secs: None,
         max_output_tokens: None,
         layers: Some(Layers { from: 0, to: 11 }),
+        profile: None,
     });
     body
 }
@@ -961,4 +963,23 @@ fn a_runner_beacon_lives_in_its_own_lane() {
     other.services[0].lanes = vec![Lane::CjExecution];
     assert!(runner_beacon_event(&key, &other).is_err());
     assert!(runner_beacon_event(&signer(8), &runner(&key, NOW)).is_err());
+}
+
+/// A group's serving profile is optional, one of three, and absent means
+/// qualified (#12468).
+#[test]
+fn a_group_profile_is_one_of_three_and_absent_means_qualified() {
+    let provider = signer(1);
+    let mut body = head(&provider, NOW);
+    assert_eq!(body.group.as_ref().unwrap().profile(), QUALIFIED_PROFILE);
+    for profile in GROUP_PROFILES {
+        body.group.as_mut().unwrap().profile = Some(profile.into());
+        let event = beacon_event(&provider, &body).unwrap();
+        assert_eq!(
+            parse_beacon(&event).unwrap().group.unwrap().profile(),
+            profile
+        );
+    }
+    body.group.as_mut().unwrap().profile = Some("fast".into());
+    assert!(beacon_event(&provider, &body).is_err());
 }

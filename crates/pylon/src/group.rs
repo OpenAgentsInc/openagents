@@ -33,6 +33,10 @@ pub enum Want {
     /// A model id: a service whose model is exactly this, or whose name
     /// before `@` is.
     Model(String),
+    /// Either of the above from a group of one serving profile (#12468).
+    /// The others take only the qualified profile, so a request that names
+    /// none never lands on a lossy or differently configured group.
+    Profiled(Box<Want>, String),
 }
 
 impl Want {
@@ -46,8 +50,37 @@ impl Want {
         match self {
             Self::Artifact(want) => artifact == Some(want.as_str()),
             Self::Model(want) => service.model == *want || name == want,
+            Self::Profiled(want, _) => want.matches(service),
         }
     }
+
+    /// The serving profile this asks for: `qualified` unless it names one.
+    #[must_use]
+    pub fn profile(&self) -> &str {
+        match self {
+            Self::Profiled(_, profile) => profile,
+            _ => pylon::QUALIFIED_PROFILE,
+        }
+    }
+
+    /// The model or artifact this asks for, whatever the profile.
+    #[must_use]
+    pub fn target(&self) -> &str {
+        match self {
+            Self::Artifact(a) | Self::Model(a) => a,
+            Self::Profiled(want, _) => want.target(),
+        }
+    }
+}
+
+/// The serving profile of a beacon: its group's, or `qualified` for a
+/// group without one and for a pylon that isn't in a group (#12468).
+#[must_use]
+pub fn profile_of(beacon: &Beacon) -> &str {
+    beacon
+        .group
+        .as_ref()
+        .map_or(pylon::QUALIFIED_PROFILE, |g| g.profile())
 }
 
 /// Whether `beacon` can take a job for `want` on `lane` at `at`: fresh,
@@ -84,6 +117,7 @@ pub fn serves_want_when_free<'a>(
         || beacon
             .group_head()
             .is_some_and(|g| g.readiness != Some(Readiness::Ready))
+        || profile_of(beacon) != want.profile()
     {
         return None;
     }
@@ -241,6 +275,9 @@ pub struct GroupSpec {
     pub artifact: String,
     pub deadline_secs: u64,
     pub max_output_tokens: u32,
+    /// The serving profile (#12468): `None` for the qualified one, else
+    /// `consumer-exact` or `consumer-q`. Head and stage beacons carry it.
+    pub profile: Option<String>,
 }
 
 /// The head's v2 beacon from the provider's `base` beacon: its identity,
@@ -273,6 +310,7 @@ pub fn head_beacon(
         deadline_secs: Some(spec.deadline_secs),
         max_output_tokens: Some(spec.max_output_tokens),
         layers: None,
+        profile: spec.profile.clone(),
     });
     beacon
 }
@@ -437,6 +475,7 @@ pub fn stage_beacon(base: &Beacon, spec: &GroupSpec, generation: u64, layers: La
         deadline_secs: None,
         max_output_tokens: None,
         layers: Some(layers),
+        profile: spec.profile.clone(),
     });
     beacon
 }

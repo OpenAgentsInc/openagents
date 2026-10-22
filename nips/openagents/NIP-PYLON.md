@@ -183,6 +183,16 @@ Rules:
   `max_tokens`, and `max_answer_ms`. It helps a buyer choose a budget
   against the declared deadline. Nothing routes on it, and a stage beacon
   carries none.
+- A group MAY name its serving `profile` in `group` (added 2026-10-22):
+  `qualified` (the default when absent), `consumer-exact` (answers equal
+  the qualified profile's on another configuration, such as one machine
+  with experts in host memory), or `consumer-q` (a lossy quant, whose
+  digest is the group's `artifact`). Head and stage carry the same value.
+  A buyer sends a job to a group only under the profile the request names,
+  and a request that names none goes only to a `qualified` group, so a
+  request for the qualified model never reaches a lossy group. A reader
+  labels a `consumer-q` answer as lossy wherever it shows it. A reader
+  from before profiles refuses a beacon that names one.
 - A head may also state its group's checked request sizes in its inert
   `meta` as `request_limits`: `max_context_tokens` (prompt and answer
   together), `max_input_tokens` (the longest prompt it takes),

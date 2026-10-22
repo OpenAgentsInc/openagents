@@ -216,6 +216,7 @@ async fn start_pylon(
                 artifact: format!("sha256:{}", "4c".repeat(32)),
                 deadline_secs: GROUP_DEADLINE.as_secs(),
                 max_output_tokens: 4_096,
+                profile: None,
             },
             readiness: Arc::new(readiness),
             stages: vec![("s0".into(), nostr::pylon::Layers { from: 0, to: 43 })],

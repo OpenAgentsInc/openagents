@@ -112,6 +112,7 @@ fn spec(ceiling_secs: u64) -> GroupSpec {
         artifact: ARTIFACT.into(),
         deadline_secs: ceiling_secs,
         max_output_tokens: 4_096,
+        profile: None,
     }
 }
 

@@ -132,6 +132,12 @@ pub struct Answer {
     pub pylon: String,
     pub pylon_npub: String,
     pub label: String,
+    /// The serving profile of the pylon that answered (#12468):
+    /// `qualified`, `consumer-exact`, or `consumer-q`.
+    pub profile: String,
+    /// Whether the answer came from a lossy profile (`consumer-q`), so
+    /// whatever shows it can say so.
+    pub lossy: bool,
     pub model: String,
     pub prompt: String,
     pub text: Option<String>,
@@ -710,6 +716,8 @@ async fn ask_for(
         pylon: beacon.address(),
         pylon_npub: crate::identity::npub(&beacon.provider),
         label: beacon.label.clone(),
+        profile: crate::group::profile_of(&beacon).to_string(),
+        lossy: crate::group::profile_of(&beacon) == "consumer-q",
         model,
         prompt: ask.prompt.clone(),
         text,

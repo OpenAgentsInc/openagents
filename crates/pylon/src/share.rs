@@ -115,6 +115,10 @@ pub struct GroupLane {
     pub max_restarts: u32,
     pub backoff_ms: u64,
     pub max_backoff_ms: u64,
+    /// The serving profile its beacons declare (#12468): left out for the
+    /// qualified one, else `consumer-exact` or `consumer-q`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<String>,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
@@ -164,6 +168,7 @@ impl GroupLane {
             artifact: self.artifact.clone(),
             deadline_secs: self.deadline_secs,
             max_output_tokens: self.max_output_tokens,
+            profile: self.profile.clone(),
         }
     }
 
@@ -209,6 +214,30 @@ impl GroupLane {
         }
         if !(1..=4_096).contains(&self.max_output_tokens) {
             return Err("a group answers with 1 to 4096 tokens".into());
+        }
+        // A stage's numerical profile names a consumer profile's prefix
+        // (`consumer-q-cuda-device-sm_120`); the lane's must agree, so a
+        // lossy stage never serves under a qualified beacon.
+        let profile = self
+            .profile
+            .as_deref()
+            .unwrap_or(nostr::pylon::QUALIFIED_PROFILE);
+        if !nostr::pylon::GROUP_PROFILES.contains(&profile) {
+            return Err(format!("group profile {profile} is unknown"));
+        }
+        for stage in &self.stages {
+            let numeric = stage.identity.profile.as_deref().unwrap_or("");
+            let consumer = ["consumer-exact", "consumer-q"]
+                .into_iter()
+                .find(|p| numeric.starts_with(&format!("{p}-")));
+            if consumer.unwrap_or(nostr::pylon::QUALIFIED_PROFILE) != profile
+                && !(profile != nostr::pylon::QUALIFIED_PROFILE && numeric.is_empty())
+            {
+                return Err(format!(
+                    "stage {} runs profile {numeric}; the group serves {profile}",
+                    stage.name
+                ));
+            }
         }
         let mut next = 0;
         for stage in &self.stages {

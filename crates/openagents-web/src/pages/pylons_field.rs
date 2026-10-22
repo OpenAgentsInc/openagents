@@ -594,6 +594,7 @@ mod tests {
                 deadline_secs: head.then_some(600),
                 max_output_tokens: head.then_some(4096),
                 layers,
+                profile: None,
             });
             beacon_event(&provider, &b).unwrap()
         };

@@ -362,6 +362,7 @@ async fn publish_group(net: &Net, readiness: Readiness) {
         artifact: V41.into(),
         deadline_secs: 600,
         max_output_tokens: 4_096,
+        profile: None,
     };
     let status = GroupStatus {
         readiness,
