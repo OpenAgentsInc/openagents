@@ -34,7 +34,7 @@ or recreate the GPU device for any of the 30 scene edits or the real Jev actions
 - Manual add, move, and resize work through the UI and the shared transaction path.
 - Invalid positions fail without changing the accepted scene or history.
 - A real Kiln WASI file write to `haunt/scene.json` enters the same command path and can be undone. Manual and model edits preserve stable IDs, pose, view, and device.
-- Undo/redo preserve object identity and increase revision numbers. Unit tests check stale/replayed/foreign transactions, schema refusal, atomic grouped edits, and history bounds.
+- Undo/redo preserve object identity and increase revision numbers. Unit tests check stale/replayed/foreign transactions, schema refusal, atomic grouped edits, history bounds, and preserving custom shaders during the v1 upgrade.
 - Real Jev decisions add and move a pumpkin and change the light. Exact coordinates come from text spans; code validates the bounds.
 - The 12-example service probe accepted eight explicit supported requests, rejected two unsupported/compound requests, and held two uncertain requests. One negation had the wrong top action but stayed below the confidence floor and could not execute. “Put a big pumpkin” was ambiguous between add and move and was held; “Add a big pumpkin” passed. This small probe is not broad calibration.
 - A manual edit cancels a delayed decision. Its eventual response cannot overwrite the newer scene. Controls stay enabled during inference.
@@ -48,7 +48,7 @@ or recreate the GPU device for any of the 30 scene edits or the real Jev actions
 
 - `cargo test -p kiln`: 44 passed, including a real SDK transport fixture with fixed questions, unused uncertainty, and unknown-action refusal.
 - `cargo build -p kiln --bin haunt-director`; Kiln Wasm/WASI build.
-- `npm run check`; `npm test`: 8 passed; `npm run build`.
+- `npm run check`; `npm test`: 9 passed; `npm run build`.
 - `HAUNT_URL=... HAUNT_EVIDENCE=... openagents browser run -- npm run verify:browser`: both browser scripts passed, including real Jev requests.
 - Both workspace dependency generators, dependency-target normalization, and `scripts/dev/check-workspace-hack.sh` passed after adding the SDK dependency. Stale generated dependency lines were regenerated.
 

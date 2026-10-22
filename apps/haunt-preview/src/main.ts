@@ -2,7 +2,7 @@ import { Effect } from "effect";
 import { ASSET, PROJECT, sourceHash, type ShaderEdit } from "./protocol.ts";
 import "./style.css";
 import { createEditor } from "./editor.ts";
-import type { Operation } from "./project.ts";
+import { upgradeLegacyShader, type Operation } from "./project.ts";
 
 declare global {
   interface Window {
@@ -372,17 +372,7 @@ async function start() {
   await activeRequest;
   if (previousDraft) {
     // Upgrade this demo's v1 shader layout while preserving its authored tint/code.
-    const upgraded = previousDraft.includes("LANTERN_TINT * toon")
-      ? previousDraft
-          .replace(
-            "  light: vec4<f32>,",
-            "  light: vec4<f32>,\n  tint: vec4<f32>,",
-          )
-          .replace(
-            "LANTERN_TINT * toon",
-            "LANTERN_TINT * scene.tint.xyz * toon",
-          )
-      : previousDraft;
+    const upgraded = upgradeLegacyShader(previousDraft);
     activeRequest = forward(upgraded);
     await activeRequest;
   } else await save(original);

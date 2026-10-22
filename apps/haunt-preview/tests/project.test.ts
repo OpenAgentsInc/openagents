@@ -7,6 +7,7 @@ import {
   decisionOperation,
   exactCoordinates,
   PROJECT_ID,
+  upgradeLegacyShader,
   type Operation,
   type Transaction,
 } from "../src/project.ts";
@@ -160,4 +161,23 @@ test("grouped changes validate atomically and undo as one change", () => {
   apply(s, { kind: "undo" });
   assert.equal(s.project.entities.length, 5);
   assert.equal(s.project.tint, "warm");
+});
+
+test("legacy shader upgrade is idempotent and preserves custom/current shader code", () => {
+  const old =
+    "// Lantern Hall — original demo\nstruct Scene {\n  light: vec4<f32>,\n}\nlet color = LANTERN_TINT * toon;";
+  const upgraded = upgradeLegacyShader(old);
+  assert.ok(upgraded.includes("scene.tint.xyz"));
+  assert.equal(upgradeLegacyShader(upgraded), upgraded);
+  const authored = upgraded.replace(
+    "LANTERN_TINT * scene.tint.xyz * toon",
+    "LANTERN_TINT * toon",
+  );
+  assert.equal(upgradeLegacyShader(authored), authored);
+  assert.equal(
+    upgradeLegacyShader(
+      old.replace("// Lantern Hall — original demo", "// My custom shader"),
+    ),
+    old.replace("// Lantern Hall — original demo", "// My custom shader"),
+  );
 });

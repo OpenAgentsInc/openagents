@@ -368,3 +368,17 @@ export function decisionOperation(
       );
   }
 }
+
+/** Upgrade only the known v1 demo layout; custom and current shaders stay intact. */
+export function upgradeLegacyShader(source: string): string {
+  if (
+    source.startsWith("// Lantern Hall") &&
+    source.includes("  light: vec4<f32>,") &&
+    source.includes("LANTERN_TINT * toon") &&
+    !/^\s*tint:\s*vec4<f32>/m.test(source)
+  )
+    return source
+      .replace("  light: vec4<f32>,", "  light: vec4<f32>,\n  tint: vec4<f32>,")
+      .replace("LANTERN_TINT * toon", "LANTERN_TINT * scene.tint.xyz * toon");
+  return source;
+}
