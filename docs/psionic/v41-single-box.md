@@ -296,9 +296,59 @@ compressor groups, compressed KV and index keys, selections, candidate
 flags, the backbone features, and both device and host Engram history,
 then replays only the accepted prefix. This first version favors complete
 state restoration over avoiding that replay. Invalid verification output
-also restores the saved state before returning an error. `chain --dspark` records
-proposed and accepted counts, accepted prefix lengths, acceptance rate, replayed tokens, and
-measured decode throughput in its answer records.
+also restores the saved state before returning an error. `chain --dspark`
+records proposed and accepted counts, accepted prefix lengths, acceptance
+rate, replayed tokens, and measured decode throughput in its answer records.
+
+On 2026-10-22, the [3f32d9abb6 worker](verification/deepseek-v41-dspark-2026-10-22/BUILD.json)
+passed [ten CUDA controls](verification/deepseek-v41-dspark-2026-10-22/sm120-controls.log)
+on an RTX PRO 6000 Blackwell Server Edition. These include 48 rollback
+configurations and serving with changed prefixes and sampling settings.
+
+The same immutable worker then generated 32 greedy tokens for each of the
+eight frozen oracle prompts, including the 19,989-token `p4-20k` input.
+All 256 output IDs equal ordinary decode. Both paths used native checkpoint
+weights, packed KV, 32,768-token context, 4,096-token steps and prefill chunks,
+and `--expert-cache 40`: 53 slots per layer across 40 layers,
+39,857,418,240 device bytes, and 150,405,120 staging bytes. The device-memory
+peak sampled every two seconds was 67,989 MiB.
+
+| Required prompt | Input tokens | Ordinary tokens/s | DSpark tokens/s | Accepted/proposed |
+| --- | ---: | ---: | ---: | ---: |
+| `e-engram` | 68 | 4.478 | 0.990 | 20/35 |
+| `e-window-127` | 127 | 6.335 | 0.758 | 15/55 |
+| `e-window-128` | 128 | 6.828 | 0.992 | 20/55 |
+| `e-window-129` | 129 | 11.051 | 2.500 | 19/55 |
+| `p1-chat-thinking` | 41 | 2.468 | 1.010 | 20/35 |
+| `p2-code` | 40 | 4.602 | 2.163 | 24/25 |
+| `p3-2k` | 2,124 | 2.672 | 1.224 | 22/40 |
+| `p4-20k` | 19,989 | 2.449 | 1.211 | 20/40 |
+
+For these eight cases, ordinary decode took 62.721 seconds and DSpark took
+211.811 seconds: **3.954 versus 1.171 tokens/s**. Each denominator is 248
+decode tokens, excluding each prompt's first prefill prediction. DSpark
+accepted 160 of 340 proposals (47.06%); accepted-prefix counts for lengths
+0–5 were `[13, 13, 12, 10, 7, 13]`. Drafting was slower in this trial.
+DSpark ran first, then ordinary decode, with other GPU work, quantization,
+checkpoint scans, and uploads stopped during the measurement.
+
+A separate DSpark-only repeat of `e-engram` produced the same 32 IDs and
+accepted lengths. Its rate was 2.093 tokens/s, compared with 0.990 on the
+first DSpark pass. The ordinary command ignores `--repeat-answer` with a
+prompt file, so there is no ordinary warm-repeat comparison; the repeat
+is excluded from every paired aggregate above. Equality here compares
+DSpark with ordinary CUDA decode, not with reference-checkpoint qualification.
+
+The [native summary](verification/deepseek-v41-dspark-2026-10-22/native-summary.json)
+retains token arrays, per-case accepted lengths, timings, configuration,
+and source, worker, checkpoint-index, and library hashes. The
+[raw receipt](verification/deepseek-v41-dspark-2026-10-22/native-pair.tar.gz)
+contains both complete reports, answer files, logs, the unchanged runner,
+and the exact prompt IDs. Its SHA-256 is
+`7319cc62dbee31b8b60c09eba904982dca2051b51243f497c887b0052254b347`;
+the local copy and a cloud-storage download matched before the machine
+was released. The [summary script](verification/deepseek-v41-dspark-2026-10-22/summarize-paired.py)
+checks all eight inputs, modes, token arrays, and build identities.
 
 ## Cost
 
