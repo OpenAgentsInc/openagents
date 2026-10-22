@@ -379,9 +379,9 @@ COPY --from=cadweb-deps /build/Cargo.lock /cadweb-deps.lock
 COPY --from=gpuiweb-deps /build/gpuiweb.lock /gpuiweb-deps.lock
 
 # The browser modules alone, laid out as the image's /srv, for a deploy that
-# ships modules without a new image (#12427): cloudbuild.yaml exports this
-# target as a tarball to web-modules/sets/TAG.tar. Keep it in step with the
-# last stage's /srv copies.
+# ships modules without a new image (#12427): cloudbuild.yaml builds this
+# target for _MODULES_ONLY=1 and indexes it as web-modules/sets/TAG.index.
+# Keep it in step with the last stage's /srv copies.
 FROM scratch AS modules
 COPY --from=everglade /build/everglade /everglade
 COPY --from=everglade /build/components /components
@@ -447,13 +447,13 @@ COPY --from=gpuiweb /build/lander9 /srv/lander9
 # Build contexts can carry private file modes. The runtime user must read
 # every browser asset, including fonts and their compressed copies.
 RUN chmod -R a+rX /srv
-USER 10001:10001
 # The commit the image is built from, which /att/release.json and
 # /vault/release.json report (openagents_web::release_commit); "unknown"
 # when the build names none. Set here, not in the builder, so a new commit
 # doesn't change the server's compile and the compile cache keeps it.
 ARG OPENAGENTS_COMMIT=unknown
 ENV OPENAGENTS_COMMIT=${OPENAGENTS_COMMIT}
+USER 10001:10001
 RUN unreadable="$(find /srv ! -readable -print -quit)" && test -z "$unreadable"
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/openagents-web"]
