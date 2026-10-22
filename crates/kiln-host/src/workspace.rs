@@ -528,7 +528,26 @@ mod tests {
     fn edits_invalidate_checks_and_overlapping_patches_fail() {
         let root = tempfile::tempdir().unwrap();
         std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
-        let c = config(root.path());
+        git(root.path(), &["init", "-q"]).unwrap();
+        git(
+            root.path(),
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "--allow-empty",
+                "-qm",
+                "fixture",
+            ],
+        )
+        .unwrap();
+        let mut c = config(root.path());
+        c.base = git(root.path(), &["rev-parse", "HEAD"])
+            .unwrap()
+            .trim()
+            .into();
         let mut w = Workspace {
             agent: Agent::new("task", 12000),
             config: c,
