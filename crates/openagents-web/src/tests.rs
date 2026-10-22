@@ -1820,9 +1820,12 @@ async fn the_grid_homepage_is_at_the_root_and_the_new_chat_at_chat() {
     assert!(html.contains("href=\"/signup?return_to=%2F\""));
     assert!(html.contains("id=\"pylons-panel\"") && html.contains("data-ambient"));
     let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
-    // The Grid's players meet on the public relay (#12406).
+    // The Grid's players meet on the public relay (#12406), and Kiln at the
+    // terminal reads the repository from GitHub (#12456).
     assert!(
-        policy.contains("connect-src 'self' wss://relay.openagents.com;")
+        policy.contains(
+            "connect-src 'self' wss://relay.openagents.com https://api.github.com https://raw.githubusercontent.com;"
+        )
             && !policy.contains("unsafe-inline"),
         "{policy}"
     );
