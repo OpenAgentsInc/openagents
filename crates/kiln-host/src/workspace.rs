@@ -11,6 +11,7 @@ use std::{
 
 const MAX_TURNS: usize = 96;
 const MAX_GUIDANCE_BYTES: usize = 2000;
+const MAX_STOP_REASON_BYTES: usize = 512;
 const MAX_INSTRUCTION_BYTES: usize = INSTRUCTIONS.len() + 4000;
 const MAX_VIEW_LINES: usize = 80;
 const MAX_VIEW_BYTES: usize = 1400;
@@ -219,6 +220,8 @@ pub struct Workspace {
     pub checked: Option<String>,
     #[serde(default)]
     pub answers: Vec<AnswerEvidence>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stop_reason: Option<String>,
 }
 impl Workspace {
     pub fn new(config: Config) -> Result<Self> {
@@ -246,6 +249,7 @@ impl Workspace {
             until: now() + 21600,
             checked: None,
             answers: vec![],
+            stop_reason: None,
         })
     }
     fn record_answer(
@@ -383,7 +387,7 @@ impl Workspace {
         kiln::sha256_hex(&serde_json::to_vec(&(&self.config.base, &self.files)).unwrap_or_default())
     }
     pub fn summary(&self) -> Value {
-        json!({"phase":self.phase,"turns":self.turns,"calls":self.calls,"base":self.config.base,"pylon":self.config.pylon,"model":self.config.model,"profile":self.config.profile,"files":self.files.keys().collect::<Vec<_>>(),"digest":self.digest(),"checked":self.checked,"done":self.agent.done,"latest":self.agent.steps.last(),"answers":self.answers})
+        json!({"phase":self.phase,"stop_reason":self.stop_reason,"turns":self.turns,"calls":self.calls,"base":self.config.base,"pylon":self.config.pylon,"model":self.config.model,"profile":self.config.profile,"files":self.files.keys().collect::<Vec<_>>(),"digest":self.digest(),"checked":self.checked,"done":self.agent.done,"latest":self.agent.steps.last(),"answers":self.answers})
     }
     fn grep(&self, mut args: &[String]) -> Result<String> {
         let mut ignore_case = false;
@@ -540,6 +544,19 @@ impl Workspace {
         self.agent.instructions.push_str(&addition);
         Ok(())
     }
+    fn stop(&mut self, reason: Option<&str>) -> Result<()> {
+        if let Some(reason) = reason {
+            if reason.trim().is_empty()
+                || reason.len() > MAX_STOP_REASON_BYTES
+                || reason.contains('\0')
+            {
+                return Err("stop reason must contain 1 to 512 bytes of text".into());
+            }
+            self.stop_reason = Some(reason.trim().into());
+        }
+        self.phase = "stopped".into();
+        Ok(())
+    }
     pub async fn advance(&mut self, path: &Path) -> Result<()> {
         if matches!(self.phase.as_str(), "awaiting-check" | "review" | "stopped") {
             return Ok(());
@@ -648,7 +665,7 @@ pub async fn run(args: &[String]) -> Result<()> {
     let action = args.first().map(String::as_str).unwrap_or("help");
     if action == "help" || args.iter().any(|s| s == "--help") {
         println!(
-            "kiln-workspace init|advance|status|export|feedback|guide|focus --state FILE\ninit --config FILE\nfeedback --input FILE (digest, code, output)\nguide --input FILE (up to 2000 bytes of UTF-8 text)\nfocus --input FILE (up to 2000 bytes for the current step; resets added guidance)"
+            "kiln-workspace init|advance|status|export|feedback|guide|focus|stop --state FILE\ninit --config FILE\nfeedback --input FILE (digest, code, output)\nguide --input FILE (up to 2000 bytes of UTF-8 text)\nfocus --input FILE (up to 2000 bytes for the current step; resets added guidance)\nstop [--reason TEXT] (up to 512 bytes; waits for the current advance)"
         );
         return Ok(());
     }
@@ -661,7 +678,11 @@ pub async fn run(args: &[String]) -> Result<()> {
         .write(true)
         .open(path.with_extension("lock"))
         .map_err(|e| e.to_string())?;
-    fs2::FileExt::try_lock_exclusive(&lock).map_err(|_| "workspace is already running")?;
+    if action == "stop" {
+        fs2::FileExt::lock_exclusive(&lock).map_err(|_| "could not lock the workspace")?;
+    } else {
+        fs2::FileExt::try_lock_exclusive(&lock).map_err(|_| "workspace is already running")?;
+    }
     if action == "init" {
         if path.exists() {
             return Err("workspace already initialized".into());
@@ -675,6 +696,15 @@ pub async fn run(args: &[String]) -> Result<()> {
     workspace.config.validate()?;
     match action {
         "advance" => workspace.advance(&path).await?,
+        "stop" => {
+            let reason = args
+                .iter()
+                .any(|arg| arg == "--reason")
+                .then(|| option("--reason"))
+                .transpose()?;
+            workspace.stop(reason.as_deref())?;
+            save(&path, &workspace)?;
+        }
         "guide" | "focus" => {
             let bytes = workspace_host::artifact::read(
                 &PathBuf::from(option("--input")?),
@@ -1353,6 +1383,156 @@ mod tests {
         assert_eq!(load::<Workspace>(&state).unwrap().agent.task, full);
     }
     #[test]
+    fn stop_waits_for_the_locked_advance_and_preserves_the_saved_workspace() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
+        let mut workspace: Workspace =
+            serde_json::from_value(legacy_workspace(root.path())).unwrap();
+        workspace.agent.task = "Current step".into();
+        workspace.agent.instructions = "Existing instructions".into();
+        workspace.agent.done = Some("Earlier summary".into());
+        workspace.agent.budget = 8250;
+        workspace
+            .files
+            .insert("apps/haunt-preview/a.ts".into(), "new".into());
+        workspace
+            .original
+            .insert("apps/haunt-preview/a.ts".into(), "old".into());
+        workspace.pending = vec![Command::Write {
+            path: "apps/haunt-preview/a.ts".into(),
+            content: "must not run".into(),
+        }];
+        workspace.checked = Some(workspace.digest());
+        workspace.turns = 11;
+        workspace.calls = 22;
+        workspace.record_answer("fixture prompt", &Err("fixture refusal".into()), 1);
+        let state = root.path().join("workspace.json");
+        save(&state, &workspace).unwrap();
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(state.with_extension("lock"))
+            .unwrap();
+        fs2::FileExt::try_lock_exclusive(&lock).unwrap();
+        let args = vec![
+            "stop".into(),
+            "--state".into(),
+            state.to_string_lossy().into_owned(),
+            "--reason".into(),
+            " Pause for review é ".into(),
+        ];
+        let (started_tx, started_rx) = std::sync::mpsc::channel();
+        let (finished_tx, finished_rx) = std::sync::mpsc::channel();
+        let waiter = std::thread::spawn(move || {
+            started_tx.send(()).unwrap();
+            let result = tokio::runtime::Runtime::new().unwrap().block_on(run(&args));
+            finished_tx.send(result).unwrap();
+        });
+        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(matches!(
+            finished_rx.recv_timeout(Duration::from_millis(100)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+        // The advance completes its save before the waiting stop can load it.
+        workspace.turns += 1;
+        workspace.calls += 1;
+        save(&state, &workspace).unwrap();
+        let before = serde_json::to_value(&workspace).unwrap();
+        drop(lock);
+        finished_rx
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        waiter.join().unwrap();
+        let stopped: Workspace = load(&state).unwrap();
+        assert_eq!(stopped.phase, "stopped");
+        assert_eq!(stopped.stop_reason.as_deref(), Some("Pause for review é"));
+        let mut after = serde_json::to_value(&stopped).unwrap();
+        after["phase"] = before["phase"].clone();
+        after.as_object_mut().unwrap().remove("stop_reason");
+        assert_eq!(after, before);
+
+        let unchanged = std::fs::read(&state).unwrap();
+        std::fs::remove_file(root.path().join("key")).unwrap();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        for action in ["advance", "status", "export", "stop"] {
+            rt.block_on(run(&[
+                action.into(),
+                "--state".into(),
+                state.to_string_lossy().into_owned(),
+            ]))
+            .unwrap();
+            assert_eq!(std::fs::read(&state).unwrap(), unchanged);
+        }
+        let mut no_pending: Workspace = load(&state).unwrap();
+        no_pending.pending.clear();
+        let before = serde_json::to_value(&no_pending).unwrap();
+        rt.block_on(no_pending.advance(&state)).unwrap();
+        assert_eq!(serde_json::to_value(&no_pending).unwrap(), before);
+        assert!(
+            no_pending
+                .feedback(&no_pending.digest(), 0, "check passed")
+                .is_err()
+        );
+    }
+    #[tokio::test]
+    async fn stop_reason_is_optional_bounded_and_unavailable_to_model_commands() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
+        let mut workspace: Workspace =
+            serde_json::from_value(legacy_workspace(root.path())).unwrap();
+        let state = root.path().join("workspace.json");
+        save(&state, &workspace).unwrap();
+        let before = std::fs::read(&state).unwrap();
+        assert!(workspace.execute(&Command::Run("stop".into())).is_err());
+        for reason in [String::new(), " \n ".into(), "\0".into(), "é".repeat(257)] {
+            assert!(
+                run(&[
+                    "stop".into(),
+                    "--state".into(),
+                    state.to_string_lossy().into_owned(),
+                    "--reason".into(),
+                    reason
+                ])
+                .await
+                .is_err()
+            );
+            assert_eq!(std::fs::read(&state).unwrap(), before);
+        }
+        assert!(
+            run(&[
+                "stop".into(),
+                "--state".into(),
+                state.to_string_lossy().into_owned(),
+                "--reason".into()
+            ])
+            .await
+            .is_err()
+        );
+        assert_eq!(std::fs::read(&state).unwrap(), before);
+        for phase in ["model", "awaiting-check", "review", "stopped"] {
+            let mut workspace: Workspace =
+                serde_json::from_value(legacy_workspace(root.path())).unwrap();
+            workspace.phase = phase.into();
+            workspace.stop(None).unwrap();
+            assert_eq!(workspace.phase, "stopped");
+            assert!(workspace.stop_reason.is_none());
+        }
+        let reason = "é".repeat(MAX_STOP_REASON_BYTES / 2);
+        run(&[
+            "stop".into(),
+            "--state".into(),
+            state.to_string_lossy().into_owned(),
+            "--reason".into(),
+            reason.clone(),
+        ])
+        .await
+        .unwrap();
+        let stopped: Workspace = load(&state).unwrap();
+        assert_eq!(stopped.stop_reason.as_deref(), Some(reason.as_str()));
+    }
+    #[test]
     fn legacy_workspace_loads_without_answer_evidence() {
         let root = tempfile::tempdir().unwrap();
         std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
@@ -1360,6 +1540,7 @@ mod tests {
         assert!(legacy.get("answers").is_none());
         let workspace: Workspace = serde_json::from_value(legacy).unwrap();
         assert!(workspace.answers.is_empty());
+        assert!(workspace.stop_reason.is_none());
         assert_eq!(workspace.phase, "model");
         assert_eq!(workspace.config.profile, "consumer-q");
     }
@@ -1519,6 +1700,7 @@ mod tests {
             until: now() + 60,
             checked: None,
             answers: vec![],
+            stop_reason: None,
         };
         assert!(
             w.execute(&Command::Patch {

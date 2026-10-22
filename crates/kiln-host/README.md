@@ -73,3 +73,8 @@ runs the issue's focused checks, and supplies `feedback --input FILE` with
 snapshot. Further edits clear it. The agent can finish only after a matching
 passing check; the coordinator still reviews the change and opens the draft PR.
 The adapter permits 96 model turns, 256 tool calls, and six hours per workspace.
+
+Use `stop --state FILE [--reason TEXT]` to stop a workspace after its current
+advance finishes. Its saved work and history remain available through `status`
+and `export`, and further advances do nothing. The optional reason accepts up
+to 512 UTF-8 bytes and stays in the private saved workspace.
