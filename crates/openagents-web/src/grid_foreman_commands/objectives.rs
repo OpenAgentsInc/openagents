@@ -233,7 +233,11 @@ pub(super) async fn start(
                 agent_revision: definition.revision,
                 host: worker.2.clone(),
                 project: worker.3.clone(),
-                task: catalog.brief(objective, &reference.revision, &reference.request_id),
+                task: super::dispatch_brief(catalog.brief(
+                    objective,
+                    &reference.revision,
+                    &reference.request_id,
+                ))?,
             },
             chat: None,
         };

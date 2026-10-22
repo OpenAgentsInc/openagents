@@ -308,6 +308,45 @@ impl GitHub {
         ))
     }
 
+    /// Recover a PR created before the local result was saved. The branch
+    /// is derived from the exact patch event, not a caller-supplied URL.
+    pub async fn for_patch(&self, patch: &Event) -> Result<Option<Tracked>, String> {
+        let owner = self.repo.split('/').next().ok_or("repository owner")?;
+        let branch = branch(&patch.id);
+        let query = format!(
+            "/pulls?state=all&base=main&head={owner}%3Anostr%2F{}&per_page=100",
+            patch.id
+        );
+        let value = self.call(reqwest::Method::GET, &query, None).await?;
+        let rows = value
+            .as_array()
+            .ok_or("GitHub returned no pull request list")?;
+        if rows.len() > 1 {
+            return Err("multiple pull requests use the patch branch".into());
+        }
+        let Some(pull) = rows.first() else {
+            return Ok(None);
+        };
+        if pull["head"]["ref"] != branch
+            || pull["head"]["repo"]["full_name"] != self.repo
+            || !pull["body"]
+                .as_str()
+                .is_some_and(|s| s.contains(&patch.id) && s.contains(MARK))
+        {
+            return Err("the existing patch pull request does not match".into());
+        }
+        Ok(Some(Tracked {
+            number: pull["number"].as_u64().ok_or("pull request number")?,
+            url: pull["html_url"].as_str().ok_or("pull request URL")?.into(),
+            branch,
+            head: pull["head"]["sha"]
+                .as_str()
+                .ok_or("pull request head")?
+                .into(),
+            ..Tracked::default()
+        }))
+    }
+
     /// Read pull request `number`.
     ///
     /// # Errors
@@ -549,12 +588,64 @@ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
     }
 }
 
+fn verify_pull_tree(checkout: &Path, head: &str, expected: &str) -> Result<(), String> {
+    if head.len() != 40 || !head.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err("the pull request has no valid head commit".into());
+    }
+    let commit = format!("{head}^{{commit}}");
+    if git(checkout, &["cat-file", "-e", &commit]).is_err() {
+        git(checkout, &["fetch", "--quiet", "origin", head])?;
+    }
+    let tree = git(checkout, &["rev-parse", &format!("{head}^{{tree}}")])?;
+    if tree != expected {
+        return Err("the pull request contents differ from the checked patch".into());
+    }
+    Ok(())
+}
+
+async fn checked_draft(
+    config: &Config,
+    hub: &GitHub,
+    review: &Review,
+    opener: &str,
+    applied: &crate::apply::Applied,
+    push: impl FnOnce(&crate::apply::Applied, &str) -> Result<(), String>,
+) -> Result<(Tracked, bool), String> {
+    // Reapplying can change commit metadata; the checked contents are the Git tree.
+    let expected = git(
+        &applied.dir,
+        &["rev-parse", &format!("{}^{{tree}}", applied.commit)],
+    )?;
+    if let Some(mut existing) = hub.for_patch(&review.patch).await? {
+        verify_pull_tree(&config.checkout, &existing.head, &expected)?;
+        existing.opener = opener.into();
+        return Ok((existing, false));
+    }
+    let branch = branch(&review.patch.id);
+    push(applied, &branch)?;
+    let (title, body) = pull_text(review, opener, &config.relay);
+    let (number, url) = hub.open_draft(&title, &branch, &body).await?;
+    let pull = hub.pull(number).await?;
+    verify_pull_tree(&config.checkout, &pull.head, &expected)?;
+    Ok((
+        Tracked {
+            opener: opener.to_string(),
+            number,
+            url,
+            branch,
+            head: pull.head,
+            ..Tracked::default()
+        },
+        true,
+    ))
+}
+
 /// Open a draft pull request for `review`, opened by `opener`. The Grid
 /// Foreman can call this directly for a patch it opened.
 ///
 /// # Errors
 ///
-/// Why the pull request wasn't opened.
+/// Why the pull request could not be opened or verified.
 pub async fn open(
     config: &Config,
     hub: &GitHub,
@@ -578,29 +669,28 @@ pub async fn open(
     );
     std::fs::create_dir_all(config.state.join("worktrees")).map_err(|e| e.to_string())?;
     let applied = crate::apply::apply(review, &config.checkout, &worktree, None, &config.relay)?;
-    let branch = branch(&review.patch.id);
-    hub.push(&applied.dir, &applied.commit, &branch)?;
-    let (title, body) = pull_text(review, opener, &config.relay);
-    let (number, url) = hub.open_draft(&title, &branch, &body).await?;
-    let note = config.key.key.sign(
-        1_111,
-        comment_tags(&review.patch, &config.relay),
-        format!("Opened draft pull request #{number} on GitHub: {url}"),
-        now(),
-    );
-    relay::publish(&config.relay, &config.key.secret, &note).await?;
+    let (tracked, created) =
+        checked_draft(config, hub, review, opener, &applied, |applied, branch| {
+            hub.push(&applied.dir, &applied.commit, branch)
+        })
+        .await?;
+    if created {
+        let note = config.key.key.sign(
+            1_111,
+            comment_tags(&review.patch, &config.relay),
+            format!(
+                "Opened draft pull request #{} on GitHub: {}",
+                tracked.number, tracked.url
+            ),
+            now(),
+        );
+        relay::publish(&config.relay, &config.key.secret, &note).await?;
+    }
     let _ = git(
         &config.checkout,
         &["worktree", "remove", "--force", &worktree.to_string_lossy()],
     );
-    Ok(Tracked {
-        opener: opener.to_string(),
-        number,
-        url,
-        branch,
-        head: applied.commit,
-        ..Tracked::default()
-    })
+    Ok(tracked)
 }
 
 /// The draft pull request's title and body for a Nostr pull request.
@@ -850,6 +940,329 @@ mod tests {
     use crate::review::{assess, tests as fixture};
     use kiln::cj::Key;
 
+    struct DeliveryFixture {
+        root: PathBuf,
+        config: Config,
+        review: Review,
+        applied: crate::apply::Applied,
+    }
+
+    impl DeliveryFixture {
+        fn new() -> Self {
+            let root = std::env::temp_dir().join(format!(
+                "kiln-checked-pr-{}-{}",
+                std::process::id(),
+                secp256k1::rand::random::<u64>()
+            ));
+            let checkout = root.join("repo");
+            let origin = root.join("origin.git");
+            std::fs::create_dir_all(checkout.join("crates/demo/src")).unwrap();
+            git(&checkout, &["init", "--quiet", "-b", "main"]).unwrap();
+            git(&checkout, &["config", "user.name", "Fixture"]).unwrap();
+            git(&checkout, &["config", "user.email", "fixture@example.com"]).unwrap();
+            git(&checkout, &["config", "commit.gpgsign", "false"]).unwrap();
+            std::fs::write(checkout.join("crates/demo/src/lib.rs"), fixture::BASE_FILE).unwrap();
+            git(&checkout, &["add", "."]).unwrap();
+            git(&checkout, &["commit", "--quiet", "-m", "base"]).unwrap();
+            let base = git(&checkout, &["rev-parse", "HEAD"]).unwrap();
+            git(
+                &checkout,
+                &["init", "--quiet", "--bare", origin.to_str().unwrap()],
+            )
+            .unwrap();
+            git(
+                &checkout,
+                &["remote", "add", "origin", origin.to_str().unwrap()],
+            )
+            .unwrap();
+            git(&checkout, &["push", "--quiet", "origin", "main"]).unwrap();
+            let w = fixture::world();
+            let patch = fixture::patch(&w, &base, true);
+            let check = fixture::check(&w, &patch, &w.runner, true, &base);
+            let review = assess(patch, w.trust.clone(), &[check]).unwrap();
+            review.ready(false, false).unwrap();
+            let applied =
+                crate::apply::apply(&review, &checkout, &root.join("applied"), None, "wss://r")
+                    .unwrap();
+            std::fs::write(root.join("token"), "fixture").unwrap();
+            let config = Config {
+                relay: "wss://r".into(),
+                address: w.trust.address,
+                github: "OpenAgentsInc/openagents".into(),
+                api: "unused".into(),
+                token_file: root.join("token"),
+                checkout,
+                state: root.join("state"),
+                openers: None,
+                key: Signer {
+                    key: w.repo,
+                    secret: secp256k1::SecretKey::from_byte_array([5; 32]).unwrap(),
+                },
+            };
+            Self {
+                root,
+                config,
+                review,
+                applied,
+            }
+        }
+
+        fn push_checked(&self) {
+            git(
+                &self.applied.dir,
+                &[
+                    "push",
+                    "--quiet",
+                    "--force",
+                    "origin",
+                    &format!(
+                        "{}:refs/heads/{}",
+                        self.applied.commit,
+                        branch(&self.review.patch.id)
+                    ),
+                ],
+            )
+            .unwrap();
+        }
+
+        fn change_branch(&self, force: bool) -> String {
+            let writer = self.root.join("writer");
+            git(
+                &self.config.checkout,
+                &[
+                    "clone",
+                    "--quiet",
+                    self.root.join("origin.git").to_str().unwrap(),
+                    writer.to_str().unwrap(),
+                ],
+            )
+            .unwrap();
+            let from = if force {
+                &self.review.base
+            } else {
+                &self.applied.commit
+            };
+            git(&writer, &["checkout", "--quiet", "--detach", from]).unwrap();
+            git(&writer, &["config", "user.name", "Fixture"]).unwrap();
+            git(&writer, &["config", "user.email", "fixture@example.com"]).unwrap();
+            git(&writer, &["config", "commit.gpgsign", "false"]).unwrap();
+            std::fs::write(
+                writer.join("crates/demo/src/lib.rs"),
+                "pub fn a() -> u32 { 3 }\n",
+            )
+            .unwrap();
+            git(&writer, &["commit", "--quiet", "-am", "unchecked contents"]).unwrap();
+            self.push_writer();
+            git(&writer, &["rev-parse", "HEAD"]).unwrap()
+        }
+
+        fn push_writer(&self) {
+            git(
+                &self.root.join("writer"),
+                &[
+                    "push",
+                    "--quiet",
+                    "--force",
+                    "origin",
+                    &format!("HEAD:refs/heads/{}", branch(&self.review.patch.id)),
+                ],
+            )
+            .unwrap();
+        }
+
+        fn remote_head(&self) -> String {
+            git(
+                &self.root.join("origin.git"),
+                &[
+                    "rev-parse",
+                    &format!("refs/heads/{}", branch(&self.review.patch.id)),
+                ],
+            )
+            .unwrap()
+        }
+
+        fn api(
+            &self,
+            replies: Vec<(&'static str, Value)>,
+        ) -> (GitHub, std::thread::JoinHandle<()>) {
+            use std::io::{Read, Write};
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let addr = listener.local_addr().unwrap();
+            let server = std::thread::spawn(move || {
+                for (prefix, reply) in replies {
+                    let (mut stream, _) = listener.accept().unwrap();
+                    stream
+                        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+                        .unwrap();
+                    let mut bytes = Vec::new();
+                    loop {
+                        let mut buf = [0; 4096];
+                        let n = stream.read(&mut buf).unwrap();
+                        assert_ne!(n, 0);
+                        bytes.extend_from_slice(&buf[..n]);
+                        let request = String::from_utf8_lossy(&bytes);
+                        if let Some(end) = request.find("\r\n\r\n") {
+                            let body_len = request[..end]
+                                .lines()
+                                .find_map(|l| {
+                                    l.to_ascii_lowercase()
+                                        .strip_prefix("content-length: ")
+                                        .and_then(|n| n.parse::<usize>().ok())
+                                })
+                                .unwrap_or(0);
+                            if bytes.len() >= end + 4 + body_len {
+                                break;
+                            }
+                        }
+                    }
+                    assert!(String::from_utf8_lossy(&bytes).starts_with(prefix));
+                    let body = reply.to_string();
+                    write!(stream, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+                }
+            });
+            (
+                GitHub::new(
+                    &format!("http://{addr}"),
+                    "OpenAgentsInc/openagents",
+                    &self.config.token_file,
+                ),
+                server,
+            )
+        }
+
+        fn recovered(&self, head: &str) -> Value {
+            json!([{"number":42,"html_url":"https://example.test/pull/42","head":{"ref":branch(&self.review.patch.id),"sha":head,"repo":{"full_name":"OpenAgentsInc/openagents"}},"body":format!("{MARK} patch {}",self.review.patch.id)}])
+        }
+    }
+
+    impl Drop for DeliveryFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.root);
+        }
+    }
+
+    #[tokio::test]
+    async fn recovered_pr_contents_must_match_the_checked_patch() {
+        for changed in [None, Some(false), Some(true)] {
+            let f = DeliveryFixture::new();
+            f.push_checked();
+            if let Some(force) = changed {
+                f.change_branch(force);
+            }
+            let head = f.remote_head();
+            let (hub, server) = f.api(vec![(
+                "GET /repos/OpenAgentsInc/openagents/pulls?",
+                f.recovered(&head),
+            )]);
+            let result =
+                checked_draft(&f.config, &hub, &f.review, "fixture", &f.applied, |_, _| {
+                    panic!("recovery must not push")
+                })
+                .await;
+            if changed.is_some() {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .contains("contents differ from the checked patch")
+                );
+            } else {
+                let (tracked, created) = result.unwrap();
+                assert!(!created);
+                assert_eq!(tracked.head, f.applied.commit);
+            }
+            server.join().unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn recovered_pr_allows_the_checked_tree_with_different_commit_metadata() {
+        let f = DeliveryFixture::new();
+        f.push_checked();
+        git(
+            &f.applied.dir,
+            &[
+                "commit",
+                "--quiet",
+                "--amend",
+                "-m",
+                "same checked contents",
+            ],
+        )
+        .unwrap();
+        let head = git(&f.applied.dir, &["rev-parse", "HEAD"]).unwrap();
+        assert_ne!(head, f.applied.commit);
+        git(
+            &f.applied.dir,
+            &[
+                "push",
+                "--quiet",
+                "--force",
+                "origin",
+                &format!("HEAD:refs/heads/{}", branch(&f.review.patch.id)),
+            ],
+        )
+        .unwrap();
+        let (hub, server) = f.api(vec![(
+            "GET /repos/OpenAgentsInc/openagents/pulls?",
+            f.recovered(&f.remote_head()),
+        )]);
+        let (tracked, created) =
+            checked_draft(&f.config, &hub, &f.review, "fixture", &f.applied, |_, _| {
+                panic!("recovery must not push")
+            })
+            .await
+            .unwrap();
+        assert!(!created);
+        assert_eq!(tracked.head, head);
+        server.join().unwrap();
+    }
+
+    #[tokio::test]
+    async fn new_pr_contents_are_checked_after_creation() {
+        for changed in [false, true] {
+            let f = DeliveryFixture::new();
+            f.push_checked();
+            let head = if changed {
+                f.change_branch(false)
+            } else {
+                f.applied.commit.clone()
+            };
+            let (hub, server) = f.api(vec![
+                ("GET /repos/OpenAgentsInc/openagents/pulls?", json!([])),
+                (
+                    "POST /repos/OpenAgentsInc/openagents/pulls ",
+                    json!({"number":42,"html_url":"https://example.test/pull/42"}),
+                ),
+                (
+                    "GET /repos/OpenAgentsInc/openagents/pulls/42 ",
+                    json!({"state":"open","head":{"sha":head}}),
+                ),
+            ]);
+            let result =
+                checked_draft(&f.config, &hub, &f.review, "fixture", &f.applied, |_, _| {
+                    f.push_checked();
+                    if changed {
+                        f.push_writer();
+                    }
+                    assert_eq!(f.remote_head(), head);
+                    Ok(())
+                })
+                .await;
+            if changed {
+                assert!(
+                    result
+                        .unwrap_err()
+                        .contains("contents differ from the checked patch")
+                );
+            } else {
+                let (tracked, created) = result.unwrap();
+                assert!(created);
+                assert_eq!(tracked.head, f.remote_head());
+            }
+            server.join().unwrap();
+        }
+    }
+
     #[test]
     fn only_a_counted_opener_opens_and_only_once() {
         let w = fixture::world();
@@ -990,5 +1403,36 @@ mod tests {
         state.save(&dir).unwrap();
         assert_eq!(State::load(&dir), state);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_lost_pr_reply_is_recovered_from_the_exact_patch_branch() {
+        use std::io::{Read, Write};
+        let key = kiln::cj::Key::from_bytes([7; 32]).unwrap();
+        let patch = key.sign(1617, vec![], "fixture".into(), 100);
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let body=json!([{"number":42,"html_url":"https://github.com/OpenAgentsInc/openagents/pull/42","head":{"ref":branch(&patch.id),"sha":"22".repeat(20),"repo":{"full_name":"OpenAgentsInc/openagents"}},"body":format!("{MARK} patch {}",patch.id)}]).to_string();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 8192];
+            let n = stream.read(&mut buf).unwrap();
+            let request = String::from_utf8_lossy(&buf[..n]);
+            assert!(request.starts_with("GET /repos/OpenAgentsInc/openagents/pulls?state=all&base=main&head=OpenAgentsInc%3Anostr%2F"));
+            write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
+        });
+        let dir = std::env::temp_dir().join(format!("kiln-pr-recovery-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("token"), "fixture").unwrap();
+        let hub = GitHub::new(
+            &format!("http://{addr}"),
+            "OpenAgentsInc/openagents",
+            &dir.join("token"),
+        );
+        let found = hub.for_patch(&patch).await.unwrap().unwrap();
+        assert_eq!(found.number, 42);
+        assert_eq!(found.branch, branch(&patch.id));
+        server.join().unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

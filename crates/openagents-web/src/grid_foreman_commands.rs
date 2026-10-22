@@ -233,6 +233,16 @@ pub(crate) async fn remember_owner(store: &Store, account_id: &str) {
 }
 
 /// The worker agent the site saves when none is named.
+pub(super) fn dispatch_brief(brief: String) -> Result<String, &'static str> {
+    match std::env::var("OPENAGENTS_FOREMAN_KILN_STATE") {
+        Ok(state) => {
+            grid_foreman::objectives::kiln_brief(brief, state.trim()).map_err(|_| "foreman_unsetup")
+        }
+        Err(std::env::VarError::NotPresent) => Ok(brief),
+        Err(_) => Err("foreman_unsetup"),
+    }
+}
+
 pub(crate) fn worker_spec() -> openagents_sdk::agents::AgentSpec {
     openagents_sdk::agents::AgentSpec {
         name: "Grid Foreman worker".into(),
@@ -738,10 +748,10 @@ async fn act(
                     agent_revision: definition.revision,
                     host,
                     project,
-                    task: grid_foreman::brief(
+                    task: dispatch_brief(grid_foreman::brief(
                         crate::github_refs::DEFAULT_REPOSITORY,
                         command.issue,
-                    ),
+                    ))?,
                 },
                 chat: None,
             };

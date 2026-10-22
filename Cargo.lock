@@ -10067,6 +10067,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "kiln-host"
+version = "1.0.0"
+dependencies = [
+ "fs2",
+ "grid-foreman",
+ "kiln",
+ "kiln-git",
+ "nostr",
+ "pylon",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "work-host",
+ "workspace-host",
+]
+
+[[package]]
 name = "kiln-runner"
 version = "1.0.0"
 dependencies = [

@@ -10,8 +10,11 @@ The catalog is an authoring source, checked by
 in its build, saves immutable revisions, and reserves each exact app assignment
 before dispatch. The Grid host requests the server-selected objective when
 its complete GitHub read reports no eligible issues. This implementation
-uses the existing app assignment path; it does not publish WORK or AUTO
-artifacts. The Nostr mapping below describes that separate integration.
+uses the existing app assignment path. When native Kiln is configured,
+`kiln-host` imports the same objectives into native WORK history and publishes
+their signed declarations through encrypted Nostr envelopes. The app chat
+consults those records and submits one bounded task to the persistent host.
+Native AUTO scheduling remains a separate integration.
 
 ## Initial objectives
 
@@ -93,9 +96,10 @@ kind `39203` was replaced by WORK objectives in
 `work-host` already implements native WORK history and conditional
 commands; `automation-host` implements bounded schedules and checked
 continuation. Their current execution profiles do not run arbitrary coding
-agents or Kiln. The app-assignment adapter and local catalog importer run through the
-Grid command path. The native WORK/AUTO and Kiln adapters remain
-implementation work. See
+agents or Kiln. The app-assignment adapter and catalog importer run through the
+Grid command path. [`kiln-host`](../../crates/kiln-host/README.md) supplies
+native WORK publication and a separately admitted Kiln executor; it does not
+extend the generic WORK or AUTO executor profiles. See
 [work-host](../../crates/work-host/README.md) and
 [automation-host](../../crates/automation-host/README.md) for their actual
 supported roles.
@@ -108,8 +112,12 @@ owns the checks, benchmark evidence, signed patch, and draft PR links.
 Use one delivery route per attempt: a direct draft PR or the Kiln bridge.
 The bridge must not open a second PR for a change already delivered.
 
-Kiln needs a persistent native host for unattended execution and explicit
-nested-workspace/device profiles before its runner accepts Psionic tasks.
-Those gaps do not block the first app-worker implementation. Merging,
+`kiln-host` persists the shared agent loop, files, and pending commands.
+The runner supports configured root packages and the fixed nested Psionic
+workspace, with separate build state. Native intake checks the exact signed
+objective revision; changing code invalidates its passing test. The host
+publishes the checked patch, obtains the runner's check of that exact event,
+and opens a draft through the existing bridge. GPU profiles still need device
+qualification. Merging,
 deploying, expanding resource budgets, and stopping production model
 processes remain outside this objective catalog's authority.

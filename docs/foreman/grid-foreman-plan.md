@@ -899,8 +899,9 @@ Filed issues:
 ## 14. Standing project objectives and Kiln
 
 Status: the catalog importer and app-assignment dispatch hook implement
-the first slice of the owner's 2026-10-22 direction. Native WORK/AUTO
-publication and Kiln execution remain planned. The objective is ongoing; each task is bounded and ends in
+the first slice of the owner's 2026-10-22 direction. `kiln-host` adds native
+WORK publication and persistent Kiln execution; native AUTO scheduling remains
+separate. The objective is ongoing; each task is bounded and ends in
 evidence and a reviewable change. Foreman selects the next in-scope task
 without asking the owner after every task.
 
@@ -945,8 +946,9 @@ objectives and three proposed additions. Its [Nostr mapping](objectives.md#repre
 uses WORK initiatives for ongoing objectives and child WORK items for
 concrete changes. AUTO supplies finite execution campaigns. No new NIP or
 event kind is required. The server imports its shipped catalog and saves assignment intents before
-dispatch. Native WORK/AUTO and Kiln adapters remain planned; a catalog file
-alone does not grant dispatch authority.
+dispatch. `kiln-host` publishes native WORK declarations and admits bounded
+Kiln jobs under its configured local policy. A catalog file alone does not
+grant dispatch authority; the generic WORK/AUTO effectful adapters remain separate.
 
 Keep these records on the host/account, outside a model's context or a
 browser tab. The Grid, app chat, CLI, and Kiln use the same work IDs.

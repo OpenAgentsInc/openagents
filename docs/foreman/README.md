@@ -63,8 +63,12 @@ from the five active [standing objectives](objectives.md). The saved worker
 uses Codex; its runtime setting overrides the factory's Claude default.
 The first objective produced [draft PR #12493](https://github.com/OpenAgentsInc/openagents/pull/12493),
 a Psionic CPU decoding fix with a failing baseline regression and 21 passing
-package tests. Delivery stays draft-only. Native WORK/AUTO publication and
-the persistent Kiln executor remain separate integrations.
+package tests. Delivery stays draft-only. When
+`OPENAGENTS_FOREMAN_KILN_STATE` is configured, the app chat consults signed
+native WORK objectives and submits coding to the persistent
+[`kiln-host`](../../crates/kiln-host/README.md). Kiln edits, obtains remote
+checks, publishes a NIP-34 patch, and opens the draft through the existing
+bridge. Native AUTO scheduling remains separate.
 
 ## In this folder
 

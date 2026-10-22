@@ -65,6 +65,35 @@ pub fn digest(bytes: &[u8]) -> String {
         .map(|b| format!("{b:02x}"))
         .collect()
 }
+
+/// Select the native delivery route only after the operator configures its state.
+pub fn kiln_brief(brief: String, state: &str) -> Result<String, String> {
+    if !state.starts_with('/')
+        || state.len() > 256
+        || state.split('/').any(|p| p == ".." || p == ".")
+        || !state
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"/_-.".contains(&b))
+    {
+        return Err("invalid native Kiln state path".into());
+    }
+    Ok(format!(
+        "{brief}\n\nOWNER EXECUTION ROUTE: Native Kiln. This replaces the direct editing, local-worktree, commit/push, and gh-pr-create steps above. Keep investigation and the single issue claim in this app chat; do not edit product code yourself. First run `kiln-host profile --state {state}` and consult the actual signed objective with `kiln-host objectives --state {state} --objective OBJECTIVE_SLUG`. Choose a useful task inside that objective and the admitted crate list. Do not substitute a cosmetic task or a different objective when a profile is unavailable; report the missing capability. Save a task JSON with exactly {{\"id\":\"64-hex-stable-attempt-ID\",\"objective\":\"OBJECTIVE_SLUG\",\"issue\":123,\"base\":\"40-hex-origin-main-commit\",\"krate\":\"admitted-package\",\"text\":\"bounded problem, evidence, expected behavior, and regression/check plan\"}}. Use the same task ID on retries. Submit with `kiln-host submit --state {state} --input TASK.json`. The persistent Kiln service performs all edits, Pylon inference, remote tests, NIP-34 publication, and draft PR creation. Read `kiln-host status --state {state} --id ID` until its terminal result; report the existing PR URL and exact checks in this chat. Never create a parallel PR, bypass Kiln, or retry an unknown result under a new ID. A stopped, failed, or unknown attempt requires inspection and release of your issue claim. Do not merge or deploy.\n"
+    ))
+}
+
+#[cfg(test)]
+mod native_route_tests {
+    #[test]
+    fn native_delivery_is_explicit_and_uses_a_plain_absolute_state_path() {
+        let brief = super::kiln_brief("Improve Kiln".into(), "/var/lib/kiln-foreman").unwrap();
+        assert!(brief.contains("kiln-host submit"));
+        assert!(brief.contains("Never create a parallel PR"));
+        for path in ["", "relative", "/var/../root", "/state;echo", "/a\ncommand"] {
+            assert!(super::kiln_brief("task".into(), path).is_err());
+        }
+    }
+}
 fn strings(values: &[String]) -> bool {
     !values.is_empty()
         && values.len() <= 32

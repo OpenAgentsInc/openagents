@@ -109,8 +109,15 @@ When a group refuses a prompt for its length (the DeepSeek groups take
 2,872 prompt tokens), the step is cut to fit and sent again, and later
 steps are cut before they're sent: the cut keeps the task and the files in
 view, and the latest steps. The terminal names the group that answered
-each step, and `summary.json` lists them under `pylon_answers`. The buyer
-key is new for each run; `--pylon-key home` uses the Pylon home's
+each step, and `summary.json` lists them under `pylon_answers`. It also
+records each router result in `pylon_attempts`, including refusals and
+cases with no available provider. `pylon_usage` reports aggregate Pylon
+token counts; a count is `null` if any model call did not report it. A reported
+zero stays zero, and router results that sent no model call do not affect the
+totals. Local prompt-fit refusals appear as `not_sent` with zero usage.
+Use these fields instead of treating missing token counts in the
+shared loop record as zero. The buyer key is new for each run;
+`--pylon-key home` uses the Pylon home's
 `buyer.key` instead, and receipts go to the Pylon home
 (`OPENAGENTS_PYLON_HOME`, else `~/.openagents/compute`) either way.
 `--relay` names another relay. A free job bills nothing, so the model's

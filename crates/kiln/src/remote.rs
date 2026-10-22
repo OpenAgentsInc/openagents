@@ -164,12 +164,32 @@ pub fn parse_crates(text: &str) -> Result<Vec<CrateLimit>, String> {
     Ok(out)
 }
 
-/// The crates a set of repository paths falls in (`crates/NAME/...`).
+/// The two admitted workspace layouts; this is not a caller-supplied path.
+pub fn crate_directory(name: &str) -> String {
+    if name.starts_with("psionic-") {
+        format!("crates/psionic/crates/{name}")
+    } else {
+        format!("crates/{name}")
+    }
+}
+
+pub fn cargo_manifest(args: &[String]) -> Result<Option<&'static str>, String> {
+    let names = named_crates(args);
+    let nested = names.iter().filter(|n| n.starts_with("psionic-")).count();
+    if nested > 0 && nested != names.len() {
+        return Err("one runner job must stay in one Cargo workspace".into());
+    }
+    Ok((nested > 0).then_some("crates/psionic/Cargo.toml"))
+}
+
+/// The packages changed by paths in the root or nested Psionic workspace.
 #[must_use]
 pub fn touched_crates<'a>(paths: impl IntoIterator<Item = &'a String>) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for path in paths {
-        if let Some(rest) = path.strip_prefix("crates/")
+        if let Some(rest) = path
+            .strip_prefix("crates/psionic/crates/")
+            .or_else(|| path.strip_prefix("crates/"))
             && let Some((name, _)) = rest.split_once('/')
             && !out.iter().any(|c| c == name)
         {
@@ -254,6 +274,7 @@ pub fn parse_command(argv: &[String], crates: &[String]) -> Result<Vec<String>, 
     if named == 0 {
         return Err("name the crate: `cargo test -p CRATE`".into());
     }
+    cargo_manifest(&args)?;
     let rest = &args[i..];
     match rest.first().map(String::as_str) {
         None => {}
@@ -306,7 +327,7 @@ impl Job {
             touched.extend(patch_paths(diff));
         }
         if let Some(patch) = &self.patch {
-            if !self.files.is_empty() || !self.deleted.is_empty() {
+            if !self.files.is_empty() || !self.deleted.is_empty() || self.diff.is_some() {
                 return Err("a patch job carries no other files".into());
             }
             if patch.kind != crate::patch::PATCH_KIND || patch.validate_crypto().is_err() {
@@ -339,7 +360,7 @@ impl Job {
         for path in &touched {
             let inside = crates
                 .iter()
-                .any(|c| path.starts_with(&format!("crates/{c}/")));
+                .any(|c| path.starts_with(&format!("{}/", crate_directory(c))));
             let plain = path
                 .split('/')
                 .all(|p| !p.is_empty() && p != "." && p != "..")
@@ -414,6 +435,41 @@ pub fn trim_log(log: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn nested_psionic_jobs_use_their_workspace_and_stay_inside_it() {
+        use super::*;
+        let name = "psionic-backend-cpu".to_string();
+        let path = "crates/psionic/crates/psionic-backend-cpu/src/lib.rs".to_string();
+        let mut j = Job {
+            v: JOB_V.into(),
+            base: "22".repeat(20),
+            args: vec!["test".into(), "-p".into(), name.clone()],
+            files: [(path.clone(), "source".into())].into(),
+            deleted: vec![],
+            patch: None,
+            action: None,
+            diff: None,
+        };
+        assert_eq!(touched_crates([&path]), [name.clone()]);
+        assert_eq!(
+            cargo_manifest(&j.args).unwrap(),
+            Some("crates/psionic/Cargo.toml")
+        );
+        j.check(std::slice::from_ref(&name)).unwrap();
+        j.files
+            .insert("crates/pylon/src/lib.rs".into(), "outside".into());
+        assert!(j.check(std::slice::from_ref(&name)).is_err());
+        assert!(
+            cargo_manifest(&[
+                "test".into(),
+                "-p".into(),
+                name,
+                "-p".into(),
+                "pylon".into()
+            ])
+            .is_err()
+        );
+    }
     use super::*;
 
     #[test]
