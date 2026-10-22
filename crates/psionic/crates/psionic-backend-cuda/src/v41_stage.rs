@@ -578,6 +578,8 @@ impl V41StageConfig {
 /// Optional ways a stage holds its largest tensors in host memory.
 #[derive(Clone, Default)]
 pub struct V41StageOptions {
+    /// Reuse the backbone embedding for a DSpark draft block.
+    pub shared_embedding: Option<CudaBuffer>,
     /// A device cache of routed experts (#12463).
     pub expert_cache: Option<crate::v41_expert_cache::V41ExpertCacheSetup>,
     /// Read Engram rows from this source a step at a time instead of from
@@ -1120,6 +1122,7 @@ struct Work {
 
 /// A loaded stage. See the module documentation.
 pub struct V41Stage {
+    dspark: Option<dspark::Capture>,
     /// Declared first so its threads stop before the weights they read are
     /// freed.
     expert_cache: Option<ExpertCache>,
@@ -1461,6 +1464,7 @@ impl V41Stage {
         options: V41StageOptions,
     ) -> Result<Self, RuntimeError> {
         let V41StageOptions {
+            shared_embedding,
             expert_cache: cache,
             engram_rows,
             batched_prefill,
@@ -1760,7 +1764,10 @@ impl V41Stage {
         }
         let (bytes, params) = (loader.bytes, loader.params);
         let embed = if config.embeds() {
-            Some(loader.bf16_words("embed.weight", &[shape.vocabulary, h])?)
+            Some(match shared_embedding {
+                Some(buffer) => buffer,
+                None => loader.bf16_words("embed.weight", &[shape.vocabulary, h])?,
+            })
         } else {
             None
         };
@@ -2073,6 +2080,7 @@ impl V41Stage {
         };
         let requested = expert_cache.as_ref().map(|c| c.config.miss_lane);
         let mut stage = Self {
+            dspark: None,
             expert_cache,
             engram_staging,
             prefill,
@@ -2551,6 +2559,9 @@ impl V41Stage {
                 ob(s, V41Site::EngramOut, &wk.residual[cur])?;
             }
             ob(s, V41Site::HcIn, &wk.residual[cur])?;
+            if let Some(capture) = &self.dspark {
+                capture.record(s, layer, &wk.residual[cur], &wk.positions, 1)?;
+            }
             // Attention sub-block.
             s.v41_hc_mixes(
                 shape.hc,
@@ -3684,6 +3695,9 @@ impl V41Stage {
 
 #[path = "v41_stage_prefill.rs"]
 mod prefill;
+
+#[path = "v41_stage_dspark.rs"]
+pub mod dspark;
 
 #[cfg(test)]
 #[path = "v41_stage_tests.rs"]

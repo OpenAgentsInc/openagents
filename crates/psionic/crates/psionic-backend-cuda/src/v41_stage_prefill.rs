@@ -987,6 +987,9 @@ impl V41Stage {
                 let mut s = backend.begin_submission()?;
                 s.set_v41_fast_reductions(self.fast_reductions);
                 s.set_v41_packed_kv(self.packed_kv);
+                if let Some(capture) = &self.dspark {
+                    capture.record(&mut s, lw.layer, r[cur], &p.pos, tokens)?;
+                }
                 if let Some(eng) = &lw.engram {
                     let rows = tokens * V41_ENGRAM_COLUMNS;
                     let (ids, table) = match &self.engram_staging {
@@ -1511,6 +1514,9 @@ impl V41Stage {
             &p.mf
         };
         let residual = if cur == 0 { &p.r } else { &p.r2 };
+        if let Some(capture) = &self.dspark {
+            capture.keep_tail(&mut s, residual, previous, tokens)?;
+        }
         if c.samples() {
             s.copy_buffer_region(
                 residual,

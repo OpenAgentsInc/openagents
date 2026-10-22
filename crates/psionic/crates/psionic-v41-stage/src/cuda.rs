@@ -27,6 +27,7 @@
 
 pub mod chain;
 pub mod consumer_q;
+pub mod dspark;
 pub mod synthetic;
 pub mod tiers;
 

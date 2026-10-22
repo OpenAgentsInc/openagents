@@ -477,3 +477,28 @@ extern "C" int psionic_v41_candidate_flags_tokens(
         capacity);
     return static_cast<int>(cudaGetLastError());
 }
+
+// DSpark reads the mean of the backbone streams before layers 37-39.
+__global__ void v41_dspark_mean_kernel(const float* input, float* output,
+    const int* positions, int tokens, int streams, int hidden, int window, int slot) {
+    const long long n = static_cast<long long>(tokens) * hidden;
+    for (long long j = static_cast<long long>(blockIdx.x) * blockDim.x + threadIdx.x;
+         j < n; j += static_cast<long long>(gridDim.x) * blockDim.x) {
+        const int t = j / hidden, d = j % hidden;
+        if (t < tokens - window) continue;
+        float value = 0;
+        for (int k = 0; k < streams; ++k)
+            value += input[(static_cast<long long>(t) * streams + k) * hidden + d];
+        value /= streams;
+        unsigned bits = __float_as_uint(value);
+        bits = (bits + 0x7fffU + ((bits >> 16) & 1U)) & 0xffff0000U;
+        output[(static_cast<long long>(positions[t] % window) * 3 + slot) * hidden + d] = __uint_as_float(bits);
+    }
+}
+extern "C" int psionic_v41_dspark_mean(const void* input, void* output,
+    const void* positions, int tokens, int streams, int hidden, int window, int slot, void* stream) {
+    v41_dspark_mean_kernel<<<blocks_for(static_cast<long long>(tokens) * hidden, kThreads), kThreads, 0,
+        static_cast<cudaStream_t>(stream)>>>(static_cast<const float*>(input),
+        static_cast<float*>(output), static_cast<const int*>(positions), tokens, streams, hidden, window, slot);
+    return static_cast<int>(cudaGetLastError());
+}

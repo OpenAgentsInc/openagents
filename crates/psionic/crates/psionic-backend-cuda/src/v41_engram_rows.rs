@@ -236,6 +236,14 @@ impl Out {
 }
 
 impl EngramStaging {
+    pub(crate) fn checkpoint(&self) -> ([u32; 3], usize) {
+        (self.hasher.history, self.hasher.count)
+    }
+
+    pub(crate) fn restore(&mut self, state: ([u32; 3], usize)) {
+        (self.hasher.history, self.hasher.count) = state;
+    }
+
     pub(crate) fn new(
         backend: &mut CudaBackend,
         source: Arc<dyn V41EngramRows>,

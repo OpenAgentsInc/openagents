@@ -86,6 +86,8 @@ pub const CHAIN_SCHEMA: &str = "openagents.deepseek_v41.chain_run.v1";
 /// What `chain` was asked to do.
 #[derive(Clone, Debug)]
 pub struct ChainOptions {
+    /// Use the checkpoint's DSpark draft blocks on a single GPU.
+    pub dspark: bool,
     pub weights: PathBuf,
     pub split: Vec<Range<u32>>,
     pub gpus: Vec<usize>,
@@ -191,6 +193,7 @@ impl ChainOptions {
         };
         let mode = flag(args, "--mode").map_or(Ok(PromptMode::Thinking), PromptMode::parse)?;
         Ok(Self {
+            dspark: args.iter().any(|a| a == "--dspark"),
             weights,
             split,
             gpus,
@@ -718,6 +721,9 @@ fn text_side(weights: &Path) -> Result<(Vocabulary, u32, u32), Refused> {
 /// Any refusal of a stage, the model, or the prompt.
 #[allow(clippy::too_many_lines)]
 pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
+    if options.dspark {
+        return super::dspark::run(options);
+    }
     let manifest = checkpoint_manifest(&options.split, &options.gpus)?;
     let keep = |name: &str, bytes: &[u8]| -> Result<(), Refused> {
         if let Some(dir) = &options.capture {

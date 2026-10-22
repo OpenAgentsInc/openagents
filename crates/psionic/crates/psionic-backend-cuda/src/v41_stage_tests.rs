@@ -1442,6 +1442,7 @@ fn load_cached_stage(
         store,
         tables,
         V41StageOptions {
+            shared_embedding: None,
             expert_cache: Some(setup),
             engram_rows: None,
             batched_prefill: false,
@@ -1672,6 +1673,7 @@ fn staged_engram_rows_equal_pinned_tables() -> TestResult {
     cache.miss_lane = V41MissLane::Host;
     let variants = [
         V41StageOptions {
+            shared_embedding: None,
             expert_cache: None,
             engram_rows: Some(rows.clone()),
             batched_prefill: false,
@@ -1679,6 +1681,7 @@ fn staged_engram_rows_equal_pinned_tables() -> TestResult {
             packed_kv: false,
         },
         V41StageOptions {
+            shared_embedding: None,
             expert_cache: Some(V41ExpertCacheSetup {
                 config: cache,
                 host: Some(experts),
@@ -1877,6 +1880,7 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
             "batched, uncached experts streamed through a ring",
             false,
             V41StageOptions {
+                shared_embedding: None,
                 batched_prefill: true,
                 engram_rows: Some(rows.clone()),
                 expert_cache: Some(V41ExpertCacheSetup {
@@ -1891,6 +1895,7 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
             "batched",
             false,
             V41StageOptions {
+                shared_embedding: None,
                 batched_prefill: true,
                 ..V41StageOptions::default()
             },
@@ -1899,6 +1904,7 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
             "packed KV rows (#12471)",
             false,
             V41StageOptions {
+                shared_embedding: None,
                 packed_kv: true,
                 ..V41StageOptions::default()
             },
@@ -1907,6 +1913,7 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
             "batched, packed KV rows (#12471)",
             false,
             V41StageOptions {
+                shared_embedding: None,
                 batched_prefill: true,
                 packed_kv: true,
                 ..V41StageOptions::default()
@@ -1916,6 +1923,7 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
             "batched, staged Engram",
             false,
             V41StageOptions {
+                shared_embedding: None,
                 batched_prefill: true,
                 engram_rows: Some(rows.clone()),
                 ..V41StageOptions::default()
@@ -1925,6 +1933,7 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
             "batched, cached experts on the bus",
             true,
             V41StageOptions {
+                shared_embedding: None,
                 batched_prefill: true,
                 expert_cache: Some(V41ExpertCacheSetup {
                     config: cache,
@@ -1963,6 +1972,7 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
                 layers.clone(),
                 false,
                 V41StageOptions {
+                    shared_embedding: None,
                     batched_prefill: true,
                     ..V41StageOptions::default()
                 },
@@ -2116,6 +2126,7 @@ fn layer_major_prefill_first_difference() -> TestResult {
             0..end,
             false,
             V41StageOptions {
+                shared_embedding: None,
                 batched_prefill: true,
                 ..V41StageOptions::default()
             },
@@ -2269,6 +2280,7 @@ fn consumer_q_tiers_agree() -> TestResult {
                 staging: 8,
             };
             V41StageOptions {
+                shared_embedding: None,
                 expert_cache: Some(V41ExpertCacheSetup {
                     config: c,
                     host: Some(q.clone()),
@@ -2401,11 +2413,182 @@ fn consumer_q_tiers_agree() -> TestResult {
         0..40,
         false,
         V41StageOptions {
+            shared_embedding: None,
             fast_reductions: true,
             packed_kv: false,
             ..V41StageOptions::default()
         },
     );
     assert!(refused.is_err());
+    Ok(())
+}
+
+/// Partial acceptance restores ring wrap, both compressor phases, shared
+/// compressed sources, selections, and both forms of Engram history.
+#[test]
+fn dspark_rejected_suffix_does_not_change_the_next_token() -> TestResult {
+    use crate::v41_engram_rows::{V41EngramRows, V41OwnedEngram};
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let store = synthetic_store(73);
+    let rows: Arc<dyn V41EngramRows> =
+        Arc::new(V41OwnedEngram::from_source(&store, &[1, 14], ENGRAM_WIDTH)?);
+    for packed in [false, true] {
+        for end in [7, 8, 9, 15, 16, 17] {
+            let prompt: Vec<u32> = (0..end).map(|i| ((i * 13 + 7) % VOCAB) as u32).collect();
+            for accepted in [0, 1, 3, 5] {
+                let options = || V41StageOptions {
+                    batched_prefill: true,
+                    packed_kv: packed,
+                    engram_rows: Some(rows.clone()),
+                    ..V41StageOptions::default()
+                };
+                let mut plain = load_with_options(&mut backend, &store, 0..40, false, options())?;
+                let mut speculative =
+                    load_with_options(&mut backend, &store, 0..40, false, options())?;
+                speculative.enable_dspark(&mut backend)?;
+                let input = |position, tokens| V41StepInput {
+                    position,
+                    tokens,
+                    residual: None,
+                    pre_mix: None,
+                    source_rows: None,
+                    selection: None,
+                    candidates: None,
+                    sampling: V41Sampling::greedy(),
+                };
+                plain.step(&backend, &input(0, &prompt), false)?;
+                speculative.step(&backend, &input(0, &prompt), false)?;
+                let snapshot = speculative.dspark_snapshot(&mut backend)?;
+                let draft = [2, 5, 7, 11, 13, 17];
+                let target = speculative.verify_dspark(&backend, end, &draft)?;
+                // Every batched verifier row equals an ordinary target step.
+                for (i, token) in draft.iter().enumerate() {
+                    plain.step(
+                        &backend,
+                        &input(end + i, std::slice::from_ref(token)),
+                        false,
+                    )?;
+                    assert_eq!(
+                        plain.logits()?,
+                        target[i],
+                        "packed={packed}, end={end}, verifier row={i}"
+                    );
+                }
+                // Replay the shorter accepted prefix in both stages, then
+                // continue on real tokens. A rejected suffix must leave no
+                // differences, including after the next compression group.
+                speculative.restore_dspark(&backend, &snapshot)?;
+                plain.step(&backend, &input(0, &prompt), false)?;
+                let prefix = &draft[..accepted + 1];
+                plain.step(&backend, &input(end, prefix), false)?;
+                speculative.step(&backend, &input(end, prefix), false)?;
+                for (i, token) in [31, 29, 23].iter().enumerate() {
+                    let position = end + prefix.len() + i;
+                    let a = plain.step(
+                        &backend,
+                        &input(position, std::slice::from_ref(token)),
+                        false,
+                    )?;
+                    let b = speculative.step(
+                        &backend,
+                        &input(position, std::slice::from_ref(token)),
+                        false,
+                    )?;
+                    assert_eq!(
+                        a.token, b.token,
+                        "packed={packed}, end={end}, accepted={accepted}"
+                    );
+                    assert_eq!(plain.logits()?, speculative.logits()?);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The matching MTP namespace loads all three CUDA blocks, and proposals
+/// read accepted backbone features without changing the backbone state.
+#[test]
+fn dspark_cuda_blocks_and_heads_propose_finite_logits() -> TestResult {
+    use super::dspark::{BLOCK, Drafter};
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let mut store = synthetic_store(79);
+    let mut rng = Rng(83);
+    let h = shape().hidden;
+    let rank = 32;
+    let tensors: Vec<_> = store
+        .tensors
+        .iter()
+        .filter_map(|(name, t)| {
+            name.strip_prefix("layers.0.")
+                .map(|suffix| (suffix.to_owned(), t.clone()))
+        })
+        .collect();
+    for layer in 0..3 {
+        for (name, tensor) in &tensors {
+            store
+                .tensors
+                .insert(format!("mtp.{layer}.{name}"), tensor.clone());
+        }
+    }
+    store.fp8("mtp.0.main_proj", h, 3 * h, &mut rng, 0.02);
+    store.bf16s("mtp.0.main_norm.weight".into(), vec![h], &vec![1.0; h]);
+    store.bf16s("mtp.2.norm.weight".into(), vec![h], &vec![1.0; h]);
+    for name in ["embed", "head"] {
+        let values: Vec<f32> = (0..VOCAB * rank).map(|_| rng.unit() * 0.02).collect();
+        store.bf16s(
+            format!("mtp.2.markov_head.{name}.weight"),
+            vec![VOCAB, rank],
+            &values,
+        );
+    }
+    store.bf16s(
+        "mtp.2.confidence_head.proj.weight".into(),
+        vec![1, h + rank],
+        &vec![0.01; h + rank],
+    );
+    let mut main = load_with_options(
+        &mut backend,
+        &store,
+        0..40,
+        false,
+        V41StageOptions {
+            batched_prefill: true,
+            ..V41StageOptions::default()
+        },
+    )?;
+    main.enable_dspark(&mut backend)?;
+    let mut drafter = Drafter::load(&mut backend, &main, &store, rank, 0)?;
+    let (prompt, _) = tokens();
+    let input = V41StepInput {
+        position: 0,
+        tokens: &prompt,
+        residual: None,
+        pre_mix: None,
+        source_rows: None,
+        selection: None,
+        candidates: None,
+        sampling: V41Sampling::greedy(),
+    };
+    let out = main.step(&backend, &input, false)?;
+    let before = main.logits()?;
+    let mut proposal = drafter.forward(&backend, &main, prompt.len(), out.token.ok_or("token")?)?;
+    assert_eq!(proposal.logits.len(), BLOCK);
+    for i in 0..BLOCK {
+        let confidence = drafter.finish_token(
+            &backend,
+            3,
+            &proposal.confidence[i * h..(i + 1) * h],
+            &mut proposal.logits[i],
+        )?;
+        assert!(confidence.is_finite());
+        assert_eq!(proposal.logits[i].len(), VOCAB);
+        assert!(proposal.logits[i].iter().all(|v| v.is_finite()));
+    }
+    assert_eq!(before, main.logits()?);
     Ok(())
 }
