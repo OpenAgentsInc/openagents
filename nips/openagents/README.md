@@ -313,6 +313,7 @@ a synthetic vault run with a verified Google-attested HPKE endpoint.
 | [NIP-MV](NIP-MV.md) | Shared 3D worlds: ephemeral pose frames and gestures, durable entity state, world definitions, and cell-scoped subscriptions. Its optional runtime-loaded scene manifest and rules profile are Designed; Verse's curated local zones are not general world discovery. Standalone: it depends on no other contract here. | `23300`, `23301`, `23302`, `33300`, `33301`. |
 | [NIP-PYLON](NIP-PYLON.md) | Partially implemented compute pylons and pools: a provider's opt-in public beacon with coarse class and free slots, buyer-signed service receipts with digests and proof-free seller/broker payment acknowledgments, recomputable pool aggregates, NIP-32 check verdicts, and the rules a world follows to draw them. | `30200`, `30201`, `3201`; NIP-32 `1985` labels. |
 | [NIP-ATT](NIP-ATT.md) | Confidential Space implementation of attested workloads, plus fixture-tested client verification of raw TDX, SEV-SNP and NRAS GPU evidence (`att-platforms`) HPKE carriage with per-chunk sealed output (`att-seal`), and Rekor, rebuild, approval-set and sealed-receipt verification (`att-release`); other roles remain designed: public releases with measurements, sources, rebuilds, and Rekor entries; release heads with notice delays and rollback refusal; attested endpoint keys bound into TEE evidence; evidence-computed levels (`open`, `hardened`, `tee`, `tee-cloud`); sealed CJ/DEC jobs with ciphertext-digest receipts. | `3202`, `3203`, `30202`, `30203`; sealed jobs on CJ/DEC. |
+| [NIP-DEPLOY](NIP-DEPLOY.md) | Implemented public deploy status: a signed event for each phase of a staging or production build and deploy, and a lane head for each environment, from one announcer key. The Grid's build billboard reads them. | `3205`, `30205`. |
 | [NIP-VAULT](NIP-VAULT.md) | Device-only `user` tier implemented; `sealed` tier implemented in Rust (`oa-vault` wraps, `vault-sealed` client and attested workload; deployment pending); `operator` tier implemented as a labeled, audited custody profile (`vault-operator`): chunked AES-256-GCM objects, `user` / `sealed` (HPKE mode_psk to an attested system key plus the person's share) / `operator` wraps, key slots, key indexes for crypto-shredding, and session, request, lease, and revoke formats. | No new kinds; blobs by digest; slots and leases on shared `3188`. |
 
 Discovery heads are mutable. Exact signed records and artifact digests pin
@@ -368,6 +369,7 @@ NIP-32 `1985` labels or Block `24200` frames, aren't claims.
 | `3202` | [NIP-ATT](NIP-ATT.md) | Attested workload release |
 | `3203` | [NIP-ATT](NIP-ATT.md) | Independent rebuild statement |
 | `3204` | [NIP-AGENT](NIP-AGENT.md) | Owner-published gateway execution receipt |
+| `3205` | [NIP-DEPLOY](NIP-DEPLOY.md) | Deploy phase event |
 | `13193` | [NIP-XP](NIP-XP.md) | Trainer profile |
 | `13195` | [NIP-XP](NIP-XP.md) | Key link |
 | `23300` | [NIP-MV](NIP-MV.md) | Pose frame |
@@ -399,6 +401,7 @@ NIP-32 `1985` labels or Block `24200` frames, aren't claims.
 | `30201` | [NIP-PYLON](NIP-PYLON.md) | Pool aggregate |
 | `30202` | [NIP-ATT](NIP-ATT.md) | Release head |
 | `30203` | [NIP-ATT](NIP-ATT.md) | Attested endpoint |
+| `30205` | [NIP-DEPLOY](NIP-DEPLOY.md) | Deploy lane head |
 | `33300` | [NIP-MV](NIP-MV.md) | World definition |
 | `33301` | [NIP-MV](NIP-MV.md) | Entity state |
 

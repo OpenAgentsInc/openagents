@@ -107,10 +107,14 @@ pub const ATT_RELEASE: u16 = 3_202;
 pub const ATT_REBUILD: u16 = 3_203;
 /// NIP-AGENT owner-published gateway execution receipt.
 pub const AGENT_GATEWAY_RECEIPT: u16 = 3_204;
+/// NIP-DEPLOY deploy phase event.
+pub const DEPLOY_PHASE: u16 = 3_205;
 /// NIP-ATT release head.
 pub const ATT_HEAD: u16 = 30_202;
 /// NIP-ATT attested endpoint.
 pub const ATT_ENDPOINT: u16 = 30_203;
+/// NIP-DEPLOY lane head.
+pub const DEPLOY_HEAD: u16 = 30_205;
 /// NIP-PYLON pylon beacon.
 pub const PYLON_BEACON: u16 = 30_200;
 /// NIP-PYLON pool aggregate.
@@ -168,6 +172,7 @@ pub const REGISTRY: &[Claim] = &[
         "NIP-AGENT",
         "Owner-published gateway execution receipt",
     ),
+    claim(DEPLOY_PHASE, "NIP-DEPLOY", "Deploy phase event"),
     claim(XP_PROFILE, "NIP-XP", "Trainer profile"),
     claim(XP_LINK, "NIP-XP", "Key link"),
     claim(MV_FRAME, "NIP-MV", "Pose frame"),
@@ -223,6 +228,7 @@ pub const REGISTRY: &[Claim] = &[
     claim(PYLON_POOL, "NIP-PYLON", "Pool aggregate"),
     claim(ATT_HEAD, "NIP-ATT", "Release head"),
     claim(ATT_ENDPOINT, "NIP-ATT", "Attested endpoint"),
+    claim(DEPLOY_HEAD, "NIP-DEPLOY", "Deploy lane head"),
     claim(MV_WORLD, "NIP-MV", "World definition"),
     claim(MV_STATE, "NIP-MV", "Entity state"),
 ];

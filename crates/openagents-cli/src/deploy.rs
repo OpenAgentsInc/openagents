@@ -37,6 +37,8 @@ pub(crate) const USAGE: &str = "usage: openagents deploy COMMAND
   production DIGEST [--approval ID]
               Promote that digest: a revision with no traffic, the production
               smoke test against it, then all of openagents.com's traffic.
+  event --env ENV --phase PHASE --run RUN [OPTIONS]
+              Publish one deploy status for the Grid's build billboard.
 Ships the website (scripts/deploy/web.sh) from a checkout of the openagents
 repository. Production waits for the owner: --approval ID (an approval Coder
 recorded for exactly this digest, used once), or yes typed at this terminal.
@@ -48,6 +50,7 @@ Deny, or a failed smoke, leaves production as it is. The approval policy is
 pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("staging", Effect::Publishes),
     Declared::computer("production", Effect::Publishes),
+    Declared::computer("event", Effect::Publishes),
 ];
 
 /// The no-traffic revision's address, which `web.sh promote` prints.
@@ -61,6 +64,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         } else {
             0
         };
+    }
+    if words[0] == "event" {
+        return crate::deploy_event::run(output, &words[1..]);
     }
     let args = match Args::parse(words, &["keep-spec"]) {
         Ok(args) => args,

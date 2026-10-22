@@ -43,6 +43,7 @@ mod connect;
 mod connections;
 mod customer;
 mod deploy;
+mod deploy_event;
 mod discover;
 mod dm;
 mod efficiency;

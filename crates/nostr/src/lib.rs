@@ -24,6 +24,7 @@ pub mod contracts;
 pub mod control;
 pub mod coordination;
 pub mod decision;
+pub mod deploy;
 pub mod domain;
 pub mod earnings;
 pub mod engram;
