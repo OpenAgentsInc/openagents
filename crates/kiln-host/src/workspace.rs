@@ -57,6 +57,8 @@ impl Config {
 }
 fn normalized(path: &str) -> Result<()> {
     if path.is_empty()
+        || path.len() > 1024
+        || path.split('/').count() > 32
         || path.starts_with('/')
         || path.contains(['\\', '\0', ':'])
         || path.chars().any(char::is_control)
@@ -173,13 +175,33 @@ impl Workspace {
         {
             return Err("edit is outside the configured text-file scope".into());
         }
+        let mut ancestor = path;
+        while let Some((parent, _)) = ancestor.rsplit_once('/') {
+            if self.files.contains_key(parent) {
+                return Err("a file cannot contain another file".into());
+            }
+            let entry = git(
+                &self.config.repo,
+                &["ls-tree", &self.config.base, "--", parent],
+            )?;
+            if !entry.is_empty() && !entry.starts_with("040000 tree ") {
+                return Err("edit has a non-directory ancestor at the pinned base".into());
+            }
+            ancestor = parent;
+        }
         if !self.original.contains_key(path) {
             let entries = git(
                 &self.config.repo,
                 &["ls-tree", &self.config.base, "--", path],
             )?;
             if !entries.is_empty() {
-                self.original.insert(path.into(), self.read(path)?);
+                let original = self.read(path)?;
+                if self.original.values().map(String::len).sum::<usize>() + original.len()
+                    > 2_000_000
+                {
+                    return Err("original files exceed the workspace limit".into());
+                }
+                self.original.insert(path.into(), original);
             }
         }
         let next_size = self
@@ -572,7 +594,26 @@ mod tests {
         assert_eq!(w.read("apps/haunt-preview/source.ts").unwrap(), "committed");
         #[cfg(unix)]
         assert!(w.read("apps/haunt-preview/link").is_err());
+        #[cfg(unix)]
+        assert!(
+            w.edit("apps/haunt-preview/link/new.ts", "must not escape".into())
+                .is_err()
+        );
+        assert!(
+            w.edit(
+                "apps/haunt-preview/source.ts/nested.ts",
+                "invalid ancestor".into()
+            )
+            .is_err()
+        );
         w.edit("apps/haunt-preview/new.ts", "new".into()).unwrap();
+        assert!(
+            w.edit(
+                "apps/haunt-preview/new.ts/nested.ts",
+                "invalid overlay ancestor".into()
+            )
+            .is_err()
+        );
         w.edit("apps/haunt-preview/source.ts", "changed".into())
             .unwrap();
         assert_eq!(w.original["apps/haunt-preview/source.ts"], "committed");
