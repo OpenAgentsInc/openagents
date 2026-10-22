@@ -712,6 +712,92 @@ fn exact_sums_match_the_cpu_path_bit_for_bit() -> TestResult {
     Ok(())
 }
 
+/// A measured B200 row where sequential F32 block sums round to the wrong
+/// BF16 value, plus the independent CPU model's eight-rank partial sum.
+#[test]
+fn reference_fp8_order_matches_the_measured_b200_row() -> TestResult {
+    let fixture: serde_json::Value = serde_json::from_str(include_str!(
+        "../../psionic-models/src/testdata/deepseek_v41_cpu/sm100_gemm.json"
+    ))?;
+    let row = &fixture["wq_b"];
+    let decode = |v: &serde_json::Value| -> Result<Vec<f32>, Box<dyn Error>> {
+        Ok(hex::decode(v.as_str().ok_or("missing BF16 fixture")?)?
+            .chunks_exact(2)
+            .map(|b| decode_bf16([b[0], b[1]]))
+            .collect())
+    };
+    let input = decode(&row["input_bf16"])?;
+    let original_weights = decode(&row["weights_bf16"])?;
+    let quant_weights = quantize(&original_weights, Quantization::Fp8)?;
+    assert_eq!(quant_weights.dequantize()?, original_weights);
+    let packed = Packed {
+        format: V41MatvecFormat::Fp8Block32x32,
+        rows: 1,
+        cols: input.len(),
+        weights: quant_weights.codes().to_vec(),
+        scales: quant_weights.scales().to_vec(),
+    };
+    let expected = row["expected"].as_f64().ok_or("missing expected value")? as f32;
+    assert_eq!(
+        linear(&packed, &input, Arithmetic::ReferenceBf16Tp8)?,
+        vec![expected]
+    );
+    assert_ne!(
+        linear(&packed, &input, Arithmetic::ReferenceBf16)?,
+        vec![expected]
+    );
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let w = backend.byte_buffer(&packed.weights)?;
+    let ws = backend.byte_buffer(&packed.scales)?;
+    let quant_input = quantize(&round_bf16(&input)?, Quantization::Fp8)?;
+    let x = backend.byte_buffer(quant_input.codes())?;
+    let xs = backend.byte_buffer(quant_input.scales())?;
+    let out = f32_buffer(&mut backend, 1)?;
+    let matrix = V41Matrix {
+        format: packed.format,
+        weights: &w,
+        scales: &ws,
+        rows: 1,
+        cols: packed.cols,
+        matrices: 1,
+    };
+    let slots = V41Slots {
+        count: 1,
+        ids: None,
+        shared_input: true,
+    };
+    for shards in [1, 8] {
+        let mut submission = backend.begin_submission()?;
+        submission.v41_block_matvec_reference(
+            matrix,
+            &x,
+            &xs,
+            slots,
+            &out,
+            V41Output::Bf16,
+            shards,
+        )?;
+        submission.commit(CudaCommandWait::Completed)?;
+        let want = if shards == 1 {
+            vec![expected]
+        } else {
+            psionic_models::deepseek_v41_cpu::quantization::linear_row_parallel(
+                &packed,
+                &input,
+                Arithmetic::ReferenceBf16Tp8,
+            )?
+        };
+        assert_eq!(
+            read_f32(&out)?,
+            want,
+            "reference FP8 with {shards} rank partials"
+        );
+    }
+    Ok(())
+}
+
 /// Activation quantization on edge values: zero blocks (scale floor),
 /// signed zeros, ties between E4M3 codes, subnormal codes, saturation, large
 /// and tiny magnitudes, BF16 rounding of the input, and nonfinite blocks.
