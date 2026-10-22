@@ -291,6 +291,28 @@ fn collect<E: StageBackend>(
 ) -> Result<Value, Refused> {
     let mut oracle = OracleDump::open(&opts.oracle)?;
     std::fs::create_dir_all(&opts.out).map_err(|e| refused(e.to_string()))?;
+    let geometry = worker.executor().geometry();
+    let budget = crate::budget_sized(
+        manifest,
+        &geometry,
+        opts.max_context,
+        opts.max_step_tokens.unwrap_or(opts.max_context),
+        None,
+        None,
+    );
+    let limits = crate::budget_announcement(&budget);
+    let settings = if opts.control.is_none() {
+        json!({"weights":"original","experts":"device","prefill":"token","cache":"unpacked"})
+    } else {
+        Value::Null
+    };
+    let execution_config = crate::execution_fingerprint(
+        &profile,
+        &opts.manifest,
+        &crate::wire_json(&geometry),
+        &limits,
+        &settings,
+    );
     let contract = worker.inbox().contract().clone();
     let mut cases = Vec::new();
     for name in opts
@@ -429,7 +451,7 @@ fn collect<E: StageBackend>(
     }
     let report = json!({"schema":"psionic.deepseek_v41.isolated_calibration.v1","release":false,"passed":null,
         "purpose":"isolated-stage-calibration","stage":stage.stage,"layers":[stage.first_layer,stage.end_layer],
-        "backend":opts.backend.name(),"profile":profile,"build":crate::build_identity(),"manifest":opts.manifest,
+        "backend":opts.backend.name(),"profile":profile,"execution_config_sha256":execution_config,"limits":limits,"build":crate::build_identity(),"manifest":opts.manifest,
         "oracle_manifest_sha256":checked_sha256(&opts.oracle.join("manifest.json"))?,"control":opts.control.map(Control::name),
         "schedule":{"max_context":opts.max_context,"max_step_tokens":opts.max_step_tokens.unwrap_or(opts.max_context)},"cases":cases});
     std::fs::write(

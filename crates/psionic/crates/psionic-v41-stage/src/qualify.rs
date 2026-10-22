@@ -66,6 +66,7 @@ const ORACLE_TIE_CAP: usize = 64;
 mod calibration;
 mod index;
 mod isolated;
+mod scope;
 
 /// Collects isolated-stage output metrics on original oracle inputs.
 ///
@@ -103,6 +104,8 @@ pub struct QualifyOptions {
     pub observe: bool,
     pub control: Option<Control>,
     pub policy: Option<PathBuf>,
+    /// Prospective confirmation corpus, required for release.
+    pub corpus: Option<PathBuf>,
     pub max_context: usize,
     pub max_step_tokens: Option<usize>,
     pub prefill_chunk: Option<usize>,
@@ -154,6 +157,7 @@ impl QualifyOptions {
                 "--cases",
                 "--control",
                 "--policy",
+                "--corpus",
                 "--max-context",
                 "--max-step-tokens",
                 "--prefill-chunk",
@@ -237,6 +241,7 @@ impl QualifyOptions {
                 .map(|c| Control::parse(&c))
                 .transpose()?,
             policy: values.remove("--policy").map(PathBuf::from),
+            corpus: values.remove("--corpus").map(PathBuf::from),
             max_context: number(values.remove("--max-context"), "--max-context", 32_768)? as usize,
             max_step_tokens: values
                 .remove("--max-step-tokens")
@@ -295,6 +300,7 @@ impl QualifyOptions {
 pub struct OracleDump {
     root: PathBuf,
     entries: BTreeMap<String, Value>,
+    run_hashes: BTreeMap<String, String>,
     headers: BTreeMap<String, (u64, Value)>,
 }
 
@@ -318,6 +324,8 @@ impl OracleDump {
         Ok(Self {
             root: root.to_owned(),
             entries,
+            run_hashes: serde_json::from_value(manifest["run_files_sha256"].clone())
+                .unwrap_or_default(),
             headers: BTreeMap::new(),
         })
     }
@@ -337,6 +345,15 @@ impl OracleDump {
         let path = self.root.join(case).join("run.json");
         let bytes =
             std::fs::read(&path).map_err(|e| refused(format!("{}: {e}", path.display())))?;
+        if self
+            .run_hashes
+            .get(&format!("{case}/run.json"))
+            .is_some_and(|sha| *sha != hex::encode(Sha256::digest(&bytes)))
+        {
+            return Err(refused(format!(
+                "{case}: run metadata does not match its manifest hash"
+            )));
+        }
         serde_json::from_slice(&bytes).map_err(|e| refused(format!("{}: {e}", path.display())))
     }
 
@@ -438,6 +455,7 @@ impl OracleDump {
 struct Group {
     wire_step: u64,
     limits: Vec<Value>,
+    execution_configs: Vec<Value>,
     children: Vec<Child>,
     writers: Vec<TcpStream>,
     listens: Vec<Option<String>>,
@@ -566,6 +584,7 @@ impl Group {
         let mut group = Self {
             wire_step: 0,
             limits: vec![Value::Null; stages],
+            execution_configs: vec![Value::Null; stages],
             children,
             writers: Vec::new(),
             listens: Vec::new(),
@@ -629,6 +648,7 @@ impl Group {
                     ));
                     listens[i] = hello["listen"].as_str().map(str::to_owned);
                     group.limits[i] = hello["limits"].clone();
+                    group.execution_configs[i] = hello["execution_config_sha256"].clone();
                     let send = send.clone();
                     std::thread::spawn(move || {
                         for line in reader.lines() {
@@ -869,7 +889,7 @@ fn run_case(
     let result = Recorded {
         files_sha256,
         source: json!({"case":case,"runtime":group.runtime,"profile":group.profile,
-            "stage_bundle_sha256":group.build,"stage_executable_sha256":group.executable,
+            "stage_bundle_sha256":group.build,"stage_executable_sha256":group.executable,"execution_config_sha256":group.execution_configs,
             "weights":group.weights,"limits":group.limits,
             "prompt_ids_sha256":hex::encode(Sha256::digest(serde_json::to_vec(prompt).map_err(|e| refused(e.to_string()))?)),
             "generated_ids_sha256":hex::encode(Sha256::digest(serde_json::to_vec(generated).map_err(|e| refused(e.to_string()))?))}),
@@ -1609,6 +1629,7 @@ pub fn run_answers(opts: &QualifyOptions, cap: usize) -> Result<Value, Refused> 
         "profile": group.profile,
         "stage_bundle_sha256": group.build,
         "stage_executable_sha256": group.executable,
+        "execution_config_sha256": group.execution_configs,
         "expected_bundle_sha256": opts.worker_build,
         "launch": if opts.development { "development" } else { "pinned" },
         "manifest": opts.manifest,
@@ -1758,6 +1779,9 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         }
         None => (pending_policy(), String::new()),
     };
+    if opts.release {
+        scope::preflight(opts)?;
+    }
     let mut oracle = OracleDump::open(&opts.oracle)?;
     let all = [
         "p1-chat-thinking",
@@ -1874,7 +1898,9 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
     });
     let violations = judge_report(&policy, &json!({"cases": reports}));
     let release_refusals = if opts.release {
-        release_refusals(opts, &policy, &reports)
+        let mut refusals = release_refusals(opts, &policy, &reports);
+        refusals.extend(scope::violations(opts, &group));
+        refusals
     } else {
         Vec::new()
     };
@@ -1891,10 +1917,12 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         "issue": 12405,
         "policy_version": policy.version,
         "policy_sha256": policy_sha,
+        "corpus_sha256": opts.corpus.as_ref().map(|p|checked_sha256(p)).transpose()?,
         "runtime": group.runtime,
         "profile": group.profile,
         "stage_bundle_sha256": group.build,
         "stage_executable_sha256": group.executable,
+        "execution_config_sha256": group.execution_configs,
         "expected_bundle_sha256": opts.worker_build,
         "launch": if opts.development { "development" } else { "pinned" },
         "weights": group.weights,

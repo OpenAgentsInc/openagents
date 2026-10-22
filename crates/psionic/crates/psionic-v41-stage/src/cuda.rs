@@ -1001,7 +1001,11 @@ pub fn run_stage(
         } else {
             crate::profile_name(Backend::Cuda, None)
         }),
-        device,
+        device: {
+            let mut device = device;
+            device["execution_settings"] = serde_json::json!(crate::execution_settings(&options));
+            device
+        },
         events: options.events.clone(),
         record: options.record.clone(),
         max_context: options.max_context,

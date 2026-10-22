@@ -162,6 +162,10 @@ def main() -> int:
         "schema": "openagents.deepseek_v41.oracle_manifest.v1",
         "revision": "1bae0e1088993b9b82de08f59de5be5a34e42170",
         "bucket": BUCKET,
+        "run_files_sha256": {
+            str(p.relative_to(args.dump)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(args.dump.glob("*/run.json"))
+        },
         "tensors": entries,
         "mode_comparisons": comparisons,
     }
