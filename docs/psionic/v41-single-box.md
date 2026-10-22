@@ -22,6 +22,7 @@ Psionic's own kernels. DFlash2 (CC BY-NC-ND) is not used.
 | `--prefill layer-major` | #12464 | Runs a prompt step layer by layer: projections and routed experts batched over the step's tokens, uncached experts streamed once per layer through a device ring. | Yes |
 | `--kv packed` | #12471 | Keeps the window ring as FP8 codes with a power-of-two scale per 32, and compressed KV and index keys as FP4 codes with a scale per 16 or 32. A whole-model stage only. | Yes |
 | `--experts file --consumer-q DIR` | #12465 | Serves a requantized 2- or 3-bit expert artifact under its own profile name. | **No: lossy, unqualified** |
+| `--dspark` | #12469 | Uses the matching checkpoint's three draft blocks and verifies five proposed tokens together. A whole-model CUDA stage or `chain --split 0-40` only; enables layer-major work. | Greedy tokens stay equal to ordinary decode; sampled output uses target verification. |
 
 A stage with any of these flags announces its own profile:
 `consumer-exact-<profile>` (bit-equal answers, its own configuration) or
@@ -239,6 +240,35 @@ The artifact matches the checkpoint's experts to within the expected error
 down). Served single box, `q2q3` decodes at 26.4 tok/s (p50 37.7 ms, 48% of
 experts in slots, 97% hits), but its answers are garbage from the first
 token, so the profile isn't usable yet; see #12465.
+
+## DSpark drafting (#12469)
+
+Add `--dspark` to a whole-model CUDA worker's existing single-box flags,
+or to `chain --split 0-40 --gpus 0`. It needs at least six step tokens.
+The worker announces `consumer-exact-dspark-<cuda-profile>` (or
+`consumer-q-dspark-<cuda-profile>` with the lossy experts), so drafting is
+an explicit serving choice. A front still sends and receives one token at
+a time: the worker keeps the verified answers ready for later steps. A
+changed input or sampling setting discards the unused answers and restores
+the state for the inputs the front actually sent.
+
+The drafter comes from the pinned MIT `DeepSeek-V4.1-Flash-1017`
+checkpoint's `mtp.*` tensors: three window-only CUDA blocks, reading the
+backbone's stream means before layers 37–39, with its Markov and confidence
+heads. The backbone embedding and output head stay shared. This is a Rust
+and CUDA reimplementation of that checkpoint's `inference/model.py`;
+the incompatible V4 preview drafter and DFlash2 are not used.
+
+Verification returns the target logits after each of six inputs: the
+pending token and five proposals. Greedy decoding accepts only the target
+argmax. Sampling accepts with `min(1, p/q)` and, on rejection, draws from
+normalized `(p-q)+`. A rejected suffix restores device window rows,
+compressor groups, compressed KV and index keys, selections, candidate
+flags, the backbone features, and both device and host Engram history,
+then replays only the accepted prefix. This first version favors complete
+state restoration over avoiding that replay. `chain --dspark` records
+proposed and accepted counts, acceptance rate, replayed tokens, and
+measured decode throughput in its answer records.
 
 ## Cost
 
