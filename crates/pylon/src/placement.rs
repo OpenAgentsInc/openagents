@@ -38,6 +38,10 @@ pub struct Engram {
     pub layer: u32,
     pub host: String,
     pub bytes: u64,
+    /// `host_memory`, or `file` for rows read from the mapped shards
+    /// (#12467), which set no RAM aside.
+    #[serde(default)]
+    pub location: Option<String>,
 }
 
 /// One stage in a manifest.
@@ -65,6 +69,21 @@ pub struct Stage {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct StageDevice {
     pub class: String,
+    /// Where the routed experts live: `device`, `host`, or `file` (read
+    /// from the mapped shards with a device cache, #12467).
+    #[serde(default)]
+    pub experts: Option<String>,
+}
+
+impl Stage {
+    /// Whether the stage reads its routed experts from the mapped shards:
+    /// the single-box `consumer-exact` placement (#12467).
+    #[must_use]
+    pub fn file_experts(&self) -> bool {
+        self.device
+            .as_ref()
+            .is_some_and(|d| d.experts.as_deref() == Some("file"))
+    }
 }
 
 /// The part of Psionic's group manifest Pylon reads.
@@ -159,7 +178,7 @@ pub fn shape(machine_type: &str) -> Option<Shape> {
 }
 
 /// The named placements and their default machine types.
-pub const NAMED: [(&str, &str, &str); 4] = [
+pub const NAMED: [(&str, &str, &str); 5] = [
     (
         "four-single",
         "g4-standard-48",
@@ -182,6 +201,15 @@ pub const NAMED: [(&str, &str, &str); 4] = [
         "quad-mac",
         "g4-standard-192",
         include_str!("../placements/deepseek-v41/quad-mac.json"),
+    ),
+    // The whole model on one GPU (#12467): dense weights and KV on the
+    // device, routed experts and Engram rows read from the mapped shards
+    // with a device cache of the hottest experts. Its own profile,
+    // `consumer-exact`.
+    (
+        "one-box",
+        "g4-standard-48",
+        include_str!("../placements/deepseek-v41/one-box.json"),
     ),
 ];
 
@@ -326,7 +354,9 @@ pub fn place(name: &str, machine_type: &str, bytes: &[u8]) -> Result<Placement, 
                 ));
             }
             for table in &stage.engram {
-                *engram.entry(table.host.as_str()).or_default() += table.bytes;
+                if table.location.as_deref() != Some("file") {
+                    *engram.entry(table.host.as_str()).or_default() += table.bytes;
+                }
             }
         }
     }

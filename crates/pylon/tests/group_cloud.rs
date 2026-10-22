@@ -325,6 +325,7 @@ fn dry_runs_print_the_guard_and_gcloud_commands_for_each_placement() {
     for (placement, machines, machine_type, disk) in [
         ("four-single", 4, "g4-standard-48", "350GB"),
         ("two-dual", 2, "g4-standard-96", "600GB"),
+        ("one-box", 1, "g4-standard-48", "700GB"),
     ] {
         let rig = Rig::new(placement, "wss://relay.example");
         let mut up = rig.up.clone();
@@ -373,6 +374,7 @@ fn dry_runs_print_the_guard_and_gcloud_commands_for_each_placement() {
             .collect();
         match placement {
             "four-single" => assert_eq!(layers, ["0-10", "10-20", "20-30", "30-40"]),
+            "one-box" => assert_eq!(layers, ["0-40"]),
             _ => assert_eq!(layers, ["0-10+10-20", "20-30+30-40"]),
         }
         // A dry run creates and records nothing.
@@ -1592,4 +1594,42 @@ fn the_ssh_launcher_forwards_the_next_stages_link_port_back() {
         .output()
         .unwrap();
     assert!(!bad.status.success());
+}
+
+/// The single-box placement (#12467): one stage of all 40 layers that reads
+/// experts and Engram rows from the shards, under the `consumer-exact`
+/// profile its beacons declare (#12468).
+#[test]
+fn the_one_box_placement_runs_one_consumer_exact_stage() {
+    let rig = Rig::new("one-box", "wss://relay.example");
+    let mut up = rig.up.clone();
+    up.worker = None;
+    let plan = cloud::plan(&up).unwrap();
+    let lane = cloud::group_lane(&up, &plan);
+    assert_eq!(lane.profile.as_deref(), Some("consumer-exact"));
+    assert_eq!(lane.stages.len(), 1);
+    let args = lane.stages[0].args.join(" ");
+    for flag in [
+        "--layers 0-40",
+        "--embeddings",
+        "--head",
+        "--experts file",
+        "--expert-cache auto",
+        "--engram file",
+        "--prefill layer-major",
+        "--kv packed",
+    ] {
+        assert!(args.contains(flag), "{flag} not in {args}");
+    }
+    // The qualified placements keep their stages as they were.
+    let rig = Rig::new("four-single", "wss://relay.example");
+    let mut up = rig.up.clone();
+    up.worker = None;
+    let lane = cloud::group_lane(&up, &cloud::plan(&up).unwrap());
+    assert_eq!(lane.profile, None);
+    assert!(
+        lane.stages
+            .iter()
+            .all(|s| !s.args.join(" ").contains("--experts"))
+    );
 }

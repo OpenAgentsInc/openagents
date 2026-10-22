@@ -399,6 +399,9 @@ pub enum EngramLocation {
     /// Host RAM of the machine running the layer's stage; touched rows are
     /// copied to the GPU.
     HostMemory,
+    /// The checkpoint shards on the stage machine's own disk, mapped: each
+    /// step reads the rows it touches (#12466, #12467). No RAM is set aside.
+    File,
 }
 
 /// One Engram table's placement.
@@ -455,6 +458,10 @@ pub enum ExpertMemory {
     Device,
     /// In page-locked host memory the device reads over the bus.
     Host,
+    /// Read in place from the mapped checkpoint shards: a device cache holds
+    /// the hottest, the page cache and host threads the rest (#12463,
+    /// #12467). The single-box `consumer-exact` placement.
+    File,
 }
 
 /// What kind of device runs a stage, for placement.
@@ -1357,11 +1364,15 @@ fn slot_need(
         runtime = runtime.saturating_sub(measured.min(runtime)) + fixed;
     }
     let mut host = 0;
-    if slot.kind == DeviceKind::Gpu && slot.experts == ExpertMemory::Host {
+    if slot.kind == DeviceKind::Gpu && slot.experts != ExpertMemory::Device {
         let experts = (layers.end - layers.start) as u64 * FLASH_ROUTED_EXPERT_BYTES;
         let experts = experts.min(weights);
         weights -= experts;
-        host = experts;
+        // Experts read from the shards set no RAM aside: the page cache
+        // holds what fits.
+        if slot.experts == ExpertMemory::Host {
+            host = experts;
+        }
     }
     (weights, runtime, host)
 }
@@ -1384,7 +1395,11 @@ fn balanced_split_devices(
         let range = start as u32..end as u32;
         let slot = &slots[k];
         let (w, r, experts) = slot_need(memory, slot, &range, k == 0, k == n - 1);
-        let engram: u64 = range.clone().map(|l| memory.layer_engram_bytes(l)).sum();
+        let engram: u64 = if slot.experts == ExpertMemory::File {
+            0
+        } else {
+            range.clone().map(|l| memory.layer_engram_bytes(l)).sum()
+        };
         let ram = hosts
             .iter()
             .find(|h| h.host == slot.host)
@@ -1472,18 +1487,30 @@ pub fn plan_devices(
                 have: slot.bytes,
             };
         }
+        // A stage reading experts from the shards reads Engram rows from
+        // them too.
+        let location = if slot.experts == ExpertMemory::File {
+            EngramLocation::File
+        } else {
+            EngramLocation::HostMemory
+        };
         let engram: Vec<V41EngramPlacement> = ENGRAM_LAYERS
             .iter()
             .filter(|l| layers.contains(l))
             .map(|&layer| V41EngramPlacement {
                 layer,
-                location: EngramLocation::HostMemory,
+                location,
                 host: slot.host.clone(),
                 bytes: memory.layer_engram_bytes(layer),
             })
             .collect();
         let host = host_need.entry(slot.host.as_str()).or_default();
-        *host += engram.iter().map(|e| e.bytes).sum::<u64>() + expert_host;
+        *host += engram
+            .iter()
+            .filter(|e| e.location == EngramLocation::HostMemory)
+            .map(|e| e.bytes)
+            .sum::<u64>()
+            + expert_host;
         stages.push(V41StageEntry {
             stage: k as u16,
             first_layer: layers.start,

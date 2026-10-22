@@ -264,7 +264,9 @@ fn run_quantize(args: &[String]) -> Result<(), Refused> {
 
 #[cfg(not(feature = "cuda"))]
 fn run_quantize(_args: &[String]) -> Result<(), Refused> {
-    Err(Refused("quantize needs a build with --features cuda".into()))
+    Err(Refused(
+        "quantize needs a build with --features cuda".into(),
+    ))
 }
 
 #[cfg(not(feature = "cuda"))]
@@ -339,6 +341,7 @@ fn run_plan(args: &[String]) -> Result<(), Refused> {
                 for extra in &parts[4..] {
                     match extra.split_once('=') {
                         None if *extra == "host-experts" => slot.experts = ExpertMemory::Host,
+                        None if *extra == "file-experts" => slot.experts = ExpertMemory::File,
                         Some(("fixed", n)) => slot.per_stage_bytes = Some(number(n)?),
                         _ => return Err(bad("--device", value)),
                     }

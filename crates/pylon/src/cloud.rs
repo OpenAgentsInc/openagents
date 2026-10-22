@@ -375,6 +375,10 @@ pub struct StagePlan {
     /// The device class the manifest planned the stage for (#12418).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
+    /// The stage reads routed experts and Engram rows from the mapped
+    /// shards with a device cache (#12467).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub file_experts: bool,
 }
 
 /// One machine and the guard command that creates it.
@@ -469,6 +473,7 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
         embeddings: s.embeddings,
         head: s.head,
         device: s.device.as_ref().map(|d| d.class.clone()),
+        file_experts: s.file_experts(),
     };
     let local: Vec<StagePlan> = placement
         .hosts
@@ -508,6 +513,7 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
                     embeddings: s.embeddings,
                     head: s.head,
                     device: s.device.as_ref().map(|d| d.class.clone()),
+                    file_experts: s.file_experts(),
                 })
                 .collect();
             let head = up.head == HeadPlacement::Stage0 && stages.iter().any(|s| s.stage == 0);
@@ -573,7 +579,16 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
                 "--".into(),
                 format!("--metadata-from-file={}", files.join(",")),
                 format!("--metadata={metadata}"),
-                format!("--boot-disk-size={}GB", disk_gb(stages.len())),
+                // A single-box stage reads the whole 476 GB checkpoint in
+                // place (#12467).
+                format!(
+                    "--boot-disk-size={}GB",
+                    if stages.iter().any(|s| s.file_experts) {
+                        disk_gb(stages.len()).max(700)
+                    } else {
+                        disk_gb(stages.len())
+                    }
+                ),
                 "--boot-disk-type=hyperdisk-balanced".into(),
                 // The weights load from this disk; its default throughput
                 // would take most of an hour for a whole checkpoint.
@@ -969,6 +984,26 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
             if stage.head {
                 extra.push("--head".into());
             }
+            if stage.file_experts {
+                // The single-box profile (#12467): experts and Engram rows
+                // from the mapped shards, the hottest experts in a device
+                // cache, layer-major prompt steps, packed KV rows.
+                extra.extend(
+                    [
+                        "--experts",
+                        "file",
+                        "--expert-cache",
+                        "auto",
+                        "--engram",
+                        "file",
+                        "--prefill",
+                        "layer-major",
+                        "--kv",
+                        "packed",
+                    ]
+                    .map(String::from),
+                );
+            }
             let port = DATA_PORT + stage.stage;
             let Some(machine) = machine else {
                 // A stage on this computer's Apple GPU. The stage before
@@ -1098,7 +1133,13 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
         max_restarts: up.max_restarts,
         backoff_ms: 1_000,
         max_backoff_ms: 30_000,
-        profile: None,
+        // Bit-equal answers on its own configuration (#12467, #12468).
+        profile: plan
+            .machines
+            .iter()
+            .flat_map(|m| &m.stages)
+            .any(|s| s.file_experts)
+            .then(|| "consumer-exact".to_string()),
     }
 }
 

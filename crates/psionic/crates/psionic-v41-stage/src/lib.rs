@@ -1654,13 +1654,17 @@ pub fn find_stage(
                 entry.stage, device.class
             ));
         }
-        let host = device.experts == psionic_models::deepseek_v41_stage::ExpertMemory::Host;
-        if host != (options.experts != Experts::Device) {
+        use psionic_models::deepseek_v41_stage::ExpertMemory;
+        let wanted = match device.experts {
+            ExpertMemory::Device => Experts::Device,
+            ExpertMemory::Host => Experts::Host,
+            ExpertMemory::File => Experts::File,
+        };
+        if wanted != options.experts {
+            let name = wanted.as_str();
             return refuse(format!(
-                "stage {} of the manifest keeps its routed experts in {} memory; pass --experts {}",
+                "stage {} of the manifest keeps its routed experts in {name} memory; pass --experts {name}",
                 entry.stage,
-                if host { "host" } else { "device" },
-                if host { "host" } else { "device" },
             ));
         }
     }
