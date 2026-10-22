@@ -489,11 +489,14 @@ The status lines below summarize each issue and its comments. Open the issue for
   and the live feed showed it walk to the Pylon Bay and arrive at its stop;
   stationary-player detour regressions pass.
 
-- #12530: deploy the Pylon detail distance change and confirm that token details
-  show only within 3 meters of a Pylon, including when pointing at one farther away.
+- #12530: done on 2026-10-22; production revision
+  `coder-web-a7ea5c218d-20261022214909` serves the checked Pylon distance change.
+  Its Grid WASM matches the build; the 3-meter boundary and focus regressions pass.
 
-- #12529: deploy the Grid gateway decoration removal and chat input labels, then
-  check the Foreman, Suggestion Box, and Game Lab inputs in Verse.
+- #12529: done on 2026-10-22; production revision
+  `coder-web-a7ea5c218d-20261022214909` serves the gateway and chat label fixes.
+  Chrome shows monochrome gates and the correct Foreman and Suggestion Box labels;
+  production HTTP checks pass (74), and both chat WASM builds match Cloud Build.
 
 - #12519, #12521, and #12522: install the bounded Kiln workspace binary on `coderos-4080` and run
   real browser-editor work through both explicitly pinned Maya Pylons, with
