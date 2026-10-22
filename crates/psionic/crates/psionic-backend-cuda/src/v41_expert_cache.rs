@@ -242,6 +242,12 @@ impl V41ExpertCacheConfig {
 /// Routed-expert bytes a host lane reads: each projection's packed FP4
 /// weights and UE8M0 scales in the checkpoint's layout.
 pub trait V41ExpertBytes: Send + Sync {
+    /// Overrides the stage's projection formats for model `layer`.
+    /// Sources without per-layer formats use the stage's default formats.
+    fn layer_formats(&self, _layer: usize) -> Option<[crate::v41_matvec::V41MatvecFormat; 3]> {
+        None
+    }
+
     /// Projection `projection` (0 for w1, 1 for w2, 2 for w3) of `expert` in
     /// model layer `layer`: `(weights, scales)`.
     ///
