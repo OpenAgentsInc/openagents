@@ -1,20 +1,38 @@
 # An owned game engine: WebGPU, Effect, and three-effect
 
-Date: 2026-10-22. OpenAgents snapshot: `e0cc395c78`.
+Date: 2026-10-22. Updated at OpenAgents snapshot: `2ae6722ad5`.
 Status: architecture assessment; no implementation or new performance measurements.
-The owner's clarified requirement is to build and own the editor, runtime, and services. Three.js may supply rendering, but an upstream editor is not the product foundation.
+Decision assumptions: browser-first, designed from scratch, complete ownership of the editor/runtime/services, and no Rust-only constraint. Existing Rust investment and native reuse do not determine the choice.
 
 ## Recommendation
 
-**Build our editor and game runtime around our own versioned world data, commands, and asset pipeline. Make the renderer replaceable. For control over rendering performance, target an owned renderer with explicit GPU buffers, passes, and WGSL shaders.**
+**Choose TypeScript + Effect for the editor and asynchronous orchestration, an allocation-conscious TypeScript runtime and direct WebGPU renderer, and editable WGSL shaders. Use Rust/Wasm selectively for measured CPU bottlenecks.** This is the recommended default under the stated assumptions, rather than a choice deferred between two equal candidates.
 
-For OpenAgents' existing Rust and native/browser architecture, the first custom-renderer path to investigate is the Rust/`wgpu` renderer already in the repository. For a browser-only renderer, a small JavaScript WebGPU encoder is also credible. Effect can manage browser-side jobs and resource lifetimes around either approach; it does not determine the GPU architecture.
+This choice favors the shortest integrated browser development loop while preserving direct control of GPU layouts, pipelines, and passes. The editor, behavior modules, renderer, browser APIs, and diagnostics share JavaScript tooling. Rust/`wgpu` adds a compiled Wasm artifact and a language boundary without establishing a GPU-throughput advantage for equivalent work. A workload dominated by CPU simulation can justify Rust kernels; it does not require making the entire renderer Rust.
 
-Use `three-effect` as an existing rendering adapter and source of reusable interaction/lifecycle patterns if a browser TypeScript boundary is adopted. Do not make Three scene objects, Foldkit state, or Effect values the persistent format of a game. Do not build and maintain three production renderers by default: use the existing paths to compare one representative scene, then choose the supported path.
+Own the versioned world data, commands, asset compiler, material contracts, and simulation state. Keep Effect outside per-entity and per-draw work. Three.js and `three-effect` remain references or comparison adapters; direct WebGPU is the selected production direction. Avoid making Three adoption a prerequisite or maintaining multiple production renderers from the outset.
 
-This changes the [earlier editor comparison](2026-10-22-browser-game-editor-comparison.md). Babylon's collection of authoring tools no longer earns it first place when the requirement is to build those authoring systems ourselves. The relevant comparison becomes the cost and capability of the rendering boundary.
+This replaces the previous recommendation to investigate the existing Rust renderer first. That recommendation weighted native reuse and the repository's language policy; the owner explicitly removes both from this assessment. It also updates the [earlier editor comparison](2026-10-22-browser-game-editor-comparison.md): upstream authoring tools do not determine an editor we are building ourselves.
 
-There is no demonstrated “absolute fastest” language or renderer here. The fastest route to an existing browser scene, the shortest edit loop, and the lowest frame time are different choices. Our architecture should let us improve each independently.
+This is an architecture decision, not a measured claim that TypeScript produces faster frames. Iteration favors the browser-native tooling path; GPU performance depends on the work submitted; CPU performance remains workload-specific. No comparative speedup factor has been established.
+
+## The architecture to build from scratch
+
+| Part | Default design | Purpose |
+| --- | --- | --- |
+| Editor | Our DOM-based TypeScript interface, with accessible controls | Direct browser integration for code, hierarchy, properties, assets, and diagnostics; no UI framework choice is required by this audit |
+| Project model | Versioned serializable data, stable IDs, typed commands, and explicit transactions | Manual edits and Kiln share undo, validation, and conflict handling; runtime handles never become saved project data |
+| Orchestration | Effect services, scopes, bounded jobs, and typed failures | Coordinate compilation, imports, preview lifetime, storage, and observability |
+| Incremental compiler | Worker-based scene/material/behavior compilation with revision tracking | Rebuild only affected outputs and reject stale results |
+| Preview runtime | Dedicated worker owning simulation, persistent runtime state, and the renderer | Keep frame work off the editor's UI thread and avoid sending every object's state across threads each frame |
+| Renderer | Our TypeScript WebGPU encoder over packed arrays, cached resources, and explicit passes | Control batching, uploads, visibility, memory, and GPU work without an intermediate scene-engine dependency |
+| Materials | Editable WGSL and an optional owned graph that produces WGSL | Compile a candidate pipeline while the last working material continues rendering |
+| CPU extensions | Wasm modules, including Rust, behind coarse buffer-oriented APIs when profiling warrants them | Accelerate geometry processing, physics, or simulation without rebuilding the whole browser application |
+| Storage and publishing | Owned project storage, asset sources, content-addressed outputs, and explicit release snapshots | Keep immediate private preview independent of deployment |
+
+Use an OffscreenCanvas transferred to the preview worker where supported. The [WebGPU worker sample](https://github.com/webgpu/webgpu-samples/blob/main/sample/worker/main.ts) demonstrates this browser boundary. Send input, resize, and edit commands in batches; return selected values and diagnostics. Keep simulation and rendering together initially, then split work only when measurements justify the extra scheduling and transfer costs. Workers protect UI responsiveness; they do not reduce the amount of computation or guarantee lower input latency.
+
+The editor holds account authority; the user-game preview runs in a separate origin with a bounded command bridge and its own workers. A worker alone is not the account-security boundary. Require the selected browser capabilities at startup and keep a main-thread rendering accommodation only where required by the supported browser matrix. Do not make a shared-memory deployment configuration or a second WebGL renderer prerequisites for the first WebGPU product.
 
 ## What three-effect actually contains
 
@@ -29,7 +47,7 @@ Reviewed public repository: [`OpenAgentsInc/three-effect` at `714c37edf650258a76
 | [Scene update helpers](https://github.com/OpenAgentsInc/three-effect/blob/714c37edf650258a767ae3fe0d98b6499acadd95/packages/core/src/sceneNodeReconcilerPrimitives.ts) retain compatible instances by ID and kind | A starting point for incremental scene changes, with Three-specific runtime handles |
 | [Foldkit host](https://github.com/OpenAgentsInc/three-effect/blob/714c37edf650258a767ae3fe0d98b6499acadd95/packages/foldkit/src/index.ts#L576) captures a local pose and stages a replacement before disposing the old scene | Useful continuity work already exists; this is not a generic last-working-shader transaction |
 
-The [implementation audit](https://github.com/OpenAgentsInc/three-effect/blob/714c37edf650258a767ae3fe0d98b6499acadd95/docs/2026-06-14-implementation-audit.md) explicitly separates application state from imperative Three resources. Preserve that separation. Its Foldkit app assumptions come from a different repository shape; importing the library does not authorize replacing today's Rust Native interfaces or domain crates.
+The [implementation audit](https://github.com/OpenAgentsInc/three-effect/blob/714c37edf650258a767ae3fe0d98b6499acadd95/docs/2026-06-14-implementation-audit.md) explicitly separates application state from imperative Three resources. Preserve that separation. Its Foldkit app assumptions come from a different repository shape; they are reference material, not the from-scratch editor architecture selected here.
 
 Source search of the reviewed core and Foldkit packages found no `WebGPURenderer`, `navigator.gpu`, or `createRenderPipeline` implementation. Moving this library to direct WebGPU would be new renderer work. Even moving its materials and postprocessing to Three's WebGPU backend requires adaptation: the [Three migration guide](https://threejs.org/manual/pages/webgpurenderer.html) distinguishes the older custom-material/composer paths from node materials, TSL, and the WebGPU postprocessing stack.
 
@@ -37,7 +55,7 @@ Source search of the reviewed core and Foldkit packages found no `WebGPURenderer
 
 [Effect](https://effect.website/docs/v4/onboarding) provides typed errors, structured concurrency, resource management, services, and observability. These fit an editor that coordinates imports, compilation, worker jobs, previews, and agent edits.
 
-Use Effect, if adopted, to organize:
+Use Effect to organize:
 
 - Asset fetch, decode, conversion, and cache work with bounded concurrency.
 - An edit's validation and compilation, including stale-result rejection.
@@ -61,9 +79,10 @@ flowchart TD
     D --> C[Incremental validation and compilation]
     C --> S[Persistent simulation state]
     C --> R[Mesh batches, materials, WGSL, and resource descriptions]
-    S --> R
-    R --> T[Three adapter for reference or transition]
-    R --> W[Owned renderer: Rust/wgpu or browser WebGPU]
+    S --> W[Preview worker: TypeScript runtime and direct WebGPU]
+    R --> W
+    K[Optional Wasm CPU kernels] --> S
+    W --> G[Browser GPU implementation]
 ```
 
 This is proposed architecture, not a claim that an interchangeable backend contract already exists. Keep it small enough for the first authored game; do not design a universal renderer interface before comparing a representative scene.
@@ -72,23 +91,49 @@ The persistent document describes stable entities, components, asset references,
 
 Prefer packed component arrays, dirty ranges, mesh/material batches, and explicit streaming cells where they fit the workload. Authoring can retain a friendly hierarchy while the compiled runtime representation uses a different layout. That lets a performance change replace a batch builder or GPU pass without changing the editor's project format.
 
-Shader source, material graphs, scene changes, and tuning can be data updates. Keep WGSL editable outside the Rust binary. A developer changing Rust algorithms or host-side buffer layouts still needs a build; this design does not make arbitrary compiled code changes instantaneous.
+Shader source, material graphs, scene changes, and tuning can be data updates. Keep WGSL editable outside the host bundle. TypeScript behavior and renderer implementation changes still need transformation and an explicit replacement boundary; selecting TypeScript does not make arbitrary state or resource-layout changes safe to swap. Optional Rust kernels still need compilation when their implementation changes.
 
-The existing [Verse Engine architecture](../verse/engine/architecture.md) already establishes ownership of the runtime schedule, renderer, shaders, content compiler, and world authority while permitting platform libraries such as `wgpu`. This proposal develops that direction for browser authoring.
+The existing [Verse Engine architecture](../verse/engine/architecture.md) establishes ownership of the runtime schedule, renderer, shaders, content compiler, and world authority. Preserve those ownership goals while changing the language and browser runtime recommendation under this assessment's assumptions.
 
-## Three routes to the GPU
+## Why choose this over Rust/wgpu
 
-| Route | Strength | Cost or limit | OpenAgents fit |
+| Criterion | TypeScript + Effect + direct WebGPU | Rust/wgpu in the browser | Decision |
 | --- | --- | --- | --- |
-| Three through our adapter | Existing loaders, materials, scene interactions, and `three-effect` work get a representative scene running sooner | Three's objects, material system, and renderer conventions shape the adapter; custom internals may need a fork | Useful baseline and possible production renderer if it meets measured needs |
-| Our JavaScript renderer using browser WebGPU | Direct control over browser buffers, bindings, shaders, passes, and submission with a small browser integration | We build and maintain rendering systems and asset adapters; native reuse needs another boundary | Credible if browser-only iteration takes precedence and a JS/TS product boundary is explicitly adopted |
-| Our Rust renderer using `wgpu`, WGSL, and Wasm in browsers | Own the same rendering decisions while reusing Rust systems and native GPU targets | Rust implementation changes compile; browser API crossings, uploads, and Wasm startup still need measurement | First custom path to evaluate given the renderer and contract we already have |
+| Editor and engine implementation iteration | One browser module/tooling environment; smaller modules can have explicit hot replacement boundaries | Rust changes require compilation, Wasm packaging, and integration with browser-facing modules | Prefer TypeScript for the whole editor/engine iteration loop |
+| Shader, scene, and tuning updates | Runtime data and pipeline replacement | Can use the same runtime data and pipeline replacement | Comparable capability; shader hot reload alone is not a language advantage |
+| GPU execution | Browser compiles WGSL and executes submitted passes | Browser compiles WGSL and executes submitted passes | No inherent Rust advantage for equivalent GPU work |
+| CPU simulation and data processing | Typed arrays and low-allocation loops; JIT/GC behavior needs profiling | Linear-memory data structures and explicit CPU-oriented implementations may win for suitable workloads | Begin in TypeScript; move substantial measured CPU work to Wasm kernels |
+| Browser API integration and debugging | Direct objects, browser tooling, and shared TypeScript contracts | Wasm/JS interop and a second runtime/tooling boundary | Prefer the simpler default boundary; this is not a measured per-call speedup claim |
+| Startup | Download and parse the selected JS modules and dependencies | Download/instantiate Wasm plus the browser integration | Measure bytes and startup; neither is universally smaller or faster |
+| Native portability | Additional host/rendering integration if later required | A strong reason to choose wgpu when native rendering is a primary requirement | Native parity is outside the assumptions driving this decision |
 
-[`wgpu`](https://docs.rs/wgpu/30.0.1/wgpu/) is a GPU API library, not a scene engine. It targets native graphics APIs and browser WebGPU/WebGL2. The current [Verse renderer](../../crates/verse/src/render.rs) already owns a device, queue, targets, scene resources, and async browser surface initialization; [its manifest](../../crates/verse/Cargo.toml) pins `wgpu` 30.0.1. Starting here is materially different from beginning a renderer from zero.
+These comparisons are architectural judgments. They are not results from a side-by-side implementation. The iteration advantage concerns changing browser application and engine code; both designs still pay the GPU's compilation cost for a shader edit.
 
-Raw JavaScript WebGPU and Rust/`wgpu` in a browser both ultimately use the browser's GPU implementation and its validation. Raw calls offer no automatic escape from driver compilation or browser limits. Rust may help CPU-heavy transforms and simulation; JavaScript may simplify browser integration. Neither establishes lower GPU time for equivalent shaders and draw work without measurement.
+[`wgpu`](https://docs.rs/wgpu/30.0.1/wgpu/) is a portable GPU API library, not a scene engine. Its [browser backend](https://github.com/gfx-rs/wgpu/blob/v30.0.1/wgpu/src/backend/webgpu.rs) uses Wasm/JavaScript bindings to browser WebGPU objects. A browser build does not bypass browser validation or gain native Metal/Vulkan submission by choosing Rust. Direct TypeScript avoids needing that language boundary in our default renderer; whether the removed boundary materially affects frame time is workload-specific.
+
+The current [Verse renderer](../../crates/verse/src/render.rs) and [its wgpu manifest](../../crates/verse/Cargo.toml) remain valuable implementation references. Their existence is a migration consideration, not a reason to select Rust in a from-scratch comparison. Reuse existing server services where useful without making the browser editor, simulation state, or rendering schedule depend on Rust.
+
+Memory discipline is required in either design. Reuse typed arrays and scratch objects, keep GPU buffers resident, bound caches, and avoid allocations in steady-state inner loops. Rust helps control CPU allocations, but neither Rust nor TypeScript removes explicit GPU resource lifetime and device-loss work. Effect scopes belong around jobs and scene lifetimes, not individual vector updates.
+
+Choose a Rust kernel when representative profiling demonstrates a material CPU benefit after accounting for serialization, copying, scheduling, and integration costs. Keep data on one side during a batch and return compact results. Do not move per-draw API submission through Wasm to obtain a hypothetical GPU improvement.
 
 A maintained fork or vendored copy of an open-source Three renderer also permits local changes without waiting for upstream. Complete ownership is compatible with explicit, replaceable dependencies. Direct WebGPU is justified when owning the renderer's architecture improves our workload, rather than by the number of dependencies removed.
+
+## Iteration is a product capability
+
+Use browser development HMR for the editor implementation, and a separate owned revision protocol for creator previews. [Vite's HMR API](https://vite.dev/guide/api-hmr) supplies acceptance, disposal, and persistent-data hooks; it does not define game-state migration or a deployed creator's preview service.
+
+| Edit | Preview action | State to preserve |
+| --- | --- | --- |
+| Transform, tuning, or uniform | Apply a validated delta at the next safe tick/frame | Same simulation, player, and active resources |
+| Geometry, texture, or material source | Build candidate outputs, then replace affected resources | Same run; keep the previous resource if the candidate fails |
+| TypeScript behavior module | Transform/import a new revision, validate its lifecycle, and replace the behavior | Compatible external state; dispose old listeners, timers, and subscriptions |
+| Renderer module or resource layout | Replace only behind an explicit compatibility boundary | Keep compatible state/resources, otherwise perform a visible controlled restart or migration |
+| Optional Rust kernel | Compile and instantiate the changed module behind its versioned API | Compatible state supplied by the runtime, not hidden in the old module |
+
+For in-browser TypeScript transformation, [esbuild's browser API](https://esbuild.github.io/api/#browser) is a concrete worker/Wasm option; package/version selection remains implementation work. A bundler's Wasm implementation is compatible with this architecture. Multi-file resolution, project virtual files, module loading, source maps, and replacement are still our product integration. Run type checking as a separate diagnostic job where safe, rather than blocking every visible draft update on a full-project check; validate runtime contracts before accepting a replacement.
+
+Keep simulation state outside replaceable behavior modules. Validate candidates before granting live effects. A thrown error after executing arbitrary behavior cannot be undone merely by restoring a function reference; mutations need bounded commands, a transaction, or a checkpoint/restart policy. Shader failure can preserve the previous pipeline, but arbitrary script edits need their own failure semantics. Replacing revisioned ESM modules also needs a bounded lifecycle: the [HTML module map](https://html.spec.whatwg.org/multipage/webappapis.html#module-map) associates loaded modules with their environment and URLs. Plan controlled preview restarts with state restoration rather than assuming unlimited revision imports are free.
 
 ## How we could outperform a general-purpose renderer
 
@@ -129,22 +174,22 @@ The target is a direct path from a shader edit to a candidate GPU pipeline, inde
 
 WebGPU exposes [`getCompilationInfo`](https://gpuweb.github.io/types/interfaces/GPUShaderModule.html) and [`createRenderPipelineAsync`](https://gpuweb.github.io/types/interfaces/GPUDevice.html). Successful module creation alone is not proof that a compatible render pipeline exists. Resource layout changes need validation or an explicit migration. If the device is lost, recover GPU resources from the project/runtime state; the previous pipeline belongs to the lost device and cannot be the recovery mechanism.
 
-The same lifecycle can sit behind the Rust runtime or a browser JavaScript adapter. Effect can coordinate it if adopted. The current [Haunted House shader/Kiln issue](https://github.com/OpenAgentsInc/openagents/issues/12500) remains a focused first test of continuity and error recovery; it does not require a WebGPU rewrite.
+The selected TypeScript/Effect runtime coordinates this lifecycle directly. Rust can implement the same mechanism; it is not exclusive to this recommendation. The current [Haunted House shader/Kiln issue](https://github.com/OpenAgentsInc/openagents/issues/12500) remains a focused existing test scope; this audit does not start, implement, or expand it.
 
 ## Kiln and retained Rust
 
 Kiln should submit typed project commands: change a property, replace an asset draft, compile a material, inspect a preview, undo a transaction, or publish a selected snapshot. The renderer is an implementation detail of the receiving editor. A renderer rewrite should not require Kiln to learn a different project's object model or edit generated engine internals.
 
-Keep the existing Rust identity, permissions, Nostr, wallet, inference, Kiln, runner, and publishing services. Keep Loro/`coder-sync` collaboration and NIP-HOST grants. Preserve one simulation state owner and batch any JS/Wasm exchange. Effect services can call bounded Rust capabilities without becoming a duplicate account, session, or authorization system.
+Existing Rust identity, permissions, Nostr, wallet, inference, Kiln, runner, and publishing services can remain behind bounded APIs. Their reuse does not require the new browser runtime's domain and simulation state to be Rust. Keep Loro/`coder-sync` collaboration and NIP-HOST grants. Preserve one simulation state owner and batch any JS/Wasm exchange. Effect services must not become a duplicate account, session, or authorization system.
 
-The current Rust-only contract still governs implementation. Effect and `three-effect` are TypeScript libraries; investigating them does not create an exception. The relevant prospective exception would be a narrow browser orchestration/renderer adapter, with application and domain state remaining in Rust. No code or policy change is part of this audit.
+The owner explicitly removes the Rust-only constraint for this architecture assessment. The TypeScript recommendation is therefore not conditional on retaining Rust browser application state. This update changes documentation only; it does not modify `AGENTS.md` or implement a language migration.
 
 ## A decision that can be tested
 
 - **Own now in the design:** project schema, command history, asset sources, simulation state, shader/material contracts, and the preview/publish boundary.
-- **First custom-renderer candidate:** existing Rust/`wgpu` plus editable WGSL, with incremental scene updates.
-- **Browser-first alternative:** a small raw WebGPU encoder behind the same project contract, with Effect for surrounding work if the language boundary is adopted.
-- **Existing comparison path:** `three-effect`, with targeted allocation and update experiments before a broad rewrite.
+- **Selected architecture:** TypeScript editor and runtime, Effect orchestration, direct WebGPU, and editable WGSL; preview simulation and rendering share a worker by default.
+- **Selective acceleration:** Rust/Wasm or other Wasm libraries for measured CPU workloads through coarse data APIs. Rust/wgpu is not the default renderer under these assumptions.
+- **Reference paths:** `three-effect` and the existing Rust renderer supply comparison workloads and design references. A Three adapter is optional, not a required production phase.
 - **Choose on evidence:** identical visuals, simulation, resolution, and devices; compare CPU time, GPU time, p95 frame time, memory, initial load, and edit-to-visible latency. Include a real authored game slice as well as a scale workload.
 
-Use [GPU timestamp queries](https://webgpu.github.io/webgpu-samples/?sample=timestampQuery) where available, with a CPU-only measurement fallback. Promote a custom path when it demonstrates a meaningful workload advantage and usable authoring, or when a required feature cannot be added cleanly to the existing renderer. No speedup factor or migration deadline is established by this research.
+Use [GPU timestamp queries](https://webgpu.github.io/webgpu-samples/?sample=timestampQuery) where available, with a CPU-only measurement fallback. Validate the selected architecture's frame budget, authoring continuity, and error recovery before migration. Revisit the language choice if measured CPU work dominates despite targeted kernels, or if native rendering becomes a primary requirement. No speedup factor or migration deadline is established by this research.

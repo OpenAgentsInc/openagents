@@ -6,16 +6,16 @@ Upstream links describe the sources reviewed on this date, not pinned releases.
 
 ## Recommendation
 
-**Updated owner direction: build our own editor, runtime, and services.** Under that requirement, the decision centers on a rendering boundary we control. Read [the owned-renderer, WebGPU, and Effect assessment](2026-10-22-owned-renderer-webgpu-and-effect.md) for the revised recommendation and the inspection of `three-effect`.
+**Updated owner direction: build our own editor, runtime, and services; assume browser-first and no Rust-only constraint.** The [owned-renderer, WebGPU, and Effect assessment](2026-10-22-owned-renderer-webgpu-and-effect.md) selects a TypeScript editor/runtime, Effect orchestration, direct WebGPU, and editable WGSL, with selective Wasm CPU kernels. It replaces the earlier preference for starting from the Rust renderer.
 
 - **Our project model and authoring commands come first:** do not make an upstream editor's history, services, or scene objects the product foundation.
-- **Three.js can supply rendering:** use an adapter we control, and compare `three-effect` with our existing Rust renderer rather than acquiring a full editor workflow.
+- **Three.js can supply a reference or optional adapter:** the selected from-scratch rendering direction is our own direct WebGPU renderer. `three-effect` supplies useful patterns and a comparison path.
 - **Babylon and PlayCanvas remain useful engine/tool references:** their available authoring interfaces no longer determine the recommendation when we intend to build those systems ourselves.
 - **Rust remains viable for fast iteration:** our existing local demos already update data and art without rebuilding the game, and replace a small Rust rules module without restarting the run. Shader text can follow the same principle.
 
 The comparison below retains the capabilities and tradeoffs of reusing existing editor tooling. Its conditional assessments of editor reuse do not override the owner's clarified requirement. No candidate was benchmarked.
 
-The repository's [agent contract](../../AGENTS.md) currently requires Rust product code and prohibits adding TypeScript. None of these JavaScript engines is an approved product-code exception. **This audit does not change that policy.** Adopting one would require an explicit browser viewport/editor boundary in the policy before implementation. Continuing the Rust shader demo fits the current contract.
+The owner explicitly removes the Rust-only constraint for the current architecture assessment. The Rust reuse inventory below describes existing investments, not requirements for the new browser application's state or UI. This audit changes documentation only and leaves the repository's [agent contract](../../AGENTS.md) unchanged.
 
 ## What owning the editor means
 
@@ -238,8 +238,8 @@ The acceptance bar is uninterrupted compatible edits, useful errors, reversible 
 
 ## Decision record
 
-- **Revised investigation:** own the editor and runtime contracts; compare rendering through `three-effect` with our existing Rust/`wgpu` path and direct browser WebGPU. See the [follow-up assessment](2026-10-22-owned-renderer-webgpu-and-effect.md).
-- **Recommended retained architecture:** Rust domain services and Kiln, with an explicit runtime boundary if a JavaScript engine is later adopted.
+- **Selected browser architecture:** own the editor and runtime contracts; use TypeScript + Effect with direct WebGPU and WGSL. See the [follow-up assessment](2026-10-22-owned-renderer-webgpu-and-effect.md).
+- **Rust reuse:** existing services and Kiln can remain behind bounded APIs; use browser Wasm kernels where measured CPU benefits justify them.
 - **Scope of the existing issue:** #12500 calls for shader editing and recovery without requiring a renderer rewrite.
-- **Unresolved decisions:** product-language exception, full editor versus guided creator flow, renderer performance tradeoffs, and native/phone playback requirements. Hosted authoring services are outside the clarified product direction.
+- **Unresolved implementation decisions:** full editor versus guided creator flow, supported browser capabilities, module replacement details, and performance budgets. Browser-first and language freedom are explicit assumptions; hosted authoring services are outside the product direction.
 - **Validation of this document:** repository docs and targeted source inspection, plus upstream primary documentation and source. No prototype, engine benchmark, production change, or product-code change was made.
