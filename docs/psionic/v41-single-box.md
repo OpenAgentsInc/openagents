@@ -421,3 +421,70 @@ checks all eight inputs, modes, token arrays, and build identities.
 
 The `g4-standard-48` ran from 04:01Z; see #12463 and #12464 for each run's
 cost. The spend guard's `deepseek-v41` budget carries every machine.
+
+## Persistent Maya Pylons
+
+`scripts/pylon/maya-supervisor.py` supervises only `oa-maya-pylon-1` and
+`oa-maya-pylon-2` in `openagentsgemini/asia-northeast1-b`. It preserves the
+reviewed consumer-q bundle and each provider's private identity. Before handoff,
+put the two keys in `~/.openagents/maya-supervisor/vault/slot-N.provider.key`:
+the vault must have mode `0700`, and each key must have mode `0600`.
+Keep keys out of the public service archive.
+
+The public deployment JSON has `run_id` and two ordered `slots`. Each slot
+records `vm`, `allocation` (guard record ID), `instance_id`, `disk_id`,
+`expires` (Unix seconds), `producer` (hex public key), `run_id`, and
+`installed: true`. Use the deployment owner's observed IDs and ready-service
+receipts. Initial SSH host keys must already exist in
+`~/.ssh/google_compute_known_hosts` under `compute.INSTANCE_ID`.
+Optional `ssh_user` and `ssh_key` fields select the deployment operator's
+existing SSH username and private-key path; defaults use the local username
+and `~/.ssh/google_compute_engine`. Only its public key enters replacement
+instance metadata.
+
+After both services are ready and their owner hands them over:
+
+```sh
+python3 scripts/pylon/maya-supervisor.py configure --deployment DEPLOYMENT.json --bundle PUBLIC_BUNDLE
+python3 scripts/pylon/maya-supervisor.py install --handoff-confirmed
+python3 scripts/pylon/maya-supervisor.py status
+```
+
+The LaunchAgent copies its tools and bundle into
+`~/.openagents/maya-supervisor/`, registers a run rooted in its own process,
+and transfers the two VM labels to that run without restarting the services.
+Verify both labels before ending the previous deployment run; end that old run
+with `agent-run.py reap OLD_RUN --no-vms`. Its old VM list still names these
+services. The Mac must remain online and logged in. A later login restarts the
+LaunchAgent; each VM also has a native deletion deadline and an automatically
+deleted boot disk.
+
+The controller replaces a lost spot VM and renews each slot two hours before
+expiry, deleting the old instance and confirming disk deletion first. Every
+reservation checks the Maya `$1,000` sub-cap and the global `$3,000` cap with
+its unchanged `$300` reserve. Maya accounting includes its historical compute,
+live commitments, and attributable charges. Qualification charges and the
+global reserve are not charged against Maya again. An ambiguous new charge
+blocks admission until its description identifies Maya or qualification.
+
+Disk admission uses an estimated `$0.50/VM-hour`, above the verified Tokyo
+Hyperdisk Balanced catalog quote for 1,200 GiB, 10,200 IOPS, and 1,940 MiB/s.
+The two initial days book `$12` each, separately from compute. Stable charge
+markers prevent duplicate disk allowances after a failed create or lost reply.
+Keep actual billing separately; do not post a second charge within the booked
+allowance, and post only a verified excess. The controller never raises a cap.
+
+It exits after issues #12502–#12509 and #12514 are all closed as completed.
+Unavailable GitHub data or a not-planned closure cannot trigger completion.
+To stop early, request cleanup and wait for `phase: stopped` before disabling:
+
+```sh
+python3 scripts/pylon/maya-supervisor.py stop
+python3 scripts/pylon/maya-supervisor.py status
+python3 scripts/pylon/maya-supervisor.py disable
+```
+
+`state.json` and `supervisor.log` show failures. Unknown ownership, a reused
+name, an unconfirmed disk deletion, or exhausted budgets blocks replacement.
+A fresh terminal group failure permits at most three head restarts per VM,
+at least an hour apart; busy requests and startup do not trigger a restart.
