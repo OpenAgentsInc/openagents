@@ -1510,3 +1510,19 @@ The interrupted request returned no answer after its 600-second budget and
 allocations were deleted when the test ended, with estimated compute cost
 $4.45. See [the replacement record](verification/deepseek-v41-gates-2026-10-22/one-quad-watcher-recovery.json).
 Numerical release acceptance remains pending.
+
+### Current two-dual runtime checks (2026-10-22)
+
+The replacement private two-dual group passed the same eight runtime checks:
+complete and repeated answers, actual conversation history, the 4096-token
+output refusal, the exact 2,872-token input, the 2,873-token refusal, and fresh
+answers after both refusals. The accepted boundary request completed in
+128.9 seconds. The native controller exited successfully, and all four workers
+stopped before subsequent qualification work. See [the runtime record](verification/deepseek-v41-gates-2026-10-22/two-dual-runtime.json).
+
+The corrected head-only stale-cache control produced full measurements, but
+the short Engram case still fails only on noncausal index data under the
+provisional CPU-derived policy. That does not establish numerical detection.
+Natural-language calibration controls are running separately; the earlier
+attempts remain retained. Rule 2.4 remains unfrozen, and no fresh confirmation
+oracle has been captured.
