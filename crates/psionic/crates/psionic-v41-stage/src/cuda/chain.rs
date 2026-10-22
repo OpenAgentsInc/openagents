@@ -113,6 +113,13 @@ pub struct ChainOptions {
     /// and write each stage's to `PREFIX.layers-A-B` (`--calibrate-out`,
     /// #12465).
     pub calibrate_out: Option<PathBuf>,
+    /// Exact prompt token ids, instead of encoding `--prompt`
+    /// (`--prompt-ids`, a JSON list).
+    pub prompt_ids: Option<Vec<u32>>,
+    /// Teacher forcing (`--force-ids`, a JSON list): after each answer step
+    /// the next input is this token, not the sampled one, so captured
+    /// logits line up with another run's (#12465's quality card).
+    pub force_ids: Option<Vec<u32>>,
 }
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
@@ -222,6 +229,12 @@ impl ChainOptions {
                 None => Vec::new(),
             },
             calibrate_out: flag(args, "--calibrate-out").map(PathBuf::from),
+            prompt_ids: flag(args, "--prompt-ids")
+                .map(|v| serde_json::from_str(v).map_err(|e| Refused(format!("--prompt-ids: {e}"))))
+                .transpose()?,
+            force_ids: flag(args, "--force-ids")
+                .map(|v| serde_json::from_str(v).map_err(|e| Refused(format!("--force-ids: {e}"))))
+                .transpose()?,
         })
     }
 }
@@ -703,7 +716,9 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
     let (vocabulary, eos, pad) = text_side(&options.weights)?;
     let tokenizer = vocabulary.tokenizer();
     let mode = options.mode;
-    let round_prompts: Vec<Vec<u32>> = if options.prompts.is_empty() {
+    let round_prompts: Vec<Vec<u32>> = if let Some(ids) = &options.prompt_ids {
+        vec![ids.clone()]
+    } else if options.prompts.is_empty() {
         vec![vocabulary.encode(options.prompt.as_ref(), pad, mode)?]
     } else {
         options
@@ -962,10 +977,17 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                         finish = piece.finish;
                     }
                 }
-                if token == eos {
+                let next = match &options.force_ids {
+                    Some(forced) => match forced.get(tokens.len() - 1) {
+                        Some(t) => *t,
+                        None => break,
+                    },
+                    None => token,
+                };
+                if next == eos {
                     break;
                 }
-                pending.push(vec![token]);
+                pending.push(vec![next]);
             }
             let decode_ms: f64 = token_ms.iter().sum();
             let request = if round == 0 {
