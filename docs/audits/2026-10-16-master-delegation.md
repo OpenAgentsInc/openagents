@@ -485,6 +485,13 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12435: production content deploys, once the owner approves them:
+  create the live key (`~/work/.secrets/livehost-openagents-live.key`),
+  set `OPENAGENTS_LIVE_RELAY`, `OPENAGENTS_LIVE_STORE`,
+  `OPENAGENTS_LIVE_PUBKEY` (the live key's) and `OPENAGENTS_LIVE_CHANNEL=live`
+  on production's web container, then `scripts/deploy/livehost.sh promote
+  HASH` with staging's checked manifest and confirm openagents.com serves
+  it. Until then production serves the compiled-in content.
 - #12436: after the next web deploy, with a Flint Pylon online, run
   `openagents browser run -- python3 scripts/dev/check-grid-flint.py --out
   DIR --click-pick --pin sha256:ARTIFACT` with the Mac Pylon's INT4 Metal

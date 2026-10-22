@@ -434,12 +434,54 @@ the current pointer from the relay, 0.15–0.7 s to upload, and 0.1–0.2 s to
 publish. A server swaps 0–58 ms after the pointer arrives and waits up to
 3 s for the first manifest when it starts.
 
+### Modules and handlers on staging
+
+Staging revision `openagents-web-1-staging-541b2ee804-234004` serves the
+/pylons list from a handler component and browser module files from the
+content manifest (commits `9b12a573d7`, `c058c5184c`, `462605f774`), with the
+staging fast-build settings from `scripts/deploy/staging-build-env.sh`
+(`8bdd5e4d6f`). Measured from this Mac on 2026-10-22, five runs after one
+warm-up, a change counted as live after three matching responses in a row:
+
+| Change | Edit to live on staging, median / worst | Of which: build | Of which: `livehost.sh deploy` |
+| --- | --- | --- | --- |
+| A docs page | 4.4 / 4.9 s | none | 3.4–4.1 s |
+| The /pylons list component | 5.1 / 5.9 s | 0.15–0.19 s | 3.0–3.7 s |
+| The pylons-web browser module (staging settings, 615 KB with copies) | 5.5 / 6.2 s | 0.8–1.0 s | 3.3–4.1 s |
+| Rollback of the docs change | 3.1 / 3.3 s | none | 2.1–2.5 s |
+
+The staging smoke passed afterward (106 passed, 3 skipped). When a deploy
+left the modules out again, staging served the image's copy of the module.
+In the script's 3–4 s, the upload and publish take about 1 s; the rest is
+Cargo's freshness checks for the deploy tools and the stylesheet bundler,
+which calling the built binaries directly would remove.
+
+How it fits together:
+
+- **Handlers.** `crates/openagents-web/components/pylons-list` is the /pylons
+  list as a `site-route` component. The server shares one thing with it,
+  `data.read("pylons-snapshot")`, runs it with wasmtime per request, and
+  renders natively when the manifest has no such handler or it fails.
+- **Modules.** A route that serves module files through `serve_build` reads
+  `modules/<path under /srv>/<file>` from the manifest first, with its
+  `.br` or `.gz` copy and the object hash as `ETag`, and falls back to the
+  image's file. Module objects load on first request within a 256 MB
+  budget. #12427 builds modules by content hash and hands them to
+  `livehost.sh deploy` as `LIVEHOST_MODULES_DIR`; after an image deploy it
+  publishes the image's modules the same way, so a stale manifest never
+  overrides a newer image.
+- **Staging build settings.** `. scripts/deploy/staging-build-env.sh` before
+  any `scripts/build-*-web.sh`: no LTO, 16 codegen units, incremental, no
+  `wasm-opt`, brotli 5, gzip 6. Production promotion keeps the production
+  settings.
+
 ### What's left
 
-- **Handlers and modules on the real site.** The host interface for live
-  data, extracting a route from `openagents-web`, serving modules by hash,
-  and staging build settings in the deploy script.
-- **`web.sh` calls `livehost.sh`** once #12417's changes to `web.sh` land.
-- **Faster script.** Calling the built tools directly instead of through
-  `cargo run` would remove about 2 s from each content deploy.
+- **Production** follows nothing until the owner approves the live key and
+  production's `OPENAGENTS_LIVE_*` variables (an after-close check of
+  #12435).
+- **More routes** become components as they are pulled out of
+  `openagents-web` behind narrow `data.read` names, and pages that inline a
+  module's glue (lander5's runner) read it from the manifest too.
+- **`web.sh`** calls `livehost.sh` once #12417 and #12427 land their changes.
 - **The blog**, whose posts are parsed into `'static` data.

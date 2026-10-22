@@ -35,6 +35,20 @@ its docs, legal text, and stylesheet from the `openagents` tenant
 (`crates/openagents-web/src/live_content.rs`, #12435). On Cloud Run the
 Cloud Storage token comes from the metadata server; elsewhere from `gcloud`.
 
+## Handler components in another server
+
+The `components` feature adds `livehost::site::SiteRuntime`, which runs
+handler components of the `site-route` world: the same request and
+response as the host's handlers, plus one import, `data.read(name)`,
+through which the embedding server shares named data. `openagents-web`
+renders the /pylons list with `crates/openagents-web/components/pylons-list`
+this way, sharing the live pylons snapshot as `pylons-snapshot`, and falls
+back to its native renderer when the manifest has no such handler.
+
+A follower loads paths under its `lazy_prefixes` (for `openagents-web`,
+`modules/`) on first request, within `lazy_budget` bytes, and keeps only the
+current manifest's other objects.
+
 ## Routes the host serves
 
 | Route | What it returns |
