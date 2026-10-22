@@ -2038,6 +2038,11 @@ fn consumer_q_tiers_agree() -> TestResult {
     let store = synthetic_store(61);
     let sh = shape();
     let fp4 = V41OwnedExperts::from_source(&store, 0..40, sh.router.experts)?;
+    let fp4_host: Arc<dyn V41ExpertBytes> = Arc::new(V41OwnedExperts::from_source(
+        &store,
+        0..40,
+        sh.router.experts,
+    )?);
     let rows: Arc<dyn V41EngramRows> =
         Arc::new(V41OwnedEngram::from_source(&store, &[1, 14], ENGRAM_WIDTH)?);
     for formats in [
@@ -2117,6 +2122,47 @@ fn consumer_q_tiers_agree() -> TestResult {
             "{formats:?}: host lane differs from device slots"
         );
         assert_eq!(runs[0], runs[2], "{formats:?}: layer-major prefill differs");
+        // Against the FP4 experts the quant came from: the same model,
+        // near enough (a decode bug would scatter the logits).
+        let mut fp4_options = config(sh.router.experts, false);
+        if let Some(setup) = fp4_options.expert_cache.as_mut() {
+            setup.config.formats = V41ExpertDims::fp4(0, 0, 0.0).formats;
+            setup.host = Some(fp4_host.clone());
+        }
+        let mut stage = load_with_options(&mut backend, &store, 0..40, false, fp4_options)?;
+        let reference = stage.step(
+            &backend,
+            &V41StepInput {
+                position: 0,
+                tokens: &steps[0],
+                residual: None,
+                pre_mix: None,
+                source_rows: None,
+                selection: None,
+                candidates: None,
+                sampling: V41Sampling::greedy(),
+            },
+            false,
+        )?;
+        let fp4_logits = stage.logits()?;
+        let q_logits: Vec<f32> = runs[0][0].1.iter().map(|b| f32::from_bits(*b)).collect();
+        let dot = |a: &[f32], b: &[f32]| {
+            a.iter()
+                .zip(b)
+                .map(|(x, y)| f64::from(*x) * f64::from(*y))
+                .sum::<f64>()
+        };
+        let cosine = dot(&fp4_logits, &q_logits)
+            / (dot(&fp4_logits, &fp4_logits).sqrt() * dot(&q_logits, &q_logits).sqrt());
+        println!(
+            "{formats:?}: first token {} (FP4 {}), logit cosine {cosine:.4}",
+            runs[0][0].0.unwrap_or(0),
+            reference.token.unwrap_or(0)
+        );
+        assert!(
+            cosine > 0.9,
+            "{formats:?}: the quant's logits scatter: cosine {cosine}"
+        );
         // The faster, reordered reductions change the sums, not the model:
         // finite logits, close to the exact order's, the same first token.
         let mut options = config(sh.router.experts, false);
