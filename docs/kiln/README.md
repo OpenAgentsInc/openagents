@@ -42,7 +42,7 @@ open http://127.0.0.1:8787/
 
 The script builds the tools for `wasm32-wasip1`, the page module for
 `wasm32-unknown-unknown`, and `kiln-dev`, the local server. It writes the
-site to `$KILN_OUT` (default `$CARGO_TARGET_DIR/kiln-web`) and, with
+site to `$KILN_OUT` (default `$CARGO_TARGET_DIR/kiln-site`) and, with
 `--serve PORT`, serves it on `127.0.0.1:PORT`. It needs the two WebAssembly
 targets, `wasm-bindgen` 0.2.128, and a clang with the WebAssembly target for
 `secp256k1` (Homebrew's `llvm`).
@@ -50,7 +50,7 @@ targets, `wasm-bindgen` 0.2.128, and a clang with the WebAssembly target for
 To serve an existing build:
 
 ```sh
-$CARGO_TARGET_DIR/debug/kiln-dev --dir $CARGO_TARGET_DIR/kiln-web --port 8787
+$CARGO_TARGET_DIR/debug/kiln-dev --dir $CARGO_TARGET_DIR/kiln-site --port 8787
 ```
 
 Two query parameters help automated checks: `?selftest=1` runs the

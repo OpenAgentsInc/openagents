@@ -65,6 +65,8 @@ struct App {
     /// The Kiln build this page runs (`tools/manifest.json`'s `kiln.build`),
     /// or `site` for the host's own build.
     build: RefCell<String>,
+    /// The one pylon a run may use, from `?pylon=` (hex or npub).
+    pin_pylon: RefCell<Option<String>>,
     /// The run as the transcript draws it.
     run_view: RefCell<crate::transcript::Run>,
     /// The tool card of the command running now, for its progress lines.
@@ -114,6 +116,7 @@ pub async fn run() {
         build: RefCell::new(String::new()),
         pending_build: RefCell::new(None),
         run_view: RefCell::new(crate::transcript::Run::default()),
+        pin_pylon: RefCell::new(None),
         current_tool: RefCell::new(None),
         admin_key: RefCell::new(None),
         key,
@@ -160,6 +163,13 @@ pub async fn run() {
             let input: HtmlInputElement = el(&app.doc, "relay").unchecked_into();
             input.set_value(relay);
         }
+    }
+    if let Some(model) = param("model") {
+        let input: HtmlInputElement = el(&app.doc, "model").unchecked_into();
+        input.set_value(&model);
+    }
+    if let Some(pin) = param("pylon").and_then(|p| nostr_hex(&p)) {
+        *app.pin_pylon.borrow_mut() = Some(pin);
     }
     if let Some(relay) = param("relay") {
         let input: HtmlInputElement = el(&app.doc, "relay").unchecked_into();
@@ -1024,6 +1034,14 @@ impl App {
                     Ok(b) => {
                         book = b;
                         book_at = now_ms();
+                        // `?pylon=KEY` keeps the run on one pylon.
+                        if let Some(pin) = self.pin_pylon.borrow().as_deref() {
+                            for (_, beacon) in book.iter() {
+                                if beacon.provider != pin {
+                                    failing.insert(beacon.provider.clone());
+                                }
+                            }
+                        }
                         let pylons = cj::describe(&book, super::util::unix());
                         self.log(
                             "info",

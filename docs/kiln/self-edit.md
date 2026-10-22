@@ -99,7 +99,7 @@ kiln-runner --state "$S/kiln-runner" --jobs 6 --open --admins "$S/kiln-admins" \
   --publish-store "$S/livehost-store" --publish-key "$S/kiln-dev-tenant.key" \
   --publish-tenant kiln-dev --publish-channel staging
 # The runner prints the publishing key's public half; follow it:
-kiln-dev --dir "$CARGO_TARGET_DIR/kiln-web" --port 8787 \
+kiln-dev --dir "$CARGO_TARGET_DIR/kiln-site" --port 8787 \
   --runner "$(cat "$S/kiln-runner/pubkey")" --repo "$(cat "$S/kiln-runner/repository")" \
   --live-store "$S/livehost-store" --live-pubkey PUBLISHING_KEY \
   --live-tenant kiln-dev --live-channel staging

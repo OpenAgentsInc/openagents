@@ -78,7 +78,7 @@ cargo build -p kiln-runner
 kiln-runner --state "$(openagents scratch)/kiln-runner" --jobs 4 --open
 # The page, pointed at the runner's key.
 scripts/build-kiln.sh
-kiln-dev --dir "$CARGO_TARGET_DIR/kiln-web" --port 8787 --runner "$(cat "$(openagents scratch)/kiln-runner/pubkey")"
+kiln-dev --dir "$CARGO_TARGET_DIR/kiln-site" --port 8787 --runner "$(cat "$(openagents scratch)/kiln-runner/pubkey")"
 open "http://127.0.0.1:8787/?load=crates/memory-stream"
 ```
 

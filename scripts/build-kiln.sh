@@ -5,7 +5,7 @@
 #
 #   scripts/build-kiln.sh [--serve PORT]
 #
-# Output goes to $KILN_OUT (default $CARGO_TARGET_DIR/kiln-web). With
+# Output goes to $KILN_OUT (default $CARGO_TARGET_DIR/kiln-site). With
 # --serve, kiln-dev then serves it on 127.0.0.1:PORT.
 #
 # Needs: the wasm32-wasip1 and wasm32-unknown-unknown targets, wasm-bindgen
@@ -20,7 +20,8 @@ export CARGO_TARGET_DIR
 : "${CARGO_BUILD_JOBS:=6}"
 export CARGO_BUILD_JOBS
 . "$root/scripts/dev/cargo-build-env.sh"
-out=${KILN_OUT:-$CARGO_TARGET_DIR/kiln-web}
+# Not `kiln-web`: Cargo writes the `kiln-web` profile's host builds there.
+out=${KILN_OUT:-$CARGO_TARGET_DIR/kiln-site}
 
 if [ -z "${CC_wasm32_unknown_unknown:-}" ]; then
   for candidate in /opt/homebrew/opt/llvm/bin/clang /opt/homebrew/opt/llvm@*/bin/clang /usr/local/opt/llvm/bin/clang "$(command -v clang || true)"; do
