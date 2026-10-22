@@ -1633,3 +1633,23 @@ fn the_one_box_placement_runs_one_consumer_exact_stage() {
             .all(|s| !s.args.join(" ").contains("--experts"))
     );
 }
+
+#[test]
+fn native_arithmetic_is_explicit_and_numerical_evidence_is_optional() {
+    let mut rig = Rig::new("four-single", "ws://127.0.0.1:1");
+    rig.up.worker_arithmetic = Some("fp8-mma-tp8".into());
+    let plan = cloud::plan(&rig.up).unwrap();
+    let lane = cloud::group_lane(&rig.up, &plan);
+    assert!(lane.numerical_qualification.is_none());
+    assert!(lane.stages.iter().all(|s| {
+        s.args
+            .windows(2)
+            .any(|a| a == ["--arithmetic", "fp8-mma-tp8"])
+    }));
+    let words = vec![
+        "four-single".into(),
+        "--worker-arithmetic".into(),
+        "invented".into(),
+    ];
+    assert!(cloud::parse_up(&words, &repo(), rig.dir.path(), "ws://127.0.0.1:1").is_err());
+}

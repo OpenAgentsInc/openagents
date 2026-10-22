@@ -241,6 +241,10 @@ pub struct Up {
     /// worker, its libraries, its target, and its profile; each stage
     /// machine refuses another build (#12407).
     pub worker_build: Option<String>,
+    /// Numerical qualification for the actual worker and launch settings.
+    pub numerical_qualification: Option<crate::group::NumericalQualification>,
+    /// Explicit native CUDA arithmetic profile.
+    pub worker_arithmetic: Option<String>,
     /// The SHA-256 of the pylon build's `BUILD.json`, for a head in the zone.
     pub pylon_build: Option<String>,
     /// A launch without the build pins (`--development`). A qualified
@@ -323,6 +327,8 @@ impl Up {
             weights: placement::WEIGHTS.into(),
             worker: None,
             worker_build: None,
+            numerical_qualification: None,
+            worker_arithmetic: None,
             pylon_build: None,
             development: false,
             deadline_secs: 90,
@@ -432,6 +438,13 @@ fn layer_list(stages: &[StagePlan]) -> String {
 /// When the placement is unknown or doesn't fit its machines, the group
 /// slug is invalid, or the hours aren't positive.
 pub fn plan(up: &Up) -> Result<Plan, String> {
+    if up
+        .worker_arithmetic
+        .as_ref()
+        .is_some_and(|a| !matches!(a.as_str(), "device" | "fp8-mma-tp8"))
+    {
+        return Err("--worker-arithmetic takes device or fp8-mma-tp8".into());
+    }
     let step = up
         .max_step_tokens
         .or(up.prefill_chunk)
@@ -662,6 +675,15 @@ pub fn plan(up: &Up) -> Result<Plan, String> {
             stages: Vec::new(),
             head: true,
         });
+    }
+    if up.worker_arithmetic.as_deref() == Some("fp8-mma-tp8")
+        && (!local.is_empty()
+            || machines
+                .iter()
+                .flat_map(|m| &m.stages)
+                .any(|s| s.file_experts))
+    {
+        return Err("FP8 arithmetic requires resident CUDA stages.".into());
     }
     Ok(Plan {
         placement,
@@ -969,6 +991,9 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
                 format!("sha256:{}", plan.placement.digest),
             ];
             extra.extend(["--max-context".into(), up.max_context.to_string()]);
+            if let Some(a) = &up.worker_arithmetic {
+                extra.extend(["--arithmetic".into(), a.clone()]);
+            }
             if let Some(n) = up.max_step_tokens {
                 extra.extend(["--max-step-tokens".into(), n.to_string()]);
             }
@@ -1106,6 +1131,7 @@ pub fn group_lane(up: &Up, plan: &Plan) -> GroupLane {
         })
         .collect();
     GroupLane {
+        numerical_qualification: up.numerical_qualification.clone(),
         id: up.group.clone(),
         placement: plan.placement.name.clone(),
         model: placement::MODEL.into(),
@@ -1794,6 +1820,8 @@ checkout on the one host that allocates for the budget.
                             pylon.deadline.v1 jobs).
       --max-output-tokens N The output limit it declares (default 1024).
       --max-context N       Prompt and answer positions (default 8192).
+      --qualification FILE Numerical evidence for this exact worker and configuration.
+      --worker-arithmetic A Native CUDA profile: device or fp8-mma-tp8.
       --max-step-tokens N   Step-buffer capacity, independent of context.
       --prefill-chunk N     Process prompts in bounded chunks; defaults the
                             step capacity to N. No overlap between chunks.
@@ -1881,6 +1909,8 @@ pub fn parse_up(
     let weights = value(&mut words, "--weights")?;
     let development = take_flag(&mut words, "--development");
     let worker_build = value(&mut words, "--worker-build")?;
+    let qualification = value(&mut words, "--qualification")?;
+    let arithmetic = value(&mut words, "--worker-arithmetic")?;
     let pylon_build = value(&mut words, "--pylon-build")?;
     let max_context = value(&mut words, "--max-context")?;
     let max_step_tokens = value(&mut words, "--max-step-tokens")?;
@@ -1951,6 +1981,22 @@ pub fn parse_up(
         }
     }
     up.worker_build = worker_build.map(|p| p.to_ascii_lowercase());
+    if let Some(path) = qualification {
+        let q: crate::group::NumericalQualification = serde_json::from_slice(
+            &std::fs::read(path)
+                .map_err(|e| format!("Cannot read numerical qualification: {e}"))?,
+        )
+        .map_err(|e| format!("Cannot read numerical qualification: {e}"))?;
+        q.validate()?;
+        up.numerical_qualification = Some(q);
+    }
+    if arithmetic
+        .as_ref()
+        .is_some_and(|a| !matches!(a.as_str(), "device" | "fp8-mma-tp8"))
+    {
+        return Err("--worker-arithmetic takes device or fp8-mma-tp8".into());
+    }
+    up.worker_arithmetic = arithmetic;
     up.pylon_build = pylon_build.map(|p| p.to_ascii_lowercase());
     let size = |name: &str, text: Option<String>| -> Result<Option<usize>, String> {
         text.map(|s| {

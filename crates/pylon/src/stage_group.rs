@@ -950,6 +950,10 @@ mod runtime {
         /// The numerical profile the stage runs, such as `cuda-device-sm_120`.
         #[serde(default)]
         profile: Option<String>,
+        #[serde(default)]
+        manifest: Option<String>,
+        #[serde(default)]
+        execution_config_sha256: Option<String>,
         /// The device it runs on: its `class` (`cuda-sm_89`, `cpu-x86_64`),
         /// and optionally its `name`, `memory_bytes`, and where its routed
         /// `experts` live (#12418).
@@ -1882,6 +1886,8 @@ mod runtime {
                     .map(str::to_owned),
                 profile: hello.profile.clone(),
                 bundle: bundle(hello.build.as_ref()).map(str::to_owned),
+                manifest: hello.manifest.clone(),
+                execution_config_sha256: hello.execution_config_sha256.clone(),
             });
             let direct = self.direct();
             let slot = &mut self.slots[index];

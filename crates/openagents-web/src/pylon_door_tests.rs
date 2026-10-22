@@ -217,6 +217,7 @@ async fn start_pylon(
                 deadline_secs: GROUP_DEADLINE.as_secs(),
                 max_output_tokens: 4_096,
                 profile: None,
+                numerical_qualification: None,
             },
             readiness: Arc::new(readiness),
             stages: vec![("s0".into(), nostr::pylon::Layers { from: 0, to: 43 })],
