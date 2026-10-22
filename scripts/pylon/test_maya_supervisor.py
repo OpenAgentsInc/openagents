@@ -342,6 +342,38 @@ class Controls(unittest.TestCase):
         self.assertEqual(s["allocation"], "a")
         self.assertEqual(s["instance_id"], "111")
 
+    def test_create_reclaimed_before_reply_settles_before_next_lifetime(self):
+        s = slot(1)
+        s.update(allocation=None, instance_id=None, disk_id=None,
+                 pending={"at": NOW, "run_id": "new-run"}, reservation={"storage": "paid-lifetime", "hours": 24})
+        records = ledger(start(s["vm"], run="new-run", hours=24))
+        self.backend.records = lambda: records
+        self.backend.describe = Mock(return_value=None)
+        def sync(*args):
+            if args[0] == "sync":
+                records.append({"event": "stop", "id": "a", "stop_epoch": NOW + 60, "reason": "preempted"})
+        self.backend.guard_call = Mock(side_effect=sync)
+        self.backend.disk_absent = Mock()
+        with self.assertRaises(m.Refused):
+            self.backend.recover(s)
+        self.assertIsNone(s["pending"])
+        self.assertIsNone(s["reservation"])
+        self.backend.disk_absent.assert_called_once_with(s)
+        self.assertIn(unittest.mock.call("stop", s["vm"], "--record", "a"), self.backend.guard_call.call_args_list)
+
+    def test_missing_unsettled_create_does_not_free_booked_lifetime(self):
+        s = slot(1)
+        pending = {"at": NOW, "run_id": "new-run"}
+        s.update(allocation=None, instance_id=None, disk_id=None, pending=pending,
+                 reservation={"storage": "same", "hours": 24})
+        self.backend.records = lambda: ledger(start(s["vm"], run="new-run", hours=24))
+        self.backend.describe = Mock(return_value=None)
+        self.backend.guard_call = Mock()
+        with self.assertRaises(m.Refused):
+            self.backend.recover(s)
+        self.assertEqual(s["pending"], pending)
+        self.assertEqual(s["reservation"]["storage"], "same")
+
     def test_cleanup_foreign_disk_does_not_call_guard(self):
         s = slot(1)
         self.backend.describe = Mock(return_value=instance(s))
