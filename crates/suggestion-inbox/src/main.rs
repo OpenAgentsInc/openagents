@@ -7,6 +7,8 @@ use nostr::domain::{RelaySigner, Tag};
 use suggestion_inbox::{Config, Service, now};
 use verse_net::net::{In, Link, Out};
 
+mod history;
+
 fn collect(service: Arc<Service>, key_file: std::path::PathBuf) -> Result<(), String> {
     let key = suggestion_inbox::read_key(&key_file)?;
     let signer = RelaySigner::from_secret_hex(&key.display_secret().to_string())
@@ -26,21 +28,19 @@ fn collect(service: Arc<Service>, key_file: std::path::PathBuf) -> Result<(), St
         relay: String,
         link: Link,
         auth: Option<String>,
-        count: usize,
-        oldest: u64,
+        history: history::History,
     }
-    fn subscribe(reader: &Reader, inbox: &str, until: u64) {
+    fn subscribe(reader: &Reader, inbox: &str) {
         reader.link.send(Out::Subscribe {
             id: "suggestion-history".into(),
             filters: vec![
-                serde_json::json!({"kinds":[1059],"#p":[inbox],"until":until,"limit":500}),
+                serde_json::json!({"kinds":[1059],"#p":[inbox],"until":reader.history.until,"limit":reader.history.limit}),
             ],
             live: false,
         });
     }
     fn begin(reader: &mut Reader, inbox: &str, advertised: &nostr::domain::Event) {
-        reader.count = 0;
-        reader.oldest = now();
+        reader.history = history::History::new(now());
         reader.link.send(Out::Publish(advertised.clone()));
         // Offline senders may publish wraps with old hidden timestamps.
         // The live subscription must accept them after history has finished.
@@ -49,7 +49,7 @@ fn collect(service: Arc<Service>, key_file: std::path::PathBuf) -> Result<(), St
             filters: vec![serde_json::json!({"kinds":[1059],"#p":[inbox],"limit":1})],
             live: true,
         });
-        subscribe(reader, inbox, now());
+        subscribe(reader, inbox);
     }
     let mut readers: Vec<_> = service
         .config
@@ -59,8 +59,7 @@ fn collect(service: Arc<Service>, key_file: std::path::PathBuf) -> Result<(), St
             relay: relay.clone(),
             link: Link::start(relay),
             auth: None,
-            count: 0,
-            oldest: now(),
+            history: history::History::new(now()),
         })
         .collect();
     loop {
@@ -89,8 +88,7 @@ fn collect(service: Arc<Service>, key_file: std::path::PathBuf) -> Result<(), St
                     }
                     In::Event { sub, event } => {
                         if sub == "suggestion-history" {
-                            reader.count += 1;
-                            reader.oldest = reader.oldest.min(event.created_at);
+                            reader.history.event(event.created_at, &event.id);
                         }
                         // A storage failure stops collection. The supervisor's
                         // restart repeats history without trusting a partial file.
@@ -98,15 +96,13 @@ fn collect(service: Arc<Service>, key_file: std::path::PathBuf) -> Result<(), St
                             service.store.receive(&event, now())?;
                         }
                     }
-                    In::Eose(id)
-                        if id == "suggestion-history"
-                            && reader.count >= 500
-                            && reader.oldest > 0 =>
-                    {
-                        let until = reader.oldest.saturating_sub(1);
-                        reader.count = 0;
-                        reader.oldest = until;
-                        subscribe(reader, &service.config.inbox, until);
+                    In::EoseHint { sub, complete } if sub == "suggestion-history" => {
+                        reader.history.complete = Some(complete);
+                    }
+                    In::Eose(id) if id == "suggestion-history" => {
+                        if reader.history.end()? {
+                            subscribe(reader, &service.config.inbox);
+                        }
                     }
                     _ => {}
                 }

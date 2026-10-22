@@ -1276,6 +1276,7 @@ impl Session {
                     self.crowd.apply(received, now);
                 }
             }
+            In::EoseHint { .. } => {}
             In::Eose(sub) => {
                 if sub == ME_SUB
                     && let Some(pending) = &mut self.pending_spawn

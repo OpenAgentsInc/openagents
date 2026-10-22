@@ -26,6 +26,21 @@ start replays relay history. Original gift wraps stay encrypted on disk;
 screening runs again on reads. Nothing in a suggestion executes a command or
 fetches a link.
 
+Our relay's NIP-67 completeness hints keep backfill moving even when its
+history cap is smaller than a requested page. Pages include the oldest
+timestamp again so records at that timestamp aren't skipped. If a timestamp
+holds more records than the relay will return, collection stops with that
+timestamp in the error. Existing files and relay history remain available.
+Raise both relay limits, restart the relay, then restart this service. For
+example, `NOSTR_RELAY_MAX_LIMIT=1000` and
+`NOSTR_RELAY_SEND_QUEUE_CAPACITY=2001` recover a bucket of 600 records. The
+effective page cap is `min(MAX_LIMIT, (SEND_QUEUE_CAPACITY - 1) / 2)` and must
+exceed the bucket size. Valid bounds are 100,000 for `MAX_LIMIT` and 65,536
+for `SEND_QUEUE_CAPACITY`; a bucket of 32,767 or more needs a relay cursor or
+an operator export rather than another limit increase. Legacy relays without
+NIP-67 use the usual short-page heuristic, so use our relay for reliable
+backfill.
+
 Set `NOSTR_RELAY_SUGGESTION_INBOX` on the relay to the inbox's public key. This
 requires NIP-42 authentication for suggestions and gives this recipient
 separate sender and IP flood budgets. Set `OPENAGENTS_SUGGESTION_INBOX` on the
