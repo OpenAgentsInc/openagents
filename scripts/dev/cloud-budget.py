@@ -973,10 +973,11 @@ def cmd_stop(a: argparse.Namespace) -> int:
         ident = m.get("instance_id") or creation_id(m, lifecycle_events(m, audit=False))
         if seen.get("status") not in ("TERMINATED", "STOPPED") or not ident or seen.get("id") != ident:
             raise Refused(f"{m['vm']}: cannot confirm the exact settled machine is stopped; didn't delete it")
+    delete_target = seen.get("id") or m["vm"]
     if seen.get("status") == "GONE" or not flex:
         seen = {}
     if not a.keep_machine:
-        r = gcloud("compute", "instances", "delete", m["vm"], f"--project={m['project']}",
+        r = gcloud("compute", "instances", "delete", delete_target, f"--project={m['project']}",
                    f"--zone={m['zone']}", "--quiet")
         if r.returncode != 0 and "was not found" not in r.stderr:
             print(r.stderr.strip()[-2000:], file=sys.stderr)
