@@ -424,3 +424,20 @@ fn a_model_s_name_reads_as_its_maker_writes_it() {
     other.services.clear();
     assert_eq!(title(&other), other.name);
 }
+
+#[test]
+fn details_only_show_close_to_a_machine_even_when_focused() {
+    let mut scene = scene_of(&group(false), None, 0.0);
+    scene.at = [0.0, 0.0, 0.0];
+    for (index, stage) in scene.stages.iter_mut().enumerate() {
+        stage.at = [0.0, 0.0, (index + 1) as f64 * 10.0];
+    }
+    for focused in [false, true] {
+        scene.focused = focused;
+        assert!(details_near(&scene, [3.0, 1.7, 0.0]));
+        assert!(!details_near(&scene, [3.01, 1.7, 0.0]));
+        assert!(details_near(&scene, [0.0, 1.7, 40.0]));
+        assert!(!details_near(&scene, [0.0, 1.7, 15.0]));
+        assert!(!details_near(&scene, [15.0, 1.7, 20.0]));
+    }
+}

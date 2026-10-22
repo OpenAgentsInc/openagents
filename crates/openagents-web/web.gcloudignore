@@ -14,6 +14,12 @@
 # Coder shares the app harness and its workspace dependencies.
 !/apps/
 /apps/*
+# Kiln embeds the editor's shared asset catalog.
+!/apps/haunt-preview/
+/apps/haunt-preview/*
+!/apps/haunt-preview/src/
+/apps/haunt-preview/src/*
+!/apps/haunt-preview/src/assets.json
 !/apps/openagents/
 /apps/openagents/*
 !/apps/openagents/Cargo.toml

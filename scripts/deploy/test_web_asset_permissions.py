@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -14,6 +15,27 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 class AssetPermissions(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("gcloud"), "gcloud verifies the filtered build context")
+    def test_the_filtered_context_includes_only_the_embedded_editor_catalog(self):
+        with tempfile.TemporaryDirectory(dir=os.environ["OPENAGENTS_SCRATCH"]) as temporary:
+            root = Path(temporary)
+            source = root / "apps/haunt-preview/src"
+            source.mkdir(parents=True)
+            catalog = source / "assets.json"
+            catalog.write_bytes((ROOT / "apps/haunt-preview/src/assets.json").read_bytes())
+            (source / "main.ts").write_text("unrelated editor source")
+            (source.parent / ".env").write_text("unrelated private settings")
+            (root / ".gcloudignore").write_bytes(
+                (ROOT / "crates/openagents-web/web.gcloudignore").read_bytes()
+            )
+            files = subprocess.run(
+                ["gcloud", "meta", "list-files-for-upload"], cwd=root,
+                check=True, capture_output=True, text=True,
+            ).stdout.splitlines()
+            self.assertIn("apps/haunt-preview/src/assets.json", files)
+            self.assertNotIn("apps/haunt-preview/src/main.ts", files)
+            self.assertNotIn("apps/haunt-preview/.env", files)
+
     def test_context_export_ignores_the_agents_private_umask(self):
         script = (ROOT / "scripts/deploy/web.sh").read_text()
         export = re.search(r"^export_context\(\) \{\n.*?^\}", script, re.M | re.S).group()

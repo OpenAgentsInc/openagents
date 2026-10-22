@@ -13,9 +13,8 @@
 //! prompt a long sweep runs through its parts in turn; while it answers a
 //! pulse beats around the loop at its decode rate; idle, its conduits are
 //! steady and quiet; starting, recovering, or down, they are broken. Each
-//! part shows its device's emblem. Close by, or with a member under the
-//! pointer, the group's details and each part's line are drawn over the
-//! world ([`draw`]).
+//! part shows its device's emblem. Close by, the group's details and each
+//! part's line are drawn over the world ([`draw`]).
 //!
 //! The pylons layer (`crates/pylons-web`) owns the live list and the
 //! places; it hands them over as `globalThis.pylonsBay`, a `Float64Array`
@@ -567,8 +566,8 @@ fn site_now(offset: f64) -> u64 {
     (js_sys::Date::now() / 1000.0 + offset).max(0.0) as u64
 }
 
-/// Each nearby or pointed-at group's details over its sign, and each
-/// nearby part's line under it, laid out in CSS pixels on a `size` canvas.
+/// Each nearby group's details over its sign, and each nearby part's line
+/// under it, laid out in CSS pixels on a `size` canvas.
 /// `player` is where the player stands.
 pub fn draw(
     ui: &mut verse::ui::UiBatch,
@@ -602,8 +601,7 @@ fn draw_group(
     let head = point(group.at);
     let middle = head + Vec3::Z * machine::middle(group.parts) as f32;
     let flat = |p: Vec3| Vec3::new(p.x, 0.0, p.z).distance(Vec3::new(player.x, 0.0, player.z));
-    let near = flat(middle) <= machine::PANEL_REACH as f32;
-    if !(near || group.focused) {
+    if !machine::details_near(group, player.to_array().map(f64::from)) {
         return;
     }
     let ink = |alpha: f32| crate::theme::linear(coder_ui::coder_noir::CONTENT, alpha);
@@ -658,7 +656,7 @@ fn draw_group(
         .stages
         .iter()
         .map(|stage| (flat(point(stage.at)), point(stage.at), stage))
-        .filter(|(d, _, _)| group.focused || *d <= machine::STAGE_REACH as f32)
+        .filter(|(d, _, _)| *d <= machine::STAGE_REACH as f32)
         .collect();
     chips.sort_by(|a, b| a.0.total_cmp(&b.0));
     let mut taken: Vec<[f32; 4]> = Vec::new();
