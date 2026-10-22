@@ -1,6 +1,10 @@
 # The Haunted House
 
-Status: spec, 2026-10-21. Owner request: build the Blue Rush flagship as a
+Status: built, 2026-10-22 (#12472 to #12476): `haunt-rules`, `haunt-assets`,
+`haunt-web`, the `haunt` livehost tenant (`icecream-live --game haunt`), the
+Grid's hosted arches, and Game Lab's haunt tools; receipts are under
+`docs/verse/verification/2026-10-22-haunted-house*`. The in-zone mic
+button is #12485. Spec written 2026-10-21. Owner request: build the Blue Rush flagship as a
 small walk-through haunted house: a zone with a portal on the Grid beside
 the ICE CREAM MAN arch, made in a vintage-Halloween, late-90s-cartoon
 style, with every likely addition prepared in advance. It should be the
