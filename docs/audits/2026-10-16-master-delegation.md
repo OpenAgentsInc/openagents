@@ -485,8 +485,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
-- #12532: update the `grid-foreman` host on `oa-foreman-1` and confirm that it
-  walks around a stationary player and resumes its patrol.
+- #12532: done on 2026-10-22; `oa-foreman-1` runs verified build `5ccc9402f7`,
+  and the live feed showed it walk to the Pylon Bay and arrive at its stop;
+  stationary-player detour regressions pass.
 
 - #12530: deploy the Pylon detail distance change and confirm that token details
   show only within 3 meters of a Pylon, including when pointing at one farther away.
