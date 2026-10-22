@@ -501,8 +501,25 @@ def tick(backend, state, now, stopping=False):
         backend.save()
         return True
     if complete is None:
+        errors = []
+        for slot in state["slots"]:
+            try:
+                # Loss of GitHub cannot authorize spending or adoption, but
+                # it must not leave a confirmed stopped disk billing forever.
+                if slot.get("pending"):
+                    backend.recover(slot)
+                if slot.get("allocation"):
+                    info = backend.describe(slot)
+                    if info:
+                        verify_instance(slot, info, state["owners"])
+                    if info is None or info["status"] in ("TERMINATED", "STOPPED") or now >= slot["expires"]:
+                        backend.cleanup(slot)
+            except (Refused, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
+                errors.append(str(error))
         state["phase"] = "waiting-for-github"
         backend.save()
+        if errors:
+            raise Refused("; ".join(errors))
         return False
     backend.initial_storage()
     errors = []
