@@ -485,6 +485,10 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12519: install the bounded Kiln workspace binary on `coderos-4080` and run
+  real browser-editor work through both explicitly pinned Maya Pylons, with
+  external TypeScript and browser checks before draft PRs.
+
 - #12515: deploy the isolated save implementation after the active native task
   is terminal, and verify the host runs that commit.
 
