@@ -647,6 +647,10 @@ for e in envs:
         sys.stderr.write("  web env BOAT_API_KEY -> oa-boat-api-key (our own service)\n")
 env = {e["name"] for e in envs}
 for e in ({"name": "STACK_STATE", "value": "/stack"},
+          # Native Foreman's read-only Pylon work summaries (#12524).
+          # This key has no additional command authority.
+          {"name": "OPENAGENTS_PYLON_WORK_PUBLISHERS",
+           "value": "9df4d8cabcd4d3dbd1746439b35dada1f1509b3df61e42b6bef874440aa6faae"},
           # The dedicated Computers test account uses the existing access list.
           {"name": "OPENAGENTS_WEB_AGENT_ACCOUNTS", "value": "acct_83d16a35955ef908"},
           {"name": "OPENAGENTS_WEB_PRO_TEST_ACCOUNTS", "value": "acct_83d16a35955ef908"},

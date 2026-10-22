@@ -185,6 +185,14 @@ pub struct Shown {
     pub now: u64,
     #[serde(default)]
     pub gone: bool,
+    /// The group's head, when this card shows one of its parts.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work_pylon: Option<String>,
+    /// Private live work, fetched separately after sign-in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work: Option<work::WorkView>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub work_status: String,
 }
 
 /// One line of a pylon's details.
@@ -195,6 +203,20 @@ pub struct Row {
 }
 
 impl Pylon {
+    /// Find the head that serves jobs for a model part.
+    #[must_use]
+    pub fn work_head<'a>(&self, mut pylons: impl Iterator<Item = &'a Self>) -> Option<String> {
+        let group = self.group.as_ref().filter(|group| group.role != "head")?;
+        pylons
+            .find(|pylon| {
+                pylon
+                    .group
+                    .as_ref()
+                    .is_some_and(|head| head.role == "head" && head.id == group.id)
+            })
+            .map(|head| head.id.clone())
+    }
+
     /// "Online" or "Winding down".
     #[must_use]
     pub fn status_words(&self) -> &'static str {
@@ -499,11 +521,36 @@ mod tests {
     }
 
     #[test]
+    fn a_part_opens_only_its_own_groups_work() {
+        let mut head = pylon();
+        head.group = Some(Group {
+            id: "group-a".into(),
+            role: "head".into(),
+            ..Group::default()
+        });
+        let mut part = head.clone();
+        part.id = "part".into();
+        part.group.as_mut().unwrap().role = "part".into();
+        let mut unrelated = head.clone();
+        unrelated.id = "other-head".into();
+        unrelated.group.as_mut().unwrap().id = "group-b".into();
+        assert_eq!(
+            part.work_head([&unrelated, &head].into_iter()),
+            Some(head.id.clone())
+        );
+        assert_eq!(part.work_head([&unrelated].into_iter()), None);
+        assert_eq!(head.work_head([&head].into_iter()), None);
+    }
+
+    #[test]
     fn the_card_shows_only_the_fields_the_events_give() {
         let shown = Shown {
             pylon: pylon(),
             now: 4_012,
             gone: false,
+            work_pylon: None,
+            work: None,
+            work_status: String::new(),
         };
         let rows = rows(&shown);
         assert_eq!(
@@ -577,6 +624,9 @@ mod tests {
             pylon: pylon(),
             now: 4_400,
             gone: true,
+            work_pylon: None,
+            work: None,
+            work_status: String::new(),
         };
         let rows = rows(&shown);
         assert!(!labels(&rows).contains(&"Online for"));
@@ -630,6 +680,9 @@ mod tests {
             pylon,
             now: 4_000,
             gone: false,
+            work_pylon: None,
+            work: None,
+            work_status: String::new(),
         };
         for row in rows(&shown) {
             let line = format!("{}: {}", row.label, row.value);
@@ -674,6 +727,9 @@ mod tests {
             pylon: head.clone(),
             now: 4_012,
             gone: false,
+            work_pylon: None,
+            work: None,
+            work_status: String::new(),
         });
         assert!(labels(&rows).contains(&"Group state"));
         for pylon in [head, part] {
@@ -681,6 +737,9 @@ mod tests {
                 pylon,
                 now: 4_012,
                 gone: false,
+                work_pylon: None,
+                work: None,
+                work_status: String::new(),
             };
             let line = shown.pylon.summary();
             assert!(oa_copy::violations(&line, &[]).is_empty(), "{line}");

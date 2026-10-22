@@ -18,6 +18,8 @@ use pylons_view::Shown;
 
 #[cfg(target_family = "wasm")]
 mod app;
+#[cfg(target_family = "wasm")]
+mod work;
 
 thread_local! {
     /// The newest pylon the page handed over, and a count of handovers.
@@ -28,11 +30,26 @@ thread_local! {
 /// Takes the page's JSON. Anything that doesn't parse is ignored, and the
 /// card keeps what it showed.
 pub fn take(json: &str) {
-    let Ok(shown) = serde_json::from_str::<Shown>(json) else {
+    let Ok(mut shown) = serde_json::from_str::<Shown>(json) else {
         return;
     };
+    #[cfg(target_family = "wasm")]
+    work::observe(&mut shown);
     LATEST.with(|latest| *latest.borrow_mut() = Some(shown));
     VERSION.with(|version| version.set(version.get() + 1));
+}
+
+#[cfg(target_family = "wasm")]
+fn update_work(id: &str, work: Option<pylons_view::work::WorkView>, status: &str) {
+    LATEST.with(|latest| {
+        let mut latest = latest.borrow_mut();
+        if let Some(shown) = latest.as_mut().filter(|shown| shown.pylon.id == id) {
+            shown.work = work;
+            shown.work_status = status.into();
+            work::facts(shown);
+            VERSION.with(|version| version.set(version.get() + 1));
+        }
+    });
 }
 
 /// The newest pylon and its handover count.

@@ -3230,6 +3230,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 name = "kiln-view"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "rust-native",
  "serde",
 ]
@@ -5311,6 +5312,7 @@ dependencies = [
  "serde_json",
  "uuid",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "web-time",
 ]
@@ -6031,6 +6033,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 name = "pylons-view"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "serde",
 ]
 

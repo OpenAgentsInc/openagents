@@ -513,6 +513,11 @@ fn apply(layer: &Shared, snapshot: Snapshot) {
                 pylon: entry.view.clone(),
                 now: (now_secs() + l.offset) as u64,
                 gone: false,
+                work_pylon: entry
+                    .view
+                    .work_head(l.entries.values().map(|entry| &entry.view)),
+                work: None,
+                work_status: String::new(),
             };
             l.show(&shown);
         }
@@ -554,6 +559,11 @@ fn leave(layer: &Shared, id: &str, announce: bool) {
             pylon: entry.view.clone(),
             now: (now_secs() + l.offset) as u64,
             gone: true,
+            work_pylon: entry
+                .view
+                .work_head(l.entries.values().map(|entry| &entry.view)),
+            work: None,
+            work_status: String::new(),
         };
         l.show(&shown);
     }
@@ -569,6 +579,11 @@ fn open(layer: &Shared, id: &str, opener: Option<HtmlElement>) {
         pylon: entry.view.clone(),
         now: (now_secs() + l.offset) as u64,
         gone: false,
+        work_pylon: entry
+            .view
+            .work_head(l.entries.values().map(|entry| &entry.view)),
+        work: None,
+        work_status: String::new(),
     };
     if let Some(previous) = l.open.take()
         && let Some(entry) = l.entries.get(&previous)
@@ -1123,6 +1138,11 @@ impl Layer {
                 pylon: entry.view.clone(),
                 now: (now_secs() + self.offset) as u64,
                 gone: false,
+                work_pylon: entry
+                    .view
+                    .work_head(self.entries.values().map(|entry| &entry.view)),
+                work: None,
+                work_status: String::new(),
             });
         }
     }

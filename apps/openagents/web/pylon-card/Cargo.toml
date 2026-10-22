@@ -34,9 +34,10 @@ web-time.workspace = true
 [target.'cfg(target_family = "wasm")'.dependencies]
 openagents-gpui-web.workspace = true
 wasm-bindgen.workspace = true
+wasm-bindgen-futures = "0.4"
 console_error_panic_hook = "0.1.7"
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
 uuid.workspace = true
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Document", "Element", "Event", "EventTarget", "Location", "Window"] }
+web-sys = { version = "0.3", features = ["AbortController", "AbortSignal", "Document", "Element", "Event", "EventTarget", "Location", "RequestInit", "RequestCache", "RequestCredentials", "Response", "Window"] }
