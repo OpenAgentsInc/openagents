@@ -50,6 +50,7 @@ fn main() -> ExitCode {
         Some("synthetic") => run_synthetic(&args[1..]),
         Some("qualify") => run_qualify(&args[1..]),
         Some("qualify-derive") => psionic_v41_stage::qualify::run_derive(&args[1..]),
+        Some("isolate") => psionic_v41_stage::qualify::run_isolated(&args[1..]),
         Some("index-check") => psionic_v41_stage::qualify::run_index_check(&args[1..]),
         Some("qualify-judge") => psionic_v41_stage::qualify::run_judge(&args[1..]),
         Some("build-info") => run_build_info(),

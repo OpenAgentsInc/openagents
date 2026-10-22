@@ -593,7 +593,7 @@ fn device_info(backend: &CudaBackend, experts: crate::Experts) -> Value {
     })
 }
 
-fn cuda_backend() -> Result<CudaBackend, Refused> {
+pub(crate) fn cuda_backend() -> Result<CudaBackend, Refused> {
     let backend = CudaBackend::new();
     if backend.selected_device().is_none() || !backend.quantized_kernels_available() {
         return Err(Refused(
@@ -710,7 +710,7 @@ impl CudaModel {
         self.stage_with(backend, layers, max_context, max_step_tokens, false, None)
     }
 
-    fn stage_with(
+    pub(crate) fn stage_with(
         &self,
         backend: &mut CudaBackend,
         layers: Range<usize>,

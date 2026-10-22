@@ -64,6 +64,16 @@ const ORACLE_TIE_WINDOW: f64 = 1e-4;
 const ORACLE_TIE_CAP: usize = 64;
 
 mod index;
+mod isolated;
+
+/// Collects isolated-stage output metrics on original oracle inputs.
+///
+/// # Errors
+///
+/// Refuses missing captures, a wrong bundle, and unsupported execution modes.
+pub fn run_isolated(args: &[String]) -> Result<(), Refused> {
+    isolated::run(args)
+}
 
 /// Rechecks hashed index observations against a complete oracle capture.
 ///
