@@ -98,6 +98,97 @@ pub fn patch_paths(text: &str) -> Vec<String> {
     paths
 }
 
+/// One crate a runner tests, with the limits an operator gave it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrateLimit {
+    /// The package name, which is also its directory under `crates/`.
+    pub name: String,
+    /// The wall-clock cap for a run that names this crate, in seconds.
+    pub timeout_secs: Option<u64>,
+    /// The memory cap for the run's whole process tree, in MiB.
+    pub memory_mb: Option<u64>,
+}
+
+/// Parse a runner's crate list (`--crates-file`): one crate a line, with
+/// optional `timeout=SECS` and `memory=MB`; `#` starts a comment.
+///
+/// ```text
+/// memory-stream
+/// atif timeout=300
+/// nostr timeout=900 memory=6000
+/// ```
+///
+/// # Errors
+///
+/// The first line with a bad name or limit.
+pub fn parse_crates(text: &str) -> Result<Vec<CrateLimit>, String> {
+    let mut out: Vec<CrateLimit> = Vec::new();
+    for (number, line) in text.lines().enumerate() {
+        let line = line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut words = line.split_whitespace();
+        let name = words.next().unwrap_or_default();
+        let plain = !name.is_empty()
+            && name.len() <= 64
+            && name
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_');
+        if !plain {
+            return Err(format!("line {}: {name} is not a crate name", number + 1));
+        }
+        let mut limit = CrateLimit {
+            name: name.to_string(),
+            timeout_secs: None,
+            memory_mb: None,
+        };
+        for word in words {
+            let parsed = match word.split_once('=') {
+                Some(("timeout", v)) => v.parse().map(|v| limit.timeout_secs = Some(v)),
+                Some(("memory", v)) => v.parse().map(|v| limit.memory_mb = Some(v)),
+                _ => {
+                    return Err(format!(
+                        "line {}: {word} is not a limit; use timeout=SECS or memory=MB",
+                        number + 1
+                    ));
+                }
+            };
+            parsed.map_err(|_| format!("line {}: {word} is not a number", number + 1))?;
+        }
+        if out.iter().any(|c| c.name == limit.name) {
+            return Err(format!("line {}: {name} is listed twice", number + 1));
+        }
+        out.push(limit);
+    }
+    Ok(out)
+}
+
+/// The crates a set of repository paths falls in (`crates/NAME/...`).
+#[must_use]
+pub fn touched_crates<'a>(paths: impl IntoIterator<Item = &'a String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for path in paths {
+        if let Some(rest) = path.strip_prefix("crates/")
+            && let Some((name, _)) = rest.split_once('/')
+            && !out.iter().any(|c| c == name)
+        {
+            out.push(name.to_string());
+        }
+    }
+    out.sort();
+    out
+}
+
+/// The crates a Cargo command names with `-p`.
+#[must_use]
+pub fn named_crates(args: &[String]) -> Vec<String> {
+    args.windows(2)
+        .filter(|w| w[0] == "-p")
+        .map(|w| w[1].clone())
+        .collect()
+}
+
 /// Parse a `cargo` command line from the agent into its arguments.
 ///
 /// Allowed: `cargo test -p CRATE [-- FILTER...]` and
@@ -193,6 +284,22 @@ impl Job {
             touched = patch_paths(&patch.content);
             if touched.is_empty() {
                 return Err("the patch changes no files".into());
+            }
+            // The check comment vouches for the whole patch, so its run
+            // tests every crate the patch changes.
+            let named = named_crates(&self.args);
+            let missing: Vec<String> = touched_crates(&touched)
+                .into_iter()
+                .filter(|c| !named.contains(c))
+                .collect();
+            if !missing.is_empty() {
+                let mut all = named;
+                all.extend(missing.iter().cloned());
+                return Err(format!(
+                    "the patch also changes {}; test it too: cargo test -p {}",
+                    missing.join(", "),
+                    all.join(" -p ")
+                ));
             }
         }
         for path in &touched {
@@ -341,6 +448,51 @@ mod tests {
         job.args = words("test -p memory-stream");
         job.base = "main".into();
         assert!(job.check(&crates()).is_err());
+    }
+
+    #[test]
+    fn a_crate_list_reads_names_and_limits() {
+        let list = parse_crates(
+            "# crates\nmemory-stream\natif timeout=300\nnostr timeout=900 memory=6000\n",
+        )
+        .unwrap();
+        assert_eq!(list.len(), 3);
+        assert_eq!(list[1].timeout_secs, Some(300));
+        assert_eq!(list[2].memory_mb, Some(6000));
+        assert!(parse_crates("../etc").is_err());
+        assert!(parse_crates("atif speed=9").is_err());
+        assert!(parse_crates("atif timeout=soon").is_err());
+        assert!(parse_crates("atif\natif").is_err());
+    }
+
+    #[test]
+    fn a_patch_job_tests_every_crate_it_changes() {
+        let key = crate::cj::Key::from_bytes([3; 32]).unwrap();
+        let text = "diff --git a/crates/atif/src/lib.rs b/crates/atif/src/lib.rs\n--- a\n+++ b\ndiff --git a/crates/xp-ledger/src/lib.rs b/crates/xp-ledger/src/lib.rs\n";
+        let patch = key.sign(crate::patch::PATCH_KIND, vec![], text.into(), 1);
+        let listed: Vec<String> = ["atif", "xp-ledger"].map(String::from).to_vec();
+        let mut job = Job {
+            v: JOB_V.into(),
+            base: "a".repeat(40),
+            args: words("test -p atif"),
+            files: BTreeMap::new(),
+            deleted: vec![],
+            patch: Some(patch),
+            action: None,
+            diff: None,
+        };
+        let refused = job.check(&listed).unwrap_err();
+        assert!(
+            refused.contains("cargo test -p atif -p xp-ledger"),
+            "{refused}"
+        );
+        job.args = words("test -p atif -p xp-ledger");
+        assert!(job.check(&listed).is_ok());
+        assert!(job.check(&listed[..1]).is_err(), "xp-ledger isn't listed");
+        assert_eq!(
+            touched_crates(&patch_paths(text)),
+            vec!["atif".to_string(), "xp-ledger".to_string()]
+        );
     }
 
     #[test]

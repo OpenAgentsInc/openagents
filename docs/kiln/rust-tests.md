@@ -85,6 +85,41 @@ open "http://127.0.0.1:8787/?load=crates/memory-stream"
 `kiln-runner --crates a,b` names the crates it tests (default
 `memory-stream`, `xp-ledger`, `atif`).
 
+## Which crates, and their limits
+
+For a lasting runner, keep the crate list in a file an admin curates and
+pass `--crates-file FILE`. The runner reads it again for every job, so a
+crate can be added or dropped without a restart:
+
+```text
+# kiln-runner crates: NAME [timeout=SECS] [memory=MB]
+memory-stream
+xp-ledger
+atif timeout=300
+nostr timeout=900 memory=6000
+```
+
+- A name is both the package and its directory under `crates/`; list only
+  crates where the two match.
+- `timeout` and `memory` cap a run that names the crate. A run that names
+  several crates gets the largest of their caps, never more than the
+  runner's own `--timeout` (default 600 s) and `--memory` (default
+  8192 MB).
+- The memory cap covers the run's whole process tree: the runner sums its
+  children's resident memory twice a second and stops the run past the
+  cap, with "stopped: the run passed its N MB memory cap".
+- Add a crate only after its tests pass offline in the boundary on the
+  runner's machine, and keep crates with network or GPU tests off the list.
+
+## Changes that touch several crates
+
+Load several crates at once (`?load=crates/a,crates/b`, or a comma list in
+the field). The page tests and publishes them together: the patch carries a
+`t` tag `crate:NAME` for each crate it changes, and its runner check runs
+`cargo test -p a -p b`. The runner refuses a patch run that leaves out a
+crate the patch changes, so a passing check always covers the whole
+patch.
+
 ## Who may run jobs
 
 The runner refuses to start until you say who may use it:

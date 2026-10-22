@@ -1423,17 +1423,17 @@ impl App {
 }
 
 impl App {
-    /// The crate's files, by path: the workspace's, or with `base` the
-    /// untouched copy's.
+    /// The loaded crates' files, by path: the workspace's, or with `base`
+    /// the untouched copy's.
     fn slice_files(&self, repo: &Value, base: bool) -> std::collections::BTreeMap<String, String> {
-        let slice = format!("{}/", repo["slice"].as_str().unwrap_or_default());
+        let slices = repo_slices(repo);
         let vfs = if base {
             self.base.borrow()
         } else {
             self.vfs.borrow()
         };
         vfs.iter()
-            .filter(|(p, n)| !n.is_dir() && p.starts_with(&slice))
+            .filter(|(p, n)| !n.is_dir() && slices.iter().any(|s| p.starts_with(s)))
             .map(|(p, _)| {
                 (
                     p.clone(),
@@ -1465,7 +1465,6 @@ impl App {
                 "run `cargo test` first: publish only a change whose tests just passed".into(),
             );
         }
-        let krate = repo["crates"][0].as_str().unwrap_or_default().to_string();
         let commit = repo["commit"].as_str().unwrap_or_default().to_string();
         let base = self.slice_files(&repo, true);
         let current = self.slice_files(&repo, false);
@@ -1494,7 +1493,10 @@ impl App {
         if text.len() > crate::patch::MAX_PATCH_BYTES {
             return fail("the patch is over 60 KB; NIP-34 wants a pull request for that".into());
         }
-        let tags = crate::patch::patch_tags(&address, &owner, &commit, &krate);
+        // Every loaded crate the change touches is named and tested (#12450).
+        let paths: Vec<String> = changes.iter().map(|c| c.path.to_string()).collect();
+        let touched = crate::remote::touched_crates(&paths);
+        let tags = crate::patch::patch_tags(&address, &owner, &commit, &touched);
         let event = self
             .key
             .sign(crate::patch::PATCH_KIND, tags, text, super::util::unix());
@@ -1523,7 +1525,9 @@ impl App {
         let job = crate::remote::Job {
             v: crate::remote::JOB_V.into(),
             base: commit,
-            args: vec!["test".into(), "-p".into(), krate],
+            args: std::iter::once("test".to_string())
+                .chain(touched.iter().flat_map(|c| ["-p".to_string(), c.clone()]))
+                .collect(),
             files: std::collections::BTreeMap::new(),
             deleted: Vec::new(),
             patch: Some(event.clone()),

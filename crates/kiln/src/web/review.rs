@@ -226,8 +226,9 @@ fn render(
     let author = npub(&patch.pubkey);
     let crate_tag = patch
         .tag_values("t")
-        .find_map(|t| t.strip_prefix("crate:"))
-        .unwrap_or("");
+        .filter_map(|t| t.strip_prefix("crate:"))
+        .collect::<Vec<_>>()
+        .join(", ");
     let _ = summary.append_child(&el(
         doc,
         "span",

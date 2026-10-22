@@ -42,15 +42,22 @@ use nostr::domain::{Event, Tag};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
+mod memory;
 mod publish;
 
 const LIFETIME: Duration = Duration::from_secs(115);
 const LOG_CAP: u64 = 32 * 1024 * 1024;
 
+#[derive(Clone)]
 pub(crate) struct Config {
     state: PathBuf,
     relay: String,
     crates: Vec<String>,
+    /// The operator's crate list with limits (`--crates-file`), read again
+    /// for every job; `crates` when absent.
+    crates_file: Option<PathBuf>,
+    /// The memory ceiling for one run's process tree, in MiB.
+    memory_mb: u64,
     reference: Option<PathBuf>,
     repo_url: String,
     timeout: Duration,
@@ -186,17 +193,26 @@ pub(crate) fn stage(config: &Config, job: &Job) -> Result<(), String> {
     // Jobs write only inside their crates (checked before staging), so only
     // those directories can hold leftovers; cleaning the whole worktree
     // took seconds.
+    // Crates an earlier job could write to stay on the list until cleaned,
+    // even after an operator drops them from the crate list.
+    let last = config.state.join("last-crates");
+    let earlier = std::fs::read_to_string(&last).unwrap_or_default();
     let mut clean: Vec<String> = vec!["clean".into(), "-fdxq".into(), "--".into()];
     for krate in config
         .crates
         .iter()
         .map(String::as_str)
         .chain(kiln::remote::SELF_CRATES.iter().copied())
+        .chain(earlier.lines().map(str::trim).filter(|l| !l.is_empty()))
     {
-        clean.push(format!("crates/{krate}"));
+        let dir = format!("crates/{krate}");
+        if !clean.contains(&dir) && work.join(&dir).is_dir() {
+            clean.push(dir);
+        }
     }
     let clean: Vec<&str> = clean.iter().map(String::as_str).collect();
     git(&work, &clean)?;
+    let _ = std::fs::write(&last, config.crates.join("\n"));
     if let Some(patch) = &job.patch {
         // Apply the signed patch itself, so the check is of what reviewers read.
         let file = config.state.join("apply.patch");
@@ -433,13 +449,68 @@ pub(crate) fn stopped(started: Instant, summary: String) -> Outcome {
     }
 }
 
-/// Run Cargo for `job` in the boundary. `progress` gets the latest line.
+/// Run Cargo for `job` in the boundary, within `config.memory_mb`.
+/// `progress` gets the latest line.
 fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
     let started = Instant::now();
     if let Err(e) = stage(config, job) {
         return stopped(started, format!("could not prepare the workspace: {e}"));
     }
-    cargo_outcome(config, &job.args, started, progress)
+    let watch = memory::Watch::start(config.memory_mb);
+    let mut outcome = cargo_outcome(config, &job.args, started, progress);
+    if watch.stop() {
+        outcome.code = None;
+        outcome.summary = format!(
+            "stopped: the run passed its {} MB memory cap",
+            config.memory_mb
+        );
+    }
+    outcome
+}
+
+/// The crates this runner tests right now, with their limits.
+fn crate_limits(config: &Config) -> Result<Vec<kiln::remote::CrateLimit>, String> {
+    match &config.crates_file {
+        Some(path) => std::fs::read_to_string(path)
+            .map_err(|e| format!("{}: {e}", path.display()))
+            .and_then(|text| kiln::remote::parse_crates(&text)),
+        None => Ok(config
+            .crates
+            .iter()
+            .map(|name| kiln::remote::CrateLimit {
+                name: name.clone(),
+                timeout_secs: None,
+                memory_mb: None,
+            })
+            .collect()),
+    }
+}
+
+/// `config` for one job: the listed crates, and the largest wall-clock and
+/// memory caps among the crates the job names, never above the runner's.
+fn job_config(config: &Config, limits: &[kiln::remote::CrateLimit], job: &Job) -> Config {
+    let mut out = config.clone();
+    out.crates = limits.iter().map(|c| c.name.clone()).collect();
+    let named = kiln::remote::named_crates(&job.args);
+    let chosen: Vec<&kiln::remote::CrateLimit> =
+        limits.iter().filter(|c| named.contains(&c.name)).collect();
+    if let Some(secs) = chosen
+        .iter()
+        .map(|c| c.timeout_secs)
+        .collect::<Option<Vec<_>>>()
+        .and_then(|v| v.into_iter().max())
+    {
+        out.timeout = out.timeout.min(Duration::from_secs(secs));
+    }
+    if let Some(mb) = chosen
+        .iter()
+        .map(|c| c.memory_mb)
+        .collect::<Option<Vec<_>>>()
+        .and_then(|v| v.into_iter().max())
+    {
+        out.memory_mb = out.memory_mb.min(mb);
+    }
+    out
 }
 
 /// Who may run jobs here: the admission list and the admin list, both read
@@ -551,6 +622,8 @@ async fn main() {
         state: PathBuf::new(),
         relay: "wss://relay.openagents.com".into(),
         crates: vec!["memory-stream".into(), "xp-ledger".into(), "atif".into()],
+        crates_file: None,
+        memory_mb: 8192,
         reference: None,
         repo_url: "https://github.com/OpenAgentsInc/openagents.git".into(),
         timeout: Duration::from_secs(600),
@@ -564,6 +637,8 @@ async fn main() {
             "--state" => config.state = PathBuf::from(value()),
             "--relay" => config.relay = value(),
             "--crates" => config.crates = value().split(',').map(str::to_string).collect(),
+            "--crates-file" => config.crates_file = Some(PathBuf::from(value())),
+            "--memory" => config.memory_mb = value().parse().unwrap_or(8192),
             "--reference" => config.reference = Some(PathBuf::from(value())),
             "--repo" => config.repo_url = value(),
             "--timeout" => config.timeout = Duration::from_secs(value().parse().unwrap_or(600)),
@@ -583,7 +658,7 @@ async fn main() {
             "--anonymous-jobs" => anonymous_jobs = value().parse().unwrap_or(5),
             _ => {
                 eprintln!(
-                    "usage: kiln-runner --state DIR (--allow FILE | --open) [--relay URL] [--crates a,b] [--reference CHECKOUT] [--timeout SECS] [--jobs N] [--no-announce]\n\
+                    "usage: kiln-runner --state DIR (--allow FILE | --open) [--relay URL] [--crates a,b | --crates-file FILE] [--reference CHECKOUT] [--timeout SECS] [--memory MB] [--jobs N] [--no-announce]\n\
                      \x20 admission: --allow FILE (keys that may run jobs, read for every job) [--member-jobs N] [--anonymous-jobs N] [--open]\n\
                      \x20 self-edit: --admins FILE --publish-store STORE --publish-key FILE [--publish-tenant NAME] [--publish-channel NAME] [--publish-prefix PREFIX] [--publish-relay URL] [--no-browser-smoke]"
                 );
@@ -607,6 +682,17 @@ async fn main() {
         eprintln!("kiln-runner: --allow: {e}");
         std::process::exit(2);
     }
+    match crate_limits(&config) {
+        Ok(list) if !list.is_empty() => {}
+        Ok(_) => {
+            eprintln!("kiln-runner: the crate list names no crate");
+            std::process::exit(2);
+        }
+        Err(e) => {
+            eprintln!("kiln-runner: --crates-file: {e}");
+            std::process::exit(2);
+        }
+    }
     if let Err(e) = std::fs::create_dir_all(&config.state) {
         eprintln!("kiln-runner: {}: {e}", config.state.display());
         std::process::exit(1);
@@ -624,7 +710,13 @@ async fn main() {
     }
     println!(
         "ready: cargo test or check for {} on {}",
-        config.crates.join(", "),
+        crate_limits(&config)
+            .map(|l| l
+                .iter()
+                .map(|c| c.name.clone())
+                .collect::<Vec<_>>()
+                .join(", "))
+            .unwrap_or_default(),
         config.relay
     );
     let repo = format!(
@@ -750,23 +842,32 @@ async fn main() {
                         .and_then(|body| body["task"].as_str().map(str::to_string))
                         .ok_or_else(|| "the request does not open".to_string())
                         .and_then(|task| serde_json::from_str::<Job>(&task).map_err(|e| format!("the task is not a job: {e}")))
-                        .and_then(|job| job.check(&config.crates).map(|()| job))
-                        .and_then(|job| match &job.patch {
+                        .and_then(|job| {
+                            let limits = crate_limits(&config).map_err(|e| {
+                                eprintln!("crate list: {e}");
+                                "the runner can't read its crate list right now; try again later".to_string()
+                            })?;
+                            let names: Vec<String> = limits.iter().map(|c| c.name.clone()).collect();
+                            job.check(&names)?;
+                            let for_job = job_config(&config, &limits, &job);
+                            Ok((job, for_job))
+                        })
+                        .and_then(|(job, for_job)| match &job.patch {
                             Some(patch) if nostr::domain::open_patch(patch).ok().as_deref() != Some(repo.as_str()) => {
                                 Err("the patch names another repository".to_string())
                             }
-                            _ => Ok(job),
+                            _ => Ok((job, for_job)),
                         })
-                        .and_then(|job| match (&job.action, &publisher) {
-                            (None, _) => Ok(job),
+                        .and_then(|(job, for_job)| match (&job.action, &publisher) {
+                            (None, _) => Ok((job, for_job)),
                             (Some(_), None) => Err("this runner doesn't publish Kiln".to_string()),
                             (Some(_), Some(p)) if !p.admits(&request.pubkey) => {
                                 Err("only an admin's key may publish, revert, or reset Kiln".to_string())
                             }
-                            (Some(_), Some(_)) => Ok(job),
+                            (Some(_), Some(_)) => Ok((job, for_job)),
                         })
-                        .and_then(|job| admission.admit(&request).map(|holder| (job, holder)));
-                    let (job, holder) = match job {
+                        .and_then(|(job, for_job)| admission.admit(&request).map(|holder| (job, for_job, holder)));
+                    let (job, for_job, holder) = match job {
                         Ok(admitted) => admitted,
                         Err(why) => {
                             println!("refused {}: {why}", &request.id[..8]);
@@ -792,7 +893,8 @@ async fn main() {
                     }
                     println!("admitted {} ({})", &request.id[..8], holder.via);
                     println!("job {} from {}: {} with {} files at {}", &request.id[..8], &request.pubkey[..8], job.action.clone().unwrap_or_else(|| format!("cargo {}", job.args.join(" "))), job.files.len() + job.diff.as_ref().map_or(0, |d| kiln::remote::patch_paths(d).len()), &job.base[..10]);
-                    let (key, config, out, busy) = (key.clone(), config.clone(), out_tx.clone(), busy.clone());
+                    let (key, out, busy) = (key.clone(), out_tx.clone(), busy.clone());
+                    let config = Arc::new(for_job);
                     let publisher = publisher.clone();
                     let relay_url = config.relay.clone();
                     std::thread::spawn(move || {

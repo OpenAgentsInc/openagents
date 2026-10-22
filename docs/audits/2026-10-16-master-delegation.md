@@ -515,6 +515,11 @@ The status lines below summarize each issue and its comments. Open the issue for
   `/admin/kiln/` run `cargo test -p memory-stream` and confirm it runs.
   From a browser whose admin key isn't listed, confirm the page shows "this
   runner only takes jobs from keys on its list".
+- #12450: on the lasting `kiln-runner`, move the crate list into
+  `--crates-file`, load `crates/atif,crates/xp-ledger` in `/admin/kiln/`,
+  change both, and confirm the patch's check runs `cargo test -p atif -p
+  xp-ledger` and passes. Add a crate to the file without a restart and
+  confirm the next job accepts it.
 - #12440: after the next web deploy, confirm the image log builds or
   reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
   `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test

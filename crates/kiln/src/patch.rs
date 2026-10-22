@@ -196,17 +196,24 @@ pub fn changes<'a>(
     out
 }
 
-/// The tags of a root `1617` patch to `repo` (`30617:<owner>:<id>`).
+/// The tags of a root `1617` patch to `repo` (`30617:<owner>:<id>`): one
+/// `t` tag `crate:NAME` for each crate it changes.
 #[must_use]
-pub fn patch_tags(repo: &str, owner: &str, base: &str, crate_name: &str) -> Vec<Tag> {
-    vec![
+pub fn patch_tags(repo: &str, owner: &str, base: &str, crates: &[String]) -> Vec<Tag> {
+    let mut tags = vec![
         Tag::new(vec!["a".into(), repo.into()]),
         Tag::new(vec!["p".into(), owner.into()]),
         Tag::new(vec!["t".into(), "root".into()]),
         Tag::new(vec!["parent-commit".into(), base.into()]),
-        Tag::new(vec!["t".into(), format!("crate:{crate_name}")]),
-        Tag::new(vec!["alt".into(), "A git patch made in Kiln".into()]),
-    ]
+    ];
+    for name in crates {
+        tags.push(Tag::new(vec!["t".into(), format!("crate:{name}")]));
+    }
+    tags.push(Tag::new(vec![
+        "alt".into(),
+        "A git patch made in Kiln".into(),
+    ]));
+    tags
 }
 
 /// The tags of the demo repository announcement.
