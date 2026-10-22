@@ -140,7 +140,7 @@ export function createLayoutControls(bridge: {
       : "Look toward a wall to build";
     for (const id of ["wall-selected", "room-size"])
       el<HTMLSelectElement>(id).disabled = !ready || busy;
-    for (const id of ["add-room", "add-wing"])
+    for (const id of ["add-room", "add-wing", "add-courtyard"])
       el<HTMLButtonElement>(id).disabled = !ready || busy || !wall?.exterior;
     el<HTMLButtonElement>("remove-wall").disabled =
       !ready || busy || !wall || wall.removed;
@@ -159,6 +159,19 @@ export function createLayoutControls(bridge: {
   selector.addEventListener("change", () => {
     bridge.cancel();
     refresh();
+  });
+  el("add-courtyard").addEventListener("click", () => {
+    const wall = target();
+    if (wall)
+      void bridge
+        .submit({
+          kind: "add_room",
+          wall: wall.id,
+          size: 32,
+          at: { x: wall.x, z: wall.z },
+          outdoor: true,
+        })
+        .catch(bridge.error);
   });
   for (const kind of ["add_room", "add_wing", "remove_wall"] as const)
     el(kind.replaceAll("_", "-")).addEventListener("click", () => {

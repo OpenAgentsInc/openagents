@@ -69,6 +69,15 @@ export function createEditor(bridge: Bridge) {
     el<HTMLButtonElement>("undo").disabled = !ready || busy || !state.canUndo;
     el<HTMLButtonElement>("redo").disabled = !ready || busy || !state.canRedo;
     el<HTMLButtonElement>("cancel-decision").hidden = !decision;
+    el("kit-status").textContent = state.medieval?.available
+      ? "Everglade medieval kit · 8 textured assets. Add a courtyard for full-size houses."
+      : (state.medieval?.error ??
+        "Medieval assets need the local Everglade kit.");
+    for (const option of el<HTMLSelectElement>("asset-kind").options) {
+      const item = ASSETS[option.value as AssetKind];
+      option.disabled =
+        !!item && "source" in item && !state.medieval?.available;
+    }
     const ghost = p?.entities.find(
       (e) => e.id === selected && e.kind === "ghost",
     );

@@ -1,3 +1,4 @@
+import { MedievalRenderer, medievalKinds } from "./medieval.ts";
 import { HouseFloor, DEFAULT_LAYOUT } from "./layout.ts";
 import { Effect } from "effect";
 import {
@@ -34,6 +35,8 @@ const send = (message: object) =>
   scope.postMessage({ ...message, preview, token });
 
 class Runtime {
+  medieval: MedievalRenderer | undefined;
+  kitError: string | undefined;
   device: GPUDevice;
   context: GPUCanvasContext;
   canvas: OffscreenCanvas;
@@ -378,6 +381,22 @@ class Runtime {
         candidate = plan.project;
         commit = plan.commit;
       }
+      if (
+        !this.medieval &&
+        !message.restore &&
+        JSON.stringify(
+          candidate.entities.filter((e) => medievalKinds.has(e.kind)),
+        ) !==
+          JSON.stringify(
+            this.scene.project.entities.filter((e) =>
+              medievalKinds.has(e.kind),
+            ),
+          )
+      )
+        throw new Error(
+          this.kitError ??
+            "Prepare the medieval kit and reopen the preview before adding these assets.",
+        );
       const nextFloor = new HouseFloor(candidate.layout ?? DEFAULT_LAYOUT);
       if (!nextFloor.canStand(this.pose.x, this.pose.z))
         throw new Error(
@@ -387,22 +406,26 @@ class Runtime {
         JSON.stringify(candidate.layout) !==
           JSON.stringify(this.scene.project.layout) ||
         JSON.stringify(
-          candidate.entities.map(({ id, kind, x, z, scale }) => ({
-            id,
-            kind,
-            x,
-            z,
-            scale,
-          })),
-        ) !==
-          JSON.stringify(
-            this.scene.project.entities.map(({ id, kind, x, z, scale }) => ({
+          candidate.entities
+            .filter((e) => !medievalKinds.has(e.kind))
+            .map(({ id, kind, x, z, scale }) => ({
               id,
               kind,
               x,
               z,
               scale,
             })),
+        ) !==
+          JSON.stringify(
+            this.scene.project.entities
+              .filter((e) => !medievalKinds.has(e.kind))
+              .map(({ id, kind, x, z, scale }) => ({
+                id,
+                kind,
+                x,
+                z,
+                scale,
+              })),
           )
       ) {
         const geometry = houseGeometry(
@@ -425,6 +448,7 @@ class Runtime {
         this.count = geometry.length / 10;
         previous.destroy();
       }
+      this.medieval?.update(candidate.entities);
       commit();
       this.floor = nextFloor;
       this.ghosts.sync(candidate.entities);
@@ -446,6 +470,15 @@ class Runtime {
 
   state() {
     return {
+      medieval: {
+        available: !!this.medieval && !this.disposed,
+        error: this.kitError,
+        instances: this.medieval?.instanceCount ?? 0,
+        meshes: this.medieval ? medievalKinds.size : 0,
+        pipelines: this.medieval && !this.disposed ? 1 : 0,
+        buffers: this.medieval && !this.disposed ? 2 : 0,
+        textures: this.medieval && !this.disposed ? 1 : 0,
+      },
       project: this.scene.project,
       actors: this.ghosts.snapshot(),
       behaviorTicks: this.ghosts.ticks,
@@ -465,7 +498,9 @@ class Runtime {
       inflight: this.inflight,
       activePipelines: this.versions.active ? 1 : 0,
       pendingPipelines: this.versions.pending ? 1 : 0,
-      buffers: this.disposed ? 0 : 2 + (this.captureBuffer ? 1 : 0),
+      buffers: this.disposed
+        ? 0
+        : 2 + (this.medieval ? 2 : 0) + (this.captureBuffer ? 1 : 0),
       depthTextures: this.disposed ? 0 : 1,
       disposed: this.disposed,
       maxFrameMs: this.maxFrameMs,
@@ -568,6 +603,7 @@ class Runtime {
       pass.setVertexBuffer(0, this.vertices);
       pass.draw(this.count);
     }
+    this.medieval?.draw(pass);
     pass.end();
     const capture = this.captureRequest;
     this.captureRequest = undefined;
@@ -643,6 +679,7 @@ class Runtime {
     this.captureBuffer?.destroy();
     this.captureBuffer = undefined;
     this.depth?.destroy();
+    this.medieval?.dispose();
     this.vertices.destroy();
     this.uniform.destroy();
     this.context.unconfigure();
@@ -694,7 +731,24 @@ scope.onmessage = (event: MessageEvent) => {
                       GPUTextureUsage.RENDER_ATTACHMENT |
                       GPUTextureUsage.COPY_SRC,
                   });
-                  return new Runtime(device, context, message.canvas, format);
+                  const renderer = new Runtime(
+                    device,
+                    context,
+                    message.canvas,
+                    format,
+                  );
+                  try {
+                    renderer.medieval = await MedievalRenderer.create(
+                      device,
+                      renderer.uniform,
+                      format,
+                    );
+                  } catch (error) {
+                    renderer.kitError =
+                      "The medieval kit could not load. Prepare it again and reopen the preview.";
+                    console.warn("Medieval kit load failed", error);
+                  }
+                  return renderer;
                 } catch (error) {
                   device.destroy();
                   throw error;

@@ -307,9 +307,19 @@ test("all asset kinds round-trip, render distinct meshes, and share editing and 
       readProject(JSON.parse(JSON.stringify(s.project))).entities.at(-1)!.kind,
       kind,
     );
-    const mesh = houseGeometry([e]);
-    assert.ok(mesh.length > 0 && mesh.every(Number.isFinite));
-    meshes.add(JSON.stringify([...mesh]));
+    if ("source" in asset) {
+      const { default: kit } = await import("../src/medieval-kit.json", {
+        with: { type: "json" },
+      });
+      const mesh = kit.meshes[kind as keyof typeof kit.meshes];
+      assert.ok(mesh.count > 0 && mesh.count % 3 === 0);
+      assert.ok(mesh.dimensions.every((n) => Number.isFinite(n) && n > 0));
+      meshes.add(`kit:${mesh.first}:${mesh.count}`);
+    } else {
+      const mesh = houseGeometry([e]);
+      assert.ok(mesh.length > 0 && mesh.every(Number.isFinite));
+      meshes.add(JSON.stringify([...mesh]));
+    }
     apply(s, { kind: "move_asset", id: e.id, x: 1.5, z: 2 });
     apply(s, { kind: "resize_asset", id: e.id, scale: 1.8 });
     apply(s, { kind: "remove_asset", id: e.id });

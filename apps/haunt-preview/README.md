@@ -18,7 +18,7 @@ Natural language takes one bounded decision request, then uses those same comman
 
 Shader source editing is under **Advanced**. Ordinary scene edits do not invoke
 Kiln's general coding loop, rewrite source, or compile a shader. Tint changes
-update a uniform; object changes update geometry. New behaviors or shader programs
+update a uniform; procedural object changes update geometry; kit edits update instances. New behaviors or shader programs
 belong in an explicit authoring workflow, rather than the placement interaction.
 
 ## Run
@@ -57,6 +57,43 @@ wooden crates, and green-potion cauldrons. These are original procedural meshes;
 candles and potion have glowing surfaces, without adding dynamic light sources.
 Every kind supports move, resize, remove, groups, undo/redo, and Kiln save/reopen.
 Try `Add three ghosts to my right` or `Add a cauldron at (1, 3)`.
+
+Eight textured assets also come from Everglade's **Modular Medieval Town** kit:
+a one-story cottage (`house`), a two-story townhouse (`manor`), a barrel, bench,
+chair, market stall, cart (`wagon`), and fountain. These use actual licensed kit
+meshes and base-color textures at 256 px, with our own house placement recipes.
+They are static prefabs; the existing room tools still control walkable house
+extensions. Prefabs do not yet add their own wall collision or editable interiors.
+
+Choose an outside wall in **House layout**, then **Add courtyard · 32 m** for
+full-size buildings. The courtyard adds an outdoor floor and a connected doorway;
+it has low boundary walls and no ceiling. Room, wing, and courtyard changes share
+save, undo, and redo. Try `Add a courtyard here`, then place a house using its
+X/Z coordinates. Exact catalog aliases resolve in code (`house` means cottage);
+Jev still checks the action, size, and placement. Mixed kinds are not treated as
+one exact catalog match.
+
+On a machine with Everglade's private `medieval-town/kit-build` directory, run:
+
+```sh
+npm run prepare:medieval
+```
+
+This uses Pillow and writes the compiled bundle under
+`~/.openagents/verse/private/medieval-town/haunt-webgpu`. Override the input with
+`HAUNT_MEDIEVAL_SOURCE` or output with `HAUNT_MEDIEVAL_OUT`. Dev/build copies the
+prepared files into ignored `public/medieval-kit/`; licensed geometry, textures,
+and captures stay outside Git. The tracked `src/medieval-kit.json` pins the mesh
+ranges, dimensions, file lengths, and SHA-256 identities. If a recipe changes,
+review its output and update those pins together. The loader verifies both files.
+A checkout without the kit keeps the ordinary props and disables kit choices;
+saved kit objects remain in its scene data until the bundle is available again.
+
+Kit geometry and its texture array load once. Add/move/resize changes update a
+preallocated instance buffer, without rebuilding the house or compiling a shader.
+The kit uses a separate fixed textured material and the shared camera/light
+uniform; advanced edits to `material.wgsl` continue to affect the original house
+and procedural props. Disposal releases both renderers' buffers and textures.
 
 The renderer, picker, project validation, and Rust Jev questions use
 [`src/assets.json`](src/assets.json). Existing pumpkin scenes still load, and the
@@ -182,7 +219,7 @@ observation bound. Neither is a GPU presentation timestamp. Resource counters co
 the demo's objects, not total driver allocations. The earlier Pylon source-patch
 record remains historical evidence, rather than the current interaction.
 
-Scene Undo currently covers objects and light color. Raw WGSL uses the Phase 0
+Scene Undo covers objects, light color, behaviors, and the house layout. Raw WGSL uses the Phase 0
 draft/validation path and **Original**; integrating asset-draft undo into the
 shared transaction history remains in #12502.
 

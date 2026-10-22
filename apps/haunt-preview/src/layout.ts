@@ -9,6 +9,7 @@ export type Room = {
   z: number;
   width: number;
   depth: number;
+  outdoor?: boolean;
 };
 export type Layout = { rooms: Room[]; removedWalls: string[] };
 export type Wall = {
@@ -73,11 +74,12 @@ export function readLayout(value: unknown): Layout {
       typeof r.name !== "string" ||
       !r.name.trim() ||
       r.name.length > 60 ||
+      (r.outdoor !== undefined && typeof r.outdoor !== "boolean") ||
       ![r.x, r.z, r.width, r.depth].every(Number.isFinite) ||
       r.width < 2 ||
       r.depth < 2 ||
-      r.width > 16 ||
-      r.depth > 16 ||
+      r.width > (r.outdoor ? 32 : 16) ||
+      r.depth > (r.outdoor ? 32 : 16) ||
       Math.abs(r.x) + r.width / 2 > 64 ||
       Math.abs(r.z) + r.depth / 2 > 64
     )
@@ -119,6 +121,7 @@ export function readLayout(value: unknown): Layout {
       z: r.z,
       width: r.width,
       depth: r.depth,
+      ...(r.outdoor === undefined ? {} : { outdoor: r.outdoor }),
     })),
     removedWalls: [...p.removedWalls],
   };
@@ -359,8 +362,14 @@ export function extendLayout(
   size: number,
   wing = false,
   at?: { x: number; z: number },
+  outdoor = false,
 ): Layout {
-  if (!Number.isFinite(size) || size < 3 || size > 10)
+  if (
+    !Number.isFinite(size) ||
+    size < 3 ||
+    size > (outdoor ? 32 : 10) ||
+    (outdoor && wing)
+  )
     throw new Error("Choose a room size between 3 and 10 meters.");
   const next = structuredClone(layout),
     floor = new HouseFloor(layout);
@@ -389,9 +398,12 @@ export function extendLayout(
   for (let i = 0; i < (wing ? 3 : 1); i++)
     next.rooms.push({
       id: `room-${crypto.randomUUID()}`,
-      name: wing
-        ? `Wing ${layout.rooms.length + 1} · room ${i + 1}`
-        : `Room ${next.rooms.length + 1}`,
+      ...(outdoor ? { outdoor: true } : {}),
+      name: outdoor
+        ? "Courtyard"
+        : wing
+          ? `Wing ${layout.rooms.length + 1} · room ${i + 1}`
+          : `Room ${next.rooms.length + 1}`,
       x: cx + nx * size * (i + 0.5),
       z: cz + nz * size * (i + 0.5),
       width: size,

@@ -319,7 +319,7 @@ try {
     window.hauntPreview.snapshot().actors.some((a) => a.y > 0.02),
   );
   await reopened.close();
-  assert.equal(saved.buffers, 2);
+  assert.equal(saved.buffers, 2 + saved.medieval.buffers);
   assert.equal(saved.activePipelines, 1);
   assert.equal(saved.depthTextures, 1);
   assert.deepEqual(errors, []);

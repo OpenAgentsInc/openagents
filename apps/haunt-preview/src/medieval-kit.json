@@ -1,0 +1,57 @@
+{
+  "schema": 1,
+  "kit": "Modular Medieval Town",
+  "layers": 17,
+  "meshes": {
+    "cottage": {
+      "first": 0,
+      "count": 10008,
+      "dimensions": [11.0, 8.8892, 12.2194]
+    },
+    "townhouse": {
+      "first": 10008,
+      "count": 14376,
+      "dimensions": [11.0, 12.8892, 12.2194]
+    },
+    "barrel": {
+      "first": 24384,
+      "count": 2481,
+      "dimensions": [0.8287, 1.165, 0.8413]
+    },
+    "bench": {
+      "first": 26865,
+      "count": 1431,
+      "dimensions": [0.8925, 1.3117, 2.0354]
+    },
+    "chair": {
+      "first": 28296,
+      "count": 1647,
+      "dimensions": [0.4973, 0.9274, 0.4657]
+    },
+    "market-stall": {
+      "first": 29943,
+      "count": 2664,
+      "dimensions": [4.2055, 3.485, 2.6435]
+    },
+    "cart": {
+      "first": 32607,
+      "count": 2934,
+      "dimensions": [3.3127, 1.2244, 1.7526]
+    },
+    "fountain": {
+      "first": 35541,
+      "count": 23256,
+      "dimensions": [6.1858, 2.1463, 6.1858]
+    }
+  },
+  "files": {
+    "meshes.bin": {
+      "bytes": 2822256,
+      "sha256": "72142081d9fe45a9838969574d5d2aa9a5c72eee25593d4eb9d6c7d67bb8880b"
+    },
+    "atlas.png": {
+      "bytes": 2159869,
+      "sha256": "26ffc79425840bf9643ae7cdc7db921ddab45342915f23c090d8bd25f38c95e9"
+    }
+  }
+}
