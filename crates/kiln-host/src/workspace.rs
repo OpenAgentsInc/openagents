@@ -12,13 +12,15 @@ use std::{
 const MAX_TURNS: usize = 96;
 const MAX_GUIDANCE_BYTES: usize = 2000;
 const MAX_INSTRUCTION_BYTES: usize = INSTRUCTIONS.len() + 4000;
+const MAX_VIEW_LINES: usize = 80;
+const MAX_VIEW_BYTES: usize = 1400;
 
 const INSTRUCTIONS: &str = r#"You are Kiln, editing a bounded repository workspace. Reply only with one JSON object:
 {"thought":"one short sentence","commands":[...]}
 Commands: {"run":"ls PATH"}, {"run":"view PATH START END"}, {"run":"grep [-n] [-i] TEXT PATH"}, {"run":"copy SOURCE DEST"}, {"write":"PATH","content":"full text"}, {"patch":"PATH","search":"exact unique old text","replace":"new text"}, {"run":"check"}, {"done":"summary"}.
 grep matches literal text; separate alternatives with \|. -i ignores case, and -n includes the line numbers that grep always shows. Other regular expressions and shell commands are unavailable.
 copy duplicates an existing scoped text file in the private workspace without printing or regenerating it.
-Read before editing. Use small exact patches, preserve existing style, and write meaningful regression tests. View at most 20 lines at a time. No shell or arbitrary programs are available. check asks the coordinator to run the task's real checks outside this workspace. Read failures, repair, and check again. Say done only after check passed for your current files. Never change paths outside the supplied scope. Your edits remain private until a reviewer accepts them."#;
+Read before editing. Use small exact patches, preserve existing style, and write meaningful regression tests. View at most 80 lines at a time. No shell or arbitrary programs are available. check asks the coordinator to run the task's real checks outside this workspace. Read failures, repair, and check again. Say done only after check passed for your current files. Never change paths outside the supplied scope. Your edits remain private until a reviewer accepts them."#;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -75,6 +77,48 @@ fn normalized(path: &str) -> Result<()> {
         return Err("path must name a file or directory inside the configured scope".into());
     }
     Ok(())
+}
+
+fn view_page(text: &str, start: usize, end: usize) -> String {
+    let total = text.lines().count();
+    if start > total {
+        return format!("EOF: {total} lines; start {start} is past the end.");
+    }
+    let next = |last| {
+        if last < total {
+            format!("Next line: {}.", last + 1)
+        } else {
+            "EOF.".into()
+        }
+    };
+    let header = |last| format!("Lines {start}-{last} of {total}. {}\n", next(last));
+    let end = end.min(start.saturating_add(MAX_VIEW_LINES - 1)).min(total);
+    let mut body = String::new();
+    let mut last = None;
+    for (n, line) in text
+        .lines()
+        .enumerate()
+        .skip(start - 1)
+        .take(end - start + 1)
+    {
+        let numbered = format!("{}:{line}", n + 1);
+        let separator = usize::from(!body.is_empty());
+        if header(n + 1).len() + body.len() + separator + numbered.len() > MAX_VIEW_BYTES {
+            break;
+        }
+        if separator != 0 {
+            body.push('\n');
+        }
+        body.push_str(&numbered);
+        last = Some(n + 1);
+    }
+    match last {
+        Some(last) => format!("{}{body}", header(last)),
+        None => format!(
+            "Line {start} is too long for a {MAX_VIEW_BYTES}-byte page; no source lines shown. {}",
+            next(start)
+        ),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -444,25 +488,7 @@ impl Workspace {
                             return Err("view requires a positive start and an end at or after it".into());
                         }
                         let text = self.read(path)?;
-                        let total = text.lines().count();
-                        if start > total {
-                            return Ok(format!("EOF: {total} lines; start {start} is past the end."));
-                        }
-                        let end = end.min(start.saturating_add(19)).min(total);
-                        let next = if end < total {
-                            format!("Next line: {}.", end + 1)
-                        } else {
-                            "EOF.".into()
-                        };
-                        let body = text
-                            .lines()
-                            .enumerate()
-                            .skip(start - 1)
-                            .take(end - start + 1)
-                            .map(|(n, l)| format!("{}:{l}", n + 1))
-                            .collect::<Vec<_>>()
-                            .join("\n");
-                        Ok(format!("Lines {start}-{end} of {total}. {next}\n{body}"))
+                        Ok(view_page(&text, start, end))
                     }
                     ["grep", ..] => self.grep(&args[1..]),
                     _ => Err(
@@ -757,8 +783,11 @@ mod tests {
         workspace.checked = Some(workspace.digest());
         let checked = workspace.checked.clone();
         for (start, requested_end, displayed_end, next) in [
-            (100, 140, 119, "Next line: 120."),
-            (80, 140, 99, "Next line: 100."),
+            (1, 40, 40, "Next line: 41."),
+            (40, 75, 75, "Next line: 76."),
+            (1, usize::MAX, 80, "Next line: 81."),
+            (100, 140, 140, "Next line: 141."),
+            (80, 140, 140, "Next line: 141."),
             (2, 2, 2, "Next line: 3."),
             (145, 200, 150, "EOF."),
             (149, usize::MAX, 150, "EOF."),
@@ -775,7 +804,8 @@ mod tests {
             );
             let displayed = lines.collect::<Vec<_>>();
             assert_eq!(displayed.len(), displayed_end - start + 1);
-            assert!(displayed.len() <= 20);
+            assert!(displayed.len() <= 80);
+            assert!(output.len() <= 1400);
             assert_eq!(
                 displayed.first().unwrap(),
                 &format!("{start}:source {start} é")
@@ -784,6 +814,15 @@ mod tests {
                 displayed.last().unwrap(),
                 &format!("{displayed_end}:source {displayed_end} é")
             );
+            workspace.agent.steps.push(Step::default());
+            workspace.agent.observe(
+                &Command::Run(format!(
+                    "view apps/haunt-preview/runtime.ts {start} {requested_end}"
+                )),
+                0,
+                output.clone(),
+            );
+            assert!(workspace.agent.prompt("runtime.ts").contains(&output));
         }
         assert_eq!(
             workspace
@@ -834,6 +873,87 @@ mod tests {
                 ))
                 .unwrap(),
             "EOF: 0 lines; start 1 is past the end."
+        );
+    }
+    #[test]
+    fn view_pages_keep_whole_utf8_lines_and_survive_the_real_prompt_limit() {
+        let source = (1..=80)
+            .map(|n| format!("source {n} {}", "界é".repeat(12)))
+            .collect::<Vec<_>>();
+        let text = source.join("\n");
+        let mut agent = Agent::new("Read every source line", 12000);
+        agent.instructions = INSTRUCTIONS.into();
+        for _ in 0..30 {
+            agent.steps.push(Step {
+                observations: vec![Observation {
+                    command: "view old.ts 1 80".into(),
+                    code: 0,
+                    output: "old history\n".repeat(200),
+                }],
+                ..Default::default()
+            });
+        }
+        let mut start = 1;
+        let mut seen = Vec::new();
+        while start <= source.len() {
+            let page = view_page(&text, start, usize::MAX);
+            assert!(page.len() <= MAX_VIEW_BYTES);
+            let (header, body) = page.split_once('\n').unwrap();
+            let rows = body.lines().collect::<Vec<_>>();
+            assert!(!rows.is_empty() && rows.len() <= MAX_VIEW_LINES);
+            let last = start + rows.len() - 1;
+            let next = if last == source.len() {
+                "EOF.".into()
+            } else {
+                format!("Next line: {}.", last + 1)
+            };
+            assert_eq!(header, format!("Lines {start}-{last} of 80. {next}"));
+            for (n, row) in (start..=last).zip(rows) {
+                assert_eq!(row, format!("{n}:{}", source[n - 1]));
+                seen.push(n);
+            }
+            agent.steps.push(Step::default());
+            agent.observe(
+                &Command::Run(format!("view runtime.ts {start} 80")),
+                0,
+                page.clone(),
+            );
+            assert!(agent.prompt("runtime.ts").contains(&page));
+            assert_eq!(agent.budget, 12000);
+            start = last + 1;
+        }
+        assert_eq!(seen, (1..=80).collect::<Vec<_>>());
+    }
+    #[test]
+    fn view_byte_ceiling_includes_the_header_and_reports_oversized_lines() {
+        let header = "Lines 1-1 of 2. Next line: 2.\n";
+        let line = "x".repeat(MAX_VIEW_BYTES - header.len() - "1:".len());
+        let text = format!("{line}\nsecond line");
+        let page = view_page(&text, 1, 80);
+        assert_eq!(page.len(), MAX_VIEW_BYTES);
+        assert_eq!(page, format!("{header}1:{line}"));
+        assert_eq!(
+            view_page(&text, 2, 80),
+            "Lines 2-2 of 2. EOF.\n2:second line"
+        );
+
+        let large = "界".repeat(500);
+        let text = format!("small\n{large}\ntail");
+        assert_eq!(
+            view_page(&text, 1, 80),
+            "Lines 1-1 of 3. Next line: 2.\n1:small"
+        );
+        let diagnostic = view_page(&text, 2, 80);
+        assert_eq!(
+            diagnostic,
+            "Line 2 is too long for a 1400-byte page; no source lines shown. Next line: 3."
+        );
+        assert!(diagnostic.len() <= MAX_VIEW_BYTES);
+        assert!(!diagnostic.contains('界'));
+        assert_eq!(view_page(&text, 3, 80), "Lines 3-3 of 3. EOF.\n3:tail");
+        assert_eq!(
+            view_page(&large, 1, 80),
+            "Line 1 is too long for a 1400-byte page; no source lines shown. EOF."
         );
     }
     #[test]
