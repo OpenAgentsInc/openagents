@@ -229,7 +229,11 @@ function prop(asset: SceneAsset) {
   }
 }
 
-export function houseGeometry(assets: SceneAsset[]): Float32Array {
+export type AssetRange = { start: number; end: number };
+export function houseGeometry(
+  assets: SceneAsset[],
+  ranges?: Map<string, AssetRange>,
+): Float32Array {
   data.length = 0;
   // Original simple geometry and the Haunted House palette, not imported game art.
   for (const [cx, cz, w, d] of [
@@ -311,7 +315,12 @@ export function houseGeometry(assets: SceneAsset[]): Float32Array {
     box(x - Math.sign(x) * 0.15, 1.9, z, 0.04, 0.72, 0.5, paper);
     candle(x - Math.sign(x) * 0.45, 1.18, z + 0.9);
   }
-  for (const asset of assets) prop(asset);
+  ranges?.clear();
+  for (const asset of assets) {
+    const start = data.length;
+    prop(asset);
+    ranges?.set(asset.id, { start, end: data.length });
+  }
   box(-2.2, 0.65, -15.5, 1.5, 0.15, 0.75, wood);
   for (const x of [-2.8, -1.6]) box(x, 0.3, -15.5, 0.15, 0.7, 0.6, wood);
   candle(-2.6, 0.9, -15.5);
