@@ -170,9 +170,12 @@ run-confirm() {
   : "${MANIFEST:?}" "${RESULTS:?}" "${POLICY:?}" "${CONFIRM:?}"
   local oracle=gs://openagents-psionic-oracle/deepseek-v41/1bae0e1 cases
   mkdir -p $ROOT/confirm $ROOT/g2-oracle
+  # The frozen policy first: no confirmation data reaches the machine before
+  # the policy exists (bounded wait, so setup can run while it is derived).
+  for _ in $(seq 1 120); do gcloud storage ls "$POLICY" >/dev/null 2>&1 && break; sleep 60; done
+  gcloud storage cp -q "$POLICY" $ROOT/policy.json
   gcloud storage rsync -q -r "$CONFIRM" $ROOT/confirm
   gcloud storage rsync -q -r $oracle/g2-v2/oracle $ROOT/g2-oracle
-  gcloud storage cp -q "$POLICY" $ROOT/policy.json
   cases=$(python3 -c 'import json,sys; print(",".join(c["id"] for c in json.load(open(sys.argv[1]))["cases"]))' $ROOT/confirm/confirmation-corpus.json)
   ORACLE_DIR=$ROOT/confirm MAX_CONTEXT=8192 qualify $ROOT/out/confirmation --release --observe \
     --gpus 0,1,2,3 --max-step-tokens 2872 --policy $ROOT/policy.json --cases "$cases"
