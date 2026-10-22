@@ -96,6 +96,7 @@ class Lifecycle:
 
     def health(self, s, now):
         self.calls.append(("health", s["vm"]))
+        s["health"] = {"ready": True, "busy": False}
 
     def recover(self, s):
         raise m.Refused("pending reservation unresolved")
@@ -144,6 +145,36 @@ class Controls(unittest.TestCase):
         b.state["slots"][0]["expires"] = NOW + 7200
         m.tick(b, b.state, NOW)
         self.assertIn(("create", m.NAMES[0]), b.calls)
+
+    def test_second_due_head_keeps_serving_while_first_replacement_loads(self):
+        b = Lifecycle()
+        b.state["slots"][0]["expires"] = NOW + 7200
+        b.state["slots"][1]["expires"] = NOW + 7281
+        original = b.health
+        def health(s, now):
+            original(s, now)
+            if s["instance_id"] == "999":
+                s["health"]["ready"] = False
+        b.health = health
+        m.tick(b, b.state, NOW)
+        self.assertEqual(b.state["phase"], "starting")
+        m.tick(b, b.state, NOW + 120)
+        self.assertNotIn(("cleanup", m.NAMES[1]), b.calls)
+        self.assertNotIn(("create", m.NAMES[1]), b.calls)
+
+    def test_busy_healthy_head_finishes_before_elective_renewal(self):
+        b = Lifecycle()
+        b.state["slots"][0]["expires"] = NOW + 7200
+        original = b.health
+        def health(s, now):
+            original(s, now)
+            s["health"]["busy"] = True
+        b.health = health
+        m.tick(b, b.state, NOW)
+        self.assertNotIn(("cleanup", m.NAMES[0]), b.calls)
+        # The native absolute deadline remains binding, even for a busy head.
+        m.tick(b, b.state, NOW + 7200)
+        self.assertIn(("cleanup", m.NAMES[0]), b.calls)
 
     def test_unknown_github_freezes_allocations_and_adoption_but_cleans_lost_slot(self):
         b = Lifecycle()

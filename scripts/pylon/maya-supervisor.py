@@ -522,40 +522,51 @@ def tick(backend, state, now, stopping=False):
             raise Refused("; ".join(errors))
         return False
     backend.initial_storage()
-    errors = []
+    errors, ready = [], True
     for number, slot in enumerate(state["slots"], 1):
         try:
-            reconcile_slot(backend, state, slot, number, now, allow_create=not errors)
+            observed_ready = reconcile_slot(backend, state, slot, number, now, allow_create=not errors,
+                                            allow_renew=ready and not errors)
+            ready = ready and observed_ready
         except (Refused, OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired) as error:
             errors.append(str(error))
+            ready = False
     if errors:
         raise Refused("; ".join(errors))
-    state["phase"] = "supervising"
+    state["phase"] = "supervising" if ready else "starting"
     backend.save()
     return False
 
 
-def reconcile_slot(backend, state, slot, number, now, allow_create):
+def reconcile_slot(backend, state, slot, number, now, allow_create, allow_renew=True):
     if slot.get("pending"):
         backend.recover(slot)
     if slot.get("allocation"):
         info = backend.describe(slot)
         if info:
             verify_instance(slot, info, state["owners"])
-        if info is None or info["status"] in ("TERMINATED", "STOPPED") or now >= slot["expires"] - 7200:
+        if info is None or info["status"] in ("TERMINATED", "STOPPED") or now >= slot["expires"]:
             backend.cleanup(slot)
         elif info["status"] != "RUNNING":
             raise Refused("service transition is in progress; no replacement reserved")
         else:
             backend.adopt(slot)
+            if now >= slot["expires"] - 7200:
+                backend.health(slot, now)
+                health = slot.get("health", {})
+                if not allow_renew or health.get("ready") is not True or health.get("busy") is True:
+                    return health.get("ready") is True
+                backend.cleanup(slot)
     if not slot.get("allocation"):
         if not allow_create:
             raise Refused("another service has an unresolved observation; no replacement reserved")
         backend.create(slot)
     if not slot.get("installed"):
         backend.install(slot, number)
+        return False
     else:
         backend.health(slot, now)
+        return slot.get("health", {}).get("ready") is True
 
 
 def configure(args):
