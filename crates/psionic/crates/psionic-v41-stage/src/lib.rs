@@ -746,9 +746,11 @@ pub struct Options {
     pub front: String,
     pub token: String,
     pub backend: Backend,
-    /// The CPU arithmetic asked for; always `None` on CUDA, whose only
-    /// arithmetic is [`CUDA_PROFILE`].
+    /// The CPU arithmetic asked for; `None` on device backends.
+    /// CUDA FP8 diagnostics use `cuda_fp8_reference`.
     pub arithmetic: Option<Arithmetic>,
+    /// Diagnostic packed FP8 block sums and TP8 partial rounding on CUDA.
+    pub cuda_fp8_reference: bool,
     pub max_context: usize,
     pub max_step_tokens: usize,
     pub prefill_chunk: Option<usize>,
@@ -861,6 +863,9 @@ pub fn parse_arithmetic(value: &str) -> Result<Arithmetic, Refused> {
 /// [`Arithmetic`] settings describe.
 pub const CUDA_PROFILE: &str = "device";
 
+/// Diagnostic CUDA FP8 arithmetic; other operations keep their device order.
+pub const CUDA_FP8_REFERENCE: &str = "fp8-mma-tp8";
+
 /// The name of a CPU arithmetic, as `--arithmetic` takes it.
 #[must_use]
 pub const fn arithmetic_name(arithmetic: Arithmetic) -> &'static str {
@@ -873,8 +878,9 @@ pub const fn arithmetic_name(arithmetic: Arithmetic) -> &'static str {
 
 /// Parses `--arithmetic` for a backend, before any weights load. The CPU
 /// port implements `f32`, `bf16`, and `bf16-tp8`; the CUDA stage implements
-/// only its own arithmetic, [`CUDA_PROFILE`], so it refuses the CPU names
-/// rather than run something other than what was asked for.
+/// its own arithmetic and the bounded [`CUDA_FP8_REFERENCE`] diagnostic.
+/// The latter returns `None` here; [`Options::cuda_fp8_reference`] selects it.
+/// CPU arithmetic names remain refused on CUDA.
 ///
 /// # Errors
 ///
@@ -885,7 +891,7 @@ pub fn parse_profile(backend: Backend, value: &str) -> Result<Option<Arithmetic>
             "--arithmetic {CUDA_PROFILE} is the CUDA stage's arithmetic; the CPU stage takes f32, bf16, or bf16-tp8"
         )),
         (Backend::Cpu, _) => parse_arithmetic(value).map(Some),
-        (Backend::Cuda, CUDA_PROFILE) => Ok(None),
+        (Backend::Cuda, CUDA_PROFILE | CUDA_FP8_REFERENCE) => Ok(None),
         (Backend::Cuda, "f32" | "bf16" | "bf16-tp8") => refuse(format!(
             "the CUDA stage doesn't implement --arithmetic {value}; it runs only `{CUDA_PROFILE}`"
         )),
@@ -1172,10 +1178,13 @@ impl Options {
             None => Backend::Cpu,
             Some(value) => Backend::parse(&value)?,
         };
-        let arithmetic = match values.remove("--arithmetic") {
-            Some(v) => parse_profile(backend, &v)?,
-            None => None,
-        };
+        let arithmetic_value = values.remove("--arithmetic");
+        let cuda_fp8_reference = arithmetic_value.as_deref() == Some(CUDA_FP8_REFERENCE);
+        let arithmetic = arithmetic_value
+            .as_deref()
+            .map(|v| parse_profile(backend, v))
+            .transpose()?
+            .flatten();
         let experts = values
             .remove("--experts")
             .map(|v| Experts::parse(&v))
@@ -1257,6 +1266,7 @@ impl Options {
             token,
             backend,
             arithmetic,
+            cuda_fp8_reference,
             max_context,
             max_step_tokens,
             prefill_chunk,

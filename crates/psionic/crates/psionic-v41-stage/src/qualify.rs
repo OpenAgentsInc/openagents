@@ -1567,6 +1567,12 @@ pub fn run_answers(opts: &QualifyOptions, cap: usize) -> Result<Value, Refused> 
 #[must_use]
 pub fn release_refusals(opts: &QualifyOptions, policy: &Policy, cases: &[Value]) -> Vec<String> {
     let mut out = Vec::new();
+    if opts.control.is_some() {
+        out.push("a deliberate control cannot qualify for release".into());
+    }
+    if opts.arithmetic.as_deref() == Some(crate::CUDA_FP8_REFERENCE) {
+        out.push("FP8 arithmetic diagnostics cannot qualify for release".into());
+    }
     if !opts.observe {
         out.push("release qualification needs --observe".into());
     }
@@ -2774,9 +2780,13 @@ mod tests {
             );
         }
         opts.observe = true;
+        opts.control = Some(Control::WrongWeights);
+        opts.arithmetic = Some(crate::CUDA_FP8_REFERENCE.into());
         let partial = json!({"case": "c", "modes": [], "router": {"layers_compared": 39,
             "margin_verdict": false, "unresolved": 3, "failed": 0}, "exact": {"checked": 2}});
         let refusals = release_refusals(&opts, &pending_policy(), &[partial]);
+        assert!(refusals.iter().any(|r| r.contains("deliberate control")));
+        assert!(refusals.iter().any(|r| r.contains("diagnostics cannot")));
         assert!(refusals.iter().any(|r| r.contains("39 of 40")));
         assert!(refusals.iter().any(|r| r.contains("3 unresolved")));
     }
