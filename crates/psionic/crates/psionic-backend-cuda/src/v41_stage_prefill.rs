@@ -18,7 +18,25 @@
 //! prefill; MIT), reimplemented for our stage.
 
 use super::*;
+use crate::v41_expert_cache::SendPtr;
 use crate::v41_matvec::{V41_TILE_ROWS, V41Batch, V41BatchCache};
+
+/// Device slots a prefill streams uncached experts through, with their
+/// page-locked staging (#12464).
+pub(super) struct Ring {
+    slots: usize,
+    /// `[w1, w2, w3]`: weights and scales of `slots` experts.
+    stacks: [(CudaBuffer, CudaBuffer); 3],
+    /// One `i32` per expert: a ring slot, or the host-lane code (skipped).
+    map: CudaBuffer,
+    /// `[w1 weights, w1 scales, w2 weights, w2 scales, w3 weights, w3
+    /// scales]`, `slots` each.
+    staging: Vec<CudaHostBuffer>,
+    staging_ptrs: [SendPtr; 6],
+    /// Experts streamed since load, and the seconds the host spent copying.
+    pub(super) streamed: u64,
+    pub(super) copy_seconds: f64,
+}
 
 /// Per-token arrays and graphs of the layer-major prefill.
 pub(super) struct PrefillWork {
@@ -67,6 +85,7 @@ pub(super) struct PrefillWork {
     routed_scratch: CudaBuffer,
     reset: Option<CudaGraphExec>,
     begin: Option<CudaGraphExec>,
+    pub(super) ring: Option<Ring>,
     /// Per stage layer: phases A, C, E, G, I.
     phases: Vec<[Option<CudaGraphExec>; 5]>,
     /// Device bytes of all of the above.
@@ -92,6 +111,7 @@ impl PrefillWork {
         backend: &mut CudaBackend,
         config: &V41StageConfig,
         max: usize,
+        stream: Option<(crate::v41_expert_lane::V41ExpertDims, usize)>,
     ) -> Result<Self, RuntimeError> {
         let shape = config.shape;
         let g = shape.attention;
@@ -176,6 +196,7 @@ impl PrefillWork {
             routed_scratch: f(2 * (shape.router.experts + 1))?,
             reset: None,
             begin: None,
+            ring: None,
             phases: (0..config.layers.len())
                 .map(|_| Default::default())
                 .collect(),
@@ -185,6 +206,47 @@ impl PrefillWork {
             .write_bytes_at_offset(0, &words(&identity))?;
         this.dense_tiles
             .write_bytes_at_offset(0, &words(&dense_tiles))?;
+        if let Some((dims, slots)) = stream {
+            let slots = slots.max(1);
+            let fp4 = V41MatvecFormat::Fp4E2M1Row32;
+            let shapes = [
+                (dims.width, dims.hidden),
+                (dims.hidden, dims.width),
+                (dims.width, dims.hidden),
+            ];
+            let mut stacks = Vec::new();
+            let mut staging = Vec::new();
+            let mut ptrs = Vec::new();
+            for (rows, cols) in shapes {
+                let (wb, sb) = (fp4.weight_bytes(rows, cols), fp4.scale_bytes(rows, cols));
+                let w = backend.byte_buffer(&vec![0; wb * slots])?;
+                let sc = backend.byte_buffer(&vec![0; sb * slots])?;
+                bytes += w.byte_len() + sc.byte_len();
+                stacks.push((w, sc));
+                for n in [wb, sb] {
+                    let host = backend.host_buffer(n * slots)?;
+                    let ptr = host.raw_host_ptr().cast::<u8>();
+                    if ptr.is_null() {
+                        return Err(invalid("page-locked memory needs the Linux CUDA runtime"));
+                    }
+                    ptrs.push(SendPtr(ptr));
+                    staging.push(host);
+                }
+            }
+            let map = backend.byte_buffer(&vec![0; 4 * shape.router.experts])?;
+            bytes += map.byte_len();
+            this.ring = Some(Ring {
+                slots,
+                stacks: stacks
+                    .try_into()
+                    .map_err(|_| invalid("three projections"))?,
+                map,
+                staging,
+                staging_ptrs: ptrs.try_into().map_err(|_| invalid("six parts"))?,
+                streamed: 0,
+                copy_seconds: 0.0,
+            });
+        }
         this.bytes = bytes;
         Ok(this)
     }
@@ -237,10 +299,189 @@ impl V41Stage {
         self.prefill.is_some()
             && tokens > 1
             && !observe
-            && self
-                .expert_cache
-                .as_ref()
-                .is_none_or(|c| c.stats().miss_lane == Some(V41MissLane::Bus))
+            && self.expert_cache.as_ref().is_none_or(|c| {
+                c.stats().miss_lane == Some(V41MissLane::Bus)
+                    || self.prefill.as_ref().is_some_and(|p| p.ring.is_some())
+            })
+    }
+
+    /// The routed experts of stage layer `i` that its cache doesn't hold,
+    /// streamed through the prefill's ring: each is copied once from the
+    /// cache's host source into page-locked staging (the next group while
+    /// the device computes this one), copied into a ring slot, and its
+    /// entries computed with the same batched products. The cached pass
+    /// before this skipped exactly these entries.
+    #[allow(clippy::too_many_lines)]
+    fn stream_routed(
+        &mut self,
+        backend: &CudaBackend,
+        i: usize,
+        tokens: usize,
+        stats: &mut V41StepStats,
+    ) -> Result<(), RuntimeError> {
+        let shape = self.config.shape;
+        let (h, e, k) = (shape.hidden, shape.expert_width, shape.router.top_k);
+        let experts = shape.router.experts;
+        let model_layer = self.layers[i].layer;
+        let Some(cache) = &self.expert_cache else {
+            return Ok(());
+        };
+        if cache.stats().miss_lane != Some(V41MissLane::Host) {
+            return Ok(());
+        }
+        let Some(p) = self.prefill.as_mut() else {
+            return Ok(());
+        };
+        let Some(ring) = p.ring.as_mut() else {
+            return Ok(());
+        };
+        let slot = cache
+            .layer_slot(model_layer)
+            .ok_or_else(|| invalid("layer missing from the expert cache"))?;
+        let map = cache.map(slot);
+        let entries = tokens * k;
+        let ids: Vec<i32> = p
+            .ids
+            .read_bytes_at_offset(0, 4 * entries)?
+            .chunks_exact(4)
+            .map(|c| i32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
+        stats.device_to_host_copies += 1;
+        stats.device_to_host_bytes += 4 * entries;
+        let mut missing: Vec<usize> = ids
+            .iter()
+            .filter_map(|id| usize::try_from(*id).ok())
+            .filter(|id| *id < experts && map[*id] < 0)
+            .collect();
+        missing.sort_unstable();
+        missing.dedup();
+        if missing.is_empty() {
+            return Ok(());
+        }
+        let streamer = cache.streamer();
+        let fp4 = V41MatvecFormat::Fp4E2M1Row32;
+        let shapes = [(e, h), (h, e), (e, h)];
+        let ptrs = ring.staging_ptrs;
+        let groups: Vec<Vec<usize>> = missing.chunks(ring.slots).map(<[usize]>::to_vec).collect();
+        let started = Instant::now();
+        streamer.copy(model_layer, &groups[0], &ptrs)?;
+        ring.copy_seconds += started.elapsed().as_secs_f64();
+        for (g, group) in groups.iter().enumerate() {
+            // Staging into the ring, and the ring's map.
+            for part in 0..6 {
+                let (rows, cols) = shapes[part / 2];
+                let size = if part % 2 == 0 {
+                    fp4.weight_bytes(rows, cols)
+                } else {
+                    fp4.scale_bytes(rows, cols)
+                };
+                let bytes = &ring.staging[part].read_bytes_prefix_view()[..size * group.len()];
+                let (w, sc) = &mut ring.stacks[part / 2];
+                if part % 2 == 0 {
+                    w.write_bytes_at_offset(0, bytes)?;
+                } else {
+                    sc.write_bytes_at_offset(0, bytes)?;
+                }
+                stats.host_to_device_copies += 1;
+                stats.host_to_device_bytes += bytes.len();
+            }
+            let mut ring_map = vec![crate::v41_expert_cache::V41_LANE_HOST; experts];
+            for (j, expert) in group.iter().enumerate() {
+                ring_map[*expert] = i32::try_from(j).map_err(|_| invalid("ring slot"))?;
+            }
+            ring.map.write_bytes_at_offset(0, &words(&ring_map))?;
+            ring.streamed += group.len() as u64;
+            let next = groups.get(g + 1);
+            let lw = &self.layers[i];
+            let (codes, scales, nf, g_out, u_out, hh, y, rw) =
+                (&p.codes, &p.scales, &p.nf, &p.g, &p.u, &p.hh, &p.y, &p.rw);
+            let routed = V41Batch {
+                entries: &p.routed_entries,
+                tiles: &p.routed_tiles,
+                tile_count: &p.routed_count,
+                max_tiles: V41Batch::max_tiles(entries, experts),
+                count: entries,
+                top_k: k,
+                shared_input: true,
+            };
+            let ring_ref = &*ring;
+            let ring_cache = |proj: usize| V41BatchCache {
+                weights: &ring_ref.stacks[proj].0,
+                scales: &ring_ref.stacks[proj].1,
+                slots: ring_ref.slots,
+                slot_map: &ring_ref.map,
+            };
+            let copied = std::thread::scope(|scope| -> Result<f64, RuntimeError> {
+                // The next group's host copies run while the device computes
+                // this one; staging is free once it's in the ring.
+                let handle = next.map(|n| {
+                    let streamer = &streamer;
+                    scope.spawn(move || {
+                        let started = Instant::now();
+                        streamer
+                            .copy(model_layer, n, &ptrs)
+                            .map(|()| started.elapsed().as_secs_f64())
+                    })
+                });
+                let mut s = backend.begin_submission()?;
+                s.v41_act_quant_fp8(nf, codes, scales, tokens, h)?;
+                for (proj, out) in [(0, g_out), (2, u_out)] {
+                    s.v41_block_matmul(
+                        fp4,
+                        None,
+                        Some(ring_cache(proj)),
+                        e,
+                        h,
+                        experts,
+                        routed,
+                        codes,
+                        scales,
+                        tokens,
+                        out,
+                        entries,
+                        V41Output::Bf16,
+                    )?;
+                }
+                s.v41_swiglu(
+                    g_out,
+                    u_out,
+                    Some(rw),
+                    entries,
+                    e,
+                    shape.swiglu_limit,
+                    hh,
+                    V41Output::Bf16,
+                )?;
+                s.v41_act_quant_fp8(hh, codes, scales, entries, e)?;
+                s.v41_block_matmul(
+                    fp4,
+                    None,
+                    Some(ring_cache(1)),
+                    h,
+                    e,
+                    experts,
+                    V41Batch {
+                        shared_input: false,
+                        ..routed
+                    },
+                    codes,
+                    scales,
+                    entries,
+                    y,
+                    entries,
+                    V41Output::Bf16,
+                )?;
+                s.commit(crate::CudaCommandWait::Completed)?;
+                let _ = lw;
+                match handle {
+                    Some(h) => h.join().map_err(|_| invalid("a staging thread panicked"))?,
+                    None => Ok(0.0),
+                }
+            })?;
+            stats.synchronizations += 1;
+            ring.copy_seconds += copied;
+        }
+        Ok(())
     }
 
     /// Copies `words` words of row `index` of `array` into `dst`.
@@ -1001,6 +1242,7 @@ impl V41Stage {
                 s.commit(crate::CudaCommandWait::Completed)?;
                 stats.synchronizations += 1;
             }
+            self.stream_routed(backend, i, tokens, stats)?;
             self.replay(backend, Some((i, Phase::I)), tokens, stats)?;
         }
         // Leave the step's outputs where the ordinary step leaves them.

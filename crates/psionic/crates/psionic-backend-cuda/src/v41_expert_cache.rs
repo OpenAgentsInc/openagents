@@ -210,6 +210,9 @@ pub struct V41ExpertCacheConfig {
     pub wait_timeout: Duration,
     /// Turn off swaps (a fixed placement, for measurement).
     pub frozen: bool,
+    /// Device slots a layer-major prefill streams uncached experts through
+    /// (#12464), 32 by default.
+    pub stream_slots: usize,
 }
 
 impl V41ExpertCacheConfig {
@@ -226,6 +229,7 @@ impl V41ExpertCacheConfig {
             host_threads: 0,
             wait_timeout: Duration::from_secs(30),
             frozen: false,
+            stream_slots: 32,
         }
     }
 }
@@ -474,7 +478,7 @@ impl CudaSubmission {
 /// A raw pointer a worker thread may hold. The owner keeps the allocation
 /// alive until the thread has stopped.
 #[derive(Clone, Copy, Debug)]
-struct SendPtr(*mut u8);
+pub(crate) struct SendPtr(pub(crate) *mut u8);
 // SAFETY: the pointee is page-locked host memory owned by the cache, which
 // joins every thread that holds one of these before freeing it.
 unsafe impl Send for SendPtr {}
@@ -1466,6 +1470,22 @@ impl ExpertCache {
             .collect()
     }
 
+    /// The host copy of stage layer `slot`'s slot map: a slot, or a lane,
+    /// per expert.
+    pub(crate) fn map(&self, slot: usize) -> &[i32] {
+        &self.caches[slot].map
+    }
+
+    /// What a prefill needs to stream experts that aren't cached into
+    /// device memory: the host source, the lane's threads, and the shapes.
+    pub(crate) fn streamer(&self) -> ExpertStreamer {
+        ExpertStreamer {
+            host: Arc::clone(&self.host),
+            pool: Arc::clone(&self.pool),
+            dims: self.dims,
+        }
+    }
+
     /// Model layer of stage layer `slot`.
     pub(crate) fn layer_slot(&self, layer: usize) -> Option<usize> {
         self.layers.iter().position(|l| *l == layer)
@@ -1581,5 +1601,64 @@ impl std::fmt::Debug for V41ExpertCacheSetup {
             .field("config", &self.config)
             .field("host", &self.host.is_some())
             .finish()
+    }
+}
+
+/// Copies routed experts from a cache's host source into page-locked
+/// staging, in parallel on the host lane's threads, for a layer-major
+/// prefill that streams experts the cache doesn't hold (#12464).
+#[derive(Clone)]
+pub(crate) struct ExpertStreamer {
+    host: Arc<dyn V41ExpertBytes>,
+    pool: Arc<rayon::ThreadPool>,
+    pub(crate) dims: V41ExpertDims,
+}
+
+impl ExpertStreamer {
+    /// Copies each of `experts` of model `layer` into slot `i` of the six
+    /// staging stacks (`[w1 weights, w1 scales, w2 weights, w2 scales, w3
+    /// weights, w3 scales]`), each holding at least `experts.len()` slots.
+    pub(crate) fn copy(
+        &self,
+        layer: usize,
+        experts: &[usize],
+        stacks: &[SendPtr; 6],
+    ) -> Result<(), RuntimeError> {
+        let parts = part_offsets(self.dims);
+        let host = &*self.host;
+        self.pool.install(|| {
+            experts
+                .par_iter()
+                .enumerate()
+                .flat_map_iter(|(slot, expert)| (0..3).map(move |p| (slot, *expert, p)))
+                .try_for_each(|(slot, expert, p)| -> Result<(), RuntimeError> {
+                    let (w, s) = host.projection(layer, expert, p)?;
+                    let (wl, sl) = (parts[2 * p].1, parts[2 * p + 1].1);
+                    if w.len() != wl || s.len() != sl {
+                        return Err(invalid(format!(
+                            "expert {expert} of layer {layer} has the wrong size"
+                        )));
+                    }
+                    let (wd, sd) = (stacks[2 * p], stacks[2 * p + 1]);
+                    // SAFETY: each stack holds `experts.len()` slots of its
+                    // part's size, and each task writes its own slot.
+                    unsafe {
+                        std::ptr::copy_nonoverlapping(w.as_ptr(), wd.at(slot * wl), wl);
+                        std::ptr::copy_nonoverlapping(s.as_ptr(), sd.at(slot * sl), sl);
+                    }
+                    Ok(())
+                })
+        })
+    }
+}
+
+impl SendPtr {
+    /// The address `offset` bytes in.
+    ///
+    /// # Safety
+    ///
+    /// `offset` must lie inside the allocation.
+    pub(crate) unsafe fn at(&self, offset: usize) -> *mut u8 {
+        unsafe { self.0.add(offset) }
     }
 }

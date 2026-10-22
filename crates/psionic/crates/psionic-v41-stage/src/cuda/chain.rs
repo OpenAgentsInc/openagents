@@ -545,6 +545,10 @@ fn stage_thread(
                     "peak_used_total": total.saturating_sub(free_min),
                     "step_ms": steps,
                     "expert_cache": stage.expert_cache_stats().map(|s| cache_json(&s)),
+                    "prefill_stream": stage.prefill_stream_stats().map(|(experts, seconds)| json!({
+                        "experts": experts,
+                        "copy_seconds": seconds,
+                    })),
                     "engram_staging": stage.engram_staging_stats().map(|(rows, seconds)| json!({
                         "rows": rows,
                         "seconds": seconds,

@@ -1800,7 +1800,28 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
     }
     let mut cache = V41ExpertCacheConfig::new(5);
     cache.miss_lane = V41MissLane::Bus;
+    let mut streamed = V41ExpertCacheConfig::new(4);
+    streamed.miss_lane = V41MissLane::Host;
+    streamed.stream_slots = 3;
+    let experts: Arc<dyn crate::v41_expert_cache::V41ExpertBytes> =
+        Arc::new(crate::v41_expert_cache::V41OwnedExperts::from_source(
+            &store,
+            0..40,
+            shape().router.experts,
+        )?);
     let variants: Vec<(&str, bool, V41StageOptions)> = vec![
+        (
+            "batched, uncached experts streamed through a ring",
+            false,
+            V41StageOptions {
+                batched_prefill: true,
+                engram_rows: Some(rows.clone()),
+                expert_cache: Some(V41ExpertCacheSetup {
+                    config: streamed,
+                    host: Some(experts),
+                }),
+            },
+        ),
         (
             "batched",
             false,
@@ -1835,6 +1856,10 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
         let mut stage = load_with_options(&mut backend, &store, 0..40, on_host, options)?;
         for (i, (step, at)) in steps.iter().zip(&positions).enumerate() {
             let out = stage.step(&backend, &input(*at, step), false)?;
+            if step.len() > 1 && name.contains("streamed") {
+                let (streamed, _) = stage.prefill_stream_stats().ok_or("no ring")?;
+                assert!(streamed > 0, "{name}: nothing streamed");
+            }
             assert_eq!(out.token, want[i].0, "{name}: token at step {i}");
             let logits = stage.logits()?;
             assert!(

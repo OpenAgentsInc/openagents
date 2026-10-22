@@ -1855,6 +1855,26 @@ impl V41Stage {
             .map(|t| t.codes.byte_len() + t.scales.byte_len())
             .sum();
         memory.expert_host_bytes = loader.host_bytes;
+        // The prefill's arrays come before an automatically sized cache,
+        // which takes the device memory left over.
+        let prefill = if batched_prefill {
+            let stream = cache.as_ref().map(|c| {
+                (
+                    V41ExpertDims {
+                        hidden: h,
+                        width: shape.expert_width,
+                        swiglu_limit: shape.swiglu_limit,
+                    },
+                    c.config.stream_slots,
+                )
+            });
+            let work =
+                prefill::PrefillWork::new(loader.backend, &config, config.max_step_tokens, stream)?;
+            memory.prefill_bytes = work.bytes;
+            Some(work)
+        } else {
+            None
+        };
         let expert_cache = match cache {
             None => None,
             Some(setup) => {
@@ -1926,13 +1946,6 @@ impl V41Stage {
             _ => None,
         };
         let requested = expert_cache.as_ref().map(|c| c.config.miss_lane);
-        let prefill = if batched_prefill {
-            let work = prefill::PrefillWork::new(loader.backend, &config, config.max_step_tokens)?;
-            memory.prefill_bytes = work.bytes;
-            Some(work)
-        } else {
-            None
-        };
         let mut stage = Self {
             expert_cache,
             engram_staging,
@@ -2083,6 +2096,16 @@ impl V41Stage {
     #[must_use]
     pub fn engram_staging_stats(&self) -> Option<(u64, f64)> {
         self.engram_staging.as_ref().map(|s| (s.rows, s.seconds))
+    }
+
+    /// Routed experts the layer-major prefill streamed through its ring
+    /// since load, and the seconds the host spent copying them (#12464).
+    #[must_use]
+    pub fn prefill_stream_stats(&self) -> Option<(u64, f64)> {
+        self.prefill
+            .as_ref()
+            .and_then(|p| p.ring.as_ref())
+            .map(|r| (r.streamed, r.copy_seconds))
     }
 
     /// The experts each cached layer holds in device slots.
