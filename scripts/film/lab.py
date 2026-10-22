@@ -2069,6 +2069,12 @@ def do_import(author: str = "import") -> list[str]:
                aliases=["portal walk", "openagents portal walk", "the ending"],
                source=str(REPO / "scripts/film/portal-walk.py"))
         done.append("portal-walk")
+    trailer = REPO / "docs/verse/film/verse-trailer.json"
+    if trailer.exists() and not (doc_dir("verse-trailer") / "doc.json").exists():
+        create("verse-trailer", "cut.v1", "The Verse trailer", json.loads(trailer.read_text()),
+               "The trailer's first cut (#12458)", author,
+               aliases=["verse trailer", "the verse trailer", "trailer"], source=str(trailer))
+        done.append("verse-trailer")
     for path in sorted((REPO / "docs/verse/film").glob("*-scene.json")):
         doc = path.stem
         if (doc_dir(doc) / "doc.json").exists():

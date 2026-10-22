@@ -3246,3 +3246,19 @@ billing data, and the project has no billing export. In the Cloud Billing
 console, open Reports for project `openagentsgemini` on 2026-10-21, filter to
 Compute Engine in europe-west4, and confirm there is no A4 (B200) charge. If
 there is one, open a new issue with the amount.
+
+## Review the Verse trailer's first cut (#12458) (2026-10-21)
+
+The review render is `~/work/film-out/cut/verse-trailer.mp4` (72 s), and it is
+in Video Lab as `verse-trailer`, so you can change it by chat. Defaults to
+confirm or change:
+
+1. **Voice.** Bella, the saved voice.
+2. **Logo.** No Verse logo exists, so the end card is a THE VERSE wordmark.
+   Send a logo to swap in.
+3. **Format.** 16:9 only. A 9:16 cut can follow.
+4. **Halloween.** Not teased, because there's no footage yet.
+5. **Concept shots.** Voice-built worlds (a mock-up phone screen), shops,
+   publishing, and earning carry CONCEPT tags. Replace them with real
+   footage as each one ships. Game Lab's chat edits and Kiln weren't filmed:
+   both need a signed-in account (Kiln also needs its runner).

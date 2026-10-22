@@ -45,3 +45,21 @@ Rendered media stays out of git, under `~/work/film-out/`:
 | 8 | 48–56 s | titles | `openagents.com/download` and the install one-liner. |
 
 Claims follow `docs/launch/1.0/claims.md`: web and terminal are the story, and the Verse is the visual hook.
+
+## The Verse trailer (#12458)
+
+A 72 s cut, [`verse-trailer.json`](verse-trailer.json), in Video Lab as
+`verse-trailer`. Its media goes under `~/work/film-out/verse-trailer/`, and
+the render to `~/work/film-out/cut/verse-trailer.mp4`.
+
+| Part | Made by |
+|---|---|
+| Grid shots with people and agents walking | `film_shot` with the Grid scene's `walkers` (`verse-shots/grid-agents.json`, `grid-reveal.json`) |
+| The Grid turning into a world | `toggle-grid.json` and `toggle-grove.json`: one rig in both scenes, so the cut's `circleopen` crossfade changes the world without moving the camera |
+| Real footage of the Grid, its zones, and a game | `scripts/film/footage/verse-grid.mjs` over `verse-trailer-takes.json` |
+| The phone | `scripts/film/footage/concept-voice.mjs` (a mock-up screen), then `studio/shots/iphone-voice.json` |
+| CONCEPT tags | `scripts/film/tag-overlay.py`, as a shot's `over` |
+| Music | `scripts/film/music.py OUT --seconds 72 --cuts 8,20,32,45,58 --end 64` |
+
+Building a world by voice, shops, publishing a world, and earning from one
+aren't built yet. Their shots carry a CONCEPT tag or say so on a title card.
