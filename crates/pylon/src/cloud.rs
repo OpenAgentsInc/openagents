@@ -303,6 +303,9 @@ pub struct Up {
     /// Run the head's session on this computer with this program and
     /// arguments instead of over ssh: tests' in-zone head.
     pub local_head: Option<(PathBuf, Vec<String>)>,
+    /// The name the group's beacons show (`--label`); `None` names it
+    /// after the model and the group's slug.
+    pub label: Option<String>,
 }
 
 impl Up {
@@ -354,6 +357,7 @@ impl Up {
             head_machine_type: "e2-small".into(),
             pylon: None,
             local_head: None,
+            label: None,
         }
     }
 }
@@ -790,7 +794,10 @@ fn head_session(up: &Up, plan: &Plan) -> Option<(PathBuf, Vec<String>)> {
 fn head_settings(up: &Up, lane: GroupLane, base: Settings) -> Settings {
     let mut settings = base;
     settings.pylon = format!("{}-head", up.group);
-    settings.label = format!("DeepSeek-V4.1 {}", up.group)
+    settings.label = up
+        .label
+        .clone()
+        .unwrap_or_else(|| format!("DeepSeek-V4.1 {}", up.group))
         .chars()
         .take(64)
         .collect();
@@ -1736,6 +1743,8 @@ checkout on the one host that allocates for the budget.
       --machine-type TYPE   Another machine type for the placement.
       --on-demand           Not spot.
       --group SLUG          The group's slug (default v41-PLACEMENT).
+      --label NAME          The name its beacons show (default
+                            DeepSeek-V4.1 SLUG), up to 64 characters.
       --budget NAME         Default deepseek-v41.
       --cap DOLLARS         The cap a new budget opens with.
       --deadline-secs N     The deadline the head declares (default 90,
@@ -1857,6 +1866,7 @@ pub fn parse_up(
     let backend = value(&mut words, "--backend")?;
     let local_worker = value(&mut words, "--local-worker")?;
     let local_weights = value(&mut words, "--local-weights")?;
+    let label = value(&mut words, "--label")?;
     let Some(placement) = words.first().cloned() else {
         return Err("name a placement: four-single, two-dual, one-quad, or quad-mac".into());
     };
@@ -1869,6 +1879,13 @@ pub fn parse_up(
     up.local_worker = local_worker.map(PathBuf::from);
     up.local_weights = local_weights.map(PathBuf::from);
     up.pylon = pylon;
+    if let Some(label) = label {
+        let label = label.trim();
+        if label.is_empty() || label.chars().count() > 64 {
+            return Err("--label takes a name of 1 to 64 characters".into());
+        }
+        up.label = Some(label.to_owned());
+    }
     if let Some(weights) = weights {
         if !weights.starts_with("gs://") {
             return Err("--weights takes a gs:// prefix".into());

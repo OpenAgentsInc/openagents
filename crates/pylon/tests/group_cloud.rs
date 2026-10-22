@@ -1438,6 +1438,26 @@ fn a_cloud_group_takes_a_prompt_step_limit() {
     assert!(parse(&["one-quad", "--prefill-secs", "301"]).is_err());
 }
 
+/// `--label` names the group on its beacons, such as a preview launch (W16).
+#[test]
+fn a_cloud_group_takes_a_label() {
+    let parse = |words: &[&str]| {
+        let words: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
+        cloud::parse_up(
+            &words,
+            &repo(),
+            Path::new("/home/me"),
+            "wss://relay.example",
+        )
+    };
+    let (up, _) = parse(&["one-quad"]).unwrap();
+    assert_eq!(up.label, None);
+    let (up, _) = parse(&["one-quad", "--label", "DeepSeek V4.1 Flash preview"]).unwrap();
+    assert_eq!(up.label.as_deref(), Some("DeepSeek V4.1 Flash preview"));
+    assert!(parse(&["one-quad", "--label", " "]).is_err());
+    assert!(parse(&["one-quad", "--label", &"x".repeat(65)]).is_err());
+}
+
 /// A stage machine that no longer exists, as after a spot reclaim, fails
 /// its stage at once instead of after the whole readiness wait (W16).
 #[test]
