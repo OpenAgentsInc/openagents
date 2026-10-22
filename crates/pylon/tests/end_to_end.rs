@@ -287,6 +287,11 @@ async fn a_free_job_runs_end_to_end_and_the_pool_counts_it() {
     };
     let answer = client::ask(&buyer, &ask("hello pylon")).await.unwrap();
     assert_eq!(answer.text.as_deref(), Some("echo: nolyp olleh"));
+    // The engine's reasoning rides in the result's optional field.
+    assert_eq!(
+        answer.reasoning.as_deref(),
+        Some("I reverse the last message.")
+    );
     assert_eq!(answer.outcome, "accepted");
     assert_eq!(answer.pylon_npub, provider_key.npub());
     assert!(answer.contact_ms.is_some() && answer.answer_ms.is_some());
@@ -652,6 +657,7 @@ impl pylon::engine::Engine for Oracle {
                 output_tokens: Some(1),
                 model: "oracle".into(),
                 finish: pylon::engine::Finish::Stop,
+                reasoning: None,
             })
         })
     }

@@ -945,6 +945,15 @@ impl Provider {
                     "text": generation.text,
                     "model": generation.model,
                 });
+                // Optional (NIP-CJ, "Reasoning"): a buyer that doesn't read
+                // it ignores it.
+                if let Some(reasoning) = generation
+                    .reasoning
+                    .as_deref()
+                    .and_then(crate::engine::cap_reasoning)
+                {
+                    body["reasoning"] = json!(reasoning);
+                }
                 if let (Some(input), Some(output)) =
                     (generation.input_tokens, generation.output_tokens)
                 {

@@ -333,6 +333,7 @@ impl pylon::engine::Engine for Parrot {
                 output_tokens: Some(1),
                 model: "qwen3.5-0.8b-q8_0".into(),
                 finish: pylon::engine::Finish::Stop,
+                reasoning: None,
             })
         })
     }
@@ -695,6 +696,7 @@ impl pylon::engine::Engine for Held {
                 output_tokens: Some(1),
                 model: "held".into(),
                 finish: pylon::engine::Finish::Stop,
+                reasoning: None,
             })
         })
     }

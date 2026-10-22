@@ -145,6 +145,9 @@ pub struct Answer {
     /// From publishing the request to the result.
     pub answer_ms: Option<u64>,
     pub usage: Option<Value>,
+    /// The model's reasoning, when the pylon sent it (`reasoning`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<String>,
     pub receipt: Option<String>,
     pub receipt_error: Option<String>,
     /// The signed receipt, for a checker to label.
@@ -465,6 +468,7 @@ async fn ask_for(
     let mut answer_ms = None;
     let mut text = None;
     let mut usage = None;
+    let mut reasoning = None;
     let mut model = service.model.clone();
     let mut error = None;
     let mut result_plain = None;
@@ -598,6 +602,10 @@ async fn ask_for(
                         text = Some(t.to_string());
                         answer_ms = Some(elapsed);
                         usage = value.get("usage").cloned();
+                        reasoning = value["reasoning"]
+                            .as_str()
+                            .filter(|r| !r.trim().is_empty())
+                            .map(str::to_string);
                         if let Some(m) = value["model"].as_str() {
                             model = m.to_string();
                         }
@@ -698,6 +706,7 @@ async fn ask_for(
     }
     let _ = conn.close().await;
     Ok(Answer {
+        reasoning,
         pylon: beacon.address(),
         pylon_npub: crate::identity::npub(&beacon.provider),
         label: beacon.label.clone(),
