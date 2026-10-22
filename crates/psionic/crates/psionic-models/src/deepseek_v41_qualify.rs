@@ -210,6 +210,15 @@ impl DecisionRule {
         if dropped.is_empty() {
             return Decision::Same;
         }
+        // The substitution cap holds whatever the score budget: more changed
+        // IDs than the cap is a failure even when no epsilon is frozen.
+        if dropped.len() > self.max_substitutions {
+            return fail(format!(
+                "{} substitutions; at most {} allowed",
+                dropped.len(),
+                self.max_substitutions
+            ));
+        }
         let Some(epsilon) = self.epsilon else {
             return Decision::Unresolved {
                 reason: "no score-error budget is frozen".into(),
@@ -224,13 +233,6 @@ impl DecisionRule {
             return fail(format!(
                 "the decision changed at a stable boundary (gap {gap:e} > 2 epsilon {:e})",
                 2.0 * epsilon
-            ));
-        }
-        if dropped.len() > self.max_substitutions {
-            return fail(format!(
-                "{} substitutions; at most {} allowed",
-                dropped.len(),
-                self.max_substitutions
             ));
         }
         let Some(scores) = s.oracle_scores else {

@@ -129,6 +129,21 @@ fn decisions_follow_the_margin_rule() {
         check(&[1], near, Some(&scores)),
         Decision::Failed { .. }
     ));
+    // The substitution cap holds without a budget too.
+    let unbudgeted = DecisionRule {
+        epsilon: None,
+        ..rule
+    };
+    assert!(matches!(
+        unbudgeted.check(&Selection {
+            oracle: &[1, 2],
+            candidate: &[3, 4],
+            boundary_gap: None,
+            oracle_scores: None,
+            universe: 384
+        }),
+        Decision::Failed { .. }
+    ));
     // No budget: unresolved, never passed.
     let pending = DecisionRule {
         epsilon: None,

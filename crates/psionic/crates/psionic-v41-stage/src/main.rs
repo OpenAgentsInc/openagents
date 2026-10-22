@@ -16,7 +16,8 @@
 //!     [--diagnostic-cpu]
 //! psionic-v41-stage synthetic DIR [NAME]
 //! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR [...]
-//! psionic-v41-stage qualify-derive --reference R[,R] --control C[,C] --out FILE
+//! psionic-v41-stage qualify-derive --rule 2.1|2.2 --reference R[,R] --control C[,C] --out FILE
+//! psionic-v41-stage qualify-judge --policy FILE --report R[,R]
 //! psionic-v41-stage replay --weights DIR --capture DIR
 //! psionic-v41-stage build-info
 //! psionic-v41-stage chunk-memory
@@ -47,6 +48,7 @@ fn main() -> ExitCode {
         Some("synthetic") => run_synthetic(&args[1..]),
         Some("qualify") => run_qualify(&args[1..]),
         Some("qualify-derive") => psionic_v41_stage::qualify::run_derive(&args[1..]),
+        Some("qualify-judge") => psionic_v41_stage::qualify::run_judge(&args[1..]),
         Some("build-info") => run_build_info(),
         Some("chain") => run_chain(&args[1..]),
         Some("replay") => run_replay(&args[1..]),

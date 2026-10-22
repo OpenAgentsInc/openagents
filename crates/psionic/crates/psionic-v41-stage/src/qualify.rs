@@ -90,6 +90,9 @@ pub struct QualifyOptions {
     pub worker_build: Option<String>,
     /// A run without a build pin, labelled as one in the report.
     pub development: bool,
+    /// Release qualification: refuse missing evidence (layers, steps, router
+    /// and exact reports, an unevaluated rule) instead of reporting it.
+    pub release: bool,
     /// The stage worker to start, when it isn't this executable: a pinned
     /// bundle's worker driven by a newer front.
     pub worker: Option<PathBuf>,
@@ -107,12 +110,15 @@ impl QualifyOptions {
     pub fn parse(args: &[String]) -> Result<Self, Refused> {
         let mut values = BTreeMap::new();
         let mut observe = false;
+        let mut release = false;
         let mut development = false;
         let mut i = 0;
         while i < args.len() {
             let flag = args[i].as_str();
             if flag == "--observe" {
                 observe = true;
+            } else if flag == "--release" {
+                release = true;
             } else if flag == "--development" {
                 development = true;
             } else if [
@@ -232,6 +238,7 @@ impl QualifyOptions {
             worker_build: worker_build.map(|p| p.to_ascii_lowercase()),
             development,
             worker: values.remove("--worker").map(PathBuf::from),
+            release,
             answers: values
                 .remove("--answers")
                 .map(|v| {
@@ -929,6 +936,7 @@ fn router_case(
     let rule = policy.router;
     let mut layers = Vec::new();
     let mut over = Vec::new();
+    let mut scored_layers = 0usize;
     let (mut same, mut substituted, mut failed, mut unresolved) = (0usize, 0, 0, 0);
     let mut examples = Vec::new();
     for layer in 0..LAYERS {
@@ -962,6 +970,24 @@ fn router_case(
                 row_step.len()
             )));
         }
+        // The oracle's retained best scores per row (`--router-tops`), in the
+        // selection function's units, sqrt(softplus(linear(x) / temp)) + bias.
+        let tops_name = format!("{case}.decode.router_tops.layers.{layer}");
+        let tops = if oracle.has(&format!("{tops_name}.scores")) {
+            let scores = oracle.floats(&format!("{tops_name}.scores"))?;
+            let ids = oracle.integers(&format!("{tops_name}.ids"))?;
+            let width = scores.len() / row_step.len().max(1);
+            if ids.len() != scores.len() || width <= top_k || width * row_step.len() != scores.len()
+            {
+                return Err(refused(format!(
+                    "layer {layer}: malformed oracle router scores"
+                )));
+            }
+            Some((scores, ids, width))
+        } else {
+            None
+        };
+        scored_layers += usize::from(tops.is_some());
         let mut layer_counts = [0usize; 4];
         for (row, (step, r)) in row_step.iter().enumerate() {
             let o: Vec<u32> = reference[row * top_k..(row + 1) * top_k]
@@ -969,19 +995,31 @@ fn router_case(
                 .map(|x| *x as u32)
                 .collect();
             let c = &candidate[row * top_k..(row + 1) * top_k];
-            let gap = ties.get(&(*step, layer, *r)).copied().or_else(|| {
-                // Unlisted: the gap is at least the oracle's tie window,
-                // unless its list for that forward was cut off.
-                let complete =
-                    tie_counts.get(&(*step, layer)).copied().unwrap_or_default() < ORACLE_TIE_CAP;
-                let stable = rule.epsilon.is_some_and(|e| 2.0 * e < ORACLE_TIE_WINDOW);
-                (complete && stable).then_some(ORACLE_TIE_WINDOW)
+            // With retained scores: the boundary gap is the k-th minus the
+            // (k+1)-th score, and only the retained IDs have a known score.
+            let row_scores: Option<BTreeMap<u32, f64>> = tops.as_ref().map(|(sc, ids, w)| {
+                (0..*w)
+                    .map(|j| (ids[row * w + j] as u32, f64::from(sc[row * w + j])))
+                    .collect()
             });
+            let tops_gap = tops.as_ref().map(|(sc, _, w)| {
+                f64::from(sc[row * w + top_k - 1]) - f64::from(sc[row * w + top_k])
+            });
+            let gap = tops_gap
+                .or_else(|| ties.get(&(*step, layer, *r)).copied())
+                .or_else(|| {
+                    // Unlisted: the gap is at least the oracle's tie window,
+                    // unless its list for that forward was cut off.
+                    let complete = tie_counts.get(&(*step, layer)).copied().unwrap_or_default()
+                        < ORACLE_TIE_CAP;
+                    let stable = rule.epsilon.is_some_and(|e| 2.0 * e < ORACLE_TIE_WINDOW);
+                    (complete && stable).then_some(ORACLE_TIE_WINDOW)
+                });
             let decision = rule.check(&Selection {
                 oracle: &o,
                 candidate: c,
                 boundary_gap: gap,
-                oracle_scores: None,
+                oracle_scores: row_scores.as_ref(),
                 universe: EXPERTS,
             });
             let slot = match &decision {
@@ -1032,6 +1070,13 @@ fn router_case(
         "unresolved": unresolved,
         "substituted_fraction_within_limit": fraction_ok,
         "layers_over_limit": over,
+        "layers_compared": layers.len(),
+        "layers_with_oracle_scores": scored_layers,
+        // Two separate verdicts (review of 2026-10-22): the empirical
+        // per-layer fraction limits, and the margin/regret rule, which needs
+        // every changed row resolved.
+        "fraction_verdict": if layer_limits { json!(failed == 0 && over.is_empty()) } else { Value::Null },
+        "margin_verdict": failed == 0 && unresolved == 0 && fraction_ok == Some(true),
         "passed": total > 0
             && failed == 0
             && if layer_limits {
@@ -1275,6 +1320,62 @@ pub fn run_answers(opts: &QualifyOptions, cap: usize) -> Result<Value, Refused> 
     Ok(json!({"passed": Value::Null, "answers": cases.len()}))
 }
 
+/// What a release qualification lacks (#12405 review): every case must have
+/// its router report over all 40 layers with a resolved margin verdict, its
+/// exact report with checks, every position, and an evaluated index rule.
+#[must_use]
+pub fn release_refusals(opts: &QualifyOptions, cases: &[Value]) -> Vec<String> {
+    let mut out = Vec::new();
+    if !opts.observe {
+        out.push("release qualification needs --observe".into());
+    }
+    if opts.worker_build.is_none() {
+        out.push("release qualification needs a pinned bundle".into());
+    }
+    for c in cases {
+        let name = c["case"].as_str().unwrap_or("?");
+        if c["refused"].is_string() {
+            out.push(format!("{name}: refused"));
+            continue;
+        }
+        let router = &c["router"];
+        if router.is_null() {
+            out.push(format!("{name}: no router report"));
+        } else {
+            if router["layers_compared"].as_u64() != Some(LAYERS as u64) {
+                out.push(format!(
+                    "{name}: router compared {} of {LAYERS} layers",
+                    router["layers_compared"]
+                ));
+            }
+            if router["margin_verdict"] != json!(true) {
+                out.push(format!(
+                    "{name}: router margin/regret verdict not established ({} unresolved, {} failed rows)",
+                    router["unresolved"], router["failed"]
+                ));
+            }
+        }
+        let exact = &c["exact"];
+        if exact.is_null() || exact["checked"].as_u64().unwrap_or(0) == 0 {
+            out.push(format!("{name}: no exact checks"));
+        }
+        for mode in c["modes"].as_array().into_iter().flatten() {
+            if mode["missing"].as_array().is_some_and(|m| !m.is_empty()) {
+                out.push(format!(
+                    "{name} {}: missing positions {}",
+                    mode["mode"], mode["missing"]
+                ));
+            }
+            if mode["positions"].as_array().is_none_or(Vec::is_empty) {
+                out.push(format!("{name} {}: no positions", mode["mode"]));
+            }
+        }
+        // The policy's index rule is not evaluated against the oracle yet.
+        out.push(format!("{name}: index rule not evaluated"));
+    }
+    out
+}
+
 /// A policy with every limit pending, for runs before the policy is frozen.
 #[must_use]
 pub fn pending_policy() -> Policy {
@@ -1418,9 +1519,17 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
             && (r["router"].is_null() || r["router"]["passed"] == json!(true))
             && (r["exact"].is_null() || r["exact"]["passed"] == json!(true))
     });
+    let release_refusals = if opts.release {
+        release_refusals(opts, &reports)
+    } else {
+        Vec::new()
+    };
     let exe = std::env::current_exe().map_err(|e| refused(e.to_string()))?;
     let report = json!({
         "schema": "psionic.deepseek_v41.g1_v2_report.v1",
+        "release": opts.release,
+        "release_refusals": release_refusals,
+        "release_passed": opts.release && passed && release_refusals.is_empty(),
         "issue": 12405,
         "policy_version": policy.version,
         "policy_sha256": policy_sha,
@@ -1661,7 +1770,230 @@ fn router_limits(reference: &[Value]) -> Result<Option<Vec<f64>>, Refused> {
         .map(Some)
 }
 
-/// `qualify-derive --reference R[,R...] --control C[,C...] --out FILE`.
+/// Every numerical criterion of `policy` that a report violates, judged at
+/// the policy's own unit: per position, per case and mode, and per case and
+/// router layer. A refused case (a control the stages refused) counts as one.
+#[must_use]
+pub fn judge_report(policy: &Policy, report: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    for case in report["cases"].as_array().into_iter().flatten() {
+        let name = case["case"].as_str().unwrap_or("?");
+        if case["refused"].is_string() {
+            out.push(format!("{name}: refused by the stages"));
+            continue;
+        }
+        for mode in case["modes"].as_array().into_iter().flatten() {
+            let label = mode["mode"].as_str().unwrap_or("?");
+            let positions: Vec<PositionResult> = mode["positions"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|p| {
+                    let m = serde_json::from_value::<q::Distribution>(p["metrics"].clone()).ok()?;
+                    Some(q::judge_position(
+                        policy,
+                        p["label"].as_str().unwrap_or("?"),
+                        m,
+                    ))
+                })
+                .collect();
+            let judged = q::judge_case(policy, name, label, positions, Vec::new());
+            out.extend(
+                judged
+                    .failures
+                    .iter()
+                    .map(|f| format!("{name} {label}: {f}")),
+            );
+        }
+        if let Some(limits) = &policy.router_layer_mismatch {
+            for layer in case["router"]["layers"].as_array().into_iter().flatten() {
+                let l = layer["layer"].as_u64().unwrap_or_default() as usize;
+                let m = layer["mismatch"].as_f64().unwrap_or_default();
+                if let Some(limit) = limits.get(l).filter(|limit| m > **limit) {
+                    out.push(format!(
+                        "{name}: router layer {l} mismatch {m:.4} > {limit:.4}"
+                    ));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The positive and negative self-checks (#12405 review): the reference must
+/// pass every criterion derived from it, and every control must fail.
+///
+/// # Errors
+///
+/// Names the reference's violations or the control that passes.
+pub fn self_check(
+    policy: &Policy,
+    reference: &[Value],
+    controls: &[Value],
+) -> Result<Value, Refused> {
+    let own: Vec<String> = reference
+        .iter()
+        .flat_map(|r| judge_report(policy, r))
+        .collect();
+    if !own.is_empty() {
+        return Err(refused(format!(
+            "the reference fails the policy derived from it: {}",
+            own.join("; ")
+        )));
+    }
+    let mut detected = Vec::new();
+    for c in controls {
+        let failures = judge_report(policy, c);
+        let name = c["control"].as_str().unwrap_or("unnamed");
+        if failures.is_empty() {
+            return Err(refused(format!(
+                "the policy passes the {name} negative control"
+            )));
+        }
+        detected.push(json!({"control": name, "failures": failures.len(), "first": failures[0]}));
+    }
+    Ok(json!({"reference_passes": true, "controls": detected}))
+}
+
+/// Rule 2.2 (#12405 review): one aggregation unit, the case and mode, for
+/// deriving and judging. Per-position limits are [`HEADROOM`] times the
+/// reference's largest values; the case-mean limit [`HEADROOM`] times its
+/// largest case mean; the tail threshold is the reference's pooled 90th
+/// percentile total variation, with a fraction limit of [`HEADROOM`] times the
+/// largest case-and-mode fraction above it (at least one position in 33, at
+/// most half); the top-1 substitution fraction is [`HEADROOM`] times the
+/// largest case-and-mode fraction (at least one in 33); router layers as in
+/// 2.1. The derivation then runs [`self_check`].
+///
+/// # Errors
+///
+/// Missing reference positions, or a failed self-check.
+pub fn derive_policy_v22(
+    reference: &[Value],
+    controls: &[Value],
+) -> Result<(Policy, Value), Refused> {
+    let (mut tv, mut js, mut lp, mut centered, mut case_mean) =
+        (0.0f64, 0.0f64, 0.0f64, 0.0f64, 0.0f64);
+    let mut all_tv = Vec::new();
+    let mut cases: Vec<(Vec<f64>, usize)> = Vec::new();
+    for report in reference {
+        for case in report["cases"].as_array().into_iter().flatten() {
+            for mode in case["modes"].as_array().into_iter().flatten() {
+                let ps = mode["positions"].as_array().cloned().unwrap_or_default();
+                if ps.is_empty() {
+                    continue;
+                }
+                let mut tvs = Vec::new();
+                let mut subs = 0usize;
+                for p in &ps {
+                    let m = &p["metrics"];
+                    let t = m["total_variation"].as_f64().unwrap_or(f64::NAN);
+                    tvs.push(t);
+                    tv = tv.max(t);
+                    js = js.max(m["jensen_shannon"].as_f64().unwrap_or(f64::NAN));
+                    lp = lp.max(
+                        m["reference_logprob_error"]
+                            .as_f64()
+                            .unwrap_or(f64::NAN)
+                            .abs(),
+                    );
+                    centered = centered.max(m["centered_logit_error"].as_f64().unwrap_or(f64::NAN));
+                    subs += usize::from(m["oracle_top1"] != m["candidate_top1"]);
+                }
+                case_mean = case_mean.max(tvs.iter().sum::<f64>() / tvs.len() as f64);
+                all_tv.extend(tvs.iter().copied());
+                cases.push((tvs, subs));
+            }
+        }
+    }
+    if cases.is_empty() || [tv, js, lp, centered].iter().any(|v| !v.is_finite()) {
+        return Err(refused("the reference control has no complete positions"));
+    }
+    all_tv.sort_by(f64::total_cmp);
+    let tail = all_tv[(all_tv.len() * 9 / 10).min(all_tv.len() - 1)];
+    let floor = 1.0 / 33.0;
+    let tail_fraction = cases
+        .iter()
+        .map(|(t, _)| t.iter().filter(|v| **v > tail).count() as f64 / t.len() as f64)
+        .fold(0.0, f64::max);
+    let sub_fraction = cases
+        .iter()
+        .map(|(t, s)| *s as f64 / t.len() as f64)
+        .fold(0.0, f64::max);
+    let policy = Policy {
+        schema: q::POLICY_SCHEMA.into(),
+        version: "2.2".into(),
+        distribution: q::DistributionLimits {
+            total_variation: Some(HEADROOM * tv),
+            jensen_shannon: Some(HEADROOM * js),
+            reference_logprob_error: Some(HEADROOM * lp),
+            case_mean_total_variation: Some(HEADROOM * case_mean),
+            tail_total_variation: Some(tail),
+            tail_fraction: Some((HEADROOM * tail_fraction).clamp(floor, 0.5)),
+        },
+        top1: DecisionRule {
+            epsilon: Some(centered),
+            max_substitutions: 1,
+            max_substituted_fraction: Some((HEADROOM * sub_fraction).max(floor)),
+        },
+        router: DecisionRule {
+            epsilon: None,
+            max_substitutions: 1,
+            max_substituted_fraction: None,
+        },
+        index: DecisionRule {
+            epsilon: None,
+            max_substitutions: 2,
+            max_substituted_fraction: None,
+        },
+        router_layer_mismatch: router_limits(reference)?,
+    };
+    let checks = self_check(&policy, reference, controls)?;
+    let evidence = json!({
+        "rule": "derive_policy_v22 in crates/psionic/crates/psionic-v41-stage/src/qualify.rs",
+        "unit": "case and mode, for derivation and judging alike",
+        "headroom": HEADROOM,
+        "reference_positions": all_tv.len(),
+        "reference_max": {"total_variation": tv, "jensen_shannon": js,
+            "reference_logprob_error": lp, "centered_logit_error": centered,
+            "case_mean_total_variation": case_mean, "tail_threshold_p90": tail,
+            "tail_fraction": tail_fraction, "top1_substituted_fraction": sub_fraction},
+        "self_check": checks,
+    });
+    Ok((policy, evidence))
+}
+
+/// `qualify-judge --policy FILE --report R[,R...]`: every criterion each
+/// report violates under the policy, as JSON lines.
+///
+/// # Errors
+///
+/// Unreadable files.
+pub fn run_judge(args: &[String]) -> Result<(), Refused> {
+    let flag = |name: &str| -> Option<String> {
+        args.iter()
+            .position(|a| a == name)
+            .and_then(|i| args.get(i + 1).cloned())
+    };
+    let policy_path = flag("--policy").ok_or_else(|| refused("--policy is required"))?;
+    let text = std::fs::read_to_string(&policy_path)
+        .map_err(|e| refused(format!("{policy_path}: {e}")))?;
+    let policy = Policy::parse(&text).map_err(|e| refused(e.to_string()))?;
+    for path in flag("--report")
+        .unwrap_or_default()
+        .split(',')
+        .filter(|p| !p.is_empty())
+    {
+        let bytes = std::fs::read(path).map_err(|e| refused(format!("{path}: {e}")))?;
+        let report: Value =
+            serde_json::from_slice(&bytes).map_err(|e| refused(format!("{path}: {e}")))?;
+        let violations = judge_report(&policy, &report);
+        println!("{}", json!({"report": path, "violations": violations}));
+    }
+    Ok(())
+}
+
+/// `qualify-derive --rule 2.1|2.2 --reference R[,R...] --control C[,C...] --out FILE`.
 ///
 /// # Errors
 ///
@@ -1685,7 +2017,11 @@ pub fn run_derive(args: &[String]) -> Result<(), Refused> {
     let reference = read(flag("--reference"))?;
     let controls = read(flag("--control"))?;
     let out = flag("--out").ok_or_else(|| refused("--out is required"))?;
-    let (policy, evidence) = derive_policy(&reference, &controls)?;
+    let (policy, evidence) = match flag("--rule").as_deref() {
+        Some("2.1") => derive_policy(&reference, &controls)?,
+        Some("2.2") => derive_policy_v22(&reference, &controls)?,
+        _ => return Err(refused("--rule takes 2.1 or 2.2")),
+    };
     let mut value = serde_json::to_value(&policy).map_err(|e| refused(e.to_string()))?;
     value["derivation"] = evidence;
     value["launch_profile"] = json!({
@@ -1755,6 +2091,97 @@ mod tests {
             .collect();
         json!({"control": control, "cases": [{"modes": [
             {"case": "c", "mode": "decode", "positions": positions}]}]})
+    }
+
+    fn case_report(name: &str, positions: &[(f64, u32)], router: &[(usize, f64)]) -> Value {
+        let ps: Vec<Value> = positions
+            .iter()
+            .map(|(tv, top)| {
+                json!({"label": "p", "metrics": {"total_variation": tv, "jensen_shannon": tv / 10.0,
+                "reference_logprob_error": tv, "centered_logit_error": 0.5,
+                "oracle_top1": 5, "candidate_top1": top, "oracle_top1_gap": 0.1,
+                "top1_regret": if *top == 5 { 0.0 } else { 0.05 }}})
+            })
+            .collect();
+        let layers: Vec<Value> = (0..LAYERS)
+            .map(|l| {
+                let m = router
+                    .iter()
+                    .find(|(x, _)| *x == l)
+                    .map_or(0.0, |(_, m)| *m);
+                json!({"layer": l, "mismatch": m})
+            })
+            .collect();
+        json!({"case": name, "modes": [{"case": name, "mode": "decode", "positions": ps}],
+            "router": {"layers": layers}})
+    }
+
+    #[test]
+    fn rule_2_1_rejects_its_own_reference_and_rule_2_2_does_not() {
+        // A nine-position case with one substitution and a 33-position case
+        // without: pooled, 1 in 42; per case, 1 in 9.
+        let mut short = vec![(0.02, 5); 8];
+        short.push((0.03, 6));
+        let reference = json!({"cases": [
+            case_report("short", &short, &[(1, 0.1)]),
+            case_report("long", &vec![(0.01, 5); 33], &[(1, 0.05)]),
+        ]});
+        let control = json!({"control": "wrong-routing", "cases": [
+            case_report("short", &vec![(0.02, 5); 9], &[(1, 0.9)])]});
+        let (v21, _) = derive_policy(&[reference.clone()], &[control.clone()]).unwrap();
+        let own = judge_report(&v21, &reference);
+        assert!(
+            own.iter().any(|f| f.contains("top-1 substitutions")),
+            "{own:?}"
+        );
+        assert!(self_check(&v21, &[reference.clone()], &[control.clone()]).is_err());
+        let (v22, evidence) = derive_policy_v22(&[reference.clone()], &[control.clone()]).unwrap();
+        assert!(judge_report(&v22, &reference).is_empty());
+        assert_eq!(evidence["self_check"]["reference_passes"], true);
+        // A control the policy can't see is refused.
+        let blind =
+            json!({"control": "blind", "cases": [case_report("short", &short, &[(1, 0.1)])]});
+        assert!(derive_policy_v22(&[reference], &[blind]).is_err());
+    }
+
+    #[test]
+    fn release_mode_refuses_missing_evidence() {
+        let mut opts = QualifyOptions::parse(&[
+            "--weights".into(),
+            "w".into(),
+            "--manifest".into(),
+            "m".into(),
+            "--oracle".into(),
+            "o".into(),
+            "--out".into(),
+            "x".into(),
+            "--development".into(),
+            "--release".into(),
+        ])
+        .unwrap();
+        let empty = json!({"case": "c", "modes": [{"mode": "decode", "positions": [], "missing": ["g1"]}],
+            "router": null, "exact": null});
+        let refusals = release_refusals(&opts, &[empty]);
+        for needle in [
+            "--observe",
+            "pinned bundle",
+            "no router report",
+            "no exact checks",
+            "missing positions",
+            "no positions",
+            "index rule not evaluated",
+        ] {
+            assert!(
+                refusals.iter().any(|r| r.contains(needle)),
+                "{needle}: {refusals:?}"
+            );
+        }
+        opts.observe = true;
+        let partial = json!({"case": "c", "modes": [], "router": {"layers_compared": 39,
+            "margin_verdict": false, "unresolved": 3, "failed": 0}, "exact": {"checked": 2}});
+        let refusals = release_refusals(&opts, &[partial]);
+        assert!(refusals.iter().any(|r| r.contains("39 of 40")));
+        assert!(refusals.iter().any(|r| r.contains("3 unresolved")));
     }
 
     #[test]
