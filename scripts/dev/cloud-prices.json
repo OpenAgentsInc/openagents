@@ -6,7 +6,8 @@
   "sources": {
     "catalog-2026-10-20": "Cloud Billing Catalog API, service 6F81-5844-456A (Compute Engine), us-central1, read 2026-10-20",
     "muse-2026-10-15": "docs/research/muse/2026-10-15-muse-spark-serving.md, section 3, Cloud Billing Catalog read 2026-10-15",
-    "catalog-2026-10-21": "Cloud Billing Catalog API, service 6F81-5844-456A (Compute Engine), us-central1, read 2026-10-21"
+    "catalog-2026-10-21": "Cloud Billing Catalog API, service 6F81-5844-456A (Compute Engine), us-central1, read 2026-10-21",
+    "google-pricing-2026-10-22": "https://cloud.google.com/products/compute/pricing/general-purpose?hl=en, read 2026-10-22; e2-standard-8 lists 8 vCPU, 32 GiB, $0.26804568/h in Iowa. The guard reserves a conservative $0.50/h ceiling for the Tokyo qualification head."
   },
   "machines": {
     "a3-highgpu-2g": {
@@ -116,6 +117,11 @@
       "spot": 2.5355,
       "math": "180 vCPU + 1,440 GiB: 180 x 0.029563 + 1440 x 0.003959 on demand; 180 x 0.00679 + 1440 x 0.000912 spot",
       "source": "catalog-2026-10-20"
+    },
+    "e2-standard-8": {
+      "standard": 0.5,
+      "math": "8 vCPU + 32 GiB; conservative regional admission estimate, above the published Iowa $0.26804568/h. On-demand qualification head only; actual billing is separate.",
+      "source": "google-pricing-2026-10-22"
     }
   }
 }
