@@ -35,6 +35,7 @@ pub struct Config {
 pub struct Task {
     pub id: String,
     pub objective: String,
+    pub objective_revision: Value,
     pub issue: u64,
     pub base: String,
     pub krate: String,
@@ -101,6 +102,39 @@ pub struct Job {
     pub patch: Option<Event>,
     pub pull: Option<Value>,
     pub error: Option<String>,
+    #[serde(default)]
+    pub runner: Option<RunnerIntent>,
+    #[serde(default)]
+    pub profile: String,
+    #[serde(default)]
+    pub results: Vec<(RunnerIntent, Event)>,
+}
+#[derive(Clone, Serialize, Deserialize, PartialEq)]
+pub struct RunnerIntent {
+    pub event: Event,
+    pub command: Option<Command>,
+    pub publication: bool,
+    pub fingerprint: String,
+    pub full_test: bool,
+    pub runner: String,
+    pub relay: String,
+}
+fn profile(c: &Config, key: &keys::Signer) -> String {
+    kiln::sha256_hex(&serde_json::to_vec(&(crate::BUILD, key.key.pubkey(), c)).unwrap_or_default())
+}
+fn validate_objective(task: &Task, objective: &ObjectiveRecord) -> Result<()> {
+    if task.objective != objective.objective.id || task.objective_revision != objective.revision {
+        return Err("objective revision changed since the task was prepared".into());
+    }
+    if !objective
+        .objective
+        .source_paths
+        .iter()
+        .any(|p| format!("{}/", remote::crate_directory(&task.krate)).starts_with(p))
+    {
+        return Err("crate does not belong to the selected objective".into());
+    }
+    Ok(())
 }
 impl Job {
     pub fn summary(&self) -> Value {
@@ -305,7 +339,7 @@ pub async fn submit(root: &Path, c: &Config, key: &keys::Signer, task: Task) -> 
         if !matches!(old.phase.as_str(), "completed" | "failed" | "stopped") {
             return Err("another native Kiln attempt is active or unresolved".into());
         }
-        if old.task.issue == task.issue {
+        if old.task.issue == task.issue && (old.phase == "completed" || old.pull.is_some()) {
             return Err(
                 "this issue already has a native attempt; inspect its result before rework".into(),
             );
@@ -315,14 +349,7 @@ pub async fn submit(root: &Path, c: &Config, key: &keys::Signer, task: Task) -> 
         return Err("native Kiln attempt limit reached".into());
     }
     let objective = objectives::consult(key, &c.authority, &c.relay, &task.objective).await?;
-    if !objective
-        .objective
-        .source_paths
-        .iter()
-        .any(|p| format!("{}/", remote::crate_directory(&task.krate)).starts_with(p))
-    {
-        return Err("crate does not belong to the selected objective".into());
-    }
+    validate_objective(&task, &objective)?;
     git(&c.checkout, &["fetch", "--quiet", "origin", "main"])?;
     git(
         &c.checkout,
@@ -359,6 +386,9 @@ pub async fn submit(root: &Path, c: &Config, key: &keys::Signer, task: Task) -> 
         patch: None,
         pull: None,
         error: None,
+        runner: None,
+        profile: profile(c, key),
+        results: vec![],
     };
     save(&path, &job)?;
     Ok(job)
@@ -366,11 +396,53 @@ pub async fn submit(root: &Path, c: &Config, key: &keys::Signer, task: Task) -> 
 
 pub async fn advance(root: &Path, c: &Config, key: &keys::Signer, path: &Path) -> Result<Job> {
     let mut j: Job = load(path)?;
+    if let Some(intent) = j.runner.clone() {
+        match relay::runner_result(&intent.relay, key, &intent.runner, &intent.event).await? {
+            Some((outcome, result)) => {
+                finish_runner(&mut j, &intent, outcome, result)?;
+                save(path, &j)?;
+                return Ok(j);
+            }
+            None => {
+                let admitted = now() < j.until
+                    && !root
+                        .join("jobs")
+                        .join(format!("{}.cancel", j.task.id))
+                        .exists()
+                    && j.profile == profile(c, key);
+                if admitted {
+                    if let Ok(current) =
+                        objectives::consult(key, &c.authority, &c.relay, &j.task.objective).await
+                    {
+                        if current.revision == j.objective.revision {
+                            relay::publish(&intent.relay, &key.secret, &intent.event).await?;
+                        }
+                    }
+                }
+                j.error = Some(format!(
+                    "Awaiting the original runner result: {}",
+                    intent.event.id
+                ));
+                if now() >= j.until {
+                    j.phase = "unknown".into();
+                }
+                save(path, &j)?;
+                tokio::time::sleep(Duration::from_secs(20)).await;
+                return Ok(j);
+            }
+        }
+    }
+    if j.profile != profile(c, key) {
+        return Err("execution profile changed; inspect and readmit the task".into());
+    }
     if matches!(j.phase.as_str(), "completed" | "failed" | "stopped") {
         return Ok(j);
     }
     if j.phase == "checking" || j.phase == "unknown" {
         return Err("runner result is unknown after interruption; inspect before retrying".into());
+    }
+    if j.phase == "bridging" {
+        return deliver(root, c, key, path, j).await;
     }
     if now() >= j.until
         || j.turns >= 48
@@ -388,7 +460,7 @@ pub async fn advance(root: &Path, c: &Config, key: &keys::Signer, path: &Path) -
     if current.revision != j.objective.revision {
         return Err("objective changed; submit a separately reviewed task".into());
     }
-    if j.phase == "publishing" || j.phase == "bridging" {
+    if j.phase == "publishing" {
         return deliver(root, c, key, path, j).await;
     }
     if j.pending.is_empty() {
@@ -481,7 +553,7 @@ pub async fn advance(root: &Path, c: &Config, key: &keys::Signer, path: &Path) -
                 std::slice::from_ref(&j.task.krate),
             )?;
             let job = remote::Job {
-                v: remote::JOB_V.into(),
+                v: remote::NATIVE_JOB_V.into(),
                 base: j.task.base.clone(),
                 args: args.clone(),
                 files: BTreeMap::new(),
@@ -496,28 +568,39 @@ pub async fn advance(root: &Path, c: &Config, key: &keys::Signer, path: &Path) -
             };
             job.check(std::slice::from_ref(&j.task.krate))?;
             j.checked = None;
-            j.phase = "checking".into();
-            save(path, &j)?;
-            let outcome = relay::ask_runner(
-                &c.relay,
+            let event = relay::runner_request(
                 key,
                 &c.runner,
                 &job,
-                &[],
+                &[nostr::domain::Tag::new(vec![
+                    "expiration".into(),
+                    j.until.to_string(),
+                ])],
+            )?;
+            let intent = RunnerIntent {
+                event,
+                command: Some(command.clone()),
+                publication: false,
+                fingerprint: fingerprint(&j),
+                full_test: args == ["test", "-p", j.task.krate.as_str()],
+                runner: c.runner.clone(),
+                relay: c.relay.clone(),
+            };
+            j.runner = Some(intent.clone());
+            j.phase = "checking".into();
+            save(path, &j)?;
+            let (outcome, result) = relay::ask_runner_event(
+                &c.relay,
+                key,
+                &c.runner,
+                &intent.event,
                 Duration::from_secs(1250),
                 &|s| eprintln!("runner: {s}"),
             )
             .await?;
-            j.phase = "tools".into();
-            j.check = Some(outcome.clone());
-            if outcome.code == Some(0) && args == ["test", "-p", j.task.krate.as_str()] {
-                j.checked = Some(fingerprint(&j));
-            }
-            if outcome.code == Some(0) {
-                Ok(format!("{}\n{}", outcome.summary, outcome.log))
-            } else {
-                Err(format!("{}\n{}", outcome.summary, outcome.log))
-            }
+            finish_runner(&mut j, &intent, outcome, result)?;
+            save(path, &j)?;
+            return Ok(j);
         }
         Command::Run(line) => tool(c, &j, line),
         Command::Publish { subject, body } => {
@@ -536,7 +619,10 @@ pub async fn advance(root: &Path, c: &Config, key: &keys::Signer, path: &Path) -
             if j.checked == Some(fingerprint(&j)) && !j.files.is_empty() {
                 let subject = format!("fix({}): improve issue #{}", j.task.krate, j.task.issue);
                 if let Err(e) = prepare_patch(c, key, &mut j, &subject, summary) {
-                    j.agent.observe(&command, 1, e);
+                    j.agent.steps.push(kiln::agent::Step {
+                        problem: Some(e),
+                        ..Default::default()
+                    });
                     save(path, &j)?;
                     return Ok(j);
                 }
@@ -551,10 +637,64 @@ pub async fn advance(root: &Path, c: &Config, key: &keys::Signer, path: &Path) -
         Ok(t) => (0, t),
         Err(e) => (1, e),
     };
-    j.agent
-        .observe(&command, code, kiln::agent::clip(&text, 8000));
+    if matches!(command, Command::Done(_)) {
+        j.agent.steps.push(kiln::agent::Step {
+            problem: Some(text),
+            ..Default::default()
+        });
+    } else {
+        j.agent
+            .observe(&command, code, kiln::agent::clip(&text, 8000));
+    }
     save(path, &j)?;
     Ok(j)
+}
+fn finish_runner(
+    j: &mut Job,
+    intent: &RunnerIntent,
+    outcome: remote::Outcome,
+    result: Event,
+) -> Result<()> {
+    if j.runner.as_ref() != Some(intent) {
+        return Err("runner intent was already settled or differs".into());
+    }
+    if !kiln::cj::answers(
+        &result,
+        &intent.event.id,
+        &intent.runner,
+        &intent.event.pubkey,
+    ) {
+        return Err("runner result declaration differs".into());
+    }
+    if intent.fingerprint != fingerprint(j) || outcome.v != remote::RESULT_V {
+        return Err("runner result differs from the retained inputs".into());
+    }
+    j.results.push((intent.clone(), result));
+    if intent.publication {
+        if outcome.code != Some(0) || outcome.check.is_none() {
+            j.runner = None;
+            j.check = Some(outcome);
+            j.phase = "failed".into();
+            j.error = Some("The published patch did not pass its runner check".into());
+            return Ok(());
+        }
+        j.phase = "bridging".into();
+    } else {
+        let command = intent.command.as_ref().ok_or("runner command is missing")?;
+        if outcome.code == Some(0) && intent.full_test {
+            j.checked = Some(intent.fingerprint.clone());
+        }
+        j.agent.observe(
+            command,
+            if outcome.code == Some(0) { 0 } else { 1 },
+            kiln::agent::clip(&format!("{}\n{}", outcome.summary, outcome.log), 8000),
+        );
+        j.phase = "tools".into();
+    }
+    j.error = None;
+    j.check = Some(outcome);
+    j.runner = None;
+    Ok(())
 }
 fn prepare_patch(
     c: &Config,
@@ -618,9 +758,11 @@ async fn deliver(
 ) -> Result<Job> {
     let event = j.patch.clone().ok_or("saved patch missing")?;
     if j.phase == "publishing" {
+        let current = objectives::consult(key, &c.authority, &c.relay, &j.task.objective).await?;
+        validate_objective(&j.task, &current)?;
         relay::publish(&c.relay, &key.secret, &event).await?;
         let job = remote::Job {
-            v: remote::JOB_V.into(),
+            v: remote::NATIVE_JOB_V.into(),
             base: j.task.base.clone(),
             args: vec!["test".into(), "-p".into(), j.task.krate.clone()],
             files: BTreeMap::new(),
@@ -629,24 +771,41 @@ async fn deliver(
             action: None,
             diff: None,
         };
-        j.phase = "checking".into();
-        save(path, &j)?;
-        let outcome = relay::ask_runner(
-            &c.relay,
+        let request = relay::runner_request(
             key,
             &c.runner,
             &job,
-            &[],
+            &[nostr::domain::Tag::new(vec![
+                "expiration".into(),
+                j.until.to_string(),
+            ])],
+        )?;
+        let intent = RunnerIntent {
+            event: request,
+            command: None,
+            publication: true,
+            fingerprint: fingerprint(&j),
+            full_test: true,
+            runner: c.runner.clone(),
+            relay: c.relay.clone(),
+        };
+        j.runner = Some(intent.clone());
+        j.phase = "checking".into();
+        save(path, &j)?;
+        let (outcome, result) = relay::ask_runner_event(
+            &c.relay,
+            key,
+            &c.runner,
+            &intent.event,
             Duration::from_secs(1250),
             &|s| eprintln!("patch check: {s}"),
         )
         .await?;
-        if outcome.code != Some(0) || outcome.check.is_none() {
-            return Err("published patch has no passing runner check".into());
-        }
-        j.check = Some(outcome);
-        j.phase = "bridging".into();
+        finish_runner(&mut j, &intent, outcome, result)?;
         save(path, &j)?;
+        if j.phase == "failed" {
+            return Ok(j);
+        }
     }
     let read = review::fetch(&c.relay, &event.id, Some(&c.repository)).await?;
     read.ready(false, true)?;
@@ -655,6 +814,28 @@ async fn deliver(
         "OpenAgentsInc/openagents",
         &c.token_file,
     );
+    let objective_current = objectives::consult(key, &c.authority, &c.relay, &j.task.objective)
+        .await
+        .is_ok_and(|current| validate_objective(&j.task, &current).is_ok());
+    if !objective_current
+        || now() >= j.until
+        || root
+            .join("jobs")
+            .join(format!("{}.cancel", j.task.id))
+            .exists()
+    {
+        if let Some(found) = hub.for_patch(&event).await? {
+            j.pull = Some(
+                json!({"url":found.url,"number":found.number,"observed_head":found.head,"verification":"not_checked"}),
+            );
+            j.checked = None;
+            j.phase = "stopped".into();
+            j.error = Some("Stopped; an existing draft PR needs review".into());
+            save(path, &j)?;
+            return Ok(j);
+        }
+        return Err("PR delivery remains unresolved after its authorization changed".into());
+    }
     let config = bridge::Config {
         relay: c.relay.clone(),
         address: c.repository.clone(),
@@ -684,6 +865,7 @@ mod tests {
         let t = Task {
             id: "11".repeat(32),
             objective: "improve-kiln".into(),
+            objective_revision: Value::Null,
             issue: 12497,
             base: "22".repeat(20),
             krate: "kiln".into(),
@@ -726,11 +908,17 @@ mod tests {
         let task = Task {
             id: "11".repeat(32),
             objective: "improve-kiln".into(),
+            objective_revision: objective.revision.clone(),
             issue: 123,
             base: "22".repeat(20),
             krate: "kiln".into(),
             text: "A bounded fix".into(),
         };
+        assert!(validate_objective(&task, &objective).is_ok());
+        let mut newer: ObjectiveRecord =
+            serde_json::from_value(serde_json::to_value(&objective).unwrap()).unwrap();
+        newer.revision = json!({"changed": true});
+        assert!(validate_objective(&task, &newer).is_err());
         let p = "crates/kiln/src/lib.rs";
         let mut job = Job {
             task,
@@ -748,6 +936,9 @@ mod tests {
             patch: None,
             pull: None,
             error: None,
+            runner: None,
+            profile: profile(&config, &key),
+            results: vec![],
         };
         assert!(prepare_patch(&config, &key, &mut job, "Fix", "why").is_err());
         job.checked = Some(fingerprint(&job));
@@ -756,6 +947,60 @@ mod tests {
         let mut resumed: Job = load(&path).unwrap();
         assert_eq!(resumed.pending, job.pending);
         assert_eq!(resumed.agent.task, "test");
+        let request = relay::runner_request(
+            &key,
+            key.key.pubkey(),
+            &remote::Job {
+                v: remote::NATIVE_JOB_V.into(),
+                base: resumed.task.base.clone(),
+                args: vec!["test".into(), "-p".into(), "kiln".into()],
+                files: BTreeMap::new(),
+                deleted: vec![],
+                patch: None,
+                action: None,
+                diff: None,
+            },
+            &[],
+        )
+        .unwrap();
+        let intent = RunnerIntent {
+            event: request.clone(),
+            command: Some(Command::Run("cargo test -p kiln".into())),
+            publication: false,
+            fingerprint: fingerprint(&resumed),
+            full_test: true,
+            runner: key.key.pubkey().into(),
+            relay: config.relay.clone(),
+        };
+        resumed.runner = Some(intent.clone());
+        save(&path, &resumed).unwrap();
+        resumed = load(&path).unwrap();
+        let outcome = remote::Outcome {
+            v: remote::RESULT_V.into(),
+            code: Some(0),
+            summary: "passed".into(),
+            log: String::new(),
+            published: None,
+            ms: 1,
+            check: None,
+        };
+        let result = key
+            .key
+            .seal(
+                key.key.pubkey(),
+                kiln::cj::RESULT_KIND,
+                vec![
+                    nostr::domain::Tag::new(vec!["p".into(), key.key.pubkey().into()]),
+                    nostr::domain::Tag::new(vec!["e".into(), request.id]),
+                ],
+                &json!({"v":1,"requires":[],"type":"result","text":"passed"}),
+                [2; 32],
+                102,
+            )
+            .unwrap();
+        finish_runner(&mut resumed, &intent, outcome.clone(), result.clone()).unwrap();
+        assert_eq!(resumed.results.len(), 1);
+        assert!(finish_runner(&mut resumed, &intent, outcome, result).is_err());
         prepare_patch(&config, &key, &mut resumed, "Fix", "why").unwrap();
         resumed.patch.as_ref().unwrap().validate_crypto().unwrap();
         edit(&config, &mut resumed, p, "different\n".into()).unwrap();

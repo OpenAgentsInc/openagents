@@ -7,6 +7,10 @@ use serde::{Serialize, de::DeserializeOwned};
 use std::path::Path;
 
 pub type Result<T> = std::result::Result<T, String>;
+pub const BUILD: &str = match option_env!("OPENAGENTS_COMMIT") {
+    Some(s) => s,
+    None => "development",
+};
 pub fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

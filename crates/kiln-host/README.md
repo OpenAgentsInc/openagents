@@ -39,8 +39,11 @@ issue, and brief. It permits at most 48 model turns, 96 tool calls, and a
 two-hour intake window. One active or unresolved attempt blocks another;
 the host accepts at most five tasks per UTC day and retains up to 512.
 Changing a file invalidates its passing check. A restart restores the loop,
-files, and pending commands. An interrupted runner call stays unknown and
-blocks new work; it is never retried with a new identity. A lost PR reply is
+files, and pending commands. The runner records admission before execution and retains its signed result
+in an encrypted Nostr artifact. Recovery queries that result and may redeliver
+the exact request to the same runner, which never executes an admitted request
+twice. An unresolved admission blocks new work; it is never retried with a new
+identity. A lost PR reply is
 recovered by its exact patch branch.
 
 Only configured packages are executable. The runner supports root-workspace
