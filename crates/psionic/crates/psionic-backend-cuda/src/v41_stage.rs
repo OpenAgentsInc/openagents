@@ -1970,13 +1970,23 @@ impl V41Stage {
         // which takes the device memory left over.
         let prefill = if batched_prefill {
             let stream = cache.as_ref().map(|c| {
-                (
-                    V41ExpertDims {
-                        formats: c.config.formats,
-                        ..V41ExpertDims::fp4(h, shape.expert_width, shape.swiglu_limit)
-                    },
-                    c.config.stream_slots,
-                )
+                let dims = V41ExpertDims {
+                    formats: c.config.formats,
+                    ..V41ExpertDims::fp4(h, shape.expert_width, shape.swiglu_limit)
+                };
+                let mut parts = std::array::from_fn(|p| dims.part_bytes(p));
+                if let Some(host) = &c.host {
+                    for layer in config.layers.clone() {
+                        let local =
+                            crate::v41_expert_cache::formats_for_layer(&**host, dims, layer);
+                        for (p, (w, s)) in parts.iter_mut().enumerate() {
+                            let (lw, ls) = local.part_bytes(p);
+                            *w = (*w).max(lw);
+                            *s = (*s).max(ls);
+                        }
+                    }
+                }
+                (parts, c.config.stream_slots)
             });
             let work =
                 prefill::PrefillWork::new(loader.backend, &config, config.max_step_tokens, stream)?;
@@ -2109,7 +2119,7 @@ impl V41Stage {
             return Ok(());
         };
         let lw = self.layers.first().ok_or_else(|| invalid("no layers"))?;
-        let dims = cache.dims;
+        let dims = cache.layer_dims(lw.layer);
         let widest = dims.hidden.max(dims.width);
         // Inputs of 1.0: code 0x38 at scale 2^0.
         let codes = backend.byte_buffer(&vec![0x38; widest])?;
@@ -2122,7 +2132,7 @@ impl V41Stage {
             (dims.hidden, dims.width),
             (dims.width, dims.hidden),
         ];
-        let formats = cache.dims.formats;
+        let formats = dims.formats;
         let time = |backend: &mut CudaBackend,
                     parts: [(&CudaBuffer, &CudaBuffer, usize); 3],
                     formats: [V41MatvecFormat; 3]|
@@ -2174,7 +2184,7 @@ impl V41Stage {
         )?;
         let experts = self.config.shape.router.experts;
         let bus = match (&lw.w1, &lw.w2, &lw.w3) {
-            (Some(w1), Some(w2), Some(w3)) if self.config.experts_on_host => Some(time(
+            (Some(w1), Some(w2), Some(w3)) if cache.bus_available => Some(time(
                 backend,
                 [
                     (&w1.weights, &w1.scales, experts),
@@ -3069,7 +3079,7 @@ impl V41Stage {
             match cached {
                 Some((cache, _, lc)) => s.v41_block_matvec_cached(
                     V41CachedStack {
-                        format: cache.dims.formats[p],
+                        format: lc.dims.formats[p],
                         rows,
                         cols,
                         experts,

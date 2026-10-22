@@ -143,7 +143,7 @@ impl PrefillWork {
         backend: &mut CudaBackend,
         config: &V41StageConfig,
         max: usize,
-        stream: Option<(crate::v41_expert_lane::V41ExpertDims, usize)>,
+        stream: Option<([(usize, usize); 3], usize)>,
     ) -> Result<Self, RuntimeError> {
         let shape = config.shape;
         let g = shape.attention;
@@ -259,13 +259,13 @@ impl PrefillWork {
             .write_bytes_at_offset(0, &words(&identity))?;
         this.dense_tiles
             .write_bytes_at_offset(0, &words(&dense_tiles))?;
-        if let Some((dims, slots)) = stream {
+        if let Some((parts, slots)) = stream {
             let slots = slots.max(1);
             let mut stacks = Vec::new();
             let mut staging = Vec::new();
             let mut ptrs = Vec::new();
             for p in 0..3 {
-                let (wb, sb) = dims.part_bytes(p);
+                let (wb, sb) = parts[p];
                 let w = backend.byte_buffer(&vec![0; wb * slots])?;
                 let sc = backend.byte_buffer(&vec![0; sb * slots])?;
                 bytes += w.byte_len() + sc.byte_len();
@@ -392,7 +392,7 @@ impl V41Stage {
         if missing.is_empty() {
             return Ok(());
         }
-        let streamer = cache.streamer();
+        let streamer = cache.streamer(model_layer);
         let dims = streamer.dims;
         let ptrs = ring.staging_ptrs;
         let groups: Vec<Vec<usize>> = missing.chunks(ring.slots).map(<[usize]>::to_vec).collect();
@@ -1341,8 +1341,9 @@ impl V41Stage {
                     &p.routed_tiles,
                     &p.routed_count,
                 )?;
-                let routed_format =
-                    |proj: usize| cached.map_or(fp4, |(cache, _)| cache.dims.formats[proj]);
+                let routed_format = |proj: usize| {
+                    cached.map_or(fp4, |(cache, _)| cache.layer_dims(lw.layer).formats[proj])
+                };
                 for (proj, packed, out) in [(0, &lw.w1, &p.g), (2, &lw.w3, &p.u)] {
                     s.v41_block_matmul(
                         routed_format(proj),

@@ -262,6 +262,18 @@ pub trait V41ExpertBytes: Send + Sync {
     ) -> Result<(&[u8], &[u8]), RuntimeError>;
 }
 
+/// Resolves a source's optional per-layer projection formats.
+pub(crate) fn formats_for_layer(
+    source: &dyn V41ExpertBytes,
+    mut dims: V41ExpertDims,
+    layer: usize,
+) -> V41ExpertDims {
+    if let Some(formats) = source.layer_formats(layer) {
+        dims.formats = formats;
+    }
+    dims
+}
+
 /// Routed experts copied into ordinary memory, for small models and tests.
 #[derive(Debug, Default)]
 pub struct V41OwnedExperts {
@@ -811,6 +823,7 @@ impl LaneWork {
         ids: &[i32],
         weights: &[f32],
     ) -> Result<(), RuntimeError> {
+        let dims = formats_for_layer(host, dims, layer);
         let (h, w, n) = (dims.hidden, dims.width, slots.len());
         let mut experts = Vec::with_capacity(n);
         for s in slots {
@@ -912,7 +925,11 @@ impl Stager {
         host: Arc<dyn V41ExpertBytes>,
         layers: Vec<usize>,
     ) -> Result<Self, RuntimeError> {
-        let bytes = dims.expert_bytes();
+        let bytes = layers
+            .iter()
+            .map(|&layer| formats_for_layer(&*host, dims, layer).expert_bytes())
+            .max()
+            .unwrap_or(dims.expert_bytes());
         let mut buffers = Vec::with_capacity(count);
         let mut ptrs = Vec::with_capacity(count);
         for _ in 0..count {
@@ -971,7 +988,6 @@ fn stage_loop(
     host: &dyn V41ExpertBytes,
     layers: &[usize],
 ) {
-    let offsets = part_offsets(dims);
     loop {
         let (index, layer, expert) = {
             let mut state = shared
@@ -994,6 +1010,7 @@ fn stage_loop(
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
             }
         };
+        let offsets = part_offsets(formats_for_layer(host, dims, layers[layer]));
         let mut ok = true;
         for p in 0..3 {
             match host.projection(layers[layer], expert, p) {
@@ -1036,6 +1053,7 @@ fn stage_loop(
 /// the slot map, with the host's copy of the placement.
 #[derive(Debug)]
 pub(crate) struct LayerCache {
+    pub(crate) dims: V41ExpertDims,
     /// `[w1, w2, w3]`: slot weights and scales.
     pub(crate) slots: [(CudaBuffer, CudaBuffer); 3],
     pub(crate) slot_map: CudaBuffer,
@@ -1097,6 +1115,7 @@ pub(crate) struct ExpertCache {
     pub(crate) caches: Vec<LayerCache>,
     pub(crate) lane: V41LaneDevice,
     miss_code: i32,
+    pub(crate) bus_available: bool,
     host: Arc<dyn V41ExpertBytes>,
     counters: Arc<LaneCounters>,
     pool: Arc<rayon::ThreadPool>,
@@ -1130,15 +1149,30 @@ impl ExpertCache {
         host: Arc<dyn V41ExpertBytes>,
         bus_available: bool,
     ) -> Result<Self, RuntimeError> {
+        let layer_dims: Vec<V41ExpertDims> = layers
+            .iter()
+            .map(|&layer| formats_for_layer(&*host, dims, layer))
+            .collect();
+        let bytes_per_slot: usize = layer_dims.iter().map(V41ExpertDims::expert_bytes).sum();
+        let max_expert_bytes = layer_dims
+            .iter()
+            .map(V41ExpertDims::expert_bytes)
+            .max()
+            .unwrap_or(0);
         let k = if config.slots_per_layer == 0 {
             let free = backend
                 .device_memory_info()?
                 .map_or(0, |m| usize::try_from(m.free_bytes).unwrap_or(usize::MAX));
-            free.saturating_sub(config.reserve_bytes) / (dims.expert_bytes() * layers.len().max(1))
+            free.saturating_sub(config.reserve_bytes) / bytes_per_slot.max(1)
         } else {
             config.slots_per_layer
         };
         let k = k.clamp(1, experts.max(1));
+        let bus_available = bus_available
+            && layer_dims.iter().all(|dims| {
+                dims.formats
+                    == V41ExpertDims::fp4(dims.hidden, dims.width, dims.swiglu_limit).formats
+            });
         if config.miss_lane == V41MissLane::Bus && !bus_available {
             return Err(invalid(
                 "the bus lane needs the routed experts in page-locked host memory (--experts host)",
@@ -1154,7 +1188,7 @@ impl ExpertCache {
         )?;
         let mut device_bytes = 0;
         let mut caches = Vec::with_capacity(layers.len());
-        for &layer in &layers {
+        for (&layer, &dims) in layers.iter().zip(&layer_dims) {
             let mut heat = config
                 .profile
                 .get(&layer)
@@ -1193,6 +1227,7 @@ impl ExpertCache {
             let slot_map = backend.byte_buffer(&map_bytes(&map))?;
             device_bytes += slot_map.byte_len();
             caches.push(LayerCache {
+                dims,
                 slots,
                 slot_map,
                 resident,
@@ -1227,6 +1262,7 @@ impl ExpertCache {
             caches,
             lane,
             miss_code: V41_LANE_HOST,
+            bus_available,
             host,
             counters,
             pool,
@@ -1246,7 +1282,7 @@ impl ExpertCache {
         )?);
         if !cache.config.frozen && k > 0 && k < experts {
             let staging = cache.config.policy.staging.max(1);
-            cache.stats.staging_bytes = staging * dims.expert_bytes();
+            cache.stats.staging_bytes = staging * max_expert_bytes;
             cache.stager = Some(Stager::start(
                 backend,
                 staging,
@@ -1260,6 +1296,11 @@ impl ExpertCache {
 
     /// Sets the lane cache misses use and writes it into every slot map.
     pub(crate) fn set_miss_lane(&mut self, lane: V41MissLane) -> Result<(), RuntimeError> {
+        if lane == V41MissLane::Bus && !self.bus_available {
+            return Err(invalid(
+                "the bus lane needs matching FP4 host and cache formats",
+            ));
+        }
         let code = match lane {
             V41MissLane::Bus => V41_LANE_BUS,
             V41MissLane::Host | V41MissLane::Auto => V41_LANE_HOST,
@@ -1458,10 +1499,10 @@ impl ExpertCache {
                 .take(self.config.policy.max_swaps_per_step)
                 .collect()
         };
-        let offsets = part_offsets(self.dims);
         let policy = self.config.policy;
         for (i, l, e) in ready {
             let cache = &mut self.caches[l];
+            let offsets = part_offsets(cache.dims);
             if let Some(slot) = Self::wants(policy, cache, e) {
                 let old = cache.resident[slot];
                 // The slot leaves the map before its bytes change.
@@ -1528,12 +1569,17 @@ impl ExpertCache {
 
     /// What a prefill needs to stream experts that aren't cached into
     /// device memory: the host source, the lane's threads, and the shapes.
-    pub(crate) fn streamer(&self) -> ExpertStreamer {
+    pub(crate) fn streamer(&self, layer: usize) -> ExpertStreamer {
         ExpertStreamer {
             host: Arc::clone(&self.host),
             pool: Arc::clone(&self.pool),
-            dims: self.dims,
+            dims: self.layer_dims(layer),
         }
+    }
+
+    /// Projection formats and dimensions for a model layer.
+    pub(crate) fn layer_dims(&self, layer: usize) -> V41ExpertDims {
+        formats_for_layer(&*self.host, self.dims, layer)
     }
 
     /// Model layer of stage layer `slot`.
@@ -1710,5 +1756,133 @@ impl SendPtr {
     /// `offset` must lie inside the allocation.
     pub(crate) unsafe fn at(&self, offset: usize) -> *mut u8 {
         unsafe { self.0.add(offset) }
+    }
+}
+
+#[cfg(test)]
+mod layer_format_tests {
+    use super::*;
+    use crate::v41_matvec::V41MatvecFormat;
+
+    struct LayerFormats {
+        parts: V41OwnedExperts,
+    }
+
+    impl V41ExpertBytes for LayerFormats {
+        fn layer_formats(&self, layer: usize) -> Option<[V41MatvecFormat; 3]> {
+            (layer == 39).then_some([V41MatvecFormat::Q3Row32; 3])
+        }
+
+        fn projection(
+            &self,
+            layer: usize,
+            expert: usize,
+            p: usize,
+        ) -> Result<(&[u8], &[u8]), RuntimeError> {
+            self.parts.projection(layer, expert, p)
+        }
+    }
+
+    #[test]
+    fn per_layer_formats_drive_host_math_and_stream_strides() -> Result<(), RuntimeError> {
+        let dims = V41ExpertDims {
+            formats: [
+                V41MatvecFormat::Q2Row32,
+                V41MatvecFormat::Q3Row32,
+                V41MatvecFormat::Q2Row32,
+            ],
+            ..V41ExpertDims::fp4(32, 32, 10.0)
+        };
+        let mut source = LayerFormats {
+            parts: V41OwnedExperts::default(),
+        };
+        for layer in [1, 39] {
+            let local = formats_for_layer(&source, dims, layer);
+            for expert in 0..2 {
+                for p in 0..3 {
+                    let values: Vec<f32> = (0..1024)
+                        .map(|i| ((i * 17 + expert * 5 + p) % 37) as f32 / 37.0 - 0.5)
+                        .collect();
+                    let (w, s) = crate::v41_quantize::v41_quantize_matrix(
+                        local.formats[p],
+                        &values,
+                        32,
+                        32,
+                        None,
+                    );
+                    source.parts.insert(layer, expert, p, w, s);
+                }
+            }
+        }
+        let source = Arc::new(source);
+        let pool = Arc::new(
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(2)
+                .build()
+                .unwrap(),
+        );
+        let codes = [0x38; 32];
+        let scales = [127];
+        let x = V41DecodedActivation::new(&codes, &scales);
+        for layer in [1, 39] {
+            let local = formats_for_layer(&*source, dims, layer);
+            assert_eq!(
+                local.formats,
+                if layer == 39 {
+                    [V41MatvecFormat::Q3Row32; 3]
+                } else {
+                    dims.formats
+                }
+            );
+            let mut lane = LaneWork::default();
+            lane.x.fill(&codes, &scales);
+            pool.install(|| {
+                lane.run(
+                    &*source,
+                    dims,
+                    V41LaneIsa::detect(),
+                    layer,
+                    &[0],
+                    &[1],
+                    &[0.75],
+                )
+            })?;
+            let weights = V41ExpertWeights {
+                w1: source.projection(layer, 1, 0)?,
+                w2: source.projection(layer, 1, 1)?,
+                w3: source.projection(layer, 1, 2)?,
+            };
+            let mut want = vec![0.0; 32];
+            let mut scratch = crate::v41_expert_lane::V41ExpertScratch::default();
+            crate::v41_expert_lane::v41_expert_forward(
+                V41LaneIsa::detect(),
+                local,
+                &weights,
+                &x,
+                0.75,
+                &mut scratch,
+                &mut want,
+            );
+            assert_eq!(lane.out, want, "layer {layer}");
+            let mut stacks: [Vec<u8>; 6] = std::array::from_fn(|p| {
+                let (w, s) = local.part_bytes(p / 2);
+                vec![0; 2 * if p % 2 == 0 { w } else { s }]
+            });
+            let ptrs = std::array::from_fn(|p| SendPtr(stacks[p].as_mut_ptr()));
+            let streamer = ExpertStreamer {
+                host: source.clone(),
+                pool: pool.clone(),
+                dims: local,
+            };
+            streamer.copy(layer, &[1, 0], &ptrs)?;
+            for p in 0..3 {
+                for (slot, expert) in [1, 0].into_iter().enumerate() {
+                    let (w, s) = source.projection(layer, expert, p)?;
+                    assert_eq!(&stacks[2 * p][slot * w.len()..(slot + 1) * w.len()], w);
+                    assert_eq!(&stacks[2 * p + 1][slot * s.len()..(slot + 1) * s.len()], s);
+                }
+            }
+        }
+        Ok(())
     }
 }
