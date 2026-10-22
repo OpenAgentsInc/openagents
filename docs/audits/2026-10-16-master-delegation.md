@@ -665,6 +665,12 @@ The status lines below summarize each issue and its comments. Open the issue for
   the panel shows the cards and the run with no iframe, the terminal's
   screen says "KILN AT WORK:", and the run ends with "Proposed as a patch."
   and an Open review link that shows the patch.
+- #12457: after `oa-kiln`'s runner is redeployed from `7fd1e05ef9` or
+  later, confirm its beacon is on the relay (`openagents relay req
+  '{"kinds":[30200],"#t":["oa:kiln-runner-beacon:v1"]}'`), then clear the
+  runner under Kiln's Settings, run `cargo test -p memory-stream`, and
+  confirm the log says "Found N test runners by their beacons", the run
+  passes, and a `3201` receipt names the runner.
 - #12440: after the next web deploy, confirm the image log builds or
   reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
   `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test
