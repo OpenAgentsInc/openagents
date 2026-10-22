@@ -46,6 +46,11 @@ pub struct Job {
     /// its own). Only keys on the runner's admin list may ask.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub action: Option<String>,
+    /// The changes as a unified diff (`git format-patch` text) instead of
+    /// whole files: what a page sends, since a relay frame holds about
+    /// 128 KiB and one of Kiln's own files is near 80 KiB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff: Option<String>,
 }
 
 /// The crates Kiln's self-edit may change and publish.
@@ -166,11 +171,15 @@ impl Job {
             argv.extend(self.args.iter().cloned());
             parse_command(&argv, crates)?;
         }
-        let bytes: usize = self.files.values().map(String::len).sum();
+        let bytes: usize = self.files.values().map(String::len).sum::<usize>()
+            + self.diff.as_ref().map_or(0, String::len);
         if bytes > MAX_FILE_BYTES {
             return Err(format!("the files are over {} KiB", MAX_FILE_BYTES / 1024));
         }
         let mut touched: Vec<String> = self.files.keys().chain(&self.deleted).cloned().collect();
+        if let Some(diff) = &self.diff {
+            touched.extend(patch_paths(diff));
+        }
         if let Some(patch) = &self.patch {
             if !self.files.is_empty() || !self.deleted.is_empty() {
                 return Err("a patch job carries no other files".into());
@@ -304,6 +313,7 @@ mod tests {
             deleted: vec![],
             patch: None,
             action: None,
+            diff: None,
         };
         assert!(job.check(&crates()).is_ok());
         job.files.insert(

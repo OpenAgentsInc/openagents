@@ -1313,11 +1313,30 @@ impl App {
             deleted,
             patch: None,
             action: None,
+            diff: None,
         };
+        let changed = job.files.len() + job.deleted.len();
+        // Large files go as a diff: a relay frame holds about 128 KiB.
+        let mut job = job;
+        if job.files.values().map(String::len).sum::<usize>() > 16 * 1024 {
+            let base = self.slice_files(&repo, true);
+            let current = self.slice_files(&repo, false);
+            job.diff = Some(crate::patch::format_patch(
+                &crate::patch::Header {
+                    author: "Kiln",
+                    email: "kiln@localhost",
+                    subject: "Kiln test run",
+                    body: "",
+                    date: super::util::unix(),
+                },
+                &crate::patch::changes(&base, &current),
+            ));
+            job.files.clear();
+            job.deleted.clear();
+        }
         if let Err(e) = job.check(&crates) {
             return fail(e);
         }
-        let changed = job.files.len() + job.deleted.len();
         let relay_url: HtmlInputElement = el(&self.doc, "relay").unchecked_into();
         let relay_url = relay_url.value();
         let mut relay = match self.runner_relay.borrow_mut().take() {
@@ -1491,6 +1510,7 @@ impl App {
             deleted: Vec::new(),
             patch: Some(event.clone()),
             action: None,
+            diff: None,
         };
         let body = json!({
             "v": 1,
@@ -1715,7 +1735,27 @@ impl App {
             deleted: Vec::new(),
             patch: None,
             action: Some(action.into()),
+            diff: None,
         };
+        // Send a diff, not whole files: a relay frame holds about 128 KiB.
+        let mut job = job;
+        if !job.files.is_empty() {
+            let repo = self.repo().unwrap_or_default();
+            let base = self.slice_files(&repo, true);
+            let current = self.slice_files(&repo, false);
+            let changes = crate::patch::changes(&base, &current);
+            job.diff = Some(crate::patch::format_patch(
+                &crate::patch::Header {
+                    author: "Kiln admin",
+                    email: "kiln@localhost",
+                    subject: "Kiln self-edit",
+                    body: "",
+                    date: super::util::unix(),
+                },
+                &changes,
+            ));
+            job.files.clear();
+        }
         job.check(&[])?;
         self.log(
             "cmd",

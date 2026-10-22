@@ -189,6 +189,14 @@ pub(crate) fn stage(config: &Config, job: &Job) -> Result<(), String> {
             &["apply", "--whitespace=nowarn", &file.to_string_lossy()],
         )?;
     }
+    if let Some(diff) = &job.diff {
+        let file = config.state.join("apply.diff");
+        std::fs::write(&file, diff).map_err(|e| e.to_string())?;
+        git(
+            &work,
+            &["apply", "--whitespace=nowarn", &file.to_string_lossy()],
+        )?;
+    }
     for (path, content) in &job.files {
         let file = work.join(path);
         if let Some(parent) = file.parent() {
