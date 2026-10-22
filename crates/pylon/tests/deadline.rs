@@ -84,6 +84,7 @@ impl Engine for Slow {
                 output_tokens: Some(1),
                 model: "slow".into(),
                 finish: self.finish,
+                reasoning: None,
             })
         })
     }
@@ -292,6 +293,7 @@ async fn a_long_prompt_reaches_the_group_without_clipping() {
                     output_tokens: Some(1),
                     model: self.model().into(),
                     finish: Finish::Stop,
+                    reasoning: None,
                 })
             })
         }

@@ -72,6 +72,31 @@ pub struct Generation {
     pub model: String,
     /// Why the answer ended.
     pub finish: Finish,
+    /// The model's reasoning before its answer, when the engine keeps it
+    /// apart (`reasoning_content`, or the text before `</think>`). The job
+    /// result carries it as `reasoning`, capped ([`cap_reasoning`]).
+    pub reasoning: Option<String>,
+}
+
+/// The most reasoning a job result carries, in bytes.
+pub const REASONING_MAX_BYTES: usize = 32 * 1024;
+
+/// `reasoning` held to [`REASONING_MAX_BYTES`], keeping its end: the
+/// newest thinking is what led to the answer. `None` for empty text.
+#[must_use]
+pub fn cap_reasoning(reasoning: &str) -> Option<String> {
+    let reasoning = reasoning.trim();
+    if reasoning.is_empty() {
+        return None;
+    }
+    if reasoning.len() <= REASONING_MAX_BYTES {
+        return Some(reasoning.to_string());
+    }
+    let mut start = reasoning.len() - REASONING_MAX_BYTES + "…".len();
+    while !reasoning.is_char_boundary(start) {
+        start += 1;
+    }
+    Some(format!("…{}", &reasoning[start..]))
 }
 
 /// Why an answer ended.
@@ -291,8 +316,12 @@ impl Engine for Psionic {
             self.uncertain
                 .store(false, std::sync::atomic::Ordering::Release);
             let text = finished_text(&body)?;
+            let reasoning = body["choices"][0]["message"]["reasoning_content"]
+                .as_str()
+                .and_then(cap_reasoning);
             Ok(Generation {
                 text,
+                reasoning,
                 input_tokens: body["usage"]["prompt_tokens"].as_u64(),
                 output_tokens: body["usage"]["completion_tokens"].as_u64(),
                 model: self.model.clone(),
@@ -380,6 +409,7 @@ impl Engine for Echo {
                 output_tokens: Some(last.content.len() as u64),
                 model: "echo".into(),
                 finish: Finish::Stop,
+                reasoning: Some("I reverse the last message.".into()),
             })
         })
     }
@@ -518,7 +548,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(answer.text, "\n\nREADY\n");
+        // The reasoning stays apart from the answer, for the result's
+        // optional `reasoning` field.
+        assert_eq!(answer.reasoning.as_deref(), Some("private thought"));
         server.await.unwrap();
+    }
+
+    #[test]
+    fn reasoning_is_capped_from_the_start() {
+        assert_eq!(cap_reasoning("  \n"), None);
+        assert_eq!(cap_reasoning(" why ").as_deref(), Some("why"));
+        let long = format!("{}END", "é".repeat(REASONING_MAX_BYTES));
+        let capped = cap_reasoning(&long).unwrap();
+        assert!(capped.len() <= REASONING_MAX_BYTES);
+        assert!(capped.starts_with('…') && capped.ends_with("END"));
     }
 
     #[test]

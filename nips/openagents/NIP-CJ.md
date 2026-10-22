@@ -175,7 +175,14 @@ words and another model wrote the reply: `provider` is `openagents`,
 `openrouter`, `vercel`, or `other`; `model` the id that provider was running
 (1 to 128 printable bytes); `why` is `error`, `timeout`, or `refused`. The
 client says so in one short line beside the answer, naming the result's
-`model` as the one that answered; an unknown word drops the field. The first valid result
+`model` as the one that answered; an unknown word drops the field. Added
+2026-10-21: a result MAY carry `reasoning`, the model's thinking before its
+answer (a reasoning channel such as `reasoning_content`, or the text before
+the model's `</think>`), kept apart from `text`. It is at most 32 KiB of
+UTF-8; a worker trims longer reasoning from the start, keeping its end, and
+marks the cut with a leading `…`. It never repeats in `text`. A client that
+doesn't read it ignores it; one that does shows it as the answer's thinking,
+never as the answer. The first valid result
 or terminal error ends observation; subsequent events do not change it.
 
 A worker that answers callers it has not admitted by name meters them and

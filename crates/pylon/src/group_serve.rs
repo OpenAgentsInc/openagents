@@ -18,7 +18,7 @@ use nostr::pylon::Layers;
 use serde_json::json;
 use tokio::sync::oneshot;
 
-use crate::engine::{Engine, Finish, Generation, Pending, Sampling, Turn};
+use crate::engine::{Engine, Finish, Generation, Pending, Sampling, Turn, cap_reasoning};
 use crate::group::AnswerBook;
 use crate::identity::{Identity, load_owner, npub};
 use crate::lease::{Dedicated, Machine};
@@ -217,6 +217,8 @@ impl Engine for GroupEngine {
             }
             Ok(Generation {
                 text,
+                // The worker split this off at the model's `</think>`.
+                reasoning: cap_reasoning(&reasoning),
                 input_tokens: None,
                 output_tokens: Some(done.tokens),
                 model: self.model.clone(),

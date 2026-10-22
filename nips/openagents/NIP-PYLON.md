@@ -193,6 +193,16 @@ Rules:
   beacon; one that arrives anyway is refused for its marker, version, and
   field. Group beacons need no change to v1 beacons.
 
+### Reasoning in results
+
+Added 2026-10-21. A pylon whose model thinks before it answers MAY put that
+thinking in the conversation result's optional `reasoning` field (NIP-CJ,
+"Conversation jobs"): a complete model's reasoning channel, or a group
+head's text before the model's `</think>`. It is at most 32 KiB; a pylon
+trims longer reasoning from the start. A buyer that doesn't read it is
+unaffected, and the receipt's `result_digest` covers it like the rest of
+the result.
+
 ### Declared deadlines
 
 An ordinary CJ conversation job to a pylon runs for at most 90 seconds. A
