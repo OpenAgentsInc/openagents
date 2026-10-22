@@ -1,3 +1,4 @@
+import { compileDecision } from "./compound.ts";
 import { isHouse } from "./town.ts";
 import { IS_TOWN, LAB } from "./lab.ts";
 import { createLayoutControls } from "./layout-controls.ts";
@@ -9,7 +10,6 @@ import {
   type Behavior,
   SCENE_PATH,
   MAX_SCENE_BYTES,
-  decisionOperation,
   readProject,
   cleanHaunt,
   type Decision,
@@ -199,7 +199,7 @@ export function createEditor(bridge: Bridge) {
     if (!ready || busy)
       throw new Error("Wait for the current scene change to finish.");
     if (!text.trim() || new TextEncoder().encode(text).length > 1200)
-      throw new Error("Describe one short scene change.");
+      throw new Error("Describe your changes in a short request.");
     cancel();
     const controller = new AbortController();
     decision = controller;
@@ -211,7 +211,7 @@ export function createEditor(bridge: Bridge) {
     const poseAtStart = { ...bridge.state().pose };
     const started = clock();
     status(
-      "Choosing one scene change… You can keep walking or use the controls.",
+      "Choosing your scene changes… You can keep walking or use the controls.",
     );
     refresh();
     const timeout = setTimeout(() => controller.abort(), 2700);
@@ -255,10 +255,11 @@ export function createEditor(bridge: Bridge) {
           "The scene changed while this request was pending. Try it again.",
         );
       const roundTripMs = clock() - started;
-      const operation = decisionOperation(
+      const operation = compileDecision(
         d,
         text,
-        ["add_room", "add_wing", "remove_wall"].includes(d.action)
+        d.action === "compound" ||
+          ["add_room", "add_wing", "remove_wall"].includes(d.action)
           ? poseAtStart
           : bridge.state().pose,
         selectedAtStart,
@@ -484,7 +485,7 @@ export function createEditor(bridge: Bridge) {
     setReady: (value: boolean) => {
       if (value && !initialized) {
         initialized = true;
-        status("Ready. Place an asset or describe one change.");
+        status("Ready. Place an asset or describe your changes.");
       }
       ready = value;
       refresh();

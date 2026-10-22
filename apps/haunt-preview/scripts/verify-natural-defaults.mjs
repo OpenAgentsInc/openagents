@@ -167,7 +167,7 @@ try {
           before.project.entities.length,
         );
         if (typeof expected === "number") {
-          assert.equal(result.decision.action, "add_asset");
+          assert.ok(["add_asset", "compound"].includes(result.decision.action));
           assert.equal(added.length, expected);
           if (kinds)
             assert.ok(
@@ -233,7 +233,7 @@ try {
     for (const text of [
       "do not add anything anywhere",
       "add a dragon anywhere, your choice of size",
-      "add a barrel and make the light blue",
+      "add a barrel and shoot lightning",
       "what could you add anywhere?",
       "add a dragon and a pumpkin anywhere",
       lab === "medieval"

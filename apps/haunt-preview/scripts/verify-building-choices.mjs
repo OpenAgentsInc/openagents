@@ -91,7 +91,7 @@ try {
   );
   for (const text of [
     "do not add 2 buildings anywhere",
-    "add 2 buildings and turn the light blue",
+    "add 2 buildings and launch a spaceship",
     "add a building and a ghost",
   ]) {
     const response = await page.request.post(
@@ -108,7 +108,7 @@ try {
     );
   }
   report.checks.push(
-    "Negated, mixed-action, and mixed-lab requests remain refused.",
+    "Negated requests and unsupported later changes remain refused.",
   );
   assert.equal(
     (await snap()).project.entities.length,
