@@ -530,6 +530,11 @@ mod tests {
         assert_eq!(plan.commands[2], Command::Run("cargo test -p x".into()));
         let dsml = "<\u{ff5c}DSML\u{ff5c}calls>\n<\u{ff5c}DSML\u{ff5c}invoke name=\"view\">\n<\u{ff5c}DSML\u{ff5c}parameter name=\"path\" string=\"true\">src/lib.rs</\u{ff5c}DSML\u{ff5c}parameter>\n<\u{ff5c}DSML\u{ff5c} parameter name=\"start\" string=\"false\">18</\u{ff5c}DSML\u{ff5c} parameter>\n</\u{ff5c}DSML\u{ff5c}invoke>\n<|DSML|invoke name=\"patch\"><|DSML|parameter name=\"path\" string=\"true\">a.rs</|DSML|parameter><|DSML|parameter name=\"search\" string=\"true\">x</|DSML|parameter><|DSML|parameter name=\"replace\" string=\"true\">y</|DSML|parameter></|DSML|invoke>";
         let plan = parse(dsml).unwrap();
+        let spaced = "<\u{ff5c}DSML\u{ff5c} invoke name=\"run\">\n<\u{ff5c}DSML\u{ff5c} parameter name=\"command\" string=\"true\">cargo test -p x</\u{ff5c}DSML\u{ff5c} parameter>\n</\u{ff5c}DSML\u{ff5c} invoke>";
+        assert_eq!(
+            parse(spaced).unwrap().commands[0],
+            Command::Run("cargo test -p x".into())
+        );
         assert_eq!(plan.commands[0], Command::Run("view src/lib.rs 18".into()));
         assert_eq!(
             plan.commands[1],
