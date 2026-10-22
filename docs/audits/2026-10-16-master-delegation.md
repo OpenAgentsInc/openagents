@@ -557,6 +557,15 @@ The status lines below summarize each issue and its comments. Open the issue for
   request appears with the event link and author credit, a Nostr comment
   shows up on it, and a pull-request comment comes back on Nostr. Close it
   unmerged and confirm the patch shows closed.
+- #12454: after the owner sets `OPENAGENTS_KILN_RUNNER` and
+  `OPENAGENTS_KILN_REPO` (NEEDS_OWNER) and the next web deploy, run
+  `cargo test -p memory-stream` from `/admin/kiln/` and confirm `oa-kiln`
+  answers (`scripts/deploy/kiln-vm.sh logs`). A day later, confirm
+  `kiln-fetch.timer` has run and the runner still passes a fresh base.
+- #12455: with the bridge running, push a small crate change to a test
+  fork, publish `kiln-git pr`, open it as a maintainer, and confirm the
+  draft pull request appears; publish `kiln-git pr-update` with a new
+  commit and confirm the branch moves. Close it unmerged.
 - #12440: after the next web deploy, confirm the image log builds or
   reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
   `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test

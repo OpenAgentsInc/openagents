@@ -7,16 +7,21 @@ are the keys that count. Only you can sign it. Details:
 1. **Make the repository key and announce.** In a checkout, with
    `kiln-git` built (`cargo build --release -p kiln-git`):
    `openagents key show --as kiln-repo` makes the key, then
-   `kiln-git announce --as kiln-repo --maintainer YOUR_KEY --runner
-   RUNNER_PUBKEY`, where YOUR_KEY is the hex `openagents key show` prints.
+   `kiln-git announce --as kiln-repo --maintainer YOUR_KEY --maintainer
+   453fcd41ed6eb900ba8d3cf3e27c5c02724d17f30ec0aab7568b5402e7b83f28
+   --runner 1fbc826307fecba4997de809a857e6679a5c656a3b3a713c6c06d46a179e502c`,
+   where YOUR_KEY is the hex `openagents key show` prints and the other two
+   are the bridge and the runner on `oa-kiln`.
    List every maintainer. It prints the repository address.
 2. **Point Kiln at it.** Set `OPENAGENTS_KILN_REPO` to that address at the
-   next web deploy, and restart the runner with `--repository ADDRESS
-   --no-announce`.
+   next web deploy. On `oa-kiln`, write the address to
+   `/etc/kiln/repository` and `sudo systemctl restart kiln-runner`; the
+   runner then takes patches to it and stops announcing its demo.
 3. **Let the GitHub bridge open draft pull requests.** Create a
    fine-grained token for OpenAgentsInc/openagents only, with Contents and
-   Pull requests read and write and an expiry, and save it (mode `0600`) as
-   the bridge's `--token-file` on the Kiln machine (#12453,
+   Pull requests read and write and an expiry, and save it as
+   `/etc/kiln/github-token` (owner `root:kiln`, mode `0640`) on `oa-kiln`,
+   then `sudo systemctl start kiln-bridge` (#12453,
    [`docs/kiln/maintainers.md`](docs/kiln/maintainers.md#the-github-bridge)).
    Add the bridge's key as a maintainer when you announce, so its merge
    status counts.
@@ -39,13 +44,15 @@ from the Grid terminal's **Kiln** control. Details:
    that verified email, so the code signs you in to the same account, and
    you stay a site admin. A password works too once you
    set one with **Forgot your password?**.
-2. **Start a runner that lasts.** Kiln's `cargo test` needs a `kiln-runner`
-   on the relay. Start one on this Mac (or a small VM), with its own state
-   directory, as the doc shows, and keep it running.
-3. **Point production at it.** Set `OPENAGENTS_KILN_RUNNER` (the runner's
-   `pubkey` file) and `OPENAGENTS_KILN_REPO` (its `repository` file) on the
-   production web service at the next deploy. Both are public keys. Without
-   them Kiln still runs; it asks for a runner key before `cargo test`.
+2. **The lasting runner is up** on `oa-kiln` (#12454,
+   `scripts/deploy/kiln-vm.sh`). Let your browser in: copy the **Admin
+   key** npub from Kiln's **Settings** and add it to the machine's admin
+   list: `gcloud compute ssh oa-kiln`, then `sudo -e /etc/kiln/admins`.
+3. **Point production at it.** Set `OPENAGENTS_KILN_RUNNER=1fbc826307fecba4997de809a857e6679a5c656a3b3a713c6c06d46a179e502c`
+   and, until you announce the repository (below),
+   `OPENAGENTS_KILN_REPO=30617:1fbc826307fecba4997de809a857e6679a5c656a3b3a713c6c06d46a179e502c:openagents-kiln-demo`
+   on the production web service at the next deploy. Both are public keys.
+   `scripts/deploy/kiln-vm.sh keys` prints them again.
 
 ## Decide whether this Mac serves Flint permanently (#12422) (2026-10-21)
 

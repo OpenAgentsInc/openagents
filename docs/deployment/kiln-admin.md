@@ -72,20 +72,10 @@ never reaches the site or the page.
   public half to `STATE/pubkey`. By default it also announces a demo
   repository, `30617:<runner key>:openagents-kiln-demo`, written to
   `STATE/repository`.
-- **Where it runs, for now.** On this Mac, or on a small Google Compute
-  machine started through the cloud spend guard
-  (`scripts/dev/cloud-budget.py`). Either works from production, because
-  both ends only need the relay. A runner started inside an agent's session
-  stops when that session ends, so a lasting one needs the owner to start
-  it:
-
-  ```sh
-  cargo build --release -p kiln-runner
-  touch ~/.openagents/kiln-runner.allow   # one npub a line; see docs/kiln/rust-tests.md
-  kiln-runner --state ~/.openagents/kiln-runner --jobs 4 \
-    --allow ~/.openagents/kiln-runner.allow --admins ~/.openagents/kiln-runner.admins
-  cat ~/.openagents/kiln-runner/pubkey ~/.openagents/kiln-runner/repository
-  ```
+- **Where it runs.** On `oa-kiln`, a Google Compute machine that holds
+  nothing else (#12454). `scripts/deploy/kiln-vm.sh` creates and manages
+  it; see [The Kiln machine](#the-kiln-machine) below. Both ends only need
+  the relay, so nothing on the machine listens except SSH.
 
 - **Its key in production.** Set `OPENAGENTS_KILN_RUNNER` to the contents
   of `STATE/pubkey` and `OPENAGENTS_KILN_REPO` to `STATE/repository` on the
@@ -97,3 +87,31 @@ never reaches the site or the page.
   ([rust-tests.md](../kiln/rust-tests.md#who-may-run-jobs)). Add each
   admin's Kiln **Admin key** `npub` (under **Self-edit**) to the admin
   file; the page signs its test runs with that key too.
+
+## The Kiln machine
+
+`oa-kiln` in `openagentsgemini`, `us-central1-a`: an `e2-standard-4`
+(4 vCPUs, 16 GB) with a 100 GB balanced disk, Debian 12, Shielded VM, nothing
+listening but SSH, labelled `purpose=kiln`. On-demand it costs about $100 a month
+plus the disk (about $10). It runs, as the `kiln` user:
+
+| Service | What | State |
+| --- | --- | --- |
+| `kiln-runner` | `--jobs 3 --timeout 1200 --memory 12000`, admission from `/etc/kiln/allow` and `/etc/kiln/admins`, crates from `/etc/kiln/crates`; with `/etc/kiln/repository`, patches to that announcement and no demo announcement | `/var/lib/kiln/runner` (its key, clone, worktree, target) |
+| `kiln-bridge` | `kiln-git bridge`; starts only once `/etc/kiln/github-token` and `/etc/kiln/repository` exist | `/var/lib/kiln/bridge` (its key, clone, `bridge.json`) |
+| `kiln-fetch.timer` | Every six hours: install main's toolchain and `cargo fetch` main's crates, so the runner's offline builds find them | `~kiln/main` |
+
+```sh
+scripts/deploy/kiln-vm.sh install [COMMIT]   # first time: toolchain, build, services
+scripts/deploy/kiln-vm.sh update [COMMIT]    # rebuild at COMMIT (default: main) and restart
+scripts/deploy/kiln-vm.sh keys               # runner key, repository address, bridge key
+scripts/deploy/kiln-vm.sh status | logs
+scripts/deploy/kiln-vm.sh delete
+```
+
+Edit the lists on the machine (`gcloud compute ssh oa-kiln`, then `sudo
+-e /etc/kiln/allow`); the runner and bridge read them for every job and
+round, so no restart is needed. To give the bridge its token, save it as
+`/etc/kiln/github-token` (owner `root:kiln`, mode `0640`), write the
+repository address to `/etc/kiln/repository`, and `sudo systemctl start
+kiln-bridge`.
