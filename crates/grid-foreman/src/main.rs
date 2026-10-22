@@ -16,7 +16,7 @@ use grid_foreman::host;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: grid-foreman serve --state DIR [--relay URL] [--site URL] [--seconds N] [--no-auto-start]\n       grid-foreman new-key --state DIR\n       grid-foreman pubkey --state DIR"
+        "usage: grid-foreman serve --state DIR [--relay URL] [--site URL] [--seconds N] [--no-auto-start]\n       grid-foreman workspace-watch --state DIR --config FILE [--site URL] [--seconds N]\n       grid-foreman new-key --state DIR\n       grid-foreman pubkey --state DIR"
     );
     ExitCode::from(2)
 }
@@ -51,6 +51,22 @@ fn main() -> ExitCode {
             })
         }
         "new-key" => host::new_key(&state.join(host::KEY_FILE)).map(|pubkey| println!("{pubkey}")),
+        "workspace-watch" => {
+            let Some(config) = option("--config").map(PathBuf::from) else {
+                return usage();
+            };
+            let run_for = match option("--seconds").map(|s| s.parse::<u64>()) {
+                Some(Ok(n)) => Some(Duration::from_secs(n)),
+                Some(Err(_)) => return usage(),
+                None => None,
+            };
+            grid_foreman::workspace_watch::serve(&grid_foreman::workspace_watch::Options {
+                state,
+                config,
+                site: option("--site").unwrap_or_else(|| host::SITE.into()),
+                run_for,
+            })
+        }
         "pubkey" => host::load_key(&state).map(|id| println!("{}", id.signer.pubkey())),
         _ => return usage(),
     };

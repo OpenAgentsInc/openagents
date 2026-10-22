@@ -18,6 +18,8 @@ pub mod objectives;
 pub mod patrol;
 #[cfg(test)]
 mod tests;
+#[cfg(feature = "host")]
+pub mod workspace_watch;
 
 /// Where the Foreman stands at home, m: beside the shared terminal at
 /// (0, 0, 4), off the walk in from the spawn and outside the terminal's
