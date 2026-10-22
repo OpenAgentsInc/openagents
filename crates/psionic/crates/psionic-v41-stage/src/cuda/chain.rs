@@ -72,6 +72,7 @@ use psionic_models::{
     stage_state::{CodecLimits, Section, StageInbox, StageMessage, StageWorker, StepKind, encode},
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 use super::{CudaModel, V41CudaStageExecutor};
 use crate::{
@@ -732,6 +733,16 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
         keep("manifest.json", &json)?;
     }
     let (vocabulary, eos, pad) = text_side(&options.weights)?;
+    let consumer_q_manifest_sha256 = options
+        .tiers
+        .consumer_q
+        .as_ref()
+        .map(|dir| {
+            std::fs::read(dir.join("manifest.json"))
+                .map(|bytes| hex::encode(Sha256::digest(bytes)))
+                .map_err(|e| Refused(format!("can't read the consumer-q manifest: {e}")))
+        })
+        .transpose()?;
     let tokenizer = vocabulary.tokenizer();
     let mode = options.mode;
     // A `--prompts-jsonl` line may carry exact `prompt_ids` and its own
@@ -902,6 +913,20 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             });
             let prompt_ids = round_prompts[round % round_prompts.len()].clone();
             let mode = round_modes.get(round).copied().unwrap_or(mode);
+            keep(
+                "request.json",
+                serde_json::to_string_pretty(&json!({
+                    "prompt_ids": prompt_ids,
+                    "force_ids": forced,
+                    "mode": mode.as_str(),
+                    "max_tokens": max_tokens,
+                    "runtime": options.runtime,
+                    "checkpoint_index_sha256": manifest.index_sha256,
+                    "consumer_q_manifest_sha256": consumer_q_manifest_sha256,
+                }))
+                .map_err(|e| Refused(e.to_string()))?
+                .as_bytes(),
+            )?;
             let last = threads.len() - 1;
             let digest = manifest.digest();
             let mut parser = AnswerParser::new(std::sync::Arc::clone(&tokenizer), eos, mode);

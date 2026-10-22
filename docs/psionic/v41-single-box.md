@@ -198,9 +198,19 @@ source checkpoint, importance digest, and each file's SHA-256.
   3 bits. `q2q3` keeps gate and up at 2 bits and down at 3 (about 2.6 bits a
   weight, 175 GB); `q3` keeps all three at 3 (about 3.3 bits, 221 GB).
 - The quantizer picks each block's scale by importance-weighted squared
-  error over the columns' calibration mean squares
-  (`chain --prefill layer-major --prompts-jsonl FILE --calibrate-out
-  PREFIX`). There is no GPTQ error feedback yet.
+  error. Calibration (`chain --prefill layer-major --prompts-jsonl FILE
+  --calibrate-out PREFIX`) now records full activation second moments
+  inside each 32-column group, per expert, for GPTQ feedback. After each
+  rounded column, the quantizer adjusts the remaining columns using the
+  inverse Hessian's Cholesky factor, with 1% diagonal damping. It keeps the
+  feedback result only when it lowers that group's measured activation
+  error. Correlations between different groups are not modeled. Old
+  `V41IMP01` mean-square files remain readable and use rounding without
+  feedback; new `V41IMP02` files carry the cross-column moments.
+- Calibration also works with streamed experts. A whole-model calibration
+  needs another 13.6 GiB on the device; choose an explicit smaller cache,
+  such as `--experts file --expert-cache slots:64 --engram file` on the
+  96 GB card. The ordinary serving path allocates none of this storage.
 - A stage serving it announces the profile `consumer-q-cuda-device-sm_NN`,
   so a group expecting the exact profile refuses it.
 - The quality card (`scripts/bench/deepseek-v41/consumer_q_card.py`)
@@ -209,6 +219,16 @@ source checkpoint, importance digest, and each file's SHA-256.
   oracle token's log-probability error against the oracle's decode logits;
   G2 suite 2 runs through `g2_check.py` beside the oracle's and the exact
   runtime's answers.
+
+For a batch of teacher-forced cases, each `--prompts-jsonl` line can name
+its own `prompt_ids`, `mode`, and `force_ids`. `--capture DIR` writes
+separate `round-N` folders for multiple rounds. Each folder's
+`request.json` records the prompt, forced history, checkpoint index, and
+consumer artifact manifest hash; the card refuses a prompt, mode, or
+history that differs from the oracle. Nonemitting prefill steps are
+recorded separately from the answer's logits. The independent evaluation
+inputs are frozen in
+[`consumer_q_evaluation.json`](../../scripts/bench/deepseek-v41/consumer_q_evaluation.json).
 
 Calibration ran on one `g4-standard-192` (64 prompts, layer-major prefill,
 39 minutes), and the quantizer then wrote both recipes in 25 s a layer each

@@ -2,11 +2,12 @@
 
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 import numpy as np
 
-from consumer_q_card import captured, log_softmax
+from consumer_q_card import captured, log_softmax, validate_request
 
 
 class CardInputs(unittest.TestCase):
@@ -34,6 +35,19 @@ class CardInputs(unittest.TestCase):
             with self.assertRaises(ValueError):
                 log_softmax(np.array(values))
         np.testing.assert_allclose(np.exp(log_softmax(np.array([1000.0, 1000.0]))), [0.5, 0.5])
+
+    def test_prompt_and_teacher_forced_history_must_match_the_oracle(self):
+        oracle = {"prompt_token_ids": [1, 2], "generated_ids": [3, 4]}
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "request.json"
+            path.write_text(json.dumps({"prompt_ids": [1, 2], "force_ids": [3, 4]}))
+            validate_request(folder, oracle, 2)
+            for request in ({"prompt_ids": [1, 5], "force_ids": [3, 4]},
+                            {"prompt_ids": [1, 2], "force_ids": [4, 3]},
+                            {"prompt_ids": [1, 2], "force_ids": None}):
+                path.write_text(json.dumps(request))
+                with self.assertRaises(ValueError):
+                    validate_request(folder, oracle, 2)
 
 
 if __name__ == "__main__":
