@@ -7,6 +7,7 @@ Use the [master roadmap](../roadmap.md) for current work.
 
 | Document | Recorded topic |
 | --- | --- |
+| [2026-10-22-owned-renderer-webgpu-and-effect.md](2026-10-22-owned-renderer-webgpu-and-effect.md) | Browser-first architecture decision with no Rust-only constraint: TypeScript + Effect, direct WebGPU and WGSL, selective Wasm CPU kernels, iteration versus performance, and pinned three-effect inspection |
 | [2026-10-22-browser-game-editor-comparison.md](2026-10-22-browser-game-editor-comparison.md) | PlayCanvas, Babylon.js, and Three.js for an OpenAgents-owned browser editor: service ownership, live iteration, Kiln integration, retained Rust, migration costs, and proposed evaluation |
 | [2026-10-21-voice-infrastructure.md](2026-10-21-voice-infrastructure.md) | Voice infrastructure past and present: every voice system in this repository and other OpenAgentsInc repositories since 2024, a comparison table, what works today, leftover LiveKit infrastructure, lessons, and one Rust voice stack with draft issues V0 to V8 |
 | [2026-10-20-gpui-everywhere.md](2026-10-20-gpui-everywhere.md) | GPUI everywhere on openagents.com: every route classified SIMPLE, APP, or RETIRE, a readiness audit with the feature registry that hides unready features (`OPENAGENTS_WEB_FEATURES`), the flip plan for #12226, deprecations, the deploy checklist, and the page-group issues (#12325 to #12337) |

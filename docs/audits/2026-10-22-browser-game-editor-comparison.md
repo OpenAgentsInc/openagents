@@ -6,16 +6,16 @@ Upstream links describe the sources reviewed on this date, not pinned releases.
 
 ## Recommendation
 
-**For a browser game editor that OpenAgents owns and operates, evaluate Babylon.js first, PlayCanvas second, and Three.js third.** This order is an engineering judgment about the remaining editor work, not a performance benchmark. Keep the existing Rust runtime as the comparison baseline.
+**Updated owner direction: build our own editor, runtime, and services; assume browser-first and no Rust-only constraint.** The [owned-renderer, WebGPU, and Effect assessment](2026-10-22-owned-renderer-webgpu-and-effect.md) selects a TypeScript editor/runtime, Effect orchestration, direct WebGPU, and editable WGSL, with selective Wasm CPU kernels. It replaces the earlier preference for starting from the Rust renderer.
 
-- **Babylon.js is the provisional fit for our own editor:** substantial browser authoring tools, an extensible Inspector, and an engine we can connect to our Rust services. We still have to build the integrated creator experience.
-- **PlayCanvas has the strongest existing browser editor workflow:** it deserves a serious ownership investigation. Its engine and editor frontend are open source, but the documented frontend development setup uses PlayCanvas-hosted services. A fork of that frontend is not evidence of a complete self-hosted authoring platform.
-- **Three.js offers the most freedom for a focused custom experience:** it also leaves more game-engine and authoring decisions with us. Its included editor is a useful starting point, not proof that a complete collaborative game platform comes with the renderer.
+- **Our project model and authoring commands come first:** do not make an upstream editor's history, services, or scene objects the product foundation.
+- **Three.js can supply a reference or optional adapter:** the selected from-scratch rendering direction is our own direct WebGPU renderer. `three-effect` supplies useful patterns and a comparison path.
+- **Babylon and PlayCanvas remain useful engine/tool references:** their available authoring interfaces no longer determine the recommendation when we intend to build those systems ourselves.
 - **Rust remains viable for fast iteration:** our existing local demos already update data and art without rebuilding the game, and replace a small Rust rules module without restarting the run. Shader text can follow the same principle.
 
-If using a vendor's authoring service is acceptable, PlayCanvas moves ahead as the most complete ready-made browser editing experience among these candidates. If the intended product is a narrow, highly designed creation flow rather than a broad editor, Three.js becomes more competitive. Those are different product decisions.
+The comparison below retains the capabilities and tradeoffs of reusing existing editor tooling. Its conditional assessments of editor reuse do not override the owner's clarified requirement. No candidate was benchmarked.
 
-The repository's [agent contract](../../AGENTS.md) currently requires Rust product code and prohibits adding TypeScript. None of these JavaScript engines is an approved product-code exception. **This audit does not change that policy.** Adopting one would require an explicit browser viewport/editor boundary in the policy before implementation. Continuing the Rust shader demo fits the current contract.
+The owner explicitly removes the Rust-only constraint for the current architecture assessment. The Rust reuse inventory below describes existing investments, not requirements for the new browser application's state or UI. This audit changes documentation only and leaves the repository's [agent contract](../../AGENTS.md) unchanged.
 
 ## What owning the editor means
 
@@ -88,7 +88,7 @@ What remains ours:
 - Collaboration through our existing session system.
 - Script replacement, error recovery, publishing, and player-state preservation.
 
-**Assessment:** Babylon provisionally offers the best balance between reusable authoring tools and a first-party service architecture. This conclusion depends on whether its tools can be integrated without fighting our data and UI model. That has not been demonstrated.
+**Assessment under an editor-reuse strategy:** Babylon offers a useful balance between reusable authoring tools and a first-party service architecture. Under the clarified requirement to build those tools ourselves, this advantage carries less weight than control of the rendering boundary.
 
 ## Three.js: maximum design freedom, more systems to assemble
 
@@ -208,7 +208,7 @@ Creator scripts also need isolation from account and wallet authority. A separat
 
 The [Rapier JavaScript bindings](https://rapier.rs/docs/user_guides/javascript/getting_started_js/) demonstrate the general Rust/Wasm simulation plus JavaScript rendering pattern. That is evidence that a hybrid is practical, not a recommendation to replace our physics implementation.
 
-UI reuse needs a separate decision from renderer reuse. PlayCanvas's frontend uses PCUI, while Babylon's Inspector documentation describes React and Fluent dependencies. Keeping every editor panel in Rust Native would reduce how much of these upstream interfaces we could adopt directly. Babylon's provisional advantage therefore assumes that selected authoring tools could be permitted within an explicit editor UI boundary. If all editor UI must stay Rust, compare the engines mainly as rendering and scene-manipulation libraries, and reassess that ranking.
+UI reuse needs a separate decision from renderer reuse. PlayCanvas's frontend uses PCUI, while Babylon's Inspector documentation describes React and Fluent dependencies. Keeping every editor panel in Rust Native would reduce how much of these upstream interfaces we could adopt directly. The original Babylon preference assumed that selected authoring tools could be adopted. Building our own interfaces removes that assumption; compare the engines mainly as rendering and scene-manipulation libraries.
 
 Browser Rust here uses ordinary WebAssembly modules and JavaScript/Web APIs. The runner's native Wasmtime/WASI component hosting is a different environment; a server component cannot be assumed to load directly into a browser without adaptation.
 
@@ -238,8 +238,8 @@ The acceptance bar is uninterrupted compatible edits, useful errors, reversible 
 
 ## Decision record
 
-- **Recommended investigation:** Babylon for a first-party browser editor; PlayCanvas for the strongest ready-made workflow and a specific ownership assessment; Three.js for a deliberately narrower custom editor.
-- **Recommended retained architecture:** Rust domain services and Kiln, with an explicit runtime boundary if a JavaScript engine is later adopted.
+- **Selected browser architecture:** own the editor and runtime contracts; use TypeScript + Effect with direct WebGPU and WGSL. See the [follow-up assessment](2026-10-22-owned-renderer-webgpu-and-effect.md).
+- **Rust reuse:** existing services and Kiln can remain behind bounded APIs; use browser Wasm kernels where measured CPU benefits justify them.
 - **Scope of the existing issue:** #12500 calls for shader editing and recovery without requiring a renderer rewrite.
-- **Unresolved decisions:** product-language exception, full editor versus guided creator flow, hosted service dependence, and native/phone playback requirements.
+- **Unresolved implementation decisions:** full editor versus guided creator flow, supported browser capabilities, module replacement details, and performance budgets. Browser-first and language freedom are explicit assumptions; hosted authoring services are outside the product direction.
 - **Validation of this document:** repository docs and targeted source inspection, plus upstream primary documentation and source. No prototype, engine benchmark, production change, or product-code change was made.
