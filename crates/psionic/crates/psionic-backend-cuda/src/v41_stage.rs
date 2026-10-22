@@ -2187,6 +2187,19 @@ impl V41Stage {
             .map(|r| (r.streamed, r.copy_seconds))
     }
 
+    /// Seconds the layer-major prefill spent in each phase since load, by
+    /// [`prefill::V41_PREFILL_PHASES`] name (#12464).
+    #[must_use]
+    pub fn prefill_phase_seconds(&self) -> Option<Vec<(&'static str, f64)>> {
+        self.prefill.as_ref().map(|p| {
+            prefill::V41_PREFILL_PHASES
+                .iter()
+                .copied()
+                .zip(p.phase_seconds.iter().copied())
+                .collect()
+        })
+    }
+
     /// The experts each cached layer holds in device slots.
     #[must_use]
     pub fn expert_resident(&self) -> Option<BTreeMap<usize, Vec<usize>>> {

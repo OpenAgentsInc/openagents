@@ -113,6 +113,9 @@ pub(super) struct PrefillWork {
     flags: CudaBuffer,
     block_stride: usize,
     heads: CudaBuffer,
+    /// Seconds in each phase of the layer-major prefill since load, in
+    /// [`V41_PREFILL_PHASES`] order.
+    pub(super) phase_seconds: Vec<f64>,
     /// Calibration sums for the `consumer-q` quantizer (#12465), per stage
     /// layer: inputs `[experts, hidden]` with counts, and hidden
     /// `[experts, width]` with counts.
@@ -248,6 +251,7 @@ impl PrefillWork {
             )?,
             block_stride: (config.max_context + 1).div_ceil(shape.candidate_block_size),
             heads: f(max * g.heads * g.head_dim)?,
+            phase_seconds: vec![0.0; V41_PREFILL_PHASES.len()],
             calibration: None,
             bytes: 0,
         };
@@ -306,6 +310,20 @@ impl PrefillWork {
         }
     }
 }
+
+/// The phases of a layer-major prefill layer, for its timings.
+pub const V41_PREFILL_PHASES: [&str; 10] = [
+    "attention_mixes",
+    "query_kv_projections",
+    "query_kv_norms",
+    "query_index_projections",
+    "attention",
+    "output_projection",
+    "ffn_mixes_routing",
+    "experts_device",
+    "experts_streamed",
+    "expert_sum",
+];
 
 impl V41Stage {
     /// Whether a step can run layer-major: a prompt step of more than one
@@ -846,6 +864,19 @@ impl V41Stage {
         Ok(())
     }
 
+    /// Adds the time since `since` to phase `phase` of the layer-major
+    /// prefill's timings and returns now. Each phase ends in a completed
+    /// commit, so the times are the device's plus the host's encoding.
+    fn prefill_lap(&mut self, since: std::time::Instant, phase: usize) -> std::time::Instant {
+        let now = std::time::Instant::now();
+        if let Some(p) = self.prefill.as_mut()
+            && let Some(t) = p.phase_seconds.get_mut(phase)
+        {
+            *t += (now - since).as_secs_f64();
+        }
+        now
+    }
+
     /// Launches the begin graph (each token's embedding or incoming
     /// residual, position, and Engram ids) once for each of `tokens` tokens
     /// from index 0, capturing it on first use.
@@ -944,6 +975,7 @@ impl V41Stage {
         let hc = shape.hc;
         let (streams, mixes) = (hc.streams, hc.mixes());
         for i in 0..self.layers.len() {
+            let mut lap = std::time::Instant::now();
             // Engram, the attention mixes, collapse, and norm, for every
             // token at once.
             {
@@ -1050,6 +1082,7 @@ impl V41Stage {
                     V41Output::Bf16,
                 )?;
                 s.commit(crate::CudaCommandWait::Completed)?;
+                lap = self.prefill_lap(lap, 0);
                 stats.synchronizations += 1;
             }
             {
@@ -1089,6 +1122,7 @@ impl V41Stage {
                     V41Output::Bf16,
                 )?;
                 s.commit(crate::CudaCommandWait::Completed)?;
+                lap = self.prefill_lap(lap, 1);
                 stats.synchronizations += 1;
             }
             {
@@ -1116,6 +1150,7 @@ impl V41Stage {
                     V41Output::Bf16,
                 )?;
                 s.commit(crate::CudaCommandWait::Completed)?;
+                lap = self.prefill_lap(lap, 2);
                 stats.synchronizations += 1;
             }
             {
@@ -1157,9 +1192,11 @@ impl V41Stage {
                     )?;
                 }
                 s.commit(crate::CudaCommandWait::Completed)?;
+                lap = self.prefill_lap(lap, 3);
                 stats.synchronizations += 1;
             }
             self.attention_batched(backend, i, tokens, stats)?;
+            lap = self.prefill_lap(lap, 4);
             {
                 let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
                 let lw = &self.layers[i];
@@ -1197,6 +1234,7 @@ impl V41Stage {
                     V41Output::Bf16,
                 )?;
                 s.commit(crate::CudaCommandWait::Completed)?;
+                lap = self.prefill_lap(lap, 5);
                 stats.synchronizations += 1;
             }
             {
@@ -1247,6 +1285,7 @@ impl V41Stage {
                 s.v41_gate_logits_tokens(&lw.gate, &p.nf, &p.logits, experts, h, tokens)?;
                 s.v41_route_tokens(shape.router, &p.logits, &lw.bias, &p.ids, &p.rw, tokens)?;
                 s.commit(crate::CudaCommandWait::Completed)?;
+                lap = self.prefill_lap(lap, 6);
                 stats.synchronizations += 1;
             }
             cur = 1 - cur;
@@ -1405,9 +1444,11 @@ impl V41Stage {
                     V41Output::Bf16,
                 )?;
                 s.commit(crate::CudaCommandWait::Completed)?;
+                lap = self.prefill_lap(lap, 7);
                 stats.synchronizations += 1;
             }
             self.stream_routed(backend, i, tokens, stats)?;
+            lap = self.prefill_lap(lap, 8);
             {
                 // The expert sum and the FFN expansion, for every token.
                 let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
@@ -1426,6 +1467,7 @@ impl V41Stage {
                     mixes,
                 )?;
                 s.commit(crate::CudaCommandWait::Completed)?;
+                self.prefill_lap(lap, 9);
                 stats.synchronizations += 1;
             }
             cur = 1 - cur;

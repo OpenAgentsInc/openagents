@@ -608,6 +608,9 @@ fn stage_thread(
                         "experts": experts,
                         "copy_seconds": seconds,
                     })),
+                    "prefill_phase_seconds": stage.prefill_phase_seconds().map(|phases| {
+                        phases.into_iter().map(|(name, t)| (name.to_string(), json!(t))).collect::<serde_json::Map<_, _>>()
+                    }),
                     "engram_staging": stage.engram_staging_stats().map(|(rows, seconds)| json!({
                         "rows": rows,
                         "seconds": seconds,
