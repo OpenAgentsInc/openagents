@@ -49,3 +49,18 @@ of the face, the height the Game Lab and Lagrange 2 arches hide from the
 spawn, and its last result and history sit below. A test checks those
 sight lines. [`09-tight-layout-from-spawn.png`](09-tight-layout-from-spawn.png)
 shows the board from the spawn with test events.
+
+## Real deploys
+
+On 2026-10-21 the coordinator deployed `56b0c0d093` with `scripts/deploy/web.sh`.
+The relay received every phase from the deploy announcer: staging
+`build_started`, `build_done` (Cloud Build `3f05a41d-…`), `deploying`,
+`smoke_running`, `smoke_passed`, and `live`; then production `deploying`,
+`promoted`, `smoke_running`, `smoke_passed`, `traffic_shifted`, and `live`.
+
+- [`10-staging-real-deploy.png`](10-staging-real-deploy.png): staging.openagents.com
+  with staging LIVE and production in its candidate SMOKE TEST.
+- [`11-staging-terminal-screen.png`](11-staging-terminal-screen.png): the
+  computer's screen there: PYLONS ONLINE: 11, DEPLOYED 1M AGO.
+- [`12-production-live.png`](12-production-live.png): openagents.com with
+  both lanes LIVE on `56b0c0d`.
