@@ -10,7 +10,7 @@
     "check": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "build": "npm run check && npm run prepare:kiln && vite build",
-    "verify:browser": "node scripts/verify-browser.mjs && node scripts/verify-editor.mjs && node scripts/verify-assets.mjs"
+    "verify:browser": "node scripts/verify-browser.mjs && node scripts/verify-editor.mjs && node scripts/verify-assets.mjs && node scripts/verify-behaviors.mjs"
   },
   "dependencies": {
     "effect": "4.0.6"

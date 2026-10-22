@@ -5,7 +5,14 @@ import {
   validEdit,
   type ShaderEdit,
 } from "./protocol.ts";
-import { cameraMatrix, houseGeometry, move, type Pose } from "./scene.ts";
+import { GhostSimulation } from "./behaviors.ts";
+import {
+  cameraMatrix,
+  houseGeometry,
+  move,
+  type AssetRange,
+  type Pose,
+} from "./scene.ts";
 
 import {
   SceneHistory,
@@ -13,6 +20,7 @@ import {
   PROJECT_ID,
   TINTS,
   type Transaction,
+  type Operation,
   type Project,
 } from "./project.ts";
 
@@ -49,6 +57,12 @@ class Runtime {
   maxFrameMs = 0;
   uniformData = new Float32Array(28);
   scene = new SceneHistory();
+  ghosts = new GhostSimulation();
+  ranges = new Map<string, AssetRange>();
+  baseGeometry: Float32Array;
+  motionBuffers = new Map<string, Float32Array>();
+  geometryBuilds = 1;
+  motionPoses = new Map<string, [number, number, number, number]>();
   captureRequest: string | undefined;
   captureBuffer: GPUBuffer | undefined;
   scenePending:
@@ -70,7 +84,9 @@ class Runtime {
     this.context = context;
     this.canvas = canvas;
     this.format = format;
-    const geometry = houseGeometry(this.scene.project.entities);
+    const geometry = houseGeometry(this.scene.project.entities, this.ranges);
+    this.baseGeometry = geometry;
+    this.ghosts.sync(this.scene.project.entities);
     this.count = geometry.length / 10;
     this.vertices = device.createBuffer({
       label: "Haunted House geometry",
@@ -338,15 +354,49 @@ class Runtime {
           this.scene = new SceneHistory(candidate);
         };
       } else {
-        const plan = this.scene.prepare(message.transaction!);
+        const tx = message.transaction!;
+        const freeze = (operation: Operation): Operation =>
+          operation?.kind === "set_behavior" &&
+          operation.behavior === "still" &&
+          Array.isArray(operation.ids)
+            ? { ...operation, positions: this.ghosts.positions(operation.ids) }
+            : operation;
+        const operation = tx.operation;
+        const plan = this.scene.prepare({
+          ...tx,
+          operation:
+            operation?.kind === "batch" && Array.isArray(operation.operations)
+              ? { ...operation, operations: operation.operations.map(freeze) }
+              : freeze(operation),
+        });
         candidate = plan.project;
         commit = plan.commit;
       }
       if (
-        JSON.stringify(candidate.entities) !==
-        JSON.stringify(this.scene.project.entities)
+        JSON.stringify(
+          candidate.entities.map(({ id, kind, x, z, scale }) => ({
+            id,
+            kind,
+            x,
+            z,
+            scale,
+          })),
+        ) !==
+        JSON.stringify(
+          this.scene.project.entities.map(({ id, kind, x, z, scale }) => ({
+            id,
+            kind,
+            x,
+            z,
+            scale,
+          })),
+        )
       ) {
-        const geometry = houseGeometry(candidate.entities);
+        const geometry = houseGeometry(candidate.entities, this.ranges);
+        this.baseGeometry = geometry;
+        this.motionBuffers.clear();
+        this.motionPoses.clear();
+        this.geometryBuilds++;
         const buffer = this.device.createBuffer({
           label: "Haunted House scene geometry",
           size: geometry.byteLength,
@@ -359,6 +409,7 @@ class Runtime {
         previous.destroy();
       }
       commit();
+      this.ghosts.sync(candidate.entities);
       return message;
     } catch (error) {
       send({
@@ -373,6 +424,9 @@ class Runtime {
   state() {
     return {
       project: this.scene.project,
+      actors: this.ghosts.snapshot(),
+      behaviorTicks: this.ghosts.ticks,
+      geometryBuilds: this.geometryBuilds,
       canUndo: this.scene.past.length > 0,
       canRedo: this.scene.future.length > 0,
       pose: { ...this.pose },
@@ -394,6 +448,55 @@ class Runtime {
     };
   }
 
+  animate(seconds: number) {
+    this.ghosts.step(this.pose, seconds);
+    for (const motion of this.ghosts.motions.values()) {
+      const range = this.ranges.get(motion.id);
+      if (!range) continue;
+      let last = this.motionPoses.get(motion.id);
+      if (
+        last &&
+        last[0] === motion.x &&
+        last[1] === motion.y &&
+        last[2] === motion.z &&
+        last[3] === motion.yaw
+      )
+        continue;
+      if (!last) {
+        last = [motion.x, motion.y, motion.z, motion.yaw];
+        this.motionPoses.set(motion.id, last);
+      } else {
+        last[0] = motion.x;
+        last[1] = motion.y;
+        last[2] = motion.z;
+        last[3] = motion.yaw;
+      }
+      let vertices = this.motionBuffers.get(motion.id);
+      if (!vertices) {
+        vertices = this.baseGeometry.slice(range.start, range.end);
+        this.motionBuffers.set(motion.id, vertices);
+      }
+      const c = Math.cos(motion.yaw),
+        s = Math.sin(motion.yaw);
+      for (let i = range.start, j = 0; i < range.end; i += 10, j += 10) {
+        const x = this.baseGeometry[i] - motion.homeX,
+          z = this.baseGeometry[i + 2] - motion.homeZ;
+        vertices[j] = motion.x + c * x + s * z;
+        vertices[j + 1] = this.baseGeometry[i + 1] + motion.y;
+        vertices[j + 2] = motion.z - s * x + c * z;
+        vertices[j + 3] =
+          c * this.baseGeometry[i + 3] + s * this.baseGeometry[i + 5];
+        vertices[j + 5] =
+          -s * this.baseGeometry[i + 3] + c * this.baseGeometry[i + 5];
+      }
+      this.device.queue.writeBuffer(
+        this.vertices,
+        range.start * 4,
+        vertices.buffer,
+      );
+    }
+  }
+
   draw(now: number) {
     if (this.disposed || this.lost) return;
     const sceneChange = this.applyScene();
@@ -409,6 +512,7 @@ class Runtime {
     );
     if (held("ArrowLeft")) this.pose.yaw -= delta * 0.0015;
     if (held("ArrowRight")) this.pose.yaw += delta * 0.0015;
+    this.animate(delta / 1000);
     const committed = this.versions.commit();
     cameraMatrix(this.uniformData, this.pose, this.width / this.height);
     this.uniformData.set([this.pose.x, 1.55, this.pose.z, now / 1000], 16);
@@ -503,6 +607,9 @@ class Runtime {
     this.disposed = true;
     scope.cancelAnimationFrame(this.frameId);
     this.keys = [];
+    this.motionBuffers.clear();
+    this.motionPoses.clear();
+    this.ghosts.motions.clear();
     this.versions.dispose();
     this.pendingEdit = undefined;
     this.queuedEdit = undefined;

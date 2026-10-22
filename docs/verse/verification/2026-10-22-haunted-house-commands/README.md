@@ -81,3 +81,28 @@ that also passed manual editing and save/reopen.
 Validation: 44 Kiln library tests, 12 project/protocol tests, TypeScript check,
 production build, and all three browser scripts. Existing pumpkin scenes and
 legacy command names remain accepted. Startup controls now wait for scene restore.
+
+## Ghost float and chase behaviors
+
+`make the ghosts float around` changes every ghost in one reversible transaction.
+`make that ghost chase me` changes the selected ghost. `make that ghost stop moving`
+freezes and saves its current X/Z position. Direct controls use the same commands.
+Literal target references are resolved in code; six independent Jev questions
+choose action and applicable arguments in one request. No inference runs per frame.
+
+The [behavior receipt](behaviors-receipt.json) records the exact UI requests at
+149.7, 154.9, and 136.4 ms, including Kiln save. It verifies walking, single/group
+undo, batched stop positions, 30 behavior edits without geometry rebuilds, real
+OPFS reopen, and continued simulation with the last working shader after a bad
+WGSL edit. Unsupported behaviors and non-ghost targets leave the scene unchanged.
+
+The captures [before drift](behaviors-float-a.png) and [after drift](behaviors-float-b.png)
+use fixed lighting and an unchanged camera: 33,656 pixels changed from mesh movement.
+The worker updates reusable vertex ranges for ghosts, keeps two owned GPU buffers
+and one pipeline, and releases them at teardown. Authored scene data does not change
+per frame; reopening resumes rules at authored positions.
+
+Checks: 45 Kiln library tests, 16 project/protocol/simulation tests, TypeScript check,
+production build, the full four-script browser suite, and the final focused behavior
+check including batched stopping. Unit simulation checks include chasing through
+the connecting corridor, stop distance, wall bounds, and capped elapsed time.

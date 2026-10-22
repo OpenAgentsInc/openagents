@@ -3,6 +3,7 @@ import {
   PROJECT_ID,
   ASSETS,
   type AssetKind,
+  type Behavior,
   SCENE_PATH,
   decisionOperation,
   readProject,
@@ -60,6 +61,16 @@ export function createEditor(bridge: Bridge) {
     el<HTMLButtonElement>("undo").disabled = !ready || busy || !state.canUndo;
     el<HTMLButtonElement>("redo").disabled = !ready || busy || !state.canRedo;
     el<HTMLButtonElement>("cancel-decision").hidden = !decision;
+    const ghost = p?.entities.find(
+      (e) => e.id === selected && e.kind === "ghost",
+    );
+    for (const id of ["float-ghost", "chase-ghost", "stop-ghost"])
+      el<HTMLButtonElement>(id).disabled = !ready || busy || !ghost;
+    el<HTMLButtonElement>("float-ghosts").disabled =
+      !ready || busy || !p?.entities.some((e) => e.kind === "ghost");
+    el("ghost-behavior").textContent = ghost
+      ? `Selected ghost · ${ghost.behavior === "float" ? "Floating around" : ghost.behavior === "chase" ? "Chasing you" : "Still"}`
+      : "Select a ghost to give it a behavior.";
     if (!p || rendered === p.revision) return;
     rendered = p.revision;
     const select = el<HTMLSelectElement>("selected");
@@ -356,6 +367,23 @@ export function createEditor(bridge: Bridge) {
   el("remove-pumpkin").addEventListener("click", () =>
     attempt(() => submit({ kind: "remove_asset", id: selected ?? "" })),
   );
+  const behavior = (mode: Behavior, all = false) =>
+    attempt(() =>
+      submit({
+        kind: "set_behavior",
+        behavior: mode,
+        ids: all
+          ? bridge
+              .state()
+              .project.entities.filter((e: any) => e.kind === "ghost")
+              .map((e: any) => e.id)
+          : [selected ?? ""],
+      }),
+    );
+  el("float-ghost").addEventListener("click", () => behavior("float"));
+  el("chase-ghost").addEventListener("click", () => behavior("chase"));
+  el("stop-ghost").addEventListener("click", () => behavior("still"));
+  el("float-ghosts").addEventListener("click", () => behavior("float", true));
   el("undo").addEventListener("click", () =>
     attempt(() => submit({ kind: "undo" })),
   );
@@ -379,6 +407,8 @@ export function createEditor(bridge: Bridge) {
     if (entity)
       for (const key of ["x", "z", "scale"])
         el<HTMLInputElement>(key).value = String(entity[key]);
+    rendered = -1;
+    refresh();
   });
   el("ask").addEventListener("click", () => {
     void interpret(el<HTMLTextAreaElement>("request").value).catch(() => {});

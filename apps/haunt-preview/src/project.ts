@@ -13,12 +13,15 @@ export const TINTS = {
   green: [0.25, 1.5, 0.55],
 } as const;
 export type Tint = keyof typeof TINTS;
+export const BEHAVIORS = ["still", "float", "chase"] as const;
+export type Behavior = (typeof BEHAVIORS)[number];
 export type SceneAsset = {
   id: string;
   kind: AssetKind;
   x: number;
   z: number;
   scale: number;
+  behavior?: Behavior;
 };
 export type Project = {
   schema: 1;
@@ -33,6 +36,12 @@ export type Operation =
   | { kind: "move_asset" | "move_pumpkin"; id: string; x: number; z: number }
   | { kind: "resize_asset" | "resize_pumpkin"; id: string; scale: number }
   | { kind: "remove_asset" | "remove_pumpkin"; id: string }
+  | {
+      kind: "set_behavior";
+      ids: string[];
+      behavior: Behavior;
+      positions?: { id: string; x: number; z: number }[];
+    }
   | { kind: "set_tint"; tint: Tint }
   | { kind: "undo" | "redo" }
   | { kind: "replace"; project: Project }
@@ -86,7 +95,9 @@ function validEntity(value: unknown): asserts value is SceneAsset {
     !walkable(e.x, e.z) ||
     !Number.isFinite(e.scale) ||
     e.scale < 0.3 ||
-    e.scale > 2.5
+    e.scale > 2.5 ||
+    (e.behavior !== undefined &&
+      (e.kind !== "ghost" || !BEHAVIORS.includes(e.behavior)))
   )
     throw new Error(
       "Place an asset inside the rooms, with size between 0.3 and 2.5.",
@@ -127,6 +138,7 @@ export function readProject(value: unknown): Project {
       x: e.x,
       z: e.z,
       scale: e.scale,
+      ...(e.behavior === undefined ? {} : { behavior: e.behavior }),
     })),
   };
 }
@@ -187,6 +199,30 @@ export class SceneHistory {
         find(op.id);
         next.entities = next.entities.filter((e) => e.id !== op.id);
         break;
+      case "set_behavior": {
+        if (
+          !Array.isArray(op.ids) ||
+          op.ids.length < 1 ||
+          op.ids.length > MAX_ASSETS ||
+          new Set(op.ids).size !== op.ids.length ||
+          !BEHAVIORS.includes(op.behavior)
+        )
+          throw new Error(
+            "Choose ghosts and a float, chase, or still behavior.",
+          );
+        for (const id of op.ids) {
+          const ghost = find(id);
+          if (ghost.kind !== "ghost")
+            throw new Error(
+              "Only ghosts can use this behavior. Select a ghost first.",
+            );
+          ghost.behavior = op.behavior;
+          const position = op.positions?.find((p) => p.id === id);
+          if (op.behavior === "still" && position)
+            Object.assign(ghost, { x: position.x, z: position.z });
+        }
+        break;
+      }
       case "set_tint":
         next.tint = op.tint;
         break;
@@ -216,6 +252,7 @@ export class SceneHistory {
                 "resize_pumpkin",
                 "remove_asset",
                 "remove_pumpkin",
+                "set_behavior",
                 "set_tint",
               ].includes(item.kind),
           )
@@ -275,6 +312,8 @@ export class SceneHistory {
 export type Decision = {
   action: string;
   asset?: string;
+  behavior?: string;
+  target_scope?: string;
   placement: string;
   size: string;
   tint: string;
@@ -560,6 +599,32 @@ export function decisionOperation(
         kind: d.action as "remove_asset" | "remove_pumpkin",
         id: target(),
       };
+    case "set_behavior": {
+      if (!BEHAVIORS.includes(d.behavior as Behavior))
+        throw new Error("Choose float, chase, or still for the ghosts.");
+      let ids: string[];
+      if (d.target_scope === "all_ghosts")
+        ids = project.entities
+          .filter((e) => e.kind === "ghost")
+          .map((e) => e.id);
+      else if (d.target_scope === "selected") {
+        if (
+          !selected ||
+          project.entities.find((e) => e.id === selected)?.kind !== "ghost"
+        )
+          throw new Error("Select a ghost first.");
+        ids = [selected];
+      } else if (d.target_scope === "named" && explicitId) ids = [explicitId];
+      else throw new Error("Choose the selected ghost or all ghosts.");
+      if (!ids.length) throw new Error("Add a ghost first.");
+      if (
+        ids.some(
+          (id) => project.entities.find((e) => e.id === id)?.kind !== "ghost",
+        )
+      )
+        throw new Error("Choose an existing ghost.");
+      return { kind: "set_behavior", ids, behavior: d.behavior as Behavior };
+    }
     case "set_tint":
       if (!Object.hasOwn(TINTS, d.tint))
         throw new Error("Choose warm, orange, blue, or green light.");

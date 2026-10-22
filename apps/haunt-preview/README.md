@@ -63,10 +63,30 @@ The renderer, picker, project validation, and Rust Jev questions use
 old pumpkin command names remain accepted. Controls enable after the saved scene
 opens, so an early edit cannot race restoration.
 
+## Ghost behaviors
+
+- `make the ghosts float around` gives every existing ghost a local drifting and
+  bobbing motion. `make that ghost chase me` changes the selected ghost only.
+- Use **Float selected**, **Chase me**, **Stop selected**, or **Float all ghosts**
+  for direct changes. Select a ghost in **Selected asset** first.
+- **Stop selected** freezes its current position and saves that position. Behavior
+  changes use the same Kiln transaction and undo/redo path, including a whole group
+  as one change. Other asset kinds cannot receive ghost behavior.
+- The browser simulates movement locally. Ghosts stay within the room floor plan;
+  chasing ghosts slide along walls and stop short of the player. Simulation steps
+  cap elapsed time to avoid jumps after a background pause.
+- Saved scenes contain behavior rules and authored positions, not each animation
+  frame. Reopening starts the rules from those positions. Ghost transforms update
+  only their vertex-buffer ranges; changing float/chase rules does not rebuild
+  geometry, compile WGSL, or create a GPU buffer per frame.
+- Code resolves literal plural, selected, and explicit-ID references. Limited
+  subsets such as “two ghosts” need selection rather than silently affecting all.
+  Jev chooses the action and behavior in one bounded call.
+
 ## Decision path
 
-- One Jev SDK call asks five independent Choice questions together: action,
-  asset kind, placement, size, and light color. Every question includes an unsupported option.
+- One Jev SDK call asks six independent Choice questions together: action,
+  asset kind, placement, size, light color, and ghost behavior. Every question includes an unsupported option.
 - Only the arguments used by the selected action contribute to its confidence
   floor (0.75 for this prototype). Uncertain requests make no change. This policy
   is exercised on a small retained example set, not broadly calibrated.
