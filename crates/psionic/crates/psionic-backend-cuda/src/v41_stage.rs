@@ -1121,6 +1121,8 @@ pub struct V41Stage {
     prefill: Option<prefill::PrefillWork>,
     /// The `consumer-q` profile's reordered reductions (#12465).
     fast_reductions: bool,
+    /// Diagnostic B200 FP8 block sums and TP8 row-parallel rounding.
+    fp8_reference: bool,
     /// Rows of each layer's window ring: the window, or with the
     /// layer-major prefill the window plus a step's tokens less one, so a
     /// whole step's rows fit (#12464).
@@ -2051,6 +2053,7 @@ impl V41Stage {
             engram_staging,
             prefill,
             fast_reductions,
+            fp8_reference: false,
             ring_rows,
             packed_kv,
             config,
@@ -2294,6 +2297,53 @@ impl V41Stage {
             )?;
         }
         Ok(())
+    }
+
+    /// Enables the bounded FP8 diagnostic before the first step. Other
+    /// operations retain their ordinary device arithmetic.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a captured graph, batched or lossy profile, and geometry
+    /// whose row-parallel matrices cannot split into eight 32-wide ranks.
+    pub fn enable_fp8_reference(&mut self) -> Result<(), RuntimeError> {
+        if self.body.is_some()
+            || self.body_observed.is_some()
+            || self.prefill.is_some()
+            || self.fast_reductions
+            || self.expert_cache.is_some()
+            || [
+                self.config.shape.o_groups * self.config.shape.o_rank,
+                self.config.shape.expert_width,
+            ]
+            .iter()
+            .any(|n| n % 256 != 0)
+        {
+            return Err(invalid(
+                "FP8 diagnostics need an unstarted ordinary stage with TP8-compatible geometry",
+            ));
+        }
+        self.fp8_reference = true;
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn project_fp8(
+        &self,
+        s: &mut CudaSubmission,
+        matrix: V41Matrix<'_>,
+        codes: &CudaBuffer,
+        scales: &CudaBuffer,
+        slots: V41Slots<'_>,
+        out: &CudaBuffer,
+        output: V41Output,
+        shards: usize,
+    ) -> Result<(), RuntimeError> {
+        if self.fp8_reference {
+            s.v41_block_matvec_reference(matrix, codes, scales, slots, out, output, shards)
+        } else {
+            s.v41_block_matvec(matrix, codes, scales, slots, out, output)
+        }
     }
 
     /// Records one token's pass through the stage's layers.
@@ -2619,21 +2669,25 @@ impl V41Stage {
         let wk = &self.work;
         let single = V41Slots::single();
         s.v41_act_quant_fp8(&wk.normalized, &wk.act_codes, &wk.act_scales, 1, h)?;
-        s.v41_block_matvec(
+        self.project_fp8(
+            s,
             lw.wq_a.matrix(),
             &wk.act_codes,
             &wk.act_scales,
             single,
             &wk.q_low,
             V41Output::Bf16,
+            1,
         )?;
-        s.v41_block_matvec(
+        self.project_fp8(
+            s,
             lw.wkv.matrix(),
             &wk.act_codes,
             &wk.act_scales,
             single,
             &wk.kv,
             V41Output::Bf16,
+            1,
         )?;
         s.v41_rms_norm(
             &wk.q_low,
@@ -2645,13 +2699,15 @@ impl V41Stage {
             V41Output::Bf16,
         )?;
         s.v41_act_quant_fp8(&wk.q_norm, &wk.act2_codes, &wk.act2_scales, 1, shape.q_rank)?;
-        s.v41_block_matvec(
+        self.project_fp8(
+            s,
             lw.wq_b.matrix(),
             &wk.act2_codes,
             &wk.act2_scales,
             single,
             &wk.q_heads,
             V41Output::Bf16,
+            1,
         )?;
         s.v41_rms_norm(
             &wk.kv,
@@ -2681,13 +2737,15 @@ impl V41Stage {
             V41Output::Bf16,
         )?;
         s.v41_act_quant_fp8(&wk.low_rank, &wk.act_codes, &wk.act_scales, 1, wo_rows)?;
-        s.v41_block_matvec(
+        self.project_fp8(
+            s,
             lw.wo_b.matrix(),
             &wk.act_codes,
             &wk.act_scales,
             single,
             &wk.attn_out,
             V41Output::Bf16,
+            8,
         )
     }
 
@@ -2823,13 +2881,15 @@ impl V41Stage {
                     .ok_or_else(|| invalid("selection"))?;
                 if let Some(ix) = &lw.indexer {
                     if project_index {
-                        s.v41_block_matvec(
+                        self.project_fp8(
+                            s,
                             ix.wq_b.matrix(),
                             &wk.act2_codes,
                             &wk.act2_scales,
                             single,
                             &wk.index_query,
                             V41Output::Bf16,
+                            1,
                         )?;
                     }
                     s.v41_rope(
@@ -3094,21 +3154,25 @@ impl V41Stage {
             false,
             &wk.y,
         )?;
-        s.v41_block_matvec(
+        self.project_fp8(
+            s,
             lw.shared[0].matrix(),
             &wk.act_codes,
             &wk.act_scales,
             single,
             &wk.sg,
             V41Output::Bf16,
+            1,
         )?;
-        s.v41_block_matvec(
+        self.project_fp8(
+            s,
             lw.shared[2].matrix(),
             &wk.act_codes,
             &wk.act_scales,
             single,
             &wk.su,
             V41Output::Bf16,
+            1,
         )?;
         s.v41_swiglu(
             &wk.sg,
@@ -3121,13 +3185,15 @@ impl V41Stage {
             V41Output::Bf16,
         )?;
         s.v41_act_quant_fp8(&wk.sh, &wk.act2_codes, &wk.act2_scales, 1, e)?;
-        s.v41_block_matvec(
+        self.project_fp8(
+            s,
             lw.shared[1].matrix(),
             &wk.act2_codes,
             &wk.act2_scales,
             single,
             &wk.sy,
             V41Output::Bf16,
+            8,
         )?;
         if let Some((cache, _, _)) = cached {
             s.v41_lane_wait(&cache.lane, &wk.y)?;

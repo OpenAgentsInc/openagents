@@ -798,6 +798,60 @@ fn reference_fp8_order_matches_the_measured_b200_row() -> TestResult {
     Ok(())
 }
 
+/// The bounded diagnostic agrees with the independently implemented CPU
+/// integer sum for mixed signs, zeros, subnormal FP8 codes, and ordinary
+/// weight scales at both real projection widths. Comparison is exact.
+#[test]
+fn reference_fp8_random_rows_match_independent_cpu_sums() -> TestResult {
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let mut rng = Rng(0x987123);
+    for cols in [1280, 5120] {
+        let mut packed = synthetic(&mut rng, V41MatvecFormat::Fp8Block32x32, 37, cols);
+        packed.weights[..cols].fill(0);
+        let input: Vec<f32> = (0..cols).map(|_| rng.activation()).collect();
+        let q = quantize(&round_bf16(&input)?, Quantization::Fp8)?;
+        let w = backend.byte_buffer(&packed.weights)?;
+        let ws = backend.byte_buffer(&packed.scales)?;
+        let x = backend.byte_buffer(q.codes())?;
+        let xs = backend.byte_buffer(q.scales())?;
+        let out = f32_buffer(&mut backend, packed.rows)?;
+        let matrix = V41Matrix {
+            format: packed.format,
+            weights: &w,
+            scales: &ws,
+            rows: packed.rows,
+            cols,
+            matrices: 1,
+        };
+        for shards in [1, 8] {
+            let mut submission = backend.begin_submission()?;
+            submission.v41_block_matvec_reference(
+                matrix,
+                &x,
+                &xs,
+                V41Slots::single(),
+                &out,
+                V41Output::Bf16,
+                shards,
+            )?;
+            submission.commit(CudaCommandWait::Completed)?;
+            let want = if shards == 1 {
+                linear(&packed, &input, Arithmetic::ReferenceBf16Tp8)?
+            } else {
+                psionic_models::deepseek_v41_cpu::quantization::linear_row_parallel(
+                    &packed,
+                    &input,
+                    Arithmetic::ReferenceBf16Tp8,
+                )?
+            };
+            assert_eq!(read_f32(&out)?, want, "K={cols}, ranks={shards}");
+        }
+    }
+    Ok(())
+}
+
 /// Activation quantization on edge values: zero blocks (scale floor),
 /// signed zeros, ties between E4M3 codes, subnormal codes, saturation, large
 /// and tiny magnitudes, BF16 rounding of the input, and nonfinite blocks.

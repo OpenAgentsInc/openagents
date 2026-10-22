@@ -143,6 +143,11 @@ fn run_reference(args: &[String]) -> Result<(), Refused> {
         .map(Backend::parse)
         .transpose()?
         .unwrap_or(Backend::Cpu);
+    if flag(args, "--arithmetic") == Some(psionic_v41_stage::CUDA_FP8_REFERENCE) {
+        return Err(Refused(
+            "FP8 arithmetic diagnostics run through qualify with recording".into(),
+        ));
+    }
     // Refuse an arithmetic the backend doesn't implement before any load.
     let arithmetic = flag(args, "--arithmetic")
         .map(|value| parse_profile(backend, value))

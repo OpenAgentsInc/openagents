@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 #[test]
 fn every_backend_and_arithmetic_pair_is_implemented_or_refused() {
-    let cases: [(Backend, &str, Result<Option<Arithmetic>, &str>); 10] = [
+    let cases: [(Backend, &str, Result<Option<Arithmetic>, &str>); 11] = [
         (Backend::Cpu, "f32", Ok(Some(Arithmetic::Float32))),
         (Backend::Cpu, "bf16", Ok(Some(Arithmetic::ReferenceBf16))),
         (
@@ -34,6 +34,7 @@ fn every_backend_and_arithmetic_pair_is_implemented_or_refused() {
             Err("is not one of f32, bf16, bf16-tp8"),
         ),
         (Backend::Cuda, "device", Ok(None)),
+        (Backend::Cuda, "fp8-mma-tp8", Ok(None)),
         (
             Backend::Cuda,
             "f32",

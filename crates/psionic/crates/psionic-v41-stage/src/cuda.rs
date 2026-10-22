@@ -948,7 +948,7 @@ pub fn run_stage(
         ));
     }
     let mut backend = cuda_backend()?;
-    let loaded = model.stage_with(
+    let mut loaded = model.stage_with(
         &mut backend,
         entry.first_layer as usize..entry.end_layer as usize,
         options.max_context,
@@ -956,6 +956,16 @@ pub fn run_stage(
         options.observe,
         options.control,
     )?;
+    if options.cuda_fp8_reference {
+        if options.record.is_none() || options.tiers.any() {
+            return Err(Refused(
+                "FP8 diagnostics need --record and ordinary device weights".into(),
+            ));
+        }
+        loaded
+            .enable_fp8_reference()
+            .map_err(|e| Refused(e.to_string()))?;
+    }
     let device = device_info(&backend, options.experts);
     if let Some(plan) = tiers::memory_plan(&loaded) {
         // The single-box plan, once at load, for the operator's log (#12467).
@@ -986,9 +996,11 @@ pub fn run_stage(
         data_listen: options.data_listen.clone(),
         data_advertise: options.data_advertise.clone(),
         runtime: Backend::Cuda.runtime(),
-        profile: options
-            .tiers
-            .profile(crate::profile_name(Backend::Cuda, None)),
+        profile: options.tiers.profile(if options.cuda_fp8_reference {
+            crate::profile_name(Backend::Cuda, None).replacen("cuda-device", "cuda-fp8-mma-tp8", 1)
+        } else {
+            crate::profile_name(Backend::Cuda, None)
+        }),
         device,
         events: options.events.clone(),
         record: options.record.clone(),
