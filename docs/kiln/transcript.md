@@ -59,13 +59,15 @@ Each step's reasoning goes in a thinking block:
 - otherwise a `<think>` block in the answer;
 - otherwise the step's stated `thought` from Kiln's reply format.
 
-Today no Pylon sends reasoning apart from the answer: the DeepSeek V4.1
-group splits it off at `</think>` and drops it (`pylon::group_serve`), and
-the Psionic engine drops `reasoning_content`. Showing the model's real
-reasoning needs a `reasoning` field on the NIP-CJ result, which is a Pylon
-protocol and deployment change; Kiln already reads it. Pylons answer a
-whole result at once, so the block appears when the answer arrives rather
-than streaming.
+Since 2026-10-21 a Pylon result carries the model's reasoning in an
+optional `reasoning` field (NIP-CJ, NIP-PYLON), capped at 32 KiB and
+trimmed from the start. The Psionic engine passes `reasoning_content`
+through, and the DeepSeek V4.1 group head passes what it splits off at
+`</think>`. Flint on GCP runs it (pylon `b316b703de`); a Kiln run pinned
+to it (`?model=flint&pylon=NPUB`) shows Flint's own reasoning in each
+step's **Thought process**. The DeepSeek group gets it with its next head
+relaunch (head `e411ee8ce2`). Pylons answer a whole result at once, so the
+block appears when the answer arrives rather than streaming.
 
 DeepSeek also sometimes answers in its own tool-call markup
 (`<｜DSML｜invoke name="view">…`) instead of Kiln's JSON. Kiln reads those
