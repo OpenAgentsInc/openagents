@@ -134,3 +134,45 @@ build until the next publish. Production follows `live`, which only
   terminal: `livehost rollback --tenant TENANT --channel CHANNEL --store
   STORE --relay RELAY --key KEY` (to the parent), or re-point to a manifest
   from `STATE/kiln-history.json` with `--to HASH`.
+
+## Measurements
+
+Measured on 2026-10-21 on the owner's Mac, locally: `kiln-runner --jobs 6`,
+`kiln-dev --live-*` following the throwaway `kiln-dev` tenant over
+`wss://relay.openagents.com`, and a local directory store. Each run edits
+one log line in `crates/kiln/src/web/app.rs` (about 80 KiB) through
+`kilnWrite`, then `kilnSelfEdit('publish')`, in headless Chrome.
+
+| Phase | Warm (same commit as the last publish) | After a new commit |
+| --- | --- | --- |
+| Stage: check out, clean the crates, apply the diff | 0.28 s | 2.1 s |
+| `cargo test -p kiln -p kiln-tools` | 4.2 s | 7.3 s |
+| Build: page module, tools, `wasm-bindgen`, light compression | 4.2 s | 11.6 s |
+| Smoke: shape, then the page's self-test in headless Chrome | 0.85 s | 1.1 s |
+| Publish: read the pointer, upload, sign the new pointer | 0.53 s | 1.0 s |
+| Runner total | 10.0 s | 23.1 s |
+| The page sees the build (3-second poll), tests it in a worker, reloads | about 1 s | about 2 s |
+| **Click to reloaded, measured by the page** | **11.0 s** | **25.1 s** |
+
+- **Reset** to the host's own build: 0.4 s on the runner, 2.9 s from the
+  click to the reloaded page.
+- **Revert** to the build before the last publish: 2.9 s from the click to
+  the reloaded page.
+- The first publish after the runner started cold took 72 s to build
+  (every dependency for `wasm32-unknown-unknown` and `wasm32-wasip1`).
+- The reload itself is about 0.1 s; the worker smoke test of the new build
+  is about 20 ms.
+- On staging, expect more for the upload (Cloud Storage instead of a local
+  directory) and for the follower's pickup of the pointer.
+
+## Checked locally
+
+- Publish, warm and after a new commit, with the timings above.
+- Reset and revert, each reloading every open page.
+- A key not on the admin list: the runner answers "only an admin's key
+  may publish, revert, or reset Kiln", and nothing changes.
+- An edit that doesn't compile for the browser: the native tests pass, the
+  build fails, and the runner answers "not published: the build failed".
+- A new page module under an older host `index.html` (the site serves its
+  own `index.html`, not the published one): the module skips the controls
+  the older page lacks.

@@ -128,9 +128,12 @@ pub async fn run() {
     app.page_metrics();
     app.render_files();
     app.restore_session();
+    app.render_metrics();
     app.load_admin_key();
     *app.build.borrow_mut() = current_build().await.unwrap_or_else(|| "site".into());
-    el(&app.doc, "build").set_text_content(Some(&app.build.borrow()));
+    if let Some(node) = app.doc.get_element_by_id("build") {
+        node.set_text_content(Some(&app.build.borrow()));
+    }
     wasm_bindgen_futures::spawn_local(app.clone().watch_builds());
     let params =
         web_sys::UrlSearchParams::new_with_str(&window.location().search().unwrap_or_default())
@@ -204,8 +207,11 @@ impl App {
     fn wire(self: &Rc<Self>) {
         let on = |id: &str, f: Box<dyn Fn(web_sys::Event)>| {
             let closure = Closure::<dyn Fn(web_sys::Event)>::new(f);
-            let _ = el(&self.doc, id)
-                .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+            // A host page older than this module may lack a control.
+            if let Some(node) = self.doc.get_element_by_id(id) {
+                let _ = node
+                    .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref());
+            }
             closure.forget();
         };
         let app = self.clone();
@@ -1662,7 +1668,9 @@ impl App {
             }
         };
         if let Ok(key) = Key::from_bytes(bytes) {
-            el(&self.doc, "admin-key").set_text_content(Some(&key.npub()));
+            if let Some(node) = self.doc.get_element_by_id("admin-key") {
+                node.set_text_content(Some(&key.npub()));
+            }
             *self.admin_key.borrow_mut() = Some(key);
         }
     }
@@ -1818,12 +1826,19 @@ impl App {
             }
             *self.pending_build.borrow_mut() = Some(build.clone());
             if self.busy.get() {
-                let banner = el(&self.doc, "update");
-                banner.set_text_content(Some(&format!(
-                    "Kiln build {build} is ready; it loads when the agent is idle."
-                )));
-                let _ = banner.class_list().remove_1("hidden");
-                let _ = el(&self.doc, "reload-now").class_list().remove_1("hidden");
+                self.log(
+                    "info",
+                    &format!("Kiln build {build} is ready; it loads when the agent is idle."),
+                );
+                if let Some(banner) = self.doc.get_element_by_id("update") {
+                    banner.set_text_content(Some(&format!(
+                        "Kiln build {build} is ready; it loads when the agent is idle."
+                    )));
+                    let _ = banner.class_list().remove_1("hidden");
+                }
+                if let Some(button) = self.doc.get_element_by_id("reload-now") {
+                    let _ = button.class_list().remove_1("hidden");
+                }
                 continue;
             }
             self.swap(&build).await;
