@@ -196,6 +196,9 @@ pub fn render_login(
         }
     }
     let settings = Offers(methods);
+    let providers_only = methods
+        .iter()
+        .all(|method| matches!(method, Method::Github | Method::Google));
     let back = encode(return_to);
     let title = if signup { "Sign up" } else { "Log in" };
     let path = if signup { "/signup" } else { "/login" };
@@ -285,7 +288,8 @@ pub fn render_login(
     };
     let card = auth_card(
         heading,
-        Some(html! { "The OpenAgents app needs no sign-in. Open it and start." }),
+        (!providers_only)
+            .then(|| html! { "The OpenAgents app needs no sign-in. Open it and start." }),
         html! {
             div.oa-auth-login-form data-slot="login-form" {
                 @if let Some(notice) = notice {
@@ -298,8 +302,12 @@ pub fn render_login(
                     (form)
                 }
                 @if let Some(form) = sso_form { (form) }
-                p.oa-auth-switch { "Or log in with your Nostr key." }
-                (crate::web_sign_in::sign_in_block(return_to))
+                // A site that offers only identity providers (GitHub, Google)
+                // shows just those buttons.
+                @if !providers_only {
+                    p.oa-auth-switch { "Or log in with your Nostr key." }
+                    (crate::web_sign_in::sign_in_block(return_to))
+                }
                 @if signup {
                     p.oa-auth-switch { "Have an account? " a href=(format!("/login?return_to={back}")) { "Log in" } }
                 } @else {
