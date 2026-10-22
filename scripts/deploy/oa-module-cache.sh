@@ -5,12 +5,13 @@
 #   oa-module-cache NAME OUTDIR[,OUTDIR...] -- CMD...
 #
 # The key has two parts. The first, the recipe, digests NAME, CMD, the
-# compilers and tools, the root and GPUI web workspaces' Cargo.lock files,
-# Cargo's configuration, and every build script the context carries
-# (scripts/ and apps/openagents/scripts/). The second digests the module's source files:
-# the files Cargo's dep-info listed for the last build of this recipe, each
-# widened to the whole package directory it belongs to, so a new file,
-# dependency, or include in a package changes the key. When both match a
+# compilers and tools, Cargo's configuration, and every build script the
+# context carries (scripts/ and apps/openagents/scripts/). The second
+# digests the module's source files and dependencies: the files Cargo's
+# dep-info listed for the last build of this recipe, each widened to the
+# whole package directory it belongs to, so a new file, dependency, or
+# include in a package changes the key; and the Cargo.lock entries of the
+# crates those packages use, so a lock change elsewhere keeps the build. When both match a
 # stored build, its OUTDIRs are restored and CMD doesn't run. Otherwise CMD
 # runs, and its OUTDIRs and its fresh input list are stored for the next
 # build.
@@ -95,10 +96,10 @@ store() { # FILE OBJECT
     done
     rustc -vV 2> /dev/null || true
     env | grep -E '^(CC_|AR_|CFLAGS|RUSTFLAGS|CARGO_|PROTOC|OPENAGENTS_|WEB_BUILD_)' | grep -v '^CARGO_HOME=' | sort
-    # The lock files of the two workspaces modules build in, and Cargo's
-    # configuration.
-    for f in Cargo.lock apps/openagents/web/Cargo.lock .cargo/config.toml \
-        apps/openagents/.cargo/config.toml apps/openagents/web/.cargo/config.toml; do
+    # Cargo's configuration. The lock files count through the module's own
+    # dependencies (crates_of, below), so a lock change elsewhere keeps it.
+    for f in .cargo/config.toml apps/openagents/.cargo/config.toml \
+        apps/openagents/web/.cargo/config.toml; do
         if [ -f "$ROOT/$f" ]; then (cd "$ROOT" && sha256sum "$f"); fi
     done
     # The image build's own plumbing doesn't change a module's files.
@@ -151,7 +152,62 @@ digest_inputs() { # LIST [BEFORE]
     {
         (cd "$ROOT" && tr '\n' '\0' < "$work/files" | xargs -0 sha256sum)
         cat "$work/missing" 2> /dev/null || true
+        if [ -s "$work/crates" ]; then lock_entries "$work/crates"; fi
     } | sha256sum | cut -c1-40
+}
+
+# The registry and git crates the input packages use, as `crate WS NAME
+# VERSION` lines, from `cargo tree` in each workspace (WS) whose lock names
+# one of them; `lock WS` stands for a whole lock when the tree can't be
+# read. A workspace whose pinned toolchain isn't installed is skipped: the
+# module can't have built there.
+crates_of() { # INPUTS
+    for ws in . apps/openagents/web; do
+        [ -f "$ROOT/$ws/Cargo.lock" ] || continue
+        pin=$ROOT/$ws/rust-toolchain.toml
+        [ -f "$pin" ] || pin=$(dirname "$ROOT/$ws")/rust-toolchain.toml
+        channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$pin" 2> /dev/null | head -n 1)
+        if [ -n "$channel" ] && command -v rustup > /dev/null 2>&1 &&
+            ! rustup toolchain list 2> /dev/null | grep -q "^$channel"; then
+            continue
+        fi
+        # One package at a time: several -p specs together refuse a path
+        # package outside the workspace's members.
+        named=0 read=0
+        while IFS= read -r dir; do
+            [ -f "$ROOT/$dir/Cargo.toml" ] || continue
+            pkg=$(sed -n '/^\[package\]/,/^\[/s/^name *= *"\(.*\)"/\1/p' "$ROOT/$dir/Cargo.toml" | head -n 1)
+            [ -n "$pkg" ] && grep -qx "name = \"$pkg\"" "$ROOT/$ws/Cargo.lock" || continue
+            named=$((named + 1))
+            if tree=$(cd "$ROOT/$ws" && RUSTUP_AUTO_INSTALL=0 cargo tree --locked --offline -e normal,build \
+                --target all --prefix none -f '{p}' -p "$pkg" 2> /dev/null); then
+                read=$((read + 1))
+                printf '%s\n' "$tree" | sed 's/ (\*)$//' | grep -v ' (/' | awk -v ws="$ws" 'NF >= 2 { print "crate", ws, $1, $2 }'
+            fi
+        done < "$1"
+        if [ "$named" -gt 0 ] && [ "$read" -eq 0 ]; then echo "lock $ws"; fi
+    done | LC_ALL=C sort -u
+}
+
+# The lock entries (or whole locks) a crates_of list names.
+lock_entries() { # CRATES
+    grep '^lock ' "$1" | while read -r _ ws; do
+        printf 'lock %s %s\n' "$ws" "$(sha256sum < "$ROOT/$ws/Cargo.lock" 2> /dev/null | cut -c1-64)"
+    done
+    for ws in . apps/openagents/web; do
+        grep "^crate $ws " "$1" > "$work/want" || continue
+        awk 'FNR == NR { want[$3 " " $4] = 1; next }
+             /^\[\[package\]\]/ { if (block != "" && (name " v" version) in want) print block; block = ""; name = ""; version = "" }
+             { block = block $0 "\n" }
+             /^name = / { name = $3; gsub(/"/, "", name) }
+             /^version = / { version = $3; gsub(/"/, "", version) }
+             END { if (block != "" && (name " v" version) in want) print block }' \
+            "$work/want" "$ROOT/$ws/Cargo.lock"
+        # A wanted crate the lock no longer has.
+        awk '{ print $3 " " $4 }' "$work/want" | while read -r n v; do
+            grep -qx "name = \"$n\"" "$ROOT/$ws/Cargo.lock" || echo "gone $ws $n $v"
+        done
+    done
 }
 
 # A stored build for this recipe and these sources: restore it. With
@@ -159,6 +215,7 @@ digest_inputs() { # LIST [BEFORE]
 # the input list.
 if [ "${OA_MODULE_RECORD:-}" != 1 ] && fetch "$prefix/inputs" "$work/inputs" && [ -s "$work/inputs" ]; then
     : > "$work/missing"
+    fetch "$prefix/crates" "$work/crates" || : > "$work/crates"
     inputs=$(digest_inputs "$work/inputs")
     if fetch "$prefix/$inputs.tar.gz" "$work/build.tar.gz"; then
         if tar -xzf "$work/build.tar.gz" -C / 2> /dev/null; then
@@ -215,11 +272,13 @@ if [ "${OA_MODULE_RECORD:-}" = 1 ]; then
     exit 0
 fi
 : > "$work/missing"
+crates_of "$work/inputs" > "$work/crates"
 inputs=$(digest_inputs "$work/inputs" "$work/before")
 dirs=$(printf '%s' "$outdirs" | tr ',' ' ')
 # shellcheck disable=SC2086
 if tar -czf "$work/build.tar.gz" -C / $(for d in $dirs; do printf '%s ' "${d#/}"; done) &&
     store "$work/build.tar.gz" "$prefix/$inputs.tar.gz" &&
+    store "$work/crates" "$prefix/crates" &&
     store "$work/inputs" "$prefix/inputs"; then
     say "built in $(( built - started )) s and stored $recipe/$inputs ($(wc -l < "$work/inputs" | tr -d " ") input paths)"
 else
