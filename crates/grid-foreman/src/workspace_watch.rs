@@ -372,7 +372,7 @@ fn snapshot(
     } else if source.phase == "stopped" {
         current.at = saved_at.min(now);
         current.label = "Workspace stopped".into();
-        current.summary = "The workspace reached its work limit.".into();
+        current.summary = "The work has stopped.".into();
     } else if now.saturating_sub(current.at) > 120 {
         current.summary = "Waiting for the next update.".into();
     }
@@ -431,7 +431,8 @@ mod tests {
             "files":{"apps/haunt-preview/src/main.ts":"PRIVATE_CONTENT"},
             "original":{"apps/haunt-preview/src/main.ts":"PRIVATE_ORIGINAL"},
             "pending":[{"Write":{"path":"apps/haunt-preview/src/main.ts","content":"PRIVATE_PENDING"}}],
-            "phase":"model","turns":2,"calls":1,"until":22600,"checked":null,"answers":[]
+            "phase":"model","turns":2,"calls":1,"until":22600,"checked":null,"answers":[],
+            "stop_reason":"PRIVATE_STOP_REASON"
         })).unwrap();
         (entry, source)
     }
@@ -610,6 +611,20 @@ mod tests {
         assert_eq!(report.phase, WorkPhase::Checking);
         assert!(report.checks.iter().all(|check| check.status != "passed"));
         assert_eq!(report.current.unwrap().label, "Waiting for checks");
+    }
+
+    #[test]
+    fn stopped_workspace_does_not_invent_a_cause_or_publish_its_private_reason() {
+        let (entry, mut source) = fixture();
+        source.phase = "stopped".into();
+        let report = snapshot(&entry, &source, 1000, 1010, &mut Cursor::default()).unwrap();
+        report.validate(1010).unwrap();
+        assert_eq!(report.phase, WorkPhase::Failed);
+        assert_eq!(
+            report.current.as_ref().unwrap().summary,
+            "The work has stopped."
+        );
+        assert!(!serde_json::to_string(&report).unwrap().contains("PRIVATE_"));
     }
 
     #[test]
