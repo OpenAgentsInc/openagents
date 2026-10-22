@@ -1488,3 +1488,8 @@ and output bytes. See [the raw recheck summary](verification/deepseek-v41-gates-
 The long stage-2 CPU reference is still pending. These rechecks establish the
 recording's structure and measurements; the numerical release policy remains
 unfrozen.
+
+The prompt helper also supports `TOKENIZER_DIR --count MESSAGES_JSON` to count
+retained chat requests with the serving template, without running inference.
+Its original boundary generation remains byte-for-byte reproducible; malformed
+arguments return an error. Raw private request text stays outside the repository.
