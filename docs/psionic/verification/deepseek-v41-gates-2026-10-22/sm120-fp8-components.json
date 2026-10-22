@@ -1,0 +1,20 @@
+{
+  "schema": "psionic.deepseek_v41.component_run.v1",
+  "source_commit": "17e8d0a80ea8492927e642b65b08fb9d44cce02f",
+  "archive": "gs://openagents-psionic-models/bin/psionic-v41-tests/17e8d0a80e/sm_120/tests.tar.gz",
+  "archive_sha256": "62c1a5535252c4a9910bd7291ee91495d35617327835adacd523323aed1522b4",
+  "log": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/calibration-20261022/components/kernels-fp8-probe.log",
+  "log_sha256": "ac439fc9a7723d0ab3660d6779eda8cbef83749139ee5f3f5353b977ec99b898",
+  "device": "RTX PRO 6000 Blackwell, SM120",
+  "passed": 114,
+  "failed": 0,
+  "ignored": 6,
+  "status": 0,
+  "scope": "component tests, including corrected synthetic qualification and the optional FP8 measured-row control; not whole-model or release qualification",
+  "random_control": {
+    "source_commit": "72ba30be97",
+    "archive_sha256": "8f4744f569fd8887e4f0d74089e2aa37481e2d4564c4f6c697f783708c983176",
+    "test": "reference_fp8_random_rows_match_independent_cpu_sums",
+    "result": "1 passed on SM120; exact CPU comparison, 37 rows at K=1280 and 5120, both rank counts"
+  }
+}
