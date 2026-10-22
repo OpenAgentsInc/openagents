@@ -485,6 +485,15 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12463, #12466: on a spot `g4-standard-48` with a profile from a few
+  chat answers, run `psionic-v41-stage chain --split 0-40 --gpus 0
+  --experts file --expert-cache auto --engram file --expert-profile FILE`
+  on 32K-context conversations (needs `--max-context 32768` and
+  `--prefill layer-major`), and on a consumer NVMe machine for Engram
+  latency; record decode tok/s, hit rate, and Engram seconds in
+  `docs/psionic/v41-single-box.md`. On a machine with every expert
+  page-locked (`--experts host`, 360 GB of RAM), record the measured bus
+  and host lane times per expert.
 - #12483: after the next web and web chat deploy, signed in as a fresh
   test account with no computers: check that the Grid's top bar says Ask
   OpenAgents, that the chat opens with no Computers, Environments, Agent
