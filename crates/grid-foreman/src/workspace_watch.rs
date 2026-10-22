@@ -359,19 +359,21 @@ fn snapshot(
         path: None,
         summary: "Waiting for the next update.".into(),
     });
-    current.at = saved_at.min(now);
     if source.phase == "awaiting-check" {
+        current.at = saved_at.min(now);
         current.label = "Waiting for checks".into();
         current.kind = WorkStepKind::Check;
         current.path = None;
         current.summary = "The coordinator needs to check these files.".into();
     } else if source.phase == "review" {
+        current.at = saved_at.min(now);
         current.label = "Ready for review".into();
         current.summary = "The workspace is waiting for review.".into();
     } else if source.phase == "stopped" {
+        current.at = saved_at.min(now);
         current.label = "Workspace stopped".into();
         current.summary = "The workspace reached its work limit.".into();
-    } else if now.saturating_sub(saved_at) > 120 {
+    } else if now.saturating_sub(current.at) > 120 {
         current.summary = "Waiting for the next update.".into();
     }
     let changed: Vec<_> = source
@@ -512,6 +514,24 @@ mod tests {
         assert_eq!(next.steps[1].kind, WorkStepKind::Write);
         source.agent.steps[0].observations[0].command = "check".into();
         assert!(snapshot(&entry, &source, 1200, 1210, &mut cursor).is_err());
+    }
+
+    #[test]
+    fn newer_source_save_does_not_retime_the_last_action() {
+        let (entry, source) = fixture();
+        let mut cursor = Cursor::default();
+        let first = snapshot(&entry, &source, 1000, 1010, &mut cursor).unwrap();
+        // Starting another model call or adding guidance saves the source, but
+        // no new tool action has happened.
+        let next = snapshot(&entry, &source, 1200, 1210, &mut cursor).unwrap();
+        next.validate(1210).unwrap();
+        assert!(next.is_after(&first));
+        assert_eq!(next.steps, first.steps);
+        assert_eq!(next.current.as_ref().unwrap().at, 1000);
+        assert_eq!(
+            next.current.unwrap().summary,
+            "Waiting for the next update."
+        );
     }
 
     #[test]
