@@ -328,10 +328,13 @@ def cmd_start(args: argparse.Namespace) -> int:
     save_state(state)
     daemonize()
     state["pid"] = os.getpid()
+    # A run of its own, with no parent: a parent run's reap would end it.
+    env = {k: v for k, v in os.environ.items() if k != "OA_RUN_ID"}
     r = subprocess.run(
         [sys.executable, str(AGENT_RUN), "new", "--kind", "v41-live", "--root", str(os.getpid())],
         capture_output=True,
         text=True,
+        env=env,
     )
     state["run_id"] = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ""
     save_state(state)

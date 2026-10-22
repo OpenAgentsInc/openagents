@@ -278,7 +278,14 @@ fn shown(label: &str, model: &str, group: Option<&router::AnsweredGroup>, text: 
     };
     let source = match group {
         Some(group) => format!(
-            "**{GROUP_NAME}** · group {}{}",
+            "**{GROUP_NAME}** · {}group {}{}",
+            // A launch that calls itself a preview says so on every answer
+            // (#12403).
+            if label.to_ascii_lowercase().contains("preview") {
+                "Experimental preview · "
+            } else {
+                ""
+            },
             literal(&group.id),
             match group.stages {
                 0 => String::new(),

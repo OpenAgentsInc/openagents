@@ -551,6 +551,16 @@ fn a_pylon_answer_is_shown_under_its_name() {
         shown("W16 G5", GROUP_MODEL, Some(&group), "Hi."),
         "**DeepSeek V4.1** · group w16-g5 (4 parts)\n\nHi."
     );
+    // A launch that calls itself a preview says so (#12403).
+    assert_eq!(
+        shown(
+            "DeepSeek V4.1 Flash · Experimental preview",
+            GROUP_MODEL,
+            Some(&group),
+            "Hi."
+        ),
+        "**DeepSeek V4.1** · Experimental preview · group w16-g5 (4 parts)\n\nHi."
+    );
     // A source line the model copied is dropped: one source per answer.
     assert_eq!(
         shown(

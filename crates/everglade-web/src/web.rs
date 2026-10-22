@@ -1736,6 +1736,21 @@ impl Page {
             {
                 crate::help_desk::draw(&mut ui, atlas, css, view.view_proj);
             }
+            // A model group's details over its sign, when it is near or
+            // pointed at (#12403).
+            if HOME.with(std::cell::Cell::get)
+                && self.runtime.is_plaza()
+                && let Some(atlas) = &self.layout
+            {
+                crate::pylon_bay::draw(
+                    &mut ui,
+                    atlas,
+                    css,
+                    view.view_proj,
+                    self.runtime.player.pos,
+                    self.now,
+                );
+            }
             if let Some(atlas) = &self.layout {
                 super::terminal::draw(&mut ui, atlas, css);
             }

@@ -114,6 +114,7 @@ to{opacity:0;transform:translate(-50%,50%) scale(4.5)}\
 #pylons-field.bay .pylon.t1 .tag b{font-size:11px;font-weight:500;line-height:14px;color:#d4d4d4}\
 #pylons-field.bay .pylon.t2 .tag,#pylons-field.bay .pylon:hover .tag{padding:6px 10px 7px;border-radius:8px;background:rgba(8,8,8,.8);border:1px solid rgba(255,255,255,.14);text-shadow:none}\
 #pylons-field.bay .pylon.t2 .tag b,#pylons-field.bay .pylon:hover .tag b{font-size:12px;line-height:16px;color:#fff}\
+#pylons-field.bay .pylon.group-head .tag,#pylons-field.bay .pylon.group-part .tag{display:none}\
 #pylons-field.bay .pylon.t2 .tag small,#pylons-field.bay .pylon:hover .tag small{display:block;line-height:15px}\
 #pylons-field.bay .pylon.t2 .tag .slots,#pylons-field.bay .pylon:hover .tag .slots{display:flex;margin-top:4px}\
 #pylons-field.bay .pylon:hover{z-index:20000!important}\

@@ -82,7 +82,7 @@ pub struct Pylon {
 }
 
 /// A pylon's place in a model group.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Group {
     /// The group's key, the same for its head and every part, so the Grid
     /// draws them together.
@@ -103,6 +103,25 @@ pub struct Group {
     /// The head's time limit for one answer, s.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deadline_secs: Option<u64>,
+    /// A part's device class, as its stage announced it: `cuda-sm_120`,
+    /// `metal-…`, or `cpu-x86_64`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+    /// How the head's recent answers went, as its beacon reports them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
+}
+
+/// A group head's recent answers, from its beacon.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub struct Profile {
+    /// How many answers the figures cover.
+    pub answers: u64,
+    /// The median time from taking a job to its first answer token, ms:
+    /// reading the prompt included.
+    pub first_token_ms: u64,
+    /// The median rate after the first token.
+    pub tokens_per_s: f64,
 }
 
 impl Group {
@@ -143,6 +162,12 @@ pub struct Jobs {
     /// When the newest receipt's job finished, Unix seconds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_at: Option<u64>,
+    /// How long the newest accepted job took, s.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_secs: Option<u64>,
+    /// How many tokens its buyer counted, when the receipt says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_tokens: Option<u64>,
 }
 
 /// Checkers' verdicts about a pylon.
@@ -287,7 +312,7 @@ pub fn sats(msat: u64) -> String {
 }
 
 /// "0.4 s", "12 s".
-fn seconds(ms: u64) -> String {
+pub(crate) fn seconds(ms: u64) -> String {
     if ms < 10_000 {
         format!("{:.1} s", ms as f64 / 1000.0)
     } else {
@@ -322,6 +347,16 @@ pub fn rows(shown: &Shown) -> Vec<Row> {
         }
         if let Some(secs) = group.deadline_secs {
             push("Answer time limit", span(secs));
+        }
+        if let Some(class) = &group.device {
+            push("Device", bay::machine::Device::of(class).words().to_owned());
+        }
+        if let Some(profile) = group.profile.filter(|p| p.answers > 0) {
+            push("Speed", bay::machine::rate(profile.tokens_per_s));
+            push(
+                "First token",
+                format!("About {}", seconds(profile.first_token_ms)),
+            );
         }
     }
     let mut models: Vec<&str> = Vec::new();
@@ -375,6 +410,9 @@ pub fn rows(shown: &Shown) -> Vec<Row> {
         }
         if let Some(at) = jobs.last_at {
             push("Last job", ago(now.saturating_sub(at)));
+        }
+        if let Some(words) = bay::machine::last_answer(&jobs) {
+            push("Last answer", words);
         }
     }
     if let Some(checks) = pylon.checks {
@@ -494,6 +532,7 @@ mod tests {
             done: 17,
             avg_ms: Some(420),
             last_at: Some(4_000),
+            ..Jobs::default()
         });
         more.pylon.checks = Some(Checks { passing: true });
         more.pylon.paid_msat = Some(21_000);
@@ -610,6 +649,7 @@ mod tests {
             layers: None,
             state: Some("ready".into()),
             deadline_secs: Some(600),
+            ..Group::default()
         });
         assert_eq!(
             head.summary(),
@@ -626,6 +666,7 @@ mod tests {
             layers: Some([10, 20]),
             state: None,
             deadline_secs: None,
+            ..Group::default()
         });
         assert_eq!(part.summary(), "Online · GPU · Part 2 of 4 · layers 10–20");
         let rows = rows(&Shown {

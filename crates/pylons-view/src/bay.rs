@@ -16,6 +16,7 @@
 //! Bay to Verse as a flat list of numbers ([`encode`] and [`decode`]).
 
 pub mod art;
+pub mod machine;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -176,6 +177,18 @@ impl Shape {
     fn of(pylon: &Pylon) -> Shape {
         match pylon.group.as_ref().map(|g| g.role.as_str()) {
             Some("head") => Shape::Head,
+            // A part on a Mac's GPU stands as a Mac (#12420).
+            Some(_)
+                if pylon.family == "unified-memory"
+                    || pylon
+                        .group
+                        .as_ref()
+                        .and_then(|g| g.device.as_deref())
+                        .map(machine::Device::of)
+                        == Some(machine::Device::Metal) =>
+            {
+                Shape::Mac
+            }
             Some(_) => Shape::Part,
             None => match Kind::of(pylon) {
                 Kind::Mac => Shape::Mac,

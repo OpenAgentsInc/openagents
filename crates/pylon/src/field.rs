@@ -237,6 +237,8 @@ struct Counted {
     finished_at: u64,
     address: String,
     accepted: bool,
+    /// The tokens the buyer counted, when its receipt counts tokens.
+    tokens: Option<u64>,
     /// A verified acknowledgment, still subject to this reader's trust policy.
     paid: Option<pylon::Payment>,
 }
@@ -255,6 +257,9 @@ pub struct Activity {
     pub job_secs: u64,
     /// The newest receipt's `finished_at`.
     pub last_finished_at: Option<u64>,
+    /// The newest accepted job: when it finished, how long it took (s),
+    /// and the tokens its buyer counted, if its receipt counts tokens.
+    pub last_accepted: Option<(u64, u64, Option<u64>)>,
 }
 
 /// The newest pool aggregate and whether it recomputed.
@@ -395,6 +400,9 @@ impl Live {
                         finished_at: receipt.finished_at,
                         address: receipt.address(),
                         accepted: receipt.outcome == Outcome::Accepted,
+                        tokens: (receipt.units.kind == pylon::UnitKind::Tokens
+                            && receipt.units.count > 0)
+                            .then_some(receipt.units.count),
                         paid: receipt.payment.clone(),
                     },
                 );
@@ -642,7 +650,14 @@ impl Live {
             activity.receipts += 1;
             if counted.accepted {
                 activity.accepted += 1;
-                activity.job_secs += counted.finished_at.saturating_sub(counted.started_at);
+                let secs = counted.finished_at.saturating_sub(counted.started_at);
+                activity.job_secs += secs;
+                if activity
+                    .last_accepted
+                    .is_none_or(|(at, _, _)| counted.finished_at > at)
+                {
+                    activity.last_accepted = Some((counted.finished_at, secs, counted.tokens));
+                }
             }
             activity.last_finished_at = activity.last_finished_at.max(Some(counted.finished_at));
         }

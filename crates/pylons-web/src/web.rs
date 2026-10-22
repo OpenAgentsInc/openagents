@@ -9,7 +9,7 @@ use std::rc::Rc;
 
 use std::cell::Cell;
 
-use pylons_view::bay::{self, Bay, Layout, Tier};
+use pylons_view::bay::{self, Bay, Layout, Tier, machine};
 use pylons_view::{Pylon, Shown, Snapshot, rows};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -27,6 +27,9 @@ const LEAVE_MS: i32 = 900;
 const TOP: f64 = 52.0;
 /// The global Verse reads the Bay from ([`bay::encode`]).
 const BAY_GLOBAL: &str = "pylonsBay";
+/// The global Verse reads the model groups from: [`bay::machine::Scene`]
+/// as JSON.
+const GROUPS_GLOBAL: &str = "pylonsGroups";
 /// A machine's width for its click target, m.
 const MACHINE_WIDTH: f64 = 1.5;
 /// How far over a machine's top its label stands, m.
@@ -89,6 +92,13 @@ struct Layer {
     /// The pylons pointed at in this page, so the visit records each once
     /// (#12439).
     pointed: std::collections::BTreeSet<String>,
+    /// When each model group's head became busy, page ms, by group key.
+    busy_since: BTreeMap<String, f64>,
+    /// The groups last handed to Verse, and the ones that left the Grid
+    /// with when they left (page ms): Verse shows those as down for a
+    /// while.
+    groups: RefCell<Vec<machine::GroupScene>>,
+    gone: RefCell<Vec<(f64, machine::GroupScene)>>,
 }
 
 type Shared = Rc<RefCell<Layer>>;
@@ -135,6 +145,9 @@ fn run() -> Option<()> {
         open: None,
         opener: None,
         pointed: Default::default(),
+        busy_since: BTreeMap::new(),
+        groups: RefCell::new(Vec::new()),
+        gone: RefCell::new(Vec::new()),
     }));
     layer.borrow_mut().layout();
 
@@ -433,6 +446,25 @@ fn apply(layer: &Shared, snapshot: Snapshot) {
         let mut l = layer.borrow_mut();
         let layout = l.bay.sync(&snapshot.pylons);
         l.layout = layout;
+        // When each group's head became busy: its beacon's sample time, on
+        // this page's clock.
+        let now = page_now();
+        let mut busy = BTreeMap::new();
+        for pylon in &snapshot.pylons {
+            let Some(group) = pylon.group.as_ref().filter(|g| g.role == "head") else {
+                continue;
+            };
+            if pylon.busy == 0 {
+                continue;
+            }
+            let since = l.busy_since.get(&group.id).copied().unwrap_or_else(|| {
+                let age = (snapshot.now.saturating_sub(pylon.observed_at) as f64 * 1000.0)
+                    .min(machine::GONE_MS);
+                now - age
+            });
+            busy.insert(group.id.clone(), since);
+        }
+        l.busy_since = busy;
     }
     let gone: Vec<String> = layer
         .borrow()
@@ -709,6 +741,45 @@ impl Layer {
         let numbers = bay::encode(&stands, &pipes);
         let array = js_sys::Float64Array::from(numbers.as_slice());
         let _ = js_sys::Reflect::set(&js_sys::global(), &BAY_GLOBAL.into(), &array);
+        self.publish_groups();
+    }
+
+    /// Hands Verse each model group as one machine: its loop, phase, and
+    /// details, and the groups that left a moment ago, shown as down.
+    fn publish_groups(&self) {
+        let now = page_now();
+        let pylons: Vec<Pylon> = self.entries.values().map(|e| e.view.clone()).collect();
+        let focused =
+            |id: &str| self.open.as_deref() == Some(id) || self.hover.as_deref() == Some(id);
+        let live = machine::scenes(&pylons, &self.layout, &self.busy_since, now, &focused);
+        let mut gone = self.gone.borrow_mut();
+        for before in self.groups.borrow().iter() {
+            if !live.iter().any(|g| g.id == before.id) {
+                gone.push((now, machine::gone(before)));
+            }
+        }
+        // A group shows as down for a while, or until it is back under a
+        // new key (a relaunch) or its lane is taken.
+        gone.retain(|(at, ghost)| {
+            now - at < machine::GONE_MS
+                && !live
+                    .iter()
+                    .any(|g| g.title == ghost.title || g.at == ghost.at)
+        });
+        let mut groups = live.clone();
+        groups.extend(gone.iter().map(|(_, ghost)| ghost.clone()));
+        *self.groups.borrow_mut() = live;
+        let scene = machine::Scene {
+            groups,
+            offset: self.offset,
+        };
+        if let Ok(json) = serde_json::to_string(&scene) {
+            let _ = js_sys::Reflect::set(
+                &js_sys::global(),
+                &GROUPS_GLOBAL.into(),
+                &JsValue::from_str(&json),
+            );
+        }
     }
 
     fn place_all(&self) {
@@ -731,7 +802,13 @@ impl Layer {
         labels.sort_by(|a, b| b.2.cmp(&a.2).then(a.1.depth.total_cmp(&b.1.depth)));
         let mut shown: Vec<Keep> = Vec::new();
         for (entry, spot, focused) in labels {
-            let mut tier = bay::tier(entry.shape, spot.depth, focused);
+            // A model group's members are labeled in the world itself:
+            // its sign, its details, and each part's line.
+            let mut tier = if entry.view.group.is_some() {
+                Tier::Hidden
+            } else {
+                bay::tier(entry.shape, spot.depth, focused)
+            };
             if tier != Tier::Hidden {
                 let tag = tag_box(&entry.view, &spot, tier);
                 if !focused && shown.iter().any(|other| overlaps(tag, *other)) {

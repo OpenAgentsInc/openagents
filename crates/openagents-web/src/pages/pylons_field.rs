@@ -22,7 +22,7 @@ use std::time::Duration;
 use nostr::pylon::{Family, Lane, Standing};
 use pylon::field::{Live, RelayField};
 use pylons_view::{
-    Checks, Group as GroupView, Jobs, Pylon as PylonView, Service as ServiceView, Snapshot,
+    Checks, Group as GroupView, Jobs, Profile, Pylon as PylonView, Service as ServiceView, Snapshot,
 };
 use tokio::sync::watch;
 
@@ -89,6 +89,8 @@ pub(crate) fn snapshot(live: &Live, now: u64) -> Snapshot {
                 done: seen.accepted,
                 avg_ms: (seen.accepted > 0).then(|| seen.job_secs * 1000 / seen.accepted),
                 last_at: seen.last_finished_at,
+                last_secs: seen.last_accepted.map(|(_, secs, _)| secs),
+                last_tokens: seen.last_accepted.and_then(|(_, _, tokens)| tokens),
             }
         });
         let paid = &pylon.state.paid_msat;
@@ -169,6 +171,15 @@ pub(crate) fn snapshot(live: &Live, now: u64) -> Snapshot {
                 layers: None,
                 state,
                 deadline_secs: group.deadline_secs,
+                device: None,
+                profile: live
+                    .group_beacon(&head.pylon)
+                    .and_then(pylon::group::answer_profile)
+                    .map(|p| Profile {
+                        answers: u64::try_from(p.answers).unwrap_or(u64::MAX),
+                        first_token_ms: p.first_token_ms,
+                        tokens_per_s: p.tokens_per_s,
+                    }),
             },
         )];
         for (i, stage) in stages.iter().enumerate() {
@@ -182,6 +193,11 @@ pub(crate) fn snapshot(live: &Live, now: u64) -> Snapshot {
                     layers: Some([stage.layers.from, stage.layers.to]),
                     state: None,
                     deadline_secs: None,
+                    device: live
+                        .group_beacon(&stage.pylon.pylon)
+                        .and_then(pylon::group::stage_device)
+                        .and_then(|d| d.class),
+                    profile: None,
                 },
             ));
         }
@@ -200,6 +216,8 @@ pub(crate) fn snapshot(live: &Live, now: u64) -> Snapshot {
                     done: seen.accepted,
                     avg_ms: (seen.accepted > 0).then(|| seen.job_secs * 1000 / seen.accepted),
                     last_at: seen.last_finished_at,
+                    last_secs: seen.last_accepted.map(|(_, secs, _)| secs),
+                    last_tokens: seen.last_accepted.and_then(|(_, _, tokens)| tokens),
                 }
             });
             let status = if state.status == "draining" {

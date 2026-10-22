@@ -12,9 +12,10 @@
 
 use std::f64::consts::TAU;
 
+use super::machine::{self, Device};
 use super::{
-    HEAD_AT, Kind, LANE_LENGTH, LANES, Load, PAD, SECTION_PITCH, SECTION_WIDTH, SIGN_V, Shape,
-    lane_start, member_at, world,
+    HEAD_AT, Kind, LANE_LENGTH, LANES, Load, MOST_PARTS, PAD, SECTION_PITCH, SECTION_WIDTH, SIGN_V,
+    Shape, lane_start, member_at, world,
 };
 
 pub type Point = [f64; 3];
@@ -552,22 +553,287 @@ fn glyph(c: u8) -> [u8; 7] {
         b'C' => [14, 17, 16, 16, 16, 17, 14],
         b'D' => [30, 17, 17, 17, 17, 17, 30],
         b'E' => [31, 16, 16, 30, 16, 16, 31],
+        b'F' => [31, 16, 16, 30, 16, 16, 16],
         b'G' => [14, 17, 16, 23, 17, 17, 15],
+        b'H' => [17, 17, 17, 31, 17, 17, 17],
+        b'I' => [14, 4, 4, 4, 4, 4, 14],
+        b'J' => [7, 2, 2, 2, 2, 18, 12],
+        b'K' => [17, 18, 20, 24, 20, 18, 17],
         b'L' => [16, 16, 16, 16, 16, 16, 31],
         b'M' => [17, 27, 21, 21, 17, 17, 17],
         b'N' => [17, 25, 21, 19, 17, 17, 17],
         b'O' => [14, 17, 17, 17, 17, 17, 14],
         b'P' => [30, 17, 17, 30, 16, 16, 16],
+        b'Q' => [14, 17, 17, 17, 21, 18, 13],
         b'R' => [30, 17, 17, 30, 20, 18, 17],
         b'S' => [15, 16, 16, 14, 1, 1, 30],
+        b'T' => [31, 4, 4, 4, 4, 4, 4],
         b'U' => [17, 17, 17, 17, 17, 17, 14],
+        b'V' => [17, 17, 17, 17, 17, 10, 4],
+        b'W' => [17, 17, 17, 21, 21, 21, 10],
+        b'X' => [17, 17, 10, 4, 10, 17, 17],
         b'Y' => [17, 17, 10, 4, 4, 4, 4],
+        b'Z' => [31, 1, 2, 4, 8, 16, 31],
+        b'0' => [14, 17, 19, 21, 25, 17, 14],
+        b'1' => [4, 12, 4, 4, 4, 4, 14],
+        b'2' => [14, 17, 1, 2, 4, 8, 31],
+        b'3' => [30, 1, 1, 14, 1, 1, 30],
+        b'4' => [2, 6, 10, 18, 31, 2, 2],
+        b'5' => [31, 16, 30, 1, 1, 17, 14],
+        b'6' => [6, 8, 16, 30, 17, 17, 14],
+        b'7' => [31, 1, 2, 4, 8, 8, 8],
+        b'8' => [14, 17, 17, 14, 17, 17, 14],
+        b'9' => [14, 17, 17, 15, 1, 2, 12],
+        b'.' => [0, 0, 0, 0, 0, 12, 12],
+        b'-' => [0, 0, 0, 31, 0, 0, 0],
         _ => [0; 7],
     }
 }
+
+/// The characters a group's sign can draw; any other shows as a gap.
+pub const SIGN_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-";
 
 /// How many runs of cells a letter has, for the tests.
 #[cfg(test)]
 pub(super) fn tests_glyph_cells(c: u8) -> usize {
     glyph(c).iter().map(|row| runs(*row).len()).sum()
+}
+
+/// How a group's conduits look.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Flow {
+    /// Ready and waiting: steady, quiet conduits.
+    Quiet,
+    /// Reading a prompt or answering: bright conduits.
+    Live,
+    /// Starting, recovering, or down: broken conduits.
+    Broken,
+}
+
+impl Flow {
+    pub const ALL: [Flow; 3] = [Flow::Quiet, Flow::Live, Flow::Broken];
+
+    /// The conduits for a group in `phase`.
+    #[must_use]
+    pub fn of(phase: machine::Phase) -> Flow {
+        use machine::Phase;
+        match phase {
+            Phase::Idle => Flow::Quiet,
+            Phase::Prefill | Phase::Decode => Flow::Live,
+            Phase::Starting | Phase::Recovering | Phase::Down => Flow::Broken,
+        }
+    }
+
+    #[must_use]
+    pub fn index(self) -> usize {
+        self as usize
+    }
+}
+
+/// Samples along one raised hop.
+const HOP_SAMPLES: usize = 8;
+
+/// The raised conduits that join a group's head to its `parts` parts in
+/// layer order, from the head's foot: two rails of light with ties across,
+/// and a riser at each end down to the member it joins. The floor pipe
+/// ([`pipe`]) carries the answer back. A broken conduit draws every other
+/// piece.
+#[must_use]
+pub fn conduit(parts: u32, flow: Flow) -> Art {
+    let parts = parts.clamp(1, MOST_PARTS);
+    let mut art = Art::default();
+    let (rail, tie) = match flow {
+        Flow::Quiet => (QUIET, FAINT),
+        Flow::Live => (BRIGHT, PRESENT),
+        Flow::Broken => (FAINT, FAINT),
+    };
+    let w = 0.06;
+    for hop in 0..parts {
+        let point = |k: usize| {
+            machine::loop_point(
+                parts,
+                f64::from(hop) + k as f64 / HOP_SAMPLES as f64 * 0.999,
+            )
+        };
+        for k in 0..HOP_SAMPLES {
+            if flow == Flow::Broken && k % 2 == 1 {
+                continue;
+            }
+            let (a, b) = (point(k), point(k + 1));
+            for side in [-w, w] {
+                art.lines
+                    .push(([side, a[1], a[2]], [side, b[1], b[2]], rail));
+            }
+            if k % 2 == 0 {
+                art.lines.push(([-w, a[1], a[2]], [w, a[1], a[2]], tie));
+            }
+        }
+        // Risers: where the conduit plugs into each member.
+        for end in [point(0), point(HOP_SAMPLES)] {
+            art.lines.push((
+                [0.0, end[1] - 0.25, end[2]],
+                [0.0, end[1] + 0.05, end[2]],
+                tie,
+            ));
+        }
+    }
+    art
+}
+
+/// A pulse on a group's loop: the bright lead, or a fainter trail mark.
+#[must_use]
+pub fn pulse(lead: bool) -> Art {
+    let mut art = Art::default();
+    let (r, tone) = if lead {
+        (0.14, BRIGHT)
+    } else {
+        (0.08, PRESENT)
+    };
+    let points = [[0.0, 0.0, r], [0.0, r, 0.0], [0.0, 0.0, -r], [0.0, -r, 0.0]];
+    for i in 0..4 {
+        art.lines.push((points[i], points[(i + 1) % 4], tone));
+        art.lines.push((points[i], [r, 0.0, 0.0], tone));
+        art.lines.push((points[i], [-r, 0.0, 0.0], tone));
+    }
+    art
+}
+
+/// The glow round the member working now: two rings up its body.
+#[must_use]
+pub fn glow() -> Art {
+    let mut art = Art::default();
+    art.ring(0.0, 0.35, 0.0, 0.78, 20, BRIGHT);
+    art.ring(0.0, 1.0, 0.0, 0.7, 20, PRESENT);
+    art
+}
+
+/// A device's emblem, standing upright and facing the plaza, 0.4 m
+/// across, centered on its origin: a hexagon for an RTX PRO 6000, a double
+/// diamond for an H100, a square for an Ada GPU, a crossed square for
+/// another NVIDIA GPU, a ring with a dot for a Mac's GPU, a triangle for a
+/// CPU, and a small ring for a device the Grid doesn't know.
+#[must_use]
+pub fn emblem(device: Device) -> Art {
+    let mut art = Art::default();
+    // Upright, facing the plaza: `z` across, `y` up.
+    let at = |z: f64, y: f64| -> Point { [0.0, y, z] };
+    let polygon = |art: &mut Art, sides: usize, r: f64, turn: f64| {
+        for i in 0..sides {
+            let a = (i as f64 + turn) / sides as f64 * TAU;
+            let b = (i as f64 + 1.0 + turn) / sides as f64 * TAU;
+            art.lines.push((
+                at(r * a.cos(), r * a.sin()),
+                at(r * b.cos(), r * b.sin()),
+                PRESENT,
+            ));
+        }
+    };
+    let r = 0.2;
+    match device {
+        Device::RtxPro6000 => {
+            polygon(&mut art, 6, r, 0.0);
+            polygon(&mut art, 6, r * 0.5, 0.5);
+        }
+        Device::H100 => {
+            polygon(&mut art, 4, r, 0.0);
+            polygon(&mut art, 4, r * 0.55, 0.0);
+        }
+        Device::Ada => polygon(&mut art, 4, r, 0.5),
+        Device::Cuda => {
+            polygon(&mut art, 4, r, 0.5);
+            let h = r * std::f64::consts::FRAC_1_SQRT_2;
+            art.lines.push((at(-h, -h), at(h, h), PRESENT));
+            art.lines.push((at(-h, h), at(h, -h), PRESENT));
+        }
+        Device::Metal => {
+            polygon(&mut art, 16, r, 0.0);
+            polygon(&mut art, 8, r * 0.25, 0.0);
+        }
+        Device::Cpu => polygon(&mut art, 3, r, 0.25),
+        Device::Unknown => polygon(&mut art, 10, r * 0.6, 0.0),
+    }
+    art
+}
+
+/// One sign letter at `tone`, one unit a cell, upright and facing the
+/// plaza: it runs along `z` from 0 to 5 and up `y` from 0 to 7. A space or
+/// a character it can't draw is empty.
+#[must_use]
+pub fn letter(c: u8, tone: u8) -> Art {
+    let mut art = Art::default();
+    for (row, bits) in glyph(c).into_iter().enumerate() {
+        for (col, run) in runs(bits) {
+            let (z0, y0) = (col as f64, (6 - row) as f64);
+            let z1 = z0 + run as f64;
+            art.lit.push((
+                [
+                    [0.0, y0, z0],
+                    [0.0, y0, z1],
+                    [0.0, y0 + 1.0, z1],
+                    [0.0, y0 + 1.0, z0],
+                ],
+                tone,
+            ));
+        }
+    }
+    art
+}
+
+/// A group sign's height over the floor, m: its name's foot, and the
+/// preview tag's.
+pub const SIGN_NAME_Y: f64 = 3.2;
+pub const SIGN_TAG_Y: f64 = 2.75;
+/// A cell of the name's letters, and of the tag's, m.
+pub const SIGN_NAME_CELL: f64 = 0.07;
+pub const SIGN_TAG_CELL: f64 = 0.04;
+/// How far behind the lane's middle the sign stands, into the Bay, m.
+pub const SIGN_BACK: f64 = 1.0;
+
+/// Where each letter of `text` starts along the lane, m from the text's
+/// middle, at `cell` m a cell: letters are five cells with one between.
+#[must_use]
+pub fn spell(text: &str, cell: f64) -> Vec<(u8, f64)> {
+    let width = (text.len() * 6).saturating_sub(1) as f64 * cell;
+    text.bytes()
+        .enumerate()
+        .filter(|(_, c)| SIGN_CHARS.contains(&c.to_ascii_uppercase()))
+        .map(|(i, c)| (c.to_ascii_uppercase(), (i * 6) as f64 * cell - width / 2.0))
+        .collect()
+}
+
+/// The preview tag on a group's sign, centered on its origin: EXPERIMENTAL
+/// PREVIEW in a bracketed box, and the two posts that hold the sign.
+#[must_use]
+pub fn preview_tag() -> Art {
+    let mut art = Art::default();
+    let text = "EXPERIMENTAL PREVIEW";
+    let cell = SIGN_TAG_CELL;
+    for (c, z) in spell(text, cell) {
+        let one = letter(c, PRESENT);
+        for (quad, tone) in one.lit {
+            art.lit
+                .push((quad.map(|p| [0.0, p[1] * cell, z + p[2] * cell]), tone));
+        }
+    }
+    let half = (text.len() * 6) as f64 * cell / 2.0 + 0.12;
+    let (lo, hi) = (-0.1, 7.0 * cell + 0.1);
+    for (a, b) in [
+        ([0.0, lo, -half], [0.0, lo, half]),
+        ([0.0, hi, -half], [0.0, hi, half]),
+        ([0.0, lo, -half], [0.0, hi, -half]),
+        ([0.0, lo, half], [0.0, hi, half]),
+    ] {
+        art.lines.push((a, b, PRESENT));
+    }
+    art
+}
+
+/// A post holding a group's sign, from the floor to over its name.
+#[must_use]
+pub fn sign_post() -> Art {
+    let mut art = Art::default();
+    let top = SIGN_NAME_Y + 7.0 * SIGN_NAME_CELL + 0.15;
+    art.lines.push(([0.0, 0.0, 0.0], [0.0, top, 0.0], QUIET));
+    art.lines.push(([0.0, 0.0, -0.15], [0.0, 0.0, 0.15], QUIET));
+    art
 }

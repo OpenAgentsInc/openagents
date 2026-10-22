@@ -61,6 +61,7 @@ fn group(key: &str, parts: u32) -> Vec<Pylon> {
         layers: None,
         state: Some("ready".into()),
         deadline_secs: Some(600),
+        ..Group::default()
     });
     let mut out = vec![head];
     for part in 1..=parts {
@@ -79,6 +80,7 @@ fn group(key: &str, parts: u32) -> Vec<Pylon> {
             layers: Some([(part - 1) * 10, part * 10]),
             state: None,
             deadline_secs: None,
+            ..Group::default()
         });
         out.push(p);
     }
@@ -460,4 +462,75 @@ fn the_floor_names_each_section_and_the_sign_names_the_bay() {
         .map(|c| super::art::tests_glyph_cells(c))
         .sum();
     assert_eq!(raised, letters);
+}
+
+#[test]
+fn a_group_s_conduits_run_inside_its_lane() {
+    for parts in 1..=MOST_PARTS {
+        for flow in art::Flow::ALL {
+            let art = art::conduit(parts, flow);
+            assert!(!art.lines.is_empty());
+            let (lo, hi) = bounds(&art);
+            // Along the lane, from the head to the last part.
+            assert!(
+                lo[2] >= 0.0 && hi[2] <= LANE_LENGTH - HEAD_AT,
+                "{parts} {flow:?}"
+            );
+            // Across it, narrow; up, between the racks' bodies.
+            assert!(lo[0] > -0.2 && hi[0] < 0.2);
+            assert!(lo[1] > 0.5 && hi[1] < 1.5);
+        }
+        // A broken conduit draws less than a whole one.
+        assert!(
+            art::conduit(parts, art::Flow::Broken).lines.len()
+                < art::conduit(parts, art::Flow::Live).lines.len()
+        );
+    }
+    use machine::Phase;
+    assert_eq!(art::Flow::of(Phase::Idle), art::Flow::Quiet);
+    assert_eq!(art::Flow::of(Phase::Decode), art::Flow::Live);
+    assert_eq!(art::Flow::of(Phase::Prefill), art::Flow::Live);
+    assert_eq!(art::Flow::of(Phase::Down), art::Flow::Broken);
+}
+
+#[test]
+fn each_device_has_its_own_emblem() {
+    let mut seen: Vec<Vec<(art::Point, art::Point, u8)>> = Vec::new();
+    for device in machine::Device::ALL {
+        let emblem = art::emblem(device);
+        assert!(!emblem.lines.is_empty(), "{device:?}");
+        let (lo, hi) = bounds(&emblem);
+        // Upright, facing the plaza, 0.4 m across.
+        assert!(lo[0] == 0.0 && hi[0] == 0.0);
+        assert!(hi[1] - lo[1] <= 0.41 && hi[2] - lo[2] <= 0.41);
+        assert!(
+            !seen.contains(&emblem.lines),
+            "{device:?} looks like another"
+        );
+        seen.push(emblem.lines);
+    }
+}
+
+#[test]
+fn a_group_s_sign_spells_its_name() {
+    for &c in art::SIGN_CHARS {
+        assert!(!art::letter(c, art::BRIGHT).lit.is_empty(), "{}", c as char);
+    }
+    assert!(art::letter(b' ', art::BRIGHT).lit.is_empty());
+    // "DEEPSEEK V4.1 FLASH" fits its lane, centered, with the space left
+    // out.
+    let name = "DEEPSEEK V4.1 FLASH";
+    let letters = art::spell(name, art::SIGN_NAME_CELL);
+    assert_eq!(letters.len(), name.len() - 2);
+    let first = letters.first().unwrap().1;
+    let last = letters.last().unwrap().1 + 5.0 * art::SIGN_NAME_CELL;
+    assert!((first + last).abs() < 1e-9, "centered");
+    assert!(last - first < LANE_LENGTH);
+    let tag = art::preview_tag();
+    let (lo, hi) = bounds(&tag);
+    assert!(hi[2] - lo[2] < LANE_LENGTH && lo[2] < 0.0 && hi[2] > 0.0);
+    // The tag sits under the name, and the posts reach over it.
+    assert!(art::SIGN_TAG_Y + hi[1] < art::SIGN_NAME_Y);
+    let (_, post) = bounds(&art::sign_post());
+    assert!(post[1] > art::SIGN_NAME_Y + 7.0 * art::SIGN_NAME_CELL);
 }

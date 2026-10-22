@@ -405,6 +405,27 @@ spend guard from the one budget host.
 | W15 | **Built (#12402) on synthetic stages; the cold launch is an after-close check that W16 runs.** `pylon cloud up four-single\|two-dual` plans the machines from Psionic's manifest file, creates each through `scripts/dev/cloud-budget.py` with an expiry and labels, heads the group from the allocating host in group mode (`pylon::group_serve`: W10's `StageGroup`, one W13 head beacon, a beacon per stage, NIP-CJ jobs driven through the stages), and ends it on `cloud down`, expiry, the budget's cap, or a lost machine, deleting every machine through the guard. Stages run over `gcloud compute ssh` with the control connection tunneled back; `scripts/pylon/v41-stage-startup.sh` copies a machine's shards. `tests/group_cloud.rs` covers launch to answer to `down`, dry-run plans, guard refusals, spot loss, expiry, and the cap. | M | W12, W13 | A cold launch to a first answer, then a clean stop, with costs in the ledger. |
 | W16 | **Show it.** Run the launched group with the `/home` Pylon layer open and record the transcript, router log, and capture. | S, cloud | W15 | G8's evidence is committed and the epic can close. |
 
+**Experimental preview (owner, 2026-10-22, #12403).** The one-quad group
+serves on the site as an experimental preview before qualification: G1 v2
+failed under policy 2.1 (#12405), and G2 is being reworked. This doesn't
+pass G1, G2, or G8, and the epic stays open. The launch is labeled on
+every surface: its beacons' name is "DeepSeek V4.1 Flash · Experimental
+preview" (`pylon cloud up --label`), every Grid terminal answer from it says
+"Experimental preview", and the Grid's Pylon Bay shows it with a preview tag
+and the note that its accuracy checks haven't passed yet.
+
+- It runs the pinned bundles and the launch profile unchanged: worker
+  `185eb68c…`, head `f1882776…`, `--step-secs 75 --prefill-secs 150`, an
+  8,192-token context, 2,872-token prompts, and the regional weights in
+  `gs://openagents-psionic-models-ane1/`.
+- `scripts/pylon/v41-live.py` keeps it served. It runs `pylon cloud up`
+  and, when a spot machine is reclaimed, launches again, zone by zone,
+  until its end time (`--until`) or its own spend limit (`--cap`). The
+  watcher is the root of an agent run of its own, so it outlives the
+  session that starts it. `v41-live.py status` and `v41-live.py stop` check
+  and end it; `stop` drains the group and deletes its machines through
+  the spend guard.
+
 
 ## Issues
 
