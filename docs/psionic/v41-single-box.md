@@ -89,6 +89,34 @@ system, so some host-lane misses read from disk.
 Answers were the same text as the device-expert runtime's ("The sky
 appears blue because sunlight is scattered by gas molecules…").
 
+## Maya's prompt skip (#12470)
+
+Maya skips layers 20–39 for every prompt token but the last ~2,700. The
+claim holds, with a bound we can state exactly:
+
+- Layers 21–39 have no compressor. They read earlier tokens only through
+  layer 20's compressed KV and index keys, which layer 20 computes from its
+  own input, and through their own window rows, which reach `window - 1`
+  positions back.
+- So layer `L`'s output for a token needs layer `L - 1`'s output for the
+  `window - 1` tokens before it, and the last prompt token needs layer 20's
+  output for `19 × (window - 1)` tokens before it. Decode steps need no more.
+- The skip is exact when layers 0–19, and layer 20's attention input (its
+  window rows, compressed KV, and index keys), run for every token, and the
+  whole model runs for the last `19 × (window - 1) + 1` tokens: 2,414 at
+  V4.1's window of 128. Maya's ~2,700 is above that.
+
+`CpuTransformer::forward_with_deep_skip_check` writes arbitrary values into
+the skipped tokens' state after layer 20, and the CPU reference test
+`deep_layers_skip_is_exact_past_the_window_reach` checks it on the 40-layer
+fixture (window 4, a 72-token prompt, three decode steps): with 58 tokens kept
+the logits equal the full run's bit for bit for three different fills; with
+20 or 1 kept they don't. Below the bound the change fades with distance (from
+37 tokens kept it rounds away on this fixture), so only the bound is exact by
+construction. The full model on the CPU reference can't run a prompt past the
+bound here; the layer-major prefill may add the skip under that bound, and
+its CUDA test compares it with the full prefill.
+
 ## `consumer-q` (lossy, unqualified)
 
 `psionic-v41-stage quantize --weights DIR --out DIR --recipe q2q3|q3

@@ -120,6 +120,9 @@ pub struct CpuTransformer<'a> {
     arithmetic: Arithmetic,
     max_context: usize,
     position: usize,
+    /// The prompt-skip check (#12470): tokens of the step before the last
+    /// `keep` get `garbage` as their residual after layer 20.
+    deep_skip: Option<(usize, f32)>,
 }
 impl<'a> CpuTransformer<'a> {
     pub fn new(
@@ -163,6 +166,7 @@ impl<'a> CpuTransformer<'a> {
             arithmetic,
             max_context,
             position: 0,
+            deep_skip: None,
         })
     }
     pub fn config(&self) -> &TransformerConfig {
@@ -200,6 +204,29 @@ impl<'a> CpuTransformer<'a> {
         trace_layers: &[usize],
     ) -> Result<ForwardOutput, CpuError> {
         self.forward_impl(tokens, trace_layers, None)
+    }
+    /// Checks Project Maya's prompt skip (#12470): runs `tokens` as
+    /// [`Self::forward_tokens`] does, except that every token before the
+    /// last `keep` gets `garbage` in each value of its residual and pre-mix
+    /// after layer 20. Layers 0–19 and layer 20's attention input, which
+    /// writes layer 20's window rows and its compressed KV and index keys,
+    /// still run for every token; nothing else of layers 20–39 a skipped
+    /// token computes reaches the answer when `keep` covers the window's
+    /// reach, so the logits equal the full run's. Not a serving path.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::forward_tokens`].
+    pub fn forward_with_deep_skip_check(
+        &mut self,
+        tokens: &[u32],
+        keep: usize,
+        garbage: f32,
+    ) -> Result<ForwardOutput, CpuError> {
+        self.deep_skip = Some((keep, garbage));
+        let out = self.forward_impl(tokens, &[], None);
+        self.deep_skip = None;
+        out
     }
     /// Observes all blocks without retaining their full activation tensors.
     pub fn forward_observed(
@@ -483,6 +510,14 @@ impl<'a> CpuTransformer<'a> {
                 if trace.contains(&layer) {
                     expert_ids.push(output.routing.indices);
                     route_weights.push(output.routing.weights);
+                }
+            }
+            if layer == 20
+                && let Some((keep, garbage)) = self.deep_skip
+            {
+                for i in 0..tokens.len().saturating_sub(keep) {
+                    residuals[i].fill(garbage);
+                    pre_mixes[i].fill(garbage);
                 }
             }
             if trace.contains(&layer) {
@@ -954,6 +989,48 @@ pub(crate) mod tests {
                 embedding: n == "embed.weight" || n == "head.weight",
             }))
         }
+    }
+    /// Maya's prompt skip (#12470). Layers 21–39 read earlier tokens only
+    /// through layer 20's compressed KV and index keys, which come from
+    /// layer 20's input, and through their own window rows, which reach
+    /// `window - 1` positions back. So the last prompt token depends on
+    /// layer 20's output for at most `19 × (window - 1)` tokens before it,
+    /// and keeping `19 × (window - 1) + 1` tokens leaves the logits and the
+    /// decode steps after them exact, whatever the skipped tokens hold. A
+    /// shorter suffix changes them; the change fades with distance, so only
+    /// the structural bound is exact by construction.
+    #[test]
+    fn deep_layers_skip_is_exact_past_the_window_reach() -> Result<(), Box<dyn std::error::Error>> {
+        let w = weights()?;
+        let model = || CpuTransformer::new(&w, config(false)?, map()?, 80, Arithmetic::Float32);
+        let prompt: Vec<u32> = (0..72_u32).map(|i| (i * 5 + i / 3) % 8).collect();
+        let decode = [3_u32, 6, 1];
+        let mut full = model()?;
+        let mut expected = vec![full.forward_tokens(&prompt)?.logits];
+        for t in decode {
+            expected.push(full.forward_tokens(&[t])?.logits);
+        }
+        let window = config(false)?.block.geometry.window;
+        let reach = 19 * (window - 1) + 1;
+        assert_eq!(reach, 58);
+        for (keep, garbage, exact) in [
+            (reach, 0.25, true),
+            (reach, -3.0, true),
+            (reach + 6, 1.0e3, true),
+            (20, 0.25, false),
+            (1, -3.0, false),
+        ] {
+            let mut skip = model()?;
+            let mut got = vec![
+                skip.forward_with_deep_skip_check(&prompt, keep, garbage)?
+                    .logits,
+            ];
+            for t in decode {
+                got.push(skip.forward_tokens(&[t])?.logits);
+            }
+            assert_eq!(got == expected, exact, "keep {keep}, garbage {garbage}");
+        }
+        Ok(())
     }
     #[test]
     fn complete_bf16_model_runs_all_parts_and_replays_exactly() -> Result<(), CpuError> {
