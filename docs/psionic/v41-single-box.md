@@ -130,7 +130,9 @@ the same words:
 | Index keys (FP4 E2M1, UE8M0 per 32) | 256 | 68 | 27% |
 
 The CUDA tests run the whole synthetic model with packed rows, token by
-token and layer-major, and its tokens and logits equal the BF16 rows'. A
+token and layer-major, and its tokens and logits equal the BF16 rows'. On
+the real model, one box, the oracle's 2K prompt teacher-forced through four
+answer steps gives bit-equal logits with `--kv packed` and without. A
 stage boundary still carries BF16 rows, so only a whole-model stage takes
 `--kv packed`. Design after Project Maya PR #276 (`mw00/project-maya` at
 `451f9cb6a2`, MIT), reimplemented.
@@ -145,6 +147,16 @@ Engram tables set RAM aside, since both are read from the mapped shards
 Pylon gives the stage `--experts file --expert-cache auto --engram file
 --prefill layer-major --kv packed`, a 700 GB disk for the whole checkpoint,
 and declares the `consumer-exact` profile on the group's beacons.
+
+Served once through the Pylon front (head on a computer in the US, the
+stage in `asia-northeast1-b`, development build `827a25c6d1`): the group
+loaded at its second start (the first start's 900-second limit covered the
+checkpoint copy), routed only requests that named `consumer-exact`, and
+answered "Why is the sky blue?" in 94 tokens with the first token after
+2.3 s (41-token prompt, 2.1 s of prefill). Decode on a cold page cache took
+133–146 ms a token in the stage and 169–185 ms in the link to the faraway
+head, about 3.3 tok/s end to end; the warm stage alone decodes at about
+24 tok/s (above). Prefill is 83 tok/s at 2K and 65 tok/s at 8K, warm.
 
 ## Maya's prompt skip (#12470)
 
