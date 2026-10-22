@@ -525,6 +525,25 @@ impl Streaming {
         Ok(())
     }
 
+    fn transaction<T>(
+        &mut self,
+        stage: &mut V41Stage,
+        backend: &CudaBackend,
+        operation: impl FnOnce(&mut Self, &mut V41Stage) -> Result<T, Refused>,
+    ) -> Result<T, Refused> {
+        let initial_rng = self.rng;
+        stage
+            .save_dspark(backend, &mut self.snapshot)
+            .map_err(bad)?;
+        let result = operation(self, stage);
+        if result.is_err() {
+            self.rng = initial_rng;
+            self.drafter.reset();
+            stage.restore_dspark(backend, &self.snapshot).map_err(bad)?;
+        }
+        result
+    }
+
     pub(super) fn step(
         &mut self,
         stage: &mut V41Stage,
@@ -576,66 +595,61 @@ impl Streaming {
             top_p: f64::from(input.sampling.top_p),
             seed: input.sampling.seed as u32,
         };
-        let mut proposal = self
-            .drafter
-            .forward(backend, stage, input.position, input.tokens[0])
-            .map_err(bad)?;
-        let h = stage.config().shape.hidden;
-        let mut q = Vec::new();
-        let mut inputs = input.tokens.to_vec();
-        for i in 0..BLOCK {
-            self.drafter
-                .finish_token(
-                    backend,
-                    *inputs.last().ok_or_else(|| bad("draft input"))?,
-                    &proposal.hidden[i * h..(i + 1) * h],
-                    &mut proposal.logits[i],
-                )
+        self.transaction(stage, backend, |this, stage| {
+            let mut proposal = this
+                .drafter
+                .forward(backend, stage, input.position, input.tokens[0])
                 .map_err(bad)?;
-            let p = distribution(&proposal.logits[i], sampling)?;
-            inputs.push(draw(&p, uniform(&mut self.rng)));
-            q.push(p);
-        }
-        stage
-            .save_dspark(backend, &mut self.snapshot)
-            .map_err(bad)?;
-        let target = match stage.verify_dspark(backend, input.position, &inputs) {
-            Ok(target) => target,
-            Err(e) => {
-                stage.restore_dspark(backend, &self.snapshot).map_err(bad)?;
-                return Err(bad(e));
+            let h = stage.config().shape.hidden;
+            let mut q = Vec::new();
+            let mut inputs = input.tokens.to_vec();
+            for i in 0..BLOCK {
+                this.drafter
+                    .finish_token(
+                        backend,
+                        *inputs.last().ok_or_else(|| bad("draft input"))?,
+                        &proposal.hidden[i * h..(i + 1) * h],
+                        &mut proposal.logits[i],
+                    )
+                    .map_err(bad)?;
+                let p = distribution(&proposal.logits[i], sampling)?;
+                inputs.push(draw(&p, uniform(&mut this.rng)));
+                q.push(p);
             }
-        };
-        let (accepted, correction) = finish_verification(
-            stage,
-            backend,
-            &self.snapshot,
-            input.position,
-            &inputs,
-            &target,
-            &q,
-            sampling,
-            &mut self.rng,
-            None,
-        )?;
-        let correction = correction.ok_or_else(|| bad("missing verified next token"))?;
-        let mut outputs = inputs[1..accepted + 1].to_vec();
-        outputs.push(correction);
-        self.baseline = input.position;
-        self.consumed = input.tokens.to_vec();
-        self.logits = Some(target[0].clone());
-        for i in 1..outputs.len() {
-            self.pending.push_back((
-                input.position + i,
-                outputs[i - 1],
-                outputs[i],
-                target[i].clone(),
-            ));
-        }
-        eprintln!("DSpark: accepted {accepted}/{BLOCK} draft tokens");
-        Ok(psionic_backend_cuda::v41_stage::V41StepOutput {
-            token: Some(outputs[0]),
-            ..Default::default()
+            let target = stage
+                .verify_dspark(backend, input.position, &inputs)
+                .map_err(bad)?;
+            let (accepted, correction) = finish_verification(
+                stage,
+                backend,
+                &this.snapshot,
+                input.position,
+                &inputs,
+                &target,
+                &q,
+                sampling,
+                &mut this.rng,
+                None,
+            )?;
+            let correction = correction.ok_or_else(|| bad("missing verified next token"))?;
+            let mut outputs = inputs[1..accepted + 1].to_vec();
+            outputs.push(correction);
+            this.baseline = input.position;
+            this.consumed = input.tokens.to_vec();
+            this.logits = Some(target[0].clone());
+            for i in 1..outputs.len() {
+                this.pending.push_back((
+                    input.position + i,
+                    outputs[i - 1],
+                    outputs[i],
+                    target[i].clone(),
+                ));
+            }
+            eprintln!("DSpark: accepted {accepted}/{BLOCK} draft tokens");
+            Ok(psionic_backend_cuda::v41_stage::V41StepOutput {
+                token: Some(outputs[0]),
+                ..Default::default()
+            })
         })
     }
 }
@@ -681,31 +695,42 @@ mod streaming_tests {
         let baseline = prompt.len();
         let inputs = [2, 3, 5, 7, 11, 13];
         for bad_row in [0, BLOCK] {
-            stage.save_dspark(&backend, &mut stream.snapshot)?;
-            let mut targets = stage.verify_dspark(&backend, baseline, &inputs)?;
-            let mut q = Vec::new();
-            for i in 0..BLOCK {
-                targets[i].fill(0.0);
-                targets[i][inputs[i + 1] as usize] = 1.0;
-                q.push(distribution(&targets[i], Sampling::GREEDY)?);
-            }
-            targets[bad_row][0] = f32::NAN;
-            let mut rng = 17;
-            let error = finish_verification(
-                &mut stage,
-                &backend,
-                &stream.snapshot,
-                baseline,
-                &inputs,
-                &targets,
-                &q,
-                Sampling::GREEDY,
-                &mut rng,
-                None,
-            )
-            .unwrap_err();
+            stream.rng = 17;
+            let error = stream
+                .transaction(&mut stage, &backend, |this, stage| {
+                    // A real proposal consumes five sampler draws before
+                    // verification can fail, including at the bonus row.
+                    for _ in 0..BLOCK {
+                        uniform(&mut this.rng);
+                    }
+                    let mut targets = stage
+                        .verify_dspark(&backend, baseline, &inputs)
+                        .map_err(bad)?;
+                    let mut q = Vec::new();
+                    for i in 0..BLOCK {
+                        targets[i].fill(0.0);
+                        targets[i][inputs[i + 1] as usize] = 1.0;
+                        q.push(distribution(&targets[i], Sampling::GREEDY)?);
+                    }
+                    targets[bad_row][0] = f32::NAN;
+                    finish_verification(
+                        stage,
+                        &backend,
+                        &this.snapshot,
+                        baseline,
+                        &inputs,
+                        &targets,
+                        &q,
+                        Sampling::GREEDY,
+                        &mut this.rng,
+                        None,
+                    )
+                })
+                .unwrap_err();
             assert!(error.0.contains("invalid logits"));
-            assert_eq!(rng, 17);
+            assert_eq!(stream.rng, 17);
+            let mut initial_rng = 17;
+            assert_eq!(uniform(&mut stream.rng), uniform(&mut initial_rng));
             assert_eq!(stage.logits()?, plain.logits()?);
         }
         stage.save_dspark(&backend, &mut stream.snapshot)?;
