@@ -51,8 +51,15 @@ def captured(folder):
     for path in Path(folder).glob("step-*.logits.f32"):
         steps.append((int(path.name.split("-")[1].split(".")[0]), path))
     steps.sort()
-    if not steps or [step for step, _ in steps] != list(range(len(steps))):
-        raise ValueError(f"{folder}: captures must start at step 0 and have no gaps")
+    if not steps:
+        raise ValueError(f"{folder}: no captured logits")
+    first = steps[0][0]
+    if [step for step, _ in steps] != list(range(first, first + len(steps))):
+        raise ValueError(f"{folder}: captured answer steps have gaps")
+    for step in range(first):
+        metadata = Path(folder) / f"step-{step}.json"
+        if not metadata.is_file() or json.loads(metadata.read_text()).get("emit") is not False:
+            raise ValueError(f"{folder}: no prefill record for skipped step {step}")
     return [np.fromfile(p, dtype=np.float32).astype(np.float64) for _, p in steps]
 
 

@@ -32,6 +32,78 @@ fn prompt() -> serde_json::Value {
 const CONTEXT: &str = "64";
 
 #[test]
+fn batched_teacher_forcing_keeps_each_cases_tokens_and_captures() {
+    if !cuda() {
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    weights(root.path(), &[(0, 40)]);
+    let prompts = root.path().join("prompts.jsonl");
+    let captures = root.path().join("captures");
+    let answers = root.path().join("answers.json");
+    std::fs::write(
+        &prompts,
+        concat!(
+            "{\"prompt_ids\":[3,5,0,6,4,7,21,40],\"force_ids\":[3,4],\"mode\":\"chat\"}\n",
+            "{\"prompt_ids\":[7,5,3,6,4,7,21,40],\"force_ids\":[5,6,7],\"mode\":\"chat\"}\n",
+        ),
+    )
+    .unwrap();
+    let out = common::run_bounded(
+        std::process::Command::new(common::BIN)
+            .args([
+                "chain",
+                "--weights",
+                &root.path().display().to_string(),
+                "--split",
+                "0-40",
+                "--gpus",
+                "0",
+                "--max-context",
+                CONTEXT,
+                "--max-step-tokens",
+                "4",
+                "--prefill-chunk",
+                "4",
+                "--prompts-jsonl",
+                &prompts.display().to_string(),
+                "--capture",
+                &captures.display().to_string(),
+                "--answers-out",
+                &answers.display().to_string(),
+                "--max-tokens",
+                "8",
+            ])
+            .env("CUDA_VISIBLE_DEVICES", common::visible_devices()),
+        common::LIMIT,
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let answers: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(answers).unwrap()).unwrap();
+    for (round, (count, forced)) in [(2, 3), (3, 5)].into_iter().enumerate() {
+        assert_eq!(answers[round]["tokens"], count);
+        let folder = captures.join(format!("round-{round}"));
+        assert!(!folder.join("step-0.logits.f32").exists());
+        assert!(folder.join("step-0.json").exists());
+        for step in 1..=count {
+            assert!(folder.join(format!("step-{step}.logits.f32")).exists());
+        }
+        // The second answer step must take this case's first forced token.
+        let bytes = std::fs::read(folder.join("step-2.msg")).unwrap();
+        let message = psionic_models::stage_state::decode(
+            &bytes,
+            &psionic_models::stage_state::CodecLimits::default(),
+        )
+        .unwrap();
+        assert_eq!(message.tokens, [forced]);
+    }
+}
+
+#[test]
 fn cuda_groups_answer_like_the_unsplit_cuda_stage() {
     if !cuda() {
         return;
