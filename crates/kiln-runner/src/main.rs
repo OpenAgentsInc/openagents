@@ -23,8 +23,11 @@
 //! 4. sends `processing` feedback with the latest log line every two
 //!    seconds, and the result: exit code, test summary, and the log's end.
 //!
-//! It runs one job at a time and answers a second with `busy`. It publishes
-//! no beacon. Only keys on its admission list (`--allow`), agents those keys
+//! It runs one job at a time and answers a second with `busy`. Each tenant
+//! (the key a job counts against) builds in its own folder under
+//! `DIR/targets`, so one tenant's build output never reaches another's run.
+//! It publishes a beacon in the runner lane every minute ([`beacon`]), so
+//! Kiln pages find it the way they find Pylons. Only keys on its admission list (`--allow`), agents those keys
 //! authorized with NIP-OA, and its admins get a run, each within a daily
 //! quota ([`kiln::admission`]); `--open` lets any key in with the small
 //! anonymous quota, for a local demo. Read `docs/kiln/rust-tests.md`.
@@ -42,6 +45,7 @@ use nostr::domain::{Event, Tag};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
+mod beacon;
 mod memory;
 mod publish;
 
@@ -63,6 +67,47 @@ pub(crate) struct Config {
     timeout: Duration,
     jobs: u32,
     announce: bool,
+    /// Where this job's Cargo builds go: one folder per tenant
+    /// ([`tenant_target`]).
+    target: PathBuf,
+    /// How many tenants' build folders to keep.
+    tenant_targets: usize,
+}
+
+/// The build folder for `holder` (the key a job counts against): one per
+/// tenant, so one tenant's build output never feeds another's run (#12457).
+fn tenant_target(state: &Path, holder: &str) -> PathBuf {
+    let name = kiln::sha256_hex(holder.as_bytes())[..16].to_string();
+    state.join("targets").join(name)
+}
+
+/// Mark `dir` used now and remove the least recently used tenants' folders
+/// beyond `keep`.
+fn keep_targets(dir: &Path, keep: usize) {
+    let _ = std::fs::create_dir_all(dir);
+    let _ = std::fs::write(dir.join(".kiln-used"), unix().to_string());
+    let Some(root) = dir.parent() else {
+        return;
+    };
+    let mut held: Vec<(u64, PathBuf)> = std::fs::read_dir(&root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path() != *dir && e.path().is_dir())
+        .map(|e| {
+            let used = std::fs::read_to_string(e.path().join(".kiln-used"))
+                .ok()
+                .and_then(|t| t.trim().parse().ok())
+                .unwrap_or(0);
+            (used, e.path())
+        })
+        .collect();
+    held.sort();
+    let extra = (held.len() + 1).saturating_sub(keep.max(1));
+    for (_, old) in held.into_iter().take(extra) {
+        println!("removing an idle tenant's build folder {}", old.display());
+        let _ = std::fs::remove_dir_all(old);
+    }
 }
 
 pub(crate) fn unix() -> u64 {
@@ -300,7 +345,8 @@ pub(crate) fn run_sandboxed(
 ) -> Result<Ran, String> {
     let started = Instant::now();
     let work = config.state.join("work");
-    let target = config.state.join("target");
+    let target = config.target.clone();
+    let _ = std::fs::create_dir_all(&target);
     let home = config.state.join("cargo-home");
     let toolchains =
         coder_boundary::Toolchains::derive(&coder_boundary::toolchains::Host::this_computer());
@@ -652,7 +698,12 @@ async fn main() {
         timeout: Duration::from_secs(600),
         jobs: 4,
         announce: true,
+        target: PathBuf::new(),
+        tenant_targets: 6,
     };
+    let mut beacon_on = true;
+    let mut beacon_slug = "kiln-runner".to_string();
+    let mut beacon_label = "Kiln runner".to_string();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         let mut value = || args.next().unwrap_or_default();
@@ -667,6 +718,10 @@ async fn main() {
             "--timeout" => config.timeout = Duration::from_secs(value().parse().unwrap_or(600)),
             "--jobs" => config.jobs = value().parse().unwrap_or(4).clamp(1, 6),
             "--no-announce" => config.announce = false,
+            "--no-beacon" => beacon_on = false,
+            "--name" => beacon_slug = value(),
+            "--label" => beacon_label = value(),
+            "--tenant-targets" => config.tenant_targets = value().parse().unwrap_or(6).max(1),
             "--admins" => admins_file = PathBuf::from(value()),
             "--publish-store" => publish_store = value(),
             "--publish-key" => publish_key = PathBuf::from(value()),
@@ -685,6 +740,7 @@ async fn main() {
                     "usage: kiln-runner --state DIR (--allow FILE | --open) [--relay URL] [--crates a,b | --crates-file FILE] [--reference CHECKOUT] [--timeout SECS] [--memory MB] [--jobs N] [--no-announce]\n\
                      \x20 repository: --repository 30617:KEY:ID (accept patches to the owner's announcement; pair with --no-announce)\n\
                      \x20 admission: --allow FILE (keys that may run jobs, read for every job) [--member-jobs N] [--anonymous-jobs N] [--open]\n\
+                     \x20 beacon: [--name SLUG] [--label TEXT] [--no-beacon]; builds: [--tenant-targets N]\n\
                      \x20 self-edit: --admins FILE --publish-store STORE --publish-key FILE [--publish-tenant NAME] [--publish-channel NAME] [--publish-prefix PREFIX] [--publish-relay URL] [--no-browser-smoke]"
                 );
                 std::process::exit(2);
@@ -693,6 +749,16 @@ async fn main() {
     }
     if config.state.as_os_str().is_empty() {
         eprintln!("kiln-runner: --state DIR is required");
+        std::process::exit(2);
+    }
+    config.target = config.state.join("target");
+    if beacon_slug.is_empty()
+        || beacon_slug.len() > 64
+        || !beacon_slug
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-' || b == b'_')
+    {
+        eprintln!("kiln-runner: --name is 1 to 64 of a-z, 0-9, - and _");
         std::process::exit(2);
     }
     if allow_file.is_none() && !open {
@@ -815,6 +881,27 @@ async fn main() {
             "listed keys and their agents only".to_string()
         }
     );
+    let about = beacon::About {
+        provider: key.pubkey().to_owned(),
+        slug: beacon_slug,
+        label: beacon_label,
+        since: unix(),
+        repository: repo.clone(),
+        crates: crate_limits(&config)
+            .map(|l| l.iter().map(|c| c.name.clone()).collect())
+            .unwrap_or_default(),
+        admission: if open { "open" } else { "listed" },
+        anonymous_jobs,
+        member_jobs,
+    };
+    let memory_gb = beacon::memory_gb();
+    if beacon_on {
+        println!(
+            "beacon: {} in the runner lane, every {} s",
+            about.slug,
+            beacon::EVERY_SECS
+        );
+    }
     let config = Arc::new(config);
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Event>();
     let busy = Arc::new(AtomicBool::new(false));
@@ -854,8 +941,20 @@ async fn main() {
             let announcement = key.sign(kiln::patch::REPO_KIND, tags, String::new(), unix());
             let _ = conn.send(json!(["EVENT", announcement])).await;
         }
+        let mut beacons = tokio::time::interval(Duration::from_secs(beacon::EVERY_SECS));
         loop {
             tokio::select! {
+                _ = beacons.tick(), if beacon_on => {
+                    let body = beacon::beacon(&about, unix(), busy.load(Ordering::SeqCst), memory_gb);
+                    match nostr::pylon::runner_beacon_event(key.signer(), &body) {
+                        Ok(event) => {
+                            if conn.send(json!(["EVENT", event])).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(e) => eprintln!("beacon: {e}"),
+                    }
+                }
                 frame = conn.next() => {
                     let Ok(frame) = frame else { break };
                     if frame[0] != "EVENT" || frame[1] != "jobs" {
@@ -927,6 +1026,8 @@ async fn main() {
                     println!("admitted {} ({})", &request.id[..8], holder.via);
                     println!("job {} from {}: {} with {} files at {}", &request.id[..8], &request.pubkey[..8], job.action.clone().unwrap_or_else(|| format!("cargo {}", job.args.join(" "))), job.files.len() + job.diff.as_ref().map_or(0, |d| kiln::remote::patch_paths(d).len()), &job.base[..10]);
                     let (key, out, busy) = (key.clone(), out_tx.clone(), busy.clone());
+                    let mut for_job = for_job;
+                    for_job.target = tenant_target(&for_job.state, &holder.key);
                     let config = Arc::new(for_job);
                     let publisher = publisher.clone();
                     let relay_url = config.relay.clone();
@@ -941,6 +1042,7 @@ async fn main() {
                             }
                         };
                         feedback(Some("starting".into()));
+                        keep_targets(&config.target, config.tenant_targets);
                         let mut outcome = match (job.action.as_deref(), &publisher) {
                             (Some("publish"), Some(p)) => publish::publish(&config, p, &job, &|line| feedback(Some(line))),
                             (Some(action), Some(p)) => publish::restore(&config, p, action),
@@ -982,5 +1084,29 @@ async fn main() {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_tenant_builds_in_its_own_folder_and_idle_ones_go() {
+        let state = std::env::temp_dir().join(format!("kiln-targets-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&state);
+        let a = tenant_target(&state, "alice");
+        let b = tenant_target(&state, "bob");
+        assert_ne!(a, b);
+        assert_eq!(a, tenant_target(&state, "alice"));
+        keep_targets(&a, 2);
+        std::fs::write(a.join(".kiln-used"), "1").unwrap();
+        keep_targets(&b, 2);
+        std::fs::write(b.join(".kiln-used"), "2").unwrap();
+        // A third tenant with room for two: the least recently used goes.
+        let c = tenant_target(&state, "carol");
+        keep_targets(&c, 2);
+        assert!(!a.exists() && b.exists() && c.exists());
+        let _ = std::fs::remove_dir_all(&state);
     }
 }

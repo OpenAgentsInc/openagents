@@ -932,3 +932,33 @@ fn a_v1_reader_refuses_recorded_group_beacons() {
         assert!(serde_json::from_str::<V1Body>(&event.content).is_err());
     }
 }
+
+fn runner(provider: &RelaySigner, observed_at: u64) -> Beacon {
+    let mut b = beacon(provider, observed_at);
+    b.pylon = "kiln-runner".into();
+    b.class.family = Family::Cpu;
+    b.services[0].capability = format!("{}:{RUNNER_SERVICE}", provider.pubkey());
+    b.services[0].model = "cargo".into();
+    b.pools = Vec::new();
+    b
+}
+
+#[test]
+fn a_runner_beacon_lives_in_its_own_lane() {
+    let key = signer(9);
+    let event = runner_beacon_event(&key, &runner(&key, NOW)).unwrap();
+    assert_eq!(parse_runner_beacon(&event).unwrap().pylon, "kiln-runner");
+    // Readers of model pylons refuse it, and a runner reader refuses a
+    // model pylon's beacon.
+    assert!(parse_beacon(&event).is_err());
+    let model = beacon_event(&key, &beacon(&key, NOW)).unwrap();
+    assert!(parse_runner_beacon(&model).is_err());
+    // Only cargo tests, in the conversation lane, under the provider's key.
+    let mut other = runner(&key, NOW);
+    other.services[0].capability = format!("{}:pylon/text-generation", key.pubkey());
+    assert!(runner_beacon_event(&key, &other).is_err());
+    let mut other = runner(&key, NOW);
+    other.services[0].lanes = vec![Lane::CjExecution];
+    assert!(runner_beacon_event(&key, &other).is_err());
+    assert!(runner_beacon_event(&signer(8), &runner(&key, NOW)).is_err());
+}

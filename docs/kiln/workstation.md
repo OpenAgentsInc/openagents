@@ -7,7 +7,9 @@ the repository announcement, and runner admission (#12449, #12451), phase
 (#12453, #12455), and a lasting runner on `oa-kiln` (#12454) are built;
 see [maintainers.md](maintainers.md). Phase 6, Kiln at the Grid terminal
 (#12456), is built for site admins; see [Phase 6 as built](#phase-6-as-built).
-NIP-07 and NIP-46 signing for players and phase 7 (#12457) are not.
+Phase 7, runners on Pylons (#12457), is built with free runs; see
+[rust-tests.md](rust-tests.md#many-runners-chosen-like-pylons). NIP-07 and
+NIP-46 signing for players and paid runner time are not.
 
 ## The vision
 

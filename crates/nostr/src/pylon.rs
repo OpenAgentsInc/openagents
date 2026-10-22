@@ -799,6 +799,76 @@ pub fn owned_beacon_event(
     Ok(event)
 }
 
+/// The `t` marker of a Kiln runner's beacon (#12457): a v1 `30200` body in
+/// a lane of its own, so readers of model pylons never fetch it and readers
+/// of runners never see a model.
+pub const RUNNER_MARKER: &str = "oa:kiln-runner-beacon:v1";
+/// The service a runner beacon offers, after the provider's key and `:`.
+pub const RUNNER_SERVICE: &str = "kiln/cargo-test";
+
+/// Whether `beacon` is a runner's: v1, no group, and one conversation-lane
+/// service whose capability is the provider's [`RUNNER_SERVICE`].
+fn check_runner(beacon: &Beacon) -> Result<(), String> {
+    beacon.validate()?;
+    if beacon.v != BEACON_V {
+        return Err("a runner beacon is a v1 beacon".into());
+    }
+    let [service] = beacon.services.as_slice() else {
+        return Err("a runner beacon offers one service".into());
+    };
+    if service.capability != format!("{}:{RUNNER_SERVICE}", beacon.provider)
+        || service.lanes != [Lane::CjConversation]
+    {
+        return Err("a runner beacon offers cargo tests in the conversation lane".into());
+    }
+    Ok(())
+}
+
+/// Sign a Kiln runner's `beacon` as a `30200` event under
+/// [`RUNNER_MARKER`].
+///
+/// # Errors
+///
+/// When the body breaks a beacon rule or a runner rule, or the signer is
+/// not the provider.
+pub fn runner_beacon_event(signer: &RelaySigner, beacon: &Beacon) -> Result<Event, String> {
+    check_runner(beacon)?;
+    if signer.pubkey() != beacon.provider {
+        return Err("the beacon's provider must sign it".into());
+    }
+    let content = String::from_utf8(canonical(beacon)?).map_err(|e| e.to_string())?;
+    let tags = vec![
+        Tag::new(vec!["d".into(), beacon.pylon.clone()]),
+        Tag::new(vec!["t".into(), RUNNER_MARKER.into()]),
+        Tag::new(vec!["x".into(), sha256_hex(content.as_bytes())]),
+        Tag::new(vec!["expiration".into(), beacon.valid_until.to_string()]),
+    ];
+    Ok(signer.sign(beacon.observed_at, BEACON_KIND, tags, content))
+}
+
+/// Verify a Kiln runner's `30200` event and return its body.
+///
+/// # Errors
+///
+/// As [`parse_beacon`], and when the body isn't a runner's.
+pub fn parse_runner_beacon(event: &Event) -> Result<Beacon, String> {
+    if single_tag(event, "t")? != RUNNER_MARKER {
+        return Err("wrong `t` marker".into());
+    }
+    let beacon: Beacon = envelope(event, BEACON_KIND, RUNNER_MARKER)?;
+    check_runner(&beacon)?;
+    if beacon.provider != event.pubkey {
+        return Err("beacon provider is not the signer".into());
+    }
+    if single_tag(event, "d")? != beacon.pylon {
+        return Err("`d` tag differs from the pylon slug".into());
+    }
+    if single_tag(event, "expiration")? != beacon.valid_until.to_string() {
+        return Err("expiration differs from valid_until".into());
+    }
+    Ok(beacon)
+}
+
 /// The verified NIP-OA owner of a `30200` event, or `None` when it carries
 /// no `auth` tag.
 ///

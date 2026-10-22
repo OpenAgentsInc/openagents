@@ -8,6 +8,8 @@
 //! fresh, online pylon or a ready group head serving that model; without
 //! one, Kiln falls back to any fresh, online pylon with a free slot.
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use nostr::domain::{Event, RelaySigner, Tag};
 use nostr::nip44;
 use nostr::pylon::{
@@ -48,6 +50,12 @@ impl Key {
         let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
         let signer = RelaySigner::from_secret_hex(&hex).map_err(|e| e.to_string())?;
         Ok(Self { secret, signer })
+    }
+
+    /// The key as a relay signer, for records other modules sign.
+    #[must_use]
+    pub fn signer(&self) -> &RelaySigner {
+        &self.signer
     }
 
     #[must_use]
@@ -152,6 +160,123 @@ impl Key {
     pub fn open(&self, event: &Event) -> Result<String, String> {
         let key = self.conversation_key(&event.pubkey)?;
         nip44::decrypt(&event.content, &key)
+    }
+}
+
+/// The relay filter for Kiln runners' beacons (#12457), the runner lane.
+#[must_use]
+pub fn runner_filter() -> Value {
+    json!({"kinds": [pylon::BEACON_KIND], "#t": [pylon::RUNNER_MARKER], "limit": 200})
+}
+
+/// A runner a page may send a job to, from its beacon.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Runner {
+    /// The runner's key, hex.
+    pub provider: String,
+    /// Its beacon's slug, which receipts credit.
+    pub slug: String,
+    pub label: String,
+    /// It has a free slot now.
+    pub free: bool,
+    /// `listed` (its admission list only) or `open` (any key, within the
+    /// anonymous quota).
+    pub admission: String,
+    /// The crates it builds.
+    pub crates: Vec<String>,
+}
+
+/// The runners in `events` that can take a job for every crate in
+/// `crates`, best first: online and fresh at `now`, not in `failing`, for
+/// `repository` when the page names one; free ones first, then the newest
+/// beacon. A runner whose beacon names no crates is skipped.
+#[must_use]
+pub fn runners(
+    events: &[Event],
+    now: u64,
+    crates: &[String],
+    repository: Option<&str>,
+    failing: &BTreeSet<String>,
+) -> Vec<Runner> {
+    let mut book: BTreeMap<String, (u64, Runner)> = BTreeMap::new();
+    for event in events {
+        let Ok(beacon) = pylon::parse_runner_beacon(event) else {
+            continue;
+        };
+        if beacon.status != Status::Online
+            || pylon::freshness(&beacon, now) != Freshness::Fresh
+            || failing.contains(&beacon.provider)
+        {
+            continue;
+        }
+        let meta = beacon.meta.clone().unwrap_or(Value::Null);
+        let offered: Vec<&str> = meta["crates"]
+            .as_array()
+            .map(|a| a.iter().filter_map(Value::as_str).collect())
+            .unwrap_or_default();
+        if offered.is_empty() || !crates.iter().all(|c| offered.contains(&c.as_str())) {
+            continue;
+        }
+        if let Some(repository) = repository.filter(|r| !r.is_empty())
+            && meta["repository"].as_str() != Some(repository)
+        {
+            continue;
+        }
+        let runner = Runner {
+            provider: beacon.provider.clone(),
+            slug: beacon.pylon.clone(),
+            label: beacon.label.clone(),
+            free: beacon.slots.free > 0,
+            admission: meta["admission"].as_str().unwrap_or("listed").to_owned(),
+            crates: offered.iter().map(|c| (*c).to_owned()).collect(),
+        };
+        let address = beacon.address();
+        if book
+            .get(&address)
+            .is_none_or(|(seen, _)| beacon.observed_at > *seen)
+        {
+            book.insert(address, (beacon.observed_at, runner));
+        }
+    }
+    let mut out: Vec<(u64, Runner)> = book.into_values().collect();
+    out.sort_by(|(a_at, a), (b_at, b)| b.free.cmp(&a.free).then(b_at.cmp(a_at)));
+    out.into_iter().map(|(_, r)| r).collect()
+}
+
+/// The buyer's NIP-PYLON receipt (`3201`) for one runner job, as for any
+/// Pylon's work: free, one job, and how it ended.
+#[must_use]
+#[allow(clippy::too_many_arguments)]
+pub fn runner_receipt(
+    buyer: &str,
+    runner: &Runner,
+    request: &str,
+    request_digest: &str,
+    result_digest: Option<String>,
+    started_at: u64,
+    finished_at: u64,
+    outcome: pylon::Outcome,
+) -> pylon::Receipt {
+    pylon::Receipt {
+        v: pylon::RECEIPT_V.into(),
+        requires: Vec::new(),
+        meta: None,
+        buyer: buyer.to_owned(),
+        provider: runner.provider.clone(),
+        pylon: runner.slug.clone(),
+        lane: Lane::CjConversation,
+        capability: format!("{}:{}", runner.provider, pylon::RUNNER_SERVICE),
+        request: request.to_owned(),
+        request_digest: request_digest.to_owned(),
+        result_digest,
+        started_at,
+        finished_at: finished_at.max(started_at),
+        units: pylon::Units {
+            kind: pylon::UnitKind::Jobs,
+            count: 1,
+        },
+        outcome,
+        payment: None,
     }
 }
 
@@ -433,6 +558,72 @@ pub fn clean(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn runner_beacon(provider: &Key, at: u64, free: u32, crates: &[&str]) -> Event {
+        let beacon: Beacon = serde_json::from_value(json!({
+            "v": pylon::BEACON_V,
+            "requires": [],
+            "meta": {"repository": "30617:aa:openagents", "crates": crates, "admission": "open"},
+            "provider": provider.pubkey(),
+            "pylon": "kiln-runner",
+            "label": "Kiln runner",
+            "status": "online",
+            "generation": 1,
+            "since": at - 10,
+            "observed_at": at,
+            "valid_until": at + 120,
+            "class": {"family": "cpu", "tier": "large", "memory_gb": 64},
+            "slots": {"total": 1, "free": free},
+            "services": [{"capability": format!("{}:{}", provider.pubkey(), pylon::RUNNER_SERVICE), "model": "cargo", "lanes": ["cj-conversation"], "offering": null, "price_hint_msat": null}],
+            "settlement": ["free-v1"],
+            "pools": [],
+        }))
+        .unwrap();
+        pylon::runner_beacon_event(provider.signer(), &beacon).unwrap()
+    }
+
+    #[test]
+    fn runners_are_chosen_like_pylons() {
+        let now = 1_791_400_000;
+        let (a, b, c) = (key(21), key(22), key(23));
+        let events = vec![
+            runner_beacon(&a, now - 5, 0, &["memory-stream", "kiln"]),
+            runner_beacon(&b, now - 20, 1, &["memory-stream"]),
+            runner_beacon(&c, now - 400, 1, &["memory-stream"]),
+            // A model pylon's beacon never counts as a runner.
+            beacon(&key(24), "deepseek", now, false),
+        ];
+        let want = vec!["memory-stream".to_string()];
+        let none = BTreeSet::new();
+        let found = runners(&events, now, &want, Some("30617:aa:openagents"), &none);
+        // The free one first; the stale one is gone.
+        let order: Vec<&str> = found.iter().map(|r| r.provider.as_str()).collect();
+        assert_eq!(order, [b.pubkey(), a.pubkey()]);
+        // Only a runner that builds every crate the job names.
+        let both = vec!["memory-stream".to_string(), "kiln".to_string()];
+        assert_eq!(runners(&events, now, &both, None, &none).len(), 1);
+        // Another repository, or a runner that just failed, is skipped.
+        assert!(runners(&events, now, &want, Some("30617:bb:x"), &none).is_empty());
+        let failing: BTreeSet<String> = [b.pubkey().to_owned()].into();
+        assert_eq!(runners(&events, now, &want, None, &failing).len(), 1);
+        // The buyer's receipt for a job is a valid NIP-PYLON receipt.
+        let buyer = key(25);
+        let receipt = runner_receipt(
+            buyer.pubkey(),
+            &found[0],
+            &"1".repeat(64),
+            &"2".repeat(64),
+            Some("3".repeat(64)),
+            now - 9,
+            now,
+            pylon::Outcome::Accepted,
+        );
+        let event = pylon::receipt_event(buyer.signer(), &receipt, now).unwrap();
+        assert_eq!(
+            pylon::parse_receipt(&event, None).unwrap().pylon,
+            "kiln-runner"
+        );
+    }
 
     fn key(byte: u8) -> Key {
         Key::from_bytes([byte; 32]).unwrap()

@@ -146,6 +146,38 @@ npub1... jobs=200
 npub1... unlimited    # the Grid Foreman, maintainers
 ```
 
+## Many runners, chosen like Pylons
+
+Workstation phase 7 (#12457). A runner announces itself the way a Pylon
+does, and a Kiln page chooses among runners the way it chooses Pylons:
+
+- **Beacon.** Every 60 seconds the runner publishes a NIP-PYLON `30200`
+  beacon in the runner lane (`t` `oa:kiln-runner-beacon:v1`, service
+  `<key>:kiln/cargo-test`), naming its repository, crates, admission, and
+  whether its one slot is free. `--name SLUG` and `--label TEXT` name it;
+  `--no-beacon` keeps it quiet. See NIP-PYLON, "Kiln runners".
+- **Choice.** With no runner set under **Settings** (or in the host's
+  `config.json`), the page reads runner beacons once a minute and sends a
+  job to the best runner that builds every crate the job names, for its
+  repository: free first, then the newest beacon. When a runner refuses
+  (busy, quota, not listed) or doesn't answer, the page tries the next, up
+  to three, and skips the one that failed for five minutes. A runner set
+  under Settings is used as before, alone.
+- **Receipts.** After each job the page publishes a NIP-PYLON `3201`
+  receipt signed by its key: one job, free, and accepted, rejected, or timed
+  out, with the digests of the request and the result. Runner work is
+  counted the way Pylon work is.
+- **Builds per tenant.** Each tenant (the key a job counts against: the
+  requester, or the owner of an authorized agent) builds in its own folder
+  under `STATE/targets/`, so one tenant's build output can't feed another's
+  run. The runner keeps the six most recently used (`--tenant-targets N`)
+  and removes older ones. A tenant's first run on a runner is a cold build.
+
+Defaults, by decision for this phase: runs are free (`free-v1`, no
+NIP-X402 price), admission and quotas are each runner's own list and
+quotas as above, and a runner's check comment on a patch still counts only
+when the runner is on the maintainers' list.
+
 ## Reused, and not
 
 - **Reused:** `coder-boundary` for the sandbox and its toolchain read list,

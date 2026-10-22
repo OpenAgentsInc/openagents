@@ -322,6 +322,30 @@ treats a mismatch as no answer. The result's receipt names the served model
 and its artifact digest (`served.artifact_signature`). Decision work is
 free (`free-v1`) in this version.
 
+### Kiln runners
+
+A Kiln runner (`crates/kiln-runner`, added 2026-10-22) runs a page's
+`cargo test` and `cargo check` jobs offline in a sandbox. It publishes the
+same `30200` body in a lane of its own, so readers of model pylons never
+fetch it:
+
+- the `t` marker is `oa:kiln-runner-beacon:v1`, not `oa:pylon-beacon:v1`;
+- the body is a v1 beacon with no group and exactly one service:
+  `capability` `<runner key>:kiln/cargo-test`, `model` `cargo`, `lanes`
+  `["cj-conversation"]`;
+- `meta` holds `repository` (the NIP-34 `30617` address whose patches it
+  checks), `crates` (the crates it builds), `admission` (`listed` or
+  `open`), and its daily quotas `member_jobs` and `anonymous_jobs`;
+- `slots` is one serial slot; `settlement` is `free-v1`.
+
+Jobs are NIP-CJ conversation requests whose task is a Kiln job
+(`crates/kiln/src/remote.rs`). A buyer chooses among fresh, online runners
+whose `meta` names every crate the job needs and its repository, free ones
+first, and moves to the next when one refuses or doesn't answer, as for a
+pylon. It publishes a `3201` receipt for each job with `units` `jobs`,
+`count` 1, and no payment. `nostr::pylon::runner_beacon_event` and
+`parse_runner_beacon` sign and read the record.
+
 ## Service receipt — kind `3201`
 
 A buyer publishes one receipt when a job ends, whatever the outcome. A

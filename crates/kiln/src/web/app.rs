@@ -71,6 +71,10 @@ struct App {
     patch: RefCell<Option<kiln_view::Patch>>,
     /// The last problem, in a sentence, until the next run.
     problem: RefCell<Option<String>>,
+    /// Runners found by their beacons (#12457): when, and best first.
+    runners: RefCell<Option<(f64, Vec<cj::Runner>)>>,
+    /// Runners that just refused or didn't answer, and when.
+    failing_runners: RefCell<BTreeMap<String, f64>>,
     /// The one pylon a run may use, from `?pylon=` (hex or npub).
     pin_pylon: RefCell<Option<String>>,
     /// The run as the transcript draws it.
@@ -182,6 +186,8 @@ pub async fn run() {
         run_view: RefCell::new(crate::transcript::Run::default()),
         pin_pylon: RefCell::new(None),
         last_test: RefCell::new(None),
+        runners: RefCell::new(None),
+        failing_runners: RefCell::new(BTreeMap::new()),
         patch: RefCell::new(None),
         problem: RefCell::new(None),
         current_tool: RefCell::new(None),
@@ -1523,11 +1529,6 @@ impl App {
             Ok(args) => args,
             Err(e) => return fail(e),
         };
-        let runner: HtmlInputElement = el(&self.doc, "runner").unchecked_into();
-        let runner = runner.value().trim().to_string();
-        let Some(runner) = nostr_hex(&runner) else {
-            return fail("no test runner is set; start kiln-runner and enter its key".into());
-        };
         let (files, deleted) = {
             let vfs = self.vfs.borrow();
             let base = self.base.borrow();
@@ -1619,16 +1620,46 @@ impl App {
                 }
             }
         };
-        let result = relay
-            .exchange_tagged(
-                &self.runner_key(),
-                &runner,
-                &body,
-                REMOTE_WAIT_SECS,
-                &progress,
-                &super::identity::tags(),
-            )
-            .await;
+        let named = crate::remote::named_crates(&job.args);
+        let candidates = self.runner_candidates(&mut relay, &named).await;
+        if candidates.is_empty() {
+            *self.runner_relay.borrow_mut() = Some(relay);
+            return fail(format!(
+                "no test runner is online for {}; start kiln-runner, or enter a runner's key under Settings",
+                named.join(", ")
+            ));
+        }
+        // Like a Pylon job: the best runner first, the next when one
+        // refuses or doesn't answer, and a receipt for each.
+        let mut result = Err(String::new());
+        for (runner, beacon) in candidates.iter().take(3) {
+            if let Some(beacon) = beacon {
+                self.log("info", &format!("Runner: {}", beacon.label));
+            }
+            let sent = super::util::unix();
+            result = relay
+                .exchange_tagged(
+                    &self.runner_key(),
+                    runner,
+                    &body,
+                    REMOTE_WAIT_SECS,
+                    &progress,
+                    &super::identity::tags(),
+                )
+                .await;
+            if let Some(beacon) = beacon {
+                self.receipt(&mut relay, beacon, sent, &result).await;
+            }
+            match &result {
+                Ok(_) => break,
+                Err(e) => {
+                    self.failing_runners
+                        .borrow_mut()
+                        .insert(runner.clone(), now_ms());
+                    self.log("err", &format!("runner {}: {e}", &runner[..8]));
+                }
+            }
+        }
         *self.runner_relay.borrow_mut() = Some(relay);
         let got = match result {
             Ok(got) => got,
@@ -1685,6 +1716,98 @@ impl App {
                 )
             })
             .collect()
+    }
+
+    /// Where a job for `crates` may go: the runner named under Settings,
+    /// or the runners whose beacons offer those crates (#12457), best
+    /// first, read again after a minute.
+    async fn runner_candidates(
+        &self,
+        relay: &mut Relay,
+        crates: &[String],
+    ) -> Vec<(String, Option<cj::Runner>)> {
+        let runner: HtmlInputElement = el(&self.doc, "runner").unchecked_into();
+        if let Some(runner) = nostr_hex(runner.value().trim()) {
+            return vec![(runner, None)];
+        }
+        let stale = self
+            .runners
+            .borrow()
+            .as_ref()
+            .is_none_or(|(at, _)| now_ms() - at > 60_000.0);
+        if stale {
+            match relay.query("runners", &cj::runner_filter()).await {
+                Ok(events) => {
+                    let repository = self.repo_address.borrow().clone();
+                    let found = cj::runners(
+                        &events,
+                        super::util::unix(),
+                        &[],
+                        (!repository.is_empty()).then_some(repository.as_str()),
+                        &BTreeSet::new(),
+                    );
+                    self.log(
+                        "info",
+                        &format!("Found {} test runners by their beacons", found.len()),
+                    );
+                    *self.runners.borrow_mut() = Some((now_ms(), found));
+                }
+                Err(e) => self.log("err", &format!("Reading runner beacons failed: {e}")),
+            }
+        }
+        // A runner that failed is skipped for five minutes.
+        let now = now_ms();
+        self.failing_runners
+            .borrow_mut()
+            .retain(|_, at| now - *at < 300_000.0);
+        let failing = self.failing_runners.borrow();
+        self.runners
+            .borrow()
+            .as_ref()
+            .map(|(_, list)| {
+                list.iter()
+                    .filter(|r| !failing.contains_key(&r.provider))
+                    .filter(|r| crates.iter().all(|c| r.crates.contains(c)))
+                    .map(|r| (r.provider.clone(), Some(r.clone())))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Publish the buyer's receipt for one runner job, as for any Pylon.
+    async fn receipt(
+        &self,
+        relay: &mut Relay,
+        runner: &cj::Runner,
+        started: u64,
+        result: &Result<super::relay::Exchanged, String>,
+    ) {
+        let Some((request, digest)) = relay.last_request.clone() else {
+            return;
+        };
+        let (outcome, result_digest) = match result {
+            Ok(got) => (
+                nostr::pylon::Outcome::Accepted,
+                Some(crate::sha256_hex(got.text.as_bytes())),
+            ),
+            Err(e) if e.starts_with("no answer") => (nostr::pylon::Outcome::Timeout, None),
+            Err(_) => (nostr::pylon::Outcome::Rejected, None),
+        };
+        let key = self.runner_key();
+        let receipt = cj::runner_receipt(
+            key.pubkey(),
+            runner,
+            &request,
+            &digest,
+            result_digest,
+            started,
+            super::util::unix(),
+            outcome,
+        );
+        if let Ok(event) = nostr::pylon::receipt_event(key.signer(), &receipt, super::util::unix())
+        {
+            let _ = relay.publish(&event).await;
+        }
     }
 
     fn slice_digest(&self, repo: &Value) -> String {
@@ -1766,8 +1889,15 @@ impl App {
                 &event.id[..12]
             ),
         );
-        let runner: HtmlInputElement = el(&self.doc, "runner").unchecked_into();
-        let runner = nostr_hex(runner.value().trim()).unwrap_or_default();
+        // The runner that checks the patch: the one under Settings, or the
+        // best one whose beacon offers these crates (#12457).
+        let runner = self
+            .runner_candidates(&mut relay, &touched)
+            .await
+            .into_iter()
+            .next()
+            .map(|(runner, _)| runner)
+            .unwrap_or_default();
         let job = crate::remote::Job {
             v: crate::remote::JOB_V.into(),
             base: commit,
@@ -1959,7 +2089,14 @@ impl App {
             }),
             files,
             file_count,
-            runner: !runner.value().trim().is_empty(),
+            // A runner set under Settings, or found by its beacon (or not
+            // looked for yet).
+            runner: !runner.value().trim().is_empty()
+                || self
+                    .runners
+                    .borrow()
+                    .as_ref()
+                    .is_none_or(|(_, list)| !list.is_empty()),
             tests: self
                 .last_test
                 .borrow()

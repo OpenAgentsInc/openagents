@@ -27,6 +27,9 @@ pub struct Relay {
     rx: UnboundedReceiver<Msg>,
     held: VecDeque<Value>,
     pub closed: bool,
+    /// The last request [`Self::exchange_tagged`] sent: its ID and the
+    /// SHA-256 of its content, for a receipt.
+    pub last_request: Option<(String, String)>,
     _handlers: Vec<Closure<dyn FnMut(JsValue)>>,
 }
 
@@ -92,6 +95,7 @@ impl Relay {
             rx,
             held: VecDeque::new(),
             closed: false,
+            last_request: None,
             _handlers: handlers,
         };
         match relay.raw(10_000).await {
@@ -340,6 +344,10 @@ impl Relay {
         extra: &[nostr::domain::Tag],
     ) -> Result<Exchanged, String> {
         let request = key.seal_request_tagged(provider, body, random32(), unix(), extra)?;
+        self.last_request = Some((
+            request.id.clone(),
+            crate::sha256_hex(request.content.as_bytes()),
+        ));
         self.send(&json!([
             "REQ",
             "answer",
