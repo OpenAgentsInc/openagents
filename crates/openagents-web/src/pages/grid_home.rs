@@ -384,7 +384,7 @@ syncChat();ok()},{once:true});\n\
 performance.mark(\"home-chat-mounting\");glue.mount(still)}));\n\
 return glue})().catch(error=>{chatStatus.textContent=\"Chat couldn't open. Reload to try again.\";\n\
 console.warn(error);track(\"terminal_failed\");focusPending=false;syncFocus();throw error}));\n\
-globalThis.homeTerminal=(near,step)=>{const walked=near&&step!==false&&globalThis.openagentsLab!==\"game\"&&!globalThis.openagentsChatDesk&&!globalThis.openagentsChatForeman&&!globalThis.openagentsChatSuggest;near=(globalThis.openagentsLab===\"game\"||near)&&world.classList.contains(\"ready\");\n\
+globalThis.homeTerminal=(near,step)=>{const walked=near&&step!==false&&globalThis.openagentsLab!==\"game\"&&!globalThis.openagentsChatDesk&&!globalThis.openagentsChatForeman&&!globalThis.openagentsChatSuggest;near=(globalThis.openagentsLab===\"game\"||near)&&(globalThis.openagentsChatSuggest||world.classList.contains(\"ready\"));\n\
 if(!near&&(globalThis.openagentsChatDesk||globalThis.openagentsChatForeman||globalThis.openagentsChatSuggest)){globalThis.openagentsChatDesk=false;globalThis.openagentsChatForeman=false;globalThis.openagentsChatSuggest=false;composer.setAttribute(\"aria-label\",\"Chat with the pylons\")}\n\
 if(walked&&near&&!terminalNear)track(\"terminal_reached\",{time:Math.round(performance.now())});terminalNear=near;focusPending=near&&step!==false;\n\
 syncChat();\n\
@@ -395,9 +395,11 @@ homeTerminal(open)};\n\
 // The suggestion box on the landing plaza (#12460): Verse opens it on E
 // or a tap; the GPUI chat draws it and hands a suggestion back to Verse,
 // which seals and sends it.\n\
-globalThis.homeSuggest=open=>{open=!!open&&world.classList.contains(\"ready\");\n\
+globalThis.homeSuggest=(open,source)=>{open=!!open;globalThis.openagentsSuggestionClient=source;\n\
 if(open){globalThis.openagentsChatDesk=false;globalThis.openagentsChatForeman=false;globalThis.openagentsChatSuggest=true;globalThis.openagentsSuggestStatus=undefined;composer.setAttribute(\"aria-label\",\"Leave a suggestion\")}\n\
 homeTerminal(open)};\n\
+const suggestSource=new URLSearchParams(location.search).get(\"suggest\");\n\
+if([\"web\",\"desktop\",\"ios\",\"android\"].includes(suggestSource)){homeSuggest(true,suggestSource);const url=new URL(location.href);url.searchParams.delete(\"suggest\");history.replaceState(null,\"\",url)}\n\
 globalThis.homeForeman=open=>{open=!!open&&world.classList.contains(\"ready\");\n\
 if(open){globalThis.openagentsChatDesk=false;globalThis.openagentsChatSuggest=false;globalThis.openagentsChatForeman=true;composer.setAttribute(\"aria-label\",\"Ask the Foreman\")}\n\
 homeTerminal(open)};\n\
@@ -463,7 +465,7 @@ canvas.classList.add(\"ready\");\
 document.documentElement.classList.add(\"world-ready\");\
 shown=true;track(\"verse_ready\",{gpu,time:Math.round(performance.now())});\
 idle(1200).then(()=>loadChat()).catch(()=>{});\
-addEventListener(\"verse-stopped\",()=>{canvas.classList.remove(\"ready\");document.documentElement.classList.remove(\"world-ready\");homeGameLab(false);homeTerminal(false)},{once:true})}catch(e){track(\"verse_load_failed\",{gpu,reason:stage})}};\
+addEventListener(\"verse-stopped\",()=>{canvas.classList.remove(\"ready\");document.documentElement.classList.remove(\"world-ready\");homeGameLab(false);if(!globalThis.openagentsChatSuggest)homeTerminal(false)},{once:true})}catch(e){track(\"verse_load_failed\",{gpu,reason:stage})}};\
 account();\
 loadLayer().then(verse);\
 ",

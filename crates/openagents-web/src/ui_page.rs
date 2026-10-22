@@ -306,6 +306,10 @@ impl UiPage {
                     .current(current == Some(nav.href())),
             );
         }
+        sidebar = sidebar.nav(
+            NavItem::new("Suggestion box", "/?suggest=web")
+                .icon(Icon::ComposeEditSquare.size(IconSize::Md)),
+        );
         for section in self.sections {
             sidebar = sidebar.section(section);
         }
@@ -331,7 +335,11 @@ impl UiPage {
                 admin,
             } => {
                 let mut menu = AccountMenu::new(name)
-                    .item(MenuItem::link("Settings", SETTINGS).icon(Icon::Settings));
+                    .item(MenuItem::link("Settings", SETTINGS).icon(Icon::Settings))
+                    .item(
+                        MenuItem::link("Suggestion box", "/?suggest=web")
+                            .icon(Icon::ComposeEditSquare),
+                    );
                 if admin {
                     menu = menu.item(
                         MenuItem::link("Analytics", crate::analytics::DASHBOARD)

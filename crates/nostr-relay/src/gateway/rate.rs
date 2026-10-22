@@ -122,8 +122,8 @@ impl RateLimiter {
 
     /// Whether `sender` (the connection's authenticated key, or its IP
     /// address) may send one more gift wrap to `recipient` this minute.
-    /// The limit is per sender, so one sender's flood to a shared inbox,
-    /// such as the suggestion box (#12460), never blocks another's.
+    /// The dedicated suggestion inbox counts per sender. Other recipients
+    /// keep their existing shared recipient budget.
     pub fn gift_wrap_for(&self, recipient: &str, sender: &str) -> bool {
         let Ok(mut state) = self.inner.lock() else {
             return false;
@@ -131,8 +131,50 @@ impl RateLimiter {
         state.cleanup();
         allow_string(
             &mut state.gift_wrap_recipient,
-            &format!("{recipient} {sender}"),
+            &if self.suggestion_to(recipient) {
+                format!("key:{recipient}:{sender}")
+            } else {
+                recipient.to_owned()
+            },
             self.limits.gift_wraps_per_minute_recipient,
+        )
+    }
+
+    pub fn suggestion_to(&self, recipient: &str) -> bool {
+        self.limits.suggestion_inbox.as_deref() == Some(recipient)
+    }
+
+    /// Bound signature-verification work independently of accepted sends.
+    pub fn suggestion_preflight_from_ip(&self, recipient: &str, ip: IpAddr) -> bool {
+        let Ok(mut state) = self.inner.lock() else {
+            return false;
+        };
+        state.cleanup();
+        allow_string(
+            &mut state.gift_wrap_recipient,
+            &format!("attempt:{recipient}:{ip}"),
+            self.limits
+                .gift_wraps_per_minute_recipient
+                .saturating_mul(40),
+        )
+    }
+
+    /// A separate address budget prevents rotating guest keys from
+    /// overwhelming this inbox. Refused per-key sends never consume it.
+    pub fn suggestion_from_ip(&self, recipient: &str, ip: IpAddr) -> bool {
+        if !self.suggestion_to(recipient) {
+            return true;
+        }
+        let Ok(mut state) = self.inner.lock() else {
+            return false;
+        };
+        state.cleanup();
+        allow_string(
+            &mut state.gift_wrap_recipient,
+            &format!("ip:{recipient}:{ip}"),
+            self.limits
+                .gift_wraps_per_minute_recipient
+                .saturating_mul(10),
         )
     }
 
@@ -488,7 +530,10 @@ mod tests {
         assert!(discovery.event_from_pubkey("discovery-author"));
         assert!(!discovery.event_from_pubkey("discovery-author"));
 
-        let gift_wrap = RateLimiter::new(limits);
+        let gift_wrap = RateLimiter::new(GatewayLimits {
+            suggestion_inbox: Some("recipient".into()),
+            ..limits
+        });
         assert!(gift_wrap.event_from_ip(ip));
         assert!(gift_wrap.event_from_pubkey("outer-wrapper"));
         assert!(gift_wrap.gift_wrap_for("recipient", "a"));
@@ -501,7 +546,10 @@ mod tests {
     /// second key's one suggestion is still delivered.
     #[test]
     fn a_flood_to_a_shared_inbox_never_blocks_another_sender() {
-        let limiter = RateLimiter::new(GatewayLimits::default());
+        let limiter = RateLimiter::new(GatewayLimits {
+            suggestion_inbox: Some("inbox".into()),
+            ..GatewayLimits::default()
+        });
         let taken = (0..1_000)
             .filter(|_| limiter.gift_wrap_for("inbox", "flooder"))
             .count();
@@ -510,6 +558,38 @@ mod tests {
             GatewayLimits::default().gift_wraps_per_minute_recipient as usize
         );
         assert!(limiter.gift_wrap_for("inbox", "player"));
+        let ip = "127.0.0.1".parse().unwrap();
+        let isolated = RateLimiter::new(GatewayLimits {
+            suggestion_inbox: Some("inbox".into()),
+            ..GatewayLimits::default()
+        });
+        let accepted = (0..1000)
+            .filter(|_| {
+                isolated.suggestion_preflight_from_ip("inbox", ip)
+                    && isolated.gift_wrap_for("inbox", "flooder")
+                    && isolated.suggestion_from_ip("inbox", ip)
+            })
+            .count();
+        assert_eq!(accepted, 60);
+        assert!(
+            isolated.suggestion_preflight_from_ip("inbox", ip)
+                && isolated.gift_wrap_for("inbox", "second-player")
+                && isolated.suggestion_from_ip("inbox", ip)
+        );
+        // Rotating guest keys still share the address's accepted-send budget.
+        let mut admitted = 1 + accepted;
+        for n in 0..1000 {
+            if isolated.gift_wrap_for("inbox", &format!("guest-{n}"))
+                && isolated.suggestion_from_ip("inbox", ip)
+            {
+                admitted += 1;
+            }
+        }
+        assert_eq!(admitted, 600);
+        assert!(
+            isolated.gift_wrap_for("inbox", "elsewhere")
+                && isolated.suggestion_from_ip("inbox", "127.0.0.2".parse().unwrap())
+        );
     }
 
     #[test]

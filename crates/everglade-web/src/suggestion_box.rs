@@ -23,6 +23,8 @@ use verse::ui::{Atlas, UiBatch};
 use wasm_bindgen::{JsCast, JsValue};
 
 use crate::grid::Presence;
+use nostr::domain::{Event, RelaySigner, Tag};
+use verse::net::{In, Link, Out};
 
 /// The page global that is `true` while the box is open.
 const OPEN_GLOBAL: &str = "openagentsChatSuggest";
@@ -34,8 +36,6 @@ const OUT_GLOBAL: &str = "openagentsSuggestOut";
 const STATUS_GLOBAL: &str = "openagentsSuggestStatus";
 /// Where wraps the relay hasn't taken wait, in this browser.
 const QUEUE_KEY: &str = "openagents.grid.suggestions";
-/// The most suggestions that wait in this browser.
-const QUEUE_MAX: usize = 20;
 /// How long the relay has to take a wrap before it waits for a retry, ms.
 const ANSWER_WAIT: f64 = 10_000.0;
 /// How often waiting wraps are sent again, ms.
@@ -50,6 +50,12 @@ struct Waiting {
     code: String,
     wrap: String,
     copy: String,
+    #[serde(default)]
+    relay: String,
+    #[serde(default)]
+    wrap_ok: bool,
+    #[serde(default)]
+    copy_ok: bool,
 }
 
 #[derive(Default)]
@@ -61,6 +67,11 @@ struct BoxState {
     sent: Option<(String, String, f64)>,
     /// When waiting wraps were last sent again, ms.
     retried: f64,
+    config: Option<suggestion::InboxConfig>,
+    loading: bool,
+    config_checked: f64,
+    links: std::collections::HashMap<String, Link>,
+    player: [f32; 2],
 }
 
 thread_local! {
@@ -94,155 +105,386 @@ fn storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok().flatten()
 }
 
-fn queue() -> Vec<Waiting> {
-    storage()
-        .and_then(|s| s.get_item(QUEUE_KEY).ok().flatten())
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+fn queue() -> Result<Vec<Waiting>, String> {
+    let storage = storage().ok_or("Enable site storage to save suggestions.")?;
+    let text = storage
+        .get_item(QUEUE_KEY)
+        .map_err(|_| "Saved suggestions couldn't be read.")?;
+    text.map(|text| {
+        serde_json::from_str(&text).map_err(|_| {
+            "Saved suggestions couldn't be read. Keep this browser's site data and contact us."
+                .into()
+        })
+    })
+    .unwrap_or_else(|| Ok(Vec::new()))
 }
 
-fn save(queue: &[Waiting]) {
-    if let Some(storage) = storage() {
-        let start = queue.len().saturating_sub(QUEUE_MAX);
-        let _ = storage.set_item(
+fn save(queue: &[Waiting]) -> Result<(), String> {
+    let storage = storage()
+        .ok_or("This browser can't save suggestions. Enable site storage and try again.")?;
+    storage
+        .set_item(
             QUEUE_KEY,
-            &serde_json::to_string(&queue[start..]).unwrap_or_default(),
-        );
+            &serde_json::to_string(queue).map_err(|_| "The suggestion couldn't be saved.")?,
+        )
+        .map_err(|_| "This device is out of storage. Free some space and try again.".into())
+}
+
+fn secret() -> Result<secp256k1::SecretKey, String> {
+    let storage = storage().ok_or("Enable site storage to save your suggestion.")?;
+    if let Some(hex) = storage
+        .get_item("openagents.grid.secret")
+        .map_err(|_| "Your key couldn't be read.")?
+    {
+        return hex.parse().map_err(|_| "Your key couldn't be read.".into());
     }
+    let key = verse::identity::random_secret();
+    storage
+        .set_item("openagents.grid.secret", &key.display_secret().to_string())
+        .map_err(|_| "Your key couldn't be saved.")?;
+    Ok(key)
 }
 
-fn event(json: &str) -> Option<nostr::domain::Event> {
-    serde_json::from_str(json).ok()
+fn signer() -> Result<RelaySigner, String> {
+    RelaySigner::from_secret_hex(&secret()?.display_secret().to_string())
+        .map_err(|_| "Your key couldn't be read.".into())
 }
 
-/// Seals and sends what the GPUI chat left in [`OUT_GLOBAL`], from the
-/// visitor at `player`.
-fn take_out(player: Vec3, presence: Option<&mut Presence>, now: f64) {
-    let out = global(OUT_GLOBAL);
-    let Some(text) = out.as_string() else {
-        return;
-    };
-    let _ = js_sys::Reflect::set(&js_sys::global(), &OUT_GLOBAL.into(), &JsValue::UNDEFINED);
-    let value: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
-    let category = value["category"]
-        .as_str()
-        .and_then(Category::from_name)
-        .unwrap_or_default();
-    let at = (js_sys::Date::now() / 1000.0) as u64;
-    let made = Suggestion::new(
-        Client::VerseGrid,
-        category,
-        value["text"].as_str().unwrap_or_default(),
-        Some([player.x, player.z]),
-        None,
-        at,
-    );
-    let suggestion = match made {
-        Ok(s) => s,
-        Err(line) => return status("error", &line),
-    };
-    let Some(presence) = presence else {
-        return status(
-            "error",
-            "The Grid isn't connected. Reload the page and try again.",
-        );
-    };
-    let sealed = match presence.seal_suggestion(&suggestion) {
-        Ok(sealed) => sealed,
-        Err(line) => return status("error", &line),
-    };
-    let waiting = Waiting {
-        code: sealed.code.clone(),
-        wrap: serde_json::to_string(&sealed.wrap).unwrap_or_default(),
-        copy: serde_json::to_string(&sealed.copy).unwrap_or_default(),
-    };
-    // Kept until the relay takes it.
-    let mut kept = queue();
-    kept.push(waiting);
-    save(&kept);
-    let id = sealed.wrap.id.clone();
-    presence.publish(sealed.wrap);
-    presence.publish(sealed.copy);
-    crate::visit::send([(
-        "suggestion_sent",
-        serde_json::json!({"category": category.name()}),
-    )]);
-    BOX.with(|b| b.borrow_mut().sent = Some((id, sealed.code, now)));
-    status("sending", suggestion::SENDING);
-}
-
-/// Watches the relay's answer to this visit's suggestion, and sends
-/// waiting ones again.
-fn follow(presence: Option<&mut Presence>, now: f64) {
-    let Some(presence) = presence else {
-        return;
-    };
-    let sent = BOX.with(|b| b.borrow().sent.clone());
-    if let Some((id, code, at)) = sent {
-        match presence.answer(&id) {
-            Some(true) => {
-                let kept: Vec<Waiting> = queue().into_iter().filter(|w| w.code != code).collect();
-                save(&kept);
-                status("delivered", suggestion::DELIVERED);
-                BOX.with(|b| b.borrow_mut().sent = None);
-            }
-            Some(false) => {
-                status("saved", suggestion::SAVED);
-                BOX.with(|b| b.borrow_mut().sent = None);
-            }
-            None if now - at > ANSWER_WAIT => {
-                status("saved", suggestion::SAVED);
-                BOX.with(|b| b.borrow_mut().sent = None);
-            }
-            None => {}
-        }
-    }
-    // Waiting wraps go out again, and leave the queue once taken.
+fn load_config() {
     let due = BOX.with(|b| {
         let mut b = b.borrow_mut();
-        let due = b.sent.is_none() && now - b.retried > RETRY_EVERY;
-        if due {
-            b.retried = now;
+        if b.config.is_none() {
+            b.config = storage()
+                .and_then(|s| s.get_item("openagents.suggestions.config").ok().flatten())
+                .and_then(|text| serde_json::from_str::<suggestion::InboxConfig>(&text).ok())
+                .filter(|c| c.check().is_ok());
         }
-        due
+        let now = js_sys::Date::now();
+        if b.loading || now - b.config_checked < 30_000. {
+            false
+        } else {
+            b.loading = true;
+            b.config_checked = now;
+            true
+        }
     });
     if !due {
         return;
     }
-    let kept = queue();
+    wasm_bindgen_futures::spawn_local(async {
+        let found = async {
+            let window = web_sys::window().ok_or(())?;
+            let response = wasm_bindgen_futures::JsFuture::from(
+                window.fetch_with_str("/suggestions/config.json"),
+            )
+            .await
+            .map_err(|_| ())?;
+            let response: web_sys::Response = response.dyn_into().map_err(|_| ())?;
+            if !response.ok() {
+                return Err(());
+            }
+            let text = wasm_bindgen_futures::JsFuture::from(response.text().map_err(|_| ())?)
+                .await
+                .map_err(|_| ())?
+                .as_string()
+                .ok_or(())?;
+            let config: suggestion::InboxConfig = serde_json::from_str(&text).map_err(|_| ())?;
+            config.check().map_err(|_| ())?;
+            Ok(config)
+        }
+        .await;
+        BOX.with(|b| {
+            let mut b = b.borrow_mut();
+            b.loading = false;
+            if let Ok(config) = found {
+                if let Some(storage) = storage() {
+                    let _ = storage.set_item(
+                        "openagents.suggestions.config",
+                        &serde_json::to_string(&config).unwrap_or_default(),
+                    );
+                }
+                b.config = Some(config);
+            }
+        });
+    });
+}
+
+fn take_out(now: f64) {
+    let Some(text) = global(OUT_GLOBAL).as_string() else {
+        return;
+    };
+    let value: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+    let config = BOX.with(|b| b.borrow().config.clone());
+    if config.is_none() {
+        load_config();
+    }
+    let category = value["category"]
+        .as_str()
+        .and_then(Category::from_name)
+        .unwrap_or_default();
+    let client = global("openagentsSuggestionClient")
+        .as_string()
+        .as_deref()
+        .and_then(Client::from_name)
+        .unwrap_or(Client::VerseGrid);
+    let place = (client == Client::VerseGrid).then(|| BOX.with(|b| b.borrow().player));
+    let made = (|| {
+        let s = Suggestion::new(
+            client,
+            category,
+            value["text"].as_str().unwrap_or_default(),
+            place,
+            None,
+            (js_sys::Date::now() / 1000.) as u64,
+        )?;
+        let random = || playtest::report::Randomness {
+            wrapper: verse::identity::random_secret(),
+            seal_nonce: verse::identity::random_bytes(),
+            wrap_nonce: verse::identity::random_bytes(),
+            seal_earlier: u64::from(u16::from_le_bytes(verse::identity::random_bytes())) * 2,
+            wrap_earlier: u64::from(u16::from_le_bytes(verse::identity::random_bytes())) * 2,
+        };
+        let key = secret()?;
+        let recipient = match &config {
+            Some(config) => config
+                .inbox
+                .parse()
+                .map_err(|_| "The inbox key couldn't be read.")?,
+            None => key.x_only_public_key(&secp256k1::Secp256k1::new()).0,
+        };
+        let sealed = suggestion::wrap(&s, &key, &recipient, &random(), &random())?;
+        let waiting = Waiting {
+            code: sealed.code.clone(),
+            wrap: serde_json::to_string(&sealed.wrap).unwrap_or_default(),
+            copy: serde_json::to_string(&sealed.copy).unwrap_or_default(),
+            relay: config
+                .as_ref()
+                .map(|c| c.relays[0].clone())
+                .unwrap_or_default(),
+            wrap_ok: false,
+            copy_ok: false,
+        };
+        let mut kept = queue()?;
+        kept.push(waiting);
+        save(&kept)?;
+        BOX.with(|b| {
+            let mut b = b.borrow_mut();
+            b.sent = Some((sealed.wrap.id, sealed.code, now));
+            b.retried = 0.;
+        });
+        Ok::<_, String>(())
+    })();
+    let _ = js_sys::Reflect::set(&js_sys::global(), &OUT_GLOBAL.into(), &JsValue::UNDEFINED);
+    match made {
+        Ok(()) => status(
+            if config.is_some() { "sending" } else { "saved" },
+            if config.is_some() {
+                suggestion::SENDING
+            } else {
+                suggestion::SAVED
+            },
+        ),
+        Err(line) => {
+            let _ = js_sys::Reflect::set(
+                &js_sys::global(),
+                &"openagentsSuggestFailed".into(),
+                &value["text"].as_str().unwrap_or_default().into(),
+            );
+            status("error", &line);
+        }
+    }
+}
+
+fn follow(now: f64) {
+    let Ok(mut kept) = queue() else {
+        return;
+    };
     if kept.is_empty() {
         return;
     }
-    let mut left = Vec::new();
-    for waiting in kept {
-        let Some(wrap) = event(&waiting.wrap) else {
-            continue;
-        };
-        if presence.answer(&wrap.id) == Some(true) {
-            continue;
+    let config = BOX.with(|b| b.borrow().config.clone());
+    if let Some(config) = config {
+        let mut changed = false;
+        for waiting in &mut kept {
+            if !waiting.relay.is_empty() {
+                continue;
+            }
+            let prepared = (|| {
+                let key = secret()?;
+                let event: Event = serde_json::from_str(&waiting.copy)
+                    .map_err(|_| "Saved suggestion couldn't be read.")?;
+                let opened = suggestion::open(&event, &key)?;
+                let random = || playtest::report::Randomness {
+                    wrapper: verse::identity::random_secret(),
+                    seal_nonce: verse::identity::random_bytes(),
+                    wrap_nonce: verse::identity::random_bytes(),
+                    seal_earlier: 0,
+                    wrap_earlier: 0,
+                };
+                let sealed = suggestion::wrap(
+                    &opened.suggestion,
+                    &key,
+                    &config.inbox.parse().map_err(|_| "Invalid inbox key")?,
+                    &random(),
+                    &random(),
+                )?;
+                Ok::<_, String>((
+                    serde_json::to_string(&sealed.wrap).unwrap_or_default(),
+                    serde_json::to_string(&sealed.copy).unwrap_or_default(),
+                    sealed.code,
+                ))
+            })();
+            if let Ok((wrap, copy, code)) = prepared {
+                waiting.wrap = wrap;
+                waiting.copy = copy;
+                waiting.code = code;
+                waiting.relay = config.relays[0].clone();
+                changed = true;
+            }
         }
-        presence.publish(wrap);
-        if let Some(copy) = event(&waiting.copy) {
-            presence.publish(copy);
+        if changed && save(&kept).is_err() {
+            return;
         }
-        left.push(waiting);
+    } else if !kept.is_empty() {
+        load_config();
     }
-    save(&left);
+    let Ok(signer) = signer() else {
+        return;
+    };
+    let mut answers = std::collections::HashMap::new();
+    BOX.with(|b| {
+        let mut b = b.borrow_mut();
+        for waiting in &kept {
+            if !waiting.relay.is_empty() {
+                b.links
+                    .entry(waiting.relay.clone())
+                    .or_insert_with(|| Link::start(&waiting.relay));
+            }
+        }
+        let mut connected = false;
+        for (relay, link) in &b.links {
+            for input in link.drain() {
+                match input {
+                    In::Auth(challenge) => {
+                        link.send(Out::Auth(signer.sign(
+                            (js_sys::Date::now() / 1000.) as u64,
+                            22242,
+                            vec![
+                                Tag::new(vec!["relay".into(), relay.clone()]),
+                                Tag::new(vec!["challenge".into(), challenge]),
+                            ],
+                            String::new(),
+                        )));
+                    }
+                    In::Ok { id, accepted, .. } => {
+                        if accepted {
+                            connected = true;
+                        }
+                        answers.insert(id, accepted);
+                    }
+                    In::Connected => connected = true,
+                    _ => {}
+                }
+            }
+        }
+        if connected {
+            b.retried = 0.;
+        }
+    });
+    let mut newly_delivered = false;
+    for waiting in &mut kept {
+        let was_delivered = waiting.wrap_ok;
+        if let Ok(wrap) = serde_json::from_str::<Event>(&waiting.wrap) {
+            waiting.wrap_ok |= answers.get(&wrap.id) == Some(&true);
+        }
+        if let Ok(copy) = serde_json::from_str::<Event>(&waiting.copy) {
+            waiting.copy_ok |= answers.get(&copy.id) == Some(&true);
+        }
+        newly_delivered |= !was_delivered && waiting.wrap_ok;
+    }
+    if newly_delivered {
+        status("delivered", suggestion::DELIVERED);
+        let _ = js_sys::Reflect::set(
+            &js_sys::global(),
+            &"openagentsSuggestionDropped".into(),
+            &JsValue::from_f64(now),
+        );
+    }
+    let sent = BOX.with(|b| b.borrow().sent.clone());
+    if let Some((_, code, at)) = sent {
+        if kept.iter().any(|w| w.code == code && w.wrap_ok) {
+            status("delivered", suggestion::DELIVERED);
+            let _ = js_sys::Reflect::set(
+                &js_sys::global(),
+                &"openagentsSuggestionDropped".into(),
+                &JsValue::from_f64(now),
+            );
+            BOX.with(|b| b.borrow_mut().sent = None);
+        } else if now - at > ANSWER_WAIT {
+            status("saved", suggestion::SAVED);
+            BOX.with(|b| b.borrow_mut().sent = None);
+        }
+    }
+    kept.retain(|w| !(w.wrap_ok && w.copy_ok));
+    // Save acknowledgments before a retry. Storage failures keep the old,
+    // durable events; duplicate NIP-17 deliveries are harmless.
+    let _ = save(&kept);
+    BOX.with(|b| {
+        let mut b = b.borrow_mut();
+        if now - b.retried < RETRY_EVERY {
+            return;
+        }
+        b.retried = now;
+        for waiting in &kept {
+            if let Some(link) = b.links.get(&waiting.relay) {
+                for (json, accepted) in [
+                    (&waiting.wrap, waiting.wrap_ok),
+                    (&waiting.copy, waiting.copy_ok),
+                ] {
+                    if !accepted && let Ok(event) = serde_json::from_str(json) {
+                        link.send(Out::Publish(event));
+                    }
+                }
+            }
+        }
+    });
+}
+
+/// Run delivery independently of the world renderer, including offline.
+pub fn start() {
+    load_config();
+    wasm_bindgen_futures::spawn_local(async {
+        loop {
+            let now = js_sys::Date::now();
+            load_config();
+            take_out(now);
+            follow(now);
+            if let Some(dropped) = global("openagentsSuggestionDropped").as_f64() {
+                if now - dropped > 1800. && open_now() {
+                    call(false);
+                }
+            }
+            gloo_timers::future::TimeoutFuture::new(100).await;
+        }
+    });
 }
 
 /// Follows the visitor at `player`; `plaza` is whether they are on the
 /// Grid plaza rather than in a zone. Sends what the box was given.
-pub fn frame(player: Vec3, plaza: bool, mut presence: Option<&mut Presence>, now: f64) {
-    take_out(player, presence.as_deref_mut(), now);
-    follow(presence, now);
+pub fn frame(player: Vec3, plaza: bool, _presence: Option<&mut Presence>, _now: f64) {
     BOX.with(|b| {
         let mut b = b.borrow_mut();
+        b.player = [player.x, player.z];
         let at = player.as_dvec3().to_array();
         let near = plaza && grid_suggestion_box::in_reach(at, b.near);
         if near && !b.near {
             crate::visit::send([("suggestion_box_reached", serde_json::json!({}))]);
         }
-        if !near && b.near && open_now() {
+        if !near
+            && b.near
+            && open_now()
+            && global("openagentsSuggestionClient").as_string().is_none()
+        {
             call(false);
         }
         b.near = near;
@@ -286,6 +528,23 @@ fn plate(ui: &mut UiBatch, atlas: &Atlas, text: &str, x: f32, y: f32) -> [f32; 4
 /// Draws the label over the box from across the plaza, and the prompt
 /// while the visitor is in reach and the box is closed.
 pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], view_proj: Mat4, eye: Vec3) {
+    if let Some(dropped) = global("openagentsSuggestionDropped").as_f64() {
+        let progress = ((js_sys::Date::now() - dropped) / 600.).clamp(0., 1.) as f32;
+        if progress < 1. {
+            let slot =
+                Vec3::from_array(grid_suggestion_box::world([0., 1.4, 0.31]).map(|v| v as f32));
+            if let Some([x, y]) = verse::hud::project(view_proj, size, slot) {
+                ui.rect(
+                    atlas,
+                    x - 6.,
+                    y - 24. + progress * 24.,
+                    12.,
+                    7.,
+                    crate::theme::linear(coder_ui::coder_noir::CONTENT, 1. - progress),
+                );
+            }
+        }
+    }
     BOX.with(|b| {
         let mut b = b.borrow_mut();
         b.prompt = None;

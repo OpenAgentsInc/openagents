@@ -282,6 +282,18 @@ impl LanderChat {
             cx.notify();
         }
         if suggest {
+            if let Some(failed) =
+                js_sys::Reflect::get(&js_sys::global(), &"openagentsSuggestFailed".into())
+                    .ok()
+                    .and_then(|v| v.as_string())
+            {
+                self.put_back(&failed, cx);
+                let _ = js_sys::Reflect::set(
+                    &js_sys::global(),
+                    &"openagentsSuggestFailed".into(),
+                    &JsValue::UNDEFINED,
+                );
+            }
             let status = js_sys::Reflect::get(&js_sys::global(), &model::SUGGEST_STATUS.into())
                 .ok()
                 .and_then(|v| v.as_string())

@@ -27,6 +27,8 @@ pub struct GatewayLimits {
     pub events_per_minute_ip: u32,
     pub events_per_minute_pubkey: u32,
     pub gift_wraps_per_minute_recipient: u32,
+    /// Dedicated inbox whose flood budgets are per authenticated sender and IP.
+    pub suggestion_inbox: Option<String>,
     pub observer_events_per_second_ip: u32,
     pub observer_events_per_second_agent: u32,
     /// The pose lane: NIP-MV frames and gestures (kinds 23300 and 23301) a
@@ -62,6 +64,7 @@ impl Default for GatewayLimits {
             events_per_minute_ip: 120,
             events_per_minute_pubkey: 60,
             gift_wraps_per_minute_recipient: 60,
+            suggestion_inbox: None,
             observer_events_per_second_ip: 200,
             observer_events_per_second_agent: 100,
             pose_events_per_second_pubkey: 12,
@@ -256,6 +259,8 @@ impl GatewayConfig {
                 "NOSTR_RELAY_RATE_GIFT_WRAPS_PER_MIN_RECIPIENT",
                 "60",
             )?,
+            suggestion_inbox: optional_string("NOSTR_RELAY_SUGGESTION_INBOX")?
+                .map(|key| key.to_ascii_lowercase()),
             observer_events_per_second_ip: parse_or("NOSTR_RELAY_RATE_OBSERVER_PER_SEC_IP", "200")?,
             observer_events_per_second_agent: parse_or(
                 "NOSTR_RELAY_RATE_OBSERVER_PER_SEC_AGENT",
@@ -279,6 +284,16 @@ impl GatewayConfig {
             max_connections_per_ip: parse_or("NOSTR_RELAY_MAX_CONNECTIONS_PER_IP", "20")?,
             send_queue_capacity: parse_or("NOSTR_RELAY_SEND_QUEUE_CAPACITY", "256")?,
         };
+        if let Some(inbox) = &config.limits.suggestion_inbox {
+            inbox.parse::<secp256k1::XOnlyPublicKey>().map_err(|_| {
+                GatewayError::Config("NOSTR_RELAY_SUGGESTION_INBOX must be a public key".into())
+            })?;
+            if config.relay_url.is_none() {
+                return Err(GatewayError::Config(
+                    "the suggestion inbox requires NOSTR_RELAY_URL for authentication".into(),
+                ));
+            }
+        }
         config.identity = RelayIdentity {
             name: env::var("NOSTR_RELAY_NAME").unwrap_or_else(|_| "nostr-relay".to_owned()),
             description: optional_string("NOSTR_RELAY_DESCRIPTION")?,

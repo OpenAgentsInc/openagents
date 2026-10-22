@@ -20,6 +20,11 @@ Oracle, Library, proving ground, plaza, Spark gate, and Halo gate. Routes remain
 visible where they cross the compact map's edge. The overlay hides when the
 available viewport is too small to display its controls.
 
+The Grid also marks the suggestion box at `(12, -10)` on the landing plaza.
+Walk to its slot and press **E** or tap its prompt to leave a suggestion.
+The drop-in animation follows the relay receipt; **Delivered** means the relay
+accepted the encrypted message. Offline suggestions stay on the device and retry.
+
 Tap a clear map position or landmark to walk there. The map folds away while
 the character walks. Reopen it to inspect the route or select **Stop walk**.
 On desktop, `M` toggles the map and `Esc` closes it or cancels the route. Manual

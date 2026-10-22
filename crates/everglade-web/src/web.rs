@@ -320,6 +320,7 @@ pub fn verse_hand_moves() -> u32 {
 /// Starts Everglade when the module's `init` finishes.
 #[wasm_bindgen(start)]
 pub fn start() {
+    crate::suggestion_box::start();
     // A panic is logged and the page is told, so it doesn't sit on a dead
     // canvas.
     std::panic::set_hook(Box::new(|info| {
