@@ -2169,15 +2169,21 @@ pub fn self_check(
     // Each reference report must pass every criterion derived from it: one
     // without the oracle's router scores took no part in the router score
     // budget, so that rule alone isn't applied to it.
+    // Exact checks are fixed equality rules, not derived from the reference
+    // (and the CPU port records no Engram sites), so they don't apply here.
     let own: Vec<String> = reference
         .iter()
         .flat_map(|r| {
-            if has_router_score_evidence(r) {
-                judge_report(policy, r)
+            let mut r = r.clone();
+            for c in r["cases"].as_array_mut().into_iter().flatten() {
+                c["exact"] = Value::Null;
+            }
+            if has_router_score_evidence(&r) {
+                judge_report(policy, &r)
             } else {
                 let mut without = policy.clone();
                 without.router_score_budget = None;
-                judge_report(&without, r)
+                judge_report(&without, &r)
             }
         })
         .collect();
@@ -2344,7 +2350,18 @@ pub fn derive_policy_v22(
     let checks = self_check(&policy, reference, controls)?;
     let evidence = json!({
         "rule": "derive_policy_v22 in crates/psionic/crates/psionic-v41-stage/src/qualify.rs",
+        "rationale": "Successor to 2.1 (owner choice B, 2026-10-22), frozen before its confirmation \
+            set is captured. 2.1 rejected its own reference because it pooled positions for \
+            derivation and judged per case; 2.2 uses one unit for both. Limits are HEADROOM times \
+            what the CPU reference (cpu-bf16-tp8, a different implementation on different \
+            hardware) shows against the B200 oracle: the portability envelope the launch \
+            intends to support. The router rule is the review's margin and regret rule, with a \
+            per-layer score budget measured on the reference in the selection function's units; \
+            it is an empirical, connected budget, not a rigorous bound. h1-h6 are exposed and \
+            count only as regression cases; the confirmation corpus is the generalization test.",
         "unit": "case and mode, for derivation and judging alike",
+        "controls": "wrong-weights, wrong-routing, wrong-rope, stale-cache on p1 (pinned GPU \
+            calibration); each must fail on a numerical criterion",
         "headroom": HEADROOM,
         "reference_positions": all_tv.len(),
         "reference_cases_and_modes": cases.len(),

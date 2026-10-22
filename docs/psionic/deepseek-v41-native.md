@@ -1915,6 +1915,33 @@ G2 suite 2 on the pinned runtime with the prompt-mode fix (answers SHA-256
 cap; the runtime passes 5 of 6, the oracle 5 of 6, and the must-pass floor
 holds. Both fail the shared `fib(186)` assertion.
 
+### Policy 2.2 could not be frozen (2026-10-22)
+
+The owner chose a successor policy (option B). The confirmation corpus
+(`g1_v2/confirmation-corpus-2.2.json`, SHA-256 `c29c34bb…614f40fd3`) was
+frozen first. No oracle or runtime data exists for it.
+
+The 2.2 reference is the CPU port (cpu-bf16-tp8, bundle `f5fb59bfa9`) on
+h1, h2, h3, and h5-window-255. The holdout oracle keeps 14 router scores per
+row. The run's report is SHA-256 `f843082f…a966e907f`, and it cost $15.26.
+The derivation's self-check refuses the policy: in 268 of the reference's
+6,092 changed expert sets, an added expert lies outside the oracle's 14
+retained scores. Its regret isn't established, so the reference fails the
+margin rule derived from it. Policy 2.2 is not frozen, and no confirmation
+data was captured.
+
+Two further observations from this run:
+
+- The reference's measured score error grows with depth. Twice its maximum
+  gives a layer 0 budget of 0.0018, a layer 1 budget of 0.080, and a
+  layer 19 budget of 10.2 selection units. Deep-layer budgets that large
+  can't reject much.
+- Since #12404, the CPU port computes layer-0 attention identically to the
+  B200 oracle, so at early layers it doesn't sample independent
+  cross-hardware variation. The served runtime's layer-0 score error on h6
+  (median 0.0012, maximum 0.028) already exceeds a 0.0018 budget, so a
+  2.2 with full router scores would most likely fail the runtime at layer 0.
+
 ## W3 measurements and W2 answers (2026-10-21)
 
 Provisional: the runtime is not yet numerically qualified (G1 v2, #12405),
