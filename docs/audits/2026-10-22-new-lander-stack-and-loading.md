@@ -1,7 +1,7 @@
 # New landing page: stack and loading plan
 
 Date: October 22, 2026. Source snapshot: `be63f0d030`.
-Status: assessment only. No page, route, deployment, or homepage replacement is implemented by this document.
+Status: architecture assessment with an initial isolated preview implementation. `/new-lander` serves the marketing page and `/new-lander/verse` serves the universe selector; `/` stays unchanged. This is not the full tutorial or a production deployment.
 
 ## Decision
 
@@ -73,12 +73,12 @@ The public root returned HTML with `cache-control: no-cache` and a restrictive h
 
 [Maud](https://maud.lambda.xyz/) generates HTML from Rust. It does not make a WebGPU application, and changing Maud markup still needs a Rust rebuild. Move frequently edited copy and approved content into runtime-loaded data/templates where the current content system supports it; do not promise compilation-free layout changes automatically.
 
-The current [agent contract](../../AGENTS.md) scopes the TypeScript/Effect exception to `apps/haunt-preview`. This plan keeps marketing in Rust. Extending the game runtime into a broader planetary application needs the implementation scope and contract to name that extension; this assessment does not silently broaden the exception. Existing Rust/wgpu worlds remain supported while the browser runtime develops.
+The [agent contract](../../AGENTS.md) now names the owner-requested `apps/verse-selector` browser island alongside the existing creator-preview exception. Marketing and routing remain Rust. The selector uses Effect and direct WebGPU; it does not replace the Rust world/domain services or add a second account system.
 
 ## Preview addresses and ownership
 
-- Proposed marketing address: **`/new-lander`**. It is not implemented yet. Prefer this explicit name over reviving redirects such as `/landing` or another numbered legacy lander.
-- Proposed experience address: **`/new-lander/verse`**, with stateful tutorial/planet navigation under that preview. The address is an entry boundary, not a requirement to reload the document for each overlay.
+- Marketing preview address: **`/new-lander`**. This explicit route does not revive redirects such as `/landing` or another numbered legacy lander.
+- Universe selector address: **`/new-lander/verse`**. Selection is kept in its `world` query parameter. The remaining tutorial/planet flow is future work; this address is not a requirement to reload the document for each overlay.
 - Add the page through `openagents-web/src/pages/new_lander.rs` and the existing page router, following current route ownership. If exposed in Design Lab, register sample states separately in `openagents-web-site`; its screens gallery is not the public page implementation.
 - Keep `/`, `/home` redirects, `/chat`, account routes, hosted games, and existing landers unchanged. Do not redirect or advertise the new page from the current homepage yet.
 - During review, exclude the preview from search indexing and the public sitemap. Give it its own metadata; do not switch the root's canonical URL. An unlisted/noindex page is not private access control.
@@ -123,4 +123,10 @@ These are sequencing recommendations, not new assignments or launch dates. This 
 - Measure game entry separately: click-to-loader, download, compile, first rendered planet, login readiness, tutorial entry, and edit-to-visible time. State hardware/browser/resolution and cold/warm cache conditions.
 - Confirm `/` and old routes have unchanged behavior, preview metadata stays isolated, and Kiki reviews the actual flow. Root promotion is a separate requested change.
 
-Only this assessment is being committed. No Rust tests or builds are required for this documentation-only change; relative source links and the inspected route/loading evidence are checked.
+## Initial implementation scope
+
+The owner subsequently requested implementation of the marketing homepage and universe selector. The Rust pages use original inline SVG/CSS on marketing, then load a generated browser module of about 102 KiB only after entry. The selector draws original lit planets, orbits, stars, and connecting paths with direct WebGPU; it supports destination selection, camera orbit/zoom, keyboard controls, and a still-view fallback. Future planets are labeled as future destinations; this curated preview does not claim live network membership, ownership, or population counts.
+
+The central OpenAgents world stays locked. Blue Rush links to the existing studio page; Haunted House entry appears only when the server has a house build or hosted tenant. Configured account services use the existing login route with a return to the selector. The full voice tutorial, publishing, and personal planet award remain outside this implementation. Source, bundle regeneration, and the isolated-browser check are in [the selector package](../../apps/verse-selector/README.md).
+
+Verification: TypeScript checks, two geometry/projection tests, the two focused `new_lander` Rust tests, and isolated Chrome checks for real WebGPU pixels, navigation, camera controls, mobile layout, no-GPU fallback, and script-free marketing pass. The broader route-owner scanner reports an existing unreadable `PATH` declaration in unchanged `pages/pylon_work.rs`; the new routes pass their direct ownership checks. No production account or public world was created.

@@ -5,6 +5,10 @@ browser exception is `apps/haunt-preview`: the owner explicitly requested
 Effect, TypeScript, and direct WebGPU for the browser-first Haunted House
 shader/Kiln demo (#12500, 2026-10-22) and its explicitly requested Medieval
 Town Lab. Keep this exception scoped to those creator previews; reuse Kiln and existing domain services rather than duplicating them.
+The owner also requested the `/new-lander` marketing preview and its
+Effect/direct-WebGPU universe selector (2026-10-22). Marketing and routes stay
+in Rust; `apps/verse-selector` is the scoped TypeScript browser island. It
+reuses the existing account and world services and does not own domain logic.
 The existing product exception is `swift/lev-bridge`, the helper that reaches Apple's
 `FoundationModels` framework, which has no Rust binding; it is built by a
 repo script and supervised as a child process. Coder's iOS host at `bins/coder-ios/host` also uses thin SwiftUI glue for native controls, mounting, and
