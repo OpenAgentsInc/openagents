@@ -485,6 +485,18 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12448: after the next web deploy (the host is at `280907fdfb` on
+  `oa-foreman-1`; commands stay off until the site sets
+  `OPENAGENTS_FOREMAN_COMMANDS=on`): on staging, with
+  `OPENAGENTS_FOREMAN_OWNER` set to the dedicated test account, a worker
+  agent saved there with no standing authority, and a test computer of that
+  account, ask for an agent on an issue in a test repository through
+  `POST /v1/foreman/commands/requests` as an admin test account; check that
+  within a few minutes `GET /v1/foreman/commands` logs a `started` entry,
+  the test account's app shows a new chat with the fixed brief, and that
+  chat opens a draft pull request; check the pause and a refused unsigned
+  POST. Then delete the chat and close the draft. Production turns
+  commands on only when the owner sets the variables (`NEEDS_OWNER.md`).
 - #12447: after the next web and Everglade deploy (the host is already
   at `c8dfc45372` on `oa-foreman-1`), as the dedicated test account in two
   browsers: ask the Foreman a question and check that it walks to the
