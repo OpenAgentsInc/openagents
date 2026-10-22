@@ -917,6 +917,8 @@ def main() -> int:
             continue
         case_dir.mkdir(parents=True, exist_ok=True)
         result = run_case(model, rec, case, tokenizer, args, generate)
+        if opts.cases_file:
+            result["corpus_sha256"] = sha256(opts.cases_file.read_bytes())
         save_case(opts, rec, case_dir, result, rank, world_size)
 
     if world_size > 1:

@@ -202,6 +202,174 @@ fn dump_from(dir: &Path, logits: &BTreeMap<String, Vec<u8>>, routers: &[Vec<u8>]
     oracle(dir, &tensors);
 }
 
+fn add_index_dump(dir: &Path, root: &Path, out: &str, cuda: bool) {
+    let meta: Value =
+        serde_json::from_slice(&std::fs::read(dir.join("manifest.json")).unwrap()).unwrap();
+    let raw = std::fs::read(dir.join(CASE).join("tensors-rank0.safetensors")).unwrap();
+    let header_len = u64::from_le_bytes(raw[..8].try_into().unwrap()) as usize;
+    let header: Value = serde_json::from_slice(&raw[8..8 + header_len]).unwrap();
+    let mut tensors: Vec<(String, &str, Vec<usize>, Vec<u8>)> = meta["tensors"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|entry| {
+            let name = entry["name"].as_str().unwrap();
+            let o = &header[name]["data_offsets"];
+            (
+                name.to_owned(),
+                "float32",
+                entry["shape"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_u64().unwrap() as usize)
+                    .collect(),
+                raw[8 + header_len + o[0].as_u64().unwrap() as usize
+                    ..8 + header_len + o[1].as_u64().unwrap() as usize]
+                    .to_vec(),
+            )
+        })
+        .collect();
+    // Keep integer router tensors' declared type.
+    for (tensor, entry) in tensors.iter_mut().zip(meta["tensors"].as_array().unwrap()) {
+        if entry["dtype"] == "int32" {
+            tensor.1 = "int32";
+        }
+    }
+    let g = psionic_models::deepseek_v41_stage_cpu::synthetic::config()
+        .unwrap()
+        .block
+        .geometry;
+    let (top_k, window, blocks) = if cuda {
+        #[cfg(feature = "cuda")]
+        {
+            let s = psionic_v41_stage::cuda::synthetic::shape();
+            (
+                s.attention.index_top_k,
+                s.attention.window,
+                s.candidate_blocks,
+            )
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            unreachable!()
+        }
+    } else {
+        (
+            g.index_top_k,
+            g.window,
+            psionic_models::deepseek_v41_stage_cpu::CANDIDATE_BLOCKS,
+        )
+    };
+    let record = root.join(out).join("record");
+    let info: Value = serde_json::from_slice(
+        &std::fs::read(record.join(format!("{CASE}.records.json"))).unwrap(),
+    )
+    .unwrap();
+    for mode in ["decode", "replay"] {
+        let steps: Vec<&Value> = if mode == "decode" {
+            info["records"].as_array().unwrap().iter().collect()
+        } else {
+            vec![&info["replay_records"]]
+        };
+        for (step, files) in steps.iter().enumerate() {
+            let start = if mode == "replay" || step == 0 {
+                0
+            } else {
+                PROMPT.len() + step - 1
+            };
+            let rows = if mode == "replay" {
+                PROMPT.len() + GENERATED.len()
+            } else if step == 0 {
+                PROMPT.len()
+            } else {
+                1
+            };
+            for layer in [2, 8, 14, 20, 24, 28, 32, 36] {
+                let read = |site: &str| -> Vec<u32> {
+                    files
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .filter(|f| f.ends_with(&format!(".L{layer}.{site}.u32")))
+                        .flat_map(|f| {
+                            std::fs::read(record.join(f))
+                                .unwrap()
+                                .chunks_exact(4)
+                                .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
+                                .collect::<Vec<_>>()
+                        })
+                        .collect()
+                };
+                let native = read("IndexScores");
+                let picked = read("Selection");
+                let flags = read("CandidateFlags");
+                let ratio = if layer < 20 { 2 } else { 1 };
+                let ow = (start + rows) / ratio;
+                let cw = native.len() / rows;
+                let iw = top_k.min(ow);
+                let mut scores = Vec::new();
+                let mut ids = Vec::new();
+                let mut mask = Vec::new();
+                for row in 0..rows {
+                    let visible = (start + row + 1) / ratio;
+                    scores.extend((0..ow).map(|k| {
+                        if k < visible {
+                            native[row * cw + k]
+                        } else {
+                            f32::NEG_INFINITY.to_bits()
+                        }
+                    }));
+                    ids.extend((0..iw).map(|k| {
+                        let i = picked[row * top_k + k] as i32;
+                        if i < 0 {
+                            -1
+                        } else {
+                            i + if start == 0 { rows } else { window } as i32
+                        }
+                    }));
+                    if layer == 20 {
+                        let stride = flags.len() / rows;
+                        let bytes: Vec<_> = flags[row * stride..(row + 1) * stride]
+                            .iter()
+                            .flat_map(|w| w.to_le_bytes())
+                            .collect();
+                        mask.extend(bytes[..ow.div_ceil(8)].iter().map(|b| i32::from(*b)));
+                    }
+                }
+                let prefix = format!("{CASE}.{mode}.step{step:02}.index.layers.{layer}");
+                tensors.push((
+                    format!("{prefix}.scores"),
+                    "float32",
+                    vec![rows, ow],
+                    scores.iter().flat_map(|v| v.to_le_bytes()).collect(),
+                ));
+                tensors.push((
+                    format!("{prefix}.topk_idxs"),
+                    "int32",
+                    vec![rows, iw],
+                    ids.iter().flat_map(|v| v.to_le_bytes()).collect(),
+                ));
+                if layer == 20 {
+                    tensors.push((
+                        format!("{prefix}.candidate_mask"),
+                        "int32",
+                        vec![rows, ow.div_ceil(8)],
+                        mask.iter().flat_map(|v| v.to_le_bytes()).collect(),
+                    ));
+                }
+            }
+        }
+    }
+    oracle(dir, &tensors);
+    let path = dir.join(CASE).join("run.json");
+    let mut run: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    run["index_geometry"] =
+        json!({"top_k":top_k,"window":window,"block_size":8,"candidate_blocks":blocks});
+    std::fs::write(path, serde_json::to_vec(&run).unwrap()).unwrap();
+}
+
 #[test]
 fn the_harness_passes_its_own_run_and_fails_a_changed_one_on_the_cpu() {
     let root = tempfile::tempdir().unwrap();
@@ -210,25 +378,28 @@ fn the_harness_passes_its_own_run_and_fails_a_changed_one_on_the_cpu() {
         .to_string();
     let empty = root.path().join("empty");
     oracle(&empty, &[]);
-    let cpu = ["--backend", "cpu"];
+    let cpu = ["--backend", "cpu", "--observe"];
     let first = qualify(root.path(), &manifest, &empty, "first", &cpu);
     // No oracle logits: nothing compared, so nothing passes.
     assert_eq!(first["passed"], json!(false));
     assert_eq!(first["launch"], "development");
     assert_eq!(first["stage_bundle_sha256"], "");
     assert_eq!(first["expected_bundle_sha256"], json!(null));
-    let (logits, _) = recorded(root.path(), "first", 0);
+    let (logits, routers) = recorded(root.path(), "first", 40);
     assert_eq!(logits.len(), GENERATED.len() + 1);
     let policy = strict_policy(root.path());
     let same = root.path().join("same");
-    dump_from(&same, &logits, &[], false);
+    dump_from(&same, &logits, &routers, false);
+    add_index_dump(&same, root.path(), "first", false);
     let report = qualify(
         root.path(),
         &manifest,
         &same,
         "same",
-        &["--backend", "cpu", "--policy", &policy],
+        &["--backend", "cpu", "--observe", "--policy", &policy],
     );
+    assert_eq!(report["cases"][0]["index"]["passed"], true, "{report:#}");
+    assert_eq!(report["passed"], true, "{report:#}");
     let case = &report["cases"][0];
     assert_eq!(
         case["replay_equals_forced_decode"],
@@ -250,6 +421,7 @@ fn the_harness_passes_its_own_run_and_fails_a_changed_one_on_the_cpu() {
         &[
             "--backend",
             "cpu",
+            "--observe",
             "--policy",
             &policy,
             "--prefill-chunk",
@@ -258,6 +430,7 @@ fn the_harness_passes_its_own_run_and_fails_a_changed_one_on_the_cpu() {
             "3",
         ],
     );
+    assert_eq!(chunked["passed"], true, "{chunked:#}");
     assert_eq!(chunked["schedule"]["prefill_chunk"], 3);
     assert_eq!(
         chunked["cases"][0]["replay_equals_forced_decode"], true,
@@ -267,13 +440,14 @@ fn the_harness_passes_its_own_run_and_fails_a_changed_one_on_the_cpu() {
         assert_eq!(mode["passed"], true, "{mode:#}");
     }
     let changed = root.path().join("changed");
-    dump_from(&changed, &logits, &[], true);
+    dump_from(&changed, &logits, &routers, true);
+    add_index_dump(&changed, root.path(), "first", false);
     let report = qualify(
         root.path(),
         &manifest,
         &changed,
         "changed",
-        &["--backend", "cpu", "--policy", &policy],
+        &["--backend", "cpu", "--observe", "--policy", &policy],
     );
     assert_eq!(report["passed"], json!(false));
     let failures = report["cases"][0]["modes"][0]["failures"].to_string();
@@ -306,6 +480,7 @@ fn cuda_observations_match_and_every_negative_control_fails() {
     let policy = strict_policy(root.path());
     let same = root.path().join("same");
     dump_from(&same, &logits, &routers, false);
+    add_index_dump(&same, root.path(), "first", true);
     let mut args = cuda.to_vec();
     args.extend(["--policy", &policy]);
     let report = qualify(root.path(), &manifest, &same, "same", &args);

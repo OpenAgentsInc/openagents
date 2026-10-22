@@ -24,6 +24,9 @@ use nostr::pylon::{
     Service, Slots, Status,
 };
 
+mod qualification;
+pub use qualification::{NUMERICAL_QUALIFICATION, NumericalQualification, numerically_qualified};
+
 /// The model a request asks for.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Want {
@@ -118,6 +121,8 @@ pub fn serves_want_when_free<'a>(
             .group_head()
             .is_some_and(|g| g.readiness != Some(Readiness::Ready))
         || profile_of(beacon) != want.profile()
+        || matches!(want,Want::Profiled(_,p) if p==pylon::QUALIFIED_PROFILE)
+            && !numerically_qualified(beacon)
     {
         return None;
     }
@@ -199,6 +204,11 @@ pub struct StageDevice {
     /// Its verified bundle hash, when it has one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bundle: Option<String>,
+    /// Actual logical group manifest and numerical execution configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_config_sha256: Option<String>,
 }
 
 /// `beacon` with `device` in its `meta` under [`STAGE_DEVICE`], keeping any
@@ -278,6 +288,8 @@ pub struct GroupSpec {
     /// The serving profile (#12468): `None` for the qualified one, else
     /// `consumer-exact` or `consumer-q`. Head and stage beacons carry it.
     pub profile: Option<String>,
+    /// Numerical evidence for this exact model and running configuration.
+    pub numerical_qualification: Option<NumericalQualification>,
 }
 
 /// The head's v2 beacon from the provider's `base` beacon: its identity,
@@ -312,6 +324,7 @@ pub fn head_beacon(
         layers: None,
         profile: spec.profile.clone(),
     });
+    qualification::set(&mut beacon, spec, readiness);
     beacon
 }
 
@@ -464,6 +477,16 @@ pub fn stage_beacon(base: &Beacon, spec: &GroupSpec, generation: u64, layers: La
     set_answer_profile(&mut beacon, None);
     set_request_limits(&mut beacon, None);
     set_stage_device(&mut beacon, None);
+    if let Some(meta) = beacon
+        .meta
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        meta.remove(NUMERICAL_QUALIFICATION);
+        if meta.is_empty() {
+            beacon.meta = None;
+        }
+    }
     beacon.slots = Slots { total: 0, free: 0 };
     beacon.services = Vec::new();
     beacon.group = Some(Group {

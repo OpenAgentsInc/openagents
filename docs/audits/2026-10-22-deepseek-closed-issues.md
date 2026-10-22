@@ -568,3 +568,19 @@ generation `1792658190056916`; its hash is in the metadata. The audit preserves
 compact summaries rather than duplicating 48.8 MB in the repository. Whole
 issue/comment responses and downloaded reports remain in this chat's scratch
 directory. No source behavior, GitHub issue, or cloud service was changed.
+
+### Follow-up at 17:00 UTC
+
+The corrected SM120 test package passes 121 checks, including complete index
+observations and all four qualifier controls; its
+[receipt](../psionic/verification/deepseek-v41-gates-2026-10-22/sm120-index-components.json)
+retains the source and log. Original-input CUDA measurements now cover all
+four stages on C4 and C8 (1,025 tokens). Independent CPU measurements and the
+prospective policy remain in progress; these measurements are not G4 passes.
+
+F5 now has a code fix: a numerical claim binds successful G1/G2/G4 evidence to
+the running stages' actual configuration and limits, separately from the legacy
+`qualified` execution label. Explicit qualified routing refuses unknown or
+unqualified beacons. Local routing, cloud-launch, and website-consumer checks
+pass. The live preview has not been promoted; final qualified deployment and
+G1/G2/G4–G8 acceptance remain open under #12369.

@@ -549,6 +549,14 @@ pub struct Budget {
     pub prefill_chunk_tokens: Option<u64>,
 }
 
+/// The budget and prompt modes actually announced by a stage.
+#[must_use]
+pub fn budget_announcement(budget: &Budget) -> Value {
+    let mut value = serde_json::to_value(budget).expect("integer budget fields serialize");
+    value["modes"] = serde_json::json!(PromptMode::ALL.map(PromptMode::as_str));
+    value
+}
+
 /// Request IDs the budget allows for: the codec's longest.
 const BUDGET_REQUEST_ID_BYTES: usize = 128;
 
@@ -950,6 +958,32 @@ pub fn cuda_arch() -> Option<&'static str> {
     {
         None
     }
+}
+
+/// Execution settings supported by the original-weight resident profile.
+/// Experimental memory tiers need their own qualification contract.
+#[must_use]
+pub fn execution_settings(options: &Options) -> Option<Value> {
+    (options.control.is_none() && options.experts == Experts::Device && options.tiers == HostTiers::default()).then(|| serde_json::json!({"weights":"original","experts":"device","prefill":"token","cache":"unpacked"}))
+}
+
+/// Hashes actual numerical settings, manifest, wire types, and announced limits.
+/// Hostnames, recording paths, and generation numbers do not affect arithmetic.
+#[must_use]
+pub fn execution_fingerprint(
+    profile: &str,
+    manifest: &str,
+    wire: &Value,
+    limits: &Value,
+    settings: &Value,
+) -> Option<String> {
+    if settings.is_null() {
+        return None;
+    }
+    let value = serde_json::json!({"schema":"psionic.deepseek_v41.execution.v1","profile":profile,"manifest":manifest,"wire":wire,"limits":limits,"settings":settings});
+    serde_json::to_vec(&value)
+        .ok()
+        .map(|b| hex::encode(Sha256::digest(b)))
 }
 
 /// The schema of the `BUILD.json` that `scripts/pylon/v41-stage-build.sh`
@@ -1738,7 +1772,7 @@ pub fn stage_info<'a>(
             backend,
             Some(options.arithmetic.unwrap_or(model.arithmetic)),
         ),
-        device: serde_json::json!({ "class": device_class(backend) }),
+        device: serde_json::json!({ "class": device_class(backend), "execution_settings": execution_settings(options) }),
         events: options.events.clone(),
         record: options.record.clone(),
         max_context: options.max_context,

@@ -607,7 +607,7 @@ fn device_info(backend: &CudaBackend, experts: crate::Experts) -> Value {
     })
 }
 
-fn cuda_backend() -> Result<CudaBackend, Refused> {
+pub(crate) fn cuda_backend() -> Result<CudaBackend, Refused> {
     let backend = CudaBackend::new();
     if backend.selected_device().is_none() || !backend.quantized_kernels_available() {
         return Err(Refused(
@@ -736,7 +736,7 @@ impl CudaModel {
         self.stage_with(backend, layers, max_context, max_step_tokens, false, None)
     }
 
-    fn stage_with(
+    pub(crate) fn stage_with(
         &self,
         backend: &mut CudaBackend,
         layers: Range<usize>,
@@ -1080,7 +1080,11 @@ pub fn run_stage(
         } else {
             crate::profile_name(Backend::Cuda, None)
         }),
-        device,
+        device: {
+            let mut device = device;
+            device["execution_settings"] = serde_json::json!(crate::execution_settings(&options));
+            device
+        },
         events: options.events.clone(),
         record: options.record.clone(),
         max_context: options.max_context,

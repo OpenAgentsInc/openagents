@@ -119,6 +119,9 @@ pub struct GroupLane {
     /// qualified one, else `consumer-exact` or `consumer-q`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile: Option<String>,
+    /// Passed numerical evidence bound to the model and worker configuration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub numerical_qualification: Option<crate::group::NumericalQualification>,
 }
 
 fn is_default<T: Default + PartialEq>(value: &T) -> bool {
@@ -169,6 +172,7 @@ impl GroupLane {
             deadline_secs: self.deadline_secs,
             max_output_tokens: self.max_output_tokens,
             profile: self.profile.clone(),
+            numerical_qualification: self.numerical_qualification.clone(),
         }
     }
 
@@ -194,6 +198,15 @@ impl GroupLane {
     }
 
     fn validate_lane(&self) -> Result<(), String> {
+        if let Some(q) = &self.numerical_qualification {
+            q.validate()?;
+            if q.artifact != self.artifact
+                || q.manifest != self.manifest
+                || Some(&q.bundle) != self.build.as_ref()
+            {
+                return Err("Numerical qualification names another model or worker.".into());
+            }
+        }
         let ok_slug = |v: &str| {
             !v.is_empty()
                 && v.len() <= 48

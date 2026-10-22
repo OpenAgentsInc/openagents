@@ -6,6 +6,41 @@ const BLOCK_ROWS: usize = 8;
 const TOP_BLOCKS: usize = psionic_models::deepseek_v41_stage_cpu::CANDIDATE_BLOCKS;
 const TOP_INDICES: usize = 512;
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Geometry {
+    top_k: usize,
+    block_size: usize,
+    candidate_blocks: usize,
+    window: usize,
+}
+impl Geometry {
+    fn from_run(run: &Value) -> Result<Self, Refused> {
+        let g = if run["index_geometry"].is_null() {
+            Self {
+                top_k: TOP_INDICES,
+                block_size: BLOCK_ROWS,
+                candidate_blocks: TOP_BLOCKS,
+                window: 128,
+            }
+        } else {
+            serde_json::from_value(run["index_geometry"].clone())
+                .map_err(|e| refused(e.to_string()))?
+        };
+        if g.top_k == 0
+            || g.top_k > 8192
+            || g.block_size == 0
+            || g.block_size > 8192
+            || g.candidate_blocks == 0
+            || g.candidate_blocks > 1_048_576
+            || g.window == 0
+            || g.window > 8192
+        {
+            return Err(refused("invalid oracle index geometry"));
+        }
+        Ok(g)
+    }
+}
+
 fn words(record: &Path, files: &[String], layer: usize, site: &str) -> Result<Vec<u32>, Refused> {
     let mut out = Vec::new();
     for file in files
@@ -59,6 +94,96 @@ fn assess(
     })
 }
 
+// Keep raw decision measurements independent of the policy used to collect
+// them. A later frozen rule must not inherit an earlier rule's verdict.
+pub(super) fn change(
+    scores: &[f32],
+    allowed: Option<&[bool]>,
+    oracle: &[u32],
+    candidate: &[u32],
+) -> Value {
+    let a: BTreeSet<_> = oracle.iter().copied().collect();
+    let b: BTreeSet<_> = candidate.iter().copied().collect();
+    let substitutions = a.difference(&b).count();
+    let ranked = picks(scores, allowed, oracle.len() + 1);
+    let gap = if ranked.len() > oracle.len() && !oracle.is_empty() {
+        f64::from(scores[ranked[oracle.len() - 1] as usize] - scores[ranked[oracle.len()] as usize])
+    } else {
+        0.0
+    };
+    let sum = |ids: Vec<u32>| {
+        ids.iter()
+            .map(|i| f64::from(scores[*i as usize]))
+            .sum::<f64>()
+    };
+    let regret =
+        sum(a.difference(&b).copied().collect()) - sum(b.difference(&a).copied().collect());
+    json!({"substitutions":substitutions,"boundary_gap":gap,"regret":regret,
+        "valid":oracle.len()==candidate.len() && b.len()==candidate.len()})
+}
+
+/// Rejudge retained measurements without trusting the collector's verdict.
+pub(super) fn violations(rule: DecisionRule, report: &Value) -> Vec<String> {
+    let mut out = Vec::new();
+    if report["complete"] != true || report["error"].is_string() {
+        return vec!["index observations are incomplete or malformed".into()];
+    }
+    let Some(epsilon) = rule.epsilon.filter(|e| e.is_finite() && *e >= 0.0) else {
+        return vec!["index score budget is pending or invalid".into()];
+    };
+    if report["local_changed"].as_u64() != Some(0) {
+        out.push("index choices contradict actual scores or candidate masks".into());
+    }
+    if report["score_error_max"]
+        .as_f64()
+        .is_none_or(|e| !e.is_finite() || e > epsilon || e < 0.0)
+    {
+        out.push("index score error exceeds the budget or is missing".into());
+    }
+    for kind in ["indices", "candidate_blocks"] {
+        let stat = &report["kinds"][kind];
+        let rows = stat["rows"].as_u64().unwrap_or(0);
+        let changed = stat["changed"].as_u64();
+        if rows == 0
+            || changed.is_none_or(|n| n > rows)
+            || rule.max_substituted_fraction.is_none_or(|f| {
+                !f.is_finite()
+                    || !(0.0..=1.0).contains(&f)
+                    || changed.unwrap_or(rows) as f64 > f * rows as f64
+            })
+        {
+            out.push(format!(
+                "{kind}: substitution fraction exceeds the budget or is missing"
+            ));
+        }
+    }
+    for c in report["changes"].as_array().into_iter().flatten() {
+        let n = c["substitutions"].as_u64().unwrap_or(u64::MAX);
+        if c["valid"] != true
+            || n == 0
+            || n > rule.max_substitutions as u64
+            || c["boundary_gap"]
+                .as_f64()
+                .is_none_or(|g| !g.is_finite() || g < 0.0 || g > 2.0 * epsilon)
+            || c["regret"]
+                .as_f64()
+                .is_none_or(|r| !r.is_finite() || r > 2.0 * epsilon * n as f64)
+        {
+            out.push(format!("index decision at {} layer {} row {} violates the margin, regret, or substitution rule", c["mode"],c["layer"],c["row"]));
+        }
+    }
+    let listed = report["changes"].as_array().map_or(0, Vec::len) as u64;
+    if report["kinds"].as_object().is_none_or(|k| {
+        k.values()
+            .map(|v| v["changed"].as_u64().unwrap_or(u64::MAX / 4))
+            .sum::<u64>()
+            != listed
+    }) {
+        out.push("index changed-row evidence is missing".into());
+    }
+    out
+}
+
 /// Full rows must be present on both sides. An older dump is reported as
 /// incomplete; its labelled rows never become full coverage by inference.
 pub(super) fn case(
@@ -69,6 +194,7 @@ pub(super) fn case(
     record: &Path,
     rec: &Recorded,
 ) -> Result<Value, Refused> {
+    let geometry = Geometry::from_run(run)?;
     let prompt = run["prompt_tokens"].as_u64().unwrap_or(0) as usize;
     let generated = ids(&run["generated_ids"]);
     if prompt == 0 || rec.records.len() != generated.len() + 1 || rec.replay_records.is_empty() {
@@ -79,6 +205,11 @@ pub(super) fn case(
     let mut layers = Vec::new();
     let mut missing = Vec::new();
     let mut decisions = Vec::new();
+    let mut changes = Vec::new();
+    let mut kinds = BTreeMap::<&str, (usize, usize, usize)>::from([
+        ("indices", (0, 0, 0)),
+        ("candidate_blocks", (0, 0, 0)),
+    ]);
     let mut total = 0;
     let mut changed = 0;
     let mut failed = 0;
@@ -126,7 +257,7 @@ pub(super) fn case(
                     || oracle_ids.len() % rows != 0
                     || candidate_scores.is_empty()
                     || candidate_scores.len() % rows != 0
-                    || candidate_ids.len() != rows * TOP_INDICES
+                    || candidate_ids.len() != rows * geometry.top_k
                     || (layer >= 20 && (flags.is_empty() || flags.len() % rows != 0))
                 {
                     missing.push(format!("{prefix}: missing or malformed stage rows"));
@@ -171,7 +302,7 @@ pub(super) fn case(
                     layer_max = layer_max.max(error);
                     max_error = max_error.max(error);
                     over_budget += usize::from(policy.index.epsilon.is_some_and(|e| error > e));
-                    let offset = if start == 0 { rows } else { 128 } as i64;
+                    let offset = if start == 0 { rows } else { geometry.window } as i64;
                     let o: Vec<u32> = oracle_ids[row * iw..(row + 1) * iw]
                         .iter()
                         .filter(|i| **i >= 0)
@@ -181,7 +312,8 @@ pub(super) fn case(
                                 .ok_or_else(|| refused(format!("{prefix}: bad shifted index")))
                         })
                         .collect::<Result<_, _>>()?;
-                    let c: Vec<u32> = candidate_ids[row * TOP_INDICES..(row + 1) * TOP_INDICES]
+                    let c: Vec<u32> = candidate_ids
+                        [row * geometry.top_k..(row + 1) * geometry.top_k]
                         .iter()
                         .filter(|i| **i != u32::MAX)
                         .copied()
@@ -189,7 +321,7 @@ pub(super) fn case(
                     if o.iter().chain(&c).any(|i| *i as usize >= visible) {
                         return Err(refused(format!("{prefix} row {row}: noncausal index")));
                     }
-                    let nblocks = visible.div_ceil(BLOCK_ROWS);
+                    let nblocks = visible.div_ceil(geometry.block_size);
                     let mask: Vec<bool> = if layer >= 20 {
                         let fw = flags.len() / rows;
                         let bytes: Vec<_> = flags[row * fw..(row + 1) * fw]
@@ -222,7 +354,7 @@ pub(super) fn case(
                         }
                         let block_scores = |scores: &[f32]| -> Vec<f32> {
                             scores
-                                .chunks(BLOCK_ROWS)
+                                .chunks(geometry.block_size)
                                 .map(|r| r.iter().copied().fold(f32::NEG_INFINITY, f32::max))
                                 .collect()
                         };
@@ -244,9 +376,27 @@ pub(super) fn case(
                         // compete on their maximum scores.
                         let allowed: Vec<_> =
                             (0..nblocks).map(|i| Some(i as u32) != newest).collect();
-                        let want = picks(&bb, Some(&allowed), TOP_BLOCKS.saturating_sub(1));
+                        let want = picks(
+                            &bb,
+                            Some(&allowed),
+                            geometry.candidate_blocks.saturating_sub(1),
+                        );
                         if !same_set(&want, &cb) {
                             local_changed += 1;
+                        }
+                        let mut raw = change(&ab, Some(&allowed), &ob, &cb);
+                        let n = raw["substitutions"].as_u64().unwrap() as usize;
+                        let stats = kinds.get_mut("candidate_blocks").unwrap();
+                        stats.0 += 1;
+                        stats.1 += usize::from(n > 0);
+                        stats.2 = stats.2.max(n);
+                        if n > 0 || raw["valid"] != true {
+                            raw["mode"] = json!(mode);
+                            raw["step"] = json!(step);
+                            raw["row"] = json!(row);
+                            raw["layer"] = json!(layer);
+                            raw["kind"] = json!("candidate_blocks");
+                            changes.push(raw);
                         }
                         let decision = assess(policy.index, &ab, Some(&allowed), &ob, &cb);
                         tally(
@@ -270,21 +420,21 @@ pub(super) fn case(
                         )));
                     }
                     let allowed: Vec<_> = (0..visible)
-                        .map(|i| layer <= 20 || mask[i / BLOCK_ROWS])
+                        .map(|i| layer <= 20 || mask[i / geometry.block_size])
                         .collect();
-                    let want = picks(&b, Some(&allowed), TOP_INDICES);
+                    let want = picks(&b, Some(&allowed), geometry.top_k);
                     if !same_set(&want, &c) {
                         local_changed += 1;
                     }
                     // A previously qualified candidate-block substitution changes
                     // the allowed set. Judge index picks against the oracle's
                     // raw scores conditioned on the actual candidate mask.
-                    let conditioned = picks(a, Some(&allowed), TOP_INDICES);
+                    let conditioned = picks(a, Some(&allowed), geometry.top_k);
                     if layer <= 20 && !same_set(&conditioned, &o) {
                         // A zero-margin oracle tie may choose either set.
                         let tied = DecisionRule {
                             epsilon: Some(0.0),
-                            max_substitutions: TOP_INDICES,
+                            max_substitutions: geometry.top_k,
                             max_substituted_fraction: None,
                         }
                         .check(&Selection {
@@ -304,6 +454,20 @@ pub(super) fn case(
                                 "{prefix}: oracle picks contradict raw scores"
                             )));
                         }
+                    }
+                    let mut raw = change(a, Some(&allowed), &conditioned, &c);
+                    let n = raw["substitutions"].as_u64().unwrap() as usize;
+                    let stats = kinds.get_mut("indices").unwrap();
+                    stats.0 += 1;
+                    stats.1 += usize::from(n > 0);
+                    stats.2 = stats.2.max(n);
+                    if n > 0 || raw["valid"] != true {
+                        raw["mode"] = json!(mode);
+                        raw["step"] = json!(step);
+                        raw["row"] = json!(row);
+                        raw["layer"] = json!(layer);
+                        raw["kind"] = json!("indices");
+                        changes.push(raw);
                     }
                     let decision = assess(policy.index, a, Some(&allowed), &conditioned, &c);
                     tally(
@@ -326,17 +490,20 @@ pub(super) fn case(
         }
     }
     let complete = missing.is_empty() && !layers.is_empty();
-    let fraction_ok = policy
-        .index
-        .max_substituted_fraction
-        .is_some_and(|f| changed as f64 <= f * total.max(1) as f64);
-    Ok(
-        json!({"complete":complete,"missing":missing,"rows":total,"changed":changed,"failed":failed,
+    let kinds: BTreeMap<_, _> = kinds
+        .into_iter()
+        .map(|(k, (rows, changed, most))| {
+            (
+                k,
+                json!({"rows":rows,"changed":changed,"max_row_substitutions":most}),
+            )
+        })
+        .collect();
+    let mut report = json!({"geometry":geometry,"complete":complete,"missing":missing,"rows":total,"changed":changed,"failed":failed,
         "unresolved":unresolved,"local_changed":local_changed,"over_budget":over_budget,
-        "score_error_max":max_error,"layers":layers,"decisions":decisions,
-        "passed": complete && policy.index.epsilon.is_some() && failed==0 && unresolved==0
-            && local_changed==0 && over_budget==0 && fraction_ok}),
-    )
+        "score_error_max":max_error,"layers":layers,"decisions":decisions,"kinds":kinds,"changes":changes});
+    report["passed"] = json!(violations(policy.index, &report).is_empty());
+    Ok(report)
 }
 
 fn tally(
@@ -393,6 +560,26 @@ mod tests {
             ),
             Decision::Same
         ));
+    }
+
+    #[test]
+    fn rejudge_uses_measurements_and_separate_decision_kinds() {
+        let mut r = json!({"complete":true,"passed":true,"local_changed":0,"score_error_max":0.01,
+            "kinds":{"indices":{"rows":10,"changed":1},"candidate_blocks":{"rows":100,"changed":0}},
+            "changes":[{"kind":"indices","valid":true,"substitutions":1,"boundary_gap":0.02,"regret":0.01}]});
+        assert!(violations(rule(), &r).is_empty());
+        let mut strict = rule();
+        strict.max_substituted_fraction = Some(0.05);
+        assert!(!violations(strict, &r).is_empty());
+        strict = rule();
+        strict.epsilon = Some(0.005);
+        assert!(!violations(strict, &r).is_empty());
+        r["changes"][0]["regret"] = json!(1.0);
+        assert!(!violations(rule(), &r).is_empty());
+        r["changes"] = json!([]);
+        assert!(!violations(rule(), &r).is_empty());
+        r["complete"] = json!(false);
+        assert!(!violations(rule(), &r).is_empty());
     }
 
     fn fixture(root: &Path) -> (OracleDump, Recorded) {

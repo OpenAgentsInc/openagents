@@ -63,7 +63,29 @@ const LAYERS: usize = 40;
 const ORACLE_TIE_WINDOW: f64 = 1e-4;
 const ORACLE_TIE_CAP: usize = 64;
 
+mod calibration;
 mod index;
+mod isolated;
+mod isolated_check;
+mod scope;
+
+/// Collects isolated-stage output metrics on original oracle inputs.
+///
+/// # Errors
+///
+/// Refuses missing captures, a wrong bundle, and unsupported execution modes.
+pub fn run_isolated(args: &[String]) -> Result<(), Refused> {
+    isolated::run(args)
+}
+
+/// Rechecks hashed isolated outputs against original stage inputs.
+///
+/// # Errors
+///
+/// Refuses missing, changed, incomplete, or malformed boundary records.
+pub fn run_isolated_check(args: &[String]) -> Result<(), Refused> {
+    isolated_check::run(args)
+}
 
 /// Rechecks hashed index observations against a complete oracle capture.
 ///
@@ -92,6 +114,8 @@ pub struct QualifyOptions {
     pub observe: bool,
     pub control: Option<Control>,
     pub policy: Option<PathBuf>,
+    /// Prospective confirmation corpus, required for release.
+    pub corpus: Option<PathBuf>,
     pub max_context: usize,
     pub max_step_tokens: Option<usize>,
     pub prefill_chunk: Option<usize>,
@@ -143,6 +167,7 @@ impl QualifyOptions {
                 "--cases",
                 "--control",
                 "--policy",
+                "--corpus",
                 "--max-context",
                 "--max-step-tokens",
                 "--prefill-chunk",
@@ -226,6 +251,7 @@ impl QualifyOptions {
                 .map(|c| Control::parse(&c))
                 .transpose()?,
             policy: values.remove("--policy").map(PathBuf::from),
+            corpus: values.remove("--corpus").map(PathBuf::from),
             max_context: number(values.remove("--max-context"), "--max-context", 32_768)? as usize,
             max_step_tokens: values
                 .remove("--max-step-tokens")
@@ -284,6 +310,7 @@ impl QualifyOptions {
 pub struct OracleDump {
     root: PathBuf,
     entries: BTreeMap<String, Value>,
+    run_hashes: BTreeMap<String, String>,
     headers: BTreeMap<String, (u64, Value)>,
 }
 
@@ -307,6 +334,8 @@ impl OracleDump {
         Ok(Self {
             root: root.to_owned(),
             entries,
+            run_hashes: serde_json::from_value(manifest["run_files_sha256"].clone())
+                .unwrap_or_default(),
             headers: BTreeMap::new(),
         })
     }
@@ -326,6 +355,15 @@ impl OracleDump {
         let path = self.root.join(case).join("run.json");
         let bytes =
             std::fs::read(&path).map_err(|e| refused(format!("{}: {e}", path.display())))?;
+        if self
+            .run_hashes
+            .get(&format!("{case}/run.json"))
+            .is_some_and(|sha| *sha != hex::encode(Sha256::digest(&bytes)))
+        {
+            return Err(refused(format!(
+                "{case}: run metadata does not match its manifest hash"
+            )));
+        }
         serde_json::from_slice(&bytes).map_err(|e| refused(format!("{}: {e}", path.display())))
     }
 
@@ -427,6 +465,7 @@ impl OracleDump {
 struct Group {
     wire_step: u64,
     limits: Vec<Value>,
+    execution_configs: Vec<Value>,
     children: Vec<Child>,
     writers: Vec<TcpStream>,
     listens: Vec<Option<String>>,
@@ -555,6 +594,7 @@ impl Group {
         let mut group = Self {
             wire_step: 0,
             limits: vec![Value::Null; stages],
+            execution_configs: vec![Value::Null; stages],
             children,
             writers: Vec::new(),
             listens: Vec::new(),
@@ -618,6 +658,7 @@ impl Group {
                     ));
                     listens[i] = hello["listen"].as_str().map(str::to_owned);
                     group.limits[i] = hello["limits"].clone();
+                    group.execution_configs[i] = hello["execution_config_sha256"].clone();
                     let send = send.clone();
                     std::thread::spawn(move || {
                         for line in reader.lines() {
@@ -858,7 +899,7 @@ fn run_case(
     let result = Recorded {
         files_sha256,
         source: json!({"case":case,"runtime":group.runtime,"profile":group.profile,
-            "stage_bundle_sha256":group.build,"stage_executable_sha256":group.executable,
+            "stage_bundle_sha256":group.build,"stage_executable_sha256":group.executable,"execution_config_sha256":group.execution_configs,
             "weights":group.weights,"limits":group.limits,
             "prompt_ids_sha256":hex::encode(Sha256::digest(serde_json::to_vec(prompt).map_err(|e| refused(e.to_string()))?)),
             "generated_ids_sha256":hex::encode(Sha256::digest(serde_json::to_vec(generated).map_err(|e| refused(e.to_string()))?))}),
@@ -1598,6 +1639,7 @@ pub fn run_answers(opts: &QualifyOptions, cap: usize) -> Result<Value, Refused> 
         "profile": group.profile,
         "stage_bundle_sha256": group.build,
         "stage_executable_sha256": group.executable,
+        "execution_config_sha256": group.execution_configs,
         "expected_bundle_sha256": opts.worker_build,
         "launch": if opts.development { "development" } else { "pinned" },
         "manifest": opts.manifest,
@@ -1747,6 +1789,9 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         }
         None => (pending_policy(), String::new()),
     };
+    if opts.release {
+        scope::preflight(opts)?;
+    }
     let mut oracle = OracleDump::open(&opts.oracle)?;
     let all = [
         "p1-chat-thinking",
@@ -1828,14 +1873,11 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
             (None, None)
         };
         let index = if opts.observe {
-            Some(index::case(
-                &policy,
-                &mut oracle,
-                &run,
-                case,
-                &record,
-                &rec,
-            )?)
+            Some(
+                index::case(&policy, &mut oracle, &run, case, &record, &rec).unwrap_or_else(
+                    |error| json!({"complete":false,"passed":false,"error":error.to_string()}),
+                ),
+            )
         } else {
             None
         };
@@ -1866,7 +1908,9 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
     });
     let violations = judge_report(&policy, &json!({"cases": reports}));
     let release_refusals = if opts.release {
-        release_refusals(opts, &policy, &reports)
+        let mut refusals = release_refusals(opts, &policy, &reports);
+        refusals.extend(scope::violations(opts, &group));
+        refusals
     } else {
         Vec::new()
     };
@@ -1883,10 +1927,12 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         "issue": 12405,
         "policy_version": policy.version,
         "policy_sha256": policy_sha,
+        "corpus_sha256": opts.corpus.as_ref().map(|p|checked_sha256(p)).transpose()?,
         "runtime": group.runtime,
         "profile": group.profile,
         "stage_bundle_sha256": group.build,
         "stage_executable_sha256": group.executable,
+        "execution_config_sha256": group.execution_configs,
         "expected_bundle_sha256": opts.worker_build,
         "launch": if opts.development { "development" } else { "pinned" },
         "weights": group.weights,
@@ -2177,11 +2223,17 @@ pub fn judge_report(policy: &Policy, report: &Value) -> Vec<String> {
                 &case["router"],
             ));
         }
-        if policy.index_out_of_scope.is_none()
-            && policy.index.epsilon.is_some()
-            && case["index"]["passed"] != true
-        {
-            out.push(format!("{name}: index rule failed or is incomplete"));
+        if case["index"]["error"].is_string() {
+            out.push(format!(
+                "{name}: malformed index evidence: {}",
+                case["index"]["error"]
+            ));
+        } else if policy.index_out_of_scope.is_none() && policy.index.epsilon.is_some() {
+            out.extend(
+                index::violations(policy.index, &case["index"])
+                    .into_iter()
+                    .map(|v| format!("{name}: {v}")),
+            );
         }
         if case["exact"]["passed"] == json!(false) {
             out.push(format!("{name}: exact checks failed"));
@@ -2331,7 +2383,20 @@ pub fn self_check(
         // evidence.
         let numerical: Vec<&String> = failures
             .iter()
-            .filter(|f| !f.contains("no measured score error") && !f.contains("no router evidence"))
+            .filter(|f| {
+                ![
+                    "no measured score error",
+                    "no router evidence",
+                    "missing",
+                    "incomplete",
+                    "malformed",
+                    "pending",
+                    "refused",
+                    "exact checks",
+                ]
+                .iter()
+                .any(|term| f.contains(term))
+            })
             .collect();
         if numerical.is_empty() {
             return Err(refused(format!(
@@ -2597,15 +2662,28 @@ pub fn run_derive(args: &[String]) -> Result<(), Refused> {
     };
     let reference = read(flag("--reference"))?;
     let controls = read(flag("--control"))?;
+    let index_reference = read(flag("--index-reference"))?;
     let out = flag("--out").ok_or_else(|| refused("--out is required"))?;
     let (policy, evidence) = match flag("--rule").as_deref() {
         Some("2.1") => derive_policy(&reference, &controls)?,
         Some("2.2") => derive_policy_v22(&reference, &controls)?,
         Some("2.3") => derive_policy_v23(&reference, &controls)?,
-        _ => return Err(refused("--rule takes 2.1, 2.2, or 2.3")),
+        Some("2.4") => calibration::derive(&reference, &controls, &index_reference)?,
+        _ => return Err(refused("--rule takes 2.1, 2.2, 2.3, or 2.4")),
     };
     let mut value = serde_json::to_value(&policy).map_err(|e| refused(e.to_string()))?;
     value["derivation"] = evidence;
+    let mut input_files = BTreeMap::new();
+    for key in ["--reference", "--control", "--index-reference"] {
+        for path in flag(key)
+            .unwrap_or_default()
+            .split(',')
+            .filter(|p| !p.is_empty())
+        {
+            input_files.insert(path.to_owned(), checked_sha256(Path::new(path))?);
+        }
+    }
+    value["derivation"]["input_files_sha256"] = json!(input_files);
     value["launch_profile"] = json!({
         "prompt_tokens": 2872, "context": 8192, "output_cap": 4096,
         "deadline_seconds": 600, "step_seconds": 75, "prefill": "unchunked",

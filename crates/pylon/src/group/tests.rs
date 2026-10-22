@@ -8,11 +8,11 @@ use crate::identity::Identity;
 use crate::router::{FREE, candidates, candidates_for};
 use nostr::pylon::{BEACON_V, Class, Family, Tier, beacon_event, owned_beacon_event, parse_beacon};
 
-const AT: u64 = 1_800_000_000;
+pub(super) const AT: u64 = 1_800_000_000;
 const V41: &str = "sha256:4c1f1a7e1b7d4a8c0e9f2b3d5a6c7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d";
 const OTHER: &str = "sha256:0000000000000000000000000000000000000000000000000000000000000001";
 
-fn base(key: &Identity, slug: &str, model: &str) -> Beacon {
+pub(super) fn base(key: &Identity, slug: &str, model: &str) -> Beacon {
     Beacon {
         v: BEACON_V.into(),
         requires: vec![],
@@ -44,7 +44,7 @@ fn base(key: &Identity, slug: &str, model: &str) -> Beacon {
     }
 }
 
-fn spec(id: &str, artifact: &str) -> GroupSpec {
+pub(super) fn spec(id: &str, artifact: &str) -> GroupSpec {
     GroupSpec {
         id: id.into(),
         model: "deepseek-v4.1-flash".into(),
@@ -52,10 +52,11 @@ fn spec(id: &str, artifact: &str) -> GroupSpec {
         deadline_secs: 600,
         max_output_tokens: 4_096,
         profile: None,
+        numerical_qualification: None,
     }
 }
 
-fn ready(generation: u64) -> GroupStatus {
+pub(super) fn ready(generation: u64) -> GroupStatus {
     GroupStatus {
         readiness: Readiness::Ready,
         generation,
@@ -427,6 +428,7 @@ fn a_stage_beacon_carries_its_device_and_the_field_shows_it() {
         experts: Some("host".into()),
         profile: Some("cuda-device-sm_89".into()),
         bundle: Some("b".repeat(64)),
+        ..StageDevice::default()
     };
     set_stage_device(&mut head_beacon_, Some(&gpu));
     let inherited = stage_beacon(&head_beacon_, &spec, 1, Layers { from: 0, to: 1 });
@@ -521,10 +523,8 @@ fn requests_reach_only_the_profile_they_ask_for() {
     for (want, expect) in [
         (model(), Some(qualified.pubkey())),
         (Want::Artifact(V41.into()), Some(qualified.pubkey())),
-        (
-            profiled_want(model(), "qualified"),
-            Some(qualified.pubkey()),
-        ),
+        // A legacy execution label does not establish numerical acceptance.
+        (profiled_want(model(), "qualified"), None),
         (
             profiled_want(model(), "consumer-exact"),
             Some(exact.pubkey()),
@@ -553,9 +553,9 @@ fn requests_reach_only_the_profile_they_ask_for() {
     }
 }
 
-/// A head beacon written before profiles reads as the qualified profile.
+/// A legacy label remains readable without claiming numerical acceptance.
 #[test]
-fn a_beacon_without_a_profile_is_qualified() {
+fn a_beacon_without_a_profile_keeps_its_legacy_label() {
     let (book, head, _) = network();
     let beacon = book
         .iter()
