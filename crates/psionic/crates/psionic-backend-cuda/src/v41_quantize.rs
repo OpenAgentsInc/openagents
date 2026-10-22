@@ -36,8 +36,8 @@ pub fn v41_q_levels(format: V41MatvecFormat) -> &'static [f32] {
 /// The nearest level's code (ties to the lower code).
 fn nearest(levels: &[f32], v: f32) -> usize {
     let mut best = 0;
-    let mut err = f32::INFINITY;
-    for (q, l) in levels.iter().enumerate() {
+    let mut err = (v - levels[0]).abs();
+    for (q, l) in levels.iter().enumerate().skip(1) {
         let e = (v - l).abs();
         if e < err {
             err = e;
@@ -114,10 +114,13 @@ pub fn v41_quantize_matrix(
             let bmax = v.iter().fold(0.0_f32, |m, x| m.max(x.abs()));
             let start = scale_byte(d, bmax / top);
             let mut best = (f64::INFINITY, start);
-            let mut candidates: Vec<u8> = (-12_i32..=4)
-                .map(|k| (i32::from(start) + k).clamp(0, 255) as u8)
-                .collect();
-            // The least-squares scale of the first guess's codes.
+            // The scales near the block maximum's, then the least-squares
+            // scale of the first guess's codes; no allocation per block.
+            let mut candidates = [0_u8; 18];
+            for (slot, k) in candidates.iter_mut().zip(-12_i32..=4) {
+                *slot = (i32::from(start) + k).clamp(0, 255) as u8;
+            }
+            let mut n = 17;
             let s0 = v41_q_block_scale(d, start);
             encode_block(levels, v, w, s0, &mut trial);
             let (num, den) =
@@ -132,11 +135,17 @@ pub fn v41_quantize_matrix(
                         )
                     });
             if den > 0.0 && num > 0.0 {
-                candidates.push(scale_byte(d, (num / den) as f32));
+                candidates[n] = scale_byte(d, (num / den) as f32);
+                n += 1;
             }
+            let candidates = &mut candidates[..n];
             candidates.sort_unstable();
-            candidates.dedup();
-            for u in candidates {
+            let mut last = None;
+            for &u in candidates.iter() {
+                if last == Some(u) {
+                    continue;
+                }
+                last = Some(u);
                 let s = v41_q_block_scale(d, u);
                 let err = encode_block(levels, v, w, s, &mut trial);
                 if err < best.0 {

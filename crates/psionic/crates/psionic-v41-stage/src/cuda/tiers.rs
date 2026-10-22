@@ -34,6 +34,8 @@ fn backend_error(message: impl Into<String>) -> RuntimeError {
 /// The checkpoint's shards, mapped read-only.
 struct MappedShards {
     maps: Vec<Mmap>,
+    /// The open shard files, for reads that copy instead of mapping.
+    files: Vec<File>,
     names: BTreeMap<String, usize>,
 }
 
@@ -50,6 +52,7 @@ impl MappedShards {
         let map = unsafe { Mmap::map(&file) }
             .map_err(|e| Refused(format!("can't map {}: {e}", path.display())))?;
         self.maps.push(map);
+        self.files.push(file);
         let i = self.maps.len() - 1;
         self.names.insert(shard.to_owned(), i);
         Ok(i)
@@ -101,6 +104,7 @@ impl CheckpointExperts {
     ) -> Result<Self, Refused> {
         let mut shards = MappedShards {
             maps: Vec::new(),
+            files: Vec::new(),
             names: BTreeMap::new(),
         };
         let mut parts = BTreeMap::new();
@@ -121,6 +125,37 @@ impl CheckpointExperts {
     #[must_use]
     pub fn bytes(&self) -> usize {
         self.parts.values().map(|(w, s)| w.2 + s.2).sum()
+    }
+
+    /// Copies one projection's weight and scale bytes into `weights` and
+    /// `scales` with positioned reads instead of touching the mapping: a
+    /// bulk pass over every expert (the `consumer-q` quantizer) then takes
+    /// no page faults, which on a many-core machine serialize on the
+    /// mapping's lock.
+    ///
+    /// # Errors
+    ///
+    /// Refuses an unknown expert and failed reads.
+    pub fn read_projection(
+        &self,
+        layer: usize,
+        expert: usize,
+        projection: usize,
+        weights: &mut Vec<u8>,
+        scales: &mut Vec<u8>,
+    ) -> Result<(), RuntimeError> {
+        use std::os::unix::fs::FileExt;
+        let ((wi, wo, wl), (si, so, sl)) = *self
+            .parts
+            .get(&(layer, expert, projection))
+            .ok_or_else(|| backend_error(format!("no expert {expert} in layer {layer}")))?;
+        for (buf, i, offset, len) in [(weights, wi, wo, wl), (scales, si, so, sl)] {
+            buf.resize(len, 0);
+            self.shards.files[i]
+                .read_exact_at(buf, offset as u64)
+                .map_err(|e| backend_error(format!("expert {expert} of layer {layer}: {e}")))?;
+        }
+        Ok(())
     }
 }
 
@@ -162,6 +197,7 @@ impl CheckpointEngram {
     ) -> Result<Self, Refused> {
         let mut shards = MappedShards {
             maps: Vec::new(),
+            files: Vec::new(),
             names: BTreeMap::new(),
         };
         let mut tables = BTreeMap::new();

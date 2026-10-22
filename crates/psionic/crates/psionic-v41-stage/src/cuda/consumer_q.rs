@@ -198,9 +198,9 @@ impl Importance {
 }
 
 /// One FP4 checkpoint matrix as `f32` values, row-major.
-fn dequantize_fp4(weights: &[u8], scales: &[u8], rows: usize, cols: usize) -> Vec<f32> {
+fn dequantize_fp4(weights: &[u8], scales: &[u8], rows: usize, cols: usize, out: &mut Vec<f32>) {
     let blocks = cols / 32;
-    let mut out = Vec::with_capacity(rows * cols);
+    out.clear();
     for r in 0..rows {
         for b in 0..blocks {
             let s = decode_f8_e8m0fnu(scales[r * blocks + b]);
@@ -211,7 +211,6 @@ fn dequantize_fp4(weights: &[u8], scales: &[u8], rows: usize, cols: usize) -> Ve
             }
         }
     }
-    out
 }
 
 /// Quantizes the routed experts of `layers` from the checkpoint into an
@@ -245,31 +244,34 @@ pub fn quantize(
     for layer in layers.clone() {
         let parts: Vec<Vec<u8>> = (0..experts)
             .into_par_iter()
-            .map(|e| -> Result<Vec<u8>, RuntimeError> {
-                let mut bytes = Vec::with_capacity(expert_bytes);
-                for p in 0..3 {
-                    let (rows, cols) = dims.shape(p);
-                    let (w, s) = source.projection(layer, e, p)?;
-                    let values = dequantize_fp4(w, s, rows, cols);
-                    let imp = importance.and_then(|i| {
-                        let table = if p == 1 { &i.hidden } else { &i.inputs };
-                        table
-                            .get(&layer)
-                            .and_then(|v| v.get(e))
-                            .filter(|v| v.len() == cols)
-                    });
-                    // Columns no calibration row reached keep a small floor.
-                    let floored: Option<Vec<f32>> = imp.map(|v| {
-                        let mean = v.iter().sum::<f32>() / v.len().max(1) as f32;
-                        v.iter().map(|x| x.max(mean * 1e-3).max(1e-12)).collect()
-                    });
-                    let (qw, qs) =
-                        v41_quantize_matrix(formats[p], &values, rows, cols, floored.as_deref());
-                    bytes.extend_from_slice(&qw);
-                    bytes.extend_from_slice(&qs);
-                }
-                Ok(bytes)
-            })
+            .map_init(
+                || (Vec::new(), Vec::new(), Vec::new()),
+                |(w, s, values), e| -> Result<Vec<u8>, RuntimeError> {
+                    let mut bytes = Vec::with_capacity(expert_bytes);
+                    for p in 0..3 {
+                        let (rows, cols) = dims.shape(p);
+                        source.read_projection(layer, e, p, w, s)?;
+                        dequantize_fp4(w, s, rows, cols, values);
+                        let imp = importance.and_then(|i| {
+                            let table = if p == 1 { &i.hidden } else { &i.inputs };
+                            table
+                                .get(&layer)
+                                .and_then(|v| v.get(e))
+                                .filter(|v| v.len() == cols)
+                        });
+                        // Columns no calibration row reached keep a small floor.
+                        let floored: Option<Vec<f32>> = imp.map(|v| {
+                            let mean = v.iter().sum::<f32>() / v.len().max(1) as f32;
+                            v.iter().map(|x| x.max(mean * 1e-3).max(1e-12)).collect()
+                        });
+                        let (qw, qs) =
+                            v41_quantize_matrix(formats[p], values, rows, cols, floored.as_deref());
+                        bytes.extend_from_slice(&qw);
+                        bytes.extend_from_slice(&qs);
+                    }
+                    Ok(bytes)
+                },
+            )
             .collect::<Result<_, _>>()
             .map_err(|e| Refused(format!("layer {layer}: {e}")))?;
         let path = out.join(format!("layer-{layer:02}.bin"));
