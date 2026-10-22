@@ -39,6 +39,8 @@ def safetensor(path, name):
 
 
 def log_softmax(x):
+    if x.ndim != 1 or not x.size or not np.isfinite(x).all():
+        raise ValueError("Logits must be a nonempty finite vector")
     m = np.max(x)
     return x - m - math.log(np.sum(np.exp(x - m)))
 
@@ -49,6 +51,8 @@ def captured(folder):
     for path in Path(folder).glob("step-*.logits.f32"):
         steps.append((int(path.name.split("-")[1].split(".")[0]), path))
     steps.sort()
+    if not steps or [step for step, _ in steps] != list(range(len(steps))):
+        raise ValueError(f"{folder}: captures must start at step 0 and have no gaps")
     return [np.fromfile(p, dtype=np.float32).astype(np.float64) for _, p in steps]
 
 
@@ -69,13 +73,17 @@ def main():
         for k, q in enumerate(logits):
             name = f"{case}.decode.g{k + 1}.logits"
             if name not in files or k >= len(generated):
-                break
+                raise ValueError(f"{case}: no matching oracle position for capture step {k}")
             o = safetensor(oracle_dir / files[name], name)
+            if o.shape != q.shape:
+                raise ValueError(f"{case}: oracle and capture vocabulary sizes differ")
             lo, lq = log_softmax(o), log_softmax(q)
             po, pq = np.exp(lo), np.exp(lq)
             kl = float(np.sum(po * (lo - lq)))
             tv = float(0.5 * np.sum(np.abs(po - pq)))
             ref = generated[k]
+            if not isinstance(ref, int) or not 0 <= ref < len(o):
+                raise ValueError(f"{case}: oracle token is outside the vocabulary")
             row = {
                 "label": label,
                 "case": case,
@@ -103,6 +111,8 @@ def main():
     card = {
         "schema": "openagents.deepseek_v41.consumer_q_card.v1",
         "issue": 12465,
+        "lossy": True,
+        "qualified": False,
         "note": "Teacher-forced decode logits against the oracle's at the same positions. consumer-q is lossy and unqualified.",
         "summary": summary,
         "rows": rows,
