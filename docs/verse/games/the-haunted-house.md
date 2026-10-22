@@ -4,7 +4,7 @@ Status: spec, 2026-10-21. Owner request: build the Blue Rush flagship as a
 small walk-through haunted house: a zone with a portal on the Grid beside
 the ICE CREAM MAN arch, made in a vintage-Halloween, late-90s-cartoon
 style, with every likely addition prepared in advance. It should be the
-easiest zone in the Verse for a coding agent to read and extend. Issues are
+easiest zone in the Verse for a coding agent to read and extend. Epic: #12477; issues are
 listed in [Delivery](#delivery). Numbers marked *tunable* are starting
 values for playtests, not measured results.
 
@@ -458,17 +458,17 @@ Done when:
 
 ## Delivery
 
-Epic and child issues are linked from the epic. In order:
+Epic #12477. In order:
 
-1. **Grid:** a list of hosted arches, with HAUNTED HOUSE beside ICE CREAM
+1. #12472 **Grid:** a list of hosted arches, with HAUNTED HOUSE beside ICE CREAM
    MAN.
-2. **`haunt.v1`:** document, checks, `describe`, and the MVP house as
+2. #12473 **`haunt.v1`:** document, checks, `describe`, and the MVP house as
    version 1.
-3. **`haunt-web`:** the first-person shell, the art-style rendering, the
+3. #12474 **`haunt-web`:** the first-person shell, the art-style rendering, the
    vignette and lantern, lighting presets, and the livehost tenant.
-4. **The prepared library and audio:** cards, meshes, effects, sounds, the
+4. #12475 **The prepared library and audio:** cards, meshes, effects, sounds, the
    bass line, and the audio buses.
-5. **Game Lab:** the second game, the `haunt_*` tools, volume by voice,
+5. #12476 **Game Lab:** the second game, the `haunt_*` tools, volume by voice,
    and one change credit per tester.
 
 Targets: a playable house with a few library assets for the Oct 24 test.
