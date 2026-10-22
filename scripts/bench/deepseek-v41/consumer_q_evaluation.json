@@ -7,6 +7,7 @@
   "oracle": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/holdout-full",
   "oracle_manifest_sha256": "98b218b52c2f3ec4d08a2945321a468631b20680623c1871468633392163aecd",
   "oracle_corpus_sha256": "11e82059f5f411d216408ef908579901e3b085d918cfc243505b66680163e227",
+  "checkpoint_index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
   "cases": [
     {
       "id": "h1-chat-seasons",
