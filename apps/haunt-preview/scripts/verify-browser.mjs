@@ -6,7 +6,10 @@ import { PNG } from "pngjs";
 
 const url = process.env.HAUNT_URL;
 if (!url) throw new Error("Set HAUNT_URL to the local preview URL.");
-const out = resolve(process.env.HAUNT_EVIDENCE || "dist/verification");
+const out = resolve(
+  process.env.HAUNT_EVIDENCE || "dist/verification",
+  "shader",
+);
 await mkdir(out, { recursive: true });
 const browser = await chromium.connectOverCDP(
   process.env.OPENAGENTS_CHROME_WS ||
@@ -58,6 +61,7 @@ try {
     await page.locator("#diagnostics").textContent(),
   );
   const original = await page.evaluate(() => window.hauntPreview.original());
+  await page.getByText("Advanced · edit the shader", { exact: true }).click();
   const initial = await snap();
   report.platform = await page.evaluate(() => ({
     userAgent: navigator.userAgent,
@@ -218,55 +222,9 @@ try {
     "30 real shader recompiles and observed frames; bounded active resources",
   );
 
-  if (process.env.HAUNT_AGENT !== "0") {
-    await save(original);
-    await page
-      .locator("#request")
-      .fill(
-        "Change LANTERN_TINT in haunt/material.wgsl to vec3<f32>(1.0, 0.40, 0.12). Read the file, use one exact patch command, then a done command. Do not run tests.",
-      );
-    const agentBefore = await snap();
-    const agentStart = Date.now();
-    await page.locator("#ask").click();
-    console.log("Waiting for a real Kiln/Pylon agent edit…");
-    await page.waitForFunction(
-      () => {
-        const match = window
-          .kilnReadShader()
-          ?.match(/LANTERN_TINT\s*=\s*vec3<f32>\(([^)]+)\)/);
-        const values = match?.[1].split(",").map(Number);
-        return (
-          values &&
-          values.length === 3 &&
-          Math.abs(values[0] - 1) < 0.001 &&
-          Math.abs(values[1] - 0.4) < 0.001 &&
-          Math.abs(values[2] - 0.12) < 0.001
-        );
-      },
-      {},
-      { timeout: 240000 },
-    );
-    await page.waitForFunction(() => {
-      const s = window.hauntPreview.snapshot();
-      return s.accepted === s.draft && s.inflight === 0;
-    });
-    await page.waitForFunction(
-      () => window.kilnAgentDone === true,
-      {},
-      { timeout: 120000 },
-    );
-    const agentAfter = await snap();
-    samePose(agentBefore.pose, agentAfter.pose);
-    assert.equal(agentBefore.deviceId, agentAfter.deviceId);
-    report.agent = {
-      wallMs: Date.now() - agentStart,
-      state: await snap(),
-      transcript: await page.evaluate(() => window.kilnTranscriptLatest),
-    };
-    report.checks.push(
-      "real Pylon inference -> Kiln agent patch -> WASI workspace -> visible WebGPU pipeline",
-    );
-  }
+  report.checks.push(
+    "scene commands and the real Jev path are checked separately by verify-editor.mjs",
+  );
   await page.screenshot({ path: `${out}/preview.png`, fullPage: true });
   report.final = await snap();
   report.localWrites = requests.filter(

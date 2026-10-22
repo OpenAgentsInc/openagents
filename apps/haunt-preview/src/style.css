@@ -431,3 +431,75 @@ footer {
     height: 300px;
   }
 }
+
+.scene-controls label {
+  display: block;
+  font-size: 11px;
+  color: #a9b3a2;
+  margin: 12px 0 7px;
+}
+select,
+input {
+  font:
+    12px ui-monospace,
+    monospace;
+  border: 1px solid #ffffff20;
+  border-radius: 5px;
+  background: #101718;
+  color: #ded8c8;
+  padding: 10px;
+  width: 100%;
+  color-scheme: dark;
+}
+.position-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+.position-fields input {
+  margin-top: 7px;
+}
+.light-row {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-top: 16px;
+}
+.light-row select {
+  flex: 1;
+}
+.light-row label {
+  white-space: nowrap;
+}
+#scene-count {
+  margin-left: auto;
+  font-size: 10px;
+  align-self: center;
+  color: #92a090;
+}
+.scene-controls .actions {
+  flex-wrap: wrap;
+}
+.scene-controls .primary {
+  flex: 1;
+}
+.shader-tools {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid #ffffff18;
+  font-size: 11px;
+  color: #99a68f;
+}
+.shader-tools summary {
+  cursor: pointer;
+  margin-bottom: 18px;
+}
+#decision-details {
+  font-size: 10px;
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+#scene-status {
+  min-height: 38px;
+}

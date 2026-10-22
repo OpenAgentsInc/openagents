@@ -8197,6 +8197,7 @@ dependencies = [
  "glam",
  "nostr",
  "oa-copy",
+ "openagents-workspace-hack",
  "pylons-view",
  "reqwest 0.12.28",
  "serde",
@@ -8212,6 +8213,7 @@ dependencies = [
  "glam",
  "gltf",
  "oa-copy",
+ "openagents-workspace-hack",
  "pylons-view",
  "sha2 0.10.9",
  "verse-engine",
@@ -8226,6 +8228,7 @@ dependencies = [
  "grid-foreman",
  "grid-help-desk",
  "oa-copy",
+ "openagents-workspace-hack",
  "pylons-view",
  "verse-engine",
 ]
@@ -10033,6 +10036,7 @@ dependencies = [
  "futures-channel",
  "futures-util",
  "getrandom 0.3.4",
+ "jev",
  "js-sys",
  "kiln-view",
  "livehost",
@@ -10075,6 +10079,7 @@ dependencies = [
  "kiln",
  "kiln-git",
  "nostr",
+ "openagents-workspace-hack",
  "pylon",
  "secp256k1 0.31.1",
  "serde",
@@ -10118,6 +10123,7 @@ name = "kiln-view"
 version = "1.0.0"
 dependencies = [
  "oa-copy",
+ "openagents-workspace-hack",
  "rust-native",
  "serde",
  "serde_json",
@@ -10329,6 +10335,7 @@ dependencies = [
  "ab_glyph_rasterizer",
  "js-sys",
  "libm",
+ "openagents-workspace-hack",
  "swash",
  "ttf-parser",
  "wasm-bindgen",
@@ -10340,6 +10347,7 @@ name = "lander5-web"
 version = "1.0.0"
 dependencies = [
  "js-sys",
+ "openagents-workspace-hack",
  "wasm-bindgen",
  "web-sys",
 ]
@@ -14024,6 +14032,7 @@ dependencies = [
 name = "openagents-workspace-hack"
 version = "0.1.0"
 dependencies = [
+ "ab_glyph_rasterizer",
  "aead",
  "aes-gcm",
  "ahash",
@@ -14096,6 +14105,7 @@ dependencies = [
  "getrandom 0.2.17",
  "getrandom 0.3.4",
  "getrandom 0.4.3",
+ "gimli",
  "glam",
  "gltf",
  "gltf-json",
@@ -14124,6 +14134,7 @@ dependencies = [
  "itertools 0.14.0",
  "jiff",
  "jiff-core",
+ "js-sys",
  "lazy_static",
  "libc",
  "libm",
@@ -14154,6 +14165,7 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-foundation 0.3.2",
  "objc2-system-configuration",
+ "object",
  "once_cell",
  "parking_lot",
  "percent-encoding",
@@ -14205,6 +14217,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sha2 0.11.0",
+ "signature 2.2.0",
  "signature 3.0.0",
  "simd-adler32",
  "simdutf8",
@@ -14221,6 +14234,7 @@ dependencies = [
  "syn 3.0.6",
  "sync_wrapper",
  "syntect",
+ "thin-vec",
  "thiserror 2.0.20",
  "time",
  "time-core",
@@ -14250,14 +14264,17 @@ dependencies = [
  "url",
  "usvg",
  "uuid",
+ "wasm-bindgen",
  "wasm-encoder 0.254.2",
  "wasmparser 0.254.2",
+ "wasmtime-environ",
  "wasmtime-internal-core",
  "wayland-backend",
  "wayland-protocols",
  "wayland-protocols-wlr",
  "wayland-server",
  "wayland-sys",
+ "web-sys",
  "winapi",
  "windows",
  "windows-core",
@@ -15827,6 +15844,7 @@ name = "pylons-view"
 version = "1.0.0"
 dependencies = [
  "oa-copy",
+ "openagents-workspace-hack",
  "serde",
  "serde_json",
 ]
@@ -15837,6 +15855,7 @@ version = "1.0.0"
 dependencies = [
  "glam",
  "js-sys",
+ "openagents-workspace-hack",
  "pylons-view",
  "serde_json",
  "wasm-bindgen",
@@ -18603,6 +18622,7 @@ version = "1.0.0"
 dependencies = [
  "bitcoin-amount",
  "openagents-spark",
+ "openagents-workspace-hack",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -18883,6 +18903,7 @@ dependencies = [
  "base64 0.22.1",
  "http-body-util",
  "nostr",
+ "openagents-workspace-hack",
  "playtest",
  "secp256k1 0.31.1",
  "serde",

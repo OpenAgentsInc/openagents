@@ -7,6 +7,15 @@ import {
 } from "./protocol.ts";
 import { cameraMatrix, houseGeometry, move, type Pose } from "./scene.ts";
 
+import {
+  SceneHistory,
+  readProject,
+  PROJECT_ID,
+  TINTS,
+  type Transaction,
+  type Project,
+} from "./project.ts";
+
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 let preview = "",
   token = "";
@@ -38,7 +47,13 @@ class Runtime {
   previous = 0;
   lastReport = 0;
   maxFrameMs = 0;
-  uniformData = new Float32Array(24);
+  uniformData = new Float32Array(28);
+  scene = new SceneHistory();
+  captureRequest: string | undefined;
+  captureBuffer: GPUBuffer | undefined;
+  scenePending:
+    | { request: string; transaction?: Transaction; restore?: Project }
+    | undefined;
   pendingEdit: ShaderEdit | undefined;
   compiles = 0;
   inflight = 0;
@@ -55,7 +70,7 @@ class Runtime {
     this.context = context;
     this.canvas = canvas;
     this.format = format;
-    const geometry = houseGeometry();
+    const geometry = houseGeometry(this.scene.project.entities);
     this.count = geometry.length / 10;
     this.vertices = device.createBuffer({
       label: "Haunted House geometry",
@@ -65,7 +80,7 @@ class Runtime {
     device.queue.writeBuffer(this.vertices, 0, geometry.buffer);
     this.uniform = device.createBuffer({
       label: "Camera and lantern",
-      size: 96,
+      size: 112,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     const binding = device.createBindGroupLayout({
@@ -73,7 +88,7 @@ class Runtime {
         {
           binding: 0,
           visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-          buffer: { type: "uniform", minBindingSize: 96 },
+          buffer: { type: "uniform", minBindingSize: 112 },
         },
       ],
     });
@@ -217,8 +232,149 @@ class Runtime {
       });
   }
 
+  capture(request: string) {
+    if (
+      this.disposed ||
+      this.lost ||
+      this.captureRequest ||
+      this.captureBuffer ||
+      this.width * this.height > 4194304
+    ) {
+      send({
+        type: "capture",
+        request,
+        message: "Wait for the current capture, or make the preview smaller.",
+      });
+      return;
+    }
+    this.captureRequest = request;
+  }
+
+  finishCapture(
+    buffer: GPUBuffer,
+    request: string,
+    width: number,
+    height: number,
+    bytesPerRow: number,
+  ) {
+    const format = this.format;
+    const readback = Effect.scoped(
+      Effect.gen(function* () {
+        yield* Effect.acquireRelease(Effect.succeed(buffer), (b) =>
+          Effect.sync(() => {
+            if (b.mapState === "mapped") b.unmap();
+            b.destroy();
+          }),
+        );
+        yield* Effect.tryPromise({
+          try: () => buffer.mapAsync(GPUMapMode.READ),
+          catch: () => new Error("Couldn't read this frame."),
+        });
+        const source = new Uint8Array(buffer.getMappedRange()),
+          pixels = new Uint8ClampedArray(width * height * 4);
+        for (let y = 0; y < height; y++)
+          pixels.set(
+            source.subarray(y * bytesPerRow, y * bytesPerRow + width * 4),
+            y * width * 4,
+          );
+        if (format.startsWith("bgra"))
+          for (let i = 0; i < pixels.length; i += 4) {
+            const red = pixels[i];
+            pixels[i] = pixels[i + 2];
+            pixels[i + 2] = red;
+          }
+        const image = new OffscreenCanvas(width, height),
+          context = image.getContext("2d")!;
+        context.putImageData(new ImageData(pixels, width, height), 0, 0);
+        return yield* Effect.tryPromise({
+          try: () => image.convertToBlob({ type: "image/png" }),
+          catch: () => new Error("Couldn't encode this frame."),
+        });
+      }),
+    );
+    Effect.runPromise(readback)
+      .then((blob) => {
+        this.captureBuffer = undefined;
+        send({ type: "capture", request, blob, state: this.state() });
+      })
+      .catch(() => {
+        this.captureBuffer = undefined;
+        send({
+          type: "capture",
+          request,
+          message: "Couldn't capture this frame.",
+          state: this.state(),
+        });
+      });
+  }
+
+  queueScene(message: {
+    request: string;
+    transaction?: Transaction;
+    restore?: Project;
+  }) {
+    if (this.disposed || this.lost || this.scenePending) {
+      send({
+        type: "scene-rejected",
+        request: message.request,
+        message: "Wait for the current scene change to finish.",
+      });
+      return;
+    }
+    this.scenePending = message;
+  }
+
+  applyScene() {
+    const message = this.scenePending;
+    this.scenePending = undefined;
+    if (!message) return;
+    try {
+      let candidate: Project, commit: () => void;
+      if (message.restore) {
+        if (this.scene.project.revision !== 0)
+          throw new Error("A saved scene can only open before editing begins.");
+        candidate = readProject(message.restore);
+        commit = () => {
+          this.scene = new SceneHistory(candidate);
+        };
+      } else {
+        const plan = this.scene.prepare(message.transaction!);
+        candidate = plan.project;
+        commit = plan.commit;
+      }
+      if (
+        JSON.stringify(candidate.entities) !==
+        JSON.stringify(this.scene.project.entities)
+      ) {
+        const geometry = houseGeometry(candidate.entities);
+        const buffer = this.device.createBuffer({
+          label: "Haunted House scene geometry",
+          size: geometry.byteLength,
+          usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        });
+        this.device.queue.writeBuffer(buffer, 0, geometry.buffer);
+        const previous = this.vertices;
+        this.vertices = buffer;
+        this.count = geometry.length / 10;
+        previous.destroy();
+      }
+      commit();
+      return message;
+    } catch (error) {
+      send({
+        type: "scene-rejected",
+        request: message.request,
+        message: String(error),
+        state: this.state(),
+      });
+    }
+  }
+
   state() {
     return {
+      project: this.scene.project,
+      canUndo: this.scene.past.length > 0,
+      canRedo: this.scene.future.length > 0,
       pose: { ...this.pose },
       frame: this.frame,
       deviceId: this.deviceId,
@@ -231,7 +387,7 @@ class Runtime {
       inflight: this.inflight,
       activePipelines: this.versions.active ? 1 : 0,
       pendingPipelines: this.versions.pending ? 1 : 0,
-      buffers: this.disposed ? 0 : 2,
+      buffers: this.disposed ? 0 : 2 + (this.captureBuffer ? 1 : 0),
       depthTextures: this.disposed ? 0 : 1,
       disposed: this.disposed,
       maxFrameMs: this.maxFrameMs,
@@ -240,6 +396,7 @@ class Runtime {
 
   draw(now: number) {
     if (this.disposed || this.lost) return;
+    const sceneChange = this.applyScene();
     const delta = this.previous ? now - this.previous : 0;
     this.previous = now;
     this.maxFrameMs = Math.max(this.maxFrameMs, delta);
@@ -256,12 +413,14 @@ class Runtime {
     cameraMatrix(this.uniformData, this.pose, this.width / this.height);
     this.uniformData.set([this.pose.x, 1.55, this.pose.z, now / 1000], 16);
     this.uniformData.set([this.pose.x + 0.3, 1.35, this.pose.z - 0.25, 1], 20);
+    this.uniformData.set([...TINTS[this.scene.project.tint], 1], 24);
     this.device.queue.writeBuffer(this.uniform, 0, this.uniformData.buffer);
     const encoder = this.device.createCommandEncoder();
+    const texture = this.context.getCurrentTexture();
     const pass = encoder.beginRenderPass({
       colorAttachments: [
         {
-          view: this.context.getCurrentTexture().createView(),
+          view: texture.createView(),
           clearValue: { r: 0.055, g: 0.075, b: 0.085, a: 1 },
           loadOp: "clear",
           storeOp: "store",
@@ -281,8 +440,44 @@ class Runtime {
       pass.draw(this.count);
     }
     pass.end();
+    const capture = this.captureRequest;
+    this.captureRequest = undefined;
+    const captureWidth = this.width,
+      captureHeight = this.height,
+      bytesPerRow = Math.ceil((this.width * 4) / 256) * 256;
+    if (capture) {
+      this.captureBuffer = this.device.createBuffer({
+        label: "Frame capture",
+        size: bytesPerRow * captureHeight,
+        usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+      });
+      encoder.copyTextureToBuffer(
+        { texture },
+        {
+          buffer: this.captureBuffer,
+          bytesPerRow,
+          rowsPerImage: captureHeight,
+        },
+        [captureWidth, captureHeight],
+      );
+    }
     this.device.queue.submit([encoder.finish()]);
+    if (capture)
+      this.finishCapture(
+        this.captureBuffer!,
+        capture,
+        captureWidth,
+        captureHeight,
+        bytesPerRow,
+      );
     this.frame++;
+    if (sceneChange)
+      send({
+        type: "scene-accepted",
+        request: sceneChange.request,
+        visibleAt: performance.timeOrigin + performance.now(),
+        state: this.state(),
+      });
     if (committed && this.pendingEdit) {
       const edit = this.pendingEdit;
       this.pendingEdit = undefined;
@@ -311,6 +506,10 @@ class Runtime {
     this.versions.dispose();
     this.pendingEdit = undefined;
     this.queuedEdit = undefined;
+    this.scenePending = undefined;
+    this.captureRequest = undefined;
+    this.captureBuffer?.destroy();
+    this.captureBuffer = undefined;
     this.depth?.destroy();
     this.vertices.destroy();
     this.uniform.destroy();
@@ -355,7 +554,14 @@ scope.onmessage = (event: MessageEvent) => {
                   if (!context)
                     throw new Error("WebGPU could not open the canvas.");
                   const format = gpu.getPreferredCanvasFormat();
-                  context.configure({ device, format, alphaMode: "opaque" });
+                  context.configure({
+                    device,
+                    format,
+                    alphaMode: "opaque",
+                    usage:
+                      GPUTextureUsage.RENDER_ATTACHMENT |
+                      GPUTextureUsage.COPY_SRC,
+                  });
                   return new Runtime(device, context, message.canvas, format);
                 } catch (error) {
                   device.destroy();
@@ -393,6 +599,23 @@ scope.onmessage = (event: MessageEvent) => {
   }
   if (!runtime || message?.preview !== preview || message?.token !== token)
     return;
+  if (
+    message.type === "scene" &&
+    message.project === PROJECT_ID &&
+    typeof message.request === "string" &&
+    message.request.length <= 128
+  ) {
+    runtime.queueScene(message);
+    return;
+  }
+  if (
+    message.type === "capture" &&
+    typeof message.request === "string" &&
+    message.request.length <= 128
+  ) {
+    runtime.capture(message.request);
+    return;
+  }
   if (message.type === "shader") {
     if (validEdit(message, preview, token)) runtime.edit(message);
     return;

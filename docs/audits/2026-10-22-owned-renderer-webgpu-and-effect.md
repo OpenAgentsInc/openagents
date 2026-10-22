@@ -195,3 +195,19 @@ The owner explicitly removes the Rust-only constraint for this architecture asse
 - **Choose on evidence:** identical visuals, simulation, resolution, and devices; compare CPU time, GPU time, p95 frame time, memory, initial load, and edit-to-visible latency. Include a real authored game slice as well as a scale workload.
 
 Use [GPU timestamp queries](https://webgpu.github.io/webgpu-samples/?sample=timestampQuery) where available, with a CPU-only measurement fallback. Validate the selected architecture's frame budget, authoring continuity, and error recovery before migration. Revisit the language choice if measured CPU work dominates despite targeted kernels, or if native rendering becomes a primary requirement. No speedup factor or migration deadline is established by this research.
+
+## Implemented interaction update: 2026-10-22
+
+- #12500 proved shader replacement, but its 201.7-second general coding-agent
+  exchange is unsuitable for an ordinary placement or lighting interaction.
+- #12502 now uses [typed scene commands and a single Jev SDK decision](../../apps/haunt-preview/README.md).
+  Manual placement, selection, light controls, and undo bypass inference. Prose
+  selects a supported action and finite arguments; code reads exact coordinates,
+  validates revisions and bounds, updates the running scene, and saves through Kiln.
+- Source authoring stays under Advanced. Ordinary actions change project data or
+  uniforms without shader compilation. Effect handles async work; Rust retains the
+  credentialed SDK endpoint and Kiln. The WebGPU worker receives no account authority.
+- [Retained measurements](../verse/verification/2026-10-22-haunted-house-commands/README.md)
+  separate direct command/frame timing, one-request Jev latency, shader edits, and
+  timeout fixtures. These small local measurements do not qualify general model
+  accuracy, multiplayer editing, or a public editor release.

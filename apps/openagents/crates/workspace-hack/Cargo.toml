@@ -19,11 +19,14 @@ aead = { version = "0.5", default-features = false, features = ["getrandom", "st
 aes-gcm = { version = "0.10", features = ["std"] }
 ahash = { version = "0.8", features = ["serde"] }
 aho-corasick = { version = "1" }
+allocator-api2 = { version = "0.2", default-features = false, features = ["alloc"] }
 anyhow = { version = "1" }
 arrayvec = { version = "0.7" }
 base64 = { version = "0.23" }
-bip39 = { version = "2" }
+bip39 = { version = "2", features = ["zeroize"] }
 bitflags = { version = "2", default-features = false, features = ["serde"] }
+bstr = { version = "1" }
+bumpalo = { version = "3", features = ["allocator-api2"] }
 bytemuck = { version = "1", default-features = false, features = ["derive", "extern_crate_alloc", "min_const_generics"] }
 byteorder = { version = "1" }
 camino = { version = "1", default-features = false, features = ["serde1"] }
@@ -37,12 +40,14 @@ crypto-common-6f8ce4dd05d13bba = { package = "crypto-common", version = "0.2", d
 crypto-common-c65f7effa3be6d31 = { package = "crypto-common", version = "0.1", default-features = false, features = ["getrandom", "std"] }
 data-encoding = { version = "2" }
 der = { version = "0.8", default-features = false, features = ["oid", "pem", "std"] }
+derive_more = { version = "2", features = ["add", "add_assign", "debug", "deref", "deref_mut", "display", "from", "from_str", "into_iterator", "try_into"] }
 digest-93f6ce9d446188ac = { package = "digest", version = "0.10", features = ["mac", "oid", "std"] }
 digest-a6292c17cd707f01 = { package = "digest", version = "0.11", features = ["alloc", "oid", "rand_core"] }
 either = { version = "1", features = ["use_std"] }
 fastrand = { version = "2" }
 flate2 = { version = "1", features = ["zlib-rs"] }
 fnv = { version = "1" }
+fontdb = { version = "0.23" }
 futures-channel = { version = "0.3", features = ["sink"] }
 futures-core = { version = "0.3" }
 futures-io = { version = "0.3" }
@@ -66,7 +71,6 @@ indexmap = { version = "2", features = ["serde"] }
 inout = { version = "0.1", default-features = false, features = ["block-padding"] }
 libc = { version = "0.2", features = ["extra_traits"] }
 litemap = { version = "0.8", default-features = false, features = ["alloc"] }
-lock_api = { version = "0.4", features = ["arc_lock"] }
 log = { version = "0.4", default-features = false, features = ["kv_unstable_serde"] }
 memchr = { version = "2" }
 naga = { version = "29", features = ["glsl-in", "termcolor", "wgsl-out"] }
@@ -76,7 +80,6 @@ num-complex = { version = "0.4" }
 num-integer = { version = "0.1", features = ["i128"] }
 num-traits = { version = "0.2", features = ["i128", "libm"] }
 once_cell = { version = "1", features = ["critical-section"] }
-parking_lot = { version = "0.12", features = ["arc_lock"] }
 percent-encoding = { version = "2" }
 portable-atomic = { version = "1", features = ["serde"] }
 postcard = { version = "1", features = ["experimental-derive", "use-std"] }
@@ -101,6 +104,7 @@ simdutf8 = { version = "0.1", default-features = false, features = ["aarch64_neo
 slab = { version = "0.4" }
 smallvec = { version = "1", default-features = false, features = ["const_new", "serde", "union"] }
 stable_deref_trait = { version = "1", default-features = false, features = ["alloc"] }
+strum = { version = "0.28", features = ["derive"] }
 subtle = { version = "2", features = ["const-generics"] }
 time = { version = "0.3", features = ["formatting", "macros", "parsing"] }
 tinystr = { version = "0.8", default-features = false, features = ["alloc", "zerovec"] }
@@ -142,6 +146,8 @@ cranelift-bitset = { version = "0.135", default-features = false, features = ["e
 crypto-common-c65f7effa3be6d31 = { package = "crypto-common", version = "0.1", default-features = false, features = ["getrandom", "std"] }
 data-encoding = { version = "2" }
 der = { version = "0.8", default-features = false, features = ["oid", "pem", "std"] }
+derive_more = { version = "2", features = ["add", "add_assign", "debug", "deref", "deref_mut", "display", "from", "from_str", "into_iterator", "try_into"] }
+derive_more-impl = { version = "2", features = ["add", "add_assign", "debug", "deref", "deref_mut", "display", "from", "from_str", "into_iterator", "try_into"] }
 digest-93f6ce9d446188ac = { package = "digest", version = "0.10", features = ["mac", "oid", "std"] }
 displaydoc = { version = "0.2" }
 either = { version = "1", features = ["use_std"] }
@@ -172,8 +178,10 @@ semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "float_roundtrip", "preserve_order", "raw_value", "unbounded_depth"] }
+strum = { version = "0.28", features = ["derive"] }
 subtle = { version = "2", features = ["const-generics"] }
 syn-7b89eefb6aaa9bf3 = { package = "syn", version = "3", features = ["extra-traits", "full", "visit-mut"] }
+syn-dff4ba8e3ae991db = { package = "syn", version = "1", features = ["full"] }
 syn-f595c2ba2a3f28df = { package = "syn", version = "2", features = ["extra-traits", "fold", "full", "visit", "visit-mut"] }
 toml_datetime = { version = "1", features = ["serde"] }
 toml_parser = { version = "1" }
@@ -193,7 +201,6 @@ core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
 core-graphics = { version = "0.24", features = ["elcapitan", "highsierra"] }
 errno = { version = "0.3" }
-fontdb = { version = "0.23" }
 form_urlencoded = { version = "1" }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16", default-features = false, features = ["default-hasher", "inline-more"] }
@@ -201,13 +208,16 @@ hmac = { version = "0.12", default-features = false, features = ["reset", "std"]
 hyper = { version = "1", default-features = false, features = ["http2"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "client-proxy", "client-proxy-system", "http2"] }
+lock_api = { version = "0.4", features = ["arc_lock"] }
 miniz_oxide = { version = "0.8", features = ["simd"] }
 naga = { version = "29", default-features = false, features = ["msl-out", "wgsl-in"] }
 objc2 = { version = "0.6", features = ["disable-encoding-assertions", "exception"] }
 objc2-core-foundation = { version = "0.3" }
+objc2-core-video = { version = "0.3", default-features = false, features = ["CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVPixelBufferPool", "objc2", "std"] }
 objc2-foundation = { version = "0.3" }
 objc2-quartz-core = { version = "0.3", default-features = false, features = ["CADisplayLink", "CALayer", "CAMediaTiming", "CAMediaTimingFunction", "CAMetalLayer", "CAOpenGLLayer", "objc2-core-foundation", "objc2-metal", "std"] }
 objc2-security = { version = "0.3", default-features = false, features = ["Authorization", "SecTrust", "objc2"] }
+parking_lot = { version = "0.12", features = ["arc_lock"] }
 profiling = { version = "1" }
 rustix = { version = "1", features = ["event", "fs", "mm", "param", "pipe", "process", "system", "termios", "thread", "time"] }
 security-framework-sys = { version = "2" }
@@ -233,6 +243,7 @@ objc2-core-foundation = { version = "0.3" }
 objc2-foundation = { version = "0.3" }
 rustix = { version = "1", features = ["event", "fs", "mm", "param", "pipe", "process", "system", "termios", "thread", "time"] }
 security-framework-sys = { version = "2" }
+thiserror = { version = "2" }
 
 [target.x86_64-apple-darwin.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
@@ -241,7 +252,6 @@ core-foundation = { version = "0.10" }
 core-foundation-sys = { version = "0.8" }
 core-graphics = { version = "0.24", features = ["elcapitan", "highsierra"] }
 errno = { version = "0.3" }
-fontdb = { version = "0.23" }
 form_urlencoded = { version = "1" }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16", default-features = false, features = ["default-hasher", "inline-more"] }
@@ -249,13 +259,16 @@ hmac = { version = "0.12", default-features = false, features = ["reset", "std"]
 hyper = { version = "1", default-features = false, features = ["http2"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "client-proxy", "client-proxy-system", "http2"] }
+lock_api = { version = "0.4", features = ["arc_lock"] }
 miniz_oxide = { version = "0.8", features = ["simd"] }
 naga = { version = "29", default-features = false, features = ["msl-out", "wgsl-in"] }
 objc2 = { version = "0.6", features = ["disable-encoding-assertions", "exception"] }
 objc2-core-foundation = { version = "0.3" }
+objc2-core-video = { version = "0.3", default-features = false, features = ["CVBase", "CVBuffer", "CVImageBuffer", "CVPixelBuffer", "CVPixelBufferPool", "objc2", "std"] }
 objc2-foundation = { version = "0.3" }
 objc2-quartz-core = { version = "0.3", default-features = false, features = ["CADisplayLink", "CALayer", "CAMediaTiming", "CAMediaTimingFunction", "CAMetalLayer", "CAOpenGLLayer", "objc2-core-foundation", "objc2-metal", "std"] }
 objc2-security = { version = "0.3", default-features = false, features = ["Authorization", "SecTrust", "objc2"] }
+parking_lot = { version = "0.12", features = ["arc_lock"] }
 profiling = { version = "1" }
 rustix = { version = "1", features = ["event", "fs", "mm", "param", "pipe", "process", "system", "termios", "thread", "time"] }
 security-framework-sys = { version = "2" }
@@ -281,6 +294,7 @@ objc2-core-foundation = { version = "0.3" }
 objc2-foundation = { version = "0.3" }
 rustix = { version = "1", features = ["event", "fs", "mm", "param", "pipe", "process", "system", "termios", "thread", "time"] }
 security-framework-sys = { version = "2" }
+thiserror = { version = "2" }
 
 [target.aarch64-unknown-linux-gnu.dependencies]
 bitflags = { version = "2", default-features = false, features = ["std"] }
@@ -295,9 +309,11 @@ hyper = { version = "1", default-features = false, features = ["http2"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "client-proxy", "client-proxy-system", "http2"] }
 linux-raw-sys = { version = "0.12", default-features = false, features = ["auxvec", "elf", "errno", "general", "if_ether", "ioctl", "net", "netlink", "no_std", "prctl", "system", "xdp"] }
+lock_api = { version = "0.4", features = ["arc_lock"] }
 miniz_oxide = { version = "0.8", features = ["simd"] }
 mio = { version = "1", features = ["net", "os-ext"] }
 naga = { version = "29", default-features = false, features = ["glsl-out", "hlsl-out", "spv-out", "wgsl-in"] }
+parking_lot = { version = "0.12", features = ["arc_lock"] }
 quote = { version = "1" }
 rustix = { version = "1", features = ["event", "mm", "net", "param", "pipe", "process", "pty", "stdio", "system", "termios", "thread", "time"] }
 simd-adler32 = { version = "0.3" }
@@ -328,9 +344,11 @@ hyper = { version = "1", default-features = false, features = ["http2"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "client-proxy", "client-proxy-system", "http2"] }
 linux-raw-sys = { version = "0.12", default-features = false, features = ["auxvec", "elf", "errno", "general", "if_ether", "ioctl", "net", "netlink", "no_std", "prctl", "system", "xdp"] }
+lock_api = { version = "0.4", features = ["arc_lock"] }
 miniz_oxide = { version = "0.8", features = ["simd"] }
 mio = { version = "1", features = ["net", "os-ext"] }
 naga = { version = "29", default-features = false, features = ["glsl-out", "hlsl-out", "spv-out", "wgsl-in"] }
+parking_lot = { version = "0.12", features = ["arc_lock"] }
 quote = { version = "1" }
 rustix = { version = "1", features = ["event", "mm", "net", "param", "pipe", "process", "pty", "stdio", "system", "termios", "thread", "time"] }
 simd-adler32 = { version = "0.3" }
@@ -357,7 +375,9 @@ hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16" }
 hyper = { version = "1", default-features = false, features = ["http2"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "client-proxy", "client-proxy-system", "http2"] }
+lock_api = { version = "0.4", features = ["arc_lock"] }
 naga = { version = "29", default-features = false, features = ["glsl-out", "hlsl-out", "spv-out", "wgsl-in"] }
+parking_lot = { version = "0.12", features = ["arc_lock"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
 tower = { version = "0.5", default-features = false, features = ["log", "make", "retry", "timeout"] }
 winapi = { version = "0.3", default-features = false, features = ["basetsd", "consoleapi", "fileapi", "guiddef", "handleapi", "impl-debug", "impl-default", "knownfolders", "minwinbase", "minwindef", "namedpipeapi", "objbase", "processenv", "processthreadsapi", "shlobj", "std", "synchapi", "sysinfoapi", "timezoneapi", "winbase", "winerror", "winnt", "winreg", "winsock2", "winuser", "ws2def", "ws2ipdef"] }
@@ -386,6 +406,7 @@ hmac = { version = "0.12", default-features = false, features = ["reset", "std"]
 hyper = { version = "1", default-features = false, features = ["http2"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "client-proxy", "client-proxy-system", "http2"] }
+lock_api = { version = "0.4", features = ["arc_lock"] }
 miniz_oxide = { version = "0.8", features = ["simd"] }
 mio = { version = "1", features = ["net", "os-ext"] }
 naga = { version = "29", default-features = false, features = ["msl-out", "wgsl-in"] }
@@ -393,6 +414,7 @@ objc2 = { version = "0.6" }
 objc2-avf-audio = { version = "0.3", default-features = false, features = ["AVAudioSession", "AVAudioSessionTypes", "std"] }
 objc2-core-foundation = { version = "0.3" }
 objc2-foundation = { version = "0.3" }
+parking_lot = { version = "0.12", features = ["arc_lock"] }
 rustix = { version = "1", features = ["event", "fs", "mm", "param", "pipe", "process", "system", "termios", "thread", "time"] }
 simd-adler32 = { version = "0.3" }
 tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
@@ -418,6 +440,7 @@ hmac = { version = "0.12", default-features = false, features = ["reset", "std"]
 hyper = { version = "1", default-features = false, features = ["http2"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "client-proxy", "client-proxy-system", "http2"] }
+lock_api = { version = "0.4", features = ["arc_lock"] }
 miniz_oxide = { version = "0.8", features = ["simd"] }
 mio = { version = "1", features = ["net", "os-ext"] }
 naga = { version = "29", default-features = false, features = ["msl-out", "wgsl-in"] }
@@ -425,6 +448,7 @@ objc2 = { version = "0.6" }
 objc2-avf-audio = { version = "0.3", default-features = false, features = ["AVAudioSession", "AVAudioSessionTypes", "std"] }
 objc2-core-foundation = { version = "0.3" }
 objc2-foundation = { version = "0.3" }
+parking_lot = { version = "0.12", features = ["arc_lock"] }
 rustix = { version = "1", features = ["event", "fs", "mm", "param", "pipe", "process", "system", "termios", "thread", "time"] }
 simd-adler32 = { version = "0.3" }
 tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
@@ -450,10 +474,12 @@ hyper = { version = "1", default-features = false, features = ["http2"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "client-proxy", "client-proxy-system", "http2"] }
 linux-raw-sys = { version = "0.12", default-features = false, features = ["general", "ioctl", "no_std", "prctl", "system"] }
+lock_api = { version = "0.4", features = ["arc_lock"] }
 miniz_oxide = { version = "0.8", features = ["simd"] }
 mio = { version = "1", features = ["net", "os-ext"] }
 naga = { version = "29", default-features = false, features = ["glsl-out", "hlsl-out", "spv-out", "wgsl-in"] }
 ndk-sys = { version = "0.6", default-features = false, features = ["audio"] }
+parking_lot = { version = "0.12", features = ["arc_lock"] }
 rustix = { version = "1", features = ["event", "mm", "param", "pipe", "process", "pty", "stdio", "system", "termios", "thread", "time"] }
 simd-adler32 = { version = "0.3" }
 tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }
@@ -481,10 +507,12 @@ hyper = { version = "1", default-features = false, features = ["http2"] }
 hyper-rustls = { version = "0.27", default-features = false, features = ["http1", "http2", "ring", "tls12", "webpki-tokio"] }
 hyper-util = { version = "0.1", default-features = false, features = ["client-legacy", "client-proxy", "client-proxy-system", "http2"] }
 linux-raw-sys = { version = "0.12", default-features = false, features = ["general", "ioctl", "no_std", "prctl", "system"] }
+lock_api = { version = "0.4", features = ["arc_lock"] }
 miniz_oxide = { version = "0.8", features = ["simd"] }
 mio = { version = "1", features = ["net", "os-ext"] }
 naga = { version = "29", default-features = false, features = ["glsl-out", "hlsl-out", "spv-out", "wgsl-in"] }
 ndk-sys = { version = "0.6", default-features = false, features = ["audio"] }
+parking_lot = { version = "0.12", features = ["arc_lock"] }
 rustix = { version = "1", features = ["event", "mm", "param", "pipe", "process", "pty", "stdio", "system", "termios", "thread", "time"] }
 simd-adler32 = { version = "0.3" }
 tokio-rustls = { version = "0.26", default-features = false, features = ["tls12"] }

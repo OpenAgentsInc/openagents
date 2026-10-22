@@ -15,6 +15,8 @@
 pub mod admission;
 pub mod agent;
 pub mod cj;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod director;
 pub mod identity;
 pub mod patch;
 pub mod remote;

@@ -6,6 +6,7 @@ struct Scene {
   view_proj: mat4x4<f32>,
   eye_time: vec4<f32>,
   light: vec4<f32>,
+  tint: vec4<f32>,
 }
 @group(0) @binding(0) var<uniform> scene: Scene;
 
@@ -39,7 +40,7 @@ struct Surface {
   let toon = select(0.38, 0.95, diffuse > 0.34);
   let lamp = flicker * 9.0 / (3.0 + d * d);
   let ambient = vec3<f32>(0.16, 0.19, 0.23);
-  var color = v.color * (ambient + LANTERN_TINT * toon * lamp);
+  var color = v.color * (ambient + LANTERN_TINT * scene.tint.xyz * toon * lamp);
   color += v.color * v.glow * 1.8;
   let distance = length(scene.eye_time.xyz - v.world);
   let fog = 1.0 - exp(-distance * 0.035);

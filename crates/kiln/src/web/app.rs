@@ -935,6 +935,13 @@ impl App {
                 {
                     self.notify_shader();
                 }
+                if changed
+                    .iter()
+                    .chain(&removed)
+                    .any(|p| p == crate::shader::SCENE_PATH)
+                {
+                    self.notify_scene();
+                }
             }
         }
         let wall = now_ms() - started;
@@ -2188,6 +2195,16 @@ impl App {
         set(&window, "kilnReadShader", read.as_ref().clone());
         read.forget();
         let app = self.clone();
+        let scene = Closure::<dyn Fn() -> JsValue>::new(move || {
+            if app.repo().is_some() {
+                return JsValue::NULL;
+            }
+            app.workspace_source(crate::shader::SCENE_PATH)
+                .map_or(JsValue::NULL, |s| JsValue::from_str(&s))
+        });
+        set(&window, "kilnReadScene", scene.as_ref().clone());
+        scene.forget();
+        let app = self.clone();
         let edit = Closure::<dyn Fn(String) -> js_sys::Promise>::new(move |action: String| {
             let app = app.clone();
             wasm_bindgen_futures::future_to_promise(async move {
@@ -2209,10 +2226,14 @@ impl App {
         if !self.shader_preview.get() {
             return None;
         }
+        self.workspace_source(crate::shader::PATH)
+    }
+
+    fn workspace_source(&self, path: &str) -> Option<String> {
         let vfs = self.vfs.borrow();
-        let bytes = vfs.read(crate::shader::PATH).ok()?;
+        let bytes = vfs.read(path).ok()?;
         let source = std::str::from_utf8(bytes).ok()?;
-        // Empty drafts still reach GPU validation and leave the working shader intact.
+        // Empty drafts reach the consuming validator without replacing the running preview.
         if source.len() > crate::shader::MAX_BYTES {
             return None;
         }
@@ -2227,6 +2248,23 @@ impl App {
             return;
         };
         if let Ok(callback) = js_sys::Reflect::get(&window, &"kilnShaderChanged".into())
+            && let Some(callback) = callback.dyn_ref::<js_sys::Function>()
+        {
+            let _ = callback.call1(&JsValue::NULL, &JsValue::from_str(&source));
+        }
+    }
+
+    fn notify_scene(&self) {
+        if self.repo().is_some() {
+            return;
+        }
+        let Some(source) = self.workspace_source(crate::shader::SCENE_PATH) else {
+            return;
+        };
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        if let Ok(callback) = js_sys::Reflect::get(&window, &"kilnSceneChanged".into())
             && let Some(callback) = callback.dyn_ref::<js_sys::Function>()
         {
             let _ = callback.call1(&JsValue::NULL, &JsValue::from_str(&source));

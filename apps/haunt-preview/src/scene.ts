@@ -1,3 +1,4 @@
+import { walkable, type Pumpkin } from "./project.ts";
 type V3 = [number, number, number];
 const data: number[] = [];
 const paper: V3 = [0.94, 0.89, 0.72];
@@ -144,7 +145,7 @@ function candle(x: number, y: number, z: number) {
   box(x, y + 0.23, z, 0.07, 0.13, 0.07, [1, 0.64, 0.18], 1);
 }
 
-export function houseGeometry(): Float32Array {
+export function houseGeometry(pumpkins: Pumpkin[]): Float32Array {
   data.length = 0;
   // Original simple geometry and the Haunted House palette, not imported game art.
   for (const [cx, cz, w, d] of [
@@ -226,14 +227,7 @@ export function houseGeometry(): Float32Array {
     box(x - Math.sign(x) * 0.15, 1.9, z, 0.04, 0.72, 0.5, paper);
     candle(x - Math.sign(x) * 0.45, 1.18, z + 0.9);
   }
-  for (const [x, z, s] of [
-    [-2.5, 0, 1.3],
-    [2.5, -4, 1],
-    [-0.8, -8, 0.7],
-    [2.7, -14, 1.8],
-    [-2.8, -12, 0.9],
-  ])
-    pumpkin(x, z, s);
+  for (const p of pumpkins) pumpkin(p.x, p.z, p.scale);
   box(-2.2, 0.65, -15.5, 1.5, 0.15, 0.75, wood);
   for (const x of [-2.8, -1.6]) box(x, 0.3, -15.5, 0.15, 0.7, 0.6, wood);
   candle(-2.6, 0.9, -15.5);
@@ -247,13 +241,7 @@ export function houseGeometry(): Float32Array {
 }
 
 export type Pose = { x: number; z: number; yaw: number; pitch: number };
-export function canWalk(x: number, z: number): boolean {
-  return (
-    (Math.abs(x) < 3.18 && z > -4.8 && z < 7.7) ||
-    (Math.abs(x) < 0.98 && z > -9.3 && z < -4.6) ||
-    (Math.abs(x) < 3.68 && z > -16.7 && z < -9.1)
-  );
-}
+export const canWalk = walkable;
 
 export function move(pose: Pose, forward: number, right: number, dt: number) {
   const length = Math.max(1, Math.hypot(forward, right));

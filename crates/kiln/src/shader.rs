@@ -1,5 +1,6 @@
 //! The bounded, opt-in shader workspace used by the Haunted House preview.
 
+pub const SCENE_PATH: &str = "haunt/scene.json";
 pub const PATH: &str = "haunt/material.wgsl";
 pub const MAX_BYTES: usize = 64 * 1024;
 

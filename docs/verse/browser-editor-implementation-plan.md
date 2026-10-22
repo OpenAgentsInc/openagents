@@ -1,6 +1,6 @@
 # Browser editor implementation plan
 
-- **Status:** Phase 0 implemented locally, 2026-10-22 (#12500). Phases 1–5 remain planned. Public deployment is outside Phase 0.
+- **Status:** Phase 0 and the Phase 1 scene-command proof are implemented locally, 2026-10-22. #12502 still tracks moving raw asset drafts into the shared transaction/undo contract. Phases 2–5 remain planned. Public deployment is outside this proof.
 - **Architecture:** our TypeScript editor and runtime, Effect for asynchronous orchestration, direct WebGPU, editable WGSL, and selective Wasm CPU kernels. Browser-first with no Rust-only constraint is the owner's explicit direction for this work.
 - **Decision:** [Owned renderer, WebGPU, and Effect](../audits/2026-10-22-owned-renderer-webgpu-and-effect.md).
 - **Goal:** make one Haunted House change through Kiln or the editor, see it in a running game, understand and repair errors, save the editable project, and explicitly publish a chosen version.
@@ -37,7 +37,7 @@ flowchart TD
 ```
 
 - Native GitHub blockers and the OpenAgents project board mirror these prerequisites.
-- #12500 supplies the working proof; #12502 is next, with Kiki's UX flow as its top priority. Later follow-ups wait on their listed prerequisites.
+- #12500 supplies the WebGPU proof. #12502 now supplies the creator flow and reversible scene commands; its remaining asset-command work still gates #12503 and #12504. Later follow-ups wait on their listed prerequisites.
 - Issues in the same phase can satisfy their own contracts using fixtures. Phase 3 integrates the Phase 2 outputs; neither Phase 2 issue secretly depends on the other.
 - The plan is the issue directory; no additional umbrella issue is needed to begin.
 
@@ -72,6 +72,8 @@ flowchart TD
 ## Phase 1: creator flow and project commands
 
 - **Issue:** [#12502](https://github.com/OpenAgentsInc/openagents/issues/12502).
+- **Implemented scene proof:** [creator flow and command contract](../../apps/haunt-preview/README.md#creator-flow), with [browser and real Jev results](verification/2026-10-22-haunted-house-commands/README.md). Direct actions bypass inference; one batched Jev decision interprets prose and uses those same commands. Kiln stores the editable scene through its existing WASI/OPFS path.
+- **Remaining in #12502:** route raw WGSL asset drafts and their undo/redo through the shared transaction history. Scene-object and lighting undo work now; advanced source editing still uses Phase 0 validation and **Original**.
 - **Top priority within this phase: Kiki's clear UX flow.**
   - Produce a compact screen/interaction sketch for open → select → change → see → understand an error → repair/undo → save → explicit publish.
   - Show one clear next action and progressively reveal advanced controls.

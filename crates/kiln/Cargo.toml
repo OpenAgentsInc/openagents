@@ -25,6 +25,7 @@ similar = "2.7.0"
 
 # kiln-dev's livehost follower (`--live-*`).
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+jev = { path = "../jev" }
 livehost = { path = "../livehost", default-features = false }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 

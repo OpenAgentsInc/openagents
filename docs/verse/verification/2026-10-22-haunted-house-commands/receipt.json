@@ -1,0 +1,1013 @@
+{
+  "schema": "openagents.haunt-commands.verification.v1",
+  "measuredAt": "2026-10-22T19:52:30.781Z",
+  "browser": "155.0.8059.85",
+  "hardware": {
+    "cpu": "Apple M5 Max",
+    "memoryGiB": 128,
+    "os": "macOS 26.4"
+  },
+  "passed": true,
+  "checks": [
+    "manual add/resize/move and real Kiln file writes share stable IDs, validation, undo/redo, and OPFS saves; no model or shader compilation for direct controls",
+    "30 scene edits keep player/device, one pipeline, two buffers and one depth texture; no shader rebuilds",
+    "real Jev SDK: add, move and lantern tint in one typed request each; unsupported request makes no change",
+    "controls stay usable during inference; manual edit cancels delayed decision and stale result cannot overwrite it",
+    "stalled inference stops at the UI deadline while walking/rendering remains available",
+    "scene round-trips through real Kiln OPFS on reopen; foreign origins cannot call the credentialed endpoint",
+    "bounded worker capture returns a nonempty PNG of the rendered scene"
+  ],
+  "initial": {
+    "pose": {
+      "x": 0,
+      "z": 5.629999999999993,
+      "yaw": 0,
+      "pitch": -0.03
+    },
+    "deviceId": "6e8b6300-4fda-423a-a6f5-5579b2022401",
+    "frame": 41,
+    "project": {
+      "schema": 1,
+      "id": "haunt-webgpu-v1",
+      "revision": 0,
+      "material": "haunt/material.wgsl",
+      "tint": "warm",
+      "entities": [
+        {
+          "id": "pumpkin-1",
+          "kind": "pumpkin",
+          "x": -2.5,
+          "z": 0,
+          "scale": 1.3
+        },
+        {
+          "id": "pumpkin-2",
+          "kind": "pumpkin",
+          "x": 2.5,
+          "z": -4,
+          "scale": 1
+        },
+        {
+          "id": "pumpkin-3",
+          "kind": "pumpkin",
+          "x": -0.8,
+          "z": -8,
+          "scale": 0.7
+        },
+        {
+          "id": "pumpkin-4",
+          "kind": "pumpkin",
+          "x": 2.7,
+          "z": -14,
+          "scale": 1.8
+        },
+        {
+          "id": "pumpkin-5",
+          "kind": "pumpkin",
+          "x": -2.8,
+          "z": -12,
+          "scale": 0.9
+        }
+      ]
+    },
+    "width": 834,
+    "height": 665,
+    "compiles": 2,
+    "inflight": 0,
+    "activePipelines": 1,
+    "pendingPipelines": 0,
+    "buffers": 2,
+    "depthTextures": 1,
+    "disposed": false,
+    "maxFrameMs": 16.799999999999983,
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+    }
+  },
+  "final": {
+    "pose": {
+      "x": 0,
+      "z": 5.629999999999993,
+      "yaw": 0,
+      "pitch": -0.03
+    },
+    "deviceId": "6e8b6300-4fda-423a-a6f5-5579b2022401",
+    "frame": 411,
+    "project": {
+      "schema": 1,
+      "id": "haunt-webgpu-v1",
+      "revision": 41,
+      "material": "haunt/material.wgsl",
+      "tint": "orange",
+      "entities": [
+        {
+          "id": "pumpkin-1",
+          "kind": "pumpkin",
+          "x": -2.5,
+          "z": 0,
+          "scale": 1.3
+        },
+        {
+          "id": "pumpkin-2",
+          "kind": "pumpkin",
+          "x": 2.5,
+          "z": -4,
+          "scale": 1
+        },
+        {
+          "id": "pumpkin-3",
+          "kind": "pumpkin",
+          "x": -0.8,
+          "z": -8,
+          "scale": 0.7
+        },
+        {
+          "id": "pumpkin-4",
+          "kind": "pumpkin",
+          "x": 2.7,
+          "z": -14,
+          "scale": 1.8
+        },
+        {
+          "id": "pumpkin-5",
+          "kind": "pumpkin",
+          "x": -2.8,
+          "z": -12,
+          "scale": 0.9
+        },
+        {
+          "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+          "kind": "pumpkin",
+          "x": 0.9,
+          "z": 2,
+          "scale": 1.8
+        },
+        {
+          "id": "pumpkin-67a48c15-ccb4-4ca9-8ee1-498d5709ba65",
+          "kind": "pumpkin",
+          "x": 1,
+          "z": 2,
+          "scale": 1.8
+        }
+      ]
+    },
+    "width": 834,
+    "height": 665,
+    "compiles": 2,
+    "inflight": 0,
+    "activePipelines": 1,
+    "pendingPipelines": 0,
+    "buffers": 2,
+    "depthTextures": 1,
+    "disposed": false,
+    "maxFrameMs": 33.30000000000018,
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+    }
+  },
+  "disposed": {
+    "pose": {
+      "x": 0,
+      "z": 5.629999999999993,
+      "yaw": 0,
+      "pitch": -0.03
+    },
+    "deviceId": "6e8b6300-4fda-423a-a6f5-5579b2022401",
+    "frame": 423,
+    "project": {
+      "schema": 1,
+      "id": "haunt-webgpu-v1",
+      "revision": 41,
+      "material": "haunt/material.wgsl",
+      "tint": "orange",
+      "entities": [
+        {
+          "id": "pumpkin-1",
+          "kind": "pumpkin",
+          "x": -2.5,
+          "z": 0,
+          "scale": 1.3
+        },
+        {
+          "id": "pumpkin-2",
+          "kind": "pumpkin",
+          "x": 2.5,
+          "z": -4,
+          "scale": 1
+        },
+        {
+          "id": "pumpkin-3",
+          "kind": "pumpkin",
+          "x": -0.8,
+          "z": -8,
+          "scale": 0.7
+        },
+        {
+          "id": "pumpkin-4",
+          "kind": "pumpkin",
+          "x": 2.7,
+          "z": -14,
+          "scale": 1.8
+        },
+        {
+          "id": "pumpkin-5",
+          "kind": "pumpkin",
+          "x": -2.8,
+          "z": -12,
+          "scale": 0.9
+        },
+        {
+          "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+          "kind": "pumpkin",
+          "x": 0.9,
+          "z": 2,
+          "scale": 1.8
+        },
+        {
+          "id": "pumpkin-67a48c15-ccb4-4ca9-8ee1-498d5709ba65",
+          "kind": "pumpkin",
+          "x": 1,
+          "z": 2,
+          "scale": 1.8
+        }
+      ]
+    },
+    "width": 834,
+    "height": 665,
+    "compiles": 2,
+    "inflight": 0,
+    "activePipelines": 0,
+    "pendingPipelines": 0,
+    "buffers": 0,
+    "depthTextures": 0,
+    "disposed": true,
+    "maxFrameMs": 33.30000000000018,
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+    }
+  },
+  "timing": {
+    "count": 30,
+    "submittedMedianMs": 13.599853515625,
+    "submittedP95Ms": 14
+  },
+  "samples": [
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 8,
+      "submittedMs": 10.10009765625
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 9,
+      "submittedMs": 13.7001953125
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 10,
+      "submittedMs": 14.300048828125
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 11,
+      "submittedMs": 13.60009765625
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 12,
+      "submittedMs": 13.599853515625
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 13,
+      "submittedMs": 12.699951171875
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 14,
+      "submittedMs": 13.800048828125
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 15,
+      "submittedMs": 13.400146484375
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 16,
+      "submittedMs": 13.7001953125
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 17,
+      "submittedMs": 13.800048828125
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 18,
+      "submittedMs": 13.300048828125
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 19,
+      "submittedMs": 14
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 20,
+      "submittedMs": 13.5
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 21,
+      "submittedMs": 13.5
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 22,
+      "submittedMs": 13.60009765625
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 23,
+      "submittedMs": 13.400146484375
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 24,
+      "submittedMs": 13.39990234375
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 25,
+      "submittedMs": 13.7001953125
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 26,
+      "submittedMs": 13.60009765625
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 27,
+      "submittedMs": 13.5
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 28,
+      "submittedMs": 13.60009765625
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 29,
+      "submittedMs": 13.300048828125
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 30,
+      "submittedMs": 13.699951171875
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 31,
+      "submittedMs": 13
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 32,
+      "submittedMs": 13.39990234375
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 33,
+      "submittedMs": 13.2001953125
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 34,
+      "submittedMs": 13.599853515625
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 35,
+      "submittedMs": 13.800048828125
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.8,
+        "z": 2
+      },
+      "revision": 36,
+      "submittedMs": 13.300048828125
+    },
+    {
+      "origin": "manual",
+      "operation": {
+        "kind": "move_pumpkin",
+        "id": "pumpkin-e8c62585-aa61-4b0e-8adf-cd1bf5390092",
+        "x": 0.9,
+        "z": 2
+      },
+      "revision": 37,
+      "submittedMs": 13.800048828125
+    }
+  ],
+  "decisions": [
+    {
+      "text": "Add a big pumpkin to my left.",
+      "decision": {
+        "action": "add_pumpkin",
+        "placement": "left",
+        "size": "large",
+        "tint": "unsupported",
+        "confidence": 0.84,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 300.480708,
+        "judgments": {
+          "action": {
+            "choice": "add_pumpkin",
+            "confidence": 0.84,
+            "probabilities": {
+              "add_pumpkin": 0.86,
+              "move_pumpkin": 0.12,
+              "resize_pumpkin": 0.01,
+              "remove_pumpkin": 0,
+              "set_tint": 0,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0.01
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "left",
+            "confidence": 0.99,
+            "probabilities": {
+              "coordinates": 0,
+              "left": 0.99,
+              "right": 0,
+              "ahead": 0,
+              "unsupported": 0.01
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "large",
+            "confidence": 1,
+            "probabilities": {
+              "small": 0,
+              "normal": 0,
+              "large": 1,
+              "exact": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "unsupported",
+            "confidence": 0.99,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0.01,
+              "blue": 0,
+              "green": 0,
+              "unsupported": 0.99
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 303.699951171875,
+      "totalMs": 311.5,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "add_pumpkin",
+          "entity": {
+            "id": "pumpkin-67a48c15-ccb4-4ca9-8ee1-498d5709ba65",
+            "kind": "pumpkin",
+            "x": -1.4,
+            "z": 3.63,
+            "scale": 1.8
+          }
+        },
+        "revision": 38,
+        "submittedMs": 5
+      }
+    },
+    {
+      "text": "Move the selected pumpkin to (1, 2).",
+      "decision": {
+        "action": "move_pumpkin",
+        "placement": "coordinates",
+        "size": "normal",
+        "tint": "unsupported",
+        "confidence": 1,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 256.89374999999995,
+        "judgments": {
+          "action": {
+            "choice": "move_pumpkin",
+            "confidence": 1,
+            "probabilities": {
+              "add_pumpkin": 0,
+              "move_pumpkin": 1,
+              "resize_pumpkin": 0,
+              "remove_pumpkin": 0,
+              "set_tint": 0,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "coordinates",
+            "confidence": 1,
+            "probabilities": {
+              "coordinates": 1,
+              "left": 0,
+              "right": 0,
+              "ahead": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "normal",
+            "confidence": 0.96,
+            "probabilities": {
+              "small": 0,
+              "normal": 0.97,
+              "large": 0,
+              "exact": 0,
+              "unsupported": 0.03
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0,
+              "blue": 0,
+              "green": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 259.10009765625,
+      "totalMs": 279.39990234375,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "move_pumpkin",
+          "id": "pumpkin-67a48c15-ccb4-4ca9-8ee1-498d5709ba65",
+          "x": 1,
+          "z": 2
+        },
+        "revision": 39,
+        "submittedMs": 16.900146484375
+      }
+    },
+    {
+      "text": "Make the lantern light blue.",
+      "decision": {
+        "action": "set_tint",
+        "placement": "unsupported",
+        "size": "normal",
+        "tint": "blue",
+        "confidence": 1,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 215.550042,
+        "judgments": {
+          "action": {
+            "choice": "set_tint",
+            "confidence": 1,
+            "probabilities": {
+              "add_pumpkin": 0,
+              "move_pumpkin": 0,
+              "resize_pumpkin": 0,
+              "remove_pumpkin": 0,
+              "set_tint": 1,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "unsupported",
+            "confidence": 0.6,
+            "probabilities": {
+              "coordinates": 0.01,
+              "left": 0.01,
+              "right": 0.01,
+              "ahead": 0.29,
+              "unsupported": 0.6799999999999999
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "normal",
+            "confidence": 0.89,
+            "probabilities": {
+              "small": 0,
+              "normal": 0.91,
+              "large": 0,
+              "exact": 0,
+              "unsupported": 0.09
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "blue",
+            "confidence": 1,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0,
+              "blue": 1,
+              "green": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 217.89990234375,
+      "totalMs": 226.7998046875,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "set_tint",
+          "tint": "blue"
+        },
+        "revision": 40,
+        "submittedMs": 6.199951171875
+      }
+    }
+  ],
+  "timeoutFixtureMs": 2703,
+  "capture": {
+    "type": "image/png",
+    "bytes": 945672,
+    "signature": [
+      137,
+      80,
+      78,
+      71,
+      13,
+      10,
+      26,
+      10
+    ],
+    "brightness": 39.2841796875
+  },
+  "localPosts": [
+    "/api/haunt/decision",
+    "/api/haunt/decision",
+    "/api/haunt/decision",
+    "/api/haunt/decision",
+    "/api/haunt/decision",
+    "/api/haunt/decision"
+  ],
+  "errors": [],
+  "shaderRegression": {
+    "passed": true,
+    "checks": [
+      "real Kiln WASI save -> visible WebGPU change; player pose and device preserved",
+      "syntax error: last working shader and state kept; walking and repair work",
+      "binding error: last working shader and state kept; walking and repair work",
+      "an empty tool draft reports an error and retains the working shader",
+      "rapid valid/invalid/valid Kiln writes converge to the newest valid source",
+      "30 real shader recompiles and observed frames; bounded active resources",
+      "scene commands and the real Jev path are checked separately by verify-editor.mjs",
+      "private local preview: no server write/publish endpoint used",
+      "preview teardown releases owned buffers, textures, pipeline references, and frame loop",
+      "unsupported WebGPU is shown clearly without an alternate renderer"
+    ],
+    "timing": {
+      "count": 30,
+      "observedMedianMs": 201,
+      "observedP95Ms": 234,
+      "submittedMedianMs": 13,
+      "submittedP95Ms": 21
+    },
+    "samples": [
+      {
+        "saveToObservedPixelsMs": 203,
+        "saveToSubmittedFrameMs": 12.699951171875
+      },
+      {
+        "saveToObservedPixelsMs": 236,
+        "saveToSubmittedFrameMs": 9.599853515625
+      },
+      {
+        "saveToObservedPixelsMs": 202,
+        "saveToSubmittedFrameMs": 6.800048828125
+      },
+      {
+        "saveToObservedPixelsMs": 234,
+        "saveToSubmittedFrameMs": 21.699951171875
+      },
+      {
+        "saveToObservedPixelsMs": 210,
+        "saveToSubmittedFrameMs": 20.400146484375
+      },
+      {
+        "saveToObservedPixelsMs": 211,
+        "saveToSubmittedFrameMs": 10.199951171875
+      },
+      {
+        "saveToObservedPixelsMs": 201,
+        "saveToSubmittedFrameMs": 15.900146484375
+      },
+      {
+        "saveToObservedPixelsMs": 199,
+        "saveToSubmittedFrameMs": 15.10009765625
+      },
+      {
+        "saveToObservedPixelsMs": 199,
+        "saveToSubmittedFrameMs": 12.800048828125
+      },
+      {
+        "saveToObservedPixelsMs": 199,
+        "saveToSubmittedFrameMs": 17.800048828125
+      },
+      {
+        "saveToObservedPixelsMs": 201,
+        "saveToSubmittedFrameMs": 18.5
+      },
+      {
+        "saveToObservedPixelsMs": 200,
+        "saveToSubmittedFrameMs": 17.2001953125
+      },
+      {
+        "saveToObservedPixelsMs": 201,
+        "saveToSubmittedFrameMs": 17.300048828125
+      },
+      {
+        "saveToObservedPixelsMs": 212,
+        "saveToSubmittedFrameMs": 16.5
+      },
+      {
+        "saveToObservedPixelsMs": 216,
+        "saveToSubmittedFrameMs": 21
+      },
+      {
+        "saveToObservedPixelsMs": 194,
+        "saveToSubmittedFrameMs": 5.10009765625
+      },
+      {
+        "saveToObservedPixelsMs": 200,
+        "saveToSubmittedFrameMs": 11.000244140625
+      },
+      {
+        "saveToObservedPixelsMs": 199,
+        "saveToSubmittedFrameMs": 11.699951171875
+      },
+      {
+        "saveToObservedPixelsMs": 200,
+        "saveToSubmittedFrameMs": 12.2001953125
+      },
+      {
+        "saveToObservedPixelsMs": 203,
+        "saveToSubmittedFrameMs": 13
+      },
+      {
+        "saveToObservedPixelsMs": 212,
+        "saveToSubmittedFrameMs": 9.89990234375
+      },
+      {
+        "saveToObservedPixelsMs": 203,
+        "saveToSubmittedFrameMs": 14.300048828125
+      },
+      {
+        "saveToObservedPixelsMs": 198,
+        "saveToSubmittedFrameMs": 10.89990234375
+      },
+      {
+        "saveToObservedPixelsMs": 201,
+        "saveToSubmittedFrameMs": 13.300048828125
+      },
+      {
+        "saveToObservedPixelsMs": 197,
+        "saveToSubmittedFrameMs": 11.800048828125
+      },
+      {
+        "saveToObservedPixelsMs": 207,
+        "saveToSubmittedFrameMs": 15.199951171875
+      },
+      {
+        "saveToObservedPixelsMs": 193,
+        "saveToSubmittedFrameMs": 7.800048828125
+      },
+      {
+        "saveToObservedPixelsMs": 201,
+        "saveToSubmittedFrameMs": 14.199951171875
+      },
+      {
+        "saveToObservedPixelsMs": 201,
+        "saveToSubmittedFrameMs": 13.10009765625
+      },
+      {
+        "saveToObservedPixelsMs": 200,
+        "saveToSubmittedFrameMs": 12.300048828125
+      }
+    ],
+    "errors": []
+  },
+  "notes": [
+    "Frame timings end at queue.submit, not GPU presentation.",
+    "Three live Jev requests do not establish a population latency percentile or broad semantic accuracy.",
+    "Delayed/stalled requests are browser fixtures, separate from real Jev calls.",
+    "Resource counters count demo-owned objects; one temporary GPU buffer serves bounded PNG readback.",
+    "The saved screenshot shows continued rendering after the deliberate timeout fixture."
+  ]
+}

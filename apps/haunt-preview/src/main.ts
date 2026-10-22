@@ -1,6 +1,8 @@
 import { Effect } from "effect";
 import { ASSET, PROJECT, sourceHash, type ShaderEdit } from "./protocol.ts";
 import "./style.css";
+import { createEditor } from "./editor.ts";
+import type { Operation } from "./project.ts";
 
 declare global {
   interface Window {
@@ -8,16 +10,21 @@ declare global {
     kilnSaveShader: (source: string) => Promise<boolean>;
     kilnReadShader: () => string | null;
     kilnShaderChanged?: (source: string) => void;
-    kilnAgent: (task: string) => void;
-    kilnStop: () => void;
-    kilnAgentDone?: boolean;
+    kilnWrite: (path: string, source: string) => Promise<number>;
+    kilnReadScene: () => string | null;
+    kilnSceneChanged?: (source: string) => void;
+
     kilnState: () => string;
-    kilnTranscriptLatest?: string;
+
     hauntPreview: {
       save: (source: string) => Promise<Record<string, unknown>>;
       snapshot: () => unknown;
       original: () => string;
       dispose: () => void;
+      command: (operation: Operation) => Promise<unknown>;
+      request: (text: string) => Promise<unknown>;
+      editor: () => unknown;
+      capture: () => Promise<Blob>;
     };
   }
 }
@@ -26,7 +33,6 @@ const el = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
 const shader = el<HTMLTextAreaElement>("shader"),
   saveButton = el<HTMLButtonElement>("save"),
-  askButton = el<HTMLButtonElement>("ask"),
   resetButton = el<HTMLButtonElement>("reset");
 const canvas = el<HTMLCanvasElement>("house"),
   diagnostics = el<HTMLPreElement>("diagnostics");
@@ -37,9 +43,7 @@ let draft = 0,
   original = "",
   sourceSent = "",
   saving = false,
-  ready = false,
-  agentBusy = false,
-  agentRequested = false;
+  ready = false;
 let snapshot: Record<string, any> = {};
 let adapter: unknown;
 let latestResult: Record<string, unknown> = {};
@@ -52,6 +56,9 @@ const waiting = new Map<
   { resolve: (r: Record<string, unknown>) => void; started: number }
 >();
 const now = () => performance.timeOrigin + performance.now();
+let capturePending:
+  | { id: string; resolve: (b: Blob) => void; reject: (e: Error) => void }
+  | undefined;
 
 function showError(error: unknown) {
   diagnostics.hidden = false;
@@ -62,12 +69,21 @@ function showError(error: unknown) {
       : "Couldn't apply the shader. Check the error below.";
 }
 
+let workspaceQueue: Promise<unknown> = Promise.resolve();
+function workspace<T>(job: () => Promise<T>): Promise<T> {
+  const next = workspaceQueue.catch(() => {}).then(job);
+  workspaceQueue = next;
+  return next;
+}
+const editor = createEditor({
+  post: (message) => post(message),
+  state: () => snapshot,
+  workspace,
+});
 function controls() {
-  saveButton.disabled =
-    resetButton.disabled =
-    askButton.disabled =
-      !ready || saving || agentBusy || agentRequested;
-  shader.disabled = !ready || agentBusy || agentRequested;
+  saveButton.disabled = resetButton.disabled = !ready || saving;
+  shader.disabled = !ready;
+  editor.setReady(ready && !saving);
   el<HTMLButtonElement>("walk").disabled = !ready;
 }
 
@@ -118,7 +134,7 @@ function forward(
 }
 
 async function save(source: string): Promise<Record<string, unknown>> {
-  if (!ready || saving || agentBusy || agentRequested)
+  if (!ready || saving)
     throw new Error("Wait for Kiln to finish before saving another edit.");
   saving = true;
   manualSaveStart = now();
@@ -126,7 +142,7 @@ async function save(source: string): Promise<Record<string, unknown>> {
   try {
     await Effect.runPromise(
       Effect.tryPromise({
-        try: () => window.kilnSaveShader(source),
+        try: () => workspace(() => window.kilnSaveShader(source)),
         catch: (e) => new Error(String(e)),
       }),
     );
@@ -199,23 +215,6 @@ shader.addEventListener("keydown", (event) => {
     save(shader.value).catch(showError);
   }
 });
-askButton.addEventListener("click", () => {
-  const task = el<HTMLTextAreaElement>("request").value.trim();
-  if (!task || !ready || saving || agentBusy || agentRequested) return;
-  window.kilnAgentDone = false;
-  agentRequested = true;
-  controls();
-  el("agent-status").textContent =
-    "Kiln is asking a Pylon. You can keep walking.";
-  window.kilnAgent(
-    task +
-      " Edit only haunt/material.wgsl. Read it first, use a small patch, then say done. Do not publish or run tests.",
-  );
-});
-el("stop").addEventListener("click", () => {
-  window.kilnStop();
-  el("agent-status").textContent = "Stopping Kiln after its current step…";
-});
 
 async function start() {
   if (!navigator.gpu || !canvas.transferControlToOffscreen)
@@ -233,6 +232,16 @@ async function start() {
       const message = event.data;
       if (message?.preview !== preview || message?.token !== token) return;
       if (message.state) snapshot = message.state;
+      if (
+        message.type === "capture" &&
+        capturePending &&
+        capturePending.id === message.request
+      ) {
+        const job = capturePending;
+        capturePending = undefined;
+        if (message.blob instanceof Blob) job.resolve(message.blob);
+        else job.reject(new Error(message.message));
+      }
       if (message.type === "ready") {
         adapter = message.adapter;
         resolve();
@@ -265,6 +274,16 @@ async function start() {
       }
       if (message.type === "lost" || message.type === "error")
         showError(message.message);
+      if (
+        (message.type === "lost" || message.type === "disposed") &&
+        capturePending
+      ) {
+        capturePending.reject(
+          new Error("The preview closed before capture finished."),
+        );
+        capturePending = undefined;
+      }
+
       if (message.type === "lost") {
         ready = false;
         controls();
@@ -277,6 +296,7 @@ async function start() {
         controls();
         el("preview-status").textContent = "Preview closed.";
       }
+      editor.receive(message);
     };
   });
   const offscreen = canvas.transferControlToOffscreen();
@@ -318,59 +338,67 @@ async function start() {
   controls();
   window.hauntPreview = {
     save,
-    snapshot: () => ({
-      ...snapshot,
-      adapter,
-      draft,
-      latestResult,
-      samples: [...samples],
-      receipts: [...receipts],
-      kiln: JSON.parse(window.kilnState()),
-    }),
+    snapshot: () =>
+      structuredClone({
+        ...snapshot,
+        adapter,
+        draft,
+        latestResult,
+        samples: [...samples],
+        receipts: [...receipts],
+        kiln: JSON.parse(window.kilnState()),
+      }),
     original: () => original,
     dispose: () => post({ type: "dispose" }),
+    command: editor.submit,
+    request: editor.interpret,
+    editor: editor.snapshot,
+    capture: () =>
+      new Promise<Blob>((resolve, reject) => {
+        if (capturePending || !ready) {
+          reject(
+            new Error("Wait for the current capture or reopen the preview."),
+          );
+          return;
+        }
+        const id = crypto.randomUUID();
+        capturePending = { id, resolve, reject };
+        post({ type: "capture", request: id });
+      }),
   };
   const previousDraft = window.kilnReadShader();
   // A new device always starts with a working baseline, even if OPFS holds a bad draft.
   activeRequest = forward(original);
   await activeRequest;
   if (previousDraft) {
-    activeRequest = forward(previousDraft);
+    // Upgrade this demo's v1 shader layout while preserving its authored tint/code.
+    const upgraded = previousDraft.includes("LANTERN_TINT * toon")
+      ? previousDraft
+          .replace(
+            "  light: vec4<f32>,",
+            "  light: vec4<f32>,\n  tint: vec4<f32>,",
+          )
+          .replace(
+            "LANTERN_TINT * toon",
+            "LANTERN_TINT * scene.tint.xyz * toon",
+          )
+      : previousDraft;
+    activeRequest = forward(upgraded);
     await activeRequest;
   } else await save(original);
-  const interval = setInterval(() => {
-    const wasBusy = agentBusy;
-    const state = JSON.parse(window.kilnState());
-    agentBusy = state.busy;
-    if (agentBusy) agentRequested = false;
-    if (window.kilnAgentDone || (wasBusy && !agentBusy)) agentRequested = false;
-    controls();
-    el("stop").hidden = !agentBusy && !agentRequested;
-    if (agentBusy)
-      el("agent-status").textContent =
-        state.working || "Kiln is working. The house keeps running.";
-    else if (window.kilnAgentDone)
-      el("agent-status").textContent =
-        "Kiln finished. Walk through the light and inspect the change.";
-    else if (wasBusy)
-      el("agent-status").textContent =
-        state.problem || "Kiln stopped. You can save an edit or ask again.";
-    if (window.kilnTranscriptLatest) {
-      try {
-        el("agent-log").textContent = JSON.stringify(
-          JSON.parse(window.kilnTranscriptLatest),
-          null,
-          2,
-        ).slice(-8000);
-      } catch {
-        /* No transcript yet. */
-      }
-    }
-  }, 200);
+  window.kilnSceneChanged = (source) => {
+    void editor.ingest(source);
+  };
+  const savedScene = window.kilnReadScene?.();
+  if (savedScene) await editor.ingest(savedScene, true);
+  else
+    document.getElementById("scene-status")!.textContent =
+      "Ready. Place a pumpkin or describe one change.";
+  editor.setReady(true);
   window.addEventListener(
     "pagehide",
     () => {
-      clearInterval(interval);
+      editor.cancel();
       observer.disconnect();
       post({ type: "dispose" });
       worker?.terminate();
