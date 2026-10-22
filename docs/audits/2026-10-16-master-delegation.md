@@ -485,6 +485,15 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12447: after the next web and Everglade deploy (the host is already
+  at `c8dfc45372` on `oa-foreman-1`), as the dedicated test account in two
+  browsers: ask the Foreman a question and check that it walks to the
+  terminal, that both browsers show `FOREMAN AT WORK:` and
+  `ANSWERING A QUESTION` on the terminal's screen within about a second of
+  each other with a line from its hand, then `ANSWERED IN …`, and that the
+  screen goes back to the Pylon and deploy rows after it leaves; check
+  that a player can still open the terminal's chat beside it. Delete the
+  test chats.
 - #12446: after the next web, Everglade, and lander-chat deploy, as the
   dedicated test account on staging and then production: walk up to the
   Foreman, check that "Press E to talk to the Foreman" shows and opens the
