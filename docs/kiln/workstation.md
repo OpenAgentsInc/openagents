@@ -1,10 +1,12 @@
 # Kiln workstation: spec
 
 Status: spec, 2026-10-21. Owner direction relayed by the coordinator.
-Phases 1 and 2 are built (#12432, #12437). Phase 3's agent identities, the
-repository announcement, and runner admission are built (#12449, #12451;
-[maintainers.md](maintainers.md)); NIP-07 and NIP-46 signing for players
-are not.
+Phases 1 and 2 are built (#12432, #12437). Phase 3's agent identities,
+the repository announcement, and runner admission (#12449, #12451), phase
+4's maintainer apply (#12452), phase 5's GitHub bridge and pull requests
+(#12453, #12455), and a lasting runner on `oa-kiln` (#12454) are built;
+see [maintainers.md](maintainers.md). NIP-07 and NIP-46 signing for
+players, phase 6 (#12456), and phase 7 (#12457) are not.
 
 ## The vision
 
