@@ -489,8 +489,8 @@ The status lines below summarize each issue and its comments. Open the issue for
   real browser-editor work through both explicitly pinned Maya Pylons, with
   external TypeScript and browser checks before draft PRs.
 
-- #12515: deploy the isolated save implementation after the active native task
-  is terminal, and verify the host runs that commit.
+- #12515: done on 2026-10-22; after the old task stopped, the native host on
+  `coderos-4080` was upgraded to `86c771017a` and its running path was verified.
 
 - #12512: activate the deadline-aware native Kiln host and confirm that the real
   Foreman task reaches its checked PR as part of #12497 below.
