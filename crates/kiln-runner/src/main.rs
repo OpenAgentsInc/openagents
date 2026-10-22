@@ -544,8 +544,7 @@ async fn main() {
             std::process::exit(2);
         });
         if admins.is_empty() {
-            eprintln!("kiln-runner: --admins names no key, so nobody could publish");
-            std::process::exit(2);
+            eprintln!("kiln-runner: warning: --admins names no key yet, so nobody can publish");
         }
         println!(
             "self-edit: publishes {publish_prefix}/ to {publish_tenant}/{publish_channel} as {} for {} admin keys",
@@ -563,7 +562,7 @@ async fn main() {
                 publish_relay
             },
             prefix: publish_prefix,
-            admins,
+            admins: admins_file.clone(),
             browser_smoke,
         }))
     };
@@ -637,7 +636,7 @@ async fn main() {
                         .and_then(|job| match (&job.action, &publisher) {
                             (None, _) => Ok(job),
                             (Some(_), None) => Err("this runner doesn't publish Kiln".to_string()),
-                            (Some(_), Some(p)) if !p.admins.contains(&request.pubkey) => {
+                            (Some(_), Some(p)) if !p.admits(&request.pubkey) => {
                                 Err("only an admin's key may publish, revert, or reset Kiln".to_string())
                             }
                             (Some(_), Some(_)) => Ok(job),

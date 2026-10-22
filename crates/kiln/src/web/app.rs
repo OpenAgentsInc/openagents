@@ -180,6 +180,7 @@ pub async fn run() {
             app.clone().agent(task).await;
         }
     }
+    app.expose();
     set(&window, "kilnReady", true);
 }
 
@@ -1563,6 +1564,53 @@ fn repo_slices(repo: &Value) -> Vec<String> {
 }
 
 impl App {
+    /// Console and automation hooks: `kilnRun(line)` runs a tool command,
+    /// `kilnWrite(path, text)` writes a file through the `write` tool, and
+    /// `kilnSelfEdit(action)` asks the runner to `publish`, `revert`, or
+    /// `reset`. Each returns a promise.
+    fn expose(self: &Rc<Self>) {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let app = self.clone();
+        let run = Closure::<dyn Fn(String) -> js_sys::Promise>::new(move |line: String| {
+            let app = app.clone();
+            wasm_bindgen_futures::future_to_promise(async move {
+                let run = app.run_command(&Command::Run(line)).await;
+                Ok(JsValue::from(run.map_or(-1, |r| r.code)))
+            })
+        });
+        set(&window, "kilnRun", run.as_ref().clone());
+        run.forget();
+        let app = self.clone();
+        let write = Closure::<dyn Fn(String, String) -> js_sys::Promise>::new(
+            move |path: String, content: String| {
+                let app = app.clone();
+                wasm_bindgen_futures::future_to_promise(async move {
+                    let run = app.run_command(&Command::Write { path, content }).await;
+                    Ok(JsValue::from(run.map_or(-1, |r| r.code)))
+                })
+            },
+        );
+        set(&window, "kilnWrite", write.as_ref().clone());
+        write.forget();
+        let app = self.clone();
+        let edit = Closure::<dyn Fn(String) -> js_sys::Promise>::new(move |action: String| {
+            let app = app.clone();
+            wasm_bindgen_futures::future_to_promise(async move {
+                let action: &'static str = match action.as_str() {
+                    "publish" => "publish",
+                    "revert" => "revert",
+                    _ => "reset",
+                };
+                app.self_edit(action).await;
+                Ok(JsValue::TRUE)
+            })
+        });
+        set(&window, "kilnSelfEdit", edit.as_ref().clone());
+        edit.forget();
+    }
+
     /// The admin key, from this browser's storage, made on first use.
     fn load_admin_key(&self) {
         let storage = web_sys::window().and_then(|w| w.local_storage().ok().flatten());

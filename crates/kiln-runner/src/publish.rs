@@ -27,10 +27,19 @@ pub(crate) struct Publish {
     pub channel: String,
     pub relay: String,
     pub prefix: String,
-    /// Hex keys allowed to ask for `publish`, `revert`, and `reset`.
-    pub admins: BTreeSet<String>,
+    /// The admin list: hex keys or `npub`s allowed to ask for `publish`,
+    /// `revert`, and `reset`, read again for every job so a key can be
+    /// added or removed without a restart.
+    pub admins: PathBuf,
     /// Skip the headless browser smoke test (no `openagents` CLI here).
     pub browser_smoke: bool,
+}
+
+impl Publish {
+    /// Whether `pubkey` is on the admin list right now.
+    pub fn admits(&self, pubkey: &str) -> bool {
+        read_admins(&self.admins).is_ok_and(|keys| keys.contains(pubkey))
+    }
 }
 
 /// Read the admin list: one key a line, hex or `npub`; `#` starts a comment.
