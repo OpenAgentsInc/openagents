@@ -1,0 +1,205 @@
+{
+  "purpose": "Strict raw-output rechecks after accepting the documented native index-padding value; no numerical release verdict",
+  "all_available_raw_records_rechecked": true,
+  "numerical_release_passed": false,
+  "checker_commit": "a723b380ce",
+  "checker_bundle": "5ede580bbb298dc3767b91d715e6d8c0f2473355e9ee660e85d2e5d99ca293e8",
+  "long_stage2_cpu_reference_pending": true,
+  "records": [
+    {
+      "file": "candidate-06-quad-stage0.json",
+      "sha256": "381e50bd17fe67315f2d296604d57aff26584ab57c699d9d74b4b52e7e65b878",
+      "source_report_sha256": "166823a20224064c946ace4718ecc7ad2104c5f071ba8be1f6167a586659a7f9",
+      "stage": 0,
+      "profile": "cuda-fp8-mma-tp8-sm_120",
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16
+        },
+        {
+          "case": "c6-convert-long",
+          "prompt_tokens": 2726,
+          "generated_tokens": 32
+        }
+      ]
+    },
+    {
+      "file": "candidate-06-quad-stage1.json",
+      "sha256": "cdaf70bfe19bf0ed63de85169dec85bf4efb6f64b7f13b142ec4ab69deb7145f",
+      "source_report_sha256": "52d086270075344f5fb3eb61d773afece471323575351ab8b5883ec474df23cc",
+      "stage": 1,
+      "profile": "cuda-fp8-mma-tp8-sm_120",
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16
+        },
+        {
+          "case": "c6-convert-long",
+          "prompt_tokens": 2726,
+          "generated_tokens": 32
+        }
+      ]
+    },
+    {
+      "file": "candidate-06-quad-stage2.json",
+      "sha256": "f74b2d74aa25d576630b6c5d8e09d9f5ba0c6e7c35a8c802f8f2068f61296c9c",
+      "source_report_sha256": "fd390b468e44adbe718e08f7e4a8044a4e472298894dd66ba54d9a3d4195ee87",
+      "stage": 2,
+      "profile": "cuda-fp8-mma-tp8-sm_120",
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16
+        },
+        {
+          "case": "c6-convert-long",
+          "prompt_tokens": 2726,
+          "generated_tokens": 32
+        }
+      ]
+    },
+    {
+      "file": "candidate-06-quad-stage3.json",
+      "sha256": "8f04f4c4e7b1fa009ccc4adcd52b3f25165667b051a85a605559e8e8f9674b63",
+      "source_report_sha256": "1d697ab994f17ee0bff3ab0564d5661544b41cb39a714c6158da72ddc4d1da35",
+      "stage": 3,
+      "profile": "cuda-fp8-mma-tp8-sm_120",
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16
+        },
+        {
+          "case": "c6-convert-long",
+          "prompt_tokens": 2726,
+          "generated_tokens": 32
+        }
+      ]
+    },
+    {
+      "file": "cpu4-stage0.json",
+      "sha256": "52957233d563bff2ca78821484893424ac135b04c1e4ddef2b4039866fa4856a",
+      "source_report_sha256": "55230227a947507878968c744d1095908591c06d6f47483ccd96e1902775b08c",
+      "stage": 0,
+      "profile": "cpu-bf16",
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16
+        },
+        {
+          "case": "c8-window-1025",
+          "prompt_tokens": 1025,
+          "generated_tokens": 8
+        }
+      ]
+    },
+    {
+      "file": "cpu4-stage1.json",
+      "sha256": "9a03735cfebdff99866373c6cb80cc4606e006ef5de0618e9f1fe448717f7db2",
+      "source_report_sha256": "d917c7ef4fd54da770d1b3c133f078481086a4e6ecd097d2d8ff2431fe10f68a",
+      "stage": 1,
+      "profile": "cpu-bf16",
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16
+        },
+        {
+          "case": "c8-window-1025",
+          "prompt_tokens": 1025,
+          "generated_tokens": 8
+        }
+      ]
+    },
+    {
+      "file": "cpu4-stage2.json",
+      "sha256": "4793e165c9905c4a47c4591961bd60382e0b770aa9ef182e87606058b9cb39d7",
+      "source_report_sha256": "a75186d48dd935ce9beeaec0597dfbfcda43a6cae90e4b602d112212f32aea69",
+      "stage": 2,
+      "profile": "cpu-bf16",
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16
+        },
+        {
+          "case": "c8-window-1025",
+          "prompt_tokens": 1025,
+          "generated_tokens": 8
+        }
+      ]
+    },
+    {
+      "file": "cpu4-stage3.json",
+      "sha256": "105b452fde1f488d7e77e27570d56486a920c11d9db12ebe8b3a6ca1d3d9635e",
+      "source_report_sha256": "1e64d2dc7edbb9572f293ece1da07d7b9227915d6e6d6433930b37fb76a5f63a",
+      "stage": 3,
+      "profile": "cpu-bf16",
+      "cases": [
+        {
+          "case": "c4-engram-variants",
+          "prompt_tokens": 38,
+          "generated_tokens": 16
+        },
+        {
+          "case": "c8-window-1025",
+          "prompt_tokens": 1025,
+          "generated_tokens": 8
+        }
+      ]
+    },
+    {
+      "file": "cpu5-stage0.json",
+      "sha256": "dd5c359b6bcebf7f13aac565bc7aca601545506ae47bd9d871806d537c94af5e",
+      "source_report_sha256": "616e11c93026cda895d361506f30d1ca5d33b154f18ab234bfda2140a7c5a086",
+      "stage": 0,
+      "profile": "cpu-bf16",
+      "cases": [
+        {
+          "case": "c6-convert-long",
+          "prompt_tokens": 2726,
+          "generated_tokens": 32
+        }
+      ]
+    },
+    {
+      "file": "cpu6-stage1.json",
+      "sha256": "39c306e06efe1de4c9216fd578bdcaba916700e30389c55d7dcca6ee86b8b72c",
+      "source_report_sha256": "f622c3177569ac4e3514a023d8aa6f8ff3ab824813796c01769ff3969f5a3b5e",
+      "stage": 1,
+      "profile": "cpu-bf16",
+      "cases": [
+        {
+          "case": "c6-convert-long",
+          "prompt_tokens": 2726,
+          "generated_tokens": 32
+        }
+      ]
+    },
+    {
+      "file": "cpu8-stage3.json",
+      "sha256": "472a746c6e2c1c73cc7edc28c53e648f6ab531e12f0e650d7364f1fb102583b5",
+      "source_report_sha256": "7d3ece8b5d4c5f866046746f26b09fcc2d51eb0ed1f430051f33e4340fb24496",
+      "stage": 3,
+      "profile": "cpu-bf16",
+      "cases": [
+        {
+          "case": "c6-convert-long",
+          "prompt_tokens": 2726,
+          "generated_tokens": 32
+        }
+      ]
+    }
+  ],
+  "raw_prefix": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/calibration-20261022/g4-raw-rechecks"
+}

@@ -1470,3 +1470,21 @@ The `qualification_prompts` example generates the original-weight launch's
 produces exact counts and records tokenizer, prompt, and token-ID hashes.
 The private one-quad Pylon run uses those saved requests; its live results
 remain separate from this construction check.
+
+### Current one-quad runtime and raw rechecks (2026-10-22)
+
+The private original-weight one-quad group passed complete and repeated answers,
+continuation from its actual answer, an honest 4096-token refusal, and fresh
+requests after refusals. The exact 2,872-token request completed as `OK` in
+127.3 seconds; the 2,873-token request was refused in 1.18 seconds. The capped
+workload decoded at 21.12 tokens/s. Observed memory after these checks and
+during an active recovery request was 73,319, 72,029, 71,687, and 72,939 MiB
+across the four GPUs. These are sampled observations, not lifetime allocation
+peaks. See [the runtime record](verification/deepseek-v41-gates-2026-10-22/one-quad-runtime.json).
+
+The corrected reader also rechecked all seven available CPU records and all
+four saved one-quad GPU stage records against their original input messages
+and output bytes. See [the raw recheck summary](verification/deepseek-v41-gates-2026-10-22/g4-raw-rechecks.json).
+The long stage-2 CPU reference is still pending. These rechecks establish the
+recording's structure and measurements; the numerical release policy remains
+unfrozen.
