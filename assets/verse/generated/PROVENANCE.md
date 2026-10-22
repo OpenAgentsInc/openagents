@@ -320,3 +320,23 @@ The adjacent source records retain triangle budgets and source digests.
 The original `fx/surf_spray` and `fx/sea_mist` sheets each contain 16 frames,
 with four columns of 64-pixel cells. Their adjacent JSON files retain digests
 and premultiplied color encoding. They are generated on the CPU; no bake runs.
+
+## Help desk devices (#12443)
+
+`scripts/blender/help_desk_devices.py` builds the launch film's MacBook and
+iPhone with `scripts/film/studio/devices.py`, as the film's
+`four-apps-intro` shot poses them (a silver 14-inch MacBook open to 112
+degrees and a silver iPhone), with no video. Each body is joined and
+decimated to its budget; the display keeps its texture coordinates and the
+material `screen`. The script also crops and scales the film's stills of
+the OpenAgents chat and the OpenAgents app for the two screens.
+`crates/grid-help-desk` compiles the two models into the Grid's line art,
+`assets/verse/grid/help-desk-devices.bin` (54,542 bytes), and a test there
+keeps it current.
+
+| File | Triangles or pixels | Bytes | SHA-256 |
+| --- | ---: | ---: | --- |
+| `help_desk/macbook.glb` | 3,050 (body 3,000, display 50) | 153,980 | `b1a3663c3354a274bf872c2120e24c0b21e848bd3fd57f82f7020cc0993ac46c` |
+| `help_desk/iphone.glb` | 850 (body 800, display 50) | 37,928 | `ee58bbcd32d4ebd87a90d2260a42c5541edce288716ec61cdb83ba1c7883be3b` |
+| `help_desk/macbook-screen.png` | 512 × 332 | 31,348 | `075c3b66f840708123c1671a48c3a75ac6efc19dbed40000194d2276067a6190` |
+| `help_desk/iphone-screen.png` | 192 × 418 | 8,203 | `9b3a51318a720df6160ae9a1d8d292398abe714f7213c44c47a695bac541b49c` |

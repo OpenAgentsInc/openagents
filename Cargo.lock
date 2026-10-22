@@ -6855,6 +6855,7 @@ dependencies = [
  "futures-util",
  "glam",
  "gloo-timers",
+ "grid-help-desk",
  "icecream-zone",
  "js-sys",
  "log",
@@ -8179,6 +8180,18 @@ dependencies = [
  "graphql_client_codegen",
  "proc-macro2",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "grid-help-desk"
+version = "1.0.0"
+dependencies = [
+ "glam",
+ "gltf",
+ "oa-copy",
+ "pylons-view",
+ "sha2 0.10.9",
+ "verse-engine",
 ]
 
 [[package]]
