@@ -485,14 +485,17 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
-- #12491: deploy the 16 MiB assignment-book bound, retry the saved stop
-  and continuation requests, and restore the Grid objective loop on Codex.
-- #12490: redeploy the Foreman GitHub credential fix and complete #12489's
-  real objective-to-draft-PR check; the first deployment stopped dispatch
-  because the stored token contained surrounding whitespace.
-- #12489: deploy `0fa694b293` to the Grid host and website, bind the
-  `coderos-4080` worker/project, and record an objective assignment reaching
-  a checked draft PR. Importer and command checks passed (31 Grid, 12 server).
+- #12491: done on 2026-10-22; production revision
+  `coder-web-b0b54b3bf5-20261022173912` accepts the saved stop and continuation
+  commands, preserves assignment history, and records #12493's result.
+  Grid Foreman resumed and autonomously started Improve Pylon on
+  `coderos-4080` with the saved Codex worker revision 2.
+- #12490: done on 2026-10-22; the deployed credential fix reads the complete
+  eligible-issue list and enabled #12489's objective dispatch.
+- #12489: done on 2026-10-22; Grid host `0fa694b293` dispatched Improve Psionic
+  to `coderos-4080`. Codex delivered [draft PR #12493](https://github.com/OpenAgentsInc/openagents/pull/12493)
+  with a failing baseline regression and 21 passing CPU backend tests.
+  Importer and command checks passed (31 Grid, 12 server).
 - #12460: deploy the [suggestion inbox](../../crates/suggestion-inbox/README.md)
   under a dedicated service account, with separate inbox, owner-review, and
   delegated-reader keys. Set `NOSTR_RELAY_SUGGESTION_INBOX` on the relay and
