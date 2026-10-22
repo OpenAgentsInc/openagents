@@ -195,9 +195,8 @@ change_kind() { # FROM TO
     lists=$(mktemp -d)
     g storage ls "$MODULE_INPUTS/*/inputs-latest" 2> /dev/null |
         while IFS= read -r url; do
-            name=$(basename "$(dirname "$url")")
-            g storage cat "$url" > "$lists/$name" 2> /dev/null || rm -f "$lists/$name"
-        done
+            printf '%s %s\n' "$url" "$lists/$(basename "$(dirname "$url")")"
+        done | xargs -n 2 -P 8 sh -c 'CLOUDSDK_CONFIG="$0" gcloud storage cat "$1" > "$2" 2> /dev/null || rm -f "$2"' "$SA_CONFIG"
     if [ ! -s "$lists/server" ]; then rm -rf "$lists"; echo image; return; fi
     git -C "$ROOT" diff --name-only "$1" "$2" | awk -v lists="$lists" '
         function under(path, list,    line, found) {
