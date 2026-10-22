@@ -20,6 +20,7 @@ Psionic's own kernels. DFlash2 (CC BY-NC-ND) is not used.
 | `--host-threads N`, `--frozen-cache` | #12463 | Host-lane threads (default: one per core); no swaps after load. | Yes |
 | `--engram file` | #12466 | Reads Engram rows from the mapped shards: the host hashes each step's tokens and stages their rows before the step, so neither 101 GB table is pinned. | Yes |
 | `--prefill layer-major` | #12464 | Runs a prompt step layer by layer: projections and routed experts batched over the step's tokens, uncached experts streamed once per layer through a device ring. | Yes |
+| `--kv packed` | #12471 | Keeps the window ring as FP8 codes with a power-of-two scale per 32, and compressed KV and index keys as FP4 codes with a scale per 16 or 32. A whole-model stage only. | Yes |
 | `--experts file --consumer-q DIR` | #12465 | Serves a requantized 2- or 3-bit expert artifact under its own profile name. | **No: lossy, unqualified** |
 
 A stage with any of these flags announces its own profile:
@@ -95,13 +96,16 @@ system, so some host-lane misses read from disk.
   | Layer-major, projections batched | 148 |
   | + token-independent work batched | 192 |
   | + attention batched over the step | 250 (9,449-token prompt: 248) |
-  | + dense products tiled over tokens | **541** (4.45×) |
+  | + dense products tiled over tokens | **541** (4.45×); 9,449-token prompt: **548** (4.5×) |
 
   Phase times of the last run (two rounds): routed experts on the device
   58%, output projection 13%, index projections 13%, attention 9%. The
   grouped output projection had been 53% before the dense kernel was tiled.
 - **Single box, layer-major** with the tiled kernels: the 2,129-token prompt
-  in 25.6 s warm (83 tok/s, up from 32), the same 64-token answer as before.
+  in 25.6 s warm (83 tok/s, up from 32), and the 9,449-token prompt in 144 s
+  warm (65 tok/s, up from 42), each with the same answer as before. On the
+  real model, teacher-forced logits of the oracle's 2K prompt are bit-equal
+  between token-by-token and layer-major prefill (four answer steps).
   What remains is mostly copying uncached experts: with 70% of them off the
   device and about 204 GB of them against 176 GiB of RAM, the copies read
   from the disk (2,400 MiB/s).
@@ -112,6 +116,35 @@ system, so some host-lane misses read from disk.
 
 Answers were the same text as the device-expert runtime's ("The sky
 appears blue because sunlight is scattered by gas molecules…").
+
+## Packed KV rows (#12471)
+
+The reference already rounds every KV row to a small grid, so the stage can
+keep the codes and scales instead of BF16 words and decode them on read to
+the same words:
+
+| Rows | BF16 bytes a position | Packed | Share |
+| --- | ---: | ---: | ---: |
+| Window ring (FP8 E4M3, UE8M0 per 32) | 1,024 | 528 | 52% |
+| Compressed KV (FP4 E2M1, E4M3 per 16) | 1,024 | 288 | 28% |
+| Index keys (FP4 E2M1, UE8M0 per 32) | 256 | 68 | 27% |
+
+The CUDA tests run the whole synthetic model with packed rows, token by
+token and layer-major, and its tokens and logits equal the BF16 rows'. A
+stage boundary still carries BF16 rows, so only a whole-model stage takes
+`--kv packed`. Design after Project Maya PR #276 (`mw00/project-maya` at
+`451f9cb6a2`, MIT), reimplemented.
+
+## The one-box placement (#12467)
+
+`pylon cloud up one-box` runs all 40 layers on one `g4-standard-48` through
+the Pylon front. Its manifest plans the stage with `experts: file`: the
+weight bytes leave out the routed experts, and neither the experts nor the
+Engram tables set RAM aside, since both are read from the mapped shards
+(`psionic-v41-stage plan --device m0:0:cuda-sm_120:96000000000:file-experts`).
+Pylon gives the stage `--experts file --expert-cache auto --engram file
+--prefill layer-major --kv packed`, a 700 GB disk for the whole checkpoint,
+and declares the `consumer-exact` profile on the group's beacons.
 
 ## Maya's prompt skip (#12470)
 
