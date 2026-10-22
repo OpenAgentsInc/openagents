@@ -485,6 +485,19 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12446: after the next web, Everglade, and lander-chat deploy, as the
+  dedicated test account on staging and then production: walk up to the
+  Foreman, check that "Press E to talk to the Foreman" shows and opens the
+  chat with "Ask the Foreman"; ask "what's being worked on?" and check
+  that the answer is under 600 characters, speaks as "I", and names real
+  open issues; with the Pylon router off on staging
+  (`OPENAGENTS_WEB_PYLON_ROUTER=off`), check that the hosted chat answers;
+  check that the eleventh signed-out message gets the sign-in line; check
+  that `/admin/analytics` shows "Reached the Foreman" and "Asked the
+  Foreman". Then publish one record with `openagents foreman publish --file
+  -` from a build that has it, as an admin, and check that `GET
+  /v1/foreman/status` shows it; the desktop Foreman starts publishing once
+  its computer's `openagents` has the command. Delete the test chats.
 - #12445: after the next web, Everglade, and relay deploys (the relay
   exempts the Foreman's key from the world cap by default): open `/` in two
   browsers on two machines as signed-out visitors and check that both show
