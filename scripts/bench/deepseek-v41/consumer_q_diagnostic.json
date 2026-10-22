@@ -2,7 +2,7 @@
   "schema": "openagents.deepseek_v41.consumer_q_diagnostic.v1",
   "issue": 12465,
   "date": "2026-10-22",
-  "worker_commit": "50b42cce21",
+  "worker_commit": "50b42cce21079e96845014dc5ab3f131af5cf7ad",
   "native_revision": "1bae0e1",
   "case": "p1-chat-thinking",
   "generated_ids": [
@@ -63,5 +63,7 @@
     "Eight positions are a diagnostic, not a held-out quality verdict.",
     "Cold unseeded-cache timings do not measure the serving speed target.",
     "This older build predates the native FP8 arithmetic fix in 705129ecaf; final quality uses the newer build."
-  ]
+  ],
+  "worker_build_sha256": "68c5ce300fe98dd20e0a37710b8d265e9d1be143206dd317d093ca1fd3381d0c",
+  "worker_executable_sha256": "472b2c0ed0a0c50db3fdb297fa234392a73b21876fe557f4ac024ef1da8549ba"
 }
