@@ -485,6 +485,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12489: deploy `0fa694b293` to the Grid host and website, bind the
+  `coderos-4080` worker/project, and record an objective assignment reaching
+  a checked draft PR. Importer and command checks passed (31 Grid, 12 server).
 - #12468, #12470: with a `consumer-q` group and a qualified group live on
   the relay, run `pylon ask --model deepseek-v4.1-flash` with and without
   `--profile consumer-q`, and check each request lands only on the profile
