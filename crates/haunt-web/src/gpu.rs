@@ -340,7 +340,7 @@ void main() {
   vec2 c = v_ndc * 0.5;
   c.x *= u_res.x / u_res.y;
   float r = length(c);
-  float v = smoothstep(0.18, 0.78, r) * u_vignette;
+  float v = smoothstep(0.1, 0.62, r) * min(u_vignette * 1.2, 0.95);
   v = max(v, u_fade);
   float g = (hash(floor(gl_FragCoord.xy / 1.5) + floor(u_time * 24.0)) - 0.5) * u_grain;
   vec3 colour = u_edge;

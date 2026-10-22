@@ -1008,6 +1008,104 @@ fn sign() -> Mesh {
     m
 }
 
+/// The meshes the effects draw with, by part: low fog clumps, a puddle
+/// and one drop, two glowing eyes, a floating teacup, and one footprint.
+/// The shell animates them (the fog drifts, the drop falls, the eyes
+/// blink, the cup bobs, the prints appear one by one). `None` for an
+/// effect that is only light or sound.
+#[must_use]
+pub fn effect(id: &str, part: &str) -> Option<Mesh> {
+    let mut m = Mesh::new();
+    match (id, part) {
+        ("ground-fog", _) => {
+            for (k, (x, z, r)) in [
+                (0.0_f32, 0.0_f32, 0.8_f32),
+                (0.9, 0.4, 0.6),
+                (-0.8, 0.5, 0.7),
+                (0.4, -0.9, 0.65),
+                (-0.5, -0.7, 0.55),
+                (1.1, -0.6, 0.5),
+                (-1.2, -0.2, 0.5),
+            ]
+            .iter()
+            .enumerate()
+            {
+                let token = if k % 2 == 0 { "dusk" } else { "paper" };
+                m.add(
+                    Shape::Sphere {
+                        rings: 4,
+                        segments: 8,
+                    },
+                    Mat4::from_scale_rotation_translation(
+                        Vec3::new(r * 2.0, 0.35, r * 1.6),
+                        Quat::IDENTITY,
+                        Vec3::new(*x, 0.12, *z),
+                    ),
+                    c(token),
+                    0.0,
+                );
+            }
+        }
+        ("dripping", "drop") => ball(&mut m, [0.0, 0.0, 0.0], [0.05, 0.08, 0.05], "dusk"),
+        ("dripping", _) => {
+            m.add(
+                Shape::Disc { sides: 12 },
+                Mat4::from_scale_rotation_translation(
+                    Vec3::new(0.5, 1.0, 0.35),
+                    Quat::IDENTITY,
+                    Vec3::new(0.0, 0.008, 0.0),
+                ),
+                c("night_teal"),
+                0.0,
+            );
+        }
+        ("glowing-eyes", _) => {
+            ball(&mut m, [-0.09, 0.1, 0.0], [0.09, 0.06, 0.03], "candle");
+            ball(&mut m, [0.09, 0.1, 0.0], [0.09, 0.06, 0.03], "candle");
+        }
+        ("floating-object", _) => {
+            cyl(&mut m, [0.0, 0.0, 0.0], 0.14, 0.14, 0.015, 12, "paper");
+            cyl(&mut m, [0.0, 0.015, 0.0], 0.05, 0.08, 0.1, 10, "paper");
+            m.add(
+                Shape::Torus {
+                    segments: 10,
+                    sides: 4,
+                    radius: 0.03,
+                    tube: 0.01,
+                },
+                Mat4::from_translation(Vec3::new(0.09, 0.07, 0.0)),
+                c("paper"),
+                1.0,
+            );
+            decal(&mut m, [0.0, 0.06, 0.071], [0.05, 0.03], "brick");
+        }
+        ("footprints", _) => {
+            m.add(
+                Shape::Disc { sides: 10 },
+                Mat4::from_scale_rotation_translation(
+                    Vec3::new(0.11, 1.0, 0.24),
+                    Quat::IDENTITY,
+                    Vec3::new(0.0, 0.006, 0.0),
+                ),
+                c("licorice"),
+                0.0,
+            );
+            m.add(
+                Shape::Disc { sides: 8 },
+                Mat4::from_scale_rotation_translation(
+                    Vec3::new(0.09, 1.0, 0.09),
+                    Quat::IDENTITY,
+                    Vec3::new(0.0, 0.006, 0.17),
+                ),
+                c("licorice"),
+                0.0,
+            );
+        }
+        _ => return None,
+    }
+    Some(m)
+}
+
 /// The mesh for asset `id` in `state`, or `None` for cards, effects, and
 /// ids the library doesn't make.
 #[must_use]
@@ -1103,6 +1201,19 @@ mod tests {
             }
         }
         assert!(bad.is_empty(), "{bad:#?}");
+    }
+
+    #[test]
+    fn every_drawn_effect_has_its_meshes() {
+        for asset in catalog().assets.iter().filter(|a| a.kind == Kind::Effect) {
+            let drawn = effect(&asset.id, "");
+            let only_light_or_sound = matches!(
+                asset.id.as_str(),
+                "lightning-flash" | "light-flicker" | "door-slam"
+            );
+            assert_eq!(drawn.is_some(), !only_light_or_sound, "{}", asset.id);
+        }
+        assert!(effect("dripping", "drop").is_some());
     }
 
     #[test]

@@ -91,6 +91,13 @@ struct App {
     fired: Vec<String>,
     live: Option<Live>,
     follow: Option<crate::follow::Follow>,
+    /// The library page shown, in library mode.
+    library: Option<usize>,
+    /// The sound test's progress: the next sound and when, and what played.
+    sound_test: Option<(usize, f32)>,
+    played: Vec<serde_json::Value>,
+    /// The last frame's camera, for placing words.
+    last_view: Mat4,
     bot: Option<usize>,
     route: Vec<[f32; 2]>,
     areas_seen: Vec<String>,
@@ -172,6 +179,10 @@ impl App {
             fired: Vec::new(),
             live: None,
             follow: None,
+            library: None,
+            sound_test: None,
+            played: Vec::new(),
+            last_view: Mat4::IDENTITY,
             bot: None,
             route: Vec::new(),
             areas_seen: Vec::new(),
@@ -244,7 +255,17 @@ impl App {
                     self.install_card(&p.asset, &image);
                 }
             }
-            Kind::Effect => {}
+            Kind::Effect => {
+                for part in ["", "drop"] {
+                    let key = format!("effect:{}#{part}", p.asset);
+                    if !self.meshes.contains_key(&key)
+                        && let Some(mesh) = haunt_assets::meshes::effect(&p.asset, part)
+                        && let Some(gpu) = self.gpu.upload_mesh(&mesh.data)
+                    {
+                        self.meshes.insert(key, gpu);
+                    }
+                }
+            }
         }
     }
 
@@ -368,6 +389,15 @@ impl App {
             return;
         }
         self.keys.insert(name.to_owned());
+        if let Some(page) = self.library {
+            let pages = scene::library_pages(self.catalog);
+            match name {
+                "ArrowRight" => self.set_library((page + 1) % pages),
+                "ArrowLeft" => self.set_library((page + pages - 1) % pages),
+                _ => {}
+            }
+            return;
+        }
         match name {
             "Enter" | " " if matches!(self.mode, Mode::Title | Mode::Ended) => self.begin(),
             "Escape" | "Tab" if self.mode == Mode::Playing => self.mode = Mode::Menu,
@@ -544,7 +574,13 @@ impl App {
             } else {
                 [0.09, 0.07, 0.12]
             },
-            fog_range: if outdoors { [18.0, 70.0] } else { [7.0, 22.0] },
+            fog_range: if self.library.is_some() {
+                [40.0, 90.0]
+            } else if outdoors {
+                [18.0, 70.0]
+            } else {
+                [7.0, 22.0]
+            },
             shadow: [0.42, 0.36, 0.56],
         }
     }
@@ -569,7 +605,9 @@ impl App {
         });
         for action in actions {
             match action {
-                Action::Sfx(id) => self.sound.play(id, Some(at_prop.unwrap_or(centre))),
+                Action::Sfx(id) => {
+                    self.sound.play(id, Some(at_prop.unwrap_or(centre)));
+                }
                 Action::Light(change) => {
                     self.overrides.insert(
                         area_id.to_owned(),
@@ -587,9 +625,10 @@ impl App {
                 Action::Effect(effect) => match effect.id.as_str() {
                     "lightning-flash" => self.flash = 1.3,
                     "light-flicker" => self.flicker_until = self.time + 1.5,
-                    "door-slam" => self
-                        .sound
-                        .play("door-slam", Some(at_prop.unwrap_or(centre))),
+                    "door-slam" => {
+                        self.sound
+                            .play("door-slam", Some(at_prop.unwrap_or(centre)));
+                    }
                     _ => {}
                 },
             }
@@ -627,6 +666,11 @@ impl App {
             self.sound.cue(&sounds, behind);
             self.sound.music(true);
             self.fired.push("arrival cue".into());
+        }
+        if self.library.is_some() {
+            self.step_sound_test();
+            self.sound.tick();
+            return;
         }
         let m = match self.bot_input(dt) {
             Some(m) => m,
@@ -737,6 +781,15 @@ impl App {
         if let Some((_, centre, thumb)) = self.touch_move {
             view.stick = Some((centre, thumb));
         }
+        if let Some(page) = self.library {
+            view.title = None;
+            view.labels = self.library_labels();
+            view.hint = format!(
+                "The library, page {} of {}: left and right arrows turn the page",
+                page + 1,
+                scene::library_pages(self.catalog)
+            );
+        }
         view
     }
 
@@ -773,6 +826,7 @@ impl App {
             height: h,
             time: self.time,
         };
+        self.last_view = camera.view_projection;
         self.gpu
             .sky(&camera, token("plum"), token("dusk"), [0.08, 0.09, 0.13]);
         let yard = self
@@ -796,7 +850,11 @@ impl App {
                 self.draw_prop(p, &camera, &lighting);
             }
         }
-        let vignette = self.house.look.vignette * if self.gentle { 0.45 } else { 1.0 };
+        let vignette = if self.library.is_some() {
+            0.0
+        } else {
+            self.house.look.vignette * if self.gentle { 0.45 } else { 1.0 }
+        };
         let fade = match self.mode {
             Mode::Ended => 0.55,
             _ => 0.0,
@@ -847,7 +905,7 @@ impl App {
                     return;
                 };
                 let mut model = p.model();
-                if p.asset == "moon" {
+                if p.asset == "moon" && self.library.is_none() {
                     // The moon stands high and far, facing the house.
                     let dir = (Vec3::new(camera.eye.x, 0.0, camera.eye.z)
                         - Vec3::new(p.at.x, 0.0, p.at.z))
@@ -921,8 +979,169 @@ impl App {
                 self.gpu
                     .card(texture, base, [width, height], lift, camera, lighting);
             }
-            Kind::Effect => {}
+            Kind::Effect => self.draw_effect(p, camera, lighting),
         }
+    }
+
+    /// An effect placed in the house: fog drifts, a drop falls into its
+    /// puddle, eyes blink, a cup floats, footprints appear one by one.
+    fn draw_effect(&self, p: &Placed, camera: &Camera, lighting: &Lighting) {
+        let t = self.time;
+        let mesh = |part: &str| self.meshes.get(&format!("effect:{}#{part}", p.asset));
+        let base = p.model();
+        match p.asset.as_str() {
+            "ground-fog" => {
+                if let Some(m) = mesh("") {
+                    let drift = Mat4::from_rotation_y((t * 0.05).sin() * 0.4)
+                        * Mat4::from_translation(Vec3::new((t * 0.3).sin() * 0.3, 0.0, 0.0));
+                    self.gpu.mesh(m, &(base * drift), camera, lighting, false);
+                }
+            }
+            "dripping" => {
+                if let Some(m) = mesh("") {
+                    self.gpu.mesh(m, &base, camera, lighting, false);
+                }
+                if let Some(m) = mesh("drop") {
+                    let height = self
+                        .area
+                        .as_ref()
+                        .and_then(|id| self.house.area(id))
+                        .and_then(|a| a.ceiling)
+                        .unwrap_or(3.0);
+                    let fall = (t * 1.2).fract();
+                    let y = height * (1.0 - fall * fall);
+                    let model = Mat4::from_translation(Vec3::new(p.at.x, y, p.at.z));
+                    self.gpu.mesh(m, &model, camera, lighting, false);
+                }
+            }
+            "glowing-eyes" => {
+                let blink = (t * 0.33).fract() > 0.95;
+                if let (Some(m), false) = (mesh(""), blink) {
+                    let lifted = base * Mat4::from_translation(Vec3::Y * 0.9);
+                    self.gpu.mesh(m, &lifted, camera, lighting, true);
+                }
+            }
+            "floating-object" => {
+                if let Some(m) = mesh("") {
+                    let bob = Mat4::from_translation(Vec3::Y * (1.1 + (t * 1.7).sin() * 0.12))
+                        * Mat4::from_rotation_y(t * 0.6);
+                    self.gpu.mesh(m, &(base * bob), camera, lighting, false);
+                }
+            }
+            "footprints" => {
+                if let Some(m) = mesh("") {
+                    let shown = ((t * 1.5) as usize % 10).max(1);
+                    for i in 0..shown.min(8) {
+                        let side = if i % 2 == 0 { -0.12 } else { 0.12 };
+                        let step = Mat4::from_translation(Vec3::new(side, 0.0, i as f32 * 0.42));
+                        self.gpu.mesh(m, &(base * step), camera, lighting, false);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Shows library page `page`: the room and that page's assets.
+    fn set_library(&mut self, page: usize) {
+        let pages = scene::library_pages(self.catalog);
+        let page = page % pages.max(1);
+        let (house, placed) = scene::library(self.catalog, page);
+        self.house = house;
+        self.rebuild_all();
+        for p in &placed {
+            self.ensure_asset(p);
+        }
+        if let Some(g) = self.areas.get_mut("library") {
+            g.props = placed;
+        }
+        self.library = Some(page);
+        self.walker = Walker::new([12.0, 9.5], 0.0);
+        self.walker.pitch = -4.0;
+        self.publish_library();
+    }
+
+    /// The sound test: every library sound in turn, 1.5 s apart, noting
+    /// whether the page made it.
+    fn step_sound_test(&mut self) {
+        let Some((next, at)) = self.sound_test else {
+            return;
+        };
+        if self.time < at {
+            return;
+        }
+        let sounds = &self.catalog.sounds;
+        let Some(sound) = sounds.get(next) else {
+            self.sound.music(false);
+            self.sound.bed(None);
+            self.sound_test = None;
+            self.publish_library();
+            return;
+        };
+        let made = match sound.kind {
+            haunt_assets::SoundKind::Effect => self.sound.play(&sound.id, None),
+            haunt_assets::SoundKind::Bed => {
+                self.sound.bed(Some(&sound.id));
+                crate::sounds::BEDS.contains(&sound.id.as_str())
+            }
+            haunt_assets::SoundKind::Music => {
+                self.sound.music(true);
+                crate::sounds::MUSIC.contains(&sound.id.as_str())
+            }
+        };
+        self.played
+            .push(serde_json::json!({"id": sound.id, "made": made, "awake": self.sound.awake()}));
+        self.sound_test = Some((next + 1, self.time + 1.5));
+        self.publish_library();
+    }
+
+    fn publish_library(&self) {
+        let Some(page) = self.library else { return };
+        let assets: Vec<String> = self
+            .areas
+            .get("library")
+            .map(|g| g.props.iter().map(|p| p.asset.clone()).collect())
+            .unwrap_or_default();
+        let value = serde_json::json!({
+            "page": page,
+            "pages": scene::library_pages(self.catalog),
+            "assets": assets,
+            "played": self.played,
+            "sounds": self.catalog.sounds.len(),
+            "testing": self.sound_test.is_some(),
+            "labels": self.library_labels(),
+        });
+        let _ = Reflect::set(
+            &self.window,
+            &"haunt_library".into(),
+            &JsValue::from_str(&value.to_string()),
+        );
+    }
+
+    /// The names under the library's assets, on the screen.
+    fn library_labels(&self) -> Vec<(f64, f64, String)> {
+        let Some(g) = self.areas.get("library").filter(|_| self.library.is_some()) else {
+            return Vec::new();
+        };
+        let (w, h) = (
+            f64::from(self.canvas.client_width()),
+            f64::from(self.canvas.client_height()),
+        );
+        g.props
+            .iter()
+            .filter_map(|p| {
+                let at = self.last_view * glam::Vec4::new(p.at.x, -0.25, p.at.z, 1.0);
+                if at.w <= 0.0 {
+                    return None;
+                }
+                let (x, y) = (at.x / at.w, at.y / at.w);
+                Some((
+                    (f64::from(x) * 0.5 + 0.5) * w,
+                    (0.5 - f64::from(y) * 0.5) * h,
+                    p.asset.clone(),
+                ))
+            })
+            .collect()
     }
 
     /// `window.haunt_state` for checks and recordings.
@@ -931,6 +1150,7 @@ impl App {
         if !force && self.published % 10 != 0 {
             return;
         }
+        self.publish_library();
         let a = &self.house.audio;
         let mode = match self.mode {
             Mode::Title => "title",
@@ -1197,10 +1417,6 @@ fn launch_with(
     app.live = live;
     app.follow = follow;
     let hash = window.location().hash().unwrap_or_default();
-    if hash.contains("walk") {
-        app.route = scene::route(&app.house);
-        app.bot = Some(0);
-    }
     // `#at=X,Z[,YAW]` stands the player there, and `#begin` starts at
     // once: for captures and checks.
     let param = |name: &str| {
@@ -1210,6 +1426,21 @@ fn launch_with(
                 .map(str::to_owned)
         })
     };
+    // `#library` (or `#library=N`) shows the prepared library a page at a
+    // time, and `&sounds` plays every sound in turn.
+    if let Some(page) = param("library=")
+        .and_then(|v| v.parse::<usize>().ok())
+        .or(hash.contains("library").then_some(0))
+    {
+        app.set_library(page);
+        if hash.contains("sounds") {
+            app.sound_test = Some((0, 1.0));
+        }
+    }
+    if hash.contains("walk") {
+        app.route = scene::route(&app.house);
+        app.bot = Some(0);
+    }
     let at: Option<Vec<f32>> =
         param("at=").map(|v| v.split(',').filter_map(|n| n.parse().ok()).collect());
     let app = Rc::new(RefCell::new(app));
@@ -1227,9 +1458,10 @@ fn launch_with(
         a.arrived_at = -10.0;
     }
     if let Some(live) = &app.borrow().live {
+        let (bytes, files) = live_web::transferred(&[], 0.0);
         live.ack(
             "first_play",
-            serde_json::json!({"first_play_ms": live_web::now()}),
+            serde_json::json!({"first_play_ms": live_web::now(), "bytes": bytes, "files": files}),
         );
     }
     let target: &web_sys::EventTarget = window.as_ref();

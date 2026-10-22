@@ -371,7 +371,16 @@ impl Sound {
 
     /// Plays a sound effect by id, from `at` when given. Unknown ids are
     /// quiet.
-    pub fn play(&mut self, id: &str, at: Option<Vec3>) {
+    /// Whether the page has the effect.
+    pub fn play(&mut self, id: &str, at: Option<Vec3>) -> bool {
+        if !crate::sounds::EFFECTS.contains(&id) {
+            return false;
+        }
+        self.play_made(id, at);
+        true
+    }
+
+    fn play_made(&mut self, id: &str, at: Option<Vec3>) {
         use BiquadFilterType::{Bandpass, Highpass, Lowpass};
         use OscillatorType::{Sawtooth, Sine, Square, Triangle};
         if self.ctx.is_none() {

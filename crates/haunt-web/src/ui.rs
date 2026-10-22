@@ -42,6 +42,8 @@ pub struct View {
     pub stick: Option<([f64; 2], [f64; 2])>,
     pub mic: Option<bool>,
     pub loading: Option<String>,
+    /// Words at points on the screen (the library's names), CSS pixels.
+    pub labels: Vec<(f64, f64, String)>,
 }
 
 pub struct Ui {
@@ -135,6 +137,9 @@ impl Ui {
         ctx.clear_rect(0.0, 0.0, width, height);
         let cx = width / 2.0;
         let big = (width.min(height) / 9.0).clamp(30.0, 64.0);
+        for (x, y, text) in &view.labels {
+            self.text(text, *x, *y, 15.0, PAPER, "800");
+        }
         if let Some(loading) = &view.loading {
             self.text(loading, cx, height / 2.0, 22.0, PAPER, "700");
         }

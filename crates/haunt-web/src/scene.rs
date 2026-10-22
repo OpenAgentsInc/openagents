@@ -197,6 +197,84 @@ pub fn route(house: &House) -> Vec<[f32; 2]> {
     out
 }
 
+/// Assets shown on one library page.
+pub const LIBRARY_PAGE: usize = 6;
+
+/// The library's assets in the order the contact sheet shows them: the
+/// cards, then the meshes, then the effects.
+#[must_use]
+pub fn library_assets(catalog: &Catalog) -> Vec<&haunt_assets::Asset> {
+    let mut out = Vec::new();
+    for kind in [Kind::Card, Kind::Mesh, Kind::Effect] {
+        out.extend(catalog.assets.iter().filter(|a| a.kind == kind));
+    }
+    out
+}
+
+/// The library's pages.
+#[must_use]
+pub fn library_pages(catalog: &Catalog) -> usize {
+    library_assets(catalog).len().div_ceil(LIBRARY_PAGE)
+}
+
+/// A room to show the library in, and one page of assets standing in a
+/// row across it: the contact sheet.
+#[must_use]
+pub fn library(catalog: &Catalog, page: usize) -> (House, Vec<Placed>) {
+    let mut house = haunt_rules::v1();
+    let mut room = house.area("parlor").cloned().expect("the parlor");
+    room.id = "library".into();
+    room.rect = [0.0, 0.0, 24.0, 30.0];
+    room.ceiling = Some(7.0);
+    room.light = haunt_rules::doc::Light {
+        preset: "candle".into(),
+        dim: 0.0,
+        ambient: Some(haunt_rules::doc::Ambient {
+            color: "paper".into(),
+            level: 0.75,
+        }),
+        lights: Vec::new(),
+    };
+    room.doors.clear();
+    room.props.clear();
+    room.triggers.clear();
+    room.sound.bed = None;
+    house.areas = vec![room];
+    house.arrival.area = "library".into();
+    house.arrival.at = [12.0, 7.0];
+    house.arrival.yaw = 0.0;
+    house.exit.area = "library".into();
+    let assets = library_assets(catalog);
+    let shown: Vec<&&haunt_assets::Asset> = assets
+        .iter()
+        .skip(page * LIBRARY_PAGE)
+        .take(LIBRARY_PAGE)
+        .collect();
+    let placed = shown
+        .iter()
+        .enumerate()
+        .map(|(i, a)| {
+            let x = 12.0 + (i as f32 - (shown.len() as f32 - 1.0) / 2.0) * 1.9;
+            let y = match a.surface {
+                Surface::Ceiling => 0.8,
+                Surface::Wall => 0.5,
+                _ => 0.0,
+            };
+            Placed {
+                id: format!("library-{}", a.id),
+                area: "library".into(),
+                asset: a.id.clone(),
+                kind: a.kind,
+                state: a.states[0].clone(),
+                at: Vec3::new(x, y, 14.0),
+                yaw: 180.0,
+                size: a.footprint,
+            }
+        })
+        .collect();
+    (house, placed)
+}
+
 /// The way a wall faces into its area, as a yaw.
 #[must_use]
 pub fn facing_in(wall: Wall) -> f32 {
@@ -264,6 +342,20 @@ mod tests {
         }
         assert_eq!(next, path.len(), "stuck at {:?}", w.pos);
         assert!(haunt_rules::walk::left_by_exit(&house, w.pos));
+    }
+
+    #[test]
+    fn the_library_pages_show_every_asset_once() {
+        let catalog = haunt_assets::catalog();
+        let pages = library_pages(catalog);
+        let mut seen = Vec::new();
+        for page in 0..pages {
+            let (house, placed) = library(catalog, page);
+            assert_eq!(house.areas.len(), 1);
+            assert!(placed.len() <= LIBRARY_PAGE && !placed.is_empty());
+            seen.extend(placed.into_iter().map(|p| p.asset));
+        }
+        assert_eq!(seen.len(), catalog.assets.len());
     }
 
     #[test]

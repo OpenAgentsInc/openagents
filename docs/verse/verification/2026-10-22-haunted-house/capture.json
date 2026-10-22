@@ -1,0 +1,11 @@
+{
+  "date": "2026-10-22",
+  "issue": 12474,
+  "walk": {"page": "#walk", "areas": ["yard", "entry-hall", "parlor", "long-hall", "kitchen", "back-hall"],
+    "fired": ["arrival cue", "entry-hall#0", "parlor#0", "long-hall#0", "long-hall#1", "back-hall#0", "back-hall#1"],
+    "ended": true},
+  "live_light_change": {"area": "parlor", "from": "candle", "to": "jack-o-glow", "edit_to_live_ms": 80.8,
+    "applied_ms": 16.4, "fetched_bytes": 13245, "fetched_files": 3, "same_walk": true},
+  "first_play": {"report": "first play 1103 KB in 14 files of a 3417 KB budget (1462 KB in all)",
+    "fresh_browser_playing_ms": 330, "network_kb": 382}
+}

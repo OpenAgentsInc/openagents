@@ -16,6 +16,7 @@
 
 pub mod arch;
 pub mod scene;
+pub mod sounds;
 pub mod walker;
 
 #[cfg(target_arch = "wasm32")]
