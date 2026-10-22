@@ -142,6 +142,7 @@ transition:opacity .3s cubic-bezier(.22,.8,.3,1),transform .3s cubic-bezier(.22,
 #gpui-mount{position:absolute;inset:0;opacity:0;transition:opacity .25s}#gpui-mount canvas{position:absolute}\
 #pylon-card.ready #gpui-mount{opacity:1}\
 #pylon-facts{position:absolute;inset:0;overflow:auto;padding:18px 20px;box-sizing:border-box;font-size:14px;line-height:20px}\
+#pylon-work-facts{white-space:pre-wrap}\
 #pylon-card.ready #pylon-facts{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}\
 #pylon-facts h2{margin:0 40px 2px 0;font-size:17px;font-weight:600}\
 #pylon-facts dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:14px 0 0}\
