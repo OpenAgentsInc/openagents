@@ -106,3 +106,22 @@ Checks: 45 Kiln library tests, 16 project/protocol/simulation tests, TypeScript 
 production build, the full four-script browser suite, and the final focused behavior
 check including batched stopping. Unit simulation checks include chasing through
 the connecting corridor, stop distance, wall bounds, and capped elapsed time.
+
+## Room, wing, and wall editing
+
+The [layout receipt](layout-receipt.json) records real UI requests: `knock down this
+wall` (180.7 ms), `add a room` (137.6 ms), and `add a wing to my right` (139.0 ms),
+including real Kiln saves. A wing adds three connected rooms as one transaction.
+The [expanded house](expanded-house.png) and [floor plan](expanded-floorplan.png)
+show the resulting seven-room test scene after one additional direct room edit.
+
+The browser check verifies player traversal through the new doorway, rejection
+of undo beneath the player, asset placement and ghost behavior in the extension,
+save/reopen, wall targeting, one-step undo/redo, shader failure recovery, unchanged
+player/device during edits, and bounded resource teardown. The same saved plan
+drives geometry, collision, and doorway routes for chasing ghosts.
+
+Checks: 45 Kiln library tests, 22 project/protocol/simulation/layout tests, TypeScript
+check, production build, and all five browser scripts. Unit cases cover shared-wall
+ownership, room bounds/overlap/connectivity, doorway picking, wing atomicity, ghost
+routes into new rooms, and wall removal remaining open after an extension.

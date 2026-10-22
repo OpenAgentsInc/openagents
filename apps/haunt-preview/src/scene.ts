@@ -1,3 +1,4 @@
+import { DEFAULT_LAYOUT, HouseFloor, type Layout } from "./layout.ts";
 import { walkable, type SceneAsset } from "./project.ts";
 type V3 = [number, number, number];
 const data: number[] = [];
@@ -233,14 +234,13 @@ export type AssetRange = { start: number; end: number };
 export function houseGeometry(
   assets: SceneAsset[],
   ranges?: Map<string, AssetRange>,
+  layout: Layout = DEFAULT_LAYOUT,
 ): Float32Array {
   data.length = 0;
   // Original simple geometry and the Haunted House palette, not imported game art.
-  for (const [cx, cz, w, d] of [
-    [0, 1.5, 7, 13],
-    [0, -7, 2.5, 4],
-    [0, -13, 8, 8],
-  ]) {
+  const floor = new HouseFloor(layout);
+  for (const room of layout.rooms) {
+    const { x: cx, z: cz, width: w, depth: d } = room;
     for (let x = cx - w / 2; x < cx + w / 2; x += 0.7) {
       for (let z = cz - d / 2; z < cz + d / 2; z += 1.3)
         box(
@@ -253,30 +253,6 @@ export function houseGeometry(
           (Math.round(x * 10) + Math.round(z * 10)) % 3
             ? [0.29, 0.23, 0.22]
             : [0.35, 0.27, 0.24],
-        );
-    }
-    for (const side of [-1, 1]) {
-      box(cx + (side * w) / 2, 1.8, cz, 0.18, 3.6, d, [0.35, 0.34, 0.28]);
-      box(cx + side * (w / 2 - 0.1), 0.5, cz, 0.1, 1.0, d, wood);
-      box(
-        cx + side * (w / 2 - 0.13),
-        1.02,
-        cz,
-        0.16,
-        0.09,
-        d,
-        [0.53, 0.37, 0.22],
-      );
-      box(cx + side * (w / 2 - 0.12), 3.35, cz, 0.16, 0.18, d, wood);
-      for (let z = cz - d / 2; z < cz + d / 2; z += 0.46)
-        box(
-          cx + side * (w / 2 - 0.1),
-          2.13,
-          z,
-          0.055,
-          2.1,
-          0.055,
-          [0.47, 0.43, 0.32],
         );
     }
     box(cx, 3.65, cz, w, 0.15, d, [0.17, 0.18, 0.2]);
@@ -293,16 +269,45 @@ export function houseGeometry(
     for (const side of [-1, 1])
       box(cx + side * 0.8, 0.03, cz, 0.045, 0.02, d - 0.1, [0.67, 0.44, 0.21]);
   }
-  for (const z of [-5, -9]) {
-    for (const side of [-1, 1]) {
-      box(side * 2.32, 1.75, z, 2.2, 3.5, 0.22, [0.35, 0.32, 0.27]);
-      box(side * 1.23, 1.5, z, 0.22, 3.0, 0.4, wood);
-    }
-    box(0, 3.1, z, 2.7, 0.4, 0.4, wood);
-    box(0, 3.0, z + 0.23, 0.45, 0.22, 0.08, [0.75, 0.42, 0.15]);
+  for (const wall of floor.walls) {
+    const x = (wall.x1 + wall.x2) / 2,
+      z = (wall.z1 + wall.z2) / 2;
+    const horizontal = wall.z1 === wall.z2,
+      length = Math.hypot(wall.x2 - wall.x1, wall.z2 - wall.z1);
+    box(
+      x,
+      1.8,
+      z,
+      horizontal ? length : 0.18,
+      3.6,
+      horizontal ? 0.18 : length,
+      [0.35, 0.34, 0.28],
+    );
+    for (const [y, h, color] of [
+      [0.5, 1, wood],
+      [1.02, 0.09, [0.53, 0.37, 0.22]],
+      [3.35, 0.18, wood],
+    ] as [number, number, V3][])
+      box(
+        x,
+        y,
+        z,
+        horizontal ? length : 0.2,
+        h,
+        horizontal ? 0.2 : length,
+        color,
+      );
+    for (let along = 0.2; along < length; along += 0.46)
+      box(
+        horizontal ? wall.x1 + along : x,
+        2.13,
+        horizontal ? z : wall.z1 + along,
+        0.055,
+        2.1,
+        0.055,
+        [0.47, 0.43, 0.32],
+      );
   }
-  box(0, 1.75, 8, 7, 3.5, 0.18, plum);
-  box(0, 1.75, -17, 8, 3.5, 0.18, plum);
   // Portraits, wainscoting, candles, and paper ghosts.
   for (const [x, z] of [
     [-3.3, 2],
@@ -310,6 +315,12 @@ export function houseGeometry(
     [-3.8, -12],
     [3.8, -15],
   ]) {
+    if (
+      layout.removedWalls.includes(
+        `${z < -5 ? "gallery" : "hall"}:${x < 0 ? "west" : "east"}`,
+      )
+    )
+      continue;
     box(x, 1.9, z, 0.16, 1.45, 1.05, [0.62, 0.4, 0.18]);
     box(x - Math.sign(x) * 0.1, 1.9, z, 0.07, 1.22, 0.83, [0.13, 0.16, 0.17]);
     box(x - Math.sign(x) * 0.15, 1.9, z, 0.04, 0.72, 0.5, paper);
@@ -325,25 +336,33 @@ export function houseGeometry(
   for (const x of [-2.8, -1.6]) box(x, 0.3, -15.5, 0.15, 0.7, 0.6, wood);
   candle(-2.6, 0.9, -15.5);
   candle(-1.9, 0.9, -15.5);
-  box(0, 1.9, -16.4, 1.0, 1.1, 0.08, paper);
-  for (const side of [-1, 1])
-    box(side * 0.19, 2.05, -16.32, 0.13, 0.18, 0.04, [0.08, 0.08, 0.1]);
-  for (let i = 0; i < 5; i++)
-    box(-0.4 + i * 0.2, 1.3 + (i % 2) * 0.1, -16.4, 0.2, 0.3, 0.08, paper);
+  if (!layout.removedWalls.includes("gallery:north")) {
+    box(0, 1.9, -16.4, 1.0, 1.1, 0.08, paper);
+    for (const side of [-1, 1])
+      box(side * 0.19, 2.05, -16.32, 0.13, 0.18, 0.04, [0.08, 0.08, 0.1]);
+    for (let i = 0; i < 5; i++)
+      box(-0.4 + i * 0.2, 1.3 + (i % 2) * 0.1, -16.4, 0.2, 0.3, 0.08, paper);
+  }
   return new Float32Array(data);
 }
 
 export type Pose = { x: number; z: number; yaw: number; pitch: number };
 export const canWalk = walkable;
 
-export function move(pose: Pose, forward: number, right: number, dt: number) {
+export function move(
+  pose: Pose,
+  forward: number,
+  right: number,
+  dt: number,
+  floor: (x: number, z: number) => boolean = canWalk,
+) {
   const length = Math.max(1, Math.hypot(forward, right));
   const step = (Math.min(dt, 0.05) * 2.6) / length;
   const dx = (Math.sin(pose.yaw) * forward + Math.cos(pose.yaw) * right) * step;
   const dz =
     (-Math.cos(pose.yaw) * forward + Math.sin(pose.yaw) * right) * step;
-  if (canWalk(pose.x + dx, pose.z)) pose.x += dx;
-  if (canWalk(pose.x, pose.z + dz)) pose.z += dz;
+  if (floor(pose.x + dx, pose.z)) pose.x += dx;
+  if (floor(pose.x, pose.z + dz)) pose.z += dz;
 }
 
 export function cameraMatrix(out: Float32Array, pose: Pose, aspect: number) {

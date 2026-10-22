@@ -1,3 +1,4 @@
+import { createLayoutControls } from "./layout-controls.ts";
 import { Effect } from "effect";
 import {
   PROJECT_ID,
@@ -45,7 +46,14 @@ export function createEditor(bridge: Bridge) {
   const status = (s: string) => {
     el("scene-status").textContent = s;
   };
+  const layoutControls = createLayoutControls({
+    state: bridge.state,
+    submit,
+    cancel,
+    error: (error) => status(explain(error)),
+  });
   function refresh() {
+    layoutControls.refresh(ready, busy);
     const state = bridge.state(),
       p = state.project as Project | undefined;
     for (const id of [
@@ -183,6 +191,9 @@ export function createEditor(bridge: Bridge) {
     const requestEpoch = ++epoch;
     const base = bridge.state().project.revision;
     const selectedAtStart = selected;
+    const wallAtStart = layoutControls.target();
+    const wallChoice = layoutControls.selection();
+    const poseAtStart = { ...bridge.state().pose };
     const started = clock();
     status(
       "Choosing one scene change… You can keep walking or use the controls.",
@@ -218,7 +229,8 @@ export function createEditor(bridge: Bridge) {
         throw new Error("That request was canceled.");
       if (
         bridge.state().project.revision !== base ||
-        selected !== selectedAtStart
+        selected !== selectedAtStart ||
+        wallChoice !== layoutControls.selection()
       )
         throw new Error(
           "The scene changed while this request was pending. Try it again.",
@@ -227,9 +239,14 @@ export function createEditor(bridge: Bridge) {
       const operation = decisionOperation(
         d,
         text,
-        bridge.state().pose,
+        ["add_room", "add_wing", "remove_wall"].includes(d.action)
+          ? poseAtStart
+          : bridge.state().pose,
         selectedAtStart,
         bridge.state().project,
+        wallAtStart
+          ? { id: wallAtStart.id, x: wallAtStart.x, z: wallAtStart.z }
+          : undefined,
       );
       decision = undefined;
       clearTimeout(timeout);
