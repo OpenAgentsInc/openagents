@@ -24,6 +24,7 @@ pub(crate) mod gpui_chat;
 pub(crate) mod gpui_demo;
 pub(crate) mod gpui_fonts;
 pub(crate) mod grid_home;
+mod haunt;
 pub mod home;
 mod icecream;
 mod icecream_guide;
@@ -126,6 +127,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(gpui_fonts::routes())
         .merge(gpui_chat::routes())
         .merge(icecream::routes())
+        .merge(haunt::routes())
         .merge(snap::routes())
         .merge(layertree::routes())
         .merge(att::routes())

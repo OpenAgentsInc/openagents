@@ -1,5 +1,6 @@
 //! Account-scoped Game Lab, using the shared Labs store and game rules.
 
+mod haunt;
 mod storage;
 #[cfg(test)]
 mod tests;
@@ -117,9 +118,17 @@ impl Hosted {
                     )
                 })
                 .cloned()
+                .chain(
+                    game_lab::haunt::tools()["tools"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .cloned(),
+                )
                 .collect(),
             documents: vec![
                 json!({"id":ICE_CREAM_MAN,"title":"The Ice Cream Man","kind":doc::KIND,"versions":n}),
+                json!({"id":game_lab::haunt::HAUNTED_HOUSE,"title":game_lab::haunt::TITLE,"kind":haunt_rules::KIND,"versions":hosted.haunt_count().await}),
             ],
             hosted: None,
             platform: None,
@@ -260,7 +269,7 @@ impl Hosted {
 
     pub(crate) async fn run(&self, name: &str, args: &Value) -> lab_store::Result<Value> {
         let result = self.invoke(name, args).await;
-        if name == "game_edit" && self.count_events {
+        if (name == "game_edit" || game_lab::haunt::EDITS.contains(&name)) && self.count_events {
             self.analytics.event(
                 if result.is_ok() {
                     "lab_version_saved"
@@ -277,9 +286,13 @@ impl Hosted {
         if serde_json::to_vec(args)?.len() > 32 * 1024 {
             return Err(lab_store::Error::Invalid("This edit is too large.".into()));
         }
+        if name.starts_with("haunt_") {
+            return self.haunt(name, args).await;
+        }
         if name == "game_list" {
             return Ok(
-                json!({"documents":[{"id":ICE_CREAM_MAN,"title":"The Ice Cream Man","versions":self.versions().await?.len()}]}),
+                json!({"documents":[{"id":ICE_CREAM_MAN,"title":"The Ice Cream Man","versions":self.versions().await?.len()},
+                    {"id":game_lab::haunt::HAUNTED_HOUSE,"title":game_lab::haunt::TITLE,"versions":self.haunt_count().await}]}),
             );
         }
         if args["game"] != ICE_CREAM_MAN {
@@ -446,12 +459,39 @@ pub(crate) fn routes() -> Router<App> {
         .route("/labs/game/card.json", get(card_json))
         .route("/labs/game/tools/{name}", post(tool))
         .route("/labs/game/session", get(session))
+        .route("/labs/game/haunt/house", get(haunt_house))
+}
+
+#[derive(Deserialize)]
+struct HouseQuery {
+    v: Option<u64>,
+}
+
+/// The account's house, for the page that shows it: `{"version": N,
+/// "house": {...}}`, at `v` or the latest. The page asks again every
+/// second and shows a new version without a reload.
+async fn haunt_house(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Query(query): Query<HouseQuery>,
+) -> Response {
+    let hosted = match Hosted::for_request(&app, &headers).await {
+        Ok(h) => h,
+        Err(r) => return r,
+    };
+    match hosted.haunt_version(query.v).await {
+        Ok(version) => private_json(
+            json!({"version": version.number, "summary": version.summary, "house": version.content}),
+        ),
+        Err(e) => lab_api::ApiError::from(e).into_response(),
+    }
 }
 
 #[derive(Deserialize)]
 struct CardQuery {
     v: Option<u64>,
     a: Option<u64>,
+    doc: Option<String>,
 }
 
 async fn card(
@@ -463,7 +503,7 @@ async fn card(
         Ok(h) => h,
         Err(r) => return r,
     };
-    match hosted.card(query.v, query.a).await {
+    match hosted.card_of(query.doc.as_deref(), query.v, query.a).await {
         Ok(card) => {
             let markup = maud::html! { (maud::DOCTYPE) html lang="en" { head { meta charset="utf-8"; (crate::chat_html::fragment_head()) link rel="stylesheet" href="/static/ui.css"; } body.oa-game-host { (super::card_markup("",&card)) } } };
             let mut response = Html(markup.into_string()).into_response();
@@ -491,7 +531,7 @@ async fn card_json(
         Ok(h) => h,
         Err(r) => return r,
     };
-    match hosted.card(query.v, query.a).await {
+    match hosted.card_of(query.doc.as_deref(), query.v, query.a).await {
         Ok(card) => private_json(super::card_view(&card)),
         Err(e) => lab_api::ApiError::from(e).into_response(),
     }

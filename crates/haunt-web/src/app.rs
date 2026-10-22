@@ -90,6 +90,7 @@ struct App {
     area: Option<String>,
     fired: Vec<String>,
     live: Option<Live>,
+    follow: Option<crate::follow::Follow>,
     bot: Option<usize>,
     route: Vec<[f32; 2]>,
     areas_seen: Vec<String>,
@@ -170,6 +171,7 @@ impl App {
             area: None,
             fired: Vec::new(),
             live: None,
+            follow: None,
             bot: None,
             route: Vec::new(),
             areas_seen: Vec::new(),
@@ -1056,6 +1058,29 @@ impl App {
         self.live = Some(live);
     }
 
+    /// A newer version from the followed address, applied in place.
+    fn pump_follow(&mut self) {
+        let Some(found) = self.follow.as_mut().and_then(crate::follow::Follow::pump) else {
+            return;
+        };
+        let changed: Vec<String> = found
+            .house
+            .areas
+            .iter()
+            .filter(|a| self.house.area(&a.id) != Some(a))
+            .map(|a| a.id.clone())
+            .collect();
+        self.apply_house(found.house, &changed);
+        let applied_ms = live_web::now() - found.asked_at;
+        self.applied.push(serde_json::json!({
+            "version": found.version,
+            "applied_ms": (applied_ms * 10.0).round() / 10.0,
+            "areas": changed,
+        }));
+        self.say("The house changed");
+        self.publish(true);
+    }
+
     fn frame(&mut self, now_ms: f64) {
         let dt = if self.last == 0.0 {
             1.0 / 60.0
@@ -1064,6 +1089,7 @@ impl App {
         };
         self.last = now_ms;
         self.pump_live();
+        self.pump_follow();
         self.step(dt);
         self.render();
         self.publish(false);
@@ -1092,6 +1118,16 @@ pub fn start() {
     let tenant = canvas
         .get_attribute("data-live-tenant")
         .filter(|t| !t.is_empty());
+    if let Some(url) = canvas
+        .get_attribute("data-house-url")
+        .filter(|u| !u.is_empty())
+    {
+        wasm_bindgen_futures::spawn_local(async move {
+            let found = crate::follow::first(&url).await;
+            launch_following(window, canvas, url, found);
+        });
+        return;
+    }
     match tenant {
         Some(tenant) => wasm_bindgen_futures::spawn_local(async move {
             match Live::boot(tenant).await {
@@ -1106,7 +1142,32 @@ pub fn start() {
     }
 }
 
+/// Starts with the house the address gave (or version 1 when it gave
+/// none) and keeps following it.
+fn launch_following(
+    window: web_sys::Window,
+    canvas: HtmlCanvasElement,
+    url: String,
+    found: Option<crate::follow::Fetched>,
+) {
+    let follow = found
+        .as_ref()
+        .map(|f| crate::follow::Follow::new(url, f.version));
+    let house = found.map(|f| f.house);
+    launch_with(window, canvas, None, house, follow);
+}
+
 fn launch(window: web_sys::Window, canvas: HtmlCanvasElement, boot: Option<(Live, Version)>) {
+    launch_with(window, canvas, boot, None, None);
+}
+
+fn launch_with(
+    window: web_sys::Window,
+    canvas: HtmlCanvasElement,
+    boot: Option<(Live, Version)>,
+    followed: Option<House>,
+    follow: Option<crate::follow::Follow>,
+) {
     let Some(gl) = canvas
         .get_context("webgl2")
         .ok()
@@ -1121,7 +1182,7 @@ fn launch(window: web_sys::Window, canvas: HtmlCanvasElement, boot: Option<(Live
             let assets = std::mem::take(&mut version.assets);
             (live.house(), Some(live), Some(assets))
         }
-        None => (haunt_rules::v1(), None, None),
+        None => (followed.unwrap_or_else(haunt_rules::v1), None, None),
     };
     let mut app = match App::new(window.clone(), canvas.clone(), gl, house) {
         Ok(app) => app,
@@ -1134,6 +1195,7 @@ fn launch(window: web_sys::Window, canvas: HtmlCanvasElement, boot: Option<(Live
         app.install_assets(assets);
     }
     app.live = live;
+    app.follow = follow;
     let hash = window.location().hash().unwrap_or_default();
     if hash.contains("walk") {
         app.route = scene::route(&app.house);

@@ -11,6 +11,7 @@
 //! contract as a Labs platform kind (`lab_kit::LabKind`).
 
 pub mod doc;
+pub mod haunt;
 pub mod kind;
 pub mod lab;
 pub mod patch;

@@ -108,6 +108,14 @@ impl Lab {
             writes: Mutex::new(()),
             on_save: std::env::var_os("GAME_LAB_ON_SAVE"),
         };
+        if lab.latest(crate::haunt::HAUNTED_HOUSE).is_none() {
+            lab.save_haunt(
+                &crate::haunt::original(),
+                "The Haunted House as it stands today",
+                "imported",
+                None,
+            )?;
+        }
         if lab.latest(ICE_CREAM_MAN).is_none() {
             let original = doc::original();
             lab.save(
@@ -168,7 +176,9 @@ impl Lab {
         let dir = self.doc_dir(game).join(format!("v{n}"));
         let mut document = read_json(&dir.join("doc.json"))?;
         // Saved before the game gained some settings: they're off.
-        doc::upgrade(&mut document);
+        if game != crate::haunt::HAUNTED_HOUSE {
+            doc::upgrade(&mut document);
+        }
         Some((document, read_json(&dir.join("version.json"))?))
     }
 
@@ -197,6 +207,86 @@ impl Lab {
         write_json(&dir.join("doc.json"), document)?;
         write_json(&dir.join("version.json"), &record)?;
         Ok((n, record))
+    }
+
+    /// Saves a checked house as the Haunted House's next version.
+    fn save_haunt(
+        &self,
+        document: &Value,
+        summary: &str,
+        author: &str,
+        base: Option<u64>,
+    ) -> Result<(u64, Value), String> {
+        let _guard = self.writes.lock().map_err(|e| e.to_string())?;
+        crate::haunt::read(document).map_err(|r| r.message)?;
+        let game = crate::haunt::HAUNTED_HOUSE;
+        let n = self.latest(game).unwrap_or(0) + 1;
+        let record = json!({
+            "n": n,
+            "summary": summary,
+            "author": author,
+            "digest": digest(document),
+            "created": now(),
+            "base": base,
+        });
+        let dir = self.doc_dir(game).join(format!("v{n}"));
+        write_json(&dir.join("doc.json"), document)?;
+        write_json(&dir.join("version.json"), &record)?;
+        Ok((n, record))
+    }
+
+    /// A `haunt_*` tool on the Haunted House: a read, or one checked edit
+    /// saved as a version and published by the on-save hook.
+    fn haunt(&self, name: &str, args: &Value) -> Result<Value, String> {
+        let game = crate::haunt::HAUNTED_HOUSE;
+        let n = self.latest(game).ok_or("There are no versions.")?;
+        let (before, _) = self.load(game, n).ok_or("no version")?;
+        if name == "haunt_describe" {
+            let library = args["library"].as_bool().unwrap_or(false);
+            let text = crate::haunt::describe(&before, library).map_err(|r| r.message)?;
+            return Ok(json!({"version": n, "text": text, "card": self.haunt_card(n)}));
+        }
+        let edited = match crate::haunt::edit(&before, name, args) {
+            Ok(edited) => edited,
+            Err(refusal) => {
+                return Ok(
+                    json!({"refused": true, "saved": false, "reason": refusal.message,
+                    "version": n, "text": "Nothing was saved."}),
+                );
+            }
+        };
+        let summary = args["summary"]
+            .as_str()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map_or_else(|| edited.changes.join("; "), str::to_owned);
+        let document = crate::haunt::to_doc(&edited.house);
+        let author = args["author"].as_str().unwrap_or("the chat");
+        let (version, _) = self.save_haunt(&document, &summary, author, Some(n))?;
+        let published = self.on_save(game, version);
+        Ok(json!({
+            "saved": true,
+            "version": version,
+            "summary": summary,
+            "changes": edited.changes,
+            "text": format!("Saved version {version}: {}.", edited.changes.join("; ")),
+            "card": self.haunt_card(version),
+            "published": published,
+        }))
+    }
+
+    fn haunt_card(&self, n: u64) -> Value {
+        let game = crate::haunt::HAUNTED_HOUSE;
+        let (document, record) = self.load(game, n).unwrap_or_default();
+        json!({
+            "card": CARD,
+            "doc": game,
+            "title": document["title"],
+            "version": n,
+            "summary": record["summary"],
+            "versions": self.versions(game).len(),
+            "player": format!("{}?v={n}", crate::haunt::PLAY_PATH),
+        })
     }
 
     // ---- the build ----------------------------------------------------------
@@ -456,6 +546,11 @@ impl Lab {
     /// Runs a tool: its JSON result, or `{"error": ...}`.
     #[must_use]
     pub fn run(&self, name: &str, args: &Value) -> Value {
+        if name.starts_with("haunt_") {
+            return self
+                .haunt(name, args)
+                .unwrap_or_else(|why| json!({"error": why}));
+        }
         if let Some(problem) = unknown_arguments(name, args) {
             return json!({"error": problem});
         }
@@ -489,7 +584,7 @@ impl Lab {
     }
 
     fn list(&self) -> Value {
-        let documents: Vec<Value> = [ICE_CREAM_MAN]
+        let mut documents: Vec<Value> = [ICE_CREAM_MAN]
             .iter()
             .filter_map(|g| {
                 let n = self.latest(g)?;
@@ -497,6 +592,12 @@ impl Lab {
                 Some(json!({"id": g, "title": document["copy"]["title"], "kind": KIND, "versions": self.versions(g).len()}))
             })
             .collect();
+        let house = crate::haunt::HAUNTED_HOUSE;
+        if let Some(n) = self.latest(house)
+            && let Some((document, _)) = self.load(house, n)
+        {
+            documents.push(json!({"id": house, "title": document["title"], "kind": haunt_rules::KIND, "versions": self.versions(house).len()}));
+        }
         json!({"documents": documents})
     }
 
@@ -934,6 +1035,20 @@ pub fn tools() -> Value {
         {"name": "game_code_requests", "description": "The code requests recorded for a game and where each stands: waiting for Coder, or made in a commit (with its link). When one is made, its new settings are in the game's document (game_open) and can be changed with game_edit.",
          "parameters": {"type": "object", "required": ["game"], "properties": {"game": game}}}
     ]})
+}
+
+/// Every game's tools: The Ice Cream Man's `game_*` and the Haunted
+/// House's `haunt_*`.
+#[must_use]
+pub fn all_tools() -> Value {
+    let mut tools = tools();
+    if let (Some(list), Some(haunt)) = (
+        tools["tools"].as_array_mut(),
+        crate::haunt::tools()["tools"].as_array(),
+    ) {
+        list.extend(haunt.iter().cloned());
+    }
+    tools
 }
 
 #[cfg(test)]

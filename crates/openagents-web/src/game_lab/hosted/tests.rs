@@ -449,3 +449,85 @@ async fn lab_events_respect_do_not_track_and_global_privacy_control() {
         assert_eq!(h.analytics.snapshot().len(), before);
     }
 }
+
+#[tokio::test]
+async fn a_tester_makes_one_change_to_their_own_house_and_an_admin_has_no_limit() {
+    let dir = tempfile::tempdir().unwrap();
+    let alice = hosted(dir.path(), "haunt-alice");
+    let bob = hosted(dir.path(), "haunt-bob");
+    let described = alice.run("haunt_describe", &json!({})).await.unwrap();
+    assert_eq!(described["version"], 1);
+    assert!(described["text"].as_str().unwrap().contains("long-hall"));
+    // A refused edit costs nothing.
+    let refused = alice
+        .run(
+            "haunt_place",
+            &json!({"area": "long-hall", "asset": "dragon", "summary": "x"}),
+        )
+        .await
+        .unwrap_err();
+    assert!(refused.to_string().contains("dragon"), "{refused}");
+    // "Add a werewolf in the long hall that howls when you get near."
+    let saved = alice
+        .run(
+            "haunt_place",
+            &json!({"area": "long-hall", "asset": "werewolf", "summary": "A werewolf in the long hall that howls when you get near"}),
+        )
+        .await
+        .unwrap();
+    assert_eq!(saved["version"], 2);
+    assert_eq!(saved["changes_left"], 0);
+    assert_eq!(saved["card"]["doc"], game_lab::haunt::HAUNTED_HOUSE);
+    let house = alice.haunt_version(None).await.unwrap().content;
+    let hall = house["areas"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["id"] == "long-hall")
+        .unwrap();
+    assert!(
+        hall["props"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|p| p["asset"] == "werewolf")
+    );
+    assert!(hall["triggers"].to_string().contains("howl-wolf"));
+    // The Grid's panel asks for the newest card without naming a game: the
+    // house, in a frame that follows it.
+    let card = alice.card_of(None, None, None).await.unwrap();
+    assert_eq!(card["doc"], game_lab::haunt::HAUNTED_HOUSE);
+    let view = crate::game_lab::card_view(&card);
+    assert_eq!(view["preview"], game_lab::haunt::PLAY_PATH);
+    assert!(view["stats"].as_str().unwrap().contains("werewolf"));
+    // Bob changed nothing, so his panel shows The Ice Cream Man.
+    assert_eq!(
+        bob.card_of(None, None, None).await.unwrap()["doc"],
+        ICE_CREAM_MAN
+    );
+    // A second change is refused in a plain sentence.
+    let spent = alice
+        .run(
+            "haunt_audio",
+            &json!({"music": {"by": -0.25}, "summary": "Music down"}),
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(spent.to_string(), super::haunt::SPENT);
+    // Bob's house is his own.
+    assert_eq!(bob.haunt_version(None).await.unwrap().number, 1);
+    // An admin has no limit.
+    let mut owner = hosted(dir.path(), "haunt-owner");
+    owner.admin = true;
+    for (i, by) in [-0.2, -0.1, 0.1].iter().enumerate() {
+        let saved = owner
+            .run(
+                "haunt_audio",
+                &json!({"music": {"by": by}, "summary": "Music"}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(saved["version"], i as u64 + 2);
+        assert_eq!(saved["changes_left"], Value::Null);
+    }
+}

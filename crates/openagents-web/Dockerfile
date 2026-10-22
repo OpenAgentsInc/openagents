@@ -96,6 +96,7 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private oa
         -p coder-chat-web -p oa-vault-web \
     && cargo build --release --locked --target $w -p bunny-web \
     && cargo build --release --locked --target $w -p icecream-web \
+    && cargo build --release --locked --target $w -p haunt-web \
     && cargo build --locked -p robot-web --target $w --profile guest \
     && cargo build --release --locked --target $w -p snap-web \
     && cargo build --release --locked --target $w -p att-web \
@@ -186,6 +187,14 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
     && test -s /build/icecream/icecream_web.js \
     && test -s /build/icecream/icecream_web_bg.wasm \
     && test -s /build/icecream/start.js
+
+# The Haunted House, which /games/the-haunted-house serves the same way, at
+# /srv/haunt.
+RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
+    sh scripts/deploy/oa-module-cache.sh haunt /build/haunt -- oa-kache run scripts/build-haunt-web.sh /build/haunt \
+    && test -s /build/haunt/haunt_web.js \
+    && test -s /build/haunt/haunt_web_bg.wasm \
+    && test -s /build/haunt/start.js
 
 # Robot Lab's Rust player for account-scoped CAD imports.
 RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private \
@@ -392,6 +401,7 @@ COPY --from=everglade /build/chat /chat
 COPY --from=everglade /build/wallet /wallet
 COPY --from=everglade /build/bunny /bunny
 COPY --from=everglade /build/icecream /icecream
+COPY --from=everglade /build/haunt /haunt
 COPY --from=everglade /build/snap /snap
 COPY --from=everglade /build/robot /robot
 COPY --from=everglade /build/att /att
@@ -429,6 +439,7 @@ COPY --from=everglade /build/wallet /srv/wallet
 ENV OPENAGENTS_WALLET_WEB=/srv/wallet
 COPY --from=everglade /build/bunny /srv/bunny
 COPY --from=everglade /build/icecream /srv/icecream
+COPY --from=everglade /build/haunt /srv/haunt
 COPY --from=everglade /build/snap /srv/snap
 COPY --from=everglade /build/robot /srv/robot
 ENV OPENAGENTS_ROBOT_BUILD=/srv/robot

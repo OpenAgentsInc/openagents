@@ -41,6 +41,7 @@ zip = { version = "3", default-features = false, features = ["deflate"] }
 robot-lab = { path = "../robot-lab" }
 # Hosted Labs kinds (labs_kinds.rs).
 game-lab = { path = "../game-lab" }
+haunt-rules = { path = "../haunt-rules" }
 ship-lab = { path = "../ship-lab" }
 video-lab = { path = "../video-lab" }
 user-home = { path = "../user-home" }

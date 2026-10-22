@@ -75,11 +75,10 @@ async fn manifest(lab: &str) -> Result<(Vec<Value>, Vec<Value>), String> {
 
 /// One tool call on the Lab: its JSON result.
 pub(crate) async fn run_tool(lab: &str, name: &str, arguments: &Value) -> Result<Value, String> {
-    if !name.starts_with("game_")
-        || !name[5..]
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c == '_')
-    {
+    let rest = name
+        .strip_prefix("game_")
+        .or_else(|| name.strip_prefix("haunt_"));
+    if !rest.is_some_and(|rest| rest.chars().all(|c| c.is_ascii_lowercase() || c == '_')) {
         return Err(format!("{name} isn't a Game Lab tool"));
     }
     client(LAB_DEADLINE)
@@ -145,7 +144,42 @@ the bot runs measured.\n\nGames:\n",
             doc["versions"].as_u64().unwrap_or_default(),
         ));
     }
+    if documents
+        .iter()
+        .any(|doc| doc["id"] == game_lab::haunt::HAUNTED_HOUSE)
+    {
+        out.push_str(game_lab::haunt::guidance());
+    }
     out
+}
+
+/// The Haunted House's card: the house, live, and what the change did.
+fn haunt_card_markup(card: &Value) -> Markup {
+    let version = card["version"].as_u64().unwrap_or(1);
+    html! {
+        div.oa-game-card {
+            link rel="stylesheet" href=(ASSET_CSS);
+            script src=(ASSET_JS) defer {}
+            p.oa-game-title {
+                strong { (s(card, "title")) " · v" (version) }
+                " " span.oa-game-dim { (s(card, "summary")) }
+            }
+            div.oa-game-frame {
+                iframe src=(game_lab::haunt::PLAY_PATH)
+                    title={ (s(card, "title")) ", version " (version) } data-game-frame allow="fullscreen" {}
+            }
+            div.oa-game-actions {
+                button.oa-game-button type="button" data-game-full data-src=(game_lab::haunt::PLAY_PATH) { "Walk in" }
+            }
+            @if let Some(changes) = card["changes"].as_array().filter(|c| !c.is_empty()) {
+                ul.oa-game-list {
+                    @for c in changes {
+                        li { (c.as_str().unwrap_or_default()) }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// The Game Lab cards a reply keeps.
@@ -249,6 +283,26 @@ fn building(card: &Value) -> bool {
 /// runs side by side when the card compares two.
 pub(crate) fn card_view(card: &Value) -> Value {
     let version = card["version"].as_u64().unwrap_or(1);
+    if card["doc"] == game_lab::haunt::HAUNTED_HOUSE {
+        // The house in a frame, following the account's newest version.
+        let changes: Vec<&str> = card["changes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .collect();
+        return json!({
+            "title": s(card, "title"),
+            "version": version,
+            "summary": s(card, "summary"),
+            "stats": if changes.is_empty() { s(card, "summary").to_owned() } else { changes.join("; ") },
+            "versions": version,
+            "preview": game_lab::haunt::PLAY_PATH,
+            "play": game_lab::haunt::PLAY_PATH,
+            "player": game_lab::haunt::PLAY_PATH,
+            "can_compare": false,
+        });
+    }
     let fragment = s(card, "fragment");
     let side = |side: &Value| {
         let n = side["version"].as_u64().unwrap_or(0);
@@ -292,6 +346,9 @@ pub(crate) fn card_view(card: &Value) -> Value {
 /// side by side), Play, the bot-run stats, Compare, and a note at a time
 /// and place.
 pub(crate) fn card_markup(chat: &str, card: &Value) -> Markup {
+    if card["doc"] == game_lab::haunt::HAUNTED_HOUSE {
+        return haunt_card_markup(card);
+    }
     let chat = if card["_hosted"] == true { "" } else { chat };
     let waiting = building(card);
     let version = card["version"].as_u64().unwrap_or(1);

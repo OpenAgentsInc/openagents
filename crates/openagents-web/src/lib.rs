@@ -128,6 +128,9 @@ mod cad_web;
 mod game_lab;
 mod github_refs;
 mod github_tools;
+mod grid_foreman;
+mod grid_foreman_commands;
+mod grid_foreman_door;
 mod history_api;
 mod history_openapi;
 mod key_openapi;
@@ -196,9 +199,6 @@ pub mod upstream;
 #[doc(hidden)]
 pub mod vault;
 mod verse_key;
-mod grid_foreman;
-mod grid_foreman_commands;
-mod grid_foreman_door;
 mod visitor_api;
 mod wallet_browser;
 mod wallet_restore;
@@ -504,6 +504,10 @@ pub struct Config {
     /// `/games/the-ice-cream-man/`. Without it, the game's page says it
     /// can't be played here.
     pub icecream: Option<PathBuf>,
+    /// The Haunted House's web build (`--haunt DIR`, default `/srv/haunt`
+    /// when it exists), served under `/games/the-haunted-house/`. Without
+    /// it, the house's page says it can't be walked here.
+    pub haunt: Option<PathBuf>,
     /// The LayerTree demo's web build (`--layertree DIR`, default
     /// `/srv/layertree` when it exists), served under `/layertree/`.
     /// Without it, `/layertree` says the demo is unavailable.
@@ -692,6 +696,7 @@ impl Config {
             gpui_fonts: None,
             gpui_chat: None,
             icecream: None,
+            haunt: None,
             layertree: None,
             kiln: None,
             lander5: None,

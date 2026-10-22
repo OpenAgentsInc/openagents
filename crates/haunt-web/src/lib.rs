@@ -21,6 +21,8 @@ pub mod walker;
 #[cfg(target_arch = "wasm32")]
 mod app;
 #[cfg(target_arch = "wasm32")]
+mod follow;
+#[cfg(target_arch = "wasm32")]
 mod gpu;
 #[cfg(target_arch = "wasm32")]
 mod live;

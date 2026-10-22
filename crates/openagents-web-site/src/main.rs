@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 const USAGE: &str = "usage: openagents-web [--store DIRECTORY] [--customer DIRECTORY] [--listen ADDRESS] \
 [--pay-host http://HOST:PORT] [--inference http://HOST:PORT] [--public-host HOST]... [--api-host HOST] [--studio-host HOST]... [--upstream http://HOST:PORT] \
-[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--agent-graph DIRECTORY] [--gpui-fonts DIRECTORY] [--gpui-chat DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--kiln DIRECTORY] [--lander5 DIRECTORY] [--lander6 DIRECTORY] [--lander7 DIRECTORY] [--lander8 DIRECTORY] [--lander9 DIRECTORY] [--pylons DIRECTORY] [--pylons-relay URL|off] [--profile-relay URL|off] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
+[--project-upload-config JSON] [--chat-store DIRECTORY | --chat-bucket BUCKET] [--vault-bucket BUCKET] [--chat-retention-days DAYS] [--chat-build DIRECTORY] [--everglade DIRECTORY] [--bunny DIRECTORY] [--gpui-demo DIRECTORY] [--agent-graph DIRECTORY] [--gpui-fonts DIRECTORY] [--gpui-chat DIRECTORY] [--sand-build DIRECTORY] [--icecream DIRECTORY] [--haunt DIRECTORY] [--snap DIRECTORY] [--layertree DIRECTORY] [--kiln DIRECTORY] [--lander5 DIRECTORY] [--lander6 DIRECTORY] [--lander7 DIRECTORY] [--lander8 DIRECTORY] [--lander9 DIRECTORY] [--pylons DIRECTORY] [--pylons-relay URL|off] [--profile-relay URL|off] [--att DIRECTORY] [--cad DIRECTORY] [--components-build DIRECTORY] [--cloud-build DIRECTORY] \
 [--cloud-config PRIVATE_JSON] [--cloud-hosts PRIVATE_JSON] [--cloud-byo PRIVATE_DIR [--cloud-byo-keys PRIVATE_JSON]] [--pilot-config PRIVATE_JSON] \
 [--environments PRIVATE_JSON] [--github-oauth PRIVATE_JSON] [--github-app PRIVATE_JSON] [--github-redirect URL] \
 [--plan-meter PRIVATE_FILE] [--plan-checkout PLAN] [--own-runs-token PRIVATE_FILE] [--local-downloads ~/Downloads] \
@@ -84,6 +84,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "--gpui-fonts" => config.gpui_fonts = Some(PathBuf::from(value)),
             "--gpui-chat" => config.gpui_chat = Some(PathBuf::from(value)),
             "--icecream" => config.icecream = Some(PathBuf::from(value)),
+            "--haunt" => config.haunt = Some(PathBuf::from(value)),
             "--snap" => config.snap = Some(PathBuf::from(value)),
             "--layertree" => config.layertree = Some(PathBuf::from(value)),
             "--kiln" => {
@@ -196,6 +197,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // live revision's arguments, which production copies, name no flag.
     if config.icecream.is_none() && std::path::Path::new("/srv/icecream/start.js").is_file() {
         config.icecream = Some(PathBuf::from("/srv/icecream"));
+    }
+    // The Haunted House's build ships at /srv/haunt in the image.
+    if config.haunt.is_none() && std::path::Path::new("/srv/haunt/start.js").is_file() {
+        config.haunt = Some(PathBuf::from("/srv/haunt"));
     }
     // The desktop chat UI's web build ships at /srv/gpui-demo in the image.
     if config.gpui_demo.is_none() && std::path::Path::new("/srv/gpui-demo/start.js").is_file() {

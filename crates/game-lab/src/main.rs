@@ -89,7 +89,10 @@ fn serve(args: &[String]) -> Result<(), String> {
     runtime.block_on(async move {
         let app = Router::new()
             .route("/healthz", get(|| async { "ok" }))
-            .route("/api/tools", get(|| async { Json(game_lab::lab::tools()) }))
+            .route(
+                "/api/tools",
+                get(|| async { Json(game_lab::lab::all_tools()) }),
+            )
             .route("/api/docs", get(docs))
             .route(
                 "/api/schema",

@@ -474,7 +474,33 @@ fn lab(mut args: Args) -> Result<()> {
     let version = args
         .value("--version")
         .or_else(|| std::env::var("GAME_LAB_VERSION").ok());
+    let haunted = args.game()? == Game::Haunt
+        || std::env::var("GAME_LAB_GAME").ok().as_deref() == Some(game_lab::haunt::HAUNTED_HOUSE);
     let lab = Lab::open(Lab::default_root(), root()).map_err(anyhow::Error::msg)?;
+    if haunted {
+        // The Haunted House: publish the version's whole house.
+        let house_id = game_lab::haunt::HAUNTED_HOUSE;
+        let n = match version {
+            Some(v) => v.parse()?,
+            None => lab
+                .latest(house_id)
+                .context("Game Lab has no version yet")?,
+        };
+        let (document, _) = lab
+            .load(house_id, n)
+            .with_context(|| format!("Game Lab has no version {n}"))?;
+        let path = haunt::house_path(&work.dir)?;
+        std::fs::write(&path, serde_json::to_string_pretty(&document)? + "\n")?;
+        let options = DeployArgs {
+            channel: "live".into(),
+            force: false,
+            wait: None,
+        };
+        let mut line = runtime()?.block_on(deploy_haunt(&work, &host, &options, &path, started))?;
+        line["game_lab_version"] = n.into();
+        println!("{line}");
+        return Ok(());
+    }
     let n = match version {
         Some(v) => v.parse()?,
         None => lab
