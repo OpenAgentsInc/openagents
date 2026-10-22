@@ -6,8 +6,10 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, Instant},
 };
+
+const MAX_TURNS: usize = 96;
 
 const INSTRUCTIONS: &str = r#"You are Kiln, editing a bounded repository workspace. Reply only with one JSON object:
 {"thought":"one short sentence","commands":[...]}
@@ -70,6 +72,91 @@ fn normalized(path: &str) -> Result<()> {
     }
     Ok(())
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AnswerEvidence {
+    pub turn: usize,
+    pub request: Option<String>,
+    pub pylon: Option<String>,
+    pub model: Option<String>,
+    pub profile: Option<String>,
+    pub lossy: Option<bool>,
+    pub outcome: String,
+    pub error: bool,
+    pub error_sha256: Option<String>,
+    pub usage: Option<Value>,
+    pub timing: AnswerTiming,
+    pub prompt_sha256: String,
+    pub reply_sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AnswerTiming {
+    pub elapsed_ms: u64,
+    pub discover_ms: Option<u64>,
+    pub contact_ms: Option<u64>,
+    pub answer_ms: Option<u64>,
+}
+
+impl AnswerEvidence {
+    fn capture(
+        turn: usize,
+        prompt: &str,
+        result: &Result<pylon::client::Answer>,
+        elapsed_ms: u64,
+    ) -> Self {
+        let answer = result.as_ref().ok();
+        let reply = answer.and_then(|a| a.text.as_deref());
+        let error = match result {
+            Ok(answer) => answer.error.as_deref(),
+            Err(error) => Some(error.as_str()),
+        };
+        Self {
+            turn,
+            request: answer.map(|a| clip(&a.request, 128)),
+            pylon: answer.map(|a| clip(&a.pylon, 512)),
+            model: answer.map(|a| clip(&a.model, 512)),
+            profile: answer.map(|a| clip(&a.profile, 64)),
+            lossy: answer.map(|a| a.lossy),
+            outcome: answer.map_or_else(|| "error".into(), |a| clip(&a.outcome, 64)),
+            error: error.is_some(),
+            error_sha256: error.map(|text| kiln::sha256_hex(text.as_bytes())),
+            usage: answer
+                .and_then(|a| a.usage.as_ref())
+                .and_then(usage_counters),
+            timing: AnswerTiming {
+                elapsed_ms,
+                discover_ms: answer.map(|a| a.discover_ms),
+                contact_ms: answer.and_then(|a| a.contact_ms),
+                answer_ms: answer.and_then(|a| a.answer_ms),
+            },
+            prompt_sha256: kiln::sha256_hex(answer.map_or(prompt, |a| &a.prompt).as_bytes()),
+            reply_sha256: reply.map(|text| kiln::sha256_hex(text.as_bytes())),
+        }
+    }
+}
+
+fn usage_counters(usage: &Value) -> Option<Value> {
+    let mut counters = serde_json::Map::new();
+    for name in [
+        "input",
+        "output",
+        "total",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "prompt_tokens",
+        "completion_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    ] {
+        if let Some(count) = usage[name].as_u64() {
+            counters.insert(name.into(), count.into());
+        }
+    }
+    (!counters.is_empty()).then(|| counters.into())
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Workspace {
     pub config: Config,
@@ -82,6 +169,8 @@ pub struct Workspace {
     pub calls: usize,
     pub until: u64,
     pub checked: Option<String>,
+    #[serde(default)]
+    pub answers: Vec<AnswerEvidence>,
 }
 impl Workspace {
     pub fn new(config: Config) -> Result<Self> {
@@ -108,7 +197,24 @@ impl Workspace {
             calls: 0,
             until: now() + 21600,
             checked: None,
+            answers: vec![],
         })
+    }
+    fn record_answer(
+        &mut self,
+        prompt: &str,
+        result: &Result<pylon::client::Answer>,
+        elapsed_ms: u64,
+    ) {
+        let evidence = AnswerEvidence::capture(self.turns, prompt, result, elapsed_ms);
+        self.answers.drain(
+            ..self
+                .answers
+                .len()
+                .saturating_add(1)
+                .saturating_sub(MAX_TURNS),
+        );
+        self.answers.push(evidence);
     }
     fn names(&self, path: &str) -> Result<Vec<String>> {
         if !self.config.allows(path) {
@@ -229,7 +335,7 @@ impl Workspace {
         kiln::sha256_hex(&serde_json::to_vec(&(&self.config.base, &self.files)).unwrap_or_default())
     }
     pub fn summary(&self) -> Value {
-        json!({"phase":self.phase,"turns":self.turns,"calls":self.calls,"base":self.config.base,"pylon":self.config.pylon,"model":self.config.model,"profile":self.config.profile,"files":self.files.keys().collect::<Vec<_>>(),"digest":self.digest(),"checked":self.checked,"done":self.agent.done,"latest":self.agent.steps.last()})
+        json!({"phase":self.phase,"turns":self.turns,"calls":self.calls,"base":self.config.base,"pylon":self.config.pylon,"model":self.config.model,"profile":self.config.profile,"files":self.files.keys().collect::<Vec<_>>(),"digest":self.digest(),"checked":self.checked,"done":self.agent.done,"latest":self.agent.steps.last(),"answers":self.answers})
     }
     fn execute(&mut self, command: &Command) -> Result<String> {
         match command {
@@ -343,7 +449,7 @@ impl Workspace {
         if matches!(self.phase.as_str(), "awaiting-check" | "review" | "stopped") {
             return Ok(());
         }
-        if now() >= self.until || self.turns >= 96 || self.calls >= 256 {
+        if now() >= self.until || self.turns >= MAX_TURNS || self.calls >= 256 {
             self.phase = "stopped".into();
             return save(path, self);
         }
@@ -376,6 +482,7 @@ impl Workspace {
                 Box::new(pylon::group::Want::Model(self.config.model.clone())),
                 self.config.profile.clone(),
             );
+            let started = Instant::now();
             let answered = pylon::client::ask_model_within(
                 &buyer,
                 &ask,
@@ -385,6 +492,11 @@ impl Workspace {
                 Some(&self.agent.instructions),
             )
             .await;
+            self.record_answer(
+                &ask.prompt,
+                &answered,
+                started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64,
+            );
             match answered {
                 Ok(answer) if answer.text.is_some() => {
                     let text = answer.text.unwrap_or_default();
@@ -514,6 +626,127 @@ mod tests {
             task: "Repair a shader".into(),
         }
     }
+    fn legacy_workspace(repo: &Path) -> Value {
+        json!({
+            "config": config(repo), "agent": Agent::new("task", 12000),
+            "files": {}, "original": {}, "pending": [], "phase": "model",
+            "turns": 0, "calls": 0, "until": now() + 60, "checked": null,
+        })
+    }
+    #[test]
+    fn legacy_workspace_loads_without_answer_evidence() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
+        let legacy = legacy_workspace(root.path());
+        assert!(legacy.get("answers").is_none());
+        let workspace: Workspace = serde_json::from_value(legacy).unwrap();
+        assert!(workspace.answers.is_empty());
+        assert_eq!(workspace.phase, "model");
+        assert_eq!(workspace.config.profile, "consumer-q");
+    }
+    #[test]
+    fn answer_evidence_retains_actual_metadata_without_private_text() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
+        let mut workspace: Workspace =
+            serde_json::from_value(legacy_workspace(root.path())).unwrap();
+        let digest = workspace.digest();
+        let answer = pylon::client::Answer {
+            request: "a".repeat(64),
+            pylon: "30200:actual-producer:maya-consumer-q-1-head".into(),
+            pylon_npub: "actual-producer-npub".into(),
+            label: "Maya".into(),
+            model: "deepseek-v4.1-flash@sha256:actual-artifact".into(),
+            profile: "consumer-q".into(),
+            lossy: true,
+            prompt: "private prompt".into(),
+            text: Some("private reply".into()),
+            reasoning: Some("private reasoning".into()),
+            outcome: "accepted".into(),
+            error: None,
+            discover_ms: 7,
+            contact_ms: Some(11),
+            answer_ms: Some(123),
+            usage: Some(json!({"input": 12, "output": 0, "prompt": "private prompt"})),
+            receipt: None,
+            receipt_error: None,
+            receipt_event: None,
+            paid_msat: None,
+            declared: None,
+        };
+        workspace.turns = 1;
+        workspace.record_answer("requested prompt", &Ok(answer.clone()), 130);
+        let evidence = &workspace.answers[0];
+        assert_eq!(evidence.request.as_deref(), Some(answer.request.as_str()));
+        assert_eq!(evidence.pylon.as_deref(), Some(answer.pylon.as_str()));
+        assert_eq!(evidence.model.as_deref(), Some(answer.model.as_str()));
+        assert_eq!(evidence.profile.as_deref(), Some("consumer-q"));
+        assert_eq!(evidence.lossy, Some(true));
+        assert_eq!(evidence.outcome, "accepted");
+        assert!(!evidence.error);
+        assert_eq!(evidence.usage, Some(json!({"input": 12, "output": 0})));
+        assert_eq!(
+            evidence.timing,
+            AnswerTiming {
+                elapsed_ms: 130,
+                discover_ms: Some(7),
+                contact_ms: Some(11),
+                answer_ms: Some(123),
+            }
+        );
+        assert_eq!(evidence.prompt_sha256, kiln::sha256_hex(b"private prompt"));
+        assert_eq!(
+            evidence.reply_sha256,
+            Some(kiln::sha256_hex(b"private reply"))
+        );
+        let mut refused = answer;
+        refused.text = None;
+        refused.outcome = "rejected".into();
+        refused.error = Some("refused private prompt excerpt".into());
+        refused.usage = None;
+        workspace.turns = 2;
+        workspace.record_answer("requested prompt", &Ok(refused), 140);
+        assert_eq!(workspace.answers[1].outcome, "rejected");
+        assert!(workspace.answers[1].error);
+        assert_eq!(
+            workspace.answers[1].error_sha256,
+            Some(kiln::sha256_hex(b"refused private prompt excerpt"))
+        );
+        assert!(workspace.answers[1].reply_sha256.is_none());
+        assert!(workspace.answers[1].usage.is_none());
+        workspace.turns = 3;
+        workspace.record_answer("requested prompt", &Err("connection failed".into()), 5);
+        assert!(workspace.answers[2].request.is_none());
+        assert!(workspace.answers[2].pylon.is_none());
+        assert!(workspace.answers[2].timing.discover_ms.is_none());
+        assert_eq!(workspace.answers[2].outcome, "error");
+        assert_eq!(
+            workspace.answers[2].prompt_sha256,
+            kiln::sha256_hex(b"requested prompt")
+        );
+        assert_eq!(workspace.digest(), digest);
+        let state = root.path().join("workspace.json");
+        save(&state, &workspace).unwrap();
+        let restored: Workspace = load(&state).unwrap();
+        assert_eq!(restored.answers, workspace.answers);
+        let stored = std::fs::read_to_string(state).unwrap();
+        for private in [
+            "private prompt",
+            "private reply",
+            "private reasoning",
+            "connection failed",
+        ] {
+            assert!(!stored.contains(private), "{private}");
+        }
+        assert_eq!(restored.summary()["answers"].as_array().unwrap().len(), 3);
+        for turn in 4..=MAX_TURNS + 1 {
+            workspace.turns = turn;
+            workspace.record_answer("prompt", &Err("connection failed".into()), 1);
+        }
+        assert_eq!(workspace.answers.len(), MAX_TURNS);
+        assert_eq!(workspace.answers.first().unwrap().turn, 2);
+        assert_eq!(workspace.answers.last().unwrap().turn, MAX_TURNS + 1);
+    }
     #[test]
     fn scope_rejects_traversal_and_adjacent_paths() {
         let root = tempfile::tempdir().unwrap();
@@ -566,6 +799,7 @@ mod tests {
             calls: 0,
             until: now() + 60,
             checked: None,
+            answers: vec![],
         };
         assert!(
             w.execute(&Command::Patch {
