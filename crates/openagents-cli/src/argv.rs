@@ -31,6 +31,7 @@ pub fn normalize_help(arguments: &mut Vec<String>) {
         ("x402" | "wallet", Some(command)) if index > 1 && !command.starts_with('-') => 2,
         ("plugin" | "plugins" | "ext", Some("test" | "eval" | "defaults" | "run"))
         | ("host", Some("spend"))
+        | ("deploy", Some("event"))
         | ("connect", Some("--ssh"))
         | ("computer" | "computers", Some("link" | "redeem"))
             if index > 1 =>
@@ -55,6 +56,10 @@ mod tests {
     #[test]
     fn help_routes_before_value_parsing() {
         for (input, expected) in [
+            (
+                vec!["deploy", "event", "--env", "staging", "--help"],
+                vec!["deploy", "event", "--help"],
+            ),
             (
                 vec!["chat", "work", "--help"],
                 vec!["chat", "work", "--help"],
