@@ -87,6 +87,7 @@ export type Operation =
     }
   | { kind: "remove_wall"; wall: string }
   | { kind: "set_tint"; tint: Tint }
+  | { kind: "set_material_source"; asset: typeof LAB.material; source: string }
   | { kind: "undo" | "redo" }
   | { kind: "replace"; project: Project }
   | { kind: "batch"; operations: Operation[] };
@@ -374,6 +375,9 @@ export class SceneHistory {
       case "set_tint":
         next.tint = op.tint;
         break;
+      case "set_material_source":
+        next.materialDraft = { asset: op.asset, source: op.source };
+        break;
       case "undo":
         if (!this.past.length)
           throw new Error("There is no scene change to undo.");
@@ -405,6 +409,7 @@ export class SceneHistory {
                 "remove_wall",
                 "set_behavior",
                 "set_tint",
+                "set_material_source",
               ].includes(item.kind),
           )
         )
