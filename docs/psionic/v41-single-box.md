@@ -261,7 +261,7 @@ The artifact matches the checkpoint's experts to within the expected error
 (relative squared error 14% for the 2-bit gate and up, 3% for the 3-bit
 down). Served single box, `q2q3` decodes at 26.4 tok/s (p50 37.7 ms, 48% of
 experts in slots, 97% hits), but its answers are garbage from the first
-token, so the profile isn't usable yet; see #12465.
+token. Keep this artifact as the failed baseline for #12465.
 
 An eight-position teacher-forced diagnostic on 2026-10-22 matched all eight
 oracle top tokens with native weights and seven with the old `q3` artifact,
@@ -269,6 +269,56 @@ including the first six. This narrows the original failure without establishing
 whole-answer quality. The record is
 [`consumer_q_diagnostic.json`](../../scripts/bench/deepseek-v41/consumer_q_diagnostic.json);
 its cold-cache timings are not serving-speed measurements.
+
+The 2026-10-22 GPTQ artifact contains all 40 expert layers, with wider
+3-bit boundary layers, at 178,394,234,880 bytes (2.62546 bits per expert
+weight). Its manifest is
+`gs://openagents-psionic-models-ane1/deepseek-ai/DeepSeek-V4.1-Flash-1017/consumer-q/q2q3-gptq-2a20931f9c/manifest.json`,
+SHA-256 `97a7bc631ddfeaff1efe0db4fa1b5d0d0a77d74ed0844f238c258335d012360d`.
+Every layer's hash, size, format, source and upload generation was checked
+before publishing the manifest last.
+
+Calibration used 16 separate input streams, totaling 15,929 prompt tokens.
+Both input and hidden covariance tables cover 15,033 of 15,360
+expert/layer pairs (97.87%). Unobserved pairs use equal column importance
+and rounding without feedback. The saved inputs and overlap check show
+no matching frozen heldout or G2 prompt/answer token sequences.
+The raw IMP02 file SHA-256 is
+`095f6927929294439dc51afe4fb2d24a897146085d692cdd66f5fc8e2f0a56a7`.
+The manifest's `importance_sha256`,
+`6eb4cfa7800157795dbdfb8398215a4ca939454aae40423ce852f8f91cd35d0c`,
+is SHA-256 of that lowercase ASCII hexadecimal file digest without a
+newline. Both identities and the full coverage report are saved.
+
+The frozen 336-position card compares 168 matching teacher-forced
+positions per profile against the same oracle:
+
+| Profile | Top-1 agreement | Mean KL | G2 suite 2 |
+| --- | --- | --- | --- |
+| Exact weights | 166/168 (98.81%) | 0.01102 | 5/6; all mandatory checks pass |
+| GPTQ consumer-q | 153/168 (91.07%) | 0.11656 | 5/6; all mandatory checks pass |
+
+Both profiles completed all six ordinary G2 answers with EOS within the
+unchanged 4,096-token caps. The pinned oracle also scores 5/6 under the
+frozen checker (`362c5bf6…`); all three share its nonmandatory
+Fibonacci-186 failure. `consumer-q` uses fast reductions, and each profile's actual
+command and arithmetic settings are saved. These descriptive results do
+not qualify consumer-q. The card, raw answers, frozen scoring rules,
+source/build identities, calibration records and artifact receipts are
+indexed in
+[`consumer_q_result.json`](../../scripts/bench/deepseek-v41/consumer_q_result.json).
+
+The index also links the retained serving binary, BUILD record and exact
+CUDA libraries.
+
+On one 96 GB RTX PRO 6000 Blackwell (`g4-standard-48`, about 177 GiB
+host RAM), three real repetitions of one 15-token chat prompt ended with
+identical 39-token outputs. The second and third answers measured **24.46 tok/s** together
+over 76 decode tokens (22.92 and 26.23 tok/s individually). The cache held
+178 slots per layer (46.35% of experts), occupying 77.01 GiB; peak device
+use was 92.06 GiB. This separate run used no captures, routing seed,
+concurrent quantization, scoring or transfers. This is a short,
+single-prompt sample. **The 35 tok/s target was not met.**
 
 ## DSpark drafting (#12469)
 
