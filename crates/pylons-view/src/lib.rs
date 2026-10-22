@@ -13,6 +13,7 @@
 
 pub mod bay;
 pub mod terminal;
+pub mod work;
 
 use serde::{Deserialize, Serialize};
 
