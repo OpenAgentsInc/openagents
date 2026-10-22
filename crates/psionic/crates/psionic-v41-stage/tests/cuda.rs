@@ -405,3 +405,40 @@ fn layer_major_prefill_answers_like_the_unsplit_stage() {
         assert_eq!(ids, expected.0, "{split}");
     }
 }
+
+/// A whole-model serving worker accepts --dspark over the existing link,
+/// with its own profile, and keeps ordinary greedy tokens across requests.
+#[test]
+fn dspark_serving_matches_plain_decode_across_changed_prefixes() {
+    if !cuda() {
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let split = [(0, 40)];
+    let manifest = weights(root.path(), &split).display().to_string();
+    let mut front = Front::start_with(
+        root.path(),
+        &manifest,
+        &split,
+        None,
+        &["--backend", "cuda", "--dspark", "--max-context", CONTEXT],
+        RUNTIME_CUDA,
+    );
+    assert!(
+        front.stages[0].hello["profile"]
+            .as_str()
+            .unwrap()
+            .starts_with("consumer-exact-dspark-")
+    );
+    let first = prompt();
+    let changed = json!([{"role": "user", "content": "t41 t13 t0 t6 t4 t7 t21 t40"}]);
+    for prompt in [&first, &changed, &first] {
+        let expected = reference_with(
+            root.path(),
+            prompt,
+            24,
+            &["--backend", "cuda", "--max-context", CONTEXT],
+        );
+        assert_eq!(front.run(prompt, 24), expected);
+    }
+}
