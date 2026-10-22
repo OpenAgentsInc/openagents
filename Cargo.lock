@@ -10098,6 +10098,7 @@ dependencies = [
  "nostr-transport",
  "openagents-workspace-hack",
  "secp256k1 0.31.1",
+ "serde",
  "serde_json",
  "supervise",
  "tokio",

@@ -16,6 +16,7 @@ nostr = { path = "../nostr" }
 nostr-transport = { path = "../nostr-transport" }
 secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde_json = "1.0.151"
+serde = { version = "1", features = ["derive"] }
 supervise = { path = "../supervise", default-features = false }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 tokio-tungstenite = { version = "0.30.0", features = ["rustls-tls-webpki-roots"] }

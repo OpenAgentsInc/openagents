@@ -14,8 +14,20 @@ use serde::{Deserialize, Serialize};
 
 /// The job schema.
 pub const JOB_V: &str = "openagents.kiln.cargo.v1";
+/// Requires durable intake and retained result support; older runners refuse it.
+pub const NATIVE_JOB_V: &str = "openagents.kiln.cargo-retained.v1";
 /// The result schema.
 pub const RESULT_V: &str = "openagents.kiln.cargo-result.v1";
+pub const ARCHIVE_V: &str = "openagents.kiln.runner-result.v1";
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RetainedResult {
+    pub v: String,
+    pub requires: Vec<String>,
+    pub issuer: String,
+    pub request: String,
+    pub event: nostr::domain::Event,
+}
 /// The most file bytes one job may carry.
 pub const MAX_FILE_BYTES: usize = 64 * 1024;
 /// The most log bytes a result carries.
@@ -23,6 +35,7 @@ pub const MAX_LOG_BYTES: usize = 24 * 1024;
 
 /// One remote Cargo run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Job {
     pub v: String,
     /// The commit the files apply to: 40 hex characters.
@@ -300,7 +313,7 @@ impl Job {
     ///
     /// A plain reason.
     pub fn check(&self, crates: &[String]) -> Result<(), String> {
-        if self.v != JOB_V {
+        if self.v != JOB_V && self.v != NATIVE_JOB_V {
             return Err(format!("unknown job schema {}", self.v));
         }
         if self.base.len() != 40 || !self.base.bytes().all(|b| b.is_ascii_hexdigit()) {

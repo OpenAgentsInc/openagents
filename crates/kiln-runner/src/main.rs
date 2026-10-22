@@ -32,7 +32,7 @@
 //! quota ([`kiln::admission`]); `--open` lets any key in with the small
 //! anonymous quota, for a local demo. Read `docs/kiln/rust-tests.md`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -46,6 +46,7 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
 mod beacon;
+mod history;
 mod memory;
 mod publish;
 
@@ -942,6 +943,14 @@ async fn main() {
         bytes
     })
     .unwrap_or_else(|_| std::process::exit(1));
+    let mut archives: HashMap<String, (String, Event)> = history::outbox(&config.state)
+        .unwrap_or_else(|e| {
+            eprintln!("history: {e}");
+            std::process::exit(1)
+        })
+        .into_iter()
+        .map(|(request, event)| (event.id.clone(), (request, event)))
+        .collect();
     loop {
         let mut conn =
             match nostr_transport::Connection::connect(&config.relay, &secret, LIFETIME).await {
@@ -955,6 +964,9 @@ async fn main() {
         let filter = json!({"kinds": [cj::REQUEST_KIND], "#p": [key.pubkey()], "since": unix().saturating_sub(30)});
         if conn.send(json!(["REQ", "jobs", filter])).await.is_err() {
             continue;
+        }
+        for (_, event) in archives.values() {
+            let _ = conn.send(json!(["EVENT", event])).await;
         }
         for event in pending.drain(..) {
             let _ = conn.send(json!(["EVENT", event])).await;
@@ -982,13 +994,14 @@ async fn main() {
                 }
                 frame = conn.next() => {
                     let Ok(frame) = frame else { break };
+                    if frame[0]=="OK"&&frame[2]==true {if let Some((request,_))=frame[1].as_str().and_then(|id|archives.remove(id)){if let Err(e)=history::acknowledge(&config.state,&request){eprintln!("result acknowledgement: {e}");}}continue;}
                     if frame[0] != "EVENT" || frame[1] != "jobs" {
                         continue;
                     }
                     let Ok(request) = serde_json::from_value::<Event>(frame[2].clone()) else { continue };
                     if request.kind != cj::REQUEST_KIND
                         || request.validate_crypto().is_err()
-                        || !seen.insert(request.id.clone())
+                        || request.tag_values("p").collect::<Vec<_>>() != [key.pubkey()]
                     {
                         continue;
                     }
@@ -1034,6 +1047,19 @@ async fn main() {
                             continue;
                         }
                     };
+                    match history::prior(&config.state,&request) {
+                        Ok(history::Prior::Completed(c))=>{let _=out_tx.send(c.archive);let _=out_tx.send(c.reply);continue;}
+                        Ok(history::Prior::Pending)=>{
+                            let body=if seen.contains(&request.id){json!({"v":1,"requires":[],"type":"status","status":"processing","message":"The original request is still running"})}else{error_body("unknown","An earlier admission is unresolved; it was not run again")};
+                            if let Some(event)=reply(&key,&request,cj::FEEDBACK_KIND,&body){let _=out_tx.send(event);}continue;
+                        }
+                        Ok(history::Prior::Absent)=>{},
+                        Err(e)=>{eprintln!("history: {e}");continue;}
+                    }
+                    let expiry=request.tag_values("expiration").collect::<Vec<_>>();
+                    if !expiry.is_empty()&&(expiry.len()!=1||expiry[0].parse::<u64>().map_or(true,|n|n<=unix())) {
+                        if let Some(event)=reply(&key,&request,cj::FEEDBACK_KIND,&error_body("expired","The request has expired")){let _=out_tx.send(event);}continue;
+                    }
                     if busy.swap(true, Ordering::SeqCst) {
                         if let Some(event) = reply(&key, &request, cj::FEEDBACK_KIND, &error_body("busy", "another run is in progress; try again in a minute")) {
                             let _ = out_tx.send(event);
@@ -1048,6 +1074,8 @@ async fn main() {
                         }
                         continue;
                     }
+                    if let Err(e)=history::reserve(&config.state,&request){busy.store(false,Ordering::SeqCst);if let Some(event)=reply(&key,&request,cj::FEEDBACK_KIND,&error_body("storage",&e)){let _=out_tx.send(event);}continue;}
+                    seen.insert(request.id.clone());
                     println!("admitted {} ({})", &request.id[..8], holder.via);
                     println!("job {} from {}: {} with {} files at {}", &request.id[..8], &request.pubkey[..8], job.action.clone().unwrap_or_else(|| format!("cargo {}", job.args.join(" "))), job.files.len() + job.diff.as_ref().map_or(0, |d| kiln::remote::patch_paths(d).len()), &job.base[..10]);
                     let (key, out, busy) = (key.clone(), out_tx.clone(), busy.clone());
@@ -1095,13 +1123,17 @@ async fn main() {
                         let text = serde_json::to_string(&outcome).unwrap_or_default();
                         let body = json!({"v": 1, "requires": [], "type": "result", "text": text, "model": "kiln/cargo"});
                         if let Some(event) = reply(&key, &request, cj::RESULT_KIND, &body) {
-                            let _ = out.send(event);
+                            match history::complete(&config.state,&secret,&request,&event,unix()) {
+                                Ok(archive)=>{let _=out.send(archive);let _=out.send(event);}
+                                Err(e)=>eprintln!("result retention: {e}"),
+                            }
                         }
                         busy.store(false, Ordering::SeqCst);
                     });
                 }
                 event = out_rx.recv() => {
                     let Some(event) = event else { return };
+                    if event.kind==3188 {match history::outbox(&config.state){Ok(entries)=>for(request,e)in entries{archives.insert(e.id.clone(),(request,e));},Err(e)=>eprintln!("history: {e}")}}
                     if conn.send(json!(["EVENT", event.clone()])).await.is_err() {
                         pending.push(event);
                         break;

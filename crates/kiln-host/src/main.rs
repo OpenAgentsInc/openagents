@@ -134,7 +134,7 @@ async fn run() -> Result<()> {
         paths.sort();
         for path in paths {
             let j: worker::Job = load(&path)?;
-            if j.phase == "unknown" {
+            if j.phase == "unknown" && j.runner.is_none() {
                 break;
             }
             if matches!(j.phase.as_str(), "completed" | "failed" | "stopped") {
@@ -145,7 +145,9 @@ async fn run() -> Result<()> {
                 Err(e) => {
                     let mut j: worker::Job = load(&path)?;
                     j.error = Some(e.clone());
-                    j.phase = if matches!(j.phase.as_str(), "checking" | "unknown" | "bridging") {
+                    j.phase = if j.phase == "bridging" {
+                        "bridging"
+                    } else if matches!(j.phase.as_str(), "checking" | "unknown") {
                         "unknown"
                     } else {
                         "failed"
@@ -153,6 +155,7 @@ async fn run() -> Result<()> {
                     .into();
                     save(&path, &j)?;
                     eprintln!("{}: {e}", j.task.id);
+                    tokio::time::sleep(std::time::Duration::from_secs(20)).await;
                 }
             }
             // One active job at a time, including turns waiting on a runner.
