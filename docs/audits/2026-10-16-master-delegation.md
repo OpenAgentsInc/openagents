@@ -597,6 +597,16 @@ The status lines below summarize each issue and its comments. Open the issue for
   fork, publish `kiln-git pr`, open it as a maintainer, and confirm the
   draft pull request appears; publish `kiln-git pr-update` with a new
   commit and confirm the branch moves. Close it unmerged.
+- #12441: in a staging window the coordinator gives, run the Kiln
+  runner with `--publish` against staging's livehost (a dedicated Kiln
+  channel), click **Publish Kiln** from `/admin/kiln/` with an admin key,
+  and confirm the page reloads into the new build with the workspace and
+  conversation kept; then **Revert to last good**, and confirm a non-admin
+  publish and a failing build are refused. Also restart the Mac Flint pylon
+  on `openagents` `b316b703de`, and relaunch the DeepSeek V4.1 group with
+  head `gs://openagents-psionic-models/bin/pylon/e411ee8ce2/pylon`
+  (`--pylon-build 504b952b2eb4…`, worker unchanged); confirm each result
+  carries `reasoning`.
 - #12440: after the next web deploy, confirm the image log builds or
   reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
   `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test
