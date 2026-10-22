@@ -30,6 +30,10 @@ const BAY_GLOBAL: &str = "pylonsBay";
 /// The global Verse reads the model groups from: [`bay::machine::Scene`]
 /// as JSON.
 const GROUPS_GLOBAL: &str = "pylonsGroups";
+/// The global Verse reads each placed pylon's spot from, by its id, as JSON
+/// `{"<id>": [x, z]}`: the Grid Foreman draws a line to the Pylon that
+/// answered it (#12484).
+const SPOTS_GLOBAL: &str = "pylonsSpots";
 /// A machine's width for its click target, m.
 const MACHINE_WIDTH: f64 = 1.5;
 /// How far over a machine's top its label stands, m.
@@ -744,6 +748,22 @@ impl Layer {
         let numbers = bay::encode(&stands, &pipes);
         let array = js_sys::Float64Array::from(numbers.as_slice());
         let _ = js_sys::Reflect::set(&js_sys::global(), &BAY_GLOBAL.into(), &array);
+        let spots: serde_json::Map<String, serde_json::Value> = self
+            .layout
+            .stands
+            .iter()
+            .map(|stand| {
+                (
+                    stand.id.clone(),
+                    serde_json::json!([stand.at[0], stand.at[2]]),
+                )
+            })
+            .collect();
+        let _ = js_sys::Reflect::set(
+            &js_sys::global(),
+            &SPOTS_GLOBAL.into(),
+            &serde_json::Value::Object(spots).to_string().into(),
+        );
         self.publish_groups();
     }
 

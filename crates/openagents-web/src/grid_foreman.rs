@@ -483,6 +483,10 @@ pub(crate) struct Activity {
     /// `flint`, `pylon`, or `hosted`.
     #[serde(default)]
     pub source: Option<String>,
+    /// The answering Pylon's name in its beacon (its slug), when a Pylon
+    /// answered (#12484).
+    #[serde(default)]
+    pub pylon: Option<String>,
 }
 
 impl Activity {
@@ -523,17 +527,20 @@ pub(crate) async fn set_activity(store: &Store, activity: &Activity) {
 
 async fn activity(State(app): State<App>) -> Response {
     let now = crate::chat_store::now_unix();
-    let shown = match app.config.chat_store.read_key(ACTIVITY_KEY).await {
-        Ok(Some((bytes, _))) => serde_json::from_slice::<Activity>(&bytes)
-            .ok()
-            .and_then(|a| a.shown(now)),
+    let latest = match app.config.chat_store.read_key(ACTIVITY_KEY).await {
+        Ok(Some((bytes, _))) => serde_json::from_slice::<Activity>(&bytes).ok(),
         _ => None,
     };
+    let shown = latest.as_ref().and_then(|a| a.shown(now));
     let mut response = answer(
         StatusCode::OK,
         match shown {
-            Some((text, working)) => json!({"text": text, "working": working}),
-            None => json!({"text": null, "working": false}),
+            Some((text, working)) => json!({
+                "text": text,
+                "working": working,
+                "pylon": latest.and_then(|a| a.pylon),
+            }),
+            None => json!({"text": null, "working": false, "pylon": null}),
         },
     );
     response.headers_mut().insert(
@@ -709,8 +716,7 @@ mod tests {
     fn activity_shows_the_task_then_the_result_then_nothing() {
         let mut a = Activity {
             started_at: 1_000,
-            finished_at: None,
-            source: None,
+            ..Activity::default()
         };
         assert_eq!(
             a.shown(1_010),

@@ -42,6 +42,11 @@ struct Foreman {
     /// Page time the visitor came into range, ms, for its wave (#12461);
     /// `Some(None)` until the next frame stamps it.
     waved: Option<Option<f64>>,
+    /// The Pylon that answered its last question, by its slug, while its
+    /// result shows (#12484).
+    pylon: Option<String>,
+    /// Page time the site was last asked what it is doing, ms.
+    activity_asked: Option<f64>,
     /// Where the talk offer was last drawn, CSS pixels: x, y, width, height.
     prompt: Option<[f32; 4]>,
     touch: Option<bool>,
@@ -364,6 +369,109 @@ pub fn frame(now: f64) {
     if due {
         ask();
     }
+    // While it works, which Pylon answered (#12484).
+    let working = screen_task().is_some();
+    let ask_activity = FOREMAN.with(|f| {
+        let mut f = f.borrow_mut();
+        if !working {
+            f.pylon = None;
+            return false;
+        }
+        let due = f.activity_asked.is_none_or(|at| now - at >= 3_000.0);
+        if due {
+            f.activity_asked = Some(now);
+        }
+        due
+    });
+    if ask_activity {
+        ask_pylon();
+    }
+}
+
+fn ask_pylon() {
+    wasm_bindgen_futures::spawn_local(async {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let Ok(answer) = wasm_bindgen_futures::JsFuture::from(
+            window.fetch_with_str(grid_foreman::ACTIVITY_PATH),
+        )
+        .await
+        else {
+            return;
+        };
+        let Ok(response) = answer.dyn_into::<web_sys::Response>() else {
+            return;
+        };
+        let Ok(text) = response.text() else {
+            return;
+        };
+        let Ok(text) = wasm_bindgen_futures::JsFuture::from(text).await else {
+            return;
+        };
+        let pylon =
+            serde_json::from_str::<serde_json::Value>(&text.as_string().unwrap_or_default())
+                .ok()
+                .and_then(|v| v["pylon"].as_str().map(str::to_owned))
+                .filter(|p| p.len() <= 128);
+        FOREMAN.with(|f| f.borrow_mut().pylon = pylon);
+    });
+}
+
+/// Where the Pylon with `slug` stands in the Bay, from the pylons layer.
+fn pylon_spot(slug: &str) -> Option<Vec3> {
+    let spots = js_sys::Reflect::get(&js_sys::global(), &"pylonsSpots".into())
+        .ok()?
+        .as_string()?;
+    let spots: serde_json::Value = serde_json::from_str(&spots).ok()?;
+    let suffix = format!(":{slug}");
+    let at = spots
+        .as_object()?
+        .iter()
+        .find(|(id, _)| id.ends_with(&suffix) || id.as_str() == slug)?
+        .1;
+    Some(Vec3::new(
+        at[0].as_f64()? as f32,
+        1.6,
+        at[1].as_f64()? as f32,
+    ))
+}
+
+/// Draws a dotted line between two world points, pulsing with page time
+/// `now` (ms).
+fn dotted(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    size: [f32; 2],
+    view_proj: Mat4,
+    from: Vec3,
+    to: Vec3,
+    now: f64,
+) {
+    let (Some(a), Some(b)) = (
+        verse::hud::project(view_proj, size, from),
+        verse::hud::project(view_proj, size, to),
+    ) else {
+        return;
+    };
+    let length = (b[0] - a[0]).hypot(b[1] - a[1]);
+    let steps = (length / 6.0).clamp(1.0, 400.0) as usize;
+    let phase = (now / 120.0) as usize;
+    for i in 0..=steps {
+        let t = i as f32 / steps as f32;
+        let bright = (i + steps - phase % steps.max(1)) % 6 == 0;
+        ui.rect(
+            atlas,
+            a[0] + (b[0] - a[0]) * t - 1.0,
+            a[1] + (b[1] - a[1]) * t - 1.0,
+            2.0,
+            2.0,
+            crate::theme::linear(
+                coder_ui::coder_noir::CONTENT,
+                if bright { 1.0 } else { 0.45 },
+            ),
+        );
+    }
 }
 
 fn ask() {
@@ -456,7 +564,8 @@ pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], view_proj: Mat4, ey
             .clone()
             .unwrap_or_else(|| grid_foreman::STATUS_WAITING.to_owned())
     });
-    // While it works, a thin pulsing line runs from its hand to the screen.
+    // While it works, a thin pulsing line runs from its hand to the screen,
+    // and from its body to the Pylon that answered (#12484).
     if screen_task().is_some() {
         let (pos, yaw) = FOREMAN.with(|f| {
             f.borrow()
@@ -465,28 +574,10 @@ pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], view_proj: Mat4, ey
                 .map_or((home(), 0.0), |l| (l.pos, l.yaw))
         });
         let hand = pos + glam::Quat::from_rotation_y(yaw) * HAND;
-        if let (Some(a), Some(b)) = (
-            verse::hud::project(view_proj, size, hand),
-            verse::hud::project(view_proj, size, SCREEN_MIDDLE),
-        ) {
-            let length = (b[0] - a[0]).hypot(b[1] - a[1]);
-            let steps = (length / 6.0).clamp(1.0, 400.0) as usize;
-            let phase = (now / 120.0) as usize;
-            for i in 0..=steps {
-                let t = i as f32 / steps as f32;
-                let bright = (i + steps - phase % steps.max(1)) % 6 == 0;
-                ui.rect(
-                    atlas,
-                    a[0] + (b[0] - a[0]) * t - 1.0,
-                    a[1] + (b[1] - a[1]) * t - 1.0,
-                    2.0,
-                    2.0,
-                    crate::theme::linear(
-                        coder_ui::coder_noir::CONTENT,
-                        if bright { 1.0 } else { 0.45 },
-                    ),
-                );
-            }
+        dotted(ui, atlas, size, view_proj, hand, SCREEN_MIDDLE, now);
+        let pylon = FOREMAN.with(|f| f.borrow().pylon.clone());
+        if let Some(spot) = pylon.as_deref().and_then(pylon_spot) {
+            dotted(ui, atlas, size, view_proj, pos + Vec3::Y * 3.6, spot, now);
         }
     }
     let mut top = y - atlas.line * 2.0;

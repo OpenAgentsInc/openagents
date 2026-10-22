@@ -241,9 +241,20 @@ impl Door for ForemanDoor {
                 let answered = {
                     let scratch = basic_coder::lock(&scratch);
                     (scratch.done && scratch.failure.is_none() && !scratch.text.trim().is_empty())
-                        .then(|| (scratch.text.clone(), scratch.model.clone()))
+                        .then(|| {
+                            (
+                                scratch.text.clone(),
+                                scratch.model.clone(),
+                                scratch
+                                    .meta
+                                    .route
+                                    .as_deref()
+                                    .and_then(|r| r.strip_prefix("pylon:"))
+                                    .map(str::to_owned),
+                            )
+                        })
                 };
-                if let Some((text, model)) = answered {
+                if let Some((text, model, slug)) = answered {
                     let source = if model
                         .as_deref()
                         .is_some_and(|m| m.split('@').next() == Some(pylon::flint::MODEL))
@@ -262,6 +273,7 @@ impl Door for ForemanDoor {
                     }
                     activity.finished_at = Some(crate::chat_store::now_unix());
                     activity.source = Some(source.into());
+                    activity.pylon = slug;
                     crate::grid_foreman::set_activity(&store, &activity).await;
                     return;
                 }
