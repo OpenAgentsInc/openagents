@@ -43,7 +43,8 @@ let draft = 0,
   original = "",
   sourceSent = "",
   saving = false,
-  ready = false;
+  ready = false,
+  sceneOpened = false;
 let snapshot: Record<string, any> = {};
 let adapter: unknown;
 let latestResult: Record<string, unknown> = {};
@@ -83,7 +84,7 @@ const editor = createEditor({
 function controls() {
   saveButton.disabled = resetButton.disabled = !ready || saving;
   shader.disabled = !ready;
-  editor.setReady(ready && !saving);
+  editor.setReady(ready && sceneOpened && !saving);
   el<HTMLButtonElement>("walk").disabled = !ready;
 }
 
@@ -383,8 +384,9 @@ async function start() {
   if (savedScene) await editor.ingest(savedScene, true);
   else
     document.getElementById("scene-status")!.textContent =
-      "Ready. Place a pumpkin or describe one change.";
-  editor.setReady(true);
+      "Ready. Place an asset or describe one change.";
+  sceneOpened = true;
+  controls();
   window.addEventListener(
     "pagehide",
     () => {

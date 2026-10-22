@@ -1,6 +1,8 @@
 import { Effect } from "effect";
 import {
   PROJECT_ID,
+  ASSETS,
+  type AssetKind,
   SCENE_PATH,
   decisionOperation,
   readProject,
@@ -46,6 +48,7 @@ export function createEditor(bridge: Bridge) {
     const state = bridge.state(),
       p = state.project as Project | undefined;
     for (const id of [
+      "asset-kind",
       "add-pumpkin",
       "move-pumpkin",
       "remove-pumpkin",
@@ -66,13 +69,17 @@ export function createEditor(bridge: Bridge) {
       ...p.entities.map((e, i) => {
         const option = document.createElement("option");
         option.value = e.id;
-        option.textContent = `Pumpkin ${i + 1} · (${e.x}, ${e.z})`;
+        option.textContent = `${ASSETS[e.kind].label} ${i + 1} · (${e.x}, ${e.z})`;
         return option;
       }),
     );
     if (selected) select.value = selected;
+    const entity = p.entities.find((e) => e.id === selected);
+    if (entity)
+      for (const key of ["x", "z", "scale"] as const)
+        el<HTMLInputElement>(key).value = String(entity[key]);
     el<HTMLSelectElement>("tint").value = p.tint;
-    el("scene-count").textContent = `${p.entities.length} pumpkins`;
+    el("scene-count").textContent = `${p.entities.length} assets`;
   }
   function cancel(message = "Request canceled. Your scene is unchanged.") {
     if (decision) {
@@ -94,7 +101,7 @@ export function createEditor(bridge: Bridge) {
         throw new Error(
           "The scene is live, but Kiln couldn't save it. Try saving again.",
         );
-      status(`Saved in Kiln · ${project.entities.length} pumpkins`);
+      status(`Saved in Kiln · ${project.entities.length} assets`);
     } finally {
       selfWrites.delete(text);
     }
@@ -127,12 +134,14 @@ export function createEditor(bridge: Bridge) {
           transaction,
         });
       });
-      if (operation.kind === "add_pumpkin") selected = operation.entity.id;
+      if (operation.kind === "add_asset" || operation.kind === "add_pumpkin")
+        selected = operation.entity.id;
       if (operation.kind === "batch") {
         const added = operation.operations.findLast(
-          (op) => op.kind === "add_pumpkin",
+          (op) => op.kind === "add_asset" || op.kind === "add_pumpkin",
         );
-        if (added?.kind === "add_pumpkin") selected = added.entity.id;
+        if (added?.kind === "add_asset" || added?.kind === "add_pumpkin")
+          selected = added.entity.id;
       }
       const receipt = {
         origin,
@@ -310,13 +319,20 @@ export function createEditor(bridge: Bridge) {
     x: el<HTMLInputElement>("x").valueAsNumber,
     z: el<HTMLInputElement>("z").valueAsNumber,
   });
+  const picker = el<HTMLSelectElement>("asset-kind");
+  for (const [kind, asset] of Object.entries(ASSETS)) {
+    const option = document.createElement("option");
+    option.value = kind;
+    option.textContent = asset.label;
+    picker.append(option);
+  }
   el("add-pumpkin").addEventListener("click", () =>
     attempt(() =>
       submit({
-        kind: "add_pumpkin",
+        kind: "add_asset",
         entity: {
-          id: `pumpkin-${crypto.randomUUID()}`,
-          kind: "pumpkin",
+          id: `${picker.value}-${crypto.randomUUID()}`,
+          kind: picker.value as AssetKind,
           ...position(),
           scale: el<HTMLInputElement>("scale").valueAsNumber,
         },
@@ -325,20 +341,20 @@ export function createEditor(bridge: Bridge) {
   );
   el("move-pumpkin").addEventListener("click", () =>
     attempt(() =>
-      submit({ kind: "move_pumpkin", id: selected ?? "", ...position() }),
+      submit({ kind: "move_asset", id: selected ?? "", ...position() }),
     ),
   );
   el("resize-pumpkin").addEventListener("click", () =>
     attempt(() =>
       submit({
-        kind: "resize_pumpkin",
+        kind: "resize_asset",
         id: selected ?? "",
         scale: el<HTMLInputElement>("scale").valueAsNumber,
       }),
     ),
   );
   el("remove-pumpkin").addEventListener("click", () =>
-    attempt(() => submit({ kind: "remove_pumpkin", id: selected ?? "" })),
+    attempt(() => submit({ kind: "remove_asset", id: selected ?? "" })),
   );
   el("undo").addEventListener("click", () =>
     attempt(() => submit({ kind: "undo" })),
@@ -378,7 +394,7 @@ export function createEditor(bridge: Bridge) {
     setReady: (value: boolean) => {
       if (value && !initialized) {
         initialized = true;
-        status("Ready. Place a pumpkin or describe one change.");
+        status("Ready. Place an asset or describe one change.");
       }
       ready = value;
       refresh();

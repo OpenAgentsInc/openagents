@@ -197,8 +197,8 @@ try {
   );
   if (process.env.HAUNT_DECISIONS !== "0") {
     for (const [text, action] of [
-      ["Add a big pumpkin to my left.", "add_pumpkin"],
-      ["Move the selected pumpkin to (1, 2).", "move_pumpkin"],
+      ["Add a big pumpkin to my left.", "add_asset"],
+      ["Move the selected pumpkin to (1, 2).", "move_asset"],
       ["Make the lantern light blue.", "set_tint"],
     ]) {
       const before = await snap(),

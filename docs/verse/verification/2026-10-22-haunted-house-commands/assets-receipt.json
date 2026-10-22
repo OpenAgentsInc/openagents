@@ -1,0 +1,863 @@
+{
+  "browser": "155.0.8059.85",
+  "measuredAt": "2026-10-22T20:17:10.185Z",
+  "manual": [
+    {
+      "kind": "ghost",
+      "id": "ghost-bf090d35-ec78-4675-92a2-b0dbce0c6559"
+    },
+    {
+      "kind": "gravestone",
+      "id": "gravestone-c06811b1-b06a-46eb-834f-8325e9b543be"
+    },
+    {
+      "kind": "coffin",
+      "id": "coffin-85c40bbe-464c-4b3a-a624-71555e67bc82"
+    },
+    {
+      "kind": "candle",
+      "id": "candle-fc85817b-da69-4de8-9506-454e551c7f00"
+    },
+    {
+      "kind": "crate",
+      "id": "crate-ab99f8da-da19-4510-82f5-60022f07bec5"
+    },
+    {
+      "kind": "cauldron",
+      "id": "cauldron-9e8a9a39-e209-4d99-9d2f-4de8800a4fab"
+    }
+  ],
+  "decisions": [
+    {
+      "text": "Add a ghost at (1, 3).",
+      "decision": {
+        "action": "add_asset",
+        "asset": "ghost",
+        "placement": "coordinates",
+        "size": "normal",
+        "tint": "unsupported",
+        "confidence": 1,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 168.332875,
+        "judgments": {
+          "action": {
+            "choice": "add_asset",
+            "confidence": 1,
+            "probabilities": {
+              "add_asset": 1,
+              "move_asset": 0,
+              "resize_asset": 0,
+              "remove_asset": 0,
+              "set_tint": 0,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "asset": {
+            "choice": "ghost",
+            "confidence": 1,
+            "probabilities": {
+              "pumpkin": 0,
+              "ghost": 1,
+              "gravestone": 0,
+              "coffin": 0,
+              "candle": 0,
+              "crate": 0,
+              "cauldron": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "coordinates",
+            "confidence": 1,
+            "probabilities": {
+              "coordinates": 1,
+              "left": 0,
+              "right": 0,
+              "ahead": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "normal",
+            "confidence": 1,
+            "probabilities": {
+              "small": 0,
+              "normal": 1,
+              "large": 0,
+              "huge": 0,
+              "exact": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0,
+              "blue": 0,
+              "green": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 177,
+      "totalMs": 185.900146484375,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "add_asset",
+          "entity": {
+            "id": "ghost-e7ba2e6b-c9d5-43fb-9622-495ebd39e80c",
+            "kind": "ghost",
+            "x": 1,
+            "z": 3,
+            "scale": 1
+          }
+        },
+        "revision": 82,
+        "submittedMs": 6.000244140625
+      }
+    },
+    {
+      "text": "Add a gravestone at (1, 3).",
+      "decision": {
+        "action": "add_asset",
+        "asset": "gravestone",
+        "placement": "coordinates",
+        "size": "normal",
+        "tint": "unsupported",
+        "confidence": 1,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 152.95362500000002,
+        "judgments": {
+          "action": {
+            "choice": "add_asset",
+            "confidence": 1,
+            "probabilities": {
+              "add_asset": 1,
+              "move_asset": 0,
+              "resize_asset": 0,
+              "remove_asset": 0,
+              "set_tint": 0,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "asset": {
+            "choice": "gravestone",
+            "confidence": 1,
+            "probabilities": {
+              "pumpkin": 0,
+              "ghost": 0,
+              "gravestone": 1,
+              "coffin": 0,
+              "candle": 0,
+              "crate": 0,
+              "cauldron": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "coordinates",
+            "confidence": 1,
+            "probabilities": {
+              "coordinates": 1,
+              "left": 0,
+              "right": 0,
+              "ahead": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "normal",
+            "confidence": 1,
+            "probabilities": {
+              "small": 0,
+              "normal": 1,
+              "large": 0,
+              "huge": 0,
+              "exact": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0,
+              "blue": 0,
+              "green": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 155.7998046875,
+      "totalMs": 168.599853515625,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "add_asset",
+          "entity": {
+            "id": "gravestone-34e13bf1-2609-43a0-982d-a607962c8089",
+            "kind": "gravestone",
+            "x": 1,
+            "z": 3,
+            "scale": 1
+          }
+        },
+        "revision": 84,
+        "submittedMs": 10.199951171875
+      }
+    },
+    {
+      "text": "Add a coffin at (1, 3).",
+      "decision": {
+        "action": "add_asset",
+        "asset": "coffin",
+        "placement": "coordinates",
+        "size": "normal",
+        "tint": "unsupported",
+        "confidence": 1,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 179.779792,
+        "judgments": {
+          "action": {
+            "choice": "add_asset",
+            "confidence": 1,
+            "probabilities": {
+              "add_asset": 1,
+              "move_asset": 0,
+              "resize_asset": 0,
+              "remove_asset": 0,
+              "set_tint": 0,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "asset": {
+            "choice": "coffin",
+            "confidence": 1,
+            "probabilities": {
+              "pumpkin": 0,
+              "ghost": 0,
+              "gravestone": 0,
+              "coffin": 1,
+              "candle": 0,
+              "crate": 0,
+              "cauldron": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "coordinates",
+            "confidence": 1,
+            "probabilities": {
+              "coordinates": 1,
+              "left": 0,
+              "right": 0,
+              "ahead": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "normal",
+            "confidence": 1,
+            "probabilities": {
+              "small": 0,
+              "normal": 1,
+              "large": 0,
+              "huge": 0,
+              "exact": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0,
+              "blue": 0,
+              "green": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 182.400146484375,
+      "totalMs": 202.2001953125,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "add_asset",
+          "entity": {
+            "id": "coffin-e2a2bc1e-cb3a-4fe8-8b5d-636283c5ca36",
+            "kind": "coffin",
+            "x": 1,
+            "z": 3,
+            "scale": 1
+          }
+        },
+        "revision": 86,
+        "submittedMs": 17.199951171875
+      }
+    },
+    {
+      "text": "Add a candle at (1, 3).",
+      "decision": {
+        "action": "add_asset",
+        "asset": "candle",
+        "placement": "coordinates",
+        "size": "normal",
+        "tint": "unsupported",
+        "confidence": 1,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 161.981333,
+        "judgments": {
+          "action": {
+            "choice": "add_asset",
+            "confidence": 1,
+            "probabilities": {
+              "add_asset": 1,
+              "move_asset": 0,
+              "resize_asset": 0,
+              "remove_asset": 0,
+              "set_tint": 0,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "asset": {
+            "choice": "candle",
+            "confidence": 1,
+            "probabilities": {
+              "pumpkin": 0,
+              "ghost": 0,
+              "gravestone": 0,
+              "coffin": 0,
+              "candle": 1,
+              "crate": 0,
+              "cauldron": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "coordinates",
+            "confidence": 1,
+            "probabilities": {
+              "coordinates": 1,
+              "left": 0,
+              "right": 0,
+              "ahead": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "normal",
+            "confidence": 1,
+            "probabilities": {
+              "small": 0,
+              "normal": 1,
+              "large": 0,
+              "huge": 0,
+              "exact": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0,
+              "blue": 0,
+              "green": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 164.300048828125,
+      "totalMs": 187.10009765625,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "add_asset",
+          "entity": {
+            "id": "candle-dc256623-68da-4c6a-bda5-f5796f51e963",
+            "kind": "candle",
+            "x": 1,
+            "z": 3,
+            "scale": 1
+          }
+        },
+        "revision": 88,
+        "submittedMs": 18.300048828125
+      }
+    },
+    {
+      "text": "Add a crate at (1, 3).",
+      "decision": {
+        "action": "add_asset",
+        "asset": "crate",
+        "placement": "coordinates",
+        "size": "normal",
+        "tint": "unsupported",
+        "confidence": 1,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 139.73829099999998,
+        "judgments": {
+          "action": {
+            "choice": "add_asset",
+            "confidence": 1,
+            "probabilities": {
+              "add_asset": 1,
+              "move_asset": 0,
+              "resize_asset": 0,
+              "remove_asset": 0,
+              "set_tint": 0,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "asset": {
+            "choice": "crate",
+            "confidence": 1,
+            "probabilities": {
+              "pumpkin": 0,
+              "ghost": 0,
+              "gravestone": 0,
+              "coffin": 0,
+              "candle": 0,
+              "crate": 1,
+              "cauldron": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "coordinates",
+            "confidence": 1,
+            "probabilities": {
+              "coordinates": 1,
+              "left": 0,
+              "right": 0,
+              "ahead": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "normal",
+            "confidence": 1,
+            "probabilities": {
+              "small": 0,
+              "normal": 1,
+              "large": 0,
+              "huge": 0,
+              "exact": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0,
+              "blue": 0,
+              "green": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 142.400146484375,
+      "totalMs": 151.60009765625,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "add_asset",
+          "entity": {
+            "id": "crate-26cd2067-661c-4674-8dc5-028ec42c6eb3",
+            "kind": "crate",
+            "x": 1,
+            "z": 3,
+            "scale": 1
+          }
+        },
+        "revision": 90,
+        "submittedMs": 6.39990234375
+      }
+    },
+    {
+      "text": "Add a cauldron at (1, 3).",
+      "decision": {
+        "action": "add_asset",
+        "asset": "cauldron",
+        "placement": "coordinates",
+        "size": "normal",
+        "tint": "unsupported",
+        "confidence": 1,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 136.070042,
+        "judgments": {
+          "action": {
+            "choice": "add_asset",
+            "confidence": 1,
+            "probabilities": {
+              "add_asset": 1,
+              "move_asset": 0,
+              "resize_asset": 0,
+              "remove_asset": 0,
+              "set_tint": 0,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "asset": {
+            "choice": "cauldron",
+            "confidence": 1,
+            "probabilities": {
+              "pumpkin": 0,
+              "ghost": 0,
+              "gravestone": 0,
+              "coffin": 0,
+              "candle": 0,
+              "crate": 0,
+              "cauldron": 1,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "coordinates",
+            "confidence": 1,
+            "probabilities": {
+              "coordinates": 1,
+              "left": 0,
+              "right": 0,
+              "ahead": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "normal",
+            "confidence": 1,
+            "probabilities": {
+              "small": 0,
+              "normal": 1,
+              "large": 0,
+              "huge": 0,
+              "exact": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0,
+              "blue": 0,
+              "green": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 138.699951171875,
+      "totalMs": 152.199951171875,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "add_asset",
+          "entity": {
+            "id": "cauldron-e50b9a35-ffd0-4750-a29e-c0a4565be4c3",
+            "kind": "cauldron",
+            "x": 1,
+            "z": 3,
+            "scale": 1
+          }
+        },
+        "revision": 92,
+        "submittedMs": 10.10009765625
+      }
+    }
+  ],
+  "checks": [
+    "every new asset supports picker add, resize, move, remove, undo and redo through the real UI",
+    "real Jev requests add each catalog kind; three ghosts add and undo as one group; an unlisted dragon makes no change",
+    "all six meshes share the existing shader and buffers; player/device stay unchanged; mixed assets save and reopen through Kiln OPFS"
+  ],
+  "group": {
+    "text": "Add three ghosts to my right.",
+    "decision": {
+      "action": "add_asset",
+      "asset": "ghost",
+      "placement": "right",
+      "size": "normal",
+      "tint": "unsupported",
+      "confidence": 0.99,
+      "needs_review": false,
+      "model": "jev-1.14.0",
+      "model_ms": 143.019,
+      "judgments": {
+        "action": {
+          "choice": "add_asset",
+          "confidence": 1,
+          "probabilities": {
+            "add_asset": 1,
+            "move_asset": 0,
+            "resize_asset": 0,
+            "remove_asset": 0,
+            "set_tint": 0,
+            "undo": 0,
+            "redo": 0,
+            "unsupported": 0
+          },
+          "type": "choice"
+        },
+        "asset": {
+          "choice": "ghost",
+          "confidence": 1,
+          "probabilities": {
+            "pumpkin": 0,
+            "ghost": 1,
+            "gravestone": 0,
+            "coffin": 0,
+            "candle": 0,
+            "crate": 0,
+            "cauldron": 0,
+            "unsupported": 0
+          },
+          "type": "choice"
+        },
+        "placement": {
+          "choice": "right",
+          "confidence": 0.99,
+          "probabilities": {
+            "coordinates": 0,
+            "left": 0,
+            "right": 0.99,
+            "ahead": 0,
+            "unsupported": 0.01
+          },
+          "type": "choice"
+        },
+        "size": {
+          "choice": "normal",
+          "confidence": 1,
+          "probabilities": {
+            "small": 0,
+            "normal": 1,
+            "large": 0,
+            "huge": 0,
+            "exact": 0,
+            "unsupported": 0
+          },
+          "type": "choice"
+        },
+        "tint": {
+          "choice": "unsupported",
+          "confidence": 1,
+          "probabilities": {
+            "warm": 0,
+            "orange": 0,
+            "blue": 0,
+            "green": 0,
+            "unsupported": 1
+          },
+          "type": "choice"
+        }
+      }
+    },
+    "roundTripMs": 145.400146484375,
+    "totalMs": 152,
+    "receipt": {
+      "origin": "decision",
+      "operation": {
+        "kind": "batch",
+        "operations": [
+          {
+            "kind": "add_asset",
+            "entity": {
+              "id": "ghost-3ab5ee96-69de-4def-a6dc-7dad7a086d73",
+              "kind": "ghost",
+              "x": 1.05,
+              "z": 6.8,
+              "scale": 1
+            }
+          },
+          {
+            "kind": "add_asset",
+            "entity": {
+              "id": "ghost-712f8ce5-6b6d-41b9-93df-8a6146b54b0e",
+              "kind": "ghost",
+              "x": 1.05,
+              "z": 5.6,
+              "scale": 1
+            }
+          },
+          {
+            "kind": "add_asset",
+            "entity": {
+              "id": "ghost-22918366-75b0-49c5-8e0b-d4db7b9bfc59",
+              "kind": "ghost",
+              "x": 2.1,
+              "z": 6.8,
+              "scale": 1
+            }
+          }
+        ]
+      },
+      "revision": 94,
+      "submittedMs": 2.800048828125
+    }
+  },
+  "project": {
+    "schema": 1,
+    "id": "haunt-webgpu-v1",
+    "revision": 101,
+    "material": "haunt/material.wgsl",
+    "tint": "orange",
+    "entities": [
+      {
+        "id": "pumpkin-1",
+        "kind": "pumpkin",
+        "x": -2.5,
+        "z": 0,
+        "scale": 1.3
+      },
+      {
+        "id": "pumpkin-2",
+        "kind": "pumpkin",
+        "x": 2.5,
+        "z": -4,
+        "scale": 1
+      },
+      {
+        "id": "pumpkin-3",
+        "kind": "pumpkin",
+        "x": -0.8,
+        "z": -8,
+        "scale": 0.7
+      },
+      {
+        "id": "pumpkin-4",
+        "kind": "pumpkin",
+        "x": 2.7,
+        "z": -14,
+        "scale": 1.8
+      },
+      {
+        "id": "pumpkin-5",
+        "kind": "pumpkin",
+        "x": -2.8,
+        "z": -12,
+        "scale": 0.9
+      },
+      {
+        "id": "pumpkin-44323070-ef32-4ff8-8e51-471bf3a1829a",
+        "kind": "pumpkin",
+        "x": 0.9,
+        "z": 2,
+        "scale": 1.8
+      },
+      {
+        "id": "pumpkin-5acb354e-5a12-44e9-9607-0a105b484d8e",
+        "kind": "pumpkin",
+        "x": 1,
+        "z": 2,
+        "scale": 1.8
+      },
+      {
+        "id": "ghost-gallery",
+        "kind": "ghost",
+        "x": -1.5,
+        "z": 3.6,
+        "scale": 0.85
+      },
+      {
+        "id": "gravestone-gallery",
+        "kind": "gravestone",
+        "x": 1.5,
+        "z": 3.6,
+        "scale": 0.85
+      },
+      {
+        "id": "coffin-gallery",
+        "kind": "coffin",
+        "x": -1.5,
+        "z": 1,
+        "scale": 0.8
+      },
+      {
+        "id": "candle-gallery",
+        "kind": "candle",
+        "x": 0.9,
+        "z": 5,
+        "scale": 1
+      },
+      {
+        "id": "crate-gallery",
+        "kind": "crate",
+        "x": 1.8,
+        "z": 1,
+        "scale": 1
+      },
+      {
+        "id": "cauldron-gallery",
+        "kind": "cauldron",
+        "x": 0,
+        "z": 1.5,
+        "scale": 1.2
+      }
+    ]
+  },
+  "passed": true
+}

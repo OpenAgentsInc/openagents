@@ -7,6 +7,9 @@ import {
   decisionOperation,
   exactCoordinates,
   pumpkinCount,
+  assetCount,
+  ASSETS,
+  type AssetKind,
   walkable,
   PROJECT_ID,
   upgradeLegacyShader,
@@ -270,6 +273,113 @@ test("exact plural counts and huge groups preserve placement, capacity, and one-
         null,
         full,
       ),
-    /2 more pumpkins/,
+    /2 more assets/,
+  );
+});
+
+test("all asset kinds round-trip, render distinct meshes, and share editing and undo", async () => {
+  const { houseGeometry } = await import("../src/scene.ts");
+  const meshes = new Set<string>();
+  for (const [kind, asset] of Object.entries(ASSETS)) {
+    const s = new SceneHistory();
+    const d = {
+      action: "add_asset",
+      asset: kind,
+      placement: "coordinates",
+      size: "normal",
+      tint: "unsupported",
+      confidence: 1,
+      needs_review: false,
+      model: "fixture",
+      model_ms: 1,
+    };
+    const op = decisionOperation(
+      d,
+      `add a ${asset.label} at (1, 3)`,
+      { x: 0, z: 6.8, yaw: 0, pitch: 0 },
+      null,
+      s.project,
+    );
+    apply(s, op);
+    const e = s.project.entities.at(-1)!;
+    assert.equal(e.kind, kind);
+    assert.equal(
+      readProject(JSON.parse(JSON.stringify(s.project))).entities.at(-1)!.kind,
+      kind,
+    );
+    const mesh = houseGeometry([e]);
+    assert.ok(mesh.length > 0 && mesh.every(Number.isFinite));
+    meshes.add(JSON.stringify([...mesh]));
+    apply(s, { kind: "move_asset", id: e.id, x: 1.5, z: 2 });
+    apply(s, { kind: "resize_asset", id: e.id, scale: 1.8 });
+    apply(s, { kind: "remove_asset", id: e.id });
+    apply(s, { kind: "undo" });
+    assert.deepEqual(s.project.entities.at(-1), {
+      ...e,
+      x: 1.5,
+      z: 2,
+      scale: 1.8,
+    });
+    assert.equal(
+      assetCount(`add three ${asset.plural} at (1, 3)`, kind as AssetKind),
+      3,
+    );
+    for (const noun of asset.aliases)
+      assert.equal(
+        assetCount(`add 2 small ${noun} ahead`, kind as AssetKind),
+        2,
+      );
+  }
+  assert.equal(meshes.size, Object.keys(ASSETS).length);
+  const p = initialProject();
+  assert.throws(() =>
+    readProject({ ...p, entities: [{ ...p.entities[0], kind: "dragon" }] }),
+  );
+  assert.throws(() =>
+    decisionOperation(
+      {
+        action: "add_asset",
+        asset: "dragon",
+        placement: "ahead",
+        size: "normal",
+        tint: "unsupported",
+        confidence: 1,
+        needs_review: false,
+        model: "fixture",
+        model_ms: 0,
+      },
+      "add a dragon",
+      { x: 0, z: 6.8, yaw: 0, pitch: 0 },
+      null,
+    ),
+  );
+});
+
+test("named asset edits cannot change a different selected kind", () => {
+  const p = initialProject();
+  p.entities.push({ id: "ghost-only", kind: "ghost", x: 1, z: 3, scale: 1 });
+  const d = {
+    action: "remove_asset",
+    asset: "unsupported",
+    placement: "unsupported",
+    size: "unsupported",
+    tint: "unsupported",
+    confidence: 1,
+    needs_review: false,
+    model: "fixture",
+    model_ms: 0,
+  };
+  const pose = { x: 0, z: 6.8, yaw: 0, pitch: 0 };
+  assert.deepEqual(
+    decisionOperation(d, "remove the ghost", pose, "pumpkin-1", p),
+    { kind: "remove_asset", id: "ghost-only" },
+  );
+  assert.throws(
+    () => decisionOperation(d, "remove a pumpkin", pose, "ghost-only", p),
+    /Select a pumpkin/,
+  );
+  assert.deepEqual(
+    decisionOperation(d, "remove the selected asset", pose, "ghost-only", p),
+    { kind: "remove_asset", id: "ghost-only" },
   );
 });

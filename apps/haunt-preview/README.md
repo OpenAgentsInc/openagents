@@ -8,8 +8,8 @@ Natural language takes one bounded decision request, then uses those same comman
 
 | State | What you see | Next action |
 | --- | --- | --- |
-| Open | A running house and placement controls | Walk, or add one pumpkin |
-| Select and change | A pumpkin selector, X/Z/size fields, and lantern colors | Add, move, resize, remove, or change light |
+| Open | A running house and placement controls | Walk, or place a prop |
+| Select and change | An asset picker and selector, X/Z/size fields, and lantern colors | Add, move, resize, remove, or change light |
 | Describe | A short request such as “Add a big pumpkin to my left” | See the result, keep walking, or cancel |
 | Invalid or unclear | A short explanation; the working house continues | Correct the coordinates, use a control, or describe one clearer change |
 | Changed | The same walk, with Undo and Redo | Keep the change or undo it |
@@ -49,17 +49,31 @@ text requests then report that the service is unavailable. Static `dist/` serves
 the local controls; natural language requires this dev adapter or an authenticated
 host integration. This change does not deploy a public decision endpoint.
 
+## Placeable assets
+
+Choose **Asset to add**, set X/Z/size, and use **Add asset**. The catalog includes
+pumpkins, ghosts, gravestones (also tombstones or headstones), coffins, candles,
+wooden crates, and green-potion cauldrons. These are original procedural meshes;
+candles and potion have glowing surfaces, without adding dynamic light sources.
+Every kind supports move, resize, remove, groups, undo/redo, and Kiln save/reopen.
+Try `Add three ghosts to my right` or `Add a cauldron at (1, 3)`.
+
+The renderer, picker, project validation, and Rust Jev questions use
+[`src/assets.json`](src/assets.json). Existing pumpkin scenes still load, and the
+old pumpkin command names remain accepted. Controls enable after the saved scene
+opens, so an early edit cannot race restoration.
+
 ## Decision path
 
-- One Jev SDK call asks four independent Choice questions together: action,
-  placement, size, and light color. Every question includes an unsupported option.
+- One Jev SDK call asks five independent Choice questions together: action,
+  asset kind, placement, size, and light color. Every question includes an unsupported option.
 - Only the arguments used by the selected action contribute to its confidence
   floor (0.75 for this prototype). Uncertain requests make no change. This policy
   is exercised on a small retained example set, not broadly calibrated.
 - Adding a group is one action: `add 5 huge pumpkins to my left` adds five
   size-2.5 pumpkins on the player’s left. Counts from 1 to 8 (digits or words)
   come from the request text. The group uses one transaction and one undo step.
-  Placement spreads objects apart, avoids existing pumpkins and room boundaries,
+  Placement spreads objects apart, avoids existing props and room boundaries,
   and reports insufficient space without partially adding a group.
 - Code reads exact X/Z coordinates and `scale=` from source spans. Jev never
   invents numerical values. Relative positions use the current player pose when
@@ -79,7 +93,7 @@ handles exact arguments and execution.
 ## Project and command contract
 
 - `haunt/scene.json` is a schema-1 project with a stable project ID, monotonically
-  increasing revision, material asset path, tint enum, and up to 64 stable pumpkin
+  increasing revision, material asset path, tint enum, and up to 64 stable asset
   IDs with X/Z/scale. `readProject` copies only saved fields and refuses unsupported
   versions, duplicate IDs, invalid assets, out-of-room coordinates, and invalid sizes.
 - GPU handles, Effect values, player pose, model responses, and undo history are

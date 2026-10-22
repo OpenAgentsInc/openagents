@@ -1,4 +1,4 @@
-import { walkable, type Pumpkin } from "./project.ts";
+import { walkable, type SceneAsset } from "./project.ts";
 type V3 = [number, number, number];
 const data: number[] = [];
 const paper: V3 = [0.94, 0.89, 0.72];
@@ -145,7 +145,91 @@ function candle(x: number, y: number, z: number) {
   box(x, y + 0.23, z, 0.07, 0.13, 0.07, [1, 0.64, 0.18], 1);
 }
 
-export function houseGeometry(pumpkins: Pumpkin[]): Float32Array {
+/** Original procedural props share the scene's vertex buffer and material. */
+function prop(asset: SceneAsset) {
+  const { x, z, scale: s } = asset;
+  const b = (
+    dx: number,
+    y: number,
+    dz: number,
+    w: number,
+    h: number,
+    d: number,
+    color: V3,
+    glow = 0,
+  ) => box(x + dx * s, y * s, z + dz * s, w * s, h * s, d * s, color, glow);
+  const dark: V3 = [0.055, 0.065, 0.085];
+  switch (asset.kind) {
+    case "pumpkin":
+      pumpkin(x, z, s);
+      break;
+    case "ghost":
+      b(0, 0.95, 0, 0.6, 0.65, 0.46, [0.8, 0.92, 0.94]);
+      b(0, 1.3, 0, 0.4, 0.18, 0.36, [0.9, 0.98, 1]);
+      for (const dx of [-0.22, 0, 0.22])
+        b(
+          dx,
+          0.56 + (dx === 0 ? 0.05 : 0),
+          0,
+          0.16,
+          0.22,
+          0.45,
+          [0.8, 0.92, 0.94],
+        );
+      for (const dx of [-0.14, 0.14]) b(dx, 1.1, 0.24, 0.1, 0.14, 0.025, dark);
+      b(0, 0.87, 0.24, 0.12, 0.15, 0.025, dark);
+      break;
+    case "gravestone":
+      b(0, 0.08, 0, 0.8, 0.16, 0.5, [0.3, 0.33, 0.37]);
+      b(0, 0.6, 0, 0.64, 0.95, 0.24, [0.5, 0.54, 0.58]);
+      b(0, 1.12, 0, 0.46, 0.15, 0.24, [0.5, 0.54, 0.58]);
+      b(0, 0.78, 0.13, 0.08, 0.38, 0.025, dark);
+      b(0, 0.84, 0.13, 0.3, 0.07, 0.025, dark);
+      for (const y of [0.4, 0.3]) b(0, y, 0.13, 0.35, 0.035, 0.025, dark);
+      break;
+    case "coffin":
+      b(0, 0.72, 0, 0.62, 1.4, 0.32, [0.24, 0.11, 0.08]);
+      b(0, 0.74, 0.18, 0.48, 1.22, 0.06, wood);
+      b(0, 0.83, 0.22, 0.055, 0.6, 0.025, [0.8, 0.64, 0.3]);
+      b(0, 0.95, 0.22, 0.29, 0.055, 0.025, [0.8, 0.64, 0.3]);
+      for (const dx of [-0.34, 0.34])
+        for (const y of [0.4, 1])
+          b(dx, y, 0, 0.08, 0.12, 0.15, [0.5, 0.48, 0.4]);
+      break;
+    case "candle":
+      b(0, 0.04, 0, 0.5, 0.08, 0.5, [0.36, 0.25, 0.1]);
+      b(0, 0.38, 0, 0.24, 0.62, 0.24, paper);
+      b(0, 0.73, 0, 0.035, 0.1, 0.035, dark);
+      b(0, 0.86, 0, 0.13, 0.2, 0.13, [1, 0.5, 0.08], 1);
+      b(0, 0.9, 0.02, 0.065, 0.13, 0.07, [1, 0.9, 0.4], 1);
+      break;
+    case "crate":
+      b(0, 0.38, 0, 0.7, 0.72, 0.7, [0.34, 0.19, 0.1]);
+      for (const dz of [-0.36, 0.36]) {
+        for (const dx of [-0.27, 0.27])
+          b(dx, 0.38, dz, 0.08, 0.74, 0.045, [0.59, 0.37, 0.19]);
+        for (const y of [0.1, 0.37, 0.66])
+          b(0, y, dz, 0.72, 0.07, 0.045, [0.59, 0.37, 0.19]);
+      }
+      b(0, 0.76, 0, 0.72, 0.05, 0.12, wood);
+      break;
+    case "cauldron":
+      for (const dx of [-0.22, 0.22])
+        for (const dz of [-0.22, 0.22]) b(dx, 0.12, dz, 0.1, 0.24, 0.1, dark);
+      b(0, 0.4, 0, 0.65, 0.5, 0.65, dark);
+      for (const side of [-1, 1]) {
+        b(side * 0.35, 0.68, 0, 0.08, 0.12, 0.75, [0.14, 0.17, 0.18]);
+        b(0, 0.68, side * 0.35, 0.75, 0.12, 0.08, [0.14, 0.17, 0.18]);
+        b(side * 0.43, 0.47, 0, 0.12, 0.22, 0.18, dark);
+      }
+      b(0, 0.66, 0, 0.59, 0.025, 0.59, [0.2, 0.95, 0.29], 1);
+      for (const dx of [-0.15, 0.12])
+        b(dx, 0.75, dx, 0.09, 0.1, 0.09, [0.4, 1, 0.35], 1);
+      break;
+  }
+}
+
+export function houseGeometry(assets: SceneAsset[]): Float32Array {
   data.length = 0;
   // Original simple geometry and the Haunted House palette, not imported game art.
   for (const [cx, cz, w, d] of [
@@ -227,7 +311,7 @@ export function houseGeometry(pumpkins: Pumpkin[]): Float32Array {
     box(x - Math.sign(x) * 0.15, 1.9, z, 0.04, 0.72, 0.5, paper);
     candle(x - Math.sign(x) * 0.45, 1.18, z + 0.9);
   }
-  for (const p of pumpkins) pumpkin(p.x, p.z, p.scale);
+  for (const asset of assets) prop(asset);
   box(-2.2, 0.65, -15.5, 1.5, 0.15, 0.75, wood);
   for (const x of [-2.8, -1.6]) box(x, 0.3, -15.5, 0.15, 0.7, 0.6, wood);
   candle(-2.6, 0.9, -15.5);

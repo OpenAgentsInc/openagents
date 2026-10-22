@@ -1,0 +1,75 @@
+{
+  "pumpkin": {
+    "label": "Pumpkin",
+    "plural": "pumpkins",
+    "aliases": [
+      "pumpkin",
+      "pumpkins",
+      "jack-o-lantern",
+      "jack-o-lanterns"
+    ],
+    "description": "Orange pumpkins or glowing jack-o-lanterns"
+  },
+  "ghost": {
+    "label": "Ghost",
+    "plural": "ghosts",
+    "aliases": [
+      "ghost",
+      "ghosts"
+    ],
+    "description": "White floating sheet ghosts with dark eyes"
+  },
+  "gravestone": {
+    "label": "Gravestone",
+    "plural": "gravestones",
+    "aliases": [
+      "gravestone",
+      "gravestones",
+      "tombstone",
+      "tombstones",
+      "headstone",
+      "headstones"
+    ],
+    "description": "Stone grave markers, gravestones, tombstones, or headstones"
+  },
+  "coffin": {
+    "label": "Coffin",
+    "plural": "coffins",
+    "aliases": [
+      "coffin",
+      "coffins",
+      "casket",
+      "caskets"
+    ],
+    "description": "Wooden coffins or caskets"
+  },
+  "candle": {
+    "label": "Candle",
+    "plural": "candles",
+    "aliases": [
+      "candle",
+      "candles"
+    ],
+    "description": "Wax candles with a glowing flame"
+  },
+  "crate": {
+    "label": "Crate",
+    "plural": "crates",
+    "aliases": [
+      "crate",
+      "crates",
+      "box",
+      "boxes"
+    ],
+    "description": "Wooden storage crates or boxes"
+  },
+  "cauldron": {
+    "label": "Cauldron",
+    "plural": "cauldrons",
+    "aliases": [
+      "cauldron",
+      "cauldrons"
+    ],
+    "description": "Dark witch cauldrons filled with glowing green potion"
+  }
+}

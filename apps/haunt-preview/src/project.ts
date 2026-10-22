@@ -1,8 +1,11 @@
+import catalog from "./assets.json" with { type: "json" };
 import type { Pose } from "./scene.ts";
 
 export const PROJECT_ID = "haunt-webgpu-v1";
 export const SCENE_PATH = "haunt/scene.json";
-export const MAX_PUMPKINS = 64;
+export const MAX_ASSETS = 64;
+export const ASSETS = catalog;
+export type AssetKind = keyof typeof ASSETS;
 export const TINTS = {
   warm: [1, 1, 1],
   orange: [1, 0.55, 0.28],
@@ -10,9 +13,9 @@ export const TINTS = {
   green: [0.25, 1.5, 0.55],
 } as const;
 export type Tint = keyof typeof TINTS;
-export type Pumpkin = {
+export type SceneAsset = {
   id: string;
-  kind: "pumpkin";
+  kind: AssetKind;
   x: number;
   z: number;
   scale: number;
@@ -23,13 +26,13 @@ export type Project = {
   revision: number;
   material: "haunt/material.wgsl";
   tint: Tint;
-  entities: Pumpkin[];
+  entities: SceneAsset[];
 };
 export type Operation =
-  | { kind: "add_pumpkin"; entity: Pumpkin }
-  | { kind: "move_pumpkin"; id: string; x: number; z: number }
-  | { kind: "resize_pumpkin"; id: string; scale: number }
-  | { kind: "remove_pumpkin"; id: string }
+  | { kind: "add_asset" | "add_pumpkin"; entity: SceneAsset }
+  | { kind: "move_asset" | "move_pumpkin"; id: string; x: number; z: number }
+  | { kind: "resize_asset" | "resize_pumpkin"; id: string; scale: number }
+  | { kind: "remove_asset" | "remove_pumpkin"; id: string }
   | { kind: "set_tint"; tint: Tint }
   | { kind: "undo" | "redo" }
   | { kind: "replace"; project: Project }
@@ -71,11 +74,11 @@ export function initialProject(): Project {
     })),
   };
 }
-function validEntity(value: unknown): asserts value is Pumpkin {
-  const e = value as Pumpkin;
+function validEntity(value: unknown): asserts value is SceneAsset {
+  const e = value as SceneAsset;
   if (
     !e ||
-    e.kind !== "pumpkin" ||
+    !Object.hasOwn(ASSETS, e.kind) ||
     typeof e.id !== "string" ||
     !/^[a-zA-Z0-9-]{1,64}$/.test(e.id) ||
     !Number.isFinite(e.x) ||
@@ -86,7 +89,7 @@ function validEntity(value: unknown): asserts value is Pumpkin {
     e.scale > 2.5
   )
     throw new Error(
-      "Place a pumpkin inside the rooms, with size between 0.3 and 2.5.",
+      "Place an asset inside the rooms, with size between 0.3 and 2.5.",
     );
 }
 export function readProject(value: unknown): Project {
@@ -100,7 +103,7 @@ export function readProject(value: unknown): Project {
     p.revision < 0 ||
     !Object.hasOwn(TINTS, p.tint) ||
     !Array.isArray(p.entities) ||
-    p.entities.length > MAX_PUMPKINS
+    p.entities.length > MAX_ASSETS
   )
     throw new Error(
       "This scene file has an unsupported version or invalid contents.",
@@ -108,7 +111,7 @@ export function readProject(value: unknown): Project {
   const ids = new Set<string>();
   for (const e of p.entities) {
     validEntity(e);
-    if (ids.has(e.id)) throw new Error("Each pumpkin needs a different name.");
+    if (ids.has(e.id)) throw new Error("Each asset needs a different name.");
     ids.add(e.id);
   }
   // Copy only project fields. GPU handles, player state, and model data never enter a save.
@@ -120,7 +123,7 @@ export function readProject(value: unknown): Project {
     tint: p.tint,
     entities: p.entities.map((e) => ({
       id: e.id,
-      kind: "pumpkin",
+      kind: e.kind,
       x: e.x,
       z: e.z,
       scale: e.scale,
@@ -160,22 +163,26 @@ export class SceneHistory {
       throw new Error("Choose a supported scene change.");
     const find = (id: string) => {
       const e = next.entities.find((x) => x.id === id);
-      if (!e) throw new Error("Select an existing pumpkin first.");
+      if (!e) throw new Error("Select an existing asset first.");
       return e;
     };
     switch (op.kind) {
+      case "add_asset":
       case "add_pumpkin":
         validEntity(op.entity);
         if (next.entities.some((e) => e.id === op.entity.id))
-          throw new Error("That pumpkin name is already in use.");
+          throw new Error("That asset name is already in use.");
         next.entities.push(clone(op.entity));
         break;
+      case "move_asset":
       case "move_pumpkin":
         Object.assign(find(op.id), { x: op.x, z: op.z });
         break;
+      case "resize_asset":
       case "resize_pumpkin":
         find(op.id).scale = op.scale;
         break;
+      case "remove_asset":
       case "remove_pumpkin":
         find(op.id);
         next.entities = next.entities.filter((e) => e.id !== op.id);
@@ -201,9 +208,13 @@ export class SceneHistory {
           op.operations.some(
             (item) =>
               ![
+                "add_asset",
                 "add_pumpkin",
+                "move_asset",
                 "move_pumpkin",
+                "resize_asset",
                 "resize_pumpkin",
+                "remove_asset",
                 "remove_pumpkin",
                 "set_tint",
               ].includes(item.kind),
@@ -263,6 +274,7 @@ export class SceneHistory {
 
 export type Decision = {
   action: string;
+  asset?: string;
   placement: string;
   size: string;
   tint: string;
@@ -284,7 +296,7 @@ export function exactCoordinates(
   if (pair) return { x: Number(pair[1]), z: Number(pair[2]) };
 }
 /** Read quantities from the noun phrase, never from coordinates or model output. */
-export function pumpkinCount(text: string): number {
+export function assetCount(text: string, kind: AssetKind): number {
   const words = [
     "zero",
     "one",
@@ -310,24 +322,35 @@ export function pumpkinCount(text: string): number {
     "hundred",
     "thousand",
   ];
+  const nouns = ASSETS[kind].aliases.join("|");
   const match = text.match(
-    /(?:^|\s)([^\s]+)\s+(?:(?:very|really|huge|enormous|giant|gigantic|big|large|small|little|tiny|normal|medium|regular|orange)\s+)*pumpkins?\b/i,
+    new RegExp(
+      `(?:^|\\s)([^\\s]+)\\s+(?:(?:very|really|huge|enormous|giant|gigantic|big|large|small|little|tiny|normal|medium|regular|orange|wooden|glowing|white|dark|green|stone)\\s+)*(?:${nouns})\\b`,
+      "i",
+    ),
   );
   const token = match?.[1].toLowerCase();
   const previous = match
     ? text.slice(0, match.index).trim().split(/\s+/).at(-1)?.toLowerCase()
     : undefined;
   if (previous && (words.includes(previous) || /^[+\-\d.]/.test(previous)))
-    throw new Error("Add between 1 and 8 pumpkins at a time.");
+    throw new Error("Add between 1 and 8 assets at a time.");
   let count = 1;
   if (token && words.includes(token)) count = words.indexOf(token);
   else if (token && /^[+\-\d.]/.test(token)) count = Number(token);
-  else if (/\bpumpkins\b/i.test(text))
-    throw new Error("Choose a count from 1 to 8 pumpkins.");
+  else if (
+    new RegExp(
+      `\\b(?:${ASSETS[kind].aliases.filter((n) => n.endsWith("s")).join("|")})\\b`,
+      "i",
+    ).test(text)
+  )
+    throw new Error("Choose a count from 1 to 8 assets.");
   if (!Number.isInteger(count) || count < 1 || count > 8)
-    throw new Error("Add between 1 and 8 pumpkins at a time.");
+    throw new Error("Add between 1 and 8 assets at a time.");
   return count;
 }
+
+export const pumpkinCount = (text: string) => assetCount(text, "pumpkin");
 
 /** Place a group on the requested side without stacking it or moving the player. */
 function groupPositions(
@@ -410,7 +433,7 @@ function groupPositions(
     }
   }
   throw new Error(
-    "There isn't enough room for that group here. Try smaller pumpkins or move to a more open spot.",
+    "There isn't enough room for that group here. Try smaller assets or move to a more open spot.",
   );
 }
 
@@ -431,9 +454,25 @@ export function decisionOperation(
     throw new Error(
       "We couldn’t understand that edit. Try the scene controls or rephrase it.",
     );
-  const id = text.match(/\bpumpkin-[a-zA-Z0-9-]+\b/)?.[0] ?? selected;
+  const explicitId = text.match(
+    /\b(?:pumpkin|ghost|gravestone|coffin|candle|crate|cauldron)-[a-zA-Z0-9-]+\b/,
+  )?.[0];
+  const id = explicitId ?? selected;
   const target = () => {
-    if (!id) throw new Error("Select a pumpkin first.");
+    const named = Object.entries(ASSETS).filter(([, asset]) =>
+      new RegExp(`\\b(?:${asset.aliases.join("|")})\\b`, "i").test(text),
+    );
+    if (named.length > 1) throw new Error("Select one asset to change.");
+    if (named.length === 1 && !explicitId) {
+      const kind = named[0][0];
+      if (project.entities.find((e) => e.id === id)?.kind !== kind) {
+        const matches = project.entities.filter((e) => e.kind === kind);
+        if (matches.length !== 1)
+          throw new Error(`Select a ${named[0][1].label.toLowerCase()} first.`);
+        return matches[0].id;
+      }
+    }
+    if (!id) throw new Error("Select an asset first.");
     return id;
   };
   const scale = () => {
@@ -472,11 +511,17 @@ export function decisionOperation(
     };
   };
   switch (d.action) {
+    case "add_asset":
     case "add_pumpkin": {
-      const count = pumpkinCount(text);
-      if (project.entities.length + count > MAX_PUMPKINS)
+      const kind = d.action === "add_pumpkin" ? "pumpkin" : d.asset;
+      if (!kind || !Object.hasOwn(ASSETS, kind))
         throw new Error(
-          `This scene has room for ${MAX_PUMPKINS - project.entities.length} more pumpkins. Remove some before adding this group.`,
+          "Choose a pumpkin, ghost, gravestone, coffin, candle, crate, or cauldron.",
+        );
+      const count = assetCount(text, kind as AssetKind);
+      if (project.entities.length + count > MAX_ASSETS)
+        throw new Error(
+          `This scene has room for ${MAX_ASSETS - project.entities.length} more assets. Remove some before adding this group.`,
         );
       const size = scale(),
         anchor = position();
@@ -485,22 +530,36 @@ export function decisionOperation(
           ? [anchor]
           : groupPositions(count, size, d.placement, pose, anchor, project);
       const operations: Operation[] = positions.map((p) => ({
-        kind: "add_pumpkin",
+        kind: d.action === "add_pumpkin" ? "add_pumpkin" : "add_asset",
         entity: {
-          id: `pumpkin-${crypto.randomUUID()}`,
-          kind: "pumpkin",
+          id: `${kind}-${crypto.randomUUID()}`,
+          kind: kind as AssetKind,
           ...p,
           scale: size,
         },
       }));
       return count === 1 ? operations[0] : { kind: "batch", operations };
     }
+    case "move_asset":
     case "move_pumpkin":
-      return { kind: "move_pumpkin", id: target(), ...position() };
+      return {
+        kind: d.action as "move_asset" | "move_pumpkin",
+        id: target(),
+        ...position(),
+      };
+    case "resize_asset":
     case "resize_pumpkin":
-      return { kind: "resize_pumpkin", id: target(), scale: scale() };
+      return {
+        kind: d.action as "resize_asset" | "resize_pumpkin",
+        id: target(),
+        scale: scale(),
+      };
+    case "remove_asset":
     case "remove_pumpkin":
-      return { kind: "remove_pumpkin", id: target() };
+      return {
+        kind: d.action as "remove_asset" | "remove_pumpkin",
+        id: target(),
+      };
     case "set_tint":
       if (!Object.hasOwn(TINTS, d.tint))
         throw new Error("Choose warm, orange, blue, or green light.");
@@ -510,7 +569,7 @@ export function decisionOperation(
       return { kind: d.action };
     default:
       throw new Error(
-        "Try adding, moving, resizing, or removing a pumpkin, changing the light, undo, or redo.",
+        "Try adding, moving, resizing, or removing an asset, changing the light, undo, or redo.",
       );
   }
 }

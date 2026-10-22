@@ -64,3 +64,20 @@ Kiln save, one-step undo/redo, and unchanged player position, device, and shader
 Counts come from the request text; the action definition accepts a group as one
 action. See [the receipt](pumpkin-group-regression.json) and
 [the resulting editor](five-huge-pumpkins.png). The full editor check also passed.
+
+## Expanded asset catalog
+
+Six original procedural props join pumpkins: ghosts, gravestones, coffins, candles,
+crates, and cauldrons. The shared catalog drives the picker, validation, rendering,
+and the Rust service’s fifth Choice question (asset kind).
+
+[The browser receipt](assets-receipt.json) records real UI edits and real Jev
+requests for every new kind, a three-ghost group and one-step undo, unsupported
+asset rejection, unchanged player/device/shader, and Kiln OPFS save/reopen.
+Those six text edits took 151.6–202.2 ms in this run; the group took 152 ms.
+The [gallery](assets-gallery.png) comes from a separate isolated warm-light check
+that also passed manual editing and save/reopen.
+
+Validation: 44 Kiln library tests, 12 project/protocol tests, TypeScript check,
+production build, and all three browser scripts. Existing pumpkin scenes and
+legacy command names remain accepted. Startup controls now wait for scene restore.

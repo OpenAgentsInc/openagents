@@ -52,11 +52,13 @@
           <span class="kiln-mark">K</span>
         </div>
         <p class="intro">
-          Place a pumpkin, change the light, or describe one change. Keep
-          walking as you build.
+          Place a ghost, candle, or other prop, change the light, or describe
+          one change. Keep walking as you build.
         </p>
         <section class="scene-controls" aria-label="Scene controls">
-          <label for="selected">Selected pumpkin</label
+          <label for="asset-kind">Asset to add</label
+          ><select id="asset-kind" disabled></select>
+          <label for="selected">Selected asset</label
           ><select id="selected"></select>
           <div class="position-fields">
             <label>X<input id="x" type="number" step="0.1" value="1.2" /></label
@@ -73,7 +75,7 @@
           </div>
           <div class="actions">
             <button id="add-pumpkin" class="primary" disabled>
-              Add pumpkin +</button
+              Add asset +</button
             ><button id="move-pumpkin" disabled>Move selected</button
             ><button id="resize-pumpkin" disabled>Resize</button>
             <button id="remove-pumpkin" disabled>Remove</button>
