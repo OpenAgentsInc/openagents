@@ -169,7 +169,16 @@ __device__ __forceinline__ float ceil_power(float value) {
 // takes the block's maximum magnitude (exact in any order), quantizes,
 // dequantizes, and rounds again; a nonfinite input, a scale the CPU refuses,
 // or an overflowing value gives the whole block NaN.
+__device__ float quant_lane_parts(int kind, float in, int n, uint32_t* code, uint32_t* scale_byte);
+
 __device__ float quant_lane(int kind, float in, int n) {
+    return quant_lane_parts(kind, in, n, nullptr, nullptr);
+}
+
+// As `quant_lane`, also giving the value's code and its block's scale byte
+// (#12471): an E4M3 byte for the compressed FP4 form, else a UE8M0 power of
+// two. A NaN block gives the scale byte that decodes as NaN.
+__device__ float quant_lane_parts(int kind, float in, int n, uint32_t* code, uint32_t* scale_byte) {
     const unsigned all = 0xffffffffu;
     const int lane = threadIdx.x & 31;
     const unsigned segment = n == 32 ? all : (0xffffu << (lane & 16));
@@ -189,11 +198,89 @@ __device__ float quant_lane(int kind, float in, int n) {
         scale = value > 448.0f ? CUDART_NAN_F : e4m3(encode_fp8(value));
     }
     const float q = __fdiv_rn(x, scale);
-    const float decoded = kind == kQuantFp8 ? e4m3(encode_fp8(q)) : e2m1(encode_fp4(q));
+    const uint32_t c = kind == kQuantFp8 ? encode_fp8(q) : encode_fp4(q);
+    const float decoded = kind == kQuantFp8 ? e4m3(c) : e2m1(c);
     const float y = bf16_round(__fmul_rn(decoded, scale));
     // The CPU refuses a block whose dequantized values overflow.
     const bool overflow = (__ballot_sync(all, !isfinite(y)) & segment) != 0u;
-    return (!finite || isnan(scale) || overflow) ? CUDART_NAN_F : y;
+    const bool bad = !finite || isnan(scale) || overflow;
+    if (code != nullptr) {
+        *code = c;
+        if (kind == kQuantCompressedFp4) {
+            *scale_byte = bad ? 0x7fu : encode_fp8(scale);
+        } else {
+            *scale_byte = bad ? 0xffu : (__float_as_uint(scale) >> 23) & 0xffu;
+        }
+    }
+    return bad ? CUDART_NAN_F : y;
+}
+
+// Packed KV rows (#12471): codes, then one scale byte per block.
+//   ring        FP8 E4M3 codes [width], UE8M0 per 32  -> width + width / 32
+//   compressed  FP4 E2M1 pairs [width / 2], E4M3 per 16 -> width / 2 + width / 16
+//   index key   FP4 E2M1 pairs [width / 2], UE8M0 per 32 -> width / 2 + width / 32
+// A row reads back as the BF16 words the unpacked store writes.
+__host__ __device__ __forceinline__ long long packed_row_bytes(int kind, int width) {
+    if (kind == kQuantFp8) {
+        return width + width / 32;
+    }
+    return width / 2 + width / (kind == kQuantCompressedFp4 ? 16 : 32);
+}
+
+__device__ __forceinline__ uint16_t packed_word(int kind, const uint8_t* row, int width, int i) {
+    float value;
+    if (kind == kQuantFp8) {
+        const uint32_t s = row[width + i / 32];
+        if (s == 0xffu) {
+            return bf16_bits(CUDART_NAN_F);
+        }
+        value = __fmul_rn(e4m3(row[i]), __uint_as_float(s << 23));
+    } else {
+        const uint32_t byte = row[i / 2];
+        const uint32_t c = i % 2 == 0 ? byte & 15u : byte >> 4;
+        const uint32_t s = row[width / 2 + i / (kind == kQuantCompressedFp4 ? 16 : 32)];
+        float scale;
+        if (kind == kQuantCompressedFp4) {
+            if (s == 0x7fu) {
+                return bf16_bits(CUDART_NAN_F);
+            }
+            scale = e4m3(s);
+        } else {
+            if (s == 0xffu) {
+                return bf16_bits(CUDART_NAN_F);
+            }
+            scale = __uint_as_float(s << 23);
+        }
+        value = __fmul_rn(e2m1(c), scale);
+    }
+    return bf16_bits(bf16_round(value));
+}
+
+// Stores one lane's quantized value into a packed row: the lanes of a warp
+// hold consecutive values, so FP4 pairs combine through a shuffle and the
+// first lane of each block writes its scale. Every lane of the warp calls it.
+__device__ __forceinline__ void store_packed(
+    int kind, uint8_t* row, int width, int i, uint32_t code, uint32_t scale_byte) {
+    const int lane = threadIdx.x & 31;
+    if (kind == kQuantFp8) {
+        if (i < width) {
+            row[i] = static_cast<uint8_t>(code);
+            if (lane % 32 == 0) {
+                row[width + i / 32] = static_cast<uint8_t>(scale_byte);
+            }
+        }
+        return;
+    }
+    const uint32_t odd = __shfl_down_sync(0xffffffffu, code, 1);
+    const int block = kind == kQuantCompressedFp4 ? 16 : 32;
+    if (i < width) {
+        if (i % 2 == 0) {
+            row[i / 2] = static_cast<uint8_t>((code & 15u) | ((odd & 15u) << 4));
+        }
+        if (i % block == 0) {
+            row[width / 2 + i / block] = static_cast<uint8_t>(scale_byte);
+        }
+    }
 }
 
 __host__ __device__ __forceinline__ int quant_block_width(int kind) {
@@ -315,7 +402,8 @@ __global__ void v41_window_store_kernel(
     uint16_t* ring,
     const int* positions,
     int ring_rows,
-    int width) {
+    int width,
+    int packed) {
     const int token = blockIdx.x;
     const int position = positions[token];
     if (position < 0) {
@@ -324,9 +412,15 @@ __global__ void v41_window_store_kernel(
     const long long slot = position % ring_rows;
     for (int base = 0; base < width; base += blockDim.x) {
         const int i = base + threadIdx.x;
-        const float v = quant_lane(
-            kQuantFp8, i < width ? input[static_cast<long long>(token) * width + i] : 0.0f, 32);
-        if (i < width) {
+        uint32_t code = 0;
+        uint32_t scale = 0;
+        const float v = quant_lane_parts(
+            kQuantFp8, i < width ? input[static_cast<long long>(token) * width + i] : 0.0f, 32,
+            &code, &scale);
+        if (packed) {
+            store_packed(kQuantFp8, reinterpret_cast<uint8_t*>(ring) +
+                         slot * packed_row_bytes(kQuantFp8, width), width, i, code, scale);
+        } else if (i < width) {
             ring[slot * width + i] = bf16_bits(v);
         }
     }
@@ -717,7 +811,8 @@ __global__ void v41_compressed_store_kernel(
     int head_dim,
     int index_dim,
     int rope_dim,
-    float epsilon) {
+    float epsilon,
+    int packed) {
     extern __shared__ float shared[];
     float* latent = shared;
     float* key = latent + head_dim;
@@ -767,15 +862,27 @@ __global__ void v41_compressed_store_kernel(
     __syncthreads();
     for (int base = 0; base < index_dim; base += blockDim.x) {
         const int i = base + threadIdx.x;
-        const float v = quant_lane(kQuantIndexFp4, i < index_dim ? key[i] : 0.0f, 32);
-        if (i < index_dim) {
+        uint32_t code = 0;
+        uint32_t scale = 0;
+        const float v =
+            quant_lane_parts(kQuantIndexFp4, i < index_dim ? key[i] : 0.0f, 32, &code, &scale);
+        if (packed) {
+            store_packed(kQuantIndexFp4, reinterpret_cast<uint8_t*>(index_keys) +
+                         row * packed_row_bytes(kQuantIndexFp4, index_dim), index_dim, i, code, scale);
+        } else if (i < index_dim) {
             index_keys[static_cast<long long>(row) * index_dim + i] = bf16_bits(v);
         }
     }
     for (int base = 0; base < head_dim; base += blockDim.x) {
         const int i = base + threadIdx.x;
-        const float v = quant_lane(kQuantCompressedFp4, i < head_dim ? latent[i] : 0.0f, 16);
-        if (i < head_dim) {
+        uint32_t code = 0;
+        uint32_t scale = 0;
+        const float v = quant_lane_parts(
+            kQuantCompressedFp4, i < head_dim ? latent[i] : 0.0f, 16, &code, &scale);
+        if (packed) {
+            store_packed(kQuantCompressedFp4, reinterpret_cast<uint8_t*>(kv) +
+                         row * packed_row_bytes(kQuantCompressedFp4, head_dim), head_dim, i, code, scale);
+        } else if (i < head_dim) {
             kv[static_cast<long long>(row) * head_dim + i] = bf16_bits(v);
         }
     }
@@ -805,7 +912,8 @@ __global__ void __launch_bounds__(kScoreWarps * 32) v41_index_scores_kernel(
     int ratio,
     int heads,
     int dim,
-    float scale) {
+    float scale,
+    int packed) {
     extern __shared__ float shared[];
     const int padded = dim + 1;
     float* q = shared;
@@ -823,7 +931,15 @@ __global__ void __launch_bounds__(kScoreWarps * 32) v41_index_scores_kernel(
     const long long first = static_cast<long long>(blockIdx.x) * kScoreKeys;
     for (int i = threadIdx.x; i < kScoreKeys * dim; i += blockDim.x) {
         const long long key = first + i / dim;
-        k[i] = key < visible && key < capacity ? keys[key * dim + i % dim] : 0;
+        if (key < visible && key < capacity) {
+            k[i] = packed ? packed_word(kQuantIndexFp4,
+                                        reinterpret_cast<const uint8_t*>(keys) +
+                                            key * packed_row_bytes(kQuantIndexFp4, dim),
+                                        dim, i % dim)
+                          : keys[key * dim + i % dim];
+        } else {
+            k[i] = 0;
+        }
     }
     __syncthreads();
     const int warp = threadIdx.x / 32;
@@ -1120,6 +1236,30 @@ __device__ __forceinline__ const uint16_t* slot_row(
     return compressed + static_cast<long long>(-(code + 2)) * head_dim;
 }
 
+// Eight BF16 words of a slot's row from column `col` (a multiple of 8), as a
+// 16-byte vector; zeros for a masked slot. Packed rows (#12471) decode to
+// the same words.
+__device__ __forceinline__ uint4 slot_words(
+    int code, int col, const uint16_t* ring, const uint16_t* compressed, int head_dim, int packed) {
+    if (code == -1) {
+        return make_uint4(0, 0, 0, 0);
+    }
+    if (!packed) {
+        return *reinterpret_cast<const uint4*>(slot_row(code, ring, compressed, head_dim) + col);
+    }
+    const int kind = code >= 0 ? kQuantFp8 : kQuantCompressedFp4;
+    const long long r = code >= 0 ? code : -(code + 2);
+    const uint8_t* row = reinterpret_cast<const uint8_t*>(code >= 0 ? ring : compressed) +
+                         r * packed_row_bytes(kind, head_dim);
+    uint32_t w[4];
+#pragma unroll
+    for (int h = 0; h < 4; ++h) {
+        w[h] = static_cast<uint32_t>(packed_word(kind, row, head_dim, col + 2 * h)) |
+               (static_cast<uint32_t>(packed_word(kind, row, head_dim, col + 2 * h + 1)) << 16);
+    }
+    return make_uint4(w[0], w[1], w[2], w[3]);
+}
+
 // Dimensions one attention block writes.
 constexpr int kAttentionSplit = 128;
 // BF16 words per row of a staged value tile (128 dimensions plus padding,
@@ -1170,7 +1310,8 @@ __global__ void __launch_bounds__(kAttentionThreads) v41_sparse_attention_kernel
     int window,
     int ratio,
     int top_k,
-    float scale) {
+    float scale,
+    int packed) {
     constexpr int G = kAttentionHeads;
     extern __shared__ float shared[];
     __shared__ __align__(16) uint16_t values[64 * kValueStride];
@@ -1239,18 +1380,17 @@ __global__ void __launch_bounds__(kAttentionThreads) v41_sparse_attention_kernel
                              ? (slots - 1 - static_cast<int>(threadIdx.x)) / kAttentionThreads + 1
                              : 0;
         const int items = mine * tiles;
-        auto row_of_item = [&](int item) -> const uint4* {
+        auto load_item = [&](int item, uint4* out) {
             const int slot = threadIdx.x + (item / tiles) * kAttentionThreads;
-            const uint16_t* row = slot_row(codes[slot], ring, compressed, head_dim);
-            return row != nullptr ? reinterpret_cast<const uint4*>(row) + (item % tiles) * 8 : nullptr;
+#pragma unroll
+            for (int k = 0; k < 8; ++k) {
+                out[k] = slot_words(codes[slot], (item % tiles) * 64 + k * 8, ring, compressed,
+                                    head_dim, packed);
+            }
         };
         uint4 next[8];
         if (items > 0) {
-            const uint4* row = row_of_item(0);
-#pragma unroll
-            for (int k = 0; k < 8; ++k) {
-                next[k] = row != nullptr ? row[k] : make_uint4(0, 0, 0, 0);
-            }
+            load_item(0, next);
         }
         float dot[G];
 #pragma unroll
@@ -1264,11 +1404,7 @@ __global__ void __launch_bounds__(kAttentionThreads) v41_sparse_attention_kernel
                 current[k] = next[k];
             }
             if (item + 1 < items) {
-                const uint4* row = row_of_item(item + 1);
-#pragma unroll
-                for (int k = 0; k < 8; ++k) {
-                    next[k] = row != nullptr ? row[k] : make_uint4(0, 0, 0, 0);
-                }
+                load_item(item + 1, next);
             }
             const int tile = item % tiles;
 #pragma unroll
@@ -1306,10 +1442,8 @@ __global__ void __launch_bounds__(kAttentionThreads) v41_sparse_attention_kernel
             const int e = threadIdx.x + k * kAttentionThreads;
             const int r = e / (kAttentionSplit / 8);
             const int c = (e % (kAttentionSplit / 8)) * 8;
-            const uint16_t* row =
-                chunk + r < slots ? slot_row(codes[chunk + r], ring, compressed, head_dim) : nullptr;
-            staged[k] = row != nullptr && dims + c < head_dim
-                            ? *reinterpret_cast<const uint4*>(row + dims + c)
+            staged[k] = chunk + r < slots && dims + c < head_dim
+                            ? slot_words(codes[chunk + r], dims + c, ring, compressed, head_dim, packed)
                             : make_uint4(0, 0, 0, 0);
         }
     };
@@ -1464,10 +1598,11 @@ extern "C" int psionic_v41_window_store(
     int tokens,
     int ring_rows,
     int width,
+    int packed,
     void* stream) {
     v41_window_store_kernel<<<tokens, 128, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const float*>(input), static_cast<uint16_t*>(ring),
-        static_cast<const int*>(positions), ring_rows, width);
+        static_cast<const int*>(positions), ring_rows, width, packed);
     return static_cast<int>(cudaGetLastError());
 }
 
@@ -1557,6 +1692,7 @@ extern "C" int psionic_v41_compressed_store(
     int index_dim,
     int rope_dim,
     float epsilon,
+    int packed,
     void* stream) {
     const size_t shared = (static_cast<size_t>(head_dim) + index_dim + 1) * sizeof(float);
     v41_compressed_store_kernel<<<tokens, 128, shared, static_cast<cudaStream_t>(stream)>>>(
@@ -1564,7 +1700,7 @@ extern "C" int psionic_v41_compressed_store(
         static_cast<const float*>(k_norm), static_cast<const float*>(frequencies),
         static_cast<const int*>(positions), static_cast<uint16_t*>(kv),
         static_cast<uint16_t*>(index_keys), ratio, capacity, head_dim, index_dim, rope_dim,
-        epsilon);
+        epsilon, packed);
     return static_cast<int>(cudaGetLastError());
 }
 
@@ -1581,6 +1717,7 @@ extern "C" int psionic_v41_index_scores(
     int heads,
     int dim,
     float scale,
+    int packed,
     void* stream) {
     const size_t shared = (static_cast<size_t>(heads) * (dim + 1) + heads) * sizeof(float) +
                           static_cast<size_t>(kScoreKeys) * dim * sizeof(uint16_t);
@@ -1588,7 +1725,7 @@ extern "C" int psionic_v41_index_scores(
                               shared, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const float*>(query), static_cast<const float*>(weights),
         static_cast<const uint16_t*>(keys), static_cast<const int*>(positions),
-        static_cast<float*>(scores), score_stride, capacity, ratio, heads, dim, scale);
+        static_cast<float*>(scores), score_stride, capacity, ratio, heads, dim, scale, packed);
     return static_cast<int>(cudaGetLastError());
 }
 
@@ -1653,6 +1790,7 @@ extern "C" int psionic_v41_sparse_attention(
     int ratio,
     int top_k,
     float scale,
+    int packed,
     void* stream) {
     const int max_slots = window + (ratio > 0 ? top_k : 0);
     const size_t shared =
@@ -1665,7 +1803,7 @@ extern "C" int psionic_v41_sparse_attention(
         static_cast<const float*>(query), static_cast<const float*>(sinks),
         static_cast<const uint16_t*>(ring), ring_rows, static_cast<const uint16_t*>(compressed),
         capacity, static_cast<const int*>(indices), index_stride, static_cast<const int*>(positions),
-        static_cast<float*>(out), heads, head_dim, window, ratio, top_k, scale);
+        static_cast<float*>(out), heads, head_dim, window, ratio, top_k, scale, packed);
     return static_cast<int>(cudaGetLastError());
 }
 

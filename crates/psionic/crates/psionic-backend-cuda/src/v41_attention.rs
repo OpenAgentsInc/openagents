@@ -102,6 +102,7 @@ unsafe extern "C" {
         tokens: i32,
         ring_rows: i32,
         width: i32,
+        packed: i32,
         stream: *mut c_void,
     ) -> i32;
     fn psionic_v41_dense(
@@ -180,6 +181,7 @@ unsafe extern "C" {
         index_dim: i32,
         rope_dim: i32,
         epsilon: f32,
+        packed: i32,
         stream: *mut c_void,
     ) -> i32;
     fn psionic_v41_index_scores(
@@ -195,6 +197,7 @@ unsafe extern "C" {
         heads: i32,
         dim: i32,
         scale: f32,
+        packed: i32,
         stream: *mut c_void,
     ) -> i32;
     fn psionic_v41_select(
@@ -245,6 +248,7 @@ unsafe extern "C" {
         ratio: i32,
         top_k: i32,
         scale: f32,
+        packed: i32,
         stream: *mut c_void,
     ) -> i32;
 }
@@ -373,6 +377,39 @@ impl V41LayerOwners {
             index: last(&V41_INDEX_SOURCES),
             candidates: (layer >= 20).then_some(20),
         })
+    }
+}
+
+/// Bytes of one window-ring row of `width` values: BF16 words, or packed
+/// FP8 codes and a power-of-two scale per 32 (#12471).
+#[must_use]
+pub const fn v41_ring_row_bytes(width: usize, packed: bool) -> usize {
+    if packed {
+        width + width / 32
+    } else {
+        width * 2
+    }
+}
+
+/// Bytes of one compressed KV row: BF16 words, or packed FP4 codes and an
+/// E4M3 scale per 16 (#12471).
+#[must_use]
+pub const fn v41_kv_row_bytes(head_dim: usize, packed: bool) -> usize {
+    if packed {
+        head_dim / 2 + head_dim / 16
+    } else {
+        head_dim * 2
+    }
+}
+
+/// Bytes of one index key: BF16 words, or packed FP4 codes and a
+/// power-of-two scale per 32 (#12471).
+#[must_use]
+pub const fn v41_key_row_bytes(index_dim: usize, packed: bool) -> usize {
+    if packed {
+        index_dim / 2 + index_dim / 32
+    } else {
+        index_dim * 2
     }
 }
 
@@ -765,7 +802,13 @@ impl CudaSubmission {
         let positions = steps.pointer()?;
         let width = geometry.head_dim;
         let input = span(input, 0, steps.tokens * width, 4, "window KV")?;
-        let ring_ptr = span(ring.buffer, 0, ring.rows * width, 2, "window ring")?;
+        let ring_ptr = span(
+            ring.buffer,
+            0,
+            ring.rows * v41_ring_row_bytes(width, self.v41_packed_kv),
+            1,
+            "window ring",
+        )?;
         // SAFETY: every extent was checked against its buffer above; the
         // device writes only rows below `ring.rows`.
         let code = unsafe {
@@ -776,6 +819,7 @@ impl CudaSubmission {
                 int(steps.tokens, "tokens")?,
                 int(ring.rows, "ring rows")?,
                 int(width, "width")?,
+                i32::from(self.v41_packed_kv),
                 self.platform.raw_stream()?,
             )
         };
@@ -1012,15 +1056,15 @@ impl CudaSubmission {
         let kv = span(
             source.kv,
             0,
-            source.capacity * g.head_dim,
-            2,
+            source.capacity * v41_kv_row_bytes(g.head_dim, self.v41_packed_kv),
+            1,
             "compressed KV",
         )?;
         let keys = span(
             source.index_keys,
             0,
-            source.capacity * g.index_dim,
-            2,
+            source.capacity * v41_key_row_bytes(g.index_dim, self.v41_packed_kv),
+            1,
             "index keys",
         )?;
         // SAFETY: every extent was checked against its buffer above; the
@@ -1041,6 +1085,7 @@ impl CudaSubmission {
                 int(g.index_dim, "index dim")?,
                 int(g.rope_dim, "RoPE dim")?,
                 g.norm_epsilon,
+                i32::from(self.v41_packed_kv),
                 self.platform.raw_stream()?,
             )
         };
@@ -1083,8 +1128,8 @@ impl CudaSubmission {
         let keys = span(
             source.index_keys,
             0,
-            source.capacity * g.index_dim,
-            2,
+            source.capacity * v41_key_row_bytes(g.index_dim, self.v41_packed_kv),
+            1,
             "index keys",
         )?;
         let out = span(
@@ -1111,6 +1156,7 @@ impl CudaSubmission {
                 int(g.index_heads, "index heads")?,
                 int(g.index_dim, "index dim")?,
                 g.index_scale(),
+                i32::from(self.v41_packed_kv),
                 self.platform.raw_stream()?,
             )
         };
@@ -1323,7 +1369,13 @@ impl CudaSubmission {
         let width = g.heads * g.head_dim;
         let query = span(query, 0, t * width, 4, "query")?;
         let sinks = span(sinks, 0, g.heads, 4, "sinks")?;
-        let ring_ptr = span(ring.buffer, 0, ring.rows * g.head_dim, 2, "window ring")?;
+        let ring_ptr = span(
+            ring.buffer,
+            0,
+            ring.rows * v41_ring_row_bytes(g.head_dim, self.v41_packed_kv),
+            1,
+            "window ring",
+        )?;
         let out = span(out, 0, t * width, 4, "attention output")?;
         let (kv, capacity, indices, index_stride, ratio) = match compressed {
             Some(c) => {
@@ -1334,7 +1386,14 @@ impl CudaSubmission {
                     )));
                 }
                 (
-                    span(c.kv, 0, c.capacity * g.head_dim, 2, "compressed KV")?.cast_const(),
+                    span(
+                        c.kv,
+                        0,
+                        c.capacity * v41_kv_row_bytes(g.head_dim, self.v41_packed_kv),
+                        1,
+                        "compressed KV",
+                    )?
+                    .cast_const(),
                     c.capacity,
                     span(c.indices.buffer, 0, t * c.indices.stride, 4, "indices")?.cast_const(),
                     c.indices.stride,
@@ -1366,6 +1425,7 @@ impl CudaSubmission {
                 int(ratio, "ratio")?,
                 int(g.index_top_k, "top k")?,
                 g.attention_scale(),
+                i32::from(self.v41_packed_kv),
                 self.platform.raw_stream()?,
             )
         };

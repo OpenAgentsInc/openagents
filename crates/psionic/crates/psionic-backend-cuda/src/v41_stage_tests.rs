@@ -1389,6 +1389,7 @@ fn load_cached_stage(
             engram_rows: None,
             batched_prefill: false,
             fast_reductions: false,
+            packed_kv: false,
         },
     )?)
 }
@@ -1618,6 +1619,7 @@ fn staged_engram_rows_equal_pinned_tables() -> TestResult {
             engram_rows: Some(rows.clone()),
             batched_prefill: false,
             fast_reductions: false,
+            packed_kv: false,
         },
         V41StageOptions {
             expert_cache: Some(V41ExpertCacheSetup {
@@ -1627,6 +1629,7 @@ fn staged_engram_rows_equal_pinned_tables() -> TestResult {
             engram_rows: Some(rows.clone()),
             batched_prefill: false,
             fast_reductions: false,
+            packed_kv: false,
         },
     ];
     let (prompt, decode) = tokens();
@@ -1824,6 +1827,7 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
                     host: Some(experts),
                 }),
                 fast_reductions: false,
+                packed_kv: false,
             },
         ),
         (
@@ -1831,6 +1835,23 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
             false,
             V41StageOptions {
                 batched_prefill: true,
+                ..V41StageOptions::default()
+            },
+        ),
+        (
+            "packed KV rows (#12471)",
+            false,
+            V41StageOptions {
+                packed_kv: true,
+                ..V41StageOptions::default()
+            },
+        ),
+        (
+            "batched, packed KV rows (#12471)",
+            false,
+            V41StageOptions {
+                batched_prefill: true,
+                packed_kv: true,
                 ..V41StageOptions::default()
             },
         ),
@@ -2079,6 +2100,7 @@ fn consumer_q_tiers_agree() -> TestResult {
                 engram_rows: Some(rows.clone()),
                 batched_prefill: batched,
                 fast_reductions: false,
+                packed_kv: false,
             }
         };
         let (prompt, decode) = tokens();
@@ -2204,6 +2226,7 @@ fn consumer_q_tiers_agree() -> TestResult {
         false,
         V41StageOptions {
             fast_reductions: true,
+            packed_kv: false,
             ..V41StageOptions::default()
         },
     );

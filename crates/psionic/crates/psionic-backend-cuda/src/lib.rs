@@ -1165,6 +1165,10 @@ pub struct CudaSubmission {
     /// V4.1's dense products and RMS norms launch their warp-parallel
     /// kernels. Off unless a lossy stage turns it on.
     pub(crate) v41_fast_reductions: bool,
+    /// V4.1's KV rows in their packed form (#12471): the window ring as FP8
+    /// codes with a power-of-two scale per 32, compressed rows and index
+    /// keys as FP4 codes with a scale per 16 or 32. Off by default.
+    pub(crate) v41_packed_kv: bool,
     retained_buffers: Vec<CudaBuffer>,
     scratch_buffers: Vec<CudaSubmissionScratchBuffer>,
     platform: platform::PlatformSubmission,
@@ -1176,6 +1180,12 @@ impl CudaSubmission {
     /// profile only (#12465).
     pub fn set_v41_fast_reductions(&mut self, on: bool) {
         self.v41_fast_reductions = on;
+    }
+
+    /// Reads and writes V4.1's window ring, compressed KV, and index keys
+    /// in their packed form (#12471); they read back as the same BF16 words.
+    pub fn set_v41_packed_kv(&mut self, on: bool) {
+        self.v41_packed_kv = on;
     }
 
     fn allocate_scratch_buffer(
@@ -4753,6 +4763,7 @@ impl CudaBackend {
             encoded_operations: 0,
             capturing: false,
             v41_fast_reductions: false,
+            v41_packed_kv: false,
             retained_buffers: Vec::new(),
             scratch_buffers: Vec::new(),
             platform: backend.platform.begin_submission()?,
@@ -4768,6 +4779,7 @@ impl CudaBackend {
             encoded_operations: 0,
             capturing: true,
             v41_fast_reductions: false,
+            v41_packed_kv: false,
             retained_buffers: Vec::new(),
             scratch_buffers: Vec::new(),
             platform: backend.platform.begin_capture_submission()?,
@@ -6624,6 +6636,7 @@ impl AvailableCudaBackend {
             encoded_operations: 0,
             capturing: false,
             v41_fast_reductions: false,
+            v41_packed_kv: false,
             retained_buffers: Vec::new(),
             scratch_buffers: Vec::new(),
             platform: self.platform.begin_submission()?,

@@ -38,7 +38,8 @@ use crate::clef_prefill::{int, span};
 use crate::v41_attention::{
     V41AttentionGeometry, V41CacheQuant, V41Candidates, V41Compressed, V41Compressor, V41Dense,
     V41DenseFormat, V41IndexKeyWeights, V41LayerOwners, V41Ring, V41RopeConfig, V41RopeTable,
-    V41Rows, V41Source, V41Steps, v41_compress_ratio, v41_rope_frequencies,
+    V41Rows, V41Source, V41Steps, v41_compress_ratio, v41_key_row_bytes, v41_kv_row_bytes,
+    v41_ring_row_bytes, v41_rope_frequencies,
 };
 use crate::v41_engram_rows::{EngramStaging, V41EngramHasher, V41EngramRows};
 use crate::v41_expert_cache::{
@@ -589,6 +590,11 @@ pub struct V41StageOptions {
     /// the CPU path's order: lossy, for the `consumer-q` profile only
     /// (#12465). A stage refuses it without `consumer-q` experts.
     pub fast_reductions: bool,
+    /// Keep the window ring, compressed KV, and index keys packed (#12471):
+    /// about a third of the BF16 bytes per position, reading back as the
+    /// same BF16 words. A stage that hands KV rows to another stage, or
+    /// observes them, refuses it.
+    pub packed_kv: bool,
 }
 
 impl std::fmt::Debug for V41StageOptions {
@@ -598,6 +604,7 @@ impl std::fmt::Debug for V41StageOptions {
             .field("engram_rows", &self.engram_rows.is_some())
             .field("batched_prefill", &self.batched_prefill)
             .field("fast_reductions", &self.fast_reductions)
+            .field("packed_kv", &self.packed_kv)
             .finish()
     }
 }
@@ -1115,6 +1122,8 @@ pub struct V41Stage {
     /// layer-major prefill the window plus a step's tokens less one, so a
     /// whole step's rows fit (#12464).
     ring_rows: usize,
+    /// The KV rows are packed (#12471).
+    packed_kv: bool,
     config: V41StageConfig,
     layers: Vec<LayerWeights>,
     sources: BTreeMap<usize, SourceState>,
@@ -1444,7 +1453,15 @@ impl V41Stage {
             engram_rows,
             batched_prefill,
             fast_reductions,
+            packed_kv,
         } = options;
+        // Packed rows stay inside one stage: a stage boundary carries BF16
+        // rows (#12471).
+        if packed_kv && config.layers != (0..40) {
+            return Err(invalid(
+                "packed KV rows need the whole model in one stage (layers 0-40)",
+            ));
+        }
         if fast_reductions
             && cache
                 .as_ref()
@@ -1706,7 +1723,7 @@ impl V41Stage {
                     loader.packed(&name("ffn.shared_experts.w3"), fp8, shape.expert_width, h)?,
                 ],
                 engram,
-                ring: loader.state_zeros(ring_rows * g.head_dim * 2)?,
+                ring: loader.state_zeros(ring_rows * v41_ring_row_bytes(g.head_dim, packed_kv))?,
                 mixes_attn: loader.state_zeros(4 * shape.hc.mixes())?,
                 mixes_ffn: loader.state_zeros(4 * shape.hc.mixes())?,
                 observed,
@@ -1773,8 +1790,9 @@ impl V41Stage {
                 sources.insert(
                     owner,
                     SourceState {
-                        kv: loader.zeros(capacity * g.head_dim * 2)?,
-                        index_keys: loader.zeros(capacity * g.index_dim * 2)?,
+                        kv: loader.zeros(capacity * v41_kv_row_bytes(g.head_dim, packed_kv))?,
+                        index_keys: loader
+                            .zeros(capacity * v41_key_row_bytes(g.index_dim, packed_kv))?,
                         capacity,
                         ratio,
                         state,
@@ -2025,6 +2043,7 @@ impl V41Stage {
             prefill,
             fast_reductions,
             ring_rows,
+            packed_kv,
             config,
             layers,
             sources,
@@ -3324,6 +3343,7 @@ impl V41Stage {
             if graph.is_none() {
                 let mut submission = backend.begin_captured_submission()?;
                 submission.set_v41_fast_reductions(self.fast_reductions);
+                submission.set_v41_packed_kv(self.packed_kv);
                 self.record_body(&mut submission, observe)?;
                 let (_, exec) = submission.commit_captured(crate::CudaCommandWait::Completed)?;
                 stats.graph_captures += 1;
@@ -3352,6 +3372,7 @@ impl V41Stage {
             if self.tail.is_none() {
                 let mut submission = backend.begin_captured_submission()?;
                 submission.set_v41_fast_reductions(self.fast_reductions);
+                submission.set_v41_packed_kv(self.packed_kv);
                 self.record_tail(&mut submission)?;
                 let (_, exec) = submission.commit_captured(crate::CudaCommandWait::Completed)?;
                 stats.graph_captures += 1;

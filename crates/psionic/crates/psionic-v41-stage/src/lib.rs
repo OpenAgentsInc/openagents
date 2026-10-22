@@ -259,11 +259,15 @@ pub struct HostTiers {
     /// `--fast-reductions`: warp-parallel dense products and RMS norms,
     /// whose sums leave the CPU path's order; `consumer-q` only.
     pub fast_reductions: bool,
+    /// `--kv packed`: keep the KV rows packed (#12471); bit-equal answers,
+    /// a whole-model stage only.
+    pub packed_kv: bool,
 }
 
 /// The flags [`HostTiers::from_args`] reads, each with a value except
 /// `--frozen-cache`.
-pub const HOST_TIER_FLAGS: [&str; 7] = [
+pub const HOST_TIER_FLAGS: [&str; 8] = [
+    "--kv",
     "--consumer-q",
     "--expert-cache",
     "--miss-lane",
@@ -319,7 +323,13 @@ impl HostTiers {
             Some("layer-major") => true,
             Some(other) => return refuse(format!("--prefill {other} is not token or layer-major")),
         };
+        let packed_kv = match value("--kv").as_deref() {
+            None | Some("bf16") => false,
+            Some("packed") => true,
+            Some(other) => return refuse(format!("--kv {other} is not bf16 or packed")),
+        };
         Ok(Self {
+            packed_kv,
             consumer_q: value("--consumer-q").map(PathBuf::from),
             fast_reductions: args.iter().any(|a| a == "--fast-reductions"),
             batched_prefill,
@@ -367,6 +377,7 @@ impl HostTiers {
     #[must_use]
     pub fn any(&self) -> bool {
         self.expert_cache.is_some()
+            || self.packed_kv
             || self.engram_file
             || self.batched_prefill
             || self.consumer_q.is_some()
@@ -1125,7 +1136,7 @@ impl Options {
                 | "--listen" | "--events" | "--data-listen" | "--data-advertise" | "--record"
                 | "--control" | "--max-input-tokens" | "--max-step-tokens" | "--prefill-chunk"
                 | "--experts" | "--wire" | "--expert-cache" | "--miss-lane"
-                | "--expert-profile" | "--host-threads" | "--engram" | "--prefill"
+                | "--expert-profile" | "--host-threads" | "--engram" | "--prefill" | "--kv"
                 | "--consumer-q" => {
                     let Some(value) = args.get(i + 1) else {
                         return refuse(format!("{flag} needs a value"));

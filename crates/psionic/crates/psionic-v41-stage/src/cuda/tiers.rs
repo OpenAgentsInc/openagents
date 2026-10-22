@@ -332,6 +332,7 @@ pub fn stage_options(
     let mut options = V41StageOptions {
         batched_prefill: tiers.batched_prefill,
         fast_reductions: tiers.fast_reductions,
+        packed_kv: tiers.packed_kv,
         ..V41StageOptions::default()
     };
     let engram_layers: Vec<usize> = [1_usize, 14]
