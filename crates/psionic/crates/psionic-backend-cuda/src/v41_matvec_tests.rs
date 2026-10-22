@@ -1376,3 +1376,87 @@ fn consumer_q_kernels_equal_the_host_model() -> TestResult {
     }
     Ok(())
 }
+
+/// Times the routed-expert product at V4.1's shape: 2,048 tokens, top-6 of
+/// 384 FP4 experts, gate rows 2,048 by 4,096 columns (#12464). Run with
+/// `--ignored --nocapture`.
+#[test]
+#[ignore = "timing on a CUDA device"]
+fn batched_expert_product_timing() -> TestResult {
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let mut rng = Rng(5);
+    let words = |v: &[i32]| v.iter().flat_map(|i| i.to_le_bytes()).collect::<Vec<u8>>();
+    let format = V41MatvecFormat::Fp4E2M1Row32;
+    let (rows, cols, stack, tokens, top_k) = (2048, 4096, 384, 2048, 6);
+    let one = synthetic(&mut rng, format, rows, cols);
+    let weights = backend.byte_buffer(&one.weights.repeat(stack))?;
+    let scales = backend.byte_buffer(&one.scales.repeat(stack))?;
+    let matrix = V41Matrix {
+        format,
+        weights: &weights,
+        scales: &scales,
+        rows,
+        cols,
+        matrices: stack,
+    };
+    let ids: Vec<i32> = (0..tokens * top_k)
+        .map(|_| (rng.next() % stack as u64) as i32)
+        .collect();
+    let x: Vec<f32> = (0..cols * tokens).map(|_| rng.activation()).collect();
+    let input = quantize_on_device(&mut backend, &x, tokens)?;
+    let count = ids.len();
+    let max_tiles = V41Batch::max_tiles(count, stack);
+    let id_buffer = backend.byte_buffer(&words(&ids))?;
+    let scratch = backend.byte_buffer(&vec![0; 8 * (stack + 1)])?;
+    let entries = backend.byte_buffer(&vec![0; 4 * count])?;
+    let tiles = backend.byte_buffer(&vec![0; 16 * max_tiles])?;
+    let tile_count = backend.byte_buffer(&[0; 4])?;
+    let out = f32_buffer(&mut backend, rows * count)?;
+    for round in 0..3 {
+        let start = std::time::Instant::now();
+        let mut s = backend.begin_submission()?;
+        s.v41_group_entries(
+            &id_buffer,
+            count,
+            stack,
+            &scratch,
+            &entries,
+            &tiles,
+            &tile_count,
+        )?;
+        s.v41_block_matmul(
+            format,
+            Some(matrix),
+            None,
+            rows,
+            cols,
+            stack,
+            V41Batch {
+                entries: &entries,
+                tiles: &tiles,
+                tile_count: &tile_count,
+                max_tiles,
+                count,
+                top_k,
+                shared_input: true,
+            },
+            &input.codes,
+            &input.scales,
+            tokens,
+            &out,
+            count,
+            V41Output::F32,
+        )?;
+        s.commit(CudaCommandWait::Completed)?;
+        let seconds = start.elapsed().as_secs_f64();
+        let fma = (count * rows * cols) as f64;
+        eprintln!(
+            "TIMING round {round}: {:.1} ms, {:.2} TFMA/s",
+            seconds * 1e3,
+            fma / seconds / 1e12
+        );
+    }
+    Ok(())
+}

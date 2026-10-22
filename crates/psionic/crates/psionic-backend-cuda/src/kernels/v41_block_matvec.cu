@@ -400,6 +400,9 @@ __global__ void __launch_bounds__(kThreads) v41_block_matmul_kernel(
     __shared__ float stage_scale[kTileRows][kTileStage];
     __shared__ int act_rows[kTileRows];
     __shared__ int out_rows[kTileRows];
+    // Each warp's scaled block sums, so lane t adds tile row t's in block
+    // order instead of every lane shuffling every row's.
+    __shared__ float sums[kWarps][kTileRows][32];
     if (static_cast<int>(blockIdx.y) >= *tile_count) {
         return;  // uniform: a tile past the list
     }
@@ -444,11 +447,8 @@ __global__ void __launch_bounds__(kThreads) v41_block_matmul_kernel(
     const float d_row = kQ && valid && row < rows
         ? *reinterpret_cast<const float*>(scale_base + place * matrix_scale_bytes + rows_at + 4LL * row)
         : 0.0f;
-    float acc[kTileRows];
-#pragma unroll
-    for (int t = 0; t < kTileRows; ++t) {
-        acc[t] = 0.0f;
-    }
+    // Lane t holds tile row t's running sum.
+    float acc = 0.0f;
     for (int base = 0; base < blocks; base += kTileStage) {
         const int count = min(kTileStage, blocks - base);
         __syncthreads();
@@ -494,21 +494,22 @@ __global__ void __launch_bounds__(kThreads) v41_block_matmul_kernel(
         }
 #pragma unroll
         for (int t = 0; t < kTileRows; ++t) {
-            if (t < n) {
-                for (int i = 0; i < count; ++i) {
-                    acc[t] = __fadd_rn(acc[t], __shfl_sync(0xffffffffu, scaled[t], i));
-                }
+            sums[warp][t][lane] = scaled[t];
+        }
+        __syncwarp();
+        if (lane < n) {
+            for (int i = 0; i < count; ++i) {
+                acc = __fadd_rn(acc, sums[warp][lane][i]);
             }
         }
+        __syncwarp();
     }
-    if (row < rows && lane == 0) {
-        for (int t = 0; t < n; ++t) {
-            float value = valid ? acc[t] : CUDART_NAN_F;
-            if (round_bf16) {
-                value = bf16_round(value);
-            }
-            out[static_cast<long long>(out_rows[t]) * rows + row] = value;
+    if (row < rows && lane < n) {
+        float value = valid ? acc : CUDART_NAN_F;
+        if (round_bf16) {
+            value = bf16_round(value);
         }
+        out[static_cast<long long>(out_rows[lane]) * rows + row] = value;
     }
 }
 
