@@ -12,8 +12,12 @@
 //!     [--miss-lane auto|bus|host] [--expert-profile FILE] [--host-threads N]
 //!     [--frozen-cache] [--engram host|file] [--prefill token|layer-major]
 //!     [--save-expert-profile FILE]
-//!     [--repeat-answer N]
+//!     [--repeat-answer N] [--prompts-jsonl FILE] [--answers-out FILE]
 //! ```
+//!
+//! `--prompts-jsonl` answers one prompt per line, each `{"messages": [...]}`
+//! or, for exact token ids, `{"prompt_ids": [...], "mode": "chat"}`;
+//! `--answers-out` writes every round's full answer record.
 //!
 //! `--split 0-40 --gpus 0` with `--experts file --expert-cache auto
 //! --engram file` runs the whole model on one GPU (#12463, #12466): the
@@ -113,6 +117,8 @@ pub struct ChainOptions {
     /// and write each stage's to `PREFIX.layers-A-B` (`--calibrate-out`,
     /// #12465).
     pub calibrate_out: Option<PathBuf>,
+    /// Write every round's full answer record here (`--answers-out`).
+    pub answers_out: Option<PathBuf>,
     /// Exact prompt token ids, instead of encoding `--prompt`
     /// (`--prompt-ids`, a JSON list).
     pub prompt_ids: Option<Vec<u32>>,
@@ -223,12 +229,19 @@ impl ChainOptions {
                     .map(|l| {
                         serde_json::from_str::<Value>(l)
                             .map_err(|e| Refused(format!("{file}: {e}")))
-                            .map(|v| v.get("messages").cloned().unwrap_or(v))
+                            .map(|v| {
+                                if v.get("prompt_ids").is_some() {
+                                    v
+                                } else {
+                                    v.get("messages").cloned().unwrap_or(v)
+                                }
+                            })
                     })
                     .collect::<Result<_, _>>()?,
                 None => Vec::new(),
             },
             calibrate_out: flag(args, "--calibrate-out").map(PathBuf::from),
+            answers_out: flag(args, "--answers-out").map(PathBuf::from),
             prompt_ids: flag(args, "--prompt-ids")
                 .map(|v| serde_json::from_str(v).map_err(|e| Refused(format!("--prompt-ids: {e}"))))
                 .transpose()?,
@@ -719,6 +732,16 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
     let (vocabulary, eos, pad) = text_side(&options.weights)?;
     let tokenizer = vocabulary.tokenizer();
     let mode = options.mode;
+    // A `--prompts-jsonl` line may carry exact `prompt_ids` and its own
+    // `mode` (the G2 suite's cases, #12465).
+    let round_modes: Vec<PromptMode> = options
+        .prompts
+        .iter()
+        .map(|p| match p.get("prompt_ids") {
+            Some(_) => PromptMode::of(p),
+            None => Ok(mode),
+        })
+        .collect::<Result<_, _>>()?;
     let round_prompts: Vec<Vec<u32>> = if let Some(ids) = &options.prompt_ids {
         vec![ids.clone()]
     } else if options.prompts.is_empty() {
@@ -727,7 +750,11 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
         options
             .prompts
             .iter()
-            .map(|p| vocabulary.encode(Some(p), pad, mode))
+            .map(|p| match p.get("prompt_ids") {
+                Some(ids) => serde_json::from_value(ids.clone())
+                    .map_err(|e| Refused(format!("prompt_ids: {e}"))),
+                None => vocabulary.encode(Some(p), pad, mode),
+            })
             .collect::<Result<_, _>>()?
     };
     let prompt_ids = round_prompts[0].clone();
@@ -841,6 +868,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
         };
         for round in 0..rounds {
             let prompt_ids = round_prompts[round % round_prompts.len()].clone();
+            let mode = round_modes.get(round).copied().unwrap_or(mode);
             let last = threads.len() - 1;
             let digest = manifest.digest();
             let mut parser = AnswerParser::new(std::sync::Arc::clone(&tokenizer), eos, mode);
@@ -1023,6 +1051,13 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                 "stage_step_ms": stage_ms.iter().map(|m| summary(m)).collect::<Vec<_>>(),
                 "largest_message_bytes_into_stage": hop_bytes,
             }));
+        }
+        if let Some(path) = &options.answers_out {
+            std::fs::write(
+                path,
+                serde_json::to_vec_pretty(&answers).map_err(|e| Refused(e.to_string()))?,
+            )
+            .map_err(|e| Refused(format!("can't write {}: {e}", path.display())))?;
         }
         let answer = match answers.len() {
             0 => Value::Null,
