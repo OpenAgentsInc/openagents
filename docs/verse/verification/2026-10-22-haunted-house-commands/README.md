@@ -3,6 +3,7 @@
 - **Scope:** the scene-command proof in #12502, following the owner's request to replace the slow coding loop with constrained scene actions. Raw WGSL draft/undo integration remains on that broader issue.
 - **Implementation and creator flow:** [`apps/haunt-preview`](../../../../apps/haunt-preview/README.md).
 - **Setup:** Apple M5 Max, 128 GiB RAM, macOS 26.4, Chrome 155.0.8059.85, Apple `metal-3` adapter, 834 × 665 render pixels at device scale 1.
+- **Ready view:** [a real Jev edit through the UI button](ready.png).
 - **Evidence:** [`receipt.json`](receipt.json), [12 real decision examples](decision-cases.json), and [the house still running after the deliberate timeout](preview.png). Browser keys, API credentials, and preview connection tokens are omitted.
 
 ## Measured results
@@ -13,12 +14,13 @@
 | Jev: add a big pumpkin to my left | 1 | 311.5 ms through frame application and Kiln save; 300.5 ms SDK call |
 | Jev: move the selected pumpkin to (1, 2) | 1 | 279.4 ms total; 256.9 ms SDK call |
 | Jev: make the lantern blue | 1 | 226.8 ms total; 215.6 ms SDK call |
+| Additional UI-button smoke after rebasing | 1 | 753 ms total, rounded UI display; no separate SDK timing retained |
 | Deliberately stalled browser request | 1 fixture | Stopped after 2,703 ms; the scene kept rendering |
 | Shader regression: save to submitted frame | 30 | 13.0 ms median; 21.0 ms p95 |
 | Shader regression: save to screenshot-observed pixels | 30 | 201 ms median; 234 ms p95 |
 
 The live model reported `jev-1.14.0`. Each text request contains four Choice
-questions in one SDK exchange. These three end-to-end calls are individual
+questions in one SDK exchange. These end-to-end calls are individual
 observations, not a model latency percentile. Frame timing ends after
 `queue.submit`; it is not a hardware presentation timestamp.
 

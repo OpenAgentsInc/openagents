@@ -1009,5 +1009,17 @@
     "Delayed/stalled requests are browser fixtures, separate from real Jev calls.",
     "Resource counters count demo-owned objects; one temporary GPU buffer serves bounded PNG readback.",
     "The saved screenshot shows continued rendering after the deliberate timeout fixture."
-  ]
+  ],
+  "uiButtonSmoke": {
+    "afterRebase": true,
+    "totalRoundedMs": 753,
+    "checks": [
+      "empty numeric input rejected without adding a pumpkin",
+      "direct add button applied and saved",
+      "real Jev request through the visible button applied and saved",
+      "no browser errors"
+    ],
+    "modelMs": null,
+    "note": "Rounded total from the UI; a separate SDK timing was not retained for this additional call."
+  }
 }
