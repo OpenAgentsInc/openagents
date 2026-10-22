@@ -1,0 +1,66 @@
+{
+  "name": "kiki-shop",
+  "notes": "Beat 4: the shop's keeper, a digital twin, talking with a visitor and her dog across the counter. Vision.",
+  "scene": {
+    "kind": "astral",
+    "set": {
+      "world": "street",
+      "layer": "world",
+      "walkers": [
+        {
+          "route": [
+            [
+              6.05,
+              8.3
+            ],
+            [
+              6.25,
+              8.3
+            ]
+          ],
+          "speed": 0.04,
+          "start": 0.0
+        }
+      ]
+    }
+  },
+  "duration": 4.5,
+  "subframes": 8,
+  "grade": {
+    "vignette": 0.12
+  },
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          2.0,
+          2.3,
+          12.6
+        ],
+        "target": [
+          8.4,
+          1.5,
+          7.8
+        ],
+        "focal_mm": 32,
+        "ease": "linear"
+      },
+      {
+        "t": 4.5,
+        "eye": [
+          2.9,
+          2.15,
+          11.8
+        ],
+        "target": [
+          8.4,
+          1.5,
+          7.9
+        ],
+        "focal_mm": 32,
+        "ease": "out"
+      }
+    ]
+  }
+}

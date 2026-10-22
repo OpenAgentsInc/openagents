@@ -5,6 +5,8 @@
   come together. Building a world by voice doesn't exist yet, so the trailer
   shows this only under a CONCEPT tag. concept-voice.mjs films it frame by
   frame by setting window.filmTime (seconds) and calling window.draw().
+  `?v=haunt` is the second cut's screen: the Haunted House with a werewolf
+  that howls at you, said a little faster.
 -->
 <html lang="en">
 <head>
@@ -46,12 +48,7 @@
 <div class="feed">
   <div class="bubble me" id="me"><div class="who">YOU</div><span id="said"></span></div>
   <div class="bubble agent" id="agent"><div class="who">AGENT</div><span id="reply"></span>
-    <ul class="steps" id="steps">
-      <li><b>✓</b>Ground and paths</li>
-      <li><b>✓</b>Old oaks, lit low</li>
-      <li><b>✓</b>A ring of standing stones</li>
-      <li><b>✓</b>A druid to meet you</li>
-    </ul>
+    <ul class="steps" id="steps"></ul>
     <div class="world"><canvas id="world" width="900" height="360"></canvas></div>
     <div class="enter" id="enter">Step inside</div>
   </div>
@@ -62,8 +59,29 @@
     <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
 <div class="hint" id="hint">Hold to talk</div>
 <script>
-const SAID = "Make me a quiet forest grove, with standing stones and a druid.";
-const REPLY = "On it. Building your grove.";
+const VARIANTS = {
+  grove: {
+    said: "Make me a quiet forest grove, with standing stones and a druid.",
+    reply: "On it. Building your grove.",
+    steps: ["Ground and paths", "Old oaks, lit low", "A ring of standing stones", "A druid to meet you"],
+    word: 0.27, answer: 3.8, marks: [5.0, 5.7, 6.4, 7.1], enter: 7.9,
+  },
+  haunt: {
+    said: "Make me a haunted house, with a werewolf that howls at you.",
+    reply: "On it. Building your haunted house.",
+    steps: ["A crooked house, windows lit", "Jack-o'-lanterns up the path", "Gnarled trees and tombstones", "A werewolf that howls at you"],
+    word: 0.22, answer: 3.1, marks: [4.1, 4.6, 5.1, 5.6], enter: 6.3,
+  },
+};
+const V = VARIANTS[new URLSearchParams(location.search).get("v")] || VARIANTS.grove;
+const SAID = V.said;
+const REPLY = V.reply;
+for (const step of V.steps) {
+  const li = document.createElement("li");
+  li.innerHTML = "<b>✓</b>";
+  li.append(step);
+  document.getElementById("steps").append(li);
+}
 const ease = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
 const show = (el, a) => { el.style.opacity = a; el.style.transform = `translateY(${(1 - a) * 8}px)`; };
 const wave = document.getElementById("wave");
@@ -73,6 +91,7 @@ const ctx = document.getElementById("world").getContext("2d");
 // The little world takes shape as a line drawing: ground grid, then trees,
 // then the stone ring, then the druid, each as its step ticks.
 function world(t, p) {
+  if (V === VARIANTS.haunt) return haunt(t, p);
   const w = 900, h = 360;
   ctx.fillStyle = "#050606"; ctx.fillRect(0, 0, w, h);
   ctx.strokeStyle = "rgba(236,238,241,0.85)"; ctx.lineWidth = 2;
@@ -99,12 +118,47 @@ function world(t, p) {
   ctx.globalAlpha = 1;
 }
 
+// The haunted house as a line drawing: the house and its tower, then the
+// lanterns, then the trees and stones, then the werewolf.
+function haunt(t, p) {
+  const w = 900, h = 360, hor = 120, cx = w / 2;
+  ctx.fillStyle = "#050606"; ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = "rgba(236,238,241,0.85)"; ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.6;
+  for (let i = -12; i <= 12; i++) { ctx.beginPath(); ctx.moveTo(cx + i * 18, hor); ctx.lineTo(cx + i * 120, h); ctx.stroke(); }
+  for (let k = 0; k < 8; k++) { const y = hor + Math.pow(k / 7, 2) * (h - hor); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+  ctx.globalAlpha = ease(p[0]);
+  const base = 250;
+  ctx.strokeRect(cx - 120, base - 110, 240, 110);
+  ctx.beginPath(); ctx.moveTo(cx - 135, base - 110); ctx.lineTo(cx, base - 175); ctx.lineTo(cx + 135, base - 110); ctx.stroke();
+  ctx.strokeRect(cx - 190, base - 190, 66, 190);
+  ctx.beginPath(); ctx.moveTo(cx - 200, base - 190); ctx.lineTo(cx - 157, base - 255); ctx.lineTo(cx - 114, base - 190); ctx.stroke();
+  ctx.strokeRect(cx - 18, base - 52, 36, 52);
+  for (const [x, y] of [[-80, -90], [55, -90], [-80, -45], [55, -45]]) ctx.strokeRect(cx + x, base + y, 26, 30);
+  ctx.globalAlpha = ease(p[1]);
+  for (const [x, y, r] of [[-60, 290, 12], [60, 300, 13], [-95, 330, 15], [100, 335, 15]]) {
+    ctx.beginPath(); ctx.ellipse(cx + x, y, r * 1.25, r, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.globalAlpha = ease(p[2]);
+  for (const [x, s] of [[110, 1], [790, 1.1], [690, 0.7]]) {
+    const b = 300, top = b - 170 * s;
+    ctx.beginPath(); ctx.moveTo(x, b); ctx.lineTo(x, top); ctx.lineTo(x - 40 * s, top - 30 * s); ctx.moveTo(x, top + 40 * s); ctx.lineTo(x + 45 * s, top + 5 * s); ctx.stroke();
+  }
+  for (const x of [200, 235, 270]) { ctx.beginPath(); ctx.moveTo(x, 330); ctx.lineTo(x, 300); ctx.arc(x + 11, 300, 11, Math.PI, 0); ctx.lineTo(x + 22, 330); ctx.stroke(); }
+  ctx.globalAlpha = ease(p[3]);
+  const wx = cx + 175, wy = 330;
+  ctx.beginPath(); ctx.moveTo(wx - 14, wy); ctx.lineTo(wx - 8, wy - 50); ctx.lineTo(wx + 8, wy - 50); ctx.lineTo(wx + 14, wy); ctx.stroke();
+  ctx.strokeRect(wx - 16, wy - 92, 32, 44);
+  ctx.beginPath(); ctx.moveTo(wx - 12, wy - 92); ctx.lineTo(wx - 6, wy - 118); ctx.lineTo(wx + 2, wy - 108); ctx.lineTo(wx + 10, wy - 122); ctx.lineTo(wx + 14, wy - 92); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
 window.draw = function () {
   const t = window.filmTime || 0;
-  // 0.3-3.4 s: speaking. The words appear as they're said.
-  const talking = t > 0.3 && t < 3.6;
+  // From 0.3 s: speaking. The words appear as they're said.
   const words = SAID.split(" ");
-  const n = Math.max(0, Math.min(words.length, Math.floor((t - 0.4) / 0.27) + 1));
+  const talking = t > 0.3 && t < 0.6 + words.length * V.word;
+  const n = Math.max(0, Math.min(words.length, Math.floor((t - 0.4) / V.word) + 1));
   document.getElementById("said").textContent = t > 0.4 ? words.slice(0, n).join(" ") : "";
   show(document.getElementById("me"), ease((t - 0.35) / 0.3));
   [...wave.children].forEach((bar, i) => {
@@ -117,17 +171,17 @@ window.draw = function () {
   ring.style.opacity = talking ? (1 - pulse) * 0.7 : 0;
   ring.style.transform = `scale(${1 + pulse * 0.45})`;
   document.getElementById("hint").textContent = talking ? "Listening" : "Hold to talk";
-  // 3.8 s on: the agent answers, and the world's parts tick off.
-  show(document.getElementById("agent"), ease((t - 3.8) / 0.35));
-  const r = Math.max(0, Math.min(REPLY.length, Math.floor((t - 4.0) / 0.035)));
+  // Then the agent answers, and the world's parts tick off.
+  show(document.getElementById("agent"), ease((t - V.answer) / 0.35));
+  const r = Math.max(0, Math.min(REPLY.length, Math.floor((t - V.answer - 0.2) / 0.035)));
   document.getElementById("reply").textContent = REPLY.slice(0, r);
-  const marks = [5.0, 5.7, 6.4, 7.1];
+  const marks = V.marks;
   const items = document.querySelectorAll("#steps li");
   items.forEach((li, i) => { li.style.opacity = ease((t - marks[i]) / 0.25); });
   world(t, marks.map((m) => (t - m + 0.3) / 0.6));
-  show(document.getElementById("enter"), ease((t - 7.9) / 0.3));
+  show(document.getElementById("enter"), ease((t - V.enter) / 0.3));
   const enter = document.getElementById("enter");
-  enter.style.transform += t > 8.6 && t < 8.85 ? " scale(0.94)" : "";
+  enter.style.transform += t > V.enter + 0.7 && t < V.enter + 0.95 ? " scale(0.94)" : "";
 };
 window.draw();
 </script>

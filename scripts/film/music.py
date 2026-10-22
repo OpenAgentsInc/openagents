@@ -9,7 +9,15 @@ land on a beat. Sections:
   last 8 s    an impact and a resolving chord under the end card
 Whooshes sit on the product cuts given by --cuts.
 
+`--mood warm` (the Verse trailer's second cut, #12458) is cinematic and
+warm, a little magical, and rises to the reveal instead: a soft swell and
+bells instead of the opening impact, pads over D-A-Bm-G that open up as the
+film goes, a bell arpeggio from 8 s, a soft pulse from 20 s that fills out
+from 32 s, a riser into `--reveal`, and the same impact and resolving chord
+under the end card.
+
 Usage: scripts/film/music.py OUT.wav [--seconds 42] [--cuts 12,20,27] [--end 34]
+    [--mood launch|warm] [--reveal 58]
 Writes a 48 kHz stereo WAV. scripts/film/cut.py normalizes loudness when it
 mixes the film.
 """
@@ -197,6 +205,87 @@ def score(seconds, end=None):
     return mix / np.max(np.abs(mix)) * 0.89
 
 
+WARM = [  # D - A - Bm - G, each two bars
+    ["D3", "A3", "D4", "F#4", "A4"],
+    ["A2", "E3", "A3", "C#4", "E4"],
+    ["B2", "F#3", "B3", "D4", "F#4"],
+    ["G2", "D3", "G3", "B3", "D4"],
+]
+
+
+def bell(freq, seconds=1.6):
+    """A soft struck bell: a few inharmonic partials, each fading at its own rate."""
+    t = t_axis(seconds)
+    sig = sum(np.sin(2 * np.pi * freq * k * t) * a * np.exp(-t * d)
+              for k, a, d in [(1.0, 1.0, 2.6), (2.76, 0.32, 5.5), (5.4, 0.12, 9.0)])
+    return sig * np.minimum(t / 0.002, 1)
+
+
+def lower(name):
+    return name[:-1] + str(int(name[-1]) - 1)
+
+
+def score_warm(seconds, end=None, reveal=None):
+    tr = Track(seconds)
+    end = seconds - 8.0 if end is None else end
+    reveal = end - 8.0 if reveal is None else reveal
+    grow = lambda at: float(np.clip((at - 4.0) / max(reveal - 4.0, 1.0), 0, 1))
+
+    # 0-4 s: the first chord swells in, high and soft, with three bells.
+    for j, name in enumerate(WARM[0]):
+        for d in (-0.004, 0.004):
+            tr.add(0, saw(note(name), 6.0, 900, d) * env(6.0, 2.5, 2.5), 0.03, (j - 2) * 0.25 + d * 50)
+    for at, name, pan in [(0.6, "A5", 0.3), (1.2, "F#5", -0.3), (1.8, "D5", 0.0), (3.4, "E5", 0.2)]:
+        tr.add(at, bell(note(name), 2.4), 0.09, pan)
+
+    # From 4 s: pads that open up toward the reveal, over a low root.
+    for i, at in enumerate(np.arange(4.0, end, 4.0)):
+        chord = WARM[i % 4]
+        g = grow(at)
+        for j, name in enumerate(chord):
+            for d in (-0.005, 0.005):
+                pad = saw(note(name), 4.6, 650 + 1300 * g, d) * env(4.6, 0.8, 1.2)
+                tr.add(at, pad, 0.03 + 0.016 * g, (j - 2) * 0.25 + d * 50)
+        tr.add(at, saw(note(lower(chord[0])), 4.4, 240) * env(4.4, 0.3, 1.0), 0.05 + 0.03 * g)
+
+    # From 8 s: a bell arpeggio in eighth notes, louder as the film goes.
+    for k, at in enumerate(np.arange(8.0, end, BEAT / 2)):
+        chord = WARM[int((at - 4.0) // 4) % 4]
+        f = note(chord[[2, 3, 4, 3, 2, 4, 3, 4][k % 8]]) * 2
+        accent = 1.0 if k % 2 == 0 else 0.6
+        tr.add(at, bell(f, 1.2), (0.035 + 0.035 * grow(at)) * accent, 0.4 if k % 2 else -0.4)
+
+    # A soft pulse: every other beat from 20 s, every beat from 32 s.
+    for at in np.arange(20.0, end, BEAT):
+        if at < 32.0 and round(at / BEAT) % 2:
+            continue
+        tr.add(at, kick(0.45, 95, 44), 0.22 + 0.25 * grow(at))
+        if at >= reveal:
+            tr.add(at + BEAT / 2, kick(0.25, 90, 50), 0.1)
+
+    # A riser into the reveal and a warm bloom on it; whooshes on the cuts.
+    tr.add(reveal - 4.0, swept_noise(4.0, 250, 8000) * np.linspace(0, 1, 4 * SR) ** 2.5, 0.2)
+    tr.add(reveal, impact(4.0), 0.45)
+    for j, name in enumerate(["D4", "F#4", "A4", "D5"]):
+        tr.add(reveal + 0.05 * j, bell(note(name), 3.0), 0.1, (j - 1.5) * 0.3)
+    for at in CUTS:
+        tr.add(at - 0.35, swept_noise(0.7, 600, 5000) * np.hanning(int(0.7 * SR)), 0.08)
+
+    # The end card: an impact and a resolving D major chord, fading out.
+    tr.add(end - 3.0, swept_noise(3.0, 300, 9000) * np.linspace(0, 1, 3 * SR) ** 2.5, 0.18)
+    tr.add(end, impact(6.0), 0.7)
+    tail = seconds - end
+    for j, name in enumerate(["D2", "A2", "D3", "F#3", "A3", "D4", "E4"]):
+        for d in (-0.004, 0.004):
+            tr.add(end, saw(note(name), tail, 1400, d) * env(tail, 0.08, 4.5, 1.3), 0.05, (j - 3) * 0.2 + d * 50)
+    for j, name in enumerate(["D5", "A5", "F#5"]):
+        tr.add(end + 0.4 * j, bell(note(name), 3.5), 0.08, (j - 1) * 0.4)
+
+    mix = reverb(tr.out(), seconds=3.2, wet=0.34)
+    mix = np.tanh(mix * 1.2) / np.tanh(1.2)
+    return mix / np.max(np.abs(mix)) * 0.89
+
+
 def write_wav(path, stereo):
     data = (np.clip(stereo, -1, 1) * 32767).astype("<i2")
     with wave.open(path, "wb") as w:
@@ -212,9 +301,14 @@ def main():
     ap.add_argument("--seconds", type=float, default=42.0)
     ap.add_argument("--cuts", default="12,20,27", help="seconds of the product cuts, comma-separated")
     ap.add_argument("--end", type=float, help="when the end card starts (default: 8 s before the end)")
+    ap.add_argument("--mood", choices=["launch", "warm"], default="launch")
+    ap.add_argument("--reveal", type=float, help="warm: where the music rises to (default: 8 s before the end card)")
     args = ap.parse_args()
     CUTS.extend(float(c) for c in args.cuts.split(",") if c)
-    write_wav(args.out, score(args.seconds, args.end))
+    if args.mood == "warm":
+        write_wav(args.out, score_warm(args.seconds, args.end, args.reveal))
+    else:
+        write_wav(args.out, score(args.seconds, args.end))
     print(args.out)
 
 

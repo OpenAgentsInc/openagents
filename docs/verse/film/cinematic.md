@@ -63,3 +63,25 @@ the render to `~/work/film-out/cut/verse-trailer.mp4`.
 
 Building a world by voice, shops, publishing a world, and earning from one
 aren't built yet. Their shots carry a CONCEPT tag or say so on a title card.
+
+### Second cut: Kiki's storyboard
+
+[`verse-trailer-kiki.json`](verse-trailer-kiki.json), 72 s, in Video Lab as
+`verse-trailer-kiki`, follows Kiki's six beats, voiceover lines, and timings
+literally. It's a vision trailer: the Grid as the monochrome layer that
+connects everything, and each world as its own colorful layer at the same
+coordinates. Its media goes under `~/work/film-out/verse-trailer-kiki/`, and
+the render to `~/work/film-out/cut/verse-trailer-kiki.mp4`.
+
+| Part | Made by |
+|---|---|
+| The astral layer: a world as the Grid draws it, then lit and colored at the same camera | `film_shot`'s `astral` scene (`examples/film/astral.rs`): `layer` `grid` or `world`, and a `reveal` that spreads the world over the Grid from a point |
+| Ghost agents | `walkers` in an astral scene: see-through wireframes on the Grid, solid characters in the world |
+| The Haunted House, the Camping Adventure, Blue Rush's main street, home plots, and the galaxy | the `haunt`, `camp`, `street` (with the greco kit's models and their footprints), `plots`, and `galaxy` worlds (`verse-shots/kiki-*.json`) |
+| The phone | `concept-voice.mjs --variant haunt`, then `studio/shots/iphone-voice-kiki.json` |
+| VISION tags | `tag-overlay.py --tag VISION` |
+| Music | `music.py OUT --seconds 72 --cuts 8,20,32,45,58 --end 66 --reveal 58 --mood warm` |
+
+Every astral shot is a concept made in our engine and carries a VISION tag.
+The Grid with its walkers, the Everglade, The Ice Cream Man, and the ritual
+chamber are real and untagged.

@@ -12,7 +12,9 @@
 //! the LayerTree balance diagram (`layer_tree`),
 //! the OpenAgents app's bare world drawn from its pinned engine pack as the
 //! apps draw it, with its Everglade portal standing, and the Draconia
-//! peacock guardian (`peacock`, `docs/verse/draconia/shots.md`).
+//! peacock guardian (`peacock`, `docs/verse/draconia/shots.md`), and the
+//! Verse trailer's vision sets (`astral`): the Grid and a rendered world at
+//! the same coordinates, home plots, and the galaxy of worlds.
 //!
 //! Each output frame is the mean of `subframes` renders spread over the
 //! shutter (`shutter`, the fraction of the frame interval it is open, 0.5
@@ -33,6 +35,8 @@
 //! Run it with `VERSE_QUALITY=high` for the high tier; the world scenes
 //! keep temporal anti-aliasing on unless `VERSE_TAA=0`.
 
+#[path = "film/astral.rs"]
+mod astral;
 #[path = "film/courtyard.rs"]
 mod courtyard;
 #[path = "film/draconia.rs"]
@@ -236,6 +240,9 @@ enum SceneSpec {
     Courtyard { shot: courtyard::Shot },
     /// The Draconia night sky, phase D3: one of its shots.
     Night { shot: night::Shot },
+    /// A vision set for the Verse trailer: the astral layer's Grid and
+    /// world at one camera, and the galaxy (see `film/astral.rs`).
+    Astral { set: astral::Spec },
     Peacock {
         part: peacock::Part,
         #[serde(default)]
@@ -363,6 +370,12 @@ enum Stage {
     Night {
         renderer: Box<verse::render::Offscreen>,
         set: Box<night::Set>,
+        ui: verse::ui::UiBatch,
+    },
+    /// A vision set, on the same stage.
+    Astral {
+        renderer: Box<verse::render::Offscreen>,
+        set: Box<astral::Set>,
         ui: verse::ui::UiBatch,
     },
     /// The Draconia courtyard, on the same stage.
@@ -644,6 +657,22 @@ impl Stage {
                     ui: verse::ui::UiBatch::default(),
                 })
             }
+            SceneSpec::Astral { set } => {
+                let set = astral::Set::new(set.clone())?;
+                let renderer = verse::render::Offscreen::new(
+                    w,
+                    h,
+                    &set.world(),
+                    &verse::ui::Atlas::new(16.0),
+                    zones::atmosphere(zones::ZoneId::Plaza),
+                )?;
+                eprintln!("quality tier: {}", renderer.quality().tier.name());
+                Ok(Self::Astral {
+                    renderer: Box::new(renderer),
+                    set: Box::new(set),
+                    ui: verse::ui::UiBatch::default(),
+                })
+            }
             SceneSpec::Courtyard { shot: which } => {
                 let pack = load_everglade()?;
                 let set = courtyard::Set::new(*which, &pack)?;
@@ -753,6 +782,7 @@ impl Stage {
             Self::Peacock { set, .. } => set.advance(dt, t),
             Self::Courtyard { set, .. } => set.advance(dt, t),
             Self::Night { set, .. } => set.advance(dt, t),
+            Self::Astral { set, .. } => set.advance(dt, t),
             Self::Imported { scene, .. } => match scene {
                 Imported::Ritual { game, start, .. } => game.time = (*start + t).max(0.0),
                 Imported::Crypt { fight, walk } => {
@@ -892,6 +922,11 @@ impl Stage {
                 renderer.render(View { view_proj, eye }, &set.frame(), ui)
             }
             Self::Night { renderer, set, ui } => {
+                let (view_proj, eye) =
+                    camera_rig::lens_view_projection(&camera, aspect, shot.near, shot.far, lens);
+                renderer.render(View { view_proj, eye }, &set.frame(), ui)
+            }
+            Self::Astral { renderer, set, ui } => {
                 let (view_proj, eye) =
                     camera_rig::lens_view_projection(&camera, aspect, shot.near, shot.far, lens);
                 renderer.render(View { view_proj, eye }, &set.frame(), ui)

@@ -1,0 +1,82 @@
+{
+  "name": "kiki-galaxy",
+  "notes": "Beat 6: pull back from her plot on the OpenAgents planet, the Grid wrapped round a sphere, to the galaxy: Blue Rush Studios' planet with its main street, an Earth twin, brand planets, threads of light between them, and stars. Vision.",
+  "scene": {
+    "kind": "astral",
+    "set": {
+      "world": "galaxy",
+      "layer": "world"
+    }
+  },
+  "duration": 14.0,
+  "subframes": 8,
+  "grade": {
+    "vignette": 0.12
+  },
+  "rig": {
+    "keys": [
+      {
+        "t": 0.0,
+        "eye": [
+          5.0,
+          4.5,
+          11.0
+        ],
+        "target": [
+          0.0,
+          1.2,
+          0.0
+        ],
+        "focal_mm": 30,
+        "ease": "linear"
+      },
+      {
+        "t": 3.0,
+        "eye": [
+          24.0,
+          22.0,
+          58.0
+        ],
+        "target": [
+          0.0,
+          -10.0,
+          0.0
+        ],
+        "focal_mm": 30,
+        "ease": "linear"
+      },
+      {
+        "t": 8.0,
+        "eye": [
+          70.0,
+          150.0,
+          500.0
+        ],
+        "target": [
+          40.0,
+          -30.0,
+          -240.0
+        ],
+        "focal_mm": 30,
+        "ease": "linear"
+      },
+      {
+        "t": 14.0,
+        "eye": [
+          95.0,
+          190.0,
+          660.0
+        ],
+        "target": [
+          40.0,
+          -30.0,
+          -260.0
+        ],
+        "focal_mm": 30,
+        "ease": "out"
+      }
+    ]
+  },
+  "near": 0.3,
+  "far": 9000.0
+}

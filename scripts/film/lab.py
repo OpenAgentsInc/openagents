@@ -2075,6 +2075,12 @@ def do_import(author: str = "import") -> list[str]:
                "The trailer's first cut (#12458)", author,
                aliases=["verse trailer", "the verse trailer", "trailer"], source=str(trailer))
         done.append("verse-trailer")
+    kiki = REPO / "docs/verse/film/verse-trailer-kiki.json"
+    if kiki.exists() and not (doc_dir("verse-trailer-kiki") / "doc.json").exists():
+        create("verse-trailer-kiki", "cut.v1", "The Verse trailer, Kiki's storyboard", json.loads(kiki.read_text()),
+               "The trailer's second cut, beat by beat from Kiki's brief (#12458)", author,
+               aliases=["kiki trailer", "verse trailer kiki", "the second cut"], source=str(kiki))
+        done.append("verse-trailer-kiki")
     for path in sorted((REPO / "docs/verse/film").glob("*-scene.json")):
         doc = path.stem
         if (doc_dir(doc) / "doc.json").exists():

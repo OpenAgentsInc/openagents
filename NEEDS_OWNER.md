@@ -3276,3 +3276,10 @@ confirm or change:
    publishing, and earning carry CONCEPT tags. Replace them with real
    footage as each one ships. Game Lab's chat edits and Kiln weren't filmed:
    both need a signed-in account (Kiln also needs its runner).
+
+## Review the Verse trailer's second cut (#12458) (2026-10-22)
+
+The review render is `~/work/film-out/cut/verse-trailer-kiki.mp4` (72 s), in
+Video Lab as `verse-trailer-kiki`. It follows Kiki's storyboard beat by beat
+with her lines. Show it to Kiki, and send a Verse logo to replace the THE
+VERSE wordmark.
