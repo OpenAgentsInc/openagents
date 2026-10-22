@@ -209,8 +209,14 @@ pub const ACCOUNT_LINKS: &str = "#home-account a";
 /// Game Lab's sign-in check and its card, for the panel.
 pub const GAME_SESSION: &str = "/labs/game/session";
 pub const GAME_CARD: &str = "/labs/game/card.json";
-/// Where a signed-out visitor signs in from Game Lab, coming back to it.
+/// Where a signed-out visitor signs in from Game Lab, coming back to it,
+/// when the page can't keep them in the world.
 pub const GAME_SIGN_IN: &str = "/login?return_to=%2F%3Flab%3Dgame";
+/// The page function that signs in in a popup, keeping the Grid loaded
+/// (#12480). It takes the full-page sign-in to fall back to.
+pub const SIGN_IN_CALL: &str = "homeSignIn";
+/// Counts the popup sign-ins that finished on this page.
+pub const SIGNED_IN_GLOBAL: &str = "openagentsSignIns";
 /// Kiln's page, opened in a new tab, and as the Grid embeds it in the
 /// panel's frame: its run on a translucent panel over the world (#12441).
 pub const KILN_PAGE: &str = "/admin/kiln/";
@@ -352,6 +358,19 @@ pub fn game_panel(w: f32, h: f32) -> Rect {
             w: width,
             h: (h - 230.).max(200.),
         }
+    }
+}
+
+/// Game Lab's sign-in prompt: centered over the Grid, so the action it
+/// asks for sits where the eye is (#12480). `h` is the most it may take.
+pub fn sign_in_panel(w: f32, h: f32) -> Rect {
+    let width = 380f32.min(w - 24.);
+    let height = 160f32.min(h - 24.);
+    Rect {
+        x: ((w - width) / 2.).round(),
+        y: ((h - height) / 2.).round(),
+        w: width,
+        h: height,
     }
 }
 
@@ -850,6 +869,12 @@ mod tests {
             beside_panel(Layout::new(390., 844.), 390., 844.),
             Layout::new(390., 844.)
         );
+        for (w, h) in [(1440., 900.), (390., 844.)] {
+            let prompt = sign_in_panel(w, h);
+            assert!(prompt.x >= 12. && prompt.x + prompt.w <= w - 12.);
+            assert!(((prompt.x + prompt.w / 2.) - w / 2.).abs() <= 1.);
+            assert!(((prompt.y + prompt.h / 2.) - h / 2.).abs() <= 1.);
+        }
         let kiln = kiln_panel(390., 844.);
         assert!(kiln.w > 0. && kiln.bottom() <= 844.);
     }

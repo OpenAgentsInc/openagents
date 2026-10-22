@@ -59,3 +59,31 @@ if (new URLSearchParams(location.search).get('lab') === 'game') {
   });
   openWhenReady.observe(world, {attributes: true, attributeFilter: ['class']});
 }
+// Sign-in keeps the visitor in the world (#12480): GitHub opens in a
+// popup, which ends on `/auth/done` and tells this page; the Grid stays
+// loaded and Game Lab opens signed in where they stand. With popups
+// blocked, the full-page sign-in comes back to `fallback`'s address.
+globalThis.openagentsSignIns = 0;
+globalThis.homeSignIn = fallback => {
+  const popup = open('/auth/popup', 'openagents-sign-in', 'popup,width=520,height=720');
+  if (!popup) location.assign(fallback);
+};
+let signedInAt = -1e9;
+const signedIn = data => {
+  if (!data || data.type !== 'openagents-signed-in') return;
+  // The popup says it on both paths; count it once.
+  if (performance.now() - signedInAt < 2000) return;
+  signedInAt = performance.now();
+  globalThis.openagentsSignIns += 1;
+  account();
+};
+addEventListener('message', event => {
+  if (event.origin === location.origin) signedIn(event.data);
+});
+try {
+  new BroadcastChannel('openagents-sign-in').onmessage = event => signedIn(event.data);
+} catch (_) {}
+document.getElementById('game-lab-signin').addEventListener('click', event => {
+  event.preventDefault();
+  homeSignIn(event.currentTarget.getAttribute('href'));
+});

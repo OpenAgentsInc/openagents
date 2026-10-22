@@ -317,6 +317,7 @@ pub fn render_login(
         },
     );
     let content = html! {
+        (back_to_grid(return_to))
         (card)
         p.oa-auth-fine-print {
             "By continuing, you agree to our " a href="/terms" { "Terms" }
@@ -324,6 +325,7 @@ pub fn render_login(
         }
     };
     let mut page = UiPage::new(title)
+        .head(back_script())
         .path(path)
         .status(status)
         .account(Account::Unknown)
@@ -333,6 +335,130 @@ pub fn render_login(
         page = page.link_preview(preview);
     }
     protect(page.respond(headers))
+}
+
+/// Where a sign-in in a popup ends (#12480): a page that tells the page
+/// that opened it, then closes.
+pub(crate) const POPUP_DONE: &str = "/signed-in";
+/// The script `/login`, `/signup`, and [`POPUP_DONE`] run.
+pub(crate) const BACK_SCRIPT: &str = "/auth/back.js";
+
+/// "Back to the Grid" over the sign-in card (#12480): back where the
+/// person came from, or to the Grid. In a sign-in popup it closes the
+/// popup instead, and Escape does the same ([`BACK_JS`]).
+pub(crate) fn back_to_grid(return_to: &str) -> maud::Markup {
+    let href = if return_to == POPUP_DONE {
+        "/"
+    } else {
+        return_to
+    };
+    let popup = return_to == POPUP_DONE;
+    html! {
+        p.oa-auth-fine-print {
+            a href=(href) data-auth-back data-auth-popup[popup] { "\u{2190} Back to the Grid" }
+        }
+    }
+}
+
+pub(crate) fn back_script() -> maud::Markup {
+    html! { script src=(BACK_SCRIPT) defer {} }
+}
+
+/// Escape follows "Back to the Grid"; in a sign-in popup that link
+/// closes the popup. On [`POPUP_DONE`], the page tells its opener the
+/// person signed in and closes, or goes to the Grid when it isn't a popup.
+pub(crate) const BACK_JS: &str = r"(function () {
+  var back = document.querySelector('[data-auth-back]');
+  // A provider's page can cut the popup off from its opener on the way
+  // back, so the done page also tells the Grid on a same-origin channel.
+  var popup = (!!window.opener && window.opener !== window) || !!(back && back.hasAttribute('data-auth-popup'));
+  var leave = function () {
+    var href = back ? back.getAttribute('href') : '/';
+    if (popup) {
+      window.close();
+      setTimeout(function () { location.assign(href); }, 300);
+    } else {
+      location.assign(href);
+    }
+  };
+  if (document.querySelector('[data-auth-done]')) {
+    var message = { type: 'openagents-signed-in' };
+    try {
+      if (window.opener) window.opener.postMessage(message, location.origin);
+    } catch (_) {}
+    try {
+      var channel = new BroadcastChannel('openagents-sign-in');
+      channel.postMessage(message);
+      channel.close();
+    } catch (_) {}
+    window.close();
+    return;
+  }
+  if (back) {
+    back.addEventListener('click', function (event) {
+      if (!popup) return;
+      event.preventDefault();
+      leave();
+    });
+  }
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    event.preventDefault();
+    leave();
+  });
+})();
+";
+
+/// `GET /auth/back.js`.
+pub(crate) async fn back_js() -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=300"),
+        ],
+        BACK_JS,
+    )
+        .into_response()
+}
+
+/// `GET /auth/popup`: the start of a sign-in in a popup (#12480). A site
+/// with one sign-in method, an identity provider (production offers only
+/// GitHub), goes straight to it; any other shows the login page. Both
+/// end on [`POPUP_DONE`].
+pub(crate) async fn popup(State(app): State<App>) -> Response {
+    let back = encode(POPUP_DONE);
+    if let Some((_, workos)) = on(&app)
+        && let [only] = workos.client.settings().methods.as_slice()
+        && only.provider().is_some()
+    {
+        return protect(
+            Redirect::to(&format!("/auth/workos/{}?return_to={back}", only.slug())).into_response(),
+        );
+    }
+    protect(Redirect::to(&format!("/login?return_to={back}")).into_response())
+}
+
+/// `GET /signed-in`: where a popup sign-in ends. Its script tells the
+/// Grid and closes the popup; without script, it says how to go on.
+pub(crate) async fn signed_in(headers: HeaderMap) -> Response {
+    let content = html! {
+        div data-auth-done {
+            (empty_state(
+                EmptyMedia::Icon(Icon::CheckCircle),
+                "You're signed in",
+                "You can close this window.",
+                ButtonLink::new("Back to the Grid", "/"),
+            ))
+        }
+    };
+    protect(
+        UiPage::new("Signed in")
+            .account(Account::Unknown)
+            .bare()
+            .head(back_script())
+            .content(content)
+            .respond(&headers),
+    )
 }
 
 #[derive(Deserialize)]
@@ -457,7 +583,8 @@ pub(crate) async fn callback(
                 "canceled"
             } else {
                 eprintln!(
-                    "openagents-web: WorkOS callback failed: error={error:?} description={error_description:?}"
+                    "openagents-web: WorkOS callback failed: error={error:?} description={error_description:?} redirect=/login?error=provider_failed return_to={:?}",
+                    flow.return_to
                 );
                 "provider_failed"
             };
@@ -483,7 +610,14 @@ pub(crate) async fn callback(
                 )
                 .await
             }
-            Err(refusal) => problem_redirect(&flow.return_to, refusal.code()),
+            Err(refusal) => {
+                eprintln!(
+                    "openagents-web: WorkOS code exchange refused: code={:?} return_to={:?}",
+                    refusal.code(),
+                    flow.return_to
+                );
+                problem_redirect(&flow.return_to, refusal.code())
+            }
         },
         (_, Some(flow)) => problem_redirect(&flow.return_to, "expired"),
     };

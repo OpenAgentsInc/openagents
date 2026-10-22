@@ -493,6 +493,15 @@ The status lines below summarize each issue and its comments. Open the issue for
   ask it a question as the test account and check that, once a Pylon
   answers, a line runs from the Foreman to that Pylon in the Bay for the
   result's 20 seconds.
+- #12480: after the next web and lander-chat deploy, signed out in Chrome
+  on staging and then production: walk under the GAME LAB arch, open it,
+  and check that the sign-in prompt sits centered over the Grid; press
+  Sign in and check that GitHub opens in a popup, the Grid tab stays
+  where it was, and after signing in as the dedicated test account the
+  popup closes and Game Lab opens signed in at the same spot. With popups
+  blocked, check the full-page sign-in comes back to `/?lab=game`. Check
+  that `/login` and `/signup` show Back to the Grid and that Escape
+  follows it.
 - #12448: after the next web deploy (the host is at `280907fdfb` on
   `oa-foreman-1`; commands stay off until the site sets
   `OPENAGENTS_FOREMAN_COMMANDS=on`): on staging, with

@@ -57,6 +57,8 @@ pub(super) struct Lab {
     pub(super) playing: Option<String>,
     /// Bumped on each open, so an answer for a closed panel is dropped.
     generation: u64,
+    /// The page's count of finished popup sign-ins last seen.
+    sign_ins: f64,
 }
 
 #[derive(Default)]
@@ -179,6 +181,18 @@ impl LanderChat {
         if self.grid.lab.playing.is_some() && !flag(model::GAME_PLAYING_GLOBAL) {
             self.grid.lab.playing = None;
             cx.notify();
+        }
+        // A popup sign-in finished: Game Lab opens signed in where the
+        // visitor stands (#12480).
+        let sign_ins = js_sys::Reflect::get(&js_sys::global(), &model::SIGNED_IN_GLOBAL.into())
+            .ok()
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.);
+        if sign_ins != self.grid.lab.sign_ins {
+            self.grid.lab.sign_ins = sign_ins;
+            if self.grid.lab.state == LabState::SignIn {
+                self.open_lab(cx);
+            }
         }
         let wanted = flag(model::GAME_LAB_GLOBAL);
         match (wanted, self.grid.lab.state) {
@@ -535,7 +549,11 @@ impl LanderChat {
             y,
             w: width,
             h: room,
-        } = model::game_panel(w, h);
+        } = if self.grid.lab.state == LabState::SignIn {
+            model::sign_in_panel(w, h)
+        } else {
+            model::game_panel(w, h)
+        };
         let lab = &self.grid.lab;
         let heading = div()
             .flex()
@@ -585,9 +603,9 @@ impl LanderChat {
         if lab.state == LabState::SignIn {
             body = body.child(div().flex().flex_row().child(
                 button("game-sign-in", model::SIGN_IN, true).on_click(|_, _, _| {
-                    if let Some(window) = web_sys::window() {
-                        let _ = window.location().assign(model::GAME_SIGN_IN);
-                    }
+                    // In a popup, so the Grid stays loaded; the page falls
+                    // back to the full-page sign-in when popups are blocked.
+                    call(model::SIGN_IN_CALL, &JsValue::from_str(model::GAME_SIGN_IN));
                 }),
             ));
         }

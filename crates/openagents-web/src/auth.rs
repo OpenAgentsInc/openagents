@@ -41,6 +41,16 @@ pub(crate) fn routes() -> Router<App> {
         // WorkOS sign-in (#12323): provider trips, the callback, emailed
         // codes, single sign-on, and password resets.
         .route("/auth/workos/{method}", get(crate::workos_auth::start))
+        // Sign-in in a popup that keeps the Grid loaded (#12480).
+        .route("/auth/popup", get(crate::workos_auth::popup))
+        .route(
+            crate::workos_auth::POPUP_DONE,
+            get(crate::workos_auth::signed_in),
+        )
+        .route(
+            crate::workos_auth::BACK_SCRIPT,
+            get(crate::workos_auth::back_js),
+        )
         .route(
             oa_auth::workos::CALLBACK_PATH,
             get(crate::workos_auth::callback),
@@ -190,6 +200,7 @@ pub fn sign_in_page(
         },
     );
     let content = html! {
+        (crate::workos_auth::back_to_grid(return_to))
         (card)
         p.oa-auth-fine-print {
             "By continuing, you agree to our " a href="/terms" { "Terms" }
@@ -200,6 +211,7 @@ pub fn sign_in_page(
         .path(path)
         .account(Account::Unknown)
         .bare()
+        .head(crate::workos_auth::back_script())
         .content(content);
     // A link to a page only signed-in people open lands here when a link
     // reader fetches it: its preview names that page's kind, never "Log in"

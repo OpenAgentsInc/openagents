@@ -21,6 +21,8 @@ const STAGING: &[Method] = &[
     Method::Sso,
 ];
 const PRODUCTION: &[Method] = &[Method::Github, Method::Password, Method::MagicCode];
+/// Production's sign-in as it's set today (`WORKOS_METHODS=github`).
+const GITHUB_ONLY: &[Method] = &[Method::Github];
 
 struct WorkosWorld {
     world: World,
@@ -1490,4 +1492,106 @@ async fn the_admin_entrance_returns_through_every_workos_method() {
     let done = other.get(&w.world, &back).await;
     assert_eq!(done.status, StatusCode::OK, "{}", done.body);
     assert!(done.body.contains("url=/admin"), "{}", done.body);
+}
+
+/// #12480: from the Grid, sign-in runs in a popup. With GitHub as the only
+/// method (production's setting), the popup goes straight to GitHub and
+/// ends on `/signed-in`, which tells the Grid and closes. A provider
+/// failure still reads as one, never silently.
+#[tokio::test]
+async fn a_popup_sign_in_with_github_alone_ends_on_the_signed_in_page() {
+    let w = workos_world(Mode::Dual, GITHUB_ONLY).await;
+    let mut browser = Browser::default();
+    let popup = browser.get(&w.world, "/auth/popup").await;
+    assert_eq!(popup.status, StatusCode::SEE_OTHER);
+    assert_eq!(
+        popup.location(),
+        "/auth/workos/github?return_to=%2Fsigned-in"
+    );
+    w.fake
+        .queue_sign_in("GitHubOAuth", "octo@example.com", "583231", Some("Octo"));
+    let start = browser.get(&w.world, popup.location()).await;
+    assert_eq!(start.status, StatusCode::SEE_OTHER, "{}", start.body);
+    let at_workos = w.world.github.get(start.location()).send().await.unwrap();
+    let back = at_workos.headers()["location"]
+        .to_str()
+        .unwrap()
+        .to_string();
+    let back = back.strip_prefix(ORIGIN).unwrap().to_string();
+    let done = browser.get(&w.world, &back).await;
+    assert_eq!(done.status, StatusCode::OK, "{}", done.body);
+    assert!(done.body.contains("url=/signed-in"), "{}", done.body);
+    assert!(browser.0.contains_key("oa_cloud_session"));
+    let signed_in = browser.get(&w.world, "/signed-in").await;
+    assert_eq!(signed_in.status, StatusCode::OK, "{}", signed_in.body);
+    assert!(signed_in.body.contains("data-auth-done"));
+    assert!(signed_in.body.contains("src=\"/auth/back.js\""));
+    assert!(signed_in.body.contains("Back to the Grid"));
+    crate::copy_guard::assert_plain("/signed-in", &signed_in.body);
+    let script = browser.get(&w.world, "/auth/back.js").await;
+    assert_eq!(script.status, StatusCode::OK);
+    assert!(script.body.contains("type: 'openagents-signed-in'"));
+    assert!(
+        script
+            .body
+            .contains("new BroadcastChannel('openagents-sign-in')")
+    );
+
+    // A provider failure in the popup lands on the login page with its
+    // reason and a way back that closes the popup.
+    let mut other = Browser::default();
+    let start = other
+        .get(&w.world, "/auth/workos/github?return_to=%2Fsigned-in")
+        .await;
+    let state = url::Url::parse(start.location())
+        .unwrap()
+        .query_pairs()
+        .find(|(k, _)| k == "state")
+        .unwrap()
+        .1
+        .into_owned();
+    let failed = other
+        .get(
+            &w.world,
+            &format!("/auth/callback?error=oauth_failed&state={state}"),
+        )
+        .await;
+    assert_eq!(
+        failed.location(),
+        "/login?error=provider_failed&return_to=%2Fsigned-in"
+    );
+    let page = other.get(&w.world, failed.location()).await;
+    assert!(
+        page.body.contains("Sign-in didn&#39;t finish. Try again.")
+            || page.body.contains("Sign-in didn't finish. Try again.")
+    );
+    assert!(page.body.contains("Continue with GitHub"));
+    assert!(
+        page.body
+            .contains("href=\"/\" data-auth-back data-auth-popup"),
+        "{}",
+        page.body
+    );
+}
+
+/// #12480: `/login` and `/signup` each have a visible way back, to where
+/// the person came from, and Escape follows it.
+#[tokio::test]
+async fn login_and_signup_have_a_way_back_to_the_grid() {
+    let w = workos_world(Mode::Dual, GITHUB_ONLY).await;
+    for path in ["/login", "/signup"] {
+        let page = Browser::default()
+            .get(&w.world, &format!("{path}?return_to=%2F%3Flab%3Dgame"))
+            .await;
+        assert_eq!(page.status, StatusCode::OK);
+        assert!(
+            page.body.contains("href=\"/?lab=game\" data-auth-back"),
+            "{path}: {}",
+            page.body
+        );
+        assert!(page.body.contains("Back to the Grid"));
+        assert!(page.body.contains("src=\"/auth/back.js\""));
+        assert!(!page.body.contains("data-auth-popup"));
+    }
+    assert!(crate::workos_auth::BACK_JS.contains("event.key !== 'Escape'"));
 }
