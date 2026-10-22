@@ -22,6 +22,7 @@ import type { Pose } from "./scene.ts";
 export const PROJECT_ID = LAB.id;
 export const SCENE_PATH = LAB.scene;
 export const MAX_ASSETS = 64;
+export const MAX_BATCH_EDITS = 32;
 export const MAX_SCENE_BYTES = 64 * 1024;
 export type AssetKind = keyof typeof catalog;
 export const ASSETS = Object.fromEntries(
@@ -365,7 +366,7 @@ export class SceneHistory {
         if (
           !Array.isArray(op.operations) ||
           op.operations.length < 1 ||
-          op.operations.length > 8 ||
+          op.operations.length > MAX_BATCH_EDITS ||
           op.operations.some(
             (item) =>
               ![
@@ -385,7 +386,7 @@ export class SceneHistory {
               ].includes(item.kind),
           )
         )
-          throw new Error("Group between one and eight supported scene edits.");
+          throw new Error("Combine up to 32 supported scene edits.");
         const staged = new SceneHistory(before);
         for (const [index, item] of op.operations.entries())
           staged
@@ -449,6 +450,13 @@ export type Decision = {
   needs_review: boolean;
   model: string;
   model_ms: number;
+  steps?: {
+    start: number;
+    end: number;
+    text: string;
+    reference: string;
+    decision: Decision;
+  }[];
 };
 export function exactCoordinates(
   text: string,
@@ -467,6 +475,7 @@ export function assetCount(
   text: string,
   kind: AssetKind,
   delegated = false,
+  pluralDefault = 3,
 ): number {
   text = text
     .replace(/\b(?:a\s+)?couple(?:\s+of)?\b/gi, "two")
@@ -568,10 +577,26 @@ export function assetCount(
       "i",
     ).test(text)
   )
-    count = 3;
+    count = pluralDefault;
   if (!Number.isInteger(count) || count < 1 || count > 8)
     throw new Error("Add between 1 and 8 assets at a time.");
   return count;
+}
+
+export function decisionAsset(
+  asset: string | undefined,
+): AssetKind | undefined {
+  const kind =
+    asset === "building" && IS_TOWN
+      ? "cottage"
+      : asset === "any_asset"
+        ? IS_TOWN
+          ? "barrel"
+          : "pumpkin"
+        : asset === "furniture" && IS_TOWN
+          ? "chair"
+          : asset;
+  return kind && Object.hasOwn(ASSETS, kind) ? (kind as AssetKind) : undefined;
 }
 
 export const pumpkinCount = (text: string) => assetCount(text, "pumpkin");
@@ -696,6 +721,19 @@ function groupPositions(
   );
 }
 
+export function assetScale(size: string, text: string): number {
+  if (size === "exact") {
+    const n = text.match(/\bscale\s*[=:]\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))/i);
+    if (!n) throw new Error("Write the exact size as scale=1.2.");
+    return Number(n[1]);
+  }
+  if (size === "small") return 0.6;
+  if (size === "large") return 1.8;
+  if (size === "huge") return 2.5;
+  if (size === "normal") return 1;
+  throw new Error("Choose small, normal, large, huge, or an exact scale.");
+}
+
 export function decisionOperation(
   d: Decision,
   text: string,
@@ -735,18 +773,7 @@ export function decisionOperation(
     if (!id) throw new Error("Select an asset first.");
     return id;
   };
-  const scale = () => {
-    if (d.size === "exact") {
-      const n = text.match(/\bscale\s*[=:]\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))/i);
-      if (!n) throw new Error("Write the exact size as scale=1.2.");
-      return Number(n[1]);
-    }
-    if (d.size === "small") return 0.6;
-    if (d.size === "large") return 1.8;
-    if (d.size === "huge") return 2.5;
-    if (d.size === "normal") return 1;
-    throw new Error("Choose small, normal, large, huge, or an exact scale.");
-  };
+  const scale = () => assetScale(d.size, text);
   const position = () => {
     if (d.placement === "coordinates") {
       const p = exactCoordinates(text);
@@ -784,17 +811,7 @@ export function decisionOperation(
       const chooseAny =
         d.asset === "any_asset" || (IS_TOWN && d.asset === "furniture");
       const kind =
-        d.action === "add_pumpkin"
-          ? "pumpkin"
-          : chooseBuilding
-            ? "cottage"
-            : chooseAny
-              ? IS_TOWN
-                ? d.asset === "furniture"
-                  ? "chair"
-                  : "barrel"
-                : "pumpkin"
-              : d.asset;
+        d.action === "add_pumpkin" ? "pumpkin" : decisionAsset(d.asset);
       if (!kind || !Object.hasOwn(ASSETS, kind))
         throw new Error("Choose an asset from the list.");
       const count = assetCount(text, kind as AssetKind, chooseAny);

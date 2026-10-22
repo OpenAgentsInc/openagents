@@ -3,6 +3,7 @@
 A local browser editor with direct WebGPU, Effect, the real Kiln WASI/OPFS
 workspace, and the Rust Jev SDK. Scene controls apply typed commands immediately.
 Natural language takes one bounded decision request, then uses those same commands.
+You can combine up to four changes in one request; they save and undo together.
 
 - `/` opens **Haunted House**, with its spooky props and existing room editor.
 - `/medieval/` opens **Medieval Town Lab**, with a fullscreen world and floating
@@ -48,11 +49,29 @@ Both labs treat omitted preferences and phrases such as `your choice`, `anywhere
   ghost movement uses floating. A room or wing with no location preference uses
   a nearby wall where the extension fits.
 - Moving a selected prop `somewhere else` uses the same clear-space search.
-  Each change saves in Kiln and uses one undo step. Unsupported objects, negated
-  requests, and mixed actions still need a supported request.
+  Each change saves in Kiln and uses one undo step. Unsupported objects or actions and negated
+  requests leave the scene unchanged.
 
 Run `npm run verify:natural-defaults` through `openagents browser run` with
 `HAUNT_URL` set to the local preview to test natural phrases in both labs.
+
+## Combined requests
+
+- Haunted House: `add 3 ghosts and make them chase me`, `add 2 pumpkins and 3 candles`,
+  or `add 2 ghosts, turn the light blue, and make them float`.
+- Medieval Town: `add 2 houses and put benches outside`, or
+  `add 2 cottages and put 2 benches outside each house`.
+- `Them` and `it` can refer to the newest group created in the request. Existing
+  ghosts keep their behavior unless you explicitly address all ghosts.
+- Outside props go beside the new houses, with clear entrances. An unnumbered
+  plural adds one per house; explicit counts are totals unless you say `each`,
+  `every`, or `per house`.
+- All parts use one decision call, scene revision, Kiln save, and undo step.
+  If any part fails, none of the changes apply. Up to four parts and 32 underlying
+  edits fit in one request. Use undo or redo on its own.
+
+Run `npm run verify:compound` under `openagents browser run` with `HAUNT_URL` set
+for browser checks of combined edits, references, saves, and failures.
 
 ## Run
 

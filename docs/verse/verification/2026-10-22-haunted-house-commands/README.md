@@ -221,3 +221,14 @@ shader and undid/redid as one step; both labs reopened their first edit from Kil
 Negated, informational, mixed, unsupported, and excessive-count requests left
 the scene unchanged. Run `npm run verify:natural-defaults` under
 `openagents browser run` with `HAUNT_URL` set to the local preview.
+
+## Combined requests
+
+The [compound receipt](compound-receipt.json) records 16 combined requests and
+9 failure cases in both labs, plus the existing natural-request and editor
+regressions. Each combined edit used one decision request, scene revision, Kiln
+scene write, and undo/redo step. New ghosts chased in the live simulation without
+changing existing ghosts; benches appeared outside the newly added houses.
+Both labs reopened the combined edit from Kiln. Later errors left the scene
+unchanged, and player position, shader, and device stayed stable. Run
+`npm run verify:compound` under `openagents browser run` with `HAUNT_URL` set.

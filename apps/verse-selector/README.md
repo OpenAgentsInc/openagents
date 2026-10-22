@@ -17,6 +17,8 @@ The build writes `crates/openagents-web/src/pages/new_lander.js`, which is check
 
 Run the existing `openagents-web` server with scratch storage, then open `/new-lander`. The selector links to the existing Blue Rush page. It exposes Haunted House entry only when the current server has a house build or hosted tenant. The central company planet and future destinations stay locked. When the account service is configured, the login card uses the existing login route and returns to the selector; this preview does not implement a second account system.
 
+Signed-out visitors see a centered translucent entry card over the slowly drifting universe. Map input stays locked until they sign in or choose **Continue as guest**. Guest access lasts for the current tab's visit, and signed-in visitors enter directly. The local preview offers guest entry when account services are absent. The arrival animation respects reduced motion, pauses in hidden tabs, and stops when exploration begins. Both entry and destination cards use translucent charcoal surfaces with restrained silver borders.
+
 This slice does not implement the full voice-led tutorial, publishing, or personal planet award. Their design remains in the [landing assessment](../../docs/audits/2026-10-22-new-lander-stack-and-loading.md).
 
 ## Browser verification
@@ -27,4 +29,4 @@ NEW_LANDER_EVIDENCE="$(openagents scratch)/new-lander-browser" \
 openagents browser run -- node apps/verse-selector/scripts/verify-browser.mjs
 ```
 
-The check uses an isolated Chrome profile. It verifies real Rust routes, rendered GPU pixels, selection, camera controls, root preservation, mobile layout, still preview, and script-free marketing. Account sign-in and existing game services need separate verification with dedicated test accounts.
+The check uses an isolated Chrome profile. It verifies real Rust routes, rendered GPU pixels, the centered entry card, locked input, ambient motion, reduced motion, guest entry, selection, camera controls, root preservation, mobile layout, still preview, and script-free marketing. Account sign-in and existing game services need separate verification with dedicated test accounts.

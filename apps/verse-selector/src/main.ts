@@ -5,9 +5,59 @@ import { project, worlds } from "./space.ts";
 const canvas = document.querySelector<HTMLCanvasElement>("#universe")!;
 const stage = document.querySelector<HTMLElement>(".universe-stage")!;
 const status = document.querySelector<HTMLElement>("#universe-status")!;
+const atlas = document.querySelector<HTMLElement>(".atlas")!;
+const exploration = document.querySelector<HTMLElement>(
+  "#universe-exploration",
+)!;
+const entry = document.querySelector<HTMLDialogElement>(".signin-card");
+const guestKey = "openagents.verse-preview.guest";
+let canExplore = atlas.dataset.entry === "member";
+try {
+  canExplore ||= sessionStorage.getItem(guestKey) === "true";
+} catch {
+  // Guest entry still works when browser storage is unavailable.
+}
 const controller = new AbortController();
 const lifetime = new AbortController();
 let runtime: Universe | undefined;
+const updateEntry = () => {
+  exploration.inert = !canExplore;
+  atlas.dataset.entry = canExplore
+    ? atlas.dataset.entry === "member"
+      ? "member"
+      : "guest"
+    : "locked";
+  canvas.tabIndex = canExplore ? 0 : -1;
+  if (runtime) runtime.ambient = !canExplore;
+  if (canExplore) entry?.close();
+  else if (entry && !entry.open) entry.showModal();
+  status.textContent =
+    document.body.dataset.rendering === "still"
+      ? "Still preview · You can still choose a world."
+      : canExplore
+        ? "Drag to orbit · Scroll to zoom · Select a world"
+        : "Your journey starts here.";
+};
+document.querySelector("#continue-guest")?.addEventListener(
+  "click",
+  () => {
+    canExplore = true;
+    try {
+      sessionStorage.setItem(guestKey, "true");
+    } catch {
+      // Do not require storage for this visit.
+    }
+    updateEntry();
+    document
+      .querySelector<HTMLButtonElement>(".world-option[aria-pressed=true]")
+      ?.focus();
+  },
+  { signal: controller.signal },
+);
+entry?.addEventListener("cancel", (event) => event.preventDefault(), {
+  signal: controller.signal,
+});
+updateEntry();
 let selected = "openagents";
 const select = (id: string) => {
   const world = worlds.find((w) => w.id === id);
@@ -29,13 +79,17 @@ const select = (id: string) => {
   url.searchParams.set("world", id);
   history.replaceState(null, "", url);
 };
-document
-  .querySelectorAll<HTMLElement>("[data-world]")
-  .forEach((el) =>
-    el.addEventListener("click", () => select(el.dataset.world!), {
+document.querySelectorAll<HTMLElement>("[data-world]").forEach((el) =>
+  el.addEventListener(
+    "click",
+    () => {
+      if (canExplore) select(el.dataset.world!);
+    },
+    {
       signal: controller.signal,
-    }),
-  );
+    },
+  ),
+);
 const initial = new URL(location.href).searchParams.get("world");
 if (initial) select(initial);
 
@@ -43,6 +97,7 @@ let pointer: { id: number; x: number; y: number; distance: number } | undefined;
 canvas.addEventListener(
   "pointerdown",
   (e) => {
+    if (!canExplore) return;
     pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, distance: 0 };
     canvas.setPointerCapture(e.pointerId);
   },
@@ -51,7 +106,7 @@ canvas.addEventListener(
 canvas.addEventListener(
   "pointermove",
   (e) => {
-    if (!pointer || !runtime) return;
+    if (!canExplore || !pointer || !runtime) return;
     const dx = e.clientX - pointer.x,
       dy = e.clientY - pointer.y;
     pointer.distance += Math.hypot(dx, dy);
@@ -65,7 +120,7 @@ canvas.addEventListener(
 canvas.addEventListener(
   "pointerup",
   (e) => {
-    if (pointer && pointer.distance < 6 && runtime) {
+    if (canExplore && pointer && pointer.distance < 6 && runtime) {
       const rect = canvas.getBoundingClientRect();
       let best = 45,
         chosen: string | undefined;
@@ -96,7 +151,7 @@ canvas.addEventListener(
 canvas.addEventListener(
   "wheel",
   (e) => {
-    if (!runtime) return;
+    if (!canExplore || !runtime) return;
     e.preventDefault();
     runtime.distance = Math.max(
       14,
@@ -108,7 +163,7 @@ canvas.addEventListener(
 canvas.addEventListener(
   "keydown",
   (e) => {
-    if (!runtime) return;
+    if (!canExplore || !runtime) return;
     let used = true;
     switch (e.key) {
       case "ArrowLeft":
@@ -143,22 +198,28 @@ canvas.addEventListener(
 document.querySelector("#zoom-in")!.addEventListener(
   "click",
   () => {
-    if (runtime) runtime.distance = Math.max(14, runtime.distance - 3);
+    if (canExplore && runtime)
+      runtime.distance = Math.max(14, runtime.distance - 3);
   },
   { signal: controller.signal },
 );
 document.querySelector("#zoom-out")!.addEventListener(
   "click",
   () => {
-    if (runtime) runtime.distance = Math.min(44, runtime.distance + 3);
+    if (canExplore && runtime)
+      runtime.distance = Math.min(44, runtime.distance + 3);
   },
   { signal: controller.signal },
 );
-document
-  .querySelector("#reset-view")!
-  .addEventListener("click", () => runtime?.reset(), {
+document.querySelector("#reset-view")!.addEventListener(
+  "click",
+  () => {
+    if (canExplore) runtime?.reset();
+  },
+  {
     signal: controller.signal,
-  });
+  },
+);
 const fallback = () => {
   stage.classList.remove("ready");
   document.body.dataset.rendering = "still";
@@ -178,6 +239,7 @@ Effect.runPromise(
         (r) => Effect.sync(() => r.dispose()),
       );
       runtime = renderer;
+      renderer.ambient = !canExplore;
       const compilationErrors: string[] = [];
       renderer.device.addEventListener(
         "uncapturederror",
@@ -208,7 +270,7 @@ Effect.runPromise(
         throw new Error(compilationErrors.join("; "));
       stage.classList.add("ready");
       document.body.dataset.rendering = "webgpu";
-      status.textContent = "Drag to orbit · Scroll to zoom · Select a world";
+      updateEntry();
       yield* Effect.promise(
         () =>
           new Promise<void>((resolve) => {

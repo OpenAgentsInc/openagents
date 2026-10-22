@@ -1,0 +1,362 @@
+{
+  "passed": true,
+  "model": "jev-1.14.0",
+  "checks": [
+    "One decision HTTP request, one scene revision, one Kiln scene write and one undo/redo step per compound edit; unchanged player, shader, device, and compilation count.",
+    "Chasing new ghosts move in the live simulation while existing ghosts keep their behavior; outside props are beside the newly created houses.",
+    "Both labs reopen combined edits from Kiln; invalid later clauses leave no partial scene or history change."
+  ],
+  "timing": {
+    "medianMs": 254.6,
+    "minMs": 170.9,
+    "maxMs": 1156.9
+  },
+  "cases": [
+    {
+      "lab": "haunt",
+      "text": "add 3 ghosts and make them chase me",
+      "totalMs": 1156.9,
+      "actions": [
+        "add_asset",
+        "set_behavior"
+      ],
+      "references": [
+        "none",
+        "new_assets"
+      ],
+      "added": {
+        "ghost": 3
+      },
+      "moving": true
+    },
+    {
+      "lab": "haunt",
+      "text": "spawn two ghosts then have them follow me",
+      "totalMs": 294.4,
+      "actions": [
+        "add_asset",
+        "set_behavior"
+      ],
+      "references": [
+        "none",
+        "new_assets"
+      ],
+      "added": {
+        "ghost": 2
+      },
+      "moving": true
+    },
+    {
+      "lab": "haunt",
+      "text": "add a ghost and make it float",
+      "totalMs": 386.5,
+      "actions": [
+        "add_asset",
+        "set_behavior"
+      ],
+      "references": [
+        "none",
+        "new_assets"
+      ],
+      "added": {
+        "ghost": 1
+      },
+      "moving": false
+    },
+    {
+      "lab": "haunt",
+      "text": "add 2 pumpkins and 3 candles",
+      "totalMs": 234.1,
+      "actions": [
+        "add_asset",
+        "add_asset"
+      ],
+      "references": [
+        "none",
+        "none"
+      ],
+      "added": {
+        "candle": 3,
+        "pumpkin": 2
+      },
+      "moving": false
+    },
+    {
+      "lab": "haunt",
+      "text": "add two ghosts and make them small",
+      "totalMs": 290.7,
+      "actions": [
+        "add_asset",
+        "resize_asset"
+      ],
+      "references": [
+        "none",
+        "new_assets"
+      ],
+      "added": {
+        "ghost": 2
+      },
+      "moving": false
+    },
+    {
+      "lab": "haunt",
+      "text": "add 2 ghosts, set the light blue, and make them chase me",
+      "totalMs": 252,
+      "actions": [
+        "add_asset",
+        "set_tint",
+        "set_behavior"
+      ],
+      "references": [
+        "none",
+        "new_assets",
+        "new_assets"
+      ],
+      "added": {
+        "ghost": 2
+      },
+      "moving": true
+    },
+    {
+      "lab": "haunt",
+      "text": "put a ghost at (1, 2) and make it chase me",
+      "totalMs": 256.6,
+      "actions": [
+        "add_asset",
+        "set_behavior"
+      ],
+      "references": [
+        "selected",
+        "new_assets"
+      ],
+      "added": {
+        "ghost": 1
+      },
+      "moving": true
+    },
+    {
+      "lab": "haunt",
+      "text": "add 3 ghosts and stop all ghosts",
+      "totalMs": 225.2,
+      "actions": [
+        "add_asset",
+        "set_behavior"
+      ],
+      "references": [
+        "none",
+        "all_ghosts"
+      ],
+      "added": {
+        "ghost": 3
+      },
+      "moving": false
+    },
+    {
+      "lab": "medieval",
+      "text": "add 2 houses and put benches outside",
+      "totalMs": 244.8,
+      "actions": [
+        "add_asset",
+        "add_asset"
+      ],
+      "references": [
+        "none",
+        "outside_new_buildings"
+      ],
+      "added": {
+        "bench": 2,
+        "cottage": 2
+      },
+      "moving": false
+    },
+    {
+      "lab": "medieval",
+      "text": "put two cottages wherever you want then place a bench outside each",
+      "totalMs": 252.6,
+      "actions": [
+        "add_asset",
+        "add_asset"
+      ],
+      "references": [
+        "none",
+        "outside_new_buildings"
+      ],
+      "added": {
+        "bench": 2,
+        "cottage": 2
+      },
+      "moving": false
+    },
+    {
+      "lab": "medieval",
+      "text": "add 2 houses and put 2 benches outside each house",
+      "totalMs": 236.8,
+      "actions": [
+        "add_asset",
+        "add_asset"
+      ],
+      "references": [
+        "none",
+        "outside_new_buildings"
+      ],
+      "added": {
+        "bench": 4,
+        "cottage": 2
+      },
+      "moving": false
+    },
+    {
+      "lab": "medieval",
+      "text": "create a townhouse and put a fountain outside it",
+      "totalMs": 303.7,
+      "actions": [
+        "add_asset",
+        "add_asset"
+      ],
+      "references": [
+        "none",
+        "outside_new_buildings"
+      ],
+      "added": {
+        "fountain": 1,
+        "townhouse": 1
+      },
+      "moving": false
+    },
+    {
+      "lab": "medieval",
+      "text": "add two barrels and three chairs",
+      "totalMs": 335.2,
+      "actions": [
+        "add_asset",
+        "add_asset"
+      ],
+      "references": [
+        "none",
+        "none"
+      ],
+      "added": {
+        "barrel": 2,
+        "chair": 3
+      },
+      "moving": false
+    },
+    {
+      "lab": "medieval",
+      "text": "add a cottage and put benches outside and turn the light blue",
+      "totalMs": 219.9,
+      "actions": [
+        "add_asset",
+        "add_asset",
+        "set_tint"
+      ],
+      "references": [
+        "none",
+        "outside_new_buildings",
+        "selected"
+      ],
+      "added": {
+        "bench": 1,
+        "cottage": 1
+      },
+      "moving": false
+    },
+    {
+      "lab": "medieval",
+      "text": "add a room and add a chair",
+      "totalMs": 339.1,
+      "actions": [
+        "add_room",
+        "add_asset"
+      ],
+      "references": [
+        "none",
+        "none"
+      ],
+      "added": {
+        "chair": 1
+      },
+      "moving": false
+    },
+    {
+      "lab": "medieval",
+      "text": "add two buildings your choice anywhere and put small benches outside",
+      "totalMs": 170.9,
+      "actions": [
+        "add_asset",
+        "add_asset"
+      ],
+      "references": [
+        "none",
+        "outside_new_buildings"
+      ],
+      "added": {
+        "bench": 2,
+        "cottage": 1,
+        "townhouse": 1
+      },
+      "moving": false
+    }
+  ],
+  "failures": [
+    {
+      "lab": "haunt",
+      "text": "add 3 ghosts and make them shoot fireballs",
+      "passed": true
+    },
+    {
+      "lab": "haunt",
+      "text": "add 2 pumpkins and make them chase me",
+      "passed": true
+    },
+    {
+      "lab": "haunt",
+      "text": "add a ghost and add 9 candles",
+      "passed": true
+    },
+    {
+      "lab": "haunt",
+      "text": "add a ghost and make it float and teleport me",
+      "passed": true
+    },
+    {
+      "lab": "haunt",
+      "text": "add a ghost and undo",
+      "passed": true
+    },
+    {
+      "lab": "medieval",
+      "text": "add 2 houses and put 9 benches outside",
+      "passed": true
+    },
+    {
+      "lab": "medieval",
+      "text": "add a cottage and add a dragon",
+      "passed": true
+    },
+    {
+      "lab": "medieval",
+      "text": "add 2 houses and make them chase me",
+      "passed": true
+    },
+    {
+      "lab": "medieval",
+      "text": "add a barrel and add a ghost",
+      "passed": true
+    }
+  ],
+  "regressions": {
+    "naturalRequests": 31,
+    "refusals": 14,
+    "editor": [
+      "exact UI request 'add 5 huge pumpkins to my left': five size-2.5 pumpkins on the player's left, one revision, one-step undo/redo, Kiln save, unchanged pose/device/shader",
+      "manual add/resize/move and real Kiln file writes share stable IDs, validation, undo/redo, and OPFS saves; no model or shader compilation for direct controls",
+      "30 scene edits keep player/device and resource counts stable; no shader rebuilds",
+      "real Jev SDK: add, move and lantern tint in one typed request each; unsupported request makes no change",
+      "controls stay usable during inference; manual edit cancels delayed decision and stale result cannot overwrite it",
+      "stalled inference stops at the UI deadline while walking/rendering remains available",
+      "scene round-trips through real Kiln OPFS on reopen; foreign origins cannot call the credentialed endpoint",
+      "bounded worker capture returns a nonempty PNG of the rendered scene"
+    ]
+  }
+}

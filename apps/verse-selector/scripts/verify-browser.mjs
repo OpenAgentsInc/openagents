@@ -68,6 +68,57 @@ await page.waitForFunction(
 await page.waitForFunction(
   () => getComputedStyle(document.querySelector("#universe")).opacity === "1",
 );
+await page
+  .getByRole("dialog", { name: "Your next world is waiting." })
+  .waitFor();
+assert.equal(await page.locator(".atlas").getAttribute("data-entry"), "locked");
+assert.equal(
+  await page.locator("#universe-exploration").getAttribute("inert"),
+  "",
+);
+const card = await page.locator(".signin-card").boundingBox();
+assert.ok(Math.abs(card.x + card.width / 2 - 720) < 2);
+assert.ok(Math.abs(card.y + card.height / 2 - 500) < 2);
+const arrivalPosition = await page
+  .locator("#marker-blue-rush")
+  .getAttribute("style");
+await page.waitForFunction(
+  (value) =>
+    document.querySelector("#marker-blue-rush")?.getAttribute("style") !==
+    value,
+  arrivalPosition,
+);
+await page.screenshot({
+  path: path.join(output, "universe-entry-desktop.png"),
+});
+await page.emulateMedia({ reducedMotion: "reduce" });
+const lockedPosition = await page
+  .locator("#marker-blue-rush")
+  .getAttribute("style");
+await page.mouse.move(150, 500);
+await page.mouse.down();
+await page.mouse.move(350, 600, { steps: 5 });
+await page.mouse.up();
+await page.mouse.wheel(0, 300);
+await page.keyboard.press("ArrowRight");
+await page.keyboard.press("Escape");
+assert.equal(
+  await page.locator("#marker-blue-rush").getAttribute("style"),
+  lockedPosition,
+);
+assert.ok(
+  await page.getByRole("dialog").isVisible(),
+  "Escape must not bypass entry.",
+);
+assert.ok(
+  await page
+    .locator(".signin-card")
+    .evaluate((el) => el.contains(document.activeElement)),
+);
+await page.getByRole("button", { name: "Continue as guest" }).click();
+assert.equal(await page.locator(".atlas").getAttribute("data-entry"), "guest");
+assert.equal(await page.getByRole("dialog").count(), 0);
+await page.emulateMedia({ reducedMotion: "no-preference" });
 assert.equal(
   await page
     .getByRole("heading", { name: "OpenAgents", exact: true })
@@ -84,7 +135,9 @@ assert.equal(
   1,
 );
 await page.locator('.world-option[data-world="creator-worlds"]').click();
-await page.locator('[data-destination="creator-worlds"] .locked-label').waitFor();
+await page
+  .locator('[data-destination="creator-worlds"] .locked-label')
+  .waitFor();
 await page.locator('.world-option[data-world="openagents"]').click();
 await page.getByText("Locked for now", { exact: false }).waitFor();
 await page.locator("#reset-view").click();
@@ -129,6 +182,11 @@ await page.waitForFunction(() => document.body.dataset.rendering === "webgpu");
 await page.waitForFunction(
   () => getComputedStyle(document.querySelector("#universe")).opacity === "1",
 );
+assert.equal(
+  await page.getByRole("dialog").count(),
+  0,
+  "Guest entry persists during this visit.",
+);
 await page.locator('.world-option[data-world="blue-rush"]').click();
 await page.getByRole("heading", { name: "Blue Rush", exact: true }).waitFor();
 assert.equal(
@@ -152,12 +210,31 @@ await noGpu.addInitScript(() =>
 const still = await noGpu.newPage();
 await still.goto(`${base}/new-lander/verse`);
 await still.waitForFunction(() => document.body.dataset.rendering === "still");
+await still.getByRole("button", { name: "Continue as guest" }).click();
 await still.locator('.world-option[data-world="haunted-house"]').click();
 await still
   .getByRole("heading", { name: "Haunted House", exact: true })
   .waitFor();
 assert.ok(await still.locator("#zoom-in").isDisabled());
 await still.screenshot({ path: path.join(output, "universe-still.png") });
+const freshMobile = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+});
+const mobileEntry = await freshMobile.newPage();
+await mobileEntry.goto(`${base}/new-lander/verse?world=haunted-house`);
+await mobileEntry.getByRole("dialog").waitFor();
+const mobileCard = await mobileEntry.locator(".signin-card").boundingBox();
+assert.ok(Math.abs(mobileCard.x + mobileCard.width / 2 - 195) < 2);
+assert.ok(Math.abs(mobileCard.y + mobileCard.height / 2 - 422) < 2);
+assert.ok(mobileCard.y >= 0 && mobileCard.y + mobileCard.height <= 844);
+await mobileEntry.screenshot({
+  path: path.join(output, "universe-entry-mobile.png"),
+});
+await mobileEntry.getByRole("button", { name: "Continue as guest" }).click();
+await mobileEntry
+  .getByRole("heading", { name: "Haunted House", exact: true })
+  .waitFor();
+assert.ok(mobileEntry.url().includes("world=haunted-house"));
 const noJs = await browser.newContext({
   javaScriptEnabled: false,
   viewport: { width: 1280, height: 900 },
@@ -179,6 +256,10 @@ await writeFile(
       checks: [
         "marketing without game startup",
         "root remains the Grid",
+        "centered entry card on desktop and mobile",
+        "gentle arrival motion and reduced-motion support",
+        "map input and Escape blocked until entry",
+        "guest entry preserves destination and persists for this visit",
         "WebGPU rendered pixels",
         "selection and URL state",
         "locked/future worlds",
@@ -202,6 +283,7 @@ await writeFile(
 await context.close();
 await noGpu.close();
 await noJs.close();
+await freshMobile.close();
 await browser.close();
 console.log(
   `Browser checks passed; ${lit} lit pixels in the WebGPU canvas. Evidence: ${output}`,
