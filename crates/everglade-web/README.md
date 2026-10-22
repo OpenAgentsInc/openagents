@@ -158,7 +158,8 @@ the zone panel's buttons for checks.
 
 #### The build billboard
 
-The Grid homepage's plaza has a build billboard west of the spawn (#12442):
+The Grid homepage has a build billboard along the Pylon Bay's south edge,
+facing into the Bay, so the spawn sees only its back (#12442, #12482):
 two lanes, STAGING and PRODUCTION, with each lane's commit and subject, its
 phase on a five-step strip, the elapsed time, the last result, and the last
 few deploys. The page's Grid session subscribes to NIP-DEPLOY statuses

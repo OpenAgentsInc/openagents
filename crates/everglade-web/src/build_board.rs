@@ -234,7 +234,8 @@ fn screen_transform() -> Mat4 {
 pub struct BuildBoard {
     ingest: Ingest,
     subscribed: bool,
-    /// The board's own transform: its site, turned to face the spawn, its
+    /// The board's own transform: its site, turned to face into the Pylon
+    /// Bay, its
     /// face's left edge at the origin.
     transform: Mat4,
 }
@@ -305,22 +306,16 @@ impl BuildBoard {
         }
     }
 
-    /// This frame's screen instances on the shared computer, with the
-    /// Pylons the page shows (`pylons`, when it knows them).
-    /// While the Grid Foreman works at the terminal (#12447), `foreman` is
-    /// its task, and the screen shows it instead of the usual rows.
-    pub fn screen_instances(
-        &self,
-        pylons: Option<usize>,
-        foreman: Option<&str>,
-        out: &mut Vec<Instance>,
-    ) {
+    /// This frame's screen instances on the shared computer. While the
+    /// Grid Foreman works at the terminal (#12447), `foreman` is its task,
+    /// and the screen shows it instead of the usual rows.
+    pub fn screen_instances(&self, foreman: Option<&str>, out: &mut Vec<Instance>) {
         let screen = screen_transform();
         let pieces = match foreman {
             Some(task) => {
                 deploy_board::screen::rows_pieces(deploy_board::screen::foreman_lines(task), wall())
             }
-            None => deploy_board::screen::pieces(pylons, Some(&self.ingest.board), wall()),
+            None => deploy_board::screen::pieces(wall()),
         };
         for placed in pieces {
             let Piece::Letter(c, ink) = placed.piece else {

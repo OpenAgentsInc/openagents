@@ -6,11 +6,8 @@
 //! reader facing it sees it, in meters from its lower left corner; `z`
 //! points out of the glass. The host turns and places it on the monitor.
 
-use nostr::deploy::Env;
-
 use crate::font;
 use crate::layout::{Art, Ink, Piece, Placed};
-use crate::state::{Board, Outcome, age};
 
 /// The display's size, m: `pylons_view::terminal`'s display box.
 pub const WIDTH: f64 = 1.52;
@@ -84,37 +81,23 @@ pub fn art() -> Art {
     art
 }
 
-/// The live lines under the header: the Pylons online when the page knows
-/// them, the last deploy that ended when the board has one, and how to use
-/// the computer.
+/// The lines under the header: what a visitor can do here, and how to use
+/// the computer. Pylon counts and deploys stay on the billboard in the
+/// Pylon Bay, out of the spawn's view (#12482).
 #[must_use]
-pub fn lines(pylons: Option<usize>, board: Option<&Board>, wall: f64) -> Vec<(String, Ink)> {
-    let mut out = Vec::new();
-    if let Some(n) = pylons {
-        out.push((format!("PYLONS ONLINE: {n}"), Ink::Bright));
-    }
-    if let Some(board) = board {
-        let last = Env::ALL.into_iter().rev().find_map(|env| {
-            board
-                .lane(env, wall)
-                .last
-                .map(|(outcome, ago)| (env, outcome, ago))
-        });
-        if let Some((_, outcome, ago)) = last {
-            let text = match outcome {
-                Outcome::Live => format!("DEPLOYED {} AGO", age(ago)),
-                Outcome::Failed => format!("DEPLOY FAILED {} AGO", age(ago)),
-                Outcome::RolledBack => format!("ROLLED BACK {} AGO", age(ago)),
-                Outcome::Stopped => String::new(),
-            };
-            if !text.is_empty() {
-                out.push((text, Ink::Bright));
-            }
-        }
-    }
-    out.push(("WALK UP TO USE".to_owned(), Ink::Bright));
-    out
+pub fn lines() -> Vec<(String, Ink)> {
+    LINES
+        .iter()
+        .map(|line| ((*line).to_owned(), Ink::Bright))
+        .collect()
 }
+
+/// The screen's usual rows.
+pub const LINES: [&str; 3] = [
+    "ASK US ANYTHING",
+    "GAME LAB: TO YOUR LEFT",
+    "WALK UP TO USE",
+];
 
 /// The rows while the Grid Foreman works at the terminal (#12447): who is
 /// working, its task as its host publishes it, cut at a word to fit, and
@@ -150,8 +133,8 @@ pub fn caret(wall: f64) -> bool {
 
 /// The screen's live pieces: its lines, and the prompt with its caret.
 #[must_use]
-pub fn pieces(pylons: Option<usize>, board: Option<&Board>, wall: f64) -> Vec<Placed> {
-    rows_pieces(lines(pylons, board, wall), wall)
+pub fn pieces(wall: f64) -> Vec<Placed> {
+    rows_pieces(lines(), wall)
 }
 
 /// The screen's pieces for `rows`, and the prompt with its caret: the
@@ -194,27 +177,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_screen_says_how_to_use_it_with_or_without_data() {
-        let bare = lines(None, None, 0.0);
-        assert_eq!(bare, [("WALK UP TO USE".to_owned(), Ink::Bright)]);
-        let board = Board::new(false);
-        let rows = lines(Some(12), Some(&board), 0.0);
-        assert_eq!(rows[0].0, "PYLONS ONLINE: 12");
+    fn the_screen_says_what_to_do_and_nothing_about_pylons_or_deploys() {
+        let rows = lines();
         assert_eq!(rows.last().unwrap().0, "WALK UP TO USE");
+        for (text, _) in &rows {
+            assert!(
+                !text.contains("PYLON") && !text.contains("DEPLOY"),
+                "{text}"
+            );
+        }
     }
 
     #[test]
     fn its_words_are_plain() {
-        for text in [
-            HEADER,
-            "PYLONS ONLINE: 3",
-            "DEPLOYED 5M AGO",
-            "DEPLOY FAILED 12H AGO",
-            "ROLLED BACK 3D AGO",
-            "WALK UP TO USE",
-            "FOREMAN AT WORK:",
-            "WALK UP TO ASK",
-        ] {
+        for text in [HEADER, "FOREMAN AT WORK:", "WALK UP TO ASK"]
+            .into_iter()
+            .chain(LINES)
+        {
             assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
         }
     }
@@ -236,9 +215,14 @@ mod tests {
     #[test]
     fn everything_fits_on_the_glass_and_the_caret_blinks() {
         assert!(font::width(HEADER, HEADER_SIZE) <= WIDTH - 2.0 * PAD);
-        assert!(font::fits(WIDTH - 2.0 * PAD, LINE_SIZE) >= "DEPLOY FAILED 99D AGO".len());
-        let on = pieces(Some(1234), None, 10.2);
-        let off = pieces(Some(1234), None, 10.7);
+        for line in LINES {
+            assert!(
+                font::fits(WIDTH - 2.0 * PAD, LINE_SIZE) >= line.len(),
+                "{line}"
+            );
+        }
+        let on = pieces(10.2);
+        let off = pieces(10.7);
         assert_eq!(on.len(), off.len() + 1);
         for p in &on {
             assert!(

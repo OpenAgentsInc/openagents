@@ -99,7 +99,7 @@ for a part are the last commit that touched it.
 | Presence | `crates/everglade-web/src/grid.rs` `Presence::open`, `crates/verse-net` | `wss://relay.openagents.com`, world `verse-bare`. Live kind 23300 pose frames and kind 33301 entity state. Web cadence 5 Hz moving, 5 s idle keepalive, 30 s state heartbeat. Entities go stale after 10 s. |
 | Name tags | `Presence::draw` and `fn tag` in `grid.rs` | 2D text over the head, `TAG_LIFT = 2.2`, `TAG_RANGE = 60.0`, `OVERVIEW_TAG_RANGE = 160.0`, npub prefix of 6 characters. |
 | Shared terminal | `crates/pylons-view/src/terminal.rs` | `POSITION = [0,0,4]`, `ENTER_RANGE 3.0`. |
-| Terminal screen | `crates/deploy-board/src/screen.rs` (`f77e246755`) | `HEADER = "OPENAGENTS TERMINAL"`, up to three rows ("PYLONS ONLINE: n", the last deploy, "WALK UP TO USE") drawn from per-letter models, so any text in the font's characters can show. |
+| Terminal screen | `crates/deploy-board/src/screen.rs` (`f77e246755`) | `HEADER = "OPENAGENTS TERMINAL"`, up to three rows (what a visitor can do here, and "WALK UP TO USE"; Pylon counts and deploys moved to the billboard in #12482) drawn from per-letter models, so any text in the font's characters can show. |
 | Pylon Bay | `crates/pylons-view/src/bay.rs` (#12423, `6a3de9ca71`) | `ORIGIN = [17,-2]`; the pad covers about x 14.8 to 41.3, z −3.5 to 26.5. A group's head lights its pipe while it answers. |
 | Help desk | `crates/grid-help-desk/src/lib.rs` (#12443, `b5a5a01231`) | `POSITION = [-6,0,-5]`, press E to ask; signed-out chat limits from `visitor_api.rs`. |
 | Build billboard | `crates/deploy-board/src/layout.rs` (#12442, `4aa91a948a`) | `SITE = [-26,30]`, `FACES = [0,-10]`, 24 m by 12 m. |
@@ -250,7 +250,7 @@ Stops (world x, z, meters). Each is a proposal that a placement test checks
 | --- | --- | --- | --- |
 | Terminal | About (2.8, 2.5), beside the terminal at (0, 4), off the players' approach from the spawn | The screen | Works: see [section 5](#5-using-the-terminal). |
 | Pylon Bay lookout | About (13, −4), on the Bay's west edge, 5.8 m from the Everglade arch | Into the Bay | Watches its own jobs and the groups. Idle clip `Idle_FoldArms_Loop`. |
-| Billboard view | About (−19, 20), 11 m from the Lagrange 2 arch | The billboard at (−26, 30) | Reads the last deploy. |
+| Billboard view | About (47, −5), off the billboard's east end | The billboard at (30, −7), along the Pylon Bay's south edge (#12482) | Reads the last deploy. |
 | Help desk | About (−9.5, −3), 4 m from the desk at (−6, −5) | The spawn | Greets new arrivals. |
 
 The round is terminal, Bay, terminal, help desk, billboard, terminal: the

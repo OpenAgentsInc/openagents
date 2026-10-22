@@ -466,12 +466,44 @@ fn the_board_stands_clear_of_the_grids_landmarks() {
             layout::footprint()
         );
     }
-    // It faces the spawn.
+    // It faces into the Pylon Bay.
     let front = layout::world([layout::WIDTH / 2.0, 0.0, 1.0]);
     let back = layout::world([layout::WIDTH / 2.0, 0.0, 0.0]);
     let (fx, fz) = (front[0] - back[0], front[2] - back[2]);
-    let (sx, sz) = (layout::FACES[0] - back[0], layout::FACES[1] - back[2]);
-    assert!(fx * sx + fz * sz > 0.9 * (sx * sx + sz * sz).sqrt());
+    let (bx, bz) = (30.0 - back[0], 10.0 - back[2]);
+    assert!(fx * bx + fz * bz > 0.9 * (bx * bx + bz * bz).sqrt());
+}
+
+#[test]
+fn from_the_spawn_only_the_boards_back_shows() {
+    // The spawn disc (`verse_world::social::arrival::SpawnArea::GRID`:
+    // center (0, -14), radius 6, facing (0, 0)), and the third-person
+    // camera 4 m behind each spot. Every one of them stands behind the
+    // board's face, so no lane, status, or Pylon count reads from there
+    // (#12482).
+    let front = layout::world([layout::WIDTH / 2.0, 0.0, 1.0]);
+    let back = layout::world([layout::WIDTH / 2.0, 0.0, 0.0]);
+    let normal = [front[0] - back[0], front[2] - back[2]];
+    let mut checked = 0;
+    for ring in 0..=6 {
+        for step in 0..24 {
+            let r = f64::from(ring);
+            let a = f64::from(step) * std::f64::consts::TAU / 24.0;
+            let spot = [r * a.cos(), -14.0 + r * a.sin()];
+            let toward = [-spot[0], -spot[1]];
+            let length = toward[0].hypot(toward[1]);
+            let eye = [
+                spot[0] - 4.0 * toward[0] / length,
+                spot[1] - 4.0 * toward[1] / length,
+            ];
+            for p in [spot, eye] {
+                let (dx, dz) = (p[0] - back[0], p[1] - back[2]);
+                assert!(dx * normal[0] + dz * normal[1] < 0.0, "{p:?}");
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 300);
 }
 
 #[test]
@@ -481,41 +513,4 @@ fn the_filters_ask_for_heads_history_and_pointers() {
     assert_eq!(filters[0]["kinds"][0], deploy::HEAD_KIND);
     assert_eq!(filters[1]["limit"], HISTORY_EVENTS);
     assert_eq!(filters[2]["kinds"][0], pointer::KIND);
-}
-
-#[test]
-fn the_arches_near_the_spawn_hide_no_lanes_status_or_strip() {
-    // The third-person camera behind the spawn, and the Game Lab and
-    // Lagrange 2 arches as posts 2.3 m in radius and 4.7 m tall. Everything
-    // a lane shows above its history must clear them.
-    let eye = [0.0, 3.0, -16.5];
-    let hidden = |p: [f64; 3]| {
-        let (dx, dz) = (p[0] - eye[0], p[2] - eye[2]);
-        let length = dx * dx + dz * dz;
-        [(-8.0, 3.0), (-20.0, 9.0)].iter().any(|&(ax, az)| {
-            let t = (((ax - eye[0]) * dx + (az - eye[2]) * dz) / length).clamp(0.0, 1.0);
-            let (qx, qz) = (eye[0] + t * dx, eye[2] + t * dz);
-            (qx - ax).hypot(qz - az) < 2.3 && eye[1] + t * (p[1] - eye[1]) < 4.7
-        })
-    };
-    let mut ingest = ingest();
-    for env in Env::ALL {
-        run_through(
-            &mut ingest,
-            env,
-            "r1",
-            &[Phase::BuildStarted, Phase::BuildDone],
-            1_000,
-        );
-        run_through(&mut ingest, env, "r0", &[Phase::Live], 500);
-    }
-    let pieces = layout::pieces(&ingest.board, 1_100.0, 1024);
-    let lowest_history = layout::LIFT + 4.6;
-    let mut checked = 0;
-    for p in pieces.iter().filter(|p| p.at[1] > lowest_history + 1.0) {
-        let world = layout::world([p.at[0], p.at[1], p.at[2]]);
-        assert!(!hidden(world), "{p:?}");
-        checked += 1;
-    }
-    assert!(checked > 20, "{checked}");
 }

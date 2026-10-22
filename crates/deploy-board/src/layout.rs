@@ -11,11 +11,12 @@ use nostr::deploy::{Env, Tier};
 use crate::font;
 use crate::state::{Board, Current, Flash, Lane, Outcome, STEPS, Step, age, clock};
 
-/// The board's foot in the Grid, world `[x, z]`, m: west of the spawn,
-/// beyond the Lagrange 2 arch and clear of the Gym's west wall.
-pub const SITE: [f64; 2] = [-26.0, 30.0];
-/// The point the board faces: the Grid's spawn, world `[x, z]`.
-pub const FACES: [f64; 2] = [0.0, -10.0];
+/// The board's foot in the Grid, world `[x, z]`, m: along the Pylon Bay's
+/// south edge, where developers look. A visitor at the spawn sees only its
+/// back (#12482).
+pub const SITE: [f64; 2] = [30.0, -7.0];
+/// The point the board faces: into the Pylon Bay, world `[x, z]`.
+pub const FACES: [f64; 2] = [30.0, 10.0];
 /// The face's width and height, m.
 pub const WIDTH: f64 = 24.0;
 pub const HEIGHT: f64 = 12.0;
@@ -38,10 +39,8 @@ const STATUS: f64 = 0.62;
 const LINE: f64 = 0.4;
 const LABEL: f64 = 0.28;
 const ROW: f64 = 0.4;
-/// Rows' lower edges above the face's lower edge, m. A lane's title,
-/// status, strip, commit, and subject sit above 6.4 m, the height the Game
-/// Lab and Lagrange 2 arches hide from the spawn; its last result and
-/// history sit below.
+/// Rows' lower edges above the face's lower edge, m: a lane's title,
+/// status, strip, commit, and subject above its last result and history.
 const HEADER_Y: f64 = 11.0;
 const HEADER_RULE: f64 = 10.7;
 const TITLE_Y: f64 = 9.75;

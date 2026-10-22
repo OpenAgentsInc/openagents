@@ -264,11 +264,6 @@ fn read() -> Option<(Vec<bay::Drawn>, Vec<bay::DrawnPipe>)> {
     bay::decode(&numbers)
 }
 
-/// How many Pylons the Bay shows, once the pylons layer has handed it over.
-pub fn online() -> Option<usize> {
-    read().map(|(stands, _)| stands.len())
-}
-
 /// A steady phase in 0..1 for a machine at (`x`, `z`), so neighbors don't
 /// pulse in step.
 fn phase(x: f64, z: f64) -> f64 {

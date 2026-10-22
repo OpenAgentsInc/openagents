@@ -56,7 +56,9 @@ impl Stop {
         match self {
             Self::Terminal => [HOME[0] as f32, HOME[2] as f32],
             Self::Bay => [11.0, -6.0],
-            Self::Billboard => [-19.0, 22.0],
+            // Off the billboard's east end, on the Pylon Bay's south side,
+            // where it moved out of the spawn's view (#12482).
+            Self::Billboard => [47.0, -5.0],
             Self::HelpDesk => [-11.0, -6.0],
         }
     }
