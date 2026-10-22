@@ -67,6 +67,8 @@ The user guide is [`docs/agent-lab/foreman.md`](../agent-lab/foreman.md).
   surface that Foreman and outside harnesses need.
 - [built-on-the-sdk.md](built-on-the-sdk.md): how Foreman is made of SDK
   primitives, what is still Foreman-only, and how anyone forks it.
+- [grid-foreman-plan.md](grid-foreman-plan.md): a plan for a permanent,
+  read-only Foreman with a giant robot body on the Grid at openagents.com.
 
 Related records:
 
