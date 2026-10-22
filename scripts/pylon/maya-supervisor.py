@@ -11,8 +11,10 @@ import argparse
 import base64
 import datetime as dt
 import fcntl
+import gzip
 import hashlib
 import importlib.util
+import io
 import json
 import math
 import os
@@ -537,17 +539,30 @@ def configure(args):
     # Public tar only; keys never enter metadata, archives, config, or logs.
     with tarfile.open(args.bundle / "service-files.tar.gz") as archive:
         members = archive.getmembers()
-        if (len(members) != len(PUBLIC_MEMBERS) or {m.name for m in members} != PUBLIC_MEMBERS
-                or any(not m.isfile() for m in members)):
+        names = [m.name for m in members]
+        allowed = PUBLIC_MEMBERS | {"._" + name for name in PUBLIC_MEMBERS}
+        if (not PUBLIC_MEMBERS.issubset(names) or len(names) != len(set(names))
+                or any(m.name not in allowed or not m.isfile() for m in members)):
             raise Refused("the public service archive contains unexpected files")
+        payloads = {name: archive.extractfile(name).read() for name in PUBLIC_MEMBERS}
         for name in ("launch-1.json", "launch-2.json"):
-            if archive.extractfile(name).read() != (args.bundle / name).read_bytes():
+            if payloads[name] != (args.bundle / name).read_bytes():
                 raise Refused("archived and public service settings differ")
     files = {}
     for name in BUNDLE:
         data = (args.bundle / name).read_bytes()
         (home / "bundle" / name).write_bytes(data)
         files[name] = hashlib.sha256(data).hexdigest()
+    # macOS tar adds AppleDouble companions. Drop only those recognized entries;
+    # write exactly the five public payloads without host metadata or links.
+    clean_archive = home / "bundle/service-files.tar.gz"
+    with clean_archive.open("wb") as stream, gzip.GzipFile(filename="", mode="wb", fileobj=stream, mtime=0) as compressed:
+        with tarfile.open(fileobj=compressed, mode="w") as archive:
+            for name, data in sorted(payloads.items()):
+                member = tarfile.TarInfo(name)
+                member.size, member.mode = len(data), 0o644
+                archive.addfile(member, io.BytesIO(data))
+    files[clean_archive.name] = digest(clean_archive)
     head = (home / "bundle/install-head.sh").read_text()
     marker = "systemctl enable --now --no-block maya-pylon.service"
     if head.count(marker) != 1:
@@ -570,6 +585,7 @@ IDENTITY
               "ledger_dir": str(Path.home() / ".openagents/cloud-budget"), "slots": deployment["slots"], "tools": {},
               "ssh_user": deployment.get("ssh_user", Path.home().name),
               "ssh_key": deployment.get("ssh_key", str(Path.home() / ".ssh/google_compute_engine")),
+              "source_archive_sha256": digest(args.bundle / "service-files.tar.gz"),
               "path": os.environ.get("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")}
     public_key = Path(config["ssh_key"] + ".pub").read_text().split()
     if len(public_key) < 2 or public_key[0] not in ("ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256"):

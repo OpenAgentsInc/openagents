@@ -522,6 +522,31 @@ class Controls(unittest.TestCase):
         with self.assertRaises(m.Refused):
             m.configure(args)
 
+    def test_macos_archive_drops_only_recognized_metadata_companions(self):
+        args = self.bundle()
+        with tarfile.open(args.bundle / "service-files.tar.gz", "w:gz") as archive:
+            for name in sorted(m.PUBLIC_MEMBERS):
+                for entry, data in ((name, (args.bundle / name).read_bytes()), ("._" + name, b"MAC-METADATA-DO-NOT-COPY")):
+                    info = tarfile.TarInfo(entry)
+                    info.size = len(data)
+                    archive.addfile(info, io.BytesIO(data))
+        with patch.object(m.Path, "home", return_value=self.home), patch.object(m.shutil, "which", return_value="/bin/test"):
+            m.configure(args)
+        with tarfile.open(args.home / "bundle/service-files.tar.gz") as archive:
+            self.assertEqual({v.name for v in archive.getmembers()}, m.PUBLIC_MEMBERS)
+        self.assertNotIn(b"TEST-ONLY-SSH-KEY", (args.home / "config.json").read_bytes())
+
+    def test_archive_rejects_secret_named_member(self):
+        args = self.bundle()
+        with tarfile.open(args.bundle / "service-files.tar.gz", "w:gz") as archive:
+            for name in sorted(m.PUBLIC_MEMBERS | {"provider.key"}):
+                data = b"not a permitted public bundle"
+                info = tarfile.TarInfo(name)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+        with self.assertRaises(m.Refused):
+            m.configure(args)
+
 
 if __name__ == "__main__":
     unittest.main()
