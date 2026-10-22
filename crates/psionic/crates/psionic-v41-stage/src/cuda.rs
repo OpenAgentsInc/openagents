@@ -363,7 +363,7 @@ impl StageExecutor for V41CudaStageExecutor {
             pre_mix,
             selection,
             candidates,
-            rows,
+            mut rows,
         } = inbound(message).map_err(fail)?;
         let mut position =
             usize::try_from(message.position).map_err(|_| fail("position out of range"))?;
@@ -374,6 +374,7 @@ impl StageExecutor for V41CudaStageExecutor {
             }
             position += self.offset;
             self.reached = position + message.tokens.len();
+            stale_source_rows(&mut rows, self.offset)?;
         }
         let input = V41StepInput {
             position,
@@ -410,6 +411,64 @@ impl StageExecutor for V41CudaStageExecutor {
         if let Some(dspark) = &mut self.dspark {
             dspark.reset();
         }
+    }
+}
+
+// The control appends a new request to the previous request's device cache.
+// Incoming rows therefore use that deliberately shifted cache's coordinates.
+// A head-only control returns logits without exporting shifted cache state.
+fn stale_source_rows(
+    rows: &mut Option<V41SourceRows>,
+    offset: usize,
+) -> Result<(), CudaStageError> {
+    let Some(rows) = rows else {
+        return Ok(());
+    };
+    let ratio = psionic_backend_cuda::v41_attention::v41_compress_ratio(rows.layer)
+        .filter(|ratio| *ratio > 0)
+        .ok_or_else(|| fail("stale-cache control has no compressed source"))?;
+    if !offset.is_multiple_of(ratio) {
+        return Err(fail("stale-cache control offset splits a compressed row"));
+    }
+    rows.first_row = rows
+        .first_row
+        .checked_add(offset / ratio)
+        .ok_or_else(|| fail("stale-cache control row offset overflow"))?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod stale_cache_tests {
+    use super::*;
+
+    #[test]
+    fn retained_cache_rebases_incoming_rows_without_changing_their_values() {
+        for (layer, offset, expected) in [(28, 38, 42), (8, 4, 6)] {
+            let mut rows = Some(V41SourceRows {
+                layer,
+                first_row: 4,
+                kv: vec![1, 2],
+                index_keys: Some(vec![3, 4]),
+            });
+            stale_source_rows(&mut rows, offset).unwrap();
+            let rows = rows.unwrap();
+            assert_eq!(rows.first_row, expected);
+            assert_eq!(rows.kv, [1, 2]);
+            assert_eq!(rows.index_keys.unwrap(), [3, 4]);
+        }
+        let mut rows = Some(V41SourceRows {
+            layer: 8,
+            first_row: 0,
+            kv: vec![],
+            index_keys: None,
+        });
+        assert!(stale_source_rows(&mut rows, 3).is_err());
+        rows.as_mut().unwrap().layer = 40;
+        assert!(stale_source_rows(&mut rows, 0).is_err());
+        rows.as_mut().unwrap().layer = 28;
+        rows.as_mut().unwrap().first_row = usize::MAX;
+        assert!(stale_source_rows(&mut rows, 1).is_err());
+        stale_source_rows(&mut None, usize::MAX).unwrap();
     }
 }
 

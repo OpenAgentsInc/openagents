@@ -1454,3 +1454,12 @@ candidate's unused slots. Other negative IDs, repeated IDs, and IDs beyond the
 current causal range still fail. The regression covers both representations
 and those refusals. All 63 stage package tests pass, with one optional test
 ignored. The pinned model worker and numerical limits stay unchanged.
+
+The new stale-cache attempts remain retained as structural refusals: the
+all-stage attempt exported shifted KV rows, and the head-only attempt rejected
+incoming rows at the old request's offset. The control adapter now maps incoming
+row positions into its deliberately retained cache, without changing their
+values. A focused test checks both compression ratios, unchanged row values,
+misalignment, and overflow. A separate control build must demonstrate numerical
+detection before the policy can freeze; these earlier refusals do not count.
+The uncontrolled `06e5158778` candidate remains pinned.
