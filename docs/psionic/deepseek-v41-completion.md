@@ -56,8 +56,8 @@ result becomes a pass through it.
 Gate progress (2026-10-21):
 
 - **G1 v1, original-weight CPU parity (W1, #12388; #12404): failed.
-  G1 v2, served GPU qualification: failed under policy 2.1; see the native
-  doc's 2026-10-22 section.** The v1 runner checks the
+  G1 v2, served GPU qualification: failed under policies 2.1 and 2.3;
+  2.2 couldn't be frozen. See the native doc's 2026-10-22 sections.** The v1 runner checks the
   `ReferenceBf16Tp8` CPU profile against the eight-B200 TP8 oracle. #12404 got a
   new B200 capture, showed that same-mode oracle reruns are bit-identical,
   measured the tensor-core, `MUFU.EX2`, and `expf` arithmetic on the device,

@@ -1942,6 +1942,38 @@ Two further observations from this run:
   (median 0.0012, maximum 0.028) already exceeds a 0.0018 budget, so a
   2.2 with full router scores would most likely fail the runtime at layer 0.
 
+### Policy 2.3: frozen, and the confirmation qualification fails (2026-10-22)
+
+Policy 2.3 (`g1_v2/policy-2.3.json`, SHA-256 `10398e96…5da4c67`, commit
+41ad65226e) was derived by rule 2.3 from the CPU port's plain BF16 profile
+(`cpu-bf16`, with no B200 emulation). The reference covered the six
+calibration cases and h1, h2, h3, and h5-window-255, against an oracle that
+keeps all 384 router scores: 388 positions in 20 case-and-mode units, with no
+unresolved changed expert set. The self-check passed, and the policy was
+frozen before any confirmation data was read.
+
+The `--release` qualification of the 13-case confirmation corpus ran at 8,192
+context with 2,872-token steps, on the pinned worker `185eb68c` with front
+`f5fb59bfa9` (report SHA-256 `656a3787…3a53527`). It **fails**:
+`release_passed` is false, with 74 violations. Every violation is the same
+kind: a router layer's measured score error exceeds that layer's 2.3 budget.
+They occur in 10 of 13 cases: c4, c5, c6, all six window cuts, and c9. They
+fall mostly in layers 13–23 and 36–38; the largest is 4.25 against a budget of
+2.10, in c6 layer 36. The three short chat and code cases (21–48 prompt
+tokens) pass every check.
+
+The following all held: every distribution, top-1, and tail check in both
+modes, every per-layer router mismatch limit, the margin and regret rule on
+every changed expert set (none unresolved), the exact Engram checks, and
+replay equal to forced decode in every case. The score error grows with
+context length, and the 2.3 reference covered prompts of at most 263 tokens,
+so its budget doesn't describe the long-context arithmetic the launch
+profile allows.
+
+G2 suite 2 on the same runtime: runtime 5/6, oracle 5/6, and the must-pass
+floor holds. Both fail the shared `fib(186)` assertion. The report matches
+the earlier run byte for byte (SHA-256 `49d3a97f…cfec887`).
+
 ## W3 measurements and W2 answers (2026-10-21)
 
 Provisional: the runtime is not yet numerically qualified (G1 v2, #12405),
