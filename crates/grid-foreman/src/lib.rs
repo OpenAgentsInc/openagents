@@ -13,6 +13,7 @@
 
 #[cfg(feature = "host")]
 pub mod host;
+pub mod objectives;
 #[cfg(feature = "host")]
 pub mod patrol;
 #[cfg(test)]
@@ -115,11 +116,13 @@ pub const COMMANDS_PATH: &str = "/v1/foreman/commands";
 pub const COMMAND_SCHEMA: &str = "openagents.grid-foreman.command.v1";
 /// Start a coding agent on one open issue, in an app chat of its own.
 pub const START: &str = "agent.start";
+/// Explore one saved objective and deliver one checked improvement.
+pub const EXPLORE: &str = "agent.explore";
 /// Ask an agent the Foreman started for a draft pull request now.
 pub const DRAFT_PR: &str = "agent.draft_pr";
 /// Every action a command may name. Nothing else has a word: no merge,
 /// close, deploy, pay, steer, stop, or free text.
-pub const ACTIONS: [&str; 2] = [START, DRAFT_PR];
+pub const ACTIONS: [&str; 3] = [START, DRAFT_PR, EXPLORE];
 /// Starts in a UTC day.
 pub const STARTS_PER_DAY: usize = 5;
 /// Draft pull request asks in a UTC day.

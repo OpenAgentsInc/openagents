@@ -81,6 +81,7 @@
 /docs/*
 !/docs/agents/
 !/docs/coder/
+!/docs/foreman/
 !/docs/cost/
 !/docs/decision-models/
 !/docs/protocol/

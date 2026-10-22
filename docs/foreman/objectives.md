@@ -6,10 +6,12 @@ five objectives on 2026-10-22. Three additional objectives are proposed;
 the picker leaves them out until the owner activates them.
 
 The catalog is an authoring source, checked by
-[its schema](objectives.schema.json). It is not a set of signed events,
-active host grants, scheduled jobs, or claims that the work is running.
-The Grid host still needs the objective adapter described in the
-[implementation plan](grid-foreman-plan.md#14-standing-project-objectives-and-kiln).
+[its schema](objectives.schema.json). The server imports the catalog shipped
+in its build, saves immutable revisions, and reserves each exact app assignment
+before dispatch. The Grid host requests the server-selected objective when
+its complete GitHub read reports no eligible issues. This implementation
+uses the existing app assignment path; it does not publish WORK or AUTO
+artifacts. The Nostr mapping below describes that separate integration.
 
 ## Initial objectives
 
@@ -91,8 +93,9 @@ kind `39203` was replaced by WORK objectives in
 `work-host` already implements native WORK history and conditional
 commands; `automation-host` implements bounded schedules and checked
 continuation. Their current execution profiles do not run arbitrary coding
-agents or Kiln. The Foreman app-assignment/Kiln adapters and the catalog
-importer remain implementation work. See
+agents or Kiln. The app-assignment adapter and local catalog importer run through the
+Grid command path. The native WORK/AUTO and Kiln adapters remain
+implementation work. See
 [work-host](../../crates/work-host/README.md) and
 [automation-host](../../crates/automation-host/README.md) for their actual
 supported roles.

@@ -225,14 +225,66 @@ pub fn next_command(
         .as_array()
         .map(|log| log.iter().filter_map(|e| e["issue"].as_u64()).collect())
         .unwrap_or_default();
+    if let Some(eligible) = commands.get("eligible_issues") {
+        return eligible
+            .as_array()?
+            .iter()
+            .filter_map(serde_json::Value::as_u64)
+            .find(|n| !tried.contains(n))
+            .map(|n| (crate::START.into(), n, None));
+    }
     status?["issues"]
         .as_array()?
         .iter()
         .rev()
         .filter(|i| i["assigned"] == false)
         .filter_map(|i| i["number"].as_u64())
+        .filter(|n| *n != 12469)
         .find(|n| !tried.contains(n))
         .map(|n| (crate::START.into(), n, None))
+}
+
+/// Select an issue, follow-up, or a server-pinned objective intent.
+#[must_use]
+pub fn next_body(
+    commands: &serde_json::Value,
+    status: Option<&serde_json::Value>,
+    auto: bool,
+    now: u64,
+) -> Option<String> {
+    if let Some((action, issue, assignment)) = next_command(commands, status, auto, now) {
+        return Some(command_body(&action, issue, assignment.as_deref()));
+    }
+    if !auto
+        || commands["enabled"] != true
+        || commands["paused"] == true
+        || commands["worker"] != true
+    {
+        return None;
+    }
+    // A failed, truncated, or old GitHub response is not an empty backlog.
+    if !commands["eligible_issues"].as_array()?.is_empty() {
+        return None;
+    }
+    let exploration = commands.get("next_exploration")?;
+    let request = exploration["request_id"].as_str()?;
+    if exploration["objective"].as_str()?.is_empty()
+        || exploration["revision"].as_str()?.len() != 64
+        || request.len() != 64
+    {
+        return None;
+    }
+    let reserved = commands["running"]
+        .as_array()?
+        .iter()
+        .any(|r| r["assignment"].as_str() == Some(request));
+    if !reserved
+        && (commands["running"].as_array()?.len() >= crate::RUNNING_AT_ONCE
+            || commands["today"]["started"].as_u64()? >= crate::STARTS_PER_DAY as u64)
+    {
+        return None;
+    }
+    Some(serde_json::json!({"schema": crate::COMMAND_SCHEMA, "action": crate::EXPLORE, "issue": 0, "exploration": exploration}).to_string())
 }
 
 /// Looks at its commands every minute and sends at most one, in the
@@ -263,12 +315,12 @@ fn command_loop(site: String, signer: nostr::domain::RelaySigner, auto: bool) {
             };
             let status = if auto { read(crate::STATUS_PATH) } else { None };
             let now = identity_now();
-            let Some((action, issue, assignment)) =
-                next_command(&commands, status.as_ref(), auto, now)
-            else {
+            let Some(body) = next_body(&commands, status.as_ref(), auto, now) else {
                 continue;
             };
-            let body = command_body(&action, issue, assignment.as_deref());
+            let summary: serde_json::Value = serde_json::from_str(&body).unwrap_or_default();
+            let action = summary["action"].as_str().unwrap_or("command");
+            let issue = summary["issue"].as_u64().unwrap_or(0);
             let authorization = sign_command(&signer, &url, body.as_bytes(), now);
             let answer = client
                 .post(&url)
@@ -527,6 +579,35 @@ mod tests {
         );
         assert_eq!(activity_from(&serde_json::json!({"text": null})), None);
         assert_eq!(activity_from(&serde_json::json!({"text": "<>"})), None);
+    }
+
+    #[test]
+    fn objective_dispatch_needs_a_known_empty_backlog_and_respects_controls() {
+        let mut commands = serde_json::json!({
+            "enabled":true,"worker":true,"paused":false,
+            "today":{"started":0,"draft_prs":0},"running":[],"requests":[],"log":[],
+            "eligible_issues":[],
+            "next_exploration":{"objective":"improve-psionic","revision":"a".repeat(64),"request_id":"b".repeat(64)}
+        });
+        let body: serde_json::Value =
+            serde_json::from_str(&next_body(&commands, None, true, 1000).unwrap()).unwrap();
+        assert_eq!(body["action"], crate::EXPLORE);
+        assert!(next_body(&commands, None, false, 1000).is_none());
+        commands["eligible_issues"] = serde_json::Value::Null;
+        assert!(next_body(&commands, None, true, 1000).is_none());
+        commands["eligible_issues"] = serde_json::json!([42]);
+        let body: serde_json::Value =
+            serde_json::from_str(&next_body(&commands, None, true, 1000).unwrap()).unwrap();
+        assert_eq!(body["issue"], 42);
+        commands["eligible_issues"] = serde_json::json!([]);
+        commands["paused"] = serde_json::json!(true);
+        assert!(next_body(&commands, None, true, 1000).is_none());
+        commands["paused"] = serde_json::json!(false);
+        commands["today"]["started"] = serde_json::json!(crate::STARTS_PER_DAY);
+        assert!(next_body(&commands, None, true, 1000).is_none());
+        commands["running"] =
+            serde_json::json!([{"assignment":"b".repeat(64),"started_at":1000,"issue":0}]);
+        assert!(next_body(&commands, None, true, 1000).is_some());
     }
 
     #[test]

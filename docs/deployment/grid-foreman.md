@@ -139,3 +139,27 @@ never merging, deploying, or spending.
 - The site refuses past 5 starts and 10 draft asks a UTC day, 3 running
   agents, or one command a minute. Merging, deploying, and spending stay
   with an admin.
+
+### Standing objectives
+
+The server imports `docs/foreman/objectives.json` from its build and keeps
+immutable catalog revisions under `grid-foreman/objectives/catalog-HASH.json`.
+`grid-foreman/objectives/attempts.json` saves each exact assignment before
+sending it to the app. Concurrent requests and retries reuse its request ID,
+brief, agent revision, computer, and project. Corrupt or unavailable history
+stops objective selection instead of resetting it.
+
+`GET /v1/foreman/commands` adds `eligible_issues`, `next_exploration`, and
+`objective_catalog_revision`. A failed or incomplete GitHub read returns
+`eligible_issues: null`; the host does not interpret that as an empty backlog.
+A complete read is shared for 60 seconds. The pinned host signs
+`agent.explore` with the server-selected objective, catalog revision, and
+request ID. The server rechecks its selection and saves the assignment
+before dispatch. One objective exploration runs at a time, within the existing
+start limits and pause control. Issue #12469 remains excluded.
+
+Configure the worker account, online device ID, and project ID with the
+variables above. `OPENAGENTS_FOREMAN_GITHUB_TOKEN` supplies authenticated
+repository reads. Objective definitions do not provide merge, deploy, or
+spend authority. The current path uses app assignments; native WORK/AUTO
+publication and persistent Kiln execution are separate integrations.

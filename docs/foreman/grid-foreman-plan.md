@@ -16,8 +16,7 @@ objectives when no eligible GitHub issue is available. The initial
 Microcoder. Psionic includes faster supported models, more supported models,
 and more device types. Use the existing `coderos-4080` computer; do not select
 #12469 for this rollout. [Section 14](#14-standing-project-objectives-and-kiln)
-defines the proposed loop and its connection to Kiln. P4's issue picker
-does not implement this part.
+defines the proposed loop and its connection to Kiln. The objective command extends P4 with the existing app-assignment path.
 
 The request said "doc/first"; this page lives in `docs/foreman/` beside the
 other Foreman documents, which matches the existing layout.
@@ -899,8 +898,9 @@ Filed issues:
 
 ## 14. Standing project objectives and Kiln
 
-Status: proposed implementation following the owner's direction of
-2026-10-22. The objective is ongoing; each task is bounded and ends in
+Status: the catalog importer and app-assignment dispatch hook implement
+the first slice of the owner's 2026-10-22 direction. Native WORK/AUTO
+publication and Kiln execution remain planned. The objective is ongoing; each task is bounded and ends in
 evidence and a reviewable change. Foreman selects the next in-scope task
 without asking the owner after every task.
 
@@ -944,8 +944,9 @@ The [objective catalog](objectives.json) defines the five requested
 objectives and three proposed additions. Its [Nostr mapping](objectives.md#representation-in-nostr)
 uses WORK initiatives for ongoing objectives and child WORK items for
 concrete changes. AUTO supplies finite execution campaigns. No new NIP or
-event kind is required. The catalog importer and execution adapters still
-need implementation; saving this file does not activate the loop.
+event kind is required. The server imports its shipped catalog and saves assignment intents before
+dispatch. Native WORK/AUTO and Kiln adapters remain planned; a catalog file
+alone does not grant dispatch authority.
 
 Keep these records on the host/account, outside a model's context or a
 browser tab. The Grid, app chat, CLI, and Kiln use the same work IDs.

@@ -194,8 +194,8 @@ fn the_brief_is_a_fixed_template_with_a_number() {
 }
 
 #[test]
-fn only_two_actions_exist() {
-    assert_eq!(ACTIONS, ["agent.start", "agent.draft_pr"]);
+fn only_bounded_coding_actions_exist() {
+    assert_eq!(ACTIONS, ["agent.start", "agent.draft_pr", "agent.explore"]);
     for word in ["merge", "deploy", "pay", "close", "stop", "steer"] {
         assert!(ACTIONS.iter().all(|a| !a.contains(word)), "{word}");
     }

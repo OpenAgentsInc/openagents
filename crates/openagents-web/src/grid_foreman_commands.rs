@@ -38,6 +38,8 @@
 //! `_WORKER_HOST` (and `_WORKER_PROJECT`) when set, else the account's online
 //! computer that runs the worker, preferring the `openagents` project.
 
+mod objectives;
+
 use std::collections::BTreeSet;
 
 use axum::Router;
@@ -90,7 +92,10 @@ const RUNNING_FOR: u64 = 24 * 60 * 60;
 pub(crate) struct Command {
     pub schema: String,
     pub action: String,
+    #[serde(default)]
     pub issue: u64,
+    #[serde(default)]
+    pub exploration: Option<objectives::Exploration>,
     /// For `agent.draft_pr`: the assignment it started.
     #[serde(default)]
     pub assignment: Option<String>,
@@ -106,6 +111,8 @@ pub(crate) struct Entry {
     pub event: Option<String>,
     pub action: String,
     pub issue: u64,
+    #[serde(default)]
+    pub objective: Option<String>,
     /// `started`, `asked`, or `refused`.
     pub result: String,
     #[serde(default)]
@@ -179,6 +186,16 @@ pub(crate) async fn recent(store: &Store, now: u64) -> Vec<Entry> {
     let (mut out, _) = read::<Vec<Entry>>(store, &log_key(day(now).saturating_sub(1))).await;
     let (today, _) = read::<Vec<Entry>>(store, &log_key(day(now))).await;
     out.extend(today);
+    if let Ok(entries) = objectives::entries(store).await {
+        for entry in entries {
+            if !out
+                .iter()
+                .any(|e| e.result == "started" && e.assignment == entry.assignment)
+            {
+                out.push(entry);
+            }
+        }
+    }
     out
 }
 
@@ -219,14 +236,13 @@ pub(crate) async fn remember_owner(store: &Store, account_id: &str) {
 pub(crate) fn worker_spec() -> openagents_sdk::agents::AgentSpec {
     openagents_sdk::agents::AgentSpec {
         name: "Grid Foreman worker".into(),
-        description:
-            "Works one GitHub issue the Grid Foreman hands it and opens a draft pull request."
-                .into(),
-        instructions: "I work the one GitHub issue my first message names, in this chat, and \
+        description: "Works one issue or standing objective and opens a draft pull request.".into(),
+        instructions:
+            "I work the one GitHub issue or objective my first message names, in this chat, and \
 follow that message exactly: claim the issue, work in a git worktree of my own, open a draft pull \
 request, and reply with its link. I never push to main, merge, deploy, spend money, or test on \
 the owner's account. If I stop before a pull request, I release the claim."
-            .into(),
+                .into(),
         runtime: "claude-code".into(),
         model: None,
         access: openagents_sdk::agents::Access::HostDefault,
@@ -422,11 +438,16 @@ async fn issue_facts(issue: u64) -> Result<IssueFacts, &'static str> {
 pub(crate) fn caps(log: &[Entry], now: u64, action: &str) -> Option<&'static str> {
     let today: Vec<&Entry> = log
         .iter()
-        .filter(|e| day(e.at) == day(now) && e.result != "refused")
+        .filter(|e| day(e.at) == day(now) && (e.result == "started" || e.result == "asked"))
         .collect();
     let started = today
         .iter()
-        .filter(|e| e.action == grid_foreman::START)
+        .filter(|e| {
+            matches!(
+                e.action.as_str(),
+                grid_foreman::START | grid_foreman::EXPLORE
+            )
+        })
         .count();
     let asked = today
         .iter()
@@ -434,13 +455,15 @@ pub(crate) fn caps(log: &[Entry], now: u64, action: &str) -> Option<&'static str
         .count();
     if log
         .iter()
-        .filter(|e| e.result != "refused")
+        .filter(|e| e.result == "started" || e.result == "asked")
         .any(|e| now.saturating_sub(e.at) < grid_foreman::COMMAND_GAP_SECONDS)
     {
         return Some("foreman_too_soon");
     }
     match action {
-        grid_foreman::START if started >= grid_foreman::STARTS_PER_DAY => Some("foreman_cap"),
+        grid_foreman::START | grid_foreman::EXPLORE if started >= grid_foreman::STARTS_PER_DAY => {
+            Some("foreman_cap")
+        }
         grid_foreman::DRAFT_PR if asked >= grid_foreman::DRAFT_PRS_PER_DAY => Some("foreman_cap"),
         _ => None,
     }
@@ -509,6 +532,24 @@ fn no(code: &'static str) -> Response {
             StatusCode::SERVICE_UNAVAILABLE,
             "The Foreman's worker isn't set up.",
         ),
+        "foreman_backlog_unknown" => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "The Foreman couldn't check GitHub. Try again later.",
+        ),
+        "foreman_catalog_invalid"
+        | "foreman_catalog_conflict"
+        | "foreman_objectives_unreadable" => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "The Foreman couldn't read its objectives. Try again later.",
+        ),
+        "foreman_objective_conflict" => (
+            StatusCode::CONFLICT,
+            "That task changed. Refresh and try again.",
+        ),
+        "foreman_issue_available" => (
+            StatusCode::CONFLICT,
+            "The Foreman has an issue to work on first.",
+        ),
         _ => (
             StatusCode::CONFLICT,
             "The Foreman can't do that for this issue.",
@@ -548,7 +589,10 @@ async fn command(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Res
     } else {
         app.config.analytics.event(
             "foreman_command",
-            if entry.action == grid_foreman::START {
+            if matches!(
+                entry.action.as_str(),
+                grid_foreman::START | grid_foreman::EXPLORE
+            ) {
                 "start"
             } else {
                 "draft_pr"
@@ -599,11 +643,17 @@ async fn act(
     let command = parsed.ok_or("foreman_invalid")?;
     if command.schema != grid_foreman::COMMAND_SCHEMA
         || !grid_foreman::ACTIONS.contains(&command.action.as_str())
-        || command.issue == 0
+        || (command.issue == 0 && command.action == grid_foreman::START)
+        || (command.action == grid_foreman::EXPLORE && command.issue != 0)
+        || (command.exploration.is_some() != (command.action == grid_foreman::EXPLORE))
     {
         return Err("foreman_invalid");
     }
-    if let Some(code) = caps(&log, now, &command.action) {
+    let reserved = command.exploration.as_ref().is_some_and(|r| {
+        log.iter()
+            .any(|e| e.assignment.as_deref() == Some(r.request_id.as_str()))
+    });
+    if !reserved && let Some(code) = caps(&log, now, &command.action) {
         return Err(code);
     }
     let (owner, agent, host, project) = match &setup.worker {
@@ -616,7 +666,44 @@ async fn act(
     let state = |id: &str| book.assignments.get(id).map(|a| a.state);
     let running = running(&log, now, state);
     match command.action.as_str() {
+        grid_foreman::EXPLORE => {
+            if !reserved && running.len() >= grid_foreman::RUNNING_AT_ONCE {
+                return Err("foreman_running");
+            }
+            let reference = command.exploration.as_ref().ok_or("foreman_invalid")?;
+            let allow_new = if reserved {
+                false
+            } else {
+                objectives::eligible_issues().await?.is_empty()
+            };
+            if !reserved && !allow_new {
+                return Err("foreman_issue_available");
+            }
+            let (assignment, chat) = objectives::start(
+                store,
+                reference,
+                (owner, agent, host, project),
+                now,
+                allow_new,
+            )
+            .await?;
+            entry.result = if reserved { "recovered" } else { "started" }.into();
+            entry.objective = Some(reference.objective.clone());
+            entry.assignment = Some(assignment);
+            entry.chat = Some(chat);
+            Ok(())
+        }
         grid_foreman::START => {
+            if grid_foreman::objectives::Catalog::parse(
+                grid_foreman::objectives::CATALOG.as_bytes(),
+            )
+            .map_err(|_| "foreman_catalog_invalid")?
+            .selection
+            .excluded_issues
+            .contains(&command.issue)
+            {
+                return Err("foreman_issue_denied");
+            }
             if running.len() >= grid_foreman::RUNNING_AT_ONCE {
                 return Err("foreman_running");
             }
@@ -741,7 +828,7 @@ async fn overview(State(app): State<App>) -> Response {
         .collect();
     let today: Vec<&Entry> = log
         .iter()
-        .filter(|e| day(e.at) == day(now) && e.result != "refused")
+        .filter(|e| day(e.at) == day(now) && (e.result == "started" || e.result == "asked"))
         .collect();
     let (requests, _) = read::<Vec<Request>>(&store, REQUESTS_KEY).await;
     let handled: BTreeSet<u64> = log
@@ -753,6 +840,8 @@ async fn overview(State(app): State<App>) -> Response {
         .iter()
         .filter(|r| !handled.contains(&r.issue))
         .collect();
+    let eligible = objectives::eligible_issues().await.ok();
+    let next = objectives::next(&store, now, state).await.ok().flatten();
     let mut response = answer(
         StatusCode::OK,
         json!({
@@ -761,7 +850,7 @@ async fn overview(State(app): State<App>) -> Response {
             "worker": account.is_some(),
             "paused": paused(&store).await,
             "today": {
-                "started": today.iter().filter(|e| e.action == grid_foreman::START).count(),
+                "started": today.iter().filter(|e| matches!(e.action.as_str(), grid_foreman::START | grid_foreman::EXPLORE)).count(),
                 "draft_prs": today.iter().filter(|e| e.action == grid_foreman::DRAFT_PR).count(),
             },
             "caps": {
@@ -771,6 +860,9 @@ async fn overview(State(app): State<App>) -> Response {
             },
             "running": running,
             "requests": requests,
+            "eligible_issues": eligible,
+            "next_exploration": next,
+            "objective_catalog_revision": grid_foreman::objectives::Catalog::parse(grid_foreman::objectives::CATALOG.as_bytes()).ok().map(|c| c.revision()),
             "log": log.iter().rev().take(50).collect::<Vec<_>>(),
         }),
     );

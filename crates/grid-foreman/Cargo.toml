@@ -9,7 +9,7 @@ description = "The Grid Foreman: where its giant robot stands on the Grid, its t
 [features]
 default = []
 # The host: `grid-foreman serve`, its patrol, and its relay session.
-host = ["dep:verse", "dep:glam", "dep:reqwest", "dep:serde_json", "dep:deploy-board", "dep:pylons-view", "dep:nostr", "dep:sha2", "dep:base64"]
+host = ["dep:verse", "dep:glam", "dep:reqwest", "dep:deploy-board", "dep:pylons-view", "dep:nostr", "dep:base64"]
 
 [[bin]]
 name = "grid-foreman"
@@ -20,11 +20,12 @@ required-features = ["host"]
 verse = { path = "../verse", default-features = false, optional = true }
 glam = { version = "0.30.10", optional = true }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"], optional = true }
-serde_json = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1" }
 deploy-board = { path = "../deploy-board", optional = true }
 pylons-view = { path = "../pylons-view", optional = true }
 nostr = { path = "../nostr", optional = true }
-sha2 = { version = "0.10", optional = true }
+sha2 = { version = "0.10" }
 base64 = { version = "0.22", optional = true }
 
 [dev-dependencies]
