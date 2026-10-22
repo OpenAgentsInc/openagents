@@ -196,6 +196,7 @@ pub mod upstream;
 #[doc(hidden)]
 pub mod vault;
 mod verse_key;
+mod grid_foreman;
 mod visitor_api;
 mod wallet_browser;
 mod wallet_restore;
@@ -842,6 +843,7 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         .merge(lightning_address::routes())
         .merge(profile_earnings::routes())
         .merge(verse_key::routes())
+        .merge(grid_foreman::routes())
         .merge(agent_assignments::routes())
         .merge(agent_lab::routes())
         .merge(dashboard::routes())

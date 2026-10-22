@@ -1,0 +1,16 @@
+[package]
+name = "grid-foreman"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The Grid Foreman: where its giant robot stands on the Grid, its tag and status line, and the status it reports."
+
+[dependencies]
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+pylons-view = { path = "../pylons-view" }
+
+[lints]
+workspace = true

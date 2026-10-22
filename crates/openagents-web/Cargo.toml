@@ -108,6 +108,7 @@ gym-leaderboard = { path = "../gym-leaderboard", default-features = false, featu
 # verified and projected (pylon::field). No broker: it links SQLite.
 pylon = { path = "../pylon", default-features = false }
 pylons-view = { path = "../pylons-view" }
+grid-foreman = { path = "../grid-foreman" }
 # Where /pylons' Grid layer holds the camera (its native half only).
 pylons-web = { path = "../pylons-web" }
 # A shared chat's preview picture, drawn from SVG with the Geist fonts

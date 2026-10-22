@@ -6855,6 +6855,7 @@ dependencies = [
  "futures-util",
  "glam",
  "gloo-timers",
+ "grid-foreman",
  "grid-help-desk",
  "icecream-zone",
  "js-sys",
@@ -8180,6 +8181,14 @@ dependencies = [
  "graphql_client_codegen",
  "proc-macro2",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "grid-foreman"
+version = "1.0.0"
+dependencies = [
+ "oa-copy",
+ "pylons-view",
 ]
 
 [[package]]
@@ -13653,6 +13662,7 @@ dependencies = [
  "game-lab",
  "github-actions",
  "glam",
+ "grid-foreman",
  "gym-leaderboard",
  "hmac 0.12.1",
  "hyper",

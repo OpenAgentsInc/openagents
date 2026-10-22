@@ -27,6 +27,8 @@ pylons-view = { path = "../pylons-view" }
 deploy-board = { path = "../deploy-board" }
 # The help desk near the spawn (#12443).
 grid-help-desk = { path = "../grid-help-desk" }
+# The Grid Foreman beside the terminal (#12444).
+grid-foreman = { path = "../grid-foreman" }
 coder-browser = { path = "../coder-browser" }
 coder-ui = { path = "../coder-ui" }
 coder-host-wire = { path = "../coder-host-wire" }

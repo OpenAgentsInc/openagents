@@ -1368,6 +1368,7 @@ impl Page {
         self.draw_frame(now);
         if HOME.with(|home| home.get()) {
             crate::help_desk::frame(self.runtime.player.pos, self.runtime.is_plaza());
+            crate::foreman::frame(now);
             thread_local! { static GAME_NEAR: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
             let near = GAME_NEAR.with(|old| {
                 // Game Lab stands on the Grid plaza only, never in a zone
@@ -1677,6 +1678,10 @@ impl Page {
         let dt = self
             .runtime
             .tick_with_mode(&input, dt, self.input.orbit, true);
+        // Nobody walks through the Grid Foreman (#12444).
+        if home && self.runtime.is_bare() && self.runtime.is_plaza() {
+            crate::foreman::keep_clear(&mut self.runtime.player.pos);
+        }
         if let Some((_, direction)) = self.climb {
             if self.runtime.everglade_levitating() {
                 self.runtime.everglade_climb(direction, dt);
@@ -1703,6 +1708,7 @@ impl Page {
             let mut dynamic = grid_frame::dynamic(&self.runtime, &peers, &[]);
             if HOME.with(std::cell::Cell::get) && self.runtime.is_plaza() {
                 crate::pylon_bay::instances(self.now, &mut dynamic);
+                crate::foreman::instances(self.now, view.eye, &mut dynamic);
             }
             if let Some(board) = &mut self.board {
                 board.tick(self.presence.as_mut());
@@ -1735,6 +1741,9 @@ impl Page {
                 && HOME.with(std::cell::Cell::get)
             {
                 crate::help_desk::draw(&mut ui, atlas, css, view.view_proj);
+                if self.runtime.is_plaza() {
+                    crate::foreman::draw(&mut ui, atlas, css, view.view_proj, view.eye);
+                }
             }
             // A model group's details over its sign, when it is near or
             // pointed at (#12403).

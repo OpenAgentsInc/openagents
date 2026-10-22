@@ -531,9 +531,16 @@ fn ground(at: [f32; 2]) -> Vec3 {
 
 /// Pushes a player's feet at `player` out of reach of a robot at `robot`.
 pub fn keep_clear(player: &mut Vec3, robot: Vec3) {
+    keep_clear_within(player, robot, REACH);
+}
+
+/// Pushes a player's feet at `player` to at least `reach` from a robot at
+/// `robot`: [`keep_clear`] for a robot of another size, such as the Grid
+/// Foreman.
+pub fn keep_clear_within(player: &mut Vec3, robot: Vec3, reach: f32) {
     let (dx, dz) = (player.x - robot.x, player.z - robot.z);
     let distance = dx.hypot(dz);
-    if !distance.is_finite() || distance >= REACH {
+    if !distance.is_finite() || distance >= reach {
         return;
     }
     let (nx, nz) = if distance > 1e-4 {
@@ -541,8 +548,8 @@ pub fn keep_clear(player: &mut Vec3, robot: Vec3) {
     } else {
         (0.0, -1.0)
     };
-    player.x = robot.x + nx * REACH;
-    player.z = robot.z + nz * REACH;
+    player.x = robot.x + nx * reach;
+    player.z = robot.z + nz * reach;
 }
 
 /// Where the dancer stands in the Everglade arch's frame: outside the pillar
@@ -584,7 +591,20 @@ pub fn dancer(clock: f64) -> Pose {
 /// beyond [`FAR_METERS`].
 #[must_use]
 pub fn instance(pose: &Pose, eye: Vec3) -> verse_engine::presentation::Instance {
-    let model = if pose.pos.distance(eye) > FAR_METERS {
+    instance_scaled(pose, eye, SCALE, FAR_METERS)
+}
+
+/// The robot's engine instance at `pose`, `scale` times its rig's size,
+/// the far level when the eye is beyond `far_meters`: [`instance`] for a
+/// robot of another size, such as the Grid Foreman.
+#[must_use]
+pub fn instance_scaled(
+    pose: &Pose,
+    eye: Vec3,
+    scale: f32,
+    far_meters: f32,
+) -> verse_engine::presentation::Instance {
+    let model = if pose.pos.distance(eye) > far_meters {
         ROBOT_FAR
     } else {
         ROBOT
@@ -594,7 +614,7 @@ pub fn instance(pose: &Pose, eye: Vec3) -> verse_engine::presentation::Instance 
         actor: None,
         model: model.into(),
         transform: Mat4::from_scale_rotation_translation(
-            Vec3::splat(SCALE),
+            Vec3::splat(scale),
             Quat::from_rotation_y(pose.yaw),
             pose.pos,
         ),
