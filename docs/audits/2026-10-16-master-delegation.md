@@ -485,6 +485,12 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12468, #12470: with a `consumer-q` group and a qualified group live on
+  the relay, run `pylon ask --model deepseek-v4.1-flash` with and without
+  `--profile consumer-q`, and check each request lands only on the profile
+  it names and that the lossy answer is labeled. When the layer-major
+  prefill adds Maya's layer 20–39 skip (#12470's bound: keep the last
+  2,414 tokens), compare its logits with the full prefill on a 16K prompt.
 - #12463, #12466: on a spot `g4-standard-48` with a profile from a few
   chat answers, run `psionic-v41-stage chain --split 0-40 --gpus 0
   --experts file --expert-cache auto --engram file --expert-profile FILE`
