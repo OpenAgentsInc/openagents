@@ -259,7 +259,292 @@ __global__ void __launch_bounds__(kThreads) v41_block_matvec_kernel(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Batched products for prefill (#12464)
+// ---------------------------------------------------------------------------
+//
+// `v41_block_matmul_kernel` computes the same products as
+// `v41_block_matvec_kernel` for many activation rows at once: each block
+// takes a tile of up to kTileRows rows that use the same matrix, so every
+// weight block is read and decoded once for the whole tile instead of once
+// per row. Each (output row, activation row) pair still sums exactly as the
+// matrix-vector kernel does: a fused chain over each 32-value block from
+// element 0, the block sum times the activation scale and then the weight
+// scale, and the scaled sums added in ascending block order. The results
+// are therefore bit-equal to one matrix-vector product per row.
+//
+// Work is a list of entries sorted by matrix (`entries`), cut into tiles
+// (`tiles`: matrix, first entry, count). Entry `e` reads activation row
+// `act_shared ? e / top_k : e` and writes output row `e`. A dense product
+// uses one matrix and entries 0..T-1 with top_k 1; routed experts use the
+// entries `v41_group_entries_kernel` sorts by expert.
+
+constexpr int kTileRows = 8;
+constexpr int kTileStage = 32;  // K blocks staged per pass
+
+template <bool kFp4>
+__global__ void __launch_bounds__(kThreads) v41_block_matmul_kernel(
+    const uint8_t* __restrict__ weights,
+    const uint8_t* __restrict__ weight_scales,
+    long long matrix_bytes,
+    long long matrix_scale_bytes,
+    int matrices,
+    const int* __restrict__ entries,
+    const int4* __restrict__ tiles,
+    const int* __restrict__ tile_count,
+    int top_k,
+    int act_shared,
+    const uint8_t* __restrict__ act,
+    const uint8_t* __restrict__ act_scales,
+    float* __restrict__ out,
+    int rows,
+    int cols,
+    int round_bf16,
+    const uint8_t* __restrict__ cache_weights,
+    const uint8_t* __restrict__ cache_scales,
+    const int* __restrict__ slot_map) {
+    __shared__ float stage[kTileRows][kTileStage * kStageStride];
+    __shared__ float stage_scale[kTileRows][kTileStage];
+    __shared__ int act_rows[kTileRows];
+    __shared__ int out_rows[kTileRows];
+    if (static_cast<int>(blockIdx.y) >= *tile_count) {
+        return;  // uniform: a tile past the list
+    }
+    const int4 tile = tiles[blockIdx.y];
+    const int matrix = tile.x;
+    const int first = tile.y;
+    const int n = tile.z;
+    const int warp = threadIdx.x >> 5;
+    const int lane = threadIdx.x & 31;
+    const int row = blockIdx.x * kWarps + warp;
+    const int blocks = cols / kBlock;
+    bool valid = matrix >= 0 && matrix < matrices;
+    const uint8_t* weight_base = weights;
+    const uint8_t* scale_base = weight_scales;
+    long long place = matrix;
+    if (slot_map != nullptr && valid) {
+        const int at = slot_map[matrix];
+        if (at == kLaneHost) {
+            return;  // uniform across the block
+        }
+        if (at >= 0) {
+            weight_base = cache_weights;
+            scale_base = cache_scales;
+            place = at;
+        } else if (weights == nullptr) {
+            valid = false;
+        }
+    }
+    if (threadIdx.x < kTileRows) {
+        const int t = threadIdx.x;
+        const int e = t < n ? entries[first + t] : 0;
+        act_rows[t] = act_shared ? e / top_k : e;
+        out_rows[t] = e;
+    }
+    const long long row_bytes = kFp4 ? cols / 2 : cols;
+    const uint8_t* w_row = valid ? weight_base + place * matrix_bytes + static_cast<long long>(row) * row_bytes : nullptr;
+    const uint8_t* ws_row = valid
+        ? scale_base + place * matrix_scale_bytes + static_cast<long long>(kFp4 ? row : row / kBlock) * blocks
+        : nullptr;
+    float acc[kTileRows];
+#pragma unroll
+    for (int t = 0; t < kTileRows; ++t) {
+        acc[t] = 0.0f;
+    }
+    for (int base = 0; base < blocks; base += kTileStage) {
+        const int count = min(kTileStage, blocks - base);
+        __syncthreads();
+        for (int t = 0; t < n; ++t) {
+            const long long r = act_rows[t];
+            for (int i = threadIdx.x; i < count * kBlock; i += kThreads) {
+                stage[t][(i / kBlock) * kStageStride + i % kBlock] =
+                    e4m3(act[r * cols + static_cast<long long>(base) * kBlock + i]);
+            }
+            for (int i = threadIdx.x; i < count; i += kThreads) {
+                stage_scale[t][i] = e8m0(act_scales[r * blocks + base + i]);
+            }
+        }
+        __syncthreads();
+        if (row >= rows || !valid) {
+            continue;  // uniform across the warp; the barriers above still run
+        }
+        float scaled[kTileRows];
+        if (lane < count) {
+            const int b = base + lane;
+            float w[kBlock];
+            if (kFp4) {
+                const uint4 packed = *reinterpret_cast<const uint4*>(w_row + b * 16);
+                const uint32_t words[4] = {packed.x, packed.y, packed.z, packed.w};
+#pragma unroll
+                for (int q = 0; q < 4; ++q) {
+#pragma unroll
+                    for (int t = 0; t < 4; ++t) {
+                        const uint32_t byte = (words[q] >> (8 * t)) & 0xffu;
+                        w[q * 8 + t * 2] = e2m1(byte & 15u);
+                        w[q * 8 + t * 2 + 1] = e2m1(byte >> 4);
+                    }
+                }
+            } else {
+                const uint4* p = reinterpret_cast<const uint4*>(w_row + b * 32);
+                const uint4 lo = p[0];
+                const uint4 hi = p[1];
+                const uint32_t words[8] = {lo.x, lo.y, lo.z, lo.w, hi.x, hi.y, hi.z, hi.w};
+#pragma unroll
+                for (int q = 0; q < 8; ++q) {
+#pragma unroll
+                    for (int t = 0; t < 4; ++t) {
+                        w[q * 4 + t] = e4m3((words[q] >> (8 * t)) & 0xffu);
+                    }
+                }
+            }
+            const float weight_scale = e8m0(ws_row[b]);
+#pragma unroll
+            for (int t = 0; t < kTileRows; ++t) {
+                if (t < n) {
+                    const float* x = &stage[t][lane * kStageStride];
+                    float partial = 0.0f;
+#pragma unroll
+                    for (int j = 0; j < kBlock; ++j) {
+                        partial = __fmaf_rn(x[j], w[j], partial);
+                    }
+                    scaled[t] = __fmul_rn(__fmul_rn(partial, stage_scale[t][lane]), weight_scale);
+                } else {
+                    scaled[t] = 0.0f;
+                }
+            }
+        } else {
+#pragma unroll
+            for (int t = 0; t < kTileRows; ++t) {
+                scaled[t] = 0.0f;
+            }
+        }
+#pragma unroll
+        for (int t = 0; t < kTileRows; ++t) {
+            if (t < n) {
+                for (int i = 0; i < count; ++i) {
+                    acc[t] = __fadd_rn(acc[t], __shfl_sync(0xffffffffu, scaled[t], i));
+                }
+            }
+        }
+    }
+    if (row < rows && lane == 0) {
+        for (int t = 0; t < n; ++t) {
+            float value = valid ? acc[t] : CUDART_NAN_F;
+            if (round_bf16) {
+                value = bf16_round(value);
+            }
+            out[static_cast<long long>(out_rows[t]) * rows + row] = value;
+        }
+    }
+}
+
+// Sorts `count` routed entries (ids[e] is entry e's expert) by expert into
+// `entries`, and cuts each expert's run into tiles of at most kTileRows.
+// Ids outside [0, experts) go to a last run whose tiles carry matrix -1,
+// which the product writes as NaN. One block; `scratch` holds
+// 2 × (experts + 1) ints.
+__global__ void __launch_bounds__(1024) v41_group_entries_kernel(
+    const int* __restrict__ ids,
+    int count,
+    int experts,
+    int* __restrict__ scratch,
+    int* __restrict__ entries,
+    int4* __restrict__ tiles,
+    int* __restrict__ tile_count) {
+    int* counts = scratch;
+    int* cursor = scratch + experts + 1;
+    for (int i = threadIdx.x; i <= experts; i += blockDim.x) {
+        counts[i] = 0;
+    }
+    __syncthreads();
+    for (int e = threadIdx.x; e < count; e += blockDim.x) {
+        const int id = ids[e];
+        atomicAdd(&counts[(id >= 0 && id < experts) ? id : experts], 1);
+    }
+    __syncthreads();
+    if (threadIdx.x == 0) {
+        int at = 0;
+        int n = 0;
+        for (int m = 0; m <= experts; ++m) {
+            cursor[m] = at;
+            for (int first = 0; first < counts[m]; first += kTileRows) {
+                tiles[n++] = make_int4(m == experts ? -1 : m, at + first, min(kTileRows, counts[m] - first), 0);
+            }
+            at += counts[m];
+        }
+        *tile_count = n;
+    }
+    __syncthreads();
+    for (int e = threadIdx.x; e < count; e += blockDim.x) {
+        const int id = ids[e];
+        const int m = (id >= 0 && id < experts) ? id : experts;
+        entries[atomicAdd(&cursor[m], 1)] = e;
+    }
+}
+
 }  // namespace
+
+extern "C" int psionic_v41_block_matmul(
+    int fp4,
+    const void* weights,
+    const void* weight_scales,
+    long long matrix_bytes,
+    long long matrix_scale_bytes,
+    int matrices,
+    const void* entries,
+    const void* tiles,
+    const void* tile_count,
+    int max_tiles,
+    int top_k,
+    int act_shared,
+    const void* act,
+    const void* act_scales,
+    void* out,
+    int rows,
+    int cols,
+    int round_bf16,
+    const void* cache_weights,
+    const void* cache_scales,
+    const void* slot_map,
+    void* stream) {
+    const dim3 grid(static_cast<unsigned>((rows + kWarps - 1) / kWarps), static_cast<unsigned>(max_tiles));
+    const cudaStream_t s = static_cast<cudaStream_t>(stream);
+    if (fp4) {
+        v41_block_matmul_kernel<true><<<grid, kThreads, 0, s>>>(
+            static_cast<const uint8_t*>(weights), static_cast<const uint8_t*>(weight_scales),
+            matrix_bytes, matrix_scale_bytes, matrices, static_cast<const int*>(entries),
+            static_cast<const int4*>(tiles), static_cast<const int*>(tile_count), top_k, act_shared,
+            static_cast<const uint8_t*>(act), static_cast<const uint8_t*>(act_scales),
+            static_cast<float*>(out), rows, cols, round_bf16,
+            static_cast<const uint8_t*>(cache_weights), static_cast<const uint8_t*>(cache_scales),
+            static_cast<const int*>(slot_map));
+    } else {
+        v41_block_matmul_kernel<false><<<grid, kThreads, 0, s>>>(
+            static_cast<const uint8_t*>(weights), static_cast<const uint8_t*>(weight_scales),
+            matrix_bytes, matrix_scale_bytes, matrices, static_cast<const int*>(entries),
+            static_cast<const int4*>(tiles), static_cast<const int*>(tile_count), top_k, act_shared,
+            static_cast<const uint8_t*>(act), static_cast<const uint8_t*>(act_scales),
+            static_cast<float*>(out), rows, cols, round_bf16,
+            static_cast<const uint8_t*>(cache_weights), static_cast<const uint8_t*>(cache_scales),
+            static_cast<const int*>(slot_map));
+    }
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_v41_group_entries(
+    const void* ids,
+    int count,
+    int experts,
+    void* scratch,
+    void* entries,
+    void* tiles,
+    void* tile_count,
+    void* stream) {
+    v41_group_entries_kernel<<<1, 1024, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const int*>(ids), count, experts, static_cast<int*>(scratch),
+        static_cast<int*>(entries), static_cast<int4*>(tiles), static_cast<int*>(tile_count));
+    return static_cast<int>(cudaGetLastError());
+}
 
 extern "C" int psionic_v41_act_quant_fp8(
     const void* input,

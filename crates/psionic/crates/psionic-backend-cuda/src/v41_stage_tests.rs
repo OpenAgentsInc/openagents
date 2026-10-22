@@ -1387,6 +1387,7 @@ fn load_cached_stage(
         V41StageOptions {
             expert_cache: Some(setup),
             engram_rows: None,
+            batched_prefill: false,
         },
     )?)
 }
@@ -1614,6 +1615,7 @@ fn staged_engram_rows_equal_pinned_tables() -> TestResult {
         V41StageOptions {
             expert_cache: None,
             engram_rows: Some(rows.clone()),
+            batched_prefill: false,
         },
         V41StageOptions {
             expert_cache: Some(V41ExpertCacheSetup {
@@ -1621,6 +1623,7 @@ fn staged_engram_rows_equal_pinned_tables() -> TestResult {
                 host: Some(experts),
             }),
             engram_rows: Some(rows.clone()),
+            batched_prefill: false,
         },
     ];
     let (prompt, decode) = tokens();
@@ -1693,6 +1696,296 @@ fn staged_engram_rows_equal_pinned_tables() -> TestResult {
         let (rows_staged, _) = staged.engram_staging_stats().ok_or("no staging")?;
         let tokens: usize = steps.iter().map(Vec::len).sum();
         assert_eq!(rows_staged as usize, tokens * 2 * 24);
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Layer-major prefill (#12464)
+// ---------------------------------------------------------------------------
+
+fn load_with_options(
+    backend: &mut CudaBackend,
+    store: &Store,
+    layers: Range<usize>,
+    experts_on_host: bool,
+    options: V41StageOptions,
+) -> Result<V41Stage, Box<dyn Error>> {
+    let map = token_map()?;
+    let tables = if options.engram_rows.is_some() {
+        Vec::new()
+    } else {
+        engram_tables(backend, store, &layers)?
+    };
+    Ok(V41Stage::load_with(
+        backend,
+        V41StageConfig {
+            shape: shape(),
+            layers,
+            max_context: MAX_CONTEXT,
+            max_step_tokens: 24,
+            engram: engram_hashes(),
+            token_map: Some(V41TokenMap {
+                ids: map.ids().to_vec(),
+                pad: map.get(2)?,
+            }),
+            observe: false,
+            swap_rope_tables: false,
+            experts_on_host,
+        },
+        store,
+        tables,
+        options,
+    )?)
+}
+
+/// A prompt step run layer by layer with batched products gives the same
+/// logits and leaves the same state as the ordinary step, bit for bit: the
+/// decode steps after it match too. Checked unsplit, split at boundaries
+/// that carry KV rows, selections, and candidates, with Engram rows staged
+/// from a host source, and with cached experts on the bus lane.
+#[test]
+fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
+    use crate::v41_engram_rows::{V41EngramRows, V41OwnedEngram};
+    use crate::v41_expert_cache::{V41ExpertCacheConfig, V41ExpertCacheSetup, V41MissLane};
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let store = synthetic_store(41);
+    let rows: Arc<dyn V41EngramRows> =
+        Arc::new(V41OwnedEngram::from_source(&store, &[1, 14], ENGRAM_WIDTH)?);
+    let (prompt, decode) = tokens();
+    let sampling = V41Sampling {
+        temperature: 0.7,
+        top_p: 0.9,
+        seed: 99,
+    };
+    // The ordinary path's tokens and logits, prompt and decode steps.
+    let mut plain = load_stage_with(&mut backend, &store, 0..40, false, false)?;
+    let mut steps = vec![prompt.clone()];
+    steps.extend(decode.iter().map(|t| vec![*t]));
+    // A second request at position 0, a short prompt.
+    steps.push(prompt[..3].to_vec());
+    let steps: &'static [Vec<u32>] = Box::leak(steps.into_boxed_slice());
+    let input = |position: usize, step: &'static [u32]| -> V41StepInput<'static> {
+        V41StepInput {
+            position,
+            tokens: step,
+            residual: None,
+            pre_mix: None,
+            source_rows: None,
+            selection: None,
+            candidates: None,
+            sampling,
+        }
+    };
+    let positions: Vec<usize> = {
+        let mut p = 0;
+        steps
+            .iter()
+            .map(|s| {
+                if s.len() == 3 {
+                    p = 0;
+                }
+                let at = p;
+                p += s.len();
+                at
+            })
+            .collect()
+    };
+    let mut want = Vec::new();
+    for (step, at) in steps.iter().zip(&positions) {
+        let out = plain.step(&backend, &input(*at, step), false)?;
+        want.push((out.token, plain.logits()?));
+    }
+    let mut cache = V41ExpertCacheConfig::new(5);
+    cache.miss_lane = V41MissLane::Bus;
+    let variants: Vec<(&str, bool, V41StageOptions)> = vec![
+        (
+            "batched",
+            false,
+            V41StageOptions {
+                batched_prefill: true,
+                ..V41StageOptions::default()
+            },
+        ),
+        (
+            "batched, staged Engram",
+            false,
+            V41StageOptions {
+                batched_prefill: true,
+                engram_rows: Some(rows.clone()),
+                ..V41StageOptions::default()
+            },
+        ),
+        (
+            "batched, cached experts on the bus",
+            true,
+            V41StageOptions {
+                batched_prefill: true,
+                expert_cache: Some(V41ExpertCacheSetup {
+                    config: cache,
+                    host: None,
+                }),
+                ..V41StageOptions::default()
+            },
+        ),
+    ];
+    for (name, on_host, options) in variants {
+        let mut stage = load_with_options(&mut backend, &store, 0..40, on_host, options)?;
+        for (i, (step, at)) in steps.iter().zip(&positions).enumerate() {
+            let out = stage.step(&backend, &input(*at, step), false)?;
+            assert_eq!(out.token, want[i].0, "{name}: token at step {i}");
+            let logits = stage.logits()?;
+            assert!(
+                logits
+                    .iter()
+                    .zip(&want[i].1)
+                    .all(|(x, y)| x.to_bits() == y.to_bits()),
+                "{name}: logits differ at step {i}"
+            );
+        }
+    }
+    // Split stages, every one prefilling layer by layer, equal the whole.
+    for split in [vec![0..3, 3..21, 21..40], vec![0..9, 9..25, 25..40]] {
+        let mut stages = Vec::new();
+        for layers in &split {
+            stages.push(load_with_options(
+                &mut backend,
+                &store,
+                layers.clone(),
+                false,
+                V41StageOptions {
+                    batched_prefill: true,
+                    ..V41StageOptions::default()
+                },
+            )?);
+        }
+        for (i, (step, at)) in steps.iter().zip(&positions).enumerate() {
+            let mut carried: Option<V41StepOutput> = None;
+            for stage in &mut stages {
+                let out = {
+                    let p = carried.as_ref();
+                    stage.step(
+                        &backend,
+                        &V41StepInput {
+                            position: *at,
+                            tokens: step,
+                            residual: p.map(|p| p.residual.as_slice()),
+                            pre_mix: p.map(|p| p.pre_mix.as_slice()),
+                            source_rows: p.and_then(|p| p.source_rows.as_ref()),
+                            selection: p.and_then(|p| {
+                                p.selection.as_ref().map(|(_, rows)| rows.as_slice())
+                            }),
+                            candidates: p.and_then(|p| p.candidates.as_deref()),
+                            sampling,
+                        },
+                        false,
+                    )?
+                };
+                carried = Some(out);
+            }
+            let out = carried.ok_or("no output")?;
+            assert_eq!(out.token, want[i].0, "split {split:?}: token at step {i}");
+            let logits = stages.last().ok_or("stage")?.logits()?;
+            assert!(
+                logits
+                    .iter()
+                    .zip(&want[i].1)
+                    .all(|(x, y)| x.to_bits() == y.to_bits()),
+                "split {split:?}: logits differ at step {i}"
+            );
+        }
+    }
+    Ok(())
+}
+
+/// Diagnostic: the first stage end where layer-major prefill differs.
+#[test]
+#[ignore = "diagnostic"]
+fn layer_major_prefill_first_difference() -> TestResult {
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let store = synthetic_store(41);
+    let (prompt, _) = tokens();
+    for end in 1..40 {
+        let mut plain = load_with_options(
+            &mut backend,
+            &store,
+            0..end,
+            false,
+            V41StageOptions::default(),
+        )?;
+        let mut batched = load_with_options(
+            &mut backend,
+            &store,
+            0..end,
+            false,
+            V41StageOptions {
+                batched_prefill: true,
+                ..V41StageOptions::default()
+            },
+        )?;
+        let input = V41StepInput {
+            position: 0,
+            tokens: &prompt,
+            residual: None,
+            pre_mix: None,
+            source_rows: None,
+            selection: None,
+            candidates: None,
+            sampling: V41Sampling::greedy(),
+        };
+        let a = plain.step(&backend, &input, false)?;
+        let b = batched.step(&backend, &input, false)?;
+        let width = a.residual.len() / prompt.len();
+        let bad: Vec<usize> = (0..prompt.len())
+            .filter(|t| {
+                a.residual[t * width..(t + 1) * width]
+                    .iter()
+                    .zip(&b.residual[t * width..(t + 1) * width])
+                    .any(|(x, y)| x.to_bits() != y.to_bits())
+            })
+            .collect();
+        let pre_bad = a
+            .pre_mix
+            .iter()
+            .zip(&b.pre_mix)
+            .any(|(x, y)| x.to_bits() != y.to_bits());
+        println!(
+            "layers 0..{end}: residual differs at tokens {bad:?}; pre-mix differs {pre_bad}; selection {:?} candidates {:?}",
+            a.selection
+                .as_ref()
+                .map(|s| s.1 == b.selection.as_ref().map_or(vec![], |x| x.1.clone())),
+            a.candidates
+                .as_ref()
+                .map(|c| Some(c) == b.candidates.as_ref())
+        );
+        if !bad.is_empty() || pre_bad {
+            // Which phase first differs: the observed per-layer sites of the
+            // ordinary step against the prefill's arrays.
+            let mut observed = load_stage_with(&mut backend, &store, 0..end, true, false)?;
+            observed.step(&backend, &input, true)?;
+            let obs = observed.observations(prompt.len())?;
+            let sites = &obs[&(end - 1)];
+            let arrays = batched.prefill_arrays(prompt.len())?;
+            for (name, site) in [
+                ("na", V41Site::AttnIn),
+                ("ao", V41Site::AttnOut),
+                ("nf", V41Site::FfnIn),
+                ("ids", V41Site::ExpertIds),
+            ] {
+                let got = &arrays.iter().find(|(n, _)| *n == name).ok_or("array")?.1;
+                let want = &sites[&site];
+                let w = want.len() / prompt.len();
+                let diff: Vec<usize> = (0..prompt.len())
+                    .filter(|t| got[t * w..(t + 1) * w] != want[t * w..(t + 1) * w])
+                    .collect();
+                println!("  {name}: tokens differing {diff:?}");
+            }
+            break;
+        }
     }
     Ok(())
 }

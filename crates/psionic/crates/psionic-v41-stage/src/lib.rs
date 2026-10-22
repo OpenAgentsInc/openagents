@@ -249,16 +249,20 @@ pub struct HostTiers {
     /// `--engram file`: read Engram rows from the shards a step at a time
     /// instead of pinning the tables.
     pub engram_file: bool,
+    /// `--prefill layer-major`: run prompt steps layer by layer with
+    /// batched weight products (#12464); bit-equal to `token`, the default.
+    pub batched_prefill: bool,
 }
 
 /// The flags [`HostTiers::from_args`] reads, each with a value except
 /// `--frozen-cache`.
-pub const HOST_TIER_FLAGS: [&str; 5] = [
+pub const HOST_TIER_FLAGS: [&str; 6] = [
     "--expert-cache",
     "--miss-lane",
     "--expert-profile",
     "--host-threads",
     "--engram",
+    "--prefill",
 ];
 
 impl HostTiers {
@@ -302,7 +306,13 @@ impl HostTiers {
             Some("file") => true,
             Some(other) => return refuse(format!("--engram {other} is not host or file")),
         };
+        let batched_prefill = match value("--prefill").as_deref() {
+            None | Some("token") => false,
+            Some("layer-major") => true,
+            Some(other) => return refuse(format!("--prefill {other} is not token or layer-major")),
+        };
         Ok(Self {
+            batched_prefill,
             expert_cache,
             miss_lane,
             expert_profile: value("--expert-profile").map(PathBuf::from),
@@ -340,7 +350,7 @@ impl HostTiers {
     /// Whether any tier differs from a plain stage.
     #[must_use]
     pub fn any(&self) -> bool {
-        self.expert_cache.is_some() || self.engram_file
+        self.expert_cache.is_some() || self.engram_file || self.batched_prefill
     }
 }
 
@@ -1080,7 +1090,7 @@ impl Options {
                 | "--listen" | "--events" | "--data-listen" | "--data-advertise" | "--record"
                 | "--control" | "--max-input-tokens" | "--max-step-tokens" | "--prefill-chunk"
                 | "--experts" | "--wire" | "--expert-cache" | "--miss-lane"
-                | "--expert-profile" | "--host-threads" | "--engram" => {
+                | "--expert-profile" | "--host-threads" | "--engram" | "--prefill" => {
                     let Some(value) = args.get(i + 1) else {
                         return refuse(format!("{flag} needs a value"));
                     };

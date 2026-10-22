@@ -277,3 +277,59 @@ fn one_gpu_with_an_expert_cache_answers_like_the_unsplit_stage() {
         assert!(profile.is_file());
     }
 }
+
+/// Layer-major prefill (#12464) answers exactly as the ordinary step, in a
+/// split group and on one GPU.
+#[test]
+fn layer_major_prefill_answers_like_the_unsplit_stage() {
+    if !cuda() {
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    weights(root.path(), &[(0, 13), (13, 40)]);
+    let expected = reference_with(
+        root.path(),
+        &prompt(),
+        12,
+        &["--backend", "cuda", "--max-context", CONTEXT],
+    );
+    for (split, gpus) in [("0-13,13-40", "0,0"), ("0-40", "0")] {
+        let out = common::run_bounded(
+            std::process::Command::new(common::BIN)
+                .args([
+                    "chain",
+                    "--weights",
+                    &root.path().display().to_string(),
+                    "--split",
+                    split,
+                    "--gpus",
+                    gpus,
+                    "--max-context",
+                    CONTEXT,
+                    "--max-step-tokens",
+                    "16",
+                    "--prompt",
+                    &prompt().to_string(),
+                    "--max-tokens",
+                    "12",
+                    "--prefill",
+                    "layer-major",
+                ])
+                .env("CUDA_VISIBLE_DEVICES", common::visible_devices()),
+            common::LIMIT,
+        );
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        let report: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+        let ids: Vec<u32> = report["answer"]["ids"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_u64().unwrap() as u32)
+            .collect();
+        assert_eq!(ids, expected.0, "{split}");
+    }
+}

@@ -546,6 +546,9 @@ pub struct V41StageOptions {
     /// Read Engram rows from this source a step at a time instead of from
     /// page-locked tables (#12466); the stage then needs no Engram tables.
     pub engram_rows: Option<Arc<dyn V41EngramRows>>,
+    /// Run prompt steps layer by layer with batched weight products
+    /// (#12464). Results are bit-equal to the ordinary step.
+    pub batched_prefill: bool,
 }
 
 impl std::fmt::Debug for V41StageOptions {
@@ -553,6 +556,7 @@ impl std::fmt::Debug for V41StageOptions {
         f.debug_struct("V41StageOptions")
             .field("expert_cache", &self.expert_cache)
             .field("engram_rows", &self.engram_rows.is_some())
+            .field("batched_prefill", &self.batched_prefill)
             .finish()
     }
 }
@@ -794,6 +798,8 @@ pub struct V41StageMemory {
     pub expert_cache_bytes: usize,
     /// Page-locked bytes the expert cache stages swaps in.
     pub expert_staging_bytes: usize,
+    /// Device bytes of the layer-major prefill's per-token arrays (#12464).
+    pub prefill_bytes: usize,
 }
 
 impl V41StageMemory {
@@ -815,6 +821,7 @@ impl V41StageMemory {
             + self.selection_bytes
             + self.work_bytes
             + self.expert_cache_bytes
+            + self.prefill_bytes
     }
 }
 
@@ -1059,6 +1066,8 @@ pub struct V41Stage {
     /// freed.
     expert_cache: Option<ExpertCache>,
     engram_staging: Option<EngramStaging>,
+    /// Layer-major prefill (#12464), when enabled.
+    prefill: Option<prefill::PrefillWork>,
     config: V41StageConfig,
     layers: Vec<LayerWeights>,
     sources: BTreeMap<usize, SourceState>,
@@ -1380,6 +1389,7 @@ impl V41Stage {
         let V41StageOptions {
             expert_cache: cache,
             engram_rows,
+            batched_prefill,
         } = options;
         if cache
             .as_ref()
@@ -1916,9 +1926,17 @@ impl V41Stage {
             _ => None,
         };
         let requested = expert_cache.as_ref().map(|c| c.config.miss_lane);
+        let prefill = if batched_prefill {
+            let work = prefill::PrefillWork::new(loader.backend, &config, config.max_step_tokens)?;
+            memory.prefill_bytes = work.bytes;
+            Some(work)
+        } else {
+            None
+        };
         let mut stage = Self {
             expert_cache,
             engram_staging,
+            prefill,
             config,
             layers,
             sources,
@@ -2455,10 +2473,7 @@ impl V41Stage {
         let g = shape.attention;
         let h = shape.hidden;
         let wk = &self.work;
-        let layer = lw.layer;
         let single = V41Slots::single();
-        let steps = self.steps();
-        let rope = self.rope(layer);
         s.v41_act_quant_fp8(&wk.normalized, &wk.act_codes, &wk.act_scales, 1, h)?;
         s.v41_block_matvec(
             lw.wq_a.matrix(),
@@ -2503,6 +2518,58 @@ impl V41Stage {
             g.norm_epsilon,
             V41Output::Bf16,
         )?;
+        let _ = (ratio, owners);
+        self.record_attention_core(s, lw, observe, true)?;
+        let wo_rows = shape.o_groups * shape.o_rank;
+        s.v41_dense(
+            V41Dense {
+                weights: &lw.wo_a,
+                scales: Some(&lw.wo_a_scales),
+                format: V41DenseFormat::Fp8Block,
+                rows: wo_rows,
+                cols: g.heads * g.head_dim / shape.o_groups,
+                groups: shape.o_groups,
+            },
+            &wk.heads_q,
+            &wk.low_rank,
+            1,
+            false,
+            V41Output::Bf16,
+        )?;
+        s.v41_act_quant_fp8(&wk.low_rank, &wk.act_codes, &wk.act_scales, 1, wo_rows)?;
+        s.v41_block_matvec(
+            lw.wo_b.matrix(),
+            &wk.act_codes,
+            &wk.act_scales,
+            single,
+            &wk.attn_out,
+            V41Output::Bf16,
+        )
+    }
+
+    /// The part of a layer's attention between the projections: RoPE, the
+    /// window ring, the compressor, the indexer, sparse attention, and the
+    /// FP8 rounding of the heads into `heads_q`. With `project_index`, the
+    /// indexer's query projection runs here from `act2_codes`; otherwise
+    /// `index_query` already holds it (the batched prefill, #12464).
+    #[allow(clippy::too_many_lines)]
+    fn record_attention_core(
+        &self,
+        s: &mut CudaSubmission,
+        lw: &LayerWeights,
+        observe: bool,
+        project_index: bool,
+    ) -> Result<(), RuntimeError> {
+        let shape = self.config.shape;
+        let g = shape.attention;
+        let h = shape.hidden;
+        let wk = &self.work;
+        let layer = lw.layer;
+        let single = V41Slots::single();
+        let steps = self.steps();
+        let rope = self.rope(layer);
+        let ratio = v41_compress_ratio(layer).ok_or_else(|| invalid("layer"))?;
+        let owners = V41LayerOwners::for_layer(layer).ok_or_else(|| invalid("layer"))?;
         s.v41_rope(
             rope,
             &wk.q_heads,
@@ -2611,14 +2678,16 @@ impl V41Stage {
                     .get(&index_owner)
                     .ok_or_else(|| invalid("selection"))?;
                 if let Some(ix) = &lw.indexer {
-                    s.v41_block_matvec(
-                        ix.wq_b.matrix(),
-                        &wk.act2_codes,
-                        &wk.act2_scales,
-                        single,
-                        &wk.index_query,
-                        V41Output::Bf16,
-                    )?;
+                    if project_index {
+                        s.v41_block_matvec(
+                            ix.wq_b.matrix(),
+                            &wk.act2_codes,
+                            &wk.act2_scales,
+                            single,
+                            &wk.index_query,
+                            V41Output::Bf16,
+                        )?;
+                    }
                     s.v41_rope(
                         rope,
                         &wk.index_query,
@@ -2739,31 +2808,6 @@ impl V41Stage {
             &wk.heads_q,
             g.heads,
             g.head_dim,
-        )?;
-        let wo_rows = shape.o_groups * shape.o_rank;
-        s.v41_dense(
-            V41Dense {
-                weights: &lw.wo_a,
-                scales: Some(&lw.wo_a_scales),
-                format: V41DenseFormat::Fp8Block,
-                rows: wo_rows,
-                cols: g.heads * g.head_dim / shape.o_groups,
-                groups: shape.o_groups,
-            },
-            &wk.heads_q,
-            &wk.low_rank,
-            1,
-            false,
-            V41Output::Bf16,
-        )?;
-        s.v41_act_quant_fp8(&wk.low_rank, &wk.act_codes, &wk.act_scales, 1, wo_rows)?;
-        s.v41_block_matvec(
-            lw.wo_b.matrix(),
-            &wk.act_codes,
-            &wk.act_scales,
-            single,
-            &wk.attn_out,
-            V41Output::Bf16,
         )
     }
 
@@ -3151,36 +3195,41 @@ impl V41Stage {
         }
         // One graph per token, enqueued back to back.
         let device_started = Instant::now();
-        let mut remaining = t;
-        let graph = if observe {
-            &self.body_observed
+        let batched = self.can_prefill_batched(t, observe);
+        if batched {
+            self.prefill_layer_major(backend, t, emit, &mut stats)?;
         } else {
-            &self.body
-        };
-        if graph.is_none() {
-            let mut submission = backend.begin_captured_submission()?;
-            self.record_body(&mut submission, observe)?;
-            let (_, exec) = submission.commit_captured(crate::CudaCommandWait::Completed)?;
-            stats.graph_captures += 1;
-            stats.graph_launches += 1;
-            stats.synchronizations += 1;
-            remaining -= 1;
-            if observe {
-                self.body_observed = Some(exec);
+            let mut remaining = t;
+            let graph = if observe {
+                &self.body_observed
             } else {
-                self.body = Some(exec);
+                &self.body
+            };
+            if graph.is_none() {
+                let mut submission = backend.begin_captured_submission()?;
+                self.record_body(&mut submission, observe)?;
+                let (_, exec) = submission.commit_captured(crate::CudaCommandWait::Completed)?;
+                stats.graph_captures += 1;
+                stats.graph_launches += 1;
+                stats.synchronizations += 1;
+                remaining -= 1;
+                if observe {
+                    self.body_observed = Some(exec);
+                } else {
+                    self.body = Some(exec);
+                }
             }
-        }
-        let graph = if observe {
-            &self.body_observed
-        } else {
-            &self.body
-        }
-        .as_ref()
-        .ok_or_else(|| invalid("graph"))?;
-        for _ in 0..remaining {
-            graph.launch_enqueued()?;
-            stats.graph_launches += 1;
+            let graph = if observe {
+                &self.body_observed
+            } else {
+                &self.body
+            }
+            .as_ref()
+            .ok_or_else(|| invalid("graph"))?;
+            for _ in 0..remaining {
+                graph.launch_enqueued()?;
+                stats.graph_launches += 1;
+            }
         }
         if c.samples() && emit {
             if self.tail.is_none() {
@@ -3198,18 +3247,25 @@ impl V41Stage {
             }
             stats.graph_launches += 1;
         }
-        let graph = if observe {
-            &self.body_observed
+        if batched {
+            backend
+                .begin_submission()?
+                .commit(crate::CudaCommandWait::Completed)?;
         } else {
-            &self.body
+            let graph = if observe {
+                &self.body_observed
+            } else {
+                &self.body
+            }
+            .as_ref()
+            .ok_or_else(|| invalid("graph"))?;
+            graph.synchronize()?;
         }
-        .as_ref()
-        .ok_or_else(|| invalid("graph"))?;
-        graph.synchronize()?;
         stats.synchronizations += 1;
         stats.device_seconds = device_started.elapsed().as_secs_f64();
         if let Some(cache) = &mut self.expert_cache {
-            cache.after_step(t)?;
+            // The layer-major prefill logs no expert ids.
+            cache.after_step(if batched { 0 } else { t })?;
         }
 
         // The step's output: one read each.
@@ -3380,6 +3436,9 @@ impl V41Stage {
         words_i32(buffer, self.config.shape.attention.index_top_k)
     }
 }
+
+#[path = "v41_stage_prefill.rs"]
+mod prefill;
 
 #[cfg(test)]
 #[path = "v41_stage_tests.rs"]

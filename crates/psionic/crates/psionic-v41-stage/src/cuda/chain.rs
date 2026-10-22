@@ -10,7 +10,8 @@
 //!     [--engram-lookups N] [--load-only] [--runtime LABEL] [--capture DIR]
 //!     [--experts device|host|file] [--expert-cache auto|GB|slots:N]
 //!     [--miss-lane auto|bus|host] [--expert-profile FILE] [--host-threads N]
-//!     [--frozen-cache] [--engram host|file] [--save-expert-profile FILE]
+//!     [--frozen-cache] [--engram host|file] [--prefill token|layer-major]
+//!     [--save-expert-profile FILE]
 //!     [--repeat-answer N]
 //! ```
 //!

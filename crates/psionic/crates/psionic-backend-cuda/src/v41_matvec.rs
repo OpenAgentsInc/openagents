@@ -141,6 +141,82 @@ unsafe extern "C" {
         round_bf16: i32,
         stream: *mut c_void,
     ) -> i32;
+    fn psionic_v41_block_matmul(
+        fp4: i32,
+        weights: *const c_void,
+        weight_scales: *const c_void,
+        matrix_bytes: i64,
+        matrix_scale_bytes: i64,
+        matrices: i32,
+        entries: *const c_void,
+        tiles: *const c_void,
+        tile_count: *const c_void,
+        max_tiles: i32,
+        top_k: i32,
+        act_shared: i32,
+        act: *const c_void,
+        act_scales: *const c_void,
+        out: *mut c_void,
+        rows: i32,
+        cols: i32,
+        round_bf16: i32,
+        cache_weights: *const c_void,
+        cache_scales: *const c_void,
+        slot_map: *const c_void,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_v41_group_entries(
+        ids: *const c_void,
+        count: i32,
+        experts: i32,
+        scratch: *mut c_void,
+        entries: *mut c_void,
+        tiles: *mut c_void,
+        tile_count: *mut c_void,
+        stream: *mut c_void,
+    ) -> i32;
+}
+
+/// Activation rows one tile of [`CudaSubmission::v41_block_matmul`] takes.
+pub const V41_TILE_ROWS: usize = 8;
+
+/// The work list of a batched product (#12464): entries sorted by matrix,
+/// cut into tiles of at most [`V41_TILE_ROWS`] entries that share a
+/// matrix. Entry `e` reads activation row `e / top_k` when `shared_input`
+/// (routed gate and up projections, one row per token) or row `e`
+/// otherwise, and writes output row `e`.
+#[derive(Clone, Copy, Debug)]
+pub struct V41Batch<'a> {
+    /// Device `i32` entry ids, sorted by matrix.
+    pub entries: &'a CudaBuffer,
+    /// Device `int4` tiles: matrix, first entry, count, unused.
+    pub tiles: &'a CudaBuffer,
+    /// Device `i32`: how many tiles are in use.
+    pub tile_count: &'a CudaBuffer,
+    /// Tiles the launch covers at most (the grid's height).
+    pub max_tiles: usize,
+    /// Entries in the list.
+    pub count: usize,
+    pub top_k: usize,
+    pub shared_input: bool,
+}
+
+impl V41Batch<'_> {
+    /// Tiles a list of `count` entries needs at most when it spans
+    /// `matrices` matrices (one partial tile each, plus one for invalid ids).
+    #[must_use]
+    pub const fn max_tiles(count: usize, matrices: usize) -> usize {
+        count.div_ceil(V41_TILE_ROWS) + matrices + 1
+    }
+}
+
+/// Where a routed projection's cached experts live for a batched product.
+#[derive(Clone, Copy, Debug)]
+pub struct V41BatchCache<'a> {
+    pub weights: &'a CudaBuffer,
+    pub scales: &'a CudaBuffer,
+    pub slots: usize,
+    pub slot_map: &'a CudaBuffer,
 }
 
 fn invalid(message: String) -> RuntimeError {
@@ -300,6 +376,144 @@ impl CudaSubmission {
             )
         };
         self.clef_launch(code, "v41 block-scaled matvec")
+    }
+
+    /// Sorts `count` routed entries by expert (`ids[e]`, `i32`) into a
+    /// [`V41Batch`]'s entries and tiles. `scratch` holds `2 × (experts + 1)`
+    /// `i32` words. Ids outside the experts get NaN outputs.
+    ///
+    /// # Errors
+    ///
+    /// Refuses buffers too small for the shapes.
+    #[allow(clippy::too_many_arguments)]
+    pub fn v41_group_entries(
+        &mut self,
+        ids: &CudaBuffer,
+        count: usize,
+        experts: usize,
+        scratch: &CudaBuffer,
+        entries: &CudaBuffer,
+        tiles: &CudaBuffer,
+        tile_count: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        if count == 0 || experts == 0 {
+            return Err(invalid(format!("{count} entries over {experts} experts")));
+        }
+        let max_tiles = V41Batch::max_tiles(count, experts);
+        // SAFETY: every extent was checked against its buffer.
+        let code = unsafe {
+            psionic_v41_group_entries(
+                span(ids, 0, count, 4, "expert ids")?.cast_const(),
+                int(count, "entries")?,
+                int(experts, "experts")?,
+                span(scratch, 0, 2 * (experts + 1), 4, "group scratch")?,
+                span(entries, 0, count, 4, "entries")?,
+                span(tiles, 0, 4 * max_tiles, 4, "tiles")?,
+                span(tile_count, 0, 1, 4, "tile count")?,
+                self.platform.raw_stream()?,
+            )
+        };
+        self.clef_launch(code, "v41 group entries")
+    }
+
+    /// The products of [`Self::v41_block_matvec`] for every entry of a
+    /// batch, reading each weight block once per tile: bit-equal to one
+    /// matrix-vector product per entry (#12464). `act_rows` and `out_rows`
+    /// bound the activation and output arrays. With `cache`, matrix ids go
+    /// through its slot map as [`crate::v41_expert_cache::V41CachedStack`]
+    /// does, and `matrix` (the host stack) may be `None`.
+    ///
+    /// # Errors
+    ///
+    /// Refuses bad dimensions and buffers too small for them.
+    #[allow(clippy::too_many_arguments)]
+    pub fn v41_block_matmul(
+        &mut self,
+        format: V41MatvecFormat,
+        matrix: Option<V41Matrix<'_>>,
+        cache: Option<V41BatchCache<'_>>,
+        rows: usize,
+        cols: usize,
+        matrices: usize,
+        batch: V41Batch<'_>,
+        codes: &CudaBuffer,
+        scales: &CudaBuffer,
+        act_rows: usize,
+        out: &CudaBuffer,
+        out_rows: usize,
+        output: V41Output,
+    ) -> Result<(), RuntimeError> {
+        check_v41_matvec_dims(rows, cols, matrices, 1)?;
+        if batch.max_tiles == 0 || batch.max_tiles > 65_535 || batch.top_k == 0 {
+            return Err(invalid(format!("{} tiles", batch.max_tiles)));
+        }
+        let matrix_bytes = format.weight_bytes(rows, cols);
+        let scale_bytes = format.scale_bytes(rows, cols);
+        let (weights, weight_scales) = match matrix {
+            Some(m) => {
+                if m.rows != rows || m.cols != cols || m.format != format {
+                    return Err(invalid(String::from("matrix shape")));
+                }
+                (
+                    span(m.weights, 0, matrix_bytes * m.matrices, 1, "weights")?.cast_const(),
+                    span(m.scales, 0, scale_bytes * m.matrices, 1, "weight scales")?.cast_const(),
+                )
+            }
+            None if cache.is_some() => (std::ptr::null(), std::ptr::null()),
+            None => return Err(invalid(String::from("no weights"))),
+        };
+        let (cache_w, cache_s, slot_map) = match cache {
+            Some(c) => (
+                span(
+                    c.weights,
+                    0,
+                    matrix_bytes * c.slots.max(1),
+                    1,
+                    "cache weights",
+                )?
+                .cast_const(),
+                span(c.scales, 0, scale_bytes * c.slots.max(1), 1, "cache scales")?.cast_const(),
+                span(c.slot_map, 0, matrices, 4, "slot map")?.cast_const(),
+            ),
+            None => (std::ptr::null(), std::ptr::null(), std::ptr::null()),
+        };
+        let to_i64 = |n: usize| i64::try_from(n).map_err(|_| invalid(format!("{n} exceeds i64")));
+        // SAFETY: extents were checked; entries index rows below `act_rows`
+        // and `out_rows`, which the batch's builder guarantees.
+        let code = unsafe {
+            psionic_v41_block_matmul(
+                i32::from(format == V41MatvecFormat::Fp4E2M1Row32),
+                weights,
+                weight_scales,
+                to_i64(matrix_bytes)?,
+                to_i64(scale_bytes)?,
+                int(matrices, "matrices")?,
+                span(batch.entries, 0, batch.count, 4, "entries")?.cast_const(),
+                span(batch.tiles, 0, 4 * batch.max_tiles, 4, "tiles")?.cast_const(),
+                span(batch.tile_count, 0, 1, 4, "tile count")?.cast_const(),
+                int(batch.max_tiles, "tiles")?,
+                int(batch.top_k, "top-k")?,
+                i32::from(batch.shared_input),
+                span(codes, 0, act_rows * cols, 1, "activation codes")?.cast_const(),
+                span(
+                    scales,
+                    0,
+                    act_rows * cols / V41_BLOCK,
+                    1,
+                    "activation scales",
+                )?
+                .cast_const(),
+                span(out, 0, out_rows * rows, 4, "output")?,
+                int(rows, "rows")?,
+                int(cols, "cols")?,
+                i32::from(output == V41Output::Bf16),
+                cache_w,
+                cache_s,
+                slot_map,
+                self.platform.raw_stream()?,
+            )
+        };
+        self.clef_launch(code, "v41 block-scaled batched product")
     }
 }
 

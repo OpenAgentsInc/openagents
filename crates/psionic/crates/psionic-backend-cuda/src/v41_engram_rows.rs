@@ -321,11 +321,9 @@ impl EngramStaging {
                 }
                 Ok(())
             };
-            if jobs.len() > 256 {
-                jobs.par_iter().try_for_each(copy)?;
-            } else {
-                jobs.iter().try_for_each(copy)?;
-            }
+            // Rows read from disk cost a random read each; issue them all at
+            // once so the device queues them, rather than one after another.
+            jobs.par_iter().with_min_len(4).try_for_each(copy)?;
             self.rows += jobs.len() as u64;
         }
         self.seconds += started.elapsed().as_secs_f64();

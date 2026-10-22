@@ -176,6 +176,13 @@ impl CheckpointEngram {
                 &mut shards,
                 &format!("layers.{layer}.engram.embed.scale"),
             )?;
+            // A step reads a few hundred-byte rows at random: readahead
+            // would only fill the page cache with neighbours no step needs.
+            for (i, offset, len) in [codes, scales] {
+                shards.maps[i]
+                    .advise_range(memmap2::Advice::Random, offset, len)
+                    .map_err(|e| Refused(format!("can't advise the Engram table's pages: {e}")))?;
+            }
             tables.insert(*layer, (codes, scales, width));
         }
         Ok(Self { shards, tables })
@@ -286,7 +293,10 @@ pub fn stage_options(
     tiers: &HostTiers,
 ) -> Result<(V41StageOptions, bool), Refused> {
     tiers.check(experts)?;
-    let mut options = V41StageOptions::default();
+    let mut options = V41StageOptions {
+        batched_prefill: tiers.batched_prefill,
+        ..V41StageOptions::default()
+    };
     let engram_layers: Vec<usize> = [1_usize, 14]
         .into_iter()
         .filter(|l| layers.contains(l))
