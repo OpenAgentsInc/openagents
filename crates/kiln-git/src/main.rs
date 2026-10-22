@@ -6,6 +6,8 @@
 //! kiln-git state [--commit SHA] [KEY] [--dry-run]
 //! kiln-git show ADDRESS
 //! kiln-git propose FILE --base SHA [--identity FILE] [KEY]
+//! kiln-git pr --branch NAME --clone URL --subject TEXT [--body FILE] [--checkout DIR] [KEY]
+//! kiln-git pr-update EVENT --branch NAME --clone URL [--checkout DIR] [KEY]
 //! kiln-git review EVENT [--repository ADDRESS]
 //! kiln-git check EVENT --runner KEY [KEY]
 //! kiln-git apply EVENT [--checkout DIR] [--into DIR] [--onto REF]
@@ -43,6 +45,13 @@ const USAGE: &str = "usage: kiln-git COMMAND [OPTIONS]
         Publish git format-patch text as a NIP-34 patch (1617) to the
         repository, signed by KEY, with the identity kiln-git own made for
         that key. Only files under crates/, no Cargo.toml or build.rs.
+  pr --branch NAME --clone URL --subject TEXT [--body FILE] [--checkout DIR]
+        Publish a NIP-34 pull request (1618) for a change too large for a
+        patch: push the branch to your own public clone first. The tip is
+        the branch's commit and the merge base is its merge base with
+        origin/main.
+  pr-update EVENT --branch NAME --clone URL [--checkout DIR]
+        Move your pull request to the branch's new commit (1619).
   review EVENT
         Print a patch's author, crates, base, runner check, and status.
   check EVENT --runner KEY
@@ -98,6 +107,10 @@ struct Args {
     openers: Option<PathBuf>,
     interval: u64,
     once: bool,
+    clone: Option<String>,
+    branch: Option<String>,
+    subject: Option<String>,
+    body: Option<PathBuf>,
 }
 
 fn parse(argv: &[String]) -> Result<Args, String> {
@@ -157,6 +170,10 @@ fn parse(argv: &[String]) -> Result<Args, String> {
                 args.interval = value()?.parse().map_err(|_| "--interval is a number")?;
             }
             "--once" => args.once = true,
+            "--clone" => args.clone = Some(value()?),
+            "--branch" => args.branch = Some(value()?),
+            "--subject" => args.subject = Some(value()?),
+            "--body" => args.body = Some(PathBuf::from(value()?)),
             "--id" => args.id = value()?,
             "--dry-run" => args.dry_run = true,
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
@@ -415,6 +432,97 @@ async fn run(command: &str, args: Args) -> Result<(), String> {
                 }
                 tokio::time::sleep(std::time::Duration::from_secs(args.interval.max(15))).await;
             }
+        }
+        "pr" | "pr-update" => {
+            let address = args
+                .repository
+                .clone()
+                .ok_or("name the repository with --repository or OPENAGENTS_KILN_REPO")?;
+            let clone = args
+                .clone
+                .clone()
+                .ok_or("name your public clone with --clone https://...")?;
+            if !clone.starts_with("https://") {
+                return Err("the clone address must be https://".into());
+            }
+            let name = args
+                .branch
+                .clone()
+                .ok_or("name the branch with --branch NAME")?;
+            let checkout = args.checkout.clone().unwrap_or_else(|| PathBuf::from("."));
+            let dir = checkout.to_string_lossy().to_string();
+            let tip = sha(&git(&[
+                "-C",
+                &dir,
+                "rev-parse",
+                &format!("{name}^{{commit}}"),
+            ])?)?;
+            let merge_base = sha(&git(&["-C", &dir, "merge-base", "origin/main", &tip])?)?;
+            let paths: Vec<String> = git(&["-C", &dir, "diff", "--name-only", &merge_base, &tip])?
+                .lines()
+                .map(str::to_string)
+                .collect();
+            if paths.is_empty() {
+                return Err(
+                    "the branch changes nothing since its merge base with origin/main".into(),
+                );
+            }
+            if let Some(problem) = paths.iter().find_map(|p| kiln_git::review::path_problem(p)) {
+                return Err(problem);
+            }
+            let signer = keys::choose(args.key.as_deref(), args.profile.as_deref())?;
+            let mut tags = if command == "pr" {
+                let subject = args
+                    .subject
+                    .clone()
+                    .ok_or("give the pull request a --subject")?;
+                kiln::patch::pull_tags(&kiln::patch::Pull {
+                    repo: &address,
+                    subject: &subject,
+                    tip: &tip,
+                    clone: &clone,
+                    branch: &name,
+                    merge_base: &merge_base,
+                    crates: &kiln::remote::touched_crates(&paths),
+                })
+            } else {
+                let id = args
+                    .words
+                    .first()
+                    .ok_or("name your pull request's event id")?;
+                kiln::patch::pull_update_tags(
+                    &address,
+                    id,
+                    signer.key.pubkey(),
+                    &tip,
+                    &clone,
+                    &merge_base,
+                )
+            };
+            if let Some(path) = &args.identity {
+                let credential: identity::Credential = serde_json::from_str(
+                    &std::fs::read_to_string(path)
+                        .map_err(|e| format!("{}: {e}", path.display()))?,
+                )
+                .map_err(|_| "the identity file isn't from kiln-git own")?;
+                identity::verify_credential(&credential, signer.key.pubkey(), now())?;
+                tags.extend(credential.tags());
+            }
+            let body = match &args.body {
+                Some(path) => {
+                    std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?
+                }
+                None => String::new(),
+            };
+            let kind = if command == "pr" {
+                kiln::patch::PULL_REQUEST_KIND
+            } else {
+                kiln::patch::PULL_UPDATE_KIND
+            };
+            let event = signer.key.sign(kind, tags, body, now());
+            send(&args, &signer, &event).await?;
+            println!("{}", event.id);
+            Ok(())
         }
         "review" => {
             let review = review_of(&args).await?;

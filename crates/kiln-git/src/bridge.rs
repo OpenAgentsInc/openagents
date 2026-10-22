@@ -83,6 +83,9 @@ pub struct Tracked {
     /// When it was refused; a newer open retries it.
     #[serde(default)]
     pub refused_at: u64,
+    /// `1617` for a patch, `1618` for a pull request.
+    #[serde(default)]
+    pub kind: u16,
     #[serde(default)]
     pub mirrored_nostr: BTreeSet<String>,
     #[serde(default)]
@@ -455,7 +458,7 @@ pub fn comment_tags(patch: &Event, relay: &str) -> Vec<Tag> {
             relay.into(),
             patch.pubkey.clone(),
         ]),
-        Tag::new(vec!["K".into(), kiln::patch::PATCH_KIND.to_string()]),
+        Tag::new(vec!["K".into(), patch.kind.to_string()]),
         Tag::new(vec!["P".into(), patch.pubkey.clone()]),
         Tag::new(vec![
             "e".into(),
@@ -463,7 +466,7 @@ pub fn comment_tags(patch: &Event, relay: &str) -> Vec<Tag> {
             relay.into(),
             patch.pubkey.clone(),
         ]),
-        Tag::new(vec!["k".into(), kiln::patch::PATCH_KIND.to_string()]),
+        Tag::new(vec!["k".into(), patch.kind.to_string()]),
         Tag::new(vec!["p".into(), patch.pubkey.clone()]),
     ]
 }
@@ -600,6 +603,77 @@ pub async fn open(
     })
 }
 
+/// The draft pull request's title and body for a Nostr pull request.
+#[must_use]
+pub fn pull_request_text(
+    read: &crate::pull::PullReview,
+    opener: &str,
+    relay: &str,
+) -> (String, String) {
+    let author = match &read.author {
+        Author::Agent { agent, owner, .. } => format!(
+            "an agent (`{}`) authorized by `{}`",
+            npub(agent),
+            npub(owner)
+        ),
+        Author::Maintainer(key) => format!("`{}` (maintainer)", npub(key)),
+        Author::Unverified(key) => format!("`{}`, an unverified author", npub(key)),
+    };
+    let body = format!(
+        "{MARK}\nA pull request from Nostr, opened for review by `{}`.\n\n\
+         - **Author:** {author}\n\
+         - **Event:** `{}` on {relay}\n\
+         - **Tip:** `{}` from {}\n\
+         - **Merge base:** `{}`\n\
+         - **Check:** no runner checks pull requests yet; the land queue's tests are the check.\n\n\
+         {}\n\n\
+         This is a draft. A maintainer reviews and merges it on GitHub; the bridge \
+         never merges. New tips the author publishes on Nostr update this branch.",
+        npub(opener),
+        read.event.id,
+        read.tip,
+        read.clone,
+        read.merge_base,
+        clip(&read.event.content),
+    );
+    (read.subject.clone(), body)
+}
+
+/// Open a draft pull request for a Nostr pull request: fetch its tip over
+/// https, check it changes only crate sources, and push it.
+///
+/// # Errors
+///
+/// Why the pull request wasn't opened.
+pub async fn open_pull(
+    config: &Config,
+    hub: &GitHub,
+    read: &crate::pull::PullReview,
+    opener: &str,
+) -> Result<Tracked, String> {
+    crate::pull::bring(read, &config.checkout)?;
+    let branch = branch(&read.event.id);
+    hub.push(&config.checkout, &read.tip, &branch)?;
+    let (title, body) = pull_request_text(read, opener, &config.relay);
+    let (number, url) = hub.open_draft(&title, &branch, &body).await?;
+    let note = config.key.key.sign(
+        1_111,
+        comment_tags(&read.event, &config.relay),
+        format!("Opened draft pull request #{number} on GitHub: {url}"),
+        now(),
+    );
+    relay::publish(&config.relay, &config.key.secret, &note).await?;
+    Ok(Tracked {
+        opener: opener.to_string(),
+        number,
+        url,
+        branch,
+        head: read.tip.clone(),
+        kind: kiln::patch::PULL_REQUEST_KIND,
+        ..Tracked::default()
+    })
+}
+
 /// One round: open newly opened patches, mirror comments, and report
 /// merges and closes. Returns a line per thing it did.
 ///
@@ -624,9 +698,24 @@ pub async fn round(
     )
     .await?;
     for (id, opener) in openings(state, &trust, &openers, &statuses) {
-        let outcome = match review::fetch(&config.relay, &id, Some(&config.address)).await {
-            Ok(review) => open(config, hub, &review, &opener).await,
-            Err(e) => Err(e),
+        let kind = relay::query(
+            &config.relay,
+            &review::reader(),
+            json!({"ids": [id], "limit": 1}),
+        )
+        .await?
+        .first()
+        .map_or(0, |e| e.kind);
+        let outcome = if kind == kiln::patch::PULL_REQUEST_KIND {
+            match crate::pull::fetch(&config.relay, &id, &config.address).await {
+                Ok(read) => open_pull(config, hub, &read, &opener).await,
+                Err(e) => Err(e),
+            }
+        } else {
+            match review::fetch(&config.relay, &id, Some(&config.address)).await {
+                Ok(review) => open(config, hub, &review, &opener).await,
+                Err(e) => Err(e),
+            }
         };
         match outcome {
             Ok(tracked) => {
@@ -682,6 +771,24 @@ async fn follow(
         .into_iter()
         .next()
         .ok_or("the relay no longer has the patch")?;
+    if patch.kind == kiln::patch::PULL_REQUEST_KIND {
+        // The author moved the tip with a 1619: bring it and push it.
+        let read = crate::pull::fetch(&config.relay, id, &config.address).await?;
+        if read.tip != tracked.head {
+            crate::pull::bring(&read, &config.checkout)?;
+            hub.push(&config.checkout, &read.tip, &tracked.branch)?;
+            hub.comment(
+                tracked.number,
+                &format!(
+                    "{MARK}\nThe author moved this pull request to `{}` on Nostr.",
+                    read.tip
+                ),
+            )
+            .await?;
+            tracked.head = read.tip;
+            said.push(format!("updated #{} to a new tip", tracked.number));
+        }
+    }
     let replies = relay::query(
         &config.relay,
         &reader,

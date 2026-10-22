@@ -282,6 +282,68 @@ pub fn check_tags(patch_id: &str, author: &str, relay: &str, passed: bool) -> Ve
     ]
 }
 
+/// The pull-request kind, for changes past [`MAX_PATCH_BYTES`].
+pub const PULL_REQUEST_KIND: u16 = 1_618;
+/// The pull-request update kind.
+pub const PULL_UPDATE_KIND: u16 = 1_619;
+
+/// What a pull request names.
+pub struct Pull<'a> {
+    pub repo: &'a str,
+    pub subject: &'a str,
+    pub tip: &'a str,
+    pub clone: &'a str,
+    pub branch: &'a str,
+    pub merge_base: &'a str,
+    pub crates: &'a [String],
+}
+
+/// The tags of a `1618` pull request.
+#[must_use]
+pub fn pull_tags(p: &Pull<'_>) -> Vec<Tag> {
+    let owner = p.repo.split(':').nth(1).unwrap_or_default();
+    let mut tags = vec![
+        Tag::new(vec!["a".into(), p.repo.into()]),
+        Tag::new(vec!["p".into(), owner.into()]),
+        Tag::new(vec!["subject".into(), p.subject.into()]),
+        Tag::new(vec!["c".into(), p.tip.into()]),
+        Tag::new(vec!["clone".into(), p.clone.into()]),
+        Tag::new(vec!["branch-name".into(), p.branch.into()]),
+        Tag::new(vec!["merge-base".into(), p.merge_base.into()]),
+    ];
+    for name in p.crates {
+        tags.push(Tag::new(vec!["t".into(), format!("crate:{name}")]));
+    }
+    tags.push(Tag::new(vec![
+        "alt".into(),
+        "A git pull request made with Kiln".into(),
+    ]));
+    tags
+}
+
+/// The tags of a `1619` update moving pull request `pr` (by `author`) to
+/// `tip`.
+#[must_use]
+pub fn pull_update_tags(
+    repo: &str,
+    pr: &str,
+    author: &str,
+    tip: &str,
+    clone: &str,
+    merge_base: &str,
+) -> Vec<Tag> {
+    let owner = repo.split(':').nth(1).unwrap_or_default();
+    vec![
+        Tag::new(vec!["a".into(), repo.into()]),
+        Tag::new(vec!["p".into(), owner.into()]),
+        Tag::new(vec!["E".into(), pr.into()]),
+        Tag::new(vec!["P".into(), author.into()]),
+        Tag::new(vec!["c".into(), tip.into()]),
+        Tag::new(vec!["clone".into(), clone.into()]),
+        Tag::new(vec!["merge-base".into(), merge_base.into()]),
+    ]
+}
+
 /// The NIP-34 status kinds: open, applied or merged, closed, draft.
 pub const STATUS_KINDS: [u16; 4] = [1_630, 1_631, 1_632, 1_633];
 

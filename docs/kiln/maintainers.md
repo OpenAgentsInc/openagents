@@ -163,3 +163,28 @@ listed in `--openers`, or link `kiln_git` and call
 `kiln_git::review::fetch` and `kiln_git::bridge::open` directly. Its
 coding agents propose with `kiln-git propose` and an identity the Foreman's
 owner signed.
+
+## Pull requests for larger changes
+
+A patch event holds at most 60 KB. A larger change goes as a NIP-34 pull
+request (`1618`) that points at a commit in the author's own public clone:
+
+```sh
+git push https://github.com/YOU/openagents.git my-change   # your fork, public
+kiln-git pr --branch my-change --clone https://github.com/YOU/openagents.git \
+  --subject "Teach atif to read v1.9" --body why.md --as default
+# later, after more commits on the branch:
+kiln-git pr-update EVENT --branch my-change --clone https://github.com/YOU/openagents.git
+```
+
+- The tip is the branch's commit and the merge base its merge base with
+  `origin/main`. Only crate sources may change, as with patches.
+  `--identity FILE` adds an agent's identity.
+- When a maintainer opens it (`kiln-git status EVENT open`), the bridge
+  fetches the tip, only over `https://`, checks the paths again, pushes it
+  to `nostr/<event id>`, and opens a draft pull request. Each newer `1619`
+  from the author moves the branch, with a note on the pull request.
+- No runner checks pull requests yet, so the draft says so; the land
+  queue's tests are the check.
+- The Kiln page can't push git, so it still publishes patches and refuses
+  a change over 60 KB; split it, or finish it outside the browser.

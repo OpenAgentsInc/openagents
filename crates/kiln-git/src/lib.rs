@@ -7,6 +7,8 @@
 //! - [`review`]: a patch read against its repository: author, check, and
 //!   status. The bridge and the Grid Foreman read patches through it.
 //! - [`apply`]: a reviewed patch on a branch of its own, with credit.
+//! - [`pull`]: NIP-34 pull requests (`1618`, `1619`) from the author's own
+//!   clone.
 //! - [`bridge`]: maintainer-opened patches become draft pull requests on
 //!   GitHub, and merges come back as `1631`.
 //!
@@ -15,5 +17,6 @@
 pub mod apply;
 pub mod bridge;
 pub mod keys;
+pub mod pull;
 pub mod relay;
 pub mod review;
