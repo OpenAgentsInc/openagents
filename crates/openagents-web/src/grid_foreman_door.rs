@@ -223,6 +223,12 @@ impl Door for ForemanDoor {
         Box::pin(async move {
             let store = app.config.chat_store.clone();
             let now = crate::chat_store::now_unix();
+            // Its host walks it to the terminal while it answers (#12447).
+            let mut activity = crate::grid_foreman::Activity {
+                started_at: now,
+                ..Default::default()
+            };
+            crate::grid_foreman::set_activity(&store, &activity).await;
             let facts = facts(&store, now).await;
             if let Some(pylon) =
                 crate::pylon_door::foreman(&app, format!("{INSTRUCTIONS}\n\n{facts}"))
@@ -247,11 +253,16 @@ impl Door for ForemanDoor {
                         "pylon"
                     };
                     analytics.event("foreman_answered", source);
-                    let mut reply = basic_coder::lock(&reply);
-                    reply.text = checked(&text);
-                    reply.model = model;
-                    reply.meta.tier = Some("model".into());
-                    reply.done = true;
+                    {
+                        let mut reply = basic_coder::lock(&reply);
+                        reply.text = checked(&text);
+                        reply.model = model;
+                        reply.meta.tier = Some("model".into());
+                        reply.done = true;
+                    }
+                    activity.finished_at = Some(crate::chat_store::now_unix());
+                    activity.source = Some(source.into());
+                    crate::grid_foreman::set_activity(&store, &activity).await;
                     return;
                 }
             }
@@ -269,19 +280,28 @@ who speaks as I, in at most four short sentences, from these facts only."
                     },
                 );
                 hosted.ask(turns, hosted_context, reply.clone()).await;
-                let mut reply = basic_coder::lock(&reply);
-                if reply.done && reply.failure.is_none() {
-                    reply.text = checked(&reply.text);
-                    analytics.event("foreman_answered", "hosted");
-                } else {
-                    analytics.event("foreman_answer_failed", "timeout");
-                    reply.text = CANT_ANSWER.into();
-                    reply.failure = None;
-                    reply.done = true;
-                }
+                let answered = {
+                    let mut reply = basic_coder::lock(&reply);
+                    if reply.done && reply.failure.is_none() {
+                        reply.text = checked(&reply.text);
+                        analytics.event("foreman_answered", "hosted");
+                        true
+                    } else {
+                        analytics.event("foreman_answer_failed", "timeout");
+                        reply.text = CANT_ANSWER.into();
+                        reply.failure = None;
+                        reply.done = true;
+                        false
+                    }
+                };
+                activity.finished_at = Some(crate::chat_store::now_unix());
+                activity.source = answered.then(|| "hosted".to_owned());
+                crate::grid_foreman::set_activity(&store, &activity).await;
                 return;
             }
             analytics.event("foreman_answer_failed", "budget");
+            activity.finished_at = Some(crate::chat_store::now_unix());
+            crate::grid_foreman::set_activity(&store, &activity).await;
             let mut reply = basic_coder::lock(&reply);
             reply.text = OUT_OF_ANSWERS.into();
             reply.meta.tier = Some("prepared".into());

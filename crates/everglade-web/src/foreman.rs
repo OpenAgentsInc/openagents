@@ -247,6 +247,26 @@ fn at() -> Vec3 {
     FOREMAN.with(|f| f.borrow().live.as_ref().map_or_else(home, |l| l.pos))
 }
 
+/// The middle of the terminal's screen, world m: `build_board`'s screen
+/// transform puts the display's lower edge 1.37 m up, just in front of the
+/// terminal at (0, 0, 4).
+const SCREEN_MIDDLE: Vec3 = Vec3::new(0.0, 1.78, 3.86);
+/// Where its working hand is, in its own frame at three times the rig, m.
+const HAND: Vec3 = Vec3::new(-1.0, 2.8, 0.7);
+
+/// Its task while it works at the terminal (#12447): its host's status
+/// line when that is work ([`grid_foreman::is_work`]) and it stands home.
+/// The screen shows it in place of its usual rows.
+pub fn screen_task() -> Option<String> {
+    FOREMAN.with(|f| {
+        let f = f.borrow();
+        let live = f.live.as_ref()?;
+        let status = live.status.as_deref()?;
+        (grid_foreman::is_work(status) && live.pos.distance(home()) < 1.5)
+            .then(|| status.to_owned())
+    })
+}
+
 /// Takes the Foreman's figures out of `peers`, which the page draws as
 /// players, and keeps where the host has it; `presence` learns its key.
 pub fn take(peers: &mut Vec<verse::crowd::Figure>, presence: Option<&mut crate::grid::Presence>) {
@@ -394,6 +414,39 @@ pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], view_proj: Mat4, ey
             .clone()
             .unwrap_or_else(|| grid_foreman::STATUS_WAITING.to_owned())
     });
+    // While it works, a thin pulsing line runs from its hand to the screen.
+    if screen_task().is_some() {
+        let (pos, yaw) = FOREMAN.with(|f| {
+            f.borrow()
+                .live
+                .as_ref()
+                .map_or((home(), 0.0), |l| (l.pos, l.yaw))
+        });
+        let hand = pos + glam::Quat::from_rotation_y(yaw) * HAND;
+        if let (Some(a), Some(b)) = (
+            verse::hud::project(view_proj, size, hand),
+            verse::hud::project(view_proj, size, SCREEN_MIDDLE),
+        ) {
+            let length = (b[0] - a[0]).hypot(b[1] - a[1]);
+            let steps = (length / 6.0).clamp(1.0, 400.0) as usize;
+            let phase = (now / 120.0) as usize;
+            for i in 0..=steps {
+                let t = i as f32 / steps as f32;
+                let bright = (i + steps - phase % steps.max(1)) % 6 == 0;
+                ui.rect(
+                    atlas,
+                    a[0] + (b[0] - a[0]) * t - 1.0,
+                    a[1] + (b[1] - a[1]) * t - 1.0,
+                    2.0,
+                    2.0,
+                    crate::theme::linear(
+                        coder_ui::coder_noir::CONTENT,
+                        if bright { 1.0 } else { 0.45 },
+                    ),
+                );
+            }
+        }
+    }
     let mut top = y - atlas.line * 2.0;
     for (text, color) in [
         (grid_foreman::TAG, coder_ui::coder_noir::CONTENT),

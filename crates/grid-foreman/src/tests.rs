@@ -160,3 +160,22 @@ fn the_talk_offer_shows_in_range_but_not_at_the_terminal() {
     // The terminal (0, 0, 4) is pylons_view::terminal::POSITION.
     assert_eq!(pylons_view::terminal::POSITION, [0.0, 0.0, 4.0]);
 }
+
+#[test]
+fn work_lines_fit_and_are_plain() {
+    for (source, seconds) in [
+        ("flint", 4),
+        ("pylon", 59),
+        ("hosted", 120),
+        ("other", 9_999),
+    ] {
+        let line = answered(source, seconds);
+        assert!(line.len() <= STATUS_MAX, "{line}");
+        assert!(is_work(&line), "{line}");
+        assert!(oa_copy::violations(&line, &[]).is_empty(), "{line}");
+    }
+    assert!(is_work(ANSWERING));
+    assert!(!is_work("AT THE TERMINAL"));
+    assert!(!is_work("14 OPEN ISSUES, 3 IN PROGRESS"));
+    assert_eq!(answered("flint", 4), "ANSWERED IN 4S ON FLINT");
+}

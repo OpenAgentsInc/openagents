@@ -1718,7 +1718,11 @@ impl Page {
             if let Some(board) = &mut self.board {
                 board.tick(self.presence.as_mut());
                 if self.runtime.is_plaza() {
-                    board.screen_instances(crate::pylon_bay::online(), &mut dynamic);
+                    board.screen_instances(
+                        crate::pylon_bay::online(),
+                        crate::foreman::screen_task().as_deref(),
+                        &mut dynamic,
+                    );
                     board.instances(dynamic.len(), &mut dynamic);
                 }
                 if (self.now / 250.0).floor()

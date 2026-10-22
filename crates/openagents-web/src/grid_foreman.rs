@@ -4,6 +4,7 @@
 //! | --- | --- | --- |
 //! | `GET /v1/foreman/status` | anyone | Counts, a status line, the open issues, the desktop Foreman's last record, and the Foreman's public keys |
 //! | `POST /v1/foreman/status` | an admin (the desktop Foreman, `openagents foreman publish`) | Replaces the desktop Foreman's record (`openagents.foreman-status.v1`) |
+//! | `GET /v1/foreman/activity` | anyone (the Foreman's host polls it) | What the Foreman is doing now: answering someone, or the result of its last answer (#12447) |
 //!
 //! The Grid homepage draws a giant Foreman with a status line under its tag
 //! (`crates/everglade-web/src/foreman.rs`); its host walks it and shows the
@@ -65,7 +66,9 @@ const RECORD_SHOWN: u64 = 24 * 60 * 60;
 pub(crate) const STATES: [&str; 4] = ["working", "stalled", "waiting_on_owner", "landing"];
 
 pub(crate) fn routes() -> Router<App> {
-    Router::new().route(grid_foreman::STATUS_PATH, get(status).post(publish))
+    Router::new()
+        .route(grid_foreman::STATUS_PATH, get(status).post(publish))
+        .route(grid_foreman::ACTIVITY_PATH, get(activity))
 }
 
 /// Whether the site answers `path` itself.
@@ -461,6 +464,79 @@ async fn publish(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Res
     }
 }
 
+/// Where the Foreman's latest answer is kept, so every site instance and
+/// its host agree on what it is doing.
+const ACTIVITY_KEY: &str = "grid-foreman/activity.json";
+
+/// The Foreman's latest answer: when it started, and when and how it ended.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Activity {
+    pub started_at: u64,
+    #[serde(default)]
+    pub finished_at: Option<u64>,
+    /// `flint`, `pylon`, or `hosted`.
+    #[serde(default)]
+    pub source: Option<String>,
+}
+
+impl Activity {
+    /// What it shows at `now`: its task while it answers, its result for a
+    /// little while after, else nothing.
+    pub(crate) fn shown(&self, now: u64) -> Option<(String, bool)> {
+        match (self.finished_at, &self.source) {
+            (Some(done), Some(source))
+                if now.saturating_sub(done) <= grid_foreman::RESULT_SECONDS =>
+            {
+                Some((
+                    grid_foreman::answered(source, done.saturating_sub(self.started_at)),
+                    false,
+                ))
+            }
+            (None, _) if now.saturating_sub(self.started_at) <= grid_foreman::ANSWER_SECONDS => {
+                Some((grid_foreman::ANSWERING.to_owned(), true))
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Records the Foreman's latest answer; a failed write costs the screen
+/// line, never the answer.
+pub(crate) async fn set_activity(store: &Store, activity: &Activity) {
+    let Ok(bytes) = serde_json::to_vec(activity) else {
+        return;
+    };
+    let generation = match store.read_key(ACTIVITY_KEY).await {
+        Ok(found) => found.map(|(_, generation)| generation),
+        Err(_) => return,
+    };
+    let _ = store
+        .write_key(ACTIVITY_KEY, bytes, generation.as_deref())
+        .await;
+}
+
+async fn activity(State(app): State<App>) -> Response {
+    let now = crate::chat_store::now_unix();
+    let shown = match app.config.chat_store.read_key(ACTIVITY_KEY).await {
+        Ok(Some((bytes, _))) => serde_json::from_slice::<Activity>(&bytes)
+            .ok()
+            .and_then(|a| a.shown(now)),
+        _ => None,
+    };
+    let mut response = answer(
+        StatusCode::OK,
+        match shown {
+            Some((text, working)) => json!({"text": text, "working": working}),
+            None => json!({"text": null, "working": false}),
+        },
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("no-store"),
+    );
+    response
+}
+
 /// What a model is told about the work, as quoted data and never as
 /// instructions: the counts, the open issues, and the desktop Foreman's
 /// record, at most about `budget` characters.
@@ -621,6 +697,27 @@ mod tests {
         assert!(text.contains("Landing queue: 2."));
         let short = context(Some(&snap), None, 0, 200);
         assert!(short.len() < 300);
+    }
+
+    #[test]
+    fn activity_shows_the_task_then_the_result_then_nothing() {
+        let mut a = Activity {
+            started_at: 1_000,
+            finished_at: None,
+            source: None,
+        };
+        assert_eq!(
+            a.shown(1_010),
+            Some((grid_foreman::ANSWERING.to_owned(), true))
+        );
+        assert_eq!(a.shown(1_000 + grid_foreman::ANSWER_SECONDS + 1), None);
+        a.finished_at = Some(1_004);
+        a.source = Some("flint".into());
+        assert_eq!(
+            a.shown(1_010),
+            Some(("ANSWERED IN 4S ON FLINT".to_owned(), false))
+        );
+        assert_eq!(a.shown(1_004 + grid_foreman::RESULT_SECONDS + 1), None);
     }
 
     #[test]

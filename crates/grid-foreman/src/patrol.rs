@@ -519,6 +519,41 @@ impl Walker {
         }
     }
 
+    /// Calls it home to the terminal to work (#12447): from a stop, it sets
+    /// off at once; on a leg to another stop, it turns for the terminal
+    /// from where it is; at the terminal, it stays at least `hold` more
+    /// seconds.
+    pub fn summon(&mut self, hold: f32) {
+        match &mut self.phase {
+            Phase::Standing { stop, left } if *stop == Stop::Terminal => {
+                *left = left.max(hold);
+            }
+            Phase::Walking { to, .. } if *to == Stop::Terminal => {}
+            _ => {
+                // The next terminal in the round, so the patrol carries on
+                // from there afterwards.
+                let next = (1..=ROUND.len())
+                    .map(|i| (self.index + i) % ROUND.len())
+                    .find(|i| ROUND[*i] == Stop::Terminal)
+                    .unwrap_or(0);
+                if next <= self.index {
+                    self.lap += 1;
+                }
+                self.index = next;
+                let from = [self.pos.x, self.pos.z];
+                let path = plan(from, Stop::Terminal.at(), &[])
+                    .unwrap_or_else(|| vec![Stop::Terminal.at()]);
+                self.excuse = false;
+                self.phase = Phase::Walking {
+                    to: Stop::Terminal,
+                    path,
+                    next: 0,
+                    waited: 0.0,
+                };
+            }
+        }
+    }
+
     /// Steps `dt` seconds with `players` (feet) on the plaza.
     pub fn step(&mut self, dt: f32, players: &[Vec3]) {
         let dt = dt.clamp(0.0, 1.0);
@@ -781,6 +816,46 @@ mod tests {
             let d = flat_distance(walker.moment().pos, player);
             assert!(d > BODY_RADIUS, "{d}");
         }
+    }
+
+    #[test]
+    fn a_summons_brings_it_home_and_holds_it_there() {
+        let mut walker = Walker::new();
+        // Walk until it stands at the Pylon Bay.
+        for _ in 0..4000 {
+            walker.step(0.25, &[]);
+            if walker.moment().at == Some(Stop::Bay) {
+                break;
+            }
+        }
+        assert_eq!(walker.moment().at, Some(Stop::Bay));
+        walker.summon(30.0);
+        let mut home = false;
+        for _ in 0..4000 {
+            walker.step(0.25, &[]);
+            walker.summon(30.0);
+            if walker.moment().at == Some(Stop::Terminal) {
+                home = true;
+                break;
+            }
+        }
+        assert!(home, "it never came home");
+        // Held while summoned.
+        for _ in 0..1000 {
+            walker.summon(30.0);
+            walker.step(0.25, &[]);
+        }
+        assert_eq!(walker.moment().at, Some(Stop::Terminal));
+        // Released, it carries on its round.
+        let mut left = false;
+        for _ in 0..2000 {
+            walker.step(0.25, &[]);
+            if walker.moment().at.is_none() {
+                left = true;
+                break;
+            }
+        }
+        assert!(left);
     }
 
     #[test]

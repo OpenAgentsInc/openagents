@@ -116,6 +116,32 @@ pub fn lines(pylons: Option<usize>, board: Option<&Board>, wall: f64) -> Vec<(St
     out
 }
 
+/// The rows while the Grid Foreman works at the terminal (#12447): who is
+/// working, its task as its host publishes it, cut at a word to fit, and
+/// how to ask it.
+#[must_use]
+pub fn foreman_lines(task: &str) -> Vec<(String, Ink)> {
+    let fit = font::fits(WIDTH - 2.0 * PAD, LINE_SIZE);
+    let mut row = String::new();
+    for word in task.split_whitespace() {
+        let word = word.to_ascii_uppercase();
+        let extra = usize::from(!row.is_empty()) + word.len();
+        if row.len() + extra > fit {
+            break;
+        }
+        if !row.is_empty() {
+            row.push(' ');
+        }
+        row.push_str(&word);
+    }
+    let mut out = vec![("FOREMAN AT WORK:".to_owned(), Ink::Bright)];
+    if !row.is_empty() {
+        out.push((row, Ink::Bright));
+    }
+    out.push(("WALK UP TO ASK".to_owned(), Ink::Bright));
+    out
+}
+
 /// Whether the prompt's caret shows at wall time `wall`.
 #[must_use]
 pub fn caret(wall: f64) -> bool {
@@ -125,9 +151,15 @@ pub fn caret(wall: f64) -> bool {
 /// The screen's live pieces: its lines, and the prompt with its caret.
 #[must_use]
 pub fn pieces(pylons: Option<usize>, board: Option<&Board>, wall: f64) -> Vec<Placed> {
+    rows_pieces(lines(pylons, board, wall), wall)
+}
+
+/// The screen's pieces for `rows`, and the prompt with its caret: the
+/// Foreman's rows ([`foreman_lines`]) or the usual ones ([`lines`]).
+#[must_use]
+pub fn rows_pieces(mut rows: Vec<(String, Ink)>, wall: f64) -> Vec<Placed> {
     let mut out = Vec::new();
     let fit = font::fits(WIDTH - 2.0 * PAD, LINE_SIZE);
-    let mut rows = lines(pylons, board, wall);
     rows.truncate(ROWS_Y.len() - 1);
     let mut put = |text: &str, x: f64, y: f64, ink: Ink| {
         for (i, c) in text.bytes().take(fit).enumerate() {
@@ -180,8 +212,24 @@ mod tests {
             "DEPLOY FAILED 12H AGO",
             "ROLLED BACK 3D AGO",
             "WALK UP TO USE",
+            "FOREMAN AT WORK:",
+            "WALK UP TO ASK",
         ] {
             assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
+        }
+    }
+
+    #[test]
+    fn the_foremans_rows_fit_and_say_how_to_ask() {
+        let fit = font::fits(WIDTH - 2.0 * PAD, LINE_SIZE);
+        let rows = foreman_lines("answering a question about the open issues");
+        assert_eq!(rows[0].0, "FOREMAN AT WORK:");
+        assert!(rows[1].0.starts_with("ANSWERING A QUESTION"));
+        assert!(rows[1].0.len() <= fit);
+        assert_eq!(rows.last().unwrap().0, "WALK UP TO ASK");
+        assert_eq!(foreman_lines("").len(), 2);
+        for p in rows_pieces(rows, 10.2) {
+            assert!(p.at[0] + p.size * 5.0 / 7.0 <= WIDTH, "{p:?}");
         }
     }
 

@@ -163,20 +163,72 @@ fn poll_status(site: String, into: Arc<Mutex<Option<String>>>) {
     });
 }
 
-/// The status line for this moment: the start line just after a start,
-/// the issue counts at the terminal when the site gave them, else the
-/// walker's own.
+/// How often the host asks the site whether the Foreman is answering.
+const ACTIVITY_EVERY: Duration = Duration::from_secs(3);
+
+/// What the site says the Foreman is doing (#12447): a task line, and
+/// whether it is still at it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Activity {
+    pub text: String,
+    pub working: bool,
+}
+
+/// Reads an activity answer: a line when there is one.
+#[must_use]
+pub fn activity_from(body: &serde_json::Value) -> Option<Activity> {
+    let text = crate::clean_line(body["text"].as_str()?);
+    (!text.is_empty()).then(|| Activity {
+        text,
+        working: body["working"].as_bool().unwrap_or(false),
+    })
+}
+
+/// Asks the site what the Foreman is doing every few seconds, in the
+/// background.
+fn poll_activity(site: String, into: Arc<Mutex<Option<Activity>>>) {
+    std::thread::spawn(move || {
+        let Ok(client) = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .user_agent("openagents-grid-foreman")
+            .build()
+        else {
+            return;
+        };
+        let url = format!("{}{}", site.trim_end_matches('/'), crate::ACTIVITY_PATH);
+        loop {
+            let found = client
+                .get(&url)
+                .send()
+                .ok()
+                .filter(|r| r.status().is_success())
+                .and_then(|r| r.json::<serde_json::Value>().ok())
+                .and_then(|v| activity_from(&v));
+            if let Ok(mut slot) = into.lock() {
+                *slot = found;
+            }
+            std::thread::sleep(ACTIVITY_EVERY);
+        }
+    });
+}
+
+/// The status line for this moment: the start line just after a start;
+/// its task while it works at the terminal, and the walk there; the issue
+/// counts at the terminal when the site gave them; else the walker's own.
 #[must_use]
 pub fn status_line(
     started: Duration,
     moment: &crate::patrol::Moment,
     counts: Option<&str>,
+    activity: Option<&Activity>,
 ) -> String {
     if started < STARTING_FOR {
         return STARTING.to_owned();
     }
-    match (moment.at, counts) {
-        (Some(Stop::Terminal), Some(counts)) => counts.to_owned(),
+    match (moment.at, activity, counts) {
+        (Some(Stop::Terminal), Some(activity), _) => activity.text.clone(),
+        (None, Some(_), _) => Stop::Terminal.walking().to_owned(),
+        (Some(Stop::Terminal), None, Some(counts)) => counts.to_owned(),
         _ => moment.status.to_owned(),
     }
 }
@@ -201,6 +253,8 @@ pub fn serve(options: &Options) -> Result<(), String> {
 
     let counts = Arc::new(Mutex::new(None));
     poll_status(options.site.clone(), counts.clone());
+    let activity = Arc::new(Mutex::new(None));
+    poll_activity(options.site.clone(), activity.clone());
 
     let start = Instant::now();
     let mut walker = Walker::new();
@@ -222,13 +276,18 @@ pub fn serve(options: &Options) -> Result<(), String> {
             .filter(|shown| shown.online && shown.role == "avatar" && shown.pubkey != pubkey)
             .map(|shown| shown.pos)
             .collect();
+        let doing = activity.lock().ok().and_then(|a| a.clone());
+        if let Some(doing) = &doing {
+            // Home to the terminal to work, and there while it answers.
+            walker.summon(if doing.working { 30.0 } else { 15.0 });
+        }
         walker.step(dt, &players);
         let moment = walker.moment();
         player.pos = moment.pos;
         player.yaw = moment.yaw;
         player.speed = moment.speed;
         let counts_line = counts.lock().ok().and_then(|c| c.clone());
-        let line = status_line(now - start, &moment, counts_line.as_deref());
+        let line = status_line(now - start, &moment, counts_line.as_deref(), doing.as_ref());
         session.set_status(Some(&line));
         session.tick(now, &player, &agent);
 
@@ -288,6 +347,20 @@ mod tests {
     }
 
     #[test]
+    fn activity_reads_a_line_or_nothing() {
+        let body = serde_json::json!({"text": "answered in 4s on flint", "working": false});
+        assert_eq!(
+            activity_from(&body),
+            Some(Activity {
+                text: "ANSWERED IN 4S ON FLINT".into(),
+                working: false
+            })
+        );
+        assert_eq!(activity_from(&serde_json::json!({"text": null})), None);
+        assert_eq!(activity_from(&serde_json::json!({"text": "<>"})), None);
+    }
+
+    #[test]
     fn the_profile_is_a_plain_bot_speaking_as_i() {
         let profile = profile();
         assert_eq!(profile["bot"], true);
@@ -308,25 +381,32 @@ mod tests {
     fn status_lines_pick_counts_at_the_terminal() {
         let walker = Walker::new();
         let moment = walker.moment();
+        let counts = Some("3 OPEN ISSUES, 1 IN PROGRESS");
         assert_eq!(
-            status_line(
-                Duration::from_secs(1),
-                &moment,
-                Some("3 OPEN ISSUES, 1 IN PROGRESS")
-            ),
+            status_line(Duration::from_secs(1), &moment, counts, None),
             STARTING
         );
         assert_eq!(
-            status_line(
-                Duration::from_secs(60),
-                &moment,
-                Some("3 OPEN ISSUES, 1 IN PROGRESS")
-            ),
+            status_line(Duration::from_secs(60), &moment, counts, None),
             "3 OPEN ISSUES, 1 IN PROGRESS"
         );
         assert_eq!(
-            status_line(Duration::from_secs(60), &moment, None),
+            status_line(Duration::from_secs(60), &moment, None, None),
             "AT THE TERMINAL"
+        );
+        let working = Activity {
+            text: crate::ANSWERING.into(),
+            working: true,
+        };
+        assert_eq!(
+            status_line(Duration::from_secs(60), &moment, counts, Some(&working)),
+            crate::ANSWERING
+        );
+        let mut walking = moment.clone();
+        walking.at = None;
+        assert_eq!(
+            status_line(Duration::from_secs(60), &walking, counts, Some(&working)),
+            "WALKING TO THE TERMINAL"
         );
         assert!(oa_copy::violations(STARTING, &[]).is_empty());
     }

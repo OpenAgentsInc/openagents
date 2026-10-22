@@ -80,6 +80,35 @@ pub fn in_talk_range(player: [f64; 3], foreman: [f64; 3], already_near: bool) ->
         && (player[0] - terminal[0]).hypot(player[2] - terminal[2]) > 3.8
 }
 
+/// Its task while it answers someone (#12447): the status line, and the
+/// terminal screen's task row.
+pub const ANSWERING: &str = "ANSWERING A QUESTION";
+/// The site's route for what the Foreman is doing (#12447).
+pub const ACTIVITY_PATH: &str = "/v1/foreman/activity";
+/// How long an answer's result shows after it, s.
+pub const RESULT_SECONDS: u64 = 20;
+/// How long an answer may stay "answering" before it counts as over, s.
+pub const ANSWER_SECONDS: u64 = 120;
+
+/// The result line after an answer that took `seconds` from `source`:
+/// `flint`, `pylon`, or `hosted`, at most [`STATUS_MAX`] characters.
+#[must_use]
+pub fn answered(source: &str, seconds: u64) -> String {
+    let on = match source {
+        "flint" => "ON FLINT",
+        "pylon" => "ON A PYLON",
+        _ => "ON THE BACKUP",
+    };
+    clean_line(&format!("ANSWERED IN {seconds}S {on}"))
+}
+
+/// Whether `status` is work at the terminal: an answer under way or just
+/// given. Only then does the terminal's screen show the Foreman's task.
+#[must_use]
+pub fn is_work(status: &str) -> bool {
+    status == ANSWERING || status.starts_with("ANSWERED IN ")
+}
+
 /// The site's route for the Foreman's status.
 pub const STATUS_PATH: &str = "/v1/foreman/status";
 /// The status document's schema.

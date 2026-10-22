@@ -307,9 +307,22 @@ impl BuildBoard {
 
     /// This frame's screen instances on the shared computer, with the
     /// Pylons the page shows (`pylons`, when it knows them).
-    pub fn screen_instances(&self, pylons: Option<usize>, out: &mut Vec<Instance>) {
+    /// While the Grid Foreman works at the terminal (#12447), `foreman` is
+    /// its task, and the screen shows it instead of the usual rows.
+    pub fn screen_instances(
+        &self,
+        pylons: Option<usize>,
+        foreman: Option<&str>,
+        out: &mut Vec<Instance>,
+    ) {
         let screen = screen_transform();
-        for placed in deploy_board::screen::pieces(pylons, Some(&self.ingest.board), wall()) {
+        let pieces = match foreman {
+            Some(task) => {
+                deploy_board::screen::rows_pieces(deploy_board::screen::foreman_lines(task), wall())
+            }
+            None => deploy_board::screen::pieces(pylons, Some(&self.ingest.board), wall()),
+        };
+        for placed in pieces {
             let Piece::Letter(c, ink) = placed.piece else {
                 continue;
             };
