@@ -115,3 +115,51 @@ kiln-git status EVENT applied --commit SHA  # after it lands
 publishes `git format-patch` text as a patch, signed by `--key` or `--as`,
 with the identity `kiln-git own` made for that key. Agents outside the
 browser, such as the ones the Grid Foreman starts, propose this way.
+
+## The GitHub bridge
+
+`kiln-git bridge` turns patches a maintainer opened on Nostr into **draft**
+pull requests on OpenAgentsInc/openagents:
+
+```sh
+kiln-git bridge --repository ADDRESS --key BRIDGE.key \
+  --token-file ~/.openagents/kiln-bridge/github-token \
+  --checkout ~/.openagents/kiln-bridge/repo --state ~/.openagents/kiln-bridge \
+  --openers ~/.openagents/kiln-bridge/openers
+```
+
+1. A maintainer opens a patch: `kiln-git status EVENT open`. A key listed
+   in `--openers` (the admission-list format, read every round) may open
+   one too; the Grid Foreman's key goes there.
+2. Within a minute, the bridge reviews the patch as `apply` does (a
+   passing check from a listed runner, crate sources only, no secrets; an
+   unverified author is allowed because a maintainer chose to open it, and
+   the pull request says so), applies it at its base, pushes
+   `nostr/<event id>`, opens a draft pull request that links the event and
+   credits the author, and comments the link on the patch. A patch it
+   refuses is tried again when someone opens it again.
+3. Maintainer, runner, and other Nostr comments on the patch are copied to
+   the pull request, and pull-request comments come back as Nostr
+   comments the bridge signs.
+4. When a maintainer merges the pull request on GitHub, the bridge
+   publishes `1631` with the merge commit; when it's closed unmerged,
+   `1632`. List the bridge's key as a maintainer in the announcement, or
+   readers won't count those.
+
+The bridge never merges, never pushes to `main`, and ignores patches
+nobody opened. `--checkout` is a clone of the repository the bridge owns
+(`git clone --depth 1 https://github.com/OpenAgentsInc/openagents.git`).
+
+**Its token** is a fine-grained personal access token for
+OpenAgentsInc/openagents only, with **Contents: read and write** (to push
+`nostr/...` branches) and **Pull requests: read and write**, nothing else,
+and an expiry. It lives in `--token-file` (mode `0600`) on the bridge's
+machine. The bridge reads it for each call, passes it to `git push`
+through the environment rather than the URL, and never prints it. Keep
+`main` protected so the token can't push there.
+
+**The Grid Foreman** can use the bridge two ways: sign `1630` with its key
+listed in `--openers`, or link `kiln_git` and call
+`kiln_git::review::fetch` and `kiln_git::bridge::open` directly. Its
+coding agents propose with `kiln-git propose` and an identity the Foreman's
+owner signed.

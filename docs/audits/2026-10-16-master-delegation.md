@@ -537,6 +537,11 @@ The status lines below summarize each issue and its comments. Open the issue for
   `kiln-git apply` on a real Kiln patch, land the branch through the land
   queue, and publish `kiln-git status EVENT applied --commit SHA`; confirm
   `review.html` shows it merged.
+- #12453: once the bridge has its token (NEEDS_OWNER), open a checked
+  Kiln patch with `kiln-git status EVENT open` and confirm a draft pull
+  request appears with the event link and author credit, a Nostr comment
+  shows up on it, and a pull-request comment comes back on Nostr. Close it
+  unmerged and confirm the patch shows closed.
 - #12440: after the next web deploy, confirm the image log builds or
   reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
   `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test

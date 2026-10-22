@@ -9,6 +9,7 @@
 //! kiln-git review EVENT [--repository ADDRESS]
 //! kiln-git check EVENT --runner KEY [KEY]
 //! kiln-git apply EVENT [--checkout DIR] [--into DIR] [--onto REF]
+//! kiln-git bridge --token-file FILE --checkout DIR --state DIR [--openers FILE] [KEY]
 //! kiln-git status EVENT open|applied|closed|draft [--commit SHA]... [--merge-commit SHA] [KEY]
 //! ```
 //!
@@ -55,6 +56,11 @@ const USAGE: &str = "usage: kiln-git COMMAND [OPTIONS]
   status EVENT open|applied|closed|draft [--commit SHA]... [--merge-commit SHA]
         Publish a maintainer's status (1630 to 1633). applied takes the
         commits the patch landed as.
+  bridge --token-file FILE --checkout DIR --state DIR [--openers FILE]
+         [--github OWNER/NAME] [--interval SECS] [--once]
+        Turn patches a maintainer (or a key in --openers) marked open into
+        draft pull requests, mirror comments both ways, and mark merges
+        and closes on Nostr. KEY is the bridge's own key. Never merges.
 Patch commands take --repository ADDRESS (default: the patch's own, or
 OPENAGENTS_KILN_REPO), --allow-unverified, and --without-check.
 Every command takes --relay URL. Signing commands take --key FILE or
@@ -86,6 +92,12 @@ struct Args {
     without_check: bool,
     base: Option<String>,
     identity: Option<PathBuf>,
+    github: String,
+    token_file: Option<PathBuf>,
+    state: Option<PathBuf>,
+    openers: Option<PathBuf>,
+    interval: u64,
+    once: bool,
 }
 
 fn parse(argv: &[String]) -> Result<Args, String> {
@@ -94,6 +106,8 @@ fn parse(argv: &[String]) -> Result<Args, String> {
         hours: 720,
         actions: vec![identity::GIT_PROPOSE.into(), identity::KILN_TEST.into()],
         id: repo::REPO_ID.into(),
+        github: "OpenAgentsInc/openagents".into(),
+        interval: 60,
         repository: std::env::var("OPENAGENTS_KILN_REPO")
             .ok()
             .filter(|v| !v.is_empty()),
@@ -135,6 +149,14 @@ fn parse(argv: &[String]) -> Result<Args, String> {
             "--without-check" => args.without_check = true,
             "--base" => args.base = Some(sha(&value()?)?),
             "--identity" => args.identity = Some(PathBuf::from(value()?)),
+            "--github" => args.github = value()?,
+            "--token-file" => args.token_file = Some(PathBuf::from(value()?)),
+            "--state" => args.state = Some(PathBuf::from(value()?)),
+            "--openers" => args.openers = Some(PathBuf::from(value()?)),
+            "--interval" => {
+                args.interval = value()?.parse().map_err(|_| "--interval is a number")?;
+            }
+            "--once" => args.once = true,
             "--id" => args.id = value()?,
             "--dry-run" => args.dry_run = true,
             flag if flag.starts_with("--") => return Err(format!("unknown option {flag}")),
@@ -349,6 +371,50 @@ async fn run(command: &str, args: Args) -> Result<(), String> {
             send(&args, &signer, &event).await?;
             println!("{}", event.id);
             Ok(())
+        }
+        "bridge" => {
+            let config = kiln_git::bridge::Config {
+                relay: args.relay.clone(),
+                address: args
+                    .repository
+                    .clone()
+                    .ok_or("name the repository with --repository or OPENAGENTS_KILN_REPO")?,
+                github: args.github.clone(),
+                api: "https://api.github.com".into(),
+                token_file: args
+                    .token_file
+                    .clone()
+                    .ok_or("name the token with --token-file FILE")?,
+                checkout: args
+                    .checkout
+                    .clone()
+                    .ok_or("name the bridge's clone with --checkout DIR")?,
+                state: args
+                    .state
+                    .clone()
+                    .ok_or("name a state directory with --state DIR")?,
+                openers: args.openers.clone(),
+                key: keys::choose(args.key.as_deref(), args.profile.as_deref())?,
+            };
+            let hub =
+                kiln_git::bridge::GitHub::new(&config.api, &config.github, &config.token_file);
+            let mut state = kiln_git::bridge::State::load(&config.state);
+            eprintln!(
+                "bridge {} for {} to {}",
+                identity::short_npub(config.key.key.pubkey()),
+                config.address,
+                config.github
+            );
+            loop {
+                match kiln_git::bridge::round(&config, &hub, &mut state).await {
+                    Ok(lines) => lines.iter().for_each(|l| println!("{l}")),
+                    Err(e) => eprintln!("round: {e}"),
+                }
+                if args.once {
+                    return Ok(());
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(args.interval.max(15))).await;
+            }
         }
         "review" => {
             let review = review_of(&args).await?;

@@ -7,10 +7,13 @@
 //! - [`review`]: a patch read against its repository: author, check, and
 //!   status. The bridge and the Grid Foreman read patches through it.
 //! - [`apply`]: a reviewed patch on a branch of its own, with credit.
+//! - [`bridge`]: maintainer-opened patches become draft pull requests on
+//!   GitHub, and merges come back as `1631`.
 //!
 //! Nothing here merges: a status event records what a maintainer did.
 
 pub mod apply;
+pub mod bridge;
 pub mod keys;
 pub mod relay;
 pub mod review;

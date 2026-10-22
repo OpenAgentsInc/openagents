@@ -13,7 +13,14 @@ are the keys that count. Only you can sign it. Details:
 2. **Point Kiln at it.** Set `OPENAGENTS_KILN_REPO` to that address at the
    next web deploy, and restart the runner with `--repository ADDRESS
    --no-announce`.
-3. **Make your Kiln key yours.** In `/admin/kiln/`, open **Settings**, copy
+3. **Let the GitHub bridge open draft pull requests.** Create a
+   fine-grained token for OpenAgentsInc/openagents only, with Contents and
+   Pull requests read and write and an expiry, and save it (mode `0600`) as
+   the bridge's `--token-file` on the Kiln machine (#12453,
+   [`docs/kiln/maintainers.md`](docs/kiln/maintainers.md#the-github-bridge)).
+   Add the bridge's key as a maintainer when you announce, so its merge
+   status counts.
+4. **Make your Kiln key yours.** In `/admin/kiln/`, open **Settings**, copy
    the **Admin key** npub, run `kiln-git own NPUB`, and paste the line it
    prints into **Identity**. Your patches then show as "agent, authorized
    by" you.
