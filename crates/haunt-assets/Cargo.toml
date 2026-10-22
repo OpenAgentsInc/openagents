@@ -1,0 +1,22 @@
+[package]
+name = "haunt-assets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The Haunted House's prepared library: the palette tokens, the catalog of cards, meshes, effects and sounds with their footprints, states, sounds and default triggers, the surfaces and lighting presets, and the low-poly mesh builders."
+
+[dependencies]
+glam = "0.30.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toon-mesh = { path = "../toon-mesh" }
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+
+[lints]
+workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

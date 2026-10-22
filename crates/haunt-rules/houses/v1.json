@@ -1,0 +1,176 @@
+{
+  "kind": "haunt.v1",
+  "title": "The Haunted House",
+  "arrival": { "area": "yard", "at": [8.0, 4.0], "yaw": 180.0, "cue": "creak-behind" },
+  "exit": { "area": "back-hall", "door": "back-door" },
+  "look": { "vignette": 0.75, "lantern": true, "grain": 0.15, "sky": "dusk" },
+  "audio": { "master": 0.8, "music": 0.6, "ambience": 0.7, "sfx": 0.9, "voice": 1.0, "music_track": "bassline-minor" },
+  "areas": [
+    {
+      "id": "yard",
+      "kind": "yard",
+      "rect": [0.0, 0.0, 16.0, 20.0],
+      "surfaces": { "floor": "moss-ground", "walls": "brick", "trim": "wood" },
+      "light": { "preset": "moonlight" },
+      "sound": { "bed": "wind", "music_gain": 0.8 },
+      "intent": { "feeling": "calm unease, then the reveal when you turn", "beat": "a door creaks and a crow calls behind you", "intensity": [1, 2] },
+      "doors": [
+        { "id": "front-door", "to": "entry-hall", "wall": "north", "offset": 7.3, "width": 1.4 }
+      ],
+      "props": [
+        { "id": "gate-west", "asset": "iron-fence", "at": [2.5, 0.3], "yaw": 0.0, "note": "the fence either side of the gate" },
+        { "id": "gate-east", "asset": "iron-fence", "at": [13.5, 0.3], "yaw": 0.0 },
+        { "id": "tree-1", "asset": "gnarled-tree", "at": [3.0, 6.0], "note": "frames the road you face on arrival" },
+        { "id": "tree-2", "asset": "gnarled-tree", "at": [13.0, 7.5] },
+        { "id": "tree-3", "asset": "gnarled-tree", "at": [2.0, 15.5] },
+        { "id": "tree-4", "asset": "gnarled-tree", "at": [14.0, 15.0] },
+        { "id": "tombstone-1", "asset": "tombstone", "at": [4.5, 10.5], "yaw": 160.0, "note": "leaning, on the walk to the door" },
+        { "id": "tombstone-2", "asset": "tombstone", "at": [11.5, 11.0], "yaw": 200.0 },
+        { "id": "tombstone-3", "asset": "tombstone", "at": [12.8, 9.0], "yaw": 185.0 },
+        { "id": "pumpkin-left", "asset": "jack-o-lantern", "at": [6.6, 19.3], "yaw": 180.0, "state": "grin", "note": "on the front steps, seen when you turn" },
+        { "id": "pumpkin-right", "asset": "jack-o-lantern", "at": [9.4, 19.3], "yaw": 180.0, "state": "sly" },
+        { "id": "pumpkin-low", "asset": "jack-o-lantern", "at": [10.2, 18.6], "yaw": 200.0, "state": "toothy" },
+        { "id": "moon", "asset": "moon", "at": [12.0, 70.0], "note": "low behind the house, so the house stands against it" }
+      ],
+      "triggers": []
+    },
+    {
+      "id": "entry-hall",
+      "kind": "hallway",
+      "rect": [6.5, 20.0, 3.0, 12.0],
+      "ceiling": 3.2,
+      "surfaces": { "floor": "planks", "walls": "wallpaper-plum", "trim": "wood" },
+      "light": {
+        "preset": "candle",
+        "lights": [
+          { "at": [1.5, 3.0], "height": 2.6, "color": "candle", "intensity": 0.8, "radius": 4.5, "flicker": 0.4 },
+          { "at": [1.5, 9.0], "height": 2.6, "color": "candle", "intensity": 0.7, "radius": 4.5, "flicker": 0.5 }
+        ]
+      },
+      "sound": { "bed": "thunder-distant", "music_gain": 1.0 },
+      "intent": { "feeling": "threshold: you're inside now", "beat": "footsteps cross the floor above you halfway down", "intensity": [2, 2] },
+      "doors": [
+        { "id": "entry-south", "to": "yard", "wall": "south", "offset": 0.8, "width": 1.4 },
+        { "id": "entry-north", "to": "parlor", "wall": "north", "offset": 0.8, "width": 1.4 }
+      ],
+      "props": [
+        { "id": "portrait-1", "asset": "portrait", "at": [0.05, 4.0], "yaw": 90.0, "y": 1.4, "note": "its eyes follow you" },
+        { "id": "portrait-2", "asset": "portrait", "at": [2.95, 6.5], "yaw": 270.0, "y": 1.4, "note": "its eyes follow you" },
+        { "id": "portrait-3", "asset": "portrait", "at": [0.05, 9.0], "yaw": 90.0, "y": 1.4 },
+        { "id": "coat-stand-1", "asset": "coat-stand", "at": [2.4, 1.6], "yaw": 270.0, "note": "a long coat that looks like someone standing" },
+        { "id": "cobweb-1", "asset": "cobweb", "at": [2.2, 11.95], "yaw": 180.0, "y": 2.0, "note": "at the far end, over the parlor door" }
+      ],
+      "triggers": [
+        { "when": { "enter_middle": true }, "do": [{ "sfx": "footsteps-upstairs" }] }
+      ]
+    },
+    {
+      "id": "parlor",
+      "kind": "room",
+      "rect": [3.0, 32.0, 8.0, 8.0],
+      "ceiling": 3.6,
+      "surfaces": { "floor": "planks", "walls": "wallpaper-stripe", "trim": "wood" },
+      "light": {
+        "preset": "candle",
+        "lights": [
+          { "at": [7.4, 7.4], "height": 1.0, "color": "candle", "intensity": 1.2, "radius": 5.5, "flicker": 0.6 },
+          { "at": [0.6, 7.4], "height": 1.0, "color": "candle", "intensity": 1.1, "radius": 5.0, "flicker": 0.6 }
+        ]
+      },
+      "sound": { "bed": "clock-tick", "music_gain": 1.3 },
+      "intent": { "feeling": "false comfort, then a jolt", "beat": "the candles dip as you reach the middle", "intensity": [2, 3] },
+      "doors": [
+        { "id": "parlor-south", "to": "entry-hall", "wall": "south", "offset": 4.3, "width": 1.4 },
+        { "id": "parlor-north", "to": "long-hall", "wall": "north", "offset": 1.5, "width": 1.4 }
+      ],
+      "props": [
+        { "id": "armchair-1", "asset": "armchair", "at": [6.2, 6.3], "yaw": 225.0, "note": "faces the gramophone" },
+        { "id": "gramophone-1", "asset": "gramophone", "at": [7.2, 3.6], "yaw": 270.0, "note": "the bass line is louder here" },
+        { "id": "rocker-1", "asset": "rocking-chair", "at": [1.3, 4.2], "yaw": 120.0, "state": "rocking", "note": "rocks by itself" },
+        { "id": "clock-1", "asset": "grandfather-clock", "at": [0.35, 1.3], "yaw": 90.0, "note": "the ticking you hear" },
+        { "id": "candelabra-1", "asset": "candelabra", "at": [7.4, 7.4], "yaw": 225.0 },
+        { "id": "candelabra-2", "asset": "candelabra", "at": [0.6, 7.4], "yaw": 135.0 }
+      ],
+      "triggers": [
+        { "when": { "enter_middle": true }, "do": [{ "light": { "dim": 0.6, "for": 1.5 } }, { "sfx": "candle-gust" }] }
+      ]
+    },
+    {
+      "id": "long-hall",
+      "kind": "hallway",
+      "rect": [4.0, 40.0, 2.4, 18.0],
+      "ceiling": 3.0,
+      "surfaces": { "floor": "planks", "walls": "wallpaper-plum", "trim": "wood" },
+      "light": { "preset": "lightning" },
+      "sound": { "bed": "rain", "music_gain": 1.0 },
+      "intent": { "feeling": "anticipation: the space narrows", "beat": "a side door bangs as you pass it", "intensity": [3, 3] },
+      "doors": [
+        { "id": "hall-south", "to": "parlor", "wall": "south", "offset": 0.5, "width": 1.4 },
+        { "id": "hall-north", "to": "kitchen", "wall": "north", "offset": 0.5, "width": 1.4 }
+      ],
+      "props": [
+        { "id": "side-door-1", "asset": "banging-door", "at": [0.05, 5.0], "yaw": 90.0, "note": "a door that stays shut" },
+        { "id": "side-door-2", "asset": "banging-door", "at": [2.35, 9.0], "yaw": 270.0, "note": "the one that bangs" },
+        { "id": "window-1", "asset": "lightning-window", "at": [0.05, 14.0], "yaw": 90.0, "y": 0.9, "note": "lightning shows the hall ahead" }
+      ],
+      "triggers": [
+        { "when": { "enter": true }, "do": [{ "effect": { "id": "lightning-flash" } }, { "sfx": "thunder" }] },
+        { "when": { "enter_middle": true }, "do": [{ "sfx": "door-slam" }, { "state": { "prop": "side-door-2", "to": "banging" } }] }
+      ]
+    },
+    {
+      "id": "kitchen",
+      "kind": "room",
+      "rect": [0.0, 58.0, 7.0, 9.0],
+      "ceiling": 3.4,
+      "surfaces": { "floor": "tiles", "walls": "plaster", "trim": "wood" },
+      "light": {
+        "preset": "candle",
+        "lights": [
+          { "at": [3.0, 4.5], "height": 0.9, "color": "moss", "intensity": 1.0, "radius": 4.0, "flicker": 0.3 },
+          { "at": [3.4, 8.6], "height": 1.2, "color": "pumpkin", "intensity": 0.8, "radius": 3.5, "flicker": 0.5 }
+        ]
+      },
+      "sound": { "bed": "cauldron", "music_gain": 0.8 },
+      "intent": { "feeling": "relief through a laugh: spooky-cute", "beat": "the cat on the counter hisses at you", "intensity": [2, 2] },
+      "doors": [
+        { "id": "kitchen-south", "to": "long-hall", "wall": "south", "offset": 4.5, "width": 1.4 },
+        { "id": "kitchen-east", "to": "back-hall", "wall": "east", "offset": 1.0, "width": 1.4 }
+      ],
+      "props": [
+        { "id": "cauldron-1", "asset": "cauldron", "at": [3.0, 4.5], "state": "bubbling", "note": "bubbling green in the middle of the room" },
+        { "id": "counter-1", "asset": "counter", "at": [2.0, 8.6], "yaw": 180.0 },
+        { "id": "cat-1", "asset": "black-cat", "at": [2.0, 8.6], "yaw": 180.0, "y": 0.9, "note": "on the counter" },
+        { "id": "pumpkin-counter", "asset": "jack-o-lantern", "at": [3.4, 8.6], "yaw": 180.0, "y": 0.9, "state": "grin" },
+        { "id": "potions-1", "asset": "potion-shelf", "at": [0.25, 3.0], "yaw": 90.0 },
+        { "id": "broom-1", "asset": "broom", "at": [6.6, 8.5], "yaw": 225.0, "note": "leaning in the corner" }
+      ],
+      "triggers": [
+        { "when": { "near": { "prop": "cat-1", "within": 2.2 } }, "do": [{ "sfx": "hiss-cat" }, { "state": { "prop": "cat-1", "to": "hiss" } }] }
+      ]
+    },
+    {
+      "id": "back-hall",
+      "kind": "hallway",
+      "rect": [7.0, 58.0, 3.0, 10.0],
+      "ceiling": 3.2,
+      "surfaces": { "floor": "planks", "walls": "wallpaper-plum", "trim": "wood" },
+      "light": { "preset": "lantern-only" },
+      "sound": { "bed": "wind", "music_gain": 1.2 },
+      "intent": { "feeling": "the last scare, then release outside", "beat": "a hanging sheet turns out to be a ghost and crosses the hall", "intensity": [4, 1] },
+      "doors": [
+        { "id": "back-west", "to": "kitchen", "wall": "west", "offset": 1.0, "width": 1.4 },
+        { "id": "back-door", "to": "outside", "wall": "north", "offset": 0.8, "width": 1.4 }
+      ],
+      "props": [
+        { "id": "chains-1", "asset": "chains", "at": [0.5, 3.5], "y": 1.6, "note": "you brush past them" },
+        { "id": "sheet-1", "asset": "hanging-sheet", "at": [1.5, 6.0], "y": 1.3, "note": "really a ghost" },
+        { "id": "cobweb-2", "asset": "cobweb", "at": [2.4, 9.95], "yaw": 180.0, "y": 2.0 }
+      ],
+      "triggers": [
+        { "when": { "near": { "prop": "chains-1", "within": 2.0 } }, "do": [{ "sfx": "chains" }, { "state": { "prop": "chains-1", "to": "rattling" } }] },
+        { "when": { "near": { "prop": "sheet-1", "within": 2.5 } }, "do": [{ "sfx": "whisper" }, { "state": { "prop": "sheet-1", "to": "ghost" } }] }
+      ]
+    }
+  ]
+}

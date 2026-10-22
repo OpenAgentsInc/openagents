@@ -8435,6 +8435,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "haunt-assets"
+version = "1.0.0"
+dependencies = [
+ "glam",
+ "oa-copy",
+ "openagents-workspace-hack",
+ "serde",
+ "serde_json",
+ "toon-mesh",
+]
+
+[[package]]
+name = "haunt-rules"
+version = "1.0.0"
+dependencies = [
+ "haunt-assets",
+ "oa-copy",
+ "openagents-workspace-hack",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "heapless"
 version = "0.7.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8832,6 +8855,7 @@ dependencies = [
  "openagents-workspace-hack",
  "serde",
  "serde_json",
+ "toon-mesh",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -19979,6 +20003,14 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams 0.4.2",
  "web-sys",
+]
+
+[[package]]
+name = "toon-mesh"
+version = "1.0.0"
+dependencies = [
+ "glam",
+ "openagents-workspace-hack",
 ]
 
 [[package]]
