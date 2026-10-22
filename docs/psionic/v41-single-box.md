@@ -234,6 +234,24 @@ recorded separately from the answer's logits. The independent evaluation
 inputs are frozen in
 [`consumer_q_evaluation.json`](../../scripts/bench/deepseek-v41/consumer_q_evaluation.json).
 
+For a final card, record the SHA-256 hashes of the committed evaluation and
+checker before capture. Run the checker with `--final`,
+`--evaluation-sha256 SHA`, `--checker-sha256 SHA`, and
+`--artifact-manifest PATH`, followed by the oracle directory, output file,
+and all eight `CASE=CAPTURE_DIR,LABEL` pairs for each of the `exact` and
+`consumer-q` labels. It refuses changed inputs, incomplete cases, or a
+capture from another artifact. The card records hashes of each capture's
+files, the oracle run records, and the oracle tensors it scores. Without
+`--final`, it writes a partial diagnostic card.
+
+The first emitted logits predict the first generated token and match
+`decode.last.logits`; later outputs match `decode.g1.logits`, and so on.
+Earlier versions of `consumer_q_card.py` started at `decode.g1.logits`,
+so their KL, total variation, top-1 agreement, and log-probability figures
+are invalid. Keep any such cards as historical diagnostics and rescore
+complete saved captures into new files. Direct sampled-token comparisons
+against `run.generated_ids` are unaffected.
+
 Calibration ran on one `g4-standard-192` (64 prompts, layer-major prefill,
 39 minutes), and the quantizer then wrote both recipes in 25 s a layer each
 (`q2q3` 176 GB, `q3` 221 GB), stored under
