@@ -23,6 +23,9 @@ export class Universe {
   height = 0;
   frame = 0;
   disposed = false;
+  ambient = true;
+  private motion = matchMedia("(prefers-reduced-motion: reduce)");
+  private lastAmbientFrame = 0;
   private lastYaw = NaN;
   private lastPitch = NaN;
   private lastDistance = NaN;
@@ -149,6 +152,12 @@ export class Universe {
   }
   render(time: number) {
     if (this.disposed || document.hidden) return;
+    if (this.ambient && !this.motion.matches) {
+      if (time - this.lastAmbientFrame < 1000 / 30) return;
+      const elapsed = Math.min((time - this.lastAmbientFrame) / 1000, 0.05);
+      this.lastAmbientFrame = time;
+      this.yaw += elapsed * 0.008;
+    }
     const ratio = Math.min(devicePixelRatio, 1.7);
     const width = Math.max(1, Math.floor(this.canvas.clientWidth * ratio)),
       height = Math.max(1, Math.floor(this.canvas.clientHeight * ratio));

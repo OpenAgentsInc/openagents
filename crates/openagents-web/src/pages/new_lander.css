@@ -404,8 +404,29 @@ h3 {
 }
 .universe-stage {
   position: absolute;
-  inset: 0 340px 0 0;
+  inset: 0;
   overflow: hidden;
+}
+#universe-exploration {
+  position: absolute;
+  inset: 0;
+}
+.atlas[data-entry="locked"] #universe {
+  cursor: default;
+}
+.atlas[data-entry="locked"] .still-universe .system-art {
+  animation: universe-drift 45s ease-in-out infinite alternate;
+}
+.atlas[data-entry="locked"] .universe-stage.ready .still-universe .system-art {
+  animation: none;
+}
+@keyframes universe-drift {
+  from {
+    transform: scale(1.1) rotate(-1deg);
+  }
+  to {
+    transform: scale(1.15) rotate(2deg);
+  }
 }
 .still-universe {
   position: absolute;
@@ -464,13 +485,13 @@ h3 {
   top: 35px;
   right: 30px;
   width: 290px;
-  background: linear-gradient(130deg, #111b29e6, #09101bee);
-  border: 1px solid #b1ccef29;
+  background: linear-gradient(130deg, #17202942, #080c1238);
+  border: 1px solid #d5e5f02e;
   border-radius: 3px;
   padding: 21px 20px;
   z-index: 4;
   box-shadow: 0 20px 70px #0004;
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(9px);
 }
 .panel-label {
   font: 9px var(--mono);
@@ -712,26 +733,104 @@ h3 {
   background: #afc5e211;
 }
 .signin-card {
-  position: absolute;
-  left: 42%;
-  top: 32%;
-  transform: translateX(-50%);
-  z-index: 8;
-  max-width: 330px;
-  padding: 27px;
-  border: 1px solid #c0e1ff65;
-  background: #08121ff2;
-  box-shadow: 0 25px 90px #000a;
-  backdrop-filter: blur(20px);
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  width: min(400px, calc(100% - 40px));
+  max-width: none;
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  padding: 25px 30px 21px;
+  border: 1px solid #d2e0ea45;
+  border-radius: 3px;
+  color: var(--text);
+  background: linear-gradient(145deg, #23303b4a, #080c124a);
+  box-shadow:
+    0 25px 100px #0006,
+    inset 0 1px #e8f2fa12;
+  backdrop-filter: blur(10px);
+}
+.signin-card::backdrop {
+  background: #03060926;
+}
+.entry-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #d9e8f023;
+  font: 9px var(--mono);
+  letter-spacing: 0.12em;
+  color: #b0bdc8;
+}
+.entry-label > span:last-child {
+  font-size: 21px;
+  line-height: 1;
+}
+.entry-symbol {
+  display: grid;
+  place-items: center;
+  width: 51px;
+  height: 51px;
+  margin: 28px 0 24px;
+  border: 1px solid #e4f1fa2c;
+  box-shadow: 0 0 35px #d9eaff08;
+}
+.entry-symbol svg {
+  width: 25px;
+  height: 25px;
+  color: #e1e8ed;
 }
 .signin-card h2 {
-  font-size: 29px;
-  margin: 16px 0;
+  font-size: 40px;
+  margin: 15px 0 18px;
+  line-height: 1.1;
+  letter-spacing: -0.045em;
 }
 .signin-card > p:not(.eyebrow) {
-  color: #9facbd;
+  color: #bec7d0;
   font-size: 13px;
-  margin-bottom: 18px;
+  margin-bottom: 26px;
+  max-width: 270px;
+}
+.entry-actions {
+  display: grid;
+  gap: 10px;
+}
+.entry-actions .small-button {
+  background: #e3e9ef;
+  color: #0c1118;
+}
+#continue-guest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 15px;
+  border: 1px solid #d5e2ed42;
+  border-radius: 2px;
+  background: #d4e8f50a;
+  color: #e3eaf0;
+  font-size: 12px;
+}
+#continue-guest:hover {
+  background: #d4e8f51a;
+}
+.entry-back {
+  display: inline-block;
+  margin-top: 17px;
+  color: #abbac7;
+  font-size: 11px;
+}
+.entry-footer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 27px;
+  padding-top: 17px;
+  border-top: 1px solid #d9e8f023;
+  font: 8px var(--mono);
+  letter-spacing: 0.1em;
+  color: #9babb9;
 }
 .no-script {
   position: absolute;
@@ -780,9 +879,6 @@ h3 {
   }
   .products {
     padding: 70px 6%;
-  }
-  .universe-stage {
-    right: 300px;
   }
   .destination-panel {
     right: 20px;
@@ -965,7 +1061,7 @@ h3 {
     min-height: 650px;
   }
   .universe-stage {
-    inset: 0 0 280px 0;
+    inset: 0;
   }
   .atlas-heading {
     left: 24px;
@@ -1078,10 +1174,10 @@ h3 {
     padding: 9px;
   }
   .signin-card {
-    top: 25%;
-    left: 50%;
-    width: 290px;
-    padding: 22px;
+    padding: 22px 24px;
+  }
+  .signin-card h2 {
+    font-size: 36px;
   }
   .no-script {
     bottom: 350px;

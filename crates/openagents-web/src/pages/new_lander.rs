@@ -114,7 +114,8 @@ const WORLDS: [(&str, &str, &str); 6] = [
 
 fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Markup {
     html! {
-        main.atlas aria-labelledby="atlas-title" {
+        main.atlas data-entry=(if signed_in {"member"} else {"locked"}) aria-labelledby="atlas-title" {
+            div #universe-exploration inert[!signed_in] {
             div.universe-stage {
                 div.still-universe aria-hidden="true" { (poster()) }
                 canvas #universe tabindex="0" aria-label="Interactive universe. Drag to orbit, scroll to zoom, or use the arrow keys and plus and minus. Escape resets the view." {}
@@ -146,8 +147,24 @@ fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Mark
                 }
             }
             div.atlas-footer { a.map-home href=(PATH) aria-label="Back to the marketing homepage" { "←" } p #universe-status role="status" { "Preparing the universe…" } div.camera-controls aria-label="Camera controls" { button #zoom-in type="button" aria-label="Zoom in" { "+" } button #zoom-out type="button" aria-label="Zoom out" { "−" } button #reset-view type="button" { "Reset view" } } }
-            @if account && !signed_in {
-                aside.signin-card aria-label="Sign in to the Verse" { p.eyebrow { "YOUR PLACE IN THE VERSE" } h2 { "Your next world is waiting." } p { "Log in to continue your journey." } a.small-button href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in ↗" } }
+            }
+            @if !signed_in {
+                dialog.signin-card aria-labelledby="entry-title" aria-describedby="entry-description" {
+                    div.entry-label { span { "OPENAGENTS / THE VERSE" } span aria-hidden="true" { "◎" } }
+                    div.entry-symbol aria-hidden="true" { (mark()) }
+                    p.eyebrow { "YOUR PLACE IN THE VERSE" }
+                    h2 #entry-title { "Your next world" br; "is waiting." }
+                    p #entry-description {
+                        @if account { "Log in, or look around as a guest." }
+                        @else { "Look around as a guest. Find a world that feels like yours." }
+                    }
+                    div.entry-actions {
+                        @if account { a.small-button href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in ↗" } }
+                        button #continue-guest type="button" { "Continue as guest" span aria-hidden="true" { "↗" } }
+                    }
+                    a.entry-back href=(PATH) { "← Back to OpenAgents" }
+                    div.entry-footer aria-hidden="true" { span.signal {} "A UNIVERSE OF POSSIBILITIES" }
+                }
             }
             noscript { div.no-script { "This is a still preview. Enable JavaScript for destination selection and the interactive view." a href=(PATH) { "Back to OpenAgents" } } }
         }
