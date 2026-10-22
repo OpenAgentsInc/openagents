@@ -72,6 +72,14 @@ pub fn recipe_formats(recipe: &str) -> Result<[V41MatvecFormat; 3], Refused> {
     }
 }
 
+fn layer_recipe_formats(recipe: &str, layer: usize) -> Result<[V41MatvecFormat; 3], Refused> {
+    if recipe == "q2q3" && matches!(layer, 0 | 39) {
+        recipe_formats("q3")
+    } else {
+        recipe_formats(recipe)
+    }
+}
+
 fn format_name(f: V41MatvecFormat) -> &'static str {
     match f {
         V41MatvecFormat::Q2Row32 => "q2-row32",
@@ -308,17 +316,35 @@ pub fn quantize(
     width: usize,
 ) -> Result<Value, Refused> {
     let formats = recipe_formats(recipe)?;
-    let dims = V41ExpertDims {
-        formats,
-        ..V41ExpertDims::fp4(hidden, width, 10.0)
-    };
+    if layers.is_empty() {
+        return Err(Refused("choose at least one model layer".into()));
+    }
     std::fs::create_dir_all(out)
         .map_err(|e| Refused(format!("can't make {}: {e}", out.display())))?;
     let source = CheckpointExperts::open(checkpoint, layers.clone(), experts)?;
-    let expert_bytes = dims.expert_bytes();
     let mut files = serde_json::Map::new();
+    let mut layer_formats = serde_json::Map::new();
+    let mut artifact_bytes = 0_usize;
     let started = std::time::Instant::now();
     for layer in layers.clone() {
+        let layer_formats_array = layer_recipe_formats(recipe, layer)?;
+        let dims = V41ExpertDims {
+            formats: layer_formats_array,
+            ..V41ExpertDims::fp4(hidden, width, 10.0)
+        };
+        let expert_bytes = dims.expert_bytes();
+        artifact_bytes += expert_bytes * experts;
+        if layer_formats_array != formats {
+            layer_formats.insert(
+                layer.to_string(),
+                json!({
+                    "w1": format_name(layer_formats_array[0]),
+                    "w2": format_name(layer_formats_array[1]),
+                    "w3": format_name(layer_formats_array[2]),
+                }),
+            );
+        }
+        let formats = layer_formats_array;
         let parts: Vec<Vec<u8>> = (0..experts)
             .into_par_iter()
             .map_init(
@@ -384,7 +410,8 @@ pub fn quantize(
         "qualified": false,
         "recipe": recipe,
         "formats": {"w1": format_name(formats[0]), "w2": format_name(formats[1]), "w3": format_name(formats[2])},
-        "bits_per_weight": (expert_bytes * 8) as f64 / (3 * hidden * width) as f64,
+        "layer_formats": layer_formats,
+        "bits_per_weight": (artifact_bytes * 8) as f64 / (layers.len() * experts * 3 * hidden * width) as f64,
         "experts": experts,
         "hidden": hidden,
         "width": width,
@@ -414,6 +441,7 @@ pub fn quantize(
 pub struct ConsumerQExperts {
     maps: BTreeMap<usize, Mmap>,
     dims: V41ExpertDims,
+    layer_dims: BTreeMap<usize, V41ExpertDims>,
     experts: usize,
     pub manifest: Value,
     pub dir: PathBuf,
@@ -444,15 +472,37 @@ impl ConsumerQExperts {
                 path.display()
             )));
         }
-        let f = |name: &str| parse_format(manifest["formats"][name].as_str().unwrap_or_default());
-        let formats = [f("w1")?, f("w2")?, f("w3")?];
+        if manifest["hidden"].as_u64() != Some(hidden as u64)
+            || manifest["width"].as_u64() != Some(width as u64)
+        {
+            return Err(Refused(
+                "the consumer-q matrix dimensions differ from the model".into(),
+            ));
+        }
+        let parse_formats = |value: &Value| -> Result<[V41MatvecFormat; 3], Refused> {
+            Ok([
+                parse_format(value["w1"].as_str().unwrap_or_default())?,
+                parse_format(value["w2"].as_str().unwrap_or_default())?,
+                parse_format(value["w3"].as_str().unwrap_or_default())?,
+            ])
+        };
+        let formats = parse_formats(&manifest["formats"])?;
         let dims = V41ExpertDims {
             formats,
             ..V41ExpertDims::fp4(hidden, width, 10.0)
         };
         let experts = manifest["experts"].as_u64().unwrap_or(0) as usize;
         let mut maps = BTreeMap::new();
+        let mut layer_dims = BTreeMap::new();
         for layer in layers {
+            let local_dims = match manifest["layer_formats"].get(layer.to_string()) {
+                Some(value) => V41ExpertDims {
+                    formats: parse_formats(value)?,
+                    ..dims
+                },
+                None => dims,
+            };
+            layer_dims.insert(layer, local_dims);
             let path = dir.join(format!("layer-{layer:02}.bin"));
             let file = File::open(&path)
                 .map_err(|e| Refused(format!("can't open {}: {e}", path.display())))?;
@@ -460,12 +510,12 @@ impl ConsumerQExperts {
             // while a stage runs.
             let map = unsafe { Mmap::map(&file) }
                 .map_err(|e| Refused(format!("can't map {}: {e}", path.display())))?;
-            if map.len() != experts * dims.expert_bytes() {
+            if map.len() != experts * local_dims.expert_bytes() {
                 return Err(Refused(format!(
                     "{} has {} bytes, not {}",
                     path.display(),
                     map.len(),
-                    experts * dims.expert_bytes()
+                    experts * local_dims.expert_bytes()
                 )));
             }
             maps.insert(layer, map);
@@ -473,6 +523,7 @@ impl ConsumerQExperts {
         Ok(Self {
             maps,
             dims,
+            layer_dims,
             experts,
             manifest,
             dir: dir.to_path_buf(),
@@ -483,6 +534,12 @@ impl ConsumerQExperts {
     #[must_use]
     pub fn formats(&self) -> [V41MatvecFormat; 3] {
         self.dims.formats
+    }
+
+    /// The format override for a model layer, or the manifest's default.
+    #[must_use]
+    pub fn formats_for_layer(&self, layer: usize) -> Option<[V41MatvecFormat; 3]> {
+        self.layer_dims.get(&layer).map(|dims| dims.formats)
     }
 
     /// Hashes every mapped layer file against the manifest.
@@ -511,6 +568,10 @@ impl ConsumerQExperts {
 }
 
 impl V41ExpertBytes for ConsumerQExperts {
+    fn layer_formats(&self, layer: usize) -> Option<[V41MatvecFormat; 3]> {
+        self.formats_for_layer(layer)
+    }
+
     fn projection(
         &self,
         layer: usize,
@@ -527,12 +588,16 @@ impl V41ExpertBytes for ConsumerQExperts {
                 projection + 1
             )));
         }
-        let mut at = expert * self.dims.expert_bytes();
+        let dims = self
+            .layer_dims
+            .get(&layer)
+            .ok_or_else(|| RuntimeError::Backend(format!("the artifact holds no layer {layer}")))?;
+        let mut at = expert * dims.expert_bytes();
         for p in 0..projection {
-            let (w, s) = self.dims.part_bytes(p);
+            let (w, s) = dims.part_bytes(p);
             at += w + s;
         }
-        let (w, s) = self.dims.part_bytes(projection);
+        let (w, s) = dims.part_bytes(projection);
         Ok((&map[at..at + w], &map[at + w..at + w + s]))
     }
 }
@@ -540,6 +605,62 @@ impl V41ExpertBytes for ConsumerQExperts {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mixed_layer_artifact_uses_local_formats_and_preserves_legacy_defaults() {
+        let root = tempfile::tempdir().unwrap();
+        let default = recipe_formats("q2q3").unwrap();
+        let wide = recipe_formats("q3").unwrap();
+        assert_eq!(layer_recipe_formats("q2q3", 0).unwrap(), wide);
+        assert_eq!(layer_recipe_formats("q2q3", 39).unwrap(), wide);
+        assert_eq!(layer_recipe_formats("q2q3", 1).unwrap(), default);
+        assert_eq!(layer_recipe_formats("q2q3", 38).unwrap(), default);
+        let dims = |formats| V41ExpertDims {
+            formats,
+            ..V41ExpertDims::fp4(64, 32, 10.0)
+        };
+        let mut manifest = json!({
+            "schema": CONSUMER_Q_SCHEMA, "hidden": 64, "width": 32, "experts": 2,
+            "formats": {"w1": "q2-row32", "w2": "q3-row32", "w3": "q2-row32"},
+            "layer_formats": {"0": {"w1": "q3-row32", "w2": "q3-row32", "w3": "q3-row32"}},
+        });
+        let path = root.path().join("manifest.json");
+        std::fs::write(&path, manifest.to_string()).unwrap();
+        std::fs::write(
+            root.path().join("layer-00.bin"),
+            vec![7; 2 * dims(wide).expert_bytes()],
+        )
+        .unwrap();
+        std::fs::write(
+            root.path().join("layer-01.bin"),
+            vec![3; 2 * dims(default).expert_bytes()],
+        )
+        .unwrap();
+        let mixed = ConsumerQExperts::open(root.path(), 0..2, 64, 32).unwrap();
+        assert_eq!(mixed.formats(), default);
+        assert_eq!(mixed.formats_for_layer(0), Some(wide));
+        assert_eq!(mixed.formats_for_layer(1), Some(default));
+        for (layer, formats, code) in [(0, wide, 7), (1, default, 3)] {
+            for projection in 0..3 {
+                let (w, s) = mixed.projection(layer, 1, projection).unwrap();
+                let (wb, sb) = dims(formats).part_bytes(projection);
+                assert_eq!((w.len(), s.len()), (wb, sb));
+                assert!(w.iter().chain(s).all(|v| *v == code));
+            }
+        }
+        drop(mixed);
+        manifest.as_object_mut().unwrap().remove("layer_formats");
+        std::fs::write(&path, manifest.to_string()).unwrap();
+        std::fs::write(
+            root.path().join("layer-00.bin"),
+            vec![0; 2 * dims(default).expert_bytes()],
+        )
+        .unwrap();
+        let legacy = ConsumerQExperts::open(root.path(), 0..2, 64, 32).unwrap();
+        assert_eq!(legacy.formats_for_layer(0), Some(default));
+        assert_eq!(legacy.formats_for_layer(1), Some(default));
+        assert!(ConsumerQExperts::open(root.path(), 0..2, 32, 32).is_err());
+    }
 
     #[test]
     fn covariance_files_preserve_cross_column_moments_and_diagonal_compatibility() {
