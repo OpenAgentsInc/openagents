@@ -7,6 +7,7 @@
 //!     [--observe] [--control NAME] [--policy FILE] [--max-context N]
 //!     [--max-step-tokens N] [--prefill-chunk N]
 //!     [--step-secs S] (--worker-build SHA256 | --development)
+//!     [--worker PATH] [--front-host IP]
 //! ```
 //!
 //! `--worker-build` is the qualified bundle's hash, the SHA-256 of its
@@ -41,7 +42,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs::File,
     io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
-    net::{TcpListener, TcpStream},
+    net::{IpAddr, Ipv4Addr, Shutdown, TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::mpsc::{self, Receiver, RecvTimeoutError},
@@ -151,6 +152,8 @@ pub struct QualifyOptions {
     /// The stage worker to start, when it isn't this executable: a pinned
     /// bundle's worker driven by a newer front.
     pub worker: Option<PathBuf>,
+    /// Address workers can reach; use the head's private IP for remote workers.
+    pub front_host: IpAddr,
     /// G2 v2 (#12405): instead of the forced comparison, answer each case
     /// greedily from the oracle's prompt IDs to the end token or this cap.
     pub answers: Option<usize>,
@@ -195,6 +198,7 @@ impl QualifyOptions {
                 "--worker-build",
                 "--answers",
                 "--worker",
+                "--front-host",
             ]
             .contains(&flag)
             {
@@ -295,6 +299,14 @@ impl QualifyOptions {
             worker_build: worker_build.map(|p| p.to_ascii_lowercase()),
             development,
             worker: values.remove("--worker").map(PathBuf::from),
+            front_host: values
+                .remove("--front-host")
+                .map(|s| {
+                    s.parse()
+                        .map_err(|_| refused("--front-host takes an IP address"))
+                })
+                .transpose()?
+                .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST)),
             release,
             answers: values
                 .remove("--answers")
@@ -308,6 +320,11 @@ impl QualifyOptions {
             .max_step_tokens
             .or(options.prefill_chunk)
             .unwrap_or(options.max_context);
+        if options.front_host.is_unspecified() {
+            return Err(refused(
+                "--front-host must name an address the workers can reach",
+            ));
+        }
         if options.max_context < 2
             || step == 0
             || step > options.max_context
@@ -482,11 +499,64 @@ impl OracleDump {
 // ---------------------------------------------------------------------------
 
 /// The workers and the front's connections to them.
+#[derive(Default)]
+struct Workers {
+    children: Vec<Child>,
+    connections: Vec<TcpStream>,
+}
+
+impl Workers {
+    fn disconnect(&self) {
+        for stream in &self.connections {
+            // Readers hold clones. Dropping a writer alone leaves remote workers waiting.
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+    }
+
+    fn finish(&mut self, timeout: Duration) -> Result<(), Refused> {
+        self.disconnect();
+        let deadline = Instant::now() + timeout;
+        loop {
+            let mut waiting = false;
+            let mut failed = false;
+            for child in &mut self.children {
+                match child.try_wait().map_err(|e| refused(e.to_string()))? {
+                    Some(status) => failed |= !status.success(),
+                    None => waiting = true,
+                }
+            }
+            if !waiting {
+                return if failed {
+                    Err(refused("a qualification worker exited unsuccessfully"))
+                } else {
+                    Ok(())
+                };
+            }
+            if Instant::now() >= deadline {
+                return Err(refused(
+                    "could not confirm that every qualification worker stopped",
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+impl Drop for Workers {
+    fn drop(&mut self) {
+        self.disconnect();
+        for child in &mut self.children {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
 struct Group {
     wire_step: u64,
     limits: Vec<Value>,
     execution_configs: Vec<Value>,
-    children: Vec<Child>,
+    processes: Workers,
     writers: Vec<TcpStream>,
     listens: Vec<Option<String>>,
     events: Receiver<(usize, Value)>,
@@ -506,19 +576,11 @@ struct Group {
     mode: Option<String>,
 }
 
-impl Drop for Group {
-    fn drop(&mut self) {
-        for child in &mut self.children {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    }
-}
-
 impl Group {
     fn start(opts: &QualifyOptions, record: &Path) -> Result<Self, Refused> {
         let manifest = load_manifest(&opts.manifest, &opts.weights)?;
-        let listener = TcpListener::bind("127.0.0.1:0").map_err(|e| refused(e.to_string()))?;
+        let listener =
+            TcpListener::bind((opts.front_host, 0)).map_err(|e| refused(e.to_string()))?;
         let front = listener
             .local_addr()
             .map_err(|e| refused(e.to_string()))?
@@ -529,7 +591,7 @@ impl Group {
         };
         let token = hex::encode(Sha256::digest(format!("{front}{:?}", Instant::now())));
         let generation = 1;
-        let mut children = Vec::new();
+        let mut processes = Workers::default();
         for entry in &manifest.stages {
             let i = usize::from(entry.stage);
             let gpu = opts
@@ -595,7 +657,7 @@ impl Group {
                 .stderr(Stdio::from(log));
             // The stage narrows CUDA_VISIBLE_DEVICES to `--gpu` itself,
             // counting within any mask this process inherited (#12407).
-            children.push(
+            processes.children.push(
                 command
                     .spawn()
                     .map_err(|e| refused(format!("stage {i}: {e}")))?,
@@ -615,7 +677,7 @@ impl Group {
             wire_step: 0,
             limits: vec![Value::Null; stages],
             execution_configs: vec![Value::Null; stages],
-            children,
+            processes,
             writers: Vec::new(),
             listens: Vec::new(),
             events,
@@ -633,7 +695,7 @@ impl Group {
             if Instant::now() > deadline {
                 return Err(refused("the stages didn't all say hello within two hours"));
             }
-            for (i, child) in group.children.iter_mut().enumerate() {
+            for (i, child) in group.processes.children.iter_mut().enumerate() {
                 if let Ok(Some(status)) = child.try_wait() {
                     return Err(refused(format!(
                         "stage {i} exited ({status}) before it was ready; see {}",
@@ -643,11 +705,21 @@ impl Group {
             }
             match listener.accept() {
                 Ok((stream, _)) => {
+                    group
+                        .processes
+                        .connections
+                        .push(stream.try_clone().map_err(|e| refused(e.to_string()))?);
+                    stream
+                        .set_nodelay(true)
+                        .map_err(|e| refused(e.to_string()))?;
                     stream
                         .set_nonblocking(false)
                         .map_err(|e| refused(e.to_string()))?;
                     let mut reader =
                         BufReader::new(stream.try_clone().map_err(|e| refused(e.to_string()))?);
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(30)))
+                        .map_err(|e| refused(e.to_string()))?;
                     let mut line = String::new();
                     reader
                         .read_line(&mut line)
@@ -663,6 +735,12 @@ impl Group {
                         .and_then(|s| s.parse().ok())
                         .filter(|i| *i < stages)
                         .ok_or_else(|| refused("a hello from an unknown stage"))?;
+                    if writers[i].is_some() {
+                        return Err(refused("a second connection for the same stage"));
+                    }
+                    stream
+                        .set_read_timeout(None)
+                        .map_err(|e| refused(e.to_string()))?;
                     identity.insert((
                         hello["weights"].as_str().unwrap_or_default().to_owned(),
                         hello["runtime"].as_str().unwrap_or_default().to_owned(),
@@ -725,6 +803,10 @@ impl Group {
         group.writers = writers.into_iter().flatten().collect();
         group.listens = listens;
         Ok(group)
+    }
+
+    fn finish(&mut self) -> Result<(), Refused> {
+        self.processes.finish(Duration::from_secs(30))
     }
 
     /// Sends one step to every stage and waits for every stage's ack;
@@ -1652,6 +1734,7 @@ pub fn run_answers(opts: &QualifyOptions, cap: usize) -> Result<Value, Refused> 
             serde_json::to_vec_pretty(&answers).unwrap_or_default(),
         );
     }
+    let stop_error = group.finish().err().map(|e| e.to_string());
     let report = json!({
         "schema": "psionic.deepseek_v41.g2_v2_answers.v1",
         "issue": 12405,
@@ -1665,6 +1748,7 @@ pub fn run_answers(opts: &QualifyOptions, cap: usize) -> Result<Value, Refused> 
         "manifest": opts.manifest,
         "oracle_manifest_sha256": sha256_file(&opts.oracle.join("manifest.json")),
         "cap": cap,
+        "worker_stop_error": stop_error,
         "answers": answers,
     });
     std::fs::write(
@@ -1672,6 +1756,9 @@ pub fn run_answers(opts: &QualifyOptions, cap: usize) -> Result<Value, Refused> 
         serde_json::to_vec_pretty(&report).map_err(|e| refused(e.to_string()))?,
     )
     .map_err(|e| refused(e.to_string()))?;
+    if let Some(error) = stop_error {
+        return Err(refused(error));
+    }
     Ok(json!({"passed": Value::Null, "answers": cases.len()}))
 }
 
@@ -1928,15 +2015,21 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
             && (r["exact"].is_null() || r["exact"]["passed"] == json!(true))
     });
     let violations = judge_report(&policy, &json!({"cases": reports}));
-    let release_refusals = if opts.release {
+    let mut release_refusals = if opts.release {
         let mut refusals = release_refusals(opts, &policy, &reports);
         refusals.extend(scope::violations(opts, &group));
         refusals
     } else {
         Vec::new()
     };
+    let stop_error = group.finish().err().map(|e| e.to_string());
+    if opts.release
+        && let Some(error) = &stop_error
+    {
+        release_refusals.push(error.clone());
+    }
     let diagnostic_passed = passed;
-    let policy_passed = diagnostic_passed && violations.is_empty();
+    let policy_passed = diagnostic_passed && violations.is_empty() && stop_error.is_none();
     let release_passed = opts.release && policy_passed && release_refusals.is_empty();
     let exe = std::env::current_exe().map_err(|e| refused(e.to_string()))?;
     let report = json!({
@@ -1971,6 +2064,7 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         "arithmetic_schedule": "one graph per token; the head runs only after the last prompt chunk and each forced decode token",
         "cases": reports,
         "diagnostic_passed": diagnostic_passed,
+        "worker_stop_error": stop_error,
         "passed": if opts.release { release_passed } else { policy_passed },
     });
     std::fs::write(
@@ -2728,6 +2822,72 @@ pub fn run_derive(args: &[String]) -> Result<(), Refused> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn remote_worker_exits_before_its_launcher_is_reaped() {
+        let root = tempfile::tempdir().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        // The wrapper represents SSH. Its child must observe EOF and stop;
+        // killing only the wrapper would leave that child running.
+        let script = r#"
+import socket, subprocess, sys
+worker = '''import os, socket, sys
+from pathlib import Path
+Path(sys.argv[2] + '/pid').write_text(str(os.getpid()))
+s = socket.create_connection(('127.0.0.1', int(sys.argv[1])))
+while s.recv(1024): pass
+Path(sys.argv[2] + '/stopped').write_text('front closed')
+'''
+sys.exit(subprocess.call([sys.executable, '-c', worker, sys.argv[1], sys.argv[2]]))
+"#;
+        let child = Command::new("python3")
+            .args([
+                "-c",
+                script,
+                &listener.local_addr().unwrap().port().to_string(),
+                &root.path().display().to_string(),
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut workers = Workers {
+            children: vec![child],
+            connections: Vec::new(),
+        };
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let stream = loop {
+            match listener.accept() {
+                Ok((s, _)) => break s,
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline =>
+                {
+                    std::thread::sleep(Duration::from_millis(10))
+                }
+                Err(e) => panic!("worker did not connect: {e}"),
+            }
+        };
+        let mut reader = stream.try_clone().unwrap();
+        workers.connections.push(stream);
+        let reading = std::thread::spawn(move || {
+            let mut b = Vec::new();
+            let _ = reader.read_to_end(&mut b);
+        });
+        let result = workers.finish(Duration::from_secs(10));
+        if result.is_err()
+            && let Ok(pid) = std::fs::read_to_string(root.path().join("pid"))
+        {
+            let _ = Command::new("kill").arg(pid.trim()).status();
+        }
+        result.unwrap();
+        reading.join().unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("stopped")).unwrap(),
+            "front closed"
+        );
+    }
 
     #[test]
     fn captured_rows_cover_all_chunks_in_absolute_prompt_order() {

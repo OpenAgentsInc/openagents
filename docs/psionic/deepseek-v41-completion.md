@@ -1309,3 +1309,16 @@ GCP preempted the long connected CPU reference at 17:32 UTC before a complete
 case was saved. A bounded on-demand replacement is collecting that case;
 separate CPU machines continue the original-input stage references. An
 interrupted run supplies no passing evidence.
+
+
+For distributed qualification, `qualify --front-host IP --worker PATH` binds
+the front to the head's reachable private address and starts the pinned
+workers through a placement-specific launcher. Remote workers write to the
+same private shared recording directory. The report retains the actual
+manifest and stage configurations. A new shutdown check closes every control
+connection, including reader clones, and waits for every worker launcher to
+exit before saving a passing result. Startup failures also close accepted
+connections and reap local launchers. A local subprocess test confirms that a
+worker behind a launcher receives EOF and exits before its launcher is reaped;
+the full CPU qualifier and greedy-answer tests still pass. Real distributed
+runs remain required for G6.

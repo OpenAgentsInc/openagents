@@ -79,6 +79,7 @@ fn check(
         || g1["passed"] != true
         || g1["observe"] != true
         || g1["launch"] != "pinned"
+        || !g1["worker_stop_error"].is_null()
         || !g1["control"].is_null()
         || g1["release_refusals"]
             .as_array()
@@ -200,6 +201,7 @@ fn check(
             != task_ids
         || g2["schema"] != "psionic.deepseek_v41.g2_v2_report.v1"
         || answers["schema"] != "psionic.deepseek_v41.g2_v2_answers.v1"
+        || !answers["worker_stop_error"].is_null()
         || g2["passed"] != true
         || g2["floor_held"] != true
         || g2["missing"].as_array().is_none_or(|v| !v.is_empty())
