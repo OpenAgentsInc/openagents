@@ -18,6 +18,12 @@ flock -n 9 || { printf 'A collection already uses %s\n' "$ROOT" >&2; exit 2; }
 upload() {
   gcloud storage rsync -q -r "$ROOT/out" "$RESULTS" || true
 }
+upload_case() {
+  # Do not relist and compare every earlier token's records after each case.
+  gcloud storage rsync -q -r "$ROOT/out/$1" "$RESULTS/$1" || return
+  gcloud storage cp -q "$ROOT/out/$1.log" "$ROOT/out/collection-identity.txt" \
+    "$RESULTS/" || true
+}
 trap upload EXIT
 {
   date -u +%FT%TZ
@@ -76,7 +82,7 @@ summary = {'purpose': 'calibration-only', 'case': case, 'process_status': status
 (out / 'COLLECTED').write_text(json.dumps(summary, indent=2) + '\n')
 print(json.dumps(summary))
 PY
-  upload
+  upload_case "$case"
 done
 date -u +%FT%TZ > "$ROOT/out/COLLECTION_COMPLETE"
 upload
