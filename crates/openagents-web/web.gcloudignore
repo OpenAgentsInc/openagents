@@ -34,6 +34,7 @@
 !/scripts/build-spark-wallet-web.sh
 !/scripts/build-bunny-web.sh
 !/scripts/build-icecream-web.sh
+!/scripts/build-haunt-web.sh
 !/scripts/build-snap-web.sh
 !/scripts/build-att-web.sh
 !/scripts/build-cad-web.sh
