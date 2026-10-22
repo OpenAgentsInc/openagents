@@ -671,6 +671,13 @@ The status lines below summarize each issue and its comments. Open the issue for
   runner under Kiln's Settings, run `cargo test -p memory-stream`, and
   confirm the log says "Found N test runners by their beacons", the run
   passes, and a `3201` receipt names the runner.
+- #12488: give the web deploy `OPENAGENTS_KILN_SITE_KEY` pointing at a
+  copy of `~/work/.secrets/kiln-site.key` (site key `cbabc7ec…d89e0`, already
+  listed `each=10` in `oa-kiln`'s `/etc/kiln/allow`). After the deploy, sign
+  in as the test account (not an admin), walk up to the terminal on `/`,
+  and confirm `/home/me` says `"kiln": true`, **Kiln** shows, the runner's
+  log says "agent of a listed key, counted alone", and a run on
+  `crates/memory-stream` ends with "Proposed as a patch.".
 - #12440: after the next web deploy, confirm the image log builds or
   reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
   `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test
