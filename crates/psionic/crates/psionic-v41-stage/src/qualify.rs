@@ -2144,6 +2144,17 @@ pub fn router_margin_violations(
     out
 }
 
+/// Whether a report measured candidate router score errors anywhere.
+fn has_router_score_evidence(report: &Value) -> bool {
+    report["cases"].as_array().into_iter().flatten().any(|c| {
+        c["router"]["layers"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|l| l["score_error"]["max"].is_f64())
+    })
+}
+
 /// The positive and negative self-checks (#12405 review): the reference must
 /// pass every criterion derived from it, and every control must fail.
 ///
@@ -2155,9 +2166,20 @@ pub fn self_check(
     reference: &[Value],
     controls: &[Value],
 ) -> Result<Value, Refused> {
+    // Each reference report must pass every criterion derived from it: one
+    // without the oracle's router scores took no part in the router score
+    // budget, so that rule alone isn't applied to it.
     let own: Vec<String> = reference
         .iter()
-        .flat_map(|r| judge_report(policy, r))
+        .flat_map(|r| {
+            if has_router_score_evidence(r) {
+                judge_report(policy, r)
+            } else {
+                let mut without = policy.clone();
+                without.router_score_budget = None;
+                judge_report(&without, r)
+            }
+        })
         .collect();
     if !own.is_empty() {
         return Err(refused(format!(
@@ -2530,6 +2552,22 @@ mod tests {
         assert!((budget[3] - HEADROOM * 0.004).abs() < 1e-12);
         assert_eq!(evidence["reference_max_row_substitutions"], 1);
         assert!(policy.index_out_of_scope.is_some());
+        // A reference without the oracle's router scores joins the other
+        // limits and is judged on them, not on the score budget.
+        let mut unscored = case_report("b", &vec![(0.01, 5); 33], &[]);
+        for l in unscored["router"]["layers"].as_array_mut().unwrap() {
+            l["score_error"] = Value::Null;
+        }
+        let control =
+            json!({"control": "c", "cases": [case_report("a", &vec![(0.4, 5); 33], &[])]});
+        let both = [reference.clone(), json!({"cases": [unscored]})];
+        assert_eq!(
+            derive_policy_v22(&both, &[control])
+                .unwrap()
+                .0
+                .router_score_budget,
+            Some(budget.clone())
+        );
         let eps = budget[0];
         let mut run = case_report("a", &vec![(0.01, 5); 33], &[]);
         run["router"]["changes"] = json!([
