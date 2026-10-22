@@ -269,7 +269,13 @@ publish_modules() { # TAG CTX
         [ -f "$blobs/$sum" ] || echo "$MODULE_INPUTS/blobs/$sum"
     done > "$modules/missing"
     if [ -s "$modules/missing" ]; then
-        g storage cp -I "$blobs/" < "$modules/missing" > /dev/null 2>&1 ||
+        # curl, 16 at a time: `gcloud storage cp -I` stalled on this list.
+        token=$(g auth print-access-token)
+        bucket=${MODULE_INPUTS#gs://}
+        sed "s|^gs://$bucket/||" "$modules/missing" |
+            xargs -P 16 -I{} sh -c 'sum=$(basename "$1"); curl -fsS --retry 3 -H "Authorization: Bearer $0" \
+                -o "$2/$sum.part" "https://storage.googleapis.com/$3/$1" && mv "$2/$sum.part" "$2/$sum"' \
+                "$token" {} "$blobs" "$bucket" ||
             { say "Downloading the modules failed"; rm -rf "$modules"; return 1; }
     fi
     while read -r sum bytes mode path; do
@@ -280,6 +286,9 @@ publish_modules() { # TAG CTX
     say "  modules: $(wc -l < "$modules/index" | tr -d ' ') files, $(wc -l < "$modules/missing" | tr -d ' ') downloaded"
     LIVEHOST_MODULES_DIR=$modules/tree WEB_CONTENT_SOURCE=$2 "$ROOT/scripts/deploy/livehost.sh" deploy >&2
     rm -rf "$modules"
+    # The set staging's manifest now carries: a content deploy carries it on,
+    # since a manifest without modules/ falls back to the image's copies.
+    printf '%s\n' "$1" | g storage cp - "$MODULE_INPUTS/sets/staging-current" > /dev/null 2>&1 || true
     took "livehost deploy (modules and content)" "$t"
 }
 
@@ -295,9 +304,15 @@ livehost_modules() {
 stage_content() { # FULL SHA CTX FROM
     t=$(now)
     say "  content only since staging's $(printf '%s' "$4" | cut -c1-10): deploying the livehost content tier"
-    # Without LIVEHOST_MODULES_DIR the deploy keeps the modules the last
-    # manifest carried (livehost's side of #12427).
-    WEB_CONTENT_SOURCE=$3 "$ROOT/scripts/deploy/livehost.sh" deploy >&2
+    # A manifest replaces the last one whole, so it carries the modules set
+    # staging's manifest has now (files already on this machine are reused).
+    current=
+    if livehost_modules; then current=$(g storage cat "$MODULE_INPUTS/sets/staging-current" 2> /dev/null || true); fi
+    if [ -n "$current" ]; then
+        publish_modules "$current" "$3"
+    else
+        WEB_CONTENT_SOURCE=$3 "$ROOT/scripts/deploy/livehost.sh" deploy >&2
+    fi
     took "content deploy" "$t"
     doc=$(git -C "$ROOT" diff --name-only "$4" "$1" |
         sed -n 's|^crates/openagents-web/content/docs/\([a-z0-9-]*\)\.md$|\1|p' | head -n 1)
