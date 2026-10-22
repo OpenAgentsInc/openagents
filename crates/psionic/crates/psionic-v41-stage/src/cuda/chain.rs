@@ -760,6 +760,18 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             .collect::<Result<_, _>>()?
     };
     let prompt_ids = round_prompts[0].clone();
+    let round_forced: Vec<Option<Vec<u32>>> = options
+        .prompts
+        .iter()
+        .map(|p| {
+            p.get("force_ids")
+                .map(|ids| {
+                    serde_json::from_value(ids.clone())
+                        .map_err(|e| Refused(format!("force_ids: {e}")))
+                })
+                .transpose()
+        })
+        .collect::<Result<_, _>>()?;
     let mut threads = Vec::new();
     let loaded_stages = if options.first_stage_only {
         1
@@ -869,6 +881,25 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             round_prompts.len()
         };
         for round in 0..rounds {
+            let keep_root = &keep;
+            let prefix = if rounds > 1 {
+                format!("round-{round}/")
+            } else {
+                String::new()
+            };
+            if let Some(dir) = &options.capture {
+                std::fs::create_dir_all(dir.join(&prefix)).map_err(|e| {
+                    Refused(format!("can't create the round's capture folder: {e}"))
+                })?;
+            }
+            let keep = |name: &str, bytes: &[u8]| keep_root(&format!("{prefix}{name}"), bytes);
+            let forced = round_forced
+                .get(round)
+                .and_then(Option::as_ref)
+                .or(options.force_ids.as_ref());
+            let max_tokens = forced.map_or(options.max_tokens, |ids| {
+                options.max_tokens.min(ids.len() as u64)
+            });
             let prompt_ids = round_prompts[round % round_prompts.len()].clone();
             let mode = round_modes.get(round).copied().unwrap_or(mode);
             let last = threads.len() - 1;
@@ -889,7 +920,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             let mut position = 0_u64;
             let mut step = 0_u64;
             let mut produced = 0_u64;
-            while produced < options.max_tokens {
+            while produced < max_tokens {
                 let Some(input) = pending.pop() else {
                     break;
                 };
@@ -1003,14 +1034,14 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                 tokens.push(token);
                 raw.push_str(&text.push(&tokenizer, token));
                 if matches!(vocabulary, Vocabulary::V41(_)) {
-                    let piece = parser.push(token, produced >= options.max_tokens)?;
+                    let piece = parser.push(token, produced >= max_tokens)?;
                     reasoning.push_str(&piece.reasoning);
                     content.push_str(&piece.content);
                     if piece.finish.is_some() {
                         finish = piece.finish;
                     }
                 }
-                let next = match &options.force_ids {
+                let next = match forced {
                     Some(forced) => match forced.get(tokens.len() - 1) {
                         Some(t) => *t,
                         None => break,

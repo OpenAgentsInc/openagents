@@ -10,12 +10,17 @@ from consumer_q_card import captured, log_softmax
 
 
 class CardInputs(unittest.TestCase):
-    def test_capture_steps_must_start_at_zero_and_have_no_gaps(self):
+    def test_capture_prefix_must_be_recorded_prefill_and_answers_have_no_gaps(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)
             with self.assertRaises(ValueError):
                 captured(path)
             np.array([1, 2], dtype=np.float32).tofile(path / "step-1.logits.f32")
+            with self.assertRaises(ValueError):
+                captured(path)
+            (path / "step-0.json").write_text('{"emit": false}')
+            self.assertEqual(len(captured(path)), 1)
+            (path / "step-0.json").write_text('{"emit": true}')
             with self.assertRaises(ValueError):
                 captured(path)
             np.array([2, 3], dtype=np.float32).tofile(path / "step-0.logits.f32")
