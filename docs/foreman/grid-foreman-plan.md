@@ -1,6 +1,7 @@
 # Grid Foreman: a plan
 
-Status: plan only, 2026-10-21. Nothing on this page is built. It answers the
+Status: approved with the owner's answers of 2026-10-21 (see
+[section 13](#13-owner-decisions)); building, phase by phase. It answers the
 owner's request of 2026-10-21:
 
 > "I'd like to get one kind of permanent long-lived foreman in the grid world
@@ -31,17 +32,24 @@ for a part are the last commit that touched it.
 - [10. Analytics events](#10-analytics-events)
 - [11. Phases](#11-phases)
 - [12. Draft issues](#12-draft-issues)
-- [13. Open questions for the owner](#13-open-questions-for-the-owner)
+- [13. Owner decisions](#13-owner-decisions)
 
 ## Summary
 
 - **One Foreman, two bodies of work.** The Grid Foreman is the public face
   of Foreman, not a second coordinator. The desktop app's Foreman stays the
-  only agent that claims, dispatches, steers, and lands work, from its app
-  chat, as `AGENTS.md` requires. The Grid Foreman is a separate, read-only
-  agent of the same lineage: its own Nostr key, its own process, its own
-  instructions. It reports what the desktop Foreman and GitHub say, and it
-  hands anything that changes state to the desktop Foreman or to the owner.
+  agent that claims, steers, and lands work, from its app chat, as
+  `AGENTS.md` requires. The Grid Foreman is a separate agent of the same
+  lineage: its own Nostr key, its own process, its own instructions. It
+  starts read only (P0 to P3): it reports what the desktop Foreman and
+  GitHub say.
+- **Later, it starts agents that open draft pull requests.** From P4, it
+  may sign a command from a closed list of two actions: start a coding agent
+  on an issue in that agent's own app chat, or ask an agent it started for a
+  draft pull request. The site checks the signature, the list, per-day caps,
+  and the issue's claims, writes every command to a public audit log, and
+  only then starts the agent. Merging, deploying, and spending always need
+  an admin; the Grid Foreman never does them on its own.
 - **A giant Grid robot.** It reuses the Grid robot (`grid/robot`) drawn at
   3.0 times its rig's size, about 5.6 m tall, twice the height of the four
   patrollers, with a `FOREMAN` tag over its head and a one-line status under
@@ -59,11 +67,11 @@ for a part are the last commit that touched it.
   (`pylon::router::route`) to Flint or the DeepSeek V4.1 group, with the
   hosted chat as the last fallback. Its jobs light up in the Pylon Bay like
   anyone's.
-- **It never claims, closes, merges, deploys, or spends.** At most, it
-  drafts: a hand-off for the desktop Foreman, an issue draft, or later a
-  NIP-34 patch proposal that only a maintainer can apply.
+- **It never merges, deploys, or spends.** It never claims an issue itself
+  either: each agent it starts claims its own issue in its own chat. Every
+  pull request it causes is a draft that only an admin merges.
 - **Phases P0 to P4**, each shippable on its own, from a static giant with a
-  status feed to Kiln patch proposals.
+  status feed to commanding PR-making agents.
 
 ## What exists today
 
@@ -123,23 +131,22 @@ There are three choices:
 | --- | --- | --- |
 | A. The same agent with a world body | The desktop Foreman's chat drives the robot and answers visitors. | No. Its chat runs on the owner's computer with standing authority over the owner's chats. Putting public visitors' words into that chat is a prompt-injection path into an agent that can start and stop work, and a public body would die with every desktop restart (L2, L5). |
 | B. A separate agent with no link | A new public agent that reads GitHub on its own. | No. It would give a second, drifting picture of the work, and visitors would get answers that the real Foreman disagrees with. |
-| C. A separate, read-only envoy fed by Foreman | Its own key, process, and instructions. It reads public GitHub state and a public status feed the desktop Foreman writes. Anything that changes state goes back to the desktop Foreman's app chat or to the owner. | **Recommended.** |
+| C. A separate envoy fed by Foreman | Its own key, process, and instructions. It reads public GitHub state and a public status feed the desktop Foreman writes. It starts read only; from P4 it may start PR-making agents through a narrow, signed, capped, and audited command path. | **Chosen** (owner, 2026-10-21). |
 
 Under option C:
 
 - **The desktop Foreman stays the coordinator.** It files, claims, hands out,
   and integrates, only from its app chat, as `AGENTS.md` and lesson L1
   require. Nothing about it changes.
-- **The Grid Foreman coordinates nothing.** It holds no claims and no
-  grants from `GrantScope`. It reports, explains, and drafts.
-- **The link between them is one-way and public.** At each check-in, the
-  desktop Foreman writes a short public status (see
-  [Status feed](#the-status-feed)). The Grid Foreman reads it. For the other
-  direction, an admin who wants the real Foreman to act uses the agents
-  door that already exists: "Ask Foreman …" in a signed-in chat reaches the
-  owner's own saved Foreman (#11934). The Grid Foreman can say that, and in
-  P4 it can open that chat for a signed-in admin, but it never sends a
-  command on its own.
+- **The Grid Foreman holds no claims and no `GrantScope`.** Until P4, it
+  reports, explains, and drafts. From P4, it may start agents, under the
+  rules in [Commanding agents](#commanding-agents-p4).
+- **The link between them is public.** At each check-in, the desktop
+  Foreman writes a short public status (see
+  [Status feed](#the-status-feed)). The Grid Foreman reads it. An admin who
+  wants the desktop Foreman to act uses the agents door that already exists:
+  "Ask Foreman …" in a signed-in chat reaches the owner's own saved Foreman
+  (#11934).
 - **Later, the same body can serve the Forge.** When the Forge (F2, F3)
   exists, the giant robot is the natural body for the Forge's crew lead.
   This plan keeps the body, the identity, and the brain separable so that
@@ -466,25 +473,89 @@ never an action.
 | --- | --- | --- |
 | A hand-off: "this stalled issue needs a new chat" | Signed-in admins | A draft message shown to the admin with an **Ask Foreman** button that opens the agents door with the text filled in. The admin sends it, from their own session, to their own Foreman. |
 | An issue draft | Signed-in admins | Shown as a title and body to copy; filing stays a person's or the desktop Foreman's act. |
-| A Kiln patch (NIP-34, kind 1617) for a small doc or copy fix | Signed-in admins, P4 | Signed with Foreman's key, with a mandate that allows `git.propose` and never status kinds ([workstation.md](../kiln/workstation.md)). Checked by `kiln::patch::check_tags` and `secret_findings` before it's published. Only a maintainer applies it. |
-| A `cargo test` run on the kiln-runner for its own patch | Signed-in admins, P4 | A `openagents.kiln.cargo.v1` job. The runner must accept Foreman's key on an allowlist first; it accepts any key today, which must change before Foreman uses it. |
+| A `cargo test` run on the kiln-runner for an agent's branch | P4 | A `openagents.kiln.cargo.v1` job. The runner must accept Foreman's key on an allowlist first; it accepts any key today, which must change before Foreman uses it. |
+
+### Commanding agents (P4)
+
+From P4, the Grid Foreman may start coding agents that open draft pull
+requests. The authority is narrow by construction.
+
+**Two actions, nothing else.** A command names one of a closed list:
+
+| Action | What the site does |
+| --- | --- |
+| `agent.start` | Starts a coding agent on one open issue, in a new app chat of its own on an always-on computer of the owner's, through an agent assignment (`/v1/agent-assignments`). The brief is a fixed template: claim the issue with `openagents issue claim N`, work it in a worktree, open a **draft** pull request, never push to `main`, never merge, deploy, or spend, and release the claim if it stops. |
+| `agent.draft_pr` | Sends one fixed message to an agent the Grid Foreman started: "Open a draft pull request of what you have now." |
+
+Anything else, including merge, close, deploy, pay, steer, stop, or a
+free-text message, has no action word, so the site can't be asked for it.
+
+**Signed commands.** The host signs each command as a NIP-98 event (kind
+27235) over the exact URL, `POST /v1/foreman/commands`, with a `payload`
+tag holding the SHA-256 of the body. The site accepts it only when:
+
+- the signer is the pinned Grid Foreman public key;
+- `created_at` is within 60 seconds of the site's clock;
+- the event ID has not been seen before (replay is refused);
+- the body parses as `openagents.grid-foreman.command.v1` with an action
+  from the list and an issue number.
+
+**Checks before acting.** For `agent.start`, the site also refuses when the
+issue is closed, is a pull request, holds another claim
+(`openagents issue status` logic: a fresh claim comment or "In progress"),
+already has a running Foreman-started agent, or carries a label from a
+deny list (`owner-only`, `release`, `security`). For `agent.draft_pr`, the
+named chat must be one the Grid Foreman started.
+
+**Per-day caps,** counted in UTC days on the site, not on the host:
+
+- 5 `agent.start` commands a day;
+- 10 `agent.draft_pr` commands a day;
+- 3 Foreman-started agents running at once;
+- 1 command a minute.
+
+Over a cap, the site refuses with `foreman_cap`, and the host says so in its
+status line (`DONE STARTING AGENTS FOR TODAY`).
+
+**Audit log.** Every command, accepted or refused, goes to an append-only
+log on the site with the event ID, the action, the issue, the result, the
+refusal code if any, and the assignment and chat IDs it made. It's public
+at `GET /v1/foreman/commands`, since the repository is open source. The
+admin page shows the same list.
+
+**Kill switch.** Commands are off until an admin turns them on
+(`OPENAGENTS_FOREMAN_COMMANDS=on` in the site's configuration), and an admin
+can pause them at once from the admin page. A paused site refuses every
+command with `foreman_paused`.
+
+**Admin approval.** Merging a draft pull request, deploying, and spending
+are never actions of the Grid Foreman. An admin reviews and merges the draft
+on GitHub, or asks the desktop Foreman to land it. No Foreman-started agent
+holds a deploy, merge, or money grant: its definition's access excludes
+them, as `NEVER_GRANTED` already does.
+
+**Who chooses the issue.** The host proposes candidates from the status
+feed and the board (Ready status, no blockers, no claim, oldest first), and
+from an admin's request in the Grid ("start an agent on 12345"), which the
+site checks as admin before the host signs anything. Visitor text never
+reaches a command.
 
 ### What it never does
 
-Claim or release an issue, close an issue, move a board card, merge, push,
-apply a patch, deploy, start or steer a chat, pay or receive money, read or
-hold any key but its own two, or run anything on the owner's computers.
-These match `NEVER_GRANTED` and go further: the Grid Foreman holds no
-`GrantScope` at all.
+Merge, push to `main`, apply a patch, close an issue, move a board card by
+itself, deploy, pay or receive money, read or hold any key but its own two,
+steer or stop a chat it didn't start, or run anything on the owner's
+computers except through the two actions above. It holds no `GrantScope`.
 
 ### Fit with the coordination rules
 
 `AGENTS.md` says coordination happens only in app chats, and lesson L1 is
-the reason. The Grid Foreman doesn't coordinate, so it doesn't break that
-rule, and it routes every coordinating request back into the app chat
-through the agents door. Its instructions say so: "I don't hand out work.
-The Foreman in the OpenAgents app does. If you're the owner, ask it from a
-signed-in chat."
+the reason. Each agent the Grid Foreman starts is an app chat of its own:
+it shows in the app's Sessions, in the desktop Foreman's `list_chats`, on
+the phone, and on the website, so the desktop Foreman and the owner can see
+and steer it. Each of those chats claims its own issue, one claim per
+working chat. The Grid Foreman claims nothing and holds no batch, so it
+never coordinates outside an app chat.
 
 ### Admin-only actions
 
@@ -536,16 +607,18 @@ signed-in chat."
   the host's outgoing events for key-shaped strings, as
   `kiln::patch::secret_findings` does for patches.
 - **Public and read only by default.** A visitor can only ask. Every
-  proposal is admin-only, and every proposal is a draft.
+  proposal is admin-only, and every proposal is a draft. Commands to agents
+  follow [Commanding agents](#commanding-agents-p4): signed, two actions,
+  capped, audited, and off until an admin turns them on.
 - **Prompt injection from issue text.** Issue titles, bodies, and comments
   are written by anyone. The host:
   - passes them to the model as quoted data in a separate block, never as
     instructions;
   - gives the model no tools in P2 and P3, so injected text can at worst
     change an answer, not an action;
-  - in P4, builds proposals from a fixed template whose fields the model
-    fills, and checks each field (issue numbers exist, paths are in the
-    repository, patch size under `MAX_PATCH_BYTES`);
+  - in P4, builds commands from a fixed template whose only field is an
+    issue number, which the site checks against GitHub; issue text never
+    enters a brief;
   - never follows a link from issue text.
 - **Prompt injection from visitors.** A visitor's message is likewise data.
   The host refuses requests to change its instructions or reveal its
@@ -556,8 +629,8 @@ signed-in chat."
   terminal screen, only its own task text.
 - **Impersonation.** Only the pinned key draws as Foreman (section 2).
 - **Owner's account.** Tests and smokes run as the dedicated test account,
-  never the owner's, and a P4 test of patch proposals uses a test
-  repository, per `AGENTS.md`.
+  never the owner's, and a P4 test of commands targets a test repository
+  and the test account's computers, per `AGENTS.md`.
 
 ## 10. Analytics events
 
@@ -573,7 +646,8 @@ details from fixed lists. Server counts go in `analytics/mod.rs`'s
 | `foreman_message` | Visit | `first` or `later` |
 | `foreman_answered` | Server | `flint`, `group`, `pylon`, `hosted`, `feed` (no model) |
 | `foreman_answer_failed` | Server | `timeout`, `limit`, `budget`, `copy` |
-| `foreman_proposal` | Server | `handoff`, `issue`, `patch`, `test` |
+| `foreman_proposal` | Server | `handoff`, `issue`, `test` |
+| `foreman_command` | Server | `start`, `draft_pr`, `refused` |
 | `foreman_host` | Server | `up`, `down`: from the site's view of the host |
 
 The `/admin/analytics` dashboard gets a Foreman row: reached, opened,
@@ -644,26 +718,31 @@ more.
 - **Size:** M.
 - **Depends on:** P2.
 
-### P4: proposals and Kiln patches
+### P4: commanding agents that open draft pull requests
 
-- **What:** For signed-in admins only: hand-off drafts with an **Ask
-  Foreman** button into the agents door, issue drafts, and NIP-34 patch
-  proposals signed by Foreman's key under a `git.propose` mandate, with
-  optional `cargo test` on an allowlisting kiln-runner.
-- **Acceptance:** As an admin test account against the Kiln demo repository
-  (`openagents-kiln-demo`), asking for a copy fix produces a kind 1617
-  patch that passes `check_tags` and `secret_findings` and shows in Kiln;
-  the same request signed out or as a member is refused with one plain
-  line; no status kind (1630 to 1633) is ever signed by Foreman's key; the
-  hand-off button opens the agents door with the text filled in and sends
-  nothing by itself.
+- **What:** `POST /v1/foreman/commands` on `openagents-web` with the
+  checks in [Commanding agents](#commanding-agents-p4): NIP-98 signatures
+  from the pinned key, the two actions, the claim and label checks, the
+  per-day caps, the append-only public audit log, the kill switch, and the
+  agent assignment that starts each agent in its own app chat with the
+  fixed draft-pull-request brief. The host's candidate picker and its
+  signer. For signed-in admins: hand-off drafts with an **Ask Foreman**
+  button into the agents door, and issue drafts. Optional `cargo test` of an
+  agent's branch on an allowlisting kiln-runner.
+- **Acceptance:** Unit tests: a command signed by another key, an old or
+  replayed event, an unknown action, a claimed issue, a closed issue, a
+  denied label, and each cap are refused with their codes and logged; an
+  accepted `agent.start` makes exactly one assignment whose brief is the
+  template with the issue number; nothing in the code path can merge,
+  deploy, or pay. As the test account against a test repository, a command
+  starts an app chat that opens a draft pull request.
 - **Size:** L.
-- **Depends on:** P3; Kiln workstation phase 2 (patches from an agent key);
-  a kiln-runner key allowlist; the agent mandate's `git.propose` word.
+- **Depends on:** P3; the kiln-runner key allowlist.
 
 ## 12. Draft issues
 
-These are drafts. Don't file them until the owner approves the plan.
+The owner approved these on 2026-10-21. They are filed on
+`OpenAgentsInc/openagents`; the issue numbers are in [section 13](#13-owner-decisions).
 
 ### Grid Foreman P0: a giant Foreman beside the terminal with a status line
 
@@ -739,20 +818,27 @@ These are drafts. Don't file them until the owner approves the plan.
 >
 > Plan: `docs/foreman/grid-foreman-plan.md`, P3.
 
-### Grid Foreman P4: admin proposals and Kiln patches
+### Grid Foreman P4: start agents that open draft pull requests
 
-> For signed-in admins only, Foreman drafts:
+> Let the Grid Foreman start coding agents, each in its own app chat, that
+> open draft pull requests.
 >
-> - a hand-off, with an **Ask Foreman** button that opens the agents door
->   with the text filled in, sent only when the admin sends it;
-> - an issue title and body to copy;
-> - a NIP-34 patch (kind 1617) for a small fix, signed with its key under a
->   `git.propose` mandate, checked by `kiln::patch::check_tags` and
->   `secret_findings`, never with a status kind;
-> - optionally, a `cargo test` job on a kiln-runner that allowlists its
->   key.
+> - `POST /v1/foreman/commands`: NIP-98 events signed by the pinned key,
+>   60-second freshness, replay refusal.
+> - Two actions only: `agent.start` (issue N) and `agent.draft_pr` (a chat
+>   it started).
+> - Refuse closed issues, pull requests, claimed issues, and the deny-list
+>   labels.
+> - Caps: 5 starts and 10 draft requests a day, 3 running at once, 1 a
+>   minute.
+> - An append-only audit log, public at `GET /v1/foreman/commands`.
+> - Off until `OPENAGENTS_FOREMAN_COMMANDS=on`; an admin can pause it.
+> - Each start is an agent assignment with a fixed brief: claim the issue,
+>   work in a worktree, open a draft pull request, never merge, deploy, or
+>   spend.
+> - Admin hand-off and issue drafts.
 >
-> It never claims, closes, merges, deploys, or spends.
+> It never merges, deploys, or spends.
 >
 > Plan: `docs/foreman/grid-foreman-plan.md`, P4.
 
@@ -763,28 +849,33 @@ These are drafts. Don't file them until the owner approves the plan.
 > the Grid Foreman's can be let in without letting everyone in. Needed
 > before Grid Foreman P4.
 
-## 13. Open questions for the owner
+## 13. Owner decisions
 
-1. **Same agent or envoy?** This plan recommends a separate, read-only
-   envoy that the desktop Foreman feeds. Do you want it, or do you want the
-   desktop Foreman itself in the world, with the injection and uptime risks
-   in section 1?
-2. **Size.** 3.0 times the rig is about 5.6 m, twice the patrollers. Did
-   "very large" mean bigger still, 2.5 to 3 times the patrollers (7 to
-   8.4 m)? Above about 6 m it towers over the terminal and the help desk.
-3. **Look.** The same black robot with a pale amber accent or a crest, or
-   identical to the patrollers and set apart only by size and the tag?
-4. **What the public may see.** Is it fine for any visitor to hear issue
-   numbers, titles, and which are stalled? Everything is public on GitHub,
-   but a "stalled" label is new public information.
-5. **Status record from the desktop Foreman.** Is it fine for your Foreman
-   to publish the status record at each check-in?
-6. **Host.** A new `e2-small` (about $15 a month) or a slot on
-   `oa-coder-worker-1`?
-7. **Budget.** Is 300 Pylon jobs and 100 hosted fallbacks a day right? Do
-   Foreman's Pylon jobs stay free, or should it pay from a small allowance
-   wallet later?
-8. **Proposals.** In P4, should it draft only for you, or for every admin?
-   Should its patches target only the Kiln demo repository at first?
-9. **Name.** "FOREMAN" over its head, and "Grid Foreman" in code and docs.
-   Do you want it to have a personal name too?
+The owner answered the open questions on 2026-10-21:
+
+1. **Same agent or envoy?** A separate Foreman, as section 1's option C.
+   It starts read only, but it isn't read only forever: from P4 it issues
+   commands to agents that open pull requests, under the guardrails in
+   [Commanding agents](#commanding-agents-p4). It never merges, deploys, or
+   spends on its own.
+2. **Size.** 3.0 times the rig, about 5.6 m, is fine.
+3. **Look.** Not decided; P1 keeps the patrollers' look, set apart by size,
+   the tag, and the status line.
+4. **What the public may see.** Yes. The repository is open source, so any
+   visitor may hear which issues are stalled.
+5. **Status record from the desktop Foreman.** Yes, as part of P2.
+6. **Host.** A new `e2-small`, `oa-foreman-1`.
+7. **Budget.** 300 Pylon jobs and 100 hosted fallbacks a day.
+8. **Proposals.** Superseded by commands in P4.
+9. **Name.** `FOREMAN` over its head and "Grid Foreman" in code and docs.
+
+Filed issues:
+
+| Phase | Issue | Blocked by |
+| --- | --- | --- |
+| P0 | #12444 | none |
+| P1 | #12445 | #12444 |
+| P2 | #12446 | #12445 |
+| P3 | #12447 | #12446 |
+| kiln-runner allowlist | #12449 | none |
+| P4 | #12448 | #12447, #12449 |
