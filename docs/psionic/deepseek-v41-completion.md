@@ -1463,3 +1463,10 @@ values. A focused test checks both compression ratios, unchanged row values,
 misalignment, and overflow. A separate control build must demonstrate numerical
 detection before the policy can freeze; these earlier refusals do not count.
 The uncontrolled `06e5158778` candidate remains pinned.
+
+The `qualification_prompts` example generates the original-weight launch's
+2,872-token boundary and 2,873-token overflow request with the actual
+`Vocabulary::V41` chat template. Running it against the checkpoint tokenizer
+produces exact counts and records tokenizer, prompt, and token-ID hashes.
+The private one-quad Pylon run uses those saved requests; its live results
+remain separate from this construction check.
