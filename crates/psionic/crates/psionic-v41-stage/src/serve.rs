@@ -813,15 +813,19 @@ where
             "profile": self.stage.profile,
             "device": self.stage.device,
             "wire": crate::wire_json(&self.worker.executor().geometry()),
-            "limits": {
-                "max_context_tokens": self.budget.max_context_tokens,
-                "max_input_tokens": self.budget.max_input_tokens,
-                "max_prefill_tokens": self.budget.max_prefill_tokens,
-                "max_step_tokens": self.budget.max_step_tokens,
-                "prefill_chunk_tokens": self.budget.prefill_chunk_tokens,
-                "modes": PromptMode::ALL.map(PromptMode::as_str),
-            },
+            "limits": crate::budget_announcement(&self.budget),
         });
+        hello["manifest"] = json!(format!(
+            "sha256:{}",
+            hex::encode(self.stage.manifest.digest())
+        ));
+        hello["execution_config_sha256"] = json!(crate::execution_fingerprint(
+            &self.stage.profile,
+            hello["manifest"].as_str().unwrap(),
+            &hello["wire"],
+            &hello["limits"],
+            &self.stage.device["execution_settings"]
+        ));
         if let Some(listen) = &self.listen {
             hello["listen"] = json!(listen);
         }
