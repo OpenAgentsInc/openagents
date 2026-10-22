@@ -1590,3 +1590,11 @@ that separate tool. These native paired runs remain pending. The passive
 observations; its [wiring checks](verification/deepseek-v41-gates-2026-10-22/observer-wiring-checks.json)
 use an idle GPU VM and existing CPU sockets, so they do not establish an active
 memory peak or GPU-link latency.
+
+The [additional CPU references](verification/deepseek-v41-gates-2026-10-22/additional-cpu-calibration.json)
+now retain three natural conversation/code cases with 32 generated positions
+and the 1,025-token boundary case with eight. Both decode and replay are
+complete for each case. Rechecking the hashed recordings finds no causal
+index inconsistency. These are independent plain-BF16 CPU calibration
+measurements; their old-policy failures remain visible. The connected
+2,726-token CPU reference still needs to finish before rule 2.4 can freeze.
