@@ -1526,3 +1526,12 @@ provisional CPU-derived policy. That does not establish numerical detection.
 Natural-language calibration controls are running separately; the earlier
 attempts remain retained. Rule 2.4 remains unfrozen, and no fresh confirmation
 oracle has been captured.
+
+The control harness now accepts `--control-warm-case ID` to test leakage from
+an unrelated saved request. It records the warm-up case, token count, token-ID
+hash, and whether the warm-up differs from the measured prompt. A missing or
+empty warm-up fails before workers start. The option is restricted to forced
+stale-cache controls and cannot run as answer collection or release
+qualification. The parser regression and stage package checks pass. Existing
+same-prompt attempts remain retained; the candidate worker and acceptance
+limits stay unchanged.

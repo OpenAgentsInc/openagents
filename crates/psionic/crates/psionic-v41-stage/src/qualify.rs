@@ -5,6 +5,7 @@
 //! psionic-v41-stage qualify --weights DIR --manifest D --oracle DIR --out DIR
 //!     [--backend cuda|cpu] [--arithmetic A] [--gpus 0,1,2,3] [--cases ID,...]
 //!     [--observe] [--control NAME] [--policy FILE] [--max-context N]
+//!     [--control-warm-case ID]
 //!     [--max-step-tokens N] [--prefill-chunk N]
 //!     [--step-secs S] (--worker-build SHA256 | --development)
 //!     [--worker PATH] [--front-host IP]
@@ -134,6 +135,8 @@ pub struct QualifyOptions {
     pub cases: Option<Vec<String>>,
     pub observe: bool,
     pub control: Option<Control>,
+    /// A distinct oracle prompt to leave in the stale-cache control's state.
+    pub control_warm_case: Option<String>,
     pub policy: Option<PathBuf>,
     /// Prospective confirmation corpus, required for release.
     pub corpus: Option<PathBuf>,
@@ -189,6 +192,7 @@ impl QualifyOptions {
                 "--gpus",
                 "--cases",
                 "--control",
+                "--control-warm-case",
                 "--policy",
                 "--corpus",
                 "--max-context",
@@ -274,6 +278,7 @@ impl QualifyOptions {
                 .remove("--control")
                 .map(|c| Control::parse(&c))
                 .transpose()?,
+            control_warm_case: values.remove("--control-warm-case"),
             policy: values.remove("--policy").map(PathBuf::from),
             corpus: values.remove("--corpus").map(PathBuf::from),
             max_context: number(values.remove("--max-context"), "--max-context", 32_768)? as usize,
@@ -323,6 +328,15 @@ impl QualifyOptions {
         if options.front_host.is_unspecified() {
             return Err(refused(
                 "--front-host must name an address the workers can reach",
+            ));
+        }
+        if options.control_warm_case.is_some()
+            && (options.control != Some(Control::StaleCache)
+                || options.answers.is_some()
+                || options.release)
+        {
+            return Err(refused(
+                "--control-warm-case needs a forced stale-cache control, without --release",
             ));
         }
         if options.max_context < 2
@@ -1950,6 +1964,19 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         scope::preflight(opts)?;
     }
     let mut oracle = OracleDump::open(&opts.oracle)?;
+    let control_warm_prompt = opts
+        .control_warm_case
+        .as_ref()
+        .map(|case| {
+            let prompt = ids(&oracle.run(case)?["prompt_token_ids"]);
+            if prompt.is_empty() {
+                return Err(refused(format!(
+                    "{case}: the warm-up case has no prompt tokens"
+                )));
+            }
+            Ok(prompt)
+        })
+        .transpose()?;
     let all = [
         "p1-chat-thinking",
         "p2-code",
@@ -1974,9 +2001,19 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
             return Err(refused(format!("{case}: the oracle run has no tokens")));
         }
         // The stale-cache control needs an earlier request whose cache leaks.
-        if opts.control == Some(Control::StaleCache) {
-            group.step(&format!("{case}-warm"), 0, Some(&prompt), None)?;
-        }
+        let control_warmup = if opts.control == Some(Control::StaleCache) {
+            let warm = control_warm_prompt.as_ref().unwrap_or(&prompt);
+            group.step(&format!("{case}-warm"), 0, Some(warm), None)?;
+            let bytes: Vec<_> = warm.iter().flat_map(|id| id.to_le_bytes()).collect();
+            Some(json!({
+                "case": opts.control_warm_case.as_deref().unwrap_or(case),
+                "prompt_tokens": warm.len(),
+                "token_ids_sha256": hex::encode(Sha256::digest(&bytes)),
+                "distinct_from_target": warm != &prompt,
+            }))
+        } else {
+            None
+        };
         let rec = match run_case(&mut group, &record, case, &prompt, &generated, "") {
             Ok(rec) => rec,
             // A negative control that the stages refuse is detected, not an error.
@@ -2033,6 +2070,7 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
             "case": case,
             "prompt_tokens": prompt.len(),
             "generated_tokens": generated.len(),
+            "control_warmup": control_warmup,
             "seconds": rec.seconds,
             "replay_equals_forced_decode": replay_equal,
             "modes": modes,
@@ -2100,6 +2138,7 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
             "prefill_chunk": opts.prefill_chunk},
         "stage_limits": group.limits,
         "control": opts.control.map(Control::name),
+        "control_warm_case": opts.control_warm_case,
         "observe": opts.observe,
         "arithmetic_schedule": "one graph per token; the head runs only after the last prompt chunk and each forced decode token",
         "cases": reports,
@@ -3291,6 +3330,41 @@ sys.exit(subprocess.call([sys.executable, '-c', worker, sys.argv[1], sys.argv[2]
         let (policy, evidence) = derive_policy_v23(&[reference], &[control]).unwrap();
         assert_eq!(policy.version, "2.3");
         assert_eq!(evidence["reference_profiles"], json!(["cpu-bf16"]));
+    }
+
+    #[test]
+    fn an_explicit_warm_case_is_only_for_a_forced_stale_cache_control() {
+        let args: Vec<String> = [
+            "--weights",
+            "w",
+            "--manifest",
+            "m",
+            "--oracle",
+            "o",
+            "--out",
+            "x",
+            "--development",
+            "--control-warm-case",
+            "previous-chat",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+        assert!(QualifyOptions::parse(&args).is_err());
+        for control in ["wrong-weights", "wrong-routing", "wrong-rope"] {
+            let mut wrong = args.clone();
+            wrong.extend(["--control".into(), control.into()]);
+            assert!(QualifyOptions::parse(&wrong).is_err());
+        }
+        let mut stale = args;
+        stale.extend(["--control".into(), "stale-cache".into()]);
+        let parsed = QualifyOptions::parse(&stale).unwrap();
+        assert_eq!(parsed.control_warm_case.as_deref(), Some("previous-chat"));
+        let mut answers = stale.clone();
+        answers.extend(["--answers".into(), "4096".into()]);
+        assert!(QualifyOptions::parse(&answers).is_err());
+        stale.push("--release".into());
+        assert!(QualifyOptions::parse(&stale).is_err());
     }
 
     #[test]
