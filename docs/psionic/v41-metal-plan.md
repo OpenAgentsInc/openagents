@@ -157,6 +157,31 @@ first CUDA run, and every kernel equals its host model bit for bit:
 | M3 attention | 14 | RoPE at 20,952 head cases within 0.35 of the bound; 316 window tokens and 26 compressed cases equal to the CPU's BF16 output; real compressor latents at layers 2 and 20 equal to the CPU; selections equal to the oracle's at all eight index sources (largest 20,021 positions); a 600-token prefill through sources 2 and 20 equal to the CPU stage by stage |
 | M4 stage | 9 | the synthetic 40-layer stage within 0.013 of the W1 policy against the CPU stage, greedy tokens equal; five split stages equal the unsplit stage bit for bit; a decode step is one command buffer and one wait |
 
+### Against the CUDA stage on real tensors
+
+Layers 38-40 of the pinned checkpoint, with the final norm, the head, and
+the sampler, ran on the M5 Max and on an RTX PRO 6000 (sm_120) on the same
+inputs. `psionic-v41-stage chain --capture` ran the group 0-10, 10-20, 20-30,
+30-38, 38-40 on a g4-standard-192 and kept every message into the last
+stage with its logits and token; `replay` fed those messages to the Metal
+stage. The stated limit is W1's logits family, `|metal - cuda| <= 2^-5 +
+2^-6 |cuda|` per logit.
+
+| Run | Steps | Tokens equal | Logits |
+| --- | --- | --- | --- |
+| Greedy, chat mode, "Why is the sky blue? Answer in two sentences." (15 prompt tokens) | 51 | 51 of 51 | all 129,280 bit-equal at every step |
+| Seeded (temperature 0.6, top-p 0.95, seed 7), "Write a haiku about rivers." (11 prompt tokens) | 19 | 19 of 19 | all 129,280 bit-equal at every step |
+
+The Metal stage computes the CUDA stage's values exactly, so its error
+against the limit is 0. A decode step of these two layers, the head, and
+the sampler takes 9.1 ms of GPU time greedy and 16.8 ms sampled on the M5
+Max, against 2.5 ms and 30.4 ms on the RTX PRO 6000 (the CUDA sampler's
+double-precision sums are slow on that card). Reports:
+[`deepseek-v41-metal-2026-10-21/`](verification/deepseek-v41-metal-2026-10-21/);
+the captures are
+`gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/metal-12420/cuda-captures-2026-10-21.tgz`
+(SHA-256 `69858fdcb7467d918b0a0a5e54bebfce368f185191ec8c4651c0bf465ec007d3`).
+
 ### Worker and Pylon
 
 - `psionic-v41-stage --backend metal` (the `metal` feature) announces

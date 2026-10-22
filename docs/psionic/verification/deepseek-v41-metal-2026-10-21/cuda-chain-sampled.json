@@ -1,0 +1,895 @@
+{
+    "schema": "openagents.deepseek_v41.chain_run.v1",
+    "runtime": "cuda-sm_120",
+    "split": [
+        [
+            0,
+            10
+        ],
+        [
+            10,
+            20
+        ],
+        [
+            20,
+            30
+        ],
+        [
+            30,
+            38
+        ],
+        [
+            38,
+            40
+        ]
+    ],
+    "max_context": 4096,
+    "max_step_tokens": 2048,
+    "sampling": {
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "seed": 7
+    },
+    "note": "stages are threads of one process, one GPU each, with W9's codec between them",
+    "stages": [
+        {
+            "stage": 0,
+            "layers": [
+                0,
+                10
+            ],
+            "gpu": 0,
+            "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+            "device_total_bytes": 101973819392,
+            "free_before_load": 101373837312,
+            "free_after_load": 25060573184,
+            "free_after_engram_bench": 25010241536,
+            "used_before_load": 599982080,
+            "used_by_load": 76313264128,
+            "load_seconds": 47.909309056,
+            "ledger": {
+                "max_context": 4096,
+                "max_step_tokens": 2048,
+                "layers": [
+                    {
+                        "layer": 0,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 1,
+                        "weight_bytes": 7547127256,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13911838966,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 2,
+                        "weight_bytes": 7416204248,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13765227382,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 3,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 4,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 5,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 6,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 7,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 8,
+                        "weight_bytes": 7416204248,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13765227382,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 9,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    }
+                ],
+                "embedding_bytes": 1323827200,
+                "embedding_parameters": 661913600,
+                "head_bytes": 0,
+                "head_parameters": 0,
+                "constant_bytes": 517792,
+                "sources": [
+                    {
+                        "layer": 2,
+                        "ratio": 2,
+                        "capacity": 2049,
+                        "kv_bytes": 2098176,
+                        "index_key_bytes": 524544,
+                        "compressor_state_bytes": 8192
+                    },
+                    {
+                        "layer": 8,
+                        "ratio": 2,
+                        "capacity": 2049,
+                        "kv_bytes": 2098176,
+                        "index_key_bytes": 524544,
+                        "compressor_state_bytes": 8192
+                    }
+                ],
+                "selection_bytes": 4096,
+                "work_bytes": 378778088,
+                "work_step_bytes": 377561088,
+                "engram_host_bytes": 101377628352,
+                "device_total": 75815901304
+            },
+            "device_bytes": {
+                "weights": 75431339504,
+                "state": 384561800
+            },
+            "per_decode_token": {
+                "parameters": 3951796892,
+                "weight_bytes": 3039790704
+            },
+            "engram": [
+                {
+                    "layer": 1,
+                    "table_rows": 384006168,
+                    "row_bytes": 264,
+                    "host_bytes": 101377628352,
+                    "rows_per_token": 24,
+                    "bytes_per_token": 6336,
+                    "decode_lookups": 2000,
+                    "decode_us_waited": 13.9150445,
+                    "decode_us_in_stream": 6.150354500000001,
+                    "prefill_rows": 24576,
+                    "prefill_ms": 0.95553,
+                    "prefill_rows_per_s": 25719757.62142476,
+                    "prefill_gb_per_s": 6.790016012056136,
+                    "ids": "uniformly random rows (splitmix64), not hashed n-grams"
+                }
+            ],
+            "run": {
+                "free_min_while_running": 25010241536,
+                "peak_used": 76363595776,
+                "peak_used_total": 76963577856,
+                "step_ms": [
+                    88.25236699999999,
+                    8.04378,
+                    7.97247,
+                    8.04913,
+                    7.9644390000000005,
+                    8.04777,
+                    7.981820000000001,
+                    8.06062,
+                    7.966918999999999,
+                    8.07259,
+                    7.97357,
+                    8.09516,
+                    7.989408999999999,
+                    8.105070000000001,
+                    7.9943800000000005,
+                    8.076768999999999,
+                    8.005510000000001,
+                    8.06945,
+                    8.0119
+                ]
+            }
+        },
+        {
+            "stage": 1,
+            "layers": [
+                10,
+                20
+            ],
+            "gpu": 1,
+            "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+            "device_total_bytes": 101973819392,
+            "free_before_load": 101373837312,
+            "free_after_load": 26413236224,
+            "free_after_engram_bench": 26362904576,
+            "used_before_load": 599982080,
+            "used_by_load": 74960601088,
+            "load_seconds": 46.314394135,
+            "ledger": {
+                "max_context": 4096,
+                "max_step_tokens": 2048,
+                "layers": [
+                    {
+                        "layer": 10,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 11,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 12,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 13,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 14,
+                        "weight_bytes": 7573808088,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13922554742,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 15,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 16,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 17,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 18,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 19,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    }
+                ],
+                "embedding_bytes": 0,
+                "embedding_parameters": 0,
+                "head_bytes": 0,
+                "head_parameters": 0,
+                "constant_bytes": 517792,
+                "sources": [
+                    {
+                        "layer": 8,
+                        "ratio": 2,
+                        "capacity": 2049,
+                        "kv_bytes": 2098176,
+                        "index_key_bytes": 524544,
+                        "compressor_state_bytes": 0
+                    },
+                    {
+                        "layer": 14,
+                        "ratio": 2,
+                        "capacity": 2049,
+                        "kv_bytes": 2098176,
+                        "index_key_bytes": 524544,
+                        "compressor_state_bytes": 8192
+                    }
+                ],
+                "selection_bytes": 4096,
+                "work_bytes": 378778088,
+                "work_step_bytes": 377561088,
+                "engram_host_bytes": 101380404048,
+                "device_total": 74465385080
+            },
+            "device_bytes": {
+                "weights": 74080831472,
+                "state": 384553608
+            },
+            "per_decode_token": {
+                "parameters": 3941075996,
+                "weight_bytes": 3013099632
+            },
+            "engram": [
+                {
+                    "layer": 14,
+                    "table_rows": 384016682,
+                    "row_bytes": 264,
+                    "host_bytes": 101380404048,
+                    "rows_per_token": 24,
+                    "bytes_per_token": 6336,
+                    "decode_lookups": 2000,
+                    "decode_us_waited": 14.146079499999999,
+                    "decode_us_in_stream": 6.5429495,
+                    "prefill_rows": 24576,
+                    "prefill_ms": 0.9531700000000001,
+                    "prefill_rows_per_s": 25783438.42126798,
+                    "prefill_gb_per_s": 6.806827743214747,
+                    "ids": "uniformly random rows (splitmix64), not hashed n-grams"
+                }
+            ],
+            "run": {
+                "free_min_while_running": 26362904576,
+                "peak_used": 75010932736,
+                "peak_used_total": 75610914816,
+                "step_ms": [
+                    85.547597,
+                    7.75682,
+                    7.737830000000001,
+                    7.763799,
+                    7.72562,
+                    7.77654,
+                    7.73567,
+                    7.777379,
+                    7.741160000000001,
+                    7.77525,
+                    7.735889,
+                    7.792019,
+                    7.7398,
+                    7.78312,
+                    7.741989,
+                    7.7735,
+                    7.75566,
+                    7.76492,
+                    7.7385589999999995
+                ]
+            }
+        },
+        {
+            "stage": 2,
+            "layers": [
+                20,
+                30
+            ],
+            "gpu": 2,
+            "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+            "device_total_bytes": 101973819392,
+            "free_before_load": 101373837312,
+            "free_after_load": 26973175808,
+            "free_after_engram_bench": 26973175808,
+            "used_before_load": 599982080,
+            "used_by_load": 74400661504,
+            "load_seconds": 6.1180025239999996,
+            "ledger": {
+                "max_context": 4096,
+                "max_step_tokens": 2048,
+                "layers": [
+                    {
+                        "layer": 20,
+                        "weight_bytes": 7400475608,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13762605942,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 21,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 22,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 23,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 24,
+                        "weight_bytes": 7395099096,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13759918326,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 25,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 26,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 27,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 28,
+                        "weight_bytes": 7395099096,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13759918326,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 29,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    }
+                ],
+                "embedding_bytes": 0,
+                "embedding_parameters": 0,
+                "head_bytes": 0,
+                "head_parameters": 0,
+                "constant_bytes": 256,
+                "sources": [
+                    {
+                        "layer": 20,
+                        "ratio": 1,
+                        "capacity": 4097,
+                        "kv_bytes": 4195328,
+                        "index_key_bytes": 1048832,
+                        "compressor_state_bytes": 4096
+                    }
+                ],
+                "selection_bytes": 6144,
+                "work_bytes": 378787560,
+                "work_step_bytes": 377561088,
+                "engram_host_bytes": 0,
+                "device_total": 74302692568
+            },
+            "device_bytes": {
+                "weights": 73918650352,
+                "state": 384042216
+            },
+            "per_decode_token": {
+                "parameters": 3791940636,
+                "weight_bytes": 2850918512
+            },
+            "engram": [],
+            "run": {
+                "free_min_while_running": 26574716928,
+                "peak_used": 74799120384,
+                "peak_used_total": 75399102464,
+                "step_ms": [
+                    88.514437,
+                    8.06674,
+                    8.054429,
+                    8.05154,
+                    8.078999999999999,
+                    8.044849999999999,
+                    8.083758999999999,
+                    8.092649999999999,
+                    8.08798,
+                    8.089719,
+                    8.085510000000001,
+                    8.08126,
+                    8.083720000000001,
+                    8.078999,
+                    8.08648,
+                    8.09117,
+                    8.09928,
+                    8.110999000000001,
+                    8.11473
+                ]
+            }
+        },
+        {
+            "stage": 3,
+            "layers": [
+                30,
+                38
+            ],
+            "gpu": 3,
+            "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+            "device_total_bytes": 101973819392,
+            "free_before_load": 101373837312,
+            "free_after_load": 25266094080,
+            "free_after_engram_bench": 25266094080,
+            "used_before_load": 599982080,
+            "used_by_load": 76107743232,
+            "load_seconds": 5.110832537,
+            "ledger": {
+                "max_context": 4096,
+                "max_step_tokens": 2048,
+                "layers": [
+                    {
+                        "layer": 30,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 31,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 32,
+                        "weight_bytes": 7395099096,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13759918326,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 33,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 34,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 35,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 36,
+                        "weight_bytes": 7395099096,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13759918326,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 37,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    }
+                ],
+                "embedding_bytes": 0,
+                "embedding_parameters": 0,
+                "head_bytes": 0,
+                "head_parameters": 0,
+                "constant_bytes": 256,
+                "sources": [
+                    {
+                        "layer": 20,
+                        "ratio": 1,
+                        "capacity": 4097,
+                        "kv_bytes": 4195328,
+                        "index_key_bytes": 1048832,
+                        "compressor_state_bytes": 0
+                    }
+                ],
+                "selection_bytes": 6144,
+                "work_bytes": 378787560,
+                "work_step_bytes": 377561088,
+                "engram_host_bytes": 0,
+                "device_total": 59512426920
+            },
+            "device_bytes": {
+                "weights": 59128388800,
+                "state": 384038120
+            },
+            "per_decode_token": {
+                "parameters": 3029239728,
+                "weight_bytes": 2274203328
+            },
+            "engram": [],
+            "run": {
+                "free_min_while_running": 24865538048,
+                "peak_used": 76508299264,
+                "peak_used_total": 77108281344,
+                "step_ms": [
+                    68.476017,
+                    6.246489,
+                    6.2517700000000005,
+                    6.25204,
+                    6.24903,
+                    6.245879,
+                    6.256270000000001,
+                    6.27486,
+                    6.269279,
+                    6.27246,
+                    6.25324,
+                    6.2630799999999995,
+                    6.275119,
+                    6.27286,
+                    6.2658499999999995,
+                    6.28281,
+                    6.271899,
+                    6.28174,
+                    6.27642
+                ]
+            }
+        },
+        {
+            "stage": 4,
+            "layers": [
+                38,
+                40
+            ],
+            "gpu": 3,
+            "device": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+            "device_total_bytes": 101973819392,
+            "free_before_load": 101365448704,
+            "free_after_load": 65233616896,
+            "free_after_engram_bench": 65233616896,
+            "used_before_load": 608370688,
+            "used_by_load": 36131831808,
+            "load_seconds": 1.72004157,
+            "ledger": {
+                "max_context": 4096,
+                "max_step_tokens": 2048,
+                "layers": [
+                    {
+                        "layer": 38,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    },
+                    {
+                        "layer": 39,
+                        "weight_bytes": 7389523416,
+                        "routed_expert_bytes": 7219445760,
+                        "parameters": 13754511606,
+                        "routed_expert_parameters": 13589544960,
+                        "state_bytes": 131264
+                    }
+                ],
+                "embedding_bytes": 0,
+                "embedding_parameters": 0,
+                "head_bytes": 1323847680,
+                "head_parameters": 661918720,
+                "constant_bytes": 256,
+                "sources": [
+                    {
+                        "layer": 20,
+                        "ratio": 1,
+                        "capacity": 4097,
+                        "kv_bytes": 4195328,
+                        "index_key_bytes": 1048832,
+                        "compressor_state_bytes": 0
+                    }
+                ],
+                "selection_bytes": 2048,
+                "work_bytes": 379304676,
+                "work_step_bytes": 377561088,
+                "engram_host_bytes": 0,
+                "device_total": 16487708180
+            },
+            "device_bytes": {
+                "weights": 16103157040,
+                "state": 384551140
+            },
+            "per_decode_token": {
+                "parameters": 1416525292,
+                "weight_bytes": 1889610672
+            },
+            "engram": [],
+            "run": {
+                "free_min_while_running": 24865538048,
+                "peak_used": 76499910656,
+                "peak_used_total": 77108281344,
+                "step_ms": [
+                    45.349398,
+                    30.500279000000003,
+                    30.415269000000002,
+                    30.455399,
+                    30.448007999999998,
+                    30.427508999999997,
+                    30.375079,
+                    30.448849,
+                    30.388669,
+                    30.450669,
+                    30.417838999999997,
+                    30.448469,
+                    30.430899,
+                    30.435958999999997,
+                    30.426959,
+                    30.390838,
+                    30.446899,
+                    30.382849,
+                    30.389169
+                ]
+            }
+        }
+    ],
+    "answer": {
+        "mode": "chat",
+        "prompt_tokens": 11,
+        "prompt_ids": [
+            0,
+            128803,
+            21750,
+            260,
+            535,
+            16251,
+            943,
+            27124,
+            16,
+            128804,
+            128822
+        ],
+        "prefill_chunk": null,
+        "tokens": 19,
+        "ids": [
+            79146,
+            32610,
+            396,
+            2632,
+            989,
+            4291,
+            278,
+            46590,
+            1407,
+            11150,
+            13754,
+            989,
+            99679,
+            3789,
+            304,
+            270,
+            8343,
+            16,
+            1
+        ],
+        "eos": true,
+        "finish": "stop",
+        "text": "Silver threads that run,\nWhispering through ancient stone,\nJourney to the sea.<\uff5cend\u2581of\u2581sentence\uff5c>",
+        "reasoning": "",
+        "content": "Silver threads that run,\nWhispering through ancient stone,\nJourney to the sea.",
+        "prefill_ms": 377.576386,
+        "decode_ms_per_token": {
+            "count": 18,
+            "mean": 61.20298444444443,
+            "p50": 61.206488,
+            "p90": 61.309358,
+            "min": 61.075838,
+            "max": 61.341698
+        },
+        "decode_tokens_per_s": 16.33907249911524,
+        "stage_step_ms": [
+            {
+                "count": 19,
+                "mean": 12.249111736842105,
+                "p50": 8.04378,
+                "p90": 8.09516,
+                "min": 7.9644390000000005,
+                "max": 88.25236699999999
+            },
+            {
+                "count": 19,
+                "mean": 11.85069057894737,
+                "p50": 7.75682,
+                "p90": 7.78312,
+                "min": 7.72562,
+                "max": 85.547597
+            },
+            {
+                "count": 19,
+                "mean": 12.315644842105263,
+                "p50": 8.085510000000001,
+                "p90": 8.110999000000001,
+                "min": 8.044849999999999,
+                "max": 88.514437
+            },
+            {
+                "count": 19,
+                "mean": 9.538795368421052,
+                "p50": 6.269279,
+                "p90": 6.28174,
+                "min": 6.245879,
+                "max": 68.476017
+            },
+            {
+                "count": 19,
+                "mean": 31.21205305263158,
+                "p50": 30.430899,
+                "p90": 30.455399,
+                "min": 30.375079,
+                "max": 45.349398
+            }
+        ],
+        "largest_message_bytes_into_stage": [
+            137,
+            929253,
+            901501,
+            1028349,
+            935357
+        ]
+    }
+}
