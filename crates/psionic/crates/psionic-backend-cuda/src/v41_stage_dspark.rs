@@ -302,6 +302,8 @@ pub struct Drafter {
     markov_embed: CudaBuffer,
     markov_head: CudaBuffer,
     confidence: CudaBuffer,
+    confidence_input: CudaBuffer,
+    confidence_score: CudaBuffer,
     projected: CudaBuffer,
     hidden: CudaBuffer,
     mean: CudaBuffer,
@@ -385,6 +387,9 @@ impl Drafter {
             blocks.push(block);
         }
         let h = shape.hidden;
+        if markov_rank == 0 || markov_rank > h || noise as usize >= shape.vocabulary {
+            return Err(invalid("DSpark Markov rank or noise token"));
+        }
         let mut loader = Loader {
             backend,
             source,
@@ -418,6 +423,8 @@ impl Drafter {
             markov_embed,
             markov_head,
             confidence,
+            confidence_input: f(h + markov_rank)?,
+            confidence_score: f(1)?,
             projected: f(h)?,
             hidden: f(h)?,
             mean: f(3 * h)?,
@@ -910,11 +917,28 @@ impl Drafter {
         for (logit, bias) in logits.iter_mut().zip(bias) {
             *logit += bias;
         }
-        let weights = floats(&self.confidence, hidden.len() + embed.len())?;
-        Ok(hidden
-            .iter()
-            .chain(&embed)
-            .zip(weights)
-            .fold(0.0, |sum, (x, w)| sum + x * w))
+        let mut input = self.confidence_input.clone();
+        upload(
+            &mut input,
+            &hidden.iter().chain(&embed).copied().collect::<Vec<_>>(),
+        )?;
+        let mut s = backend.begin_submission()?;
+        s.v41_dense(
+            V41Dense {
+                weights: &self.confidence,
+                scales: None,
+                format: V41DenseFormat::F32,
+                rows: 1,
+                cols: hidden.len() + embed.len(),
+                groups: 1,
+            },
+            &input,
+            &self.confidence_score,
+            1,
+            false,
+            V41Output::F32,
+        )?;
+        s.commit(CudaCommandWait::Completed)?;
+        Ok(floats(&self.confidence_score, 1)?[0])
     }
 }
