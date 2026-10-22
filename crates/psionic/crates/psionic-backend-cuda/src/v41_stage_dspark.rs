@@ -883,7 +883,7 @@ impl Drafter {
             // Keep the pre-norm collapsed hidden for the confidence head.
             hidden.extend(floats(&self.hidden, h)?);
         }
-        Ok(Proposal { logits, confidence })
+        Ok(Proposal { logits, hidden })
     }
 
     /// Adds the Markov distribution for the preceding proposed token and
