@@ -223,7 +223,7 @@ pub(crate) async fn get_json(
         .header(header::ACCEPT, "application/vnd.github+json")
         .header(header::USER_AGENT, "openagents-grid-foreman")
         .timeout(READ_TIMEOUT);
-    if let Some(token) = token {
+    if let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) {
         request = request.bearer_auth(token);
     }
     let response = request.send().await.map_err(|_| "unreachable".to_owned())?;
@@ -845,5 +845,40 @@ mod tests {
         ] {
             assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
         }
+    }
+}
+
+#[cfg(test)]
+mod credential_regression {
+    use super::*;
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+
+    #[tokio::test]
+    async fn github_credentials_with_file_whitespace_make_valid_headers() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            while !request.ends_with(b"\r\n\r\n") {
+                let mut chunk = [0; 1024];
+                let count = socket.read(&mut chunk).await.unwrap();
+                assert!(count > 0 && request.len() + count <= 4096);
+                request.extend_from_slice(&chunk[..count]);
+            }
+            let headers = String::from_utf8(request).unwrap().to_ascii_lowercase();
+            assert!(headers.contains("authorization: bearer fixture-token\r\n"));
+            socket.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n[]").await.unwrap();
+        });
+        let value = get_json(
+            &reqwest::Client::new(),
+            &format!("http://{address}/issues"),
+            &[],
+            Some(" \tfixture-token\r\n"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(value, json!([]));
+        server.await.unwrap();
     }
 }

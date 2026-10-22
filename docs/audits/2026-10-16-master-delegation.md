@@ -485,6 +485,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12490: redeploy the Foreman GitHub credential fix and complete #12489's
+  real objective-to-draft-PR check; the first deployment stopped dispatch
+  because the stored token contained surrounding whitespace.
 - #12489: deploy `0fa694b293` to the Grid host and website, bind the
   `coderos-4080` worker/project, and record an objective assignment reaching
   a checked draft PR. Importer and command checks passed (31 Grid, 12 server).
