@@ -6,6 +6,15 @@ use std::path::{Path, PathBuf};
 use rhai::module_resolvers::FileModuleResolver;
 use rhai::{Dynamic, Engine, EvalAltResult, Position};
 
+/// Count the occurrences of `needle` in `haystack`, including overlapping
+/// ones, at UTF-8 character boundaries.
+fn overlapping_matches(haystack: &str, needle: &str) -> usize {
+    haystack
+        .char_indices()
+        .filter(|&(start, _)| haystack[start..].starts_with(needle))
+        .count()
+}
+
 /// Apply search-and-replace blocks to `original`.
 ///
 /// The patch holds one or more blocks:
@@ -57,7 +66,7 @@ pub fn apply_patch(original: &str, patch: &str) -> Result<String, String> {
         if search.is_empty() {
             return Err(format!("block {blocks} has an empty search text"));
         }
-        match text.matches(&search).count() {
+        match overlapping_matches(&text, &search) {
             1 => text = text.replacen(&search, &replace, 1),
             0 => {
                 return Err(format!(
