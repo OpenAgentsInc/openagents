@@ -1822,6 +1822,63 @@ because it checks F(187) first. The
 records the defect. Add executable boundary assertions to G2; this answer
 failure does not by itself identify a GPU arithmetic cause.
 
+## G1 v2 under policy 2.1, and the second review (2026-10-22)
+
+Policy 2.1 (`g1_v2/policy-2.1.json`, SHA-256 `eda22812…f2589f`) was frozen
+before the served runtime's qualification run. Its reports, pins, and
+verdicts stay as they are; a successor policy does not change them.
+
+Results under 2.1, on the pinned worker bundle `185eb68c…faffde7`:
+
+- Calibration cases (report SHA-256 `a54989af…72480a9`, run at a maximum
+  context of 2,560 tokens, so it doesn't count as the launch profile's
+  qualification): router layer 1 over its limit in p1 and p2 (and layer 0 in
+  p2); top-1 substitutions in e-window-127 (decode and replay) and
+  e-window-128 (replay); the p3-2k replay tail fraction over its limit.
+- Holdout h1–h5 (SHA-256 `53cd653d…08ff93`): router layer 1 over its limit
+  in h1 and h3; h2, h4, and the three h5 cases pass. h6 (2,620 prompt tokens,
+  8,192 context; SHA-256 `42b7ce8a…159dce`) passes. h1–h5 are now exposed:
+  they stay as regression cases and can't confirm a successor policy.
+
+The second review (issue comment, 2026-10-22) found two defects in the 2.1
+evidence, recorded here without changing any verdict:
+
+- **The reference rejects itself.** The CPU reference (SHA-256
+  `ef0d9d5f…56a3`) fails 5 of its 12 case-and-mode top-1 fractions under
+  2.1: `derive_policy` pools 8 of 204 positions into one fraction, while
+  `judge_case` applies that fraction to each case, so a nine-position case
+  allows no substitution. `psionic-v41-stage qualify-judge` reproduces the
+  five violations.
+- **Router and index checks stay unresolved.** 2.1 freezes no router score
+  budget (`epsilon` is null), the margin path was never evaluated, and the
+  router report's `passed` ignored unresolved rows: every changed router row
+  in every 2.1 report is unresolved (e-window-127 has 1,776 and reported
+  `passed: true`). The policy's index rule is not evaluated by `qualify`.
+  A passing 2.1 router fraction is not a margin or regret verdict.
+
+Harness changes after the review (e4e649c8ff and later):
+
+- `self_check` requires the reference to pass every criterion derived from
+  it and every negative control to fail; `derive_policy_v22` (rule 2.2)
+  derives and judges at one unit, the case and mode. Rule 2.2 is a candidate
+  successor, not a frozen policy: freezing it needs a fresh confirmation
+  set.
+- The router check reads the oracle's retained scores (`--router-tops 8`,
+  14 per row for top-6) in the selection function's units for the boundary
+  gap and regret, needs the scores of every removed and added expert, and
+  reports a fraction verdict and a margin verdict separately. The
+  substitution cap holds even with no score budget.
+- `qualify --release` refuses missing layers, positions, router and exact
+  reports, and the unevaluated index rule.
+- G2 suite 2 (`g2_v2/task-suite-2.json`) adds must-pass assertions, a
+  parent-written test harness that must print every expected result (an
+  early exit, a silent run, or empty output fails), and narrower text checks.
+  `fib(186)` stays a visible, non-must-pass assertion because the oracle's
+  own answer fails it. `test_g2_check.py` holds the negative controls. The
+  verdict needs the must-pass floor and a pass count at least the oracle's
+  on this finite suite; it is not a statistical noninferiority claim.
+  Suite 1 and its results stay retained.
+
 ## W3 measurements and W2 answers (2026-10-21)
 
 Provisional: the runtime is not yet numerically qualified (G1 v2, #12405),

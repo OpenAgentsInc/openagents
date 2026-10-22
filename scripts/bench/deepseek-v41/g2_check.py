@@ -8,8 +8,11 @@ SUITE is `g2_v2/task-suite.json`; ANSWERS is `answers.json` from
 `psionic-v41-stage qualify --answers`, which carries both answers per case.
 A task passes when its answer ends with the end token within the cap, a
 thinking-mode answer has reasoning, and every assertion holds on the final
-text. Generated code runs in a scratch folder with a 60 s limit. The verdict
-is non-inferiority: the runtime's pass count must be at least the oracle's.
+text. Generated code runs in a scratch folder with a 60 s limit, under a
+parent-written harness that must print every expected result: an early exit,
+a silent run, or a partial run fails. The verdict needs both the floor (every
+must-pass assertion holds on the runtime) and non-inferiority (the runtime's
+pass count is at least the oracle's on this finite suite).
 """
 import json
 import re
@@ -30,15 +33,36 @@ def code_block(text, langs):
     return m.group(1) if m else None
 
 
+MARK = "G2-RESULT"
+
+
+def results_complete(stdout, n):
+    """Every expected case printed exactly one parent-written result line."""
+    seen = {}
+    for line in stdout.splitlines():
+        parts = line.split()
+        if len(parts) == 3 and parts[0] == MARK and parts[1].isdigit():
+            seen.setdefault(int(parts[1]), []).append(parts[2])
+    missing = [i for i in range(n) if i not in seen]
+    bad = [i for i, r in seen.items() if r != ["ok"]]
+    if missing:
+        return False, f"no result for cases {missing} (early exit or silent run)"
+    if bad:
+        return False, f"cases {bad} failed"
+    return True, "all cases hold"
+
+
 def rust_tests(text, a):
     code = code_block(text, ["rust", "rs"])
     if code is None:
         return False, "no Rust code block"
-    code = re.sub(r"(?m)^\s*fn main\s*\(\s*\)\s*\{.*", "", code, flags=re.S) if "fn main" in code else code
+    if re.search(r"\bfn\s+main\s*\(", code):
+        # The parent writes main; an answer's own main is renamed, not run.
+        code = re.sub(r"\bfn\s+main\s*\(", "fn answer_main(", code)
     calls = "\n".join(
-        f'    let got = {a["function"]}({args}); let want = {want};\n'
-        f'    println!("{{}}", if got == want {{ "ok" }} else {{ "FAIL {args}" }});'
-        for args, want in a["cases"]
+        f'    {{ let got = {a["function"]}({args}); let want = {want}; '
+        f'println!("{MARK} {i} {{}}", if got == want {{ "ok" }} else {{ "fail" }}); }}'
+        for i, (args, want) in enumerate(a["cases"])
     )
     src = "#![allow(dead_code, unused)]\n" + code + "\nfn main() {\n" + calls + "\n}\n"
     with tempfile.TemporaryDirectory() as d:
@@ -48,9 +72,14 @@ def rust_tests(text, a):
                            capture_output=True, text=True, timeout=LIMIT)
         if c.returncode:
             return False, "does not compile: " + c.stderr[-300:]
-        r = subprocess.run([str(Path(d) / "t")], capture_output=True, text=True, timeout=LIMIT)
-    fails = [l for l in r.stdout.splitlines() if l != "ok"]
-    return not fails and r.returncode == 0, "; ".join(fails) or "all cases hold"
+        try:
+            r = subprocess.run([str(Path(d) / "t")], capture_output=True, text=True, timeout=LIMIT)
+        except subprocess.TimeoutExpired:
+            return False, "timed out"
+    ok, why = results_complete(r.stdout, len(a["cases"]))
+    if ok and r.returncode != 0:
+        return False, f"exit status {r.returncode}"
+    return ok, why
 
 
 def python_tests(text, a):
@@ -58,35 +87,64 @@ def python_tests(text, a):
     if code is None:
         return False, "no Python code block"
     checks = "\n".join(
-        f'print("ok" if {a["function"]}({args}) == {want} else "FAIL {args}")' for args, want in a["cases"]
+        f'print("{MARK} {i}", "ok" if {a["function"]}({args}) == {want} else "fail")'
+        for i, (args, want) in enumerate(a["cases"])
     )
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "t.py"
         p.write_text(code + "\n" + checks + "\n")
-        r = subprocess.run([sys.executable, "-I", str(p)], capture_output=True, text=True, timeout=LIMIT, cwd=d)
-    fails = [l for l in r.stdout.splitlines() if l != "ok"]
-    return not fails and r.returncode == 0, "; ".join(fails) or r.stderr[-200:] or "all cases hold"
+        try:
+            r = subprocess.run([sys.executable, "-I", str(p)], capture_output=True, text=True, timeout=LIMIT, cwd=d)
+        except subprocess.TimeoutExpired:
+            return False, "timed out"
+    ok, why = results_complete(r.stdout, len(a["cases"]))
+    if ok and r.returncode != 0:
+        return False, f"exit status {r.returncode}"
+    return ok, why
+
+
+def strip_fence(text):
+    t = text.strip()
+    m = re.fullmatch(r"```(?:json)?\s*\n(.*?)\n?```", t, re.S)
+    return m.group(1).strip() if m else t
 
 
 def check(text, a):
     kind = a["kind"]
     if kind == "sentences_at_most":
         n = len([s for s in re.split(r"(?<=[.!?])\s+", text.strip()) if s.strip()])
-        return n <= a["value"], f"{n} sentences"
+        return 0 < n <= a["value"], f"{n} sentences"
     if kind == "contains_any":
         hit = [v for v in a["values"] if v.lower() in text.lower()]
         return bool(hit), f"found {hit}"
+    if kind == "contains_all":
+        low = text.lower()
+        need = [v for v in a["values"] if v.lower() not in low]
+        any_hit = [v for v in a.get("any_of", []) if v.lower() in low]
+        ok = not need and (not a.get("any_of") or bool(any_hit))
+        return ok, f"missing {need}, found {any_hit}"
     if kind == "last_line_number":
         lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
         nums = re.findall(r"-?\d+(?:\.\d+)?", lines[-1]) if lines else []
         ok = bool(nums) and float(nums[-1]) == float(a["value"])
         return ok, f"last line {lines[-1]!r}" if lines else "empty"
-    if kind == "json_fields":
-        m = re.search(r"\{.*\}", text, re.S)
-        try:
-            obj = json.loads(m.group(0)) if m else None
-        except json.JSONDecodeError:
-            obj = None
+    if kind == "last_line_exact":
+        lines = [l.strip().strip("*").strip() for l in text.strip().splitlines() if l.strip()]
+        if not lines:
+            return False, "empty"
+        return bool(re.fullmatch(a["pattern"], lines[-1])), f"last line {lines[-1]!r}"
+    if kind in ("json_fields", "json_only"):
+        if kind == "json_only":
+            try:
+                obj = json.loads(strip_fence(text))
+            except json.JSONDecodeError:
+                return False, "the final text is not only a JSON object"
+        else:
+            m = re.search(r"\{.*\}", text, re.S)
+            try:
+                obj = json.loads(m.group(0)) if m else None
+            except json.JSONDecodeError:
+                obj = None
         if not isinstance(obj, dict):
             return False, "no JSON object"
         for k, v in a["fields"].items():
@@ -111,14 +169,19 @@ def judge(task, ended, reasoning, content):
     if task["thinking_mode"] == "thinking" and not reasoning.strip():
         ok = False
         results.append({"check": "reasoning split", "passed": False})
+    must = ended
     for a in task["assertions"]:
         try:
             passed, why = check(content, a)
         except Exception as e:  # noqa: BLE001
             passed, why = False, f"error: {e}"
-        results.append({"check": a["kind"], "passed": passed, "detail": why})
+        results.append({"check": a["kind"], "passed": passed, "detail": why,
+                        "must_pass": a.get("must_pass", False),
+                        "known_shared_failure": a.get("known_shared_failure")})
         ok = ok and passed
-    return ok, results
+        if a.get("must_pass", False):
+            must = must and passed
+    return ok, results, must
 
 
 def main():
@@ -134,9 +197,10 @@ def main():
         parsed = o.get("parsed") or {}
         o_reason = parsed.get("reasoning_content") or parsed.get("reasoning") or ""
         o_content = parsed.get("content") or ""
-        o_ok, o_res = judge(task, bool(o.get("finished")), o_reason, o_content)
-        r_ok, r_res = judge(task, bool(a["ended"]), a["reasoning"], a["content"])
+        o_ok, o_res, _ = judge(task, bool(o.get("finished")), o_reason, o_content)
+        r_ok, r_res, r_must = judge(task, bool(a["ended"]), a["reasoning"], a["content"])
         rows.append({"case": task["id"], "oracle_passed": o_ok, "runtime_passed": r_ok,
+                     "runtime_must_pass_held": r_must,
                      "oracle_checks": o_res, "runtime_checks": r_res,
                      "oracle_tokens": o.get("tokens"), "runtime_tokens": a["tokens"],
                      "same_ids": a.get("same_ids_as_oracle")})
@@ -146,10 +210,12 @@ def main():
               "suite_sha256": __import__("hashlib").sha256(Path(sys.argv[1]).read_bytes()).hexdigest(),
               "oracle_passes": o_pass, "runtime_passes": r_pass, "tasks": len(suite["cases"]),
               "missing": [r["case"] for r in rows if r.get("missing")],
-              "passed": r_pass >= o_pass and not any(r.get("missing") for r in rows),
+              "floor_held": all(r.get("runtime_must_pass_held") for r in rows if not r.get("missing")),
+              "passed": r_pass >= o_pass and not any(r.get("missing") for r in rows)
+              and all(r.get("runtime_must_pass_held") for r in rows if not r.get("missing")),
               "rows": rows}
     Path(sys.argv[3]).write_text(json.dumps(report, indent=1) + "\n")
-    print(json.dumps({k: report[k] for k in ("oracle_passes", "runtime_passes", "tasks", "missing", "passed")}))
+    print(json.dumps({k: report[k] for k in ("oracle_passes", "runtime_passes", "tasks", "missing", "floor_held", "passed")}))
 
 
 if __name__ == "__main__":
