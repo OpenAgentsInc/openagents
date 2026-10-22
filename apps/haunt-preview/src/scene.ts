@@ -255,6 +255,7 @@ export function houseGeometry(
             : [0.35, 0.27, 0.24],
         );
     }
+    if (room.outdoor) continue;
     box(cx, 3.65, cz, w, 0.15, d, [0.17, 0.18, 0.2]);
     // A deep red runner guides the walk between rooms.
     box(
@@ -270,19 +271,21 @@ export function houseGeometry(
       box(cx + side * 0.8, 0.03, cz, 0.045, 0.02, d - 0.1, [0.67, 0.44, 0.21]);
   }
   for (const wall of floor.walls) {
+    const outdoor = layout.rooms.find((r) => r.id === wall.roomId)?.outdoor;
     const x = (wall.x1 + wall.x2) / 2,
       z = (wall.z1 + wall.z2) / 2;
     const horizontal = wall.z1 === wall.z2,
       length = Math.hypot(wall.x2 - wall.x1, wall.z2 - wall.z1);
     box(
       x,
-      1.8,
+      outdoor ? 0.3 : 1.8,
       z,
       horizontal ? length : 0.18,
-      3.6,
+      outdoor ? 0.6 : 3.6,
       horizontal ? 0.18 : length,
       [0.35, 0.34, 0.28],
     );
+    if (outdoor) continue;
     for (const [y, h, color] of [
       [0.5, 1, wood],
       [1.02, 0.09, [0.53, 0.37, 0.22]],

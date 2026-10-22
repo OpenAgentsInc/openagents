@@ -198,3 +198,31 @@ test("removed wall references survive extensions and an internal opening does no
   const target = floor.pick({ x: 0, z: 1.5, yaw: Math.PI / 2, pitch: 0 });
   assert.equal(target?.id, next.rooms.at(-1)!.id + ":east");
 });
+
+test("courtyards keep outdoor floors, low boundaries, save and undo through the shared plan", () => {
+  const s = new SceneHistory();
+  apply(s, { kind: "add_room", wall: "hall:south", size: 16, outdoor: true });
+  const court = s.project.layout!.rooms.at(-1)!;
+  assert.equal(court.outdoor, true);
+  assert.equal(court.name, "Courtyard");
+  const floor = new HouseFloor(s.project.layout);
+  assert.equal(floor.canStand(0, 10), true);
+  assert.equal(floor.canStand(0, 8), true);
+  assert.equal(floor.canStand(9, 16), false);
+  const saved = readLayout(JSON.parse(JSON.stringify(s.project.layout)));
+  assert.equal(saved.rooms.at(-1)?.outdoor, true);
+  assert.throws(() =>
+    readLayout({
+      ...saved,
+      rooms: saved.rooms.map((r) => ({ ...r, outdoor: "yes" })),
+    }),
+  );
+  apply(s, { kind: "undo" });
+  assert.equal(s.project.layout, undefined);
+  apply(s, { kind: "redo" });
+  assert.deepEqual(s.project.layout, saved);
+  assert.throws(() => extendLayout(DEFAULT_LAYOUT, "hall:south", 16));
+  assert.throws(() =>
+    extendLayout(DEFAULT_LAYOUT, "hall:south", 16, true, undefined, true),
+  );
+});

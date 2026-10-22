@@ -164,7 +164,7 @@ try {
   assert.equal(final.deviceId, initial.deviceId);
   assert.equal(final.compiles, initial.compiles);
   assert.equal(final.activePipelines, 1);
-  assert.equal(final.buffers, 2);
+  assert.equal(final.buffers, 2 + final.medieval.buffers);
   assert.deepEqual(
     JSON.parse(await page.evaluate(() => window.kilnReadScene())),
     final.project,
@@ -180,7 +180,7 @@ try {
   assert.deepEqual(errors, []);
   report.project = final.project;
   report.checks.push(
-    "all six meshes share the existing shader and buffers; player/device stay unchanged; mixed assets save and reopen through Kiln OPFS",
+    "Procedural props keep their shader; imported kit meshes use one shared texture array and instanced material. Player/device stay unchanged; mixed assets save and reopen through Kiln OPFS",
   );
   report.passed = true;
   console.log(

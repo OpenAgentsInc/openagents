@@ -125,3 +125,37 @@ Checks: 45 Kiln library tests, 22 project/protocol/simulation/layout tests, Type
 check, production build, and all five browser scripts. Unit cases cover shared-wall
 ownership, room bounds/overlap/connectivity, doorway picking, wing atomicity, ghost
 routes into new rooms, and wall removal remaining open after an extension.
+
+## Everglade medieval kit
+
+The [medieval receipt](medieval-receipt.json) records eight textured assets from
+Everglade's licensed **Modular Medieval Town**: cottage, townhouse, barrel, bench,
+chair, market stall, cart, and fountain. Our house recipes assemble the actual
+kit pieces. A 32 m courtyard adds outdoor floor and a doorway to the existing
+house, with the same save, undo, and redo behavior.
+
+All eight kinds pass real UI add/move/resize/remove/undo/redo and Jev requests.
+The final kit requests take 135–220 ms including Kiln saves; the house-alias
+request takes 134.7 ms. Exact catalog aliases resolve in code, with the action
+still checked by Jev. The owner-visible cottage request takes 217 ms.
+
+The bundle contains 19,599 triangles, 17 base-color texture layers, 2,822,256 B
+of vertices, and a 2,159,869 B atlas PNG. File identities and dimensions are
+committed; licensed geometry, textures, and captures stay outside Git under
+`~/.openagents/verse/private/medieval-town/` and the task's scratch directory.
+The [preview README](../../../../apps/haunt-preview/README.md#placeable-assets)
+describes preparation, licensing boundaries, and current prefab limitations.
+
+The browser check walks into the courtyard, draws the full-size cottage and
+props, makes 20 edits without geometry rebuilds or extra GPU resources, and
+reopens the scene through real Kiln OPFS. A missing bundle disables new kit
+placements while preserving saved kit entities. Editable-material counters remain
+separate from the fixed kit material: two house buffers, two kit buffers, one
+editable pipeline, one kit pipeline, one depth texture, and one kit texture array.
+Teardown releases both renderers' resources. Shader failure recovery, ghost
+behaviors, room/wing/wall changes, and the original editor checks also pass.
+
+Checks: 46 Kiln library tests, 23 browser project/protocol/simulation/layout tests,
+TypeScript check, production build, and all six browser scripts through isolated
+`openagents browser run` profiles. The final asset and medieval checks run again
+after exact-alias resolution and the missing-bundle save preservation change.

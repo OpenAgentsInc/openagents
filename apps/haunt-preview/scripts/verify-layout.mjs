@@ -183,7 +183,7 @@ try {
     saved.project,
   );
   await reopened.close();
-  assert.equal(saved.buffers, 2);
+  assert.equal(saved.buffers, 2 + saved.medieval.buffers);
   assert.equal(saved.activePipelines, 1);
   assert.deepEqual(errors, []);
   await page

@@ -1,0 +1,1172 @@
+{
+  "checks": [
+    "Courtyard button creates a saved roofless 32 m space with a doorway; one-step undo and redo.",
+    "Player walks through the doorway into the courtyard; full-size textured cottage, barrel, and market stall draw on the same WebGPU device.",
+    "Twenty instance edits keep buffer/pipeline counts stable; mixed scene and outdoor layout reopen from the real Kiln OPFS save.",
+    "Without the licensed bundle, ordinary props still work, kit choices are disabled, and kit edits fail without changing the scene."
+  ],
+  "decisions": [
+    {
+      "text": "Add a medieval house at (0, 25).",
+      "decision": {
+        "action": "add_asset",
+        "asset": "cottage",
+        "asset_resolution": "catalog",
+        "placement": "coordinates",
+        "size": "normal",
+        "tint": "unsupported",
+        "behavior": "unsupported",
+        "target_scope": "unsupported",
+        "confidence": 1,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 119.01316700000001,
+        "judgments": {
+          "action": {
+            "choice": "add_asset",
+            "confidence": 1,
+            "probabilities": {
+              "add_room": 0,
+              "add_wing": 0,
+              "remove_wall": 0,
+              "add_asset": 1,
+              "set_behavior": 0,
+              "move_asset": 0,
+              "resize_asset": 0,
+              "remove_asset": 0,
+              "set_tint": 0,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "asset": {
+            "choice": "cottage",
+            "confidence": 0.46,
+            "probabilities": {
+              "pumpkin": 0,
+              "ghost": 0,
+              "gravestone": 0,
+              "coffin": 0,
+              "candle": 0,
+              "crate": 0,
+              "cauldron": 0,
+              "cottage": 0.49,
+              "townhouse": 0.21,
+              "barrel": 0,
+              "bench": 0,
+              "chair": 0,
+              "market-stall": 0,
+              "cart": 0,
+              "fountain": 0,
+              "unsupported": 0.3
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "coordinates",
+            "confidence": 1,
+            "probabilities": {
+              "coordinates": 1,
+              "left": 0,
+              "right": 0,
+              "ahead": 0,
+              "behind": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "normal",
+            "confidence": 1,
+            "probabilities": {
+              "small": 0,
+              "normal": 1,
+              "large": 0,
+              "huge": 0,
+              "exact": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "behavior": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "float": 0,
+              "chase": 0,
+              "still": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0,
+              "blue": 0,
+              "green": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 127.599853515625,
+      "totalMs": 134.699951171875,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "add_asset",
+          "entity": {
+            "id": "cottage-434ec8a1-058d-4077-b768-318f1d964219",
+            "kind": "cottage",
+            "x": 0,
+            "z": 25,
+            "scale": 1
+          }
+        },
+        "revision": 124,
+        "submittedMs": 1.39990234375
+      }
+    },
+    {
+      "text": "Add a courtyard here.",
+      "decision": {
+        "action": "add_room",
+        "asset": "unsupported",
+        "asset_resolution": "decision",
+        "placement": "ahead",
+        "size": "normal",
+        "tint": "unsupported",
+        "behavior": "unsupported",
+        "target_scope": "unsupported",
+        "confidence": 0.77,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 132.476958,
+        "judgments": {
+          "action": {
+            "choice": "add_room",
+            "confidence": 0.98,
+            "probabilities": {
+              "add_room": 0.98,
+              "add_wing": 0,
+              "remove_wall": 0,
+              "add_asset": 0.01,
+              "set_behavior": 0,
+              "move_asset": 0,
+              "resize_asset": 0,
+              "remove_asset": 0,
+              "set_tint": 0,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0.01
+            },
+            "type": "choice"
+          },
+          "asset": {
+            "choice": "unsupported",
+            "confidence": 0.98,
+            "probabilities": {
+              "pumpkin": 0,
+              "ghost": 0,
+              "gravestone": 0,
+              "coffin": 0,
+              "candle": 0,
+              "crate": 0,
+              "cauldron": 0,
+              "cottage": 0,
+              "townhouse": 0.01,
+              "barrel": 0,
+              "bench": 0,
+              "chair": 0,
+              "market-stall": 0,
+              "cart": 0,
+              "fountain": 0.01,
+              "unsupported": 0.98
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "ahead",
+            "confidence": 0.77,
+            "probabilities": {
+              "coordinates": 0,
+              "left": 0,
+              "right": 0,
+              "ahead": 0.81,
+              "behind": 0,
+              "unsupported": 0.19
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "normal",
+            "confidence": 1,
+            "probabilities": {
+              "small": 0,
+              "normal": 1,
+              "large": 0,
+              "huge": 0,
+              "exact": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "behavior": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "float": 0,
+              "chase": 0,
+              "still": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0,
+              "blue": 0,
+              "green": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 136.400146484375,
+      "totalMs": 172.7001953125,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "add_room",
+          "wall": "gallery:west",
+          "size": 32,
+          "outdoor": true,
+          "at": {
+            "x": -4,
+            "z": -13
+          }
+        },
+        "revision": 147,
+        "submittedMs": 20.39990234375
+      }
+    },
+    {
+      "text": "Add a townhouse at (0, 25).",
+      "decision": {
+        "action": "add_asset",
+        "asset": "townhouse",
+        "asset_resolution": "catalog",
+        "placement": "coordinates",
+        "size": "normal",
+        "tint": "unsupported",
+        "behavior": "unsupported",
+        "target_scope": "unsupported",
+        "confidence": 0.99,
+        "needs_review": false,
+        "model": "jev-1.14.0",
+        "model_ms": 135.200834,
+        "judgments": {
+          "action": {
+            "choice": "add_asset",
+            "confidence": 1,
+            "probabilities": {
+              "add_room": 0,
+              "add_wing": 0,
+              "remove_wall": 0,
+              "add_asset": 1,
+              "set_behavior": 0,
+              "move_asset": 0,
+              "resize_asset": 0,
+              "remove_asset": 0,
+              "set_tint": 0,
+              "undo": 0,
+              "redo": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "asset": {
+            "choice": "townhouse",
+            "confidence": 1,
+            "probabilities": {
+              "pumpkin": 0,
+              "ghost": 0,
+              "gravestone": 0,
+              "coffin": 0,
+              "candle": 0,
+              "crate": 0,
+              "cauldron": 0,
+              "cottage": 0,
+              "townhouse": 1,
+              "barrel": 0,
+              "bench": 0,
+              "chair": 0,
+              "market-stall": 0,
+              "cart": 0,
+              "fountain": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "placement": {
+            "choice": "coordinates",
+            "confidence": 1,
+            "probabilities": {
+              "coordinates": 1,
+              "left": 0,
+              "right": 0,
+              "ahead": 0,
+              "behind": 0,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "size": {
+            "choice": "normal",
+            "confidence": 0.99,
+            "probabilities": {
+              "small": 0,
+              "normal": 0.99,
+              "large": 0,
+              "huge": 0,
+              "exact": 0.01,
+              "unsupported": 0
+            },
+            "type": "choice"
+          },
+          "behavior": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "float": 0,
+              "chase": 0,
+              "still": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          },
+          "tint": {
+            "choice": "unsupported",
+            "confidence": 1,
+            "probabilities": {
+              "warm": 0,
+              "orange": 0,
+              "blue": 0,
+              "green": 0,
+              "unsupported": 1
+            },
+            "type": "choice"
+          }
+        }
+      },
+      "roundTripMs": 138.60009765625,
+      "totalMs": 151.300048828125,
+      "receipt": {
+        "origin": "decision",
+        "operation": {
+          "kind": "add_asset",
+          "entity": {
+            "id": "townhouse-118234fb-8854-45f4-85b9-f2eb97d0b16d",
+            "kind": "townhouse",
+            "x": 0,
+            "z": 25,
+            "scale": 1
+          }
+        },
+        "revision": 149,
+        "submittedMs": 8.300048828125
+      }
+    }
+  ],
+  "final": {
+    "medieval": {
+      "available": true,
+      "instances": 3,
+      "meshes": 8,
+      "pipelines": 1,
+      "buffers": 2,
+      "textures": 1
+    },
+    "project": {
+      "schema": 1,
+      "id": "haunt-webgpu-v1",
+      "revision": 150,
+      "material": "haunt/material.wgsl",
+      "tint": "warm",
+      "layout": {
+        "rooms": [
+          {
+            "id": "hall",
+            "name": "Lantern Hall",
+            "x": 0,
+            "z": 1.5,
+            "width": 7,
+            "depth": 13
+          },
+          {
+            "id": "passage",
+            "name": "Passage",
+            "x": 0,
+            "z": -7,
+            "width": 2.5,
+            "depth": 4
+          },
+          {
+            "id": "gallery",
+            "name": "Gallery",
+            "x": 0,
+            "z": -13,
+            "width": 8,
+            "depth": 8
+          },
+          {
+            "id": "room-9d6b2fc0-21b7-410f-9f57-fb0e50db97b6",
+            "name": "Courtyard",
+            "x": 0,
+            "z": 24,
+            "width": 32,
+            "depth": 32,
+            "outdoor": true
+          }
+        ],
+        "removedWalls": []
+      },
+      "entities": [
+        {
+          "id": "pumpkin-1",
+          "kind": "pumpkin",
+          "x": -2.5,
+          "z": 0,
+          "scale": 1.3
+        },
+        {
+          "id": "pumpkin-2",
+          "kind": "pumpkin",
+          "x": 2.5,
+          "z": -4,
+          "scale": 1
+        },
+        {
+          "id": "pumpkin-3",
+          "kind": "pumpkin",
+          "x": -0.8,
+          "z": -8,
+          "scale": 0.7
+        },
+        {
+          "id": "pumpkin-4",
+          "kind": "pumpkin",
+          "x": 2.7,
+          "z": -14,
+          "scale": 1.8
+        },
+        {
+          "id": "pumpkin-5",
+          "kind": "pumpkin",
+          "x": -2.8,
+          "z": -12,
+          "scale": 0.9
+        },
+        {
+          "id": "ghost-gallery",
+          "kind": "ghost",
+          "x": -1.5,
+          "z": 3.6,
+          "scale": 0.85
+        },
+        {
+          "id": "gravestone-gallery",
+          "kind": "gravestone",
+          "x": 1.5,
+          "z": 3.6,
+          "scale": 0.85
+        },
+        {
+          "id": "coffin-gallery",
+          "kind": "coffin",
+          "x": -1.5,
+          "z": 1,
+          "scale": 0.8
+        },
+        {
+          "id": "candle-gallery",
+          "kind": "candle",
+          "x": 0.9,
+          "z": 5,
+          "scale": 1
+        },
+        {
+          "id": "crate-gallery",
+          "kind": "crate",
+          "x": 1.8,
+          "z": 1,
+          "scale": 1
+        },
+        {
+          "id": "cauldron-gallery",
+          "kind": "cauldron",
+          "x": 0,
+          "z": 1.5,
+          "scale": 1.2
+        },
+        {
+          "id": "cottage-434ec8a1-058d-4077-b768-318f1d964219",
+          "kind": "cottage",
+          "x": 0,
+          "z": 25,
+          "scale": 1
+        },
+        {
+          "id": "barrel-704f1179-33a7-497e-8e0b-dfc7b9f45ade",
+          "kind": "barrel",
+          "x": -3,
+          "z": 10,
+          "scale": 1
+        },
+        {
+          "id": "market-stall-4a4e75f1-f43c-44fa-b90e-7685cff208e4",
+          "kind": "market-stall",
+          "x": 4.1,
+          "z": 13,
+          "scale": 1
+        }
+      ]
+    },
+    "actors": [
+      {
+        "id": "ghost-gallery",
+        "behavior": "still",
+        "x": -1.5,
+        "y": 0,
+        "z": 3.6,
+        "yaw": 0
+      }
+    ],
+    "behaviorTicks": 36,
+    "geometryBuilds": 4,
+    "aimedWall": {
+      "id": "gallery:north",
+      "roomId": "gallery",
+      "name": "Gallery \u00b7 north wall",
+      "side": "north",
+      "x1": -4,
+      "z1": -17,
+      "x2": 4,
+      "z2": -17,
+      "exterior": true,
+      "removed": false,
+      "distance": 23.8,
+      "hitX": 0,
+      "hitZ": -17
+    },
+    "canUndo": false,
+    "canRedo": true,
+    "pose": {
+      "x": 0,
+      "z": 6.8,
+      "yaw": 0,
+      "pitch": -0.03
+    },
+    "frame": 37,
+    "deviceId": "810d97e2-e851-44b6-850b-4ed0fbe80242",
+    "draft": 2,
+    "accepted": 2,
+    "hash": "a05c3cc9f313ab4ea9ced2eba6f6eccbdfda6a4e23039162cadae06ad15aefdc",
+    "width": 834,
+    "height": 691,
+    "compiles": 2,
+    "inflight": 0,
+    "activePipelines": 1,
+    "pendingPipelines": 0,
+    "buffers": 4,
+    "depthTextures": 1,
+    "disposed": false,
+    "maxFrameMs": 16.80000000000001,
+    "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+    },
+    "latestResult": {
+      "type": "accepted",
+      "revision": 2,
+      "request": "af515b3b-cb81-4445-ad92-62117daf1af7",
+      "hash": "a05c3cc9f313ab4ea9ced2eba6f6eccbdfda6a4e23039162cadae06ad15aefdc",
+      "visibleAt": 1792702499053.4,
+      "state": {
+        "medieval": {
+          "available": true,
+          "instances": 0,
+          "meshes": 8,
+          "pipelines": 1,
+          "buffers": 2,
+          "textures": 1
+        },
+        "project": {
+          "schema": 1,
+          "id": "haunt-webgpu-v1",
+          "revision": 0,
+          "material": "haunt/material.wgsl",
+          "tint": "warm",
+          "entities": [
+            {
+              "id": "pumpkin-1",
+              "kind": "pumpkin",
+              "x": -2.5,
+              "z": 0,
+              "scale": 1.3
+            },
+            {
+              "id": "pumpkin-2",
+              "kind": "pumpkin",
+              "x": 2.5,
+              "z": -4,
+              "scale": 1
+            },
+            {
+              "id": "pumpkin-3",
+              "kind": "pumpkin",
+              "x": -0.8,
+              "z": -8,
+              "scale": 0.7
+            },
+            {
+              "id": "pumpkin-4",
+              "kind": "pumpkin",
+              "x": 2.7,
+              "z": -14,
+              "scale": 1.8
+            },
+            {
+              "id": "pumpkin-5",
+              "kind": "pumpkin",
+              "x": -2.8,
+              "z": -12,
+              "scale": 0.9
+            }
+          ]
+        },
+        "actors": [],
+        "behaviorTicks": 6,
+        "geometryBuilds": 1,
+        "aimedWall": {
+          "id": "gallery:north",
+          "roomId": "gallery",
+          "name": "Gallery \u00b7 north wall",
+          "side": "north",
+          "x1": -4,
+          "z1": -17,
+          "x2": 4,
+          "z2": -17,
+          "exterior": true,
+          "removed": false,
+          "distance": 23.8,
+          "hitX": 0,
+          "hitZ": -17
+        },
+        "canUndo": false,
+        "canRedo": false,
+        "pose": {
+          "x": 0,
+          "z": 6.8,
+          "yaw": 0,
+          "pitch": -0.03
+        },
+        "frame": 7,
+        "deviceId": "810d97e2-e851-44b6-850b-4ed0fbe80242",
+        "draft": 2,
+        "accepted": 2,
+        "hash": "a05c3cc9f313ab4ea9ced2eba6f6eccbdfda6a4e23039162cadae06ad15aefdc",
+        "width": 834,
+        "height": 691,
+        "compiles": 2,
+        "inflight": 0,
+        "activePipelines": 1,
+        "pendingPipelines": 0,
+        "buffers": 4,
+        "depthTextures": 1,
+        "disposed": false,
+        "maxFrameMs": 16.700000000000017
+      },
+      "preview": "edd5d847-d87c-41b2-8431-9cb1e7566e41",
+      "token": "36db293c-4035-4eb5-917c-134206857357"
+    },
+    "samples": [
+      6.39990234375,
+      15.89990234375
+    ],
+    "receipts": [
+      {
+        "type": "accepted",
+        "revision": 1,
+        "request": "2f43f2ac-47b7-482e-a749-3b9247311bd2",
+        "hash": "a05c3cc9f313ab4ea9ced2eba6f6eccbdfda6a4e23039162cadae06ad15aefdc",
+        "visibleAt": 1792702499036.7,
+        "state": {
+          "medieval": {
+            "available": true,
+            "instances": 0,
+            "meshes": 8,
+            "pipelines": 1,
+            "buffers": 2,
+            "textures": 1
+          },
+          "project": {
+            "schema": 1,
+            "id": "haunt-webgpu-v1",
+            "revision": 0,
+            "material": "haunt/material.wgsl",
+            "tint": "warm",
+            "entities": [
+              {
+                "id": "pumpkin-1",
+                "kind": "pumpkin",
+                "x": -2.5,
+                "z": 0,
+                "scale": 1.3
+              },
+              {
+                "id": "pumpkin-2",
+                "kind": "pumpkin",
+                "x": 2.5,
+                "z": -4,
+                "scale": 1
+              },
+              {
+                "id": "pumpkin-3",
+                "kind": "pumpkin",
+                "x": -0.8,
+                "z": -8,
+                "scale": 0.7
+              },
+              {
+                "id": "pumpkin-4",
+                "kind": "pumpkin",
+                "x": 2.7,
+                "z": -14,
+                "scale": 1.8
+              },
+              {
+                "id": "pumpkin-5",
+                "kind": "pumpkin",
+                "x": -2.8,
+                "z": -12,
+                "scale": 0.9
+              }
+            ]
+          },
+          "actors": [],
+          "behaviorTicks": 5,
+          "geometryBuilds": 1,
+          "aimedWall": {
+            "id": "gallery:north",
+            "roomId": "gallery",
+            "name": "Gallery \u00b7 north wall",
+            "side": "north",
+            "x1": -4,
+            "z1": -17,
+            "x2": 4,
+            "z2": -17,
+            "exterior": true,
+            "removed": false,
+            "distance": 23.8,
+            "hitX": 0,
+            "hitZ": -17
+          },
+          "canUndo": false,
+          "canRedo": false,
+          "pose": {
+            "x": 0,
+            "z": 6.8,
+            "yaw": 0,
+            "pitch": -0.03
+          },
+          "frame": 6,
+          "deviceId": "810d97e2-e851-44b6-850b-4ed0fbe80242",
+          "draft": 1,
+          "accepted": 1,
+          "hash": "a05c3cc9f313ab4ea9ced2eba6f6eccbdfda6a4e23039162cadae06ad15aefdc",
+          "width": 834,
+          "height": 691,
+          "compiles": 1,
+          "inflight": 0,
+          "activePipelines": 1,
+          "pendingPipelines": 0,
+          "buffers": 4,
+          "depthTextures": 1,
+          "disposed": false,
+          "maxFrameMs": 16.700000000000017
+        },
+        "preview": "edd5d847-d87c-41b2-8431-9cb1e7566e41",
+        "token": "36db293c-4035-4eb5-917c-134206857357",
+        "ms": 6.39990234375
+      },
+      {
+        "type": "accepted",
+        "revision": 2,
+        "request": "af515b3b-cb81-4445-ad92-62117daf1af7",
+        "hash": "a05c3cc9f313ab4ea9ced2eba6f6eccbdfda6a4e23039162cadae06ad15aefdc",
+        "visibleAt": 1792702499053.4,
+        "state": {
+          "medieval": {
+            "available": true,
+            "instances": 0,
+            "meshes": 8,
+            "pipelines": 1,
+            "buffers": 2,
+            "textures": 1
+          },
+          "project": {
+            "schema": 1,
+            "id": "haunt-webgpu-v1",
+            "revision": 0,
+            "material": "haunt/material.wgsl",
+            "tint": "warm",
+            "entities": [
+              {
+                "id": "pumpkin-1",
+                "kind": "pumpkin",
+                "x": -2.5,
+                "z": 0,
+                "scale": 1.3
+              },
+              {
+                "id": "pumpkin-2",
+                "kind": "pumpkin",
+                "x": 2.5,
+                "z": -4,
+                "scale": 1
+              },
+              {
+                "id": "pumpkin-3",
+                "kind": "pumpkin",
+                "x": -0.8,
+                "z": -8,
+                "scale": 0.7
+              },
+              {
+                "id": "pumpkin-4",
+                "kind": "pumpkin",
+                "x": 2.7,
+                "z": -14,
+                "scale": 1.8
+              },
+              {
+                "id": "pumpkin-5",
+                "kind": "pumpkin",
+                "x": -2.8,
+                "z": -12,
+                "scale": 0.9
+              }
+            ]
+          },
+          "actors": [],
+          "behaviorTicks": 6,
+          "geometryBuilds": 1,
+          "aimedWall": {
+            "id": "gallery:north",
+            "roomId": "gallery",
+            "name": "Gallery \u00b7 north wall",
+            "side": "north",
+            "x1": -4,
+            "z1": -17,
+            "x2": 4,
+            "z2": -17,
+            "exterior": true,
+            "removed": false,
+            "distance": 23.8,
+            "hitX": 0,
+            "hitZ": -17
+          },
+          "canUndo": false,
+          "canRedo": false,
+          "pose": {
+            "x": 0,
+            "z": 6.8,
+            "yaw": 0,
+            "pitch": -0.03
+          },
+          "frame": 7,
+          "deviceId": "810d97e2-e851-44b6-850b-4ed0fbe80242",
+          "draft": 2,
+          "accepted": 2,
+          "hash": "a05c3cc9f313ab4ea9ced2eba6f6eccbdfda6a4e23039162cadae06ad15aefdc",
+          "width": 834,
+          "height": 691,
+          "compiles": 2,
+          "inflight": 0,
+          "activePipelines": 1,
+          "pendingPipelines": 0,
+          "buffers": 4,
+          "depthTextures": 1,
+          "disposed": false,
+          "maxFrameMs": 16.700000000000017
+        },
+        "preview": "edd5d847-d87c-41b2-8431-9cb1e7566e41",
+        "token": "36db293c-4035-4eb5-917c-134206857357",
+        "ms": 15.89990234375
+      }
+    ],
+    "kiln": {
+      "ready": true,
+      "busy": false,
+      "working": null,
+      "repo": null,
+      "files": [
+        {
+          "path": "haunt/material.wgsl",
+          "bytes": 1788,
+          "changed": false
+        },
+        {
+          "path": "haunt/scene.json",
+          "bytes": 1495,
+          "changed": false
+        }
+      ],
+      "file_count": 2,
+      "runner": true,
+      "tests": null,
+      "changed": false,
+      "green": false,
+      "patch": null,
+      "problem": null
+    }
+  },
+  "passed": true,
+  "asset_decisions": [
+    {
+      "text": "Add a ghost at (1, 3).",
+      "asset": "ghost",
+      "totalMs": 154.10009765625,
+      "modelMs": 140.525375,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a gravestone at (1, 3).",
+      "asset": "gravestone",
+      "totalMs": 206.099853515625,
+      "modelMs": 182.88333400000002,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a coffin at (1, 3).",
+      "asset": "coffin",
+      "totalMs": 152.89990234375,
+      "modelMs": 127.276958,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a candle at (1, 3).",
+      "asset": "candle",
+      "totalMs": 137.699951171875,
+      "modelMs": 120.40950000000001,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a crate at (1, 3).",
+      "asset": "crate",
+      "totalMs": 155.199951171875,
+      "modelMs": 134.802334,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a cauldron at (1, 3).",
+      "asset": "cauldron",
+      "totalMs": 153.39990234375,
+      "modelMs": 137.653958,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a cottage at (1, 3).",
+      "asset": "cottage",
+      "totalMs": 137.800048828125,
+      "modelMs": 124.96587500000001,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a townhouse at (1, 3).",
+      "asset": "townhouse",
+      "totalMs": 152,
+      "modelMs": 134.301292,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a barrel at (1, 3).",
+      "asset": "barrel",
+      "totalMs": 135.699951171875,
+      "modelMs": 118.436375,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a bench at (1, 3).",
+      "asset": "bench",
+      "totalMs": 189.300048828125,
+      "modelMs": 171.855709,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a chair at (1, 3).",
+      "asset": "chair",
+      "totalMs": 136.800048828125,
+      "modelMs": 118.417541,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a market-stall at (1, 3).",
+      "asset": "market-stall",
+      "totalMs": 137.599853515625,
+      "modelMs": 120.81425,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a cart at (1, 3).",
+      "asset": "cart",
+      "totalMs": 155.2998046875,
+      "modelMs": 136.387958,
+      "asset_resolution": "catalog"
+    },
+    {
+      "text": "Add a fountain at (1, 3).",
+      "asset": "fountain",
+      "totalMs": 219.89990234375,
+      "modelMs": 203.279875,
+      "asset_resolution": "catalog"
+    }
+  ],
+  "regressions": {
+    "editor": {
+      "passed": true,
+      "checks": [
+        "exact UI request 'add 5 huge pumpkins to my left': five size-2.5 pumpkins on the player's left, one revision, one-step undo/redo, Kiln save, unchanged pose/device/shader",
+        "manual add/resize/move and real Kiln file writes share stable IDs, validation, undo/redo, and OPFS saves; no model or shader compilation for direct controls",
+        "30 scene edits keep player/device and resource counts stable; no shader rebuilds",
+        "real Jev SDK: add, move and lantern tint in one typed request each; unsupported request makes no change",
+        "controls stay usable during inference; manual edit cancels delayed decision and stale result cannot overwrite it",
+        "stalled inference stops at the UI deadline while walking/rendering remains available",
+        "scene round-trips through real Kiln OPFS on reopen; foreign origins cannot call the credentialed endpoint",
+        "bounded worker capture returns a nonempty PNG of the rendered scene"
+      ]
+    },
+    "behaviors": {
+      "passed": true,
+      "checks": [
+        "exact plural request floats all ghosts; captures with fixed lighting show moving geometry; simulation does not change authored positions or add history",
+        "exact singular request changes only the selected ghost; it approaches the player while walking stays responsive",
+        "stop freezes the current live position and saves it; behavior and group changes support undo/redo",
+        "direct behavior controls and 30 repeated rule changes keep the existing geometry buffer and shader",
+        "batched stop captures the live position in the same atomic transaction",
+        "invalid shaders retain the working shader and running behaviors; unsupported behaviors and non-ghost targets make no scene change",
+        "rules persist through real Kiln OPFS/reopen; animation resumes from authored positions; teardown releases resources"
+      ]
+    },
+    "layout": {
+      "passed": true,
+      "checks": [
+        "real exact text requests knock down an aimed wall, add a selected-wall room, and add a three-room wing to the right; one-step undo/redo, pose/device/shader preservation, and real Kiln saves",
+        "player walks through the new doorway; undo refuses to remove floor beneath the player; assets and ghost behavior work inside added rooms",
+        "layout and new-room assets reopen through Kiln OPFS; failed shaders keep the working view/layout; direct construction controls add another connected room with bounded resources"
+      ]
+    }
+  },
+  "bundle": {
+    "schema": 1,
+    "kit": "Modular Medieval Town",
+    "layers": 17,
+    "meshes": {
+      "cottage": {
+        "first": 0,
+        "count": 10008,
+        "dimensions": [
+          11.0,
+          8.8892,
+          12.2194
+        ]
+      },
+      "townhouse": {
+        "first": 10008,
+        "count": 14376,
+        "dimensions": [
+          11.0,
+          12.8892,
+          12.2194
+        ]
+      },
+      "barrel": {
+        "first": 24384,
+        "count": 2481,
+        "dimensions": [
+          0.8287,
+          1.165,
+          0.8413
+        ]
+      },
+      "bench": {
+        "first": 26865,
+        "count": 1431,
+        "dimensions": [
+          0.8925,
+          1.3117,
+          2.0354
+        ]
+      },
+      "chair": {
+        "first": 28296,
+        "count": 1647,
+        "dimensions": [
+          0.4973,
+          0.9274,
+          0.4657
+        ]
+      },
+      "market-stall": {
+        "first": 29943,
+        "count": 2664,
+        "dimensions": [
+          4.2055,
+          3.485,
+          2.6435
+        ]
+      },
+      "cart": {
+        "first": 32607,
+        "count": 2934,
+        "dimensions": [
+          3.3127,
+          1.2244,
+          1.7526
+        ]
+      },
+      "fountain": {
+        "first": 35541,
+        "count": 23256,
+        "dimensions": [
+          6.1858,
+          2.1463,
+          6.1858
+        ]
+      }
+    },
+    "files": {
+      "meshes.bin": {
+        "bytes": 2822256,
+        "sha256": "72142081d9fe45a9838969574d5d2aa9a5c72eee25593d4eb9d6c7d67bb8880b"
+      },
+      "atlas.png": {
+        "bytes": 2159869,
+        "sha256": "26ffc79425840bf9643ae7cdc7db921ddab45342915f23c090d8bd25f38c95e9"
+      }
+    }
+  }
+}

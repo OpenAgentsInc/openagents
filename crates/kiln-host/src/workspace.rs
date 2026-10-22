@@ -10,10 +10,13 @@ use std::{
 };
 
 const MAX_TURNS: usize = 96;
+const MAX_GUIDANCE_BYTES: usize = 2000;
+const MAX_INSTRUCTION_BYTES: usize = INSTRUCTIONS.len() + 4000;
 
 const INSTRUCTIONS: &str = r#"You are Kiln, editing a bounded repository workspace. Reply only with one JSON object:
 {"thought":"one short sentence","commands":[...]}
-Commands: {"run":"ls PATH"}, {"run":"view PATH START END"}, {"run":"grep TEXT PATH"}, {"write":"PATH","content":"full text"}, {"patch":"PATH","search":"exact unique old text","replace":"new text"}, {"run":"check"}, {"done":"summary"}.
+Commands: {"run":"ls PATH"}, {"run":"view PATH START END"}, {"run":"grep TEXT PATH"}, {"run":"copy SOURCE DEST"}, {"write":"PATH","content":"full text"}, {"patch":"PATH","search":"exact unique old text","replace":"new text"}, {"run":"check"}, {"done":"summary"}.
+copy duplicates an existing scoped text file in the private workspace without printing or regenerating it.
 Read before editing. Use small exact patches, preserve existing style, and write meaningful regression tests. View at most 20 lines at a time. No shell or arbitrary programs are available. check asks the coordinator to run the task's real checks outside this workspace. Read failures, repair, and check again. Say done only after check passed for your current files. Never change paths outside the supplied scope. Your edits remain private until a reviewer accepts them."#;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -373,6 +376,10 @@ impl Workspace {
                     .as_slice()
                 {
                     ["ls", path] => Ok(self.names(path)?.join("\n")),
+                    ["copy", source, destination] => {
+                        let text = self.read(source)?;
+                        self.edit(destination, text)
+                    }
                     ["view", path, start, end] => {
                         let start: usize = start.parse().map_err(|_| "invalid start line")?;
                         let end: usize = end.parse().map_err(|_| "invalid end line")?;
@@ -409,7 +416,7 @@ impl Workspace {
                         Ok(hits.join("\n"))
                     }
                     _ => Err(
-                        "available commands: ls PATH, view PATH START END, grep TEXT PATH, check"
+                        "available commands: ls PATH, view PATH START END, grep TEXT PATH, copy SOURCE DEST, check"
                             .into(),
                     ),
                 }
@@ -443,6 +450,18 @@ impl Workspace {
             problem: None,
         });
         self.phase = "model".into();
+        Ok(())
+    }
+    fn guide(&mut self, text: &str) -> Result<()> {
+        let text = text.trim();
+        if text.is_empty() || text.len() > MAX_GUIDANCE_BYTES || text.contains('\0') {
+            return Err("guidance must contain 1 to 2000 bytes of text".into());
+        }
+        let addition = format!("\n\nCoordinator guidance:\n{text}");
+        if self.agent.instructions.len() + addition.len() > MAX_INSTRUCTION_BYTES {
+            return Err("workspace guidance limit reached".into());
+        }
+        self.agent.instructions.push_str(&addition);
         Ok(())
     }
     pub async fn advance(&mut self, path: &Path) -> Result<()> {
@@ -553,7 +572,7 @@ pub async fn run(args: &[String]) -> Result<()> {
     let action = args.first().map(String::as_str).unwrap_or("help");
     if action == "help" || args.iter().any(|s| s == "--help") {
         println!(
-            "kiln-workspace init|advance|status|export|feedback --state FILE\ninit --config FILE\nfeedback --input FILE (digest, code, output)"
+            "kiln-workspace init|advance|status|export|feedback|guide --state FILE\ninit --config FILE\nfeedback --input FILE (digest, code, output)\nguide --input FILE (up to 2000 bytes of UTF-8 text)"
         );
         return Ok(());
     }
@@ -580,6 +599,15 @@ pub async fn run(args: &[String]) -> Result<()> {
     workspace.config.validate()?;
     match action {
         "advance" => workspace.advance(&path).await?,
+        "guide" => {
+            let bytes = workspace_host::artifact::read(
+                &PathBuf::from(option("--input")?),
+                MAX_GUIDANCE_BYTES,
+            )?;
+            let text = String::from_utf8(bytes).map_err(|_| "guidance must be UTF-8 text")?;
+            workspace.guide(&text)?;
+            save(&path, &workspace)?;
+        }
         "feedback" => {
             let result: Value = load(&PathBuf::from(option("--input")?))?;
             workspace.feedback(
@@ -632,6 +660,170 @@ mod tests {
             "files": {}, "original": {}, "pending": [], "phase": "model",
             "turns": 0, "calls": 0, "until": now() + 60, "checked": null,
         })
+    }
+    #[test]
+    fn copy_uses_scoped_text_snapshots_and_invalidates_the_check() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
+        let dir = root.path().join("apps/haunt-preview");
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = (0..750)
+            .map(|line| format!("export const value_{line} = {line};\n"))
+            .collect::<String>();
+        assert!(source.len() > 16000);
+        std::fs::write(dir.join("worker.ts"), &source).unwrap();
+        std::fs::write(dir.join("oversize.ts"), "x".repeat(250001)).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(root.path().join("key"), dir.join("link")).unwrap();
+        git(root.path(), &["init", "-q"]).unwrap();
+        git(root.path(), &["add", "apps"]).unwrap();
+        git(
+            root.path(),
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        )
+        .unwrap();
+        let mut c = config(root.path());
+        c.base = git(root.path(), &["rev-parse", "HEAD"])
+            .unwrap()
+            .trim()
+            .into();
+        let mut workspace = Workspace::new(c).unwrap();
+        workspace.execute(&Command::Run("check".into())).unwrap();
+        workspace
+            .feedback(&workspace.digest(), 0, "checks passed")
+            .unwrap();
+        let output = workspace
+            .execute(&Command::Run(
+                "copy apps/haunt-preview/worker.ts apps/haunt-preview/runtime.ts".into(),
+            ))
+            .unwrap();
+        assert!(output.len() < 100);
+        assert_eq!(workspace.files["apps/haunt-preview/runtime.ts"], source);
+        assert!(workspace.checked.is_none());
+        assert!(workspace.execute(&Command::Done("done".into())).is_err());
+        assert!(!dir.join("runtime.ts").exists());
+        workspace
+            .edit("apps/haunt-preview/worker.ts", "updated overlay".into())
+            .unwrap();
+        workspace
+            .execute(&Command::Run(
+                "copy apps/haunt-preview/worker.ts apps/haunt-preview/overlay.ts".into(),
+            ))
+            .unwrap();
+        assert_eq!(
+            workspace.files["apps/haunt-preview/overlay.ts"],
+            "updated overlay"
+        );
+        let before = workspace.digest();
+        for line in [
+            "guide apps/haunt-preview/worker.ts apps/haunt-preview/x.ts",
+            "copy ../key apps/haunt-preview/x.ts",
+            "copy key apps/haunt-preview/x.ts",
+            "copy apps/haunt-preview/worker.ts ../x.ts",
+            "copy apps/haunt-preview/worker.ts apps/haunt-preview-evil/x.ts",
+            "copy apps/haunt-preview/oversize.ts apps/haunt-preview/x.ts",
+            "copy apps/haunt-preview/worker.ts apps/haunt-preview/runtime.ts/x.ts",
+            "copy apps/haunt-preview/worker.ts apps/haunt-preview",
+            "copy apps/haunt-preview apps/haunt-preview/x.ts",
+        ] {
+            assert!(
+                workspace.execute(&Command::Run(line.into())).is_err(),
+                "{line}"
+            );
+        }
+        #[cfg(unix)]
+        for line in [
+            "copy apps/haunt-preview/link apps/haunt-preview/x.ts",
+            "copy apps/haunt-preview/link/x.ts apps/haunt-preview/x.ts",
+            "copy apps/haunt-preview/worker.ts apps/haunt-preview/link",
+            "copy apps/haunt-preview/worker.ts apps/haunt-preview/link/x.ts",
+        ] {
+            assert!(
+                workspace.execute(&Command::Run(line.into())).is_err(),
+                "{line}"
+            );
+        }
+        assert_eq!(workspace.digest(), before);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("worker.ts")).unwrap(),
+            source
+        );
+    }
+    #[tokio::test]
+    async fn guidance_is_bounded_persisted_and_uses_the_workspace_lock() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
+        let mut workspace: Workspace =
+            serde_json::from_value(legacy_workspace(root.path())).unwrap();
+        workspace.agent.instructions = INSTRUCTIONS.into();
+        workspace.phase = "awaiting-check".into();
+        workspace.checked = Some(workspace.digest());
+        workspace.pending = vec![Command::Run("check".into())];
+        workspace.record_answer("fixture prompt", &Err("fixture refusal".into()), 1);
+        let before = serde_json::to_value(&workspace).unwrap();
+        let state = root.path().join("workspace.json");
+        let note = root.path().join("note.txt");
+        let guidance = "Use copy SOURCE DEST to duplicate a scoped file without regenerating it.";
+        std::fs::write(&note, guidance).unwrap();
+        save(&state, &workspace).unwrap();
+        let args = vec![
+            "guide".into(),
+            "--state".into(),
+            state.to_string_lossy().into_owned(),
+            "--input".into(),
+            note.to_string_lossy().into_owned(),
+        ];
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(state.with_extension("lock"))
+            .unwrap();
+        fs2::FileExt::try_lock_exclusive(&lock).unwrap();
+        assert_eq!(
+            run(&args).await.unwrap_err(),
+            "workspace is already running"
+        );
+        assert_eq!(
+            serde_json::to_value(load::<Workspace>(&state).unwrap()).unwrap(),
+            before
+        );
+        drop(lock);
+        run(&args).await.unwrap();
+        let restored: Workspace = load(&state).unwrap();
+        assert!(restored.agent.instructions.ends_with(guidance));
+        let mut after = serde_json::to_value(&restored).unwrap();
+        after["agent"]["instructions"] = before["agent"]["instructions"].clone();
+        assert_eq!(after, before);
+        for bad in [
+            vec![b'x'; MAX_GUIDANCE_BYTES + 1],
+            vec![0xff],
+            vec![0],
+            vec![b'\n'],
+        ] {
+            let unchanged = std::fs::read(&state).unwrap();
+            std::fs::write(&note, bad).unwrap();
+            assert!(run(&args).await.is_err());
+            assert_eq!(std::fs::read(&state).unwrap(), unchanged);
+        }
+        std::fs::write(&note, "x".repeat(MAX_GUIDANCE_BYTES)).unwrap();
+        run(&args).await.unwrap();
+        let unchanged = std::fs::read(&state).unwrap();
+        assert_eq!(
+            run(&args).await.unwrap_err(),
+            "workspace guidance limit reached"
+        );
+        assert_eq!(std::fs::read(&state).unwrap(), unchanged);
+        let restored: Workspace = load(&state).unwrap();
+        assert!(restored.agent.instructions.len() <= MAX_INSTRUCTION_BYTES);
     }
     #[test]
     fn legacy_workspace_loads_without_answer_evidence() {

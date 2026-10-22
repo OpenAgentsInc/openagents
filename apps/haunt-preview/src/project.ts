@@ -1,3 +1,4 @@
+import kit from "./medieval-kit.json" with { type: "json" };
 import {
   DEFAULT_LAYOUT,
   HouseFloor,
@@ -55,6 +56,7 @@ export type Operation =
       wall: string;
       size: number;
       at?: { x: number; z: number };
+      outdoor?: boolean;
     }
   | { kind: "remove_wall"; wall: string }
   | { kind: "set_tint"; tint: Tint }
@@ -223,6 +225,7 @@ export class SceneHistory {
           op.size,
           op.kind === "add_wing",
           op.at,
+          op.outdoor,
         );
         break;
       case "remove_wall": {
@@ -399,10 +402,12 @@ export function assetCount(text: string, kind: AssetKind): number {
     "hundred",
     "thousand",
   ];
-  const nouns = ASSETS[kind].aliases.join("|");
+  const nouns = [...ASSETS[kind].aliases]
+    .sort((a, b) => b.length - a.length)
+    .join("|");
   const match = text.match(
     new RegExp(
-      `(?:^|\\s)([^\\s]+)\\s+(?:(?:very|really|huge|enormous|giant|gigantic|big|large|small|little|tiny|normal|medium|regular|orange|wooden|glowing|white|dark|green|stone)\\s+)*(?:${nouns})\\b`,
+      `(?:^|\\s)([^\\s]+)\\s+(?:(?:very|really|huge|enormous|giant|gigantic|big|large|small|little|tiny|normal|medium|regular|orange|wooden|glowing|white|dark|green|stone|medieval|fantasy|two-story|one-story)\\s+)*(?:${nouns})\\b`,
       "i",
     ),
   );
@@ -432,13 +437,21 @@ export const pumpkinCount = (text: string) => assetCount(text, "pumpkin");
 /** Place a group on the requested side without stacking it or moving the player. */
 function groupPositions(
   count: number,
+  kind: AssetKind,
   scale: number,
   placement: string,
   pose: Pose,
   anchor: { x: number; z: number },
   project: Project,
 ): { x: number; z: number }[] {
-  const radius = scale * 0.4;
+  const footprint = (kind: AssetKind, scale: number) => {
+    const mesh = kit.meshes[kind as keyof typeof kit.meshes];
+    return (
+      scale *
+      (mesh ? Math.max(mesh.dimensions[0], mesh.dimensions[2]) / 2 : 0.4)
+    );
+  };
+  const radius = footprint(kind, scale);
   const floor = new HouseFloor(project.layout ?? DEFAULT_LAYOUT);
   const candidates: { x: number; z: number; distance: number }[] = [];
   for (let row = 0; row < 36; row++) {
@@ -483,7 +496,7 @@ function groupPositions(
         project.entities.some(
           (e) =>
             Math.hypot(e.x - point.x, e.z - point.z) <
-            radius + e.scale * 0.4 + 0.1,
+            radius + footprint(e.kind, e.scale) + 0.1,
         )
       )
         continue;
@@ -534,7 +547,7 @@ export function decisionOperation(
       "We couldn’t understand that edit. Try the scene controls or rephrase it.",
     );
   const explicitId = text.match(
-    /\b(?:pumpkin|ghost|gravestone|coffin|candle|crate|cauldron)-[a-zA-Z0-9-]+\b/,
+    new RegExp(`\\b(?:${Object.keys(ASSETS).join("|")})-[a-zA-Z0-9-]+\\b`),
   )?.[0];
   const id = explicitId ?? selected;
   const target = () => {
@@ -594,9 +607,7 @@ export function decisionOperation(
     case "add_pumpkin": {
       const kind = d.action === "add_pumpkin" ? "pumpkin" : d.asset;
       if (!kind || !Object.hasOwn(ASSETS, kind))
-        throw new Error(
-          "Choose a pumpkin, ghost, gravestone, coffin, candle, crate, or cauldron.",
-        );
+        throw new Error("Choose an asset from the list.");
       const count = assetCount(text, kind as AssetKind);
       if (project.entities.length + count > MAX_ASSETS)
         throw new Error(
@@ -607,7 +618,15 @@ export function decisionOperation(
       const positions =
         count === 1
           ? [anchor]
-          : groupPositions(count, size, d.placement, pose, anchor, project);
+          : groupPositions(
+              count,
+              kind as AssetKind,
+              size,
+              d.placement,
+              pose,
+              anchor,
+              project,
+            );
       const operations: Operation[] = positions.map((p) => ({
         kind: d.action === "add_pumpkin" ? "add_pumpkin" : "add_asset",
         entity: {
@@ -677,7 +696,8 @@ export function decisionOperation(
       return {
         kind: d.action,
         wall: wall.id,
-        size,
+        size: /\bcourtyard\b/i.test(text) ? 32 : size,
+        ...(/\bcourtyard\b/i.test(text) ? { outdoor: true } : {}),
         at: { x: wall.x, z: wall.z },
       };
     }
