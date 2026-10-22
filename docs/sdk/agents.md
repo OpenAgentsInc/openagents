@@ -89,7 +89,7 @@ Assignment `result` is the agent's final answer, at most 16,384 UTF-8 bytes. A
 longer answer is cut and ends with a note that the full answer is in the app. Task and
 follow-up text are bounded to 64 KiB. Lists have at most eight entries per page;
 follow `next` until null. The account book permits 256 unarchived assignments,
-128 commands each, 4,096 mutations, and 4 MiB including retry records.
+128 commands each, 4,096 mutations, and 16 MiB including retry records.
 
 ## Run an independent Rust agent
 
