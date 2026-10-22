@@ -65,6 +65,10 @@ struct App {
     /// The Kiln build this page runs (`tools/manifest.json`'s `kiln.build`),
     /// or `site` for the host's own build.
     build: RefCell<String>,
+    /// The run as the transcript draws it.
+    run_view: RefCell<crate::transcript::Run>,
+    /// The tool card of the command running now, for its progress lines.
+    current_tool: RefCell<Option<String>>,
     /// A newer build waits for the agent to go idle.
     pending_build: RefCell<Option<String>>,
     /// The key self-edit jobs are signed with: kept in this browser so the
@@ -109,6 +113,8 @@ pub async fn run() {
         repo_address: RefCell::new(String::new()),
         build: RefCell::new(String::new()),
         pending_build: RefCell::new(None),
+        run_view: RefCell::new(crate::transcript::Run::default()),
+        current_tool: RefCell::new(None),
         admin_key: RefCell::new(None),
         key,
         worker: RefCell::new(None),
@@ -237,6 +243,35 @@ impl App {
         );
         let app = self.clone();
         on("stop", Box::new(move |_| app.stop.set(true)));
+        for (id, raw) in [("view-transcript", false), ("view-raw", true)] {
+            let app = self.clone();
+            on(
+                id,
+                Box::new(move |_| {
+                    let toggle = |id: &str, hidden: bool| {
+                        if let Some(node) = app.doc.get_element_by_id(id) {
+                            let _ = node.class_list().toggle_with_force("hidden", hidden);
+                        }
+                    };
+                    toggle("log", !raw);
+                    toggle("gpui-mount", raw);
+                    for (button, on) in [("view-transcript", !raw), ("view-raw", raw)] {
+                        if let Some(node) = app.doc.get_element_by_id(button) {
+                            let _ = node.class_list().toggle_with_force("on", on);
+                        }
+                    }
+                }),
+            );
+        }
+        let app = self.clone();
+        on(
+            "drawer",
+            Box::new(move |_| {
+                if let Some(body) = app.doc.body() {
+                    let _ = body.class_list().toggle("drawer-open");
+                }
+            }),
+        );
         let app = self.clone();
         on(
             "self-load",
@@ -793,14 +828,51 @@ impl App {
         match command.call() {
             Ok(Some(call)) => {
                 self.log("cmd", &format!("$ {}", command.label()));
+                let card = crate::transcript::call_for(&call.argv);
+                let file_path = matches!(card.tool, "write" | "edit")
+                    .then(|| card.path.clone())
+                    .flatten()
+                    .and_then(|p| crate::vfs::resolve("", &p).ok());
+                let before = file_path.as_ref().and_then(|p| {
+                    self.vfs
+                        .borrow()
+                        .read(p)
+                        .ok()
+                        .map(|b| String::from_utf8_lossy(b).into_owned())
+                });
+                let id = self.run_view.borrow_mut().tool(&card, now_ms());
+                *self.current_tool.borrow_mut() = Some(id.clone());
+                self.push_transcript();
                 let run = if call.argv[0] == "cargo" {
                     self.remote_cargo(&call.argv).await
                 } else {
                     self.run_tool(&call.argv, &call.stdin).await
                 };
-                let shown = crate::agent::clip(run.output.trim_end(), 4000);
+                *self.current_tool.borrow_mut() = None;
+                let after = file_path.as_ref().and_then(|p| {
+                    self.vfs
+                        .borrow()
+                        .read(p)
+                        .ok()
+                        .map(|b| String::from_utf8_lossy(b).into_owned())
+                });
+                let diff = match (run.code, after) {
+                    (0, Some(after)) if before.as_deref() != Some(after.as_str()) => {
+                        Some((before, after))
+                    }
+                    _ => None,
+                };
+                let (loud, quiet) = crate::transcript::split_noise(&run.output);
+                self.run_view
+                    .borrow_mut()
+                    .finish(&id, loud.trim_end(), run.code != 0, diff);
+                self.push_transcript();
+                let shown = crate::agent::clip(loud.trim_end(), 4000);
                 if !shown.is_empty() {
                     self.log(if run.code == 0 { "out" } else { "err" }, &shown);
+                }
+                if !quiet.is_empty() {
+                    self.log("muted", &crate::agent::clip(quiet.trim_end(), 2000));
                 }
                 if run.code != 0 {
                     self.log("err", &format!("exit {}", run.code));
@@ -889,6 +961,11 @@ impl App {
         let relay_url: HtmlInputElement = el(&self.doc, "relay").unchecked_into();
         let relay_url = relay_url.value();
         self.log("task", &format!("Task: {task}"));
+        self.run_view.borrow_mut().start(&task, now_ms());
+        self.run_view
+            .borrow_mut()
+            .working(Some("Asking a Pylon"), now_ms());
+        self.push_transcript();
         let mut agent = Agent::new(&task, cj::LEGACY_MAX_INPUT_BYTES);
         if let Some(repo) = self.repo() {
             let crates: Vec<String> = repo["crates"]
@@ -993,8 +1070,24 @@ impl App {
                 a.budget = budget;
                 a.prompt(&files)
             };
+            {
+                let mut view = self.run_view.borrow_mut();
+                view.turn(now_ms());
+                view.working(Some("Asking a Pylon"), now_ms());
+                view.status(
+                    &format!("Asking Pylons for {}…", want.unwrap_or("any model")),
+                    now_ms(),
+                );
+            }
+            self.push_transcript();
             let app = self.clone();
-            let feedback = move |note: &str| app.log("info", note);
+            let feedback = move |note: &str| {
+                app.log("info", note);
+                app.run_view
+                    .borrow_mut()
+                    .update_status(&crate::transcript::pylon_words(note), now_ms());
+                app.push_transcript();
+            };
             let asked = conn
                 .ask(
                     &self.key,
@@ -1012,6 +1105,10 @@ impl App {
                 Ok(asked) => asked,
                 Err(error) => {
                     self.log("error", &error.message);
+                    self.run_view
+                        .borrow_mut()
+                        .update_status(&format!("No answer: {}", error.message), now_ms());
+                    self.push_transcript();
                     if error.message.contains("limit_exceeded") && error.message.contains("tokens")
                     {
                         // Too long a prompt, not a bad pylon: ask again with
@@ -1067,6 +1164,21 @@ impl App {
                 "answer_ms": asked.answer_ms,
                 "usage": asked.usage,
             }));
+            {
+                let mut view = self.run_view.borrow_mut();
+                view.update_status(
+                    &format!(
+                        "{} · answered in {:.1} s",
+                        crate::transcript::who(&asked.label, &asked.model),
+                        asked.answer_ms / 1000.0
+                    ),
+                    now_ms(),
+                );
+                if let Some(reasoning) = &asked.reasoning {
+                    view.reasoning(reasoning, now_ms());
+                }
+                view.working(Some("Running tools"), now_ms());
+            }
             let mut commands = agent.plan(&asked.text);
             // Run `done` last, so a reply that says done and publish does both.
             commands.sort_by_key(|c| matches!(c, Command::Done(_)));
@@ -1078,9 +1190,23 @@ impl App {
                         crate::agent::clip(&asked.text, 600)
                     ),
                 );
+                self.run_view.borrow_mut().status(
+                    "I couldn't read that reply as commands, so I'll ask again. The raw log has it.",
+                    now_ms(),
+                );
             } else if let Some(last) = agent.steps.last() {
                 self.log("thought", &last.thought.clone());
+                // The step's stated thinking draws as a thinking block when
+                // the pylon sent no reasoning of its own.
+                if asked.reasoning.is_some() {
+                    self.run_view.borrow_mut().text(&last.thought, now_ms());
+                } else {
+                    self.run_view
+                        .borrow_mut()
+                        .reasoning(&last.thought, now_ms());
+                }
             }
+            self.push_transcript();
             let tools_started = now_ms();
             for command in &commands {
                 if let Command::Done(summary) = command {
@@ -1097,6 +1223,8 @@ impl App {
                     }
                     agent.observe(command, 0, String::new());
                     self.log("done", &format!("Done: {summary}"));
+                    self.run_view.borrow_mut().text(summary, now_ms());
+                    self.push_transcript();
                     break;
                 }
                 if let Command::Publish { subject, body } = command {
@@ -1138,6 +1266,8 @@ impl App {
                 &format!("Finished in {} steps and {secs:.0} s.", agent.steps.len()),
             );
         }
+        self.run_view.borrow_mut().working(None, now_ms());
+        self.push_transcript();
         if let Some(window) = web_sys::window() {
             set(&window, "kilnAgentDone", agent.done.is_some());
         }
@@ -1377,6 +1507,13 @@ impl App {
                     "runner, {:.0} s: {note}",
                     (now_ms() - started) / 1000.0
                 )));
+                if let Some(id) = self.current_tool.borrow().clone() {
+                    self.run_view.borrow_mut().progress(
+                        &id,
+                        &format!("{:.0} s: {note}", (now_ms() - started) / 1000.0),
+                    );
+                    self.push_transcript();
+                }
             }
         };
         let result = relay
@@ -2031,6 +2168,23 @@ async fn fetch_json_fresh(url: &str) -> Result<Value, String> {
         .await
         .map_err(|e| text(&e))?;
     serde_json::from_str(&body.as_string().unwrap_or_default()).map_err(|e| e.to_string())
+}
+
+impl App {
+    /// Hand the run to the transcript module, when it's loaded; it also
+    /// reads `kilnTranscriptLatest` when it starts.
+    fn push_transcript(&self) {
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        let json = self.run_view.borrow().to_json();
+        set(&window, "kilnTranscriptLatest", json.clone());
+        if let Ok(show) = js_sys::Reflect::get(&window, &"kilnTranscriptShow".into())
+            && let Ok(show) = show.dyn_into::<js_sys::Function>()
+        {
+            let _ = show.call1(&JsValue::NULL, &JsValue::from_str(&json));
+        }
+    }
 }
 
 const KILN_TASK: &str = "This workspace is Kiln's own source. In crates/kiln/src/agent.rs, add `pub fn tool_count() -> usize` with a doc comment that returns how many tools TOOLS lists, and a unit test in the existing tests module that checks it equals TOOLS.len() and is at least 7. Run `cargo test -p kiln -p kiln-tools` until it passes.";

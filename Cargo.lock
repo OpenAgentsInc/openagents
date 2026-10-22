@@ -9959,6 +9959,7 @@ dependencies = [
  "js-sys",
  "livehost",
  "nostr",
+ "oa-copy",
  "openagents-workspace-hack",
  "secp256k1 0.31.1",
  "serde",

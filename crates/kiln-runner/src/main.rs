@@ -255,6 +255,20 @@ fn last_line(log: &Path) -> Option<String> {
         .map(|l| l.chars().take(160).collect())
 }
 
+/// The macOS SDK's path, asked of `xcrun` once, outside any boundary.
+fn macos_sdk() -> Option<&'static str> {
+    static SDK: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    SDK.get_or_init(|| {
+        let out = Command::new("xcrun")
+            .args(["--sdk", "macosx", "--show-sdk-path"])
+            .output()
+            .ok()?;
+        let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        (out.status.success() && !path.is_empty()).then_some(path)
+    })
+    .as_deref()
+}
+
 /// The Cargo configuration files in the directories above `dir`.
 fn user_cargo_configs(dir: &Path) -> Vec<PathBuf> {
     dir.ancestors()
@@ -335,7 +349,15 @@ pub(crate) fn run_sandboxed(
         .env("CARGO_TERM_COLOR", "never")
         .env("RUSTC_WRAPPER", "")
         .env("CARGO_BUILD_RUSTC_WRAPPER", "")
-        .env("TMPDIR", boundary.scratch().unwrap_or(&work));
+        .env("TMPDIR", boundary.scratch().unwrap_or(&work))
+        .env("XDG_CACHE_HOME", boundary.scratch().unwrap_or(&work))
+        // xcrun keeps a cache under the macOS user temporary directory,
+        // which the boundary doesn't let it write; skip the cache, and name
+        // the SDK up front so the linker needn't look it up.
+        .env("xcrun_nocache", "1");
+    if let Some(sdk) = macos_sdk() {
+        command.env("SDKROOT", sdk);
+    }
     for (name, value) in &toolchains.environment {
         if name != "CARGO_HOME" {
             command.env(name, value);

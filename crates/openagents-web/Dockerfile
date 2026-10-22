@@ -356,7 +356,9 @@ RUN --network=host --mount=type=cache,target=/var/cache/kache,sharing=private fi
     && test -s /build/pylons-card/webgl/openagents_web_pylon_card_bg.wasm.br \
     && sh scripts/deploy/oa-module-cache.sh lander8 /build/lander8 -- oa-kache run apps/openagents/scripts/build-web-lander-chat.sh /build/lander8 \
     && test -s /build/lander8/webgpu/openagents_web_lander_chat_bg.wasm.br \
-    && test -s /build/lander8/webgl/openagents_web_lander_chat_bg.wasm.br
+    && test -s /build/lander8/webgl/openagents_web_lander_chat_bg.wasm.br \
+    && sh scripts/deploy/oa-module-cache.sh kiln-transcript /build/kiln-transcript -- oa-kache run apps/openagents/scripts/build-web-kiln-transcript.sh /build/kiln-transcript \
+    && test -s /build/kiln-transcript/openagents_web_kiln_transcript_bg.wasm.br
 
 FROM gpuiweb-deps AS gpuiweb-chat
 COPY . .
@@ -403,6 +405,7 @@ COPY --from=gpuiweb /build/gpui-fonts /gpui-fonts
 COPY --from=gpuiweb-chat /build/gpui-chat /gpui-chat
 COPY --from=everglade /build/pylons-layer /pylons/layer
 COPY --from=everglade /build/kiln /kiln
+COPY --from=gpuiweb-graph /build/kiln-transcript /kiln/transcript
 COPY --from=gpuiweb-graph /build/pylons-card /pylons/card
 COPY --from=gpuiweb-graph /build/lander8 /lander8
 COPY --from=gpuiweb /build/lander9 /lander9
@@ -440,6 +443,7 @@ COPY --from=gpuiweb /build/gpui-fonts /srv/gpui-fonts
 COPY --from=gpuiweb-chat /build/gpui-chat /srv/gpui-chat
 COPY --from=everglade /build/pylons-layer /srv/pylons/layer
 COPY --from=everglade /build/kiln /srv/kiln
+COPY --from=gpuiweb-graph /build/kiln-transcript /srv/kiln/transcript
 COPY --from=gpuiweb-graph /build/pylons-card /srv/pylons/card
 COPY --from=gpuiweb-graph /build/lander8 /srv/lander8
 COPY --from=gpuiweb /build/lander9 /srv/lander9

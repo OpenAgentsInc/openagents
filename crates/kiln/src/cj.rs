@@ -358,6 +358,9 @@ pub enum Answer {
         text: String,
         model: Option<String>,
         usage: Option<Value>,
+        /// The model's reasoning, when the pylon sends it apart from the
+        /// answer.
+        reasoning: Option<String>,
     },
     Error(String),
     Other,
@@ -390,6 +393,10 @@ pub fn read(kind: u16, plain: &str) -> Answer {
                 text: text.to_string(),
                 model: value["model"].as_str().map(str::to_string),
                 usage: value.get("usage").cloned(),
+                reasoning: value["reasoning"]
+                    .as_str()
+                    .filter(|r| !r.trim().is_empty())
+                    .map(str::to_string),
             },
             None => Answer::Error("the result is empty".into()),
         };

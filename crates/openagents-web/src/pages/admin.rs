@@ -332,8 +332,14 @@ fn kind(file: &str) -> Option<Kind> {
     match file {
         "config.json" => Some(Kind::Config),
         "index.html" | "review.html" => Some(Kind::Html),
-        "worker.js" | "pkg/kiln.js" => Some(Kind::Asset(JS, FRESH)),
-        "pkg/kiln_bg.wasm" => Some(Kind::Asset("application/wasm", FRESH)),
+        "worker.js" | "pkg/kiln.js" | "transcript/openagents_web_kiln_transcript.js" => {
+            Some(Kind::Asset(JS, FRESH))
+        }
+        // The transcript: the desktop's chat components drawing Kiln's run
+        // (apps/openagents/web/kiln-transcript).
+        "pkg/kiln_bg.wasm" | "transcript/openagents_web_kiln_transcript_bg.wasm" => {
+            Some(Kind::Asset("application/wasm", FRESH))
+        }
         "tools/manifest.json" => Some(Kind::Asset("application/json", FRESH)),
         _ => {
             let hash = file.strip_prefix("tools/")?.strip_suffix(".wasm")?;

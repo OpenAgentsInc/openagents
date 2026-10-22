@@ -45,6 +45,7 @@ members = [
     "card",
     "graph-card",
     "pylon-card",
+    "kiln-transcript",
     "lander-chat",
     "hands",
 ]

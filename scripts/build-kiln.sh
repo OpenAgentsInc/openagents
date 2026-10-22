@@ -58,8 +58,22 @@ for tool in cat grep ls patch rhai test view write; do
 done
 printf '%s}}\n' "$manifest" > "$out/tools/manifest.json"
 
+# The transcript: the desktop's chat components drawing the run, built in
+# the GPUI web workspace with its own toolchain and target. KILN_TRANSCRIPT=0
+# skips it; the page then shows the raw log.
+if [ "${KILN_TRANSCRIPT:-1}" != 0 ]; then
+  (
+    cd "$root/apps/openagents/web"
+    unset RUSTC CARGO_BUILD_BUILD_DIR
+    CARGO_TARGET_DIR="${KILN_APP_TARGET:-$HOME/work/openagents-target-1-app}"
+    export CARGO_TARGET_DIR
+    . "$root/scripts/dev/cargo-build-env.sh"
+    "$root/apps/openagents/scripts/build-web-kiln-transcript.sh" "$out/transcript" >/dev/null
+  )
+fi
+
 echo "built $out"
-du -sh "$out/pkg/kiln_bg.wasm" "$out/tools" | sed 's/^/  /'
+du -sh "$out/pkg/kiln_bg.wasm" "$out/tools" "$out/transcript" 2>/dev/null | sed 's/^/  /'
 
 if [ "${1:-}" = "--serve" ]; then
   exec "$CARGO_TARGET_DIR/debug/kiln-dev" --dir "$out" --port "${2:-8787}"

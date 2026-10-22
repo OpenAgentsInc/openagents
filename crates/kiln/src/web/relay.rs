@@ -45,6 +45,8 @@ pub struct AskError {
 /// What one ask returned.
 pub struct Asked {
     pub text: String,
+    /// The model's reasoning: the pylon's `reasoning`, or a `<think>` block.
+    pub reasoning: Option<String>,
     pub label: String,
     pub model: String,
     pub pylon: String,
@@ -297,8 +299,10 @@ impl Relay {
             .exchange(key, &beacon.provider, &body, wait_secs, &progress)
             .await
             .map_err(fail)?;
+        let (thinking, rest) = crate::transcript::split_thinking(&got.text);
         Ok(Asked {
-            text: cj::clean(&got.text),
+            text: cj::clean(&rest),
+            reasoning: got.reasoning.clone().or(thinking),
             label: beacon.label.clone(),
             model: got.model.unwrap_or_else(|| service.model.clone()),
             pylon: beacon.provider.clone(),
@@ -368,9 +372,15 @@ impl Relay {
                         continue;
                     };
                     match cj::read(event.kind, &plain) {
-                        Answer::Result { text, model, usage } => {
+                        Answer::Result {
+                            text,
+                            model,
+                            usage,
+                            reasoning,
+                        } => {
                             break Ok(Exchanged {
                                 text,
+                                reasoning,
                                 model,
                                 usage,
                                 contact_ms,
@@ -393,6 +403,7 @@ impl Relay {
 /// What [`Relay::exchange`] returned.
 pub struct Exchanged {
     pub text: String,
+    pub reasoning: Option<String>,
     pub model: Option<String>,
     pub usage: Option<Value>,
     pub contact_ms: Option<f64>,

@@ -227,13 +227,53 @@ fn tool_object(c: &Value) -> Option<String> {
     Some(line.join(" "))
 }
 
+/// Commands written in DeepSeek's own tool-call markup instead of JSON:
+/// `<|DSML|invoke name="view"><|DSML|parameter name="path" ...>x</...>`
+/// blocks (the bars may be full width). Each invoke becomes a command
+/// object: `{"view": PATH, "start": .., "end": ..}`, `{"patch": PATH,
+/// "search": .., "replace": ..}`, `{"run": COMMAND}`, and so on.
+fn dsml_commands(text: &str) -> Option<Vec<Value>> {
+    // DeepSeek writes full-width bars, sometimes with a space after the tag
+    // name's bar (`<｜DSML｜ invoke`).
+    let text = text.replace('\u{ff5c}', "|").replace("|DSML| ", "|DSML|");
+    if !text.contains("|DSML|invoke") {
+        return None;
+    }
+    let mut commands = Vec::new();
+    for block in text.split("|DSML|invoke name=\"").skip(1) {
+        let name = block.split('"').next()?.to_string();
+        let mut params = serde_json::Map::new();
+        for param in block.split("|DSML|parameter name=\"").skip(1) {
+            let key = param.split('"').next()?.to_string();
+            let after = param.find('>')? + 1;
+            let rest = &param[after..];
+            let end = rest.find("</|DSML|parameter").or_else(|| rest.find("</"))?;
+            params.insert(key, Value::String(rest[..end].to_string()));
+        }
+        let mut object = serde_json::Map::new();
+        let main = ["path", "command", "line", "summary", "subject", "text"]
+            .iter()
+            .find_map(|k| params.remove(*k));
+        object.insert(name, main.unwrap_or(Value::String(String::new())));
+        object.extend(params);
+        commands.push(Value::Object(object));
+    }
+    (!commands.is_empty()).then_some(commands)
+}
+
 /// Parse a model reply into a [`Plan`].
 ///
 /// # Errors
 ///
 /// When the reply holds no JSON object, or a command has no known shape.
 pub fn parse(reply: &str) -> Result<Plan, String> {
-    let value = json_object(reply).ok_or("the reply is not a JSON object")?;
+    let value = match json_object(reply) {
+        Some(value) => value,
+        None => match dsml_commands(reply) {
+            Some(commands) => serde_json::json!({"thought": "", "commands": commands}),
+            None => return Err("the reply is not a JSON object".into()),
+        },
+    };
     let raw: RawPlan =
         serde_json::from_value(value).map_err(|e| format!("the reply's shape: {e}"))?;
     let mut commands = Vec::new();
@@ -488,6 +528,17 @@ mod tests {
         );
         assert_eq!(plan.commands[1], Command::Run("grep 'fn a' src".into()));
         assert_eq!(plan.commands[2], Command::Run("cargo test -p x".into()));
+        let dsml = "<\u{ff5c}DSML\u{ff5c}calls>\n<\u{ff5c}DSML\u{ff5c}invoke name=\"view\">\n<\u{ff5c}DSML\u{ff5c}parameter name=\"path\" string=\"true\">src/lib.rs</\u{ff5c}DSML\u{ff5c}parameter>\n<\u{ff5c}DSML\u{ff5c} parameter name=\"start\" string=\"false\">18</\u{ff5c}DSML\u{ff5c} parameter>\n</\u{ff5c}DSML\u{ff5c}invoke>\n<|DSML|invoke name=\"patch\"><|DSML|parameter name=\"path\" string=\"true\">a.rs</|DSML|parameter><|DSML|parameter name=\"search\" string=\"true\">x</|DSML|parameter><|DSML|parameter name=\"replace\" string=\"true\">y</|DSML|parameter></|DSML|invoke>";
+        let plan = parse(dsml).unwrap();
+        assert_eq!(plan.commands[0], Command::Run("view src/lib.rs 18".into()));
+        assert_eq!(
+            plan.commands[1],
+            Command::Patch {
+                path: "a.rs".into(),
+                search: "x".into(),
+                replace: "y".into()
+            }
+        );
     }
 
     #[test]

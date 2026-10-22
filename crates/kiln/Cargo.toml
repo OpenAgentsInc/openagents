@@ -61,6 +61,7 @@ web-sys = { version = "0.3.105", features = [
     "VisibilityState",
     "HtmlCollection",
     "History",
+    "HtmlBodyElement",
     "StorageManager",
     "Url",
     "UrlSearchParams",
@@ -72,6 +73,9 @@ web-sys = { version = "0.3.105", features = [
     "ErrorEvent",
     "CloseEvent",
 ] }
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
 
 [lints]
 workspace = true

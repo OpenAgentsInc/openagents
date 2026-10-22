@@ -11,7 +11,9 @@ globalThis.homeKiln = open => {
     return;
   }
   if (globalThis.openagentsAdmin !== true) return;
-  if (!kilnFrame.getAttribute('src')) kilnFrame.src = '/admin/kiln/';
+  // `embed` draws Kiln as an overlay: the run on the right over the world,
+  // its controls in a drawer.
+  if (!kilnFrame.getAttribute('src')) kilnFrame.src = '/admin/kiln/?embed=grid';
   kilnPanel.hidden = false;
   if (chatField && document.activeElement === chatField) chatField.blur();
   kilnFrame.focus();
