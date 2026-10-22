@@ -838,6 +838,14 @@ async fn go(options: Options) -> Result<u8, String> {
             "jev": Basis::ListPrice,
             "embeddings": retriever.as_ref().and_then(|r| r.embedder()).map(|e| e.basis()),
         },
+        "pylon_attempts": match &generator {
+            Generator::Pylon(pylon) => Some(pylon.attempts()),
+            _ => None,
+        },
+        "pylon_usage": match &generator {
+            Generator::Pylon(pylon) => Some(pylon.usage()),
+            _ => None,
+        },
         "retrieval": microcoder::run::retrieval_summary(
             retriever.is_some(),
             retriever.as_ref().and_then(|r| r.embedder()).map(|e| {
@@ -1086,6 +1094,14 @@ async fn go_local(mut options: Options) -> Result<u8, String> {
         Generator::Pylon(pylon) => Some(pylon.answered()),
         _ => None,
     };
+    let pylon_attempts = match &generator {
+        Generator::Pylon(pylon) => Some(pylon.attempts()),
+        _ => None,
+    };
+    let pylon_usage = match &generator {
+        Generator::Pylon(pylon) => Some(pylon.usage()),
+        _ => None,
+    };
     let finished = matches!(outcome.ending, Ending::Finished);
     println!(
         "\n{} · {} steps · {} · {} (model {} {basis}, Jev {}) · ended by {}",
@@ -1117,6 +1133,7 @@ async fn go_local(mut options: Options) -> Result<u8, String> {
         "provider": options.provider, "cost_basis": basis,
         "cost_bases": {"model": basis, "jev": Basis::ListPrice},
         "outcome": outcome, "finished": finished, "pylon_answers": answered,
+        "pylon_attempts": pylon_attempts, "pylon_usage": pylon_usage,
     });
     let _ = std::fs::write(
         run_dir.join("summary.json"),
