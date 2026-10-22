@@ -1,0 +1,422 @@
+import { Effect } from "effect";
+import {
+  ShaderVersions,
+  sourceHash,
+  validEdit,
+  type ShaderEdit,
+} from "./protocol.ts";
+import { cameraMatrix, houseGeometry, move, type Pose } from "./scene.ts";
+
+const scope = self as unknown as DedicatedWorkerGlobalScope;
+let preview = "",
+  token = "";
+let runtime: Runtime | undefined;
+let endLifetime: (() => void) | undefined;
+const send = (message: object) =>
+  scope.postMessage({ ...message, preview, token });
+
+class Runtime {
+  device: GPUDevice;
+  context: GPUCanvasContext;
+  canvas: OffscreenCanvas;
+  format: GPUTextureFormat;
+  uniform: GPUBuffer;
+  vertices: GPUBuffer;
+  bindGroup: GPUBindGroup;
+  layout: GPUPipelineLayout;
+  depth: GPUTexture | undefined;
+  versions = new ShaderVersions<GPURenderPipeline>(() => {});
+  pose: Pose = { x: 0, z: 6.8, yaw: 0, pitch: -0.03 };
+  keys: string[] = [];
+  disposed = false;
+  lost = false;
+  frame = 0;
+  count: number;
+  width = 1;
+  height = 1;
+  frameId = 0;
+  previous = 0;
+  lastReport = 0;
+  maxFrameMs = 0;
+  uniformData = new Float32Array(24);
+  pendingEdit: ShaderEdit | undefined;
+  compiles = 0;
+  inflight = 0;
+  queuedEdit: ShaderEdit | undefined;
+  deviceId = crypto.randomUUID();
+
+  constructor(
+    device: GPUDevice,
+    context: GPUCanvasContext,
+    canvas: OffscreenCanvas,
+    format: GPUTextureFormat,
+  ) {
+    this.device = device;
+    this.context = context;
+    this.canvas = canvas;
+    this.format = format;
+    const geometry = houseGeometry();
+    this.count = geometry.length / 10;
+    this.vertices = device.createBuffer({
+      label: "Haunted House geometry",
+      size: geometry.byteLength,
+      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    });
+    device.queue.writeBuffer(this.vertices, 0, geometry.buffer);
+    this.uniform = device.createBuffer({
+      label: "Camera and lantern",
+      size: 96,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    const binding = device.createBindGroupLayout({
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+          buffer: { type: "uniform", minBindingSize: 96 },
+        },
+      ],
+    });
+    this.bindGroup = device.createBindGroup({
+      layout: binding,
+      entries: [{ binding: 0, resource: { buffer: this.uniform } }],
+    });
+    this.layout = device.createPipelineLayout({ bindGroupLayouts: [binding] });
+    this.resize(960, 640);
+    device.lost.then((info) => {
+      if (this.disposed) return;
+      this.lost = true;
+      this.versions.dispose();
+      send({
+        type: "lost",
+        message: `The graphics device stopped (${info.reason}). Reopen the preview to reconnect.`,
+        state: this.state(),
+      });
+    });
+    device.addEventListener("uncapturederror", (event) =>
+      send({ type: "error", message: event.error.message }),
+    );
+    this.frameId = scope.requestAnimationFrame((t) => this.draw(t));
+  }
+
+  resize(width: number, height: number) {
+    if (this.disposed || this.lost) return;
+    const limit = Math.min(4096, this.device.limits.maxTextureDimension2D);
+    this.width = Math.max(1, Math.min(limit, Math.floor(width)));
+    this.height = Math.max(1, Math.min(limit, Math.floor(height)));
+    this.canvas.width = this.width;
+    this.canvas.height = this.height;
+    this.depth?.destroy();
+    this.depth = this.device.createTexture({
+      size: [this.width, this.height],
+      format: "depth24plus",
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+    });
+  }
+
+  edit(edit: ShaderEdit) {
+    if (this.disposed || this.lost || !this.versions.begin(edit.revision))
+      return;
+    this.pendingEdit = undefined;
+    if (this.inflight) {
+      this.queuedEdit = edit;
+      return;
+    }
+    this.compile(edit);
+  }
+
+  compile(edit: ShaderEdit) {
+    this.inflight++;
+    const { device, layout, format } = this;
+    const build = Effect.gen(function* () {
+      if ((yield* Effect.promise(() => sourceHash(edit.source))) !== edit.hash)
+        return yield* Effect.fail(
+          new Error("Shader contents do not match this save."),
+        );
+      device.pushErrorScope("validation");
+      const shader = device.createShaderModule({
+        label: `material.wgsl revision ${edit.revision}`,
+        code: edit.source,
+      });
+      const validation = device.popErrorScope();
+      const [info, moduleError] = yield* Effect.promise(() =>
+        Promise.all([shader.getCompilationInfo(), validation]),
+      );
+      const failures = info.messages.filter((m) => m.type === "error");
+      if (failures.length)
+        return yield* Effect.fail(
+          new Error(
+            failures
+              .map(
+                (m) => `material.wgsl:${m.lineNum}:${m.linePos} ${m.message}`,
+              )
+              .join("\n"),
+          ),
+        );
+      if (moduleError)
+        return yield* Effect.fail(new Error(moduleError.message));
+      return yield* Effect.tryPromise({
+        try: () =>
+          device.createRenderPipelineAsync({
+            label: `Haunted House material ${edit.revision}`,
+            layout,
+            vertex: {
+              module: shader,
+              entryPoint: "vertex_main",
+              buffers: [
+                {
+                  arrayStride: 40,
+                  attributes: [
+                    { shaderLocation: 0, offset: 0, format: "float32x3" },
+                    { shaderLocation: 1, offset: 12, format: "float32x3" },
+                    { shaderLocation: 2, offset: 24, format: "float32x3" },
+                    { shaderLocation: 3, offset: 36, format: "float32" },
+                  ],
+                },
+              ],
+            },
+            fragment: {
+              module: shader,
+              entryPoint: "fragment_main",
+              targets: [{ format }],
+            },
+            primitive: { topology: "triangle-list", cullMode: "none" },
+            depthStencil: {
+              format: "depth24plus",
+              depthWriteEnabled: true,
+              depthCompare: "less",
+            },
+          }),
+        catch: (e) =>
+          new Error(
+            `material.wgsl: pipeline or binding interface: ${e instanceof Error ? e.message : String(e)}`,
+          ),
+      });
+    });
+    Effect.runPromise(build)
+      .then((pipeline) => {
+        this.compiles++;
+        if (this.versions.stage(edit.revision, edit.hash, pipeline))
+          this.pendingEdit = edit;
+      })
+      .catch((error) => {
+        if (!this.disposed && edit.revision === this.versions.draft)
+          send({
+            type: "rejected",
+            revision: edit.revision,
+            request: edit.request,
+            message: String(error),
+            state: this.state(),
+          });
+      })
+      .finally(() => {
+        this.inflight--;
+        const queued = this.queuedEdit;
+        this.queuedEdit = undefined;
+        if (queued && !this.disposed && !this.lost) this.compile(queued);
+      });
+  }
+
+  state() {
+    return {
+      pose: { ...this.pose },
+      frame: this.frame,
+      deviceId: this.deviceId,
+      draft: this.versions.draft,
+      accepted: this.versions.active?.revision ?? 0,
+      hash: this.versions.active?.hash ?? null,
+      width: this.width,
+      height: this.height,
+      compiles: this.compiles,
+      inflight: this.inflight,
+      activePipelines: this.versions.active ? 1 : 0,
+      pendingPipelines: this.versions.pending ? 1 : 0,
+      buffers: this.disposed ? 0 : 2,
+      depthTextures: this.disposed ? 0 : 1,
+      disposed: this.disposed,
+      maxFrameMs: this.maxFrameMs,
+    };
+  }
+
+  draw(now: number) {
+    if (this.disposed || this.lost) return;
+    const delta = this.previous ? now - this.previous : 0;
+    this.previous = now;
+    this.maxFrameMs = Math.max(this.maxFrameMs, delta);
+    const held = (...keys: string[]) => keys.some((k) => this.keys.includes(k));
+    move(
+      this.pose,
+      Number(held("KeyW", "ArrowUp")) - Number(held("KeyS", "ArrowDown")),
+      Number(held("KeyD")) - Number(held("KeyA")),
+      delta / 1000,
+    );
+    if (held("ArrowLeft")) this.pose.yaw -= delta * 0.0015;
+    if (held("ArrowRight")) this.pose.yaw += delta * 0.0015;
+    const committed = this.versions.commit();
+    cameraMatrix(this.uniformData, this.pose, this.width / this.height);
+    this.uniformData.set([this.pose.x, 1.55, this.pose.z, now / 1000], 16);
+    this.uniformData.set([this.pose.x + 0.3, 1.35, this.pose.z - 0.25, 1], 20);
+    this.device.queue.writeBuffer(this.uniform, 0, this.uniformData.buffer);
+    const encoder = this.device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: this.context.getCurrentTexture().createView(),
+          clearValue: { r: 0.055, g: 0.075, b: 0.085, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        },
+      ],
+      depthStencilAttachment: {
+        view: this.depth!.createView(),
+        depthClearValue: 1,
+        depthLoadOp: "clear",
+        depthStoreOp: "store",
+      },
+    });
+    if (this.versions.active) {
+      pass.setPipeline(this.versions.active.resource);
+      pass.setBindGroup(0, this.bindGroup);
+      pass.setVertexBuffer(0, this.vertices);
+      pass.draw(this.count);
+    }
+    pass.end();
+    this.device.queue.submit([encoder.finish()]);
+    this.frame++;
+    if (committed && this.pendingEdit) {
+      const edit = this.pendingEdit;
+      this.pendingEdit = undefined;
+      // Receipt follows submission of the first frame using this pipeline.
+      send({
+        type: "accepted",
+        revision: edit.revision,
+        request: edit.request,
+        hash: edit.hash,
+        visibleAt: performance.timeOrigin + performance.now(),
+        state: this.state(),
+      });
+    }
+    if (now - this.lastReport > 100) {
+      send({ type: "state", state: this.state() });
+      this.lastReport = now;
+    }
+    this.frameId = scope.requestAnimationFrame((t) => this.draw(t));
+  }
+
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    scope.cancelAnimationFrame(this.frameId);
+    this.keys = [];
+    this.versions.dispose();
+    this.pendingEdit = undefined;
+    this.queuedEdit = undefined;
+    this.depth?.destroy();
+    this.vertices.destroy();
+    this.uniform.destroy();
+    this.context.unconfigure();
+    this.device.destroy();
+    send({ type: "disposed", state: this.state() });
+  }
+}
+
+scope.onmessage = (event: MessageEvent) => {
+  const message = event.data;
+  if (message?.type === "init" && !preview) {
+    if (
+      typeof message.preview !== "string" ||
+      typeof message.token !== "string" ||
+      !(message.canvas instanceof OffscreenCanvas)
+    )
+      return;
+    preview = message.preview;
+    token = message.token;
+    Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const renderer = yield* Effect.acquireRelease(
+            Effect.tryPromise({
+              try: async () => {
+                const gpu = scope.navigator.gpu;
+                if (!gpu)
+                  throw new Error(
+                    "This browser cannot run WebGPU. Try a current Chrome or Edge with graphics acceleration enabled.",
+                  );
+                const adapter = await gpu.requestAdapter();
+                if (!adapter)
+                  throw new Error(
+                    "WebGPU could not find a graphics device. Enable graphics acceleration and reopen this preview.",
+                  );
+                const device = await adapter.requestDevice();
+                try {
+                  const context = message.canvas.getContext(
+                    "webgpu",
+                  ) as GPUCanvasContext | null;
+                  if (!context)
+                    throw new Error("WebGPU could not open the canvas.");
+                  const format = gpu.getPreferredCanvasFormat();
+                  context.configure({ device, format, alphaMode: "opaque" });
+                  return new Runtime(device, context, message.canvas, format);
+                } catch (error) {
+                  device.destroy();
+                  throw error;
+                }
+              },
+              catch: (e) => (e instanceof Error ? e : new Error(String(e))),
+            }),
+            (r) => Effect.sync(() => r.dispose()),
+          );
+          runtime = renderer;
+          const info = renderer.device.adapterInfo;
+          send({
+            type: "ready",
+            adapter: info
+              ? {
+                  vendor: info.vendor,
+                  architecture: info.architecture,
+                  device: info.device,
+                  description: info.description,
+                }
+              : null,
+            state: renderer.state(),
+          });
+          yield* Effect.promise(
+            () =>
+              new Promise<void>((resolve) => {
+                endLifetime = resolve;
+              }),
+          );
+        }),
+      ),
+    ).catch((error) => send({ type: "unsupported", message: String(error) }));
+    return;
+  }
+  if (!runtime || message?.preview !== preview || message?.token !== token)
+    return;
+  if (message.type === "shader") {
+    if (validEdit(message, preview, token)) runtime.edit(message);
+    return;
+  }
+  if (
+    message.type === "resize" &&
+    Number.isFinite(message.width) &&
+    Number.isFinite(message.height)
+  )
+    runtime.resize(message.width, message.height);
+  if (message.type === "input" && Array.isArray(message.keys))
+    runtime.keys = message.keys
+      .filter((k: unknown) => typeof k === "string")
+      .slice(0, 12);
+  if (
+    message.type === "look" &&
+    Number.isFinite(message.dx) &&
+    Number.isFinite(message.dy)
+  ) {
+    runtime.pose.yaw += Math.max(-500, Math.min(500, message.dx)) * 0.003;
+    runtime.pose.pitch = Math.max(
+      -1.2,
+      Math.min(1.2, runtime.pose.pitch - message.dy * 0.003),
+    );
+  }
+  if (message.type === "dispose") endLifetime?.();
+};

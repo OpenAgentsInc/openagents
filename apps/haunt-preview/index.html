@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#161b1c" />
+    <title>Haunted House · OpenAgents</title>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/">OPENAGENTS <span>/ LAB</span></a
+      ><span class="tag">PRIVATE PREVIEW</span>
+    </header>
+    <main>
+      <section class="house" aria-label="Haunted House preview">
+        <div class="heading">
+          <div>
+            <p class="eyebrow">A LITTLE SPOOKY. YOURS TO CHANGE.</p>
+            <h1>The Haunted House</h1>
+          </div>
+          <span class="badge">WEBGPU</span>
+        </div>
+        <div class="viewport" id="viewport">
+          <canvas
+            id="house"
+            tabindex="0"
+            aria-label="Haunted House. Click to look around; use W A S D to walk."
+          ></canvas>
+          <div class="crosshair" aria-hidden="true">+</div>
+          <div id="loading" class="loading">Lighting the lantern…</div>
+          <div class="room-label">THE LANTERN HALL <span>01 / 02</span></div>
+        </div>
+        <div class="walkbar">
+          <button id="walk" disabled>Enter the house ↗</button
+          ><span
+            ><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · drag to
+            look · <kbd>Esc</kbd> release mouse</span
+          >
+        </div>
+        <div class="caption">
+          <span class="dot"></span
+          ><span id="preview-status" role="status">Starting the preview…</span
+          ><span id="timing"></span>
+        </div>
+      </section>
+      <aside aria-label="Kiln shader workspace">
+        <div class="editor-title">
+          <div>
+            <p class="eyebrow">MAKE ONE CHANGE</p>
+            <h2>Light it your way.</h2>
+          </div>
+          <span class="kiln-mark">K</span>
+        </div>
+        <p class="intro">
+          Edit the lantern shader. Save it, then keep walking.
+        </p>
+        <div class="file-tab">
+          <span class="file-dot"></span><span>haunt / material.wgsl</span
+          ><span id="draft-state">Kiln workspace</span>
+        </div>
+        <label class="sr-only" for="shader">WGSL shader source</label
+        ><textarea
+          id="shader"
+          spellcheck="false"
+          autocomplete="off"
+          autocapitalize="off"
+          disabled
+        ></textarea>
+        <div class="actions">
+          <button id="save" class="primary" disabled>
+            Save to Kiln <span>⌘ ↵</span></button
+          ><button id="reset" disabled>Original</button>
+        </div>
+        <div id="shader-status" role="status">Opening Kiln…</div>
+        <pre id="diagnostics" role="alert" hidden></pre>
+        <section class="agent">
+          <div class="agent-title">
+            <h3>Ask Kiln</h3>
+            <span>REAL WORKSPACE · LIVE EDITS</span>
+          </div>
+          <label for="request">Describe a lighting change</label
+          ><textarea id="request" rows="2">
+Make the lantern glow pumpkin orange.</textarea>
+          <div class="actions">
+            <button id="ask" disabled>Change it with Kiln ↗</button
+            ><button id="stop" hidden>Stop</button>
+          </div>
+          <p id="agent-status" role="status">
+            Uses a free Pylon. The house keeps running while Kiln works.
+          </p>
+          <details>
+            <summary>Agent activity</summary>
+            <pre id="agent-log"></pre>
+          </details>
+        </section>
+      </aside>
+    </main>
+    <footer>
+      <span>OPENAGENTS / HAUNTED HOUSE STUDY</span
+      ><span>One shader. Same walk.</span>
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

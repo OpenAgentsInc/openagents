@@ -89,6 +89,7 @@ struct App {
     key: Key,
     worker: RefCell<Option<Worker>>,
     busy: Cell<bool>,
+    shader_preview: Cell<bool>,
     stop: Cell<bool>,
     metrics: RefCell<Metrics>,
 }
@@ -195,6 +196,7 @@ pub async fn run() {
         key,
         worker: RefCell::new(None),
         busy: Cell::new(false),
+        shader_preview: Cell::new(false),
         stop: Cell::new(false),
         metrics: RefCell::new(Metrics::default()),
     });
@@ -212,12 +214,6 @@ pub async fn run() {
     app.restore_session();
     app.render_metrics();
     app.load_admin_key();
-    if headless() {
-        // At the Grid terminal, the site vouches for this browser's key
-        // (#12488), so the runner counts its jobs and readers see whose
-        // agent it is.
-        wasm_bindgen_futures::spawn_local(app.clone().site_identity());
-    }
     *app.build.borrow_mut() = current_build().await.unwrap_or_else(|| "site".into());
     if let Some(node) = app.doc.get_element_by_id("build") {
         node.set_text_content(Some(&app.build.borrow()));
@@ -236,7 +232,9 @@ pub async fn run() {
     // The host names the runner, the repository, and the relay in
     // `config.json` beside the page; every URL here is relative, so the
     // page works under a path prefix such as `/admin/kiln/`.
+    let mut site_identity = true;
     if let Ok(config) = fetch_json("config.json").await {
+        site_identity = config["site_identity"].as_bool().unwrap_or(true);
         if let Some(runner) = config["runner"].as_str().filter(|r| !r.is_empty()) {
             let input: HtmlInputElement = el(&app.doc, "runner").unchecked_into();
             input.set_value(runner);
@@ -248,6 +246,11 @@ pub async fn run() {
             let input: HtmlInputElement = el(&app.doc, "relay").unchecked_into();
             input.set_value(relay);
         }
+    }
+    if headless() && site_identity {
+        // The Grid can vouch for a visitor's key. Private local previews
+        // disable this request in their configuration.
+        wasm_bindgen_futures::spawn_local(app.clone().site_identity());
     }
     if let Some(model) = param("model") {
         let input: HtmlInputElement = el(&app.doc, "model").unchecked_into();
@@ -925,6 +928,13 @@ impl App {
                 *self.vfs.borrow_mut() = next;
                 self.persist().await;
                 self.render_files();
+                if changed
+                    .iter()
+                    .chain(&removed)
+                    .any(|p| p == crate::shader::PATH)
+                {
+                    self.notify_shader();
+                }
             }
         }
         let wall = now_ms() - started;
@@ -1099,6 +1109,8 @@ impl App {
                 .unwrap_or_default();
             agent.instructions =
                 crate::agent::RUST_INSTRUCTIONS.replace("{crates}", &crates.join(", "));
+        } else if self.shader_preview.get() {
+            agent.instructions = crate::shader::INSTRUCTIONS.to_owned();
         }
         let instructions = agent.instructions.clone();
         let mut relay: Option<Relay> = None;
@@ -2137,6 +2149,44 @@ impl App {
         );
         set(&window, "kilnWrite", write.as_ref().clone());
         write.forget();
+        // Only this opt-in API exposes the fixed shader file to a preview.
+        let app = self.clone();
+        let save = Closure::<dyn Fn(String) -> js_sys::Promise>::new(move |source: String| {
+            let app = app.clone();
+            wasm_bindgen_futures::future_to_promise(async move {
+                crate::shader::validate(&source).map_err(JsValue::from_str)?;
+                if app.busy.get() || app.repo().is_some() {
+                    return Err(JsValue::from_str("Kiln is busy or has a repository open."));
+                }
+                app.shader_preview.set(true);
+                app.busy.set(true);
+                let result = app
+                    .run_command(&Command::Write {
+                        path: crate::shader::PATH.to_owned(),
+                        content: source,
+                    })
+                    .await;
+                app.busy.set(false);
+                match result {
+                    Some(run) if run.code == 0 => Ok(JsValue::TRUE),
+                    Some(run) => Err(JsValue::from_str(&run.output)),
+                    None => Err(JsValue::from_str("Kiln could not save the shader.")),
+                }
+            })
+        });
+        set(&window, "kilnSaveShader", save.as_ref().clone());
+        save.forget();
+        let app = self.clone();
+        let read = Closure::<dyn Fn() -> JsValue>::new(move || {
+            if app.repo().is_some() {
+                return JsValue::NULL;
+            }
+            app.shader_preview.set(true);
+            app.shader_source()
+                .map_or(JsValue::NULL, |s| JsValue::from_str(&s))
+        });
+        set(&window, "kilnReadShader", read.as_ref().clone());
+        read.forget();
         let app = self.clone();
         let edit = Closure::<dyn Fn(String) -> js_sys::Promise>::new(move |action: String| {
             let app = app.clone();
@@ -2153,6 +2203,34 @@ impl App {
         set(&window, "kilnSelfEdit", edit.as_ref().clone());
         edit.forget();
         self.expose_cards(&window);
+    }
+
+    fn shader_source(&self) -> Option<String> {
+        if !self.shader_preview.get() {
+            return None;
+        }
+        let vfs = self.vfs.borrow();
+        let bytes = vfs.read(crate::shader::PATH).ok()?;
+        let source = std::str::from_utf8(bytes).ok()?;
+        // Empty drafts still reach GPU validation and leave the working shader intact.
+        if source.len() > crate::shader::MAX_BYTES {
+            return None;
+        }
+        Some(source.to_owned())
+    }
+
+    fn notify_shader(&self) {
+        let Some(source) = self.shader_source() else {
+            return;
+        };
+        let Some(window) = web_sys::window() else {
+            return;
+        };
+        if let Ok(callback) = js_sys::Reflect::get(&window, &"kilnShaderChanged".into())
+            && let Some(callback) = callback.dyn_ref::<js_sys::Function>()
+        {
+            let _ = callback.call1(&JsValue::NULL, &JsValue::from_str(&source));
+        }
     }
 
     /// What the Grid terminal's cards draw (`kiln_view::State`).
