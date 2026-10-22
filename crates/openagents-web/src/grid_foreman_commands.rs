@@ -17,19 +17,26 @@
 //! free text. Before acting, the site checks the issue (open, an issue and
 //! not a pull request, unassigned, no denied label, no running Foreman
 //! agent on it), the caps (5 starts and 10 draft asks a UTC day, 3 running
-//! at once, one command a minute), the kill switch
-//! (`OPENAGENTS_FOREMAN_COMMANDS=on`, and an admin's pause), and the
-//! worker's definition (no standing authority). Every command, accepted or
-//! refused, goes to the audit log.
+//! at once, one command a minute), the kill switch (on unless
+//! `OPENAGENTS_FOREMAN_COMMANDS=off`, owner 2026-10-22: nothing ships turned
+//! off; and an admin's pause), and the worker's definition (no standing
+//! authority). Every command, accepted or refused, goes to the audit log.
 //!
-//! A start is an agent assignment for the owner's saved worker agent on the
-//! owner's computer (`OPENAGENTS_FOREMAN_OWNER`, `_WORKER_AGENT`,
-//! `_WORKER_HOST`, optional `_WORKER_PROJECT`), so it runs as an app chat
-//! of its own that the desktop Foreman, the phone, and the website can see
-//! and steer, with the fixed brief [`grid_foreman::brief`]: claim the issue,
-//! work in a worktree, open a draft pull request, and never merge, deploy,
-//! or spend. A draft ask sends that chat [`grid_foreman::DRAFT_PR_TEXT`].
-//! Merging, deploying, and spending stay with an admin.
+//! A start is an agent assignment on a computer of the worker account, so
+//! it runs as an app chat of its own that the desktop Foreman, the phone,
+//! and the website can see and steer, with the fixed brief
+//! [`grid_foreman::brief`]: claim the issue, work in a worktree, open a
+//! draft pull request, and never merge, deploy, or spend. A draft ask sends
+//! that chat [`grid_foreman::DRAFT_PR_TEXT`]. Merging, deploying, and
+//! spending stay with an admin.
+//!
+//! The worker account is `OPENAGENTS_FOREMAN_OWNER` (an account ID) when
+//! set, else the admin who last published the desktop Foreman's record or
+//! asked for an agent. Its worker agent is `_WORKER_AGENT` when set, else
+//! one the site saves in that account ([`worker_spec`]: Claude Code, the
+//! computer's own access, no standing authority). Its computer is
+//! `_WORKER_HOST` (and `_WORKER_PROJECT`) when set, else the account's online
+//! computer that runs the worker, preferring the `openagents` project.
 
 use std::collections::BTreeSet;
 
@@ -187,8 +194,100 @@ async fn log(store: &Store, entry: Entry) {
     .await;
 }
 
+/// Commands are on unless the switch says `off`.
 fn enabled() -> bool {
-    std::env::var(SWITCH_ENV).is_ok_and(|v| v.trim().eq_ignore_ascii_case("on"))
+    !std::env::var(SWITCH_ENV).is_ok_and(|v| v.trim().eq_ignore_ascii_case("off"))
+}
+
+/// Where the worker account the admins chose is kept.
+const OWNER_KEY: &str = "grid-foreman/commands/owner.json";
+
+/// Remembers `account_id`, an admin's, as the worker account, unless the
+/// environment names one.
+pub(crate) async fn remember_owner(store: &Store, account_id: &str) {
+    if account_id.is_empty() {
+        return;
+    }
+    let account = account_id.to_owned();
+    let _ = edit::<Value, ()>(store, OWNER_KEY, |v| {
+        *v = json!({"account_id": account});
+    })
+    .await;
+}
+
+/// The worker agent the site saves when none is named.
+pub(crate) fn worker_spec() -> openagents_sdk::agents::AgentSpec {
+    openagents_sdk::agents::AgentSpec {
+        name: "Grid Foreman worker".into(),
+        description:
+            "Works one GitHub issue the Grid Foreman hands it and opens a draft pull request."
+                .into(),
+        instructions: "I work the one GitHub issue my first message names, in this chat, and \
+follow that message exactly: claim the issue, work in a git worktree of my own, open a draft pull \
+request, and reply with its link. I never push to main, merge, deploy, spend money, or test on \
+the owner's account. If I stop before a pull request, I release the claim."
+            .into(),
+        runtime: "claude-code".into(),
+        model: None,
+        access: openagents_sdk::agents::Access::HostDefault,
+        fallbacks: vec![],
+        autonomy: None,
+    }
+}
+
+/// The worker for this command: the environment's, else the remembered
+/// account with its saved (or newly saved) worker on an online computer.
+async fn resolve_worker(store: &Store) -> Option<Worker> {
+    let env = |name: &str| {
+        std::env::var(name)
+            .ok()
+            .map(|v| v.trim().to_owned())
+            .filter(|v| !v.is_empty())
+    };
+    let account = match env(OWNER_ENV) {
+        Some(account) => account,
+        None => read::<Value>(store, OWNER_KEY).await.0["account_id"]
+            .as_str()?
+            .to_owned(),
+    };
+    let owner = crate::chat_store::account_owner(&account);
+    let agent = match env(WORKER_AGENT_ENV) {
+        Some(agent) => agent,
+        None => {
+            let id = to_hex(&Sha256::digest(format!(
+                "openagents.grid-foreman.worker.v1\0{owner}"
+            )));
+            match crate::custom_agents::definition(store, &owner, &id, None).await {
+                Ok(Ok(d)) if !d.deleted => id,
+                _ => {
+                    crate::custom_agents::mutate(
+                        store,
+                        &owner,
+                        crate::custom_agents::Mutation::Create {
+                            request_id: id.clone(),
+                            spec: worker_spec(),
+                        },
+                    )
+                    .await
+                    .ok()?
+                    .ok()?;
+                    id
+                }
+            }
+        }
+    };
+    if let Some(host) = env(WORKER_HOST_ENV) {
+        return Some((owner, agent, host, env(WORKER_PROJECT_ENV)));
+    }
+    let definition = match crate::custom_agents::definition(store, &owner, &agent, None).await {
+        Ok(Ok(d)) => d,
+        _ => return None,
+    };
+    let hosts = crate::agent_lab::online_hosts(store, &owner).await.ok()?;
+    let (host, project) =
+        openagents_sdk::agents::place::place(&hosts, &definition, None, None, Some("openagents"))
+            .ok()?;
+    Some((owner, agent, host.id, Some(project)))
 }
 
 async fn paused(store: &Store) -> bool {
@@ -386,24 +485,9 @@ impl Setup {
             enabled: enabled(),
             key: foreman_key(),
             origins: origins(),
-            worker: settings(),
+            worker: None,
         }
     }
-}
-
-fn settings() -> Option<Worker> {
-    let get = |name: &str| {
-        std::env::var(name)
-            .ok()
-            .map(|v| v.trim().to_owned())
-            .filter(|v| !v.is_empty())
-    };
-    Some((
-        get(OWNER_ENV)?,
-        get(WORKER_AGENT_ENV)?,
-        get(WORKER_HOST_ENV)?,
-        get(WORKER_PROJECT_ENV),
-    ))
 }
 
 fn no(code: &'static str) -> Response {
@@ -522,7 +606,10 @@ async fn act(
     if let Some(code) = caps(&log, now, &command.action) {
         return Err(code);
     }
-    let (owner, agent, host, project) = setup.worker.clone().ok_or("foreman_unsetup")?;
+    let (owner, agent, host, project) = match &setup.worker {
+        Some(worker) => worker.clone(),
+        None => resolve_worker(store).await.ok_or("foreman_unsetup")?,
+    };
     let (book, _) = crate::agent_assignments::load(store, &owner)
         .await
         .map_err(|_| "foreman_unsetup")?;
@@ -620,11 +707,22 @@ async fn overview(State(app): State<App>) -> Response {
     let store = app.config.chat_store.clone();
     let now = crate::chat_store::now_unix();
     let log = recent(&store, now).await;
-    let book = match settings() {
-        Some((owner, ..)) => crate::agent_assignments::load(&store, &owner)
-            .await
-            .ok()
-            .map(|(b, _)| b),
+    let account = match std::env::var(OWNER_ENV)
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+    {
+        Some(account) => Some(account.trim().to_owned()),
+        None => read::<Value>(&store, OWNER_KEY).await.0["account_id"]
+            .as_str()
+            .map(str::to_owned),
+    };
+    let book = match &account {
+        Some(account) => {
+            crate::agent_assignments::load(&store, &crate::chat_store::account_owner(account))
+                .await
+                .ok()
+                .map(|(b, _)| b)
+        }
         None => None,
     };
     let state = |id: &str| {
@@ -659,7 +757,8 @@ async fn overview(State(app): State<App>) -> Response {
         StatusCode::OK,
         json!({
             "schema": "openagents.grid-foreman.commands.v1",
-            "enabled": enabled() && settings().is_some(),
+            "enabled": enabled(),
+            "worker": account.is_some(),
             "paused": paused(&store).await,
             "today": {
                 "started": today.iter().filter(|e| e.action == grid_foreman::START).count(),
@@ -682,15 +781,19 @@ async fn overview(State(app): State<App>) -> Response {
     response
 }
 
-async fn admin(app: &App, headers: &HeaderMap) -> bool {
-    match app.config.cloud.as_deref() {
-        Some(service) => service.authenticate(headers).await.is_ok_and(|v| v.admin),
-        None => false,
-    }
+/// The admin's account ID, when the caller is a site admin.
+async fn admin(app: &App, headers: &HeaderMap) -> Option<String> {
+    let service = app.config.cloud.as_deref()?;
+    service
+        .authenticate(headers)
+        .await
+        .ok()
+        .filter(|v| v.admin)
+        .map(|v| v.account_id)
 }
 
 async fn pause(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
-    if !admin(&app, &headers).await {
+    if admin(&app, &headers).await.is_none() {
         return refused(
             StatusCode::FORBIDDEN,
             "admin_only",
@@ -723,13 +826,14 @@ async fn pause(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Respo
 }
 
 async fn request(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
-    if !admin(&app, &headers).await {
+    let Some(account) = admin(&app, &headers).await else {
         return refused(
             StatusCode::FORBIDDEN,
             "admin_only",
             "Only an admin can ask the Foreman to start an agent.",
         );
-    }
+    };
+    remember_owner(&app.config.chat_store, &account).await;
     let Some(issue) = serde_json::from_slice::<Value>(&body)
         .ok()
         .and_then(|v| v["issue"].as_u64())
@@ -977,7 +1081,7 @@ mod tests {
         }
     }
 
-    fn worker_spec(authority: bool) -> openagents_sdk::agents::AgentSpec {
+    fn test_worker(authority: bool) -> openagents_sdk::agents::AgentSpec {
         openagents_sdk::agents::AgentSpec {
             name: "Foreman worker".into(),
             description: String::new(),
@@ -1012,7 +1116,7 @@ mod tests {
             &owner,
             crate::custom_agents::Mutation::Create {
                 request_id: format!("{:064x}", 1),
-                spec: worker_spec(false),
+                spec: test_worker(false),
             },
         )
         .await
@@ -1192,7 +1296,7 @@ mod tests {
             &owner,
             crate::custom_agents::Mutation::Create {
                 request_id: format!("{:064x}", 2),
-                spec: worker_spec(true),
+                spec: test_worker(true),
             },
         )
         .await
@@ -1236,6 +1340,41 @@ mod tests {
             Err("foreman_off")
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[tokio::test]
+    async fn the_site_saves_a_safe_worker_for_the_remembered_admin() {
+        let root = std::env::temp_dir().join(format!("foreman-worker-{}", std::process::id()));
+        let store = Store::local(root.clone());
+        assert_eq!(resolve_worker(&store).await, None);
+        remember_owner(&store, "acct_test_admin").await;
+        // No computer online yet: no worker, but the worker agent is saved.
+        assert_eq!(resolve_worker(&store).await, None);
+        let owner = crate::chat_store::account_owner("acct_test_admin");
+        let id = to_hex(&Sha256::digest(format!(
+            "openagents.grid-foreman.worker.v1\0{owner}"
+        )));
+        let saved = crate::custom_agents::definition(&store, &owner, &id, None)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(saved.spec, worker_spec());
+        assert!(saved.spec.autonomy.is_none());
+        assert!(
+            saved
+                .spec
+                .instructions
+                .contains("never push to main, merge, deploy, spend money")
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn commands_are_on_unless_switched_off() {
+        // Unset, the switch is on.
+        if std::env::var(SWITCH_ENV).is_err() {
+            assert!(enabled());
+        }
     }
 
     #[tokio::test]

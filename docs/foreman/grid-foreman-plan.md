@@ -521,10 +521,12 @@ refusal code if any, and the assignment and chat IDs it made. It's public
 at `GET /v1/foreman/commands`, since the repository is open source. The
 admin page shows the same list.
 
-**Kill switch.** Commands are off until an admin turns them on
-(`OPENAGENTS_FOREMAN_COMMANDS=on` in the site's configuration), and an admin
-can pause them at once from the admin page. A paused site refuses every
-command with `foreman_paused`.
+**Kill switch.** Commands are on by default (owner, 2026-10-22: nothing
+ships turned off); `OPENAGENTS_FOREMAN_COMMANDS=off` turns them off, and an
+admin can pause them at once. A paused site refuses every command with
+`foreman_paused`. Unless the deployment names one, the worker account is the
+admin who last published the desktop Foreman's record or asked for an
+agent, and the site saves a worker agent with no standing authority there.
 
 **Admin approval.** Merging a draft pull request, deploying, and spending
 are never actions of the Grid Foreman. An admin reviews and merges the draft

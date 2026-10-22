@@ -109,29 +109,33 @@ still shows its state.
 
 ## Commands to agents (#12448)
 
-The Foreman may start coding agents that open draft pull requests, under the
+The Foreman starts coding agents that open draft pull requests, under the
 rules in [the plan](../foreman/grid-foreman-plan.md#commanding-agents-p4).
-Commands are off until the website's configuration turns them on:
+Commands are on by default (owner, 2026-10-22); every guardrail stays:
+signatures, the two actions, the caps, the admin pause, the audit log, and
+never merging, deploying, or spending.
 
 | Variable on `openagents-web` | Value |
 | --- | --- |
-| `OPENAGENTS_FOREMAN_COMMANDS` | `on` to accept commands; anything else refuses every one with `foreman_off` |
-| `OPENAGENTS_FOREMAN_OWNER` | The account whose computer runs the agents |
-| `OPENAGENTS_FOREMAN_WORKER_AGENT` | That account's saved agent that does the work; it must not have standing authority |
-| `OPENAGENTS_FOREMAN_WORKER_HOST` | The computer the agents run on |
-| `OPENAGENTS_FOREMAN_WORKER_PROJECT` | Optional: the app project they run in |
+| `OPENAGENTS_FOREMAN_COMMANDS` | `off` refuses every command with `foreman_off`; anything else, or unset, is on |
+| `OPENAGENTS_FOREMAN_OWNER` | Optional: the account ID whose computers run the agents. Unset, it is the admin who last published the desktop Foreman's record (`openagents foreman publish`) or asked for an agent |
+| `OPENAGENTS_FOREMAN_WORKER_AGENT` | Optional: that account's saved agent that does the work; it must not have standing authority. Unset, the site saves "Grid Foreman worker" there (Claude Code, the computer's own access, no standing authority) |
+| `OPENAGENTS_FOREMAN_WORKER_HOST` | Optional: the computer. Unset, the account's online computer that runs Claude Code, preferring the `openagents` project |
+| `OPENAGENTS_FOREMAN_WORKER_PROJECT` | Optional: the app project, with `_WORKER_HOST` |
 | `OPENAGENTS_FOREMAN_ORIGINS` | Optional: origins a command may be signed for (default `https://openagents.com`) |
 
-- `GET /v1/foreman/commands` shows whether commands are on, today's counts,
-  the agents the Foreman started, open requests, and the audit log.
+- `GET /v1/foreman/commands` shows whether commands are on, whether a
+  worker account is known, today's counts, the agents the Foreman started,
+  open requests, and the audit log.
 - An admin pauses everything with `POST /v1/foreman/commands/pause`
   `{"paused": true}`, and asks for an agent on an issue with
-  `POST /v1/foreman/commands/requests` `{"issue": N}`.
+  `POST /v1/foreman/commands/requests` `{"issue": N}`; that admin's account
+  becomes the worker account unless `OPENAGENTS_FOREMAN_OWNER` is set.
 - The host sends at most one command a minute: an admin's request first,
   then a draft pull request ask for an agent that has worked three hours
-  without one. With `--auto-start` on its unit's command line, it also
-  picks the least recently updated unassigned issue on its own. The unit
-  ships without it.
+  without one, then the least recently updated unassigned issue it hasn't
+  tried. `--no-auto-start` on its unit's command line stops that last one.
+  It sends nothing until the site knows a worker account.
 - The site refuses past 5 starts and 10 draft asks a UTC day, 3 running
   agents, or one command a minute. Merging, deploying, and spending stay
   with an admin.

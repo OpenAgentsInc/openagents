@@ -1,7 +1,7 @@
 //! `grid-foreman`: the Grid Foreman's host (#12445).
 //!
 //! ```text
-//! grid-foreman serve --state DIR [--relay URL] [--site URL] [--seconds N] [--auto-start]
+//! grid-foreman serve --state DIR [--relay URL] [--site URL] [--seconds N] [--no-auto-start]
 //! grid-foreman new-key --state DIR     makes DIR/key (0600) and prints its public key
 //! grid-foreman pubkey --state DIR      prints the public key of DIR/key
 //! ```
@@ -16,7 +16,7 @@ use grid_foreman::host;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: grid-foreman serve --state DIR [--relay URL] [--site URL] [--seconds N] [--auto-start]\n       grid-foreman new-key --state DIR\n       grid-foreman pubkey --state DIR"
+        "usage: grid-foreman serve --state DIR [--relay URL] [--site URL] [--seconds N] [--no-auto-start]\n       grid-foreman new-key --state DIR\n       grid-foreman pubkey --state DIR"
     );
     ExitCode::from(2)
 }
@@ -47,7 +47,7 @@ fn main() -> ExitCode {
                 relay: option("--relay").unwrap_or_else(|| host::RELAY.into()),
                 site: option("--site").unwrap_or_else(|| host::SITE.into()),
                 run_for,
-                auto_start: args.iter().any(|a| a == "--auto-start"),
+                auto_start: !args.iter().any(|a| a == "--no-auto-start"),
             })
         }
         "new-key" => host::new_key(&state.join(host::KEY_FILE)).map(|pubkey| println!("{pubkey}")),

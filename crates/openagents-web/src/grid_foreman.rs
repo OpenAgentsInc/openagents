@@ -400,22 +400,28 @@ async fn status(State(app): State<App>) -> Response {
     .into_response()
 }
 
-/// Whether the caller is a site admin.
-async fn admin(app: &App, headers: &HeaderMap) -> bool {
-    match app.config.cloud.as_deref() {
-        Some(service) => service.authenticate(headers).await.is_ok_and(|v| v.admin),
-        None => false,
-    }
+/// The caller's account ID, when the caller is a site admin.
+async fn admin(app: &App, headers: &HeaderMap) -> Option<String> {
+    let service = app.config.cloud.as_deref()?;
+    service
+        .authenticate(headers)
+        .await
+        .ok()
+        .filter(|v| v.admin)
+        .map(|v| v.account_id)
 }
 
 async fn publish(State(app): State<App>, headers: HeaderMap, body: Bytes) -> Response {
-    if !admin(&app, &headers).await {
+    let Some(account) = admin(&app, &headers).await else {
         return refused(
             StatusCode::FORBIDDEN,
             "admin_only",
             "Only an admin can update the Foreman's status.",
         );
-    }
+    };
+    // The desktop Foreman's account runs the agents the Grid Foreman starts
+    // unless the deployment names another (#12448).
+    crate::grid_foreman_commands::remember_owner(&app.config.chat_store, &account).await;
     if body.len() > RECORD_MAX {
         return refused(
             StatusCode::PAYLOAD_TOO_LARGE,

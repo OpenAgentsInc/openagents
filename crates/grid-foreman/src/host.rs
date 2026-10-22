@@ -118,7 +118,8 @@ pub struct Options {
     /// Stop after this long; `None` runs until stopped.
     pub run_for: Option<Duration>,
     /// Whether it picks issues for agents on its own, beyond an admin's
-    /// requests (#12448). Off unless `--auto-start`.
+    /// requests (#12448), within the site's caps. On unless
+    /// `--no-auto-start` (owner, 2026-10-22).
     pub auto_start: bool,
 }
 
@@ -186,7 +187,9 @@ pub fn next_command(
     auto: bool,
     now: u64,
 ) -> Option<(String, u64, Option<String>)> {
-    if commands["enabled"] != true || commands["paused"] == true {
+    // Nothing while commands are off or paused, or before the site knows
+    // whose computers run the agents.
+    if commands["enabled"] != true || commands["paused"] == true || commands["worker"] == false {
         return None;
     }
     let running = commands["running"].as_array().cloned().unwrap_or_default();
