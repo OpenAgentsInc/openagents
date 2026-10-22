@@ -14,11 +14,19 @@ and the evidence. Update this file as items land.
 again, owned by Codex for the remaining G1–G8 acceptance work. Its earlier
 closure authorized an experimental preview; it did not pass the original
 gates. Policy 2.3 failed, including one 38-token Engram case, and remains
-failed. G2 suite 2 has a retained 5/6 result against the oracle's 5/6;
-the corrected checker retains that result with the reasoning/completion floor held. G3's component evidence remains valid for its recorded
-bundles and devices. G4–G6 still need numerical acceptance; pinned G7 and
-qualified G8 evidence remain outstanding. The separate Maya optimization
-issues retain their existing owners and experimental profiles.
+failed. The pinned `06e5158778` worker passes the frozen G2 suite at 5/6
+against the oracle's 5/6 on all three placements, with identical answers and
+the reasoning/completion floor held. G3 has current SM89 and SM120 component
+receipts. The private one-quad and two-dual Pylons each pass eight runtime
+checks; four-single has a retained five-check cloud run and a follow-up
+boundary run in progress. Stage crash, freeze, deadline, and full-VM watcher
+recovery checks are retained. G1 and G4 numerical release acceptance and
+qualified G8 evidence remain outstanding: rule 2.4 is not frozen, and no
+fresh confirmation oracle has been captured. The separate Maya Pylons run
+Foreman's browser-editor work with an experimental consumer-q profile.
+
+The entries below retain earlier checks; later sections record their reruns
+and the current worker's evidence.
 
 **Qualification repair progress, 2026-10-22:** the qualification CLI now
 returns a failure status when its report fails, and `--release` prints the
@@ -1535,3 +1543,18 @@ stale-cache controls and cannot run as answer collection or release
 qualification. The parser regression and stage package checks pass. Existing
 same-prompt attempts remain retained; the candidate worker and acceptance
 limits stay unchanged.
+
+### Provisional fault detection and CPU repeat (2026-10-22)
+
+The short CPU-only calibration now accepts its independent references and
+numerically rejects wrong weights, routing, RoPE, and stale cache state. The
+natural-language stale-cache case has 79 numerical violations, separately from
+its malformed index evidence. The short Engram attempt still lacks numerical
+detection and remains retained. See [the provisional self-check](verification/deepseek-v41-gates-2026-10-22/provisional-control-self-check.json).
+This policy is not frozen: the long references, short conversation/code CPU
+cases, and isolated-stage envelopes must finish, and all controls must still
+fail under the resulting limits before fresh confirmation starts.
+
+The repeated C4 collection on C3D and N2D also matches all 1,836 saved tensor
+files byte for byte. See [the CPU repeat comparison](verification/deepseek-v41-gates-2026-10-22/cpu3-repeat-comparison.json).
+The repeat checks consistency; it does not count as another calibration case.
