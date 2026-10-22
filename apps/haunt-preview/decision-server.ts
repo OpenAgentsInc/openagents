@@ -55,7 +55,9 @@ export function decisionServer(): Plugin {
       server.middlewares.use(async (req, res, next) => {
         if (
           req.url !== "/api/haunt/decision" &&
-          req.url !== "/api/haunt/capabilities"
+          req.url !== "/api/haunt/capabilities" &&
+          req.url !== "/api/medieval/decision" &&
+          req.url !== "/api/medieval/capabilities"
         )
           return next();
         const reply = (status: number, body: unknown) => {
@@ -64,7 +66,7 @@ export function decisionServer(): Plugin {
           res.setHeader("Cache-Control", "no-store");
           res.end(JSON.stringify(body));
         };
-        if (req.url === "/api/haunt/capabilities") {
+        if (req.url?.endsWith("/capabilities")) {
           if (req.method !== "GET")
             return reply(405, { error: "Use the scene controls." });
           try {

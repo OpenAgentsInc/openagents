@@ -3,8 +3,8 @@
 Product code in this workspace is Rust. Do not add TypeScript. The existing
 browser exception is `apps/haunt-preview`: the owner explicitly requested
 Effect, TypeScript, and direct WebGPU for the browser-first Haunted House
-shader/Kiln demo (#12500, 2026-10-22). Keep this exception scoped to that
-preview; reuse Kiln and existing domain services rather than duplicating them.
+shader/Kiln demo (#12500, 2026-10-22) and its explicitly requested Medieval
+Town Lab. Keep this exception scoped to those creator previews; reuse Kiln and existing domain services rather than duplicating them.
 The existing product exception is `swift/lev-bridge`, the helper that reaches Apple's
 `FoundationModels` framework, which has no Rust binding; it is built by a
 repo script and supervised as a child process. Coder's iOS host at `bins/coder-ios/host` also uses thin SwiftUI glue for native controls, mounting, and

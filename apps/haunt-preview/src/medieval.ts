@@ -1,3 +1,4 @@
+import { TownFloor, isHouse, type KitInstance } from "./town.ts";
 import pinned from "./medieval-kit.json" with { type: "json" };
 import type { SceneAsset } from "./project.ts";
 
@@ -9,7 +10,7 @@ struct Scene { view_proj: mat4x4<f32>, eye_time: vec4<f32>, light: vec4<f32>, ti
 struct Input {
  @location(0) pos: vec3<f32>, @location(1) normal: vec3<f32>,
  @location(2) color: vec3<f32>, @location(3) uv: vec2<f32>,
- @location(4) layer: f32, @location(5) instance: vec3<f32>
+ @location(4) layer: f32, @location(5) instance: vec4<f32>, @location(6) size: vec3<f32>
 }
 struct Surface {
  @builtin(position) pos: vec4<f32>, @location(0) world: vec3<f32>,
@@ -18,9 +19,9 @@ struct Surface {
 }
 @vertex fn vertex_main(v: Input) -> Surface {
  var o: Surface;
- o.world = v.pos * v.instance.z + vec3<f32>(v.instance.x, 0, v.instance.y);
+ let c=cos(v.instance.w); let s=sin(v.instance.w); let p=v.pos*v.size; o.world=vec3<f32>(c*p.x+s*p.z,p.y,-s*p.x+c*p.z)+v.instance.xyz;
  o.pos = scene.view_proj * vec4<f32>(o.world, 1);
- o.normal = v.normal; o.color = v.color; o.uv = v.uv; o.layer = u32(v.layer);
+ let n=v.normal/v.size; o.normal=normalize(vec3<f32>(c*n.x+s*n.z,n.y,-s*n.x+c*n.z)); o.color = v.color; o.uv = v.uv; o.layer = u32(v.layer);
  return o;
 }
 @fragment fn fragment_main(v: Surface) -> @location(0) vec4<f32> {
@@ -29,14 +30,16 @@ struct Surface {
  let to_light = scene.light.xyz-v.world;
  let lamp = 9.0/(3.0+dot(to_light,to_light));
  let diffuse = max(dot(normalize(v.normal),normalize(to_light)),0.0);
- let daylight = 0.32 + 0.28 * max(dot(normalize(v.normal),normalize(vec3<f32>(0.4,0.8,0.3))),0.0);
- var color = tex.rgb * v.color * (vec3<f32>(daylight) + scene.tint.xyz * vec3<f32>(1,0.72,0.36) * diffuse * lamp);
- let fog = 1.0-exp(-length(scene.eye_time.xyz-v.world)*0.018);
- color = mix(color,vec3<f32>(0.055,0.075,0.085),fog);
+ let daylight = 0.62 + 0.38 * max(dot(normalize(v.normal),normalize(vec3<f32>(0.4,0.8,0.3))),0.0);
+ var color = tex.rgb * v.color * vec3<f32>(daylight) * scene.tint.xyz;
+ let fog = 1.0-exp(-length(scene.eye_time.xyz-v.world)*0.004);
+ color = mix(color,vec3<f32>(0.64,0.76,0.85),fog);
  return vec4<f32>(pow(max(color,vec3<f32>(0)),vec3<f32>(0.8)),1);
 }`;
 type Mesh = { first: number; count: number; dimensions: number[] };
-export const medievalKinds = new Set(Object.keys(pinned.meshes));
+export const medievalKinds = new Set(
+  Object.keys(pinned.meshes).filter((k) => !k.startsWith("piece/")),
+);
 async function verified(name: keyof typeof pinned.files) {
   const response = await fetch(`/medieval-kit/${name}`);
   if (!response.ok)
@@ -65,6 +68,7 @@ export class MedievalRenderer {
   group: GPUBindGroup;
   draws: { mesh: Mesh; first: number; count: number }[] = [];
   instanceCount = 0;
+  partCount = 0;
   constructor(
     private device: GPUDevice,
     vertices: GPUBuffer,
@@ -106,7 +110,7 @@ export class MedievalRenderer {
       device.queue.writeBuffer(vertices, 0, bytes);
       instances = device.createBuffer({
         label: "Medieval kit instances",
-        size: 64 * 12,
+        size: 8192 * 32,
         usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
       });
       texture = device.createTexture({
@@ -146,10 +150,11 @@ export class MedievalRenderer {
               ],
             },
             {
-              arrayStride: 12,
+              arrayStride: 32,
               stepMode: "instance",
               attributes: [
-                { shaderLocation: 5, offset: 0, format: "float32x3" },
+                { shaderLocation: 5, offset: 0, format: "float32x4" },
+                { shaderLocation: 6, offset: 16, format: "float32x3" },
               ],
             },
           ],
@@ -202,26 +207,61 @@ export class MedievalRenderer {
       bitmap.close();
     }
   }
-  update(assets: SceneAsset[]) {
-    const values: number[] = [];
-    this.draws = [];
-    for (const [kind, mesh] of Object.entries(pinned.meshes)) {
-      const members = assets.filter((a) => a.kind === kind);
-      if (!members.length) continue;
-      this.draws.push({
-        mesh,
-        first: values.length / 3,
-        count: members.length,
-      });
-      for (const a of members) values.push(a.x, a.z, a.scale);
+  prepare(assets: SceneAsset[], floor: TownFloor) {
+    const groups = new Map<string, { mesh: Mesh; instances: KitInstance[] }>();
+    const add = (mesh: Mesh, instance: KitInstance) => {
+      const key = `${mesh.first}:${mesh.count}`;
+      if (!groups.has(key)) groups.set(key, { mesh, instances: [] });
+      groups.get(key)!.instances.push(instance);
+    };
+    for (const asset of assets) {
+      const mesh = pinned.meshes[asset.kind as keyof typeof pinned.meshes];
+      if (!mesh) continue;
+      const instance = {
+        mesh: asset.kind,
+        x: asset.x,
+        y: asset.y ?? 0,
+        z: asset.z,
+        yaw: 0,
+        sx: asset.scale,
+        sy: asset.scale,
+        sz: asset.scale,
+      };
+      if (isHouse(asset.kind)) {
+        for (const part of mesh.parts)
+          if (part.role === "roof")
+            add({ ...part, dimensions: mesh.dimensions }, instance);
+      } else add(mesh, instance);
     }
-    this.instanceCount = values.length / 3;
-    if (values.length)
-      this.device.queue.writeBuffer(
-        this.instances,
-        0,
-        new Float32Array(values),
+    for (const piece of floor.pieces) {
+      const mesh = pinned.meshes[piece.mesh as keyof typeof pinned.meshes];
+      if (!mesh)
+        throw new Error("This building piece is unavailable. Reopen the lab.");
+      add(mesh, piece);
+    }
+    const values: number[] = [],
+      draws: { mesh: Mesh; first: number; count: number }[] = [];
+    for (const group of groups.values()) {
+      draws.push({
+        mesh: group.mesh,
+        first: values.length / 8,
+        count: group.instances.length,
+      });
+      for (const p of group.instances)
+        values.push(p.x, p.y, p.z, p.yaw, p.sx, p.sy, p.sz, 0);
+    }
+    if (values.length / 8 > 8192)
+      throw new Error(
+        "This town has too many building pieces. Remove a room before adding more.",
       );
+    return { values: new Float32Array(values), draws, objects: assets.length };
+  }
+  apply(plan: ReturnType<MedievalRenderer["prepare"]>) {
+    if (plan.values.length)
+      this.device.queue.writeBuffer(this.instances, 0, plan.values);
+    this.draws = plan.draws;
+    this.instanceCount = plan.objects;
+    this.partCount = plan.values.length / 8;
   }
   draw(pass: GPURenderPassEncoder) {
     if (!this.draws.length) return;

@@ -39,6 +39,8 @@ def house(stories):
 recipes = {'cottage': house(1), 'townhouse': house(2)}
 for kind, piece in {'barrel':'barrel','bench':'bench','chair':'chair','market-stall':'stall','cart':'cart','fountain':'fountain'}.items():
     recipes[kind] = [(piece, 0, 0, 0, 0)]
+for piece in ['wall-4-timber', 'window-4', 'door-4']:
+    recipes['piece/'+piece] = [(piece, 0, 0, 0, 0)]
 images = []
 image_ids = {}
 blob = bytearray()
@@ -68,24 +70,30 @@ def accessor(doc, buffers, index):
 for kind, members in recipes.items():
     start = len(blob)//48
     lo, hi = [float('inf')]*3, [float('-inf')]*3
+    parts = []
     for piece, x, y, z, yaw in members:
+        part_start = len(blob)//48
         doc = json.loads(load(SOURCE/f'{piece}.gltf'))
         buffers = [load(SOURCE/b['uri']) for b in doc['buffers']]
         c, s = math.cos(yaw), math.sin(yaw)
         for primitive in doc['meshes'][0]['primitives']:
             attrs = {key:accessor(doc,buffers,val) for key,val in primitive['attributes'].items()}
             indices = accessor(doc,buffers,primitive['indices'])
-            mat = doc['materials'][primitive['material']]['pbrMetallicRoughness']
+            material = doc['materials'][primitive['material']]
+            mat = material['pbrMetallicRoughness']
             tex = mat.get('baseColorTexture')
             uri = doc['images'][doc['textures'][tex['index']]['source']]['uri'] if tex else None
-            if uri not in image_ids:
-                image_ids[uri] = len(images)
+            image_key = (uri, material.get("alphaMode", "OPAQUE"))
+            if image_key not in image_ids:
+                image_ids[image_key] = len(images)
                 if uri:
                     load(SOURCE/uri)
                     image = Image.open(SOURCE/uri).convert('RGBA').resize((256,256), Image.Resampling.LANCZOS)
                 else: image = Image.new('RGBA', (256,256), (255,255,255,255))
+                # Opaque kit textures may use alpha as a material mask, not opacity.
+                if image_key[1] == "OPAQUE": image.putalpha(255)
                 images.append(image)
-            layer = image_ids[uri]
+            layer = image_ids[image_key]
             factor = mat.get('baseColorFactor',[1,1,1,1])
             for (i,) in indices:
                 p = attrs['POSITION'][i]; n = attrs['NORMAL'][i]
@@ -96,13 +104,14 @@ for kind, members in recipes.items():
                 rgb = tuple(col[j]*factor[j] for j in range(3))
                 blob.extend(struct.pack('<12f',*pos,*norm,*rgb,*uv,layer))
                 lo = [min(a,b) for a,b in zip(lo,pos)]; hi = [max(a,b) for a,b in zip(hi,pos)]
+        parts.append({'first':part_start,'count':len(blob)//48-part_start,'role':'roof' if any(t in piece for t in ['roof','ridge','chimney']) else 'wall'})
     count = len(blob)//48-start
     # Center props and put the lowest point on the ground. Houses retain real dimensions.
-    origin = [(lo[0]+hi[0])/2, lo[1], (lo[2]+hi[2])/2]
+    origin = [0,0,0] if kind.startswith('piece/') else [(lo[0]+hi[0])/2, lo[1], (lo[2]+hi[2])/2]
     for offset in range(start*48, len(blob), 48):
         p = struct.unpack_from('<3f',blob,offset)
         struct.pack_into('<3f',blob,offset,*(p[i]-origin[i] for i in range(3)))
-    meshes[kind] = {'first':start,'count':count,'dimensions':[round(hi[i]-lo[i],4) for i in range(3)]}
+    meshes[kind] = {'first':start,'count':count,'dimensions':[round(hi[i]-lo[i],4) for i in range(3)],'parts':parts}
 atlas = Image.new('RGBA',(256*8,256*math.ceil(len(images)/8)))
 for i,img in enumerate(images): atlas.paste(img,((i%8)*256,(i//8)*256))
 atlas.save(OUT/'atlas.png')

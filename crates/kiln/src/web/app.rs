@@ -25,8 +25,13 @@ use crate::agent::{Agent, Command};
 use crate::cj::{self, Key};
 use crate::vfs::Vfs;
 
-const SNAPSHOT: &str = "kiln-workspace-v1.bin";
-const BASE_SNAPSHOT: &str = "kiln-base-v1.bin";
+thread_local! {static PREVIEW_LAB: Cell<crate::shader::Lab> = const {Cell::new(crate::shader::Lab::Haunt)};}
+fn shader_path() -> &'static str {
+    PREVIEW_LAB.with(|lab| lab.get().shader())
+}
+fn scene_path() -> &'static str {
+    PREVIEW_LAB.with(|lab| lab.get().scene())
+}
 const REPO: &str = "OpenAgentsInc/openagents";
 /// Where the base snapshot keeps what was loaded.
 const REPO_META: &str = ".kiln/repo.json";
@@ -146,6 +151,11 @@ fn el(doc: &Document, id: &str) -> Element {
 /// Run Kiln inside another page, such as the Grid's terminal (#12456),
 /// with its files under `base` and no markup of its own: the page draws
 /// Kiln from `kilnState()` and drives it through the `kiln*` functions.
+pub async fn run_lab(base: String, lab: crate::shader::Lab) {
+    PREVIEW_LAB.with(|current| current.set(lab));
+    run_headless(base).await;
+}
+
 pub async fn run_headless(base: String) {
     let base = if base.ends_with('/') {
         base
@@ -490,16 +500,20 @@ impl App {
                 JsFuture::from(storage.get_directory()).await?.dyn_into()?;
             let options = FileSystemGetFileOptions::new();
             options.set_create(true);
-            let handle: FileSystemFileHandle =
-                JsFuture::from(dir.get_file_handle_with_options(SNAPSHOT, &options))
-                    .await?
-                    .dyn_into()?;
+            let handle: FileSystemFileHandle = JsFuture::from(dir.get_file_handle_with_options(
+                PREVIEW_LAB.with(|lab| lab.get().snapshot()),
+                &options,
+            ))
+            .await?
+            .dyn_into()?;
             let file: web_sys::File = JsFuture::from(handle.get_file()).await?.dyn_into()?;
             let bytes = Uint8Array::new(&JsFuture::from(file.array_buffer()).await?).to_vec();
-            let base: FileSystemFileHandle =
-                JsFuture::from(dir.get_file_handle_with_options(BASE_SNAPSHOT, &options))
-                    .await?
-                    .dyn_into()?;
+            let base: FileSystemFileHandle = JsFuture::from(dir.get_file_handle_with_options(
+                PREVIEW_LAB.with(|lab| lab.get().base_snapshot()),
+                &options,
+            ))
+            .await?
+            .dyn_into()?;
             let file: web_sys::File = JsFuture::from(base.get_file()).await?.dyn_into()?;
             let base_bytes = Uint8Array::new(&JsFuture::from(file.array_buffer()).await?).to_vec();
             if let Ok(vfs) = Vfs::decode(&base_bytes) {
@@ -928,18 +942,10 @@ impl App {
                 *self.vfs.borrow_mut() = next;
                 self.persist().await;
                 self.render_files();
-                if changed
-                    .iter()
-                    .chain(&removed)
-                    .any(|p| p == crate::shader::PATH)
-                {
+                if changed.iter().chain(&removed).any(|p| p == shader_path()) {
                     self.notify_shader();
                 }
-                if changed
-                    .iter()
-                    .chain(&removed)
-                    .any(|p| p == crate::shader::SCENE_PATH)
-                {
+                if changed.iter().chain(&removed).any(|p| p == scene_path()) {
                     self.notify_scene();
                 }
             }
@@ -2169,7 +2175,7 @@ impl App {
                 app.busy.set(true);
                 let result = app
                     .run_command(&Command::Write {
-                        path: crate::shader::PATH.to_owned(),
+                        path: shader_path().to_owned(),
                         content: source,
                     })
                     .await;
@@ -2199,7 +2205,7 @@ impl App {
             if app.repo().is_some() {
                 return JsValue::NULL;
             }
-            app.workspace_source(crate::shader::SCENE_PATH)
+            app.workspace_source(scene_path())
                 .map_or(JsValue::NULL, |s| JsValue::from_str(&s))
         });
         set(&window, "kilnReadScene", scene.as_ref().clone());
@@ -2226,7 +2232,7 @@ impl App {
         if !self.shader_preview.get() {
             return None;
         }
-        self.workspace_source(crate::shader::PATH)
+        self.workspace_source(shader_path())
     }
 
     fn workspace_source(&self, path: &str) -> Option<String> {
@@ -2258,7 +2264,7 @@ impl App {
         if self.repo().is_some() {
             return;
         }
-        let Some(source) = self.workspace_source(crate::shader::SCENE_PATH) else {
+        let Some(source) = self.workspace_source(scene_path()) else {
             return;
         };
         let Some(window) = web_sys::window() else {

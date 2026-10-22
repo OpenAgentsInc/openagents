@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "@playwright/test";
-import catalog from "../src/assets.json" with { type: "json" };
+import allAssets from "../src/assets.json" with { type: "json" };
+const catalog = Object.fromEntries(
+  Object.entries(allAssets).filter(([, asset]) => !asset.source),
+);
 
 const url = process.env.HAUNT_URL;
 if (!url) throw new Error("Set HAUNT_URL to the local editor.");
@@ -180,7 +183,7 @@ try {
   assert.deepEqual(errors, []);
   report.project = final.project;
   report.checks.push(
-    "Procedural props keep their shader; imported kit meshes use one shared texture array and instanced material. Player/device stay unchanged; mixed assets save and reopen through Kiln OPFS",
+    "Haunted House offers its seven procedural props; player/device stay unchanged and mixed assets save and reopen through Kiln OPFS",
   );
   report.passed = true;
   console.log(

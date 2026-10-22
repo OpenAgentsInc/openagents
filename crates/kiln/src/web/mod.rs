@@ -23,6 +23,14 @@ pub fn start_headless(base: String) {
     wasm_bindgen_futures::spawn_local(app::run_headless(base));
 }
 
+/// Start a named creator lab with a separate local workspace.
+#[wasm_bindgen]
+pub fn start_lab(base: String, lab: String) -> Result<(), JsValue> {
+    let lab = crate::shader::Lab::parse(&lab).map_err(JsValue::from_str)?;
+    wasm_bindgen_futures::spawn_local(app::run_lab(base, lab));
+    Ok(())
+}
+
 /// Start the patch viewer (`review.html`).
 #[wasm_bindgen]
 pub fn start_review() {

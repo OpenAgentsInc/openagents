@@ -1,5 +1,6 @@
-export const PROJECT = "haunt-webgpu-v1";
-export const ASSET = "haunt/material.wgsl";
+import { LAB } from "./lab.ts";
+export const PROJECT = LAB.id;
+export const ASSET = LAB.material;
 export const MAX_SOURCE_BYTES = 64 * 1024;
 
 export type ShaderEdit = {

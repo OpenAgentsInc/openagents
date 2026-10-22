@@ -1,3 +1,6 @@
+import { IS_TOWN } from "./lab.ts";
+import { TownFloor, isHouse } from "./town.ts";
+import { townGeometry } from "./town-geometry.ts";
 import { MedievalRenderer, medievalKinds } from "./medieval.ts";
 import { HouseFloor, DEFAULT_LAYOUT } from "./layout.ts";
 import { Effect } from "effect";
@@ -18,6 +21,7 @@ import {
 
 import {
   SceneHistory,
+  projectFloor,
   readProject,
   PROJECT_ID,
   TINTS,
@@ -47,7 +51,9 @@ class Runtime {
   layout: GPUPipelineLayout;
   depth: GPUTexture | undefined;
   versions = new ShaderVersions<GPURenderPipeline>(() => {});
-  pose: Pose = { x: 0, z: 6.8, yaw: 0, pitch: -0.03 };
+  pose: Pose = IS_TOWN
+    ? { x: -11, z: 3, y: 0, yaw: 0, pitch: -0.03 }
+    : { x: 0, z: 6.8, yaw: 0, pitch: -0.03 };
   keys: string[] = [];
   disposed = false;
   lost = false;
@@ -61,7 +67,7 @@ class Runtime {
   maxFrameMs = 0;
   uniformData = new Float32Array(28);
   scene = new SceneHistory();
-  floor = new HouseFloor();
+  floor = projectFloor(this.scene.project);
   ghosts = new GhostSimulation();
   ranges = new Map<string, AssetRange>();
   baseGeometry: Float32Array;
@@ -89,11 +95,14 @@ class Runtime {
     this.context = context;
     this.canvas = canvas;
     this.format = format;
-    const geometry = houseGeometry(
-      this.scene.project.entities,
-      this.ranges,
-      this.scene.project.layout ?? DEFAULT_LAYOUT,
-    );
+    const geometry =
+      this.floor instanceof TownFloor
+        ? townGeometry(this.floor, true)
+        : houseGeometry(
+            this.scene.project.entities,
+            this.ranges,
+            this.scene.project.layout ?? DEFAULT_LAYOUT,
+          );
     this.baseGeometry = geometry;
     this.ghosts.sync(this.scene.project.entities);
     this.count = geometry.length / 10;
@@ -382,6 +391,7 @@ class Runtime {
         commit = plan.commit;
       }
       if (
+        IS_TOWN &&
         !this.medieval &&
         !message.restore &&
         JSON.stringify(
@@ -397,17 +407,29 @@ class Runtime {
           this.kitError ??
             "Prepare the medieval kit and reopen the preview before adding these assets.",
         );
-      const nextFloor = new HouseFloor(candidate.layout ?? DEFAULT_LAYOUT);
-      if (!nextFloor.canStand(this.pose.x, this.pose.z))
+      const nextFloor = projectFloor(candidate);
+      const kitPlan =
+        this.medieval && nextFloor instanceof TownFloor
+          ? this.medieval.prepare(candidate.entities, nextFloor)
+          : undefined;
+      if (
+        !(nextFloor instanceof TownFloor
+          ? nextFloor.canStand(this.pose.x, this.pose.z, 0.24, this.pose.y ?? 0)
+          : nextFloor.canStand(this.pose.x, this.pose.z))
+      )
         throw new Error(
           "Step back into another room before applying or undoing this layout change.",
         );
       if (
+        JSON.stringify(candidate.town) !==
+          JSON.stringify(this.scene.project.town) ||
         JSON.stringify(candidate.layout) !==
           JSON.stringify(this.scene.project.layout) ||
         JSON.stringify(
           candidate.entities
-            .filter((e) => !medievalKinds.has(e.kind))
+            .filter(
+              (e) => !medievalKinds.has(e.kind) || (IS_TOWN && isHouse(e.kind)),
+            )
             .map(({ id, kind, x, z, scale }) => ({
               id,
               kind,
@@ -418,7 +440,10 @@ class Runtime {
         ) !==
           JSON.stringify(
             this.scene.project.entities
-              .filter((e) => !medievalKinds.has(e.kind))
+              .filter(
+                (e) =>
+                  !medievalKinds.has(e.kind) || (IS_TOWN && isHouse(e.kind)),
+              )
               .map(({ id, kind, x, z, scale }) => ({
                 id,
                 kind,
@@ -428,11 +453,14 @@ class Runtime {
               })),
           )
       ) {
-        const geometry = houseGeometry(
-          candidate.entities,
-          this.ranges,
-          candidate.layout ?? DEFAULT_LAYOUT,
-        );
+        const geometry =
+          nextFloor instanceof TownFloor
+            ? townGeometry(nextFloor, !this.medieval)
+            : houseGeometry(
+                candidate.entities,
+                this.ranges,
+                candidate.layout ?? DEFAULT_LAYOUT,
+              );
         this.baseGeometry = geometry;
         this.motionBuffers.clear();
         this.motionPoses.clear();
@@ -448,7 +476,7 @@ class Runtime {
         this.count = geometry.length / 10;
         previous.destroy();
       }
-      this.medieval?.update(candidate.entities);
+      if (kitPlan) this.medieval!.apply(kitPlan);
       commit();
       this.floor = nextFloor;
       this.ghosts.sync(candidate.entities);
@@ -474,6 +502,7 @@ class Runtime {
         available: !!this.medieval && !this.disposed,
         error: this.kitError,
         instances: this.medieval?.instanceCount ?? 0,
+        parts: this.medieval?.partCount ?? 0,
         meshes: this.medieval ? medievalKinds.size : 0,
         pipelines: this.medieval && !this.disposed ? 1 : 0,
         buffers: this.medieval && !this.disposed ? 2 : 0,
@@ -484,6 +513,13 @@ class Runtime {
       behaviorTicks: this.ghosts.ticks,
       geometryBuilds: this.geometryBuilds,
       aimedWall: this.floor.pick(this.pose),
+      stairs:
+        this.floor instanceof TownFloor &&
+        !!this.floor.stairAt(this.pose.x, this.pose.z),
+      room:
+        this.floor instanceof TownFloor
+          ? this.floor.roomAt(this.pose.x, this.pose.z, this.pose.y ?? 0)
+          : undefined,
       canUndo: this.scene.past.length > 0,
       canRedo: this.scene.future.length > 0,
       pose: { ...this.pose },
@@ -563,20 +599,32 @@ class Runtime {
     this.previous = now;
     this.maxFrameMs = Math.max(this.maxFrameMs, delta);
     const held = (...keys: string[]) => keys.some((k) => this.keys.includes(k));
-    move(
-      this.pose,
-      Number(held("KeyW", "ArrowUp")) - Number(held("KeyS", "ArrowDown")),
-      Number(held("KeyD")) - Number(held("KeyA")),
-      delta / 1000,
-      this.floor.canStand,
-    );
+    const forward =
+      Number(held("KeyW", "ArrowUp")) - Number(held("KeyS", "ArrowDown"));
+    const right = Number(held("KeyD")) - Number(held("KeyA"));
+    if (this.floor instanceof TownFloor)
+      this.floor.move(this.pose, forward, right, delta / 1000);
+    else
+      move(
+        this.pose,
+        Number(held("KeyW", "ArrowUp")) - Number(held("KeyS", "ArrowDown")),
+        Number(held("KeyD")) - Number(held("KeyA")),
+        delta / 1000,
+        this.floor.canStand,
+      );
     if (held("ArrowLeft")) this.pose.yaw -= delta * 0.0015;
     if (held("ArrowRight")) this.pose.yaw += delta * 0.0015;
     this.animate(delta / 1000);
     const committed = this.versions.commit();
     cameraMatrix(this.uniformData, this.pose, this.width / this.height);
-    this.uniformData.set([this.pose.x, 1.55, this.pose.z, now / 1000], 16);
-    this.uniformData.set([this.pose.x + 0.3, 1.35, this.pose.z - 0.25, 1], 20);
+    this.uniformData.set(
+      [this.pose.x, (this.pose.y ?? 0) + 1.55, this.pose.z, now / 1000],
+      16,
+    );
+    this.uniformData.set(
+      [this.pose.x + 0.3, (this.pose.y ?? 0) + 1.35, this.pose.z - 0.25, 1],
+      20,
+    );
     this.uniformData.set([...TINTS[this.scene.project.tint], 1], 24);
     this.device.queue.writeBuffer(this.uniform, 0, this.uniformData.buffer);
     const encoder = this.device.createCommandEncoder();
@@ -585,7 +633,9 @@ class Runtime {
       colorAttachments: [
         {
           view: texture.createView(),
-          clearValue: { r: 0.055, g: 0.075, b: 0.085, a: 1 },
+          clearValue: IS_TOWN
+            ? { r: 0.64, g: 0.76, b: 0.85, a: 1 }
+            : { r: 0.055, g: 0.075, b: 0.085, a: 1 },
           loadOp: "clear",
           storeOp: "store",
         },
@@ -738,15 +788,38 @@ scope.onmessage = (event: MessageEvent) => {
                     format,
                   );
                   try {
-                    renderer.medieval = await MedievalRenderer.create(
-                      device,
-                      renderer.uniform,
-                      format,
-                    );
+                    if (IS_TOWN)
+                      renderer.medieval = await MedievalRenderer.create(
+                        device,
+                        renderer.uniform,
+                        format,
+                      );
                   } catch (error) {
                     renderer.kitError =
                       "The medieval kit could not load. Prepare it again and reopen the preview.";
                     console.warn("Medieval kit load failed", error);
+                  }
+                  if (
+                    renderer.medieval &&
+                    renderer.floor instanceof TownFloor
+                  ) {
+                    renderer.medieval.apply(
+                      renderer.medieval.prepare(
+                        renderer.scene.project.entities,
+                        renderer.floor,
+                      ),
+                    );
+                    const geometry = townGeometry(renderer.floor);
+                    const buffer = device.createBuffer({
+                      label: "Town floors and stairs",
+                      size: geometry.byteLength,
+                      usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+                    });
+                    device.queue.writeBuffer(buffer, 0, geometry.buffer);
+                    renderer.vertices.destroy();
+                    renderer.vertices = buffer;
+                    renderer.baseGeometry = geometry;
+                    renderer.count = geometry.length / 10;
                   }
                   return renderer;
                 } catch (error) {

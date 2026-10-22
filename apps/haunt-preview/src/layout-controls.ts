@@ -1,5 +1,7 @@
+import { IS_TOWN } from "./lab.ts";
+import { TownFloor } from "./town.ts";
 import { DEFAULT_LAYOUT, HouseFloor } from "./layout.ts";
-import type { Operation, Project } from "./project.ts";
+import { projectFloor, type Operation, type Project } from "./project.ts";
 
 const el = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
@@ -17,7 +19,7 @@ export function createLayoutControls(bridge: {
 }) {
   const selector = el<HTMLSelectElement>("wall-selected");
   let revision = -1,
-    floor = new HouseFloor(),
+    floor: HouseFloor | TownFloor = new HouseFloor(),
     ready = false,
     busy = false;
   function target() {
@@ -45,7 +47,7 @@ export function createLayoutControls(bridge: {
     if (!project) return;
     if (revision !== project.revision) {
       revision = project.revision;
-      floor = new HouseFloor(project.layout ?? DEFAULT_LAYOUT);
+      floor = projectFloor(project);
       const previous = selector.value || "aim";
       selector.replaceChildren();
       const aim = document.createElement("option");
@@ -130,7 +132,13 @@ export function createLayoutControls(bridge: {
         Math.abs((state.pose?.x ?? 0) - r.x) <= r.width / 2 &&
         Math.abs((state.pose?.z ?? 0) - r.z) <= r.depth / 2,
     );
-    el("current-room").textContent = room?.name ?? "Haunted House";
+    el("current-room").textContent = IS_TOWN
+      ? state.stairs
+        ? "Stairs"
+        : state.room
+          ? `${state.room.buildingName} · ${state.room.level ? "Upstairs · " : ""}${state.room.room.name}`
+          : "Town square"
+      : (room?.name ?? "Haunted House");
     const wall = target();
     el("wall-target").textContent = wall
       ? `${wall.removed ? "Opening" : "Target"}: ${wall.name}`
@@ -140,7 +148,7 @@ export function createLayoutControls(bridge: {
       : "Look toward a wall to build";
     for (const id of ["wall-selected", "room-size"])
       el<HTMLSelectElement>(id).disabled = !ready || busy;
-    for (const id of ["add-room", "add-wing", "add-courtyard"])
+    for (const id of ["add-room", "add-wing"])
       el<HTMLButtonElement>(id).disabled = !ready || busy || !wall?.exterior;
     el<HTMLButtonElement>("remove-wall").disabled =
       !ready || busy || !wall || wall.removed;
@@ -159,19 +167,6 @@ export function createLayoutControls(bridge: {
   selector.addEventListener("change", () => {
     bridge.cancel();
     refresh();
-  });
-  el("add-courtyard").addEventListener("click", () => {
-    const wall = target();
-    if (wall)
-      void bridge
-        .submit({
-          kind: "add_room",
-          wall: wall.id,
-          size: 32,
-          at: { x: wall.x, z: wall.z },
-          outdoor: true,
-        })
-        .catch(bridge.error);
   });
   for (const kind of ["add_room", "add_wing", "remove_wall"] as const)
     el(kind.replaceAll("_", "-")).addEventListener("click", () => {

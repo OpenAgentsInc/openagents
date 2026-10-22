@@ -1,3 +1,5 @@
+import { isHouse } from "./town.ts";
+import { IS_TOWN, LAB } from "./lab.ts";
 import { createLayoutControls } from "./layout-controls.ts";
 import { Effect } from "effect";
 import {
@@ -6,8 +8,10 @@ import {
   type AssetKind,
   type Behavior,
   SCENE_PATH,
+  MAX_SCENE_BYTES,
   decisionOperation,
   readProject,
+  cleanHaunt,
   type Decision,
   type Operation,
   type Project,
@@ -69,15 +73,17 @@ export function createEditor(bridge: Bridge) {
     el<HTMLButtonElement>("undo").disabled = !ready || busy || !state.canUndo;
     el<HTMLButtonElement>("redo").disabled = !ready || busy || !state.canRedo;
     el<HTMLButtonElement>("cancel-decision").hidden = !decision;
-    el("kit-status").textContent = state.medieval?.available
-      ? "Everglade medieval kit · 8 textured assets. Add a courtyard for full-size houses."
-      : (state.medieval?.error ??
-        "Medieval assets need the local Everglade kit.");
-    for (const option of el<HTMLSelectElement>("asset-kind").options) {
-      const item = ASSETS[option.value as AssetKind];
-      option.disabled =
-        !!item && "source" in item && !state.medieval?.available;
-    }
+    if (IS_TOWN)
+      el("kit-status").textContent = state.medieval?.available
+        ? "8 kit assets · Enter a house to change its rooms and walls."
+        : (state.medieval?.error ??
+          "Medieval assets need the local Everglade kit.");
+    if (IS_TOWN)
+      for (const option of el<HTMLSelectElement>("asset-kind").options) {
+        const item = ASSETS[option.value as AssetKind];
+        option.disabled =
+          !!item && "source" in item && !state.medieval?.available;
+      }
     const ghost = p?.entities.find(
       (e) => e.id === selected && e.kind === "ghost",
     );
@@ -213,10 +219,14 @@ export function createEditor(bridge: Bridge) {
       const d = await Effect.runPromise(
         Effect.tryPromise({
           try: async () => {
-            const response = await fetch("/api/haunt/decision", {
+            const response = await fetch(LAB.decision, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ text, selected: !!selectedAtStart }),
+              body: JSON.stringify({
+                text,
+                selected: !!selectedAtStart,
+                lab: IS_TOWN ? "medieval" : "haunt",
+              }),
               signal: controller.signal,
             });
             const result = await response.json().catch(() => {
@@ -320,7 +330,7 @@ export function createEditor(bridge: Bridge) {
   async function ingest(text: string, restore = false) {
     if (selfWrites.has(text)) return;
     try {
-      if (new TextEncoder().encode(text).length > 65536)
+      if (new TextEncoder().encode(text).length > MAX_SCENE_BYTES)
         throw new Error("The scene file is too large.");
       const project = readProject(JSON.parse(text));
       if (JSON.stringify(project) === JSON.stringify(bridge.state().project))
@@ -338,6 +348,12 @@ export function createEditor(bridge: Bridge) {
         });
         rendered = -1;
         refresh();
+        if (
+          !IS_TOWN &&
+          JSON.stringify(cleanHaunt(JSON.parse(text))) !==
+            JSON.stringify(JSON.parse(text))
+        )
+          await persist(project);
         status("Opened your saved Kiln scene.");
       } else
         await submit(
@@ -371,6 +387,9 @@ export function createEditor(bridge: Bridge) {
           id: `${picker.value}-${crypto.randomUUID()}`,
           kind: picker.value as AssetKind,
           ...position(),
+          ...(IS_TOWN
+            ? { y: isHouse(picker.value) ? 0 : (bridge.state().pose?.y ?? 0) }
+            : {}),
           scale: el<HTMLInputElement>("scale").valueAsNumber,
         },
       }),
@@ -378,7 +397,22 @@ export function createEditor(bridge: Bridge) {
   );
   el("move-pumpkin").addEventListener("click", () =>
     attempt(() =>
-      submit({ kind: "move_asset", id: selected ?? "", ...position() }),
+      submit({
+        kind: "move_asset",
+        id: selected ?? "",
+        ...position(),
+        ...(IS_TOWN
+          ? {
+              y: isHouse(
+                bridge
+                  .state()
+                  .project.entities.find((e: any) => e.id === selected)?.kind,
+              )
+                ? 0
+                : (bridge.state().pose?.y ?? 0),
+            }
+          : {}),
+      }),
     ),
   );
   el("resize-pumpkin").addEventListener("click", () =>
