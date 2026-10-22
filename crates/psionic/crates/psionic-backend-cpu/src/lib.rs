@@ -1447,6 +1447,12 @@ pub fn decode_quantized_row_into(
             "quantized mode {mode:?} does not use GGML blocks"
         )));
     };
+    if !bytes.len().is_multiple_of(bytes_per_block) {
+        return Err(RuntimeError::Backend(format!(
+            "quantized row byte length {} is not divisible by block size {bytes_per_block}",
+            bytes.len()
+        )));
+    }
     for block_bytes in bytes.chunks_exact(bytes_per_block) {
         match mode {
             QuantizationMode::GgmlMxfp4 => decode_mxfp4_block_into(block_bytes, output)?,
@@ -2914,6 +2920,19 @@ mod tests {
         assert!((dot - expected).abs() <= 1e-4);
         assert_eq!(decoded.len(), 32);
         Ok(())
+    }
+
+    #[test]
+    fn decode_quantized_row_into_rejects_partial_block_without_mutating_output() {
+        let mut bytes = sample_q5_0_row();
+        bytes.push(0);
+        let mut decoded = vec![17.0];
+
+        let result =
+            super::decode_quantized_row_into(QuantizationMode::GgmlQ5_0, &bytes, &mut decoded);
+
+        assert!(result.is_err());
+        assert_eq!(decoded, vec![17.0]);
     }
 
     #[test]
