@@ -577,7 +577,7 @@ impl CudaSubmission {
         out: &CudaBuffer,
         output: V41Output,
     ) -> Result<(), RuntimeError> {
-        if table.width == 0 || !table.width.is_multiple_of(32) || !(1..=65_535).contains(&count) {
+        if table.width == 0 || !table.width.is_multiple_of(32) || !(1..=1 << 24).contains(&count) {
             return Err(invalid(format!(
                 "Engram width {} with {count} rows",
                 table.width

@@ -337,8 +337,13 @@ __global__ void v41_engram_gather_kernel(
     const long long* __restrict__ ids,
     float* __restrict__ out,
     int width,
-    int round_bf16) {
-    const int slot = blockIdx.x;
+    int round_bf16,
+    int count) {
+    // A 2-D grid carries more rows than one grid dimension holds (#12464).
+    const long long slot = static_cast<long long>(blockIdx.y) * gridDim.x + blockIdx.x;
+    if (slot >= count) {
+        return;
+    }
     const int lane = threadIdx.x;
     const long long id = ids[slot];
     float* row_out = out + static_cast<long long>(slot) * width;
@@ -750,9 +755,11 @@ extern "C" int psionic_v41_engram_gather(
     int width,
     int round_bf16,
     void* stream) {
-    v41_engram_gather_kernel<<<count, 32, 0, static_cast<cudaStream_t>(stream)>>>(
+    const unsigned x = static_cast<unsigned>(count < 65535 ? count : 65535);
+    const unsigned y = static_cast<unsigned>((count + 65534) / 65535);
+    v41_engram_gather_kernel<<<dim3(x, y), 32, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const uint8_t*>(codes), static_cast<const uint8_t*>(scales), rows,
-        static_cast<const long long*>(ids), static_cast<float*>(out), width, round_bf16);
+        static_cast<const long long*>(ids), static_cast<float*>(out), width, round_bf16, count);
     return static_cast<int>(cudaGetLastError());
 }
 
