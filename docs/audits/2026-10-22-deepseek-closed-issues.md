@@ -594,3 +594,12 @@ sections and shortened continuations fail local controls. The rebuilt CUDA
 package passes 144 checks (six optional checks ignored), with its source and
 log in the [receipt](../psionic/verification/deepseek-v41-gates-2026-10-22/sm120-receipt-components.json).
 Full-model gates remain open.
+
+
+A subsequent independent review reproduced truncated connected G1 publication,
+missing intermediate oracle replay logits, and missing post-final reference
+tokens. The follow-up requires the frozen lengths, complete unique comparison
+labels in both modes, all router rows per layer, valid metrics, and canonical
+oracle row mappings and tensors. The prospective corpus requires 1,056
+distribution comparisons; no acceptance limits were relaxed. These code fixes
+do not close the pending full-model qualification.

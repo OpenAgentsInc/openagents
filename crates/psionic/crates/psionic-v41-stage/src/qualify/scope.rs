@@ -1,6 +1,58 @@
 //! Bind release qualification to a prospective corpus and actual execution.
 use super::*;
 
+pub(super) fn comparison_labels(generated: u64) -> BTreeSet<String> {
+    std::iter::once("last".to_owned())
+        .chain((1..=generated).map(|n| format!("g{n}")))
+        .collect()
+}
+
+pub(super) fn complete_positions(mode: &Value, generated: u64) -> bool {
+    let labels = comparison_labels(generated);
+    mode["positions"].as_array().is_some_and(|positions| {
+        positions.len() == labels.len()
+            && positions
+                .iter()
+                .filter_map(|p| p["label"].as_str())
+                .collect::<BTreeSet<_>>()
+                == labels.iter().map(String::as_str).collect::<BTreeSet<_>>()
+    })
+}
+
+pub(super) fn complete_router(router: &Value, prompt: u64, generated: u64) -> bool {
+    let Some(rows) = prompt.checked_add(generated).filter(|n| *n > 0) else {
+        return false;
+    };
+    let Some(total) = rows.checked_mul(40) else {
+        return false;
+    };
+    let Some(layers) = router["layers"].as_array() else {
+        return false;
+    };
+    let counts = ["same", "substituted", "failed", "unresolved"];
+    layers.len() == 40
+        && layers
+            .iter()
+            .filter_map(|l| l["layer"].as_u64())
+            .collect::<BTreeSet<_>>()
+            == (0..40).collect::<BTreeSet<_>>()
+        && router["rows"].as_u64() == Some(total)
+        && layers.iter().all(|l| {
+            l["score_error"]["from"] == "stage"
+                && l["score_error"]["rows"].as_u64() == Some(rows)
+                && counts
+                    .iter()
+                    .try_fold(0_u64, |n, k| n.checked_add(l[*k].as_u64()?))
+                    == Some(rows)
+        })
+        && counts.iter().all(|k| {
+            layers
+                .iter()
+                .try_fold(0_u64, |n, l| n.checked_add(l[*k].as_u64()?))
+                == router[*k].as_u64()
+        })
+}
+
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Scope {
@@ -137,6 +189,10 @@ pub(super) fn confirmation_inputs(
             || run["prompt_tokens"].as_u64() != Some(prompt.len() as u64)
             || run["n_gen"].as_u64() != Some(n_gen)
             || generated.len() as u64 != n_gen
+            || prompt.iter().chain(&generated).any(|id| *id >= 129_280)
+            || run["extra_step_argmax"]
+                .as_u64()
+                .is_none_or(|id| id >= 129_280)
             || case["all_generated_rows"] == true
                 && (prompt.len() as u64..prompt.len() as u64 + n_gen)
                     .any(|position| !labeled.contains(&position))
@@ -147,6 +203,27 @@ pub(super) fn confirmation_inputs(
             return Err(refused(format!(
                 "{name}: oracle capture lengths or identity differ from the frozen corpus"
             )));
+        }
+        for mode in ["decode", "replay"] {
+            for label in comparison_labels(n_gen) {
+                let position = if label == "last" {
+                    prompt.len() as u64 - 1
+                } else {
+                    prompt.len() as u64
+                        + label[1..]
+                            .parse::<u64>()
+                            .map_err(|e| refused(e.to_string()))?
+                        - 1
+                };
+                if run["labels"][&label].as_u64() != Some(position) {
+                    return Err(refused(format!("{name}: wrong oracle row for {label}")));
+                }
+                if !oracle.has(&format!("{name}.{mode}.{label}.logits")) {
+                    return Err(refused(format!(
+                        "{name}: missing oracle {mode} logits at {label}"
+                    )));
+                }
+            }
         }
         lengths.insert(name.to_owned(), (prompt.len() as u64, n_gen));
     }
@@ -198,14 +275,24 @@ mod tests {
             let path = root.path().join(name).join("run.json");
             std::fs::write(
                 &path,
-                serde_json::to_vec(&json!({"id":name,"corpus_sha256":corpus_sha,"n_gen":2,"prompt_tokens":1,"prompt_token_ids":[1],"generated_ids":[2,3]})).unwrap(),
+                serde_json::to_vec(&json!({"id":name,"corpus_sha256":corpus_sha,"n_gen":2,"prompt_tokens":1,"prompt_token_ids":[1],"generated_ids":[2,3],"extra_step_argmax":4,"labels":{"last":0,"g1":1,"g2":2}})).unwrap(),
             )
             .unwrap();
             hashes.insert(format!("{name}/run.json"), checked_sha256(&path).unwrap());
         }
+        let tensors: Vec<_> = ["a", "b"]
+            .into_iter()
+            .flat_map(|case| {
+                ["decode", "replay"].into_iter().flat_map(move |mode| {
+                    comparison_labels(2)
+                        .into_iter()
+                        .map(move |label| json!({"name":format!("{case}.{mode}.{label}.logits")}))
+                })
+            })
+            .collect();
         std::fs::write(
             root.path().join("manifest.json"),
-            serde_json::to_vec(&json!({"tensors":[],"run_files_sha256":hashes})).unwrap(),
+            serde_json::to_vec(&json!({"tensors":tensors,"run_files_sha256":hashes})).unwrap(),
         )
         .unwrap();
         std::fs::write(&policy,serde_json::to_vec(&json!({"release_scope":{
@@ -245,7 +332,7 @@ mod tests {
         hashes.insert("a/run.json".into(), checked_sha256(&path).unwrap());
         std::fs::write(
             root.path().join("manifest.json"),
-            serde_json::to_vec(&json!({"tensors":[],"run_files_sha256":hashes})).unwrap(),
+            serde_json::to_vec(&json!({"tensors":tensors,"run_files_sha256":hashes})).unwrap(),
         )
         .unwrap();
         assert!(preflight(&o).is_err());
@@ -253,10 +340,55 @@ mod tests {
         hashes.insert("a/run.json".into(), checked_sha256(&path).unwrap());
         std::fs::write(
             root.path().join("manifest.json"),
-            serde_json::to_vec(&json!({"tensors":[],"run_files_sha256":hashes})).unwrap(),
+            serde_json::to_vec(&json!({"tensors":tensors,"run_files_sha256":hashes})).unwrap(),
         )
         .unwrap();
         preflight(&o).unwrap();
+        let good_manifest = std::fs::read(root.path().join("manifest.json")).unwrap();
+        let mut missing: Value = serde_json::from_slice(&good_manifest).unwrap();
+        missing["tensors"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|t| t["name"] != "a.replay.g2.logits");
+        std::fs::write(
+            root.path().join("manifest.json"),
+            serde_json::to_vec(&missing).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            preflight(&o)
+                .unwrap_err()
+                .0
+                .contains("missing oracle replay logits at g2")
+        );
+        std::fs::write(root.path().join("manifest.json"), &good_manifest).unwrap();
+        let good_run = std::fs::read(root.path().join("a/run.json")).unwrap();
+        for field in ["rows", "extra"] {
+            let mut bad: Value = serde_json::from_slice(&good_run).unwrap();
+            if field == "rows" {
+                bad["labels"]["g1"] = json!(2);
+                bad["labels"]["g2"] = json!(1);
+            } else {
+                bad.as_object_mut().unwrap().remove("extra_step_argmax");
+            }
+            std::fs::write(
+                root.path().join("a/run.json"),
+                serde_json::to_vec(&bad).unwrap(),
+            )
+            .unwrap();
+            hashes.insert(
+                "a/run.json".into(),
+                checked_sha256(&root.path().join("a/run.json")).unwrap(),
+            );
+            std::fs::write(
+                root.path().join("manifest.json"),
+                serde_json::to_vec(&json!({"tensors":tensors,"run_files_sha256":hashes})).unwrap(),
+            )
+            .unwrap();
+            assert!(preflight(&o).is_err(), "{field}");
+        }
+        std::fs::write(root.path().join("a/run.json"), good_run).unwrap();
+        std::fs::write(root.path().join("manifest.json"), good_manifest).unwrap();
         std::fs::write(root.path().join("a/run.json"), b"{}").unwrap();
         assert!(preflight(&o).is_err());
         std::fs::write(&corpus, b"{}").unwrap();

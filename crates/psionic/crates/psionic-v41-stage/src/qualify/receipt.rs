@@ -111,7 +111,12 @@ fn check(
             .collect::<BTreeSet<_>>()
             != names
         || cases.iter().any(|c| {
-            c["replay_equals_forced_decode"] != true
+            let frozen = lengths.get(c["case"].as_str().unwrap_or("?"));
+            frozen.is_none_or(|(prompt, generated)| {
+                c["prompt_tokens"].as_u64() != Some(*prompt)
+                    || c["generated_tokens"].as_u64() != Some(*generated)
+                    || !scope::complete_router(&c["router"], *prompt, *generated)
+            }) || c["replay_equals_forced_decode"] != true
                 || c["exact"]["passed"] != true
                 || c["exact"]["checked"].as_u64().unwrap_or(0) == 0
                 || c["index"]["complete"] != true
@@ -138,8 +143,9 @@ fn check(
                             .collect::<BTreeSet<_>>()
                             != BTreeSet::from(["decode", "replay"])
                         || ms.iter().any(|m| {
-                            m["positions"].as_array().is_none_or(Vec::is_empty)
-                                || m["missing"].as_array().is_none_or(|v| !v.is_empty())
+                            frozen.is_none_or(|(_, generated)| {
+                                !scope::complete_positions(m, *generated)
+                            }) || m["missing"].as_array().is_none_or(|v| !v.is_empty())
                         })
                 })
         })
@@ -417,16 +423,16 @@ mod tests {
         let modes: Vec<_> = ["decode", "replay"]
             .into_iter()
             .map(
-                |m| json!({"mode":m,"positions":[{"label":"last","metrics":metrics}],"missing":[]}),
+                |m| json!({"mode":m,"positions":scope::comparison_labels(2).into_iter().map(|label|json!({"label":label,"metrics":metrics})).collect::<Vec<_>>(),"missing":[]}),
             )
             .collect();
-        let layers:Vec<_>=(0..40).map(|l|json!({"layer":l,"mismatch":0.0,"score_error":{"from":"stage","rows":1,"max":0.0}})).collect();
+        let layers:Vec<_>=(0..40).map(|l|json!({"layer":l,"same":3,"substituted":0,"failed":0,"unresolved":0,"mismatch":0.0,"score_error":{"from":"stage","rows":3,"max":0.0}})).collect();
         let index = json!({"complete":true,"local_changed":0,"score_error_max":0.0,"kinds":{"indices":{"rows":1,"changed":0},"candidate_blocks":{"rows":1,"changed":0}},"changes":[]});
         let g1 = json!({"schema":"psionic.deepseek_v41.g1_v2_report.v1","release":true,"release_passed":true,"passed":true,"observe":true,"launch":"pinned","control":null,"release_refusals":[],
             "weights":scope["weights"],"manifest":scope["manifest"],"profile":scope["numerical_profile"],"stage_bundle_sha256":scope["stage_bundle_sha256"],"expected_bundle_sha256":scope["stage_bundle_sha256"],
             "execution_config_sha256":vec![scope["execution_config_sha256"].clone();4],"corpus_sha256":scope["corpus_sha256"],"oracle_manifest_sha256":"f".repeat(64),"policy_sha256":"0".repeat(64),
             "stage_limits":vec![json!({"max_context_tokens":8192,"max_input_tokens":2872});4],
-            "cases":[{"case":"x","modes":modes,"replay_equals_forced_decode":true,"exact":{"passed":true,"checked":1},"index":index,"router":{"layers_compared":40,"layers_with_stage_scores":40,"layers":layers,"changes":[]}}]});
+            "cases":[{"case":"x","prompt_tokens":1,"generated_tokens":2,"modes":modes,"replay_equals_forced_decode":true,"exact":{"passed":true,"checked":1},"index":index,"router":{"rows":120,"same":120,"substituted":0,"failed":0,"unresolved":0,"layers_compared":40,"layers_with_stage_scores":40,"layers":layers,"changes":[]}}]});
         let mut limits = serde_json::Map::new();
         let reports:Vec<_>=(0..4).map(|stage|{
             let steps = isolated_policy::test_steps(stage, 1, 2);
@@ -501,5 +507,49 @@ mod tests {
             r["cases"][0]["steps"] = json!(isolated_policy::test_steps(stage, 1, 0));
         }
         assert!(check(&p, &doc, &g1, &g2, &answers, &bad, &suite, &lengths()).is_err());
+    }
+    #[test]
+    fn every_frozen_g1_position_and_both_lengths_are_required() {
+        let (p, doc, g1, g2, answers, g4, suite) = fixture();
+        check(&p, &doc, &g1, &g2, &answers, &g4, &suite, &lengths()).unwrap();
+        for field in ["prompt_tokens", "generated_tokens"] {
+            let mut bad = g1.clone();
+            bad["cases"][0].as_object_mut().unwrap().remove(field);
+            assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
+            for value in [0, 999] {
+                bad["cases"][0][field] = json!(value);
+                assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
+            }
+        }
+        for mode in 0..2 {
+            for labels in [
+                vec!["last"],
+                vec!["last", "g1"],
+                vec!["last", "g1", "g1"],
+                vec!["last", "g1", "g3"],
+            ] {
+                let mut bad = g1.clone();
+                let metrics = bad["cases"][0]["modes"][mode]["positions"][0]["metrics"].clone();
+                bad["cases"][0]["modes"][mode]["positions"] = json!(
+                    labels
+                        .into_iter()
+                        .map(|label| json!({"label":label,"metrics":metrics}))
+                        .collect::<Vec<_>>()
+                );
+                assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
+            }
+        }
+        let mut bad = g1.clone();
+        bad["cases"][0]["modes"][1]["positions"][1]["metrics"] = json!({});
+        assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
+        let mut bad = g1;
+        let router = &mut bad["cases"][0]["router"];
+        router["rows"] = json!(40);
+        router["same"] = json!(40);
+        for l in router["layers"].as_array_mut().unwrap() {
+            l["same"] = json!(1);
+            l["score_error"]["rows"] = json!(1);
+        }
+        assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
     }
 }

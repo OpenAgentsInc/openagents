@@ -1322,3 +1322,26 @@ connections and reap local launchers. A local subprocess test confirms that a
 worker behind a launcher receives EOF and exits before its launcher is reaped;
 the full CPU qualifier and greedy-answer tests still pass. Real distributed
 runs remain required for G6.
+
+
+A second independent review reproduced a connected G1 coverage gap in the
+publication checker. Release and publication now require the frozen prompt
+and continuation lengths and the exact unique labels `last`, `g1`, …, `gN`
+in each mode, including the logits after the final forced token. For the
+prospective 16-case, 32-token corpus, that is 1,056 distribution comparisons.
+Every router layer must cover all `L + N` rows, with consistent totals across
+all 40 layers. Malformed metrics fail instead of disappearing during parsing.
+Oracle preflight checks each label's absolute row, both modes' required logit
+tensors, and the post-final reference token. Declared oracle rows that are
+missing during collection are reported as missing. These checks change no
+numerical limits; the policy remains unfrozen.
+
+The pinned `06e5158778` worker also completed a private two-machine C4 run
+through the qualification front, with all workers confirmed stopped and the
+unchanged 2.3 diagnostic rule passing. Its actual configuration is
+`6f85bdd612b7cc3cabfd4974b1d119201c6eae54950c0d5fcdb15eb7881c7f7b`.
+The native Pylon head then served `17 × 23` as `391`, with finish `stop`, in
+924 ms through the existing private qualification relay and authenticated
+direct stage links. This is preflight evidence, not final G6 or release
+acceptance. The private head's legacy `qualified` profile label does not grant
+numerical qualification. Pinned crash and freeze drills are in progress.

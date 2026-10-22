@@ -1060,6 +1060,25 @@ fn ids(value: &Value) -> Vec<u32> {
         .unwrap_or_default()
 }
 
+fn continuation_targets(run: &Value) -> Result<BTreeMap<String, u32>, Refused> {
+    let generated: Vec<u32> = serde_json::from_value(run["generated_ids"].clone())
+        .map_err(|e| refused(format!("invalid oracle continuation: {e}")))?;
+    let first = generated
+        .first()
+        .copied()
+        .ok_or_else(|| refused("the oracle continuation is empty"))?;
+    let extra = run["extra_step_argmax"]
+        .as_u64()
+        .and_then(|id| u32::try_from(id).ok())
+        .ok_or_else(|| refused("missing or invalid post-final oracle token"))?;
+    Ok(std::iter::once(("last".to_owned(), first))
+        .chain(
+            (1..=generated.len())
+                .map(|k| (format!("g{k}"), generated.get(k).copied().unwrap_or(extra))),
+        )
+        .collect())
+}
+
 // ---------------------------------------------------------------------------
 // Evaluation
 // ---------------------------------------------------------------------------
@@ -1075,9 +1094,21 @@ fn distribution_case(
 ) -> Result<q::CaseResult, Refused> {
     let mut positions: Vec<PositionResult> = Vec::new();
     let mut missing = Vec::new();
+    let run = oracle.run(case)?;
+    let declared = run["labels"].as_object();
+    let final_label = format!("g{}", ids(&run["generated_ids"]).len());
     for (label, token) in next_tokens {
         let name = format!("{case}.{mode}.{label}.logits");
         if !oracle.has(&name) {
+            // Older calibration dumps intentionally captured selected rows.
+            // A declared row, the prompt's last row, and the post-final row
+            // must never disappear from the comparison silently.
+            if label == "last"
+                || *label == final_label
+                || declared.is_none_or(|labels| labels.contains_key(label))
+            {
+                missing.push(label.clone());
+            }
             continue;
         }
         let Some(path) = rec.logits.get(label) else {
@@ -1813,10 +1844,25 @@ pub fn release_refusals(opts: &QualifyOptions, policy: &Policy, cases: &[Value])
             .flatten()
             .filter_map(|m| m["mode"].as_str())
             .collect();
-        if modes != BTreeSet::from(["decode", "replay"]) {
+        if modes != BTreeSet::from(["decode", "replay"])
+            || c["modes"].as_array().is_none_or(|m| m.len() != 2)
+        {
             out.push(format!(
                 "{name}: release needs both decode and replay modes"
             ));
+        }
+        let generated = c["generated_tokens"]
+            .as_u64()
+            .filter(|n| *n > 0 && *n <= 32768);
+        if generated.is_none() || c["prompt_tokens"].as_u64().is_none_or(|n| n == 0) {
+            out.push(format!("{name}: missing prompt or continuation length"));
+        }
+        if c["prompt_tokens"]
+            .as_u64()
+            .zip(generated)
+            .is_none_or(|(p, g)| !scope::complete_router(router, p, g))
+        {
+            out.push(format!("{name}: incomplete router row coverage"));
         }
         for mode in c["modes"].as_array().into_iter().flatten() {
             if mode["missing"].as_array().is_some_and(|m| !m.is_empty()) {
@@ -1825,8 +1871,11 @@ pub fn release_refusals(opts: &QualifyOptions, policy: &Policy, cases: &[Value])
                     mode["mode"], mode["missing"]
                 ));
             }
-            if mode["positions"].as_array().is_none_or(Vec::is_empty) {
-                out.push(format!("{name} {}: no positions", mode["mode"]));
+            if generated.is_none_or(|n| !scope::complete_positions(mode, n)) {
+                out.push(format!(
+                    "{name} {}: incomplete or duplicate comparison positions",
+                    mode["mode"]
+                ));
             }
         }
         if policy.index_out_of_scope.is_some()
@@ -1938,16 +1987,7 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
             Err(refusal) => return Err(refusal),
         };
         // The token each recorded position continues with.
-        let mut next_tokens = BTreeMap::new();
-        next_tokens.insert("last".to_owned(), generated[0]);
-        for k in 1..=generated.len() {
-            let next = generated
-                .get(k)
-                .copied()
-                .or_else(|| run["extra_step_argmax"].as_u64().map(|t| t as u32))
-                .unwrap_or(generated[k - 1]);
-            next_tokens.insert(format!("g{k}"), next);
-        }
+        let next_tokens = continuation_targets(&run)?;
         let last_label = format!("g{}", generated.len());
         let replay_equal = match (&rec.replay_last, rec.logits.get(&last_label)) {
             (Some(a), Some(b)) => Some(std::fs::read(a).ok() == std::fs::read(b).ok()),
@@ -2303,7 +2343,38 @@ pub fn judge_report(policy: &Policy, report: &Value) -> Vec<String> {
                 .into_iter()
                 .flatten()
                 .filter_map(|p| {
-                    let m = serde_json::from_value::<q::Distribution>(p["metrics"].clone()).ok()?;
+                    let m = match serde_json::from_value::<q::Distribution>(p["metrics"].clone()) {
+                        Ok(m)
+                            if [
+                                m.total_variation,
+                                m.jensen_shannon,
+                                m.reference_logprob_error,
+                                m.centered_logit_error,
+                                m.oracle_top1_gap,
+                                m.top1_regret,
+                            ]
+                            .into_iter()
+                            .all(f64::is_finite)
+                                && [
+                                    m.total_variation,
+                                    m.jensen_shannon,
+                                    m.centered_logit_error,
+                                    m.oracle_top1_gap,
+                                    m.top1_regret,
+                                ]
+                                .into_iter()
+                                .all(|v| v >= 0.0) =>
+                        {
+                            m
+                        }
+                        _ => {
+                            out.push(format!(
+                                "{name} {label}: malformed distribution metrics at {}",
+                                p["label"]
+                            ));
+                            return None;
+                        }
+                    };
                     Some(q::judge_position(
                         policy,
                         p["label"].as_str().unwrap_or("?"),
@@ -2823,6 +2894,52 @@ pub fn run_derive(args: &[String]) -> Result<(), Refused> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn post_final_comparison_requires_its_own_oracle_target() {
+        let mut run = json!({"generated_ids":[11,12],"extra_step_argmax":13});
+        assert_eq!(
+            continuation_targets(&run).unwrap(),
+            BTreeMap::from([("last".into(), 11), ("g1".into(), 12), ("g2".into(), 13)])
+        );
+        run.as_object_mut().unwrap().remove("extra_step_argmax");
+        assert!(continuation_targets(&run).is_err());
+        run["extra_step_argmax"] = json!(u64::from(u32::MAX) + 1);
+        assert!(continuation_targets(&run).is_err());
+    }
+
+    #[test]
+    fn missing_declared_oracle_logits_are_reported_instead_of_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("manifest.json"), br#"{"tensors":[]}"#).unwrap();
+        std::fs::create_dir(dir.path().join("c")).unwrap();
+        std::fs::write(
+            dir.path().join("c/run.json"),
+            br#"{"generated_ids":[2],"labels":{"last":0,"g1":1}}"#,
+        )
+        .unwrap();
+        let mut oracle = OracleDump::open(dir.path()).unwrap();
+        let rec = Recorded {
+            logits: BTreeMap::new(),
+            replay_last: None,
+            records: vec![],
+            replay_records: vec![],
+            files_sha256: BTreeMap::new(),
+            source: Value::Null,
+            seconds: 0.0,
+        };
+        let result = distribution_case(
+            &pending_policy(),
+            &mut oracle,
+            "c",
+            "decode",
+            &rec,
+            &BTreeMap::from([("last".into(), 2), ("g1".into(), 3)]),
+        )
+        .unwrap();
+        assert_eq!(result.missing, ["g1", "last"]);
+        assert!(!result.passed);
+    }
+
     #[cfg(unix)]
     #[test]
     fn remote_worker_exits_before_its_launcher_is_reaped() {
@@ -3123,7 +3240,7 @@ sys.exit(subprocess.call([sys.executable, '-c', worker, sys.argv[1], sys.argv[2]
             "no router report",
             "no exact checks",
             "missing positions",
-            "no positions",
+            "comparison positions",
             "index rule not evaluated",
         ] {
             assert!(
