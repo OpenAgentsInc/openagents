@@ -186,6 +186,11 @@ pub enum Experts {
     /// In page-locked host memory, which the kernels read over the bus, so a
     /// layer fits a GPU smaller than its weights, such as a 16 GB card.
     Host,
+    /// Read in place from the checkpoint's shards through the page cache,
+    /// with a device cache of the hottest ones (#12463). Cache misses run
+    /// on host CPU threads, so the machine needs neither device nor
+    /// page-locked memory for every expert. Needs `--expert-cache`.
+    File,
 }
 
 impl Experts {
@@ -198,7 +203,8 @@ impl Experts {
         match value {
             "device" => Ok(Self::Device),
             "host" => Ok(Self::Host),
-            other => refuse(format!("--experts {other} is not device or host")),
+            "file" => Ok(Self::File),
+            other => refuse(format!("--experts {other} is not device, host, or file")),
         }
     }
 
@@ -208,7 +214,133 @@ impl Experts {
         match self {
             Self::Device => "device",
             Self::Host => "host",
+            Self::File => "file",
         }
+    }
+}
+
+/// How large a stage's device cache of routed experts is (#12463).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CacheSize {
+    /// The device memory left after everything else, less a reserve.
+    Auto,
+    /// About this many gigabytes (10^9 bytes) across the stage's layers.
+    Gigabytes(f64),
+    /// This many experts per layer.
+    Slots(usize),
+}
+
+/// A single machine's host-memory options for a CUDA stage: the routed
+/// expert cache (#12463) and Engram rows from the shards (#12466). Without
+/// them a stage loads as before.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct HostTiers {
+    /// `--expert-cache auto|GB|slots:N`.
+    pub expert_cache: Option<CacheSize>,
+    /// `--miss-lane auto|bus|host`.
+    pub miss_lane: Option<String>,
+    /// `--expert-profile FILE`: starting heat per layer and expert.
+    pub expert_profile: Option<PathBuf>,
+    /// `--host-threads N`: host-lane threads (0, the default, is one per
+    /// available core).
+    pub host_threads: usize,
+    /// `--frozen-cache`: no swaps after load.
+    pub frozen: bool,
+    /// `--engram file`: read Engram rows from the shards a step at a time
+    /// instead of pinning the tables.
+    pub engram_file: bool,
+}
+
+/// The flags [`HostTiers::from_args`] reads, each with a value except
+/// `--frozen-cache`.
+pub const HOST_TIER_FLAGS: [&str; 5] = [
+    "--expert-cache",
+    "--miss-lane",
+    "--expert-profile",
+    "--host-threads",
+    "--engram",
+];
+
+impl HostTiers {
+    /// Reads the host-tier flags from an argument list.
+    ///
+    /// # Errors
+    ///
+    /// Refuses malformed values.
+    pub fn from_args(args: &[String]) -> Result<Self, Refused> {
+        let value = |name: &str| {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+        let expert_cache = value("--expert-cache")
+            .map(|v| match v.as_str() {
+                "auto" => Ok(CacheSize::Auto),
+                v if v.starts_with("slots:") => v["slots:".len()..]
+                    .parse()
+                    .map(CacheSize::Slots)
+                    .map_err(|_| Refused(format!("--expert-cache {v}: slots:N wants a number"))),
+                v => v
+                    .parse()
+                    .ok()
+                    .filter(|g: &f64| *g > 0.0)
+                    .map(CacheSize::Gigabytes)
+                    .ok_or_else(|| {
+                        Refused(format!("--expert-cache {v} is not auto, GB, or slots:N"))
+                    }),
+            })
+            .transpose()?;
+        let miss_lane = value("--miss-lane");
+        if let Some(lane) = &miss_lane {
+            if !matches!(lane.as_str(), "auto" | "bus" | "host") {
+                return refuse(format!("--miss-lane {lane} is not auto, bus, or host"));
+            }
+        }
+        let engram_file = match value("--engram").as_deref() {
+            None | Some("host") => false,
+            Some("file") => true,
+            Some(other) => return refuse(format!("--engram {other} is not host or file")),
+        };
+        Ok(Self {
+            expert_cache,
+            miss_lane,
+            expert_profile: value("--expert-profile").map(PathBuf::from),
+            host_threads: value("--host-threads")
+                .map(|v| {
+                    v.parse()
+                        .map_err(|_| Refused("--host-threads must be a number".into()))
+                })
+                .transpose()?
+                .unwrap_or(0),
+            frozen: args.iter().any(|a| a == "--frozen-cache"),
+            engram_file,
+        })
+    }
+
+    /// Checks the tiers against where the experts live.
+    ///
+    /// # Errors
+    ///
+    /// Refuses `--experts file` without a cache and a cache with experts
+    /// in device memory.
+    pub fn check(&self, experts: Experts) -> Result<(), Refused> {
+        match (experts, self.expert_cache.is_some()) {
+            (Experts::File, false) => refuse("--experts file needs --expert-cache"),
+            (Experts::Device, true) => refuse(
+                "--expert-cache needs --experts host or file; with --experts device every expert is already on the GPU",
+            ),
+            _ if self.miss_lane.as_deref() == Some("bus") && experts != Experts::Host => {
+                refuse("--miss-lane bus needs --experts host")
+            }
+            _ => Ok(()),
+        }
+    }
+
+    /// Whether any tier differs from a plain stage.
+    #[must_use]
+    pub fn any(&self) -> bool {
+        self.expert_cache.is_some() || self.engram_file
     }
 }
 
@@ -585,6 +717,8 @@ pub struct Options {
     pub control: Option<Control>,
     /// Where a CUDA stage keeps its routed experts (`--experts`).
     pub experts: Experts,
+    /// The expert cache and Engram rows from the shards (#12463, #12466).
+    pub tiers: HostTiers,
     /// The stage-state format a CPU stage uses (`--wire`).
     pub wire: Wire,
 }
@@ -940,11 +1074,13 @@ impl Options {
                 "--embeddings" => embeddings = true,
                 "--head" => head = true,
                 "--observe" => observe = true,
+                "--frozen-cache" => {}
                 "--weights" | "--layers" | "--gpu" | "--manifest" | "--stage" | "--generation"
                 | "--front" | "--token" | "--backend" | "--arithmetic" | "--max-context"
                 | "--listen" | "--events" | "--data-listen" | "--data-advertise" | "--record"
                 | "--control" | "--max-input-tokens" | "--max-step-tokens" | "--prefill-chunk"
-                | "--experts" | "--wire" => {
+                | "--experts" | "--wire" | "--expert-cache" | "--miss-lane"
+                | "--expert-profile" | "--host-threads" | "--engram" => {
                     let Some(value) = args.get(i + 1) else {
                         return refuse(format!("{flag} needs a value"));
                     };
@@ -993,8 +1129,19 @@ impl Options {
                 "--experts host doesn't apply to the Metal backend: an Apple GPU shares the machine's memory",
             );
         }
-        if experts == Experts::Host && backend != Backend::Cuda {
-            return refuse("--experts host is for the CUDA backend");
+        if experts != Experts::Device && backend != Backend::Cuda {
+            return refuse(format!(
+                "--experts {} is for the CUDA backend",
+                experts.as_str()
+            ));
+        }
+        let tiers = HostTiers::from_args(args)?;
+        tiers.check(experts)?;
+        if tiers.any() && backend != Backend::Cuda {
+            return refuse("--expert-cache and --engram file are for the CUDA backend");
+        }
+        for flag in HOST_TIER_FLAGS {
+            values.remove(flag);
         }
         let wire = values
             .remove("--wire")
@@ -1070,6 +1217,7 @@ impl Options {
                 .map(|v| Control::parse(&v))
                 .transpose()?,
             experts,
+            tiers,
             wire,
         })
     }
@@ -1450,7 +1598,7 @@ pub fn find_stage(
             ));
         }
         let host = device.experts == psionic_models::deepseek_v41_stage::ExpertMemory::Host;
-        if host != (options.experts == Experts::Host) {
+        if host != (options.experts != Experts::Device) {
             return refuse(format!(
                 "stage {} of the manifest keeps its routed experts in {} memory; pass --experts {}",
                 entry.stage,

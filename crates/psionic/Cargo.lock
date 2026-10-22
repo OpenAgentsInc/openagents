@@ -5377,6 +5377,7 @@ version = "1.0.0"
 dependencies = [
  "half",
  "hex",
+ "memmap2",
  "psionic-backend-cuda",
  "psionic-backend-metal",
  "psionic-models",

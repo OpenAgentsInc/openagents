@@ -40,6 +40,11 @@ use crate::v41_attention::{
     V41DenseFormat, V41IndexKeyWeights, V41LayerOwners, V41Ring, V41RopeConfig, V41RopeTable,
     V41Rows, V41Source, V41Steps, v41_compress_ratio, v41_rope_frequencies,
 };
+use crate::v41_engram_rows::{EngramStaging, V41EngramHasher, V41EngramRows};
+use crate::v41_expert_cache::{
+    ExpertCache, PinnedExperts, V41CachedStack, V41ExpertBytes, V41ExpertCacheStats, V41MissLane,
+};
+use crate::v41_expert_lane::V41ExpertDims;
 use crate::v41_matvec::{V41_BLOCK, V41Matrix, V41MatvecFormat, V41Output, V41Slots};
 use crate::v41_mix::{V41EngramGate, V41EngramTable, V41HcWeights, V41HyperConfig, V41Router};
 use crate::{CudaBackend, CudaBuffer, CudaGraphExec, CudaHostBuffer, CudaSubmission};
@@ -48,6 +53,7 @@ use psionic_runtime::RuntimeError;
 use std::collections::BTreeMap;
 use std::ffi::c_void;
 use std::ops::Range;
+use std::sync::Arc;
 use std::time::Instant;
 
 /// Layers whose compressor writes a shared KV source.
@@ -532,6 +538,25 @@ impl V41StageConfig {
     }
 }
 
+/// Optional ways a stage holds its largest tensors in host memory.
+#[derive(Clone, Default)]
+pub struct V41StageOptions {
+    /// A device cache of routed experts (#12463).
+    pub expert_cache: Option<crate::v41_expert_cache::V41ExpertCacheSetup>,
+    /// Read Engram rows from this source a step at a time instead of from
+    /// page-locked tables (#12466); the stage then needs no Engram tables.
+    pub engram_rows: Option<Arc<dyn V41EngramRows>>,
+}
+
+impl std::fmt::Debug for V41StageOptions {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("V41StageOptions")
+            .field("expert_cache", &self.expert_cache)
+            .field("engram_rows", &self.engram_rows.is_some())
+            .finish()
+    }
+}
+
 /// What crosses a stage boundary at `layer`, as W9's
 /// `deepseek_v41_stage::boundary_sections` lists it (besides the residual
 /// streams, the pre-mix, and the Engram history).
@@ -765,6 +790,10 @@ pub struct V41StageMemory {
     /// Page-locked host bytes of routed experts kept on the host
     /// ([`V41StageConfig::experts_on_host`]).
     pub expert_host_bytes: usize,
+    /// Device bytes of the expert cache's slots and slot maps (#12463).
+    pub expert_cache_bytes: usize,
+    /// Page-locked bytes the expert cache stages swaps in.
+    pub expert_staging_bytes: usize,
 }
 
 impl V41StageMemory {
@@ -785,6 +814,7 @@ impl V41StageMemory {
                 .sum::<usize>()
             + self.selection_bytes
             + self.work_bytes
+            + self.expert_cache_bytes
     }
 }
 
@@ -876,9 +906,11 @@ struct LayerWeights {
     indexer: Option<IndexerWeights>,
     gate: CudaBuffer,
     bias: CudaBuffer,
-    w1: Packed,
-    w2: Packed,
-    w3: Packed,
+    /// The routed experts, all in device memory or all page-locked; `None`
+    /// when an expert cache reads them from another host source.
+    w1: Option<Packed>,
+    w2: Option<Packed>,
+    w3: Option<Packed>,
     shared: [Packed; 3],
     engram: Option<EngramWeights>,
     ring: CudaBuffer,
@@ -1000,6 +1032,8 @@ struct Work {
     moe_out: CudaBuffer,
     engram_ids: CudaBuffer,
     engram_slot_ids: CudaBuffer,
+    /// The hashed row ids, kept for observation when rows are staged.
+    engram_real_ids: CudaBuffer,
     engram_rows: CudaBuffer,
     engram_projected: CudaBuffer,
     history: CudaBuffer,
@@ -1021,6 +1055,10 @@ struct Work {
 
 /// A loaded stage. See the module documentation.
 pub struct V41Stage {
+    /// Declared first so its threads stop before the weights they read are
+    /// freed.
+    expert_cache: Option<ExpertCache>,
+    engram_staging: Option<EngramStaging>,
     config: V41StageConfig,
     layers: Vec<LayerWeights>,
     sources: BTreeMap<usize, SourceState>,
@@ -1305,13 +1343,53 @@ impl V41Stage {
     ///
     /// Refuses a bad configuration, missing or misshapen tensors, a missing
     /// Engram table, and device allocation failures.
-    #[allow(clippy::too_many_lines)]
     pub fn load(
         backend: &mut CudaBackend,
         config: V41StageConfig,
         source: &dyn V41TensorSource,
         engram_tables: Vec<V41EngramHostTable>,
     ) -> Result<Self, RuntimeError> {
+        Self::load_with(
+            backend,
+            config,
+            source,
+            engram_tables,
+            V41StageOptions::default(),
+        )
+    }
+
+    /// [`Self::load`] with [`V41StageOptions`]. With an expert cache
+    /// (#12463), the cache's slots hold each layer's hottest experts and the
+    /// rest run from host memory, on the bus or on host CPU threads. With
+    /// an Engram row source (#12466), each step's rows are copied from it
+    /// before the step. Outputs equal a stage with every expert in device
+    /// memory and pinned Engram tables, bit for bit.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::load`], and refuses a cache without a host source when
+    /// the experts aren't page-locked (`experts_on_host`).
+    #[allow(clippy::too_many_lines)]
+    pub fn load_with(
+        backend: &mut CudaBackend,
+        config: V41StageConfig,
+        source: &dyn V41TensorSource,
+        engram_tables: Vec<V41EngramHostTable>,
+        options: V41StageOptions,
+    ) -> Result<Self, RuntimeError> {
+        let V41StageOptions {
+            expert_cache: cache,
+            engram_rows,
+        } = options;
+        if cache
+            .as_ref()
+            .is_some_and(|c| c.host.is_none() && !config.experts_on_host)
+        {
+            return Err(invalid(
+                "an expert cache needs a host source or the experts in page-locked host memory",
+            ));
+        }
+        let routed_on_device = cache.is_none() || config.experts_on_host;
         let shape = config.shape;
         shape.check()?;
         let g = shape.attention;
@@ -1348,9 +1426,10 @@ impl V41Stage {
                 {
                     return Err(invalid("Engram hash constants"));
                 }
-                if !engram_tables
-                    .iter()
-                    .any(|t| t.layer == *layer && t.rows == hash.rows)
+                if engram_rows.is_none()
+                    && !engram_tables
+                        .iter()
+                        .any(|t| t.layer == *layer && t.rows == hash.rows)
                 {
                     return Err(invalid(format!("no Engram table for layer {layer}")));
                 }
@@ -1480,9 +1559,15 @@ impl V41Stage {
             };
             let (routed_bytes, routed_params) = (loader.bytes, loader.params);
             let host = config.experts_on_host;
-            let w1 = loader.stack_on(&w("w1"), fp4, shape.expert_width, h, host)?;
-            let w2 = loader.stack_on(&w("w2"), fp4, h, shape.expert_width, host)?;
-            let w3 = loader.stack_on(&w("w3"), fp4, shape.expert_width, h, host)?;
+            let (w1, w2, w3) = if routed_on_device {
+                (
+                    Some(loader.stack_on(&w("w1"), fp4, shape.expert_width, h, host)?),
+                    Some(loader.stack_on(&w("w2"), fp4, h, shape.expert_width, host)?),
+                    Some(loader.stack_on(&w("w3"), fp4, shape.expert_width, h, host)?),
+                )
+            } else {
+                (None, None, None)
+            };
             let (routed_bytes, routed_params) =
                 (loader.bytes - routed_bytes, loader.params - routed_params);
             let mut observed = Vec::new();
@@ -1732,6 +1817,7 @@ impl V41Stage {
             moe_out: f(h)?,
             engram_ids: f(2 * V41_ENGRAM_COLUMNS * 2)?,
             engram_slot_ids: f(V41_ENGRAM_COLUMNS * 2)?,
+            engram_real_ids: f(V41_ENGRAM_COLUMNS * 2)?,
             engram_rows: f(V41_ENGRAM_COLUMNS * shape.engram_width)?,
             engram_projected: f(s * h + h)?,
             history: f(4)?,
@@ -1759,7 +1845,80 @@ impl V41Stage {
             .map(|t| t.codes.byte_len() + t.scales.byte_len())
             .sum();
         memory.expert_host_bytes = loader.host_bytes;
-        Ok(Self {
+        let expert_cache = match cache {
+            None => None,
+            Some(setup) => {
+                let dims = V41ExpertDims {
+                    hidden: h,
+                    width: shape.expert_width,
+                    swiglu_limit: shape.swiglu_limit,
+                };
+                let host_source: Arc<dyn V41ExpertBytes> = match setup.host {
+                    Some(host) => host,
+                    None => {
+                        let mut parts = Vec::new();
+                        for lw in &layers {
+                            let (Some(w1), Some(w2), Some(w3)) = (&lw.w1, &lw.w2, &lw.w3) else {
+                                return Err(invalid("routed stacks"));
+                            };
+                            let e = shape.expert_width;
+                            parts.push((
+                                lw.layer,
+                                [
+                                    (&w1.weights, &w1.scales, e, h),
+                                    (&w2.weights, &w2.scales, h, e),
+                                    (&w3.weights, &w3.scales, e, h),
+                                ],
+                            ));
+                        }
+                        Arc::new(PinnedExperts::new(&parts, shape.router.experts)?)
+                    }
+                };
+                let cache = ExpertCache::load(
+                    loader.backend,
+                    setup.config,
+                    dims,
+                    shape.router.experts,
+                    shape.router.top_k,
+                    config.layers.clone().collect(),
+                    config.max_step_tokens,
+                    host_source,
+                    config.experts_on_host,
+                )?;
+                let stats = cache.stats();
+                memory.expert_cache_bytes = stats.device_bytes;
+                memory.expert_staging_bytes = stats.staging_bytes;
+                Some(cache)
+            }
+        };
+        let engram_staging = match (engram_rows, engram_layers.is_empty()) {
+            (Some(rows), false) => {
+                let map = config
+                    .token_map
+                    .as_ref()
+                    .ok_or_else(|| invalid("token map"))?;
+                let hashes: Vec<V41EngramHash> = engram_layers
+                    .iter()
+                    .filter_map(|l| config.engram.iter().find(|e| e.layer == *l).cloned())
+                    .collect();
+                let hasher = V41EngramHasher::new(map, &hashes, shape.engram_heads)?;
+                let staging = EngramStaging::new(
+                    loader.backend,
+                    rows,
+                    hasher,
+                    &engram_layers,
+                    shape.engram_width,
+                    config.max_step_tokens,
+                )?;
+                memory.engram_host_bytes = staging.host_bytes();
+                Some(staging)
+            }
+            _ => None,
+        };
+        let requested = expert_cache.as_ref().map(|c| c.config.miss_lane);
+        let mut stage = Self {
+            expert_cache,
+            engram_staging,
             config,
             layers,
             sources,
@@ -1779,7 +1938,139 @@ impl V41Stage {
             weight_bytes,
             state_bytes,
             memory,
-        })
+        };
+        if let Some(requested) = requested {
+            stage.choose_miss_lane(backend, requested)?;
+        }
+        Ok(stage)
+    }
+
+    /// Times one expert (all three projections, one token) in a device
+    /// slot, over the bus, and on the host lane, records the times, and
+    /// sets the miss lane: `requested`, or for [`V41MissLane::Auto`] the bus
+    /// only when it's at least 3% faster than the host and available.
+    fn choose_miss_lane(
+        &mut self,
+        backend: &mut CudaBackend,
+        requested: V41MissLane,
+    ) -> Result<(), RuntimeError> {
+        let Some(cache) = self.expert_cache.as_mut() else {
+            return Ok(());
+        };
+        let lw = self.layers.first().ok_or_else(|| invalid("no layers"))?;
+        let dims = cache.dims;
+        let widest = dims.hidden.max(dims.width);
+        // Inputs of 1.0: code 0x38 at scale 2^0.
+        let codes = backend.byte_buffer(&vec![0x38; widest])?;
+        let scales = backend.byte_buffer(&vec![127; widest / V41_BLOCK])?;
+        let out = backend.byte_buffer(&vec![0; 4 * widest])?;
+        let ids = backend.byte_buffer(&0_i32.to_le_bytes())?;
+        let fp4 = V41MatvecFormat::Fp4E2M1Row32;
+        let shapes = [
+            (dims.width, dims.hidden),
+            (dims.hidden, dims.width),
+            (dims.width, dims.hidden),
+        ];
+        let time = |backend: &mut CudaBackend,
+                    parts: [(&CudaBuffer, &CudaBuffer, usize); 3]|
+         -> Result<f64, RuntimeError> {
+            let mut best = f64::INFINITY;
+            for _ in 0..5 {
+                let started = Instant::now();
+                let mut s = backend.begin_submission()?;
+                for (p, (w, sc, matrices)) in parts.iter().enumerate() {
+                    let (rows, cols) = shapes[p];
+                    s.v41_block_matvec(
+                        V41Matrix {
+                            format: fp4,
+                            weights: w,
+                            scales: sc,
+                            rows,
+                            cols,
+                            matrices: *matrices,
+                        },
+                        &codes,
+                        &scales,
+                        V41Slots {
+                            count: 1,
+                            ids: Some(&ids),
+                            shared_input: true,
+                        },
+                        &out,
+                        V41Output::Bf16,
+                    )?;
+                }
+                s.commit(crate::CudaCommandWait::Completed)?;
+                best = best.min(started.elapsed().as_secs_f64() * 1e6);
+            }
+            Ok(best)
+        };
+        let slot = cache
+            .caches
+            .first()
+            .ok_or_else(|| invalid("no cached layer"))?;
+        let k = cache.slots();
+        let device = time(
+            backend,
+            [
+                (&slot.slots[0].0, &slot.slots[0].1, k),
+                (&slot.slots[1].0, &slot.slots[1].1, k),
+                (&slot.slots[2].0, &slot.slots[2].1, k),
+            ],
+        )?;
+        let experts = self.config.shape.router.experts;
+        let bus = match (&lw.w1, &lw.w2, &lw.w3) {
+            (Some(w1), Some(w2), Some(w3)) if self.config.experts_on_host => Some(time(
+                backend,
+                [
+                    (&w1.weights, &w1.scales, experts),
+                    (&w2.weights, &w2.scales, experts),
+                    (&w3.weights, &w3.scales, experts),
+                ],
+            )?),
+            _ => None,
+        };
+        let host_codes = vec![0x38_u8; dims.hidden];
+        let host_scales = vec![127_u8; dims.hidden / V41_BLOCK];
+        let mut host = f64::INFINITY;
+        for _ in 0..4 {
+            let started = Instant::now();
+            cache.host_forward(lw.layer, 0, &host_codes, &host_scales)?;
+            host = host.min(started.elapsed().as_secs_f64() * 1e6);
+        }
+        cache.record_lane_times(device, bus, host);
+        let lane = match (requested, bus) {
+            (V41MissLane::Auto, Some(bus)) if bus * 1.03 < host => V41MissLane::Bus,
+            (V41MissLane::Auto, _) => V41MissLane::Host,
+            (other, _) => other,
+        };
+        cache.set_miss_lane(lane)
+    }
+
+    /// What the expert cache did since load, when the stage has one.
+    #[must_use]
+    pub fn expert_cache_stats(&self) -> Option<V41ExpertCacheStats> {
+        self.expert_cache.as_ref().map(ExpertCache::stats)
+    }
+
+    /// The expert cache's current heat by model layer: a routing profile
+    /// for [`V41ExpertCacheConfig::profile`].
+    #[must_use]
+    pub fn expert_profile(&self) -> Option<BTreeMap<usize, Vec<f32>>> {
+        self.expert_cache.as_ref().map(ExpertCache::profile)
+    }
+
+    /// Engram rows staged from a host source since load, and the seconds
+    /// spent (#12466).
+    #[must_use]
+    pub fn engram_staging_stats(&self) -> Option<(u64, f64)> {
+        self.engram_staging.as_ref().map(|s| (s.rows, s.seconds))
+    }
+
+    /// The experts each cached layer holds in device slots.
+    #[must_use]
+    pub fn expert_resident(&self) -> Option<BTreeMap<usize, Vec<usize>>> {
+        self.expert_cache.as_ref().map(ExpertCache::resident)
     }
 
     /// The stage's configuration.
@@ -1931,32 +2222,72 @@ impl V41Stage {
             };
             // Engram.
             if let Some(e) = &lw.engram {
-                let table = self
-                    .engram_tables
-                    .iter()
-                    .find(|t| t.layer == layer)
-                    .ok_or_else(|| invalid("Engram table"))?;
                 let ids = &wk.engram_slot_ids;
-                s.copy_buffer_region(
-                    &wk.engram_ids,
-                    e.slot * V41_ENGRAM_COLUMNS * 8,
-                    ids,
-                    0,
-                    V41_ENGRAM_COLUMNS * 8,
-                )?;
-                s.v41_engram_gather(
-                    V41EngramTable {
-                        codes: &table.codes,
-                        scales: &table.scales,
-                        rows: table.rows,
-                        width: shape.engram_width,
-                    },
-                    ids,
-                    V41_ENGRAM_COLUMNS,
-                    &wk.engram_rows,
-                    V41Output::Bf16,
-                )?;
-                ob(s, V41Site::EngramIds, ids)?;
+                let observed_ids = if let Some(staging) = &self.engram_staging {
+                    // The step's rows were staged before it ran (#12466):
+                    // token `i`'s rows sit at `24 i ..` of the layer's
+                    // staging table.
+                    let table = staging
+                        .tables
+                        .iter()
+                        .find(|t| t.layer == layer)
+                        .ok_or_else(|| invalid("Engram staging table"))?;
+                    s.copy_buffer_region(
+                        &wk.engram_ids,
+                        e.slot * V41_ENGRAM_COLUMNS * 8,
+                        &wk.engram_real_ids,
+                        0,
+                        V41_ENGRAM_COLUMNS * 8,
+                    )?;
+                    s.v41_stage_copy(
+                        &staging.ids,
+                        ids,
+                        &wk.index,
+                        V41_ENGRAM_COLUMNS * 2,
+                        c.max_step_tokens,
+                        false,
+                    )?;
+                    s.v41_engram_gather(
+                        V41EngramTable {
+                            codes: &table.codes,
+                            scales: &table.scales,
+                            rows: (c.max_step_tokens * V41_ENGRAM_COLUMNS) as u64,
+                            width: shape.engram_width,
+                        },
+                        ids,
+                        V41_ENGRAM_COLUMNS,
+                        &wk.engram_rows,
+                        V41Output::Bf16,
+                    )?;
+                    &wk.engram_real_ids
+                } else {
+                    let table = self
+                        .engram_tables
+                        .iter()
+                        .find(|t| t.layer == layer)
+                        .ok_or_else(|| invalid("Engram table"))?;
+                    s.copy_buffer_region(
+                        &wk.engram_ids,
+                        e.slot * V41_ENGRAM_COLUMNS * 8,
+                        ids,
+                        0,
+                        V41_ENGRAM_COLUMNS * 8,
+                    )?;
+                    s.v41_engram_gather(
+                        V41EngramTable {
+                            codes: &table.codes,
+                            scales: &table.scales,
+                            rows: table.rows,
+                            width: shape.engram_width,
+                        },
+                        ids,
+                        V41_ENGRAM_COLUMNS,
+                        &wk.engram_rows,
+                        V41Output::Bf16,
+                    )?;
+                    ids
+                };
+                ob(s, V41Site::EngramIds, observed_ids)?;
                 ob(s, V41Site::EngramRows, &wk.engram_rows)?;
                 let k = V41_ENGRAM_COLUMNS * shape.engram_width;
                 s.v41_act_quant_fp8(&wk.engram_rows, &wk.act_codes, &wk.act_scales, 1, k)?;
@@ -2446,6 +2777,59 @@ impl V41Stage {
             shared_input,
         };
         let single = V41Slots::single();
+        let experts = shape.router.experts;
+        // With an expert cache, each projection reads a cache slot or host
+        // memory per the layer's slot map, and the host lane computes the
+        // experts mapped to it while the device runs the others.
+        let cached = match &self.expert_cache {
+            Some(cache) => {
+                let slot = cache
+                    .layer_slot(lw.layer)
+                    .ok_or_else(|| invalid("layer missing from the expert cache"))?;
+                Some((cache, slot, &cache.caches[slot]))
+            }
+            None => None,
+        };
+        let routed_matvec = |s: &mut CudaSubmission,
+                             p: usize,
+                             packed: &Option<Packed>,
+                             rows: usize,
+                             cols: usize,
+                             codes: &CudaBuffer,
+                             scales: &CudaBuffer,
+                             shared: bool,
+                             out: &CudaBuffer|
+         -> Result<(), RuntimeError> {
+            match cached {
+                Some((cache, _, lc)) => s.v41_block_matvec_cached(
+                    V41CachedStack {
+                        rows,
+                        cols,
+                        experts,
+                        host: packed.as_ref().map(|m| (&m.weights, &m.scales)),
+                        cache: (&lc.slots[p].0, &lc.slots[p].1),
+                        cache_slots: cache.slots(),
+                        slot_map: &lc.slot_map,
+                    },
+                    codes,
+                    scales,
+                    routed(shared),
+                    out,
+                    V41Output::Bf16,
+                ),
+                None => s.v41_block_matvec(
+                    packed
+                        .as_ref()
+                        .ok_or_else(|| invalid("routed experts"))?
+                        .matrix(),
+                    codes,
+                    scales,
+                    routed(shared),
+                    out,
+                    V41Output::Bf16,
+                ),
+            }
+        };
         s.v41_gate_logits(
             &lw.gate,
             &wk.normalized,
@@ -2461,21 +2845,41 @@ impl V41Stage {
             &wk.route_weights,
         )?;
         s.v41_act_quant_fp8(&wk.normalized, &wk.act_codes, &wk.act_scales, 1, h)?;
-        s.v41_block_matvec(
-            lw.w1.matrix(),
+        if let Some((cache, slot, lc)) = cached {
+            s.v41_lane_post(
+                &cache.lane,
+                &wk.ids,
+                &lc.slot_map,
+                experts,
+                &wk.route_weights,
+                &wk.act_codes,
+                &wk.act_scales,
+                lw.layer,
+                slot,
+                &wk.index,
+            )?;
+        }
+        routed_matvec(
+            s,
+            0,
+            &lw.w1,
+            e,
+            h,
             &wk.act_codes,
             &wk.act_scales,
-            routed(true),
+            true,
             &wk.g,
-            V41Output::Bf16,
         )?;
-        s.v41_block_matvec(
-            lw.w3.matrix(),
+        routed_matvec(
+            s,
+            2,
+            &lw.w3,
+            e,
+            h,
             &wk.act_codes,
             &wk.act_scales,
-            routed(true),
+            true,
             &wk.u,
-            V41Output::Bf16,
         )?;
         s.v41_swiglu(
             &wk.g,
@@ -2488,13 +2892,16 @@ impl V41Stage {
             V41Output::Bf16,
         )?;
         s.v41_act_quant_fp8(&wk.h, &wk.act2_codes, &wk.act2_scales, top_k, e)?;
-        s.v41_block_matvec(
-            lw.w2.matrix(),
+        routed_matvec(
+            s,
+            1,
+            &lw.w2,
+            h,
+            e,
             &wk.act2_codes,
             &wk.act2_scales,
-            routed(false),
+            false,
             &wk.y,
-            V41Output::Bf16,
         )?;
         s.v41_block_matvec(
             lw.shared[0].matrix(),
@@ -2531,6 +2938,9 @@ impl V41Stage {
             &wk.sy,
             V41Output::Bf16,
         )?;
+        if let Some((cache, _, _)) = cached {
+            s.v41_lane_wait(&cache.lane, &wk.y)?;
+        }
         s.v41_moe_combine(&wk.y, top_k, Some(&wk.sy), h, &wk.moe_out, V41Output::Bf16)
     }
 
@@ -2733,6 +3143,12 @@ impl V41Stage {
             upload(&mut stats, &mut self.work.seed, 0, &s.seed.to_le_bytes())?;
         }
 
+        if let Some(staging) = &mut self.engram_staging {
+            staging.stage(input.position, input.tokens)?;
+        }
+        if let Some(cache) = &mut self.expert_cache {
+            cache.before_step()?;
+        }
         // One graph per token, enqueued back to back.
         let device_started = Instant::now();
         let mut remaining = t;
@@ -2792,6 +3208,9 @@ impl V41Stage {
         graph.synchronize()?;
         stats.synchronizations += 1;
         stats.device_seconds = device_started.elapsed().as_secs_f64();
+        if let Some(cache) = &mut self.expert_cache {
+            cache.after_step(t)?;
+        }
 
         // The step's output: one read each.
         let mut out = V41StepOutput::default();

@@ -27,6 +27,7 @@
 
 pub mod chain;
 pub mod synthetic;
+pub mod tiers;
 
 use std::{cell::Cell, fmt, fs::File, ops::Range, os::unix::fs::FileExt, path::Path, sync::Arc};
 
@@ -612,6 +613,10 @@ pub struct CudaModel {
     /// Keep routed experts in page-locked host memory (`--experts host`,
     /// #12418).
     pub experts_on_host: bool,
+    /// Where the routed experts live (`--experts`), and the single-machine
+    /// tiers (#12463, #12466). The default loads as before.
+    pub experts: crate::Experts,
+    pub tiers: crate::HostTiers,
 }
 
 enum CudaWeights {
@@ -636,6 +641,8 @@ impl CudaModel {
                 pad: synthetic::PAD,
                 kind: CudaWeights::Synthetic(Box::new(synthetic::store(synthetic::SEED))),
                 experts_on_host: false,
+                experts: crate::Experts::Device,
+                tiers: crate::HostTiers::default(),
             });
         }
         let model = load_model_for(dir, selection)?;
@@ -649,6 +656,8 @@ impl CudaModel {
             pad: model.config.pad_token,
             kind: CudaWeights::Checkpoint(checkpoint, model.map),
             experts_on_host: false,
+            experts: crate::Experts::Device,
+            tiers: crate::HostTiers::default(),
         })
     }
 
@@ -710,6 +719,24 @@ impl CudaModel {
         control: Option<Control>,
     ) -> Result<V41Stage, Refused> {
         let bad = |e: RuntimeError| Refused(format!("layers {layers:?} can't load: {e}"));
+        // `--experts host` alone keeps the old load; a cache or Engram rows
+        // from the shards take the tiered one (#12463, #12466).
+        let experts = if self.experts == crate::Experts::Device && self.experts_on_host {
+            crate::Experts::Host
+        } else {
+            self.experts
+        };
+        if self.tiers.any() || experts == crate::Experts::File {
+            return self.stage_tiered(
+                backend,
+                layers,
+                max_context,
+                max_step_tokens,
+                observe,
+                control,
+                experts,
+            );
+        }
         match &self.kind {
             CudaWeights::Synthetic(store) => {
                 let tables = synthetic::engram_tables(backend, store, &layers).map_err(bad)?;
@@ -762,6 +789,82 @@ impl CudaModel {
                 .map_err(bad)
             }
         }
+    }
+}
+
+impl CudaModel {
+    /// Loads `layers` with the host tiers: an expert cache and Engram rows
+    /// from the shards.
+    #[allow(clippy::too_many_arguments)]
+    fn stage_tiered(
+        &self,
+        backend: &mut CudaBackend,
+        layers: Range<usize>,
+        max_context: usize,
+        max_step_tokens: usize,
+        observe: bool,
+        control: Option<Control>,
+        experts: crate::Experts,
+    ) -> Result<V41Stage, Refused> {
+        let bad = |e: RuntimeError| Refused(format!("layers {layers:?} can't load: {e}"));
+        let (shape, source, tier_source, engram, token_map) = match &self.kind {
+            CudaWeights::Synthetic(store) => (
+                synthetic::shape(),
+                store.as_ref() as &dyn V41TensorSource,
+                tiers::TierSource::Synthetic(store.as_ref()),
+                engram_hashes(&synthetic::layout()),
+                token_map(&synthetic::token_map()?, self.pad)?,
+            ),
+            CudaWeights::Checkpoint(checkpoint, map) => {
+                let layout = EngramLayout::flash().map_err(|e| Refused(e.to_string()))?;
+                (
+                    V41StageShape::flash(),
+                    &CheckpointSource(checkpoint) as &dyn V41TensorSource,
+                    tiers::TierSource::Checkpoint(checkpoint),
+                    engram_hashes(&layout),
+                    token_map(map, self.pad)?,
+                )
+            }
+        };
+        let (options, on_host) =
+            tiers::stage_options(tier_source, &shape, &layers, experts, &self.tiers)?;
+        let tables = if options.engram_rows.is_some() {
+            Vec::new()
+        } else {
+            match &self.kind {
+                CudaWeights::Synthetic(store) => {
+                    synthetic::engram_tables(backend, store, &layers).map_err(bad)?
+                }
+                CudaWeights::Checkpoint(checkpoint, _) => {
+                    let mut tables = Vec::new();
+                    for layer in [1_usize, 14].into_iter().filter(|l| layers.contains(l)) {
+                        tables.push(engram_table(checkpoint, backend, layer)?);
+                    }
+                    tables
+                }
+            }
+        };
+        V41Stage::load_with(
+            backend,
+            V41StageConfig {
+                shape,
+                layers: layers.clone(),
+                max_context,
+                max_step_tokens,
+                engram,
+                token_map: Some(token_map),
+                observe,
+                swap_rope_tables: control == Some(Control::WrongRope),
+                experts_on_host: on_host,
+            },
+            &Controlled {
+                inner: source,
+                control,
+            },
+            tables,
+            options,
+        )
+        .map_err(bad)
     }
 }
 
@@ -834,6 +937,8 @@ pub fn run_stage(
     unsafe { std::env::set_var("CUDA_VISIBLE_DEVICES", device) };
     let mut model = CudaModel::load(&options.weights, selection)?;
     model.experts_on_host = options.experts == crate::Experts::Host;
+    model.experts = options.experts;
+    model.tiers = options.tiers.clone();
     let model: &'static CudaModel = Box::leak(Box::new(model));
     check_weights(manifest, &model.digest)?;
     if (options.observe || options.control.is_some()) && options.record.is_none() {

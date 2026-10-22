@@ -35,6 +35,8 @@ constexpr int kBlock = 32;
 constexpr int kStageBlocks = 128;
 // One padding float per staged block keeps lane reads on distinct banks.
 constexpr int kStageStride = kBlock + 1;
+// A slot-map entry for an expert the host CPU computes (#12463).
+constexpr int kLaneHost = -2;
 
 __device__ __forceinline__ float e4m3(uint32_t byte) {
     const uint32_t magnitude = byte & 0x7fu;
@@ -152,7 +154,10 @@ __global__ void __launch_bounds__(kThreads) v41_block_matvec_kernel(
     float* __restrict__ out,
     int rows,
     int cols,
-    int round_bf16) {
+    int round_bf16,
+    const uint8_t* __restrict__ cache_weights,
+    const uint8_t* __restrict__ cache_scales,
+    const int* __restrict__ slot_map) {
     __shared__ float stage[kStageBlocks * kStageStride];
     __shared__ float stage_scale[kStageBlocks];
     const int slot = blockIdx.y;
@@ -161,12 +166,31 @@ __global__ void __launch_bounds__(kThreads) v41_block_matvec_kernel(
     const int row = blockIdx.x * kWarps + warp;
     const int blocks = cols / kBlock;
     const int matrix = ids == nullptr ? 0 : ids[slot];
-    const bool valid = matrix >= 0 && matrix < matrices;
+    bool valid = matrix >= 0 && matrix < matrices;
+    // With an expert cache (#12463), the slot map says where each matrix
+    // lives: a cache slot, host memory over the bus, or the host CPU lane,
+    // whose output another kernel writes. The arithmetic is the same.
+    const uint8_t* weight_base = weights;
+    const uint8_t* scale_base = weight_scales;
+    long long place = matrix;
+    if (slot_map != nullptr && valid) {
+        const int at = slot_map[matrix];
+        if (at == kLaneHost) {
+            return;  // uniform across the block: no barrier has run yet
+        }
+        if (at >= 0) {
+            weight_base = cache_weights;
+            scale_base = cache_scales;
+            place = at;
+        } else if (weights == nullptr) {
+            valid = false;
+        }
+    }
     const long long input_row = act_shared ? 0 : slot;
     const uint8_t* x_codes = act + input_row * cols;
     const uint8_t* x_scales = act_scales + input_row * blocks;
-    const uint8_t* w = weights + (valid ? matrix : 0) * matrix_bytes;
-    const uint8_t* ws = weight_scales + (valid ? matrix : 0) * matrix_scale_bytes;
+    const uint8_t* w = valid ? weight_base + place * matrix_bytes : cache_weights != nullptr ? cache_weights : weights;
+    const uint8_t* ws = valid ? scale_base + place * matrix_scale_bytes : cache_scales != nullptr ? cache_scales : weight_scales;
     const long long row_bytes = kFp4 ? cols / 2 : cols;
     const uint8_t* w_row = w + static_cast<long long>(row) * row_bytes;
     const uint8_t* ws_row = ws + static_cast<long long>(kFp4 ? row : row / kBlock) * blocks;
@@ -279,13 +303,47 @@ extern "C" int psionic_v41_block_matvec(
             static_cast<const uint8_t*>(weights), static_cast<const uint8_t*>(weight_scales),
             matrix_bytes, matrix_scale_bytes, matrices, static_cast<const int*>(ids),
             static_cast<const uint8_t*>(act), static_cast<const uint8_t*>(act_scales), act_shared,
-            static_cast<float*>(out), rows, cols, round_bf16);
+            static_cast<float*>(out), rows, cols, round_bf16, nullptr, nullptr, nullptr);
     } else {
         v41_block_matvec_kernel<false><<<grid, kThreads, 0, s>>>(
             static_cast<const uint8_t*>(weights), static_cast<const uint8_t*>(weight_scales),
             matrix_bytes, matrix_scale_bytes, matrices, static_cast<const int*>(ids),
             static_cast<const uint8_t*>(act), static_cast<const uint8_t*>(act_scales), act_shared,
-            static_cast<float*>(out), rows, cols, round_bf16);
+            static_cast<float*>(out), rows, cols, round_bf16, nullptr, nullptr, nullptr);
     }
+    return static_cast<int>(cudaGetLastError());
+}
+
+// The cached form (#12463): `ids` holds expert ids, `slot_map` maps each of
+// the `experts` ids to a slot of the cache stacks, the bus lane (read from
+// `weights`, which may be null when no expert uses it), or the host lane
+// (skipped; another kernel writes those rows).
+extern "C" int psionic_v41_block_matvec_cached(
+    const void* weights,
+    const void* weight_scales,
+    const void* cache_weights,
+    const void* cache_scales,
+    const void* slot_map,
+    long long matrix_bytes,
+    long long matrix_scale_bytes,
+    int experts,
+    const void* ids,
+    const void* act,
+    const void* act_scales,
+    int act_shared,
+    void* out,
+    int rows,
+    int cols,
+    int slots,
+    int round_bf16,
+    void* stream) {
+    const dim3 grid(static_cast<unsigned>((rows + kWarps - 1) / kWarps), static_cast<unsigned>(slots));
+    v41_block_matvec_kernel<true><<<grid, kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const uint8_t*>(weights), static_cast<const uint8_t*>(weight_scales),
+        matrix_bytes, matrix_scale_bytes, experts, static_cast<const int*>(ids),
+        static_cast<const uint8_t*>(act), static_cast<const uint8_t*>(act_scales), act_shared,
+        static_cast<float*>(out), rows, cols, round_bf16,
+        static_cast<const uint8_t*>(cache_weights), static_cast<const uint8_t*>(cache_scales),
+        static_cast<const int*>(slot_map));
     return static_cast<int>(cudaGetLastError());
 }

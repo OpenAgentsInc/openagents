@@ -8,7 +8,21 @@
 //!     [--prompt JSON | --prompt-file FILE [--repeat N]] [--mode thinking|chat]
 //!     [--max-tokens N] [--prefill-chunk N] [--temperature T --top-p P --seed S]
 //!     [--engram-lookups N] [--load-only] [--runtime LABEL] [--capture DIR]
+//!     [--experts device|host|file] [--expert-cache auto|GB|slots:N]
+//!     [--miss-lane auto|bus|host] [--expert-profile FILE] [--host-threads N]
+//!     [--frozen-cache] [--engram host|file] [--save-expert-profile FILE]
+//!     [--repeat-answer N]
 //! ```
+//!
+//! `--split 0-40 --gpus 0` with `--experts file --expert-cache auto
+//! --engram file` runs the whole model on one GPU (#12463, #12466): the
+//! routed experts and Engram tables are read in place from the shards,
+//! each layer's hottest experts sit in the device memory left over, and
+//! the rest run on host CPU threads. The report adds the cache's hit rate,
+//! lanes, and swaps. `--save-expert-profile` writes the cache's heat when
+//! the run ends, which `--expert-profile` reads to seed the next load.
+//! `--repeat-answer N` answers the same prompt N times on the loaded
+//! stages, so a warm cache can be measured.
 //!
 //! Each stage runs W11's executor behind W9's stage worker on its own
 //! thread and GPU, and each hop goes through the stage-state codec with
@@ -81,6 +95,13 @@ pub struct ChainOptions {
     pub runtime: String,
     /// Where to keep the last stage's inputs and outputs.
     pub capture: Option<PathBuf>,
+    /// Where the routed experts live, and the single-machine tiers.
+    pub experts: crate::Experts,
+    pub tiers: crate::HostTiers,
+    /// Where to write the expert cache's heat at the end.
+    pub save_profile: Option<PathBuf>,
+    /// Answers to run on the loaded stages.
+    pub repeat_answer: usize,
 }
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
@@ -168,6 +189,13 @@ impl ChainOptions {
             load_only: args.iter().any(|a| a == "--load-only"),
             runtime: flag(args, "--runtime").unwrap_or("unlabeled").to_owned(),
             capture: flag(args, "--capture").map(PathBuf::from),
+            experts: flag(args, "--experts")
+                .map(crate::Experts::parse)
+                .transpose()?
+                .unwrap_or_default(),
+            tiers: crate::HostTiers::from_args(args)?,
+            save_profile: flag(args, "--save-expert-profile").map(PathBuf::from),
+            repeat_answer: number(args, "--repeat-answer", 1_usize)?.max(1),
         })
     }
 }
@@ -356,6 +384,8 @@ enum Command {
         step: u64,
         emit: bool,
     },
+    /// Ends a request on the stage, so the next round's request may start.
+    Reset(String),
     Report,
 }
 
@@ -369,6 +399,7 @@ enum Reply {
         logits: Option<Vec<f32>>,
     },
     Report(Value),
+    Reset,
     Failed(String),
 }
 
@@ -392,7 +423,10 @@ fn stage_thread(
     let entry = manifest.stages[index].clone();
     // Only the stage's shards, hashed against the pin, as a stage machine
     // holds them.
-    let model = CudaModel::load(weights, manifest.selection(index).as_ref())?;
+    let mut model = CudaModel::load(weights, manifest.selection(index).as_ref())?;
+    model.experts_on_host = options.experts == crate::Experts::Host;
+    model.experts = options.experts;
+    model.tiers = options.tiers.clone();
     let mut backend = CudaBackend::with_device_index(gpu);
     if backend.selected_device().is_none() || !backend.quantized_kernels_available() {
         return Err(Refused(format!(
@@ -418,6 +452,7 @@ fn stage_thread(
     let memory = stage.memory().clone();
     let (weight_bytes, state_bytes) = stage.device_bytes();
     let shape = stage.config().shape;
+    let cache_at_load = stage.expert_cache_stats().map(|s| cache_json(&s));
     let executor = V41CudaStageExecutor::new(backend, stage, entry.stage);
     let inbox = StageInbox::new(
         manifest.digest(),
@@ -442,6 +477,8 @@ fn stage_thread(
         "device_bytes": {"weights": weight_bytes, "state": state_bytes},
         "per_decode_token": per_token(&memory, &shape),
         "engram": engram,
+        "experts": options.experts.as_str(),
+        "expert_cache_at_load": cache_at_load,
     })));
     let mut free_min = free_bench;
     let mut steps = Vec::new();
@@ -480,17 +517,61 @@ fn stage_thread(
                     }
                 }
             }
+            Command::Reset(request) => {
+                worker.reset(&request, 0);
+                let _ = replies.send(Reply::Reset);
+            }
             Command::Report => {
+                let stage = worker.executor().stage();
+                if let (Some(path), Some(profile)) = (&options.save_profile, stage.expert_profile())
+                {
+                    super::tiers::write_profile(
+                        path,
+                        &profile,
+                        &format!(
+                            "expert heat after a chain run of layers {:?}",
+                            entry.first_layer..entry.end_layer
+                        ),
+                    )?;
+                }
                 let _ = replies.send(Reply::Report(json!({
                     "free_min_while_running": free_min,
                     "peak_used": free_before.saturating_sub(free_min),
                     "peak_used_total": total.saturating_sub(free_min),
                     "step_ms": steps,
+                    "expert_cache": stage.expert_cache_stats().map(|s| cache_json(&s)),
+                    "engram_staging": stage.engram_staging_stats().map(|(rows, seconds)| json!({
+                        "rows": rows,
+                        "seconds": seconds,
+                    })),
                 })));
             }
         }
     }
     Ok(())
+}
+
+fn cache_json(s: &psionic_backend_cuda::v41_expert_cache::V41ExpertCacheStats) -> Value {
+    json!({
+        "slots_per_layer": s.slots_per_layer,
+        "layers": s.layers,
+        "miss_lane": s.miss_lane.map(|l| format!("{l:?}").to_lowercase()),
+        "expert_us": {
+            "device": s.device_expert_us,
+            "bus": s.bus_expert_us,
+            "host": s.host_expert_us,
+        },
+        "hits": s.hits,
+        "bus": s.bus,
+        "host": s.host,
+        "hit_rate": s.hit_rate(),
+        "host_requests": s.host_requests,
+        "host_seconds": s.host_seconds,
+        "swaps": s.swaps,
+        "staging_failures": s.staging_failures,
+        "device_bytes": s.device_bytes,
+        "staging_bytes": s.staging_bytes,
+    })
 }
 
 fn summary(values: &[f64]) -> Value {
@@ -607,8 +688,13 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                 _ => return Err(Refused("a stage answered out of order".into())),
             }
         }
-        let mut answer = Value::Null;
-        if !options.load_only {
+        let mut answers = Vec::new();
+        let rounds = if options.load_only {
+            0
+        } else {
+            options.repeat_answer
+        };
+        for round in 0..rounds {
             let last = threads.len() - 1;
             let digest = manifest.digest();
             let mut parser = AnswerParser::new(std::sync::Arc::clone(&tokenizer), eos, mode);
@@ -636,7 +722,11 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                 let mut message = StageMessage {
                     manifest_digest: digest,
                     generation: 1,
-                    request_id: "chain".into(),
+                    request_id: if round == 0 {
+                        "chain".into()
+                    } else {
+                        format!("chain-{round}")
+                    },
                     attempt: 0,
                     stage: 0,
                     layers: manifest.stages[0].layers(),
@@ -750,7 +840,19 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                 pending.push(vec![token]);
             }
             let decode_ms: f64 = token_ms.iter().sum();
-            answer = json!({
+            let request = if round == 0 {
+                "chain".to_owned()
+            } else {
+                format!("chain-{round}")
+            };
+            for thread in &threads {
+                let _ = thread.commands.send(Command::Reset(request.clone()));
+                if !matches!(recv(thread)?, Reply::Reset) {
+                    return Err(Refused("a stage answered out of order".into()));
+                }
+            }
+            answers.push(json!({
+                "round": round,
                 "mode": mode.as_str(),
                 "prompt_tokens": prompt_ids.len(),
                 "prompt_ids": prompt_ids,
@@ -767,8 +869,35 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                 "decode_tokens_per_s": if decode_ms > 0.0 { token_ms.len() as f64 / (decode_ms / 1e3) } else { 0.0 },
                 "stage_step_ms": stage_ms.iter().map(|m| summary(m)).collect::<Vec<_>>(),
                 "largest_message_bytes_into_stage": hop_bytes,
-            });
+            }));
         }
+        let answer = match answers.len() {
+            0 => Value::Null,
+            1 => answers.remove(0),
+            _ => {
+                let mut last = answers.pop().unwrap_or(Value::Null);
+                if let Some(map) = last.as_object_mut() {
+                    map.insert(
+                        "earlier_rounds".into(),
+                        Value::Array(
+                            answers
+                                .iter()
+                                .map(|a| {
+                                    json!({
+                                        "round": a["round"],
+                                        "prefill_ms": a["prefill_ms"],
+                                        "tokens": a["tokens"],
+                                        "decode_tokens_per_s": a["decode_tokens_per_s"],
+                                        "ids": a["ids"],
+                                    })
+                                })
+                                .collect(),
+                        ),
+                    );
+                }
+                last
+            }
+        };
         let mut stages = Vec::new();
         for (thread, mut report) in threads.iter().zip(loaded) {
             let _ = thread.commands.send(Command::Report);

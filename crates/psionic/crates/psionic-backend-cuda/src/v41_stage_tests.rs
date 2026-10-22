@@ -1352,3 +1352,347 @@ fn sampling_matches_its_definition() -> TestResult {
     );
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// The expert cache (#12463)
+// ---------------------------------------------------------------------------
+
+fn load_cached_stage(
+    backend: &mut CudaBackend,
+    store: &Store,
+    experts_on_host: bool,
+    setup: crate::v41_expert_cache::V41ExpertCacheSetup,
+) -> Result<V41Stage, Box<dyn Error>> {
+    let map = token_map()?;
+    let layers = 0..40;
+    let tables = engram_tables(backend, store, &layers)?;
+    Ok(V41Stage::load_with(
+        backend,
+        V41StageConfig {
+            shape: shape(),
+            layers,
+            max_context: MAX_CONTEXT,
+            max_step_tokens: 24,
+            engram: engram_hashes(),
+            token_map: Some(V41TokenMap {
+                ids: map.ids().to_vec(),
+                pad: map.get(2)?,
+            }),
+            observe: true,
+            swap_rope_tables: false,
+            experts_on_host,
+        },
+        store,
+        tables,
+        V41StageOptions {
+            expert_cache: Some(setup),
+            engram_rows: None,
+        },
+    )?)
+}
+
+/// A stage with a device cache of routed experts gives the same tokens,
+/// logits, and per-layer observations, bit for bit, as a stage with every
+/// expert in device memory: with misses on the host CPU lane, on the bus,
+/// chosen by measurement, and with swaps after every token.
+#[test]
+fn cached_experts_equal_device_experts() -> TestResult {
+    use crate::v41_expert_cache::{
+        V41ExpertBytes, V41ExpertCacheConfig, V41ExpertCacheSetup, V41MissLane, V41OwnedExperts,
+        V41SwapPolicy,
+    };
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let store = synthetic_store(11);
+    let experts = shape().router.experts;
+    let owned: Arc<dyn V41ExpertBytes> =
+        Arc::new(V41OwnedExperts::from_source(&store, 0..40, experts)?);
+    let eager = V41SwapPolicy {
+        decay: 0.5,
+        window: 1,
+        ratio: 1.0,
+        margin: 0.0,
+        max_swaps_per_step: 8,
+        staging: 8,
+    };
+    let config = |slots: usize, lane: V41MissLane, policy: V41SwapPolicy| V41ExpertCacheConfig {
+        slots_per_layer: slots,
+        miss_lane: lane,
+        policy,
+        ..V41ExpertCacheConfig::new(slots)
+    };
+    let variants = [
+        (
+            "host lane",
+            false,
+            Some(owned.clone()),
+            config(4, V41MissLane::Host, V41SwapPolicy::default()),
+        ),
+        (
+            "bus lane",
+            true,
+            None,
+            config(4, V41MissLane::Bus, V41SwapPolicy::default()),
+        ),
+        (
+            "measured lane",
+            true,
+            None,
+            config(3, V41MissLane::Auto, V41SwapPolicy::default()),
+        ),
+        (
+            "host lane, pinned source",
+            true,
+            None,
+            config(2, V41MissLane::Host, eager),
+        ),
+        (
+            "one slot, swaps every token",
+            false,
+            Some(owned.clone()),
+            config(1, V41MissLane::Host, eager),
+        ),
+    ];
+    let mut device = load_stage_with(&mut backend, &store, 0..40, true, false)?;
+    let (prompt, decode) = tokens();
+    let mut steps = vec![prompt];
+    steps.extend(decode.iter().map(|t| vec![*t]));
+    steps.extend([vec![5, 6, 7], vec![9], vec![11]]);
+    let sampling = V41Sampling {
+        temperature: 0.8,
+        top_p: 0.9,
+        seed: 1234,
+    };
+    fn input(position: usize, step: &[u32], sampling: V41Sampling) -> V41StepInput<'_> {
+        V41StepInput {
+            position,
+            tokens: step,
+            residual: None,
+            pre_mix: None,
+            source_rows: None,
+            selection: None,
+            candidates: None,
+            sampling,
+        }
+    }
+    let mut want = Vec::new();
+    let mut position = 0;
+    for step in &steps {
+        let out = device.step(&backend, &input(position, step, sampling), true)?;
+        want.push((
+            out.token,
+            device.logits()?,
+            device.observations(step.len())?,
+        ));
+        position += step.len();
+    }
+    for (name, on_host, host, config) in variants {
+        let mut cached = load_cached_stage(
+            &mut backend,
+            &store,
+            on_host,
+            V41ExpertCacheSetup { config, host },
+        )?;
+        let mut position = 0;
+        for (i, step) in steps.iter().enumerate() {
+            let out = cached.step(&backend, &input(position, step, sampling), true)?;
+            assert_eq!(out.token, want[i].0, "{name}: token at step {i}");
+            let logits = cached.logits()?;
+            assert!(
+                logits
+                    .iter()
+                    .zip(&want[i].1)
+                    .all(|(x, y)| x.to_bits() == y.to_bits()),
+                "{name}: logits differ at step {i}"
+            );
+            assert_eq!(
+                cached.observations(step.len())?,
+                want[i].2,
+                "{name}: observations at step {i}"
+            );
+            position += step.len();
+        }
+        let stats = cached.expert_cache_stats().ok_or("no cache stats")?;
+        println!("{name}: {stats:?}");
+        let total = stats.hits + stats.bus + stats.host;
+        assert_eq!(
+            total as usize,
+            steps.iter().map(Vec::len).sum::<usize>() * 40 * 6,
+            "{name}"
+        );
+        assert!(stats.hits > 0, "{name}: no hits");
+        match stats.miss_lane {
+            Some(V41MissLane::Host) => assert!(stats.host > 0 && stats.bus == 0, "{name}"),
+            Some(V41MissLane::Bus) => assert!(stats.bus > 0 && stats.host == 0, "{name}"),
+            other => panic!("{name}: lane {other:?}"),
+        }
+        if name.contains("swaps") {
+            assert!(stats.swaps > 0, "{name}: no swaps");
+        }
+        assert!(stats.host_expert_us.is_some() && stats.device_expert_us.is_some());
+    }
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Engram rows from a host source (#12466)
+// ---------------------------------------------------------------------------
+
+/// The host hash gives the CPU path's row ids, which the device kernel is
+/// checked against in `engram_hash_matches_the_cpu`.
+#[test]
+fn host_engram_hasher_matches_the_cpu() -> TestResult {
+    use crate::v41_engram_rows::V41EngramHasher;
+    let map = token_map()?;
+    let pad = map.get(2)?;
+    let layout = Arc::new(layout());
+    let token_map = V41TokenMap {
+        ids: map.ids().to_vec(),
+        pad,
+    };
+    for request in [vec![5_u32, 9, 9, 1, 63, 2, 0, 7], vec![7, 7, 3], vec![1]] {
+        let mut cpu = NgramHashState::new(layout.clone(), pad)?;
+        let compressed: Vec<Option<u32>> = request
+            .iter()
+            .map(|t| Some(map.ids()[*t as usize]))
+            .collect();
+        let expected = cpu.push_compressed(0, &compressed)?;
+        let mut host = V41EngramHasher::new(&token_map, &engram_hashes(), 8)?;
+        for (i, (token, expected)) in request.iter().zip(&expected).enumerate() {
+            let got: Vec<u64> = host
+                .push(i, *token)
+                .into_iter()
+                .map(|r| r.unwrap_or(u64::MAX))
+                .collect();
+            let want: Vec<u64> = expected.layers.iter().flatten().copied().collect();
+            assert_eq!(got, want, "token {i}");
+        }
+    }
+    Ok(())
+}
+
+/// Engram rows staged from a host source give the same tokens, logits,
+/// and observations as pinned tables, alone and with an expert cache whose
+/// misses all run on the host lane: the single-box layout.
+#[test]
+fn staged_engram_rows_equal_pinned_tables() -> TestResult {
+    use crate::v41_engram_rows::{V41EngramRows, V41OwnedEngram};
+    use crate::v41_expert_cache::{
+        V41ExpertBytes, V41ExpertCacheConfig, V41ExpertCacheSetup, V41MissLane, V41OwnedExperts,
+    };
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let store = synthetic_store(23);
+    let rows: Arc<dyn V41EngramRows> =
+        Arc::new(V41OwnedEngram::from_source(&store, &[1, 14], ENGRAM_WIDTH)?);
+    let experts: Arc<dyn V41ExpertBytes> = Arc::new(V41OwnedExperts::from_source(
+        &store,
+        0..40,
+        shape().router.experts,
+    )?);
+    let mut pinned = load_stage_with(&mut backend, &store, 0..40, true, false)?;
+    let map = token_map()?;
+    let config = V41StageConfig {
+        shape: shape(),
+        layers: 0..40,
+        max_context: MAX_CONTEXT,
+        max_step_tokens: 24,
+        engram: engram_hashes(),
+        token_map: Some(V41TokenMap {
+            ids: map.ids().to_vec(),
+            pad: map.get(2)?,
+        }),
+        observe: true,
+        swap_rope_tables: false,
+        experts_on_host: false,
+    };
+    let mut cache = V41ExpertCacheConfig::new(5);
+    cache.miss_lane = V41MissLane::Host;
+    let variants = [
+        V41StageOptions {
+            expert_cache: None,
+            engram_rows: Some(rows.clone()),
+        },
+        V41StageOptions {
+            expert_cache: Some(V41ExpertCacheSetup {
+                config: cache,
+                host: Some(experts),
+            }),
+            engram_rows: Some(rows.clone()),
+        },
+    ];
+    let (prompt, decode) = tokens();
+    let mut steps = vec![prompt.clone()];
+    steps.extend(decode.iter().map(|t| vec![*t]));
+    // A second request from position 0 restarts the hash history.
+    steps.push(prompt[..5].to_vec());
+    steps.push(vec![1]);
+    let sampling = V41Sampling::greedy();
+    let mut want = Vec::new();
+    let mut position = 0;
+    for step in &steps {
+        if step.len() == 5 {
+            position = 0;
+        }
+        let input = V41StepInput {
+            position,
+            tokens: step,
+            residual: None,
+            pre_mix: None,
+            source_rows: None,
+            selection: None,
+            candidates: None,
+            sampling,
+        };
+        let out = pinned.step(&backend, &input, true)?;
+        want.push((
+            out.token,
+            pinned.logits()?,
+            pinned.observations(step.len())?,
+        ));
+        position += step.len();
+    }
+    for (v, options) in variants.into_iter().enumerate() {
+        let mut staged =
+            V41Stage::load_with(&mut backend, config.clone(), &store, Vec::new(), options)?;
+        assert!(staged.memory().engram_host_bytes > 0);
+        let mut position = 0;
+        for (i, step) in steps.iter().enumerate() {
+            if step.len() == 5 {
+                position = 0;
+            }
+            let input = V41StepInput {
+                position,
+                tokens: step,
+                residual: None,
+                pre_mix: None,
+                source_rows: None,
+                selection: None,
+                candidates: None,
+                sampling,
+            };
+            let out = staged.step(&backend, &input, true)?;
+            assert_eq!(out.token, want[i].0, "variant {v}, step {i}");
+            let logits = staged.logits()?;
+            assert!(
+                logits
+                    .iter()
+                    .zip(&want[i].1)
+                    .all(|(x, y)| x.to_bits() == y.to_bits()),
+                "variant {v}: logits differ at step {i}"
+            );
+            assert_eq!(
+                staged.observations(step.len())?,
+                want[i].2,
+                "variant {v}, step {i}"
+            );
+            position += step.len();
+        }
+        let (rows_staged, _) = staged.engram_staging_stats().ok_or("no staging")?;
+        let tokens: usize = steps.iter().map(Vec::len).sum();
+        assert_eq!(rows_staged as usize, tokens * 2 * 24);
+    }
+    Ok(())
+}

@@ -180,3 +180,100 @@ fn a_chained_group_answers_like_the_unsplit_cuda_stage_and_reports_its_memory() 
         assert!(stage["run"]["step_ms"].as_array().unwrap().len() >= 12);
     }
 }
+
+/// The whole model on one GPU with the single-machine tiers (#12463,
+/// #12466): routed experts read in place with a small device cache and the
+/// host lane for misses, Engram rows read from the shards. Every round
+/// answers as the unsplit CUDA stage does, a saved routing profile seeds
+/// the next load, and the report carries the cache's counts.
+#[test]
+fn one_gpu_with_an_expert_cache_answers_like_the_unsplit_stage() {
+    if !cuda() {
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    weights(root.path(), &[(0, 40)]);
+    let expected = reference_with(
+        root.path(),
+        &prompt(),
+        12,
+        &["--backend", "cuda", "--max-context", CONTEXT],
+    );
+    let profile = root.path().join("profile.json");
+    let run = |extra: &[&str]| -> serde_json::Value {
+        let weights = root.path().display().to_string();
+        let mut args = vec![
+            "chain",
+            "--weights",
+            &weights,
+            "--split",
+            "0-40",
+            "--gpus",
+            "0",
+            "--max-context",
+            CONTEXT,
+            "--max-step-tokens",
+            "16",
+            "--prompt",
+        ];
+        let prompt = prompt().to_string();
+        args.push(&prompt);
+        args.extend([
+            "--max-tokens",
+            "12",
+            "--experts",
+            "file",
+            "--expert-cache",
+            "slots:4",
+            "--engram",
+            "file",
+            "--repeat-answer",
+            "2",
+            "--host-threads",
+            "4",
+        ]);
+        args.extend(extra);
+        let out = common::run_bounded(
+            std::process::Command::new(common::BIN)
+                .args(&args)
+                .env("CUDA_VISIBLE_DEVICES", common::visible_devices()),
+            common::LIMIT,
+        );
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        serde_json::from_slice(&out.stdout).unwrap()
+    };
+    let profile_arg = profile.display().to_string();
+    for report in [
+        run(&["--save-expert-profile", &profile_arg]),
+        run(&["--expert-profile", &profile_arg, "--miss-lane", "host"]),
+    ] {
+        let ids = |answer: &serde_json::Value| -> Vec<u32> {
+            answer["ids"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_u64().unwrap() as u32)
+                .collect()
+        };
+        let answer = &report["answer"];
+        assert_eq!(ids(answer), expected.0);
+        assert_eq!(ids(&answer["earlier_rounds"][0]), expected.0);
+        let stage = &report["stages"][0];
+        assert_eq!(stage["experts"], "file");
+        let cache = &stage["run"]["expert_cache"];
+        assert_eq!(cache["slots_per_layer"], 4, "{cache}");
+        assert_eq!(cache["miss_lane"], "host", "{cache}");
+        assert!(cache["hits"].as_u64().unwrap() > 0, "{cache}");
+        assert!(cache["host"].as_u64().unwrap() > 0, "{cache}");
+        assert!(stage["run"]["engram_staging"]["rows"].as_u64().unwrap() > 0);
+        assert!(
+            stage["engram"].as_array().unwrap().is_empty(),
+            "no pinned tables"
+        );
+        assert!(profile.is_file());
+    }
+}

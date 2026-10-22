@@ -17,7 +17,7 @@ path = "src/main.rs"
 [features]
 # W7's device-resident stage behind `--backend cuda`. It builds anywhere;
 # the kernels link only where nvcc is installed (psionic-backend-cuda).
-cuda = ["dep:psionic-backend-cuda", "dep:psionic-runtime", "dep:half"]
+cuda = ["dep:psionic-backend-cuda", "dep:psionic-runtime", "dep:half", "dep:memmap2"]
 # The Metal stage behind `--backend metal` on a Mac (#12420). It shares the
 # CUDA stage's types and wire, so it builds the CUDA backend's portable half.
 metal = [
@@ -31,6 +31,7 @@ metal = [
 [dependencies]
 half = { version = "2.4.1", optional = true }
 hex = { workspace = true }
+memmap2 = { version = "0.9", optional = true }
 psionic-backend-cuda = { path = "../psionic-backend-cuda", optional = true }
 psionic-backend-metal = { path = "../psionic-backend-metal", optional = true }
 psionic-runtime = { path = "../psionic-runtime", optional = true }
