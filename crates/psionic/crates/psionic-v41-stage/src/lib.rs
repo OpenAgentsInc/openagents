@@ -235,6 +235,9 @@ pub enum CacheSize {
 /// them a stage loads as before.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct HostTiers {
+    /// `--dspark`: verify the checkpoint's draft blocks on a whole-model
+    /// CUDA stage and serve their accepted tokens over the ordinary link.
+    pub dspark: bool,
     /// `--expert-cache auto|GB|slots:N`.
     pub expert_cache: Option<CacheSize>,
     /// `--miss-lane auto|bus|host`.
@@ -329,6 +332,7 @@ impl HostTiers {
             Some(other) => return refuse(format!("--kv {other} is not bf16 or packed")),
         };
         Ok(Self {
+            dspark: args.iter().any(|a| a == "--dspark"),
             packed_kv,
             consumer_q: value("--consumer-q").map(PathBuf::from),
             fast_reductions: args.iter().any(|a| a == "--fast-reductions"),
@@ -377,6 +381,7 @@ impl HostTiers {
     #[must_use]
     pub fn any(&self) -> bool {
         self.expert_cache.is_some()
+            || self.dspark
             || self.packed_kv
             || self.engram_file
             || self.batched_prefill
@@ -389,12 +394,13 @@ impl HostTiers {
     /// expects the qualified profile.
     #[must_use]
     pub fn profile(&self, exact: String) -> String {
+        let draft = if self.dspark { "dspark-" } else { "" };
         match (&self.consumer_q, self.fast_reductions) {
-            (Some(_), true) => format!("consumer-q-fast-{exact}"),
-            (Some(_), false) => format!("consumer-q-{exact}"),
+            (Some(_), true) => format!("consumer-q-fast-{draft}{exact}"),
+            (Some(_), false) => format!("consumer-q-{draft}{exact}"),
             // Bit-equal to the exact profile, but its own configuration:
             // a single-box stage never joins a qualified group (#12467).
-            (None, _) if self.any() => format!("consumer-exact-{exact}"),
+            (None, _) if self.any() => format!("consumer-exact-{draft}{exact}"),
             (None, _) => exact,
         }
     }
@@ -1138,6 +1144,7 @@ impl Options {
         while i < args.len() {
             let flag = args[i].as_str();
             match flag {
+                "--dspark" => {}
                 "--embeddings" => embeddings = true,
                 "--head" => head = true,
                 "--observe" => observe = true,
@@ -1208,6 +1215,9 @@ impl Options {
         }
         let tiers = HostTiers::from_args(args)?;
         tiers.check(experts)?;
+        if tiers.dspark && backend != Backend::Cuda {
+            return refuse("--dspark needs the CUDA backend");
+        }
         if tiers.any() && backend != Backend::Cuda {
             return refuse("--expert-cache and --engram file are for the CUDA backend");
         }

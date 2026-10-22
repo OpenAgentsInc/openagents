@@ -384,6 +384,7 @@ impl Drafter {
             // The loader above keeps the layer shape checks and native
             // packed formats; use the backbone's embedding allocation.
             block.embed = main.embed.clone();
+            block.work.head_logits = backend.byte_buffer(&vec![0; 4 * shape.vocabulary])?;
             blocks.push(block);
         }
         let h = shape.hidden;

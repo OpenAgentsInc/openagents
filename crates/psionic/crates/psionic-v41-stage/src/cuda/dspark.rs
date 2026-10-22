@@ -410,3 +410,275 @@ mod tests {
         assert_eq!(draw(&correction, 0.8), 1);
     }
 }
+
+/// Lookahead for the ordinary stage link. The head still sends and
+/// receives one token at a time. A changed input or sampling setting
+/// rewinds the pending block before doing new work.
+pub(super) struct Streaming {
+    drafter: Drafter,
+    snapshot: psionic_backend_cuda::v41_stage::dspark::Snapshot,
+    pending: std::collections::VecDeque<(usize, u32, u32, Vec<f32>)>,
+    baseline: usize,
+    consumed: Vec<u32>,
+    sampling: Option<V41Sampling>,
+    rng: u64,
+    pub(super) logits: Option<Vec<f32>>,
+}
+
+impl Streaming {
+    pub(super) fn load(
+        model: &CudaModel,
+        backend: &mut CudaBackend,
+        stage: &mut V41Stage,
+    ) -> Result<Self, Refused> {
+        stage.enable_dspark(backend).map_err(bad)?;
+        let drafter = match &model.kind {
+            CudaWeights::Checkpoint(checkpoint, _) => {
+                Drafter::load(backend, stage, &CheckpointSource(checkpoint), 256, 128_799)
+            }
+            CudaWeights::Synthetic(store) => Drafter::load(backend, stage, store.as_ref(), 32, 0),
+        }
+        .map_err(bad)?;
+        let snapshot = stage.dspark_snapshot(backend).map_err(bad)?;
+        Ok(Self {
+            drafter,
+            snapshot,
+            pending: std::collections::VecDeque::new(),
+            baseline: 0,
+            consumed: Vec::new(),
+            sampling: None,
+            rng: 0,
+            logits: None,
+        })
+    }
+
+    pub(super) fn reset(&mut self) {
+        self.pending.clear();
+        self.consumed.clear();
+        self.sampling = None;
+        self.logits = None;
+        self.drafter.reset();
+    }
+
+    fn rewind(&mut self, stage: &mut V41Stage, backend: &CudaBackend) -> Result<(), Refused> {
+        if !self.pending.is_empty() {
+            stage.restore_dspark(backend, &self.snapshot).map_err(bad)?;
+            if !self.consumed.is_empty() {
+                step(stage, backend, self.baseline, &self.consumed, false)?;
+            }
+        }
+        self.pending.clear();
+        self.consumed.clear();
+        Ok(())
+    }
+
+    pub(super) fn step(
+        &mut self,
+        stage: &mut V41Stage,
+        backend: &CudaBackend,
+        input: &V41StepInput<'_>,
+        emit: bool,
+    ) -> Result<psionic_backend_cuda::v41_stage::V41StepOutput, Refused> {
+        if input.position == 0 {
+            self.reset();
+        }
+        if self.sampling == Some(input.sampling) && input.tokens.len() == 1 && emit {
+            if let Some((position, expected, _, _)) = self.pending.front() {
+                if *position == input.position && *expected == input.tokens[0] {
+                    let (_, _, token, logits) = self
+                        .pending
+                        .pop_front()
+                        .ok_or_else(|| bad("empty draft cache"))?;
+                    self.consumed.push(input.tokens[0]);
+                    self.logits = Some(logits);
+                    return Ok(psionic_backend_cuda::v41_stage::V41StepOutput {
+                        token: Some(token),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+        self.rewind(stage, backend)?;
+        if self.sampling != Some(input.sampling) {
+            self.sampling = Some(input.sampling);
+            self.rng = input.sampling.seed ^ 0x4453_7061_726b;
+        }
+        if input.position == 0
+            || input.tokens.len() != 1
+            || !emit
+            || input.position + VERIFY > stage.config().max_context
+        {
+            let out = stage
+                .step_with_output(backend, input, false, emit)
+                .map_err(bad)?;
+            self.logits = if emit {
+                Some(stage.logits().map_err(bad)?)
+            } else {
+                None
+            };
+            return Ok(out);
+        }
+        let sampling = Sampling {
+            temperature: f64::from(input.sampling.temperature),
+            top_p: f64::from(input.sampling.top_p),
+            seed: input.sampling.seed as u32,
+        };
+        let mut proposal = self
+            .drafter
+            .forward(backend, stage, input.position, input.tokens[0])
+            .map_err(bad)?;
+        let h = stage.config().shape.hidden;
+        let mut q = Vec::new();
+        let mut inputs = input.tokens.to_vec();
+        for i in 0..BLOCK {
+            self.drafter
+                .finish_token(
+                    backend,
+                    *inputs.last().ok_or_else(|| bad("draft input"))?,
+                    &proposal.confidence[i * h..(i + 1) * h],
+                    &mut proposal.logits[i],
+                )
+                .map_err(bad)?;
+            let p = distribution(&proposal.logits[i], sampling)?;
+            inputs.push(draw(&p, uniform(&mut self.rng)));
+            q.push(p);
+        }
+        stage
+            .save_dspark(backend, &mut self.snapshot)
+            .map_err(bad)?;
+        let target = match stage.verify_dspark(backend, input.position, &inputs) {
+            Ok(target) => target,
+            Err(e) => {
+                stage.restore_dspark(backend, &self.snapshot).map_err(bad)?;
+                return Err(bad(e));
+            }
+        };
+        let mut accepted = 0;
+        let mut correction = None;
+        for i in 0..BLOCK {
+            let p = distribution(&target[i], sampling)?;
+            match accept(&p, &q[i], inputs[i + 1], uniform(&mut self.rng)) {
+                Ok(()) => accepted += 1,
+                Err(residual) => {
+                    correction = Some(draw(&residual, uniform(&mut self.rng)));
+                    break;
+                }
+            }
+        }
+        if accepted < BLOCK {
+            stage.restore_dspark(backend, &self.snapshot).map_err(bad)?;
+            step(
+                stage,
+                backend,
+                input.position,
+                &inputs[..accepted + 1],
+                false,
+            )?;
+        }
+        let correction = match correction {
+            Some(token) => token,
+            None => draw(
+                &distribution(&target[BLOCK], sampling)?,
+                uniform(&mut self.rng),
+            ),
+        };
+        let mut outputs = inputs[1..accepted + 1].to_vec();
+        outputs.push(correction);
+        self.baseline = input.position;
+        self.consumed = input.tokens.to_vec();
+        self.logits = Some(target[0].clone());
+        for i in 1..outputs.len() {
+            self.pending.push_back((
+                input.position + i,
+                outputs[i - 1],
+                outputs[i],
+                target[i].clone(),
+            ));
+        }
+        eprintln!("DSpark: accepted {accepted}/{BLOCK} draft tokens");
+        Ok(psionic_backend_cuda::v41_stage::V41StepOutput {
+            token: Some(outputs[0]),
+            ..Default::default()
+        })
+    }
+}
+
+#[cfg(test)]
+mod streaming_tests {
+    use super::*;
+
+    #[test]
+    fn dspark_streaming_rewinds_changed_inputs_and_resets_prefixes()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let ready = backend.selected_device().is_some() && backend.quantized_kernels_available();
+        assert!(
+            ready || std::env::var_os("PSIONIC_REQUIRE_CUDA").is_none(),
+            "CUDA required"
+        );
+        if !ready {
+            return Ok(());
+        }
+        let root = tempfile::tempdir()?;
+        crate::write_synthetic(root.path(), "dspark-stream")?;
+        let mut model = CudaModel::load(root.path(), None)?;
+        model.tiers.dspark = true;
+        let mut stage = model.stage_sized(&mut backend, 0..40, 64, 24)?;
+        let mut plain = model.stage_sized(&mut backend, 0..40, 64, 24)?;
+        let mut stream = Streaming::load(&model, &mut backend, &mut stage)?;
+        fn input(position: usize, tokens: &[u32]) -> V41StepInput<'_> {
+            V41StepInput {
+                position,
+                tokens,
+                residual: None,
+                pre_mix: None,
+                source_rows: None,
+                selection: None,
+                candidates: None,
+                sampling: V41Sampling::greedy(),
+            }
+        }
+        let prompt = [3, 5, 7, 11, 13, 17, 19, 23, 29];
+        plain.step(&backend, &input(0, &prompt), false)?;
+        stream.step(&mut stage, &backend, &input(0, &prompt), true)?;
+        let baseline = prompt.len();
+        stage.save_dspark(&backend, &mut stream.snapshot)?;
+        let inputs = [2, 3, 5, 7, 11, 13];
+        let targets = stage.verify_dspark(&backend, baseline, &inputs)?;
+        stream.baseline = baseline;
+        stream.consumed.clear();
+        stream.sampling = Some(V41Sampling::greedy());
+        for (i, logits) in targets.iter().enumerate() {
+            let token = crate::sample(logits, Sampling::GREEDY, 0)?;
+            stream
+                .pending
+                .push_back((baseline + i, inputs[i], token, logits.clone()));
+        }
+        // Read two cached steps, then force a different token. This must
+        // discard four future inputs and restore the logically used prefix.
+        for i in 0..10 {
+            let token = if i < 2 {
+                inputs[i]
+            } else if i == 2 {
+                31
+            } else {
+                crate::sample(&plain.logits()?, Sampling::GREEDY, 0)?
+            };
+            let input = input(baseline + i, std::slice::from_ref(&token));
+            let expected = plain.step(&backend, &input, false)?;
+            let actual = stream.step(&mut stage, &backend, &input, true)?;
+            assert_eq!(expected.token, actual.token, "stream step {i}");
+            assert_eq!(
+                plain.logits()?,
+                stream.logits.clone().ok_or("stream logits")?
+            );
+        }
+        // A short changed prefix follows an unfinished speculative block.
+        let changed = [41, 43, 47];
+        let expected = plain.step(&backend, &input(0, &changed), false)?;
+        let actual = stream.step(&mut stage, &backend, &input(0, &changed), true)?;
+        assert_eq!(expected.token, actual.token);
+        assert_eq!(plain.logits()?, stream.logits.ok_or("reset logits")?);
+        Ok(())
+    }
+}

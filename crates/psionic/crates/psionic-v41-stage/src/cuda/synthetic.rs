@@ -502,3 +502,46 @@ pub fn engram_tables(
     }
     Ok(out)
 }
+
+/// Adds a small matching MTP head so the ordinary stage-link tests can
+/// exercise drafting, changed inputs, and request resets on one GPU.
+pub(super) fn dspark_store(seed: u64) -> Store {
+    let mut store = store(seed);
+    let mut rng = Rng(seed ^ 0x4453_7061_726b);
+    let tensors: Vec<_> = store
+        .tensors
+        .iter()
+        .filter_map(|(name, tensor)| {
+            name.strip_prefix("layers.0.")
+                .map(|suffix| (suffix.to_owned(), tensor.clone()))
+        })
+        .collect();
+    for layer in 0..3 {
+        for (name, tensor) in &tensors {
+            store
+                .tensors
+                .insert(format!("mtp.{layer}.{name}"), tensor.clone());
+        }
+    }
+    store.fp8("mtp.0.main_proj", HIDDEN, 3 * HIDDEN, &mut rng, 0.02);
+    store.bf16s(
+        "mtp.0.main_norm.weight".into(),
+        vec![HIDDEN],
+        &vec![1.0; HIDDEN],
+    );
+    store.bf16s("mtp.2.norm.weight".into(), vec![HIDDEN], &vec![1.0; HIDDEN]);
+    for part in ["embed", "head"] {
+        let values: Vec<f32> = (0..VOCAB * 32).map(|_| rng.unit() * 0.02).collect();
+        store.bf16s(
+            format!("mtp.2.markov_head.{part}.weight"),
+            vec![VOCAB, 32],
+            &values,
+        );
+    }
+    store.bf16s(
+        "mtp.2.confidence_head.proj.weight".into(),
+        vec![1, HIDDEN + 32],
+        &vec![0.01; HIDDEN + 32],
+    );
+    store
+}
