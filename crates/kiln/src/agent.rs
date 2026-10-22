@@ -425,7 +425,27 @@ impl Agent {
                 ));
             }
             if used + block.len() > room {
-                history.push(format!("[{} earlier steps omitted]\n", n + 1));
+                if history.is_empty() {
+                    let remaining = room.saturating_sub(used);
+                    let mut omitted = if n > 0 {
+                        format!("[{n} earlier steps omitted]\n")
+                    } else {
+                        String::new()
+                    };
+                    if omitted.len() > remaining {
+                        omitted.clear();
+                    }
+                    let limit = remaining.saturating_sub(omitted.len());
+                    // clip adds its notice outside the requested text limit.
+                    let mut newest = clip(&block, limit.saturating_sub(64));
+                    while newest.len() > limit {
+                        newest.pop();
+                    }
+                    history.push(newest);
+                    history.push(omitted);
+                } else {
+                    history.push(format!("[{} earlier steps omitted]\n", n + 1));
+                }
                 break;
             }
             used += block.len();
@@ -575,5 +595,40 @@ mod tests {
         );
         assert!(prompt.contains("earlier steps omitted"));
         assert!(clip("ééééé", 4).len() < 40);
+    }
+
+    #[test]
+    fn an_oversized_newest_step_keeps_recent_tool_feedback() {
+        let mut agent = Agent::new(&"task é".repeat(375), 8250);
+        agent.instructions = "instruction é".repeat(170);
+        let old = agent.plan(r#"{"thought":"old","commands":[{"run":"test old"}]}"#);
+        agent.observe(&old[0], 0, "OLD_FEEDBACK".into());
+        let commands = agent.plan(
+            r#"{"thought":"inspect the failure","commands":[{"run":"view source"},{"run":"test recent"}]}"#,
+        );
+        agent.observe(
+            &commands[0],
+            0,
+            format!("FIRST_RESULT\n{}", "é".repeat(1800)),
+        );
+        agent.observe(
+            &commands[1],
+            1,
+            format!("{}\nLATEST_FAILURE: expected true", "界".repeat(1500)),
+        );
+        for files in [String::new(), "file é\n".repeat(1000)] {
+            let prompt = agent.prompt(&files);
+            assert!(prompt.contains(&agent.task));
+            assert!(prompt.contains("Step 2: inspect the failure"));
+            assert!(prompt.contains("LATEST_FAILURE: expected true"));
+            assert!(prompt.contains("earlier steps omitted"));
+            assert!(!prompt.contains("OLD_FEEDBACK"));
+            assert!(prompt.len() + agent.instructions.len() <= agent.budget);
+        }
+        agent.steps.remove(0);
+        let prompt = agent.prompt("");
+        assert!(prompt.contains("LATEST_FAILURE: expected true"));
+        assert!(!prompt.contains("earlier steps omitted"));
+        assert!(prompt.len() + agent.instructions.len() <= agent.budget);
     }
 }
