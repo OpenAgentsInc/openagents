@@ -15,6 +15,8 @@ pub mod agent;
 pub mod cj;
 pub mod patch;
 pub mod remote;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod serve;
 pub mod vfs;
 pub mod wasi;
 

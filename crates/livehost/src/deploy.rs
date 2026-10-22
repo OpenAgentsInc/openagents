@@ -426,6 +426,109 @@ pub async fn deploy(root: &Path, target: &Target<'_>, options: &Options<'_>) -> 
     })
 }
 
+/// Replaces every object under `prefix` in the channel's current manifest
+/// with `files` (paths relative to `prefix`), keeping everything else, and
+/// publishes the result. An empty `files` removes the prefix, so the host
+/// falls back to whatever it serves without the manifest. Objects upload as
+/// they are, without new compressed copies: a caller that wants them adds
+/// `.br` or `.gz` files itself. Kiln's self-edit publishes its own module
+/// this way (`docs/kiln/self-edit.md`).
+pub async fn overlay(
+    tenant: &str,
+    prefix: &str,
+    files: &BTreeMap<String, Vec<u8>>,
+    target: &Target<'_>,
+) -> Result<Report> {
+    let started = Instant::now();
+    let mut phases = Vec::new();
+    let prefix = format!("{}/", prefix.trim_end_matches('/'));
+    let mut relay = Relay::connect(target.relay).await?;
+    let previous = current(
+        &mut relay,
+        target.store,
+        target.signer,
+        tenant,
+        target.channel,
+    )
+    .await?;
+    phases.push(("current".to_owned(), ms_since(started)));
+    let mark = Instant::now();
+    let mut manifest = match &previous {
+        Some((_, manifest)) => manifest.clone(),
+        None => Manifest {
+            schema: SCHEMA.into(),
+            tenant: tenant.to_owned(),
+            host_min: HOST_VERSION,
+            parent: None,
+            objects: BTreeMap::new(),
+            routes: Vec::new(),
+            modules: BTreeMap::new(),
+            handlers: BTreeMap::new(),
+            encodings: BTreeMap::new(),
+            meta: None,
+        },
+    };
+    let known = manifest.object_hashes();
+    manifest.parent = previous
+        .as_ref()
+        .map(|(pointer, _)| pointer.manifest.clone());
+    manifest
+        .objects
+        .retain(|path, _| !path.starts_with(&prefix));
+    let mut uploads = Vec::new();
+    for (path, bytes) in files {
+        if path.split('/').any(|part| part.is_empty() || part == "..") {
+            bail!("{path} is not a plain relative path");
+        }
+        let hash = sha256_hex(bytes);
+        if !known.contains(&hash) && !uploads.iter().any(|b: &&Vec<u8>| sha256_hex(b) == hash) {
+            uploads.push(bytes);
+        }
+        manifest.objects.insert(format!("{prefix}{path}"), hash);
+    }
+    let used = manifest.object_hashes();
+    manifest.encodings.retain(|hash, _| used.contains(hash));
+    let bytes = manifest.to_bytes();
+    let hash = sha256_hex(&bytes);
+    let results = futures_util::future::try_join_all(
+        uploads
+            .iter()
+            .map(|b| target.store.put(b))
+            .chain(std::iter::once(target.store.put(&bytes))),
+    )
+    .await?;
+    let uploaded = results
+        .iter()
+        .filter(|(h, written)| *written && *h != hash)
+        .count();
+    let uploaded_bytes = uploads.iter().map(|b| b.len()).sum();
+    phases.push(("upload".to_owned(), ms_since(mark)));
+    let mark = Instant::now();
+    let prev_pointer = previous.as_ref().map(|(pointer, _)| pointer);
+    publish(
+        &mut relay,
+        target,
+        tenant,
+        &hash,
+        prev_pointer,
+        Some(&bytes),
+    )
+    .await?;
+    phases.push(("publish".to_owned(), ms_since(mark)));
+    Ok(Report {
+        tenant: tenant.to_owned(),
+        channel: target.channel.to_owned(),
+        tiers: vec![format!("overlay {prefix}")],
+        manifest: Some(hash),
+        previous: prev_pointer.map(|pointer| pointer.manifest.clone()),
+        objects_uploaded: uploaded,
+        bytes_uploaded: uploaded_bytes,
+        warnings: Vec::new(),
+        phases,
+        total_ms: ms_since(started),
+    })
+}
+
 /// Points the channel back at the previous manifest, or at `to`.
 pub async fn rollback(tenant: &str, target: &Target<'_>, to: Option<&str>) -> Result<Report> {
     let started = Instant::now();

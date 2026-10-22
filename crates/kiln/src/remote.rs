@@ -40,7 +40,19 @@ pub struct Job {
     /// publishes a NIP-22 check comment on it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub patch: Option<nostr::domain::Event>,
+    /// Kiln's self-edit: `publish` (test, build, smoke, and publish Kiln's
+    /// own page module from these files), `revert` (point back at the last
+    /// good build), or `reset` (drop the published build so the host serves
+    /// its own). Only keys on the runner's admin list may ask.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
 }
+
+/// The crates Kiln's self-edit may change and publish.
+pub const SELF_CRATES: &[&str] = &["kiln", "kiln-tools"];
+
+/// The actions only admins may ask for.
+pub const ACTIONS: &[&str] = &["publish", "revert", "reset"];
 
 /// What a run produced.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -57,6 +69,10 @@ pub struct Outcome {
     /// The check comment the runner published, for a patch job.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub check: Option<String>,
+    /// For a self-edit action: the manifest it published and each phase's
+    /// milliseconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub published: Option<serde_json::Value>,
 }
 
 /// The repository paths a format-patch text touches (`diff --git a/X b/Y`).
@@ -91,18 +107,24 @@ pub fn parse_command(argv: &[String], crates: &[String]) -> Result<Vec<String>, 
     if !matches!(sub, Some("test" | "check")) {
         return Err("only `cargo test -p CRATE` and `cargo check -p CRATE` run here".into());
     }
-    if args.get(1).map(String::as_str) != Some("-p") {
+    let mut i = 1;
+    let mut named = 0;
+    while args.get(i).map(String::as_str) == Some("-p") {
+        let krate = args.get(i + 1).ok_or("name the crate after -p")?;
+        if !crates.contains(krate) {
+            return Err(format!(
+                "this workspace has only {}; run `cargo test -p {}`",
+                crates.join(", "),
+                crates.first().map_or("CRATE", String::as_str)
+            ));
+        }
+        named += 1;
+        i += 2;
+    }
+    if named == 0 {
         return Err("name the crate: `cargo test -p CRATE`".into());
     }
-    let krate = args.get(2).ok_or("name the crate after -p")?;
-    if !crates.contains(krate) {
-        return Err(format!(
-            "this workspace has only {}; run `cargo test -p {}`",
-            crates.join(", "),
-            crates.first().map_or("CRATE", String::as_str)
-        ));
-    }
-    let rest = &args[3..];
+    let rest = &args[i..];
     match rest.first().map(String::as_str) {
         None => {}
         Some("--") if sub == Some("test") => {
@@ -133,9 +155,17 @@ impl Job {
         if self.base.len() != 40 || !self.base.bytes().all(|b| b.is_ascii_hexdigit()) {
             return Err("base is not a 40-character commit".into());
         }
-        let mut argv = vec!["cargo".to_string()];
-        argv.extend(self.args.iter().cloned());
-        parse_command(&argv, crates)?;
+        let self_crates: Vec<String> = SELF_CRATES.iter().map(|c| (*c).to_string()).collect();
+        let crates = match self.action.as_deref() {
+            None => crates,
+            Some(action) if ACTIONS.contains(&action) => &self_crates,
+            Some(action) => return Err(format!("unknown action {action}")),
+        };
+        if self.action.is_none() || !self.args.is_empty() {
+            let mut argv = vec!["cargo".to_string()];
+            argv.extend(self.args.iter().cloned());
+            parse_command(&argv, crates)?;
+        }
         let bytes: usize = self.files.values().map(String::len).sum();
         if bytes > MAX_FILE_BYTES {
             return Err(format!("the files are over {} KiB", MAX_FILE_BYTES / 1024));
@@ -249,6 +279,9 @@ mod tests {
         assert!(parse_command(&words("cargo test -p memory-stream"), &crates()).is_ok());
         assert!(parse_command(&words("cargo test -p memory-stream -- recency"), &crates()).is_ok());
         assert!(parse_command(&words("cargo check -p memory-stream"), &crates()).is_ok());
+        let two = vec!["kiln".to_string(), "kiln-tools".to_string()];
+        assert!(parse_command(&words("cargo test -p kiln -p kiln-tools"), &two).is_ok());
+        assert!(parse_command(&words("cargo test -p kiln -p nostr"), &two).is_err());
         assert!(parse_command(&words("cargo run -p memory-stream"), &crates()).is_err());
         assert!(parse_command(&words("cargo test -p nostr"), &crates()).is_err());
         assert!(parse_command(&words("cargo test -p memory-stream --release"), &crates()).is_err());
@@ -270,6 +303,7 @@ mod tests {
             files: BTreeMap::from([("crates/memory-stream/src/lib.rs".into(), "x".into())]),
             deleted: vec![],
             patch: None,
+            action: None,
         };
         assert!(job.check(&crates()).is_ok());
         job.files.insert(
@@ -282,6 +316,19 @@ mod tests {
             .insert("crates/memory-stream/build.rs".into(), "x".into());
         assert!(job.check(&crates()).is_err());
         job.files.clear();
+        job.action = Some("publish".into());
+        job.args.clear();
+        job.files
+            .insert("crates/kiln/src/agent.rs".into(), "x".into());
+        assert!(job.check(&crates()).is_ok(), "a publish touches only Kiln");
+        job.files
+            .insert("crates/memory-stream/src/lib.rs".into(), "x".into());
+        assert!(job.check(&crates()).is_err());
+        job.files.clear();
+        job.action = Some("deploy".into());
+        assert!(job.check(&crates()).is_err());
+        job.action = None;
+        job.args = words("test -p memory-stream");
         job.base = "main".into();
         assert!(job.check(&crates()).is_err());
     }

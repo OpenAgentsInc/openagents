@@ -9924,6 +9924,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.3.4",
  "js-sys",
+ "livehost",
  "nostr",
  "openagents-workspace-hack",
  "secp256k1 0.31.1",
@@ -9932,6 +9933,7 @@ dependencies = [
  "sha1 0.10.7",
  "sha2 0.11.0",
  "similar",
+ "tokio",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -9942,8 +9944,10 @@ name = "kiln-runner"
 version = "1.0.0"
 dependencies = [
  "coder-boundary",
+ "futures-util",
  "kiln",
  "libc",
+ "livehost",
  "nostr",
  "nostr-transport",
  "openagents-workspace-hack",
@@ -9951,6 +9955,7 @@ dependencies = [
  "serde_json",
  "supervise",
  "tokio",
+ "tokio-tungstenite 0.30.0",
 ]
 
 [[package]]

@@ -22,6 +22,11 @@ sha1 = "0.10.7"
 sha2 = "0.11.0"
 similar = "2.7.0"
 
+# kiln-dev's livehost follower (`--live-*`).
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+livehost = { path = "../livehost", default-features = false }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 futures-channel = "0.3.34"
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
@@ -50,6 +55,11 @@ web-sys = { version = "0.3.105", features = [
     "Navigator",
     "Performance",
     "Response",
+    "RequestInit",
+    "RequestCache",
+    "Storage",
+    "VisibilityState",
+    "HtmlCollection",
     "StorageManager",
     "Url",
     "UrlSearchParams",

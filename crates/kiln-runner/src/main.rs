@@ -38,10 +38,12 @@ use nostr::domain::{Event, Tag};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
+mod publish;
+
 const LIFETIME: Duration = Duration::from_secs(115);
 const LOG_CAP: u64 = 32 * 1024 * 1024;
 
-struct Config {
+pub(crate) struct Config {
     state: PathBuf,
     relay: String,
     crates: Vec<String>,
@@ -52,7 +54,7 @@ struct Config {
     announce: bool,
 }
 
-fn unix() -> u64 {
+pub(crate) fn unix() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs())
@@ -159,7 +161,7 @@ fn prepare(config: &Config) -> Result<(), String> {
 }
 
 /// Check out `job.base` cleanly and write the job's files.
-fn stage(config: &Config, job: &Job) -> Result<(), String> {
+pub(crate) fn stage(config: &Config, job: &Job) -> Result<(), String> {
     let repo = config.state.join("repo");
     if git(
         &repo,
@@ -221,20 +223,27 @@ fn user_cargo_configs(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Run Cargo for `job` in the boundary. `progress` gets the latest line.
-fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
+/// What one sandboxed command did.
+pub(crate) struct Ran {
+    pub ending: supervise::Ending,
+    pub over: bool,
+    pub text: String,
+}
+
+/// Run `program args` inside the boundary in the worktree: no network,
+/// writes only to the worktree, the target directory, the Cargo home, and
+/// `writable`, reads only those, the Cargo caches, and the toolchains, with
+/// a cleared environment plus `env`, the wall-clock cap, and the log cap.
+/// `progress` gets the log's latest line about every two seconds.
+pub(crate) fn run_sandboxed(
+    config: &Config,
+    program: &str,
+    args: &[String],
+    env: &[(String, String)],
+    writable: &[PathBuf],
+    progress: &dyn Fn(String),
+) -> Result<Ran, String> {
     let started = Instant::now();
-    let stopped = |summary: String| Outcome {
-        v: remote::RESULT_V.into(),
-        code: None,
-        summary,
-        log: String::new(),
-        ms: started.elapsed().as_millis() as u64,
-        check: None,
-    };
-    if let Err(e) = stage(config, job) {
-        return stopped(format!("could not prepare the workspace: {e}"));
-    }
     let work = config.state.join("work");
     let target = config.state.join("target");
     let home = config.state.join("cargo-home");
@@ -246,6 +255,9 @@ fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
         .writable(&home)
         .owned_scratch_under(std::env::temp_dir())
         .offline();
+    for path in writable {
+        spec = spec.writable(path);
+    }
     for read in &toolchains.reads {
         spec = spec.readable(&read.path);
     }
@@ -262,22 +274,14 @@ fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
     for config in user_cargo_configs(&work) {
         spec = spec.readable(config);
     }
-    let boundary = match spec.build() {
-        Ok(boundary) => boundary,
-        Err(e) => return stopped(format!("the sandbox can't be enforced here: {e}")),
-    };
-    let mut args = vec![
-        "-n".to_string(),
-        "10".to_string(),
-        "cargo".to_string(),
-        job.args[0].clone(),
-        "--offline".to_string(),
-    ];
-    args.extend(job.args[1..].iter().cloned());
-    let mut command = match boundary.command("/usr/bin/nice", &args) {
-        Ok(command) => command,
-        Err(e) => return stopped(format!("the sandbox refused the command: {e}")),
-    };
+    let boundary = spec
+        .build()
+        .map_err(|e| format!("the sandbox can't be enforced here: {e}"))?;
+    let mut all = vec!["-n".to_string(), "10".to_string(), program.to_string()];
+    all.extend(args.iter().cloned());
+    let mut command = boundary
+        .command("/usr/bin/nice", &all)
+        .map_err(|e| format!("the sandbox refused the command: {e}"))?;
     let path = std::env::join_paths(&toolchains.path).unwrap_or_default();
     command
         .current_dir(&work)
@@ -296,23 +300,28 @@ fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
             command.env(name, value);
         }
     }
+    for (name, value) in env {
+        if name == "PATH" {
+            // Put the caller's directories first.
+            let joined = format!("{value}:{}", boundary.search_path(&path).to_string_lossy());
+            command.env("PATH", joined);
+        } else {
+            command.env(name, value);
+        }
+    }
     let log_path = config.state.join("last.log");
-    let log = match std::fs::File::create(&log_path) {
-        Ok(log) => log,
-        Err(e) => return stopped(format!("log: {e}")),
-    };
-    let Ok(log2) = log.try_clone() else {
-        return stopped("log: cannot share the file".into());
-    };
+    let log = std::fs::File::create(&log_path).map_err(|e| format!("log: {e}"))?;
+    let log2 = log
+        .try_clone()
+        .map_err(|_| "log: cannot share the file".to_string())?;
     command
         .stdout(log)
         .stderr(log2)
         .stdin(std::process::Stdio::null());
     supervise::blocking::own_group(&mut command);
-    let mut child = match command.spawn() {
-        Ok(child) => child,
-        Err(e) => return stopped(format!("cargo did not start: {e}")),
-    };
+    let mut child = command
+        .spawn()
+        .map_err(|e| format!("{program} did not start: {e}"))?;
     let pid = child.id() as i32;
     let done = Arc::new(AtomicBool::new(false));
     let over = Arc::new(AtomicBool::new(false));
@@ -327,7 +336,7 @@ fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
     };
     let mut shown = String::new();
     while !done.load(Ordering::SeqCst) {
-        std::thread::sleep(Duration::from_millis(500));
+        std::thread::sleep(Duration::from_millis(250));
         if std::fs::metadata(&log_path).is_ok_and(|m| m.len() > LOG_CAP) {
             over.store(true, Ordering::SeqCst);
             // SAFETY: `pid` leads the process group `own_group` made.
@@ -335,7 +344,7 @@ fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
                 libc::killpg(pid, libc::SIGKILL);
             }
         }
-        if started.elapsed().as_millis() % 2000 < 500
+        if started.elapsed().as_millis() % 2000 < 250
             && let Some(line) = last_line(&log_path)
             && line != shown
         {
@@ -348,22 +357,64 @@ fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
         .unwrap_or(supervise::Ending::Failed("the wait panicked".into()));
     drop(boundary);
     let text = std::fs::read(&log_path).unwrap_or_default();
-    let text = String::from_utf8_lossy(&text);
-    let code = ending.code();
-    let summary = match ending {
-        supervise::Ending::TimedOut => format!("stopped after {} s", wall.as_secs()),
+    Ok(Ran {
+        ending,
+        over: over.load(Ordering::SeqCst),
+        text: String::from_utf8_lossy(&text).into_owned(),
+    })
+}
+
+/// Cargo's `args` in the boundary, read as an [`Outcome`].
+pub(crate) fn cargo_outcome(
+    config: &Config,
+    args: &[String],
+    started: Instant,
+    progress: &dyn Fn(String),
+) -> Outcome {
+    let mut all = vec![args[0].clone(), "--offline".to_string()];
+    all.extend(args[1..].iter().cloned());
+    let ran = match run_sandboxed(config, "cargo", &all, &[], &[], progress) {
+        Ok(ran) => ran,
+        Err(e) => return stopped(started, e),
+    };
+    let code = ran.ending.code();
+    let summary = match &ran.ending {
+        supervise::Ending::TimedOut => format!("stopped after {} s", config.timeout.as_secs()),
         supervise::Ending::Failed(why) => format!("could not run: {why}"),
-        _ if over.load(Ordering::SeqCst) => "stopped: the log passed 32 MB".into(),
-        _ => remote::summarize(code, &text),
+        _ if ran.over => "stopped: the log passed 32 MB".into(),
+        _ => remote::summarize(code, &ran.text),
     };
     Outcome {
         v: remote::RESULT_V.into(),
         code,
         summary,
-        log: remote::trim_log(&text, remote::MAX_LOG_BYTES),
+        log: remote::trim_log(&ran.text, remote::MAX_LOG_BYTES),
         ms: started.elapsed().as_millis() as u64,
         check: None,
+        published: None,
     }
+}
+
+/// An outcome for a run that never got to its command.
+pub(crate) fn stopped(started: Instant, summary: String) -> Outcome {
+    Outcome {
+        v: remote::RESULT_V.into(),
+        code: None,
+        summary,
+        log: String::new(),
+        ms: started.elapsed().as_millis() as u64,
+        check: None,
+        published: None,
+    }
+}
+
+/// Run Cargo for `job` in the boundary. `progress` gets the latest line.
+fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
+    let started = Instant::now();
+    if let Err(e) = stage(config, job) {
+        return stopped(started, format!("could not prepare the workspace: {e}"));
+    }
+    cargo_outcome(config, &job.args, started, progress)
 }
 
 fn reply(key: &Key, request: &Event, kind: u16, body: &Value) -> Option<Event> {
@@ -381,6 +432,30 @@ fn error_body(code: &str, message: &str) -> Value {
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
+    // `kiln-runner smoke URL`: the self-edit's browser smoke test, run under
+    // `openagents browser run`.
+    let argv: Vec<String> = std::env::args().collect();
+    if argv.get(1).map(String::as_str) == Some("smoke") {
+        let url = argv.get(2).cloned().unwrap_or_default();
+        match publish::smoke(&url).await {
+            Ok(()) => {
+                println!("the self-test passed");
+                std::process::exit(0);
+            }
+            Err(e) => {
+                println!("{e}");
+                std::process::exit(1);
+            }
+        }
+    }
+    let mut publish_store = String::new();
+    let mut publish_key = PathBuf::new();
+    let mut publish_tenant = "openagents".to_string();
+    let mut publish_channel = "staging".to_string();
+    let mut publish_prefix = "modules/kiln".to_string();
+    let mut publish_relay = String::new();
+    let mut admins_file = PathBuf::new();
+    let mut browser_smoke = true;
     let mut config = Config {
         state: PathBuf::new(),
         relay: "wss://relay.openagents.com".into(),
@@ -403,9 +478,18 @@ async fn main() {
             "--timeout" => config.timeout = Duration::from_secs(value().parse().unwrap_or(600)),
             "--jobs" => config.jobs = value().parse().unwrap_or(4).clamp(1, 6),
             "--no-announce" => config.announce = false,
+            "--admins" => admins_file = PathBuf::from(value()),
+            "--publish-store" => publish_store = value(),
+            "--publish-key" => publish_key = PathBuf::from(value()),
+            "--publish-tenant" => publish_tenant = value(),
+            "--publish-channel" => publish_channel = value(),
+            "--publish-prefix" => publish_prefix = value(),
+            "--publish-relay" => publish_relay = value(),
+            "--no-browser-smoke" => browser_smoke = false,
             _ => {
                 eprintln!(
-                    "usage: kiln-runner --state DIR [--relay URL] [--crates a,b] [--reference CHECKOUT] [--timeout SECS] [--jobs N] [--no-announce]"
+                    "usage: kiln-runner --state DIR [--relay URL] [--crates a,b] [--reference CHECKOUT] [--timeout SECS] [--jobs N] [--no-announce]\n\
+                     \x20 self-edit: --admins FILE --publish-store STORE --publish-key FILE [--publish-tenant NAME] [--publish-channel NAME] [--publish-prefix PREFIX] [--publish-relay URL] [--no-browser-smoke]"
                 );
                 std::process::exit(2);
             }
@@ -443,6 +527,46 @@ async fn main() {
     );
     println!("repository {repo}");
     let _ = std::fs::write(config.state.join("repository"), format!("{repo}\n"));
+    // Kiln's self-edit, when the runner is given somewhere to publish.
+    let publisher = if publish_store.is_empty() {
+        None
+    } else {
+        let store = livehost::store::Store::parse(&publish_store).unwrap_or_else(|e| {
+            eprintln!("kiln-runner: --publish-store: {e:#}");
+            std::process::exit(2);
+        });
+        let signer = livehost::keys::load(&publish_key).unwrap_or_else(|e| {
+            eprintln!("kiln-runner: --publish-key: {e:#}");
+            std::process::exit(2);
+        });
+        let admins = publish::read_admins(&admins_file).unwrap_or_else(|e| {
+            eprintln!("kiln-runner: --admins: {e}");
+            std::process::exit(2);
+        });
+        if admins.is_empty() {
+            eprintln!("kiln-runner: --admins names no key, so nobody could publish");
+            std::process::exit(2);
+        }
+        println!(
+            "self-edit: publishes {publish_prefix}/ to {publish_tenant}/{publish_channel} as {} for {} admin keys",
+            signer.pubkey(),
+            admins.len()
+        );
+        Some(Arc::new(publish::Publish {
+            store,
+            signer,
+            tenant: publish_tenant,
+            channel: publish_channel,
+            relay: if publish_relay.is_empty() {
+                config.relay.clone()
+            } else {
+                publish_relay
+            },
+            prefix: publish_prefix,
+            admins,
+            browser_smoke,
+        }))
+    };
     let config = Arc::new(config);
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Event>();
     let busy = Arc::new(AtomicBool::new(false));
@@ -509,6 +633,14 @@ async fn main() {
                                 Err("the patch names another repository".to_string())
                             }
                             _ => Ok(job),
+                        })
+                        .and_then(|job| match (&job.action, &publisher) {
+                            (None, _) => Ok(job),
+                            (Some(_), None) => Err("this runner doesn't publish Kiln".to_string()),
+                            (Some(_), Some(p)) if !p.admins.contains(&request.pubkey) => {
+                                Err("only an admin's key may publish, revert, or reset Kiln".to_string())
+                            }
+                            (Some(_), Some(_)) => Ok(job),
                         });
                     let job = match job {
                         Ok(job) => job,
@@ -526,8 +658,9 @@ async fn main() {
                         }
                         continue;
                     }
-                    println!("job {} from {}: cargo {} with {} files at {}", &request.id[..8], &request.pubkey[..8], job.args.join(" "), job.files.len(), &job.base[..10]);
+                    println!("job {} from {}: {} with {} files at {}", &request.id[..8], &request.pubkey[..8], job.action.clone().unwrap_or_else(|| format!("cargo {}", job.args.join(" "))), job.files.len(), &job.base[..10]);
                     let (key, config, out, busy) = (key.clone(), config.clone(), out_tx.clone(), busy.clone());
+                    let publisher = publisher.clone();
                     let relay_url = config.relay.clone();
                     std::thread::spawn(move || {
                         let feedback = |note: Option<String>| {
@@ -540,7 +673,11 @@ async fn main() {
                             }
                         };
                         feedback(Some("starting".into()));
-                        let mut outcome = run_cargo(&config, &job, &|line| feedback(Some(line)));
+                        let mut outcome = match (job.action.as_deref(), &publisher) {
+                            (Some("publish"), Some(p)) => publish::publish(&config, p, &job, &|line| feedback(Some(line))),
+                            (Some(action), Some(p)) => publish::restore(&config, p, action),
+                            _ => run_cargo(&config, &job, &|line| feedback(Some(line))),
+                        };
                         if let Some(patch) = &job.patch {
                             let passed = outcome.code == Some(0);
                             let digest = kiln::sha256_hex(patch.content.as_bytes());

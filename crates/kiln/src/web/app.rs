@@ -62,6 +62,14 @@ struct App {
     green: RefCell<Option<String>>,
     /// The NIP-34 repository address patches go to, from `config.json`.
     repo_address: RefCell<String>,
+    /// The Kiln build this page runs (`tools/manifest.json`'s `kiln.build`),
+    /// or `site` for the host's own build.
+    build: RefCell<String>,
+    /// A newer build waits for the agent to go idle.
+    pending_build: RefCell<Option<String>>,
+    /// The key self-edit jobs are signed with: kept in this browser so the
+    /// runner's admin list can name it.
+    admin_key: RefCell<Option<Key>>,
     key: Key,
     worker: RefCell<Option<Worker>>,
     busy: Cell<bool>,
@@ -99,6 +107,9 @@ pub async fn run() {
         runner_relay: RefCell::new(None),
         green: RefCell::new(None),
         repo_address: RefCell::new(String::new()),
+        build: RefCell::new(String::new()),
+        pending_build: RefCell::new(None),
+        admin_key: RefCell::new(None),
         key,
         worker: RefCell::new(None),
         busy: Cell::new(false),
@@ -116,6 +127,11 @@ pub async fn run() {
     )));
     app.page_metrics();
     app.render_files();
+    app.restore_session();
+    app.load_admin_key();
+    *app.build.borrow_mut() = current_build().await.unwrap_or_else(|| "site".into());
+    el(&app.doc, "build").set_text_content(Some(&app.build.borrow()));
+    wasm_bindgen_futures::spawn_local(app.clone().watch_builds());
     let params =
         web_sys::UrlSearchParams::new_with_str(&window.location().search().unwrap_or_default())
             .ok();
@@ -208,6 +224,49 @@ impl App {
         );
         let app = self.clone();
         on("stop", Box::new(move |_| app.stop.set(true)));
+        let app = self.clone();
+        on(
+            "self-load",
+            Box::new(move |_| {
+                if app.busy.get() {
+                    return;
+                }
+                let reference: HtmlInputElement = el(&app.doc, "ref").unchecked_into();
+                let reference = reference.value();
+                wasm_bindgen_futures::spawn_local(
+                    app.clone()
+                        .load_repo("crates/kiln,crates/kiln-tools".into(), reference),
+                );
+            }),
+        );
+        for (id, action) in [
+            ("self-publish", "publish"),
+            ("self-revert", "revert"),
+            ("self-reset", "reset"),
+        ] {
+            let app = self.clone();
+            on(
+                id,
+                Box::new(move |_| {
+                    if app.busy.get() {
+                        return;
+                    }
+                    wasm_bindgen_futures::spawn_local(app.clone().self_edit(action));
+                }),
+            );
+        }
+        let app = self.clone();
+        on(
+            "reload-now",
+            Box::new(move |_| {
+                let app = app.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Some(build) = app.pending_build.borrow().clone() {
+                        app.swap(&build).await;
+                    }
+                });
+            }),
+        );
         let app = self.clone();
         on(
             "load",
@@ -1093,6 +1152,11 @@ impl App {
             "step",
             &format!("Loading {slice} from {REPO} at {reference}"),
         );
+        let slices: Vec<String> = slice
+            .split(',')
+            .map(|s| s.trim().trim_matches('/').to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
         let result: Result<(String, Vfs, usize, f64), String> = async {
             let commit: Value = serde_json::from_slice(
                 &fetch_bytes(&format!(
@@ -1105,46 +1169,54 @@ impl App {
                 .as_str()
                 .ok_or("the commit has no sha")?
                 .to_string();
-            let tree: Value = serde_json::from_slice(
-                &fetch_bytes(&format!(
-                    "https://api.github.com/repos/{REPO}/git/trees/{sha}:{slice}?recursive=1"
-                ))
-                .await?,
-            )
-            .map_err(|e| e.to_string())?;
+            let mut wanted = Vec::new();
+            for slice in &slices {
+                let tree: Value = serde_json::from_slice(
+                    &fetch_bytes(&format!(
+                        "https://api.github.com/repos/{REPO}/git/trees/{sha}:{slice}?recursive=1"
+                    ))
+                    .await?,
+                )
+                .map_err(|e| e.to_string())?;
+                let entries = tree["tree"].as_array().ok_or("the tree has no entries")?;
+                for entry in entries {
+                    if entry["type"] != "blob" || entry["size"].as_u64().unwrap_or(0) > 512 * 1024 {
+                        continue;
+                    }
+                    let path = entry["path"].as_str().unwrap_or_default();
+                    wanted.push(format!("{slice}/{path}"));
+                }
+            }
             let listed_ms = now_ms() - started;
-            let entries = tree["tree"].as_array().ok_or("the tree has no entries")?;
+            // Every file at once; raw.githubusercontent.com serves them in parallel.
+            let fetched = futures_util::future::join_all(wanted.iter().map(|full| {
+                let url = format!("https://raw.githubusercontent.com/{REPO}/{sha}/{full}");
+                async move { fetch_bytes(&url).await }
+            }))
+            .await;
             let mut vfs = Vfs::default();
             let mut bytes = 0;
-            for entry in entries {
-                if entry["type"] != "blob" {
-                    continue;
-                }
-                let path = entry["path"].as_str().unwrap_or_default();
-                if entry["size"].as_u64().unwrap_or(0) > 512 * 1024 {
-                    continue;
-                }
-                let full = format!("{slice}/{path}");
-                let data = fetch_bytes(&format!(
-                    "https://raw.githubusercontent.com/{REPO}/{sha}/{full}"
-                ))
-                .await?;
+            for (full, data) in wanted.iter().zip(fetched) {
+                let data = data?;
                 bytes += data.len();
-                vfs.put(&full, &data, 0).map_err(String::from)?;
+                vfs.put(full, &data, 0).map_err(String::from)?;
             }
             Ok((sha, vfs, bytes, listed_ms))
         }
         .await;
         match result {
             Ok((sha, vfs, bytes, listed_ms)) => {
-                let name = vfs
-                    .read(&format!("{slice}/Cargo.toml"))
-                    .ok()
-                    .and_then(|t| crate_name(&String::from_utf8_lossy(t)));
-                let crates: Vec<String> = name.into_iter().collect();
+                let crates: Vec<String> = slices
+                    .iter()
+                    .filter_map(|slice| {
+                        vfs.read(&format!("{slice}/Cargo.toml"))
+                            .ok()
+                            .and_then(|t| crate_name(&String::from_utf8_lossy(t)))
+                    })
+                    .collect();
                 let (files, _) = vfs.usage();
                 let mut base = vfs.clone();
-                let meta = json!({"repo": REPO, "commit": sha, "slice": slice, "crates": crates});
+                let meta = json!({"repo": REPO, "commit": sha, "slice": slices.first().cloned().unwrap_or_default(), "slices": slices, "crates": crates});
                 let _ = base.put(REPO_META, meta.to_string().as_bytes(), 0);
                 *self.vfs.borrow_mut() = vfs;
                 *self.base.borrow_mut() = base;
@@ -1163,7 +1235,10 @@ impl App {
                 );
                 self.metrics.borrow_mut().page["repo_load"] = json!({"slice": slice, "commit": sha, "files": files, "bytes": bytes, "ms": ms, "listing_ms": listed_ms});
                 self.render_metrics();
-                if let Some(krate) = crates.first() {
+                if crates.iter().any(|c| c == "kiln") {
+                    let area: HtmlTextAreaElement = el(&self.doc, "task").unchecked_into();
+                    area.set_value(KILN_TASK);
+                } else if let Some(krate) = crates.first() {
                     let area: HtmlTextAreaElement = el(&self.doc, "task").unchecked_into();
                     if krate == "memory-stream" {
                         area.set_value(MEMORY_STREAM_TASK);
@@ -1210,8 +1285,8 @@ impl App {
         let (files, deleted) = {
             let vfs = self.vfs.borrow();
             let base = self.base.borrow();
-            let slice = repo["slice"].as_str().unwrap_or_default().to_string();
-            let inside = |p: &str| p.starts_with(&format!("{slice}/"));
+            let slices = repo_slices(&repo);
+            let inside = |p: &str| slices.iter().any(|s| p.starts_with(s.as_str()));
             let mut files = std::collections::BTreeMap::new();
             for (path, node) in vfs.iter() {
                 if node.is_dir() || !inside(path) {
@@ -1236,6 +1311,7 @@ impl App {
             files,
             deleted,
             patch: None,
+            action: None,
         };
         if let Err(e) = job.check(&crates) {
             return fail(e);
@@ -1413,6 +1489,7 @@ impl App {
             files: std::collections::BTreeMap::new(),
             deleted: Vec::new(),
             patch: Some(event.clone()),
+            action: None,
         };
         let body = json!({
             "v": 1,
@@ -1467,6 +1544,359 @@ impl App {
 }
 
 const MEMORY_STREAM_TASK: &str = "In crates/memory-stream/src/lib.rs, add a public function `half_life_hours() -> f64` with a doc comment: the number of hours after which `recency` falls to 0.5 under RECENCY_DECAY. Add a unit test in the existing tests module that checks `recency(half_life_hours())` is within 1e-9 of 0.5 and that the half-life is between 68 and 70 hours. Run `cargo test -p memory-stream` until it passes, then publish the change.";
+
+/// The loaded directories, each with a trailing `/`.
+fn repo_slices(repo: &Value) -> Vec<String> {
+    let listed: Vec<String> = repo["slices"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|s| s.as_str().map(|s| format!("{s}/")))
+                .collect()
+        })
+        .unwrap_or_default();
+    if listed.is_empty() {
+        vec![format!("{}/", repo["slice"].as_str().unwrap_or_default())]
+    } else {
+        listed
+    }
+}
+
+impl App {
+    /// The admin key, from this browser's storage, made on first use.
+    fn load_admin_key(&self) {
+        let storage = web_sys::window().and_then(|w| w.local_storage().ok().flatten());
+        let stored = storage
+            .as_ref()
+            .and_then(|s| s.get_item("kiln-admin-secret").ok().flatten())
+            .filter(|h| h.len() == 64);
+        let bytes = match stored {
+            Some(hex) => {
+                let mut b = [0u8; 32];
+                for (i, x) in b.iter_mut().enumerate() {
+                    *x = u8::from_str_radix(&hex[2 * i..2 * i + 2], 16).unwrap_or(0);
+                }
+                b
+            }
+            None => {
+                let b = random32();
+                let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();
+                if let Some(s) = &storage {
+                    let _ = s.set_item("kiln-admin-secret", &hex);
+                }
+                b
+            }
+        };
+        if let Ok(key) = Key::from_bytes(bytes) {
+            el(&self.doc, "admin-key").set_text_content(Some(&key.npub()));
+            *self.admin_key.borrow_mut() = Some(key);
+        }
+    }
+
+    /// Ask the runner to publish Kiln from this workspace, or to revert or
+    /// reset it. Only the runner's admin keys get an answer other than a
+    /// refusal.
+    async fn self_edit(self: Rc<Self>, action: &str) {
+        self.busy.set(true);
+        let started = now_ms();
+        let result = self.clone().self_edit_job(action).await;
+        match result {
+            Ok(outcome) => {
+                let ok = outcome.code == Some(0);
+                self.log(if ok { "done" } else { "err" }, &outcome.summary);
+                if !ok && !outcome.log.is_empty() {
+                    self.log("err", &crate::agent::clip(&outcome.log, 3000));
+                }
+                if let Some(published) = &outcome.published {
+                    self.log(
+                        "info",
+                        &format!(
+                            "Runner phases (ms): {}; {:.1} s from the click.",
+                            published["phases_ms"],
+                            (now_ms() - started) / 1000.0
+                        ),
+                    );
+                    self.metrics.borrow_mut().page["self_edit"] = published.clone();
+                    self.render_metrics();
+                }
+            }
+            Err(e) => self.log("error", &e),
+        }
+        self.busy.set(false);
+        // A build that arrived while this ran swaps in now.
+        if let Some(build) = self.pending_build.borrow().clone() {
+            self.swap(&build).await;
+        }
+    }
+
+    async fn self_edit_job(self: Rc<Self>, action: &str) -> Result<crate::remote::Outcome, String> {
+        let key = self
+            .admin_key
+            .borrow()
+            .clone()
+            .ok_or("this browser has no admin key")?;
+        let runner: HtmlInputElement = el(&self.doc, "runner").unchecked_into();
+        let runner = nostr_hex(runner.value().trim()).ok_or("no test runner is set")?;
+        let (base, files) = if action == "publish" {
+            let repo = self
+                .repo()
+                .filter(|r| {
+                    r["crates"]
+                        .as_array()
+                        .is_some_and(|c| c.iter().any(|c| c == "kiln"))
+                })
+                .ok_or("load Kiln's source first")?;
+            let base = self.slice_files(&repo, true);
+            let current = self.slice_files(&repo, false);
+            let files: std::collections::BTreeMap<String, String> = current
+                .into_iter()
+                .filter(|(p, c)| base.get(p) != Some(c))
+                .collect();
+            (
+                repo["commit"].as_str().unwrap_or_default().to_string(),
+                files,
+            )
+        } else {
+            ("0".repeat(40), std::collections::BTreeMap::new())
+        };
+        let job = crate::remote::Job {
+            v: crate::remote::JOB_V.into(),
+            base,
+            args: Vec::new(),
+            files,
+            deleted: Vec::new(),
+            patch: None,
+            action: Some(action.into()),
+        };
+        job.check(&[])?;
+        self.log(
+            "cmd",
+            &format!("$ kiln {action} ({} changed files)", job.files.len()),
+        );
+        if let Some(storage) = web_sys::window().and_then(|w| w.session_storage().ok().flatten()) {
+            let _ = storage.set_item("kiln-edit-started", &js_sys::Date::now().to_string());
+        }
+        let relay_url: HtmlInputElement = el(&self.doc, "relay").unchecked_into();
+        let mut relay = Relay::connect(&relay_url.value(), &key).await?;
+        let body = json!({
+            "v": 1,
+            "requires": [],
+            "task": serde_json::to_string(&job).unwrap_or_default(),
+            "transcript": [],
+            "client": concat!("kiln ", env!("CARGO_PKG_VERSION")),
+        });
+        let line = self.doc.create_element("div").ok();
+        if let Some(line) = &line {
+            line.set_class_name("info");
+            let _ = el(&self.doc, "log").append_child(line);
+        }
+        let started = now_ms();
+        let progress = |note: Option<&str>| {
+            if let (Some(line), Some(note)) = (&line, note) {
+                line.set_text_content(Some(&format!(
+                    "runner, {:.0} s: {note}",
+                    (now_ms() - started) / 1000.0
+                )));
+            }
+        };
+        let got = relay
+            .exchange(&key, &runner, &body, REMOTE_WAIT_SECS, &progress)
+            .await?;
+        serde_json::from_str::<crate::remote::Outcome>(&got.text)
+            .map_err(|_| "the runner's answer is not a result".to_string())
+    }
+
+    /// Watch for a new Kiln build: poll `tools/manifest.json` every three
+    /// seconds while the tab is visible.
+    async fn watch_builds(self: Rc<Self>) {
+        loop {
+            sleep(3_000).await;
+            let visible = web_sys::window()
+                .and_then(|w| w.document())
+                .is_none_or(|d| d.visibility_state() == web_sys::VisibilityState::Visible);
+            if !visible {
+                continue;
+            }
+            let Some(build) = current_build().await else {
+                continue;
+            };
+            if build == *self.build.borrow()
+                || self.pending_build.borrow().as_deref() == Some(build.as_str())
+            {
+                continue;
+            }
+            *self.pending_build.borrow_mut() = Some(build.clone());
+            if self.busy.get() {
+                let banner = el(&self.doc, "update");
+                banner.set_text_content(Some(&format!(
+                    "Kiln build {build} is ready; it loads when the agent is idle."
+                )));
+                let _ = banner.class_list().remove_1("hidden");
+                let _ = el(&self.doc, "reload-now").class_list().remove_1("hidden");
+                continue;
+            }
+            self.swap(&build).await;
+        }
+    }
+
+    /// Smoke-test the new build in a fresh worker, save the log and task,
+    /// and reload into it. The workspace stays in OPFS.
+    async fn swap(&self, build: &str) {
+        let started = now_ms();
+        self.log(
+            "info",
+            &format!("Kiln build {build} is out; testing it in a worker."),
+        );
+        // A fresh worker loads the new page module; run a tool through it.
+        let fresh = self.worker.borrow_mut().take();
+        if let Some(old) = fresh {
+            old.terminate();
+        }
+        let run = self.run_tool(&["ls".to_string()], &[]).await;
+        if run.code != 0 {
+            self.log(
+                "error",
+                &format!(
+                    "Build {build} failed its smoke test, so this page stays on {}: {}",
+                    self.build.borrow(),
+                    run.output
+                ),
+            );
+            return;
+        }
+        let smoke_ms = now_ms() - started;
+        self.save_session(build, smoke_ms);
+        if let Some(window) = web_sys::window() {
+            let _ = window.location().reload();
+        }
+    }
+
+    fn save_session(&self, build: &str, smoke_ms: f64) {
+        let Some(storage) = web_sys::window().and_then(|w| w.session_storage().ok().flatten())
+        else {
+            return;
+        };
+        let lines: Vec<Value> = children(&el(&self.doc, "log"))
+            .into_iter()
+            .rev()
+            .take(400)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .map(|e| json!([e.class_name(), e.text_content().unwrap_or_default()]))
+            .collect();
+        let task: HtmlTextAreaElement = el(&self.doc, "task").unchecked_into();
+        let saved = json!({
+            "log": lines,
+            "task": task.value(),
+            "from": *self.build.borrow(),
+            "to": build,
+            "smoke_ms": smoke_ms,
+            "reload_at": js_sys::Date::now(),
+        });
+        let _ = storage.set_item("kiln-restore", &saved.to_string());
+    }
+
+    /// Put back what [`App::save_session`] kept, after a reload.
+    fn restore_session(&self) {
+        let Some(storage) = web_sys::window().and_then(|w| w.session_storage().ok().flatten())
+        else {
+            return;
+        };
+        let Some(saved) = storage
+            .get_item("kiln-restore")
+            .ok()
+            .flatten()
+            .and_then(|t| serde_json::from_str::<Value>(&t).ok())
+        else {
+            return;
+        };
+        let _ = storage.remove_item("kiln-restore");
+        let log = el(&self.doc, "log");
+        let fresh: Vec<Element> = children(&log);
+        log.set_inner_html("");
+        for line in saved["log"].as_array().into_iter().flatten() {
+            self.log(
+                line[0].as_str().unwrap_or("info"),
+                line[1].as_str().unwrap_or_default(),
+            );
+        }
+        for node in fresh {
+            let _ = log.append_child(&node);
+        }
+        if let Some(task) = saved["task"].as_str() {
+            let area: HtmlTextAreaElement = el(&self.doc, "task").unchecked_into();
+            area.set_value(task);
+        }
+        let now = js_sys::Date::now();
+        let reload_ms = now - saved["reload_at"].as_f64().unwrap_or(now);
+        let edit_ms = storage
+            .get_item("kiln-edit-started")
+            .ok()
+            .flatten()
+            .and_then(|t| t.parse::<f64>().ok())
+            .map(|t| now - t);
+        let _ = storage.remove_item("kiln-edit-started");
+        self.log(
+            "done",
+            &format!(
+                "Reloaded from Kiln build {} into {} in {:.1} s (smoke {:.0} ms){}; the workspace and this log came with it.",
+                saved["from"].as_str().unwrap_or("?"),
+                saved["to"].as_str().unwrap_or("?"),
+                reload_ms / 1000.0,
+                saved["smoke_ms"].as_f64().unwrap_or(0.0),
+                edit_ms.map_or(String::new(), |ms| format!(", {:.1} s from the click", ms / 1000.0))
+            ),
+        );
+        let mut m = self.metrics.borrow_mut();
+        m.page["hot_reload"] = json!({
+            "from": saved["from"], "to": saved["to"], "reload_ms": reload_ms,
+            "smoke_ms": saved["smoke_ms"], "click_to_reloaded_ms": edit_ms,
+        });
+        drop(m);
+        if let Some(window) = web_sys::window() {
+            set(&window, "kilnReloaded", edit_ms.unwrap_or(reload_ms));
+        }
+    }
+}
+
+/// An element's child elements.
+fn children(parent: &Element) -> Vec<Element> {
+    let list = parent.children();
+    (0..list.length()).filter_map(|i| list.item(i)).collect()
+}
+
+/// The running build's name from `tools/manifest.json`, `site` when the
+/// host serves its own build.
+async fn current_build() -> Option<String> {
+    let manifest = fetch_json_fresh("tools/manifest.json").await.ok()?;
+    Some(
+        manifest["kiln"]["build"]
+            .as_str()
+            .map_or_else(|| "site".to_string(), str::to_string),
+    )
+}
+
+/// [`fetch_json`] past every cache.
+async fn fetch_json_fresh(url: &str) -> Result<Value, String> {
+    let window = web_sys::window().ok_or("no window")?;
+    let init = web_sys::RequestInit::new();
+    init.set_cache(web_sys::RequestCache::NoStore);
+    let response: web_sys::Response = JsFuture::from(window.fetch_with_str_and_init(url, &init))
+        .await
+        .map_err(|e| text(&e))?
+        .dyn_into()
+        .map_err(|e| text(&e))?;
+    if !response.ok() {
+        return Err(format!("{url}: HTTP {}", response.status()));
+    }
+    let body = JsFuture::from(response.text().map_err(|e| text(&e))?)
+        .await
+        .map_err(|e| text(&e))?;
+    serde_json::from_str(&body.as_string().unwrap_or_default()).map_err(|e| e.to_string())
+}
+
+const KILN_TASK: &str = "This workspace is Kiln's own source. In crates/kiln/src/agent.rs, add `pub fn tool_count() -> usize` with a doc comment that returns how many tools TOOLS lists, and a unit test in the existing tests module that checks it equals TOOLS.len() and is at least 7. Run `cargo test -p kiln -p kiln-tools` until it passes.";
 
 /// The package name in a `Cargo.toml`.
 fn crate_name(manifest: &str) -> Option<String> {
