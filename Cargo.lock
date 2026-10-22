@@ -5949,6 +5949,7 @@ name = "deploy-board"
 version = "1.0.0"
 dependencies = [
  "nostr",
+ "oa-copy",
  "openagents-workspace-hack",
  "serde_json",
 ]

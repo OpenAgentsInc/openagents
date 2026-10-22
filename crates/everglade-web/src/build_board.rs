@@ -25,6 +25,8 @@ use verse_engine::{
 
 /// The frame's model.
 const FRAME: &str = "board/frame";
+/// The shared computer's lit screen.
+const SCREEN: &str = "board/screen";
 /// The subscription's ID on the session's relay connection.
 const SUBSCRIPTION: &str = "deploy-board";
 /// The most instances a frame may hold in all (the engine refuses more
@@ -160,6 +162,10 @@ pub fn add(pack: &mut Pack, white: usize, texture: &str) -> Result<(), String> {
         let art = layout::word(text, ink);
         models.push((key.clone(), model(&key, &art, white, 1.0, [0.0; 3])));
     }
+    models.push((
+        SCREEN.into(),
+        model(SCREEN, &deploy_board::screen::art(), white, 1.0, [0.0; 3]),
+    ));
     for cell in Cell::ALL {
         let key = cell_key(cell);
         let art = layout::cell(cell);
@@ -194,6 +200,14 @@ pub fn add(pack: &mut Pack, white: usize, texture: &str) -> Result<(), String> {
         });
         pack.models.insert(key, model);
     }
+    let screen = screen_transform();
+    let (_, screen_turn, screen_at) = screen.to_scale_rotation_translation();
+    pack.placements.push(Placement {
+        model: SCREEN.into(),
+        position: screen_at.to_array(),
+        rotation: screen_turn.to_array(),
+        scale: 1.,
+    });
     let rotation = Quat::from_rotation_y(layout::yaw() as f32);
     pack.placements.push(Placement {
         model: FRAME.into(),
@@ -202,6 +216,18 @@ pub fn add(pack: &mut Pack, white: usize, texture: &str) -> Result<(), String> {
         scale: 1.,
     });
     Ok(())
+}
+
+/// The shared computer's screen: its display's lower left corner as a
+/// reader at the spawn sees it, facing the spawn (world -z), so screen x
+/// runs along world -x.
+fn screen_transform() -> Mat4 {
+    let at = pylons_view::terminal::POSITION;
+    Mat4::from_translation(Vec3::new(
+        at[0] as f32 + deploy_board::screen::WIDTH as f32 / 2.0,
+        1.37,
+        at[2] as f32 - 0.12,
+    )) * Mat4::from_rotation_y(std::f32::consts::PI)
 }
 
 /// The board, fed from the page's Grid session.
@@ -276,6 +302,28 @@ impl BuildBoard {
                 Piece::Flash(flash) => (flash_key(flash).to_owned(), place),
             };
             out.push(verse::grid_frame::fixed(&model, transform));
+        }
+    }
+
+    /// This frame's screen instances on the shared computer, with the
+    /// Pylons the page shows (`pylons`, when it knows them).
+    pub fn screen_instances(&self, pylons: Option<usize>, out: &mut Vec<Instance>) {
+        let screen = screen_transform();
+        for placed in deploy_board::screen::pieces(pylons, Some(&self.ingest.board), wall()) {
+            let Piece::Letter(c, ink) = placed.piece else {
+                continue;
+            };
+            let at = Vec3::new(
+                placed.at[0] as f32,
+                placed.at[1] as f32,
+                placed.at[2] as f32,
+            );
+            out.push(verse::grid_frame::fixed(
+                &letter_key(c, ink),
+                screen
+                    * Mat4::from_translation(at)
+                    * Mat4::from_scale(Vec3::splat(placed.size as f32)),
+            ));
         }
     }
 

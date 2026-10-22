@@ -10,6 +10,7 @@
 pub mod font;
 pub mod layout;
 pub mod pointer;
+pub mod screen;
 pub mod state;
 
 use nostr::deploy;

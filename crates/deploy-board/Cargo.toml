@@ -10,6 +10,9 @@ description = "The Grid's build billboard: NIP-DEPLOY statuses and livehost poin
 nostr = { path = "../nostr" }
 serde_json = "1"
 
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+
 [lints]
 workspace = true
 

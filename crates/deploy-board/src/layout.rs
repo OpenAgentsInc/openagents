@@ -388,10 +388,10 @@ pub const WORDS: [(&str, Ink); 7] = [
 ];
 
 /// How many models the board adds to a pack: the frame, each letter in
-/// each of [`Ink::LETTERS`], each of [`WORDS`], the cells, and the two
-/// flashes.
+/// each of [`Ink::LETTERS`], each of [`WORDS`], the cells, the two
+/// flashes, and the shared computer's screen ([`crate::screen`]).
 pub const MODELS: usize =
-    1 + font::CHARSET.len() * Ink::LETTERS.len() + WORDS.len() + Cell::ALL.len() + 2;
+    1 + font::CHARSET.len() * Ink::LETTERS.len() + WORDS.len() + Cell::ALL.len() + 2 + 1;
 
 /// `text` in `ink`, one meter tall, its lower left corner at the origin.
 #[must_use]
