@@ -308,6 +308,45 @@ impl GitHub {
         ))
     }
 
+    /// Recover a PR created before the local result was saved. The branch
+    /// is derived from the exact patch event, not a caller-supplied URL.
+    pub async fn for_patch(&self, patch: &Event) -> Result<Option<Tracked>, String> {
+        let owner = self.repo.split('/').next().ok_or("repository owner")?;
+        let branch = branch(&patch.id);
+        let query = format!(
+            "/pulls?state=all&base=main&head={owner}%3Anostr%2F{}&per_page=100",
+            patch.id
+        );
+        let value = self.call(reqwest::Method::GET, &query, None).await?;
+        let rows = value
+            .as_array()
+            .ok_or("GitHub returned no pull request list")?;
+        if rows.len() > 1 {
+            return Err("multiple pull requests use the patch branch".into());
+        }
+        let Some(pull) = rows.first() else {
+            return Ok(None);
+        };
+        if pull["head"]["ref"] != branch
+            || pull["head"]["repo"]["full_name"] != self.repo
+            || !pull["body"]
+                .as_str()
+                .is_some_and(|s| s.contains(&patch.id) && s.contains(MARK))
+        {
+            return Err("the existing patch pull request does not match".into());
+        }
+        Ok(Some(Tracked {
+            number: pull["number"].as_u64().ok_or("pull request number")?,
+            url: pull["html_url"].as_str().ok_or("pull request URL")?.into(),
+            branch,
+            head: pull["head"]["sha"]
+                .as_str()
+                .ok_or("pull request head")?
+                .into(),
+            ..Tracked::default()
+        }))
+    }
+
     /// Read pull request `number`.
     ///
     /// # Errors
@@ -564,6 +603,10 @@ pub async fn open(
     // A maintainer chose to open it, so an unverified author is allowed;
     // the pull request says so.
     review.ready(false, true)?;
+    if let Some(mut existing) = hub.for_patch(&review.patch).await? {
+        existing.opener = opener.into();
+        return Ok(existing);
+    }
     let worktree = config.state.join("worktrees").join(&review.patch.id[..12]);
     if worktree.exists() {
         let _ = git(
@@ -990,5 +1033,36 @@ mod tests {
         state.save(&dir).unwrap();
         assert_eq!(State::load(&dir), state);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_lost_pr_reply_is_recovered_from_the_exact_patch_branch() {
+        use std::io::{Read, Write};
+        let key = kiln::cj::Key::from_bytes([7; 32]).unwrap();
+        let patch = key.sign(1617, vec![], "fixture".into(), 100);
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let body=json!([{"number":42,"html_url":"https://github.com/OpenAgentsInc/openagents/pull/42","head":{"ref":branch(&patch.id),"sha":"22".repeat(20),"repo":{"full_name":"OpenAgentsInc/openagents"}},"body":format!("{MARK} patch {}",patch.id)}]).to_string();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 8192];
+            let n = stream.read(&mut buf).unwrap();
+            let request = String::from_utf8_lossy(&buf[..n]);
+            assert!(request.starts_with("GET /repos/OpenAgentsInc/openagents/pulls?state=all&base=main&head=OpenAgentsInc%3Anostr%2F"));
+            write!(stream,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",body.len()).unwrap();
+        });
+        let dir = std::env::temp_dir().join(format!("kiln-pr-recovery-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("token"), "fixture").unwrap();
+        let hub = GitHub::new(
+            &format!("http://{addr}"),
+            "OpenAgentsInc/openagents",
+            &dir.join("token"),
+        );
+        let found = hub.for_patch(&patch).await.unwrap().unwrap();
+        assert_eq!(found.number, 42);
+        assert_eq!(found.branch, branch(&patch.id));
+        server.join().unwrap();
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

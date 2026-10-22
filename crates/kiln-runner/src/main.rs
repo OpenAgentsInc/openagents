@@ -250,7 +250,7 @@ pub(crate) fn stage(config: &Config, job: &Job) -> Result<(), String> {
         .chain(kiln::remote::SELF_CRATES.iter().copied())
         .chain(earlier.lines().map(str::trim).filter(|l| !l.is_empty()))
     {
-        let dir = format!("crates/{krate}");
+        let dir = kiln::remote::crate_directory(krate);
         if !clean.contains(&dir) && work.join(&dir).is_dir() {
             clean.push(dir);
         }
@@ -345,7 +345,22 @@ pub(crate) fn run_sandboxed(
 ) -> Result<Ran, String> {
     let started = Instant::now();
     let work = config.state.join("work");
-    let target = config.target.clone();
+    let nested = program == "cargo"
+        && args
+            .windows(2)
+            .any(|a| a[0] == "--manifest-path" && a[1] == "crates/psionic/Cargo.toml");
+    let target = if nested {
+        config.target.with_file_name(format!(
+            "{}-psionic",
+            config
+                .target
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+        ))
+    } else {
+        config.target.clone()
+    };
     let _ = std::fs::create_dir_all(&target);
     let home = config.state.join("cargo-home");
     let toolchains =
@@ -378,7 +393,12 @@ pub(crate) fn run_sandboxed(
     let boundary = spec
         .build()
         .map_err(|e| format!("the sandbox can't be enforced here: {e}"))?;
-    let mut all = vec!["-n".to_string(), "10".to_string(), program.to_string()];
+    let mut all = vec!["-n".to_string(), "10".to_string()];
+    if program == "cargo" {
+        all.extend(["/bin/sh".into(),"-c".into(),"set -e; oa_build_manifest=\"$1/$2\"; . \"$1/scripts/dev/cargo-build-env.sh\"; export CARGO_INCREMENTAL=0; shift 2; exec cargo \"$@\"".into(),"kiln-cargo".into(),work.to_string_lossy().into_owned(),if nested{"crates/psionic/Cargo.toml".into()}else{"Cargo.toml".into()}]);
+    } else {
+        all.push(program.to_string());
+    }
     all.extend(args.iter().cloned());
     let mut command = boundary
         .command("/usr/bin/nice", &all)
@@ -481,6 +501,11 @@ pub(crate) fn cargo_outcome(
     progress: &dyn Fn(String),
 ) -> Outcome {
     let mut all = vec![args[0].clone(), "--offline".to_string()];
+    match remote::cargo_manifest(args) {
+        Ok(Some(manifest)) => all.extend(["--manifest-path".into(), manifest.into()]),
+        Ok(None) => {}
+        Err(e) => return stopped(started, e),
+    }
     all.extend(args[1..].iter().cloned());
     let ran = match run_sandboxed(config, "cargo", &all, &[], &[], progress) {
         Ok(ran) => ran,

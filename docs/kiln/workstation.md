@@ -14,10 +14,12 @@ NIP-46 signing for players and paid runner time are not.
 The [Grid Foreman standing-objective plan](../foreman/grid-foreman-plan.md#14-standing-project-objectives-and-kiln)
 puts Kiln under Foreman's task-selection loop. Foreman chooses a bounded
 task from an issue or an ongoing project objective; Kiln edits and
-proposes, a runner checks, and the bridge opens a draft PR. A persistent
-native Kiln host and Psionic workspace/device runner profiles are still
-needed for that unattended path. The browser's `start_headless` entry
-point is a presentation option, not that native host.
+proposes, a runner checks, and the bridge opens a draft PR.
+[`kiln-host`](../../crates/kiln-host/README.md) supplies the persistent native
+agent and encrypted WORK objective publication. Its configured runner accepts
+root packages and the nested Psionic workspace; GPU profiles still need device
+qualification. The browser's `start_headless` entry point remains a separate
+presentation option.
 
 ## The vision
 

@@ -485,6 +485,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12497: deploy the native WORK publisher, persistent Kiln host, and dedicated
+  runner; enable the native dispatch route and follow a real objective through
+  its checked Nostr patch to a draft PR. Targeted native and dispatch tests pass.
 - #12491: done on 2026-10-22; production revision
   `coder-web-b0b54b3bf5-20261022173912` accepts the saved stop and continuation
   commands, preserves assignment history, and records #12493's result.

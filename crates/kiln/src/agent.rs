@@ -7,7 +7,7 @@
 //! model, then [`Agent::plan`], then each [`Call`] through a worker, then
 //! [`Agent::observe`].
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 /// The tools a command may name.
@@ -62,7 +62,7 @@ Each command is one of:
 You see only a small window: never cat a whole source file. Find places with grep, then read around them with view. Prefer patch for edits to existing files (don't include view's line numbers in the search text): copy the search text exactly from view's output, including indentation, and make it long enough to be unique. Read the code you change first. Keep the crate's style and documentation comments. Work in small steps, run the tests after each change, read the failures, and fix them. When `cargo test` passes, publish the change, then say done."#;
 
 /// One command, as the model wrote it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Command {
     Run(String),
     Write {
@@ -97,7 +97,7 @@ pub struct Plan {
 }
 
 /// One finished command and what it printed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Observation {
     pub command: String,
     pub code: i32,
@@ -105,7 +105,7 @@ pub struct Observation {
 }
 
 /// One step of the loop.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Step {
     pub thought: String,
     pub observations: Vec<Observation>,
@@ -114,7 +114,7 @@ pub struct Step {
 }
 
 /// The loop's state.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Agent {
     pub task: String,
     pub steps: Vec<Step>,
