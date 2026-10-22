@@ -63,6 +63,17 @@ const LAYERS: usize = 40;
 const ORACLE_TIE_WINDOW: f64 = 1e-4;
 const ORACLE_TIE_CAP: usize = 64;
 
+mod index;
+
+/// Rechecks hashed index observations against a complete oracle capture.
+///
+/// # Errors
+///
+/// Refuses missing evidence, changed inputs or files, and a failed verdict.
+pub fn run_index_check(args: &[String]) -> Result<(), Refused> {
+    index::run(args)
+}
+
 fn refused(message: impl std::fmt::Display) -> Refused {
     Refused(message.to_string())
 }
@@ -769,6 +780,7 @@ impl Group {
 // ---------------------------------------------------------------------------
 
 /// What the runtime produced for one case.
+#[derive(serde::Serialize, serde::Deserialize)]
 struct Recorded {
     /// Label (`last`, `g1`, ...) to the logits file.
     logits: BTreeMap<String, PathBuf>,
@@ -776,6 +788,12 @@ struct Recorded {
     replay_last: Option<PathBuf>,
     /// Per step, the files the stages wrote.
     records: Vec<Vec<String>>,
+    #[serde(default)]
+    replay_records: Vec<String>,
+    #[serde(default)]
+    files_sha256: BTreeMap<String, String>,
+    #[serde(default)]
+    source: Value,
     seconds: f64,
 }
 
@@ -829,13 +847,47 @@ fn run_case(
     let mut fixed = prompt.to_vec();
     fixed.extend_from_slice(generated);
     let ack = group.step(&format!("{request}-replay"), 0, Some(&fixed), None)?;
-    let replay_last = logits_file(record, &record_files(&ack));
-    Ok(Recorded {
+    let replay_records = record_files(&ack);
+    let replay_last = logits_file(record, &replay_records);
+    let mut files_sha256 = BTreeMap::new();
+    for file in records.iter().flatten().chain(&replay_records) {
+        if !files_sha256.contains_key(file) {
+            files_sha256.insert(file.clone(), checked_sha256(&record.join(file))?);
+        }
+    }
+    let result = Recorded {
+        files_sha256,
+        source: json!({"case":case,"runtime":group.runtime,"profile":group.profile,
+            "stage_bundle_sha256":group.build,"stage_executable_sha256":group.executable,
+            "weights":group.weights,"limits":group.limits,
+            "prompt_ids_sha256":hex::encode(Sha256::digest(serde_json::to_vec(prompt).map_err(|e| refused(e.to_string()))?)),
+            "generated_ids_sha256":hex::encode(Sha256::digest(serde_json::to_vec(generated).map_err(|e| refused(e.to_string()))?))}),
         logits,
         replay_last,
         records,
+        replay_records,
         seconds: started.elapsed().as_secs_f64(),
-    })
+    };
+    std::fs::write(
+        record.join(format!("{request}.records.json")),
+        serde_json::to_vec_pretty(&result).map_err(|e| refused(e.to_string()))?,
+    )
+    .map_err(|e| refused(e.to_string()))?;
+    Ok(result)
+}
+
+fn checked_sha256(path: &Path) -> Result<String, Refused> {
+    let mut file = File::open(path).map_err(|e| refused(format!("{}: {e}", path.display())))?;
+    let mut hash = Sha256::new();
+    let mut bytes = [0; 65536];
+    loop {
+        let n = file.read(&mut bytes).map_err(|e| refused(e.to_string()))?;
+        if n == 0 {
+            break;
+        }
+        hash.update(&bytes[..n]);
+    }
+    Ok(hex::encode(hash.finalize()))
 }
 
 fn read_f32(path: &Path) -> Result<Vec<f32>, Refused> {
@@ -1567,6 +1619,9 @@ pub fn run_answers(opts: &QualifyOptions, cap: usize) -> Result<Value, Refused> 
 #[must_use]
 pub fn release_refusals(opts: &QualifyOptions, policy: &Policy, cases: &[Value]) -> Vec<String> {
     let mut out = Vec::new();
+    if cases.is_empty() {
+        out.push("release qualification needs at least one case".into());
+    }
     if opts.control.is_some() {
         out.push("a deliberate control cannot qualify for release".into());
     }
@@ -1606,6 +1661,17 @@ pub fn release_refusals(opts: &QualifyOptions, policy: &Policy, cases: &[Value])
         if exact.is_null() || exact["checked"].as_u64().unwrap_or(0) == 0 {
             out.push(format!("{name}: no exact checks"));
         }
+        let modes: BTreeSet<_> = c["modes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|m| m["mode"].as_str())
+            .collect();
+        if modes != BTreeSet::from(["decode", "replay"]) {
+            out.push(format!(
+                "{name}: release needs both decode and replay modes"
+            ));
+        }
         for mode in c["modes"].as_array().into_iter().flatten() {
             if mode["missing"].as_array().is_some_and(|m| !m.is_empty()) {
                 out.push(format!(
@@ -1617,10 +1683,10 @@ pub fn release_refusals(opts: &QualifyOptions, policy: &Policy, cases: &[Value])
                 out.push(format!("{name} {}: no positions", mode["mode"]));
             }
         }
-        // The index rule is not evaluated against the oracle; only a policy
-        // that states why it is out of scope may leave it.
-        if policy.index_out_of_scope.is_none() {
-            out.push(format!("{name}: index rule not evaluated"));
+        if policy.index_out_of_scope.is_none()
+            && (c["index"]["complete"] != true || c["index"]["passed"] != true)
+        {
+            out.push(format!("{name}: index rule not evaluated or failed"));
         }
         if policy.router_score_budget.is_some()
             && router["layers_with_candidate_scores"].as_u64() != Some(LAYERS as u64)
@@ -1761,6 +1827,18 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         } else {
             (None, None)
         };
+        let index = if opts.observe {
+            Some(index::case(
+                &policy,
+                &mut oracle,
+                &run,
+                case,
+                &record,
+                &rec,
+            )?)
+        } else {
+            None
+        };
         reports.push(json!({
             "case": case,
             "prompt_tokens": prompt.len(),
@@ -1769,6 +1847,7 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
             "replay_equals_forced_decode": replay_equal,
             "modes": modes,
             "router": router,
+            "index": index,
             "exact": exact,
         }));
         let partial = json!({"cases": reports});
@@ -2097,6 +2176,12 @@ pub fn judge_report(policy: &Policy, report: &Value) -> Vec<String> {
                 name,
                 &case["router"],
             ));
+        }
+        if policy.index_out_of_scope.is_none()
+            && policy.index.epsilon.is_some()
+            && case["index"]["passed"] != true
+        {
+            out.push(format!("{name}: index rule failed or is incomplete"));
         }
         if case["exact"]["passed"] == json!(false) {
             out.push(format!("{name}: exact checks failed"));
@@ -2619,6 +2704,9 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let name = "s.L0.RouterScores.u32".to_owned();
         let record = Recorded {
+            replay_records: Vec::new(),
+            files_sha256: BTreeMap::new(),
+            source: Value::Null,
             logits: BTreeMap::new(),
             replay_last: None,
             records: vec![vec![name.clone()]],
@@ -2764,6 +2852,11 @@ mod tests {
         .unwrap();
         let empty = json!({"case": "c", "modes": [{"mode": "decode", "positions": [], "missing": ["g1"]}],
             "router": null, "exact": null});
+        assert!(
+            release_refusals(&opts, &pending_policy(), &[])
+                .iter()
+                .any(|r| r.contains("at least one case"))
+        );
         let refusals = release_refusals(&opts, &pending_policy(), &[empty]);
         for needle in [
             "--observe",
@@ -2787,6 +2880,11 @@ mod tests {
         let refusals = release_refusals(&opts, &pending_policy(), &[partial]);
         assert!(refusals.iter().any(|r| r.contains("deliberate control")));
         assert!(refusals.iter().any(|r| r.contains("diagnostics cannot")));
+        assert!(
+            refusals
+                .iter()
+                .any(|r| r.contains("both decode and replay"))
+        );
         assert!(refusals.iter().any(|r| r.contains("39 of 40")));
         assert!(refusals.iter().any(|r| r.contains("3 unresolved")));
     }
