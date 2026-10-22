@@ -268,7 +268,7 @@ impl PylonDoor {
 }
 
 /// The reply's text: one line naming who answered, over the answer.
-/// A V4.1 group reads "DeepSeek V4.1 · group w16-g5 (4 parts)"; any other
+/// A V4.1 group reads "DeepSeek-V4.1-Flash-1017 · group w16-g5 (4 parts)"; any other
 /// pylon reads its name and its model, exactly as its beacon gives them.
 fn shown(label: &str, model: &str, group: Option<&router::AnsweredGroup>, text: &str) -> String {
     let model = if model.split('@').next() == Some(pylon::flint::MODEL) {
@@ -303,7 +303,7 @@ fn shown(label: &str, model: &str, group: Option<&router::AnsweredGroup>, text: 
 }
 
 /// What a person calls [`GROUP_MODEL`].
-const GROUP_NAME: &str = "DeepSeek V4.1";
+const GROUP_NAME: &str = "DeepSeek-V4.1-Flash-1017";
 
 /// `text` on one line, at most 64 characters, with Markdown's marks
 /// escaped so it shows as written: `q8_0` stays `q8_0`.

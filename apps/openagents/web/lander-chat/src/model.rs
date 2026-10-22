@@ -101,7 +101,7 @@ pub fn pick_word(group: bool, flint: bool) -> &'static str {
 }
 
 /// Who answered, from the line the site puts over a pylon's answer
-/// (`**DeepSeek V4.1** · group ...` or `**NAME** · MODEL`): the source
+/// (`**DeepSeek-V4.1-Flash-1017** · group ...` or `**NAME** · MODEL`): the source
 /// (`group`, `pylon`, or `hosted`) and the model's family, a fixed word.
 /// Never the pylon's name.
 pub fn answer_source(text: &str) -> (&'static str, &'static str) {
@@ -613,7 +613,7 @@ mod tests {
     #[test]
     fn the_visit_records_who_answered_by_fixed_words_only() {
         assert_eq!(
-            answer_source("**DeepSeek V4.1** · group w16-g5 (4 parts)\n\nHello"),
+            answer_source("**DeepSeek-V4.1-Flash-1017** · group w16-g5 (4 parts)\n\nHello"),
             ("group", "deepseek")
         );
         assert_eq!(

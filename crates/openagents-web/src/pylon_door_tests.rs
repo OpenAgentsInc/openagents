@@ -282,7 +282,7 @@ async fn a_home_turn_that_asks_for_v41_goes_only_to_the_group() {
     let events = ask_for(&world, 4, "hello", true, Some(GROUP_MODEL)).await;
     // Named once, as the group, never as the head's own label.
     assert!(
-        events.contains("**DeepSeek V4.1** · group v41-a")
+        events.contains("**DeepSeek-V4.1-Flash-1017** · group v41-a")
             && events.contains("echo: olleh")
             && !events.contains("V41 group"),
         "{events}"
@@ -549,7 +549,7 @@ fn a_pylon_answer_is_shown_under_its_name() {
     };
     assert_eq!(
         shown("W16 G5", GROUP_MODEL, Some(&group), "Hi."),
-        "**DeepSeek V4.1** · group w16-g5 (4 parts)\n\nHi."
+        "**DeepSeek-V4.1-Flash-1017** · group w16-g5 (4 parts)\n\nHi."
     );
     // A launch that calls itself a preview says so (#12403).
     assert_eq!(
@@ -559,7 +559,7 @@ fn a_pylon_answer_is_shown_under_its_name() {
             Some(&group),
             "Hi."
         ),
-        "**DeepSeek V4.1** · Experimental preview · group w16-g5 (4 parts)\n\nHi."
+        "**DeepSeek-V4.1-Flash-1017** · Experimental preview · group w16-g5 (4 parts)\n\nHi."
     );
     // A source line the model copied is dropped: one source per answer.
     assert_eq!(
@@ -799,7 +799,11 @@ async fn a_v41_turn_sends_about_a_thousand_tokens_with_the_latest_message_whole(
     door.ask(turns, Context::default(), reply.clone()).await;
     let reply = basic_coder::lock(&reply).clone();
     assert!(reply.done, "{:?}", reply.failure);
-    assert!(reply.text.starts_with("**DeepSeek V4.1** · group v41-a"));
+    assert!(
+        reply
+            .text
+            .starts_with("**DeepSeek-V4.1-Flash-1017** · group v41-a")
+    );
     let sent = sent.lock().unwrap().clone();
     let job = sent.last().unwrap();
     assert_eq!(job.last().unwrap().content, latest, "the latest goes whole");
@@ -908,7 +912,9 @@ async fn a_busy_v41_group_is_waited_for_then_named_busy_never_answered_by_anothe
     let ended = basic_coder::lock(&reply).clone();
     assert!(ended.done, "{:?}", ended.failure);
     assert!(
-        ended.text.starts_with("**DeepSeek V4.1** · group v41-a")
+        ended
+            .text
+            .starts_with("**DeepSeek-V4.1-Flash-1017** · group v41-a")
             && ended.text.contains("Answer to third"),
         "{}",
         ended.text
