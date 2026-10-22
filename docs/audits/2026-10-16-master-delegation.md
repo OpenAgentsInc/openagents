@@ -659,6 +659,12 @@ The status lines below summarize each issue and its comments. Open the issue for
   head `gs://openagents-psionic-models/bin/pylon/e411ee8ce2/pylon`
   (`--pylon-build 504b952b2eb4…`, worker unchanged); confirm each result
   carries `reasoning`.
+- #12456: after the next web deploy with `OPENAGENTS_KILN_RUNNER` set,
+  sign in as an admin test account, walk up to the terminal on `/`, press
+  **Kiln**, load `crates/memory-stream`, and run the default task. Confirm
+  the panel shows the cards and the run with no iframe, the terminal's
+  screen says "KILN AT WORK:", and the run ends with "Proposed as a patch."
+  and an Open review link that shows the patch.
 - #12440: after the next web deploy, confirm the image log builds or
   reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
   `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test
