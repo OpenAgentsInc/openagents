@@ -128,4 +128,22 @@ run-holdout() {
   log "holdout runs done"
 }
 
+# The rest of a qualification a reclaimed machine cut off: CASES on the
+# holdout under the frozen policy, then the G2 suite's answers, at the launch
+# context (8,192 positions, 2,872-token steps).
+run-final() {
+  : "${MANIFEST:?}" "${RESULTS:?}" "${POLICY:?}" "${CASES:?}"
+  local oracle=gs://openagents-psionic-oracle/deepseek-v41/1bae0e1
+  mkdir -p $ROOT/holdout $ROOT/g2-oracle
+  gcloud storage rsync -q -r $oracle/g1-v2/holdout $ROOT/holdout
+  gcloud storage rsync -q -r $oracle/g2-v2/oracle $ROOT/g2-oracle
+  gcloud storage cp -q "$POLICY" $ROOT/policy.json
+  ORACLE_DIR=$ROOT/holdout MAX_CONTEXT=8192 qualify $ROOT/out/holdout-rest --observe --gpus 0,1,2,3 \
+    --max-step-tokens 2872 --policy $ROOT/policy.json --cases "$CASES"
+  ORACLE_DIR=$ROOT/g2-oracle MAX_CONTEXT=8192 qualify $ROOT/out/g2-answers-final --gpus 0,1,2,3 \
+    --max-step-tokens 2872 --answers 4096 \
+    --cases g2-p1-sky,g2-p2-fib,g2-gcd,g2-speed,g2-json-moon,g2-palindrome-py
+  log "final runs done"
+}
+
 "$@"
