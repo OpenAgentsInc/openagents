@@ -283,11 +283,143 @@ export function exactCoordinates(
   if (x && z) return { x: Number(x[1]), z: Number(z[1]) };
   if (pair) return { x: Number(pair[1]), z: Number(pair[2]) };
 }
+/** Read quantities from the noun phrase, never from coordinates or model output. */
+export function pumpkinCount(text: string): number {
+  const words = [
+    "zero",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "six",
+    "seven",
+    "eight",
+    "nine",
+    "ten",
+    "eleven",
+    "twelve",
+    "thirteen",
+    "fourteen",
+    "fifteen",
+    "sixteen",
+    "seventeen",
+    "eighteen",
+    "nineteen",
+    "twenty",
+    "hundred",
+    "thousand",
+  ];
+  const match = text.match(
+    /(?:^|\s)([^\s]+)\s+(?:(?:very|really|huge|enormous|giant|gigantic|big|large|small|little|tiny|normal|medium|regular|orange)\s+)*pumpkins?\b/i,
+  );
+  const token = match?.[1].toLowerCase();
+  const previous = match
+    ? text.slice(0, match.index).trim().split(/\s+/).at(-1)?.toLowerCase()
+    : undefined;
+  if (previous && (words.includes(previous) || /^[+\-\d.]/.test(previous)))
+    throw new Error("Add between 1 and 8 pumpkins at a time.");
+  let count = 1;
+  if (token && words.includes(token)) count = words.indexOf(token);
+  else if (token && /^[+\-\d.]/.test(token)) count = Number(token);
+  else if (/\bpumpkins\b/i.test(text))
+    throw new Error("Choose a count from 1 to 8 pumpkins.");
+  if (!Number.isInteger(count) || count < 1 || count > 8)
+    throw new Error("Add between 1 and 8 pumpkins at a time.");
+  return count;
+}
+
+/** Place a group on the requested side without stacking it or moving the player. */
+function groupPositions(
+  count: number,
+  scale: number,
+  placement: string,
+  pose: Pose,
+  anchor: { x: number; z: number },
+  project: Project,
+): { x: number; z: number }[] {
+  const radius = scale * 0.4;
+  const candidates: { x: number; z: number; distance: number }[] = [];
+  for (let row = 0; row < 36; row++) {
+    for (let column = 0; column < 15; column++) {
+      const forward = (placement === "ahead" ? 0.8 : -2) + row * 0.4;
+      const side =
+        placement === "left"
+          ? -1.05 - column * 0.35
+          : placement === "right"
+            ? 1.05 + column * 0.35
+            : (column - 7) * 0.35;
+      const x =
+        Math.round(
+          (pose.x + Math.sin(pose.yaw) * forward + Math.cos(pose.yaw) * side) *
+            100,
+        ) / 100;
+      const z =
+        Math.round(
+          (pose.z - Math.cos(pose.yaw) * forward + Math.sin(pose.yaw) * side) *
+            100,
+        ) / 100;
+      // Explicit coordinates are the group's anchor; relative placement stays player-relative.
+      const point =
+        placement === "coordinates"
+          ? {
+              x: Math.round((anchor.x + (column - 7) * 0.35) * 100) / 100,
+              z: Math.round((anchor.z + (row - 18) * 0.4) * 100) / 100,
+            }
+          : { x, z };
+      if (Math.hypot(point.x - pose.x, point.z - pose.z) < radius + 0.5)
+        continue;
+      if (
+        !Array.from({ length: 8 }, (_, i) => (i * Math.PI) / 4).every((angle) =>
+          walkable(
+            point.x + Math.cos(angle) * radius,
+            point.z + Math.sin(angle) * radius,
+          ),
+        )
+      )
+        continue;
+      if (
+        project.entities.some(
+          (e) =>
+            Math.hypot(e.x - point.x, e.z - point.z) <
+            radius + e.scale * 0.4 + 0.1,
+        )
+      )
+        continue;
+      candidates.push({
+        ...point,
+        distance:
+          placement === "coordinates"
+            ? Math.hypot(point.x - anchor.x, point.z - anchor.z)
+            : Math.hypot(point.x - pose.x, point.z - pose.z),
+      });
+    }
+  }
+  candidates.sort((a, b) => a.distance - b.distance);
+  // Try nearby starting points so an early greedy choice cannot block a group that fits.
+  for (const seed of candidates.slice(0, 64)) {
+    const placed: { x: number; z: number }[] = [{ x: seed.x, z: seed.z }];
+    for (const point of candidates) {
+      if (
+        placed.every(
+          (p) => Math.hypot(p.x - point.x, p.z - point.z) >= radius * 2 + 0.1,
+        )
+      )
+        placed.push({ x: point.x, z: point.z });
+      if (placed.length === count) return placed;
+    }
+  }
+  throw new Error(
+    "There isn't enough room for that group here. Try smaller pumpkins or move to a more open spot.",
+  );
+}
+
 export function decisionOperation(
   d: Decision,
   text: string,
   pose: Pose,
   selected: string | null,
+  project: Project = initialProject(),
 ): Operation {
   if (
     !d ||
@@ -297,7 +429,7 @@ export function decisionOperation(
     d.needs_review
   )
     throw new Error(
-      "That could mean more than one thing. Choose a scene control or describe one change more precisely.",
+      "We couldn’t understand that edit. Try the scene controls or rephrase it.",
     );
   const id = text.match(/\bpumpkin-[a-zA-Z0-9-]+\b/)?.[0] ?? selected;
   const target = () => {
@@ -312,8 +444,9 @@ export function decisionOperation(
     }
     if (d.size === "small") return 0.6;
     if (d.size === "large") return 1.8;
+    if (d.size === "huge") return 2.5;
     if (d.size === "normal") return 1;
-    throw new Error("Choose small, normal, large, or an exact scale.");
+    throw new Error("Choose small, normal, large, huge, or an exact scale.");
   };
   const position = () => {
     if (d.placement === "coordinates") {
@@ -339,16 +472,29 @@ export function decisionOperation(
     };
   };
   switch (d.action) {
-    case "add_pumpkin":
-      return {
+    case "add_pumpkin": {
+      const count = pumpkinCount(text);
+      if (project.entities.length + count > MAX_PUMPKINS)
+        throw new Error(
+          `This scene has room for ${MAX_PUMPKINS - project.entities.length} more pumpkins. Remove some before adding this group.`,
+        );
+      const size = scale(),
+        anchor = position();
+      const positions =
+        count === 1
+          ? [anchor]
+          : groupPositions(count, size, d.placement, pose, anchor, project);
+      const operations: Operation[] = positions.map((p) => ({
         kind: "add_pumpkin",
         entity: {
           id: `pumpkin-${crypto.randomUUID()}`,
           kind: "pumpkin",
-          ...position(),
-          scale: scale(),
+          ...p,
+          scale: size,
         },
-      };
+      }));
+      return count === 1 ? operations[0] : { kind: "batch", operations };
+    }
     case "move_pumpkin":
       return { kind: "move_pumpkin", id: target(), ...position() };
     case "resize_pumpkin":
@@ -364,7 +510,7 @@ export function decisionOperation(
       return { kind: d.action };
     default:
       throw new Error(
-        "Try adding, moving, resizing, or removing one pumpkin, changing the light, undo, or redo.",
+        "Try adding, moving, resizing, or removing a pumpkin, changing the light, undo, or redo.",
       );
   }
 }

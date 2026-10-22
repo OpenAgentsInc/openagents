@@ -6,6 +6,8 @@ import {
   readProject,
   decisionOperation,
   exactCoordinates,
+  pumpkinCount,
+  walkable,
   PROJECT_ID,
   upgradeLegacyShader,
   type Operation,
@@ -179,5 +181,95 @@ test("legacy shader upgrade is idempotent and preserves custom/current shader co
       old.replace("// Lantern Hall — original demo", "// My custom shader"),
     ),
     old.replace("// Lantern Hall — original demo", "// My custom shader"),
+  );
+});
+
+test("exact plural counts and huge groups preserve placement, capacity, and one-step undo", () => {
+  for (const text of [
+    "add 5 huge pumpkins to my left",
+    "put five big pumpkins on my right",
+    "spawn 5 pumpkins at (1, 2)",
+  ])
+    assert.equal(pumpkinCount(text), 5);
+  assert.equal(pumpkinCount("add a big pumpkin at (5, 2)"), 1);
+  for (const text of [
+    "add 0 pumpkins",
+    "add -2 pumpkins",
+    "add 1.5 pumpkins",
+    "add 9 pumpkins",
+    "add twenty pumpkins",
+    "add twenty five pumpkins",
+    "add one hundred pumpkins",
+    "add many pumpkins",
+  ])
+    assert.throws(() => pumpkinCount(text), /1.*8/);
+  const d = {
+    action: "add_pumpkin",
+    placement: "left",
+    size: "huge",
+    tint: "unsupported",
+    confidence: 0.99,
+    needs_review: false,
+    model: "fixture",
+    model_ms: 0,
+  };
+  for (const pose of [
+    { x: 0, z: 6.8, yaw: 0, pitch: 0 },
+    { x: 0, z: 5.8, yaw: 0, pitch: 0 },
+    { x: 0, z: -2.8, yaw: Math.PI, pitch: 0 },
+  ]) {
+    const store = new SceneHistory();
+    const before = structuredClone(store.project);
+    const op = decisionOperation(
+      d,
+      "add 5 huge pumpkins to my left",
+      pose,
+      "pumpkin-1",
+      store.project,
+    );
+    assert.equal(op.kind, "batch");
+    apply(store, op);
+    const added = store.project.entities.slice(before.entities.length);
+    assert.equal(added.length, 5);
+    assert.equal(new Set(added.map((e) => e.id)).size, 5);
+    for (const e of added) {
+      assert.equal(e.scale, 2.5);
+      assert.ok(walkable(e.x, e.z));
+      for (const existing of before.entities)
+        assert.ok(
+          Math.hypot(e.x - existing.x, e.z - existing.z) >=
+            1 + existing.scale * 0.4 + 0.1,
+        );
+      assert.ok(
+        (e.x - pose.x) * Math.cos(pose.yaw) +
+          (e.z - pose.z) * Math.sin(pose.yaw) <
+          0,
+        "pumpkin must be on the player's left",
+      );
+      for (const other of added)
+        if (other !== e)
+          assert.ok(Math.hypot(e.x - other.x, e.z - other.z) >= 2.1 - 0.00001);
+    }
+    assert.equal(store.project.revision, 1);
+    apply(store, { kind: "undo" });
+    assert.deepEqual(store.project.entities, before.entities);
+    apply(store, { kind: "redo" });
+    assert.deepEqual(store.project.entities.slice(5), added);
+  }
+  const full = initialProject();
+  full.entities = Array.from({ length: 62 }, (_, i) => ({
+    ...full.entities[0],
+    id: `pumpkin-${i}`,
+  }));
+  assert.throws(
+    () =>
+      decisionOperation(
+        d,
+        "add 5 huge pumpkins to my left",
+        { x: 0, z: 6.8, yaw: 0, pitch: 0 },
+        null,
+        full,
+      ),
+    /2 more pumpkins/,
   );
 });

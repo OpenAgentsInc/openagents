@@ -56,6 +56,11 @@ host integration. This change does not deploy a public decision endpoint.
 - Only the arguments used by the selected action contribute to its confidence
   floor (0.75 for this prototype). Uncertain requests make no change. This policy
   is exercised on a small retained example set, not broadly calibrated.
+- Adding a group is one action: `add 5 huge pumpkins to my left` adds five
+  size-2.5 pumpkins on the player’s left. Counts from 1 to 8 (digits or words)
+  come from the request text. The group uses one transaction and one undo step.
+  Placement spreads objects apart, avoids existing pumpkins and room boundaries,
+  and reports insufficient space without partially adding a group.
 - Code reads exact X/Z coordinates and `scale=` from source spans. Jev never
   invents numerical values. Relative positions use the current player pose when
   the result is applied. Existing objects use the selected or explicitly named ID.

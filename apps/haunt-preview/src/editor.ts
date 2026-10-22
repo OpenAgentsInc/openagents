@@ -128,6 +128,12 @@ export function createEditor(bridge: Bridge) {
         });
       });
       if (operation.kind === "add_pumpkin") selected = operation.entity.id;
+      if (operation.kind === "batch") {
+        const added = operation.operations.findLast(
+          (op) => op.kind === "add_pumpkin",
+        );
+        if (added?.kind === "add_pumpkin") selected = added.entity.id;
+      }
       const receipt = {
         origin,
         operation,
@@ -203,6 +209,7 @@ export function createEditor(bridge: Bridge) {
         text,
         bridge.state().pose,
         selectedAtStart,
+        bridge.state().project,
       );
       decision = undefined;
       clearTimeout(timeout);

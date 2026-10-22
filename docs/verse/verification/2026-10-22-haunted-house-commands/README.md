@@ -55,3 +55,12 @@ or recreate the GPU device for any of the 30 scene edits or the real Jev actions
 Public hosting, collaboration, device reconstruction, arbitrary behavior edits,
 and general free-form authoring remain separate phases. The local native service
 holds the TypeSafe credential; the renderer never receives it.
+
+## Multiple pumpkins regression
+
+The exact UI request `add 5 huge pumpkins to my left` now adds five size-2.5
+pumpkins in one transaction. The browser check verifies left placement, a real
+Kiln save, one-step undo/redo, and unchanged player position, device, and shader.
+Counts come from the request text; the action definition accepts a group as one
+action. See [the receipt](pumpkin-group-regression.json) and
+[the resulting editor](five-huge-pumpkins.png). The full editor check also passed.

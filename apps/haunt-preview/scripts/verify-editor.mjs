@@ -50,6 +50,58 @@ try {
   const initial = await snap();
   report.initial = initial;
   assert.ok(initial.pose.z < 6.2);
+  if (process.env.HAUNT_DECISIONS !== "0") {
+    const before = await snap();
+    await page.locator("#request").fill("add 5 huge pumpkins to my left");
+    await page.locator("#ask").click();
+    await page.waitForFunction(
+      () =>
+        document
+          .querySelector("#scene-status")
+          .textContent.includes("Changed and saved"),
+      null,
+      { timeout: 6000 },
+    );
+    const after = await snap();
+    const added = after.project.entities.slice(before.project.entities.length);
+    assert.equal(added.length, 5);
+    assert.equal(after.project.revision, before.project.revision + 1);
+    assert.equal(new Set(added.map((e) => e.id)).size, 5);
+    for (const e of added) {
+      assert.equal(e.scale, 2.5);
+      assert.ok(
+        (e.x - before.pose.x) * Math.cos(before.pose.yaw) +
+          (e.z - before.pose.z) * Math.sin(before.pose.yaw) <
+          0,
+      );
+    }
+    samePose(before.pose, after.pose);
+    assert.equal(after.deviceId, before.deviceId);
+    assert.equal(after.compiles, before.compiles);
+    assert.deepEqual(
+      JSON.parse(await page.evaluate(() => window.kilnReadScene())),
+      after.project,
+    );
+    report.group = {
+      before,
+      after,
+      result: await page.evaluate(() =>
+        window.hauntPreview.editor().decisions.at(-1),
+      ),
+    };
+    await page.screenshot({
+      path: `${out}/five-huge-pumpkins.png`,
+      fullPage: true,
+    });
+    await command({ kind: "undo" });
+    assert.deepEqual((await snap()).project.entities, before.project.entities);
+    await command({ kind: "redo" });
+    assert.deepEqual((await snap()).project.entities, after.project.entities);
+    await command({ kind: "undo" });
+    report.checks.push(
+      "exact UI request 'add 5 huge pumpkins to my left': five size-2.5 pumpkins on the player's left, one revision, one-step undo/redo, Kiln save, unchanged pose/device/shader",
+    );
+  }
   const callsBefore = requests.filter((r) =>
     r.url.includes("/api/haunt/decision"),
   ).length;
