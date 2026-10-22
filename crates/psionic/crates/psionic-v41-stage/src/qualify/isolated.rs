@@ -4,6 +4,7 @@ use super::*;
 use crate::StageBackend;
 use psionic_models::{
     deepseek_v41_stage::{V41GroupManifest, V41StageEntry},
+    deepseek_v41_stage_cpu::SELECTION_PAD,
     stage_state::{
         CodecLimits, RowRule, Section, SectionKind, StageContract, StageMessage, StageWorker,
         StepKind, WireDtype,
@@ -229,7 +230,7 @@ pub(super) fn compare_output(
                 let got = section.to_i32().map_err(|e| refused(e.to_string()))?;
                 if expected.len() != got.len()
                     || expected.iter().any(|i| *i < -1)
-                    || got.iter().any(|i| *i < -1)
+                    || got.iter().any(|i| *i < -1 && *i != SELECTION_PAD)
                 {
                     return Err(refused("isolated selection shape or padding"));
                 }
@@ -726,6 +727,11 @@ mod tests {
                 "int32",
                 selection.iter().flat_map(|v| v.to_le_bytes()).collect(),
             );
+            add(
+                format!("c.decode.step{step:02}.index.layers.8.scores"),
+                "float32",
+                vec![0; 4 * tokens * ((start + tokens) / 2)],
+            );
         }
         let h = serde_json::to_vec(&header).unwrap();
         let mut file = (h.len() as u64).to_le_bytes().to_vec();
@@ -741,6 +747,43 @@ mod tests {
             OracleDump::open(root).unwrap(),
             json!({"prompt_token_ids":[3,4,5],"generated_ids":[6,7],"stage_boundary_inputs":meta}),
         )
+    }
+
+    #[test]
+    fn isolated_selection_accepts_native_padding_and_rejects_invalid_ids() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut oracle, run) = fixture(dir.path());
+        for pad in [-1, SELECTION_PAD] {
+            let selection = Section::i32s(
+                SectionKind::IndexSelection { layer: 8 },
+                vec![3, 2],
+                &[pad, pad, 0, pad, 0, pad],
+            )
+            .unwrap();
+            let metrics =
+                compare_output(&mut oracle, &run, "c", "decode", 0, 10, &[selection]).unwrap();
+            assert_eq!(metrics[0]["metrics"]["changed_rows"], 0);
+        }
+        for invalid in [
+            [-2, SELECTION_PAD, 0, SELECTION_PAD, 0, SELECTION_PAD],
+            [SELECTION_PAD, SELECTION_PAD, 0, 0, 0, SELECTION_PAD],
+            [
+                SELECTION_PAD,
+                SELECTION_PAD,
+                1,
+                SELECTION_PAD,
+                0,
+                SELECTION_PAD,
+            ],
+        ] {
+            let selection = Section::i32s(
+                SectionKind::IndexSelection { layer: 8 },
+                vec![3, 2],
+                &invalid,
+            )
+            .unwrap();
+            assert!(compare_output(&mut oracle, &run, "c", "decode", 0, 10, &[selection]).is_err());
+        }
     }
 
     #[test]

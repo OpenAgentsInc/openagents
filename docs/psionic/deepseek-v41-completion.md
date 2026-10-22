@@ -1444,3 +1444,13 @@ lossy profile. This original-weight qualification run does not grant those
 services a numerical qualification claim. The quota-retrying private quad
 watcher was stopped to give the Maya services priority; the completed
 two-dual recovery placement has been deleted.
+
+### Isolated index padding correction (2026-10-22)
+
+Rechecking the retained CPU outputs exposed a reader mismatch: the native wire
+uses `SELECTION_PAD` (`i32::MIN`) for unused index slots, while the oracle uses
+`-1`. The isolated checker now accepts either supported representation for a
+candidate's unused slots. Other negative IDs, repeated IDs, and IDs beyond the
+current causal range still fail. The regression covers both representations
+and those refusals. All 63 stage package tests pass, with one optional test
+ignored. The pinned model worker and numerical limits stay unchanged.
