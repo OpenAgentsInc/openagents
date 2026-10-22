@@ -41,3 +41,11 @@ page knows them, the last deploy that ended, WALK UP TO USE, and a blinking
 prompt. [`07-terminal-screen.png`](07-terminal-screen.png) is up close and
 [`08-terminal-from-spawn.png`](08-terminal-from-spawn.png) is from the
 spawn; the local server has no Pylons, so that line is absent there.
+
+## The tighter layout
+
+Each lane's title, status, strip, commit, and subject now sit above 6.4 m
+of the face, the height the Game Lab and Lagrange 2 arches hide from the
+spawn, and its last result and history sit below. A test checks those
+sight lines. [`09-tight-layout-from-spawn.png`](09-tight-layout-from-spawn.png)
+shows the board from the spawn with test events.

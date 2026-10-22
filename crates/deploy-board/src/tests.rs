@@ -482,3 +482,40 @@ fn the_filters_ask_for_heads_history_and_pointers() {
     assert_eq!(filters[1]["limit"], HISTORY_EVENTS);
     assert_eq!(filters[2]["kinds"][0], pointer::KIND);
 }
+
+#[test]
+fn the_arches_near_the_spawn_hide_no_lanes_status_or_strip() {
+    // The third-person camera behind the spawn, and the Game Lab and
+    // Lagrange 2 arches as posts 2.3 m in radius and 4.7 m tall. Everything
+    // a lane shows above its history must clear them.
+    let eye = [0.0, 3.0, -16.5];
+    let hidden = |p: [f64; 3]| {
+        let (dx, dz) = (p[0] - eye[0], p[2] - eye[2]);
+        let length = dx * dx + dz * dz;
+        [(-8.0, 3.0), (-20.0, 9.0)].iter().any(|&(ax, az)| {
+            let t = (((ax - eye[0]) * dx + (az - eye[2]) * dz) / length).clamp(0.0, 1.0);
+            let (qx, qz) = (eye[0] + t * dx, eye[2] + t * dz);
+            (qx - ax).hypot(qz - az) < 2.3 && eye[1] + t * (p[1] - eye[1]) < 4.7
+        })
+    };
+    let mut ingest = ingest();
+    for env in Env::ALL {
+        run_through(
+            &mut ingest,
+            env,
+            "r1",
+            &[Phase::BuildStarted, Phase::BuildDone],
+            1_000,
+        );
+        run_through(&mut ingest, env, "r0", &[Phase::Live], 500);
+    }
+    let pieces = layout::pieces(&ingest.board, 1_100.0, 1024);
+    let lowest_history = layout::LIFT + 4.6;
+    let mut checked = 0;
+    for p in pieces.iter().filter(|p| p.at[1] > lowest_history + 1.0) {
+        let world = layout::world([p.at[0], p.at[1], p.at[2]]);
+        assert!(!hidden(world), "{p:?}");
+        checked += 1;
+    }
+    assert!(checked > 20, "{checked}");
+}

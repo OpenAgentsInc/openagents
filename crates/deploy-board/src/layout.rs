@@ -32,24 +32,27 @@ const LEGS: [f64; 2] = [4.0, 20.0];
 const PAD: f64 = 0.3;
 /// Text heights, m.
 const HEADER: f64 = 0.65;
-const TITLE: f64 = 0.8;
+const TITLE: f64 = 0.75;
 const ELAPSED: f64 = 0.6;
-const STATUS: f64 = 0.7;
-const LINE: f64 = 0.42;
-const LABEL: f64 = 0.3;
+const STATUS: f64 = 0.62;
+const LINE: f64 = 0.4;
+const LABEL: f64 = 0.28;
 const ROW: f64 = 0.4;
-/// Rows' lower edges above the face's lower edge, m.
-const HEADER_Y: f64 = 10.95;
-const HEADER_RULE: f64 = 10.6;
-const TITLE_Y: f64 = 9.45;
-const STATUS_Y: f64 = 8.45;
-const COMMIT_Y: f64 = 7.55;
-const SUBJECT_Y: f64 = 6.85;
-const STRIP: [f64; 2] = [5.75, 6.35];
-const LABEL_Y: f64 = 5.25;
-const LAST_Y: f64 = 4.3;
-const HISTORY_RULE: f64 = 3.95;
-const HISTORY_Y: [f64; 3] = [3.2, 2.45, 1.7];
+/// Rows' lower edges above the face's lower edge, m. A lane's title,
+/// status, strip, commit, and subject sit above 6.4 m, the height the Game
+/// Lab and Lagrange 2 arches hide from the spawn; its last result and
+/// history sit below.
+const HEADER_Y: f64 = 11.0;
+const HEADER_RULE: f64 = 10.7;
+const TITLE_Y: f64 = 9.75;
+const STATUS_Y: f64 = 8.9;
+const COMMIT_Y: f64 = 7.05;
+const SUBJECT_Y: f64 = 6.5;
+const STRIP: [f64; 2] = [8.05, 8.6];
+const LABEL_Y: f64 = 7.65;
+const LAST_Y: f64 = 5.5;
+const HISTORY_RULE: f64 = 5.25;
+const HISTORY_Y: [f64; 3] = [4.5, 3.75, 3.0];
 const HISTORY_STEP: f64 = 0.75;
 /// The strip's gap between cells, m.
 const STRIP_GAP: f64 = 0.15;
