@@ -21,13 +21,13 @@ mod chamber;
 #[cfg(target_arch = "wasm32")]
 mod controls_hint;
 #[cfg(target_arch = "wasm32")]
+mod foreman;
+#[cfg(target_arch = "wasm32")]
 mod game_lab;
 #[cfg(target_arch = "wasm32")]
 mod grid;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod hand_input;
-#[cfg(target_arch = "wasm32")]
-mod foreman;
 #[cfg(target_arch = "wasm32")]
 mod help_desk;
 #[cfg(target_arch = "wasm32")]
@@ -55,6 +55,8 @@ mod web;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod zone_ui;
 
+#[cfg(any(target_arch = "wasm32", test))]
+mod spawn_guard;
 #[cfg(target_arch = "wasm32")]
 mod terminal;
 #[cfg(target_arch = "wasm32")]

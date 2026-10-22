@@ -21,6 +21,9 @@ pub struct Terminal {
     flint: bool,
     /// Whether the player stands in the Pylon Bay, for the visit (#12439).
     in_bay: bool,
+    /// Where the player stood last frame on the Grid, to tell a step into
+    /// reach from a spawn there (#12479).
+    last: Option<[f64; 3]>,
 }
 
 impl Terminal {
@@ -37,6 +40,7 @@ impl Terminal {
             group: false,
             flint: false,
             in_bay: false,
+            last: None,
         })
     }
 
@@ -88,14 +92,27 @@ impl Terminal {
         let near = !self.away
             && camera.is_some()
             && player.is_some_and(|p| terminal::in_reach(p, self.near));
+        let last = self.last;
+        self.last = if self.away || camera.is_none() {
+            None
+        } else {
+            player
+        };
         if near == self.near {
             return;
         }
         self.near = near;
+        // The chat takes the keys only when the player walked in; one who
+        // appeared in reach keeps walking with them (#12479).
+        let walked = near && player.is_some_and(|p| terminal::walked_in(last, p));
         if let Ok(callback) = js_sys::Reflect::get(&js_sys::global(), &"homeTerminal".into())
             && let Some(callback) = callback.dyn_ref::<js_sys::Function>()
         {
-            let _ = callback.call1(&JsValue::UNDEFINED, &JsValue::from_bool(near));
+            let _ = callback.call2(
+                &JsValue::UNDEFINED,
+                &JsValue::from_bool(near),
+                &JsValue::from_bool(walked),
+            );
         }
     }
 }

@@ -377,9 +377,9 @@ syncChat();ok()},{once:true});\n\
 performance.mark(\"home-chat-mounting\");glue.mount(still)}));\n\
 return glue})().catch(error=>{chatStatus.textContent=\"Chat couldn't open. Reload to try again.\";\n\
 console.warn(error);track(\"terminal_failed\");focusPending=false;syncFocus();throw error}));\n\
-globalThis.homeTerminal=near=>{const walked=near&&globalThis.openagentsLab!==\"game\"&&!globalThis.openagentsChatDesk&&!globalThis.openagentsChatForeman;near=(globalThis.openagentsLab===\"game\"||near)&&world.classList.contains(\"ready\");\n\
+globalThis.homeTerminal=(near,step)=>{const walked=near&&step!==false&&globalThis.openagentsLab!==\"game\"&&!globalThis.openagentsChatDesk&&!globalThis.openagentsChatForeman;near=(globalThis.openagentsLab===\"game\"||near)&&world.classList.contains(\"ready\");\n\
 if(!near&&(globalThis.openagentsChatDesk||globalThis.openagentsChatForeman)){globalThis.openagentsChatDesk=false;globalThis.openagentsChatForeman=false;composer.setAttribute(\"aria-label\",\"Chat with the pylons\")}\n\
-if(walked&&near&&!terminalNear)track(\"terminal_reached\",{time:Math.round(performance.now())});terminalNear=near;focusPending=near;\n\
+if(walked&&near&&!terminalNear)track(\"terminal_reached\",{time:Math.round(performance.now())});terminalNear=near;focusPending=near&&step!==false;\n\
 syncChat();\n\
 if(near)loadChat().catch(()=>{})};\n\
 globalThis.homeDesk=open=>{open=!!open&&world.classList.contains(\"ready\");\n\

@@ -110,6 +110,12 @@ web-sys = { version = "0.3", features = [
 [dev-dependencies]
 # The portal lines are checked as the site checks its copy.
 oa-copy = { path = "../oa-copy" }
+# The spawn guard's places and picker, checked natively (#12479).
+pylons-view = { path = "../pylons-view" }
+grid-help-desk = { path = "../grid-help-desk" }
+verse-world = { path = "../verse-world" }
+# The desk's `fingerprint` is under this feature; the page's build turns it on.
+verse-engine = { path = "../verse-engine", features = ["asset-io"] }
 
 [lints]
 workspace = true

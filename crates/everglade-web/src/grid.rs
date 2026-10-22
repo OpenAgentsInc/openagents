@@ -306,14 +306,23 @@ impl Presence {
             // (#12406).
             let others = self.others(now);
             let free = |pos: Vec3| others.iter().all(|o| o.distance(pos) >= RESUME_SPACING);
-            let (pos, yaw) = if spawn.resumed && free(spawn.pos) {
+            // Nobody appears within reach of something that opens on
+            // approach, so their first keys move them (#12479).
+            let game_lab = verse::zones::game_place::POSITION;
+            let triggers = crate::spawn_guard::triggers([game_lab.x, game_lab.z]);
+            let (pos, yaw) = if spawn.resumed
+                && free(spawn.pos)
+                && !crate::spawn_guard::too_close([spawn.pos.x, spawn.pos.z], &triggers)
+            {
                 (spawn.pos, spawn.yaw)
             } else {
+                let mut blockers = runtime.world.blockers.clone();
+                blockers.extend(crate::spawn_guard::keep_out(&triggers));
                 let arrival = verse_world::social::arrival::pick_spawn(
                     self.session.pubkey(),
                     verse_world::social::arrival::SpawnArea::GRID,
                     &others,
-                    &runtime.world.blockers,
+                    &blockers,
                 );
                 (arrival.pos, arrival.yaw)
             };

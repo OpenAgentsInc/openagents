@@ -55,6 +55,23 @@ pub fn in_reach(player: [f64; 3], already_near: bool) -> bool {
         && (player[0] - at[0]).hypot(player[2] - at[2]) <= range
 }
 
+/// The longest move between two frames that still counts as a step, m.
+/// A spawn or a teleport moves farther.
+pub const STEP: f64 = 1.5;
+
+/// Whether moving from `from` to `to` walked into reach: `from` was a
+/// frame ago, outside, and a step away. Appearing in reach, by spawning or
+/// teleporting, never counts, so the chat opens there without taking the
+/// keys (#12479).
+#[must_use]
+pub fn walked_in(from: Option<[f64; 3]>, to: [f64; 3]) -> bool {
+    from.is_some_and(|from| {
+        !in_reach(from, false)
+            && in_reach(to, false)
+            && (to[0] - from[0]).hypot(to[2] - from[2]) <= STEP
+    })
+}
+
 /// Solid boxes for the pedestal, monitor, display, and keyboard. Every
 /// corner is in world space: no face turns to follow the camera.
 #[must_use]
@@ -96,6 +113,20 @@ pub fn faces() -> Vec<[[f64; 3]; 4]> {
 mod tests {
     #![allow(clippy::unwrap_used)]
     use super::*;
+
+    #[test]
+    fn only_a_step_into_reach_counts_as_walking_in() {
+        let inside = [POSITION[0], 0.0, POSITION[2] - 2.5];
+        let outside = [POSITION[0], 0.0, POSITION[2] - 3.2];
+        assert!(walked_in(Some(outside), inside));
+        // Spawning there: no frame before.
+        assert!(!walked_in(None, inside));
+        // A teleport from across the plaza.
+        assert!(!walked_in(Some([0.0, 0.0, -14.0]), inside));
+        // Already in reach, or walking out.
+        assert!(!walked_in(Some(inside), inside));
+        assert!(!walked_in(Some(inside), outside));
+    }
 
     #[test]
     fn the_terminal_offers_v41_only_while_a_ready_group_serves_it() {
