@@ -11,10 +11,20 @@
   header { padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
   h1 { margin: 0; font-size: 18px; color: var(--amber); letter-spacing: 0.06em; }
   .sub { color: var(--dim); font-size: 12px; }
-  main { display: grid; grid-template-columns: minmax(280px, 380px) 1fr; gap: 0; height: calc(100vh - 56px); }
-  aside { border-right: 1px solid var(--line); padding: 14px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+  main { display: grid; grid-template-columns: minmax(300px, 440px) 1fr; gap: 0; height: calc(100vh - 56px); }
+  aside { border-right: 1px solid var(--line); padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  aside > * { flex-shrink: 0; }
+  .group { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: #100e0b; }
+  .group h2 { margin: 0; }
+  .group h2 label { color: inherit; font-size: inherit; }
+  details.group > summary { cursor: pointer; color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+  details.group[open] > summary { margin-bottom: 4px; }
+  details.group label { display: flex; flex-direction: column; gap: 4px; }
+  details.group label.check { flex-direction: row; align-items: center; gap: 6px; }
+  .key { word-break: break-all; color: var(--text); }
   textarea, input[type=text] { width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 8px; font: inherit; }
-  textarea { height: 110px; resize: vertical; }
+  textarea { min-height: 9.5em; height: 9.5em; resize: vertical; line-height: 1.45; color: var(--text); background: #1b1813; border-color: #4a4132; }
+  textarea:focus, input[type=text]:focus { outline: 2px solid var(--amber); outline-offset: -1px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
   button { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; font: inherit; cursor: pointer; }
   button.primary { background: var(--amber); color: #1a1407; border-color: var(--amber); font-weight: 600; }
@@ -49,39 +59,53 @@
 </header>
 <main>
   <aside>
-    <textarea id="task" placeholder="What should the agent build?">Write fib.rhai with a function fib(n) that returns the nth Fibonacci number, write fib_test.rhai that tests fib(0), fib(1) and fib(10) == 55, and make the tests pass.</textarea>
-    <div class="row">
-      <button id="run" class="primary">Run agent</button>
-      <button id="stop">Stop</button>
-      <button id="selftest">Sandbox self-test</button>
-      <button id="reset">Clear workspace</button>
-    </div>
-    <h2>Rust crate from the repository</h2>
-    <div class="row">
-      <input type="text" id="slice" value="crates/memory-stream" style="flex: 2">
-      <input type="text" id="ref" value="main" style="flex: 1">
-      <button id="load">Load</button>
-    </div>
-    <h2>Self-edit <span class="sub">build <span id="build">…</span></span></h2>
-    <div class="row">
-      <button id="self-load">Load Kiln's source</button>
-      <button id="self-publish">Publish Kiln</button>
-      <button id="self-revert">Revert to last good</button>
-      <button id="self-reset">Reset to the site's build</button>
-    </div>
-    <div class="sub">Admin key <span id="admin-key">…</span>: the runner publishes only for keys on its admin list.</div>
-    <div class="sub hidden" id="update"></div>
-    <button id="reload-now" class="hidden">Reload into it now</button>
-    <label>Test runner key (hex or npub) <input type="text" id="runner" placeholder="from kiln-runner"></label>
-    <label>Model <input type="text" id="model" value="deepseek-v4.1-flash"></label>
-    <label><input type="checkbox" id="fallback" checked> Fall back to any Pylon when no pylon serves this model</label>
-    <label>Relay <input type="text" id="relay" value="wss://relay.openagents.com"></label>
-    <h2>Workspace <span id="usage" class="sub"></span></h2>
-    <div id="files"></div>
-    <h2 id="viewer-name">File</h2>
-    <pre id="viewer"></pre>
-    <h2>Measurements</h2>
-    <div id="metrics"></div>
+    <section class="group">
+      <h2><label for="task">Task</label></h2>
+      <textarea id="task" rows="7" placeholder="What should the agent build?">Write fib.rhai with a function fib(n) that returns the nth Fibonacci number, write fib_test.rhai that tests fib(0), fib(1) and fib(10) == 55, and make the tests pass.</textarea>
+      <div class="row">
+        <button id="run" class="primary">Run agent</button>
+        <button id="stop">Stop</button>
+        <button id="selftest">Sandbox self-test</button>
+        <button id="reset">Clear workspace</button>
+      </div>
+    </section>
+    <section class="group">
+      <h2>Repository</h2>
+      <div class="row">
+        <input type="text" id="slice" value="crates/memory-stream" aria-label="Directory" style="flex: 2">
+        <input type="text" id="ref" value="main" aria-label="Commit or branch" style="flex: 1">
+        <button id="load">Load</button>
+      </div>
+    </section>
+    <section class="group">
+      <h2>Self-edit <span class="sub">build <span id="build">…</span></span></h2>
+      <div class="row">
+        <button id="self-load">Load Kiln's source</button>
+        <button id="self-publish">Publish Kiln</button>
+        <button id="self-revert">Revert to last good</button>
+        <button id="self-reset">Reset to the site's build</button>
+      </div>
+      <div class="sub hidden" id="update"></div>
+      <button id="reload-now" class="hidden">Reload into it now</button>
+    </section>
+    <details class="group">
+      <summary>Settings</summary>
+      <label>Model <input type="text" id="model" value="deepseek-v4.1-flash"></label>
+      <label class="check"><input type="checkbox" id="fallback" checked> Fall back to any Pylon when no pylon serves this model</label>
+      <label>Relay <input type="text" id="relay" value="wss://relay.openagents.com"></label>
+      <label>Test runner key (hex or npub) <input type="text" id="runner" placeholder="from kiln-runner"></label>
+      <div class="sub">Admin key <span id="admin-key" class="key">…</span><br>The runner publishes Kiln only for keys on its admin list.</div>
+    </details>
+    <section class="group">
+      <h2>Workspace <span id="usage" class="sub"></span></h2>
+      <div id="files"></div>
+      <h2 id="viewer-name">File</h2>
+      <pre id="viewer"></pre>
+    </section>
+    <section class="group">
+      <h2>Measurements</h2>
+      <div id="metrics"></div>
+    </section>
   </aside>
   <section id="log"></section>
 </main>

@@ -71,7 +71,8 @@ fn respond(stream: &mut TcpStream, server: &Server) -> std::io::Result<()> {
     } else if let Some(bytes) = server
         .overlay
         .as_ref()
-        .filter(|_| safe)
+        // HTML stays the host's own, as on the site.
+        .filter(|_| safe && !name.ends_with(".html"))
         .and_then(|overlay| overlay(&name))
     {
         Ok(bytes)
