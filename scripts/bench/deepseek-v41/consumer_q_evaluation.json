@@ -1,0 +1,69 @@
+{
+  "schema": "openagents.deepseek_v41.consumer_q_evaluation.v1",
+  "issue": 12465,
+  "frozen": "2026-10-22T15:55:00Z",
+  "lossy": true,
+  "qualified": false,
+  "oracle": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/holdout-full",
+  "oracle_manifest_sha256": "98b218b52c2f3ec4d08a2945321a468631b20680623c1871468633392163aecd",
+  "oracle_corpus_sha256": "11e82059f5f411d216408ef908579901e3b085d918cfc243505b66680163e227",
+  "cases": [
+    {
+      "id": "h1-chat-seasons",
+      "positions": 32
+    },
+    {
+      "id": "h2-code-palindrome",
+      "positions": 32
+    },
+    {
+      "id": "h3-engram-forms",
+      "positions": 16
+    },
+    {
+      "id": "h4-generate-long",
+      "positions": 32
+    },
+    {
+      "id": "h5-window-255",
+      "positions": 8
+    },
+    {
+      "id": "h5-window-256",
+      "positions": 8
+    },
+    {
+      "id": "h5-window-257",
+      "positions": 8
+    },
+    {
+      "id": "h6-three-files",
+      "positions": 32
+    }
+  ],
+  "calibration": {
+    "source_sha256": "1e37a91317e60cf6d1783daf097b8b4f0ecc1f28f459e13b751b7351c79846dc",
+    "source_rows": [
+      0,
+      4,
+      8,
+      12,
+      16,
+      20,
+      24,
+      28,
+      32,
+      36,
+      40,
+      44,
+      48,
+      52,
+      56,
+      60
+    ],
+    "text_characters_per_row": 4000,
+    "jsonl_sha256": "ea25fc454fe9eef45517a3bf3325b14a8bca2b640632159e48f8f4fa1a4bdea8",
+    "note": "Public repository documentation and source excerpts; independent of these eight oracle prompts. No evaluation tokens or logits enter calibration."
+  },
+  "note": "Descriptive quality measurements for the separate lossy profile. This is not qualification or a new holdout for G1 qualification policy selection."
+}
