@@ -1,3 +1,4 @@
+import { HouseFloor, DEFAULT_LAYOUT } from "./layout.ts";
 import { Effect } from "effect";
 import {
   ShaderVersions,
@@ -57,6 +58,7 @@ class Runtime {
   maxFrameMs = 0;
   uniformData = new Float32Array(28);
   scene = new SceneHistory();
+  floor = new HouseFloor();
   ghosts = new GhostSimulation();
   ranges = new Map<string, AssetRange>();
   baseGeometry: Float32Array;
@@ -84,7 +86,11 @@ class Runtime {
     this.context = context;
     this.canvas = canvas;
     this.format = format;
-    const geometry = houseGeometry(this.scene.project.entities, this.ranges);
+    const geometry = houseGeometry(
+      this.scene.project.entities,
+      this.ranges,
+      this.scene.project.layout ?? DEFAULT_LAYOUT,
+    );
     this.baseGeometry = geometry;
     this.ghosts.sync(this.scene.project.entities);
     this.count = geometry.length / 10;
@@ -372,7 +378,14 @@ class Runtime {
         candidate = plan.project;
         commit = plan.commit;
       }
+      const nextFloor = new HouseFloor(candidate.layout ?? DEFAULT_LAYOUT);
+      if (!nextFloor.canStand(this.pose.x, this.pose.z))
+        throw new Error(
+          "Step back into another room before applying or undoing this layout change.",
+        );
       if (
+        JSON.stringify(candidate.layout) !==
+          JSON.stringify(this.scene.project.layout) ||
         JSON.stringify(
           candidate.entities.map(({ id, kind, x, z, scale }) => ({
             id,
@@ -382,17 +395,21 @@ class Runtime {
             scale,
           })),
         ) !==
-        JSON.stringify(
-          this.scene.project.entities.map(({ id, kind, x, z, scale }) => ({
-            id,
-            kind,
-            x,
-            z,
-            scale,
-          })),
-        )
+          JSON.stringify(
+            this.scene.project.entities.map(({ id, kind, x, z, scale }) => ({
+              id,
+              kind,
+              x,
+              z,
+              scale,
+            })),
+          )
       ) {
-        const geometry = houseGeometry(candidate.entities, this.ranges);
+        const geometry = houseGeometry(
+          candidate.entities,
+          this.ranges,
+          candidate.layout ?? DEFAULT_LAYOUT,
+        );
         this.baseGeometry = geometry;
         this.motionBuffers.clear();
         this.motionPoses.clear();
@@ -409,7 +426,13 @@ class Runtime {
         previous.destroy();
       }
       commit();
+      this.floor = nextFloor;
       this.ghosts.sync(candidate.entities);
+      for (const motion of this.ghosts.motions.values())
+        if (!this.floor.canStand(motion.x, motion.z)) {
+          motion.x = motion.homeX;
+          motion.z = motion.homeZ;
+        }
       return message;
     } catch (error) {
       send({
@@ -427,6 +450,7 @@ class Runtime {
       actors: this.ghosts.snapshot(),
       behaviorTicks: this.ghosts.ticks,
       geometryBuilds: this.geometryBuilds,
+      aimedWall: this.floor.pick(this.pose),
       canUndo: this.scene.past.length > 0,
       canRedo: this.scene.future.length > 0,
       pose: { ...this.pose },
@@ -449,7 +473,7 @@ class Runtime {
   }
 
   animate(seconds: number) {
-    this.ghosts.step(this.pose, seconds);
+    this.ghosts.step(this.pose, seconds, this.floor.canStand, this.floor.guide);
     for (const motion of this.ghosts.motions.values()) {
       const range = this.ranges.get(motion.id);
       if (!range) continue;
@@ -509,6 +533,7 @@ class Runtime {
       Number(held("KeyW", "ArrowUp")) - Number(held("KeyS", "ArrowDown")),
       Number(held("KeyD")) - Number(held("KeyA")),
       delta / 1000,
+      this.floor.canStand,
     );
     if (held("ArrowLeft")) this.pose.yaw -= delta * 0.0015;
     if (held("ArrowRight")) this.pose.yaw += delta * 0.0015;

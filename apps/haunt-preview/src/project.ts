@@ -1,3 +1,10 @@
+import {
+  DEFAULT_LAYOUT,
+  HouseFloor,
+  readLayout,
+  extendLayout,
+  type Layout,
+} from "./layout.ts";
 import catalog from "./assets.json" with { type: "json" };
 import type { Pose } from "./scene.ts";
 
@@ -30,6 +37,7 @@ export type Project = {
   material: "haunt/material.wgsl";
   tint: Tint;
   entities: SceneAsset[];
+  layout?: Layout;
 };
 export type Operation =
   | { kind: "add_asset" | "add_pumpkin"; entity: SceneAsset }
@@ -42,6 +50,13 @@ export type Operation =
       behavior: Behavior;
       positions?: { id: string; x: number; z: number }[];
     }
+  | {
+      kind: "add_room" | "add_wing";
+      wall: string;
+      size: number;
+      at?: { x: number; z: number };
+    }
+  | { kind: "remove_wall"; wall: string }
   | { kind: "set_tint"; tint: Tint }
   | { kind: "undo" | "redo" }
   | { kind: "replace"; project: Project }
@@ -54,13 +69,8 @@ export type Transaction = {
 };
 const clone = <T>(x: T): T => structuredClone(x);
 
-export function walkable(x: number, z: number): boolean {
-  return (
-    (Math.abs(x) < 3.18 && z > -4.8 && z < 7.7) ||
-    (Math.abs(x) < 0.98 && z > -9.3 && z < -4.6) ||
-    (Math.abs(x) < 3.68 && z > -16.7 && z < -9.1)
-  );
-}
+const defaultFloor = new HouseFloor();
+export const walkable = (x: number, z: number) => defaultFloor.canStand(x, z);
 export function initialProject(): Project {
   return {
     schema: 1,
@@ -83,7 +93,10 @@ export function initialProject(): Project {
     })),
   };
 }
-function validEntity(value: unknown): asserts value is SceneAsset {
+function validEntity(
+  value: unknown,
+  floor = defaultFloor,
+): asserts value is SceneAsset {
   const e = value as SceneAsset;
   if (
     !e ||
@@ -92,7 +105,7 @@ function validEntity(value: unknown): asserts value is SceneAsset {
     !/^[a-zA-Z0-9-]{1,64}$/.test(e.id) ||
     !Number.isFinite(e.x) ||
     !Number.isFinite(e.z) ||
-    !walkable(e.x, e.z) ||
+    !floor.canStand(e.x, e.z) ||
     !Number.isFinite(e.scale) ||
     e.scale < 0.3 ||
     e.scale > 2.5 ||
@@ -119,9 +132,11 @@ export function readProject(value: unknown): Project {
     throw new Error(
       "This scene file has an unsupported version or invalid contents.",
     );
+  const layout = p.layout === undefined ? undefined : readLayout(p.layout);
+  const floor = layout ? new HouseFloor(layout) : defaultFloor;
   const ids = new Set<string>();
   for (const e of p.entities) {
-    validEntity(e);
+    validEntity(e, floor);
     if (ids.has(e.id)) throw new Error("Each asset needs a different name.");
     ids.add(e.id);
   }
@@ -132,6 +147,7 @@ export function readProject(value: unknown): Project {
     revision: p.revision,
     material: "haunt/material.wgsl",
     tint: p.tint,
+    ...(layout === undefined ? {} : { layout }),
     entities: p.entities.map((e) => ({
       id: e.id,
       kind: e.kind,
@@ -181,7 +197,7 @@ export class SceneHistory {
     switch (op.kind) {
       case "add_asset":
       case "add_pumpkin":
-        validEntity(op.entity);
+        validEntity(op.entity, new HouseFloor(next.layout ?? DEFAULT_LAYOUT));
         if (next.entities.some((e) => e.id === op.entity.id))
           throw new Error("That asset name is already in use.");
         next.entities.push(clone(op.entity));
@@ -199,6 +215,25 @@ export class SceneHistory {
         find(op.id);
         next.entities = next.entities.filter((e) => e.id !== op.id);
         break;
+      case "add_room":
+      case "add_wing":
+        next.layout = extendLayout(
+          next.layout ?? DEFAULT_LAYOUT,
+          op.wall,
+          op.size,
+          op.kind === "add_wing",
+          op.at,
+        );
+        break;
+      case "remove_wall": {
+        const layout = next.layout ?? structuredClone(DEFAULT_LAYOUT);
+        const floor = new HouseFloor(layout);
+        if (!floor.walls.some((w) => w.id === op.wall))
+          throw new Error("Choose a wall that is still standing.");
+        layout.removedWalls.push(op.wall);
+        next.layout = layout;
+        break;
+      }
       case "set_behavior": {
         if (
           !Array.isArray(op.ids) ||
@@ -252,6 +287,9 @@ export class SceneHistory {
                 "resize_pumpkin",
                 "remove_asset",
                 "remove_pumpkin",
+                "add_room",
+                "add_wing",
+                "remove_wall",
                 "set_behavior",
                 "set_tint",
               ].includes(item.kind),
@@ -401,6 +439,7 @@ function groupPositions(
   project: Project,
 ): { x: number; z: number }[] {
   const radius = scale * 0.4;
+  const floor = new HouseFloor(project.layout ?? DEFAULT_LAYOUT);
   const candidates: { x: number; z: number; distance: number }[] = [];
   for (let row = 0; row < 36; row++) {
     for (let column = 0; column < 15; column++) {
@@ -433,7 +472,7 @@ function groupPositions(
         continue;
       if (
         !Array.from({ length: 8 }, (_, i) => (i * Math.PI) / 4).every((angle) =>
-          walkable(
+          floor.canStand(
             point.x + Math.cos(angle) * radius,
             point.z + Math.sin(angle) * radius,
           ),
@@ -482,6 +521,7 @@ export function decisionOperation(
   pose: Pose,
   selected: string | null,
   project: Project = initialProject(),
+  wallTarget?: { id: string; x: number; z: number },
 ): Operation {
   if (
     !d ||
@@ -599,6 +639,48 @@ export function decisionOperation(
         kind: d.action as "remove_asset" | "remove_pumpkin",
         id: target(),
       };
+    case "add_room":
+    case "add_wing":
+    case "remove_wall": {
+      const floor = new HouseFloor(project.layout ?? DEFAULT_LAYOUT);
+      const turn =
+        d.placement === "left"
+          ? -Math.PI / 2
+          : d.placement === "right"
+            ? Math.PI / 2
+            : d.placement === "behind"
+              ? Math.PI
+              : 0;
+      const aimed = floor.pick(pose, turn);
+      const wall =
+        d.placement === "ahead" && wallTarget
+          ? wallTarget
+          : aimed
+            ? { id: aimed.id, x: aimed.hitX, z: aimed.hitZ }
+            : undefined;
+      if (!wall || !["ahead", "left", "right", "behind"].includes(d.placement))
+        throw new Error("Look toward a wall or choose one in House layout.");
+      if (d.action === "remove_wall")
+        return { kind: "remove_wall", wall: wall.id };
+      const size =
+        d.size === "small"
+          ? 4
+          : d.size === "normal"
+            ? 6
+            : d.size === "large"
+              ? 8
+              : d.size === "huge"
+                ? 10
+                : undefined;
+      if (size === undefined)
+        throw new Error("Choose a small, normal, large, or huge room.");
+      return {
+        kind: d.action,
+        wall: wall.id,
+        size,
+        at: { x: wall.x, z: wall.z },
+      };
+    }
     case "set_behavior": {
       if (!BEHAVIORS.includes(d.behavior as Behavior))
         throw new Error("Choose float, chase, or still for the ghosts.");

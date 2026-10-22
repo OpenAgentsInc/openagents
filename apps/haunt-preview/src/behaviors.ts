@@ -58,7 +58,15 @@ export class GhostSimulation {
       if (!live.has(id)) this.motions.delete(id);
   }
 
-  step(player: Pose, seconds: number) {
+  step(
+    player: Pose,
+    seconds: number,
+    floor: (x: number, z: number) => boolean = walkable,
+    guide?: (
+      from: GhostMotion,
+      player: Pose,
+    ) => { x: number; z: number; stopDistance?: number },
+  ) {
     const dt = Number.isFinite(seconds)
       ? Math.max(0, Math.min(0.05, seconds))
       : 0;
@@ -74,12 +82,20 @@ export class GhostSimulation {
         dx = Math.cos(angle) * 0.45 * dt;
         dz = Math.sin(angle) * 0.45 * dt;
       } else {
-        const x = player.x - motion.x,
-          z = player.z - motion.z;
+        const target = guide?.(motion, player) ?? player;
+        const x = target.x - motion.x,
+          z = target.z - motion.z;
         const distance = Math.hypot(x, z);
         const step = Math.min(
           1.2 * dt,
-          Math.max(0, distance - 0.85 - motion.scale * 0.3),
+          Math.max(
+            0,
+            distance -
+              ("stopDistance" in target &&
+              typeof target.stopDistance === "number"
+                ? target.stopDistance
+                : 0.85 + motion.scale * 0.3),
+          ),
         );
         if (distance > 0.001) {
           dx = (x / distance) * step;
@@ -91,10 +107,10 @@ export class GhostSimulation {
       const fits = (x: number, z: number) => {
         const radius = motion.scale * 0.3;
         return (
-          walkable(x - radius, z) &&
-          walkable(x + radius, z) &&
-          walkable(x, z - radius) &&
-          walkable(x, z + radius)
+          floor(x - radius, z) &&
+          floor(x + radius, z) &&
+          floor(x, z - radius) &&
+          floor(x, z + radius)
         );
       };
       if (fits(motion.x + dx, motion.z)) motion.x += dx;

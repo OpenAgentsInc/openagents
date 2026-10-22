@@ -63,6 +63,26 @@ The renderer, picker, project validation, and Rust Jev questions use
 old pumpkin command names remain accepted. Controls enable after the saved scene
 opens, so an early edit cannot race restoration.
 
+## House construction
+
+- `knock down this wall` removes the aimed or selected wall. The target appears
+  beside the room name in the viewport and in **House layout**. Use the wall
+  selector or select a wall on the floor plan for an explicit target.
+- `add a room` attaches a 6-meter room to that wall or opening. Directional
+  requests such as `add a room to my left` choose a wall relative to your view.
+- `add a wing to my right` attaches three connected rooms in one undoable edit.
+  Small, normal, large, and huge sizes select 4, 6, 8, and 10 meters. The direct
+  **Add room**, **Add wing**, and **Knock down wall** buttons use the same commands.
+- Shared walls gain doorways. Floors, ceilings, visible walls, player collision,
+  asset placement, and ghost routes read the same saved plan. Removing a wall
+  opens the wall; adding a room supplies new floor beyond the house.
+- Layout changes save to Kiln and undo/redo together. A change that would remove
+  floor beneath the player or rebuild a wall through them waits until they move
+  clear. Edits preserve player position, ghost behaviors, and the working shader.
+- The bounded plan supports up to 16 connected, non-overlapping rectangular rooms
+  inside ±64 meters. Existing saved scenes load the original three-room plan
+  until their first layout edit. No build or shader compilation is needed.
+
 ## Ghost behaviors
 
 - `make the ghosts float around` gives every existing ghost a local drifting and

@@ -28,7 +28,10 @@
           ></canvas>
           <div class="crosshair" aria-hidden="true">+</div>
           <div id="loading" class="loading">Lighting the lantern…</div>
-          <div class="room-label">THE LANTERN HALL <span>01 / 02</span></div>
+          <div class="room-label">
+            <span id="current-room">Lantern Hall</span
+            ><span id="wall-aim">Look toward a wall to build</span>
+          </div>
         </div>
         <div class="walkbar">
           <button id="walk" disabled>Enter the house ↗</button
@@ -117,6 +120,27 @@ Add a big pumpkin to my left.</textarea>
             <pre id="decision-details"></pre>
           </details>
         </section>
+        <details class="layout-tools" open>
+          <summary>House layout · <span id="room-count">3 rooms</span></summary>
+          <svg id="floorplan" role="img" aria-label="House floor plan"></svg>
+          <label for="wall-selected">Wall to edit</label
+          ><select id="wall-selected">
+            <option value="aim">Wall I’m looking at</option>
+          </select>
+          <p id="wall-target">Look toward a wall or choose one below.</p>
+          <label for="room-size">New room size</label
+          ><select id="room-size">
+            <option value="4">Small · 4 m</option>
+            <option value="6" selected>Normal · 6 m</option>
+            <option value="8">Large · 8 m</option>
+            <option value="10">Huge · 10 m</option>
+          </select>
+          <div class="actions">
+            <button id="add-room" disabled>Add room</button
+            ><button id="add-wing" disabled>Add wing · 3 rooms</button
+            ><button id="remove-wall" disabled>Knock down wall</button>
+          </div>
+        </details>
         <details class="shader-tools">
           <summary>Advanced · edit the shader</summary>
           <div class="file-tab">
