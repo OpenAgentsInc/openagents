@@ -19,11 +19,19 @@ upload() {
   gcloud storage rsync -q -r "$ROOT/out" "$RESULTS" || true
 }
 upload_case() {
-  # Do not relist and compare every earlier token's records after each case.
-  gcloud storage rsync -q -r "$ROOT/out/$1" "$RESULTS/$1" || return
-  gcloud storage cp -q "$ROOT/out/$1.log" "$ROOT/out/collection-identity.txt" \
-    "$RESULTS/" || true
+  # Keep transient storage failures from ending an expensive collection.
+  # A persistent failure remains visible and can be resumed from local data.
+  for attempt in 1 2 3; do
+    if gcloud storage rsync -q -r "$ROOT/out/$1" "$RESULTS/$1" &&
+       gcloud storage cp -q "$ROOT/out/$1.log" "$ROOT/out/collection-identity.txt" "$RESULTS/"; then
+      return 0
+    fi
+    sleep 2
+  done
+  printf 'Could not upload %s; local evidence is retained. Resume the collection.\n' "$1" >&2
+  return 1
 }
+
 trap upload EXIT
 {
   date -u +%FT%TZ

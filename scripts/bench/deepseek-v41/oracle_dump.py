@@ -169,16 +169,26 @@ def holdout_cases(spec, reference: Path, generate, tokenizer, args) -> list[dict
         return (reference / part["reference_file"]).read_text()
 
     cases = []
+    seen = set()
+    def cut_tokens(tokens, cut, case_id):
+        if isinstance(cut, bool) or not isinstance(cut, int) or not 0 < cut <= len(tokens):
+            raise ValueError(f"{case_id}: cut does not fit the prepared prompt")
+        return list(tokens[:cut])
     for c in spec["cases"]:
+        case_id = c["id"]
+        if not case_id or not all(ch.isascii() and (ch.isalnum() or ch in "-_") for ch in case_id) or case_id in seen:
+            raise ValueError("invalid or duplicate corpus case ID")
+        seen.add(case_id)
         if "prompt_of" in c:
             base = next(x for x in cases if x["id"] == c["prompt_of"])
-            cases.append({"id": c["id"], "thinking_mode": None, "prompt": "", "tokens": base["tokens"][: c["cut"]],
+            cases.append({"id": c["id"], "thinking_mode": None, "prompt": "", "tokens": cut_tokens(base["tokens"], c["cut"], case_id),
                           "n_gen": c["n_gen"], "replay": True, "chunked": False, "complete": False})
             continue
         messages = [{"role": m["role"], "content": "".join(text(p) for p in m["content"])
                      if isinstance(m["content"], list) else m["content"]} for m in c["messages"]]
         prompt, tokens, _t, images = generate.prepare_case({"messages": messages}, c["thinking_mode"], tokenizer, args)
         assert images is None or not any(images)
+        tokens = cut_tokens(tokens, c["cut"], case_id) if "cut" in c else list(tokens)
         complete = bool(c.get("complete"))
         # A G2 task (complete) runs to the end token or its cap; teacher-forced captures
         # keep the usual 32 positions.
@@ -186,6 +196,10 @@ def holdout_cases(spec, reference: Path, generate, tokenizer, args) -> list[dict
                       "tokens": list(tokens), "n_gen": 32 if complete else c["n_gen"],
                       "cap": c["n_gen"] if complete else None, "replay": not complete,
                       "chunked": False, "complete": complete})
+        if c.get("all_generated_rows"):
+            if complete:
+                raise ValueError("complete answers do not use a fixed replay row list")
+            cases[-1]["extra_rows"] = list(range(len(tokens), len(tokens) + c["n_gen"]))
     return cases
 
 

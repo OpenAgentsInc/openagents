@@ -93,5 +93,22 @@ class Captures(unittest.TestCase):
             self.assertFalse(rec.boundaries)
 
 
+class Corpus(unittest.TestCase):
+    def test_explicit_prefixes_do_not_silently_shorten_or_duplicate_cases(self):
+        generate = types.SimpleNamespace(prepare_case=lambda *a: ("prompt", list(range(600)), None, None))
+        case = {"id": "a", "thinking_mode": "chat", "messages": [{"role": "user", "content": "text"}], "n_gen": 16, "cut": 385}
+        result = dump.holdout_cases({"cases": [case]}, None, generate, None, None)
+        self.assertEqual(result[0]["tokens"], list(range(385)))
+        full = dump.holdout_cases({"cases": [dict(case, all_generated_rows=True)]}, None, generate, None, None)
+        self.assertEqual(full[0]["extra_rows"], list(range(385, 401)))
+        for cut in (0, 601, True):
+            with self.assertRaises(ValueError):
+                dump.holdout_cases({"cases": [dict(case, cut=cut)]}, None, generate, None, None)
+        with self.assertRaises(ValueError):
+            dump.holdout_cases({"cases": [case, case]}, None, generate, None, None)
+        with self.assertRaises(ValueError):
+            dump.holdout_cases({"cases": [case, {"id": "b", "prompt_of": "a", "cut": 386, "n_gen": 16}]}, None, generate, None, None)
+
+
 if __name__ == '__main__':
     unittest.main()

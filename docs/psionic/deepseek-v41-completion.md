@@ -1258,3 +1258,25 @@ An explicit request for qualified service requires that claim. Legacy default
 routing remains available for previews. These changes have local routing,
 lifecycle, cloud-launch, and website-consumer checks; they do not qualify the
 running preview or pass G1, G2, G4, or G8 for a new worker bundle.
+
+The follow-up implements `isolated-policy` and `qualification-receipt`. Stage
+limits come only from rechecked plain BF16 CPU outputs, with short and
+near-capacity calibration coverage for every stage. Maximum absolute error,
+relative L2 error, and index decision limits must each pass; one cannot offset
+another. Publication rejudges G1 and G4 measurements, checks the G2 quality
+floor and completed answers, verifies frozen checker/suite/answer hashes, and
+requires the same worker configuration across the gates. These commands do
+not turn incomplete or failed reports into a qualification claim.
+
+The explicit `fp8-mma-tp8` resident CUDA mode can now run without recording,
+so the eventual qualified service can use the measured arithmetic. It remains
+opt-in, with its own identity; the default arithmetic and running preview are
+unchanged. Release checks require complete index acceptance and the frozen
+release scope. The prospective
+[2.4 confirmation inputs](verification/deepseek-v41-gates-2026-10-22/confirmation-corpus-2.4.json)
+are prepared, but no 2.4 policy or confirmation result is frozen yet. Every
+case requests all 32 generated rows in both modes; the largest fixed replay
+fits the 2,872-token step. A storage HTTP 503 interrupted calibration after
+seven saved cases; bounded upload retries and resumption preserve those
+records. The [retry controls](verification/deepseek-v41-gates-2026-10-22/collection-retry-controls.json)
+cover transient success and persistent failure.
