@@ -621,11 +621,11 @@ impl StageGroupConfig {
         }
         if !(ms(10)..=secs(75)).contains(&self.step_timeout)
             || !(ms(10)..=secs(30)).contains(&self.health_timeout)
-            || !(ms(10)..=secs(900)).contains(&self.startup_timeout)
+            || !(ms(10)..=secs(3600)).contains(&self.startup_timeout)
             || !(ms(10)..=secs(60)).contains(&self.stop_timeout)
             || !(1..=10).contains(&self.max_restarts)
         {
-            return Err("use step limits up to 75 seconds, health limits up to 30 seconds, startup limits up to 900 seconds, stop limits up to 60 seconds, and 1–10 restarts".into());
+            return Err("use step limits up to 75 seconds, health limits up to 30 seconds, startup limits up to 3600 seconds, stop limits up to 60 seconds, and 1–10 restarts".into());
         }
         if !(1..=64).contains(&self.links.queue)
             || !(10..=60_000).contains(&self.links.send_timeout_ms)
@@ -2792,6 +2792,15 @@ mod tests {
         assert!(stop.validate().is_ok());
         stop.stop_timeout = Duration::from_secs(61);
         assert!(stop.validate().is_err());
+        let mut cold_start = config(vec![stage("a")]);
+        cold_start.startup_timeout = Duration::from_secs(16 * 60);
+        assert!(cold_start.validate().is_ok());
+        cold_start.startup_timeout = Duration::from_secs(3600);
+        assert!(cold_start.validate().is_ok());
+        cold_start.startup_timeout = Duration::from_secs(3601);
+        assert!(cold_start.validate().is_err());
+        cold_start.startup_timeout = Duration::from_millis(9);
+        assert!(cold_start.validate().is_err());
     }
 
     /// Each stage's pin is its own entry's, else the group's; a group is
