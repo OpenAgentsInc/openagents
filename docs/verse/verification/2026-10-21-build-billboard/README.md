@@ -32,3 +32,12 @@ step, with no reload. [`receipt.json`](receipt.json) holds what
 
 The page's start marks: the Grid's content, including the Pylon Bay and the
 board's 131 models, was ready 143 ms after the glyph atlas.
+
+## The shared computer's screen
+
+The monitor by the spawn shows a lit screen in the board's letters
+(`deploy_board::screen`): OPENAGENTS TERMINAL, the Pylons online when the
+page knows them, the last deploy that ended, WALK UP TO USE, and a blinking
+prompt. [`07-terminal-screen.png`](07-terminal-screen.png) is up close and
+[`08-terminal-from-spawn.png`](08-terminal-from-spawn.png) is from the
+spawn; the local server has no Pylons, so that line is absent there.
