@@ -2,6 +2,7 @@
 //! and the existing NIP-34 bridge. WORK objectives remain independently owned.
 pub mod objectives;
 pub mod worker;
+pub mod workspace;
 
 use serde::{Serialize, de::DeserializeOwned};
 use std::path::Path;

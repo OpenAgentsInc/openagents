@@ -53,3 +53,23 @@ separately qualified device profiles. WORK
 publication supplies objective data, not execution authority: the admitted
 local host configuration and explicit app assignment authorize each bounded
 task. This adapter does not claim native AUTO or WORK effectful execution.
+
+
+## Other repository workspaces
+
+`kiln-workspace` runs the same Kiln agent for explicitly scoped text files,
+including the browser editor. Its separate configuration pins a Git base,
+repository path list, buyer key file, model, serving profile, and Pylon public
+key. It reads regular Git blobs and keeps edits in a private snapshot; it
+cannot run a shell or change the checkout. Existing Cargo-only WORK admission
+and runner checks remain unchanged.
+
+Use `init --config FILE --state FILE`, then `advance --state FILE` for each
+model turn. `status` reports progress; `export` returns the exact base,
+original files, proposed files, and their digest. When the agent requests
+`check`, the coordinator materializes and reviews that export in its worktree,
+runs the issue's focused checks, and supplies `feedback --input FILE` with
+`digest`, `code`, and `output`. A passing result counts only for that exact
+snapshot. Further edits clear it. The agent can finish only after a matching
+passing check; the coordinator still reviews the change and opens the draft PR.
+The adapter permits 96 model turns, 256 tool calls, and six hours per workspace.
