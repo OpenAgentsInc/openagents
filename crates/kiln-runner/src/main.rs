@@ -179,7 +179,20 @@ pub(crate) fn stage(config: &Config, job: &Job) -> Result<(), String> {
         &work,
         &["checkout", "--quiet", "--detach", "--force", &job.base],
     )?;
-    git(&work, &["clean", "-fdxq"])?;
+    // Jobs write only inside their crates (checked before staging), so only
+    // those directories can hold leftovers; cleaning the whole worktree
+    // took seconds.
+    let mut clean: Vec<String> = vec!["clean".into(), "-fdxq".into(), "--".into()];
+    for krate in config
+        .crates
+        .iter()
+        .map(String::as_str)
+        .chain(kiln::remote::SELF_CRATES.iter().copied())
+    {
+        clean.push(format!("crates/{krate}"));
+    }
+    let clean: Vec<&str> = clean.iter().map(String::as_str).collect();
+    git(&work, &clean)?;
     if let Some(patch) = &job.patch {
         // Apply the signed patch itself, so the check is of what reviewers read.
         let file = config.state.join("apply.patch");
@@ -665,7 +678,7 @@ async fn main() {
                         }
                         continue;
                     }
-                    println!("job {} from {}: {} with {} files at {}", &request.id[..8], &request.pubkey[..8], job.action.clone().unwrap_or_else(|| format!("cargo {}", job.args.join(" "))), job.files.len(), &job.base[..10]);
+                    println!("job {} from {}: {} with {} files at {}", &request.id[..8], &request.pubkey[..8], job.action.clone().unwrap_or_else(|| format!("cargo {}", job.args.join(" "))), job.files.len() + job.diff.as_ref().map_or(0, |d| kiln::remote::patch_paths(d).len()), &job.base[..10]);
                     let (key, config, out, busy) = (key.clone(), config.clone(), out_tx.clone(), busy.clone());
                     let publisher = publisher.clone();
                     let relay_url = config.relay.clone();

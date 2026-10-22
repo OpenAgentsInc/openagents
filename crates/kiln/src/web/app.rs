@@ -181,6 +181,12 @@ pub async fn run() {
         }
     }
     app.expose();
+    // A reload (Kiln's own hot reload among them) mustn't repeat a load or
+    // a task the address asked for once.
+    if let Ok(history) = window.history() {
+        let path = window.location().pathname().unwrap_or_default();
+        let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&path));
+    }
     set(&window, "kilnReady", true);
 }
 
@@ -1757,10 +1763,7 @@ impl App {
             job.files.clear();
         }
         job.check(&[])?;
-        self.log(
-            "cmd",
-            &format!("$ kiln {action} ({} changed files)", job.files.len()),
-        );
+        self.log("cmd", &format!("$ kiln {action}"));
         if let Some(storage) = web_sys::window().and_then(|w| w.session_storage().ok().flatten()) {
             let _ = storage.set_item("kiln-edit-started", &js_sys::Date::now().to_string());
         }

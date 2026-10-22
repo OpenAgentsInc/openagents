@@ -60,6 +60,7 @@ web-sys = { version = "0.3.105", features = [
     "Storage",
     "VisibilityState",
     "HtmlCollection",
+    "History",
     "StorageManager",
     "Url",
     "UrlSearchParams",

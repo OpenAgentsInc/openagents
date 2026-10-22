@@ -146,12 +146,31 @@ fn browser_smoke(dir: &Path) -> Result<(), String> {
     .map_err(|e| format!("smoke server: {e}"))?;
     let me = std::env::current_exe().map_err(|e| e.to_string())?;
     let url = format!("http://127.0.0.1:{port}/?selftest=1");
-    let out = std::process::Command::new("openagents")
+    let mut child = std::process::Command::new("openagents")
         .args(["browser", "run", "--timeout", "30", "--"])
         .arg(me)
         .args(["smoke", &url])
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|e| format!("openagents browser run: {e}"))?;
+    // At most a minute; `openagents browser run` ends its browser when the
+    // smoke command ends or is stopped.
+    let deadline = Instant::now() + std::time::Duration::from_secs(60);
+    let finished = loop {
+        if child.try_wait().map_err(|e| e.to_string())?.is_some() {
+            break true;
+        }
+        if Instant::now() > deadline {
+            let _ = child.kill();
+            break false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    if !finished {
+        return Err("the page's self-test didn't finish in a minute".into());
+    }
     if out.status.success() {
         Ok(())
     } else {
@@ -217,12 +236,12 @@ pub(crate) fn publish(
     }
     env.push(("CARGO_NET_OFFLINE".into(), "true".into()));
     env.push(("OA_STAGING_BUILD".into(), "1".into()));
-    env.push((
-        "PATH".into(),
-        work.join("scripts/deploy/staging-shims")
-            .display()
-            .to_string(),
-    ));
+    let shims = work
+        .join("scripts/deploy/staging-shims")
+        .display()
+        .to_string();
+    env.push(("OA_STAGING_SHIMS".into(), shims.clone()));
+    env.push(("PATH".into(), shims));
     for (name, tool) in [
         ("CC_wasm32_unknown_unknown", "clang"),
         ("AR_wasm32_unknown_unknown", "llvm-ar"),
@@ -422,6 +441,12 @@ pub(crate) fn restore(config: &Config, publish: &Publish, action: &str) -> Outco
 /// `kiln-runner smoke URL`, under `openagents browser run`: open URL in
 /// the browser it started and wait up to 25 s for `window.kilnSelftest`.
 pub(crate) async fn smoke(url: &str) -> Result<(), String> {
+    tokio::time::timeout(std::time::Duration::from_secs(40), smoke_inner(url))
+        .await
+        .map_err(|_| "the smoke test timed out".to_string())?
+}
+
+async fn smoke_inner(url: &str) -> Result<(), String> {
     use futures_util::{SinkExt, StreamExt};
     use std::io::{Read, Write};
     let port = std::env::var("OPENAGENTS_CHROME_PORT").map_err(|_| "no OPENAGENTS_CHROME_PORT")?;
@@ -444,16 +469,38 @@ pub(crate) async fn smoke(url: &str) -> Result<(), String> {
         "PUT /json/new?{encoded} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
     )
     .map_err(|e| e.to_string())?;
-    let mut answer = String::new();
+    // Chrome keeps the connection open, so read until the body parses.
     stream
-        .read_to_string(&mut answer)
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
         .map_err(|e| e.to_string())?;
-    let body = answer.split("\r\n\r\n").nth(1).unwrap_or_default();
-    let target: Value = serde_json::from_str(body).map_err(|e| format!("devtools: {e}"))?;
+    let mut answer = Vec::new();
+    let mut chunk = [0u8; 4096];
+    let target: Value = loop {
+        let n = stream
+            .read(&mut chunk)
+            .map_err(|e| format!("devtools: {e}"))?;
+        if n == 0 {
+            return Err("devtools closed the connection".into());
+        }
+        answer.extend_from_slice(&chunk[..n]);
+        let text = String::from_utf8_lossy(&answer);
+        if let Some(body) = text.split("\r\n\r\n").nth(1)
+            && let Ok(value) = serde_json::from_str::<Value>(body)
+        {
+            break value;
+        }
+    };
     let ws_url = target["webSocketDebuggerUrl"]
         .as_str()
         .ok_or("no debugger url")?;
-    let (mut ws, _) = tokio_tungstenite::connect_async(ws_url)
+    // Chrome may name `localhost`, which can resolve to an address it
+    // doesn't listen on; use the port it gave.
+    let path = ws_url
+        .split("/devtools/")
+        .nth(1)
+        .ok_or("odd debugger url")?;
+    let ws_url = format!("ws://127.0.0.1:{port}/devtools/{path}");
+    let (mut ws, _) = tokio_tungstenite::connect_async(ws_url.as_str())
         .await
         .map_err(|e| e.to_string())?;
     let deadline = Instant::now() + std::time::Duration::from_secs(25);
