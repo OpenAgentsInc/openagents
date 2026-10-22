@@ -117,6 +117,171 @@ pub struct Options {
     pub site: String,
     /// Stop after this long; `None` runs until stopped.
     pub run_for: Option<Duration>,
+    /// Whether it picks issues for agents on its own, beyond an admin's
+    /// requests (#12448). Off unless `--auto-start`.
+    pub auto_start: bool,
+}
+
+/// How often the host looks at its commands.
+const COMMANDS_EVERY: Duration = Duration::from_secs(60);
+/// An agent it started is asked for a draft pull request after this long.
+const DRAFT_AFTER: u64 = 3 * 60 * 60;
+
+/// The `Authorization` header for a command `body` sent to `url` at `now`:
+/// a NIP-98 event (kind 27235) over the URL, `POST`, and the body's
+/// SHA-256, signed by the Foreman's key.
+#[must_use]
+pub fn sign_command(
+    signer: &nostr::domain::RelaySigner,
+    url: &str,
+    body: &[u8],
+    now: u64,
+) -> String {
+    use base64::Engine as _;
+    use sha2::Digest as _;
+    let payload: String = sha2::Sha256::digest(body)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let event = signer.sign(
+        now,
+        27_235,
+        vec![
+            nostr::domain::Tag::new(vec!["u".into(), url.into()]),
+            nostr::domain::Tag::new(vec!["method".into(), "POST".into()]),
+            nostr::domain::Tag::new(vec!["payload".into(), payload]),
+        ],
+        String::new(),
+    );
+    format!(
+        "Nostr {}",
+        base64::engine::general_purpose::STANDARD
+            .encode(serde_json::to_vec(&event).unwrap_or_default())
+    )
+}
+
+/// A command body.
+#[must_use]
+pub fn command_body(action: &str, issue: u64, assignment: Option<&str>) -> String {
+    let mut body = serde_json::json!({
+        "schema": crate::COMMAND_SCHEMA,
+        "action": action,
+        "issue": issue,
+    });
+    if let Some(assignment) = assignment {
+        body["assignment"] = serde_json::json!(assignment);
+    }
+    body.to_string()
+}
+
+/// The one command worth sending now, from the site's view of its commands
+/// (`GET /v1/foreman/commands`) and, with `auto`, the open issues in
+/// `status`: an admin's oldest request first, then a draft ask for an agent
+/// that has worked [`DRAFT_AFTER`] without one, then, with `auto`, the
+/// least recently updated unassigned issue it hasn't started on.
+#[must_use]
+pub fn next_command(
+    commands: &serde_json::Value,
+    status: Option<&serde_json::Value>,
+    auto: bool,
+    now: u64,
+) -> Option<(String, u64, Option<String>)> {
+    if commands["enabled"] != true || commands["paused"] == true {
+        return None;
+    }
+    let running = commands["running"].as_array().cloned().unwrap_or_default();
+    let started = commands["today"]["started"].as_u64().unwrap_or(u64::MAX);
+    let room = running.len() < crate::RUNNING_AT_ONCE && started < crate::STARTS_PER_DAY as u64;
+    if room
+        && let Some(issue) = commands["requests"]
+            .as_array()
+            .and_then(|r| r.first())
+            .and_then(|r| r["issue"].as_u64())
+    {
+        return Some((crate::START.into(), issue, None));
+    }
+    let asked = commands["today"]["draft_prs"].as_u64().unwrap_or(u64::MAX);
+    if asked < crate::DRAFT_PRS_PER_DAY as u64
+        && let Some(agent) = running.iter().find(|r| {
+            r["asked_draft"] != true
+                && r["started_at"]
+                    .as_u64()
+                    .is_some_and(|at| now.saturating_sub(at) >= DRAFT_AFTER)
+        })
+    {
+        return Some((
+            crate::DRAFT_PR.into(),
+            agent["issue"].as_u64()?,
+            agent["assignment"].as_str().map(str::to_owned),
+        ));
+    }
+    if !(auto && room) {
+        return None;
+    }
+    let tried: Vec<u64> = commands["log"]
+        .as_array()
+        .map(|log| log.iter().filter_map(|e| e["issue"].as_u64()).collect())
+        .unwrap_or_default();
+    status?["issues"]
+        .as_array()?
+        .iter()
+        .rev()
+        .filter(|i| i["assigned"] == false)
+        .filter_map(|i| i["number"].as_u64())
+        .find(|n| !tried.contains(n))
+        .map(|n| (crate::START.into(), n, None))
+}
+
+/// Looks at its commands every minute and sends at most one, in the
+/// background.
+fn command_loop(site: String, signer: nostr::domain::RelaySigner, auto: bool) {
+    std::thread::spawn(move || {
+        let Ok(client) = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .user_agent("openagents-grid-foreman")
+            .build()
+        else {
+            return;
+        };
+        let site = site.trim_end_matches('/').to_owned();
+        let url = format!("{site}{}", crate::COMMANDS_PATH);
+        loop {
+            std::thread::sleep(COMMANDS_EVERY);
+            let read = |path: &str| {
+                client
+                    .get(format!("{site}{path}"))
+                    .send()
+                    .ok()
+                    .filter(|r| r.status().is_success())
+                    .and_then(|r| r.json::<serde_json::Value>().ok())
+            };
+            let Some(commands) = read(crate::COMMANDS_PATH) else {
+                continue;
+            };
+            let status = if auto { read(crate::STATUS_PATH) } else { None };
+            let now = identity_now();
+            let Some((action, issue, assignment)) =
+                next_command(&commands, status.as_ref(), auto, now)
+            else {
+                continue;
+            };
+            let body = command_body(&action, issue, assignment.as_deref());
+            let authorization = sign_command(&signer, &url, body.as_bytes(), now);
+            let answer = client
+                .post(&url)
+                .header("authorization", authorization)
+                .header("content-type", "application/json")
+                .body(body)
+                .send();
+            match answer {
+                Ok(r) => eprintln!(
+                    "grid-foreman: {action} on #{issue}: {}",
+                    r.status().as_u16()
+                ),
+                Err(_) => eprintln!("grid-foreman: {action} on #{issue}: the site didn't answer"),
+            }
+        }
+    });
 }
 
 /// systemd's notify socket, when the service runs under one.
@@ -246,6 +411,7 @@ pub fn serve(options: &Options) -> Result<(), String> {
     let profile_event = id
         .signer
         .sign(identity_now(), 0, Vec::new(), profile().to_string());
+    command_loop(options.site.clone(), id.signer.clone(), options.auto_start);
     let mut session = Session::start_presence(id, &options.relay, verse::session::BARE_WORLD)?;
     session.set_publish_intervals(intervals())?;
     session.set_display_name(Some(crate::TAG));
@@ -361,6 +527,77 @@ mod tests {
     }
 
     #[test]
+    fn commands_are_signed_for_the_exact_url_and_body() {
+        use base64::Engine as _;
+        let id = Identity::from_secret("foreman", identity::random_secret()).unwrap();
+        let body = command_body(crate::START, 42, None);
+        let header = sign_command(
+            &id.signer,
+            "https://openagents.com/v1/foreman/commands",
+            body.as_bytes(),
+            1_000,
+        );
+        let event: nostr::domain::Event = serde_json::from_slice(
+            &base64::engine::general_purpose::STANDARD
+                .decode(header.strip_prefix("Nostr ").unwrap())
+                .unwrap(),
+        )
+        .unwrap();
+        event.validate_id().unwrap();
+        event.validate_crypto().unwrap();
+        assert_eq!(event.kind, 27_235);
+        assert_eq!(event.pubkey, id.signer.pubkey());
+        assert_eq!(
+            event.tag_values("u").collect::<Vec<_>>(),
+            ["https://openagents.com/v1/foreman/commands"]
+        );
+        assert_eq!(event.tag_values("method").collect::<Vec<_>>(), ["POST"]);
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(parsed["action"], "agent.start");
+        assert_eq!(parsed["issue"], 42);
+        assert!(parsed.get("assignment").is_none());
+    }
+
+    #[test]
+    fn it_picks_requests_then_drafts_then_its_own_issue() {
+        let now = 1_000_000;
+        let mut commands = serde_json::json!({
+            "enabled": true, "paused": false,
+            "today": {"started": 0, "draft_prs": 0},
+            "running": [{"issue": 7, "assignment": "a", "started_at": now - 4 * 3600, "asked_draft": false}],
+            "requests": [{"issue": 9, "at": now}],
+            "log": [{"issue": 7}],
+        });
+        let status = serde_json::json!({"issues": [
+            {"number": 1, "assigned": false}, {"number": 2, "assigned": true}, {"number": 7, "assigned": false}
+        ]});
+        assert_eq!(
+            next_command(&commands, Some(&status), false, now),
+            Some((crate::START.into(), 9, None))
+        );
+        commands["requests"] = serde_json::json!([]);
+        assert_eq!(
+            next_command(&commands, Some(&status), false, now),
+            Some((crate::DRAFT_PR.into(), 7, Some("a".into())))
+        );
+        commands["running"][0]["asked_draft"] = serde_json::json!(true);
+        assert_eq!(next_command(&commands, Some(&status), false, now), None);
+        // On its own it takes the oldest unassigned issue it hasn't tried.
+        assert_eq!(
+            next_command(&commands, Some(&status), true, now),
+            Some((crate::START.into(), 1, None))
+        );
+        // Paused, off, or at the caps, nothing.
+        commands["paused"] = serde_json::json!(true);
+        assert_eq!(next_command(&commands, Some(&status), true, now), None);
+        commands["paused"] = serde_json::json!(false);
+        commands["today"]["started"] = serde_json::json!(crate::STARTS_PER_DAY);
+        assert_eq!(next_command(&commands, Some(&status), true, now), None);
+        commands["enabled"] = serde_json::json!(false);
+        assert_eq!(next_command(&commands, Some(&status), true, now), None);
+    }
+
+    #[test]
     fn the_profile_is_a_plain_bot_speaking_as_i() {
         let profile = profile();
         assert_eq!(profile["bot"], true);
@@ -428,6 +665,7 @@ mod tests {
             relay: relay.url.clone(),
             site: "http://127.0.0.1:9".into(),
             run_for: Some(Duration::from_secs(4)),
+            auto_start: false,
         };
         let host = std::thread::spawn(move || serve(&options));
         let mut seen = None;

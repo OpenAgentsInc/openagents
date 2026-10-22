@@ -106,3 +106,32 @@ No environment change is needed: `NOSTR_RELAY_WORLD_POPULATION_EXEMPT`
 defaults to the Foreman's key. Afterwards,
 `nak req -k 33301 -a 2d9fad1a83555dc66198d94d58a24ea1541ba8857d2407c456635a3421456f36 -l 1 wss://relay.openagents.com`
 still shows its state.
+
+## Commands to agents (#12448)
+
+The Foreman may start coding agents that open draft pull requests, under the
+rules in [the plan](../foreman/grid-foreman-plan.md#commanding-agents-p4).
+Commands are off until the website's configuration turns them on:
+
+| Variable on `openagents-web` | Value |
+| --- | --- |
+| `OPENAGENTS_FOREMAN_COMMANDS` | `on` to accept commands; anything else refuses every one with `foreman_off` |
+| `OPENAGENTS_FOREMAN_OWNER` | The account whose computer runs the agents |
+| `OPENAGENTS_FOREMAN_WORKER_AGENT` | That account's saved agent that does the work; it must not have standing authority |
+| `OPENAGENTS_FOREMAN_WORKER_HOST` | The computer the agents run on |
+| `OPENAGENTS_FOREMAN_WORKER_PROJECT` | Optional: the app project they run in |
+| `OPENAGENTS_FOREMAN_ORIGINS` | Optional: origins a command may be signed for (default `https://openagents.com`) |
+
+- `GET /v1/foreman/commands` shows whether commands are on, today's counts,
+  the agents the Foreman started, open requests, and the audit log.
+- An admin pauses everything with `POST /v1/foreman/commands/pause`
+  `{"paused": true}`, and asks for an agent on an issue with
+  `POST /v1/foreman/commands/requests` `{"issue": N}`.
+- The host sends at most one command a minute: an admin's request first,
+  then a draft pull request ask for an agent that has worked three hours
+  without one. With `--auto-start` on its unit's command line, it also
+  picks the least recently updated unassigned issue on its own. The unit
+  ships without it.
+- The site refuses past 5 starts and 10 draft asks a UTC day, 3 running
+  agents, or one command a minute. Merging, deploying, and spending stay
+  with an admin.

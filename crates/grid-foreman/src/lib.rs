@@ -109,6 +109,50 @@ pub fn is_work(status: &str) -> bool {
     status == ANSWERING || status.starts_with("ANSWERED IN ")
 }
 
+/// The site's route for the Foreman's commands (#12448).
+pub const COMMANDS_PATH: &str = "/v1/foreman/commands";
+/// A command's schema.
+pub const COMMAND_SCHEMA: &str = "openagents.grid-foreman.command.v1";
+/// Start a coding agent on one open issue, in an app chat of its own.
+pub const START: &str = "agent.start";
+/// Ask an agent the Foreman started for a draft pull request now.
+pub const DRAFT_PR: &str = "agent.draft_pr";
+/// Every action a command may name. Nothing else has a word: no merge,
+/// close, deploy, pay, steer, stop, or free text.
+pub const ACTIONS: [&str; 2] = [START, DRAFT_PR];
+/// Starts in a UTC day.
+pub const STARTS_PER_DAY: usize = 5;
+/// Draft pull request asks in a UTC day.
+pub const DRAFT_PRS_PER_DAY: usize = 10;
+/// Foreman-started agents running at once.
+pub const RUNNING_AT_ONCE: usize = 3;
+/// Seconds between accepted commands.
+pub const COMMAND_GAP_SECONDS: u64 = 60;
+/// How fresh a command's signature must be, s.
+pub const COMMAND_FRESH_SECONDS: u64 = 60;
+/// Labels that keep an issue from the Foreman's agents.
+pub const DENY_LABELS: [&str; 3] = ["owner-only", "release", "security"];
+
+/// The one message an `agent.draft_pr` sends.
+pub const DRAFT_PR_TEXT: &str =
+    "Open a draft pull request of what you have now, and reply with its link. Don't merge it.";
+
+/// The brief an `agent.start` gives the agent for `issue` in `repository`:
+/// a fixed template whose only field is the issue number. Issue text never
+/// enters it; the agent reads the issue itself.
+#[must_use]
+pub fn brief(repository: &str, issue: u64) -> String {
+    format!(
+        "Work issue #{issue} in {repository}.\n\n\
+1. Claim it first: `openagents issue claim {issue}`. If someone else holds it, release nothing and stop.\n\
+2. Work in a git worktree of your own, never the main checkout.\n\
+3. Open a draft pull request for the change (`gh pr create --draft`), and reply with its link.\n\
+4. Never push to main, never merge, deploy, or spend money, and never test on the owner's account.\n\
+5. If you stop before a pull request, release the claim: `openagents issue release {issue}`.\n\n\
+The Grid Foreman started this chat; an admin reviews and merges the pull request."
+    )
+}
+
 /// The site's route for the Foreman's status.
 pub const STATUS_PATH: &str = "/v1/foreman/status";
 /// The status document's schema.

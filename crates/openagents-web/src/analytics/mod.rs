@@ -71,7 +71,7 @@ pub const SCRIPT: &str = "/static/a.js";
 pub const DASHBOARD: &str = "/admin/analytics";
 
 /// Every product event name a row may carry.
-pub const EVENTS: [&str; 27] = [
+pub const EVENTS: [&str; 28] = [
     "lab_entered",
     "lab_version_saved",
     "lab_edit_refused",
@@ -111,6 +111,9 @@ pub const EVENTS: [&str; 27] = [
     // or `hosted`; and why it couldn't: `long`, `budget`, or `timeout`.
     "foreman_answered",
     "foreman_answer_failed",
+    // A command the Grid Foreman sent (#12448): `start`, `draft_pr`, or
+    // `refused`.
+    "foreman_command",
 ];
 
 /// The fixed detail of `grid_answer`.

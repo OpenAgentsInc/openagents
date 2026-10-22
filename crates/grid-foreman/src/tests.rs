@@ -179,3 +179,24 @@ fn work_lines_fit_and_are_plain() {
     assert!(!is_work("14 OPEN ISSUES, 3 IN PROGRESS"));
     assert_eq!(answered("flint", 4), "ANSWERED IN 4S ON FLINT");
 }
+
+#[test]
+fn the_brief_is_a_fixed_template_with_a_number() {
+    let brief = brief("OpenAgentsInc/openagents", 12345);
+    assert!(brief.starts_with("Work issue #12345 in OpenAgentsInc/openagents."));
+    assert!(brief.contains("openagents issue claim 12345"));
+    assert!(brief.contains("gh pr create --draft"));
+    assert!(brief.contains("never merge, deploy, or spend"));
+    assert_eq!(brief.matches("12345").count(), 3);
+    for text in [DRAFT_PR_TEXT, &brief] {
+        assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
+    }
+}
+
+#[test]
+fn only_two_actions_exist() {
+    assert_eq!(ACTIONS, ["agent.start", "agent.draft_pr"]);
+    for word in ["merge", "deploy", "pay", "close", "stop", "steer"] {
+        assert!(ACTIONS.iter().all(|a| !a.contains(word)), "{word}");
+    }
+}

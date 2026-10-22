@@ -211,7 +211,7 @@ fn query(repository: &str, unassigned: bool) -> String {
     q
 }
 
-async fn get_json(
+pub(crate) async fn get_json(
     client: &reqwest::Client,
     url: &str,
     query: &[(&str, &str)],

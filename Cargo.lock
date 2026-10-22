@@ -8187,12 +8187,15 @@ dependencies = [
 name = "grid-foreman"
 version = "1.0.0"
 dependencies = [
+ "base64 0.22.1",
  "deploy-board",
  "glam",
+ "nostr",
  "oa-copy",
  "pylons-view",
  "reqwest 0.12.28",
  "serde_json",
+ "sha2 0.10.9",
  "verse",
 ]
 
@@ -8455,27 +8458,6 @@ dependencies = [
  "openagents-workspace-hack",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "haunt-web"
-version = "1.0.0"
-dependencies = [
- "console_error_panic_hook",
- "glam",
- "haunt-assets",
- "haunt-rules",
- "icecream-zone",
- "js-sys",
- "live-web",
- "oa-copy",
- "openagents-workspace-hack",
- "serde",
- "serde_json",
- "toon-mesh",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
 ]
 
 [[package]]
