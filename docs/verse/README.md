@@ -29,6 +29,7 @@ a team of agents on their own repository.
 [Water](water.md) specifies the water system: Three.js Water Pro's capabilities plus rivers, buoyancy, swimming, spells on water, and rain, on every quality tier, with phased issues. [The coast](coast.md) specifies the coastal zone built on its ocean.
 [Games in the mobile app](mobile-games.md) proposes an offline catalog in `apps/openagents`, starting with The Ice Cream Man and reusing the Rust/Wasm players.
 [The Ice Cream Man, live](ice-cream-man-live.md) is a local demo of game updates in seconds: the game as a livehost tenant behind an arch on the web Grid, whose numbers, code, and art change under players without a reload.
+[The Haunted House](games/the-haunted-house.md) specifies the Blue Rush flagship: a vintage-Halloween walk-through zone behind an arch beside ICE CREAM MAN, written as a `haunt.v1` document that an agent can read and extend.
 [Grow Little Bunny](games/grow-little-bunny.md) is the design for the first community game: a Temple Run-style garden run with Pac-Man clearing, a growing bunny, and an outline-only grayscale look, built on Verse Engine's public contracts.
 
 [Community Conservation Cleanup](games/community-conservation-cleanup.md) is a
