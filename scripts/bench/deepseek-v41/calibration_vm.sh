@@ -13,6 +13,8 @@ export LD_LIBRARY_PATH=$ROOT/bin/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 sudo mkdir -p "$ROOT"
 sudo chown "$(id -u):$(id -g)" "$ROOT"
 mkdir -p "$ROOT/bin/lib" "$ROOT/weights/manifests" "$ROOT/oracle" "$ROOT/out"
+exec 9>"$ROOT/collection.lock"
+flock -n 9 || { printf 'A collection already uses %s\n' "$ROOT" >&2; exit 2; }
 upload() {
   gcloud storage rsync -q -r "$ROOT/out" "$RESULTS" || true
 }
@@ -31,9 +33,16 @@ gcloud storage cp -q "$WORKER/lib/*" "$ROOT/bin/lib/"
 gcloud storage cp -q "$WORKER/manifests/$MANIFEST.json" "$ROOT/weights/manifests/"
 chmod 755 "$BIN"
 python3 "$(dirname "$0")/v41-build-check.py" build "$ROOT/bin" "$MANIFEST" --pin "$BUILD"
+gcloud storage cp -q "$ORACLE/manifest.json" "$ROOT/oracle/"
+python3 - "$ROOT/oracle/manifest.json" "$CASES" <<'PY'
+import json, sys
+names = [t['name'] for t in json.load(open(sys.argv[1]))['tensors']]
+missing = [c for c in sys.argv[2].split(',') if not c or not any(n.startswith(c + '.') for n in names)]
+assert not missing, f'Cases absent from the pinned oracle: {missing}'
+PY
 gcloud storage rsync -q -r "$MODELS" "$ROOT/weights" > "$ROOT/out/copy-weights.log" 2>&1 &
 weights_pid=$!
-gcloud storage cp -q "$ORACLE/manifest.json" "$ROOT/oracle/"
+printf '%s\n' "$weights_pid" > "$ROOT/out/copy-weights.pid"
 IFS=, read -r -a cases <<< "$CASES"
 for case in "${cases[@]}"; do
   mkdir -p "$ROOT/oracle/$case"
