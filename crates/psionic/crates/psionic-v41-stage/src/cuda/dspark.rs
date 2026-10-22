@@ -274,7 +274,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                         .finish_token(
                             &backend,
                             preceding,
-                            &proposal.confidence[i * hidden..(i + 1) * hidden],
+                            &proposal.hidden[i * hidden..(i + 1) * hidden],
                             &mut proposal.logits[i],
                         )
                         .map_err(bad)?,
@@ -535,7 +535,7 @@ impl Streaming {
                 .finish_token(
                     backend,
                     *inputs.last().ok_or_else(|| bad("draft input"))?,
-                    &proposal.confidence[i * h..(i + 1) * h],
+                    &proposal.hidden[i * h..(i + 1) * h],
                     &mut proposal.logits[i],
                 )
                 .map_err(bad)?;
