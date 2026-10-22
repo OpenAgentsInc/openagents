@@ -228,8 +228,13 @@ impl RateLimiter {
         entry
             .present
             .retain(|_, seen| now.saturating_duration_since(*seen) < WORLD_PRESENCE);
+        let exempt = self
+            .limits
+            .world_population_exempt
+            .iter()
+            .any(|key| key == pubkey);
         let cap = self.limits.world_population_cap as usize;
-        if cap > 0 && !entry.present.contains_key(pubkey) && entry.present.len() >= cap {
+        if cap > 0 && !exempt && !entry.present.contains_key(pubkey) && entry.present.len() >= cap {
             return Err(WorldRefusal::Full);
         }
         let budget = self.limits.world_pose_events_per_second;
@@ -243,7 +248,9 @@ impl RateLimiter {
             return Err(WorldRefusal::Budget);
         }
         entry.frames.count += 1;
-        entry.present.insert(pubkey.to_owned(), now);
+        if !exempt {
+            entry.present.insert(pubkey.to_owned(), now);
+        }
         Ok(())
     }
 
@@ -482,6 +489,27 @@ mod tests {
         assert!(gift_wrap.event_from_pubkey("outer-wrapper"));
         assert!(gift_wrap.gift_wrap_for_recipient("recipient"));
         assert!(!gift_wrap.gift_wrap_for_recipient("recipient"));
+    }
+
+    #[test]
+    fn an_exempt_key_joins_a_full_world_and_takes_no_place() {
+        let foreman = "f".repeat(64);
+        let limits = GatewayLimits {
+            world_population_cap: 1,
+            world_population_exempt: vec![foreman.clone()],
+            world_pose_events_per_second: 0,
+            ..GatewayLimits::default()
+        };
+        let limiter = RateLimiter::new(limits);
+        let start = Instant::now();
+        assert_eq!(limiter.pose_in_world_at("w", &foreman, start), Ok(()));
+        let visitor = "a".repeat(64);
+        assert_eq!(limiter.pose_in_world_at("w", &visitor, start), Ok(()));
+        assert_eq!(limiter.pose_in_world_at("w", &foreman, start), Ok(()));
+        assert_eq!(
+            limiter.pose_in_world_at("w", &"b".repeat(64), start),
+            Err(WorldRefusal::Full)
+        );
     }
 
     #[test]

@@ -81,6 +81,9 @@ pub struct Presence {
     joined: bool,
     /// `/home`, whose header holds the top left: no connection line there.
     home: bool,
+    /// The Grid Foreman's key, drawn by `crate::foreman` rather than as a
+    /// player, with no player tag (#12445).
+    foreman: Option<String>,
 }
 
 impl Presence {
@@ -158,6 +161,7 @@ impl Presence {
             },
             joined: false,
             home: watch,
+            foreman: None,
         };
         if watch {
             web_sys::console::info_1(&JsValue::from_str(&format!(
@@ -269,6 +273,20 @@ impl Presence {
     /// Exchanges this frame with the relay and returns the players to draw.
     /// Until the relay answers with this player's last pose (or the wait
     /// ends) the session only listens.
+    /// Names the Grid Foreman's key, which this presence then leaves for
+    /// `crate::foreman` to draw.
+    pub fn set_foreman(&mut self, pubkey: Option<&str>) {
+        if self.foreman.as_deref() != pubkey {
+            self.foreman = pubkey.map(str::to_owned);
+        }
+    }
+
+    /// The status line `pubkey`'s avatar state last gave.
+    #[must_use]
+    pub fn status_of(&self, pubkey: &str) -> Option<String> {
+        self.session.status_of(pubkey).map(str::to_owned)
+    }
+
     pub fn tick(&mut self, runtime: &mut WorldRuntime, dt: f32) -> Vec<Figure> {
         let now = Instant::now();
         if !self.joined {
@@ -450,7 +468,11 @@ impl Presence {
             .crowd
             .shown(Instant::now())
             .into_iter()
-            .filter(|shown| shown.role == "avatar" && shown.pubkey != self.session.pubkey())
+            .filter(|shown| {
+                shown.role == "avatar"
+                    && shown.pubkey != self.session.pubkey()
+                    && self.foreman.as_deref() != Some(shown.pubkey.as_str())
+            })
             .map(|shown| {
                 let head = shown.pos + Vec3::Y * TAG_LIFT;
                 (head.distance(eye), shown.pubkey, head)

@@ -632,6 +632,7 @@ fn lifecycle(paths: &Paths, activation: &Activation, key_profile: &str) -> Resul
             set: None,
             b: None,
             look: None,
+            status: None,
         };
         let event = verse_net::mv::state_event(&identity.signer, &activation.world, &state, now);
         let published = client.publish(event, RELAY_WAIT)?;
@@ -671,6 +672,7 @@ fn lifecycle(paths: &Paths, activation: &Activation, key_profile: &str) -> Resul
         set: None,
         b: None,
         look: None,
+        status: None,
     };
     let _ = client.publish(
         verse_net::mv::state_event(&identity.signer, &activation.world, &offline, now),

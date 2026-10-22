@@ -195,18 +195,16 @@ The `about` text speaks as "I", per the Voice rule, and passes `oa-copy`.
 
 - The host publishes NIP-MV frames in world `verse-bare` with the same
   kinds browsers use: kind 23300 pose frames and kind 33301 entity state.
-- Its entity has role `agent`, `name: "FOREMAN"`, and a `look` of
-  `{ "rig": "grid/robot", "scale": 3.0 }`. `scale` is a new optional field;
-  NIP-MV needs a one-row change, and old clients ignore it.
-- Today `grid_frame::dynamic` draws every `agent` as the spade. The change:
-  an `agent` entity whose `look.rig` is `grid/robot` draws as the robot,
-  scaled by `look.scale`, clamped to at most 3.0 for any key.
-- **Only the pinned key is Foreman.** Anyone can publish an `agent` with a
-  robot look. The page draws the `FOREMAN` tag, the status line, the 3.0
-  scale, and the terminal link only for the public key it was served
-  (`/verse/places`, which already gives fixed labels, or the page's
-  configuration). Another key with the same look draws as an ordinary
-  robot at most 1.5 scale under its own name tag.
+- As built (#12445): its entity has role `avatar` and `name: "FOREMAN"`,
+  and its state carries a new optional `status` field, one line of at most
+  64 bytes (the NIP-MV one-row change; old clients ignore it). It sets no
+  `look`: the page knows the Foreman by its key, not by how it asks to be
+  drawn.
+- **Only the pinned key is Foreman.** The page draws the giant robot, the
+  `FOREMAN` tag, the status line, and the terminal link only for the public
+  key `GET /v1/foreman/status` names (`grid_foreman::PUBKEY`, or
+  `OPENAGENTS_FOREMAN_PUBKEY` on a staging site). Any other key draws as an
+  ordinary player under its own name tag, whatever it calls itself.
 - The relay's world population cap (`WORLD_FULL`,
   `crates/nostr-relay/src/gateway/server.rs:2226`) counts Foreman as one
   player. Add its key to an exempt list so it's never shut out of a full
@@ -687,7 +685,8 @@ more.
   detour; a 24-hour soak shows no restart that the watchdog didn't log.
 - **Size:** L.
 - **Depends on:** P0; a NIP-MV one-row change; the relay's population cap
-  exemption; the Grid pack change through the artifact queue.
+  exemption. The reaction clips moved to their own issue, #12461, since
+  they go through the Grid pack's artifact queue.
 
 ### P2: talking through Pylons
 
@@ -879,3 +878,4 @@ Filed issues:
 | P3 | #12447 | #12446 |
 | kiln-runner allowlist | #12449 | none |
 | P4 | #12448 | #12447, #12449 |
+| Reaction clips | #12461 | #12445 |

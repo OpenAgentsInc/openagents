@@ -126,3 +126,13 @@ fn the_words_are_plain() {
         assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
     }
 }
+
+#[test]
+fn the_pinned_key_is_a_public_key() {
+    assert_eq!(PUBKEY.len(), 64);
+    assert!(
+        PUBKEY
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    );
+}

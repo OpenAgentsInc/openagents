@@ -12,6 +12,11 @@ use super::{
     },
 };
 
+/// The Grid Foreman's public key (`grid_foreman::PUBKEY`), which the world
+/// population cap exempts unless `NOSTR_RELAY_WORLD_POPULATION_EXEMPT` says
+/// otherwise.
+pub const GRID_FOREMAN: &str = "2d9fad1a83555dc66198d94d58a24ea1541ba8857d2407c456635a3421456f36";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewayLimits {
     pub max_frame_bytes: usize,
@@ -32,6 +37,10 @@ pub struct GatewayLimits {
     /// Keys that may publish pose-lane events in one NIP-MV world at once;
     /// a further key is refused until one goes quiet. Zero is no cap.
     pub world_population_cap: u32,
+    /// Keys the population cap never refuses and never counts, such as the
+    /// Grid Foreman's (#12445): it's always there and never takes a
+    /// visitor's place. Lowercase hex public keys.
+    pub world_population_exempt: Vec<String>,
     /// Pose-lane events one NIP-MV world may carry each second, from all
     /// its keys together. Zero is no budget.
     pub world_pose_events_per_second: u32,
@@ -58,6 +67,7 @@ impl Default for GatewayLimits {
             pose_events_per_second_pubkey: 12,
             pose_events_per_second_ip: 400,
             world_population_cap: 20,
+            world_population_exempt: Vec::new(),
             world_pose_events_per_second: 300,
             req_per_minute_ip: 120,
             media_per_minute_ip: 30,
@@ -254,6 +264,14 @@ impl GatewayConfig {
             pose_events_per_second_pubkey: parse_or("NOSTR_RELAY_RATE_POSE_PER_SEC_PUBKEY", "12")?,
             pose_events_per_second_ip: parse_or("NOSTR_RELAY_RATE_POSE_PER_SEC_IP", "400")?,
             world_population_cap: parse_or("NOSTR_RELAY_WORLD_POPULATION_CAP", "20")?,
+            // The Grid Foreman's key by default (#12445,
+            // docs/deployment/grid-foreman.md); an empty value exempts none.
+            world_population_exempt: std::env::var("NOSTR_RELAY_WORLD_POPULATION_EXEMPT")
+                .unwrap_or_else(|_| GRID_FOREMAN.to_owned())
+                .split(',')
+                .map(|key| key.trim().to_ascii_lowercase())
+                .filter(|key| key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit()))
+                .collect(),
             world_pose_events_per_second: parse_or("NOSTR_RELAY_WORLD_POSE_PER_SEC", "300")?,
             req_per_minute_ip: parse_or("NOSTR_RELAY_RATE_REQ_PER_MIN_IP", "120")?,
             media_per_minute_ip: parse_or("NOSTR_RELAY_RATE_MEDIA_PER_MIN_IP", "30")?,

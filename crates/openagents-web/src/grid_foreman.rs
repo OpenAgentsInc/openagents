@@ -5,8 +5,8 @@
 //! line comes from here: how many issues are open on the repository and
 //! how many of those someone is working, read from GitHub's issue search
 //! and kept for [`grid_foreman::CACHE_SECONDS`]. The repository is public,
-//! so the counts are public facts; the answer holds counts, a line, and a
-//! time, never a token.
+//! so the counts are public facts; the answer holds counts, a line, a time,
+//! and the Foreman's public key, never a token.
 //!
 //! The read uses `OPENAGENTS_FOREMAN_GITHUB_TOKEN` when the deployment
 //! sets one (a fine-grained token that can only read the repository's
@@ -27,6 +27,9 @@ use serde_json::{Value, json};
 use crate::App;
 use crate::coder_sync::{answer, refused};
 
+/// The environment variable that names another Foreman key, for a staging
+/// host; without it the status names [`grid_foreman::PUBKEY`].
+const PUBKEY_ENV: &str = "OPENAGENTS_FOREMAN_PUBKEY";
 /// The environment variable that holds the read-only GitHub token.
 const TOKEN_ENV: &str = "OPENAGENTS_FOREMAN_GITHUB_TOKEN";
 /// GitHub's API.
@@ -50,10 +53,22 @@ pub(crate) struct Counts {
     pub in_progress: u64,
 }
 
-/// The status document for `counts` read at `updated_at` (Unix seconds).
-pub(crate) fn document(counts: Counts, updated_at: u64) -> Value {
+/// The Foreman's public key the page draws, when one is set.
+fn pubkey() -> Option<String> {
+    let key = std::env::var(PUBKEY_ENV)
+        .ok()
+        .unwrap_or_else(|| grid_foreman::PUBKEY.to_owned())
+        .trim()
+        .to_ascii_lowercase();
+    (key.len() == 64 && key.bytes().all(|b| b.is_ascii_hexdigit())).then_some(key)
+}
+
+/// The status document for `counts` read at `updated_at` (Unix seconds),
+/// naming the Foreman's public key `pubkey` when there is one.
+pub(crate) fn document(counts: Counts, updated_at: u64, pubkey: Option<String>) -> Value {
     json!({
         "schema": grid_foreman::STATUS_SCHEMA,
+        "pubkey": pubkey,
         "open": counts.open,
         "in_progress": counts.in_progress.min(counts.open),
         "line": grid_foreman::status_line(counts.open, counts.in_progress),
@@ -128,7 +143,7 @@ fn cached(fresh_only: bool) -> Option<Value> {
     if fresh_only && cached.at.elapsed() >= Duration::from_secs(grid_foreman::CACHE_SECONDS) {
         return None;
     }
-    Some(document(cached.counts, cached.updated_at))
+    Some(document(cached.counts, cached.updated_at, pubkey()))
 }
 
 fn ok(body: Value) -> Response {
@@ -169,7 +184,7 @@ async fn status() -> Response {
                     updated_at,
                 });
             }
-            ok(document(counts, updated_at))
+            ok(document(counts, updated_at, pubkey()))
         }
         Err(error) => {
             eprintln!("grid foreman: GitHub status read failed: {error}");
@@ -198,13 +213,15 @@ mod tests {
                 in_progress: 3,
             },
             1_800_000_000,
+            Some("ab".repeat(32)),
         );
         assert_eq!(body["schema"], grid_foreman::STATUS_SCHEMA);
         assert_eq!(body["open"], 14);
         assert_eq!(body["in_progress"], 3);
         assert_eq!(body["line"], "14 OPEN ISSUES, 3 IN PROGRESS");
         assert_eq!(body["updated_at"], 1_800_000_000u64);
-        assert_eq!(body.as_object().map(serde_json::Map::len), Some(5));
+        assert_eq!(body["pubkey"], "ab".repeat(32));
+        assert_eq!(body.as_object().map(serde_json::Map::len), Some(6));
     }
 
     #[test]

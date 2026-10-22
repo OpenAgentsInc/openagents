@@ -189,7 +189,15 @@ pub struct State {
     /// a client that does not know the rig ignores it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub look: Option<Look>,
+    /// A short line about what the entity is doing, such as the Grid
+    /// Foreman's `WALKING TO THE PYLON BAY`: at most [`MAX_STATUS`] bytes.
+    /// Additive; a client that doesn't draw it ignores it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
 }
+
+/// The longest status line a state carries, bytes.
+pub const MAX_STATUS: usize = 64;
 
 /// An avatar's look in an entity state.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -666,6 +674,13 @@ pub fn decode(event: &Event, world: &str) -> Result<Received, String> {
             }
             state.pose().check()?;
             state.check_bodies()?;
+            if state
+                .status
+                .as_ref()
+                .is_some_and(|s| s.len() > MAX_STATUS || s.chars().any(char::is_control))
+            {
+                return Err("a status is at most 64 bytes of text on one line".into());
+            }
             Ok(Received::State { pubkey, state })
         }
         GESTURE_KIND => {
@@ -839,6 +854,7 @@ mod tests {
             set: None,
             b: None,
             look: None,
+            status: None,
         };
         let event = state_event(&signer(), WORLD, &state, 1_790_000_000);
         assert_eq!(event.kind, STATE_KIND);
@@ -867,6 +883,7 @@ mod tests {
             set: None,
             b: None,
             look: None,
+            status: None,
         };
         let player = signer();
         let owner = secp256k1::SecretKey::from_byte_array([0x22; 32]).unwrap();
@@ -914,6 +931,7 @@ mod tests {
                 },
             ]),
             look: None,
+            status: None,
         }
     }
 
@@ -935,6 +953,7 @@ mod tests {
                 rig: "bunny-v1".into(),
                 shade: 7,
             }),
+            status: None,
         };
         let event = state_event(&signer(), WORLD, &state, 1);
         assert!(
@@ -951,8 +970,30 @@ mod tests {
         )
         .unwrap();
         assert_eq!(old.look, None);
+        assert_eq!(old.status, None);
+        let busy = State {
+            look: None,
+            status: Some("WALKING TO THE PYLON BAY".into()),
+            ..state.clone()
+        };
+        let event = state_event(&signer(), WORLD, &busy, 1);
+        assert!(matches!(
+            decode(&event, WORLD),
+            Ok(Received::State { state: got, .. }) if got == busy
+        ));
+        let long = State {
+            status: Some("A".repeat(MAX_STATUS + 1)),
+            ..busy.clone()
+        };
+        assert!(decode(&state_event(&signer(), WORLD, &long, 1), WORLD).is_err());
+        let two_lines = State {
+            status: Some("ONE\nTWO".into()),
+            ..busy
+        };
+        assert!(decode(&state_event(&signer(), WORLD, &two_lines, 1), WORLD).is_err());
         let plain = State {
             look: None,
+            status: None,
             ..state
         };
         assert!(!serde_json::to_string(&plain).unwrap().contains("look"));

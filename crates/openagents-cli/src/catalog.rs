@@ -1135,6 +1135,7 @@ mod tests {
             set: None,
             b: None,
             look: None,
+            status: None,
         };
         verse_net::mv::state_event(signer, "test-world", &state, time)
     }

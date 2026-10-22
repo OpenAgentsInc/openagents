@@ -126,7 +126,7 @@ impl PublishIntervals {
             state: Duration::from_secs(30),
         }
     }
-    fn validate(self) -> Result<(), String> {
+    pub fn validate(self) -> Result<(), String> {
         if self.moving < Duration::from_millis(100)
             || self.moving > Duration::from_secs(60)
             || self.idle < self.moving
@@ -288,6 +288,10 @@ pub struct Session {
     display_name: Option<String>,
     /// Display names by pubkey.
     names: HashMap<String, String>,
+    /// This player's status line, carried in its avatar's state.
+    status_line: Option<String>,
+    /// Status lines other players' states gave, by pubkey.
+    statuses: HashMap<String, String>,
     /// The person each player's key belongs to, from a valid owner tag on
     /// its state (#12313).
     owners: HashMap<String, String>,
@@ -483,6 +487,8 @@ impl Session {
             log: chat::Log::default(),
             bubbles: Vec::new(),
             names: HashMap::new(),
+            status_line: None,
+            statuses: HashMap::new(),
             owners: HashMap::new(),
             owner_tag: None,
             asked_names: HashSet::new(),
@@ -566,6 +572,13 @@ impl Session {
     #[must_use]
     pub fn pubkey(&self) -> &str {
         self.id.signer.pubkey()
+    }
+
+    /// Publishes `event`, signed by this player's key, on the session's
+    /// relay: for a host that keeps a presence and also publishes, say, its
+    /// NIP-01 profile.
+    pub fn publish(&self, event: nostr::domain::Event) {
+        self.publish_now(event);
     }
 
     /// A copy of this player's signer, for another relay reader to answer
@@ -1069,6 +1082,9 @@ impl Session {
                 set: None,
                 b: None,
                 look: None,
+                status: (pose.role == "avatar")
+                    .then(|| self.status_line.clone())
+                    .flatten(),
             };
             let event = mv::state_event_owned(
                 &self.id.signer,
@@ -1206,6 +1222,19 @@ impl Session {
                         && let Some(name) = &state.name
                     {
                         self.remember_name(pubkey, clean_name(name));
+                    }
+                    if let Received::State { pubkey, state } = &received
+                        && state.role == "avatar"
+                        && (self.statuses.len() < MAX_PEOPLE || self.statuses.contains_key(pubkey))
+                    {
+                        match &state.status {
+                            Some(status) => {
+                                self.statuses.insert(pubkey.clone(), status.clone());
+                            }
+                            None => {
+                                self.statuses.remove(pubkey);
+                            }
+                        }
                     }
                     if let Received::Command {
                         pubkey,
@@ -1430,6 +1459,41 @@ impl Session {
             .get(pubkey)
             .cloned()
             .unwrap_or_else(|| format!("{}…", &pubkey[..pubkey.len().min(8)]))
+    }
+
+    /// Sets this player's status line, carried in its avatar's state from
+    /// the next state on, which goes out at once: at most
+    /// [`mv::MAX_STATUS`] bytes on one line, or `None` to clear it.
+    pub fn set_status(&mut self, status: Option<&str>) {
+        let status = status
+            .map(|s| {
+                s.chars()
+                    .filter(|c| !c.is_control())
+                    .collect::<String>()
+                    .trim()
+                    .to_owned()
+            })
+            .filter(|s| !s.is_empty())
+            .map(|mut s| {
+                while s.len() > mv::MAX_STATUS {
+                    s.pop();
+                }
+                s
+            });
+        if status == self.status_line {
+            return;
+        }
+        self.status_line = status;
+        self.last_state = None;
+    }
+
+    /// The status line `pubkey`'s avatar state last gave, if any.
+    #[must_use]
+    pub fn status_of(&self, pubkey: &str) -> Option<&str> {
+        if pubkey == self.pubkey() {
+            return self.status_line.as_deref();
+        }
+        self.statuses.get(pubkey).map(String::as_str)
     }
 
     /// The name this player shows, if any.
@@ -2472,6 +2536,7 @@ mod tests {
             set: None,
             b: None,
             look: None,
+            status: None,
         };
         let foreign = nostr::domain::RelaySigner::from_secret_hex(&"02".repeat(32)).unwrap();
         session.handle(

@@ -1705,6 +1705,10 @@ impl Page {
                 let players = presence.players(&self.runtime).to_string();
                 PLAYERS.with(|p| *p.borrow_mut() = players);
             }
+            let mut peers = peers;
+            if HOME.with(std::cell::Cell::get) && self.runtime.is_plaza() {
+                crate::foreman::take(&mut peers, self.presence.as_mut());
+            }
             let mut dynamic = grid_frame::dynamic(&self.runtime, &peers, &[]);
             if HOME.with(std::cell::Cell::get) && self.runtime.is_plaza() {
                 crate::pylon_bay::instances(self.now, &mut dynamic);
@@ -1742,7 +1746,7 @@ impl Page {
             {
                 crate::help_desk::draw(&mut ui, atlas, css, view.view_proj);
                 if self.runtime.is_plaza() {
-                    crate::foreman::draw(&mut ui, atlas, css, view.view_proj, view.eye);
+                    crate::foreman::draw(&mut ui, atlas, css, view.view_proj, view.eye, self.now);
                 }
             }
             // A model group's details over its sign, when it is near or

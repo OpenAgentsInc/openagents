@@ -11,6 +11,10 @@
 //!
 //! Plan: `docs/foreman/grid-foreman-plan.md`.
 
+#[cfg(feature = "host")]
+pub mod host;
+#[cfg(feature = "host")]
+pub mod patrol;
 #[cfg(test)]
 mod tests;
 
@@ -40,6 +44,14 @@ pub const STATUS_MAX: usize = 32;
 pub const STATUS_WAITING: &str = "AT THE TERMINAL";
 /// The status line when the Foreman's host is down.
 pub const BACK_SOON: &str = "BACK SOON";
+
+/// The walk clip's playback rate while it walks: its stride at three times
+/// the rig would read too quick for a giant.
+pub const WALK_CLIP_RATE: f32 = 0.6;
+/// The Grid Foreman's public key on `oa-foreman-1`; the site names it in
+/// the status route, and the page draws only this key as the Foreman.
+/// Rotation: `docs/deployment/grid-foreman.md`.
+pub const PUBKEY: &str = "2d9fad1a83555dc66198d94d58a24ea1541ba8857d2407c456635a3421456f36";
 
 /// The site's route for the Foreman's status.
 pub const STATUS_PATH: &str = "/v1/foreman/status";

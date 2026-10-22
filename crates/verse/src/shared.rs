@@ -599,6 +599,7 @@ impl Shared {
             set: Some(SET.into()),
             b: Some(b),
             look: None,
+            status: None,
         })
     }
 

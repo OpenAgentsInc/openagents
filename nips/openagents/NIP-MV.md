@@ -262,6 +262,7 @@ The durable record of one entity. Relays store the latest per publisher and
 | `set` | A `bodies` snapshot's body set. Required for `bodies`, absent otherwise. |
 | `b` | A `bodies` snapshot's rest poses. Required for `bodies`, absent otherwise. |
 | `look` | Optional, for `avatar`: how to draw it, `{"rig":"<rig id>","shade":<n>}`. The world names its rigs and what a shade means (Grow Little Bunny's `bunny-v1` rig has shades 0 to 20). Clients MUST ignore a `look` whose rig they do not know, and MUST accept a state without one. |
+| `status` | Optional, for `avatar`: one short line about what the entity is doing, such as `WALKING TO THE PYLON BAY`, at most 64 bytes with no control characters. Receivers MUST refuse a longer one, and MAY draw it under the entity's name. The Grid Foreman publishes it; clients draw it only for a publisher they recognize. |
 
 ### Owned players
 

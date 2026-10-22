@@ -218,6 +218,7 @@ impl Presence {
             set: None,
             b: None,
             look: Some(look(wins)),
+            status: None,
         };
         Out::Publish(mv::state_event(
             &self.identity.signer,
@@ -547,6 +548,7 @@ mod tests {
                 rig: "robot-v2".into(),
                 shade: 4,
             }),
+            status: None,
         };
         b.receive(
             &mv::state_event(&other.identity.signer, WORLD, &state, t / 1000),
@@ -554,6 +556,7 @@ mod tests {
         );
         let plain = State {
             look: None,
+            status: None,
             ..state.clone()
         };
         let third = bunny("33");
