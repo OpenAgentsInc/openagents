@@ -1044,7 +1044,26 @@ impl ChatApp {
     // Sidebar
     // -----------------------------------------------------------------
 
+    /// Whether the sidebar shows the developer sections (#12483): the
+    /// person's choice, else only once the account has a computer or a
+    /// computer's chat.
+    fn developer_tools(&self) -> bool {
+        let computers = self
+            .registry
+            .as_ref()
+            .map_or(0, |r| r.read(|r| r.computers().len()));
+        let chosen = openagents_web_client::store::get(model::DEVELOPER_KEY);
+        model::developer_tools(computers, self.meta.len(), chosen.as_deref())
+    }
+
+    /// Show or hide the developer sections, remembered in this browser.
+    fn set_developer_tools(&mut self, on: bool, cx: &mut Context<Self>) {
+        openagents_web_client::store::set(model::DEVELOPER_KEY, if on { "1" } else { "0" });
+        cx.notify();
+    }
+
     fn render_sidebar(&self, full: bool, cx: &mut Context<Self>) -> impl IntoElement {
+        let developer = self.signed_in && self.developer_tools();
         let groups = model::groups(
             &self.threads,
             &self.projects,
@@ -1091,7 +1110,7 @@ impl ChatApp {
                             .font_weight(FontWeight::SEMIBOLD)
                             .child("OpenAgents"),
                     )
-                    .when(self.registry.is_some(), |row| {
+                    .when(self.registry.is_some() && developer, |row| {
                         row.child(self.render_view_button(cx)).child(
                             button("computers-settings", "Computers", false).on_click(cx.listener(
                                 |this, _, _, cx| {
@@ -1141,7 +1160,7 @@ impl ChatApp {
                     .child("New chat"),
             )
             // Environments open in the work panel (#12332).
-            .when(self.signed_in, |col| {
+            .when(developer, |col| {
                 col.child(
                     div()
                         .id("environments")
@@ -1197,7 +1216,7 @@ impl ChatApp {
                             .child(self.search.clone()),
                     ),
             )
-            .when(self.signed_in, |sidebar| {
+            .when(developer, |sidebar| {
                 sidebar
                     .child(
                         div()
@@ -1267,6 +1286,28 @@ impl ChatApp {
                 )
             })
             .child(self.render_settings_entry(cx))
+            // The developer sections stay out of a creator's way until
+            // they ask for them (#12483).
+            .when(self.signed_in, |side| {
+                side.child(
+                    div()
+                        .id("developer-tools")
+                        .px(px(18.))
+                        .py(px(10.))
+                        .text_size(px(12.5))
+                        .text_color(theme::text_faint())
+                        .cursor_pointer()
+                        .hover(|style| style.text_color(theme::text()))
+                        .on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.set_developer_tools(!developer, cx)
+                        }))
+                        .child(if developer {
+                            "Hide developer tools"
+                        } else {
+                            "Show developer tools"
+                        }),
+                )
+            })
             .when(self.signed_in, |side| {
                 side.child(openagents_web_chat_view::account::sign_out(|| {
                     route::go("/logout")
@@ -1692,6 +1733,11 @@ impl ChatApp {
                     )),
                 )
             })
+            // Every chat page has a way back to the Grid (#12483).
+            .child(
+                button("back-to-grid", model::BACK_TO_GRID, false)
+                    .on_click(|_: &ClickEvent, _, _| route::go("/")),
+            )
             .child(
                 div()
                     .min_w_0()
@@ -1905,6 +1951,22 @@ impl ChatApp {
                     .child("What should we work on?"),
             )
             .children(self.render_targets(cx))
+            // A creator starts from what they can make (#12483).
+            .when(!self.developer_tools(), |col| {
+                col.child(footer_text(model::CREATOR_PROMPT)).child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .flex_wrap()
+                        .justify_center()
+                        .gap(px(8.))
+                        .children(model::CREATOR_STARTS.iter().map(|(id, label, href)| {
+                            let href = *href;
+                            button(*id, *label, *id == "start-game-lab")
+                                .on_click(move |_: &ClickEvent, _, _| route::go(href))
+                        })),
+                )
+            })
             .when(
                 !choices.is_empty() && self.target.computer.is_none(),
                 |col| {

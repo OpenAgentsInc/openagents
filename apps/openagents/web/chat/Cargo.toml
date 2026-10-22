@@ -39,6 +39,9 @@ postcard = { version = "1.1.3", default-features = false }
 openagents-theme = { path = "../../crates/theme" }
 web-time.workspace = true
 
+[dev-dependencies]
+oa-copy = { path = "../../../../crates/oa-copy" }
+
 [target.'cfg(target_family = "wasm")'.dependencies]
 # The browser shapes and draws text (#12299): no cosmic-text or swash.
 openagents-gpui-web = { workspace = true, features = ["first-frame", "browser-text"] }

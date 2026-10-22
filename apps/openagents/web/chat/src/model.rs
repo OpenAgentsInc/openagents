@@ -374,8 +374,47 @@ pub fn title_from(text: &str) -> String {
     openagents_web_chat_view::labels::truncate(line, 60)
 }
 
+/// Where this browser keeps the choice to show or hide the developer
+/// sections (#12483).
+pub const DEVELOPER_KEY: &str = "oa.chat.developer";
+
+/// Whether the sidebar shows the developer sections (Computers,
+/// Environments, Agent Lab, Check-ins): the person's own choice when they
+/// made one, else only once the account has a computer or a computer's
+/// chat. A new creator's chat opens without them (#12483).
+pub fn developer_tools(computers: usize, computer_chats: usize, chosen: Option<&str>) -> bool {
+    match chosen {
+        Some("1") => true,
+        Some("0") => false,
+        _ => computers > 0 || computer_chats > 0,
+    }
+}
+
+/// What a new creator can do from an empty chat, with where each goes.
+pub const CREATOR_STARTS: [(&str, &str, &str); 2] = [
+    ("start-game-lab", "Open Game Lab", "/?lab=game"),
+    ("start-grid", "Walk around the Grid", "/"),
+];
+pub const CREATOR_PROMPT: &str = "Ask us anything, or make your own version of a game.";
+pub const BACK_TO_GRID: &str = "Back to the Grid";
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_new_creator_sees_no_developer_sections() {
+        use super::developer_tools;
+        assert!(!developer_tools(0, 0, None));
+        assert!(developer_tools(1, 0, None));
+        assert!(developer_tools(0, 3, None));
+        assert!(developer_tools(0, 0, Some("1")));
+        assert!(!developer_tools(2, 5, Some("0")));
+        for (_, label, href) in super::CREATOR_STARTS {
+            assert!(href.starts_with('/'));
+            assert!(oa_copy::violations(label, &[]).is_empty(), "{label}");
+        }
+        assert!(oa_copy::violations(super::CREATOR_PROMPT, &[]).is_empty());
+    }
+
     use super::*;
 
     fn row(index: usize, role: &str, text: &str) -> MessageRow {

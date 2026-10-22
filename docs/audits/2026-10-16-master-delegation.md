@@ -485,6 +485,12 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12483: after the next web and web chat deploy, signed in as a fresh
+  test account with no computers: check that the Grid's top bar says Ask
+  OpenAgents, that the chat opens with no Computers, Environments, Agent
+  Lab, or Check-ins, shows Open Game Lab and Walk around the Grid on a new
+  chat, and that Back to the Grid in the header returns to the Grid in
+  one click. Check that Show developer tools brings the sections back.
 - #12461, #12484: after the next web, Everglade, and pylons-layer deploy
   (the Grid pack with the reaction clips landed in `5c6d153f2fa1`): watch
   the Foreman fold its arms at the Bay, billboard, and help desk, lean on

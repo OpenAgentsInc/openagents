@@ -16,7 +16,7 @@
 //! first address because the page and older clients call it) tells the top
 //! bar who is signed in, so the page itself stays one cached document:
 //! signed in, the bar shows the person's name linking to
-//! their profile, and Open chat.
+//! their profile, and Ask OpenAgents, the chat in this browser (#12483).
 //!
 //! `/` used to be the new-chat page; that moved to [`super::home::NEW`]
 //! (`/chat`), and the classic home page to [`super::home::HOME`].
@@ -301,7 +301,8 @@ nav.append(who);\
 const chat=document.createElement(\"a\");\
 chat.className=\"solid\";\
 chat.href=me.chat;\
-chat.textContent=\"Open chat\";\
+chat.textContent=\"Ask OpenAgents\";\
+chat.title=\"Chat with us here in your browser\";\
 nav.append(chat)}).catch(()=>{});\
 const box=document.getElementById(\"pylon-card\"),mount=document.getElementById(\"pylon-card-mount\");\
 let chosen;\
@@ -629,6 +630,18 @@ async fn me(State(app): State<App>, headers: HeaderMap) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_chat_link_says_what_it_does_in_plain_words() {
+        // #12483: "Open chat" read like a Mac app.
+        assert!(LOADER.contains("chat.textContent=\"Ask OpenAgents\";"));
+        assert!(LOADER.contains("chat.title=\"Chat with us here in your browser\";"));
+        assert!(!LOADER.contains("Open chat"));
+        assert!(
+            oa_copy::violations("Ask OpenAgents. Chat with us here in your browser", &[])
+                .is_empty()
+        );
+    }
 
     #[test]
     fn production_hides_the_account_links_and_game_lab_is_in_the_world() {
