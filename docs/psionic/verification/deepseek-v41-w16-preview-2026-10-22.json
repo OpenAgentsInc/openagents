@@ -1,0 +1,84 @@
+{
+ "schema": "openagents.deepseek_v41.preview_launch.v1",
+ "issue": 12403,
+ "date": "2026-10-22",
+ "label": "Experimental preview. G1 v2 failed under policy 2.1 (#12405) and G2 is being reworked; this launch passes no gate.",
+ "group": {
+  "slug": "v41-preview",
+  "head": "30200:c497f5c063f42603349357bce7e209c87aa3544cbe69f19caeff0ca3df7c2df7:v41-preview-head",
+  "placement": "one-quad",
+  "manifest": "sha256:3a86d149c418f0bd82fbe928a8c1931c49ef878eb7e10ddbd96cbf9a558e220f",
+  "artifact": "sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+  "machine_type": "g4-standard-192",
+  "machines": [
+   {
+    "name": "oa-v41-preview-m0",
+    "zone": "asia-northeast1-b",
+    "ledger_id": "facbb0127eb741388688b01cc50e0d3b",
+    "price_per_hour": 6.654,
+    "expires_epoch": 1792759799.009919,
+    "expires_at": "2026-10-23T12:49:59Z",
+    "deleted": false
+   }
+  ],
+  "head_placement": "stage0",
+  "transport": "direct",
+  "worker_build": "185eb68cab6d17e2ba55b7fb7d4a4241078eb24e1bb6cf1d45fe5af69faffde7",
+  "pylon_build": "f188277611042bac95d78dcf608f090c3cad08425cec62c9dcb71732b76c3185",
+  "budget": "deepseek-v41",
+  "ready_at_utc": "2026-10-22T00:44:23Z"
+ },
+ "launch": {
+  "command": "pylon cloud up one-quad --zone asia-northeast1-b --hours 36.23 --weights gs://openagents-psionic-models-ane1/deepseek-ai/DeepSeek-V4.1-Flash-1017/1bae0e1/ --group v41-preview --label 'DeepSeek V4.1 Flash · Experimental preview' --worker gs://openagents-psionic-models/bin/psionic-v41-stage/70af56e80c/sm_120/psionic-v41-stage --worker-build 185eb68cab6d17e2ba55b7fb7d4a4241078eb24e1bb6cf1d45fe5af69faffde7 --pylon gs://openagents-psionic-models/bin/pylon/3d44d55ace/pylon --pylon-build f188277611042bac95d78dcf608f090c3cad08425cec62c9dcb71732b76c3185 --head stage0 --transport direct --temperature 0 --deadline-secs 600 --max-output-tokens 4096 --step-secs 75 --prefill-secs 150 --max-context 8192 --max-input-tokens 2872 --ready-secs 3600",
+  "local_pylon": "built from 94bf966eed (adds --label); the head and worker bundles are the pinned ones",
+  "cold_launch_to_ready_s": 509
+ },
+ "watcher": {
+  "script": "scripts/pylon/v41-live.py",
+  "until": "2026-10-23T12:50:00Z",
+  "cap_usd": 300.0,
+  "zones": [
+   "asia-northeast1-b",
+   "asia-northeast1-a",
+   "asia-northeast1-c",
+   "us-central1-b",
+   "us-east1-b",
+   "europe-west1-b",
+   "southamerica-east1-b"
+  ],
+  "agent_run": "v41-live-20261021-193554-f719"
+ },
+ "pylon_ask": [
+  "pylon router: want deepseek-v4.1-flash; answered by DeepSeek V4.1 Flash · Experimental preview (npub1cjtltsrr7snqxdyn277w0csfepa2x4zvhe5lr89wlux28hmu9hmsdpzx4p); ranked (the request asks for one model); 1 candidates, 0 failed, 6187 ms\npylon   DeepSeek V4.1 Flash · Experimental preview (npub1cjtltsrr7snqxdyn277w0csfepa2x4zvhe5lr89wlux28hmu9hmsdpzx4p)\nmodel   deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8\nanswer  A Lagrange point is a location in a two-body gravitational system where the combined gravitational pull of the two large bodies and the centrifugal force balance, allowing a small object to remain in a fixed position relative to them. There are five such points, and they are useful for stable or quasi-stable spacecraft orbits.\nlatency discovery 278 ms, first contact 323 ms, answer 5477 ms\nreceipt a8cc40e34ebaf10cb65f821c9a0d8cd87e72f58fae17aed0abffa0817a7a0114 (accepted)\n",
+  "pylon router: want deepseek-v4.1-flash; answered by DeepSeek V4.1 Flash · Experimental preview (npub1cjtltsrr7snqxdyn277w0csfepa2x4zvhe5lr89wlux28hmu9hmsdpzx4p); ranked (the request asks for one model); 1 candidates, 0 failed, 32297 ms\npylon   DeepSeek V4.1 Flash · Experimental preview (npub1cjtltsrr7snqxdyn277w0csfepa2x4zvhe5lr89wlux28hmu9hmsdpzx4p)\nmodel   deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8\nanswer  With pipeline parallelism, the model’s layers are divided across four GPUs: GPU 0 holds the first quarter, GPU 1 the next, and so on, with GPU 3 producing the final logits. The prompt is first tokenized and embedded. During the **prefill** phase, all prompt tokens are processed together as a batch: GPU 0 runs its layers on the prompt activations, sends the resulting hidden states to GPU 1, which runs its layers and forwards to GPU 2, then GPU 3. GPU 3 computes logits for the last prompt position and samples the first generated token. Each GPU also stores the keys and values for its layers in a KV cache.\n\nFor each subsequent token, the new token is embedded on GPU 0 and its hidden state moves through the same GPU pipeline: GPU 0 computes its layers, sends the activation to GPU 1, then GPU 2, then GPU 3. GPU 3 computes logits, samples the next token, and that token is fed back to GPU 0 for the next step. Because the KV cache already contains the prompt and prior tokens, only the newest token’s activation must traverse the pipeline; earlier tokens are not recomputed.\n\nThe first token takes longer because it includes the **prefill** of the entire prompt—many tokens processed through all layers—plus pipeline startup/fill and KV-cache construction. Later tokens process only one new token per step using the cache, so they require far less computation. They still incur GPU-to-GPU communication latency and pipeline bubbles, but the per-token work is much smaller than the initial prompt pass.\nlatency discovery 414 ms, first contact 326 ms, answer 30049 ms\nreceipt 5a6e1641f88746fe9c5893c8664b736b6bd7a52c4cda1f5cfaa2b7a8fce37b2c (accepted)\n",
+  "pylon router: want deepseek-v4.1-flash; answered by DeepSeek V4.1 Flash · Experimental preview (npub1cjtltsrr7snqxdyn277w0csfepa2x4zvhe5lr89wlux28hmu9hmsdpzx4p); ranked (the request asks for one model); 1 candidates, 0 failed, 31443 ms\npylon   DeepSeek V4.1 Flash · Experimental preview (npub1cjtltsrr7snqxdyn277w0csfepa2x4zvhe5lr89wlux28hmu9hmsdpzx4p)\nmodel   deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8\nanswer  With pipeline parallelism, the model’s layers are divided across four GPUs: GPU 0 holds the first quarter, GPU 1 the next, and so on, with GPU 3 producing the final logits. The prompt is first tokenized and embedded. During the **prefill** phase, all prompt tokens are processed together as a batch: GPU 0 runs its layers on the prompt activations, sends the resulting hidden states to GPU 1, which runs its layers and forwards to GPU 2, then GPU 3. GPU 3 computes logits for the last prompt position and samples the first generated token. Each GPU also stores the keys and values for its layers in a KV cache.\n\nFor each subsequent token, the new token is embedded on GPU 0 and its hidden state moves through the same GPU pipeline: GPU 0 computes its layers, sends the activation to GPU 1, then GPU 2, then GPU 3. GPU 3 computes logits, samples the next token, and that token is fed back to GPU 0 for the next step. Because the KV cache already contains the prompt and prior tokens, only the newest token’s activation must traverse the pipeline; earlier tokens are not recomputed.\n\nThe first token takes longer because it includes the **prefill** of the entire prompt—many tokens processed through all layers—plus pipeline startup/fill and KV-cache construction. Later tokens process only one new token per step using the cache, so they require far less computation. They still incur GPU-to-GPU communication latency and pipeline bubbles, but the per-token work is much smaller than the initial prompt pass.\nlatency discovery 1002 ms, first contact 568 ms, answer 29920 ms\nreceipt 9a69462de97cbfcfb203657d17e2ddef168d98dfe205649c41e55339f0244241 (accepted)\n"
+ ],
+ "grid_terminal": {
+  "prod": {
+   "base_url": "https://openagents.com",
+   "model_header": "deepseek-v4.1-flash",
+   "signed_in": "test account",
+   "total_s": 11.0,
+   "first_text_s": 2.09,
+   "pylon": {
+    "label": "DeepSeek V4.1",
+    "model": "group v41-preview (4 parts)"
+   },
+   "answer": "**DeepSeek V4.1** · group v41-preview (4 parts)\n\nA Pylon is a computer on the OpenAgents Grid that hosts part of a model and contributes its compute to serve inference requests.",
+   "end": "done"
+  },
+  "staging": {
+   "base_url": "https://staging.openagents.com",
+   "model_header": "deepseek-v4.1-flash",
+   "signed_in": null,
+   "total_s": 7.09,
+   "first_text_s": 0.83,
+   "pylon": {
+    "label": "DeepSeek V4.1",
+    "model": "group v41-preview (4 parts)"
+   },
+   "answer": "**DeepSeek V4.1** · group v41-preview (4 parts)\n\nDeepSeek V4.1 Flash is a language model running across a group of OpenAgents network computers, each holding part of the model, that answers you here at the terminal.",
+   "end": "done"
+  }
+ }
+}
