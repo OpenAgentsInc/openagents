@@ -796,7 +796,9 @@ class CloudBudgetTests(unittest.TestCase):
         r = self.run_guard("stop", name, "--budget", "test", "--record", record["id"], at=T0 + 300,
                            FAKE_DESCRIBE="TERMINATED", FAKE_ID="111")
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertEqual(len([c for c in self.calls() if c.startswith('["compute", "instances", "delete"')]), 1)
+        deletes = [json.loads(c) for c in self.calls() if c.startswith('["compute", "instances", "delete"')]
+        self.assertEqual(len(deletes), 1)
+        self.assertEqual(deletes[0][3], "111")
         self.assertEqual(self.records(), before)
         self.assertEqual(self.report(T0 + 300)["spent"], spent)
         self.log.write_text("")

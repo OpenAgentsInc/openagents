@@ -175,6 +175,13 @@ impl Workspace {
         {
             return Err("edit is outside the configured text-file scope".into());
         }
+        if self
+            .files
+            .keys()
+            .any(|p| p.starts_with(&format!("{path}/")))
+        {
+            return Err("a directory containing proposed files cannot become a file".into());
+        }
         let mut ancestor = path;
         while let Some((parent, _)) = ancestor.rsplit_once('/') {
             if self.files.contains_key(parent) {
@@ -626,6 +633,16 @@ mod tests {
             .is_err()
         );
         w.edit("apps/haunt-preview/new.ts", "new".into()).unwrap();
+        w.edit("apps/haunt-preview/newdir/child.ts", "child".into())
+            .unwrap();
+        assert!(
+            w.edit(
+                "apps/haunt-preview/newdir",
+                "invalid directory replacement".into()
+            )
+            .is_err()
+        );
+        assert!(!w.files.contains_key("apps/haunt-preview/newdir"));
         assert!(
             w.edit(
                 "apps/haunt-preview/new.ts/nested.ts",
