@@ -117,6 +117,14 @@ unsafe extern "C" {
         token: *mut c_void,
         stream: *mut c_void,
     ) -> i32;
+    fn psionic_v41_candidate_flags_tokens(
+        blocks: *const c_void,
+        tokens: i32,
+        top_blocks: i32,
+        flags: *mut c_void,
+        capacity: i32,
+        stream: *mut c_void,
+    ) -> i32;
     fn psionic_v41_candidate_flags(
         blocks: *const c_void,
         index: *const c_void,
@@ -388,6 +396,34 @@ impl CudaSubmission {
                 span(index, 0, 1, 4, "token index")?.cast_const(),
                 int(top_blocks, "top blocks")?,
                 span(flags, 0, capacity, 1, "candidate flags")?,
+                int(capacity, "capacity")?,
+                self.platform.raw_stream()?,
+            )
+        };
+        self.clef_launch(code, "v41 candidate flags")
+    }
+
+    /// [`Self::v41_candidate_flags`] for `tokens` rows at once: row `t` of
+    /// `blocks` gives row `t` of `flags` (`capacity` bytes each).
+    ///
+    /// # Errors
+    ///
+    /// Refuses buffers too small for the shapes.
+    pub fn v41_candidate_flags_tokens(
+        &mut self,
+        blocks: &CudaBuffer,
+        tokens: usize,
+        top_blocks: usize,
+        flags: &CudaBuffer,
+        capacity: usize,
+    ) -> Result<(), RuntimeError> {
+        // SAFETY: every extent was checked against its buffer.
+        let code = unsafe {
+            psionic_v41_candidate_flags_tokens(
+                span(blocks, 0, tokens * top_blocks, 4, "candidate blocks")?.cast_const(),
+                int(tokens, "tokens")?,
+                int(top_blocks, "top blocks")?,
+                span(flags, 0, tokens * capacity, 1, "candidate flags")?,
                 int(capacity, "capacity")?,
                 self.platform.raw_stream()?,
             )
@@ -1075,6 +1111,10 @@ pub struct V41Stage {
     prefill: Option<prefill::PrefillWork>,
     /// The `consumer-q` profile's reordered reductions (#12465).
     fast_reductions: bool,
+    /// Rows of each layer's window ring: the window, or with the
+    /// layer-major prefill the window plus a step's tokens less one, so a
+    /// whole step's rows fit (#12464).
+    ring_rows: usize,
     config: V41StageConfig,
     layers: Vec<LayerWeights>,
     sources: BTreeMap<usize, SourceState>,
@@ -1468,6 +1508,11 @@ impl V41Stage {
                 }
             }
         }
+        let ring_rows = if batched_prefill {
+            g.window + config.max_step_tokens - 1
+        } else {
+            g.window
+        };
         let mut loader = Loader {
             backend,
             source,
@@ -1661,7 +1706,7 @@ impl V41Stage {
                     loader.packed(&name("ffn.shared_experts.w3"), fp8, shape.expert_width, h)?,
                 ],
                 engram,
-                ring: loader.state_zeros(g.window * g.head_dim * 2)?,
+                ring: loader.state_zeros(ring_rows * g.head_dim * 2)?,
                 mixes_attn: loader.state_zeros(4 * shape.hc.mixes())?,
                 mixes_ffn: loader.state_zeros(4 * shape.hc.mixes())?,
                 observed,
@@ -1979,6 +2024,7 @@ impl V41Stage {
             engram_staging,
             prefill,
             fast_reductions,
+            ring_rows,
             config,
             layers,
             sources,
@@ -2652,7 +2698,7 @@ impl V41Stage {
             steps,
             V41Ring {
                 buffer: &lw.ring,
-                rows: g.window,
+                rows: self.ring_rows,
             },
         )?;
         if let Some(cw) = &lw.compressor {
@@ -2720,7 +2766,7 @@ impl V41Stage {
         }
         let ring = V41Ring {
             buffer: &lw.ring,
-            rows: g.window,
+            rows: self.ring_rows,
         };
         let compressed = match owners.kv {
             Some(owner) => {

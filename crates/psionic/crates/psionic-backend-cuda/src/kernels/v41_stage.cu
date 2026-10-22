@@ -359,11 +359,16 @@ __global__ void v41_candidate_flags_kernel(
     int top_blocks,
     unsigned char* __restrict__ flags,
     int capacity) {
+    // Without an index, block t builds token t's flags row (#12464).
+    const long long r = index != nullptr ? *index : blockIdx.x;
+    if (index == nullptr) {
+        flags += static_cast<long long>(blockIdx.x) * capacity;
+    }
     for (int b = threadIdx.x; b < capacity; b += blockDim.x) {
         flags[b] = 0;
     }
     __syncthreads();
-    const int* row = blocks + static_cast<long long>(*index) * top_blocks;
+    const int* row = blocks + r * top_blocks;
     for (int k = threadIdx.x; k < top_blocks; k += blockDim.x) {
         const int b = row[k];
         if (b >= 0 && b < capacity) {
@@ -462,5 +467,13 @@ extern "C" int psionic_v41_candidate_flags(
     v41_candidate_flags_kernel<<<1, kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const int*>(blocks), static_cast<const int*>(index), top_blocks,
         static_cast<unsigned char*>(flags), capacity);
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_v41_candidate_flags_tokens(
+    const void* blocks, int tokens, int top_blocks, void* flags, int capacity, void* stream) {
+    v41_candidate_flags_kernel<<<tokens, kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const int*>(blocks), nullptr, top_blocks, static_cast<unsigned char*>(flags),
+        capacity);
     return static_cast<int>(cudaGetLastError());
 }

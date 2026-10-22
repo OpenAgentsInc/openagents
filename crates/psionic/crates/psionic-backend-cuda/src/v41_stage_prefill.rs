@@ -100,12 +100,23 @@ pub(super) struct PrefillWork {
     eslot: Vec<CudaBuffer>,
     erows: CudaBuffer,
     eproj: CudaBuffer,
+    /// The attention phase for every token at once: compressor values,
+    /// gates, and latents, indexer weights and scores, candidate block
+    /// scores and flags, and the attention heads.
+    values: CudaBuffer,
+    gates: CudaBuffer,
+    latents: CudaBuffer,
+    index_weights: CudaBuffer,
+    scores: CudaBuffer,
+    score_stride: usize,
+    block_scores: CudaBuffer,
+    flags: CudaBuffer,
+    block_stride: usize,
+    heads: CudaBuffer,
     /// Calibration sums for the `consumer-q` quantizer (#12465), per stage
     /// layer: inputs `[experts, hidden]` with counts, and hidden
     /// `[experts, width]` with counts.
     pub(super) calibration: Option<Vec<[CudaBuffer; 4]>>,
-    /// Per stage layer: the ordered attention phase.
-    phases: Vec<[Option<CudaGraphExec>; 1]>,
     /// Device bytes of all of the above.
     pub(super) bytes: usize,
 }
@@ -225,10 +236,19 @@ impl PrefillWork {
                 .collect::<Result<_, _>>()?,
             erows: f(max * V41_ENGRAM_COLUMNS * shape.engram_width)?,
             eproj: f(max * (s * h + h))?,
+            values: f(max * g.head_dim)?,
+            gates: f(max * g.head_dim)?,
+            latents: f(max * g.head_dim)?,
+            index_weights: f(max * g.index_heads)?,
+            scores: f(max * (config.max_context + 1))?,
+            score_stride: config.max_context + 1,
+            block_scores: f(max * (config.max_context + 1).div_ceil(shape.candidate_block_size))?,
+            flags: f(
+                (max * (config.max_context + 1).div_ceil(shape.candidate_block_size)).div_ceil(4),
+            )?,
+            block_stride: (config.max_context + 1).div_ceil(shape.candidate_block_size),
+            heads: f(max * g.heads * g.head_dim)?,
             calibration: None,
-            phases: (0..config.layers.len())
-                .map(|_| Default::default())
-                .collect(),
             bytes: 0,
         };
         this.dense_entries
@@ -283,23 +303,6 @@ impl PrefillWork {
             count: tokens,
             top_k: 1,
             shared_input: false,
-        }
-    }
-}
-
-/// Which per-token phase of a layer a graph records. Everything else in a
-/// layer runs for all of the step's tokens at once.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Phase {
-    /// RoPE, the window ring, the compressor, the indexer, and attention:
-    /// the work that must see tokens in order.
-    E,
-}
-
-impl Phase {
-    const fn slot(self) -> usize {
-        match self {
-            Self::E => 0,
         }
     }
 }
@@ -493,18 +496,6 @@ impl V41Stage {
         Ok(())
     }
 
-    /// Copies `words` words of row `index` of `array` into `dst`.
-    fn load_row(
-        &self,
-        s: &mut CudaSubmission,
-        array: &CudaBuffer,
-        dst: &CudaBuffer,
-        words: usize,
-    ) -> Result<(), RuntimeError> {
-        let max = self.prefill.as_ref().map_or(1, |p| p.max);
-        s.v41_stage_copy(array, dst, &self.work.index, words, max, false)
-    }
-
     /// Copies `words` words of `src` into row `index` of `array`.
     fn store_row(
         &self,
@@ -608,86 +599,259 @@ impl V41Stage {
         s.v41_stage_advance(&wk.index)
     }
 
-    /// One per-token phase of layer `index` of the stage.
+    /// Stage layer `i`'s attention for every token of the step at once:
+    /// the attention kernels take a chunk of consecutive positions, so the
+    /// window ring (sized for a whole step), the compressor, the indexer,
+    /// and the selections run as one call each, in the same arithmetic as
+    /// one token at a time.
     #[allow(clippy::too_many_lines)]
-    fn record_prefill_phase(
-        &self,
-        s: &mut CudaSubmission,
-        index: usize,
-        phase: Phase,
-    ) -> Result<(), RuntimeError> {
-        let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
-        let c = &self.config;
-        let shape = c.shape;
-        let g = shape.attention;
-        let h = shape.hidden;
-        let wk = &self.work;
-        let lw = &self.layers[index];
-        let layer = lw.layer;
-        self.load_row(s, &p.pos, &wk.positions, 1)?;
-        match phase {
-            Phase::E => {
-                self.load_row(s, &p.qh, &wk.q_heads, g.heads * g.head_dim)?;
-                self.load_row(s, &p.kv_norm, &wk.kv_norm, g.head_dim)?;
-                self.load_row(s, &p.na, &wk.normalized, h)?;
-                if lw.indexer.is_some() {
-                    self.load_row(s, &p.iq, &wk.index_query, g.index_heads * g.index_dim)?;
-                }
-                let owners = V41LayerOwners::for_layer(layer).ok_or_else(|| invalid("layer"))?;
-                // A selection this layer reads but doesn't make comes from
-                // its owner's per-token array.
-                if let (Some(_), Some(owner)) = (owners.kv, owners.index) {
-                    if lw.indexer.is_none() {
-                        let sel = p
-                            .sel
-                            .get(&owner)
-                            .ok_or_else(|| invalid("selection array"))?;
-                        let target = self
-                            .selections
-                            .get(&owner)
-                            .ok_or_else(|| invalid("selection buffer"))?;
-                        self.load_row(s, sel, target, g.index_top_k)?;
-                    }
-                }
-                if lw.indexer.is_some() && layer > V41_STAGE_CANDIDATE_SOURCE {
-                    // Layer 20's candidate blocks for this token, as flags.
-                    s.v41_candidate_flags(
-                        &p.cand,
-                        p.max,
-                        &wk.index,
-                        shape.candidate_blocks,
-                        &wk.flags,
-                        wk.block_capacity,
-                    )?;
-                }
-                self.record_attention_core(s, lw, false, false)?;
-                self.store_row(s, &wk.heads_q, &p.hq, g.heads * g.head_dim)?;
-                if lw.indexer.is_some() {
-                    let owner = owners.index.ok_or_else(|| invalid("index owner"))?;
-                    let selection = self
-                        .selections
-                        .get(&owner)
-                        .ok_or_else(|| invalid("selection buffer"))?;
-                    let sel = p
-                        .sel
-                        .get(&layer)
-                        .ok_or_else(|| invalid("selection array"))?;
-                    self.store_row(s, selection, sel, g.index_top_k)?;
-                }
-                if layer == V41_STAGE_CANDIDATE_SOURCE {
-                    self.store_row(s, &wk.blocks, &p.cand, shape.candidate_blocks)?;
-                }
-            }
-        }
-        s.v41_stage_advance(&wk.index)
-    }
-
-    /// Launches a per-token graph once for each of `tokens` tokens from
-    /// index 0, capturing it on first use.
-    fn replay(
+    fn attention_batched(
         &mut self,
         backend: &CudaBackend,
-        which: Option<(usize, Phase)>,
+        i: usize,
+        tokens: usize,
+        stats: &mut V41StepStats,
+    ) -> Result<(), RuntimeError> {
+        let shape = self.config.shape;
+        let g = shape.attention;
+        let h = shape.hidden;
+        let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
+        let lw = &self.layers[i];
+        let layer = lw.layer;
+        let rope = self.rope(layer);
+        let ratio = v41_compress_ratio(layer).ok_or_else(|| invalid("layer"))?;
+        let owners = V41LayerOwners::for_layer(layer).ok_or_else(|| invalid("layer"))?;
+        let steps = V41Steps {
+            positions: &p.pos,
+            tokens,
+        };
+        let mut s = backend.begin_submission()?;
+        s.set_v41_fast_reductions(self.fast_reductions);
+        s.v41_rope(
+            rope,
+            &p.qh,
+            steps,
+            g.heads,
+            g.head_dim,
+            0,
+            false,
+            V41Output::Bf16,
+        )?;
+        s.v41_rope(
+            rope,
+            &p.kv_norm,
+            steps,
+            1,
+            g.head_dim,
+            0,
+            false,
+            V41Output::Bf16,
+        )?;
+        let ring = V41Ring {
+            buffer: &lw.ring,
+            rows: self.ring_rows,
+        };
+        s.v41_window_store(g, &p.kv_norm, steps, ring)?;
+        if let Some(cw) = &lw.compressor {
+            let source = self.sources.get(&layer).ok_or_else(|| invalid("source"))?;
+            let state = source
+                .state
+                .as_ref()
+                .ok_or_else(|| invalid("compressor state"))?;
+            let dense = |w| V41Dense {
+                weights: w,
+                scales: None,
+                format: cw.format,
+                rows: g.head_dim,
+                cols: h,
+                groups: 1,
+            };
+            let (round_input, output) = if ratio > 1 {
+                (false, V41Output::F32)
+            } else {
+                (true, V41Output::Bf16)
+            };
+            s.v41_dense(
+                dense(&cw.wkv),
+                &p.na,
+                &p.values,
+                tokens,
+                round_input,
+                output,
+            )?;
+            if let Some(wgate) = &cw.wgate {
+                s.v41_dense(dense(wgate), &p.na, &p.gates, tokens, round_input, output)?;
+            }
+            s.v41_compress(
+                V41Compressor {
+                    ratio,
+                    width: g.head_dim,
+                    epsilon: g.norm_epsilon,
+                },
+                &p.values,
+                (ratio > 1).then_some(&p.gates),
+                &cw.norm,
+                state,
+                steps,
+                &p.latents,
+            )?;
+            s.v41_compressed_store(
+                g,
+                ratio,
+                V41IndexKeyWeights {
+                    wk: &cw.wk,
+                    k_norm: &cw.k_norm,
+                },
+                rope,
+                &p.latents,
+                steps,
+                source.source(),
+            )?;
+        }
+        let compressed = match owners.kv {
+            Some(owner) => {
+                let source = self
+                    .sources
+                    .get(&owner)
+                    .ok_or_else(|| invalid("KV owner"))?;
+                let index_owner = owners.index.ok_or_else(|| invalid("index owner"))?;
+                let selection = p
+                    .sel
+                    .get(&index_owner)
+                    .ok_or_else(|| invalid("selection array"))?;
+                if let Some(ix) = &lw.indexer {
+                    s.v41_rope(
+                        rope,
+                        &p.iq,
+                        steps,
+                        g.index_heads,
+                        g.index_dim,
+                        0,
+                        false,
+                        V41Output::Bf16,
+                    )?;
+                    s.v41_cache_quant(
+                        V41CacheQuant::IndexFp4,
+                        &p.iq,
+                        &p.iq,
+                        g.index_heads * tokens,
+                        g.index_dim,
+                    )?;
+                    s.v41_dense(
+                        V41Dense {
+                            weights: &ix.weights_proj,
+                            scales: None,
+                            format: V41DenseFormat::Bf16,
+                            rows: g.index_heads,
+                            cols: h,
+                            groups: 1,
+                        },
+                        &p.na,
+                        &p.index_weights,
+                        tokens,
+                        true,
+                        V41Output::Bf16,
+                    )?;
+                    let scores = V41Rows {
+                        buffer: &p.scores,
+                        stride: source.capacity.min(p.score_stride),
+                    };
+                    s.v41_index_scores(
+                        g,
+                        &p.iq,
+                        &p.index_weights,
+                        source.source(),
+                        source.ratio,
+                        steps,
+                        scores,
+                    )?;
+                    if layer == V41_STAGE_CANDIDATE_SOURCE {
+                        s.v41_candidate_blocks(
+                            scores,
+                            source.ratio,
+                            steps,
+                            V41Candidates {
+                                block_scores: &p.block_scores,
+                                flags: &p.flags,
+                                blocks: &p.cand,
+                                stride: p.block_stride,
+                                blocks_stride: shape.candidate_blocks,
+                            },
+                            shape.candidate_blocks,
+                            shape.candidate_block_size,
+                        )?;
+                    } else if layer > V41_STAGE_CANDIDATE_SOURCE
+                        && !self.config.layers.contains(&V41_STAGE_CANDIDATE_SOURCE)
+                    {
+                        // Layer 20 ran in an earlier stage: its kept blocks
+                        // arrived with the step; rebuild every token's flags.
+                        s.v41_candidate_flags_tokens(
+                            &p.cand,
+                            tokens,
+                            shape.candidate_blocks,
+                            &p.flags,
+                            p.block_stride,
+                        )?;
+                    }
+                    s.v41_select_indices(
+                        scores,
+                        source.ratio,
+                        steps,
+                        (layer > V41_STAGE_CANDIDATE_SOURCE).then_some((
+                            V41Rows {
+                                buffer: &p.flags,
+                                stride: p.block_stride,
+                            },
+                            shape.candidate_block_size,
+                        )),
+                        g.index_top_k,
+                        V41Rows {
+                            buffer: selection,
+                            stride: g.index_top_k,
+                        },
+                    )?;
+                }
+                Some(V41Compressed {
+                    kv: &source.kv,
+                    capacity: source.capacity,
+                    indices: V41Rows {
+                        buffer: selection,
+                        stride: g.index_top_k,
+                    },
+                    ratio: source.ratio,
+                })
+            }
+            None => None,
+        };
+        s.v41_sparse_attention(g, &p.qh, &lw.sinks, ring, compressed, steps, &p.heads)?;
+        s.v41_rope(
+            rope,
+            &p.heads,
+            steps,
+            g.heads,
+            g.head_dim,
+            0,
+            true,
+            V41Output::Bf16,
+        )?;
+        s.v41_cache_quant(
+            V41CacheQuant::Fp8,
+            &p.heads,
+            &p.hq,
+            g.heads * tokens,
+            g.head_dim,
+        )?;
+        s.commit(crate::CudaCommandWait::Completed)?;
+        stats.synchronizations += 1;
+        Ok(())
+    }
+
+    /// Launches the begin graph (each token's embedding or incoming
+    /// residual, position, and Engram ids) once for each of `tokens` tokens
+    /// from index 0, capturing it on first use.
+    fn replay_begin(
+        &mut self,
+        backend: &CudaBackend,
         tokens: usize,
         stats: &mut V41StepStats,
     ) -> Result<(), RuntimeError> {
@@ -699,7 +863,6 @@ impl V41Stage {
             .is_some();
         if !reset {
             let mut s = backend.begin_captured_submission()?;
-            s.set_v41_fast_reductions(self.fast_reductions);
             let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
             s.copy_buffer(&p.zero, &self.work.index)?;
             let (_, exec) = s.commit_captured(crate::CudaCommandWait::Completed)?;
@@ -716,38 +879,26 @@ impl V41Stage {
                 .launch_enqueued()?;
         }
         stats.graph_launches += 1;
-        let captured = {
-            let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
-            match which {
-                None => p.begin.is_some(),
-                Some((i, phase)) => p.phases[i][phase.slot()].is_some(),
-            }
-        };
+        let captured = self.prefill.as_ref().is_some_and(|p| p.begin.is_some());
         let mut remaining = tokens;
         if !captured {
             let mut s = backend.begin_captured_submission()?;
-            s.set_v41_fast_reductions(self.fast_reductions);
-            match which {
-                None => self.record_prefill_begin(&mut s)?,
-                Some((i, phase)) => self.record_prefill_phase(&mut s, i, phase)?,
-            }
+            self.record_prefill_begin(&mut s)?;
             let (_, exec) = s.commit_captured(crate::CudaCommandWait::Completed)?;
             stats.graph_captures += 1;
             stats.graph_launches += 1;
             stats.synchronizations += 1;
             remaining -= 1;
-            let p = self.prefill.as_mut().ok_or_else(|| invalid("prefill"))?;
-            match which {
-                None => p.begin = Some(exec),
-                Some((i, phase)) => p.phases[i][phase.slot()] = Some(exec),
-            }
+            self.prefill
+                .as_mut()
+                .ok_or_else(|| invalid("prefill"))?
+                .begin = Some(exec);
         }
-        let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
-        let graph = match which {
-            None => p.begin.as_ref(),
-            Some((i, phase)) => p.phases[i][phase.slot()].as_ref(),
-        }
-        .ok_or_else(|| invalid("graph"))?;
+        let graph = self
+            .prefill
+            .as_ref()
+            .and_then(|p| p.begin.as_ref())
+            .ok_or_else(|| invalid("graph"))?;
         for _ in 0..remaining {
             graph.launch_enqueued()?;
             stats.graph_launches += 1;
@@ -784,7 +935,7 @@ impl V41Stage {
             p.dense_count
                 .write_bytes_at_offset(0, &count.to_le_bytes())?;
         }
-        self.replay(backend, None, tokens, stats)?;
+        self.replay_begin(backend, tokens, stats)?;
         let fp8 = V41MatvecFormat::Fp8Block32x32;
         let fp4 = V41MatvecFormat::Fp4E2M1Row32;
         // The residual sits in `prefill.r` (cur 0) or `prefill.r2` (cur 1);
@@ -1008,7 +1159,7 @@ impl V41Stage {
                 s.commit(crate::CudaCommandWait::Completed)?;
                 stats.synchronizations += 1;
             }
-            self.replay(backend, Some((i, Phase::E)), tokens, stats)?;
+            self.attention_batched(backend, i, tokens, stats)?;
             {
                 let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
                 let lw = &self.layers[i];
