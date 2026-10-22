@@ -80,3 +80,10 @@ These are in `~/work/NEEDS_OWNER.md` with details.
 - **Mac Flint:** decide whether this Mac serves Flint permanently. Today it isn't a launchd service, so a reboot stops it.
 - **LiveKit cluster:** it's still running with no users (`oa-livekit-prod`, from the voice audit). Decide whether to tear it down.
 - **Trailers:** `~/work/film-out/cut/verse-trailer.mp4` and `verse-trailer-kiki.mp4` need a Verse logo and Kiki's review.
+
+DeepSeek correction (17:00 UTC): #12369 is reopened and claimed by the Codex
+DeepSeek chat under the owner's instruction to pass every gate. Qualification
+repairs, independent calibration, and native CUDA checks are in progress. The
+remaining scope includes G1, the current bundle's G2/G4, and qualified G5–G8;
+it is not limited to long prompts. See `docs/psionic/deepseek-v41-completion.md`
+and `docs/audits/2026-10-22-deepseek-closed-issues.md` for the current evidence.
