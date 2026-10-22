@@ -35,6 +35,10 @@ fn letter_key(c: u8, ink: Ink) -> String {
     format!("board/l-{}-{}", ink.name(), c)
 }
 
+fn word_key(index: usize) -> String {
+    format!("board/w-{index}")
+}
+
 fn cell_key(cell: Cell) -> String {
     format!("board/cell-{}", cell.name())
 }
@@ -151,6 +155,11 @@ pub fn add(pack: &mut Pack, white: usize, texture: &str) -> Result<(), String> {
             models.push((key.clone(), model(&key, &art, white, 1.0, [0.0; 3])));
         }
     }
+    for (i, (text, ink)) in layout::WORDS.into_iter().enumerate() {
+        let key = word_key(i);
+        let art = layout::word(text, ink);
+        models.push((key.clone(), model(&key, &art, white, 1.0, [0.0; 3])));
+    }
     for cell in Cell::ALL {
         let key = cell_key(cell);
         let art = layout::cell(cell);
@@ -257,6 +266,10 @@ impl BuildBoard {
             let (model, transform) = match placed.piece {
                 Piece::Letter(c, ink) => (
                     letter_key(c, ink),
+                    place * Mat4::from_scale(Vec3::splat(placed.size as f32)),
+                ),
+                Piece::Word(i) => (
+                    word_key(i),
                     place * Mat4::from_scale(Vec3::splat(placed.size as f32)),
                 ),
                 Piece::Cell(cell) => (cell_key(cell), place),

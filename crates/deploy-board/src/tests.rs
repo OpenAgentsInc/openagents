@@ -128,10 +128,16 @@ fn a_failed_smoke_turns_its_cell_red_and_flashes_red() {
     assert!(matches!(lane.flash, Some((Flash::Failed, _))));
     let pieces = layout::pieces(&ingest.board, 1_241.0, 1024);
     assert!(pieces.iter().any(|p| p.piece == Piece::Cell(Cell::Failed)));
+    let words: Vec<&str> = pieces
+        .iter()
+        .filter_map(|p| match p.piece {
+            Piece::Word(i) => Some(layout::WORDS[i].0),
+            _ => None,
+        })
+        .collect();
     assert!(
-        pieces
-            .iter()
-            .any(|p| matches!(p.piece, Piece::Letter(_, Ink::Fail)))
+        words.contains(&"SMOKE FAILED") && words.contains(&"FAILED"),
+        "{words:?}"
     );
 }
 
@@ -424,6 +430,11 @@ fn every_letter_and_cell_is_drawn_in_a_known_ink() {
             assert!(art.lit.iter().all(|(_, i)| *i == ink));
         }
     }
+    for (text, ink) in layout::WORDS {
+        assert!(layout::word(text, ink).lit.iter().all(|(_, i)| *i == ink));
+    }
+    // The Grid, its terminal, and the Bay use 61 of a pack's 256 models.
+    assert!(layout::MODELS <= 140, "{}", layout::MODELS);
     for look in Cell::ALL {
         assert_eq!(layout::cell(look).lit.len(), 1);
     }

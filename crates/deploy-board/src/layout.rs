@@ -20,7 +20,7 @@ pub const FACES: [f64; 2] = [0.0, -10.0];
 pub const WIDTH: f64 = 24.0;
 pub const HEIGHT: f64 = 12.0;
 /// The face's lower edge above the ground, m.
-pub const LIFT: f64 = 2.4;
+pub const LIFT: f64 = 1.2;
 /// The backing's depth, m.
 pub const DEPTH: f64 = 0.4;
 /// Each lane's left edge and width along the face, m.
@@ -119,8 +119,10 @@ impl Ink {
         Ink::Live,
         Ink::Fail,
     ];
-    /// The inks live letters are drawn in.
-    pub const LETTERS: [Ink; 4] = [Ink::Quiet, Ink::Bright, Ink::Live, Ink::Fail];
+    /// The inks single letters are drawn in. Text in the two status
+    /// colors is drawn as whole words ([`WORDS`]): a pack holds at most 256
+    /// models, and the Grid, the Bay, and the board share them.
+    pub const LETTERS: [Ink; 2] = [Ink::Quiet, Ink::Bright];
 
     #[must_use]
     pub fn name(self) -> &'static str {
@@ -374,10 +376,42 @@ pub fn flash(kind: Flash) -> Art {
     art
 }
 
+/// The words the board writes in a status color, each one model.
+pub const WORDS: [(&str, Ink); 7] = [
+    ("LIVE", Ink::Live),
+    ("FAILED", Ink::Fail),
+    ("ROLLBACK", Ink::Fail),
+    ("BUILD FAILED", Ink::Fail),
+    ("DEPLOY FAILED", Ink::Fail),
+    ("SMOKE FAILED", Ink::Fail),
+    ("ROLLED BACK", Ink::Fail),
+];
+
+/// How many models the board adds to a pack: the frame, each letter in
+/// each of [`Ink::LETTERS`], each of [`WORDS`], the cells, and the two
+/// flashes.
+pub const MODELS: usize =
+    1 + font::CHARSET.len() * Ink::LETTERS.len() + WORDS.len() + Cell::ALL.len() + 2;
+
+/// `text` in `ink`, one meter tall, its lower left corner at the origin.
+#[must_use]
+pub fn word(text: &str, ink: Ink) -> Art {
+    let mut art = Art::default();
+    for (i, c) in text.bytes().enumerate() {
+        let left = i as f64 * font::advance(1.0);
+        for [l, b, r, t] in font::rects(c) {
+            art.fill(left + l, b, left + r, t, 0.0, ink);
+        }
+    }
+    art
+}
+
 /// A live piece the frame draws.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Piece {
     Letter(u8, Ink),
+    /// One of [`WORDS`], by index.
+    Word(usize),
     Cell(Cell),
     Flash(Flash),
 }
@@ -392,6 +426,21 @@ pub struct Placed {
 }
 
 fn put_text(out: &mut Vec<Placed>, text: &str, x: f64, y: f64, size: f64, ink: Ink) -> f64 {
+    let end = x + text.len() as f64 * font::advance(size);
+    if let Some(index) = WORDS.iter().position(|w| *w == (text, ink)) {
+        out.push(Placed {
+            piece: Piece::Word(index),
+            at: [x, y, TEXT_Z],
+            size,
+        });
+        return end;
+    }
+    // Other text in a status color falls back to the bright letters.
+    let ink = if Ink::LETTERS.contains(&ink) {
+        ink
+    } else {
+        Ink::Bright
+    };
     for (i, c) in text.bytes().enumerate() {
         let c = font::drawn(c);
         if c == b' ' {
@@ -403,7 +452,7 @@ fn put_text(out: &mut Vec<Placed>, text: &str, x: f64, y: f64, size: f64, ink: I
             size,
         });
     }
-    x + text.len() as f64 * font::advance(size)
+    end
 }
 
 /// `text` cut to `max` letters, ending in `..` when cut.
