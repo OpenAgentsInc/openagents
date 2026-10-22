@@ -97,7 +97,7 @@ fn run_stage(args: &[String]) -> Result<(), Refused> {
     psionic_v41_stage::check_weights(&manifest, &model.digest)?;
     let arithmetic = options.arithmetic.unwrap_or(model.arithmetic);
     let stage = psionic_v41_stage::stage_info(&options, &manifest, &entry, model, Backend::Cpu);
-    let worker = psionic_v41_stage::cpu_worker_wired(
+    let worker = psionic_v41_stage::cpu_worker_wired_observed(
         model,
         &manifest,
         &entry,
@@ -105,6 +105,7 @@ fn run_stage(args: &[String]) -> Result<(), Refused> {
         options.max_context,
         options.generation,
         options.wire,
+        options.observe,
     )?;
     serve::serve(stage, worker, options.generation)
 }
