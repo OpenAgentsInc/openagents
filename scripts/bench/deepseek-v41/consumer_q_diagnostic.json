@@ -1,0 +1,67 @@
+{
+  "schema": "openagents.deepseek_v41.consumer_q_diagnostic.v1",
+  "issue": 12465,
+  "date": "2026-10-22",
+  "worker_commit": "50b42cce21",
+  "native_revision": "1bae0e1",
+  "case": "p1-chat-thinking",
+  "generated_ids": [
+    2581,
+    1309,
+    3287,
+    1234,
+    15174,
+    16,
+    21017,
+    8470
+  ],
+  "inputs": "oracle prompt ids and teacher-forced oracle history, first eight positions",
+  "artifact": "q3-00d720cdf6",
+  "lossy": true,
+  "qualified": false,
+  "device": "g4-standard-48 / RTX PRO 6000 Blackwell",
+  "profiles": {
+    "exact": {
+      "sampled_ids": [
+        2581,
+        1309,
+        3287,
+        1234,
+        15174,
+        16,
+        21017,
+        8470
+      ],
+      "top1_matches": 8,
+      "positions": 8,
+      "text": "We need answer two sentences. Need explain",
+      "prefill_ms": 67945.288808,
+      "cold_decode_tokens_per_s": 1.0922845030452761,
+      "report_sha256": "50858f872aa78c93b6bc23cbe17b60ce158fe39f762de65cd6a0d201ab8c81da"
+    },
+    "q3": {
+      "sampled_ids": [
+        2581,
+        1309,
+        3287,
+        1234,
+        15174,
+        16,
+        28231,
+        8470
+      ],
+      "top1_matches": 7,
+      "positions": 8,
+      "text": "We need answer two sentences. Explain explain",
+      "prefill_ms": 22096.109926,
+      "cold_decode_tokens_per_s": 2.3293903626195753,
+      "report_sha256": "feb6cc7402d898759557ae5d301bbbcf2c06e94a584ead8c2dde7bf83793d0da"
+    }
+  },
+  "evidence_prefix": "gs://openagents-psionic-models-ane1/deepseek-ai/DeepSeek-V4.1-Flash-1017/consumer-q/run-2a20931f9c/evidence",
+  "limitations": [
+    "Eight positions are a diagnostic, not a held-out quality verdict.",
+    "Cold unseeded-cache timings do not measure the serving speed target.",
+    "This older build predates the native FP8 arithmetic fix in 705129ecaf; final quality uses the newer build."
+  ]
+}
