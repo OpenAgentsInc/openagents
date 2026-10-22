@@ -650,6 +650,14 @@ The status lines below summarize each issue and its comments. Open the issue for
   G1 v2 needs the oracle comparison per class. Then rerun a mixed group
   with every stage pinned and the W14 harness.
 
+- #12420: qualify the Metal device class `metal-apple10` under the frozen
+  G1 v2 policy (#12405) with the other classes of #12418 before a group with
+  a Mac stage is advertised as qualified, and pin the Mac stage to a bundle
+  from `scripts/pylon/v41-stage-build-metal.sh` in its lane entry. The Metal
+  last stage already equals the CUDA stage bit for bit on captured real
+  inputs, and `pylon cloud up quad-mac` answered through Pylon as a
+  development group (`docs/psionic/verification/deepseek-v41-metal-2026-10-21/`).
+
 - #12394: rerun G4 on layers 0–4 and 0–9 with
   `scripts/bench/deepseek-v41/stage_vm.sh` under the G1 v2 direct-runtime
   contract (#12405), not the CPU's B200 arithmetic order, adding an isolated

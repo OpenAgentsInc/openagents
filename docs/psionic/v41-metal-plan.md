@@ -1,6 +1,8 @@
 # DeepSeek-V4.1 stages on Apple Metal: plan and estimate
 
-Status: M1 to M5 built (2026-10-21, #12420); M6 qualification pending.
+Status: M1 to M5 built and a mixed CUDA and Metal group answered through
+Pylon (2026-10-21, #12420); M6's G1 v2 qualification waits with every other
+device class.
 Written for [#12418](https://github.com/OpenAgentsInc/openagents/issues/12418);
 the port is [#12420](https://github.com/OpenAgentsInc/openagents/issues/12420).
 [Progress](#progress) records what landed and its evidence.
@@ -196,6 +198,44 @@ the captures are
   --transport direct` runs layers 0-38 on one g4-standard-192 and layers
   38-40 with the sampler on this Mac. The stage before the Mac forwards the
   Mac's link port back over its ssh session.
+
+### A mixed group through Pylon
+
+`pylon cloud up quad-mac` ran layers 0-38 on four RTX PRO 6000 GPUs of one
+spot g4-standard-192 in us-west3-a and layers 38-40, with the final norm,
+the head, and the sampler, on the M5 Max, with the group head on the Mac.
+The head made the group ready at generation 1 with five stages: four
+announcing `cuda-sm_120` and the Mac `metal-apple10`, `Apple M5 Max`,
+unified experts, and profile `metal-device-apple10`. `pylon ask --model
+sha256:ARTIFACT` over `wss://relay.openagents.com` was routed to the group
+and answered three greedy jobs, each `stop`:
+
+| Job | Tokens | First token | Decode | A decode token |
+| --- | --- | --- | --- | --- |
+| "Why is the sky blue? Answer in two sentences." | 121 (72 of reasoning) | 2.78 s | 8.08 tokens/s | 123.8 ms: stages 8.20 + 7.84 + 8.15 + 6.36 ms (CUDA) and 12.91 ms (Metal), links and head 80.35 ms |
+| The same prompt again | 121 | 2.62 s | 7.82 tokens/s | 127.9 ms, Metal 13.04 ms |
+| A short Fibonacci function | 141 (92 of reasoning) | 2.96 s | 9.04 tokens/s | 110.6 ms, Metal 12.53 ms |
+
+The first answer is word for word the all-CUDA one-quad group's (G5), as
+the bit-equal replay predicts. Most of a decode token is two wide-area
+crossings, the head on the Mac to stage 0 and stage 3 back to the Mac;
+the stages compute about 43 ms of it. A token carries 346,708 bytes of
+stage state. The capture machine and the group machine cost $2.88 in all.
+Receipt: [`group-quad-mac.json`](verification/deepseek-v41-metal-2026-10-21/group-quad-mac.json).
+
+### What remains
+
+- **M6, G1 v2.** Qualify `metal-apple10` under the frozen G1 v2 policy
+  (#12405) when it is frozen, as for every other device class (#12418),
+  before a group with a Mac stage is advertised as qualified. On identical
+  inputs the Metal stage equals the CUDA stage bit for bit, so its result
+  follows the CUDA profile's.
+- **Pins.** Pin the Mac stage to a bundle from
+  `scripts/pylon/v41-stage-build-metal.sh` in its lane entry for a
+  non-development group.
+- **Speed.** The Metal decode step of two layers is 9.1 ms against the
+  RTX PRO 6000's 2.5 ms; the kernels keep the CUDA order and haven't been
+  tuned for Apple GPUs.
 
 ## Issue
 

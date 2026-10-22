@@ -1,0 +1,246 @@
+{
+ "schema": "openagents.deepseek_v41.group_run.v1",
+ "issue": 12420,
+ "date": "2026-10-21",
+ "result": "a development group with its last stage on a Mac's Apple GPU answered through Pylon; on identical inputs the Metal stage equals the CUDA stage bit for bit",
+ "build": {
+  "cuda_stage_worker": {
+   "url": "gs://openagents-psionic-models/bin/psionic-v41-stage/fe90f79532/sm_120/psionic-v41-stage",
+   "bundle_sha256": "5fdddb1270c9f20486148a26e85d1c2c4b4dc8a3122b3410154939521e467502",
+   "features": [
+    "cuda"
+   ],
+   "arch": "sm_120"
+  },
+  "capture_worker": {
+   "url": "gs://openagents-psionic-models/bin/psionic-v41-stage/f719f2cb42/sm_120/psionic-v41-stage",
+   "bundle_sha256": "6138e1823d25878877a845d79df8ef75def6ec7a01934066df60a9a2b4c7010c"
+  },
+  "metal_stage_worker": {
+   "source_commit": "fe90f79532",
+   "sha256": "f626a9edd277f848c3e7346423f394fb72bbe45a53eb47dac595039b7a54ca81",
+   "features": [
+    "metal"
+   ],
+   "bundle": "unbundled (development group); scripts/pylon/v41-stage-build-metal.sh now builds a Metal bundle"
+  },
+  "pylon": {
+   "source_commit": "fe90f79532",
+   "note": "debug build on the budget host"
+  },
+  "cuda_tests_after_the_executor_refactor": "v41-stage-build.sh test on coderos-4080 (RTX 4080, sm_89): psionic-backend-cuda v41_ 47 passed, and every psionic-v41-stage suite passed"
+ },
+ "machines": [
+  {
+   "role": "stages 0-3 (layers 0-38)",
+   "type": "g4-standard-192",
+   "gpus": "4 x NVIDIA RTX PRO 6000 Blackwell Server Edition (96 GB)",
+   "zone": "us-west3-a",
+   "provisioning": "spot",
+   "price_per_hour": 6.654,
+   "cost_usd": 1.433633
+  },
+  {
+   "role": "stage 4 (layers 38-40, final norm, head, sampler) and the group head",
+   "type": "the owner's Mac, shared with other agents",
+   "gpu": "Apple M5 Max (apple10), 128 GB unified memory",
+   "cost_usd": 0,
+   "metal_stage_weights_and_state": "16.2 GB for layers 38-40 with the head (measured at a 4,096-position context)"
+  }
+ ],
+ "launch": {
+  "command": "pylon cloud up quad-mac --development --worker URL --local-worker PATH --local-weights DIR --transport direct --zone us-west3-a --hours 2 --temperature 0 --max-output-tokens 256 --step-secs 60 --prefill-secs 120 --allow BUYER",
+  "placement": "quad-mac: stages 0-10, 10-20, 20-30, 30-38 on GPUs 0-3 of one machine (Engram tables of layers 1 and 14 in its host memory); stage 38-40 on host local, metal-apple10",
+  "manifest": "sha256:73fd460b9d8cf110cca8cbec58b18ad7d674ec8ff549a4a29f6a917e06a1597f",
+  "artifact": "sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+  "runtimes": {
+   "stages 0-3": "psionic-v41-stage/1+cuda",
+   "stage 4": "psionic-v41-stage/1+metal (declared in its lane entry)"
+  },
+  "transport": "direct: stage_link inside the machine for stages 0-3, and from stage 3 to the Mac through its ssh session's reverse forward of port 47204",
+  "relay": "wss://relay.openagents.com",
+  "published_as": "30200:037e593253115b7aeaa48f393059c7e4dd49f0fd32818a2a7816f6adeb7101ad:v41-quad-mac-12420-head",
+  "announced": [
+   {
+    "stage": "s0",
+    "class": "cuda-sm_120",
+    "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "experts": "device",
+    "profile": "cuda-device-sm_120",
+    "bundle": "5fdddb1270c9f20486148a26e85d1c2c4b4dc8a3122b3410154939521e467502"
+   },
+   {
+    "stage": "s1",
+    "class": "cuda-sm_120",
+    "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "experts": "device",
+    "profile": "cuda-device-sm_120",
+    "bundle": "5fdddb1270c9f20486148a26e85d1c2c4b4dc8a3122b3410154939521e467502"
+   },
+   {
+    "stage": "s2",
+    "class": "cuda-sm_120",
+    "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "experts": "device",
+    "profile": "cuda-device-sm_120",
+    "bundle": "5fdddb1270c9f20486148a26e85d1c2c4b4dc8a3122b3410154939521e467502"
+   },
+   {
+    "stage": "s3",
+    "class": "cuda-sm_120",
+    "name": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+    "experts": "device",
+    "profile": "cuda-device-sm_120",
+    "bundle": "5fdddb1270c9f20486148a26e85d1c2c4b4dc8a3122b3410154939521e467502"
+   },
+   {
+    "stage": "s4",
+    "class": "metal-apple10",
+    "name": "Apple M5 Max",
+    "experts": "unified",
+    "profile": "metal-device-apple10"
+   }
+  ],
+  "timeline_utc": {
+   "created": "00:02",
+   "group_ready": "00:09:38",
+   "first_job": "00:09:36-00:09:55",
+   "deleted": "00:14:54"
+  }
+ },
+ "jobs": {
+  "path": "pylon ask --model sha256:ARTIFACT --no-receipt from a separate buyer home on the Mac, over wss://relay.openagents.com (NIP-CJ), routed to the group head on the Mac; greedy",
+  "rows": [
+   {
+    "id": "p1 sky (thinking mode)",
+    "prompt": "Why is the sky blue? Answer in two sentences.",
+    "outcome": "accepted",
+    "answered_by": "30200:037e593253115b7aeaa48f393059c7e4dd49f0fd32818a2a7816f6adeb7101ad:v41-quad-mac-12420-head",
+    "tokens": 121,
+    "reasoning_tokens": 72,
+    "first_token_ms": 2780,
+    "decode_tokens_per_s": 8.08,
+    "decode_token_ms": 123.81,
+    "stage_ms": [
+     8.2,
+     7.84,
+     8.15,
+     6.36,
+     12.91
+    ],
+    "links_and_head_ms": 80.35,
+    "stage_state_bytes_per_token": 346708,
+    "prefill_stage_ms": [
+     331,
+     315,
+     324,
+     252,
+     353
+    ],
+    "buyer_answer_ms": 17830,
+    "text": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red wavelengths. When you look away from the Sun, you see this scattered blue light coming from all directions."
+   },
+   {
+    "id": "p1 repeated",
+    "prompt": "Why is the sky blue? Answer in two sentences.",
+    "outcome": "accepted",
+    "answered_by": "30200:037e593253115b7aeaa48f393059c7e4dd49f0fd32818a2a7816f6adeb7101ad:v41-quad-mac-12420-head",
+    "tokens": 121,
+    "reasoning_tokens": 72,
+    "first_token_ms": 2616,
+    "decode_tokens_per_s": 7.82,
+    "decode_token_ms": 127.85,
+    "stage_ms": [
+     8.2,
+     7.85,
+     8.15,
+     6.36,
+     13.04
+    ],
+    "links_and_head_ms": 84.26,
+    "stage_state_bytes_per_token": 346708,
+    "prefill_stage_ms": [
+     328,
+     313,
+     321,
+     249,
+     354
+    ],
+    "buyer_answer_ms": 18120,
+    "text": "The sky appears blue because sunlight is scattered by molecules in the atmosphere, and shorter blue wavelengths are scattered much more strongly than longer red wavelengths. When you look away from the Sun, you see this scattered blue light coming from all directions."
+   },
+   {
+    "id": "fibonacci code prompt",
+    "prompt": "Write a Python function that returns the n-th Fibonacci number iteratively. Keep it short.",
+    "outcome": "accepted",
+    "answered_by": "30200:037e593253115b7aeaa48f393059c7e4dd49f0fd32818a2a7816f6adeb7101ad:v41-quad-mac-12420-head",
+    "tokens": 141,
+    "reasoning_tokens": 92,
+    "first_token_ms": 2964,
+    "decode_tokens_per_s": 9.04,
+    "decode_token_ms": 110.57,
+    "stage_ms": [
+     8.23,
+     7.88,
+     8.19,
+     6.38,
+     12.53
+    ],
+    "links_and_head_ms": 67.35,
+    "stage_state_bytes_per_token": 346709,
+    "prefill_stage_ms": [
+     384,
+     368,
+     377,
+     291,
+     400
+    ],
+    "buyer_answer_ms": 18646,
+    "text": "```python\ndef fib(n):\n    a, b = 0, 1\n    for _ in range(n):\n        a, b = b, a + b\n    return a\n```"
+   }
+  ],
+  "note": "the p1 answer is word for word the one-quad all-CUDA group's (G5 receipt), as the bit-equal replay predicts"
+ },
+ "replay": {
+  "what": "the CUDA chain's last-stage messages fed to the Metal stage (layers 38-40 with the head and sampler); limit |metal - cuda| <= 2^-5 + 2^-6 |cuda| per logit",
+  "greedy": {
+   "steps": 51,
+   "tokens_equal": 51,
+   "logits": "all 129,280 bit-equal at every step",
+   "metal_decode_gpu_ms": 9.1,
+   "cuda_decode_stage_ms": 2.5
+  },
+  "seeded": {
+   "steps": 19,
+   "tokens_equal": 19,
+   "logits": "all 129,280 bit-equal at every step",
+   "metal_decode_gpu_ms": 16.8,
+   "cuda_decode_stage_ms": 30.4
+  },
+  "reports": [
+   "replay-greedy.json",
+   "replay-sampled.json",
+   "cuda-chain-greedy.json",
+   "cuda-chain-sampled.json"
+  ],
+  "captures": {
+   "url": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/metal-12420/cuda-captures-2026-10-21.tgz",
+   "sha256": "69858fdcb7467d918b0a0a5e54bebfce368f185191ec8c4651c0bf465ec007d3"
+  },
+  "capture_machine": {
+   "type": "g4-standard-192 spot, us-west3-a",
+   "cost_usd": 1.45
+  }
+ },
+ "cost_usd": {
+  "capture": 1.45,
+  "group": 1.433633,
+  "total": 2.883633,
+  "cap": 150
+ },
+ "limits": [
+  "a development group: no worker bundle pins, and the Mac stage ran an unbundled executable",
+  "the links-and-head share of a decode token (67-84 ms) is two wide-area crossings: the head on the Mac to stage 0 in us-west3-a, and stage 3 back to the Mac",
+  "G1 v2 qualification of the metal-apple10 profile is pending with every other device class (After-close checks)"
+ ]
+}
