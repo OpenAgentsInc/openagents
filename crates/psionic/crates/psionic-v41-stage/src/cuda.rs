@@ -640,6 +640,18 @@ enum CudaWeights {
 }
 
 impl CudaModel {
+    /// Opens the backbone and MTP tensors together and verifies their
+    /// shard bytes against the same pin used by an ordinary stage.
+    pub(super) fn load_dspark(dir: &Path) -> Result<Self, Refused> {
+        let model = Self::load(dir, None)?;
+        if let CudaWeights::Checkpoint(checkpoint, _) = &model.kind {
+            checkpoint
+                .verify_shard_hashes(None)
+                .map_err(|e| Refused(format!("DSpark checkpoint verification: {e}")))?;
+        }
+        Ok(model)
+    }
+
     /// Loads the model in `dir`: the synthetic model, or the checkpoint's
     /// shards for `selection` (hashed against the pin).
     ///
@@ -983,14 +995,11 @@ pub fn run_stage(
             "--dspark needs an ordinary whole-model CUDA stage and at least six step tokens".into(),
         ));
     }
-    let mut model = CudaModel::load(
-        &options.weights,
-        if options.tiers.dspark {
-            None
-        } else {
-            selection
-        },
-    )?;
+    let mut model = if options.tiers.dspark {
+        CudaModel::load_dspark(&options.weights)?
+    } else {
+        CudaModel::load(&options.weights, selection)?
+    };
     model.experts_on_host = options.experts == crate::Experts::Host;
     model.experts = options.experts;
     model.tiers = options.tiers.clone();
