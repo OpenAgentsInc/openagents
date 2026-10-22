@@ -135,7 +135,10 @@ fn the_text_is_cleaned_and_bounded_but_never_judged() {
     let s = suggestion("  hi\u{202e}there\u{0007}\n  ");
     assert_eq!(s.text, "hithere");
     let long = "a".repeat(MAX_CHARS + 50);
-    assert_eq!(suggestion(&long).text.chars().count(), MAX_CHARS);
+    assert_eq!(
+        Suggestion::new(Client::Cli, Category::Idea, &long, None, None, 1).unwrap_err(),
+        TOO_LONG
+    );
     assert_eq!(
         Suggestion::new(Client::Web, Category::Bug, " \u{200f} ", None, None, 1).unwrap_err(),
         EMPTY

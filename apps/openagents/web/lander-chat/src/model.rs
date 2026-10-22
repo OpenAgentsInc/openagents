@@ -181,6 +181,7 @@ pub const SUGGEST_STATUS: &str = "openagentsSuggestStatus";
 pub const SUGGEST_TITLE: &str = "Suggestion box";
 pub const SUGGEST_INTRO: &str = "Tell us what to fix, add, or keep. Only OpenAgents reads it.";
 pub const SUGGEST_SENDING: &str = "Sending\u{2026}";
+pub const SUGGEST_TOO_LONG: &str = "Suggestions can be at most 2,000 characters.";
 /// The most characters a suggestion holds.
 pub const SUGGEST_MAX: usize = 2_000;
 /// The box's categories: the wire name and the label.
@@ -938,6 +939,7 @@ mod tests {
         assert_eq!(SUGGEST_INTRO, s::INTRO);
         assert_eq!(SUGGEST_SENDING, s::SENDING);
         assert_eq!(SUGGEST_MAX, s::MAX_CHARS);
+        assert_eq!(SUGGEST_TOO_LONG, s::TOO_LONG);
         for (name, label) in SUGGEST_CATEGORIES {
             assert_eq!(
                 s::Category::from_name(name).map(s::Category::label),
