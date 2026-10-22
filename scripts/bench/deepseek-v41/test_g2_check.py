@@ -110,7 +110,7 @@ class Controls(unittest.TestCase):
             ap, out = Path(d) / "a.json", Path(d) / "r.json"
             ap.write_text(json.dumps(answers))
             sys.argv = ["g2_check.py", str(suite), str(ap), str(out)]
-            g2_check.main()
+            self.assertEqual(g2_check.main(), 2)
             report = json.loads(out.read_text())
         self.assertFalse(report["floor_held"])
         self.assertFalse(report["passed"])

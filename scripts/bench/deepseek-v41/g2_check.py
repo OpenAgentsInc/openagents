@@ -199,7 +199,8 @@ def judge(task, ended, reasoning, content):
 
 def main():
     suite = json.loads(Path(sys.argv[1]).read_text())
-    answers = {a["case"]: a for a in json.loads(Path(sys.argv[2]).read_text())["answers"]}
+    source = json.loads(Path(sys.argv[2]).read_text())
+    answers = {a["case"]: a for a in source["answers"]}
     rows = []
     for task in suite["cases"]:
         a = answers.get(task["id"])
@@ -222,6 +223,10 @@ def main():
     report = {"schema": "psionic.deepseek_v41.g2_v2_report.v1", "issue": 12405,
               "suite_sha256": hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest(),
               "checker_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              "answers_sha256": hashlib.sha256(Path(sys.argv[2]).read_bytes()).hexdigest(),
+              "source": {k: source.get(k) for k in (
+                  "runtime", "profile", "stage_bundle_sha256", "stage_executable_sha256",
+                  "expected_bundle_sha256", "launch", "manifest", "oracle_manifest_sha256", "cap")},
               "oracle_passes": o_pass, "runtime_passes": r_pass, "tasks": len(suite["cases"]),
               "missing": [r["case"] for r in rows if r.get("missing")],
               "floor_held": all(r.get("runtime_must_pass_held") for r in rows if not r.get("missing")),
@@ -230,7 +235,8 @@ def main():
               "rows": rows}
     Path(sys.argv[3]).write_text(json.dumps(report, indent=1) + "\n")
     print(json.dumps({k: report[k] for k in ("oracle_passes", "runtime_passes", "tasks", "missing", "floor_held", "passed")}))
+    return 0 if report["passed"] else 2
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
