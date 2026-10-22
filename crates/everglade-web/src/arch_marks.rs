@@ -278,6 +278,9 @@ pub mod web {
     /// The frame's dark backing, a little behind the strokes.
     const BACKING: [f32; 3] = [0.002; 3];
     const LINE_PAD: [f32; 2] = [10.0, 6.0];
+    /// Where the line hangs, m: its top edge just under the lintel, above
+    /// an arch's own prompt in the opening.
+    const LINE_AT: f32 = 4.1;
 
     fn key(mark: &Mark) -> String {
         format!("mark/{}", mark.id)
@@ -436,13 +439,12 @@ pub mod web {
         let Some((mark, at, _)) = near else {
             return;
         };
-        let Some([x, y]) = verse::hud::project(view_proj, size, at + Vec3::Y * (FRAME_Y[1] + 0.4))
-        else {
+        let Some([x, y]) = verse::hud::project(view_proj, size, at + Vec3::Y * LINE_AT) else {
             return;
         };
         let w = atlas.measure(mark.line) + LINE_PAD[0] * 2.0;
         let h = atlas.line + LINE_PAD[1] * 2.0;
-        let (left, top) = (x - w / 2.0, y - h);
+        let (left, top) = (x - w / 2.0, y);
         ui.rect(
             atlas,
             left,
