@@ -2725,6 +2725,7 @@ dependencies = [
 name = "kiln-view"
 version = "1.0.0"
 dependencies = [
+ "openagents-workspace-hack",
  "rust-native",
  "serde",
 ]
