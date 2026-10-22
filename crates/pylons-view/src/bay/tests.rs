@@ -466,25 +466,29 @@ fn the_floor_names_each_section_and_the_sign_names_the_bay() {
 
 #[test]
 fn a_group_s_conduits_run_inside_its_lane() {
+    for flow in art::Flow::ALL {
+        let art = art::conduit(flow);
+        assert!(!art.lines.is_empty());
+        let (lo, hi) = bounds(&art);
+        // One meter along, stretched per hop; narrow across; between the
+        // racks' bodies.
+        assert!(lo[2] == 0.0 && hi[2] == 1.0, "{flow:?}");
+        assert!(lo[0] > -0.2 && hi[0] < 0.2);
+        assert!(lo[1] > 0.5 && hi[1] < 1.5);
+    }
+    // A broken conduit draws less than a whole one.
+    assert!(
+        art::conduit(art::Flow::Broken).lines.len() < art::conduit(art::Flow::Live).lines.len()
+    );
     for parts in 1..=MOST_PARTS {
-        for flow in art::Flow::ALL {
-            let art = art::conduit(parts, flow);
-            assert!(!art.lines.is_empty());
-            let (lo, hi) = bounds(&art);
-            // Along the lane, from the head to the last part.
-            assert!(
-                lo[2] >= 0.0 && hi[2] <= LANE_LENGTH - HEAD_AT,
-                "{parts} {flow:?}"
-            );
-            // Across it, narrow; up, between the racks' bodies.
-            assert!(lo[0] > -0.2 && hi[0] < 0.2);
-            assert!(lo[1] > 0.5 && hi[1] < 1.5);
+        let mut end = 0.0;
+        for i in 0..parts {
+            let (from, long) = machine::hop(parts, i);
+            // Each hop starts after the last one ends and stays in the lane.
+            assert!(from >= end && long > 0.0, "{parts} {i}");
+            end = from + long;
+            assert!(end <= LANE_LENGTH - HEAD_AT);
         }
-        // A broken conduit draws less than a whole one.
-        assert!(
-            art::conduit(parts, art::Flow::Broken).lines.len()
-                < art::conduit(parts, art::Flow::Live).lines.len()
-        );
     }
     use machine::Phase;
     assert_eq!(art::Flow::of(Phase::Idle), art::Flow::Quiet);

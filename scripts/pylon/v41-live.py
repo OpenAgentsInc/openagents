@@ -140,6 +140,14 @@ def ledger_records() -> list[dict]:
 def spend(state: dict, now: float) -> float:
     """What the watcher's machines cost or may cost, plus transfers."""
     ids = set(state.get("ledger_ids", []))
+    # The machine of the launch running now, which `launch` records once it
+    # ends.
+    if state.get("child"):
+        try:
+            record = json.loads((HOME / "cloud.json").read_text())
+            ids |= {m["ledger_id"] for m in record.get("machines", []) if m.get("ledger_id")}
+        except (OSError, json.JSONDecodeError):
+            pass
     starts: dict[str, dict] = {}
     stops: dict[str, float] = {}
     for r in ledger_records():

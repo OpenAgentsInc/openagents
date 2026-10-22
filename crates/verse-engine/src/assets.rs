@@ -140,6 +140,11 @@ fn read_states<'de, D: serde::Deserializer<'de>>(
 /// character's groom (Draconia's long hair is about 3 M) beside a scene.
 pub const MAX_PACK_VERTICES: usize = 6_000_000;
 
+/// The most models a pack may hold. The Grid's built-in pack holds more
+/// than 200 once the Pylon Bay and the build billboard add the small models
+/// they build at start.
+pub const MAX_PACK_MODELS: usize = 512;
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Model {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -219,7 +224,7 @@ impl Pack {
         }
         if self.version != 1
             || self.models.is_empty()
-            || self.models.len() > 256
+            || self.models.len() > MAX_PACK_MODELS
             || self.textures.len() > 512
         {
             return Err("Unsupported or oversized asset pack".into());

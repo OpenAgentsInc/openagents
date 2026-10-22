@@ -276,7 +276,10 @@ pub fn loop_point(parts: u32, s: f64) -> [f64; 3] {
         }
     };
     if hop < parts {
-        let (a, b) = (u(hop) + CONDUIT_GAP, u(hop + 1) - CONDUIT_GAP);
+        // Many parts stand closer: the gap shrinks to keep a third of the
+        // hop.
+        let gap = CONDUIT_GAP.min((u(hop + 1) - u(hop)) / 3.0);
+        let (a, b) = (u(hop) + gap, u(hop + 1) - gap);
         let along = a + (b - a) * t;
         let y = CONDUIT_Y + CONDUIT_ARCH * (std::f64::consts::PI * t).sin();
         [0.0, y, along]
@@ -284,6 +287,17 @@ pub fn loop_point(parts: u32, s: f64) -> [f64; 3] {
         let (a, b) = (u(parts), u(0));
         [0.0, RETURN_Y, a + (b - a) * t]
     }
+}
+
+/// Raised hop `hop` of a group with `parts` parts, from its head's foot:
+/// where it starts along the lane, m, and how long it is.
+#[must_use]
+pub fn hop(parts: u32, hop: u32) -> (f64, f64) {
+    let parts = parts.clamp(1, MOST_PARTS);
+    let hop = hop.min(parts - 1);
+    let from = loop_point(parts, f64::from(hop))[2];
+    let to = loop_point(parts, f64::from(hop) + 0.999_999)[2];
+    (from, to - from)
 }
 
 /// One pulse on the loop: where it is from the head's foot, and whether it

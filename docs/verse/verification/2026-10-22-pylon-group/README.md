@@ -41,11 +41,13 @@ readers, but their HTML labels are hidden.
 | Reading a prompt | The head is busy, until its median first-token time. | Bright conduits; one long sweep with a trail that hops into each part and rests there while it prefills, part by part. The working part glows. |
 | Answering | The head is busy, after that. | Bright conduits; a pulse beats around the loop, one pulse per token step, or per a few steps when steps are under 0.4 s (at 29 tokens/s, one pulse per 12 steps). The member the pulse just left glows. |
 | Starting, recovering | The head says so, or a part is missing. | Broken conduits. |
-| Down | The group left the Grid in the last 10 minutes. | Broken, faint conduits; dark machines with broken beams; dim sign; "Offline". |
+| Down | The group left the Grid in the last 10 minutes. | Broken, faint conduits; dark machines with broken beams; "Offline" in its details. |
 
 Beacons don't say when the first token came, so the switch from reading to
-answering falls at the head's median first-token time. The head's beacon
-says when it is busy.
+answering falls at the head's median first-token time. That median runs
+short for a long prompt: in `live-9s.png`, the group still read a prompt
+that took about 20 s, but the Grid had already moved to answering. The
+head's beacon says when it is busy.
 
 ## Captures
 
@@ -59,8 +61,8 @@ live group; they are not evidence of load.
 | --- | --- |
 | `idle.png` | The live group idle, from the plaza side of its lane. |
 | `near-idle.png` | Closer: each part's layers and device under it. |
-| `live-prefill.png` | A real `pylon ask` in flight: reading the prompt, the sweep at part 3. |
-| `live-decode.png` | Another real request 20 s in: answering, the pulse on the loop. |
+| `live-9s.png` | A real `pylon ask` 9 s in: bright conduits, a pulse on the loop, and the head's beam up. |
+| `live-20s.png` | Another real request 20 s in: answering, the pulse on the loop. |
 | `prefill-simulated.png` | The sweep and the working part's glow. |
 | `decode-simulated.png` | The answering beat. |
 | `selected.png` | The pointer over the group's head: the details at any distance, no HTML label. |
@@ -76,7 +78,11 @@ live group; they are not evidence of load.
 | Grid content step, median of 6 | 80 ms | 95 ms |
 | First frame, median of 6 | 213 ms | 222 ms |
 
-The times are local (Apple Silicon, localhost, headless Chrome). The new
-models are built at start: conduits for one to eight parts in three looks,
-two pulses, a glow, seven emblems, the sign's letters in two tones, the
-preview tag, and a post.
+Both builds were measured on the same base, before this change was rebased
+onto the build billboard, with an earlier model set of 110 models; the final
+set has 53. The times are local (Apple Silicon, localhost, headless Chrome). The new
+models are built at start: one conduit hop in three looks, stretched to each
+hop's length, two pulses, a glow, seven emblems, the sign's letters, the
+preview tag, and a post. With the build billboard's models, the Grid's pack
+passed the engine's limit of 256 models, so the limit is now 512
+(`verse_engine::assets::MAX_PACK_MODELS`).

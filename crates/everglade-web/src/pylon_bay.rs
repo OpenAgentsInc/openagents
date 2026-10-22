@@ -72,18 +72,17 @@ fn pipe_key(parts: u32, lit: bool) -> String {
     format!("bay/pipe{parts}-{}", u8::from(lit))
 }
 
-fn conduit_key(parts: u32, flow: Flow) -> String {
-    format!("bay/conduit{parts}-{}", flow.index())
+fn conduit_key(flow: Flow) -> String {
+    format!("bay/conduit-{}", flow.index())
 }
 
 fn emblem_key(device: Device) -> String {
     format!("bay/emblem{}", device.index())
 }
 
-/// A sign letter's model: bright for a group that is up, quiet for one
-/// that is not.
-fn letter_key(c: u8, bright: bool) -> String {
-    format!("bay/letter-{}{}", c as char, if bright { "" } else { "-q" })
+/// A sign letter's model.
+fn letter_key(c: u8) -> String {
+    format!("bay/letter-{}", c as char)
 }
 
 pub(crate) fn tint(tone: u8) -> [f32; 3] {
@@ -194,14 +193,9 @@ pub fn add(pack: &mut Pack, white: usize, texture: &str) -> Result<(), String> {
         models.push((key.into(), model(key, &bay::art::ring(tone), white, 0.1)));
     }
     models.push((SPARK.into(), model(SPARK, &bay::art::spark(), white, 0.1)));
-    for parts in 1..=bay::MOST_PARTS {
-        for flow in Flow::ALL {
-            let key = conduit_key(parts, flow);
-            models.push((
-                key.clone(),
-                model(&key, &art::conduit(parts, flow), white, 1.4),
-            ));
-        }
+    for flow in Flow::ALL {
+        let key = conduit_key(flow);
+        models.push((key.clone(), model(&key, &art::conduit(flow), white, 1.4)));
     }
     for (key, lead) in [(PULSE_LEAD, true), (PULSE_TRAIL, false)] {
         models.push((key.into(), model(key, &art::pulse(lead), white, 0.3)));
@@ -212,10 +206,11 @@ pub fn add(pack: &mut Pack, white: usize, texture: &str) -> Result<(), String> {
         models.push((key.clone(), model(&key, &art::emblem(device), white, 0.4)));
     }
     for &c in art::SIGN_CHARS {
-        for (bright, tone) in [(true, art::BRIGHT), (false, art::QUIET)] {
-            let key = letter_key(c, bright);
-            models.push((key.clone(), model(&key, &art::letter(c, tone), white, 7.0)));
-        }
+        let key = letter_key(c);
+        models.push((
+            key.clone(),
+            model(&key, &art::letter(c, art::BRIGHT), white, 7.0),
+        ));
     }
     models.push((
         PREVIEW_TAG.into(),
@@ -399,10 +394,16 @@ fn group_instances(group: &GroupScene, now: f64, out: &mut Vec<Instance>) {
             Mat4::from_translation(head),
         ));
     }
-    out.push(fixed(
-        &conduit_key(group.parts.clamp(1, bay::MOST_PARTS), Flow::of(phase)),
-        Mat4::from_translation(head),
-    ));
+    let parts = group.parts.clamp(1, bay::MOST_PARTS);
+    let flow = conduit_key(Flow::of(phase));
+    for hop in 0..parts {
+        let (from, long) = machine::hop(parts, hop);
+        out.push(fixed(
+            &flow,
+            Mat4::from_translation(head + Vec3::Z * from as f32)
+                * Mat4::from_scale(Vec3::new(1.0, 1.0, long as f32)),
+        ));
+    }
     let motion = machine::activity(phase, group.parts, now, group.busy_since, group.profile);
     for pulse in &motion.pulses {
         out.push(fixed(
@@ -431,13 +432,12 @@ fn group_instances(group: &GroupScene, now: f64, out: &mut Vec<Instance>) {
             0.0,
             machine::middle(group.parts) as f32,
         );
-    let bright = phase.up();
     let cell = art::SIGN_NAME_CELL as f32;
     let letters = art::spell(&name, art::SIGN_NAME_CELL);
     for (c, along) in &letters {
         let at = middle + Vec3::new(0.0, art::SIGN_NAME_Y as f32, *along as f32);
         out.push(fixed(
-            &letter_key(*c, bright),
+            &letter_key(*c),
             Mat4::from_translation(at) * Mat4::from_scale(Vec3::splat(cell)),
         ));
     }

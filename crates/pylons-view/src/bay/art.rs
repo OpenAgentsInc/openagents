@@ -14,8 +14,8 @@ use std::f64::consts::TAU;
 
 use super::machine::{self, Device};
 use super::{
-    HEAD_AT, Kind, LANE_LENGTH, LANES, Load, MOST_PARTS, PAD, SECTION_PITCH, SECTION_WIDTH, SIGN_V,
-    Shape, lane_start, member_at, world,
+    HEAD_AT, Kind, LANE_LENGTH, LANES, Load, PAD, SECTION_PITCH, SECTION_WIDTH, SIGN_V, Shape,
+    lane_start, member_at, world,
 };
 
 pub type Point = [f64; 3];
@@ -633,14 +633,14 @@ impl Flow {
 /// Samples along one raised hop.
 const HOP_SAMPLES: usize = 8;
 
-/// The raised conduits that join a group's head to its `parts` parts in
-/// layer order, from the head's foot: two rails of light with ties across,
-/// and a riser at each end down to the member it joins. The floor pipe
-/// ([`pipe`]) carries the answer back. A broken conduit draws every other
-/// piece.
+/// One raised conduit between two group members, one meter long along `z`
+/// from 0 to 1: two rails of light with ties across, arching up from
+/// [`machine::CONDUIT_Y`], and a riser at each end down to the member it
+/// joins. Verse stretches it along `z` to each hop's length
+/// ([`machine::hop`]); the floor pipe ([`pipe`]) carries the answer back.
+/// A broken conduit draws every other piece.
 #[must_use]
-pub fn conduit(parts: u32, flow: Flow) -> Art {
-    let parts = parts.clamp(1, MOST_PARTS);
+pub fn conduit(flow: Flow) -> Art {
     let mut art = Art::default();
     let (rail, tie) = match flow {
         Flow::Quiet => (QUIET, FAINT),
@@ -648,34 +648,34 @@ pub fn conduit(parts: u32, flow: Flow) -> Art {
         Flow::Broken => (FAINT, FAINT),
     };
     let w = 0.06;
-    for hop in 0..parts {
-        let point = |k: usize| {
-            machine::loop_point(
-                parts,
-                f64::from(hop) + k as f64 / HOP_SAMPLES as f64 * 0.999,
-            )
-        };
-        for k in 0..HOP_SAMPLES {
-            if flow == Flow::Broken && k % 2 == 1 {
-                continue;
-            }
-            let (a, b) = (point(k), point(k + 1));
-            for side in [-w, w] {
-                art.lines
-                    .push(([side, a[1], a[2]], [side, b[1], b[2]], rail));
-            }
-            if k % 2 == 0 {
-                art.lines.push(([-w, a[1], a[2]], [w, a[1], a[2]], tie));
-            }
+    let point = |k: usize| -> Point {
+        let t = k as f64 / HOP_SAMPLES as f64;
+        [
+            0.0,
+            machine::CONDUIT_Y + machine::CONDUIT_ARCH * (std::f64::consts::PI * t).sin(),
+            t,
+        ]
+    };
+    for k in 0..HOP_SAMPLES {
+        if flow == Flow::Broken && k % 2 == 1 {
+            continue;
         }
-        // Risers: where the conduit plugs into each member.
-        for end in [point(0), point(HOP_SAMPLES)] {
-            art.lines.push((
-                [0.0, end[1] - 0.25, end[2]],
-                [0.0, end[1] + 0.05, end[2]],
-                tie,
-            ));
+        let (a, b) = (point(k), point(k + 1));
+        for side in [-w, w] {
+            art.lines
+                .push(([side, a[1], a[2]], [side, b[1], b[2]], rail));
         }
+        if k % 2 == 0 {
+            art.lines.push(([-w, a[1], a[2]], [w, a[1], a[2]], tie));
+        }
+    }
+    // Risers: where the conduit plugs into each member.
+    for end in [point(0), point(HOP_SAMPLES)] {
+        art.lines.push((
+            [0.0, end[1] - 0.25, end[2]],
+            [0.0, end[1] + 0.05, end[2]],
+            tie,
+        ));
     }
     art
 }
