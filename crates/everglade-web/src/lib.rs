@@ -12,6 +12,8 @@
 //!
 //! A native build of this crate holds only the plain data its tests cover.
 
+#[cfg(any(target_arch = "wasm32", test))]
+mod arch_marks;
 #[cfg(target_arch = "wasm32")]
 mod build_board;
 #[cfg(target_arch = "wasm32")]

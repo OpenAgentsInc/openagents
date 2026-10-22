@@ -61,6 +61,7 @@ pub fn content() -> Result<Content, String> {
     });
     crate::pylon_bay::add(&mut pack, white, &white_id)?;
     crate::build_board::add(&mut pack, white, &white_id)?;
+    crate::arch_marks::web::add(&mut pack, white, &white_id)?;
     grid_help_desk::add(&mut pack, white, &white_id, &crate::pylon_bay::tint)?;
     let statics = grid_frame::statics(&pack);
     let mut files: Vec<(&str, &[u8])> = vec![

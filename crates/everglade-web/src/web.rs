@@ -1703,6 +1703,7 @@ impl Page {
             let mut dynamic = grid_frame::dynamic(&self.runtime, &peers, &[]);
             if HOME.with(std::cell::Cell::get) && self.runtime.is_plaza() {
                 crate::pylon_bay::instances(self.now, &mut dynamic);
+                crate::arch_marks::web::instances(&self.runtime, &mut dynamic);
                 crate::foreman::instances(self.now, view.eye, &mut dynamic);
             }
             if let Some(board) = &mut self.board {
@@ -1739,6 +1740,15 @@ impl Page {
                 if self.runtime.is_plaza() {
                     crate::foreman::draw(&mut ui, atlas, css, view.view_proj, view.eye, self.now);
                     crate::foreman::draw_prompt(&mut ui, atlas, css, view.view_proj);
+                }
+                if self.runtime.is_plaza() {
+                    crate::arch_marks::web::draw(
+                        &mut ui,
+                        atlas,
+                        css,
+                        view.view_proj,
+                        &self.runtime,
+                    );
                 }
                 crate::game_lab::draw(&mut ui, atlas, css, view.view_proj);
                 crate::controls_hint::draw(&mut ui, atlas, css);
