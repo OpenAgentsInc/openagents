@@ -485,10 +485,12 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
-- #12536: after the image built from `78c82b3af1` reaches production, open `/`
-  signed out in an isolated browser and click both real Maya Pylons. Confirm
-  the GPUI sign-in state, no work-facts CSP errors, and JS/WASM hashes matching
-  the deployed image.
+- #12536: done on 2026-10-22; production revision
+  `coder-web-f9fbed854c-20261022221217` serves `78c82b3af1`. Both real Maya
+  heads opened through ordinary scene clicks in an isolated signed-out browser;
+  GPUI sign-in states, `/pylons` formatting, zero work-facts CSP errors, and
+  candidate-matching JS/WASM hashes passed. The staff visual check remains in
+  `NEEDS_OWNER.md`.
 
 - #12532: done on 2026-10-22; `oa-foreman-1` runs verified build `5ccc9402f7`,
   and the live feed showed it walk to the Pylon Bay and arrive at its stop;
