@@ -146,7 +146,10 @@ pub fn frame(runtime: &mut WorldRuntime) -> bool {
             });
         });
     }
-    if let Some(portal) = runtime.take_hosted_crossing() {
+    // One zone at a time: a crossing while one is open is ignored.
+    if let Some(portal) = runtime.take_hosted_crossing()
+        && STATE.with_borrow(|state| state.overlay.is_none())
+    {
         open(&portal.tenant);
     }
     let back = STATE.with_borrow_mut(|state| std::mem::take(&mut state.back));
