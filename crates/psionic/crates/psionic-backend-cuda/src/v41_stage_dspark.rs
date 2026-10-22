@@ -895,6 +895,18 @@ impl Drafter {
         hidden: &[f32],
         logits: &mut [f32],
     ) -> Result<f32, RuntimeError> {
+        let shape = self
+            .blocks
+            .last()
+            .ok_or_else(|| invalid("draft blocks"))?
+            .config
+            .shape;
+        if token as usize >= shape.vocabulary
+            || hidden.len() != shape.hidden
+            || logits.len() != shape.vocabulary
+        {
+            return Err(invalid("DSpark head input shape or token"));
+        }
         let bytes = self
             .markov_embed
             .read_bytes_at_offset(token as usize * self.markov_rank * 2, self.markov_rank * 2)?;
