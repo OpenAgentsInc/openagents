@@ -17,8 +17,9 @@
 //!
 //! Project Maya's V4.1 quants (`mw00/project-maya` at `451f9cb6a2`, MIT) use
 //! ggml's i-quants with per-expert importance matrices and GPTQ error
-//! feedback; this is a simpler reimplementation of the importance-weighted
-//! part with formats of our own that our kernels and host lane decode.
+//! feedback. This implementation uses its own formats and supports calibrated
+//! error feedback within each 32-column scale group; correlations across
+//! groups are not modeled. The kernels and host lane decode the same formats.
 
 use crate::v41_matvec::{
     V41_BLOCK, V41_Q2_LEVELS, V41_Q3_LEVELS, V41MatvecFormat, v41_q_block_scale,
