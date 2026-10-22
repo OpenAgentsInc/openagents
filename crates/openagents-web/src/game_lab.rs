@@ -425,8 +425,20 @@ const CSS: &str = r".oa-game-host{margin:0;background:#101010;color:#eee;font:14
 .oa-game-note .oa-game-button{margin-top:0}
 ";
 
-const JS: &str = r"(function () {
+const JS: &str = concat!(
+    include_str!("game_frame_watch.js"),
+    r"(function () {
   if (window.__oaGame) return;
+  // Every playable frame on the card shows a dark retry note, never a
+  // browser error page (#12478).
+  var watchAll = function () {
+    document.querySelectorAll('iframe[data-game-frame]').forEach(function (f) {
+      openagentsWatchGameFrame(f);
+    });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', watchAll);
+  else watchAll();
+  document.addEventListener('htmx:afterSettle', watchAll);
   document.addEventListener('click', function(e) {
     const button = e.target.closest('[data-game-full]');
     if (button && parent !== window) parent.postMessage({type:'game-fullscreen',src:button.getAttribute('data-src')}, location.origin);
@@ -442,6 +454,7 @@ const JS: &str = r"(function () {
     var src = b.getAttribute('data-src');
     var at = src.indexOf('#');
     f.src = src.slice(0, at) + '&play=' + plays + src.slice(at);
+    openagentsWatchGameFrame(f).start();
     f.focus();
   });
   document.addEventListener('htmx:configRequest', function (e) {
@@ -455,7 +468,8 @@ const JS: &str = r"(function () {
     e.detail.parameters.room = c.getAttribute('data-room') || '';
   });
 })();
-";
+",
+);
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -727,5 +741,21 @@ mod tests {
         assert_eq!(html.matches("<script").count(), 1);
         assert!(html.contains("src=\"/chat/game/build/start.js\""));
         assert!(PLAY_POLICY.contains("frame-ancestors 'self'"));
+    }
+
+    /// #12478: every playable frame on the card shows a dark retry note
+    /// in place of a browser error page.
+    #[test]
+    fn the_card_watches_its_game_frames() {
+        assert!(JS.starts_with("// Watches a framed game (#12478)"));
+        assert!(JS.contains("openagentsWatchGameFrame(f);"));
+        assert!(JS.contains("openagentsWatchGameFrame(f).start();"));
+        assert!(JS.contains("\"The game didn't load.\""));
+        assert!(JS.contains("'Try again'") && JS.contains("'Back to the Grid'"));
+        assert!(JS.contains("'openagents-game-ready'"));
+        assert!(
+            oa_copy::violations("The game didn't load. Try again. Back to the Grid", &[])
+                .is_empty()
+        );
     }
 }

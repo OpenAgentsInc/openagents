@@ -8,14 +8,31 @@
 //   always wins; the cache answers only when there's no network.
 // - The page tells the worker the current build's files; the worker keeps
 //   them and drops older builds.
-const CACHE = "icecream-v1";
+// - A page load (a navigation) never fails here (#12478). A page framed by
+//   Game Lab or the Grid always goes to the browser untouched; a top-level
+//   load goes to the network, and only when that fails offline does the
+//   cache answer, and with no copy the browser loads it once more itself.
+const CACHE = "icecream-v2";
 const GAME = "/games/the-ice-cream-man";
 // The site's files the page uses besides the game's own.
 const SHARED = ["/static/legacy-demo.css"];
 const ours = (path) => path === GAME || path.startsWith(GAME + "/") || SHARED.includes(path);
 
 self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+self.addEventListener("activate", (event) =>
+  event.waitUntil(
+    caches
+      .keys()
+      .then((names) =>
+        Promise.all(
+          names
+            .filter((name) => name.startsWith("icecream-") && name !== CACHE)
+            .map((name) => caches.delete(name)),
+        ),
+      )
+      .then(() => self.clients.claim()),
+  ),
+);
 
 self.addEventListener("message", (event) => {
   const urls = (event.data && Array.isArray(event.data.cache) ? event.data.cache : [])
@@ -48,6 +65,18 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET" || url.origin !== self.location.origin) return;
   if (!ours(url.pathname)) return;
   if (url.pathname === GAME + "/sw.js") return;
+  if (request.mode === "navigate") {
+    // A framed load is the browser's own, always.
+    if (request.destination === "iframe" || request.destination === "frame") return;
+    event.respondWith(
+      fetch(request).catch(() =>
+        caches
+          .match(request, { ignoreSearch: true })
+          .then((hit) => hit || fetch(request.url)),
+      ),
+    );
+    return;
+  }
   if (url.pathname.startsWith(GAME + "/v/")) {
     event.respondWith(
       caches.match(request, { ignoreSearch: true }).then((hit) => hit || fetch(request)),

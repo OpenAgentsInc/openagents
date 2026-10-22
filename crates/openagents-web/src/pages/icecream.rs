@@ -386,4 +386,36 @@ mod tests {
         assert_eq!(manifest["start_url"], ICECREAM_PATH);
         assert!(!MANIFEST.contains("Blue Rush"));
     }
+
+    /// #12478: the worker never fails a page load. A framed load is the
+    /// browser's own, a top-level one falls back to the cache and then to
+    /// the browser, and the cache name moved so installed workers update.
+    #[test]
+    fn the_worker_never_fails_a_page_load() {
+        let navigate = SERVICE_WORKER
+            .find("request.mode === \"navigate\"")
+            .expect("a navigation rule");
+        let build = SERVICE_WORKER.find("GAME + \"/v/\")) {").unwrap();
+        assert!(navigate < build, "navigations are decided first");
+        let rule = &SERVICE_WORKER[navigate..build];
+        assert!(rule.contains("request.destination === \"iframe\""));
+        assert!(rule.contains(".then((hit) => hit || fetch(request.url))"));
+        assert!(!rule.contains("Response.error()"));
+        assert!(SERVICE_WORKER.contains("const CACHE = \"icecream-v2\";"));
+        assert!(SERVICE_WORKER.contains("name !== CACHE"));
+    }
+
+    /// #12478: inside Game Lab or the Grid the game registers no worker and
+    /// tells the page around it when it draws or fails.
+    #[test]
+    fn a_framed_game_registers_no_worker_and_reports_back() {
+        let start = include_str!("../../../icecream-web/start.js");
+        let installable = start.find("(function installable()").unwrap();
+        let register = start.find(".register(game + \"/sw.js\"").unwrap();
+        let skip = start[installable..].find("if (framed) return;").unwrap() + installable;
+        assert!(skip < register);
+        assert!(start.contains("tellHost(\"openagents-game-ready\")"));
+        assert!(start.contains("tellHost(\"openagents-game-failed\")"));
+        assert!(start.contains("window.parent.postMessage({ type: type }, location.origin)"));
+    }
 }

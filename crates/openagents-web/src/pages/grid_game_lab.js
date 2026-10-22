@@ -6,14 +6,20 @@
 const gamePanel = document.getElementById('game-lab-panel');
 const gamePlay = document.getElementById('game-lab-play');
 const gameFrame = document.getElementById('game-lab-play-frame');
+const gameWatch = openagentsWatchGameFrame(gameFrame, () => {
+  homeGamePlay(null);
+  homeGameLab(false);
+});
 globalThis.homeGamePlay = src => {
   globalThis.openagentsGamePlaying = !!src;
   document.documentElement.classList.toggle('game-playing', !!src);
   if (src) {
     gameFrame.src = src;
     gamePlay.hidden = false;
+    gameWatch.start();
   } else {
     gamePlay.hidden = true;
+    gameWatch.stop();
     gameFrame.removeAttribute('src');
   }
 };

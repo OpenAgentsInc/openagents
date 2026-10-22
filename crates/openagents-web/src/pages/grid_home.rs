@@ -455,6 +455,7 @@ account();\
 loadLayer().then(verse);\
 ",
     include_str!("grid_kiln.js"),
+    include_str!("../game_frame_watch.js"),
     include_str!("grid_game_lab.js")
 );
 

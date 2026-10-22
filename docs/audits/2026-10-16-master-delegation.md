@@ -497,6 +497,14 @@ The status lines below summarize each issue and its comments. Open the issue for
   chat opens a draft pull request; check the pause and a refused unsigned
   POST. Then delete the chat and close the draft. Production turns
   commands on only when the owner sets the variables (`NEEDS_OWNER.md`).
+- #12478: after the next web deploy and an Ice Cream Man build from
+  `main` (`start.js` changed), in Chrome signed in as the dedicated test
+  account: visit `/games/the-ice-cream-man` directly so the old worker is
+  installed, then open Game Lab and check that the card and Play both show
+  the running game, and that `chrome://serviceworker-internals` shows the
+  worker updated to `icecream-v2`. Block the network mid-load
+  (DevTools offline) and check the dark "The game didn't load." note with
+  Try again and Back to the Grid, never a browser error or white page.
 - #12447: after the next web and Everglade deploy (the host is already
   at `c8dfc45372` on `oa-foreman-1`), as the dedicated test account in two
   browsers: ask the Foreman a question and check that it walks to the

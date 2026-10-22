@@ -91,10 +91,28 @@ import init from "./icecream_web.js";
   else document.addEventListener("DOMContentLoaded", add);
 })();
 
+// Inside a frame (Game Lab's card and Play, the Grid), the page is a guest:
+// it registers no worker and tells the page around it when it starts or
+// fails, so that page can show its own retry instead of a broken frame.
+var framed = (function () {
+  try {
+    return window.self !== window.top;
+  } catch (_) {
+    return true;
+  }
+})();
+function tellHost(type) {
+  if (!framed) return;
+  try {
+    window.parent.postMessage({ type: type }, location.origin);
+  } catch (_) {}
+}
+
 // On the website, the service worker keeps this build for offline play.
-// The game's own app and a local test page skip it.
+// The game's own app, a local test page and a framed game skip it (#12478).
 (function installable() {
   var game = "/games/the-ice-cream-man";
+  if (framed) return;
   if (!("serviceWorker" in navigator)) return;
   if (location.protocol !== "https:" && location.hostname !== "localhost" && location.hostname !== "127.0.0.1") return;
   if (location.pathname !== game && location.pathname.indexOf(game + "/") !== 0) return;
@@ -123,10 +141,20 @@ import init from "./icecream_web.js";
     });
 })();
 
-init().catch(function (error) {
-  var status = document.getElementById("icecream-status");
-  if (status) {
-    status.textContent = "The game couldn't start. Reload the page to try again.";
-  }
-  console.error(error);
-});
+init()
+  .then(function () {
+    // Two frames after start, the canvas has drawn.
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        tellHost("openagents-game-ready");
+      });
+    });
+  })
+  .catch(function (error) {
+    tellHost("openagents-game-failed");
+    var status = document.getElementById("icecream-status");
+    if (status) {
+      status.textContent = "The game couldn't start. Reload the page to try again.";
+    }
+    console.error(error);
+  });
