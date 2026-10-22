@@ -93,6 +93,12 @@ def check(directory, module, measured=None):
             lines.append("Largest crates in the release build (raw bytes, before wasm-opt):")
             lines.extend(f"  {size:>9}  {crate}" for crate, size in top)
         lines.append("Move page-like features into their own module (web/page-host) rather than raising the budget.")
+        if os.environ.get("OA_STAGING_BUILD") == "1":
+            # Staging-only builds skip wasm-opt and compress lightly
+            # (scripts/deploy/staging-build-env.sh), so they run over; the
+            # production build still enforces the budget.
+            print("warning (staging build): " + "\n".join(lines), file=sys.stderr, flush=True)
+            return measured
         raise SystemExit("\n".join(lines))
     return measured
 

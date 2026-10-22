@@ -1374,12 +1374,16 @@ in its serving revision) to REF:
   change in neither, such as `Cargo.lock` or a build script, needs the
   image. `web.sh` submits `cloudbuild.yaml` with `_MODULES_ONLY=1`, which
   builds only the Dockerfile's `modules` target (the image's `/srv` layout)
-  with the staging-only settings (`_STAGING_FAST=1`,
-  `scripts/deploy/staging-build-env.sh`; `WEB_MODULES_FAST=0` keeps the
-  production settings), and indexes it as `web-modules/sets/mod-SHA.index`.
+  with production settings, and indexes it as `web-modules/sets/mod-SHA.index`.
   It then runs `livehost.sh deploy` with those modules
   (`LIVEHOST_MODULES_DIR`) and REF's content, and smokes. Staging's server
   reads `modules/<path under /srv>/` from the manifest first.
+  `WEB_MODULES_FAST=1` builds with the staging-only settings
+  (`_STAGING_FAST=1`, `scripts/deploy/staging-build-env.sh`: no LTO or
+  `wasm-opt`, quick compression, and the size budgets only warn). On a
+  fresh Cloud Build machine their dependencies compile again (build
+  `ac34df96` missed kache on 419 crates), so they pay off only once kache
+  holds them.
 - **Image:** anything else. Unchanged modules come from the module cache and
   an unchanged server from kache, and `web.sh` prints which modules were
   rebuilt. Every image build also indexes its `/srv` as

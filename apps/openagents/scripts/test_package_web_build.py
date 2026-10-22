@@ -72,6 +72,16 @@ class PackageTest(unittest.TestCase):
                 with self.assertRaisesRegex(SystemExit, "exceeds"):
                     packager.package(directory, "app", "pane")
 
+    def test_a_staging_build_warns_over_the_budget(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            self.fixture(directory)
+            with patch.object(packager, "BUDGET", 1), patch.dict(
+                packager.os.environ, {"OA_STAGING_BUILD": "1"}
+            ):
+                packager.package(directory, "app")
+            self.assertTrue((directory / "assets.json").is_file())
+
     def test_renderer_selection_and_both_modules_have_content_hashes(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)
