@@ -500,7 +500,11 @@ hundred tok/s once rank 2 lands.
 
 ## Proposed issues
 
-Drafts only; not filed.
+Filed on 2026-10-22 under the Maya harvest epic
+[#12462](https://github.com/OpenAgentsInc/openagents/issues/12462) as
+#12463–#12471; progress and measurements are in
+[DeepSeek-V4.1 on one machine](../../psionic/v41-single-box.md). The drafts
+below are kept as written.
 
 ### 1. Psionic: hot-expert VRAM cache for V4.1 host experts
 

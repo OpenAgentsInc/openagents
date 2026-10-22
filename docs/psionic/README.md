@@ -121,6 +121,10 @@ Its [personal serving plan](deepseek-support-plan.md#personal-serving-first-one-
 prioritizes one reliable generation, recovery and a private cloud worker,
 with DS0 ownership and prerequisites explicit; multiuser scaling comes later.
 
+[DeepSeek-V4.1 on one machine](v41-single-box.md) covers the Maya harvest
+(#12462): a device cache of routed experts with a host-CPU lane, Engram rows
+from the shards, layer-major prefill, and the lossy `consumer-q` profile.
+
 [Completing #12369](deepseek-v41-completion.md) is the definitive checklist
 for native V4.1 on stage Pylons. The [native DeepSeek-V4.1-Flash plan](deepseek-v41-native.md) sizes the
 current checkpoint, chooses hardware, and orders the work from golden
