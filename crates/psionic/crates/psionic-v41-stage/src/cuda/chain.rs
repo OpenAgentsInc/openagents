@@ -103,6 +103,9 @@ pub struct ChainOptions {
     pub save_profile: Option<PathBuf>,
     /// Answers to run on the loaded stages.
     pub repeat_answer: usize,
+    /// Load and time only the first stage's prompt steps (`--first-stage-only`),
+    /// to measure one stage's prefill on one GPU.
+    pub first_stage_only: bool,
 }
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
@@ -197,6 +200,7 @@ impl ChainOptions {
             tiers: crate::HostTiers::from_args(args)?,
             save_profile: flag(args, "--save-expert-profile").map(PathBuf::from),
             repeat_answer: number(args, "--repeat-answer", 1_usize)?.max(1),
+            first_stage_only: args.iter().any(|a| a == "--first-stage-only"),
         })
     }
 }
@@ -651,7 +655,12 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
     let mode = options.mode;
     let prompt_ids = vocabulary.encode(options.prompt.as_ref(), pad, mode)?;
     let mut threads = Vec::new();
-    for (index, gpu) in options.gpus.iter().copied().enumerate() {
+    let loaded_stages = if options.first_stage_only {
+        1
+    } else {
+        options.gpus.len()
+    };
+    for (index, gpu) in options.gpus.iter().copied().enumerate().take(loaded_stages) {
         let (commands, command_rx) = mpsc::channel();
         let (reply_tx, replies) = mpsc::channel();
         let (weights, manifest, options) =
@@ -690,7 +699,63 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             }
         }
         let mut answers = Vec::new();
-        let rounds = if options.load_only {
+        if options.first_stage_only && !options.load_only {
+            // Only the first stage: time its prompt steps, round by round.
+            let chunk = options.prefill_chunk.unwrap_or(prompt_ids.len()).max(1);
+            for round in 0..options.repeat_answer {
+                let request = format!("first-{round}");
+                let (mut step, mut position) = (0_u64, 0_u64);
+                let mut step_ms = Vec::new();
+                for input in prompt_ids.chunks(chunk) {
+                    let message = StageMessage {
+                        manifest_digest: manifest.digest(),
+                        generation: 1,
+                        request_id: request.clone(),
+                        attempt: 0,
+                        stage: 0,
+                        layers: manifest.stages[0].layers(),
+                        step,
+                        kind: StepKind::Prefill,
+                        position,
+                        tokens: input.to_vec(),
+                        sections: Vec::new(),
+                    };
+                    let unbounded = CodecLimits {
+                        max_message_bytes: usize::MAX,
+                        max_section_bytes: usize::MAX,
+                        max_tokens: usize::MAX,
+                        ..CodecLimits::default()
+                    };
+                    let bytes = encode(&message, &unbounded).map_err(|e| Refused(e.to_string()))?;
+                    let _ = threads[0].commands.send(Command::Step {
+                        bytes,
+                        sampling: None,
+                        step,
+                        emit: false,
+                    });
+                    let Reply::Stepped { ms, .. } = recv(&threads[0])? else {
+                        return Err(Refused("the stage answered out of order".into()));
+                    };
+                    step_ms.push(ms);
+                    step += 1;
+                    position += input.len() as u64;
+                }
+                let _ = threads[0].commands.send(Command::Reset(request));
+                if !matches!(recv(&threads[0])?, Reply::Reset) {
+                    return Err(Refused("the stage answered out of order".into()));
+                }
+                let total: f64 = step_ms.iter().sum();
+                answers.push(json!({
+                    "round": round,
+                    "prompt_tokens": prompt_ids.len(),
+                    "prefill_chunk": chunk,
+                    "step_ms": step_ms,
+                    "prefill_ms": total,
+                    "prefill_tokens_per_s": prompt_ids.len() as f64 / (total / 1e3),
+                }));
+            }
+        }
+        let rounds = if options.load_only || options.first_stage_only {
             0
         } else {
             options.repeat_answer
