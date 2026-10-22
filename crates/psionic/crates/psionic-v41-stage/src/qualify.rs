@@ -1043,13 +1043,13 @@ fn router_case(
             });
             // The measured score error on the oracle's retained experts.
             let row_error = match (&candidate_scores, &row_scores) {
-                (Some((how, cs)), Some(retained)) => {
+                (Some((_, cs)), Some(retained)) => {
                     let row_s = &cs[row * WIDE..(row + 1) * WIDE];
                     let e = retained
                         .iter()
                         .map(|(id, s)| (row_s[*id as usize] - s).abs())
                         .fold(0.0f64, f64::max);
-                    if *how == "f64" && !same_set(&top_k_of(row_s, top_k), c) {
+                    if !same_set(&top_k_of(row_s, top_k), c) {
                         local_changed += 1;
                     }
                     errors.push(e);
@@ -1138,6 +1138,8 @@ fn router_case(
         "layers_compared": layers.len(),
         "layers_with_oracle_scores": scored_layers,
         "layers_with_candidate_scores": candidate_layers,
+        "layers_with_stage_scores": layers.iter().filter(|l| l["score_error"]["from"] == "stage").count(),
+        "score_selection_mismatches": layers.iter().filter_map(|l| l["local_changed"].as_u64()).sum::<u64>(),
         "over_budget": total_over_budget,
         // Two separate verdicts (review of 2026-10-22): the empirical
         // per-layer fraction limits, and the margin/regret rule, which needs
@@ -1146,6 +1148,7 @@ fn router_case(
         "margin_verdict": failed == 0
             && unresolved == 0
             && total_over_budget == 0
+            && layers.iter().all(|l| l["local_changed"] == 0)
             && fraction_ok != Some(false)
             && candidate_layers == layers.len()
             && scored_layers == layers.len(),
@@ -1262,13 +1265,16 @@ fn candidate_router_scores(
                 words.len()
             )));
         }
-        return Ok(Some((
-            "stage",
-            words
-                .iter()
-                .map(|w| f64::from(f32::from_bits(*w)))
-                .collect(),
-        )));
+        let scores: Vec<f64> = words
+            .iter()
+            .map(|w| f64::from(f32::from_bits(*w)))
+            .collect();
+        if scores.iter().any(|s| !s.is_finite()) {
+            return Err(refused(format!(
+                "layer {layer}: nonfinite stage router score"
+            )));
+        }
+        return Ok(Some(("stage", scores)));
     }
     let (Some(weights), Some(words)) = (weights, gather("FfnIn")?) else {
         return Ok(None);
@@ -1604,6 +1610,11 @@ pub fn release_refusals(opts: &QualifyOptions, policy: &Policy, cases: &[Value])
                 "{name}: candidate router scores for {} of {LAYERS} layers",
                 router["layers_with_candidate_scores"]
             ));
+        }
+        if policy.router_score_budget.is_some()
+            && router["layers_with_stage_scores"].as_u64() != Some(LAYERS as u64)
+        {
+            out.push(format!("{name}: release qualification needs actual stage router scores for all {LAYERS} layers"));
         }
     }
     out
@@ -2092,6 +2103,12 @@ pub fn router_margin_violations(
         return vec![format!("{name}: no router evidence for the margin rule")];
     }
     for layer in router["layers"].as_array().into_iter().flatten() {
+        if layer["local_changed"].as_u64().unwrap_or(0) > 0 {
+            out.push(format!(
+                "{name}: router layer {} scores do not reproduce {} actual selections",
+                layer["layer"], layer["local_changed"]
+            ));
+        }
         let l = layer["layer"].as_u64().unwrap_or_default() as usize;
         let Some(eps) = budget.get(l).copied() else {
             out.push(format!("{name}: no router score budget for layer {l}"));
@@ -2657,6 +2674,13 @@ mod tests {
             "oracle_gap": eps, "regret": eps}]);
         run["router"]["layers"][7]["score_error"]["max"] = json!(0.0);
         assert!(judge_report(&policy, &json!({"cases": [run.clone()]})).is_empty());
+        run["router"]["layers"][7]["local_changed"] = json!(1);
+        assert!(
+            judge_report(&policy, &json!({"cases": [run.clone()]}))
+                .iter()
+                .any(|v| v.contains("do not reproduce 1 actual selections"))
+        );
+        run["router"]["layers"][7]["local_changed"] = json!(0);
         // Missing score evidence never passes.
         run["router"]["layers"][2]["score_error"] = Value::Null;
         assert!(!judge_report(&policy, &json!({"cases": [run]})).is_empty());

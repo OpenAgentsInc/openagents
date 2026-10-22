@@ -137,6 +137,7 @@ unsafe extern "C" {
         bias: *const c_void,
         ids: *mut c_void,
         weights: *mut c_void,
+        selection_scores: *mut c_void,
         experts: i32,
         top_k: i32,
         temperature: f32,
@@ -843,12 +844,35 @@ impl CudaSubmission {
         weights: &CudaBuffer,
         tokens: usize,
     ) -> Result<(), RuntimeError> {
+        self.v41_route_tokens_observed(router, logits, bias, ids, weights, tokens, None)
+    }
+
+    /// Routes tokens and optionally records the exact biased scores used
+    /// by this kernel, before selection, in `[tokens, experts]` order.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::v41_route`], including the optional score buffer's extent.
+    pub fn v41_route_tokens_observed(
+        &mut self,
+        router: V41Router,
+        logits: &CudaBuffer,
+        bias: &CudaBuffer,
+        ids: &CudaBuffer,
+        weights: &CudaBuffer,
+        tokens: usize,
+        selection_scores: Option<&CudaBuffer>,
+    ) -> Result<(), RuntimeError> {
         router.check()?;
         let t = tokens.max(1);
         let logits = span(logits, 0, router.experts * t, 4, "logits")?;
         let bias = span(bias, 0, router.experts, 4, "bias")?;
         let ids = span(ids, 0, router.top_k * t, 4, "expert ids")?;
         let weights = span(weights, 0, router.top_k * t, 4, "route weights")?;
+        let selection_scores = selection_scores
+            .map(|scores| span(scores, 0, router.experts * t, 4, "selection scores"))
+            .transpose()?
+            .unwrap_or(std::ptr::null_mut());
         // SAFETY: every extent was checked against its buffer above.
         let code = unsafe {
             psionic_v41_route(
@@ -856,6 +880,7 @@ impl CudaSubmission {
                 bias,
                 ids,
                 weights,
+                selection_scores,
                 int(router.experts, "experts")?,
                 int(router.top_k, "top k")?,
                 router.temperature,

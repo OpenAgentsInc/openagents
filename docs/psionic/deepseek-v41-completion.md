@@ -49,6 +49,16 @@ now reject both forged outputs and the missing reasoning split, and keep
 the retry booking within $300. This source repair has not yet replaced the
 running preview watcher; rotation is part of G8's pinned launch check.
 
+**Direct router evidence, 2026-10-22:** an observed CUDA stage now saves all
+384 biased scores directly from the kernel that selects experts. Recording
+adds no host inference or score reconstruction. The harness requires those
+stage scores for release and rejects a score table that selects different
+experts, including the older F64 proxy's disagreements. Nonfinite recorded
+scores are refused. The recording kernel has controls for ties, bias,
+two-token row order, and unchanged IDs and route weights. Local stage and
+CUDA-backend CPU/stub checks pass; the new kernel's dedicated SM120 run and
+full-model score capture are pending. Existing 2.1–2.3 reports are unchanged.
+
 ## What "done" means
 
 The epic's goal: **serve DeepSeek-V4.1-Flash with Psionic as the only

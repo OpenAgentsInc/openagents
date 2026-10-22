@@ -1446,6 +1446,69 @@ fn check_route(
     Ok(true)
 }
 
+#[test]
+fn recorded_router_scores_reproduce_selections_without_changing_outputs() -> TestResult {
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let router = V41Router::flash();
+    for bias_case in [false, true] {
+        let logits: Vec<f32> = (0..2 * router.experts)
+            .map(|i| {
+                if bias_case {
+                    (i % 83) as f32 * 0.7 - 21.0
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+        let bias: Vec<f32> = (0..router.experts)
+            .map(|i| {
+                if bias_case {
+                    (i % 19) as f32 * 0.03125
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+        let l = upload_f32(&mut backend, &logits)?;
+        let b = upload_f32(&mut backend, &bias)?;
+        let ids = backend.byte_buffer(&vec![0; 2 * router.top_k * 4])?;
+        let plain_ids = backend.byte_buffer(&vec![0; 2 * router.top_k * 4])?;
+        let weights = f32_buffer(&mut backend, 2 * router.top_k)?;
+        let plain_weights = f32_buffer(&mut backend, 2 * router.top_k)?;
+        let scores = f32_buffer(&mut backend, 2 * router.experts)?;
+        let mut submission = backend.begin_submission()?;
+        submission.v41_route_tokens(router, &l, &b, &plain_ids, &plain_weights, 2)?;
+        submission.v41_route_tokens_observed(router, &l, &b, &ids, &weights, 2, Some(&scores))?;
+        submission.commit(CudaCommandWait::Completed)?;
+        let ids = read_i32(&ids, 2 * router.top_k)?;
+        assert_eq!(ids, read_i32(&plain_ids, 2 * router.top_k)?);
+        assert_eq!(
+            read_f32(&weights, 2 * router.top_k)?,
+            read_f32(&plain_weights, 2 * router.top_k)?
+        );
+        let scores = read_f32(&scores, 2 * router.experts)?;
+        for row in 0..2 {
+            let scores = &scores[row * router.experts..(row + 1) * router.experts];
+            assert!(scores.iter().all(|s| s.is_finite()));
+            let mut order: Vec<i32> = (0..router.experts as i32).collect();
+            order.sort_by(|a, b| {
+                scores[*b as usize]
+                    .total_cmp(&scores[*a as usize])
+                    .then(a.cmp(b))
+            });
+            order.truncate(router.top_k);
+            order.sort_unstable();
+            assert_eq!(
+                &ids[row * router.top_k..(row + 1) * router.top_k],
+                order.as_slice()
+            );
+        }
+    }
+    Ok(())
+}
+
 fn route_on_device(
     backend: &mut CudaBackend,
     router: V41Router,

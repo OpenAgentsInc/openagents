@@ -506,6 +506,7 @@ __global__ void __launch_bounds__(kRouteThreads) v41_route_kernel(
     const float* __restrict__ bias,
     int* __restrict__ ids,
     float* __restrict__ weights,
+    float* __restrict__ selection_scores,
     int experts,
     int top_k,
     float temperature,
@@ -527,6 +528,9 @@ __global__ void __launch_bounds__(kRouteThreads) v41_route_kernel(
         // PyTorch softplus returns its input above the threshold 20.
         const float score = x > 20.0f ? __fsqrt_rn(x) : __fsqrt_rn(log1p_once(exp_once(x)));
         ranked = __fadd_rn(score, bias[e]);
+        if (selection_scores) {
+            selection_scores[static_cast<long long>(blockIdx.x) * experts + e] = ranked;
+        }
         bad = !isfinite(logit) || !isfinite(x) || !isfinite(ranked);
         scores[e] = score;
     }
@@ -803,6 +807,7 @@ extern "C" int psionic_v41_route(
     const void* bias,
     void* ids,
     void* weights,
+    void* selection_scores,
     int experts,
     int top_k,
     float temperature,
@@ -812,7 +817,8 @@ extern "C" int psionic_v41_route(
     void* stream) {
     v41_route_kernel<<<tokens, kRouteThreads, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const float*>(logits), static_cast<const float*>(bias), static_cast<int*>(ids),
-        static_cast<float*>(weights), experts, top_k, temperature, normalize, route_scale);
+        static_cast<float*>(weights), static_cast<float*>(selection_scores),
+        experts, top_k, temperature, normalize, route_scale);
     return static_cast<int>(cudaGetLastError());
 }
 

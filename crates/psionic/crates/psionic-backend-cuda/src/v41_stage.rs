@@ -1022,6 +1022,8 @@ pub enum V41Site {
     ExpertIds,
     /// Their route weights.
     RouteWeights,
+    /// The device's biased selection scores, one per expert.
+    RouterScores,
     /// The MoE output (`ffn.out`).
     FfnOut,
     /// The layer's output residual (`hc.out`).
@@ -1076,6 +1078,7 @@ struct Work {
     logits: CudaBuffer,
     ids: CudaBuffer,
     route_weights: CudaBuffer,
+    router_scores: CudaBuffer,
     g: CudaBuffer,
     u: CudaBuffer,
     h: CudaBuffer,
@@ -1677,6 +1680,7 @@ impl V41Stage {
                     (V41Site::FfnIn, h),
                     (V41Site::ExpertIds, shape.router.top_k),
                     (V41Site::RouteWeights, shape.router.top_k),
+                    (V41Site::RouterScores, shape.router.experts),
                     (V41Site::FfnOut, h),
                     (V41Site::HcOut, s * h),
                 ];
@@ -1902,6 +1906,11 @@ impl V41Stage {
             logits: f(shape.router.experts)?,
             ids: f(top_k)?,
             route_weights: f(top_k)?,
+            router_scores: f(if config.observe {
+                shape.router.experts
+            } else {
+                1
+            })?,
             g: f(top_k * e)?,
             u: f(top_k * e)?,
             h: f(top_k * e)?,
@@ -2535,6 +2544,7 @@ impl V41Stage {
             self.record_moe(s, lw)?;
             ob(s, V41Site::ExpertIds, &wk.ids)?;
             ob(s, V41Site::RouteWeights, &wk.route_weights)?;
+            ob(s, V41Site::RouterScores, &wk.router_scores)?;
             ob(s, V41Site::FfnOut, &wk.moe_out)?;
             s.v41_hc_expand(
                 shape.hc,
@@ -3016,12 +3026,14 @@ impl V41Stage {
             shape.router.experts,
             h,
         )?;
-        s.v41_route(
+        s.v41_route_tokens_observed(
             shape.router,
             &wk.logits,
             &lw.bias,
             &wk.ids,
             &wk.route_weights,
+            1,
+            self.config.observe.then_some(&wk.router_scores),
         )?;
         s.v41_act_quant_fp8(&wk.normalized, &wk.act_codes, &wk.act_scales, 1, h)?;
         if let Some((cache, slot, lc)) = cached {

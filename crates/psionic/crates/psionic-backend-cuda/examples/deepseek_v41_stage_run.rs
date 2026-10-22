@@ -342,7 +342,9 @@ fn oracle_sites(site: V41Site, streams: usize) -> Vec<(&'static str, std::ops::R
             ("hc.ffn.expanded", m(0, usize::MAX)),
         ],
         // Ids, weights, and selections need their own alignment.
-        V41Site::ExpertIds | V41Site::RouteWeights | V41Site::Selection => Vec::new(),
+        V41Site::ExpertIds | V41Site::RouteWeights | V41Site::RouterScores | V41Site::Selection => {
+            Vec::new()
+        }
     }
 }
 
