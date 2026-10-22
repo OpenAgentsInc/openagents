@@ -80,6 +80,15 @@ fn uniform(state: &mut u64) -> f64 {
 }
 
 /// Accept with min(1,p/q); after rejection sample normalized (p-q)+.
+fn check_proposal(p: &[f64], q: &[f64], token: u32) -> Result<(), Refused> {
+    if p.len() != q.len() || token as usize >= q.len() || q[token as usize] <= 0.0 {
+        return Err(bad(
+            "the proposal has no probability for its token or uses another vocabulary",
+        ));
+    }
+    Ok(())
+}
+
 fn accept(p: &[f64], q: &[f64], token: u32, uniform: f64) -> Result<(), Vec<f64>> {
     let at = token as usize;
     if q[at] > 0.0 && uniform * q[at] < p[at] {
@@ -300,6 +309,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             let mut correction = None;
             for i in 0..BLOCK {
                 let p = distribution(&target[i], options.sampling)?;
+                check_proposal(&p, &q[i], drafts[i])?;
                 match accept(&p, &q[i], drafts[i], uniform(&mut rng)) {
                     Ok(()) => {
                         accepted += 1;
@@ -557,6 +567,7 @@ impl Streaming {
         let mut correction = None;
         for i in 0..BLOCK {
             let p = distribution(&target[i], sampling)?;
+            check_proposal(&p, &q[i], inputs[i + 1])?;
             match accept(&p, &q[i], inputs[i + 1], uniform(&mut self.rng)) {
                 Ok(()) => accepted += 1,
                 Err(residual) => {
