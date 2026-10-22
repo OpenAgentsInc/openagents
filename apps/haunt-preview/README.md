@@ -86,7 +86,10 @@ extension. Upstairs furniture retains its height after save/reopen.
 
 The eight placeable kit assets are cottage (`house`), townhouse (`manor`), barrel,
 bench, chair, market stall, cart (`wagon`), and fountain. New houses immediately
-get rooms and collision. Relative requests find clear outdoor plots; a single
+get rooms and collision. `Add 2 buildings your choice anywhere u want` chooses
+a cottage and a townhouse, finds clear plots, and saves both in one undoable edit.
+`Anywhere`, `wherever there is room`, and `you choose where` let the editor find
+space across town; explicit styles and counts still apply. Relative requests find clear outdoor plots; a single
 explicit coordinate stays exact. Exact catalog aliases resolve in code, while Jev
 checks the action, placement, and size. The town supports twelve houses, sixteen
 rooms per floor, a 96 m boundary, and a 64 KiB scene file. Moving/resizing a house keeps its local plan.

@@ -461,14 +461,14 @@ export class TownFloor {
 export function housePositions(
   entities: SceneAsset[],
   town: Town,
-  kind: "cottage" | "townhouse",
+  kind: "cottage" | "townhouse" | readonly ("cottage" | "townhouse")[],
   count: number,
   scale: number,
   pose: Pose,
   placement: string,
   anchor: { x: number; z: number },
 ) {
-  const placed: { x: number; z: number }[] = [];
+  const placed: { x: number; z: number; kind: "cottage" | "townhouse" }[] = [];
   const items = clone(entities),
     next = clone(town);
   const turn =
@@ -493,10 +493,15 @@ export function housePositions(
             },
       );
     }
+  if (placement === "anywhere") {
+    // Search the whole town after nearby plots, independent of the player's facing.
+    for (let z = -36; z <= 36; z += 12)
+      for (let x = -36; x <= 36; x += 14) candidates.push({ x, z });
+  }
   for (const point of candidates) {
     const e: SceneAsset = {
       id: `pending-house-${placed.length}`,
-      kind,
+      kind: typeof kind === "string" ? kind : kind[placed.length % kind.length],
       x: Math.round(point.x * 10) / 10,
       z: Math.round(point.z * 10) / 10,
       scale,
@@ -505,12 +510,22 @@ export function housePositions(
       buildings: { ...next.buildings, [e.id]: newBuilding(e) },
     };
     try {
-      readTown(proposal, [...items, e]);
+      const valid = readTown(proposal, [...items, e]);
+      const floor = new TownFloor([...items, e], valid);
+      if (
+        items.some(
+          (item) =>
+            !isHouse(item.kind) &&
+            !floor.canStand(item.x, item.z, 0.24, item.y ?? 0),
+        )
+      )
+        continue;
+      if (!floor.canStand(pose.x, pose.z, 0.35, pose.y ?? 0)) continue;
     } catch (error) {
       if (placement === "coordinates" && count === 1) throw error;
       continue;
     }
-    placed.push({ x: e.x, z: e.z });
+    placed.push({ x: e.x, z: e.z, kind: e.kind as "cottage" | "townhouse" });
     items.push(e);
     next.buildings[e.id] = proposal.buildings[e.id];
     if (placed.length === count) return placed;

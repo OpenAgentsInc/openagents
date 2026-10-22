@@ -489,9 +489,11 @@ export function assetCount(text: string, kind: AssetKind): number {
     "hundred",
     "thousand",
   ];
-  const nouns = [...ASSETS[kind].aliases]
-    .sort((a, b) => b.length - a.length)
-    .join("|");
+  const aliases = [
+    ...ASSETS[kind].aliases,
+    ...(IS_TOWN && isHouse(kind) ? ["building", "buildings"] : []),
+  ];
+  const nouns = [...aliases].sort((a, b) => b.length - a.length).join("|");
   const match = text.match(
     new RegExp(
       `(?:^|\\s)([^\\s]+)\\s+(?:(?:very|really|huge|enormous|giant|gigantic|big|large|small|little|tiny|normal|medium|regular|orange|wooden|glowing|white|dark|green|stone|medieval|fantasy|two-story|one-story)\\s+)*(?:${nouns})\\b`,
@@ -509,7 +511,7 @@ export function assetCount(text: string, kind: AssetKind): number {
   else if (token && /^[+\-\d.]/.test(token)) count = Number(token);
   else if (
     new RegExp(
-      `\\b(?:${ASSETS[kind].aliases.filter((n) => n.endsWith("s")).join("|")})\\b`,
+      `\\b(?:${aliases.filter((n) => n.endsWith("s")).join("|")})\\b`,
       "i",
     ).test(text)
   )
@@ -680,6 +682,13 @@ export function decisionOperation(
       if (!p) throw new Error("Write a position as x=1, z=-2 or (1, -2).");
       return p;
     }
+    if (
+      d.placement === "anywhere" &&
+      d.action === "add_asset" &&
+      IS_TOWN &&
+      (d.asset === "building" || isHouse(d.asset ?? ""))
+    )
+      return { x: pose.x, z: pose.z };
     if (!["ahead", "left", "right"].includes(d.placement))
       throw new Error(
         "Choose a position ahead, to your left, to your right, or enter x and z.",
@@ -700,7 +709,13 @@ export function decisionOperation(
   switch (d.action) {
     case "add_asset":
     case "add_pumpkin": {
-      const kind = d.action === "add_pumpkin" ? "pumpkin" : d.asset;
+      const chooseBuilding = IS_TOWN && d.asset === "building";
+      const kind =
+        d.action === "add_pumpkin"
+          ? "pumpkin"
+          : chooseBuilding
+            ? "cottage"
+            : d.asset;
       if (!kind || !Object.hasOwn(ASSETS, kind))
         throw new Error("Choose an asset from the list.");
       const count = assetCount(text, kind as AssetKind);
@@ -710,12 +725,18 @@ export function decisionOperation(
         );
       const size = scale(),
         anchor = position();
-      const positions =
+      const positions: {
+        x: number;
+        z: number;
+        kind?: "cottage" | "townhouse";
+      }[] =
         IS_TOWN && isHouse(kind) && project.town
           ? housePositions(
               project.entities,
               project.town,
-              kind as "cottage" | "townhouse",
+              chooseBuilding
+                ? ["cottage", "townhouse"]
+                : (kind as "cottage" | "townhouse"),
               count,
               size,
               pose,
@@ -736,8 +757,8 @@ export function decisionOperation(
       const operations: Operation[] = positions.map((p) => ({
         kind: d.action === "add_pumpkin" ? "add_pumpkin" : "add_asset",
         entity: {
-          id: `${kind}-${crypto.randomUUID()}`,
-          kind: kind as AssetKind,
+          id: `${chooseBuilding ? p.kind : kind}-${crypto.randomUUID()}`,
+          kind: (chooseBuilding ? p.kind : kind) as AssetKind,
           ...p,
           scale: size,
           ...(IS_TOWN ? { y: isHouse(kind) ? 0 : (pose.y ?? 0) } : {}),

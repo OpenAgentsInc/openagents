@@ -197,3 +197,13 @@ stay outside Git. The task scratch directory contains `town-lab-final/town/`
 captures of the exterior, cottage interior, upstairs, and a newly added house.
 The [creator README](../../../../apps/haunt-preview/README.md#medieval-town-lab)
 describes the controls, private preparation, shared runtime, and limits.
+
+## Automatic building choices
+
+The [building-choice receipt](building-choices-receipt.json) records the exact
+request `add 2 buildings your choice anywhere u want` and three paraphrases.
+The exact request added a cottage and a townhouse on clear plots in 145 ms through
+frame submission and Kiln save. Each request preserved player position and the
+working shader, undid and redid as one edit, and reopened from Kiln. Negated and
+mixed requests stayed refused. Run `npm run verify:building-choices` under
+`openagents browser run` with `HAUNT_URL` set to the local preview.
