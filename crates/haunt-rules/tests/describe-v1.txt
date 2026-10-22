@@ -63,7 +63,7 @@ AREAS
   - pumpkin-left (jack-o-lantern mesh) at [6.6, 19.3], facing south, grin: on the front steps, seen when you turn.
   - pumpkin-right (jack-o-lantern mesh) at [9.4, 19.3], facing south, sly.
   - pumpkin-low (jack-o-lantern mesh) at [10.2, 18.6], facing south, toothy.
-  - moon (moon mesh) at [12, 70], facing north: low behind the house, so the house stands against it.
+  - moon (moon mesh) at [28, 45], facing north: high over the trees to the right of the house, seen when you turn.
   Budget left: 27 props, 8 lights, 4 sounds at once.
 
 [B] entry-hall (hallway): 3 x 12 m, 3.2 m ceiling, at [6.5, 20, 3, 12].

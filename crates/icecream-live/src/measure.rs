@@ -225,7 +225,8 @@ async fn measure(
                 // The page stops on the failed step; let it sit stopped for
                 // a moment, then roll back.
                 tokio::time::sleep(Duration::from_millis(1500)).await;
-                let mut line = rollback_once(work, host, Some((wait, pages))).await?;
+                let mut line =
+                    rollback_once(work, host, icecream_zone::TENANT, Some((wait, pages))).await?;
                 line["case"] = "rollback".into();
                 line["run"] = run.into();
                 eprintln!(
@@ -301,7 +302,14 @@ async fn chat(lab: &str, host: &str, run: usize, wait: (Duration, usize)) -> Res
         "publish_ms": published["publish_ms"],
         "manifest": manifest,
     });
-    crate::add_acks(&mut acks, &mut line, &manifest, started, wait).await?;
+    crate::add_acks(
+        &mut acks,
+        &mut line,
+        (icecream_zone::TENANT, &manifest),
+        started,
+        wait,
+    )
+    .await?;
     Ok(line)
 }
 

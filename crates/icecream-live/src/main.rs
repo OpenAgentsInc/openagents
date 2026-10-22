@@ -1,11 +1,14 @@
-//! `icecream-live`: The Ice Cream Man as a live-deployed zone on livehost
-//! (`docs/verse/ice-cream-man-live.md`).
+//! `icecream-live`: hosted games as live-deployed zones on livehost: The
+//! Ice Cream Man (`docs/verse/ice-cream-man-live.md`) and The Haunted House
+//! (`docs/verse/games/the-haunted-house.md`), chosen with `--game icecream`
+//! (the default) or `--game haunt`.
 //!
 //! ```text
-//! icecream-live serve    [--listen 127.0.0.1:8790]      the host, both tenants
-//! icecream-live shell                                   build the page's shell (rare)
-//! icecream-live deploy   [--channel live] [--override] [--wait SECONDS]
-//! icecream-live rollback [--channel live] [--wait SECONDS]
+//! icecream-live serve    [--listen 127.0.0.1:8790]      the host, every tenant
+//! icecream-live shell    [--game G]                     build the page's shell (rare)
+//! icecream-live deploy   [--game G] [--channel live] [--override] [--wait SECONDS]
+//!                        [--house FILE]                 (haunt: the house to publish)
+//! icecream-live rollback [--game G] [--channel live] [--wait SECONDS]
 //! icecream-live grid     DIR                            deploy a Grid build as tenant `grid`
 //! ```
 //!
@@ -21,6 +24,7 @@
 mod bake;
 mod cdp;
 mod grid;
+mod haunt;
 mod host;
 mod measure;
 
@@ -69,10 +73,38 @@ impl Args {
             .to_owned()
     }
 
+    /// `--game`: `icecream` (the default) or `haunt`.
+    fn game(&mut self) -> Result<Game> {
+        match self.value("--game").as_deref() {
+            None | Some("icecream") => Ok(Game::IceCream),
+            Some("haunt") => Ok(Game::Haunt),
+            Some(other) => {
+                bail!("there's no game called {other}; the games are icecream and haunt")
+            }
+        }
+    }
+
     fn wait(&mut self) -> Result<Option<Duration>> {
         self.value("--wait")
             .map(|s| Ok(Duration::from_secs_f64(s.parse()?)))
             .transpose()
+    }
+}
+
+/// The hosted games this tool deploys.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Game {
+    IceCream,
+    Haunt,
+}
+
+impl Game {
+    #[must_use]
+    pub fn tenant(self) -> &'static str {
+        match self {
+            Self::IceCream => icecream_zone::TENANT,
+            Self::Haunt => haunt::TENANT,
+        }
     }
 }
 
@@ -170,7 +202,7 @@ pub struct DeployArgs {
 pub async fn add_acks(
     acks: &mut host::Acks,
     line: &mut serde_json::Value,
-    manifest: &str,
+    (tenant, manifest): (&str, &str),
     started: f64,
     (wait, pages): (Duration, usize),
 ) -> Result<()> {
@@ -178,7 +210,7 @@ pub async fn add_acks(
     let mut times = Vec::new();
     while seen.len() < pages {
         let want = serde_json::json!({
-            "tenant": icecream_zone::TENANT,
+            "tenant": tenant,
             "manifest": manifest,
             "kind": "swap",
         });
@@ -238,7 +270,75 @@ async fn deploy_once(
         && !manifest.is_empty()
         && report.manifest != report.previous
     {
-        add_acks(acks, &mut line, &manifest, started, wait).await?;
+        add_acks(
+            acks,
+            &mut line,
+            (icecream_zone::TENANT, &manifest),
+            started,
+            wait,
+        )
+        .await?;
+    }
+    Ok(line)
+}
+
+/// Bakes the house at `house` and deploys it as the `haunt` tenant, and
+/// (with `wait`) waits for pages to apply it. `started` is when the edit
+/// was saved (epoch ms).
+pub async fn deploy_haunt(
+    work: &host::Work,
+    host: &str,
+    args: &DeployArgs,
+    house: &Path,
+    started: f64,
+) -> Result<serde_json::Value> {
+    let start = Instant::now();
+    let shell = work.dir.join("haunt-shell");
+    let tenant = work.dir.join("haunt-tenant");
+    let mut acks = match args.wait {
+        Some(_) => Some(host::Acks::open(host).await?),
+        None => None,
+    };
+    let phase = Instant::now();
+    let checked = haunt::read_house(house)?;
+    let zone = haunt::bake(&checked, &shell, &tenant)?;
+    let bake_ms = ms(phase);
+    // The first-play budget, as the host's pre-publish check reads it.
+    let size = |path: &str| std::fs::metadata(tenant.join(path)).ok().map(|m| m.len());
+    let all: Vec<String> = zone
+        .shell
+        .iter()
+        .chain(&zone.data)
+        .cloned()
+        .chain(zone.chunks.iter().map(|c| c.path.clone()))
+        .collect();
+    let index = std::fs::read_to_string(tenant.join(icecream_zone::INDEX))?;
+    let budget = icecream_zone::budget::check(&index, size, &all).map_err(anyhow::Error::msg)?;
+    let report = work
+        .deploy(haunt::TENANT, &args.channel, &tenant, args.force)
+        .await?;
+    let manifest = report.manifest.clone().unwrap_or_default();
+    let mut line = serde_json::json!({
+        "game": "haunt",
+        "manifest": manifest,
+        "previous": report.previous,
+        "channel": args.channel,
+        "bake_ms": bake_ms,
+        "publish_ms": (report.total_ms * 10.0).round() / 10.0,
+        "deploy_ms": ms(start),
+        "objects_uploaded": report.objects_uploaded,
+        "bytes_uploaded": report.bytes_uploaded,
+        "warnings": report.warnings,
+        "chunks": zone.chunks.len(),
+        "first_play": budget.line(),
+        "first_play_bytes": budget.first_play_bytes,
+        "url": format!("{host}/t/{}/", haunt::TENANT),
+    });
+    if let (Some(wait), Some(acks)) = (args.wait, acks.as_mut())
+        && !manifest.is_empty()
+        && report.manifest != report.previous
+    {
+        add_acks(acks, &mut line, (haunt::TENANT, &manifest), started, wait).await?;
     }
     Ok(line)
 }
@@ -248,20 +348,32 @@ fn deploy(mut args: Args) -> Result<()> {
     let work = args.work();
     let host = args.host();
     let wait = args.wait()?;
+    let game = args.game()?;
+    let house = args.value("--house").map(PathBuf::from);
     let pages: usize = args.value("--pages").map_or(Ok(1), |p| p.parse())?;
     let options = DeployArgs {
         channel: args.value("--channel").unwrap_or_else(|| "live".into()),
         force: args.flag("--override"),
         wait: wait.map(|w| (w, pages)),
     };
-    let line = runtime()?.block_on(deploy_once(&work, &host, &options, started))?;
+    let line = match game {
+        Game::IceCream => runtime()?.block_on(deploy_once(&work, &host, &options, started))?,
+        Game::Haunt => {
+            let house = match house {
+                Some(path) => path,
+                None => haunt::house_path(&work.dir)?,
+            };
+            runtime()?.block_on(deploy_haunt(&work, &host, &options, &house, started))?
+        }
+    };
     println!("{line}");
     Ok(())
 }
 
-async fn rollback_once(
+pub async fn rollback_once(
     work: &host::Work,
     host: &str,
+    tenant: &str,
     wait: Option<(Duration, usize)>,
 ) -> Result<serde_json::Value> {
     let started = epoch_ms();
@@ -269,7 +381,7 @@ async fn rollback_once(
         Some(_) => Some(host::Acks::open(host).await?),
         None => None,
     };
-    let report = work.rollback(icecream_zone::TENANT, "live").await?;
+    let report = work.rollback(tenant, "live").await?;
     let manifest = report.manifest.clone().unwrap_or_default();
     let mut line = serde_json::json!({
         "manifest": manifest,
@@ -277,7 +389,7 @@ async fn rollback_once(
         "publish_ms": (report.total_ms * 10.0).round() / 10.0,
     });
     if let (Some(wait), Some(acks)) = (wait, acks.as_mut()) {
-        add_acks(acks, &mut line, &manifest, started, wait).await?;
+        add_acks(acks, &mut line, (tenant, &manifest), started, wait).await?;
     }
     Ok(line)
 }
@@ -286,7 +398,8 @@ fn rollback(mut args: Args) -> Result<()> {
     let work = args.work();
     let host = args.host();
     let wait = args.wait()?;
-    let line = runtime()?.block_on(rollback_once(&work, &host, wait.map(|w| (w, 1))))?;
+    let tenant = args.game()?.tenant();
+    let line = runtime()?.block_on(rollback_once(&work, &host, tenant, wait.map(|w| (w, 1))))?;
     println!("{line}");
     Ok(())
 }
@@ -303,11 +416,22 @@ fn grid(mut args: Args) -> Result<()> {
     Ok(())
 }
 
-/// Builds the page's shell with `scripts/build-icecream-web.sh`.
+/// Builds the page's shell with `scripts/build-icecream-web.sh` (or, for
+/// the haunt, `scripts/build-haunt-web.sh`).
 fn shell(mut args: Args) -> Result<()> {
-    let out = args.work().dir.join("shell");
+    let game = args.game()?;
+    let (out, script) = match game {
+        Game::IceCream => (
+            args.work().dir.join("shell"),
+            "scripts/build-icecream-web.sh",
+        ),
+        Game::Haunt => (
+            args.work().dir.join("haunt-shell"),
+            "scripts/build-haunt-web.sh",
+        ),
+    };
     let start = Instant::now();
-    let status = Command::new(root().join("scripts/build-icecream-web.sh"))
+    let status = Command::new(root().join(script))
         .current_dir(root())
         .arg(&out)
         .status()?;

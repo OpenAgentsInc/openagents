@@ -7,8 +7,9 @@
 //! ```text
 //! WORK/store/          livehost's object store, shared by every tenant
 //! WORK/icecream.key    the Ice Cream Man tenant's deploy key
+//! WORK/haunt.key       the Haunted House tenant's deploy key
 //! WORK/grid.key        the Grid tenant's deploy key
-//! WORK/host.json       the host config: both tenants on their live channel
+//! WORK/host.json       the host config: every tenant on its live channel
 //! ```
 
 use std::collections::BTreeMap;
@@ -23,7 +24,7 @@ use livehost::store::Store;
 use nostr::domain::RelaySigner;
 
 /// The tenants this demo hosts.
-pub const TENANTS: [&str; 2] = [icecream_zone::TENANT, "grid"];
+pub const TENANTS: [&str; 3] = [icecream_zone::TENANT, "grid", crate::haunt::TENANT];
 
 pub struct Work {
     pub dir: PathBuf,
@@ -97,9 +98,10 @@ impl Work {
         }
     }
 
-    /// Deploys `dir` as `tenant`'s `channel`. For the Ice Cream Man, the
-    /// first-play budget is the pre-publish check: it blocks `live` unless
-    /// `override_check`, and warns elsewhere.
+    /// Deploys `dir` as `tenant`'s `channel`. For a game zone (The Ice
+    /// Cream Man, The Haunted House), the first-play budget is the
+    /// pre-publish check: it blocks `live` unless `override_check`, and
+    /// warns elsewhere.
     ///
     /// # Errors
     /// The relay or the store failed, or the check blocked the deploy.
@@ -115,7 +117,9 @@ impl Work {
         let check = |input: &CheckInput<'_>| -> Result<()> { budget(input).map(|_| ()) };
         let options = Options {
             tenant: Some(tenant.into()),
-            check: (tenant == icecream_zone::TENANT).then_some(&check as &deploy::Check),
+            check: [icecream_zone::TENANT, crate::haunt::TENANT]
+                .contains(&tenant)
+                .then_some(&check as &deploy::Check),
             override_check,
             ..Options::default()
         };

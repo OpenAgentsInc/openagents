@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-description = "The Ice Cream Man's live zone tooling: bake the game's meshes into chunks, write the tenant directory, deploy and roll back through livehost, and measure edit-to-live."
+description = "Live zone tooling for hosted games on livehost (The Ice Cream Man and The Haunted House): bake each game's chunks, write the tenant directory, deploy and roll back, and measure edit-to-live."
 
 [[bin]]
 name = "icecream-live"
@@ -12,6 +12,9 @@ path = "src/main.rs"
 
 [dependencies]
 game-lab = { path = "../game-lab" }
+haunt-assets = { path = "../haunt-assets" }
+haunt-rules = { path = "../haunt-rules" }
+haunt-web = { path = "../haunt-web" }
 icecream-rules = { path = "../icecream-rules" }
 icecream-web = { path = "../icecream-web" }
 icecream-zone = { path = "../icecream-zone" }

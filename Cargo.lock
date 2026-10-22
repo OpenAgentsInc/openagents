@@ -8442,6 +8442,7 @@ name = "haunt-assets"
 version = "1.0.0"
 dependencies = [
  "glam",
+ "icecream-zone",
  "oa-copy",
  "openagents-workspace-hack",
  "serde",
@@ -8810,6 +8811,9 @@ dependencies = [
  "bytes",
  "futures-util",
  "game-lab",
+ "haunt-assets",
+ "haunt-rules",
+ "haunt-web",
  "hex",
  "icecream-rules",
  "icecream-web",

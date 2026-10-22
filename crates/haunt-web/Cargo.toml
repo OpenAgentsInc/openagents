@@ -1,0 +1,86 @@
+[package]
+name = "haunt-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "The Haunted House in a browser: a Doom-feel first-person WebGL2 shell that draws a haunt.v1 house in a late-90s cartoon style, with toon shading, shader patterns, die-cut cards, a vignette and lantern, lighting presets, audio buses, and the livehost live client."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+glam = "0.30.10"
+haunt-assets = { path = "../haunt-assets" }
+haunt-rules = { path = "../haunt-rules" }
+icecream-zone = { path = "../icecream-zone" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toon-mesh = { path = "../toon-mesh" }
+
+# The page is browser-only; natively only the geometry, the walker and the
+# scene are built, for their tests.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# The `wasm-bindgen` CLI that `scripts/build-haunt-web.sh` runs must be the
+# version Cargo.lock resolves here; the script checks.
+wasm-bindgen = "0.2.128"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+console_error_panic_hook = "0.1.7"
+live-web = { path = "../live-web" }
+web-sys = { version = "0.3", features = [
+    "AudioBuffer",
+    "AudioBufferSourceNode",
+    "AudioContext",
+    "AudioContextState",
+    "AudioDestinationNode",
+    "AudioListener",
+    "AudioNode",
+    "AudioParam",
+    "AudioScheduledSourceNode",
+    "BaseAudioContext",
+    "BiquadFilterNode",
+    "BiquadFilterType",
+    "CanvasRenderingContext2d",
+    "CssStyleDeclaration",
+    "Document",
+    "DomRect",
+    "Element",
+    "Event",
+    "EventTarget",
+    "GainNode",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "KeyboardEvent",
+    "Location",
+    "MessageEvent",
+    "MouseEvent",
+    "Navigator",
+    "OscillatorNode",
+    "OscillatorType",
+    "PannerNode",
+    "PanningModelType",
+    "DistanceModelType",
+    "Performance",
+    "PointerEvent",
+    "Storage",
+    "TextMetrics",
+    "WebGl2RenderingContext",
+    "WebGlBuffer",
+    "WebGlProgram",
+    "WebGlShader",
+    "WebGlTexture",
+    "WebGlUniformLocation",
+    "WebGlVertexArrayObject",
+    "Window",
+    "console",
+] }
+
+[dev-dependencies]
+oa-copy = { path = "../oa-copy" }
+
+[lints]
+workspace = true
+
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
+openagents-workspace-hack = { version = "0.1" }

@@ -19,6 +19,7 @@
 //! `haunt-rules` checks a house against this catalog, and `haunt-web` draws
 //! from it. Nothing here does I/O, so it builds for `wasm32`.
 
+pub mod cards;
 pub mod meshes;
 
 use std::sync::OnceLock;

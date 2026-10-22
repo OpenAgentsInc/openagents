@@ -30,7 +30,7 @@
         { "id": "pumpkin-left", "asset": "jack-o-lantern", "at": [6.6, 19.3], "yaw": 180.0, "state": "grin", "note": "on the front steps, seen when you turn" },
         { "id": "pumpkin-right", "asset": "jack-o-lantern", "at": [9.4, 19.3], "yaw": 180.0, "state": "sly" },
         { "id": "pumpkin-low", "asset": "jack-o-lantern", "at": [10.2, 18.6], "yaw": 200.0, "state": "toothy" },
-        { "id": "moon", "asset": "moon", "at": [12.0, 70.0], "note": "low behind the house, so the house stands against it" }
+        { "id": "moon", "asset": "moon", "at": [28.0, 45.0], "note": "high over the trees to the right of the house, seen when you turn" }
       ],
       "triggers": []
     },
