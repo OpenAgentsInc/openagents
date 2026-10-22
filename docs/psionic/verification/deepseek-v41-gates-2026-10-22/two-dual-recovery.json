@@ -1,0 +1,1013 @@
+{
+  "purpose": "Native two-dual Pylon crash, freeze and deadline recovery; numerical acceptance remains pending",
+  "passed": true,
+  "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+  "manifest": "4b95bff01142a06dbcb4a7505d65960081adc6dd490f73801384d76dd507c5c1",
+  "configuration": "6f85bdd612b7cc3cabfd4974b1d119201c6eae54950c0d5fcdb15eb7881c7f7b",
+  "faults": [
+    {
+      "stage": 1,
+      "fault": "SIGKILL",
+      "result": {
+        "purpose": "private native Pylon recovery; not numerical release qualification",
+        "fault": "SIGKILL",
+        "stage": 1,
+        "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+        "passed": true,
+        "before": {
+          "event": "status",
+          "head": "30200:cebf36e41b2d4b54830d2225b39b801106b64212a0f6df3f6d50282053c621e7:deepseek-gates-two",
+          "ready": true,
+          "generation": 1,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        },
+        "interrupted_execution": {
+          "event": "execute",
+          "stage": "s1",
+          "pid": 11076,
+          "generation": 1,
+          "request": "2",
+          "step": 0,
+          "position": 0,
+          "tokens": 23,
+          "prefill": true,
+          "prefill_pending": false,
+          "output_step": 0
+        },
+        "visible_failure": {
+          "status": "error",
+          "summary": "unavailable: the model failed",
+          "data": {
+            "pylon": "30200:cebf36e41b2d4b54830d2225b39b801106b64212a0f6df3f6d50282053c621e7:deepseek-gates-two",
+            "pylon_npub": "npub1e6lndeqm9494fqcdygjm8xuqzyrtvssj5rmd70md2q5zq57xy8ns4qhvdx",
+            "label": "DeepSeek qualification",
+            "profile": "qualified",
+            "lossy": false,
+            "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+            "prompt": "Count from 1 to 5000, one number per line. Do not stop early.",
+            "text": null,
+            "outcome": "failed",
+            "error": "unavailable: the model failed",
+            "request": "12914789160594a9f8d1486cf5eb13a85768d31c07e7dc48b3b40b1c47ba9347",
+            "discover_ms": 44,
+            "contact_ms": 79,
+            "answer_ms": null,
+            "usage": null,
+            "receipt": null,
+            "receipt_error": null,
+            "paid_msat": null,
+            "declared": {
+              "budget_secs": 600,
+              "ceiling_secs": 600,
+              "deadline_secs": 600,
+              "admitted_secs": 600,
+              "heartbeats": 0,
+              "finish": null,
+              "connections": 1
+            }
+          }
+        },
+        "recovered": {
+          "event": "status",
+          "head": "30200:cebf36e41b2d4b54830d2225b39b801106b64212a0f6df3f6d50282053c621e7:deepseek-gates-two",
+          "ready": true,
+          "generation": 2,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        }
+      },
+      "raw": "private-two-dual/kill/result.json"
+    },
+    {
+      "stage": 2,
+      "fault": "SIGSTOP",
+      "result": {
+        "purpose": "private native Pylon recovery; not numerical release qualification",
+        "fault": "SIGSTOP",
+        "stage": 2,
+        "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+        "passed": true,
+        "before": {
+          "event": "status",
+          "head": "30200:d4f005dad8f3a11ef5b07c2eb813517f568cb9de1807699150e0d68e8470572b:deepseek-gates-two",
+          "ready": true,
+          "generation": 1,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        },
+        "interrupted_execution": {
+          "event": "execute",
+          "stage": "s2",
+          "pid": 11566,
+          "generation": 1,
+          "request": "1",
+          "step": 0,
+          "position": 0,
+          "tokens": 23,
+          "prefill": true,
+          "prefill_pending": false,
+          "output_step": 0
+        },
+        "visible_failure": {
+          "status": "error",
+          "summary": "unavailable: the model failed",
+          "data": {
+            "pylon": "30200:d4f005dad8f3a11ef5b07c2eb813517f568cb9de1807699150e0d68e8470572b:deepseek-gates-two",
+            "pylon_npub": "npub16ncqtkkc7ws3aads0shtsy630atgeww7rqrkny2surtgaprs2u4s2kzj9k",
+            "label": "DeepSeek qualification",
+            "profile": "qualified",
+            "lossy": false,
+            "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+            "prompt": "Count from 1 to 5000, one number per line. Do not stop early.",
+            "text": null,
+            "outcome": "failed",
+            "error": "unavailable: the model failed",
+            "request": "c52d0bbd9f89cfeee122d94ad4649378de740d7f822f1c987ff9ef1a1017d08b",
+            "discover_ms": 45,
+            "contact_ms": 79,
+            "answer_ms": null,
+            "usage": null,
+            "receipt": null,
+            "receipt_error": null,
+            "paid_msat": null,
+            "declared": {
+              "budget_secs": 600,
+              "ceiling_secs": 600,
+              "deadline_secs": 600,
+              "admitted_secs": 600,
+              "heartbeats": 0,
+              "finish": null,
+              "connections": 1
+            }
+          }
+        },
+        "recovered": {
+          "event": "status",
+          "head": "30200:d4f005dad8f3a11ef5b07c2eb813517f568cb9de1807699150e0d68e8470572b:deepseek-gates-two",
+          "ready": true,
+          "generation": 2,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        }
+      },
+      "raw": "private-two-dual-v2/freeze/result.json"
+    },
+    {
+      "stage": 0,
+      "fault": "SIGKILL",
+      "result": {
+        "purpose": "private native Pylon recovery; not numerical release qualification",
+        "fault": "SIGKILL",
+        "stage": 0,
+        "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+        "passed": true,
+        "before": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 1,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        },
+        "interrupted_execution": {
+          "event": "execute",
+          "stage": "s0",
+          "pid": 12819,
+          "generation": 1,
+          "request": "4",
+          "step": 0,
+          "position": 0,
+          "tokens": 23,
+          "prefill": true,
+          "prefill_pending": false,
+          "output_step": 0
+        },
+        "visible_failure": {
+          "status": "error",
+          "summary": "unavailable: the model failed",
+          "data": {
+            "pylon": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+            "pylon_npub": "npub1sndv9k4c3w4c05fnvtznn8pyjvruy0jkt9c2weqzpx22jsthd94stuspx4",
+            "label": "DeepSeek qualification",
+            "profile": "qualified",
+            "lossy": false,
+            "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+            "prompt": "Count from 1 to 5000, one number per line. Do not stop early.",
+            "text": null,
+            "outcome": "failed",
+            "error": "unavailable: the model failed",
+            "request": "43c77e093e8e2b1e43ece5b6598ba1a5fb5ab671afe0222d118b2fa648334553",
+            "discover_ms": 45,
+            "contact_ms": 79,
+            "answer_ms": null,
+            "usage": null,
+            "receipt": null,
+            "receipt_error": null,
+            "paid_msat": null,
+            "declared": {
+              "budget_secs": 600,
+              "ceiling_secs": 600,
+              "deadline_secs": 600,
+              "admitted_secs": 600,
+              "heartbeats": 0,
+              "finish": null,
+              "connections": 1
+            }
+          }
+        },
+        "recovered": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 2,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        }
+      },
+      "raw": "private-two-dual-v3/kill-s0/result.json"
+    },
+    {
+      "stage": 1,
+      "fault": "SIGSTOP",
+      "result": {
+        "purpose": "private native Pylon recovery; not numerical release qualification",
+        "fault": "SIGSTOP",
+        "stage": 1,
+        "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+        "passed": true,
+        "before": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 2,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        },
+        "interrupted_execution": {
+          "event": "execute",
+          "stage": "s1",
+          "pid": 12820,
+          "generation": 2,
+          "request": "6",
+          "step": 0,
+          "position": 0,
+          "tokens": 23,
+          "prefill": true,
+          "prefill_pending": false,
+          "output_step": 0
+        },
+        "visible_failure": {
+          "status": "error",
+          "summary": "unavailable: the model failed",
+          "data": {
+            "pylon": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+            "pylon_npub": "npub1sndv9k4c3w4c05fnvtznn8pyjvruy0jkt9c2weqzpx22jsthd94stuspx4",
+            "label": "DeepSeek qualification",
+            "profile": "qualified",
+            "lossy": false,
+            "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+            "prompt": "Count from 1 to 5000, one number per line. Do not stop early.",
+            "text": null,
+            "outcome": "failed",
+            "error": "unavailable: the model failed",
+            "request": "55a0e9f42248946d4113eebff36e4be47fb907e171d35782ee82267caef85e02",
+            "discover_ms": 44,
+            "contact_ms": 79,
+            "answer_ms": null,
+            "usage": null,
+            "receipt": null,
+            "receipt_error": null,
+            "paid_msat": null,
+            "declared": {
+              "budget_secs": 600,
+              "ceiling_secs": 600,
+              "deadline_secs": 600,
+              "admitted_secs": 600,
+              "heartbeats": 0,
+              "finish": null,
+              "connections": 1
+            }
+          }
+        },
+        "recovered": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 3,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        }
+      },
+      "raw": "private-two-dual-v3/freeze-s1/result.json"
+    },
+    {
+      "stage": 2,
+      "fault": "SIGKILL",
+      "result": {
+        "purpose": "private native Pylon recovery; not numerical release qualification",
+        "fault": "SIGKILL",
+        "stage": 2,
+        "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+        "passed": true,
+        "before": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 3,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        },
+        "interrupted_execution": {
+          "event": "execute",
+          "stage": "s2",
+          "pid": 12966,
+          "generation": 3,
+          "request": "8",
+          "step": 0,
+          "position": 0,
+          "tokens": 23,
+          "prefill": true,
+          "prefill_pending": false,
+          "output_step": 0
+        },
+        "visible_failure": {
+          "status": "error",
+          "summary": "unavailable: the model failed",
+          "data": {
+            "pylon": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+            "pylon_npub": "npub1sndv9k4c3w4c05fnvtznn8pyjvruy0jkt9c2weqzpx22jsthd94stuspx4",
+            "label": "DeepSeek qualification",
+            "profile": "qualified",
+            "lossy": false,
+            "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+            "prompt": "Count from 1 to 5000, one number per line. Do not stop early.",
+            "text": null,
+            "outcome": "failed",
+            "error": "unavailable: the model failed",
+            "request": "9f90f9eb1e0c5c00e20ad5dfd5744f720e6b320bdad88bbf8ccbf65ff1c82bb3",
+            "discover_ms": 45,
+            "contact_ms": 79,
+            "answer_ms": null,
+            "usage": null,
+            "receipt": null,
+            "receipt_error": null,
+            "paid_msat": null,
+            "declared": {
+              "budget_secs": 600,
+              "ceiling_secs": 600,
+              "deadline_secs": 600,
+              "admitted_secs": 600,
+              "heartbeats": 0,
+              "finish": null,
+              "connections": 1
+            }
+          }
+        },
+        "recovered": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 4,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        }
+      },
+      "raw": "private-two-dual-v3/kill-s2/result.json"
+    },
+    {
+      "stage": 0,
+      "fault": "SIGSTOP",
+      "result": {
+        "purpose": "private native Pylon recovery; not numerical release qualification",
+        "fault": "SIGSTOP",
+        "stage": 0,
+        "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+        "passed": true,
+        "before": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 4,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        },
+        "interrupted_execution": {
+          "event": "execute",
+          "stage": "s0",
+          "pid": 13175,
+          "generation": 4,
+          "request": "10",
+          "step": 0,
+          "position": 0,
+          "tokens": 23,
+          "prefill": true,
+          "prefill_pending": false,
+          "output_step": 0
+        },
+        "visible_failure": {
+          "status": "error",
+          "summary": "unavailable: the model failed",
+          "data": {
+            "pylon": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+            "pylon_npub": "npub1sndv9k4c3w4c05fnvtznn8pyjvruy0jkt9c2weqzpx22jsthd94stuspx4",
+            "label": "DeepSeek qualification",
+            "profile": "qualified",
+            "lossy": false,
+            "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+            "prompt": "Count from 1 to 5000, one number per line. Do not stop early.",
+            "text": null,
+            "outcome": "failed",
+            "error": "unavailable: the model failed",
+            "request": "f6b06d6524027be447caf43de1550cf6f082e2accbc3a6266e24bc8dfdc03b16",
+            "discover_ms": 44,
+            "contact_ms": 79,
+            "answer_ms": null,
+            "usage": null,
+            "receipt": null,
+            "receipt_error": null,
+            "paid_msat": null,
+            "declared": {
+              "budget_secs": 600,
+              "ceiling_secs": 600,
+              "deadline_secs": 600,
+              "admitted_secs": 600,
+              "heartbeats": 0,
+              "finish": null,
+              "connections": 1
+            }
+          }
+        },
+        "recovered": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 5,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        }
+      },
+      "raw": "private-two-dual-v3/freeze-s0/result.json"
+    },
+    {
+      "stage": 3,
+      "fault": "SIGKILL",
+      "result": {
+        "purpose": "private native Pylon recovery; not numerical release qualification",
+        "fault": "SIGKILL",
+        "stage": 3,
+        "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+        "passed": true,
+        "before": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 5,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        },
+        "interrupted_execution": {
+          "event": "execute",
+          "stage": "s3",
+          "pid": 12967,
+          "generation": 5,
+          "request": "12",
+          "step": 0,
+          "position": 0,
+          "tokens": 23,
+          "prefill": true,
+          "prefill_pending": false,
+          "output_step": 0
+        },
+        "visible_failure": {
+          "status": "error",
+          "summary": "unavailable: the model failed",
+          "data": {
+            "pylon": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+            "pylon_npub": "npub1sndv9k4c3w4c05fnvtznn8pyjvruy0jkt9c2weqzpx22jsthd94stuspx4",
+            "label": "DeepSeek qualification",
+            "profile": "qualified",
+            "lossy": false,
+            "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+            "prompt": "Count from 1 to 5000, one number per line. Do not stop early.",
+            "text": null,
+            "outcome": "failed",
+            "error": "unavailable: the model failed",
+            "request": "da85d91001fe18e3fb84a23fda625596f0a80eec0cdaa69bd42a3cc71bb2c0c1",
+            "discover_ms": 44,
+            "contact_ms": 80,
+            "answer_ms": null,
+            "usage": null,
+            "receipt": null,
+            "receipt_error": null,
+            "paid_msat": null,
+            "declared": {
+              "budget_secs": 600,
+              "ceiling_secs": 600,
+              "deadline_secs": 600,
+              "admitted_secs": 600,
+              "heartbeats": 0,
+              "finish": null,
+              "connections": 1
+            }
+          }
+        },
+        "recovered": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 6,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        }
+      },
+      "raw": "private-two-dual-v3/kill-s3/result.json"
+    },
+    {
+      "stage": 3,
+      "fault": "SIGSTOP",
+      "result": {
+        "purpose": "private native Pylon recovery; not numerical release qualification",
+        "fault": "SIGSTOP",
+        "stage": 3,
+        "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+        "passed": true,
+        "before": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 6,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        },
+        "interrupted_execution": {
+          "event": "execute",
+          "stage": "s3",
+          "pid": 13457,
+          "generation": 6,
+          "request": "14",
+          "step": 0,
+          "position": 0,
+          "tokens": 23,
+          "prefill": true,
+          "prefill_pending": false,
+          "output_step": 0
+        },
+        "visible_failure": {
+          "status": "error",
+          "summary": "unavailable: the model failed",
+          "data": {
+            "pylon": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+            "pylon_npub": "npub1sndv9k4c3w4c05fnvtznn8pyjvruy0jkt9c2weqzpx22jsthd94stuspx4",
+            "label": "DeepSeek qualification",
+            "profile": "qualified",
+            "lossy": false,
+            "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+            "prompt": "Count from 1 to 5000, one number per line. Do not stop early.",
+            "text": null,
+            "outcome": "failed",
+            "error": "unavailable: the model failed",
+            "request": "4b4d0c4e48f1187122d053c5442a07cb9ab31b9d238d7f9d6aee15a0770f6904",
+            "discover_ms": 44,
+            "contact_ms": 79,
+            "answer_ms": null,
+            "usage": null,
+            "receipt": null,
+            "receipt_error": null,
+            "paid_msat": null,
+            "declared": {
+              "budget_secs": 600,
+              "ceiling_secs": 600,
+              "deadline_secs": 600,
+              "admitted_secs": 600,
+              "heartbeats": 0,
+              "finish": null,
+              "connections": 1
+            }
+          }
+        },
+        "recovered": {
+          "event": "status",
+          "head": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+          "ready": true,
+          "generation": 7,
+          "failed": null,
+          "reason": "",
+          "stages": [
+            {
+              "name": "s0",
+              "ready": true
+            },
+            {
+              "name": "s1",
+              "ready": true
+            },
+            {
+              "name": "s2",
+              "ready": true
+            },
+            {
+              "name": "s3",
+              "ready": true
+            }
+          ]
+        }
+      },
+      "raw": "private-two-dual-v3/freeze-s3/result.json"
+    }
+  ],
+  "deadline": {
+    "purpose": "private native Pylon deadline cancellation; not numerical qualification",
+    "passed": true,
+    "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+    "execution": {
+      "event": "execute",
+      "stage": "s0",
+      "pid": 12819,
+      "generation": 1,
+      "request": "2",
+      "step": 0,
+      "position": 0,
+      "tokens": 23,
+      "prefill": true,
+      "prefill_pending": false,
+      "output_step": 0
+    },
+    "busy_refusal": {
+      "schema": "openagents.pylon/1",
+      "command": "ask",
+      "ok": false,
+      "status": "error",
+      "summary": "rate_limited: no free slot",
+      "data": {
+        "pylon": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+        "pylon_npub": "npub1sndv9k4c3w4c05fnvtznn8pyjvruy0jkt9c2weqzpx22jsthd94stuspx4",
+        "label": "DeepSeek qualification",
+        "profile": "qualified",
+        "lossy": false,
+        "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+        "prompt": "What is 17 * 23? Reply with only the integer.",
+        "text": null,
+        "outcome": "failed",
+        "error": "rate_limited: no free slot",
+        "request": "988289832752ad75bd9a8fb67f6a9b8cb9b4b97e978a226ca122eda5a30cd8bc",
+        "discover_ms": 45,
+        "contact_ms": 78,
+        "answer_ms": null,
+        "usage": null,
+        "receipt": null,
+        "receipt_error": null,
+        "paid_msat": null,
+        "declared": {
+          "budget_secs": 600,
+          "ceiling_secs": 600,
+          "deadline_secs": 600,
+          "admitted_secs": null,
+          "heartbeats": 0,
+          "finish": null,
+          "connections": 1
+        }
+      },
+      "warnings": [],
+      "needs_owner": null,
+      "next": [
+        {
+          "command": "openagents pylon doctor",
+          "why": "see what this computer has and what blocks it"
+        }
+      ],
+      "exit_code": 1
+    },
+    "deadline_answer": {
+      "schema": "openagents.pylon/1",
+      "command": "ask",
+      "ok": false,
+      "status": "error",
+      "summary": "limit_exceeded: the job ran out of time",
+      "data": {
+        "pylon": "30200:84dac2dab88bab87d13362c5399c249307c23e565970a764020994a94177696b:deepseek-gates-two",
+        "pylon_npub": "npub1sndv9k4c3w4c05fnvtznn8pyjvruy0jkt9c2weqzpx22jsthd94stuspx4",
+        "label": "DeepSeek qualification",
+        "profile": "qualified",
+        "lossy": false,
+        "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+        "prompt": "Count from 1 to 5000, one number per line. Do not stop early.",
+        "text": null,
+        "outcome": "failed",
+        "error": "limit_exceeded: the job ran out of time",
+        "request": "1ec58820ab86af774c7c4fc107391af9a6d48f9c8bd3f435a6e5a22290461cda",
+        "discover_ms": 45,
+        "contact_ms": 79,
+        "answer_ms": null,
+        "usage": null,
+        "receipt": null,
+        "receipt_error": null,
+        "paid_msat": null,
+        "declared": {
+          "budget_secs": 2,
+          "ceiling_secs": 600,
+          "deadline_secs": 2,
+          "admitted_secs": 2,
+          "heartbeats": 0,
+          "finish": null,
+          "connections": 1
+        }
+      },
+      "warnings": [],
+      "needs_owner": null,
+      "next": [
+        {
+          "command": "openagents pylon doctor",
+          "why": "see what this computer has and what blocks it"
+        }
+      ],
+      "exit_code": 1
+    },
+    "stopped_on_every_stage": [
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "controller_exit": 0,
+  "harness_failures_retained": [
+    "private-two-dual-v3/deadline/result.json"
+  ],
+  "raw_prefix": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/calibration-20261022/private-two-dual-recovery",
+  "all_machine_allocations_deleted": true,
+  "cleanup": [
+    "oa-dsv41-gates-dual0: stopped at 2026-10-22T20:20:29Z, cost $7.48",
+    "oa-dsv41-gates-dual1: stopped at 2026-10-22T20:21:53Z, cost $7.52"
+  ]
+}

@@ -1419,3 +1419,28 @@ tests, with one optional test ignored. The current diagnostic correctly
 refuses the historical stale-cache control for insufficient numerical evidence;
 new controls on the pinned candidate are required before the final freeze.
 The model worker, thresholds, and publication requirements do not change.
+
+### Native recovery matrix and machine loss (2026-10-22)
+
+The pinned original-weight worker passed private two-dual recovery tests for
+all four stage positions, with both `SIGKILL` and `SIGSTOP`. Each interrupted
+request failed visibly, the group recovered under a new generation, and a
+fresh request returned `391`. The deadline test also passed: the concurrent
+request stayed blocked until all four stages stopped, then a fresh request
+succeeded. Earlier harness failures remain retained separately. The native
+controller shut down with status 0, and both machines had no worker process
+before deletion. See [the recovery matrix](verification/deepseek-v41-gates-2026-10-22/two-dual-recovery.json).
+
+The four-single cloud test also passed a whole-machine loss drill during an
+active request. The buyer received a failure, late stage messages were
+refused, and the bounded restart attempts ended with all four allocations
+deleted. See [the runtime and loss record](verification/deepseek-v41-gates-2026-10-22/four-single-runtime-and-loss.json).
+This establishes recovery behavior; G1 and G4 numerical acceptance remain
+pending.
+
+The owner's two Maya consumer-q Pylons for Foreman's #12500 work are separate
+services with their own artifact and provider identities. They retain their
+lossy profile. This original-weight qualification run does not grant those
+services a numerical qualification claim. The quota-retrying private quad
+watcher was stopped to give the Maya services priority; the completed
+two-dual recovery placement has been deleted.

@@ -1,0 +1,148 @@
+{
+  "purpose": "Native four-single Pylon runtime and machine-loss evidence; numerical acceptance remains pending",
+  "passed": true,
+  "runtime": {
+    "purpose": "native four-single private Pylon runtime checks; numerical qualification remains separate",
+    "worker_bundle": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+    "manifest": "sha256:cd2f590c7e8dae9a3773777b6136bf9e9e63b4714626dbfbb47a59e8a555977b",
+    "passed": true,
+    "checks": [
+      {
+        "name": "arithmetic",
+        "seconds": 0.9457627299998421,
+        "ok": true,
+        "file": "arithmetic.json"
+      },
+      {
+        "name": "repeated",
+        "seconds": 11.362732450000294,
+        "ok": true,
+        "file": "repeated.json"
+      },
+      {
+        "name": "continuation",
+        "seconds": 1.7302084789998844,
+        "ok": true,
+        "file": "continuation.json"
+      },
+      {
+        "name": "output-cap",
+        "seconds": 196.6767285449996,
+        "ok": false,
+        "file": "output-cap.json"
+      },
+      {
+        "name": "after-cap",
+        "seconds": 3.0028574910002135,
+        "ok": true,
+        "file": "after-cap.json"
+      }
+    ]
+  },
+  "machine_loss": {
+    "passed": true,
+    "instance_id": "4532299486633385027",
+    "target": "oa-deepseek-gates-four-m1",
+    "ledger_id": "febe618dee014ed8947862a210cd0929",
+    "visible_failure": {
+      "schema": "openagents.pylon/1",
+      "command": "ask",
+      "ok": false,
+      "status": "error",
+      "summary": "unavailable: the model failed",
+      "data": {
+        "pylon": "30200:c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685:deepseek-gates-four-head",
+        "pylon_npub": "npub1ctarc7hgf2duuagfalr0sqfzl9vejv6ng5j2duw2rht9qgnzj6zsr878am",
+        "label": "DeepSeek private qualification",
+        "profile": "qualified",
+        "lossy": false,
+        "model": "deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+        "prompt": "Count from 1 to 5000, one number per line. Do not stop early.",
+        "text": null,
+        "outcome": "failed",
+        "error": "unavailable: the model failed",
+        "request": "c7fa0443a3ea0014239c8fddf0aa4a403b79abe542967c667679b3443c7e7d61",
+        "discover_ms": 44,
+        "contact_ms": 79,
+        "answer_ms": null,
+        "usage": null,
+        "receipt": null,
+        "receipt_error": null,
+        "paid_msat": null,
+        "declared": {
+          "budget_secs": 600,
+          "ceiling_secs": 600,
+          "deadline_secs": 600,
+          "admitted_secs": 600,
+          "heartbeats": 2,
+          "finish": null,
+          "connections": 1
+        }
+      },
+      "warnings": [],
+      "needs_owner": null,
+      "next": [
+        {
+          "command": "openagents pylon doctor",
+          "why": "see what this computer has and what blocks it"
+        }
+      ],
+      "exit_code": 1
+    },
+    "phase": {
+      "phase": "finished",
+      "pid": 14584,
+      "started_wall": 1792698358.3323119,
+      "ended_wall": 1792698429.2351224,
+      "exit_status": 1
+    },
+    "all_machine_allocations_deleted": true,
+    "cleanup": {
+      "reason": "the group was lost: the stage group stopped after repeated failures: stage s1 failed: its process exited (exit status: 1); restart the pylon after fixing the stage",
+      "at": 1792698664,
+      "stops": [
+        {
+          "cost": 0.732339,
+          "event": "stop",
+          "id": "89bf1a70924645c690bcb09e2e13f0ed",
+          "reason": "deleted",
+          "stop": "2026-10-22T19:49:01Z",
+          "stop_epoch": 1792698541.235332,
+          "vm": "oa-deepseek-gates-four-m0"
+        },
+        {
+          "cost": 0.668934,
+          "event": "stop",
+          "id": "febe618dee014ed8947862a210cd0929",
+          "reason": "deleted",
+          "stop": "2026-10-22T19:47:28Z",
+          "stop_epoch": 1792698448.5560188,
+          "vm": "oa-deepseek-gates-four-m1"
+        },
+        {
+          "cost": 0.72054,
+          "event": "stop",
+          "id": "f0b847df61944284823b1bb747fbb3ed",
+          "reason": "deleted",
+          "stop": "2026-10-22T19:50:09Z",
+          "stop_epoch": 1792698609.057933,
+          "vm": "oa-deepseek-gates-four-m2"
+        },
+        {
+          "cost": 0.722276,
+          "event": "stop",
+          "id": "7ee3c940bbc14716b43de2f012b667c8",
+          "reason": "deleted",
+          "stop": "2026-10-22T19:51:04Z",
+          "stop_epoch": 1792698664.9257889,
+          "vm": "oa-deepseek-gates-four-m3"
+        }
+      ],
+      "cost": 2.844089,
+      "problems": []
+    },
+    "late_messages_refused": true,
+    "raw_log": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/calibration-20261022/private-four/cloud-four-launch.log",
+    "log_sha256": "b541348034ec29305e2a1d1e664cef674aa0da836518a54c9a1abb7d864b54b3"
+  }
+}
