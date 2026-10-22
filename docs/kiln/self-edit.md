@@ -173,6 +173,7 @@ one log line in `crates/kiln/src/web/app.rs` (about 80 KiB) through
   may publish, revert, or reset Kiln", and nothing changes.
 - An edit that doesn't compile for the browser: the native tests pass, the
   build fails, and the runner answers "not published: the build failed".
-- A new page module under an older host `index.html` (the site serves its
-  own `index.html`, not the published one): the module skips the controls
-  the older page lacks.
+
+Handled in code but not yet exercised in a run: a new page module under an
+older host `index.html` (the site serves its own `index.html`, not the
+published one). The module skips the controls the older page lacks.
