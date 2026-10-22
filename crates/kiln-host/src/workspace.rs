@@ -440,18 +440,29 @@ impl Workspace {
                     ["view", path, start, end] => {
                         let start: usize = start.parse().map_err(|_| "invalid start line")?;
                         let end: usize = end.parse().map_err(|_| "invalid end line")?;
-                        if start == 0 || end < start || end - start >= 20 {
-                            return Err("view requires 1 to 20 lines".into());
+                        if start == 0 || end < start {
+                            return Err("view requires a positive start and an end at or after it".into());
                         }
-                        Ok(self
-                            .read(path)?
+                        let text = self.read(path)?;
+                        let total = text.lines().count();
+                        if start > total {
+                            return Ok(format!("EOF: {total} lines; start {start} is past the end."));
+                        }
+                        let end = end.min(start.saturating_add(19)).min(total);
+                        let next = if end < total {
+                            format!("Next line: {}.", end + 1)
+                        } else {
+                            "EOF.".into()
+                        };
+                        let body = text
                             .lines()
                             .enumerate()
                             .skip(start - 1)
                             .take(end - start + 1)
                             .map(|(n, l)| format!("{}:{l}", n + 1))
                             .collect::<Vec<_>>()
-                            .join("\n"))
+                            .join("\n");
+                        Ok(format!("Lines {start}-{end} of {total}. {next}\n{body}"))
                     }
                     ["grep", ..] => self.grep(&args[1..]),
                     _ => Err(
@@ -708,6 +719,122 @@ mod tests {
             "files": {}, "original": {}, "pending": [], "phase": "model",
             "turns": 0, "calls": 0, "until": now() + 60, "checked": null,
         })
+    }
+    #[test]
+    fn view_clamps_real_ranges_and_reports_progress_and_eof() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
+        let dir = root.path().join("apps/haunt-preview");
+        std::fs::create_dir_all(&dir).unwrap();
+        let source = (1..=150)
+            .map(|n| format!("source {n} é\n"))
+            .collect::<String>();
+        std::fs::write(dir.join("runtime.ts"), source).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(root.path().join("key"), dir.join("link")).unwrap();
+        git(root.path(), &["init", "-q"]).unwrap();
+        git(root.path(), &["add", "apps"]).unwrap();
+        git(
+            root.path(),
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        )
+        .unwrap();
+        let mut c = config(root.path());
+        c.base = git(root.path(), &["rev-parse", "HEAD"])
+            .unwrap()
+            .trim()
+            .into();
+        let mut workspace = Workspace::new(c).unwrap();
+        std::fs::write(dir.join("runtime.ts"), "uncommitted host content").unwrap();
+        workspace.checked = Some(workspace.digest());
+        let checked = workspace.checked.clone();
+        for (start, requested_end, displayed_end, next) in [
+            (100, 140, 119, "Next line: 120."),
+            (80, 140, 99, "Next line: 100."),
+            (2, 2, 2, "Next line: 3."),
+            (145, 200, 150, "EOF."),
+            (149, usize::MAX, 150, "EOF."),
+        ] {
+            let output = workspace
+                .execute(&Command::Run(format!(
+                    "view apps/haunt-preview/runtime.ts {start} {requested_end}"
+                )))
+                .unwrap();
+            let mut lines = output.lines();
+            assert_eq!(
+                lines.next().unwrap(),
+                format!("Lines {start}-{displayed_end} of 150. {next}")
+            );
+            let displayed = lines.collect::<Vec<_>>();
+            assert_eq!(displayed.len(), displayed_end - start + 1);
+            assert!(displayed.len() <= 20);
+            assert_eq!(
+                displayed.first().unwrap(),
+                &format!("{start}:source {start} é")
+            );
+            assert_eq!(
+                displayed.last().unwrap(),
+                &format!("{displayed_end}:source {displayed_end} é")
+            );
+        }
+        assert_eq!(
+            workspace
+                .execute(&Command::Run(
+                    "view apps/haunt-preview/runtime.ts 151 200".into()
+                ))
+                .unwrap(),
+            "EOF: 150 lines; start 151 is past the end."
+        );
+        assert_eq!(workspace.checked, checked);
+        for line in [
+            "view apps/haunt-preview/runtime.ts 0 20",
+            "view apps/haunt-preview/runtime.ts 20 10",
+            "view apps/haunt-preview/runtime.ts no 10",
+            "view ../key 1 40",
+            "view key 1 40",
+            "view apps/haunt-preview-evil/a.ts 1 40",
+        ] {
+            assert!(
+                workspace.execute(&Command::Run(line.into())).is_err(),
+                "{line}"
+            );
+        }
+        #[cfg(unix)]
+        assert!(
+            workspace
+                .execute(&Command::Run("view apps/haunt-preview/link 1 40".into()))
+                .is_err()
+        );
+        workspace
+            .edit("apps/haunt-preview/runtime.ts", "overlay é\n".into())
+            .unwrap();
+        assert_eq!(
+            workspace
+                .execute(&Command::Run(
+                    "view apps/haunt-preview/runtime.ts 1 40".into()
+                ))
+                .unwrap(),
+            "Lines 1-1 of 1. EOF.\n1:overlay é"
+        );
+        workspace
+            .edit("apps/haunt-preview/empty.ts", String::new())
+            .unwrap();
+        assert_eq!(
+            workspace
+                .execute(&Command::Run(
+                    "view apps/haunt-preview/empty.ts 1 40".into()
+                ))
+                .unwrap(),
+            "EOF: 0 lines; start 1 is past the end."
+        );
     }
     #[test]
     fn grep_supports_observed_options_and_literal_alternatives_with_existing_bounds() {
