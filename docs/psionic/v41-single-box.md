@@ -243,6 +243,13 @@ down). Served single box, `q2q3` decodes at 26.4 tok/s (p50 37.7 ms, 48% of
 experts in slots, 97% hits), but its answers are garbage from the first
 token, so the profile isn't usable yet; see #12465.
 
+An eight-position teacher-forced diagnostic on 2026-10-22 matched all eight
+oracle top tokens with native weights and seven with the old `q3` artifact,
+including the first six. This narrows the original failure without establishing
+whole-answer quality. The record is
+[`consumer_q_diagnostic.json`](../../scripts/bench/deepseek-v41/consumer_q_diagnostic.json);
+its cold-cache timings are not serving-speed measurements.
+
 ## Cost
 
 The `g4-standard-48` ran from 04:01Z; see #12463 and #12464 for each run's
