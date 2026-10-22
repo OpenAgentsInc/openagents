@@ -710,10 +710,17 @@ pub fn sign(group: &GroupScene) -> (String, Option<&'static str>) {
     )
 }
 
-/// Within this distance of a group's middle, its details show, m.
-pub const PANEL_REACH: f64 = 20.0;
+/// Within this distance of a group's head or a part, its details show, m.
+pub const PANEL_REACH: f64 = 3.0;
 /// Within this distance of a part, its own line shows, m.
-pub const STAGE_REACH: f64 = 10.0;
+pub const STAGE_REACH: f64 = 3.0;
+
+/// Whether the visitor is standing close enough to read a group's details.
+#[must_use]
+pub fn details_near(group: &GroupScene, player: [f64; 3]) -> bool {
+    let near = |at: [f64; 3]| (at[0] - player[0]).hypot(at[2] - player[2]) <= PANEL_REACH;
+    near(group.at) || group.stages.iter().any(|stage| near(stage.at))
+}
 
 /// The middle of a group's lane, from its head's foot, m along the lane.
 #[must_use]

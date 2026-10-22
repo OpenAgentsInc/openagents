@@ -485,6 +485,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12530: deploy the Pylon detail distance change and confirm that token details
+  show only within 3 meters of a Pylon, including when pointing at one farther away.
+
 - #12529: deploy the Grid gateway decoration removal and chat input labels, then
   check the Foreman, Suggestion Box, and Game Lab inputs in Verse.
 
