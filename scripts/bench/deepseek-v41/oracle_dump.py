@@ -261,6 +261,9 @@ class Recorder:
         self.router_ids: dict[str, list] = {}
         self.ties: list[dict] = []
         self.margins: dict[str, float] = {}
+        self.stage_boundaries: set[int] = set()
+        self.all_index_rows = False
+        self.boundaries: dict[str, dict] = {}
         self.gate_indices = None  # current layer's [n, topk] from the gate hook
         self.router_tops = 0  # extra scores past top-k kept per row (--router-tops)
         self.router_tops_scores: dict[str, list] = {}
@@ -309,6 +312,57 @@ class Recorder:
             )
 
 
+def boundary_sources(layer: int, args_cfg) -> dict:
+    """The shared state W9 carries into this boundary, before `layer` runs."""
+    def previous(sources):
+        latest = max((i for i in sources if i <= layer), default=None)
+        return latest if latest is not None and latest < layer else None
+    kv = previous(args_cfg.kv_source_layers)
+    needs_keys = kv is not None and any(
+        i >= layer and max(s for s in args_cfg.kv_source_layers if s <= i) == kv
+        for i in args_cfg.index_source_layers)
+    return {"kv_source": kv, "index_keys": needs_keys,
+            "selection_source": previous(args_cfg.index_source_layers),
+            "candidates": layer > args_cfg.candidate_source_layer >= 0
+                and any(i >= layer for i in args_cfg.index_source_layers)}
+
+
+def capture_boundary(rec, layer, a, args_cfg, shared_attn):
+    """Read-only full inputs for an isolated stage, including shared caches."""
+    if rec.rank != 0 or not rec.tracking or layer not in rec.stage_boundaries:
+        return
+    import torch
+    x, start, pre_mix = a[0], int(a[1]), a[2]
+    tokens = x.size(1)
+    label, site = f"step{rec.step:02d}", f"boundary.{layer}"
+    source = boundary_sources(layer, args_cfg)
+    offset = tokens if start == 0 else args_cfg.window_size
+    metadata = {**source, "start_position": start, "tokens": tokens,
+                "selection_offset": offset}
+    rec.put(label, site + ".residual", x[0].float())
+    rec.put(label, site + ".pre_mix", pre_mix[0].float())
+    if source["kv_source"] is not None:
+        ratio = args_cfg.compress_ratios[source["kv_source"]]
+        count = (start + tokens) // ratio
+        metadata.update(kv_rows=count, kv_ratio=ratio, previous_kv_rows=start // ratio)
+        rec.put(label, site + ".kv", shared_attn.compress_kv[0, :count])
+        if source["index_keys"]:
+            rec.put(label, site + ".index_keys", shared_attn.index_k[0, :count])
+    if source["selection_source"] is not None:
+        raw = shared_attn.topk_idxs[0]
+        rec.put(label, site + ".selection_raw", raw)
+        ids = torch.where(raw >= offset, raw - offset, -1).to(torch.int32)
+        ids = torch.nn.functional.pad(ids, (0, args_cfg.index_topk - ids.size(-1)), value=-1)
+        rec.put(label, site + ".selection", ids)
+    if source["candidates"]:
+        # One bit per block, stored as I32 so the dump has no implicit bool
+        # packing. The consumer turns its set bits into padded block IDs.
+        mask = shared_attn.candidates[0, :, ::args_cfg.candidate_block_size]
+        rec.put(label, site + ".candidate_mask", mask.to(torch.int32))
+        metadata["candidate_block_size"] = args_cfg.candidate_block_size
+    rec.boundaries[rec.key(label, site)] = metadata
+
+
 def install_hooks(model, rec: Recorder, kernel, args_cfg, shared_attn):
     import torch
     import torch.nn.functional as F
@@ -334,6 +388,8 @@ def install_hooks(model, rec: Recorder, kernel, args_cfg, shared_attn):
     model.norm.register_forward_hook(norm_hook)
 
     for i, block in enumerate(model.layers):
+        block.register_forward_pre_hook(
+            lambda m, a, i=i: capture_boundary(rec, i, a, args_cfg, shared_attn))
         # per-layer residual hash for every step (whole prompt at prefill)
         def block_hash(m, a, out, i=i):
             rec.put_hash(f"layers.{i}.out", out[0])
@@ -493,6 +549,14 @@ def install_hooks(model, rec: Recorder, kernel, args_cfg, shared_attn):
                             top[..., m.candidate_topk_blocks - 1] - top[..., m.candidate_topk_blocks],
                             INDEX_TIE_EPS,
                         )
+            if rec.all_index_rows and rec.tracking:
+                label, site = f"step{rec.step:02d}", f"index.layers.{layer}"
+                rec.put(label, site + ".topk_idxs", out[0].to(torch.int32))
+                if score is not None:
+                    rec.put(label, site + ".scores", score[0].float())
+                if m.is_candidate_source and shared_attn.candidates is not None:
+                    rec.put(label, site + ".candidate_mask",
+                            shared_attn.candidates[0, :, ::m.candidate_block_size].to(torch.int32))
             rec.put_rows(f"{p}.topk_idxs", out)
             if score is not None:
                 rec.put_rows(f"{p}.score", score)
@@ -744,6 +808,10 @@ def main() -> int:
                              "thinking_mode, and messages, or prompt_of and cut for a cut prompt")
     parser.add_argument("--router-tops", type=int, default=0,
                         help="also keep each row's best top-k + N biased router scores and ids (#12405)")
+    parser.add_argument("--stage-boundaries", default="",
+                        help="read-only full stage inputs at these layer cuts, for example 10,20,30")
+    parser.add_argument("--all-index-rows", action="store_true",
+                        help="retain every tracked index score and selection, before candidate filtering")
     opts = parser.parse_args()
 
     world_size = int(os.getenv("WORLD_SIZE", "1"))
@@ -789,6 +857,9 @@ def main() -> int:
 
     rec = Recorder(rank)
     rec.router_tops = opts.router_tops
+    rec.stage_boundaries = {int(i) for i in opts.stage_boundaries.split(",") if i}
+    assert all(0 < i < args.n_layers for i in rec.stage_boundaries), "invalid stage boundary"
+    rec.all_index_rows = opts.all_index_rows
     install_hooks(model, rec, kernel, args, model_mod.shared_attn)
     if opts.attention_diagnostics:
         install_attention_diagnostics(model, rec, model_mod)
@@ -804,6 +875,8 @@ def main() -> int:
             "labels": "first = prompt position 0; last = position L-1; gK = the forward whose input is generated token K, at position L+K-1",
             "modes": MODES,
             "precision": PRECISION,
+            "stage_boundaries": sorted(rec.stage_boundaries),
+            "all_index_rows": rec.all_index_rows,
             "tie_rules": TIE_RULES,
             "environment": env,
         }
@@ -1011,6 +1084,8 @@ def save_case(opts, rec, case_dir, result, rank, world_size):
     if world_size > 1:
         dist.barrier()
     if rank == 0:
+        result["stage_boundary_inputs"] = rec.boundaries
+        rec.boundaries = {}
         result["residual_sha256"] = rec.hashes
         result["selection_margins"] = rec.margins
         result["near_ties"] = rec.ties
