@@ -1761,13 +1761,16 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
     } else {
         Vec::new()
     };
+    let diagnostic_passed = passed;
+    let policy_passed = diagnostic_passed && violations.is_empty();
+    let release_passed = opts.release && policy_passed && release_refusals.is_empty();
     let exe = std::env::current_exe().map_err(|e| refused(e.to_string()))?;
     let report = json!({
         "schema": "psionic.deepseek_v41.g1_v2_report.v1",
         "release": opts.release,
         "release_refusals": release_refusals,
         "violations": violations,
-        "release_passed": opts.release && passed && release_refusals.is_empty() && violations.is_empty(),
+        "release_passed": release_passed,
         "issue": 12405,
         "policy_version": policy.version,
         "policy_sha256": policy_sha,
@@ -1791,7 +1794,8 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         "observe": opts.observe,
         "arithmetic_schedule": "one graph per token; the head runs only after the last prompt chunk and each forced decode token",
         "cases": reports,
-        "passed": passed,
+        "diagnostic_passed": diagnostic_passed,
+        "passed": if opts.release { release_passed } else { policy_passed },
     });
     std::fs::write(
         opts.out.join("report.json"),

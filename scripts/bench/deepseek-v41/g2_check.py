@@ -9,11 +9,14 @@ SUITE is `g2_v2/task-suite.json`; ANSWERS is `answers.json` from
 A task passes when its answer ends with the end token within the cap, a
 thinking-mode answer has reasoning, and every assertion holds on the final
 text. Generated code runs in a scratch folder with a 60 s limit, under a
-parent-written harness that must print every expected result: an early exit,
-a silent run, or a partial run fails. The verdict needs both the floor (every
-must-pass assertion holds on the runtime) and non-inferiority (the runtime's
+parent-written harness that saves returned values after every call finishes.
+The parent compares those values; program output never supplies a verdict.
+An early exit, a silent run, or a partial run fails. The verdict needs both
+the floor (completion, parsing, and every must-pass assertion) and non-inferiority (the runtime's
 pass count is at least the oracle's on this finite suite).
 """
+import ast
+import hashlib
 import json
 import re
 import subprocess
@@ -33,23 +36,33 @@ def code_block(text, langs):
     return m.group(1) if m else None
 
 
-MARK = "G2-RESULT"
+def returned_values(path, expected, *, rust=False):
+    """Read completed calls, independently of stdout and the child exit code.
+
+    These small generated programs are benchmark inputs, not a security
+    sandbox. They run only after inspection or in a disposable sandbox.
+    Expected values stay in this parent process, outside the answer program.
+    """
+    if not path.is_file():
+        return False, "no returned values (early exit or incomplete run)"
+    try:
+        actual = path.read_text().splitlines() if rust else json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False, "invalid returned values"
+    if not isinstance(actual, list) or len(actual) != len(expected):
+        return False, "incomplete returned values"
+    bad = [i for i, (got, want) in enumerate(zip(actual, expected))
+           if type(got) is not type(want) or got != want]
+    return (False, f"cases {bad} failed") if bad else (True, "all cases hold")
 
 
-def results_complete(stdout, n):
-    """Every expected case printed exactly one parent-written result line."""
-    seen = {}
-    for line in stdout.splitlines():
-        parts = line.split()
-        if len(parts) == 3 and parts[0] == MARK and parts[1].isdigit():
-            seen.setdefault(int(parts[1]), []).append(parts[2])
-    missing = [i for i in range(n) if i not in seen]
-    bad = [i for i, r in seen.items() if r != ["ok"]]
-    if missing:
-        return False, f"no result for cases {missing} (early exit or silent run)"
-    if bad:
-        return False, f"cases {bad} failed"
-    return True, "all cases hold"
+def rust_expected(text):
+    # The frozen Rust cases return integers or Option<integer>. Refuse a
+    # new expression shape rather than guessing its Debug representation.
+    value = re.sub(r"\s+", "", text)
+    if not re.fullmatch(r"(?:-?\d+|Some\(-?\d+\)|None|true|false)", value):
+        raise ValueError(f"unsupported Rust expected value: {text}")
+    return value
 
 
 def rust_tests(text, a):
@@ -59,12 +72,11 @@ def rust_tests(text, a):
     if re.search(r"\bfn\s+main\s*\(", code):
         # The parent writes main; an answer's own main is renamed, not run.
         code = re.sub(r"\bfn\s+main\s*\(", "fn answer_main(", code)
-    calls = "\n".join(
-        f'    {{ let got = {a["function"]}({args}); let want = {want}; '
-        f'println!("{MARK} {i} {{}}", if got == want {{ "ok" }} else {{ "fail" }}); }}'
-        for i, (args, want) in enumerate(a["cases"])
-    )
-    src = "#![allow(dead_code, unused)]\n" + code + "\nfn main() {\n" + calls + "\n}\n"
+    expected = [rust_expected(want) for _, want in a["cases"]]
+    calls = ",\n".join(f'format!("{{:?}}", {a["function"]}({args}))' for args, _ in a["cases"])
+    src = ("#![allow(dead_code, unused)]\n" + code + "\nfn main() {\n"
+           + "let returned: Vec<String> = vec![" + calls + "];\n"
+           + 'std::fs::write("actual-values", returned.join("\\n")).unwrap();\n}\n')
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "t.rs"
         p.write_text(src)
@@ -73,10 +85,10 @@ def rust_tests(text, a):
         if c.returncode:
             return False, "does not compile: " + c.stderr[-300:]
         try:
-            r = subprocess.run([str(Path(d) / "t")], capture_output=True, text=True, timeout=LIMIT)
+            r = subprocess.run([str(Path(d) / "t")], capture_output=True, text=True, timeout=LIMIT, cwd=d)
         except subprocess.TimeoutExpired:
             return False, "timed out"
-    ok, why = results_complete(r.stdout, len(a["cases"]))
+        ok, why = returned_values(Path(d) / "actual-values", expected, rust=True)
     if ok and r.returncode != 0:
         return False, f"exit status {r.returncode}"
     return ok, why
@@ -86,10 +98,11 @@ def python_tests(text, a):
     code = code_block(text, ["python", "py"])
     if code is None:
         return False, "no Python code block"
-    checks = "\n".join(
-        f'print("{MARK} {i}", "ok" if {a["function"]}({args}) == {want} else "fail")'
-        for i, (args, want) in enumerate(a["cases"])
-    )
+    expected = [ast.literal_eval(want) for _, want in a["cases"]]
+    calls = ", ".join(f'{a["function"]}({args})' for args, _ in a["cases"])
+    checks = ("returned = [" + calls + "]\n"
+              + 'import json\nwith open("actual-values", "w") as result:\n'
+              + "    json.dump(returned, result)\n")
     with tempfile.TemporaryDirectory() as d:
         p = Path(d) / "t.py"
         p.write_text(code + "\n" + checks + "\n")
@@ -97,7 +110,7 @@ def python_tests(text, a):
             r = subprocess.run([sys.executable, "-I", str(p)], capture_output=True, text=True, timeout=LIMIT, cwd=d)
         except subprocess.TimeoutExpired:
             return False, "timed out"
-    ok, why = results_complete(r.stdout, len(a["cases"]))
+        ok, why = returned_values(Path(d) / "actual-values", expected)
     if ok and r.returncode != 0:
         return False, f"exit status {r.returncode}"
     return ok, why
@@ -169,7 +182,7 @@ def judge(task, ended, reasoning, content):
     if task["thinking_mode"] == "thinking" and not reasoning.strip():
         ok = False
         results.append({"check": "reasoning split", "passed": False})
-    must = ended
+    must = ok
     for a in task["assertions"]:
         try:
             passed, why = check(content, a)
@@ -207,7 +220,8 @@ def main():
     o_pass = sum(1 for r in rows if r.get("oracle_passed"))
     r_pass = sum(1 for r in rows if r.get("runtime_passed"))
     report = {"schema": "psionic.deepseek_v41.g2_v2_report.v1", "issue": 12405,
-              "suite_sha256": __import__("hashlib").sha256(Path(sys.argv[1]).read_bytes()).hexdigest(),
+              "suite_sha256": hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest(),
+              "checker_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               "oracle_passes": o_pass, "runtime_passes": r_pass, "tasks": len(suite["cases"]),
               "missing": [r["case"] for r in rows if r.get("missing")],
               "floor_held": all(r.get("runtime_must_pass_held") for r in rows if not r.get("missing")),

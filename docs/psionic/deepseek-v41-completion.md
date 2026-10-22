@@ -21,6 +21,20 @@ bundles and devices. G4–G6 still need numerical acceptance; pinned G7 and
 qualified G8 evidence remain outstanding. The separate Maya optimization
 issues retain their existing owners and experimental profiles.
 
+**Qualification repair progress, 2026-10-22:** the qualification CLI now
+returns a failure status when its report fails, and `--release` prints the
+release verdict. The report keeps the older component verdict separately as
+`diagnostic_passed`; score-budget violations affect its primary verdict.
+G2's floor now requires completion and the reasoning split on every task,
+independently of the task pass count. Its parent checker compares returned
+values saved after all calls finish; printed `G2-RESULT` lines do not count.
+All 18 G2 controls and all 40 stage-worker tests pass (one timing test is
+ignored). Rescoring the unchanged retained answers still gives 5/6 versus
+5/6, with the same disclosed `fib(186)` failure and the floor held; the
+[new report](verification/deepseek-v41-gates-2026-10-22/g2-rescored.json)
+records the checker hash. This repairs the checker and verdict; it does not
+pass G1 or qualify a different runtime bundle.
+
 ## What "done" means
 
 The epic's goal: **serve DeepSeek-V4.1-Flash with Psionic as the only

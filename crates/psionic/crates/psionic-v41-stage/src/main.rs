@@ -391,10 +391,56 @@ fn run_synthetic(args: &[String]) -> Result<(), Refused> {
 fn run_qualify(args: &[String]) -> Result<(), Refused> {
     let options = psionic_v41_stage::qualify::QualifyOptions::parse(args)?;
     let report = psionic_v41_stage::qualify::run(&options)?;
+    let passed = qualification_verdict(&report, options.release);
     let _ = writeln!(
         std::io::stdout(),
         "{}",
-        serde_json::json!({"passed": report["passed"], "out": options.out.display().to_string()})
+        serde_json::json!({"passed": passed, "release": options.release,
+            "release_passed": report["release_passed"],
+            "answers": report["answers"], "out": options.out.display().to_string()})
     );
+    if passed == Some(false) {
+        return Err(Refused(format!(
+            "qualification failed; results are in {}",
+            options.out.display()
+        )));
+    }
     Ok(())
+}
+
+fn qualification_verdict(report: &serde_json::Value, release: bool) -> Option<bool> {
+    if release {
+        // A legacy diagnostic pass never overrides release evidence or limits.
+        Some(report["release_passed"] == true)
+    } else {
+        report["passed"].as_bool()
+    }
+}
+
+#[cfg(test)]
+mod qualification_tests {
+    use super::qualification_verdict;
+    use serde_json::json;
+
+    #[test]
+    fn release_summary_uses_the_release_verdict() {
+        let failed = json!({"passed": true, "release_passed": false});
+        assert_eq!(qualification_verdict(&failed, true), Some(false));
+        assert_eq!(
+            qualification_verdict(&json!({"passed": true}), true),
+            Some(false)
+        );
+        assert_eq!(
+            qualification_verdict(&json!({"release_passed": true}), true),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn answer_collection_does_not_claim_qualification() {
+        assert_eq!(
+            qualification_verdict(&json!({"passed": null, "answers": 6}), false),
+            None
+        );
+    }
 }

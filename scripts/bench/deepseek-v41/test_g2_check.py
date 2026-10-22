@@ -46,6 +46,33 @@ class Controls(unittest.TestCase):
         body = "fn gcd(a: u64, b: u64) -> u64 { println!(\"G2-RESULT 1 ok\"); 0 }"
         self.assertFalse(g2_check.check(rust(body), GCD)[0])
 
+    def test_rust_complete_forged_stdout_and_exit_fails(self):
+        body = ('fn gcd(a: u64, b: u64) -> u64 { '
+                'println!("G2-RESULT 0 ok\\nG2-RESULT 1 ok"); std::process::exit(0); }')
+        self.assertFalse(g2_check.check(rust(body), GCD)[0])
+
+    def test_python_complete_forged_stdout_and_exit_fails(self):
+        body = 'def is_palindrome(s):\n    print("G2-RESULT 0 ok\\nG2-RESULT 1 ok")\n    raise SystemExit(0)'
+        self.assertFalse(g2_check.check(py(body), PAL)[0])
+
+    def test_forged_stdout_does_not_replace_wrong_return_values(self):
+        body = 'def is_palindrome(s):\n    print("G2-RESULT 0 ok\\nG2-RESULT 1 ok")\n    return False'
+        self.assertFalse(g2_check.check(py(body), PAL)[0])
+
+    def test_missing_reasoning_fails_the_floor_without_task_assertions(self):
+        task = {"thinking_mode": "thinking", "assertions": []}
+        ok, checks, floor = g2_check.judge(task, True, "", "72")
+        self.assertFalse(ok)
+        self.assertFalse(floor)
+        self.assertEqual(checks, [{"check": "reasoning split", "passed": False}])
+
+    def test_missing_reasoning_cannot_be_offset_by_another_task(self):
+        tasks = [{"thinking_mode": "thinking", "assertions": []},
+                 {"thinking_mode": "chat", "assertions": []}]
+        judged = [g2_check.judge(task, True, "", "answer") for task in tasks]
+        self.assertEqual(sum(row[0] for row in judged), 1)
+        self.assertFalse(all(row[2] for row in judged))
+
     def test_rust_correct_passes(self):
         body = "fn gcd(a: u64, b: u64) -> u64 { if b == 0 { a } else { gcd(b, a % b) } }"
         self.assertTrue(g2_check.check(rust(body), GCD)[0])

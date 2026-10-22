@@ -86,12 +86,20 @@ fn qualify(root: &Path, manifest: &str, dump: &Path, out: &str, extra: &[&str]) 
     ];
     args.extend(extra.iter().map(|s| (*s).to_owned()));
     let output = run_bounded(std::process::Command::new(BIN).args(&args), LIMIT);
-    assert!(
+    let report: Value = serde_json::from_slice(
+        &std::fs::read(root.join(out).join("report.json"))
+            .unwrap_or_else(|_| panic!("no report: {}", String::from_utf8_lossy(&output.stderr))),
+    )
+    .unwrap();
+    let summary: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(summary["passed"], report["passed"]);
+    assert_eq!(
         output.status.success(),
-        "{}",
+        report["passed"] == true,
+        "summary {summary}; stderr {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    serde_json::from_slice(&std::fs::read(root.join(out).join("report.json")).unwrap()).unwrap()
+    report
 }
 
 fn strict_policy(root: &Path) -> String {
