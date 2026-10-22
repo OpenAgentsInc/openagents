@@ -485,6 +485,13 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12444: after the next web and Everglade deploy, on staging and then
+  production as a signed-out visitor: capture `/` with the Foreman robot
+  (about 5.6 m) beside the terminal, `FOREMAN` over it and the status line
+  (`N OPEN ISSUES, M IN PROGRESS`); check that walking into it stops at
+  its body and the terminal still opens; check that `GET /v1/foreman/status`
+  answers counts, a line, and a time, with no token. Optionally set
+  `OPENAGENTS_FOREMAN_GITHUB_TOKEN` (read-only issues) on the web service.
 - #12443: after the next web deploy, run `openagents browser run --
   python3 scripts/dev/check-grid-home-desk.py --url URL --out DIR` against
   staging, then production (the script refuses a remote address; drop its
