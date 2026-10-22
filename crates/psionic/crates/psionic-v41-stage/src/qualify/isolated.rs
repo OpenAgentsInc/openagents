@@ -14,7 +14,7 @@ fn snapshot(name: &str, mode: &str, step: usize, cut: u32) -> String {
     format!("{name}.{mode}.step{step:02}.boundary.{cut}")
 }
 
-fn context_tokens(run: &Value, mode: &str, step: usize) -> (usize, Vec<u32>, Vec<u32>) {
+pub(super) fn context_tokens(run: &Value, mode: &str, step: usize) -> (usize, Vec<u32>, Vec<u32>) {
     let mut prefix = ids(&run["prompt_token_ids"]);
     let generated = ids(&run["generated_ids"]);
     if mode == "replay" {
@@ -28,7 +28,7 @@ fn context_tokens(run: &Value, mode: &str, step: usize) -> (usize, Vec<u32>, Vec
     (prefix.len(), vec![generated[step - 1]], prefix)
 }
 
-fn sections(
+pub(super) fn sections(
     oracle: &mut OracleDump,
     run: &Value,
     case: &str,
@@ -166,7 +166,7 @@ fn vector_metrics(reference: &[f32], candidate: &[f32]) -> Result<Value, Refused
     )
 }
 
-fn compare_output(
+pub(super) fn compare_output(
     oracle: &mut OracleDump,
     run: &Value,
     case: &str,
@@ -224,22 +224,53 @@ fn compare_output(
                     .ok_or_else(|| refused("isolated cache append shape"))?;
                 vector_metrics(expected, &values)?
             }
-            SectionKind::IndexSelection { .. } => {
+            SectionKind::IndexSelection { layer } => {
                 let expected = oracle.integers(&format!("{prefix}.selection"))?;
                 let got = section.to_i32().map_err(|e| refused(e.to_string()))?;
                 if expected.len() != got.len() {
                     return Err(refused("isolated selection shape"));
                 }
+                let (position, tokens, _) = context_tokens(run, mode, step);
+                let raw = oracle.floats(&format!(
+                    "{case}.{mode}.step{step:02}.index.layers.{layer}.scores"
+                ))?;
+                if tokens.is_empty() || raw.len() % tokens.len() != 0 {
+                    return Err(refused("isolated oracle index score shape"));
+                }
+                let stride = raw.len() / tokens.len();
                 let width = section.shape[1] as usize;
-                let changed = expected
+                let mut changes = Vec::new();
+                let mut most = 0;
+                for (row, (a, b)) in expected
                     .chunks_exact(width)
                     .zip(got.chunks_exact(width))
-                    .filter(|(a, b)| {
-                        a.iter().map(|i| *i as i32).collect::<BTreeSet<_>>()
-                            != b.iter().copied().collect::<BTreeSet<_>>()
-                    })
-                    .count();
-                json!({"rows":section.shape[0],"changed_rows":changed,"changed_fraction":changed as f64 / f64::from(section.shape[0].max(1))})
+                    .enumerate()
+                {
+                    let visible = (position + row + 1) / if layer < 20 { 2 } else { 1 };
+                    if visible > stride
+                        || raw[row * stride..row * stride + visible]
+                            .iter()
+                            .any(|v| !v.is_finite())
+                    {
+                        return Err(refused("isolated index score capacity or value"));
+                    }
+                    let a: Vec<u32> = a.iter().filter(|i| **i >= 0).map(|i| *i as u32).collect();
+                    let b: Vec<u32> = b.iter().filter(|i| **i >= 0).map(|i| *i as u32).collect();
+                    if a.iter().chain(&b).any(|i| *i as usize >= visible)
+                        || b.iter().collect::<BTreeSet<_>>().len() != b.len()
+                    {
+                        return Err(refused("isolated noncausal or repeated index"));
+                    }
+                    let mut c =
+                        index::change(&raw[row * stride..row * stride + visible], None, &a, &b);
+                    let n = c["substitutions"].as_u64().unwrap() as usize;
+                    most = most.max(n);
+                    if n > 0 || c["valid"] != true {
+                        c["row"] = json!(row);
+                        changes.push(c);
+                    }
+                }
+                json!({"rows":section.shape[0],"changed_rows":changes.len(),"changed_fraction":changes.len() as f64 / f64::from(section.shape[0].max(1)),"max_row_substitutions":most,"changes":changes})
             }
             SectionKind::Candidates { .. } => {
                 let mask = oracle.integers(&format!("{prefix}.candidate_mask"))?;
