@@ -184,15 +184,26 @@ Rules:
   against the declared deadline. Nothing routes on it, and a stage beacon
   carries none.
 - A group MAY name its serving `profile` in `group` (added 2026-10-22):
-  `qualified` (the default when absent), `consumer-exact` (answers equal
-  the qualified profile's on another configuration, such as one machine
-  with experts in host memory), or `consumer-q` (a lossy quant, whose
-  digest is the group's `artifact`). Head and stage carry the same value.
-  A buyer sends a job to a group only under the profile the request names,
-  and a request that names none goes only to a `qualified` group, so a
-  request for the qualified model never reaches a lossy group. A reader
-  labels a `consumer-q` answer as lossy wherever it shows it. A reader
+  `qualified` (the legacy default when absent), `consumer-exact` (a different
+  execution configuration), or `consumer-q` (a lossy quant, whose digest is
+  the group's `artifact`). Head and stage carry the same value. These are
+  execution labels. `qualified` alone makes no numerical acceptance claim.
+  A request that names no profile retains the legacy default; an explicit
+  request for `qualified` MUST also require the numerical claim below. A
+  reader labels a `consumer-q` answer as lossy wherever it shows it. A reader
   from before profiles refuses a beacon that names one.
+- A head MAY carry `meta.numerical_qualification`: `state` is `unqualified`
+  without matching evidence, or `qualified` with a `receipt`. For DeepSeek
+  V4.1, receipt schema `openagents.deepseek_v41.numerical_qualification.v1`
+  binds the artifact, logical manifest, actual numerical profile, verified
+  worker bundle, execution-configuration SHA-256, context/input/output limits,
+  and SHA-256 references to successful G1, G2, and G4 reports. The execution
+  hash covers actual numerical settings, wire dtypes, manifest, and request
+  limits. Every ready stage MUST announce the receipt's bundle, profile,
+  manifest, and execution hash. A mismatch, missing identity, or incomplete
+  group MUST remove the numerical claim. Stage beacons carry none. Receipts
+  are attributable provider claims, not remote attestation. Older readers
+  ignore this metadata; an absent claim never counts as numerical acceptance.
 - A head may also state its group's checked request sizes in its inert
   `meta` as `request_limits`: `max_context_tokens` (prompt and answer
   together), `max_input_tokens` (the longest prompt it takes),
