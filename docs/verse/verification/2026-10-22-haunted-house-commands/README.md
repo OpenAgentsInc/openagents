@@ -207,3 +207,17 @@ frame submission and Kiln save. Each request preserved player position and the
 working shader, undid and redid as one edit, and reopened from Kiln. Negated and
 mixed requests stayed refused. Run `npm run verify:building-choices` under
 `openagents browser run` with `HAUNT_URL` set to the local preview.
+
+## Natural defaults in both labs
+
+The [natural-defaults receipt](natural-defaults-receipt.json) records 31 browser
+requests and 14 refusal/error checks across Haunted House and Medieval Town.
+Requests cover omitted preferences, `your choice`, `surprise me`, `anywhere`,
+`wherever it fits`, furniture, buildings, props, rooms, wings, moving a selected
+object, ghost behavior, and lighting. Explicit coordinates, directions, types,
+and sizes stay explicit. Successful requests took 137–787 ms in this run,
+including Kiln saves. Each change preserved player position and the working
+shader and undid/redid as one step; both labs reopened their first edit from Kiln.
+Negated, informational, mixed, unsupported, and excessive-count requests left
+the scene unchanged. Run `npm run verify:natural-defaults` under
+`openagents browser run` with `HAUNT_URL` set to the local preview.

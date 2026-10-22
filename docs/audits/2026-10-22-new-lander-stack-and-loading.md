@@ -1,7 +1,7 @@
 # New landing page: stack and loading plan
 
 Date: October 22, 2026. Source snapshot: `be63f0d030`.
-Status: assessment only. No page, route, deployment, or homepage replacement is implemented by this document.
+Status: architecture assessment with an initial isolated preview implementation. `/new-lander` serves the marketing page and `/new-lander/verse` serves the universe selector; `/` stays unchanged. This is not the full tutorial or a production deployment.
 
 ## Decision
 
@@ -17,12 +17,23 @@ The source is [Kiki's flow in cakbags](https://github.com/OpenAgentsInc/cakbags/
 
 - The homepage features **Enter the Verse** at the top, alongside the standard product-suite presentation.
 - Entry first reveals a game-quality universe/world selector, informed by the Episode 289 network graphic and Kiki's Expanse-like space direction. Finite planets represent network nodes. The central OpenAgents company planet remains locked; its Gym and Pylons serve their audiences later.
-- A Grid-style login card appears over that view. After login, choose exploration or the Haunted House tutorial.
-- The tutorial uses voice and optional buttons, a mesh toggle, a bottom-left planetary map control, and shadowed sci-fi editing screens. Compile, inspect, then explicitly Publish or Revert.
+- A Grid-style entry card offers **Continue as guest** alongside sign-in. Guests can explore the planets and enter the Haunted House; sign-in is required when they first try to make a change.
+- The tutorial uses voice and optional buttons, a mesh toggle, and a bottom-left planetary map control. **Edit** opens a shadowed Jarvis-style workspace with several relevant sci-fi cards and windows, including a contributor change log with earnings. Compile, inspect, then explicitly Publish or Revert.
 - Play/Share cards lead into the tutorial's return to the planets, a personal planet award, voice setup of art style/time/day-night cycle, walking, invitations, and chat toggles.
 - Buildings, levels, narrative tools, and further chat changes remain later scope. AAA quality is a creative target, not an existing capability or a consequence of choosing WebGPU.
 
 Design interpretation: preserve place while tools open; let people direct changes; teach through play; keep navigation consistent while worlds have distinct art styles. These principles guide the technical boundaries below, without adding new tutorial steps.
+
+## Kiki's update: guest entry and the editing workspace
+
+- **Guest entry:** the entry card offers **Continue as guest**. Exploring the universe, entering the house, looking around, and opening the Edit workspace do not require an account. This updates the earlier requirement to log in before exploration or the tutorial.
+- **Sign-in boundary:** interpret “until you try” as the first attempt to make a change, whether through voice or a control. Opening the workspace only reveals the tools. When a guest requests a change, show the Grid-style sign-in card over the current view and explain why sign-in is needed. Canceling returns to exploration. Preserve the selected world, player position, camera, open panels, and requested change across sign-in; let the creator confirm the change afterward.
+- **Edit opens a workspace:** several relevant sci-fi cards and windows appear together over the shadowed world, using Kiki's Jarvis reference. Keep the world visible for orientation. Give the workspace a clear close/return control; opening or closing it must not reset the scene or player.
+- **Tool windows:** proposed panels include the selected object/material, voice or text instructions, material generation and handmade material controls, and compile/result controls. Show the tools relevant to the current task; the exact arrangement remains for Kiki to review. These panels extend her existing material-tool request rather than adding a separate editor journey.
+- **Contributor change log:** one window shows changes made by different people and how much each person earned for each contribution. Each entry identifies the contributor, a readable description of the change, when it happened, and the amount and unit/currency earned. Let the creator inspect the associated version or change without replacing the world view.
+- **Earnings states:** use recorded contribution and payment data. Distinguish confirmed earnings from pending rewards; an unavailable amount is not zero, and compiling an edit does not imply a payment. Reward rules, attribution, splits, and payment timing still need definition. This plan does not invent rates or promise that every edit earns money.
+- **Continue the existing loop:** compile → inspect in the world → Publish or Revert → Play or Share. A failed edit keeps the last working result, player position, and camera. The later planet award and basic world setup remain in the intended journey.
+- **Status:** guest access through the first edit attempt, the editing workspace, and its contribution/earnings log are planned requirements. The initial `/new-lander` implementation below does not yet implement this full flow.
 
 ## Enter the Verse: universe and world selector
 
@@ -37,7 +48,7 @@ The [full transcript](../transcripts/289.md) describes other connected universes
 - **Arrival:** reveal the universe view before the login card. It is the first destination after the game-style loading transition, not a diagram the visitor must study before proceeding. Any camera reveal should be brief and respect reduced motion.
 - **Navigation:** make the graphic function as a world selector. A focused or selected destination needs a clear name, selection state, and destination card; support a keyboard-accessible destination list alongside spatial navigation. Pan/zoom and a move from system overview to planet detail are proposed interactions for Kiki to review, not requirements for a full astronomy simulation.
 - **Availability:** keep the OpenAgents company planet central and visibly locked. Other destinations must distinguish available worlds from locked or future ones. Do not suggest that every luminous point is an enterable world or that every network connection is live traffic.
-- **Sequence:** the Grid-style login card overlays this universe view. After login, preserve the Explore versus Haunted House tutorial choice. Exploring the map does not enter the locked company planet. The bottom-left map control later returns to this same navigational view, where the creator's awarded planet becomes discoverable.
+- **Sequence:** the Grid-style entry card overlays this universe view and offers **Continue as guest** or sign-in. Both paths lead to the Explore versus Haunted House tutorial choice. Ask guests to sign in when they first request an edit, preserving their place as described above. Exploring the map does not enter the locked company planet. The bottom-left map control later returns to this same navigational view, where the creator's awarded planet becomes discoverable.
 - **Scope:** the first view establishes place and offers destinations. It does not require Pylon statistics, agent-routing details, payments, or an infrastructure tour. Galaxy/system/planet naming and hierarchy still need Kiki's review; do not infer plot sales, planet counts, or capacity rules from the reference.
 - **Original design:** borrow the reference's sense of connected systems and the show's atmosphere while creating OpenAgents' own planets, animation, typography, and interface. The reference video's speaker overlay, player controls, date label, and timeline do not belong in the product UI.
 
@@ -73,12 +84,12 @@ The public root returned HTML with `cache-control: no-cache` and a restrictive h
 
 [Maud](https://maud.lambda.xyz/) generates HTML from Rust. It does not make a WebGPU application, and changing Maud markup still needs a Rust rebuild. Move frequently edited copy and approved content into runtime-loaded data/templates where the current content system supports it; do not promise compilation-free layout changes automatically.
 
-The current [agent contract](../../AGENTS.md) scopes the TypeScript/Effect exception to `apps/haunt-preview`. This plan keeps marketing in Rust. Extending the game runtime into a broader planetary application needs the implementation scope and contract to name that extension; this assessment does not silently broaden the exception. Existing Rust/wgpu worlds remain supported while the browser runtime develops.
+The [agent contract](../../AGENTS.md) now names the owner-requested `apps/verse-selector` browser island alongside the existing creator-preview exception. Marketing and routing remain Rust. The selector uses Effect and direct WebGPU; it does not replace the Rust world/domain services or add a second account system.
 
 ## Preview addresses and ownership
 
-- Proposed marketing address: **`/new-lander`**. It is not implemented yet. Prefer this explicit name over reviving redirects such as `/landing` or another numbered legacy lander.
-- Proposed experience address: **`/new-lander/verse`**, with stateful tutorial/planet navigation under that preview. The address is an entry boundary, not a requirement to reload the document for each overlay.
+- Marketing preview address: **`/new-lander`**. This explicit route does not revive redirects such as `/landing` or another numbered legacy lander.
+- Universe selector address: **`/new-lander/verse`**. Selection is kept in its `world` query parameter. The remaining tutorial/planet flow is future work; this address is not a requirement to reload the document for each overlay.
 - Add the page through `openagents-web/src/pages/new_lander.rs` and the existing page router, following current route ownership. If exposed in Design Lab, register sample states separately in `openagents-web-site`; its screens gallery is not the public page implementation.
 - Keep `/`, `/home` redirects, `/chat`, account routes, hosted games, and existing landers unchanged. Do not redirect or advertise the new page from the current homepage yet.
 - During review, exclude the preview from search indexing and the public sitemap. Give it its own metadata; do not switch the root's canonical URL. An unlisted/noindex page is not private access control.
@@ -89,8 +100,8 @@ The current [agent contract](../../AGENTS.md) scopes the TypeScript/Effect excep
 1. **Serve the marketing page.** Send complete HTML with the hero, product overview, account links, and Enter the Verse. Load essential CSS/fonts and the appropriately sized poster. Core content and navigation work without JavaScript or a GPU.
 2. **Wait for entry.** Do not request a GPU adapter, download Grid/chat/Kiln/Wasm/game packages, join the relay, or request microphone access while the visitor reads. A focus/hover enhancement can fetch a small manifest only if measurements justify it; avoid unconditional game preloads. Browser [preload declarations request early downloads](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/link), so they must respect this boundary too.
 3. **Begin the game-style transition on click.** Open the preview experience, show the loading presentation, check capabilities, and fetch only the planetary first-view resources. Expose retry and a way back. Show actual known stages; percentages require a meaningful measured total.
-4. **Show the universe selector, then login.** Render the connected-system/planetary overview described above before the Grid-style login card, as Kiki specifies. Reuse the existing account flow with an allowlisted return address and restore the scene and selected destination after an external provider redirect. Preserve context without promising that an OAuth provider itself renders inside a card.
-5. **Reveal Explore or Tutorial.** Load the Haunted House and editing dependencies when needed, not all worlds during planetary startup. In the runtime, keep the simulation/renderer lifetime separate from overlay visibility so opening Edit does not reset the player.
+4. **Show the universe selector, then offer guest entry or sign-in.** Render the connected-system/planetary overview before the Grid-style entry card. **Continue as guest** reaches exploration and the tutorial without an account. At the first requested edit, reuse the existing account flow with an allowlisted return address and restore the scene, selection, player position, panels, and intended change after an external provider redirect. Preserve context without promising that an OAuth provider itself renders inside a card.
+5. **Reveal Explore or Tutorial.** Load the Haunted House and editing dependencies when needed, not all worlds during planetary startup. Keep the simulation/renderer lifetime separate from overlay visibility. Edit opens the relevant sci-fi windows and contributor change log over the shadowed world; closing the workspace returns to the same place. Load contribution and earnings data when the log is opened, with readable empty, loading, and unavailable states.
 6. **Load personal-world resources later.** Planet allocation, setup, and invitations follow tutorial completion. They need real authenticated services and persistence; a planet image or generated local scene alone does not supply those capabilities.
 7. **Leave cleanly.** Returning to marketing releases game GPU resources, workers, relay subscriptions, and listening sessions. Moving from the house to the planetary map can retain bounded caches within the game session. A still-visible marketing background should not run a second renderer.
 
@@ -107,8 +118,8 @@ WebGPU requires a secure context and is not available on every browser/device co
 ## Smallest implementation after this assessment
 
 1. Build the isolated marketing preview: current identity/account treatment, monochrome hero, verified product information, and the Verse entry. Do not imply unfinished products or earning features are available.
-2. Add the universe/world selector and real login continuity, using the Episode 289 graphic and Expanse-like spatial direction above. Keep the central OpenAgents planet locked; do not invent live node/planet relationships or counts without data.
-3. Integrate the real Haunted House tutorial and its editing/publish boundaries. Where features are absent, keep the page a clearly identified review build; do not expose dead production controls.
+2. Add the universe/world selector, **Continue as guest**, and real sign-in continuity at the first edit attempt, using the Episode 289 graphic and Expanse-like spatial direction above. Keep the central OpenAgents planet locked; do not invent live node/planet relationships or counts without data.
+3. Integrate the real Haunted House tutorial and its editing/publish boundaries. Edit opens the shadowed multi-window workspace, including the contributor change log and recorded earnings. Connect each working panel to the relevant tool or service. Where features are absent, keep the page a clearly identified review build; do not expose dead production controls.
 4. Add the planet award, basic voice setup, walking, invitations, and chat only as working capabilities. Kiki's stated stopping point precedes buildings, levels, and narrative tooling.
 
 These are sequencing recommendations, not new assignments or launch dates. This document does not create implementation issues or alter the other agent's work.
@@ -118,9 +129,17 @@ These are sequencing recommendations, not new assignments or launch dates. This 
 - Cold-load `/new-lander` with JavaScript disabled and WebGPU unavailable: the product suite and navigation remain readable and usable.
 - Inspect the network: zero game, chat, Kiln, relay, or microphone startup before entry; correct first-view assets afterward. Record transferred bytes rather than guessing from HTML size.
 - Verify desktop/mobile layout, keyboard focus, reduced motion, retry/back paths, real login return, and cleanup after leaving the game. Use isolated browser profiles and local or dedicated test accounts.
+- Verify that **Continue as guest** reaches the universe and house without sign-in; opening Edit reveals the workspace; the first requested change prompts sign-in; canceling and completing sign-in both preserve place and intent. Confirm that only an explicit creator action resumes the edit.
+- Review the multi-window workspace with Kiki on desktop and mobile. Keep its controls keyboard-accessible and the world visible. Check contributor names, change descriptions, version links, amounts/units, and pending versus confirmed earnings against real records; check empty and unavailable states too.
 - Review the first post-entry view with Kiki: connected systems and finite planets read as a navigable universe; the central company planet is locked; destination labels and the Explore/tutorial choice remain clear. Returning from a world reaches the same map, including the creator's awarded planet when available.
 - Target marketing LCP at or below 2.5 seconds, INP at or below 200 milliseconds, and CLS at or below 0.1 at the 75th percentile, segmented by device. These are [Core Web Vitals targets](https://web.dev/articles/vitals), not measurements from this assessment; a single lab run cannot establish field percentiles.
 - Measure game entry separately: click-to-loader, download, compile, first rendered planet, login readiness, tutorial entry, and edit-to-visible time. State hardware/browser/resolution and cold/warm cache conditions.
 - Confirm `/` and old routes have unchanged behavior, preview metadata stays isolated, and Kiki reviews the actual flow. Root promotion is a separate requested change.
 
-Only this assessment is being committed. No Rust tests or builds are required for this documentation-only change; relative source links and the inspected route/loading evidence are checked.
+## Initial implementation scope
+
+The owner subsequently requested implementation of the marketing homepage and universe selector. The Rust pages use original inline SVG/CSS on marketing, then load a generated browser module of about 102 KiB only after entry. The selector draws original lit planets, orbits, stars, and connecting paths with direct WebGPU; it supports destination selection, camera orbit/zoom, keyboard controls, and a still-view fallback. Future planets are labeled as future destinations; this curated preview does not claim live network membership, ownership, or population counts.
+
+The central OpenAgents world stays locked. Blue Rush links to the existing studio page; Haunted House entry appears only when the server has a house build or hosted tenant. Configured account services use the existing login route with a return to the selector. The full voice tutorial, publishing, and personal planet award remain outside this implementation. Source, bundle regeneration, and the isolated-browser check are in [the selector package](../../apps/verse-selector/README.md).
+
+Verification: TypeScript checks, two geometry/projection tests, the two focused `new_lander` Rust tests, and isolated Chrome checks for real WebGPU pixels, navigation, camera controls, mobile layout, no-GPU fallback, and script-free marketing pass. The broader route-owner scanner reports an existing unreadable `PATH` declaration in unchanged `pages/pylon_work.rs`; the new routes pass their direct ownership checks. No production account or public world was created.

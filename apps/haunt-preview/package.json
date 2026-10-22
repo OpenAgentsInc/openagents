@@ -10,10 +10,11 @@
     "check": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "build": "npm run check && npm run prepare:kiln && node scripts/copy-medieval.mjs && vite build",
-    "verify:browser": "node scripts/verify-browser.mjs && node scripts/verify-editor.mjs && node scripts/verify-assets.mjs && node scripts/verify-behaviors.mjs && node scripts/verify-layout.mjs && node scripts/verify-town.mjs && node scripts/verify-building-choices.mjs",
+    "verify:browser": "node scripts/verify-browser.mjs && node scripts/verify-editor.mjs && node scripts/verify-assets.mjs && node scripts/verify-behaviors.mjs && node scripts/verify-layout.mjs && node scripts/verify-town.mjs && node scripts/verify-building-choices.mjs && node scripts/verify-natural-defaults.mjs",
     "prepare:medieval": "python3 scripts/prepare-medieval.py && node scripts/copy-medieval.mjs",
     "verify:town": "node scripts/verify-town.mjs",
-    "verify:building-choices": "node scripts/verify-building-choices.mjs"
+    "verify:building-choices": "node scripts/verify-building-choices.mjs",
+    "verify:natural-defaults": "node scripts/verify-natural-defaults.mjs"
   },
   "dependencies": {
     "effect": "4.0.6"

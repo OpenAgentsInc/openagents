@@ -30,6 +30,30 @@ Kiln's general coding loop, rewrite source, or compile a shader. Tint changes
 update a uniform; procedural object changes update geometry; kit edits update instances. New behaviors or shader programs
 belong in an explicit authoring workflow, rather than the placement interaction.
 
+## Natural requests and defaults
+
+Both labs treat omitted preferences and phrases such as `your choice`, `anywhere`,
+`surprise me`, `wherever it fits`, and `up to you` as choices the editor can make.
+
+- A generic prop or decoration becomes a pumpkin in Haunted House or a barrel in
+  Medieval Town. Generic town furniture becomes a chair; generic buildings use
+  cottages and townhouses. Explicit asset names stay explicit.
+- Automatic placement finds clear floor space near the player, then searches the
+  rest of the world on the same floor. It avoids walls, the player, and other props.
+  Buildings use clear outdoor plots. Explicit coordinates and directions take priority.
+- A singular request adds one object. `A couple` means two; `a few`, `some`,
+  `several`, and an unnumbered plural mean three. Literal counts stay exact, with
+  a limit of eight per request. Unsupported counts fail before anything changes.
+- Delegated sizes use normal size. Delegated lighting uses warm light; delegated
+  ghost movement uses floating. A room or wing with no location preference uses
+  a nearby wall where the extension fits.
+- Moving a selected prop `somewhere else` uses the same clear-space search.
+  Each change saves in Kiln and uses one undo step. Unsupported objects, negated
+  requests, and mixed actions still need a supported request.
+
+Run `npm run verify:natural-defaults` through `openagents browser run` with
+`HAUNT_URL` set to the local preview to test natural phrases in both labs.
+
 ## Run
 
 From the repository root:

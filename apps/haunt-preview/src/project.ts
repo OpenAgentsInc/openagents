@@ -463,7 +463,17 @@ export function exactCoordinates(
   if (pair) return { x: Number(pair[1]), z: Number(pair[2]) };
 }
 /** Read quantities from the noun phrase, never from coordinates or model output. */
-export function assetCount(text: string, kind: AssetKind): number {
+export function assetCount(
+  text: string,
+  kind: AssetKind,
+  delegated = false,
+): number {
+  text = text
+    .replace(/\b(?:a\s+)?couple(?:\s+of)?\b/gi, "two")
+    .replace(
+      /\b(?:a\s+)?few(?:\s+of)?\b|\b(?:some|several)(?:\s+of)?\b/gi,
+      "three",
+    );
   const words = [
     "zero",
     "one",
@@ -491,31 +501,74 @@ export function assetCount(text: string, kind: AssetKind): number {
   ];
   const aliases = [
     ...ASSETS[kind].aliases,
+    ...(delegated
+      ? [
+          "prop",
+          "props",
+          "asset",
+          "assets",
+          "item",
+          "items",
+          "object",
+          "objects",
+          "decoration",
+          "decorations",
+          "furniture",
+          "furnishings",
+          "something",
+          "anything",
+          "stuff",
+        ]
+      : []),
     ...(IS_TOWN && isHouse(kind) ? ["building", "buildings"] : []),
   ];
   const nouns = [...aliases].sort((a, b) => b.length - a.length).join("|");
+  const amount = text.match(
+    new RegExp(
+      `(?:^|\\s)([-+]?(?:\\d+(?:\\.\\d*)?|\\.\\d+)|${words.join("|")})\\s+((?:[a-z-]+\\s+){0,6})(?:${nouns})\\b`,
+      "i",
+    ),
+  );
+  if (
+    amount?.[2]
+      .trim()
+      .split(/\s+/)
+      .some((word) => words.includes(word.toLowerCase()))
+  )
+    throw new Error("Add between 1 and 8 assets at a time.");
   const match = text.match(
     new RegExp(
       `(?:^|\\s)([^\\s]+)\\s+(?:(?:very|really|huge|enormous|giant|gigantic|big|large|small|little|tiny|normal|medium|regular|orange|wooden|glowing|white|dark|green|stone|medieval|fantasy|two-story|one-story)\\s+)*(?:${nouns})\\b`,
       "i",
     ),
   );
-  const token = match?.[1].toLowerCase();
-  const previous = match
-    ? text.slice(0, match.index).trim().split(/\s+/).at(-1)?.toLowerCase()
-    : undefined;
+  const token = (
+    amount?.[1] ??
+    match?.[1] ??
+    (delegated
+      ? text.match(
+          /\b(?:add|place|put|spawn|create|give\s+me)\s+([^\s]+)\b/i,
+        )?.[1]
+      : undefined)
+  )?.toLowerCase();
+  const previous =
+    !amount && match
+      ? text.slice(0, match.index).trim().split(/\s+/).at(-1)?.toLowerCase()
+      : undefined;
   if (previous && (words.includes(previous) || /^[+\-\d.]/.test(previous)))
     throw new Error("Add between 1 and 8 assets at a time.");
   let count = 1;
   if (token && words.includes(token)) count = words.indexOf(token);
   else if (token && /^[+\-\d.]/.test(token)) count = Number(token);
+  else if (token === "many")
+    throw new Error("Add between 1 and 8 assets at a time.");
   else if (
     new RegExp(
       `\\b(?:${aliases.filter((n) => n.endsWith("s")).join("|")})\\b`,
       "i",
     ).test(text)
   )
-    throw new Error("Choose a count from 1 to 8 assets.");
+    count = 3;
   if (!Number.isInteger(count) || count < 1 || count > 8)
     throw new Error("Add between 1 and 8 assets at a time.");
   return count;
@@ -543,6 +596,41 @@ function groupPositions(
   const radius = footprint(kind, scale);
   const floor = projectFloor(project);
   const candidates: { x: number; z: number; distance: number }[] = [];
+  const consider = (point: { x: number; z: number }) => {
+    if (
+      Math.hypot(point.x - pose.x, point.z - pose.z) <
+      radius + (placement === "anywhere" ? 2.5 : 0.5)
+    )
+      return;
+    if (
+      !Array.from({ length: 8 }, (_, i) => (i * Math.PI) / 4).every((angle) =>
+        floor.canStand(
+          point.x + Math.cos(angle) * radius,
+          point.z + Math.sin(angle) * radius,
+          0.24,
+          pose.y ?? 0,
+        ),
+      )
+    )
+      return;
+    if (
+      project.entities.some(
+        (e) =>
+          !(IS_TOWN && isHouse(e.kind)) &&
+          Math.abs((e.y ?? 0) - (pose.y ?? 0)) < 0.5 &&
+          Math.hypot(e.x - point.x, e.z - point.z) <
+            radius + footprint(e.kind, e.scale) + 0.1,
+      )
+    )
+      return;
+    candidates.push({
+      ...point,
+      distance:
+        placement === "coordinates"
+          ? Math.hypot(point.x - anchor.x, point.z - anchor.z)
+          : Math.hypot(point.x - pose.x, point.z - pose.z),
+    });
+  };
   for (let row = 0; row < 36; row++) {
     for (let column = 0; column < 15; column++) {
       const forward = (placement === "ahead" ? 0.8 : -2) + row * 0.4;
@@ -570,46 +658,29 @@ function groupPositions(
               z: Math.round((anchor.z + (row - 18) * 0.4) * 100) / 100,
             }
           : { x, z };
-      if (Math.hypot(point.x - pose.x, point.z - pose.z) < radius + 0.5)
-        continue;
-      if (
-        !Array.from({ length: 8 }, (_, i) => (i * Math.PI) / 4).every(
-          (angle) =>
-            floor instanceof TownFloor
-              ? floor.canStand(
-                  point.x + Math.cos(angle) * radius,
-                  point.z + Math.sin(angle) * radius,
-                  0.24,
-                  pose.y ?? 0,
-                )
-              : floor.canStand(
-                  point.x + Math.cos(angle) * radius,
-                  point.z + Math.sin(angle) * radius,
-                ),
-        )
-      )
-        continue;
-      if (
-        project.entities.some(
-          (e) =>
-            Math.hypot(e.x - point.x, e.z - point.z) <
-            radius + footprint(e.kind, e.scale) + 0.1,
-        )
-      )
-        continue;
-      candidates.push({
-        ...point,
-        distance:
-          placement === "coordinates"
-            ? Math.hypot(point.x - anchor.x, point.z - anchor.z)
-            : Math.hypot(point.x - pose.x, point.z - pose.z),
-      });
+      consider(point);
+    }
+  }
+  if (placement === "anywhere") {
+    if (IS_TOWN) {
+      for (let z = -44; z <= 44; z += 1.2)
+        for (let x = -44; x <= 44; x += 1.2)
+          consider({
+            x: Math.round(x * 100) / 100,
+            z: Math.round(z * 100) / 100,
+          });
+    } else {
+      for (const r of floor.layout.rooms)
+        for (let z = r.z - r.depth / 2 + 0.5; z < r.z + r.depth / 2; z += 0.5)
+          for (let x = r.x - r.width / 2 + 0.5; x < r.x + r.width / 2; x += 0.5)
+            consider({ x, z });
     }
   }
   candidates.sort((a, b) => a.distance - b.distance);
   // Try nearby starting points so an early greedy choice cannot block a group that fits.
   for (const seed of candidates.slice(0, 64)) {
     const placed: { x: number; z: number }[] = [{ x: seed.x, z: seed.z }];
+    if (count === 1) return placed;
     for (const point of candidates) {
       if (
         placed.every(
@@ -684,9 +755,9 @@ export function decisionOperation(
     }
     if (
       d.placement === "anywhere" &&
-      d.action === "add_asset" &&
-      IS_TOWN &&
-      (d.asset === "building" || isHouse(d.asset ?? ""))
+      ["add_asset", "add_pumpkin", "move_asset", "move_pumpkin"].includes(
+        d.action,
+      )
     )
       return { x: pose.x, z: pose.z };
     if (!["ahead", "left", "right"].includes(d.placement))
@@ -710,15 +781,23 @@ export function decisionOperation(
     case "add_asset":
     case "add_pumpkin": {
       const chooseBuilding = IS_TOWN && d.asset === "building";
+      const chooseAny =
+        d.asset === "any_asset" || (IS_TOWN && d.asset === "furniture");
       const kind =
         d.action === "add_pumpkin"
           ? "pumpkin"
           : chooseBuilding
             ? "cottage"
-            : d.asset;
+            : chooseAny
+              ? IS_TOWN
+                ? d.asset === "furniture"
+                  ? "chair"
+                  : "barrel"
+                : "pumpkin"
+              : d.asset;
       if (!kind || !Object.hasOwn(ASSETS, kind))
         throw new Error("Choose an asset from the list.");
-      const count = assetCount(text, kind as AssetKind);
+      const count = assetCount(text, kind as AssetKind, chooseAny);
       if (project.entities.length + count > MAX_ASSETS)
         throw new Error(
           `This scene has room for ${MAX_ASSETS - project.entities.length} more assets. Remove some before adding this group.`,
@@ -743,7 +822,7 @@ export function decisionOperation(
               d.placement,
               anchor,
             )
-          : count === 1
+          : count === 1 && d.placement !== "anywhere"
             ? [anchor]
             : groupPositions(
                 count,
@@ -767,13 +846,48 @@ export function decisionOperation(
       return count === 1 ? operations[0] : { kind: "batch", operations };
     }
     case "move_asset":
-    case "move_pumpkin":
+    case "move_pumpkin": {
+      const id = target(),
+        entity = project.entities.find((e) => e.id === id)!;
+      const remaining = {
+        ...project,
+        entities: project.entities.filter((e) => e.id !== id),
+      };
+      let point = position();
+      if (d.placement === "anywhere") {
+        if (IS_TOWN && isHouse(entity.kind) && project.town) {
+          const town = clone(project.town);
+          delete town.buildings[id];
+          point = housePositions(
+            remaining.entities,
+            town,
+            entity.kind as "cottage" | "townhouse",
+            1,
+            entity.scale,
+            pose,
+            "anywhere",
+            point,
+            project.town.buildings[id],
+          )[0];
+        } else
+          point = groupPositions(
+            1,
+            entity.kind,
+            entity.scale,
+            "anywhere",
+            pose,
+            point,
+            remaining,
+          )[0];
+      }
       return {
         kind: d.action as "move_asset" | "move_pumpkin",
-        id: target(),
-        ...position(),
-        ...(IS_TOWN ? { y: pose.y ?? 0 } : {}),
+        id,
+        x: point.x,
+        z: point.z,
+        ...(IS_TOWN ? { y: isHouse(entity.kind) ? 0 : (pose.y ?? 0) } : {}),
       };
+    }
     case "resize_asset":
     case "resize_pumpkin":
       return {
@@ -799,6 +913,55 @@ export function decisionOperation(
             : d.placement === "behind"
               ? Math.PI
               : 0;
+      if (
+        d.placement === "anywhere" &&
+        ["add_room", "add_wing"].includes(d.action)
+      ) {
+        const size = { small: 4, normal: 6, large: 8, huge: 10 }[d.size];
+        if (size === undefined)
+          throw new Error("Choose a small, normal, large, or huge room.");
+        const walls = floor.walls.filter(
+          (w) =>
+            w.exterior &&
+            (!("y" in w) || Math.abs((w.y as number) - (pose.y ?? 0)) < 0.2),
+        );
+        walls.sort(
+          (a, b) =>
+            Math.hypot((a.x1 + a.x2) / 2 - pose.x, (a.z1 + a.z2) / 2 - pose.z) -
+            Math.hypot((b.x1 + b.x2) / 2 - pose.x, (b.z1 + b.z2) / 2 - pose.z),
+        );
+        for (const wall of walls) {
+          const operation: Operation = {
+            kind: d.action as "add_room" | "add_wing",
+            wall: wall.id,
+            size,
+            at: { x: (wall.x1 + wall.x2) / 2, z: (wall.z1 + wall.z2) / 2 },
+          };
+          try {
+            const candidate = new SceneHistory(project).prepare({
+              id: crypto.randomUUID(),
+              project: PROJECT_ID,
+              baseRevision: project.revision,
+              operation,
+            }).project;
+            if (
+              !projectFloor(candidate).canStand(
+                pose.x,
+                pose.z,
+                0.24,
+                pose.y ?? 0,
+              )
+            )
+              continue;
+            return operation;
+          } catch {
+            /* Try another wall if this extension cannot fit. */
+          }
+        }
+        throw new Error(
+          "There isn't room for that extension here. Try a smaller room or wing.",
+        );
+      }
       const aimed = floor.pick(pose, turn);
       const wall =
         d.placement === "ahead" && wallTarget

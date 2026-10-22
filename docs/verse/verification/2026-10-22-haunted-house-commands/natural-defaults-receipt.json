@@ -1,0 +1,418 @@
+{
+  "passed": true,
+  "checks": [
+    "Both labs preserve player pose and the working shader, save to Kiln, undo and redo as one edit, and reopen their first natural request from Kiln."
+  ],
+  "cases": [
+    {
+      "lab": "medieval",
+      "text": "add 2 buildings your choice anywhere u want",
+      "passed": true,
+      "totalMs": 217.2,
+      "action": "add_asset",
+      "asset": "building",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "medieval",
+      "text": "Can you put a couple of houses wherever you think looks good?",
+      "passed": true,
+      "totalMs": 240.5,
+      "action": "add_asset",
+      "asset": "cottage",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "medieval",
+      "text": "put two pieces of furniture wherever they fit",
+      "passed": true,
+      "totalMs": 251.1,
+      "action": "add_asset",
+      "asset": "furniture",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "medieval",
+      "text": "add some barrels somewhere, size is up to you",
+      "passed": true,
+      "totalMs": 333.4,
+      "action": "add_asset",
+      "asset": "barrel",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "medieval",
+      "text": "add an object of your choice, pick a spot",
+      "passed": true,
+      "totalMs": 259.2,
+      "action": "add_asset",
+      "asset": "any_asset",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "medieval",
+      "text": "Surprise me with a decoration wherever it fits",
+      "passed": true,
+      "totalMs": 251,
+      "action": "add_asset",
+      "asset": "any_asset",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "medieval",
+      "text": "add two buildings, style and location are up to you",
+      "passed": true,
+      "totalMs": 253.4,
+      "action": "add_asset",
+      "asset": "building",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "medieval",
+      "text": "place a bench anywhere",
+      "passed": true,
+      "totalMs": 233.2,
+      "action": "add_asset",
+      "asset": "bench",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "medieval",
+      "text": "add 2 cool decorations of your choice wherever there's space",
+      "passed": true,
+      "totalMs": 300,
+      "action": "add_asset",
+      "asset": "any_asset",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "medieval",
+      "text": "add a room wherever it will fit",
+      "passed": true,
+      "totalMs": 202.5,
+      "action": "add_room",
+      "asset": "unsupported",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "medieval",
+      "text": "add a small wing wherever it fits",
+      "passed": true,
+      "totalMs": 154.5,
+      "action": "add_wing",
+      "asset": "unsupported",
+      "placement": "anywhere",
+      "size": "small"
+    },
+    {
+      "lab": "medieval",
+      "text": "put a barrel at (0, 17), your choice of size",
+      "passed": true,
+      "totalMs": 189.1,
+      "action": "add_asset",
+      "asset": "barrel",
+      "placement": "coordinates",
+      "size": "normal"
+    },
+    {
+      "lab": "medieval",
+      "text": "add two small chairs to my right, you choose the rest",
+      "passed": true,
+      "totalMs": 154.7,
+      "action": "add_asset",
+      "asset": "chair",
+      "placement": "right",
+      "size": "small"
+    },
+    {
+      "lab": "medieval",
+      "text": "move the selected barrel somewhere sensible",
+      "passed": true,
+      "totalMs": 187.5,
+      "action": "move_asset",
+      "asset": "unsupported",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "add a couple of ghosts wherever you like",
+      "passed": true,
+      "totalMs": 202.2,
+      "action": "add_asset",
+      "asset": "ghost",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "put 3 scary decorations anywhere u want",
+      "passed": true,
+      "totalMs": 186.9,
+      "action": "add_asset",
+      "asset": "any_asset",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "add something spooky, your choice",
+      "passed": true,
+      "totalMs": 256,
+      "action": "add_asset",
+      "asset": "any_asset",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "place a candle wherever it fits",
+      "passed": true,
+      "totalMs": 171.5,
+      "action": "add_asset",
+      "asset": "candle",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "can you add a few pumpkins, put them wherever",
+      "passed": true,
+      "totalMs": 786.7,
+      "action": "add_asset",
+      "asset": "pumpkin",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "give me two props, you pick what and where",
+      "passed": true,
+      "totalMs": 155.4,
+      "action": "add_asset",
+      "asset": "any_asset",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "spawn two of your choice anywhere",
+      "passed": true,
+      "totalMs": 186.4,
+      "action": "add_asset",
+      "asset": "any_asset",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "put some cauldrons somewhere, whatever size you think works",
+      "passed": true,
+      "totalMs": 169.4,
+      "action": "add_asset",
+      "asset": "cauldron",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "add an object, surprise me, pick the size and location",
+      "passed": true,
+      "totalMs": 153.9,
+      "action": "add_asset",
+      "asset": "any_asset",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "add a room wherever there's space",
+      "passed": true,
+      "totalMs": 289.1,
+      "action": "add_room",
+      "asset": "unsupported",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "build a small wing, you choose where",
+      "passed": true,
+      "totalMs": 349.4,
+      "action": "add_wing",
+      "asset": "unsupported",
+      "placement": "anywhere",
+      "size": "small"
+    },
+    {
+      "lab": "haunt",
+      "text": "add a ghost at (1, 2), pick the size",
+      "passed": true,
+      "totalMs": 470.6,
+      "action": "add_asset",
+      "asset": "ghost",
+      "placement": "coordinates",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "add 2 tiny pumpkins on my left, your choice of anything else",
+      "passed": true,
+      "totalMs": 202.6,
+      "action": "add_asset",
+      "asset": "pumpkin",
+      "placement": "left",
+      "size": "small"
+    },
+    {
+      "lab": "haunt",
+      "text": "move that pumpkin anywhere you like",
+      "passed": true,
+      "totalMs": 189.6,
+      "action": "move_asset",
+      "asset": "unsupported",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "put it somewhere else, your choice",
+      "passed": true,
+      "totalMs": 220.2,
+      "action": "move_asset",
+      "asset": "unsupported",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "make the ghosts move around, your choice of behavior",
+      "passed": true,
+      "totalMs": 187.3,
+      "action": "set_behavior",
+      "asset": "unsupported",
+      "placement": "anywhere",
+      "size": "normal"
+    },
+    {
+      "lab": "haunt",
+      "text": "change the lantern color, your choice",
+      "passed": true,
+      "totalMs": 137,
+      "action": "set_tint",
+      "asset": "unsupported",
+      "placement": "unsupported",
+      "size": "normal"
+    }
+  ],
+  "refusals": [
+    {
+      "lab": "medieval",
+      "text": "do not add anything anywhere",
+      "passed": true,
+      "action": "unsupported",
+      "asset": "unsupported"
+    },
+    {
+      "lab": "medieval",
+      "text": "add a dragon anywhere, your choice of size",
+      "passed": true,
+      "action": "add_asset",
+      "asset": "unsupported"
+    },
+    {
+      "lab": "medieval",
+      "text": "add a barrel and make the light blue",
+      "passed": true,
+      "action": "unsupported",
+      "asset": "barrel"
+    },
+    {
+      "lab": "medieval",
+      "text": "what could you add anywhere?",
+      "passed": true,
+      "action": "unsupported",
+      "asset": "any_asset"
+    },
+    {
+      "lab": "medieval",
+      "text": "add a dragon and a pumpkin anywhere",
+      "passed": true,
+      "action": "unsupported",
+      "asset": "unsupported"
+    },
+    {
+      "lab": "medieval",
+      "text": "add 9 buildings anywhere",
+      "passed": true,
+      "action": "add_asset",
+      "asset": "building"
+    },
+    {
+      "lab": "medieval",
+      "text": "add a ghost anywhere",
+      "passed": true,
+      "action": "add_asset",
+      "asset": "unsupported"
+    },
+    {
+      "lab": "haunt",
+      "text": "do not add anything anywhere",
+      "passed": true,
+      "action": "unsupported",
+      "asset": "unsupported"
+    },
+    {
+      "lab": "haunt",
+      "text": "add a dragon anywhere, your choice of size",
+      "passed": true,
+      "action": "add_asset",
+      "asset": "unsupported"
+    },
+    {
+      "lab": "haunt",
+      "text": "add a barrel and make the light blue",
+      "passed": true,
+      "action": "unsupported",
+      "asset": "unsupported"
+    },
+    {
+      "lab": "haunt",
+      "text": "what could you add anywhere?",
+      "passed": true,
+      "action": "unsupported",
+      "asset": "any_asset"
+    },
+    {
+      "lab": "haunt",
+      "text": "add a dragon and a pumpkin anywhere",
+      "passed": true,
+      "action": "unsupported",
+      "asset": "unsupported"
+    },
+    {
+      "lab": "haunt",
+      "text": "add 9 pumpkins anywhere",
+      "passed": true,
+      "action": "add_asset",
+      "asset": "pumpkin"
+    },
+    {
+      "lab": "haunt",
+      "text": "add a cottage anywhere",
+      "passed": true,
+      "action": "add_asset",
+      "asset": "unsupported"
+    }
+  ]
+}

@@ -393,3 +393,65 @@ test("named asset edits cannot change a different selected kind", () => {
     { kind: "remove_asset", id: "ghost-only" },
   );
 });
+
+test("Haunted House delegated props and positions stay clear, preserve counts, and share undo", () => {
+  const pose = { x: 0, z: 6.8, yaw: 0, pitch: 0 };
+  const d = {
+    action: "add_asset",
+    asset: "any_asset",
+    placement: "anywhere",
+    size: "normal",
+    confidence: 1,
+    needs_review: false,
+    tint: "warm",
+    model: "fixture",
+    model_ms: 1,
+  };
+  for (const [text, count, asset] of [
+    ["add something your choice anywhere", 1, "any_asset"],
+    ["put 2 spooky decorations wherever they fit", 2, "any_asset"],
+    ["add a couple of ghosts anywhere", 2, "ghost"],
+    ["add some candles wherever you like", 3, "candle"],
+    ["add pumpkins anywhere", 3, "pumpkin"],
+    ["add two of your choice wherever", 2, "any_asset"],
+  ] as const) {
+    const s = new SceneHistory(),
+      before = structuredClone(s.project);
+    apply(s, decisionOperation({ ...d, asset }, text, pose, null, s.project));
+    const added = s.project.entities.slice(before.entities.length);
+    assert.equal(added.length, count);
+    for (const e of added) {
+      assert.ok(walkable(e.x, e.z));
+      assert.ok(Math.hypot(e.x - pose.x, e.z - pose.z) >= 2.9);
+    }
+    assert.deepEqual(readProject(s.project), s.project);
+    apply(s, { kind: "undo" });
+    assert.deepEqual(s.project.entities, before.entities);
+    apply(s, { kind: "redo" });
+    assert.deepEqual(s.project.entities.slice(before.entities.length), added);
+  }
+  const s = new SceneHistory();
+  const op = decisionOperation(
+    { ...d, action: "move_asset" },
+    "move that pumpkin anywhere",
+    pose,
+    "pumpkin-1",
+    s.project,
+  );
+  apply(s, op);
+  assert.equal(s.project.entities[0].id, "pumpkin-1");
+  for (const action of ["add_room", "add_wing"]) {
+    const next = new SceneHistory();
+    apply(
+      next,
+      decisionOperation(
+        { ...d, action },
+        "add an extension wherever it fits",
+        pose,
+        null,
+        next.project,
+      ),
+    );
+    assert.ok(next.project.layout!.rooms.length > 3);
+  }
+});

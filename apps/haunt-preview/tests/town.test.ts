@@ -264,7 +264,6 @@ test("delegated buildings preserve exact counts, choose usable styles and clear 
     "add 0 buildings anywhere",
     "add 9 buildings anywhere",
     "add 2.5 buildings anywhere",
-    "add buildings anywhere",
   ]) {
     const unchanged = structuredClone(s.project);
     assert.throws(() => decisionOperation(d, text, pose, null, s.project));
@@ -291,4 +290,53 @@ test("delegated buildings preserve exact counts, choose usable styles and clear 
   const distantPose = { ...pose, x: 35, z: -35 };
   apply(next, decisionOperation(d, text, distantPose, null, next.project));
   assert.equal(next.project.entities.length, before.entities.length + 2);
+});
+
+test("town chooses furniture, props, and fitting extensions without inventing exact arguments", () => {
+  const pose = { x: -11, z: 3, y: 0, yaw: 0, pitch: 0 };
+  const d = {
+    action: "add_asset",
+    asset: "furniture",
+    placement: "anywhere",
+    size: "normal",
+    confidence: 1,
+    needs_review: false,
+    tint: "warm",
+    model: "fixture",
+    model_ms: 1,
+  };
+  for (const [text, count, asset] of [
+    ["add a couple of furnishings wherever they fit", 2, "furniture"],
+    ["add 2 cool decorations of your choice anywhere", 2, "any_asset"],
+    ["add buildings anywhere", 3, "building"],
+  ] as const) {
+    const s = new SceneHistory();
+    apply(s, decisionOperation({ ...d, asset }, text, pose, null, s.project));
+    assert.equal(
+      s.project.entities.length,
+      initialProject().entities.length + count,
+    );
+    assert.deepEqual(readProject(s.project), s.project);
+  }
+  for (const action of ["add_room", "add_wing"]) {
+    const s = new SceneHistory(),
+      before = structuredClone(s.project);
+    apply(
+      s,
+      decisionOperation(
+        { ...d, action },
+        "add an extension wherever it fits",
+        pose,
+        null,
+        s.project,
+      ),
+    );
+    assert.ok(
+      Object.values(s.project.town!.buildings).some(
+        (b) => b.floors[0].rooms.length > 2,
+      ),
+    );
+    apply(s, { kind: "undo" });
+    assert.deepEqual(s.project.town, before.town);
+  }
 });
