@@ -155,6 +155,11 @@ def frozen_inputs(args, specs):
         raise ValueError("Final cards require every frozen case under exact and consumer-q")
     manifest_hash = checked_hash(args.oracle_dir / "manifest.json", evaluation["oracle_manifest_sha256"])
     corpus_hash = checked_hash(args.oracle_dir / "holdout-corpus.json", evaluation["oracle_corpus_sha256"])
+    run_pins = evaluation["oracle_run_sha256"]
+    if set(run_pins) != set(expected):
+        raise ValueError("Frozen evaluation must pin every oracle run record")
+    run_hashes = {case: checked_hash(inside(args.oracle_dir, f"{case}/run.json"), run_pins[case])
+                  for case in expected}
     artifact = json.loads(args.artifact_manifest.read_text())
     if (artifact.get("schema") != "openagents.deepseek_v41.consumer_q.v1"
             or artifact.get("profile") != "consumer-q" or artifact.get("lossy") is not True
@@ -166,6 +171,7 @@ def frozen_inputs(args, specs):
         "checker_sha256": checker_hash,
         "oracle_manifest_sha256": manifest_hash,
         "oracle_corpus_sha256": corpus_hash,
+        "oracle_run_sha256": run_hashes,
         "artifact_manifest_sha256": sha256(args.artifact_manifest),
     }
 
@@ -294,7 +300,8 @@ def main():
     if args.final and not all((args.evaluation_sha256, args.checker_sha256, args.artifact_manifest)):
         parser.error("--final requires --evaluation-sha256, --checker-sha256, and --artifact-manifest")
     card = build_card(args)
-    args.out.write_text(json.dumps(card, indent=1, allow_nan=False) + "\n")
+    with args.out.open("x" if args.final else "w") as output:
+        output.write(json.dumps(card, indent=1, allow_nan=False) + "\n")
     print(json.dumps(card["summary"], indent=1))
 
 

@@ -8,6 +8,16 @@
   "oracle_manifest_sha256": "98b218b52c2f3ec4d08a2945321a468631b20680623c1871468633392163aecd",
   "oracle_corpus_sha256": "11e82059f5f411d216408ef908579901e3b085d918cfc243505b66680163e227",
   "checkpoint_index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+  "oracle_run_sha256": {
+    "h1-chat-seasons": "6179eb056767b8f227cc3a31a79d3a1dce92c30cde54496aa978928d4852b33b",
+    "h2-code-palindrome": "01bf9edc5df768c9e9c8be26ab80d9db6b0ec86b94beabc15c20981018b5764b",
+    "h3-engram-forms": "6b11f9a412cdb2e979387625b21a4c0ad2b47275e4b01196366885c0d50939d8",
+    "h4-generate-long": "221714ec751ccad62238b6f32e0fc2caf8150d83d44b94c4cd404eda85e2f259",
+    "h5-window-255": "5802b11ddd952284f7e39e23af744c224f64b26ac617b068bab5aa6417c57ecd",
+    "h5-window-256": "b0974789a534268b52b91251d46b277c7889dc55271e57a8cbef89d4db3dd843",
+    "h5-window-257": "9d8112e4eb4c4f19dd849053ccb714ad62de2d3ac5d4c0dfcb3e58b3be360f20",
+    "h6-three-files": "c570e2a6cbb6ee83911e61cea246475df51d7857bf492f949cf573516b70e646"
+  },
   "cases": [
     {
       "id": "h1-chat-seasons",
