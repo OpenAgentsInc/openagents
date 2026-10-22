@@ -22,6 +22,15 @@ Psionic's own kernels. DFlash2 (CC BY-NC-ND) is not used.
 | `--prefill layer-major` | #12464 | Runs a prompt step layer by layer: projections and routed experts batched over the step's tokens, uncached experts streamed once per layer through a device ring. | Yes |
 | `--experts file --consumer-q DIR` | #12465 | Serves a requantized 2- or 3-bit expert artifact under its own profile name. | **No: lossy, unqualified** |
 
+A stage with any of these flags announces its own profile:
+`consumer-exact-<profile>` (bit-equal answers, its own configuration) or
+`consumer-q-<profile>`, so it never joins a qualified group (#12467). At
+load it logs its memory plan: slots per layer, cache bytes, the routed
+experts left to the host tier and whether they fit in available RAM, and
+each lane's measured cost per expert. Pylon group beacons carry the
+matching `profile` (`qualified`, `consumer-exact`, `consumer-q`), and a
+request reaches only the profile it names (#12468).
+
 "Exact" means the tokens, logits, and per-layer observations equal the
 ordinary stage's bit for bit. The CUDA tests check this on the synthetic
 model (`cached_experts_equal_device_experts`,
@@ -78,9 +87,24 @@ system, so some host-lane misses read from disk.
   streamed through the ring took 66.7 s warm (32 tok/s), of which the host
   copies of 23,364 streamed experts took 52 s a round.
 - **One 10-layer stage** (layers 0–9, experts on the device, 2,129-token
-  prompt, `--first-stage-only`): 121.6 tok/s token by token, 148 tok/s
-  layer-major with only the projections batched. The token-independent work
-  is now batched too; its measurement is pending.
+  prompt, `--first-stage-only`):
+
+  | Prefill | tok/s |
+  | --- | ---: |
+  | Token by token | 121.6 |
+  | Layer-major, projections batched | 148 |
+  | + token-independent work batched | 192 |
+  | + attention batched over the step | 250 (9,449-token prompt: 248) |
+  | + dense products tiled over tokens | **541** (4.45×) |
+
+  Phase times of the last run (two rounds): routed experts on the device
+  58%, output projection 13%, index projections 13%, attention 9%. The
+  grouped output projection had been 53% before the dense kernel was tiled.
+- **Single box, layer-major** with the tiled kernels: the 2,129-token prompt
+  in 25.6 s warm (83 tok/s, up from 32), the same 64-token answer as before.
+  What remains is mostly copying uncached experts: with 70% of them off the
+  device and about 204 GB of them against 176 GiB of RAM, the copies read
+  from the disk (2,400 MiB/s).
 - **Exact profile ceiling.** A decode token with every expert hit takes
   about 33 ms on this card (four 10-layer stages' worth of the device
   graph), so the exact profile can't pass about 30 tok/s here; Maya's 35
@@ -141,7 +165,15 @@ source checkpoint, importance digest, and each file's SHA-256.
   G2 suite 2 runs through `g2_check.py` beside the oracle's and the exact
   runtime's answers.
 
-Calibration, the artifact, and the card are pending.
+Calibration ran on one `g4-standard-192` (64 prompts, layer-major prefill,
+39 minutes), and the quantizer then wrote both recipes in 25 s a layer each
+(`q2q3` 176 GB, `q3` 221 GB), stored under
+`gs://openagents-psionic-models-ane1/.../consumer-q/{q2q3,q3}-00d720cdf6`.
+The artifact matches the checkpoint's experts to within the expected error
+(relative squared error 14% for the 2-bit gate and up, 3% for the 3-bit
+down). Served single box, `q2q3` decodes at 26.4 tok/s (p50 37.7 ms, 48% of
+experts in slots, 97% hits), but its answers are garbage from the first
+token, so the profile isn't usable yet; see #12465.
 
 ## Cost
 
