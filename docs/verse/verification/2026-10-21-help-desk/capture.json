@@ -1,0 +1,223 @@
+{
+ "marks": [
+  [
+   "pylons-layer",
+   159
+  ],
+  [
+   "verse-start",
+   173
+  ],
+  [
+   "verse-compiled",
+   229
+  ],
+  [
+   "verse-grid-atlas",
+   271
+  ],
+  [
+   "verse-instantiated",
+   271
+  ],
+  [
+   "verse-grid-content",
+   385
+  ],
+  [
+   "verse-grid-gpu",
+   388
+  ],
+  [
+   "verse-grid-engine",
+   426
+  ],
+  [
+   "verse-first-frame",
+   458
+  ],
+  [
+   "home-chat-start",
+   472
+  ],
+  [
+   "home-chat-compiled",
+   472
+  ],
+  [
+   "home-chat-instantiated",
+   490
+  ],
+  [
+   "home-chat-mounting",
+   490
+  ],
+  [
+   "gpui-first-frame",
+   573
+  ],
+  [
+   "home-chat-ready",
+   573
+  ],
+  [
+   "verse-visible",
+   1687
+  ]
+ ],
+ "spawn": [
+  -4.283810138702393,
+  0,
+  -13.304947853088379
+ ],
+ "closeup_prompt": false,
+ "at_desk": [
+  -4.581029891967773,
+  0,
+  -5.3807220458984375
+ ],
+ "opened": {
+  "desk": true,
+  "label": "Ask OpenAgents",
+  "focus": "pylon-message"
+ },
+ "draft_chars": "19",
+ "answer_seconds": 1.5,
+ "chat": {
+  "state": "ready",
+  "messages": "2",
+  "pick": "none"
+ },
+ "followup_seconds": 55.6,
+ "after_escape": {
+  "open": false,
+  "desk": false
+ },
+ "after_leaving": {
+  "open": false,
+  "desk": false
+ },
+ "visit": [
+  [
+   "page_view",
+   1
+  ],
+  [
+   "verse_load_start",
+   2,
+   {
+    "gpu": "webgpu"
+   }
+  ],
+  [
+   "verse_first_frame",
+   3,
+   {
+    "gpu": "webgpu",
+    "time": 429
+   }
+  ],
+  [
+   "verse_ready",
+   4,
+   {
+    "gpu": "webgpu",
+    "time": 458
+   }
+  ],
+  [
+   "overview_watched",
+   5,
+   {
+    "time": 4450
+   }
+  ],
+  [
+   "joined",
+   6,
+   {
+    "by": "keys"
+   }
+  ],
+  [
+   "zoom_used",
+   7,
+   {
+    "by": "keys"
+   }
+  ],
+  [
+   "help_desk_reached",
+   8,
+   {}
+  ],
+  [
+   "heartbeat",
+   9,
+   {
+    "time": 20002
+   }
+  ],
+  [
+   "help_desk_opened",
+   10
+  ],
+  [
+   "help_desk_message",
+   11,
+   {
+    "nth": "first"
+   }
+  ],
+  [
+   "answered",
+   12,
+   {
+    "source": "hosted",
+    "family": "other",
+    "time": 1304
+   }
+  ],
+  [
+   "help_desk_message",
+   13,
+   {
+    "nth": "later"
+   }
+  ],
+  [
+   "heartbeat",
+   14,
+   {
+    "time": 40001
+   }
+  ],
+  [
+   "heartbeat",
+   15,
+   {
+    "time": 60005
+   }
+  ],
+  [
+   "answered",
+   16,
+   {
+    "source": "hosted",
+    "family": "gemini",
+    "time": 53414
+   }
+  ],
+  [
+   "help_desk_opened",
+   17
+  ],
+  [
+   "tab_left",
+   18,
+   {
+    "time": 95091
+   }
+  ]
+ ]
+}
