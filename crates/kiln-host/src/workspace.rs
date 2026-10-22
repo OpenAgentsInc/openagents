@@ -15,7 +15,8 @@ const MAX_INSTRUCTION_BYTES: usize = INSTRUCTIONS.len() + 4000;
 
 const INSTRUCTIONS: &str = r#"You are Kiln, editing a bounded repository workspace. Reply only with one JSON object:
 {"thought":"one short sentence","commands":[...]}
-Commands: {"run":"ls PATH"}, {"run":"view PATH START END"}, {"run":"grep TEXT PATH"}, {"run":"copy SOURCE DEST"}, {"write":"PATH","content":"full text"}, {"patch":"PATH","search":"exact unique old text","replace":"new text"}, {"run":"check"}, {"done":"summary"}.
+Commands: {"run":"ls PATH"}, {"run":"view PATH START END"}, {"run":"grep [-n] [-i] TEXT PATH"}, {"run":"copy SOURCE DEST"}, {"write":"PATH","content":"full text"}, {"patch":"PATH","search":"exact unique old text","replace":"new text"}, {"run":"check"}, {"done":"summary"}.
+grep matches literal text; separate alternatives with \|. -i ignores case, and -n includes the line numbers that grep always shows. Other regular expressions and shell commands are unavailable.
 copy duplicates an existing scoped text file in the private workspace without printing or regenerating it.
 Read before editing. Use small exact patches, preserve existing style, and write meaningful regression tests. View at most 20 lines at a time. No shell or arbitrary programs are available. check asks the coordinator to run the task's real checks outside this workspace. Read failures, repair, and check again. Say done only after check passed for your current files. Never change paths outside the supplied scope. Your edits remain private until a reviewer accepts them."#;
 
@@ -340,6 +341,62 @@ impl Workspace {
     pub fn summary(&self) -> Value {
         json!({"phase":self.phase,"turns":self.turns,"calls":self.calls,"base":self.config.base,"pylon":self.config.pylon,"model":self.config.model,"profile":self.config.profile,"files":self.files.keys().collect::<Vec<_>>(),"digest":self.digest(),"checked":self.checked,"done":self.agent.done,"latest":self.agent.steps.last(),"answers":self.answers})
     }
+    fn grep(&self, mut args: &[String]) -> Result<String> {
+        let mut ignore_case = false;
+        while let Some(option) = args.first() {
+            if option == "--" {
+                args = &args[1..];
+                break;
+            }
+            if !option.starts_with('-') || option == "-" {
+                break;
+            }
+            if !option[1..].chars().all(|c| matches!(c, 'n' | 'i')) {
+                return Err("grep accepts only -n and -i options".into());
+            }
+            ignore_case |= option.contains('i');
+            args = &args[1..];
+        }
+        let [text, path] = args else {
+            return Err("grep requires text and one scoped path".into());
+        };
+        if text.len() > 1024 {
+            return Err("grep text exceeds 1024 bytes".into());
+        }
+        let alternatives: Vec<_> = text.split("\\|").collect();
+        if alternatives.len() > 16 || alternatives.iter().any(|part| part.is_empty()) {
+            return Err("grep requires 1 to 16 nonempty literal alternatives".into());
+        }
+        let alternatives: Vec<_> = alternatives
+            .into_iter()
+            .map(|part| {
+                if ignore_case {
+                    part.to_lowercase()
+                } else {
+                    part.to_owned()
+                }
+            })
+            .collect();
+        let mut hits = Vec::new();
+        for name in self.names(path)? {
+            if let Ok(body) = self.read(&name) {
+                for (n, line) in body.lines().enumerate() {
+                    let folded = ignore_case.then(|| line.to_lowercase());
+                    let candidate = folded.as_deref().unwrap_or(line);
+                    if alternatives.iter().any(|text| candidate.contains(text)) {
+                        hits.push(format!("{name}:{}:{}", n + 1, clip(line, 250)));
+                    }
+                    if hits.len() >= 40 {
+                        break;
+                    }
+                }
+            }
+            if hits.len() >= 40 {
+                break;
+            }
+        }
+        Ok(hits.join("\n"))
+    }
     fn execute(&mut self, command: &Command) -> Result<String> {
         match command {
             Command::Write { path, content } => self.edit(path, content.clone()),
@@ -396,27 +453,9 @@ impl Workspace {
                             .collect::<Vec<_>>()
                             .join("\n"))
                     }
-                    ["grep", text, path] => {
-                        let mut hits = Vec::new();
-                        for name in self.names(path)? {
-                            if let Ok(body) = self.read(&name) {
-                                for (n, line) in body.lines().enumerate() {
-                                    if line.contains(text) {
-                                        hits.push(format!("{name}:{}:{}", n + 1, clip(line, 250)));
-                                    }
-                                    if hits.len() >= 40 {
-                                        break;
-                                    }
-                                }
-                            }
-                            if hits.len() >= 40 {
-                                break;
-                            }
-                        }
-                        Ok(hits.join("\n"))
-                    }
+                    ["grep", ..] => self.grep(&args[1..]),
                     _ => Err(
-                        "available commands: ls PATH, view PATH START END, grep TEXT PATH, copy SOURCE DEST, check"
+                        "available commands: ls PATH, view PATH START END, grep [-n] [-i] TEXT PATH, copy SOURCE DEST, check"
                             .into(),
                     ),
                 }
@@ -660,6 +699,157 @@ mod tests {
             "files": {}, "original": {}, "pending": [], "phase": "model",
             "turns": 0, "calls": 0, "until": now() + 60, "checked": null,
         })
+    }
+    #[test]
+    fn grep_supports_observed_options_and_literal_alternatives_with_existing_bounds() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("key"), "11".repeat(32)).unwrap();
+        let dir = root.path().join("apps/haunt-preview");
+        std::fs::create_dir_all(&dir).unwrap();
+        let source =
+            "dispose();\nstate();\nqueueScene();\nedit(project);\nDISPOSE();\nunrelated();\n";
+        std::fs::write(dir.join("runtime.ts"), source).unwrap();
+        std::fs::write(dir.join("oversize.ts"), "dispose".repeat(40_000)).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(root.path().join("key"), dir.join("link")).unwrap();
+        git(root.path(), &["init", "-q"]).unwrap();
+        git(root.path(), &["add", "apps"]).unwrap();
+        git(
+            root.path(),
+            &[
+                "-c",
+                "user.name=Fixture",
+                "-c",
+                "user.email=fixture@example.invalid",
+                "commit",
+                "-qm",
+                "fixture",
+            ],
+        )
+        .unwrap();
+        let mut c = config(root.path());
+        c.base = git(root.path(), &["rev-parse", "HEAD"])
+            .unwrap()
+            .trim()
+            .into();
+        let mut workspace = Workspace::new(c).unwrap();
+        std::fs::write(dir.join("runtime.ts"), "uncommitted host text").unwrap();
+        let execute =
+            |workspace: &mut Workspace, line: &str| workspace.execute(&Command::Run(line.into()));
+        let expected = [
+            "apps/haunt-preview/runtime.ts:1:dispose();",
+            "apps/haunt-preview/runtime.ts:2:state();",
+            "apps/haunt-preview/runtime.ts:3:queueScene();",
+            "apps/haunt-preview/runtime.ts:4:edit(project);",
+        ]
+        .join("\n");
+        assert_eq!(
+            execute(
+                &mut workspace,
+                r#"grep "dispose\|state()\|queueScene\|edit(" apps/haunt-preview/runtime.ts"#,
+            )
+            .unwrap(),
+            expected
+        );
+        assert_eq!(
+            execute(
+                &mut workspace,
+                "grep -n 'state()' apps/haunt-preview/runtime.ts"
+            )
+            .unwrap(),
+            "apps/haunt-preview/runtime.ts:2:state();"
+        );
+        for options in ["-n -i", "-in", "-ni"] {
+            let output = execute(
+                &mut workspace,
+                &format!(
+                    r#"grep {options} "dispose\|state()\|queueScene\|edit(" apps/haunt-preview"#
+                ),
+            )
+            .unwrap();
+            assert_eq!(
+                output,
+                format!("{expected}\napps/haunt-preview/runtime.ts:5:DISPOSE();")
+            );
+        }
+        assert!(
+            execute(&mut workspace, "grep 'queue.*' apps/haunt-preview")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            execute(&mut workspace, "grep 'dispose|state' apps/haunt-preview")
+                .unwrap()
+                .is_empty()
+        );
+        workspace
+            .edit(
+                "apps/haunt-preview/runtime.ts",
+                "-needle\nSTATE();\n".into(),
+            )
+            .unwrap();
+        workspace.checked = Some(workspace.digest());
+        let checked = workspace.checked.clone();
+        assert_eq!(
+            execute(
+                &mut workspace,
+                "grep -- -needle apps/haunt-preview/runtime.ts"
+            )
+            .unwrap(),
+            "apps/haunt-preview/runtime.ts:1:-needle"
+        );
+        assert_eq!(
+            execute(
+                &mut workspace,
+                "grep -i 'state()' apps/haunt-preview/runtime.ts"
+            )
+            .unwrap(),
+            "apps/haunt-preview/runtime.ts:2:STATE();"
+        );
+        assert_eq!(workspace.checked, checked);
+        for invalid in [
+            "grep -r dispose apps/haunt-preview",
+            "grep -E dispose apps/haunt-preview",
+            "grep -xni dispose apps/haunt-preview",
+            "grep dispose ../key",
+            "grep dispose key",
+            "grep dispose apps/haunt-preview-evil",
+            "grep dispose apps/haunt-preview ; touch owned",
+            "grep '' apps/haunt-preview",
+            r#"grep "dispose\|" apps/haunt-preview"#,
+        ] {
+            assert!(execute(&mut workspace, invalid).is_err(), "{invalid}");
+        }
+        let many = std::iter::repeat_n("no", 17)
+            .collect::<Vec<_>>()
+            .join("\\|");
+        assert!(execute(&mut workspace, &format!("grep '{many}' apps/haunt-preview")).is_err());
+        assert!(
+            execute(
+                &mut workspace,
+                &format!("grep '{}' apps/haunt-preview", "x".repeat(1025))
+            )
+            .is_err()
+        );
+        let line = format!("hit{}", "x".repeat(1000));
+        workspace
+            .edit(
+                "apps/haunt-preview/capped.ts",
+                std::iter::repeat_n(line, 100)
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            )
+            .unwrap();
+        let output = execute(&mut workspace, "grep hit apps/haunt-preview/capped.ts").unwrap();
+        assert_eq!(
+            output
+                .lines()
+                .filter(|line| line.starts_with("apps/haunt-preview/capped.ts:"))
+                .count(),
+            40
+        );
+        assert!(output.lines().all(|line| line.chars().count() < 300));
+        assert!(!root.path().join("owned").exists());
     }
     #[test]
     fn copy_uses_scoped_text_snapshots_and_invalidates_the_check() {
