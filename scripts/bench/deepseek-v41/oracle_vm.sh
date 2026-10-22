@@ -141,12 +141,14 @@ capture() {
 holdout() {
   : "${CORPUS:?set CORPUS, the frozen holdout corpus JSON}"
   log "holdout"
-  local out=$OUT/g1-v2-holdout dest=$ORACLE/g1-v2/holdout
+  # DEST and CORPUS_NAME default to the holdout; the policy 2.2 confirmation
+  # set uses its own folder (g1-v2/confirmation-2.2) and name.
+  local out=$OUT/g1-v2-${DEST_NAME:-holdout} dest=$ORACLE/g1-v2/${DEST_NAME:-holdout}
   DUMP_TOOL_COMMIT=${DUMP_TOOL_COMMIT:-} $VENV/bin/torchrun --nproc-per-node 8 $SCRIPTS/oracle_dump.py \
     --ckpt $TP8 --reference $REF --out $out --upload $dest \
     --cases-file "$CORPUS" --router-tops 8 --captures-only
   $PY -I $SCRIPTS/oracle_manifest.py --dump $out --out $out/manifest.json
-  cp "$CORPUS" $out/holdout-corpus.json
+  cp "$CORPUS" $out/${CORPUS_NAME:-holdout-corpus.json}
   gcloud storage rsync -r -x '^patched/__pycache__/' $out $dest
   if [ -n "${SUITE:-}" ]; then
     # G2 v2: the frozen task suite's complete greedy answers, to the end token or cap

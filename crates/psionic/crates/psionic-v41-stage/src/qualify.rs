@@ -908,6 +908,7 @@ fn router_case(
     case: &str,
     record: &Path,
     rec: &Recorded,
+    weights: Option<&Path>,
 ) -> Result<Value, Refused> {
     let prompt = run["prompt_tokens"].as_u64().unwrap_or_default() as usize;
     // Oracle rows: the prompt's rows (step 0), then one row per decode step.
@@ -937,6 +938,9 @@ fn router_case(
     let mut layers = Vec::new();
     let mut over = Vec::new();
     let mut scored_layers = 0usize;
+    let mut candidate_layers = 0usize;
+    let mut total_over_budget = 0usize;
+    let mut changes = Vec::new();
     let (mut same, mut substituted, mut failed, mut unresolved) = (0usize, 0, 0, 0);
     let mut examples = Vec::new();
     for layer in 0..LAYERS {
@@ -988,6 +992,21 @@ fn router_case(
             None
         };
         scored_layers += usize::from(tops.is_some());
+        // The candidate's selection scores: a stage that reports them
+        // (the CPU port's `RouterScores`), or an F64 evaluation of the
+        // selection function on the stage's router input (`FfnIn`).
+        let candidate_scores =
+            candidate_router_scores(record, rec, layer, row_step.len(), weights)?;
+        let budget = policy
+            .router_score_budget
+            .as_ref()
+            .and_then(|b| b.get(layer).copied());
+        let rule = DecisionRule {
+            epsilon: budget.or(rule.epsilon),
+            ..rule
+        };
+        let mut errors = Vec::new();
+        let (mut over_budget, mut local_changed, mut most_subs) = (0usize, 0usize, 0usize);
         let mut layer_counts = [0usize; 4];
         for (row, (step, r)) in row_step.iter().enumerate() {
             let o: Vec<u32> = reference[row * top_k..(row + 1) * top_k]
@@ -1022,6 +1041,41 @@ fn router_case(
                 oracle_scores: row_scores.as_ref(),
                 universe: EXPERTS,
             });
+            // The measured score error on the oracle's retained experts.
+            let row_error = match (&candidate_scores, &row_scores) {
+                (Some((how, cs)), Some(retained)) => {
+                    let row_s = &cs[row * WIDE..(row + 1) * WIDE];
+                    let e = retained
+                        .iter()
+                        .map(|(id, s)| (row_s[*id as usize] - s).abs())
+                        .fold(0.0f64, f64::max);
+                    if *how == "f64" && !same_set(&top_k_of(row_s, top_k), c) {
+                        local_changed += 1;
+                    }
+                    errors.push(e);
+                    Some(e)
+                }
+                _ => None,
+            };
+            if let (Some(e), Some(b)) = (row_error, budget)
+                && e > b
+            {
+                over_budget += 1;
+            }
+            let removed: Vec<u32> = o.iter().filter(|x| !c.contains(x)).copied().collect();
+            if !removed.is_empty() {
+                let added: Vec<u32> = c.iter().filter(|x| !o.contains(x)).copied().collect();
+                most_subs = most_subs.max(removed.len());
+                let regret = row_scores.as_ref().and_then(|sc| {
+                    let out: Option<f64> = removed.iter().map(|i| sc.get(i).copied()).sum();
+                    let inn: Option<f64> = added.iter().map(|i| sc.get(i).copied()).sum();
+                    Some(out? - inn?)
+                });
+                changes.push(
+                    json!({"layer": layer, "row": row, "substitutions": removed.len(),
+                    "oracle_gap": gap, "regret": regret, "score_error": row_error}),
+                );
+            }
             let slot = match &decision {
                 Decision::Same => 0,
                 Decision::Substituted { .. } => 1,
@@ -1049,10 +1103,21 @@ fn router_case(
         if limit.is_some_and(|l| mismatch > l) {
             over.push(json!({"layer": layer, "mismatch": mismatch, "limit": limit}));
         }
+        errors.sort_by(f64::total_cmp);
+        let score_error = (!errors.is_empty()).then(|| {
+            json!({"rows": errors.len(), "p50": errors[errors.len() / 2],
+                "p99": errors[(errors.len() * 99 / 100).min(errors.len() - 1)],
+                "max": errors[errors.len() - 1],
+                "from": candidate_scores.as_ref().map(|(how, _)| *how)})
+        });
+        candidate_layers += usize::from(score_error.is_some());
+        total_over_budget += over_budget;
         layers.push(
             json!({"layer": layer, "same": layer_counts[0], "substituted": layer_counts[1],
             "failed": layer_counts[2], "unresolved": layer_counts[3], "mismatch": mismatch,
-            "limit": limit}),
+            "limit": limit, "score_error": score_error, "score_budget": budget,
+            "over_budget": over_budget, "local_changed": local_changed,
+            "max_row_substitutions": most_subs}),
         );
     }
     let total = same + substituted + failed + unresolved;
@@ -1072,11 +1137,18 @@ fn router_case(
         "layers_over_limit": over,
         "layers_compared": layers.len(),
         "layers_with_oracle_scores": scored_layers,
+        "layers_with_candidate_scores": candidate_layers,
+        "over_budget": total_over_budget,
         // Two separate verdicts (review of 2026-10-22): the empirical
         // per-layer fraction limits, and the margin/regret rule, which needs
         // every changed row resolved.
         "fraction_verdict": if layer_limits { json!(failed == 0 && over.is_empty()) } else { Value::Null },
-        "margin_verdict": failed == 0 && unresolved == 0 && fraction_ok == Some(true),
+        "margin_verdict": failed == 0
+            && unresolved == 0
+            && total_over_budget == 0
+            && fraction_ok != Some(false)
+            && candidate_layers == layers.len()
+            && scored_layers == layers.len(),
         "passed": total > 0
             && failed == 0
             && if layer_limits {
@@ -1086,7 +1158,157 @@ fn router_case(
             },
         "layers": layers,
         "examples": examples,
+        // Every changed expert set, so a policy can judge it afterwards.
+        "changes": changes,
     }))
+}
+
+/// The router's expert count as an index width.
+const WIDE: usize = EXPERTS as usize;
+
+fn top_k_of(scores: &[f64], k: usize) -> Vec<u32> {
+    let mut idx: Vec<u32> = (0..scores.len() as u32).collect();
+    idx.sort_by(|a, b| {
+        scores[*b as usize]
+            .total_cmp(&scores[*a as usize])
+            .then(a.cmp(b))
+    });
+    idx.truncate(k);
+    idx
+}
+
+fn same_set(a: &[u32], b: &[u32]) -> bool {
+    a.len() == b.len() && a.iter().all(|x| b.contains(x))
+}
+
+/// The selection function sqrt(softplus(z)) + bias, with PyTorch's
+/// softplus threshold of 20.
+fn selection_score(z: f64, bias: f64) -> f64 {
+    let soft = if z > 20.0 { z } else { z.exp().ln_1p() };
+    soft.sqrt() + bias
+}
+
+/// One tensor of the checkpoint as F32, through its safetensors index.
+fn checkpoint_tensor(weights: &Path, name: &str) -> Result<Vec<f32>, Refused> {
+    let index: Value = serde_json::from_slice(
+        &std::fs::read(weights.join("model.safetensors.index.json"))
+            .map_err(|e| refused(format!("checkpoint index: {e}")))?,
+    )
+    .map_err(|e| refused(format!("checkpoint index: {e}")))?;
+    let file = index["weight_map"][name]
+        .as_str()
+        .ok_or_else(|| refused(format!("{name} is not in the checkpoint")))?;
+    let mut f = File::open(weights.join(file)).map_err(|e| refused(format!("{file}: {e}")))?;
+    let mut len = [0u8; 8];
+    f.read_exact(&mut len).map_err(|e| refused(e.to_string()))?;
+    let n = u64::from_le_bytes(len) as usize;
+    let mut header = vec![0u8; n];
+    f.read_exact(&mut header)
+        .map_err(|e| refused(e.to_string()))?;
+    let header: Value = serde_json::from_slice(&header).map_err(|e| refused(e.to_string()))?;
+    let meta = &header[name];
+    let (a, b) = (
+        meta["data_offsets"][0].as_u64().unwrap_or_default(),
+        meta["data_offsets"][1].as_u64().unwrap_or_default(),
+    );
+    f.seek(SeekFrom::Start(8 + n as u64 + a))
+        .map_err(|e| refused(e.to_string()))?;
+    let mut raw = vec![0u8; (b - a) as usize];
+    f.read_exact(&mut raw).map_err(|e| refused(e.to_string()))?;
+    match meta["dtype"].as_str() {
+        Some("BF16") => Ok(raw
+            .chunks_exact(2)
+            .map(|c| f32::from_bits(u32::from(u16::from_le_bytes([c[0], c[1]])) << 16))
+            .collect()),
+        Some("F32") => Ok(raw
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect()),
+        other => Err(refused(format!("{name}: dtype {other:?}"))),
+    }
+}
+
+/// The candidate's selection scores for every row of one layer, 384 per row:
+/// the stage's own `RouterScores` when it reports them, else an F64
+/// evaluation on its recorded router input (`FfnIn`) with the checkpoint's
+/// gate. `None` when neither is recorded.
+fn candidate_router_scores(
+    record: &Path,
+    rec: &Recorded,
+    layer: usize,
+    rows: usize,
+    weights: Option<&Path>,
+) -> Result<Option<(&'static str, Vec<f64>)>, Refused> {
+    let gather = |site: &str| -> Result<Option<Vec<u32>>, Refused> {
+        let mut out = Vec::new();
+        for files in &rec.records {
+            let matching: Vec<_> = files
+                .iter()
+                .filter(|f| f.ends_with(&format!(".L{layer}.{site}.u32")))
+                .collect();
+            if matching.is_empty() {
+                return Ok(None);
+            }
+            for file in matching {
+                out.extend(read_u32(&record.join(file))?);
+            }
+        }
+        Ok(Some(out))
+    };
+    if let Some(words) = gather("RouterScores")? {
+        if words.len() != rows * WIDE {
+            return Err(refused(format!(
+                "layer {layer}: {} router scores for {rows} rows",
+                words.len()
+            )));
+        }
+        return Ok(Some((
+            "stage",
+            words
+                .iter()
+                .map(|w| f64::from(f32::from_bits(*w)))
+                .collect(),
+        )));
+    }
+    let (Some(weights), Some(words)) = (weights, gather("FfnIn")?) else {
+        return Ok(None);
+    };
+    let gate = checkpoint_tensor(weights, &format!("layers.{layer}.ffn.gate.weight"))?;
+    let bias = checkpoint_tensor(weights, &format!("layers.{layer}.ffn.gate.bias"))?;
+    if bias.len() != WIDE || gate.len() % WIDE != 0 {
+        return Err(refused(format!("layer {layer}: gate shape")));
+    }
+    let width = gate.len() / WIDE;
+    if words.len() != rows * width {
+        return Err(refused(format!(
+            "layer {layer}: {} router input words for {rows} rows",
+            words.len()
+        )));
+    }
+    let gate: Vec<f64> = gate.iter().map(|v| f64::from(*v)).collect();
+    let mut scores = vec![0.0f64; rows * WIDE];
+    let threads = std::thread::available_parallelism().map_or(8, std::num::NonZero::get);
+    let per = rows.div_ceil(threads).max(1);
+    std::thread::scope(|scope| {
+        for (chunk, out) in scores.chunks_mut(per * WIDE).enumerate() {
+            let (gate, bias, words) = (&gate, &bias, &words);
+            scope.spawn(move || {
+                for (i, row_out) in out.chunks_mut(WIDE).enumerate() {
+                    let row = chunk * per + i;
+                    let x: Vec<f64> = words[row * width..(row + 1) * width]
+                        .iter()
+                        .map(|w| f64::from(f32::from_bits(*w)))
+                        .collect();
+                    for (e, slot) in row_out.iter_mut().enumerate() {
+                        let w = &gate[e * width..(e + 1) * width];
+                        let z: f64 = w.iter().zip(&x).map(|(a, b)| a * b).sum();
+                        *slot = selection_score(z, f64::from(bias[e]));
+                    }
+                }
+            });
+        }
+    });
+    Ok(Some(("f64", scores)))
 }
 
 /// The runtime's words of one site for one token of a step.
@@ -1324,7 +1546,7 @@ pub fn run_answers(opts: &QualifyOptions, cap: usize) -> Result<Value, Refused> 
 /// its router report over all 40 layers with a resolved margin verdict, its
 /// exact report with checks, every position, and an evaluated index rule.
 #[must_use]
-pub fn release_refusals(opts: &QualifyOptions, cases: &[Value]) -> Vec<String> {
+pub fn release_refusals(opts: &QualifyOptions, policy: &Policy, cases: &[Value]) -> Vec<String> {
     let mut out = Vec::new();
     if !opts.observe {
         out.push("release qualification needs --observe".into());
@@ -1370,8 +1592,19 @@ pub fn release_refusals(opts: &QualifyOptions, cases: &[Value]) -> Vec<String> {
                 out.push(format!("{name} {}: no positions", mode["mode"]));
             }
         }
-        // The policy's index rule is not evaluated against the oracle yet.
-        out.push(format!("{name}: index rule not evaluated"));
+        // The index rule is not evaluated against the oracle; only a policy
+        // that states why it is out of scope may leave it.
+        if policy.index_out_of_scope.is_none() {
+            out.push(format!("{name}: index rule not evaluated"));
+        }
+        if policy.router_score_budget.is_some()
+            && router["layers_with_candidate_scores"].as_u64() != Some(LAYERS as u64)
+        {
+            out.push(format!(
+                "{name}: candidate router scores for {} of {LAYERS} layers",
+                router["layers_with_candidate_scores"]
+            ));
+        }
     }
     out
 }
@@ -1392,6 +1625,8 @@ pub fn pending_policy() -> Policy {
         router: rule,
         index: rule,
         router_layer_mismatch: None,
+        router_score_budget: None,
+        index_out_of_scope: None,
     }
 }
 
@@ -1489,6 +1724,7 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
                     case,
                     &record,
                     &rec,
+                    Some(&opts.weights),
                 )?),
                 Some(exact_case(&mut oracle, &run, case, &record, &rec)?),
             )
@@ -1519,8 +1755,9 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
             && (r["router"].is_null() || r["router"]["passed"] == json!(true))
             && (r["exact"].is_null() || r["exact"]["passed"] == json!(true))
     });
+    let violations = judge_report(&policy, &json!({"cases": reports}));
     let release_refusals = if opts.release {
-        release_refusals(opts, &reports)
+        release_refusals(opts, &policy, &reports)
     } else {
         Vec::new()
     };
@@ -1529,7 +1766,8 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
         "schema": "psionic.deepseek_v41.g1_v2_report.v1",
         "release": opts.release,
         "release_refusals": release_refusals,
-        "release_passed": opts.release && passed && release_refusals.is_empty(),
+        "violations": violations,
+        "release_passed": opts.release && passed && release_refusals.is_empty() && violations.is_empty(),
         "issue": 12405,
         "policy_version": policy.version,
         "policy_sha256": policy_sha,
@@ -1678,6 +1916,8 @@ pub fn derive_policy(reference: &[Value], controls: &[Value]) -> Result<(Policy,
             max_substituted_fraction: None,
         },
         router_layer_mismatch: router_limits(reference)?,
+        router_score_budget: None,
+        index_out_of_scope: None,
     };
     let mut detected = Vec::new();
     for report in controls {
@@ -1816,6 +2056,90 @@ pub fn judge_report(policy: &Policy, report: &Value) -> Vec<String> {
                 }
             }
         }
+        if let Some(budget) = &policy.router_score_budget {
+            out.extend(router_margin_violations(
+                policy,
+                budget,
+                name,
+                &case["router"],
+            ));
+        }
+        if case["exact"]["passed"] == json!(false) {
+            out.push(format!("{name}: exact checks failed"));
+        }
+    }
+    out
+}
+
+/// Policy 2.2's router margin rule, recomputed from a report: every layer
+/// has measured candidate score errors within its budget, and every changed
+/// expert set is resolved, within the substitution cap, at a boundary gap
+/// of at most twice the budget, with regret at most twice the budget per
+/// substitution. Missing score evidence is a violation, never a pass.
+#[must_use]
+pub fn router_margin_violations(
+    policy: &Policy,
+    budget: &[f64],
+    name: &str,
+    router: &Value,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    if router.is_null() {
+        return vec![format!("{name}: no router evidence for the margin rule")];
+    }
+    for layer in router["layers"].as_array().into_iter().flatten() {
+        let l = layer["layer"].as_u64().unwrap_or_default() as usize;
+        let Some(eps) = budget.get(l).copied() else {
+            out.push(format!("{name}: no router score budget for layer {l}"));
+            continue;
+        };
+        match layer["score_error"]["max"].as_f64() {
+            None => out.push(format!(
+                "{name}: router layer {l} has no measured score error"
+            )),
+            Some(e) if e > eps => out.push(format!(
+                "{name}: router layer {l} score error {e:.3e} > budget {eps:.3e}"
+            )),
+            Some(_) => {}
+        }
+    }
+    let (mut unresolved, mut capped, mut stable, mut regret_over) =
+        (0usize, 0usize, 0usize, 0usize);
+    for c in router["changes"].as_array().into_iter().flatten() {
+        let l = c["layer"].as_u64().unwrap_or_default() as usize;
+        let Some(eps) = budget.get(l).copied() else {
+            continue;
+        };
+        let subs = c["substitutions"].as_u64().unwrap_or(u64::MAX) as usize;
+        if subs > policy.router.max_substitutions {
+            capped += 1;
+            continue;
+        }
+        let (Some(gap), Some(regret)) = (c["oracle_gap"].as_f64(), c["regret"].as_f64()) else {
+            unresolved += 1;
+            continue;
+        };
+        if gap > 2.0 * eps {
+            stable += 1;
+        } else if regret > 2.0 * eps * subs as f64 {
+            regret_over += 1;
+        }
+    }
+    for (count, what) in [
+        (
+            unresolved,
+            "changed router rows without the oracle's scores (unresolved)",
+        ),
+        (capped, "changed router rows over the substitution cap"),
+        (
+            stable,
+            "router changes at a stable boundary (gap over twice the budget)",
+        ),
+        (regret_over, "router changes with regret over the budget"),
+    ] {
+        if count > 0 {
+            out.push(format!("{name}: {count} {what}"));
+        }
     }
     out
 }
@@ -1850,7 +2174,19 @@ pub fn self_check(
                 "the policy passes the {name} negative control"
             )));
         }
-        detected.push(json!({"control": name, "failures": failures.len(), "first": failures[0]}));
+        // A control must fail on a numerical criterion, not only on missing
+        // evidence.
+        let numerical: Vec<&String> = failures
+            .iter()
+            .filter(|f| !f.contains("no measured score error") && !f.contains("no router evidence"))
+            .collect();
+        if numerical.is_empty() {
+            return Err(refused(format!(
+                "the {name} negative control fails only on missing evidence"
+            )));
+        }
+        detected.push(json!({"control": name, "failures": failures.len(),
+            "numerical_failures": numerical.len(), "first": numerical[0]}));
     }
     Ok(json!({"reference_passes": true, "controls": detected}))
 }
@@ -1912,6 +2248,34 @@ pub fn derive_policy_v22(
     all_tv.sort_by(f64::total_cmp);
     let tail = all_tv[(all_tv.len() * 9 / 10).min(all_tv.len() - 1)];
     let floor = 1.0 / 33.0;
+    // Router score budget: per layer, HEADROOM times the reference's largest
+    // measured score error on the oracle's retained experts.
+    let mut layer_error = vec![None::<f64>; LAYERS];
+    let mut layer_rows = vec![0u64; LAYERS];
+    let mut most_subs = 1usize;
+    for report in reference {
+        for case in report["cases"].as_array().into_iter().flatten() {
+            for layer in case["router"]["layers"].as_array().into_iter().flatten() {
+                let l = layer["layer"].as_u64().unwrap_or(u64::MAX) as usize;
+                if let (Some(slot), Some(e)) =
+                    (layer_error.get_mut(l), layer["score_error"]["max"].as_f64())
+                {
+                    *slot = Some(slot.map_or(e, |v: f64| v.max(e)));
+                    layer_rows[l] += layer["score_error"]["rows"].as_u64().unwrap_or_default();
+                }
+                most_subs = most_subs
+                    .max(layer["max_row_substitutions"].as_u64().unwrap_or_default() as usize);
+            }
+        }
+    }
+    let budget: Vec<f64> = layer_error
+        .iter()
+        .enumerate()
+        .map(|(l, e)| {
+            e.map(|e| HEADROOM * e)
+                .ok_or_else(|| refused(format!("no reference router score error for layer {l}")))
+        })
+        .collect::<Result<_, _>>()?;
     let tail_fraction = cases
         .iter()
         .map(|(t, _)| t.iter().filter(|v| **v > tail).count() as f64 / t.len() as f64)
@@ -1938,7 +2302,7 @@ pub fn derive_policy_v22(
         },
         router: DecisionRule {
             epsilon: None,
-            max_substitutions: 1,
+            max_substitutions: most_subs,
             max_substituted_fraction: None,
         },
         index: DecisionRule {
@@ -1947,6 +2311,13 @@ pub fn derive_policy_v22(
             max_substituted_fraction: None,
         },
         router_layer_mismatch: router_limits(reference)?,
+        router_score_budget: Some(budget.clone()),
+        index_out_of_scope: Some(
+            "the pinned stage bundle records no index selections and the oracle dumps hold \
+             none per row, so the index rule can't be evaluated; index effects reach this \
+             policy only through the logit distribution checks"
+                .into(),
+        ),
     };
     let checks = self_check(&policy, reference, controls)?;
     let evidence = json!({
@@ -1954,6 +2325,10 @@ pub fn derive_policy_v22(
         "unit": "case and mode, for derivation and judging alike",
         "headroom": HEADROOM,
         "reference_positions": all_tv.len(),
+        "reference_cases_and_modes": cases.len(),
+        "reference_router_rows_with_scores_per_layer": layer_rows,
+        "reference_router_score_error_max": layer_error,
+        "reference_max_row_substitutions": most_subs,
         "reference_max": {"total_variation": tv, "jensen_shannon": js,
             "reference_logprob_error": lp, "centered_logit_error": centered,
             "case_mean_total_variation": case_mean, "tail_threshold_p90": tail,
@@ -2109,11 +2484,12 @@ mod tests {
                     .iter()
                     .find(|(x, _)| *x == l)
                     .map_or(0.0, |(_, m)| *m);
-                json!({"layer": l, "mismatch": m})
+                json!({"layer": l, "mismatch": m, "max_row_substitutions": 1,
+                    "score_error": {"rows": 10, "max": 0.001 * (1.0 + l as f64)}})
             })
             .collect();
         json!({"case": name, "modes": [{"case": name, "mode": "decode", "positions": ps}],
-            "router": {"layers": layers}})
+            "router": {"layers": layers, "changes": [], "layers_with_candidate_scores": LAYERS}})
     }
 
     #[test]
@@ -2145,6 +2521,46 @@ mod tests {
     }
 
     #[test]
+    fn the_router_margin_rule_judges_every_changed_row() {
+        let reference = json!({"cases": [case_report("a", &vec![(0.01, 5); 33], &[])]});
+        let control =
+            json!({"control": "c", "cases": [case_report("a", &vec![(0.4, 5); 33], &[])]});
+        let (policy, evidence) = derive_policy_v22(&[reference.clone()], &[control]).unwrap();
+        let budget = policy.router_score_budget.clone().unwrap();
+        assert!((budget[3] - HEADROOM * 0.004).abs() < 1e-12);
+        assert_eq!(evidence["reference_max_row_substitutions"], 1);
+        assert!(policy.index_out_of_scope.is_some());
+        let eps = budget[0];
+        let mut run = case_report("a", &vec![(0.01, 5); 33], &[]);
+        run["router"]["changes"] = json!([
+            {"layer": 0, "row": 1, "substitutions": 1, "oracle_gap": eps, "regret": eps},
+            {"layer": 0, "row": 2, "substitutions": 1, "oracle_gap": 3.0 * eps, "regret": eps},
+            {"layer": 0, "row": 3, "substitutions": 1, "oracle_gap": eps, "regret": 3.0 * eps},
+            {"layer": 0, "row": 4, "substitutions": 1, "oracle_gap": eps, "regret": null},
+            {"layer": 0, "row": 5, "substitutions": 2, "oracle_gap": eps, "regret": eps},
+        ]);
+        run["router"]["layers"][7]["score_error"]["max"] = json!(1.0);
+        let v = judge_report(&policy, &json!({"cases": [run.clone()]}));
+        for needle in [
+            "stable boundary",
+            "regret over",
+            "unresolved",
+            "substitution cap",
+            "layer 7 score error",
+        ] {
+            assert!(v.iter().any(|f| f.contains(needle)), "{needle}: {v:?}");
+        }
+        // The first change alone is within the rule.
+        run["router"]["changes"] = json!([{"layer": 0, "row": 1, "substitutions": 1,
+            "oracle_gap": eps, "regret": eps}]);
+        run["router"]["layers"][7]["score_error"]["max"] = json!(0.0);
+        assert!(judge_report(&policy, &json!({"cases": [run.clone()]})).is_empty());
+        // Missing score evidence never passes.
+        run["router"]["layers"][2]["score_error"] = Value::Null;
+        assert!(!judge_report(&policy, &json!({"cases": [run]})).is_empty());
+    }
+
+    #[test]
     fn release_mode_refuses_missing_evidence() {
         let mut opts = QualifyOptions::parse(&[
             "--weights".into(),
@@ -2161,7 +2577,7 @@ mod tests {
         .unwrap();
         let empty = json!({"case": "c", "modes": [{"mode": "decode", "positions": [], "missing": ["g1"]}],
             "router": null, "exact": null});
-        let refusals = release_refusals(&opts, &[empty]);
+        let refusals = release_refusals(&opts, &pending_policy(), &[empty]);
         for needle in [
             "--observe",
             "pinned bundle",
@@ -2179,7 +2595,7 @@ mod tests {
         opts.observe = true;
         let partial = json!({"case": "c", "modes": [], "router": {"layers_compared": 39,
             "margin_verdict": false, "unresolved": 3, "failed": 0}, "exact": {"checked": 2}});
-        let refusals = release_refusals(&opts, &[partial]);
+        let refusals = release_refusals(&opts, &pending_policy(), &[partial]);
         assert!(refusals.iter().any(|r| r.contains("39 of 40")));
         assert!(refusals.iter().any(|r| r.contains("3 unresolved")));
     }

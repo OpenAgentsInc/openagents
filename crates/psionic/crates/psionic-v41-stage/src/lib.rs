@@ -530,12 +530,17 @@ impl StageBackend for V41CpuStageExecutor<'_> {
     /// The CPU port's router selections, named as the CUDA stage names them,
     /// for the G1 v2 reference control (#12405).
     fn observations(&self, _tokens: usize) -> Option<Vec<(String, Vec<u32>)>> {
-        Some(
-            self.routes()
-                .iter()
-                .map(|(layer, ids)| (format!("L{layer}.ExpertIds"), ids.clone()))
-                .collect(),
-        )
+        let ids = self
+            .routes()
+            .iter()
+            .map(|(layer, ids)| (format!("L{layer}.ExpertIds"), ids.clone()));
+        let scores = self.router_scores().iter().map(|(layer, scores)| {
+            (
+                format!("L{layer}.RouterScores"),
+                scores.iter().map(|v| v.to_bits()).collect(),
+            )
+        });
+        Some(ids.chain(scores).collect())
     }
 }
 

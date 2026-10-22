@@ -28,6 +28,8 @@ fn policy() -> Policy {
             max_substituted_fraction: None,
         },
         router_layer_mismatch: None,
+        router_score_budget: None,
+        index_out_of_scope: None,
     }
 }
 

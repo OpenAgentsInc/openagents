@@ -288,6 +288,18 @@ pub struct Policy {
     /// check pending.
     #[serde(default)]
     pub router_layer_mismatch: Option<Vec<f64>>,
+    /// Policy 2.2: per layer, the router score budget (epsilon) in the
+    /// selection function's units, sqrt(softplus(W x)) + bias. A candidate
+    /// row's measured score error on the oracle's retained experts must stay
+    /// within it, and each changed expert set is judged by the margin and
+    /// regret rule under it. Empirical and connected, not a rigorous bound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub router_score_budget: Option<Vec<f64>>,
+    /// Why the index rule is not part of this policy's acceptance, when it
+    /// isn't. Release qualification refuses an unevaluated index rule
+    /// unless this says why.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index_out_of_scope: Option<String>,
 }
 
 impl Policy {

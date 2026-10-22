@@ -189,6 +189,9 @@ pub struct LayerRangeRuntime<'a> {
     /// The last forward's selected experts, per layer, six per token in
     /// token order (G1 v2 router checks, #12405).
     routes: BTreeMap<usize, Vec<u32>>,
+    /// The last step's biased router scores per layer, 384 per token, in the
+    /// selection function's units (G1 v2 policy 2.2, #12405).
+    router_scores: BTreeMap<usize, Vec<f32>>,
 }
 
 impl<'a> LayerRangeRuntime<'a> {
@@ -290,6 +293,7 @@ impl<'a> LayerRangeRuntime<'a> {
             recent: VecDeque::new(),
             position: 0,
             routes: BTreeMap::new(),
+            router_scores: BTreeMap::new(),
         })
     }
 
@@ -440,6 +444,7 @@ impl<'a> LayerRangeRuntime<'a> {
             return Err(CpuError::Invalid("candidate masks per token"));
         }
         self.routes.clear();
+        self.router_scores.clear();
         for layer in self.config.layers.clone() {
             let block = TextBlock::new(self.weights, layer, c.block, self.config.arithmetic)?
                 .with_reference_rows(count);
@@ -480,6 +485,10 @@ impl<'a> LayerRangeRuntime<'a> {
                     .entry(layer)
                     .or_default()
                     .extend(output.routing.indices.iter().map(|id| *id as u32));
+                self.router_scores
+                    .entry(layer)
+                    .or_default()
+                    .extend_from_slice(&output.routing.biased_scores);
                 residuals[i] = output.residual;
                 pre_mixes[i] = output.next_pre;
             }
@@ -932,6 +941,12 @@ impl<'a> V41CpuStageExecutor<'a> {
     #[must_use]
     pub fn routes(&self) -> &BTreeMap<usize, Vec<u32>> {
         &self.runtime.routes
+    }
+
+    /// The last step's biased router scores per layer, 384 per token.
+    #[must_use]
+    pub fn router_scores(&self) -> &BTreeMap<usize, Vec<f32>> {
+        &self.runtime.router_scores
     }
 
     /// The runtime.

@@ -146,4 +146,37 @@ run-final() {
   log "final runs done"
 }
 
+# Policy 2.2's router reference: the CPU port on the shorter holdout cases,
+# whose oracle keeps the retained router scores (--router-tops 8). WORKER and
+# BUILD name a bundle whose CPU port reports RouterScores; no FRONT.
+run-cpu-ref22() {
+  : "${MANIFEST:?}" "${RESULTS:?}"
+  local oracle=gs://openagents-psionic-oracle/deepseek-v41/1bae0e1
+  mkdir -p $ROOT/holdout
+  gcloud storage rsync -q -r $oracle/g1-v2/holdout $ROOT/holdout
+  ORACLE_DIR=$ROOT/holdout MAX_CONTEXT=8192 qualify $ROOT/out/reference-cpu-holdout --backend cpu \
+    --arithmetic bf16-tp8 --observe --step-secs 36000 \
+    --cases "${CASES:-h1-chat-seasons,h2-code-palindrome,h3-engram-forms,h5-window-255}"
+  log "CPU reference 2.2 done"
+}
+
+# The confirmation qualification under frozen policy 2.2: every case of the
+# confirmation corpus with --release at the launch profile, then G2 suite 2's
+# answers on the same runtime. CONFIRM is the confirmation oracle dump.
+run-confirm() {
+  : "${MANIFEST:?}" "${RESULTS:?}" "${POLICY:?}" "${CONFIRM:?}"
+  local oracle=gs://openagents-psionic-oracle/deepseek-v41/1bae0e1 cases
+  mkdir -p $ROOT/confirm $ROOT/g2-oracle
+  gcloud storage rsync -q -r "$CONFIRM" $ROOT/confirm
+  gcloud storage rsync -q -r $oracle/g2-v2/oracle $ROOT/g2-oracle
+  gcloud storage cp -q "$POLICY" $ROOT/policy.json
+  cases=$(python3 -c 'import json,sys; print(",".join(c["id"] for c in json.load(open(sys.argv[1]))["cases"]))' $ROOT/confirm/confirmation-corpus.json)
+  ORACLE_DIR=$ROOT/confirm MAX_CONTEXT=8192 qualify $ROOT/out/confirmation --release --observe \
+    --gpus 0,1,2,3 --max-step-tokens 2872 --policy $ROOT/policy.json --cases "$cases"
+  ORACLE_DIR=$ROOT/g2-oracle MAX_CONTEXT=8192 qualify $ROOT/out/g2-answers-confirm --gpus 0,1,2,3 \
+    --max-step-tokens 2872 --answers 4096 \
+    --cases g2-p1-sky,g2-p2-fib,g2-gcd,g2-speed,g2-json-moon,g2-palindrome-py
+  log "confirmation runs done"
+}
+
 "$@"

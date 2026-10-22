@@ -1,0 +1,23 @@
+{
+ "schema": "psionic.deepseek_v41.g1_v2_holdout.v1",
+ "issue": 12405,
+ "frozen": "2026-10-22",
+ "purpose": "Fresh confirmation set for G1 v2 policy 2.2 (owner choice B, 2026-10-22). Written before policy 2.2 was derived, and no oracle or runtime data for these prompts exists yet; none may be captured or read before policy 2.2 is committed with its SHA-256. h1-h6 are exposed and count only as regression cases.",
+ "note": "Every prompt fits the launch profile: prompts of at most 2,872 tokens, 8,192 context. Positions: the last prompt position and every generated position, in decode and replay. Coverage: short chat in thinking and chat modes, code, Engram (repeated n-grams and Unicode variants, and a file that exercises them), two long file prompts near the prompt budget, and sliding-window and compression boundaries at 383/384/385 and 1023/1024/1025. Reference files come from checkpoint revision 1bae0e1088993b9b82de08f59de5be5a34e42170.",
+ "prompt_budget": 2872,
+ "cases": [
+  {"id": "c1-chat-tides", "thinking_mode": "thinking", "n_gen": 32, "messages": [{"role": "user", "content": "Why does the Moon cause two high tides each day? Answer in three sentences."}]},
+  {"id": "c2-chat-telescopes", "thinking_mode": "chat", "n_gen": 32, "messages": [{"role": "user", "content": "Name three ways a refracting telescope differs from a reflecting telescope, one line each."}]},
+  {"id": "c3-code-merge", "thinking_mode": "chat", "n_gen": 32, "messages": [{"role": "user", "content": "Write a Rust function `fn merge_sorted(a: &[i32], b: &[i32]) -> Vec<i32>` that merges two sorted slices into one sorted vector. Include one unit test."}]},
+  {"id": "c4-engram-variants", "thinking_mode": "chat", "n_gen": 16, "messages": [{"role": "user", "content": "Copy this exactly: Café cafe CAFÉ café. Über uber ÜBER. ﬁ fi ＦＩ. one two three one two three one two three four."}]},
+  {"id": "c5-engram-file", "thinking_mode": "chat", "n_gen": 32, "messages": [{"role": "user", "content": ["Here is a Python file:\n\n```python\n", {"reference_file": "inference/engram.py"}, "```\n\nExplain how this file turns n-grams into table rows, in four sentences."]}]},
+  {"id": "c6-convert-long", "thinking_mode": "chat", "n_gen": 32, "messages": [{"role": "user", "content": ["Here is a Python file:\n\n```python\n", {"reference_file": "inference/convert.py"}, "```\n\nWhich tensors does this script split across model-parallel ranks, and along which dimension?"]}]},
+  {"id": "c7-window-383", "prompt_of": "c6-convert-long", "cut": 383, "n_gen": 8},
+  {"id": "c7-window-384", "prompt_of": "c6-convert-long", "cut": 384, "n_gen": 8},
+  {"id": "c7-window-385", "prompt_of": "c6-convert-long", "cut": 385, "n_gen": 8},
+  {"id": "c8-window-1023", "prompt_of": "c6-convert-long", "cut": 1023, "n_gen": 8},
+  {"id": "c8-window-1024", "prompt_of": "c6-convert-long", "cut": 1024, "n_gen": 8},
+  {"id": "c8-window-1025", "prompt_of": "c6-convert-long", "cut": 1025, "n_gen": 8},
+  {"id": "c9-thinking-long", "thinking_mode": "thinking", "n_gen": 32, "messages": [{"role": "user", "content": ["Here is a Python file:\n\n```python\n", {"reference_file": "inference/image_processor.py"}, "```\n\nWhat does this code do when an image is wider than it is tall?"]}]}
+ ]
+}
