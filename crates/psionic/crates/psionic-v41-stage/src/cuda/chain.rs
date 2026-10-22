@@ -714,6 +714,37 @@ fn text_side(weights: &Path) -> Result<(Vocabulary, u32, u32), Refused> {
     ))
 }
 
+fn prepare_capture(dir: &Path) -> Result<(), Refused> {
+    std::fs::create_dir_all(dir)
+        .map_err(|e| Refused(format!("can't make {}: {e}", dir.display())))?;
+    let mut entries = std::fs::read_dir(dir)
+        .map_err(|e| Refused(format!("can't read {}: {e}", dir.display())))?;
+    if entries
+        .next()
+        .transpose()
+        .map_err(|e| Refused(e.to_string()))?
+        .is_some()
+    {
+        return Err(Refused(format!(
+            "capture directory {} is not empty; choose a new directory",
+            dir.display()
+        )));
+    }
+    // Reserve an empty directory before any output, including between
+    // concurrent runs. A failed or completed capture must never be reused.
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(dir.join(".capture-started"))
+        .map_err(|e| {
+            Refused(format!(
+                "can't reserve capture directory {}: {e}",
+                dir.display()
+            ))
+        })?;
+    Ok(())
+}
+
 /// Runs `chain` and returns its report.
 ///
 /// # Errors
@@ -733,8 +764,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
         Ok(())
     };
     if let Some(dir) = &options.capture {
-        std::fs::create_dir_all(dir)
-            .map_err(|e| Refused(format!("can't make {}: {e}", dir.display())))?;
+        prepare_capture(dir)?;
         let json = serde_json::to_vec_pretty(&manifest).map_err(|e| Refused(e.to_string()))?;
         keep("manifest.json", &json)?;
     }
@@ -1191,4 +1221,33 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
         "stages": stages,
         "answer": answer,
     }))
+}
+
+#[cfg(test)]
+mod capture_tests {
+    use super::*;
+
+    #[test]
+    fn a_shorter_capture_cannot_overwrite_or_reuse_an_earlier_run() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("capture");
+        prepare_capture(&dir).unwrap();
+        let request = br#"{"max_tokens":32,"artifact":"original"}"#;
+        std::fs::write(dir.join("request.json"), request).unwrap();
+        std::fs::write(dir.join("step-31.logits.f32"), [1, 2, 3, 4]).unwrap();
+        let error = prepare_capture(&dir).unwrap_err();
+        assert!(error.0.contains("choose a new directory"));
+        assert_eq!(std::fs::read(dir.join("request.json")).unwrap(), request);
+        assert_eq!(
+            std::fs::read(dir.join("step-31.logits.f32")).unwrap(),
+            [1, 2, 3, 4]
+        );
+    }
+
+    #[test]
+    fn an_empty_directory_is_reserved_even_before_the_first_record() {
+        let root = tempfile::tempdir().unwrap();
+        prepare_capture(root.path()).unwrap();
+        assert!(prepare_capture(root.path()).is_err());
+    }
 }
