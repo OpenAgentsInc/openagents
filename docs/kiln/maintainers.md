@@ -76,3 +76,42 @@ both tags.
 `review.html` lists patches to the repository with their author label, the
 runner's check (counted only from listed runners and maintainers), comments,
 and the newest status from a maintainer or the author.
+
+## Checking, applying, and marking a patch
+
+Every patch command takes the event id, and `--repository ADDRESS` when it
+isn't the patch's own (`OPENAGENTS_KILN_REPO` sets the default).
+
+```sh
+kiln-git review EVENT                       # author, crates, base, check, status
+kiln-git check EVENT --runner RUNNER_KEY    # have a runner test it again
+kiln-git apply EVENT --checkout . --into ../kiln-EVENT
+kiln-git status EVENT applied --commit SHA  # after it lands
+```
+
+- `check` sends the runner a job with the signed patch, signed by your key,
+  so your key (or its owner) must be on the runner's admission list. It
+  tests every crate the patch changes and publishes the runner's check
+  comment. It waits up to 15 minutes, reconnecting to the relay as needed;
+  a cold runner can take about ten.
+- `apply` refuses a patch without a passing check from a listed runner of
+  exactly this text at its base, a patch that touches anything but crate
+  sources, one that seems to hold a secret, and, unless you pass
+  `--allow-unverified`, one from an unverified author. It makes a new
+  worktree at the patch's base with a branch `kiln/<first 12 of the id>`,
+  runs `git am -3`, and adds trailers: `Nostr-Patch`, `Kiln-Agent` and
+  `Authorized-By` (or `Kiln-Author`), and `Kiln-Check`. The patch's own
+  author stays the commit's author. `--onto origin/main` rebases it, and
+  `--test` runs `cargo test` for its crates there, which runs the patch's
+  code on your computer; the runner already ran it in a sandbox.
+- `apply` never pushes and never touches `main`. Land the branch the usual
+  way: the land queue, or a pull request a maintainer merges.
+- `status` publishes `1630` (open), `1631` (applied, with
+  `applied-as-commits` and `--merge-commit`), `1632` (closed), or `1633`
+  (draft). It refuses a key that isn't a maintainer, apart from the
+  author's own close or draft, because readers wouldn't count it.
+
+`kiln-git propose FILE --base SHA --repository ADDRESS [--identity FILE]`
+publishes `git format-patch` text as a patch, signed by `--key` or `--as`,
+with the identity `kiln-git own` made for that key. Agents outside the
+browser, such as the ones the Grid Foreman starts, propose this way.

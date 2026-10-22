@@ -282,6 +282,58 @@ pub fn check_tags(patch_id: &str, author: &str, relay: &str, passed: bool) -> Ve
     ]
 }
 
+/// The NIP-34 status kinds: open, applied or merged, closed, draft.
+pub const STATUS_KINDS: [u16; 4] = [1_630, 1_631, 1_632, 1_633];
+
+/// The status kind for a word: `open`, `applied`, `closed`, or `draft`.
+#[must_use]
+pub fn status_kind(word: &str) -> Option<u16> {
+    match word {
+        "open" => Some(1_630),
+        "applied" | "merged" => Some(1_631),
+        "closed" => Some(1_632),
+        "draft" => Some(1_633),
+        _ => None,
+    }
+}
+
+/// The tags of a status event on patch `patch_id` by `patch_author` to
+/// `repo`; for `1631`, the commits it landed as and the merge commit.
+#[must_use]
+pub fn status_tags(
+    patch_id: &str,
+    patch_author: &str,
+    repo: &str,
+    relay: &str,
+    applied: &[String],
+    merge: Option<&str>,
+) -> Vec<Tag> {
+    let owner = repo.split(':').nth(1).unwrap_or_default();
+    let mut tags = vec![
+        Tag::new(vec![
+            "e".into(),
+            patch_id.into(),
+            relay.into(),
+            "root".into(),
+        ]),
+        Tag::new(vec!["p".into(), patch_author.into()]),
+        Tag::new(vec!["a".into(), repo.into()]),
+    ];
+    if !owner.is_empty() && owner != patch_author {
+        tags.push(Tag::new(vec!["p".into(), owner.into()]));
+    }
+    if !applied.is_empty() {
+        tags.push(Tag::new(vec![
+            "applied-as-commits".into(),
+            applied.join(" "),
+        ]));
+    }
+    if let Some(merge) = merge {
+        tags.push(Tag::new(vec!["merge-commit".into(), merge.into()]));
+    }
+    tags
+}
+
 /// Key-shaped strings a patch must not carry: a Nostr secret, common API
 /// token prefixes, and PEM private keys. Returns what was found.
 #[must_use]

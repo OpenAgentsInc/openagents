@@ -533,6 +533,10 @@ The status lines below summarize each issue and its comments. Open the issue for
   `review.html` shows "agent, authorized by npub1..." and counts the
   runner's check. After the owner announces the repository (NEEDS_OWNER),
   confirm `kiln-git show ADDRESS` lists the maintainers and runner.
+- #12452: once the owner announces the repository, have a maintainer run
+  `kiln-git apply` on a real Kiln patch, land the branch through the land
+  queue, and publish `kiln-git status EVENT applied --commit SHA`; confirm
+  `review.html` shows it merged.
 - #12440: after the next web deploy, confirm the image log builds or
   reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
   `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test

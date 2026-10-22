@@ -3,9 +3,14 @@
 //!
 //! - [`keys`]: the signing key, from a file or an `openagents` profile.
 //! - [`relay`]: publish an event and wait for the relay's answer; read
-//!   stored events.
+//!   stored events; ask a runner to run a job.
+//! - [`review`]: a patch read against its repository: author, check, and
+//!   status. The bridge and the Grid Foreman read patches through it.
+//! - [`apply`]: a reviewed patch on a branch of its own, with credit.
 //!
 //! Nothing here merges: a status event records what a maintainer did.
 
+pub mod apply;
 pub mod keys;
 pub mod relay;
+pub mod review;

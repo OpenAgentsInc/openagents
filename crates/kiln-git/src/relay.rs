@@ -68,3 +68,105 @@ pub async fn query(url: &str, secret: &SecretKey, filter: Value) -> Result<Vec<E
     .await
     .map_err(|_| format!("{url} did not answer in {} s", WAIT.as_secs()))?
 }
+
+/// Send `job` to the runner `runner` as `key`, with `extra` tags on the
+/// request (an agent's identity), and wait up to `wait` for its result.
+/// `progress` gets each progress line.
+///
+/// # Errors
+///
+/// The runner's refusal, or why it didn't answer.
+pub async fn ask_runner(
+    url: &str,
+    key: &crate::keys::Signer,
+    runner: &str,
+    job: &kiln::remote::Job,
+    extra: &[nostr::domain::Tag],
+    wait: Duration,
+    progress: &dyn Fn(&str),
+) -> Result<kiln::remote::Outcome, String> {
+    use kiln::cj;
+    let body = json!({
+        "v": 1,
+        "requires": [],
+        "task": serde_json::to_string(job).map_err(|e| e.to_string())?,
+        "transcript": [],
+        "client": concat!("kiln-git ", env!("CARGO_PKG_VERSION")),
+    });
+    let nonce: [u8; 32] = secp256k1::rand::random();
+    let request = key
+        .key
+        .seal_request_tagged(runner, &body, nonce, now(), extra)?;
+    // A relay connection lasts at most two minutes and a run can take ten,
+    // so reconnect and read the stored answers again until one is final.
+    tokio::time::timeout(wait, async {
+        let mut sent = false;
+        loop {
+            let mut socket =
+                match nostr_transport::Connection::connect(url, &key.secret, LINK).await {
+                    Ok(socket) => socket,
+                    Err(e) if sent => {
+                        progress(&format!("reconnecting: {e}"));
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                };
+            socket
+                .send(json!([
+                    "REQ",
+                    "a",
+                    cj::answer_filter(key.key.pubkey(), &request.id)
+                ]))
+                .await?;
+            if !sent {
+                socket.send(json!(["EVENT", request])).await?;
+                sent = true;
+            }
+            loop {
+                let Ok(frame) = socket.next().await else {
+                    break;
+                };
+                match frame[0].as_str() {
+                    Some("OK") if frame[1] == request.id.as_str() && frame[2] == false => {
+                        return Err(format!("the relay refused the request: {}", frame[3]));
+                    }
+                    Some("EVENT") if frame[1] == "a" => {
+                        let Ok(event) = serde_json::from_value::<Event>(frame[2].clone()) else {
+                            continue;
+                        };
+                        if !cj::answers(&event, &request.id, runner, key.key.pubkey()) {
+                            continue;
+                        }
+                        let Ok(plain) = key.key.open(&event) else {
+                            continue;
+                        };
+                        match cj::read(event.kind, &plain) {
+                            cj::Answer::Processing(Some(line)) => progress(&line),
+                            cj::Answer::Result { text, .. } => {
+                                let _ = socket.close().await;
+                                return serde_json::from_str(&text).map_err(|_| {
+                                    "the runner's answer is not a result".to_string()
+                                });
+                            }
+                            cj::Answer::Error(e) => return Err(e),
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|_| format!("the runner did not answer in {} s", wait.as_secs()))?
+}
+
+/// How long one relay connection lasts while waiting on a runner.
+const LINK: Duration = Duration::from_secs(110);
+
+fn now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
