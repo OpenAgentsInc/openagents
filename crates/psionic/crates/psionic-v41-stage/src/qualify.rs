@@ -63,6 +63,7 @@ const LAYERS: usize = 40;
 const ORACLE_TIE_WINDOW: f64 = 1e-4;
 const ORACLE_TIE_CAP: usize = 64;
 
+mod calibration;
 mod index;
 mod isolated;
 
@@ -2344,7 +2345,20 @@ pub fn self_check(
         // evidence.
         let numerical: Vec<&String> = failures
             .iter()
-            .filter(|f| !f.contains("no measured score error") && !f.contains("no router evidence"))
+            .filter(|f| {
+                ![
+                    "no measured score error",
+                    "no router evidence",
+                    "missing",
+                    "incomplete",
+                    "malformed",
+                    "pending",
+                    "refused",
+                    "exact checks",
+                ]
+                .iter()
+                .any(|term| f.contains(term))
+            })
             .collect();
         if numerical.is_empty() {
             return Err(refused(format!(
@@ -2610,15 +2624,28 @@ pub fn run_derive(args: &[String]) -> Result<(), Refused> {
     };
     let reference = read(flag("--reference"))?;
     let controls = read(flag("--control"))?;
+    let index_reference = read(flag("--index-reference"))?;
     let out = flag("--out").ok_or_else(|| refused("--out is required"))?;
     let (policy, evidence) = match flag("--rule").as_deref() {
         Some("2.1") => derive_policy(&reference, &controls)?,
         Some("2.2") => derive_policy_v22(&reference, &controls)?,
         Some("2.3") => derive_policy_v23(&reference, &controls)?,
-        _ => return Err(refused("--rule takes 2.1, 2.2, or 2.3")),
+        Some("2.4") => calibration::derive(&reference, &controls, &index_reference)?,
+        _ => return Err(refused("--rule takes 2.1, 2.2, 2.3, or 2.4")),
     };
     let mut value = serde_json::to_value(&policy).map_err(|e| refused(e.to_string()))?;
     value["derivation"] = evidence;
+    let mut input_files = BTreeMap::new();
+    for key in ["--reference", "--control", "--index-reference"] {
+        for path in flag(key)
+            .unwrap_or_default()
+            .split(',')
+            .filter(|p| !p.is_empty())
+        {
+            input_files.insert(path.to_owned(), checked_sha256(Path::new(path))?);
+        }
+    }
+    value["derivation"]["input_files_sha256"] = json!(input_files);
     value["launch_profile"] = json!({
         "prompt_tokens": 2872, "context": 8192, "output_cap": 4096,
         "deadline_seconds": 600, "step_seconds": 75, "prefill": "unchunked",
