@@ -467,6 +467,7 @@ export function housePositions(
   pose: Pose,
   placement: string,
   anchor: { x: number; z: number },
+  template?: Building,
 ) {
   const placed: { x: number; z: number; kind: "cottage" | "townhouse" }[] = [];
   const items = clone(entities),
@@ -507,7 +508,10 @@ export function housePositions(
       scale,
     };
     const proposal = {
-      buildings: { ...next.buildings, [e.id]: newBuilding(e) },
+      buildings: {
+        ...next.buildings,
+        [e.id]: template ? clone(template) : newBuilding(e),
+      },
     };
     try {
       const valid = readTown(proposal, [...items, e]);
