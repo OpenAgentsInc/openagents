@@ -134,6 +134,14 @@ def main():
             plain("PUBLIC_ORIGIN", ORIGIN),
             # The GPUI chat by default (#12226, crates/openagents-web/src/features.rs).
             plain("OPENAGENTS_WEB_FEATURES", "gpui_default,home_account"),
+            # The website's game tenants (#12486), each on its own key; staging
+            # follows their staging channel.
+            plain(
+                "OPENAGENTS_LIVE_GAMES",
+                "haunt=3a45105a95c765d422a7b80e887f697c48ca5d2dc3c811d53acc7c31ae93991e,"
+                "icecream=1eb3f793913c0713bab23d51e1ddd2e02a8a7a3f993259539c9ca8335bc6a043",
+            ),
+            plain("OPENAGENTS_LIVE_GAMES_CHANNEL", "staging"),
             plain("WEB_STATE", "/state"),
             plain("ALT_HOST", ALT_HOST),
             plain("RUN_HOST", RUN_HOST),
