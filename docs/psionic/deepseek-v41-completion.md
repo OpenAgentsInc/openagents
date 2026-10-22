@@ -23,8 +23,9 @@ recovery checks are retained. G1 and G4 numerical release acceptance and
 qualified G8 evidence remain outstanding: rule 2.4 is not frozen, and no
 fresh confirmation oracle has been captured. The separate Maya Pylons run
 Foreman's browser-editor work with an experimental consumer-q profile.
-G5 and G6 still depend on numerical acceptance and paired direct-pipeline
-answer checks; their runtime checks alone do not pass those gates.
+G5 and G6 still depend on numerical acceptance. Paired native direct-pipeline
+G2 checks now pass on both cross-machine placements; the one-quad paired
+check remains pending. Runtime checks alone do not pass those gates.
 
 The entries below retain earlier checks; later sections record their reruns
 and the current worker's evidence.
@@ -1598,3 +1599,39 @@ complete for each case. Rechecking the hashed recordings finds no causal
 index inconsistency. These are independent plain-BF16 CPU calibration
 measurements; their old-policy failures remain visible. The connected
 2,726-token CPU reference still needs to finish before rule 2.4 can freeze.
+
+### Native direct-pipeline answer and resource checks, 2026-10-22
+
+The separate `StageGroup` collector now passes the unchanged frozen G2
+checker on [two-dual](verification/deepseek-v41-gates-2026-10-22/native-direct-two-dual.json)
+and [four-single](verification/deepseek-v41-gates-2026-10-22/native-direct-four-single.json).
+Every task produces the same token IDs as its earlier front-transport run.
+Both native parsers retain the thinking answer's reasoning and final text;
+the five chat tasks have no reasoning. Each placement scores 5/6 against
+5/6, holds the completion/reasoning floor, and retains the shared Fibonacci
+failure. This tests native prompt rendering and the direct stage pipeline;
+the earlier eight-check encrypted Pylon runs cover the job interface.
+
+| Measurement | Two-dual | Four-single |
+| --- | --- | --- |
+| Exact 2,872-token input, final `OK` | 128.872 s | 128.902 s |
+| 4,096-token output, honest `length` finish | 204.151 s | 205.951 s |
+| Median data-socket TCP RTT, stages 0→1 / 1→2 / 2→3 | 17 / 67 / 9 µs | 65 / 64 / 56 µs |
+| Largest observed GPU memory use | 73,319 MiB | 73,319 MiB |
+
+The resource sampler starts before worker loading and runs through all six
+tasks and both boundary probes. GPU memory is a whole-VM observation every
+200 ms, not an exact allocator high-water mark. TCP RTT comes from the
+kernel's estimates on verified worker data sockets, not a one-way
+application latency measurement. Each receipt also retains per-stage
+compute time and per-hop decode bytes. No candidate measurement sets a
+numerical tolerance.
+
+The two-dual collector's immediate remote-stop check still found workers;
+a later read-only check verified both worker processes and GPU contexts
+absent. The exact exit time was not captured. That failed immediate check
+remains recorded. Four-single passed its first remote absence check. Both
+groups drained before the next run. A separate combined 2,872-input /
+4,096-output probe is now running on each placement; it uses bounded remote
+drain polling and remains outside the G2 score. G1, G4, and qualified G8
+acceptance remain pending.

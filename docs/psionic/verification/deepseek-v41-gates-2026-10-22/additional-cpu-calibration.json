@@ -102,5 +102,24 @@
       "index_score_error_max": 4.147634983062744,
       "storage": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/calibration-20261022/reference-cpu4-natural-c71/c3-code-merge"
     }
-  ]
+  ],
+  "finished_cpu_collectors": [
+    {
+      "id": "5cf800f4a9b4467abaecc936add2e480",
+      "vm": "oa-dsv41-gates-cpu3",
+      "reason": "deleted",
+      "stop": "2026-10-22T23:02:04Z",
+      "cost": 25.465343,
+      "instance_id": "5745828073618008726"
+    },
+    {
+      "id": "26a424d93a654d98b0c83d8277c3fa4b",
+      "vm": "oa-dsv41-gates-cpu4",
+      "reason": "deleted",
+      "stop": "2026-10-22T23:03:14Z",
+      "cost": 16.440325,
+      "instance_id": "4395174293407237609"
+    }
+  ],
+  "cleanup_note": "Exact instance IDs, bundle pins, completed collections, and absent worker processes were checked before guard deletion; a subsequent VM inventory found neither machine."
 }
