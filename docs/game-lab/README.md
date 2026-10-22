@@ -15,15 +15,18 @@ The first game is [The Ice Cream Man](../verse/games/the-ice-cream-man.md).
 
 ## Use Game Lab on the website
 
-Open [Game Lab in the Grid](https://openagents.com/?lab=game), or walk up to
-its GAME LAB arch near spawn. Sign in to keep your own versions. Describe a
+Walk up to the GAME LAB arch near spawn on [the Grid](https://openagents.com/)
+and press E, or tap the prompt in the arch on a phone. A link to
+[Game Lab in the Grid](https://openagents.com/?lab=game) opens it as soon as the
+world is ready. Sign in to keep your own versions. Describe a
 change in the chat, play the result, and compare it with the original. Each
 account has separate versions. The server checks edits with 24 seeded bot
 runs, with two checks running at once and up to 24 edits per account per hour.
 The game uses the website's prebuilt browser assets; a request never compiles it.
 
-**Back to the Grid** and Escape close the editor without moving you.
-**Play** opens the game with **Back to Game Lab** above it.
+**Back to the Grid**, Escape, and walking away from the arch close the editor.
+**Play** opens the game with **Back to Game Lab** above it. The panel and its
+buttons are drawn by the homepage's GPUI chat (#12459).
 
 Publishing a saved version as a live Grid zone is tracked in
 [#12431](https://github.com/OpenAgentsInc/openagents/issues/12431).

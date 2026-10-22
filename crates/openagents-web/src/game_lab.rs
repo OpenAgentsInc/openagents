@@ -243,6 +243,51 @@ fn building(card: &Value) -> bool {
     card["build"] == "building"
 }
 
+/// A hosted Game Lab card as the Grid homepage's GPUI panel draws it
+/// (#12459): its words, ready to show, and the games' addresses. The panel
+/// shows the game itself in a frame at `preview`, or both versions' bot
+/// runs side by side when the card compares two.
+pub(crate) fn card_view(card: &Value) -> Value {
+    let version = card["version"].as_u64().unwrap_or(1);
+    let fragment = s(card, "fragment");
+    let side = |side: &Value| {
+        let n = side["version"].as_u64().unwrap_or(0);
+        json!({
+            "version": n,
+            "summary": side["summary"].as_str().unwrap_or_default(),
+            "stats": stats_line(&side["stats"]),
+            "preview": play_src("", n, side["fragment"].as_str().unwrap_or_default(), "&bot&speed=2"),
+        })
+    };
+    let player = card["player"]
+        .as_str()
+        .filter(|p| p.starts_with("/games/the-ice-cream-man#"));
+    let mut view = json!({
+        "title": s(card, "title"),
+        "version": version,
+        "summary": s(card, "summary"),
+        "stats": stats_line(&card["stats"]),
+        "versions": card["versions"].as_array().map_or(0, Vec::len),
+        "preview": play_src("", version, fragment, ""),
+        "play": play_src("", version, fragment, "&skip"),
+        "player": player,
+        "can_compare": version > 1,
+    });
+    if card["compare"].is_object() {
+        let compare = &card["compare"];
+        view["compare"] = json!({
+            "a": side(&compare["a"]),
+            "b": side(&compare["b"]),
+            "differences": compare["differences"].as_array().into_iter().flatten()
+                .filter_map(Value::as_str).collect::<Vec<_>>(),
+            "changes": compare["changes"].as_array().into_iter().flatten()
+                .map(|c| format!("{}: {} \u{2192} {}", c[0].as_str().unwrap_or_default(), shown(&c[1]), shown(&c[2])))
+                .collect::<Vec<_>>(),
+        });
+    }
+    view
+}
+
 /// The card for a Game Lab result: the game in a frame (or two versions
 /// side by side), Play, the bot-run stats, Compare, and a note at a time
 /// and place.

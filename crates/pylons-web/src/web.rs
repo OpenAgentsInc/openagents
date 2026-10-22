@@ -99,6 +99,8 @@ struct Layer {
     /// while.
     groups: RefCell<Vec<machine::GroupScene>>,
     gone: RefCell<Vec<(f64, machine::GroupScene)>>,
+    /// The labels last handed to Verse (#12459).
+    labels: RefCell<Vec<bay::Label>>,
 }
 
 type Shared = Rc<RefCell<Layer>>;
@@ -148,6 +150,7 @@ fn run() -> Option<()> {
         busy_since: BTreeMap::new(),
         groups: RefCell::new(Vec::new()),
         gone: RefCell::new(Vec::new()),
+        labels: RefCell::new(Vec::new()),
     }));
     layer.borrow_mut().layout();
 
@@ -801,6 +804,7 @@ impl Layer {
         // cover one already shown says nothing this frame.
         labels.sort_by(|a, b| b.2.cmp(&a.2).then(a.1.depth.total_cmp(&b.1.depth)));
         let mut shown: Vec<Keep> = Vec::new();
+        let mut drawn: Vec<bay::Label> = Vec::new();
         for (entry, spot, focused) in labels {
             // A model group's members are labeled in the world itself:
             // its sign, its details, and each part's line.
@@ -823,7 +827,37 @@ impl Layer {
                 let _ = classes.toggle_with_force("t1", tier == Tier::Name);
                 let _ = classes.toggle_with_force("t2", tier == Tier::Full);
             }
+            if let Some(anchor) = entry.anchor
+                && let Some(label) = bay::Label::of(
+                    &entry.view,
+                    [
+                        anchor[0],
+                        anchor[1] + entry.shape.top() + TAG_LIFT,
+                        anchor[2],
+                    ],
+                    tier,
+                    focused,
+                )
+            {
+                drawn.push(label);
+            }
         }
+        self.publish_labels(drawn);
+    }
+
+    /// Hands Verse the labels it draws over the machines, when they change.
+    fn publish_labels(&self, labels: Vec<bay::Label>) {
+        if *self.labels.borrow() == labels {
+            return;
+        }
+        if let Ok(json) = serde_json::to_string(&labels) {
+            let _ = js_sys::Reflect::set(
+                &js_sys::global(),
+                &bay::LABELS_GLOBAL.into(),
+                &JsValue::from_str(&json),
+            );
+        }
+        *self.labels.borrow_mut() = labels;
     }
 
     /// Stands the pillar where its anchor is in this frame, or on its

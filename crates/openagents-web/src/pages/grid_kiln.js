@@ -1,21 +1,13 @@
-
-// Presentation glue for Kiln's panel (#12440): the terminal's Kiln control,
-// drawn only for site admins, opens /admin/kiln/ over the Grid. The server
+// Presentation glue for Kiln's panel (#12440, #12459): the terminal's Kiln
+// control, drawn only for site admins, opens it. The GPUI chat draws the
+// panel and asks `homeOverlay` to stand /admin/kiln/ in it. The server
 // refuses that page to everyone else.
-const kilnPanel = document.getElementById('kiln-panel');
-const kilnFrame = document.getElementById('kiln-frame');
 globalThis.homeKiln = open => {
-  if (!open) {
-    kilnPanel.hidden = true;
-    world.focus({preventScroll:true});
+  open = !!open && globalThis.openagentsAdmin === true;
+  globalThis.openagentsKilnOpen = open;
+  if (open) {
+    if (chatField && document.activeElement === chatField) chatField.blur();
     return;
   }
-  if (globalThis.openagentsAdmin !== true) return;
-  // `embed` draws Kiln as an overlay: the run on the right over the world,
-  // its controls in a drawer.
-  if (!kilnFrame.getAttribute('src')) kilnFrame.src = '/admin/kiln/?embed=grid';
-  kilnPanel.hidden = false;
-  if (chatField && document.activeElement === chatField) chatField.blur();
-  kilnFrame.focus();
+  world.focus({preventScroll: true});
 };
-document.getElementById('kiln-close').addEventListener('click', () => homeKiln(false));

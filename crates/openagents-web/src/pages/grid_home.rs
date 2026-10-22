@@ -5,6 +5,13 @@
 //! the page prepares the GPUI chat so approaching the shared terminal
 //! does not wait for its download and first frame.
 //!
+//! Nothing over the world is HTML once Verse and the chat are up (#12459).
+//! Verse draws the walking hint, the machines' labels, and the prompts at
+//! the help desk and under Game Lab's arch. The GPUI chat draws the top
+//! bar, the chat, and Game Lab's and Kiln's panels; the GPUI pylon card
+//! draws a pylon's details. The HTML they replace stays in the page for
+//! screen readers, keyboards, crawlers, and browsers without them.
+//!
 //! Approaching the shared terminal opens the GPUI lander chat. [`me`] (`GET /home/me`, kept at its
 //! first address because the page and older clients call it) tells the top
 //! bar who is signed in, so the page itself stays one cached document:
@@ -65,6 +72,10 @@ header nav a:hover{background:rgba(30,30,30,.7)}\
 header nav a:focus-visible{outline:2px solid #fff;outline-offset:2px}\
 header nav a.solid{background:#ededed;color:#0a0a0a;border-color:#ededed}\
 header nav a.solid:hover{background:#fff}\
+.reveal,.gpui-ready header{clip-path:inset(50%)}\
+.reveal:focus-within,.gpui-ready header:focus-within{clip-path:none}\
+.gpui-ready header nav{pointer-events:none}\
+.gpui-ready header:focus-within nav{pointer-events:auto}\
 #pylons-panel{position:fixed;z-index:3;left:calc(16px + env(safe-area-inset-left));bottom:calc(16px + env(safe-area-inset-bottom));box-sizing:border-box;width:min(340px,calc(100vw - 32px));max-height:40vh;overflow:auto;padding:12px 14px;border-radius:14px;background:rgba(10,10,10,.62);border:1px solid rgba(255,255,255,.1)}\
 #pylons-panel h2{margin:0 0 6px;font-size:13px;font-weight:600}\
 #pylons-panel ul{list-style:none;margin:0;padding:0}\
@@ -73,8 +84,8 @@ header nav a.solid:hover{background:#fff}\
 #pylons-panel button{all:unset}\
 #pylons-field{visibility:hidden;position:fixed;inset:0;z-index:2;pointer-events:none;overflow:hidden}\
 .world-ready #pylons-field{visibility:visible}\
-html:is([data-verse-place=zone],[data-verse-place=loading]) :is(#pylons-field,#grid-controls){visibility:hidden!important}\
-html:has(#game-lab-play:not([hidden])) :is(#pylons-field,#grid-controls,#pylon-card){visibility:hidden!important}\
+html:is([data-verse-place=zone],[data-verse-place=loading]) #pylons-field{visibility:hidden!important}\
+html:has(#game-lab-play:not([hidden])) :is(#pylons-field,#pylon-card){visibility:hidden!important}\
 .pylon{all:unset;position:absolute;left:0;top:0;box-sizing:border-box;cursor:pointer;pointer-events:auto;width:var(--hw);height:var(--h);transform:translate3d(calc(var(--x) - var(--hw) / 2),calc(var(--y) - var(--h)),0);opacity:0;transition:opacity .7s ease,transform .6s cubic-bezier(.2,.8,.2,1)}\
 .pylon.in{opacity:1}\
 .pylon.out,.pylon.hid{opacity:0;pointer-events:none}\
@@ -108,17 +119,10 @@ to{opacity:0;transform:translate(-50%,50%) scale(4.5)}\
 .pylon.sel .base{filter:brightness(1.4)}\
 .pylon:focus-visible{outline:2px solid #fff;outline-offset:4px}\
 #pylons-field.bay .pylon .beam,#pylons-field.bay .pylon .base,#pylons-field.bay .pylon .ring{display:none}\
-#pylons-field.bay .pylon .tag{left:calc(50% + var(--lean,0px));bottom:calc(100% + 4px);opacity:0;transition:opacity .2s ease;pointer-events:none}\
-#pylons-field.bay .pylon.t1 .tag,#pylons-field.bay .pylon.t2 .tag,#pylons-field.bay .pylon:hover .tag{opacity:1}\
-#pylons-field.bay .pylon .tag small,#pylons-field.bay .pylon .tag .slots{display:none}\
-#pylons-field.bay .pylon.t1 .tag b{font-size:11px;font-weight:500;line-height:14px;color:#d4d4d4}\
-#pylons-field.bay .pylon.t2 .tag,#pylons-field.bay .pylon:hover .tag{padding:6px 10px 7px;border-radius:8px;background:rgba(8,8,8,.8);border:1px solid rgba(255,255,255,.14);text-shadow:none}\
-#pylons-field.bay .pylon.t2 .tag b,#pylons-field.bay .pylon:hover .tag b{font-size:12px;line-height:16px;color:#fff}\
-#pylons-field.bay .pylon.group-head .tag,#pylons-field.bay .pylon.group-part .tag{display:none}\
-#pylons-field.bay .pylon.t2 .tag small,#pylons-field.bay .pylon:hover .tag small{display:block;line-height:15px}\
-#pylons-field.bay .pylon.t2 .tag .slots,#pylons-field.bay .pylon:hover .tag .slots{display:flex;margin-top:4px}\
+#pylons-field.bay .pylon .tag{display:none}\
 #pylons-field.bay .pylon:hover{z-index:20000!important}\
-#pylon-card{position:fixed;z-index:5;top:calc(60px + env(safe-area-inset-top));right:calc(16px + env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));width:min(400px,calc(100vw - 32px));max-height:600px;border-radius:16px;overflow:hidden;background:rgba(8,8,8,.82);border:1px solid rgba(255,255,255,.12);-webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);box-shadow:0 24px 90px rgba(0,0,0,.65);opacity:0;visibility:hidden;transform:translateX(14px);transition:opacity .3s cubic-bezier(.22,.8,.3,1),transform .3s cubic-bezier(.22,.8,.3,1),visibility 0s .3s}\
+#pylon-card{position:fixed;z-index:5;top:calc(60px + env(safe-area-inset-top));right:calc(16px + env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));width:min(400px,calc(100vw - 32px));max-height:600px;border-radius:16px;overflow:hidden;opacity:0;visibility:hidden;transform:translateX(14px);transition:opacity .3s cubic-bezier(.22,.8,.3,1),transform .3s cubic-bezier(.22,.8,.3,1),visibility 0s .3s}\
+#pylon-card:not(.ready){background:rgba(8,8,8,.82);border:1px solid rgba(255,255,255,.12)}\
 #pylon-card.open{opacity:1;visibility:visible;transform:none;transition-delay:0s}\
 .pylon-card-mount{position:absolute;inset:0;opacity:0;transition:opacity .25s}\
 .pylon-card-mount canvas{position:absolute}\
@@ -131,6 +135,7 @@ to{opacity:0;transform:translate(-50%,50%) scale(4.5)}\
 #pylon-facts dd{margin:0;color:#ededed;word-break:break-all}\
 #pylon-close{all:unset;position:absolute;z-index:1;top:10px;right:10px;width:32px;height:32px;border-radius:8px;display:grid;place-items:center;cursor:pointer;color:#bdbdbd;font-size:20px;line-height:1}\
 #pylon-close:hover{background:rgba(255,255,255,.08);color:#fff}\
+#pylon-card.ready #pylon-close{color:transparent;background:none}\
 #pylon-close:focus-visible{outline:2px solid #fff}\
 @media (max-width:640px){.pylon .tag{font-size:11px;line-height:14px}\
 .pylon .tag small{font-size:10px}\
@@ -145,19 +150,32 @@ to{opacity:0;transform:translate(-50%,50%) scale(4.5)}\
 #everglade-canvas{transition-duration:.15s}\
 }\
 #pylon-composer{position:fixed;inset:0;z-index:6;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .3s ease,visibility .3s}\
-#pylon-composer.open{opacity:1;visibility:visible}\
-.home-chat-mount{position:absolute;inset:0;pointer-events:none}\
+#pylon-composer.ready{opacity:1;visibility:visible}\
+.game-playing #pylon-composer{z-index:21}\
+.home-chat-mount{position:absolute;inset:0;pointer-events:none;clip-path:inset(50%)}\
+.home-frame{position:fixed;z-index:7;border:0;background:#0b0a08}\
+#kiln-frame{border-radius:0 0 15px 15px}\
+html:has(#kiln-frame:not([hidden])) :is(#pylons-field,#pylon-card){visibility:hidden!important}\
 .home-chat-mount canvas{position:absolute;pointer-events:auto}\
 #lander-chat-keep{position:fixed;pointer-events:none;display:none}\
 @media(prefers-reduced-motion:reduce){#pylon-composer{transition:none}\
 }\
-[hidden]{display:none!important}#game-lab-panel{position:fixed;z-index:7;top:70px;right:20px;width:min(560px,45vw);max-height:calc(100vh - 230px);overflow:auto;padding:16px;border:1px solid #333;border-radius:16px;background:#101010;box-sizing:border-box}.game-lab-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}#game-lab-panel button,#game-lab-back{border:1px solid #555;border-radius:8px;background:#222;color:#eee;padding:8px 12px;cursor:pointer}#game-lab-status{font-size:13px;color:#aaa}#game-lab-card{border:0;width:100%;height:460px;background:#101010}#game-lab-signin{color:#fff}#game-lab-play{position:fixed;inset:0;z-index:20;background:#000}#game-lab-play-frame{width:100%;height:100%;border:0}#game-lab-back{position:absolute;z-index:21;top:16px;left:16px}#kiln-panel{position:fixed;z-index:8;top:calc(60px + env(safe-area-inset-top));left:calc(16px + env(safe-area-inset-left));right:calc(16px + env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;overflow:hidden;border:1px solid #333;border-radius:16px;background:transparent}.kiln-heading{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #2b261d}.kiln-heading strong{flex:1}.kiln-heading a,#kiln-close{border:1px solid #555;border-radius:8px;background:#222;color:#eee;padding:8px 12px;cursor:pointer;font:inherit;font-size:13px;text-decoration:none}#kiln-frame{flex:1;width:100%;border:0;background:transparent;color-scheme:dark}.kiln-heading{background:rgba(11,10,8,.88)}html:has(#kiln-panel:not([hidden])) :is(#pylons-field,#grid-controls,#pylon-card){visibility:hidden!important}@media(max-width:760px){#game-lab-panel{left:12px;right:12px;width:auto;top:60px;max-height:48vh}#game-lab-card{height:320px}}
+[hidden]{display:none!important}\
+#game-lab-panel{position:fixed;z-index:9;top:70px;right:20px;display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid #333;border-radius:14px;background:#101010}\
+#game-lab-panel h2{margin:0;font-size:15px}\
+#game-lab-panel button,#game-lab-back{border:1px solid #555;border-radius:8px;background:#222;color:#eee;padding:8px 12px;cursor:pointer}\
+#game-lab-play{position:fixed;inset:0;z-index:20;background:#000}\
+#game-lab-play-frame{width:100%;height:100%;border:0}\
+#game-lab-back{position:absolute;z-index:22;top:16px;left:16px}\
+#kiln-frame{background:transparent;color-scheme:dark}\
 ";
 
 /// The mark and the name as the page's heading, and the account links
 /// when `account` is on ([`crate::features::Feature::HomeAccount`]). The
 /// empty `<nav>` stays either way: the loader fills it for a signed-in
-/// visitor.
+/// visitor. Once the GPUI chat draws its top bar, the header is
+/// transparent and repeated there, and shows again only while it holds the
+/// keyboard's focus (#12459).
 fn heading(account: bool) -> String {
     let links = if account {
         format!(
@@ -166,23 +184,26 @@ fn heading(account: bool) -> String {
     } else {
         String::new()
     };
-    // Game Lab shows everywhere; its panel offers sign-in to a signed-out
-    // visitor.
-    let game_lab = "<nav aria-label=\"Game Lab\"><a id=\"game-lab-open\" href=\"/?lab=game\">Game Lab</a></nav>";
+    // Game Lab is entered in the world, under its arch (#12459).
     format!(
         "<header data-pylons-keep><h1><svg viewBox=\"0 0 386 386\" fill=\"currentColor\" aria-hidden=\"true\">\
 <path d=\"M292.64 54.39A181 181 0 1 1 93.36 54.39A21 21 0 0 1 116.48 89.46A139 139 0 1 0 269.52 89.46A21 21 0 0 1 292.64 54.39ZM172 21A21 21 0 0 1 214 21V165.5A21 21 0 0 1 172 165.5Z\"/>\
-</svg>OpenAgents</h1>{game_lab}<nav id=\"home-account\" aria-label=\"Account\">\
+</svg>OpenAgents</h1><nav id=\"home-account\" aria-label=\"Account\">\
 {links}</nav></header>"
     )
 }
 
-/// After the list: Verse's canvas and status line, the pillars, the live
-/// announcements, and the pylon card.
+/// After the list: Verse's canvas, its status line and walking hint for
+/// screen readers, the pillars, the live announcements, the pylon card,
+/// and Game Lab's section. The GPUI chat draws Game Lab's panel and Kiln's
+/// (#12459); Game Lab's section repeats the panel's words and controls for
+/// screen readers and keyboards, shown only while it holds the focus.
 const AFTER_LIST: &str = concat!(
     "\
-<canvas id=\"everglade-canvas\" data-ambient tabindex=\"-1\" aria-label=\"The Grid, where people, agents, and pylons meet\">\
+<canvas id=\"everglade-canvas\" data-ambient tabindex=\"-1\" aria-label=\"The Grid, where people, agents, and pylons meet\" aria-describedby=\"grid-controls\">\
 </canvas>\
+<p id=\"grid-controls\" class=\"sr\">\
+Click or WASD to walk. Drag to look. Scroll to zoom. Press E at the help desk or under the Game Lab arch.</p>\
 <p id=\"everglade-status\" class=\"sr\" aria-live=\"polite\">\
 </p>\
 <div id=\"pylons-field\" aria-hidden=\"true\">\
@@ -211,14 +232,21 @@ const AFTER_LIST: &str = concat!(
 </div>\
 \
 ",
-    r#"<section id="game-lab-panel" aria-label="Game Lab" hidden><div class="game-lab-heading"><strong>Game Lab</strong><button id="game-lab-close" type="button">Back to the Grid</button></div><p id="game-lab-status" role="status"></p><a id="game-lab-signin" href="/login?return_to=%2F%3Flab%3Dgame" hidden>Sign in</a><iframe id="game-lab-card" title="Your game" allow="fullscreen" hidden></iframe></section><section id="game-lab-play" aria-label="Play your game" hidden><button id="game-lab-back" type="button">Back to Game Lab</button><iframe id="game-lab-play-frame" title="Play your game" allow="fullscreen"></iframe></section>"#,
-    r#"<section id="kiln-panel" aria-label="Kiln" hidden><div class="kiln-heading"><strong>Kiln</strong><a href="/admin/kiln/" target="_blank" rel="noopener">Open in a new tab</a><button id="kiln-close" type="button">Back to the Grid</button></div><iframe id="kiln-frame" title="Kiln"></iframe></section>"#
+    r#"<section id="game-lab-panel" class="reveal" aria-labelledby="game-lab-name" hidden><h2 id="game-lab-name">Game Lab</h2><p id="game-lab-status" role="status"></p><a id="game-lab-signin" href="/login?return_to=%2F%3Flab%3Dgame" hidden>Sign in</a><button id="game-lab-close" type="button">Back to the Grid</button></section><section id="game-lab-play" aria-label="Play your game" hidden><button id="game-lab-back" class="reveal" type="button">Back to Game Lab</button><iframe id="game-lab-play-frame" title="Play your game" allow="fullscreen"></iframe></section>"#
 );
 
 /// Loads the pylons, Verse, and GPUI chat as separate modules. The pylon
 /// card loads on click. Only the focused GPUI chat input pauses world
 /// controls: the card has nothing to type into, so a click on it hands the
 /// keyboard straight back to the world (#12415).
+///
+/// Once the chat's canvas draws, it stays up over the world: it draws the
+/// top bar, Game Lab's and Kiln's panels, and the chat while it is open
+/// (#12459). Each frame it hands `homeOverlay` the boxes it drew in, and
+/// the canvas is clipped to them so the world under the rest still takes
+/// clicks, and the pages it frames (Kiln, the games) are stood in their
+/// boxes. A game in Game Lab's panel that takes the keyboard as it loads
+/// hands it back to the chat.
 ///
 /// First, unless the browser sends Do Not Track or Global Privacy Control,
 /// it starts the visit's events (#12439, [`crate::analytics::visits`]): a
@@ -289,6 +317,7 @@ const world=document.getElementById(\"everglade-canvas\");\n\
 const syncFocus=()=>world.toggleAttribute(\"data-composing\",chatReady&&terminalNear&&document.activeElement===chatField);\n\
 const syncChat=()=>{const show=terminalNear&&chatReady;\n\
 if(show&&!chatShown)track(globalThis.openagentsChatDesk?\"help_desk_opened\":globalThis.openagentsChatForeman?\"foreman_opened\":\"terminal_opened\");chatShown=show;\n\
+globalThis.openagentsChatOpen=show;\n\
 composer.classList.toggle(\"open\",show);\n\
 composer.setAttribute(\"aria-hidden\",String(!show));\n\
 composer.inert=!show;\n\
@@ -300,8 +329,21 @@ chatField.focus({preventScroll:true});syncFocus()}});\n\
 else if(!show&&document.activeElement===chatField)chatField.blur()}\n\
 syncFocus();\n\
 queueMicrotask(()=>document.dispatchEvent(new Event(\"pylons-keep\")))};\n\
-document.addEventListener(\"pylons-keep\",()=>{const r=keep.getBoundingClientRect();\n\
-chatBox.style.clipPath=`inset(${Math.max(0,r.top)}px ${Math.max(0,innerWidth-r.right)}px ${Math.max(0,innerHeight-r.bottom)}px ${Math.max(0,r.left)}px)`});\n\
+const frames=new Map();\n\
+globalThis.homeOverlay=json=>{let o;try{o=JSON.parse(json)}catch(e){return}\n\
+const box=r=>{const [x,y,w,h]=r.map(Math.round);return`M${x} ${y}h${w}v${h}h${-w}z`};\n\
+chatBox.style.clipPath=o.regions.length?`path(\"${o.regions.map(box).join(\"\")}\")`:\"inset(50%)\";\n\
+const live=new Set();\n\
+for(const f of o.frames){live.add(f.id);let el=frames.get(f.id);const shown=!el||el.hidden;\n\
+if(!el){el=document.createElement(\"iframe\");el.id=f.id+\"-frame\";el.className=\"home-frame\";el.title=f.title;el.allow=\"fullscreen\";\n\
+if(f.keep)el.dataset.keep=\"1\";\n\
+el.addEventListener(\"load\",()=>{try{el.contentWindow.addEventListener(\"keydown\",e=>{if(e.key===\"Escape\")dispatchEvent(new KeyboardEvent(\"keydown\",{key:\"Escape\"}))},true)}catch(e){}\n\
+if(!f.keep){const back=()=>{if(document.activeElement===el&&chatField&&!chatField.disabled)chatField.focus({preventScroll:true})};setTimeout(back);setTimeout(back,800);setTimeout(back,2000)}});\n\
+frames.set(f.id,el);document.body.append(el)}\n\
+if(el.getAttribute(\"src\")!==f.src)el.src=f.src;el.hidden=false;\n\
+Object.assign(el.style,{left:f.x+\"px\",top:f.y+\"px\",width:f.w+\"px\",height:f.h+\"px\"});\n\
+if(shown&&f.keep)el.focus()}\n\
+for(const [id,el] of frames)if(!live.has(id)){if(el.dataset.keep)el.hidden=true;else{el.remove();frames.delete(id)}}};\n\
 const prepareChat=()=>chatAssets||(chatAssets=(async()=>{const dir=\"/lander8/build/\"+await variant()+\"/\";\n\
 return Promise.all([WebAssembly.compileStreaming(fetch(dir+\"openagents_web_lander_chat_bg.wasm\",{priority:\"low\"})),import(dir+\"openagents_web_lander_chat.js\")])})());\n\
 const loadChat=()=>chatLoad||(chatLoad=(async()=>{performance.mark(\"home-chat-start\");\n\
@@ -328,6 +370,7 @@ chatBox.addEventListener(\"gpui-failed\",()=>{observer.disconnect();chatBox.id=\
 no(new Error(\"Chat couldn't open\"))},{once:true});\n\
 chatBox.addEventListener(\"gpui-first-frame\",()=>{chatBox.id=\"home-chat-mount\";\n\
 captureField();observer.disconnect();chatReady=true;\n\
+composer.classList.add(\"ready\");document.documentElement.classList.add(\"gpui-ready\");\n\
 chatStatus.textContent=\"\";\n\
 performance.mark(\"home-chat-ready\");\n\
 syncChat();ok()},{once:true});\n\
@@ -348,7 +391,8 @@ homeTerminal(open)};\n\
 world.addEventListener(\"pointerdown\",()=>{focusPending=false;\n\
 if(chatField&&document.activeElement===chatField)chatField.blur();\n\
 world.focus({preventScroll:true});syncFocus()},true);\n\
-addEventListener(\"keydown\",e=>{if(e.key===\"Escape\"&&terminalNear){if(globalThis.openagentsLab===\"game\")return;e.preventDefault();\n\
+addEventListener(\"keydown\",e=>{if(e.key===\"Escape\"&&globalThis.openagentsKilnOpen){e.preventDefault();e.stopImmediatePropagation();homeKiln(false);return}\n\
+if(e.key===\"Escape\"&&terminalNear){if(globalThis.openagentsLab===\"game\")return;e.preventDefault();\n\
 e.stopImmediatePropagation();homeTerminal(false);world.focus();return}\n\
 if(blocked.has(e.code)&&document.activeElement===chatField){e.preventDefault();e.stopImmediatePropagation();return}\n\
 held.add(e.code)},true);\n\
@@ -406,7 +450,7 @@ canvas.classList.add(\"ready\");\
 document.documentElement.classList.add(\"world-ready\");\
 shown=true;track(\"verse_ready\",{gpu,time:Math.round(performance.now())});\
 idle(1200).then(()=>loadChat()).catch(()=>{});\
-addEventListener(\"verse-stopped\",()=>{canvas.classList.remove(\"ready\");document.documentElement.classList.remove(\"world-ready\");homeTerminal(false)},{once:true})}catch(e){track(\"verse_load_failed\",{gpu,reason:stage})}};\
+addEventListener(\"verse-stopped\",()=>{canvas.classList.remove(\"ready\");document.documentElement.classList.remove(\"world-ready\");homeGameLab(false);homeTerminal(false)},{once:true})}catch(e){track(\"verse_load_failed\",{gpu,reason:stage})}};\
 account();\
 loadLayer().then(verse);\
 ",
@@ -586,12 +630,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn production_hides_the_account_links_but_shows_game_lab() {
+    fn production_hides_the_account_links_and_game_lab_is_in_the_world() {
         let html = main_html("<ul></ul>", false);
         assert!(html.contains("<nav id=\"home-account\" aria-label=\"Account\"></nav>"));
         assert!(!html.contains(">Log in</a>") && !html.contains(">Sign up</a>"));
-        assert!(html.contains("id=\"game-lab-signin\""));
-        assert!(html.contains("id=\"game-lab-open\" href=\"/?lab=game\""));
+        // Game Lab has no button over the world: it opens under its arch
+        // (#12459). Its section keeps the sign-in path for a keyboard.
+        assert!(html.contains("id=\"game-lab-signin\" href=\"/login?return_to=%2F%3Flab%3Dgame\""));
+        assert!(!html.contains("game-lab-open") && !html.contains("href=\"/?lab=game\""));
         assert!(!html.contains("data-off"));
         assert!(!crate::features::Features::default().on(crate::features::Feature::HomeAccount));
     }
@@ -611,7 +657,6 @@ mod tests {
             html.contains("</svg>OpenAgents</h1>")
                 && html.contains("<nav id=\"home-account\" aria-label=\"Account\">")
         );
-        assert!(html.contains("id=\"game-lab-open\" href=\"/?lab=game\""));
         assert!(html.contains("href=\"/login?return_to=%2F\">Log in</a>"));
         assert!(html.contains("href=\"/signup?return_to=%2F\">Sign up</a>"));
         // `/` carries the site's metadata: its preview, canonical address,
@@ -622,6 +667,7 @@ mod tests {
         assert_eq!(html.matches("name=\"description\"").count(), 1);
         assert!(html.contains(list));
         assert!(html.contains("<canvas id=\"everglade-canvas\" data-ambient"));
+        assert!(html.contains("aria-describedby=\"grid-controls\""));
         // The GPUI chat is lazy; there is no HTML composer.
         assert!(html.contains("openagents_web_lander_chat") && html.contains("pylon-composer"));
         for hidden in ["wallet", "Wallet", "sats", "hand-toggle"] {
@@ -647,41 +693,75 @@ mod tests {
 
     #[test]
     fn kiln_opens_in_a_panel_only_for_a_site_admin() {
-        // The panel is in every copy of the cached page, hidden; only a
-        // `/home/me` that says admin lets the terminal's control open it,
-        // and the server refuses `/admin/kiln/` to everyone else (#12440).
+        // The chat draws Kiln's panel and asks the page to stand Kiln's
+        // page in it; only a `/home/me` that says admin lets it open, and
+        // the server refuses `/admin/kiln/` to everyone else (#12440).
         for account in [true, false] {
             let html = main_html("<ul></ul>", account);
-            assert!(html.contains("<section id=\"kiln-panel\" aria-label=\"Kiln\" hidden>"));
-            assert!(
-                html.contains(
-                    "<button id=\"kiln-close\" type=\"button\">Back to the Grid</button>"
-                )
-            );
-            assert!(html.contains("<iframe id=\"kiln-frame\" title=\"Kiln\"></iframe>"));
-            assert!(!html.contains("src=\"/admin/kiln/\""));
+            assert!(!html.contains("kiln-panel") && !html.contains("/admin/kiln/"));
         }
         assert!(LOADER.contains("if(me.admin===true)globalThis.openagentsAdmin=true;"));
         assert!(LOADER.contains("globalThis.homeKiln"));
-        assert!(LOADER.contains("if (globalThis.openagentsAdmin !== true) return;"));
+        assert!(LOADER.contains("open = !!open && globalThis.openagentsAdmin === true;"));
+        assert!(LOADER.contains("globalThis.homeOverlay"));
         assert!(STYLE.contains(
-            "html:has(#kiln-panel:not([hidden])) \
-             :is(#pylons-field,#grid-controls,#pylon-card){visibility:hidden!important}"
+            "html:has(#kiln-frame:not([hidden])) \
+             :is(#pylons-field,#pylon-card){visibility:hidden!important}"
         ));
+    }
+
+    #[test]
+    fn nothing_but_the_world_and_the_gpui_canvas_shows_once_they_are_up() {
+        // #12459: the header shows only until the chat draws its top bar,
+        // and again while it has the keyboard's focus.
+        assert!(STYLE.contains(".reveal,.gpui-ready header{clip-path:inset(50%)}"));
+        assert!(
+            STYLE.contains(".reveal:focus-within,.gpui-ready header:focus-within{clip-path:none}")
+        );
+        assert!(LOADER.contains("document.documentElement.classList.add(\"gpui-ready\")"));
+        // Verse draws the machines' labels; the HTML ones are hidden.
+        assert!(STYLE.contains("#pylons-field.bay .pylon .tag{display:none}"));
+        // The pylon card's panel is GPUI's; the HTML one is the fallback.
+        assert!(STYLE.contains("#pylon-card:not(.ready){background:"));
+        assert!(
+            STYLE.contains("#pylon-card.ready #pylon-close{color:transparent;background:none}")
+        );
+        // The canvas takes no clicks until the chat says where it draws.
+        assert!(STYLE.contains("clip-path:inset(50%)}"));
+        assert!(LOADER.contains("chatBox.style.clipPath=o.regions.length?"));
+        assert!(!LOADER.contains("pylons-keep\",()=>{const r=keep"));
+        // No Game Lab card frame, walking hint, or Kiln chrome in HTML.
+        let html = main_html("<ul></ul>", true);
+        for gone in [
+            "game-lab-card",
+            "game-lab-heading",
+            "kiln-heading",
+            "kiln-close",
+        ] {
+            assert!(!html.contains(gone), "{gone}");
+            assert!(!STYLE.contains(gone), "{gone}");
+        }
+        assert!(html.contains("<section id=\"game-lab-panel\" class=\"reveal\""));
+        assert!(html.contains("<button id=\"game-lab-back\" class=\"reveal\""));
+        assert!(html.contains("<p id=\"grid-controls\" class=\"sr\">"));
+        // Verse opens Game Lab under its arch; the chat draws its panel.
+        assert!(LOADER.contains("globalThis.homeGameLab = open =>"));
+        assert!(LOADER.contains("globalThis.homeGamePlay = src =>"));
+        assert!(LOADER.contains("globalThis.openagentsChatOpen=show;"));
     }
 
     #[test]
     fn the_pylon_overlay_hides_away_from_the_grid_plaza() {
         // Verse marks the root with where the player is (#12438): the
-        // pillars, labels, and walking hint show on the plaza only.
+        // pillars and labels show on the plaza only.
         let rule = "html:is([data-verse-place=zone],[data-verse-place=loading]) \
-                    :is(#pylons-field,#grid-controls){visibility:hidden!important}";
+                    #pylons-field{visibility:hidden!important}";
         assert!(STYLE.contains(rule));
         assert!(STYLE.contains(".world-ready #pylons-field{visibility:visible}"));
         // Game Lab's full-screen Play view hides them too.
         assert!(STYLE.contains(
             "html:has(#game-lab-play:not([hidden])) \
-             :is(#pylons-field,#grid-controls,#pylon-card){visibility:hidden!important}"
+             :is(#pylons-field,#pylon-card){visibility:hidden!important}"
         ));
     }
 

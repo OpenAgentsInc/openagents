@@ -357,6 +357,114 @@ thread_local! {
     static GROUP_CACHE: std::cell::RefCell<GroupCache> = std::cell::RefCell::default();
 }
 
+/// The machines' labels as the layer last handed them over (#12459),
+/// parsed once per handoff.
+#[derive(Default)]
+struct LabelCache {
+    json: String,
+    labels: Vec<bay::Label>,
+}
+
+impl LabelCache {
+    fn refresh(&mut self) {
+        let Some(json) = js_sys::Reflect::get(&js_sys::global(), &bay::LABELS_GLOBAL.into())
+            .ok()
+            .and_then(|v| v.as_string())
+        else {
+            return;
+        };
+        if json != self.json {
+            self.labels = serde_json::from_str(&json).unwrap_or_default();
+            self.json = json;
+        }
+    }
+}
+
+thread_local! {
+    static LABEL_CACHE: std::cell::RefCell<LabelCache> = std::cell::RefCell::default();
+}
+
+/// Each labeled machine's name, or its name, details, and slots up close,
+/// over its top, laid out in CSS pixels on a `size` canvas (#12459). The
+/// layer chose how much each says and kept them from covering each other;
+/// here they follow this frame's camera.
+pub fn draw_labels(
+    ui: &mut verse::ui::UiBatch,
+    atlas: &verse::ui::Atlas,
+    size: [f32; 2],
+    view_proj: Mat4,
+) {
+    let ink = |alpha: f32| crate::theme::linear(coder_ui::coder_noir::CONTENT, alpha);
+    let quiet = |alpha: f32| crate::theme::linear(coder_ui::coder_noir::CONTENT_SECONDARY, alpha);
+    LABEL_CACHE.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        cache.refresh();
+        for label in &cache.labels {
+            let Some([x, y]) = verse::hud::project(view_proj, size, point(label.at)) else {
+                continue;
+            };
+            let pad = if label.full { [10.0, 6.0] } else { [6.0, 3.0] };
+            let box_size = (atlas.line * 0.6).round().max(5.0);
+            let slots_h = if label.total > 0 { box_size + 4.0 } else { 0.0 };
+            let slots_w = label.total as f32 * (box_size + 3.0);
+            let width = label
+                .lines
+                .iter()
+                .map(|line| atlas.measure(line))
+                .fold(atlas.measure(&label.title), f32::max)
+                .max(slots_w)
+                + pad[0] * 2.0;
+            let height = atlas.line * (1 + label.lines.len()) as f32 + slots_h + pad[1] * 2.0;
+            let left = (x - width / 2.0).clamp(4.0, (size[0] - width - 4.0).max(4.0));
+            let top = y - height - 4.0;
+            if top + height < 0.0 || top > size[1] {
+                continue;
+            }
+            ui.rect(
+                atlas,
+                left,
+                top,
+                width,
+                height,
+                verse::ui::field(if label.full { 0.82 } else { 0.55 }),
+            );
+            if label.full {
+                let edge = if label.focused { ink(0.6) } else { quiet(0.35) };
+                ui.frame(atlas, left, top, width, height, 1.0, edge);
+            }
+            ui.text(
+                atlas,
+                left + pad[0],
+                top + pad[1],
+                &label.title,
+                ink(if label.full || label.focused {
+                    1.0
+                } else {
+                    0.85
+                }),
+            );
+            for (i, line) in label.lines.iter().enumerate() {
+                ui.text(
+                    atlas,
+                    left + pad[0],
+                    top + pad[1] + atlas.line * (i + 1) as f32,
+                    line,
+                    quiet(1.0),
+                );
+            }
+            let row = top + pad[1] + atlas.line * (1 + label.lines.len()) as f32 + 3.0;
+            for slot in 0..label.total {
+                let at = left + pad[0] + slot as f32 * (box_size + 3.0);
+                if slot < label.busy {
+                    ui.rect(atlas, at, row, box_size, box_size, ink(1.0));
+                } else {
+                    ui.frame(atlas, at, row, box_size, box_size, 1.0, ink(0.7));
+                }
+            }
+        }
+    });
+}
+
 /// Where a group member stands: the head (0) at the group's foot, part `i`
 /// at its stage's foot, or where the lane puts it when its stage is gone.
 fn member_foot(group: &GroupScene, member: u32) -> Vec3 {

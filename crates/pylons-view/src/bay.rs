@@ -596,6 +596,55 @@ pub fn tag(pylon: &Pylon) -> Tag {
     }
 }
 
+/// The page global the layer hands Verse the machines' labels in, as JSON
+/// ([`Label`]s), whenever one changes (#12459). Verse draws them on its
+/// canvas, so no HTML label stands over the world.
+pub const LABELS_GLOBAL: &str = "pylonsLabels";
+
+/// One machine's label as the layer hands it to Verse: where it stands in
+/// the world, how much it says, and its words.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Label {
+    /// The point over the machine's top the label stands on, m.
+    pub at: [f64; 3],
+    /// [`Tier::Full`] when `true`, else [`Tier::Name`].
+    pub full: bool,
+    pub title: String,
+    pub lines: Vec<String>,
+    /// Its slots, drawn as boxes in a full label; none for a group's part.
+    pub busy: u32,
+    pub total: u32,
+    /// Under the pointer or with its card open.
+    pub focused: bool,
+}
+
+impl Label {
+    /// The label of `pylon` standing at `at`, saying as much as `tier`
+    /// allows; `None` at [`Tier::Hidden`].
+    #[must_use]
+    pub fn of(pylon: &Pylon, at: [f64; 3], tier: Tier, focused: bool) -> Option<Self> {
+        if tier == Tier::Hidden {
+            return None;
+        }
+        let tag = tag(pylon);
+        let full = tier == Tier::Full;
+        let part = pylon.group.as_ref().is_some_and(|g| g.role == "part");
+        Some(Self {
+            at,
+            full,
+            title: tag.title,
+            lines: if full { tag.lines } else { Vec::new() },
+            busy: pylon.busy,
+            total: if full && !part {
+                pylon.total.min(16)
+            } else {
+                0
+            },
+            focused,
+        })
+    }
+}
+
 /// The handoff's version: the first number [`encode`] writes.
 pub const WIRE: f64 = 1.0;
 /// Numbers per stand and per pipe in the handoff.

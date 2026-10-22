@@ -19,6 +19,10 @@ mod cad_sync;
 #[cfg(target_arch = "wasm32")]
 mod chamber;
 #[cfg(target_arch = "wasm32")]
+mod controls_hint;
+#[cfg(target_arch = "wasm32")]
+mod game_lab;
+#[cfg(target_arch = "wasm32")]
 mod grid;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod hand_input;

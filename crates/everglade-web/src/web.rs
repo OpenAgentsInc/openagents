@@ -1371,21 +1371,10 @@ impl Page {
             crate::help_desk::frame(self.runtime.player.pos, self.runtime.is_plaza());
             crate::foreman::frame(now);
             crate::foreman::talk_frame(self.runtime.player.pos, self.runtime.is_plaza());
-            thread_local! { static GAME_NEAR: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
-            let near = GAME_NEAR.with(|old| {
-                // Game Lab stands on the Grid plaza only, never in a zone
-                // (#12438).
-                let near = self.runtime.is_plaza()
-                    && zones::game_place::in_reach(self.runtime.player.pos, old.get());
-                (old.replace(near) != near).then_some(near)
-            });
-            if let Some(near) = near {
-                if let Ok(callback) = Reflect::get(&js_sys::global(), &"homeGameLab".into()) {
-                    if let Some(callback) = callback.dyn_ref::<js_sys::Function>() {
-                        let _ = callback.call1(&JsValue::UNDEFINED, &JsValue::from_bool(near));
-                    }
-                }
-            }
+            // Game Lab opens with E or a tap under its arch, on the Grid
+            // plaza only, never in a zone (#12438, #12459).
+            crate::game_lab::frame(self.runtime.player.pos, self.runtime.is_plaza());
+            crate::controls_hint::frame(self.runtime.player.pos, self.runtime.is_plaza());
         }
         self.advance_trip(now);
         if let Some(frames) = &mut self.frames {
@@ -1755,6 +1744,8 @@ impl Page {
                     crate::foreman::draw(&mut ui, atlas, css, view.view_proj, view.eye, self.now);
                     crate::foreman::draw_prompt(&mut ui, atlas, css, view.view_proj);
                 }
+                crate::game_lab::draw(&mut ui, atlas, css, view.view_proj);
+                crate::controls_hint::draw(&mut ui, atlas, css);
             }
             // A model group's details over its sign, when it is near or
             // pointed at (#12403).
@@ -1770,6 +1761,9 @@ impl Page {
                     self.runtime.player.pos,
                     self.now,
                 );
+                // Every other machine's label, drawn here rather than in
+                // HTML over the world (#12459).
+                crate::pylon_bay::draw_labels(&mut ui, atlas, css, view.view_proj);
             }
             if let Some(atlas) = &self.layout {
                 super::terminal::draw(&mut ui, atlas, css);
@@ -1898,6 +1892,10 @@ impl Page {
         if HOME.with(std::cell::Cell::get)
             && (crate::help_desk::press(at) || crate::foreman::press(at))
         {
+            return true;
+        }
+        // So does Game Lab's, under its arch (#12459).
+        if HOME.with(std::cell::Cell::get) && crate::game_lab::press(at) {
             return true;
         }
         let size = self.css_size();
@@ -2433,14 +2431,17 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             if !walking() {
                 return;
             }
-            // E at the help desk opens the chat there (#12443).
+            // E at the help desk opens the chat there (#12443), and under
+            // Game Lab's arch opens Game Lab (#12459).
             if home
                 && down
                 && !event.repeat()
                 && !event.ctrl_key()
                 && !event.alt_key()
                 && !event.meta_key()
-                && (crate::help_desk::key(&event.code()) || crate::foreman::key(&event.code()))
+                && (crate::help_desk::key(&event.code())
+                    || crate::foreman::key(&event.code())
+                    || crate::game_lab::key(&event.code()))
             {
                 event.prevent_default();
                 return;

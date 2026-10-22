@@ -137,6 +137,42 @@ async fn hosted_routes_require_fresh_sign_in_and_cookie_writes_require_csrf() {
         bob.version(Some(2)).await,
         Err(lab_store::Error::NotFound)
     ));
+    // The Grid homepage's GPUI panel reads the card as JSON (#12459).
+    let response = router
+        .clone()
+        .oneshot(request("GET", "/labs/game/card.json?v=2&a=1", true))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let view: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(view["version"], 2);
+    assert_eq!(view["summary"], "Slower chase");
+    assert_eq!(view["can_compare"], true);
+    assert!(
+        view["play"]
+            .as_str()
+            .unwrap()
+            .starts_with("/games/the-ice-cream-man#")
+    );
+    assert_eq!(view["compare"]["a"]["version"], 1);
+    assert!(
+        view["compare"]["a"]["preview"]
+            .as_str()
+            .unwrap()
+            .ends_with("&bot&speed=2")
+    );
+    assert!(
+        view["compare"]["changes"][0]
+            .as_str()
+            .unwrap()
+            .starts_with("man.man_chase: ")
+    );
+    for line in [&view["stats"], &view["compare"]["b"]["stats"]] {
+        assert!(oa_copy::violations(line.as_str().unwrap(), &[]).is_empty());
+    }
     f.revoked.store(true, std::sync::atomic::Ordering::SeqCst);
     assert_eq!(
         router
@@ -169,6 +205,10 @@ async fn browser_preview() {
     config.lander5 = Some(std::path::Path::new(&assets).join("lander5"));
     config.lander8 = Some(std::path::Path::new(&assets).join("lander8"));
     config.chat = Arc::new(NeverRemote);
+    // The live pylons, for the Grid's Pylon Bay: read only (#12459).
+    if let Ok(relay) = std::env::var("OA_GAME_PREVIEW_RELAY") {
+        config.pylons_relay = Some(relay);
+    }
     let app = crate::router(config.clone());
     eprintln!("Game Lab preview: http://127.0.0.1:{port}/?lab=game");
     eprintln!("Isolated data: {}", fixture.root.path().display());

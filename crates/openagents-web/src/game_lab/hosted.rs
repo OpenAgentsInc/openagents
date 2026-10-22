@@ -443,6 +443,7 @@ async fn measure(content: Value) -> lab_store::Result<Value> {
 pub(crate) fn routes() -> Router<App> {
     Router::new()
         .route("/labs/game/card", get(card))
+        .route("/labs/game/card.json", get(card_json))
         .route("/labs/game/tools/{name}", post(tool))
         .route("/labs/game/session", get(session))
 }
@@ -475,6 +476,23 @@ async fn card(
                 .insert("cache-control", "private, no-store".parse().unwrap());
             response
         }
+        Err(e) => lab_api::ApiError::from(e).into_response(),
+    }
+}
+
+/// The card as the Grid homepage's GPUI panel draws it
+/// ([`super::card_view`], #12459).
+async fn card_json(
+    State(app): State<App>,
+    headers: HeaderMap,
+    Query(query): Query<CardQuery>,
+) -> Response {
+    let hosted = match Hosted::for_request(&app, &headers).await {
+        Ok(h) => h,
+        Err(r) => return r,
+    };
+    match hosted.card(query.v, query.a).await {
+        Ok(card) => private_json(super::card_view(&card)),
         Err(e) => lab_api::ApiError::from(e).into_response(),
     }
 }

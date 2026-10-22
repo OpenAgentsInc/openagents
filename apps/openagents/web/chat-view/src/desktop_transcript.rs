@@ -593,6 +593,7 @@ pub fn page_layout(width: f32, fit_content: bool) -> HostLayout {
         bottom: 16.0,
         side: if width < 600.0 { 16.0 } else { 48.0 },
         fit_content,
+        plates: false,
     }
 }
 
@@ -600,6 +601,16 @@ pub fn page_layout(width: f32, fit_content: bool) -> HostLayout {
 /// holds.
 pub fn fit(transcript: &Entity<Transcript>, width: f32, fit_content: bool, cx: &mut App) {
     let layout = page_layout(width, fit_content);
+    transcript.update(cx, |view, cx| view.set_host_layout(Some(layout), cx));
+}
+
+/// [`fit`], with each reply on a plate of its own, for a transcript drawn
+/// straight over a scene with no card behind it.
+pub fn fit_plated(transcript: &Entity<Transcript>, width: f32, cx: &mut App) {
+    let layout = HostLayout {
+        plates: true,
+        ..page_layout(width, true)
+    };
     transcript.update(cx, |view, cx| view.set_host_layout(Some(layout), cx));
 }
 

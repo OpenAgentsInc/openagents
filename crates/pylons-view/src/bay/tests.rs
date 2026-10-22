@@ -538,3 +538,27 @@ fn a_group_s_sign_spells_its_name() {
     let (_, post) = bounds(&art::sign_post());
     assert!(post[1] > art::SIGN_NAME_Y + 7.0 * art::SIGN_NAME_CELL);
 }
+
+#[test]
+fn a_label_says_its_name_from_afar_and_everything_up_close() {
+    // Verse draws these over the machines; the page draws none (#12459).
+    let mut pylon = pylon("30200:ab:mac", "Mac", "unified-memory");
+    pylon.busy = 1;
+    pylon.total = 2;
+    assert_eq!(
+        super::Label::of(&pylon, [1.0, 2.0, 3.0], super::Tier::Hidden, false),
+        None
+    );
+    let name = super::Label::of(&pylon, [1.0, 2.0, 3.0], super::Tier::Name, false).unwrap();
+    assert!(!name.full && name.lines.is_empty() && name.total == 0);
+    assert_eq!(name.title, pylon.name);
+    let full = super::Label::of(&pylon, [1.0, 2.0, 3.0], super::Tier::Full, true).unwrap();
+    assert!(full.full && full.focused);
+    assert_eq!((full.busy, full.total), (1, 2));
+    assert_eq!(full.lines, super::tag(&pylon).lines);
+    let json = serde_json::to_string(&vec![full.clone()]).unwrap();
+    assert_eq!(
+        serde_json::from_str::<Vec<super::Label>>(&json).unwrap(),
+        vec![full]
+    );
+}

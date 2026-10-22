@@ -179,7 +179,218 @@ pub fn offers_kiln(base: &str, game: bool, admin: bool) -> bool {
     admin && !game && base == HOME_BASE
 }
 
-/// The line over the composer before the first message.
+/// The Grid homepage's overlay (#12459): the page globals and functions
+/// the chat shares with the page's glue and with Verse.
+///
+/// `true` while the chat's composer is open: at the terminal, the help
+/// desk, or in Game Lab.
+pub const CHAT_OPEN_GLOBAL: &str = "openagentsChatOpen";
+/// `true` while Game Lab's panel is open or opening: Verse sets it through
+/// `homeGameLab(open)` when the visitor presses E under the arch.
+pub const GAME_LAB_GLOBAL: &str = "openagentsGameLabOpen";
+/// The page function that opens and closes Game Lab.
+pub const GAME_LAB_CALL: &str = "homeGameLab";
+/// The page function that shows a game full screen, or hides it with
+/// `null`.
+pub const GAME_PLAY_CALL: &str = "homeGamePlay";
+/// `true` while a game is shown full screen; the page's own Back to Game
+/// Lab, for keyboards, sets it back.
+pub const GAME_PLAYING_GLOBAL: &str = "openagentsGamePlaying";
+/// `true` while Kiln's panel is open (`homeKiln(open)`).
+pub const KILN_OPEN_GLOBAL: &str = "openagentsKilnOpen";
+/// The page function that opens and closes the shared terminal's chat.
+pub const TERMINAL_CALL: &str = "homeTerminal";
+/// The page function that clips the chat's canvas to what it draws and
+/// places the frames it draws around (JSON: [`Overlay`]).
+pub const OVERLAY_CALL: &str = "homeOverlay";
+/// The page's account links the top bar repeats: they stay in the page,
+/// for keyboards and screen readers, and a click on the bar clicks them.
+pub const ACCOUNT_LINKS: &str = "#home-account a";
+/// Game Lab's sign-in check and its card, for the panel.
+pub const GAME_SESSION: &str = "/labs/game/session";
+pub const GAME_CARD: &str = "/labs/game/card.json";
+/// Where a signed-out visitor signs in from Game Lab, coming back to it.
+pub const GAME_SIGN_IN: &str = "/login?return_to=%2F%3Flab%3Dgame";
+/// Kiln's page, opened in a new tab, and as the Grid embeds it in the
+/// panel's frame: its run on a translucent panel over the world (#12441).
+pub const KILN_PAGE: &str = "/admin/kiln/";
+pub const KILN_EMBED: &str = "/admin/kiln/?embed=grid";
+
+pub const BRAND: &str = "OpenAgents";
+pub const GAME_LAB: &str = "Game Lab";
+pub const BACK_TO_GRID: &str = "Back to the Grid";
+pub const BACK_TO_LAB: &str = "Back to Game Lab";
+pub const GAME_OPENING: &str = "Opening Game Lab\u{2026}";
+pub const GAME_SIGN_IN_LINE: &str = "Sign in to make your own version.";
+pub const GAME_ASK: &str = "Tell us what you want to change.";
+pub const GAME_CHECKING: &str = "Checking\u{2026}";
+pub const GAME_FAILED: &str = "Game Lab couldn\u{2019}t open. Close it and try again.";
+pub const PLAY: &str = "Play";
+pub const COMPARE: &str = "Compare with the original";
+pub const OWN_WINDOW: &str = "Play in its own window";
+pub const BOT_NOTE: &str =
+    "The bot plays both on the same house. Measured over the same seeded runs:";
+pub const NEW_TAB: &str = "Open in a new tab";
+
+/// A Game Lab card as `GET /labs/game/card.json` gives it (#12459).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct GameCard {
+    pub title: String,
+    pub version: u64,
+    pub summary: String,
+    /// The bot runs' line, ready to show; empty before any run.
+    pub stats: String,
+    pub versions: usize,
+    /// The game in a frame, full screen, and in a window of its own.
+    pub preview: String,
+    pub play: String,
+    pub player: Option<String>,
+    pub can_compare: bool,
+    pub compare: Option<GameCompare>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct GameCompare {
+    pub a: GameSide,
+    pub b: GameSide,
+    pub differences: Vec<String>,
+    pub changes: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct GameSide {
+    pub version: u64,
+    pub summary: String,
+    pub stats: String,
+    pub preview: String,
+}
+
+impl GameCard {
+    /// The card's heading: its title and version.
+    pub fn heading(&self) -> String {
+        format!("{} \u{b7} v{}", self.title, self.version)
+    }
+
+    /// How many versions there are, in words.
+    pub fn versions_words(&self) -> String {
+        match self.versions {
+            1 => "1 version".to_owned(),
+            n => format!("{n} versions"),
+        }
+    }
+}
+
+/// What a Game Lab card from the chat's stream asks for: the version to
+/// show, whether it compares that version with the original, and whether
+/// it plays at once. `None` for any other card.
+pub fn stream_card(cards: &serde_json::Value) -> Option<(u64, bool, bool)> {
+    let list = cards
+        .as_array()
+        .or_else(|| cards.get("cards").and_then(serde_json::Value::as_array))?;
+    let card = list
+        .iter()
+        .find(|card| card["card"] == "game_lab" && card["_hosted"] == true)?;
+    Some((
+        card["version"].as_u64()?,
+        card["compare"].is_object(),
+        card["autoplay"] == true,
+    ))
+}
+
+/// The card's address: `version` (the newest when `None`), compared with
+/// the original when `compare`.
+pub fn game_card_path(version: Option<u64>, compare: bool) -> String {
+    match (version, compare) {
+        (Some(v), true) => format!("{GAME_CARD}?v={v}&a=1"),
+        (Some(v), false) => format!("{GAME_CARD}?v={v}"),
+        (None, _) => GAME_CARD.to_owned(),
+    }
+}
+
+/// What the chat hands the page's `homeOverlay`: the boxes it draws in,
+/// which the page clips its canvas to so the world under the rest still
+/// takes clicks, and the frames it draws around.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
+pub struct Overlay {
+    pub regions: Vec<[f32; 4]>,
+    pub frames: Vec<Frame>,
+}
+
+/// A page shown in a box the chat draws around: Kiln, or a game.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct Frame {
+    pub id: &'static str,
+    pub src: String,
+    pub title: String,
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    /// Kept loaded, hidden, while its box is gone, so it opens again at
+    /// once.
+    pub keep: bool,
+}
+
+/// Where Game Lab's panel goes on a `w` by `h` page: right of the
+/// composer's column on a wide page, over it on a phone.
+pub fn game_panel(w: f32, h: f32) -> Rect {
+    if w < 760. {
+        Rect {
+            x: 12.,
+            y: 60.,
+            w: w - 24.,
+            h: (h * 0.48).max(160.),
+        }
+    } else {
+        let width = 560f32.min(w * 0.45);
+        Rect {
+            x: w - 20. - width,
+            y: 70.,
+            w: width,
+            h: (h - 230.).max(200.),
+        }
+    }
+}
+
+/// `layout` moved left of Game Lab's panel on a page wide enough for
+/// both; unchanged on a phone, where the panel sits over the chat.
+pub fn beside_panel(layout: Layout, w: f32, h: f32) -> Layout {
+    let panel = game_panel(w, h);
+    if w < 760. {
+        return layout;
+    }
+    let gutter = 24.;
+    let col = (panel.x - 2. * gutter).clamp(0., 760.);
+    let x = (panel.x - col) / 2.;
+    Layout {
+        composer: Rect {
+            x,
+            w: col,
+            ..layout.composer
+        },
+        room: Rect {
+            x,
+            w: col,
+            ..layout.room
+        },
+        ..layout
+    }
+}
+
+/// Where Kiln's panel goes: nearly the whole page, under the top bar.
+pub fn kiln_panel(w: f32, h: f32) -> Rect {
+    Rect {
+        x: 16.,
+        y: 60.,
+        w: (w - 32.).max(0.),
+        h: (h - 76.).max(0.),
+    }
+}
+
+/// The line over the composer before the first message./// The line over the composer before the first message.
 pub const WELCOME: &str = "What can we help with?";
 pub const PLACEHOLDER: &str = "Message OpenAgents";
 pub const NEW_CHAT: &str = "New chat";
@@ -595,6 +806,55 @@ mod tests {
     }
 
     #[test]
+    fn game_lab_reads_its_card_and_the_stream_s_cards() {
+        let card: GameCard = serde_json::from_value(serde_json::json!({
+            "title": "The Ice Cream Man", "version": 2, "summary": "Slower chase",
+            "stats": "Bot runs: 3 of 4 escaped", "versions": 2,
+            "preview": "/games/the-ice-cream-man#a", "play": "/games/the-ice-cream-man#a&skip",
+            "player": null, "can_compare": true,
+            "compare": {"a": {"version": 1, "preview": "/games/the-ice-cream-man#o&bot&speed=2"},
+                "b": {"version": 2}, "differences": ["Faster"], "changes": ["man.man_chase: 5 \u{2192} 4"]}
+        }))
+        .unwrap();
+        assert_eq!(card.heading(), "The Ice Cream Man \u{b7} v2");
+        assert_eq!(card.versions_words(), "2 versions");
+        assert_eq!(card.compare.as_ref().unwrap().a.version, 1);
+        // A card the site adds fields to still reads.
+        assert!(serde_json::from_str::<GameCard>(r#"{"version":1,"later":true}"#).is_ok());
+        let stream = serde_json::json!({"cards": [
+            {"card": "other"},
+            {"card": "game_lab", "_hosted": true, "version": 3, "autoplay": true}
+        ]});
+        assert_eq!(stream_card(&stream), Some((3, false, true)));
+        assert_eq!(
+            stream_card(&serde_json::json!([{"card": "game_lab"}])),
+            None
+        );
+        assert_eq!(
+            game_card_path(Some(3), true),
+            "/labs/game/card.json?v=3&a=1"
+        );
+        assert_eq!(game_card_path(None, true), "/labs/game/card.json");
+    }
+
+    #[test]
+    fn the_panels_fit_a_phone_and_a_wide_page() {
+        let wide = game_panel(1440., 900.);
+        assert_eq!((wide.w, wide.x + wide.w), (560., 1420.));
+        let phone = game_panel(390., 844.);
+        assert_eq!((phone.x, phone.w), (12., 366.));
+        assert!(phone.bottom() < Layout::new(390., 844.).composer.y);
+        let beside = beside_panel(Layout::new(1440., 900.), 1440., 900.);
+        assert!(beside.composer.x + beside.composer.w <= wide.x - 24.);
+        assert_eq!(
+            beside_panel(Layout::new(390., 844.), 390., 844.),
+            Layout::new(390., 844.)
+        );
+        let kiln = kiln_panel(390., 844.);
+        assert!(kiln.w > 0. && kiln.bottom() <= 844.);
+    }
+
+    #[test]
     fn the_page_s_words_are_plain() {
         for text in [
             WELCOME,
@@ -609,6 +869,20 @@ mod tests {
             PICK_GROUP_SHORT,
             PICK_ANY,
             PICK_ANY_SHORT,
+            BRAND,
+            GAME_LAB,
+            BACK_TO_GRID,
+            BACK_TO_LAB,
+            GAME_OPENING,
+            GAME_SIGN_IN_LINE,
+            GAME_ASK,
+            GAME_CHECKING,
+            GAME_FAILED,
+            PLAY,
+            COMPARE,
+            OWN_WINDOW,
+            BOT_NOTE,
+            NEW_TAB,
         ] {
             assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
         }

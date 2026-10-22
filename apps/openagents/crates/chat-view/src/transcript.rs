@@ -78,7 +78,27 @@ pub struct HostLayout {
     pub side: f32,
     /// Size to the rows, up to the room the host gives, instead of filling it.
     pub fit_content: bool,
+    /// Set each reply on a plate of its own, for a host that draws the
+    /// transcript straight over a busy scene with no card behind it (the
+    /// Grid homepage, #12459). A reply's rows share one plate.
+    pub plates: bool,
 }
+
+/// A reply's plate when [`HostLayout::plates`] is set: dark enough to read
+/// over the Grid's lines, light enough to show them through.
+pub fn reply_plate_bg() -> gpui::Hsla {
+    gpui::hsla(0.0, 0.0, 0.02, 0.62)
+}
+
+/// The person's own message on a host with plates: a little lighter than a
+/// reply's, so the two still read apart.
+pub fn user_plate_bg() -> gpui::Hsla {
+    gpui::hsla(0.0, 0.0, 0.16, 0.8)
+}
+
+/// A reply plate's inset around its text.
+const PLATE_PAD_X: f32 = 14.0;
+const PLATE_PAD_Y: f32 = 10.0;
 
 /// The engine method that returns a tool's full output or diff.
 pub const FETCH_TOOL_BLOB: &str = "FetchToolBlob";
@@ -6132,7 +6152,11 @@ impl<M: TranscriptMedia> TranscriptView<M> {
                             div()
                                 .min_w_0()
                                 .max_w(px(self.content_width * 0.8))
-                                .bg(crate::theme::user_bubble_bg())
+                                .bg(if self.host_layout.is_some_and(|l| l.plates) {
+                                    user_plate_bg()
+                                } else {
+                                    crate::theme::user_bubble_bg()
+                                })
                                 .rounded(px(Theme::BUBBLE_RADIUS))
                                 .px(px(16.0))
                                 .py(px(10.0))
@@ -6414,8 +6438,56 @@ impl<M: TranscriptMedia> TranscriptView<M> {
                     ))
                 })
         });
+        // On a host with plates, a reply's rows join into one plate: the
+        // gap above a row of the same reply moves inside it, and only the
+        // reply's first and last rows round their corners.
+        let plated = self.host_layout.is_some_and(|layout| layout.plates)
+            && !matches!(row.kind, RowKind::User { .. });
+        let joins_above = plated
+            && ix
+                .checked_sub(1)
+                .and_then(|i| self.rows.get(i))
+                .is_some_and(|above| above.entry_id == row.entry_id);
+        let joins_below = plated
+            && self
+                .rows
+                .get(ix + 1)
+                .is_some_and(|below| below.entry_id == row.entry_id);
+        let (outer_top, plate_top) = if joins_above {
+            (0.0, top_gap)
+        } else {
+            (top_gap, 0.0)
+        };
         let entry_id = row.entry_id.clone();
         let row_id = row.id.clone();
+        let column = div()
+            .w_full()
+            .max_w(px(self.content_width))
+            .min_w_0()
+            .child(inner)
+            .children(after_entry)
+            .children(strip)
+            .children(trailer);
+        let column = if plated {
+            let radius = px(Theme::BUBBLE_RADIUS);
+            div()
+                .w_full()
+                .max_w(px(self.content_width))
+                .min_w_0()
+                .bg(reply_plate_bg())
+                .px(px(PLATE_PAD_X))
+                .pt(px(plate_top + if joins_above { 0.0 } else { PLATE_PAD_Y }))
+                .when(!joins_below, |plate| plate.pb(px(PLATE_PAD_Y)))
+                .when(!joins_above, |plate| {
+                    plate.rounded_tl(radius).rounded_tr(radius)
+                })
+                .when(!joins_below, |plate| {
+                    plate.rounded_bl(radius).rounded_br(radius)
+                })
+                .child(column)
+        } else {
+            column
+        };
         let outer = div()
             .id(row.id.clone())
             .on_hover(cx.listener(move |this, hovered: &bool, _, cx| {
@@ -6446,22 +6518,13 @@ impl<M: TranscriptMedia> TranscriptView<M> {
             .w_full()
             .flex()
             .justify_center()
-            .pt(px(top_gap))
+            .pt(px(outer_top))
             .pb(px(bottom_pad))
             // Keep side gutters as the configurable column shrinks to fit;
             // a docked side card's room comes off the right.
             .pl(px(side_gutter))
             .pr(px(side_gutter + self.right_reserve))
-            .child(
-                div()
-                    .w_full()
-                    .max_w(px(self.content_width))
-                    .min_w_0()
-                    .child(inner)
-                    .children(after_entry)
-                    .children(strip)
-                    .children(trailer),
-            );
+            .child(column);
         let Some(work_id) = row.compact_fold.clone() else {
             return outer.into_any_element();
         };

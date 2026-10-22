@@ -27,6 +27,8 @@ use web_time::Instant;
 
 use crate::model::{self, Layout, Session};
 
+mod grid;
+
 /// How long between tries to reach the site before the first message.
 const RETRY: Duration = Duration::from_secs(3);
 /// The tick while an answer streams or the transcript follows its end.
@@ -107,6 +109,8 @@ pub struct LanderChat {
     /// for the visit's events.
     sent_at: Option<Instant>,
     sent_count: u32,
+    /// The Grid homepage's overlay around the chat (#12459).
+    grid: grid::Grid,
     _ticker: Task<()>,
 }
 
@@ -176,6 +180,7 @@ impl LanderChat {
             ask_flint: false,
             sent_at: None,
             sent_count: 0,
+            grid: grid::Grid::default(),
             _ticker: ticker,
         };
         let kept = kept_pick(this.current.as_deref());
@@ -360,6 +365,9 @@ impl LanderChat {
             );
         }
         self.keep_area();
+        if base() == model::HOME_BASE {
+            self.grid_tick(cx);
+        }
         if self.live.is_some() || self.sending {
             // The working row's timer.
             cx.notify();
@@ -375,8 +383,7 @@ impl LanderChat {
         let shows_card = !self.entries.is_empty() || self.live.is_some() || self.sending;
         let transcript = self.scroll.bounds();
         let mut top = if shows_card && f32::from(transcript.size.height) > 0. {
-            let above = if self.current.is_some() { 42. } else { 0. };
-            f32::from(transcript.origin.y) - 1. - above
+            f32::from(transcript.origin.y) - 1.
         } else {
             layout.composer.y
         };
@@ -621,6 +628,9 @@ impl LanderChat {
                 } else {
                     slot.1.push_str(&text);
                 }
+            }
+            Event::Cards { cards, .. } if base() == model::HOME_BASE => {
+                self.game_cards(&cards, cx);
             }
             Event::Cards { cards, .. } => {
                 if let Ok(callback) =
@@ -904,7 +914,14 @@ impl LanderChat {
     fn render_card(&mut self, layout: &Layout, cx: &mut Context<Self>) -> AnyElement {
         let pad = if layout.narrow { 14. } else { 22. };
         self.publish(cx);
-        desktop_transcript::fit(&self.transcript, layout.room.w, true, cx);
+        // On the Grid homepage the messages float over the world, each
+        // reply on a plate of its own, with no card behind them (#12459).
+        let floats = base() == model::HOME_BASE;
+        if floats {
+            desktop_transcript::fit_plated(&self.transcript, layout.room.w, cx);
+        } else {
+            desktop_transcript::fit(&self.transcript, layout.room.w, true, cx);
+        }
         div()
             .flex()
             .flex_col()
@@ -913,9 +930,11 @@ impl LanderChat {
             .w_full()
             .rounded(px(16.))
             .overflow_hidden()
-            .bg(gpui::hsla(0., 0., 0.035, model::card_alpha(base())))
-            .border_1()
-            .border_color(theme::border_strong())
+            .when(!floats, |card| {
+                card.bg(gpui::hsla(0., 0., 0.035, model::card_alpha(base())))
+                    .border_1()
+                    .border_color(theme::border_strong())
+            })
             .child(
                 // Measured for the area the page keeps clear (`keep_area`).
                 div()
@@ -931,48 +950,43 @@ impl LanderChat {
             .into_any_element()
     }
 
-    /// "New chat", over the card's right edge: there once a chat is open,
-    /// and dimmed while an answer is being written.
-    fn render_new_chat(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    /// "New chat", in the composer's row beside the model choice (#12459):
+    /// there once a chat is open, and dimmed while an answer is being
+    /// written. On a phone it is its icon alone.
+    fn render_new_chat(&self, layout: &Layout, cx: &mut Context<Self>) -> Option<AnyElement> {
         self.current.as_ref()?;
         let busy = self.live.is_some() || self.sending;
         Some(
             div()
+                .id("new-chat")
                 .flex_none()
                 .flex()
                 .flex_row()
-                .justify_end()
+                .items_center()
+                .gap(px(6.))
+                .h(px(32.))
+                .px(px(if layout.narrow { 8. } else { 12. }))
+                .rounded(px(16.))
+                .border_1()
+                .border_color(theme::border_strong())
+                .text_size(px(12.5))
+                .text_color(theme::text_muted())
+                .when(busy, |b| b.opacity(0.4))
+                .when(!busy, |b| {
+                    b.cursor_pointer()
+                        .hover(|style| style.bg(theme::element_hover()).text_color(theme::text()))
+                })
+                .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
+                    this.new_chat(cx);
+                    window.focus(&this.composer.focus_handle(cx), cx);
+                }))
                 .child(
-                    div()
-                        .id("new-chat")
-                        .flex()
-                        .flex_row()
-                        .items_center()
-                        .gap(px(6.))
-                        .px(px(10.))
-                        .h(px(28.))
-                        .rounded(px(14.))
-                        .text_size(px(12.5))
-                        .text_color(theme::text_muted())
-                        .bg(gpui::hsla(0., 0., 0.035, 0.7))
-                        .when(busy, |b| b.opacity(0.4))
-                        .when(!busy, |b| {
-                            b.cursor_pointer().hover(|style| {
-                                style.bg(theme::element_hover()).text_color(theme::text())
-                            })
-                        })
-                        .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
-                            this.new_chat(cx);
-                            window.focus(&this.composer.focus_handle(cx), cx);
-                        }))
-                        .child(
-                            svg()
-                                .path("icons/pen-new-square.svg")
-                                .size(px(14.))
-                                .text_color(theme::text_muted()),
-                        )
-                        .child(model::NEW_CHAT),
+                    svg()
+                        .path("icons/pen-new-square.svg")
+                        .size(px(14.))
+                        .text_color(theme::text_muted()),
                 )
+                .when(!layout.narrow, |b| b.child(model::NEW_CHAT))
                 .into_any_element(),
         )
     }
@@ -1024,6 +1038,9 @@ impl LanderChat {
             .border_color(theme::border_strong())
             .bg(gpui::hsla(0., 0., 0.055, 0.94))
             .child(self.composer.clone())
+            .when_some(self.render_new_chat(layout, cx), |row, new_chat| {
+                row.child(new_chat)
+            })
             .when_some(self.render_kiln(layout), |row, kiln| row.child(kiln))
             .when_some(self.render_pick(layout, cx), |row, pick| row.child(pick))
             .child(send)
@@ -1190,7 +1207,11 @@ impl Render for LanderChat {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let viewport = window.viewport_size();
         let (w, h) = (f32::from(viewport.width), f32::from(viewport.height));
-        let layout = Layout::under(w, h, model::card_top(base(), w, h));
+        let mut layout = Layout::under(w, h, model::card_top(base(), w, h));
+        // Beside Game Lab's panel on a wide page, the chat moves left of it.
+        if base() == model::HOME_BASE && self.grid.lab.state != grid::LabState::Closed {
+            layout = model::beside_panel(layout, w, h);
+        }
         self.layout = Some(layout);
         let shows_card = !self.entries.is_empty() || self.live.is_some() || self.sending;
         let mut column = div()
@@ -1204,9 +1225,6 @@ impl Render for LanderChat {
             .justify_end()
             .gap(px(if layout.narrow { 10. } else { 14. }));
         if shows_card {
-            if let Some(new_chat) = self.render_new_chat(cx) {
-                column = column.child(new_chat);
-            }
             column = column.child(self.render_card(&layout, cx));
         } else if !self.loading && model::welcomes(base()) {
             column = column.child(
@@ -1234,8 +1252,22 @@ impl Render for LanderChat {
             .relative()
             .font_family(theme::SANS)
             .text_color(theme::text())
-            .text_size(px(theme::BODY))
-            .child(column);
+            .text_size(px(theme::BODY));
+        root = if base() != model::HOME_BASE {
+            root.child(column)
+        } else if self.grid.lab.playing.is_some() {
+            // A game full screen: only the way back.
+            root.child(self.render_back(cx))
+        } else {
+            root.child(self.render_bar(layout.narrow, cx))
+                .when(self.grid.open, |root| root.child(column))
+                .when(self.grid.lab.state != grid::LabState::Closed, |root| {
+                    root.child(self.render_lab(w, h, cx))
+                })
+                .when(self.grid.kiln, |root| {
+                    root.child(self.render_kiln_panel(w, h, cx))
+                })
+        };
         root.text_style().font_fallbacks = Some(theme::fallbacks());
         root
     }

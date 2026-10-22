@@ -51,7 +51,7 @@ fn call(open: bool) {
 }
 
 /// Whether the page's pointer is a finger.
-fn touch() -> bool {
+pub(crate) fn touch() -> bool {
     let Some(window) = web_sys::window() else {
         return false;
     };

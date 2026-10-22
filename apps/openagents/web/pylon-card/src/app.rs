@@ -172,15 +172,24 @@ fn slots(busy: u32, total: u32) -> impl IntoElement {
 
 impl Render for PylonCard {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // On the Grid homepage the card is the only thing drawn over the
+        // world: it draws its own panel and close mark, under the page's
+        // transparent close button (#12459). Elsewhere it is a faint tint
+        // over the page's glass (WebGPU draws it on a transparent canvas).
+        let framed = on_grid();
         let mut root = div()
             .id("pylon-card")
             .size_full()
             .flex()
             .flex_col()
             .overflow_y_scroll()
-            // A faint tint over the page's glass (WebGPU draws the card on a
-            // transparent canvas).
-            .bg(gpui::hsla(0., 0., 0.04, 0.4))
+            .when(framed, |root| {
+                root.rounded(px(16.))
+                    .border_1()
+                    .border_color(theme::border_strong())
+                    .bg(gpui::hsla(0., 0., 0.03, 0.9))
+            })
+            .when(!framed, |root| root.bg(gpui::hsla(0., 0., 0.04, 0.4)))
             .font_family(theme::SANS)
             .text_color(theme::text())
             .text_size(px(14.));
@@ -189,6 +198,21 @@ impl Render for PylonCard {
             return root;
         };
         let header = self.header(&shown, cx);
+        if framed {
+            root = root.child(
+                div()
+                    .absolute()
+                    .top(px(16.))
+                    .right(px(16.))
+                    .size(px(20.))
+                    .child(
+                        openagents_web_chat_view::svg()
+                            .path("icons/close.svg")
+                            .size(px(20.))
+                            .text_color(theme::text_muted()),
+                    ),
+            );
+        }
         let mut list = div().flex().flex_col().px(px(20.)).py(px(10.));
         for row in rows(&shown) {
             list = list.child(
@@ -218,4 +242,11 @@ impl Render for PylonCard {
         }
         root.child(header).child(list)
     }
+}
+
+/// Whether the card is on the Grid homepage, `/`.
+fn on_grid() -> bool {
+    web_sys::window()
+        .and_then(|w| w.location().pathname().ok())
+        .is_some_and(|path| path == "/" || path.is_empty())
 }

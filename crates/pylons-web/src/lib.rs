@@ -10,16 +10,19 @@
 //!   and opens a pylon's card on a click or tap through the page's
 //!   `pylonsCard`. Where Verse draws the Bay's machines (the Grid homepage,
 //!   whose canvas carries `data-pylon-bay`), the layer hands Verse the Bay
-//!   as `globalThis.pylonsBay` and only labels the machines: a name from
-//!   afar, everything up close, under the pointer, or with the card open,
-//!   and never one label over another. Elsewhere it stands a glowing pillar
+//!   as `globalThis.pylonsBay` and chooses the machines' labels: a name
+//!   from afar, everything up close, under the pointer, or with the card
+//!   open, and never one label over another. Verse draws them from
+//!   `globalThis.pylonsLabels` (#12459); the page's HTML labels stay
+//!   hidden, and its pillars remain click targets for the pointer and the
+//!   keyboard. Elsewhere it stands a glowing pillar
 //!   per online pylon (rising as its beacon arrives, fading when it goes
 //!   offline or its beacon expires, pulsing when a receipt for one of its
 //!   jobs arrives).
 //!
 //! - The layer belongs to the Grid plaza. When Verse leaves it for a zone
 //!   (its `verse-zone` event and `data-verse-place` on the page's root,
-//!   #12438), the labels, pillars, walking hint, and card hide, and come
+//!   #12438), the labels, pillars, and card hide, and come
 //!   back on return; [`shown_in`] decides.
 //!
 //! The site (`openagents-web`, `src/pages/pylons.rs`) serves the build
