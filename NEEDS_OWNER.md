@@ -1,3 +1,14 @@
+## Check the live Maya work cards (#12524) (2026-10-22)
+
+While signed in, refresh [Verse](https://openagents.com/), walk up to each
+Maya DeepSeek Pylon, and click it. Confirm that its work card shows the
+assigned issue, current action, changed files, and check results.
+
+Both real work feeds and signed-out access checks pass. The dedicated test
+key cannot supply the WorkOS browser cookie this page requires, so the
+signed-in visual check needs your browser session. No owner credentials or
+test account permissions were changed.
+
 ## Publish the openagents repository for Kiln and authorize your Kiln key (#12451) (2026-10-21)
 
 Kiln's patches go to a NIP-34 repository announcement, and its maintainers
