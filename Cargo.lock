@@ -8462,6 +8462,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "haunt-web"
+version = "1.0.0"
+dependencies = [
+ "console_error_panic_hook",
+ "glam",
+ "haunt-assets",
+ "haunt-rules",
+ "icecream-zone",
+ "js-sys",
+ "live-web",
+ "oa-copy",
+ "openagents-workspace-hack",
+ "serde",
+ "serde_json",
+ "toon-mesh",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
 name = "heapless"
 version = "0.7.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
