@@ -38,6 +38,64 @@ use std::{error::Error, path::PathBuf};
 
 type TestResult = Result<(), Box<dyn Error>>;
 
+#[test]
+fn v41_calibration_keeps_cross_column_moments_per_expert() -> TestResult {
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let (cols, experts) = (64, 3);
+    let ids = backend.byte_buffer(
+        &[1_i32, 1, 2]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect::<Vec<_>>(),
+    )?;
+    let mut codes = [
+        vec![0x38_u8; cols],
+        vec![0x40_u8; cols],
+        vec![0x44_u8; cols],
+    ]
+    .concat();
+    codes[1] |= 0x80;
+    codes[cols + 1] |= 0x80;
+    let codes = backend.byte_buffer(&codes)?;
+    let scales = backend.byte_buffer(&[127; 6])?;
+    let moments = backend.byte_buffer(&vec![0; 4 * experts * cols * V41_BLOCK])?;
+    let counts = backend.byte_buffer(&vec![0; 4 * experts])?;
+    let mut submission = backend.begin_submission()?;
+    submission.v41_importance(
+        &ids, 3, 1, false, &codes, &scales, cols, experts, &moments, &counts,
+    )?;
+    submission.commit(CudaCommandWait::Completed)?;
+    let floats = |buffer: &CudaBuffer| -> Result<Vec<f32>, psionic_runtime::RuntimeError> {
+        Ok(buffer
+            .read_bytes()?
+            .chunks_exact(4)
+            .map(|b| f32::from_le_bytes(b.try_into().unwrap()))
+            .collect())
+    };
+    assert_eq!(floats(&counts)?, [0.0, 2.0, 1.0]);
+    let moments = floats(&moments)?;
+    for expert in 0..experts {
+        for j in 0..cols {
+            for k in 0..V41_BLOCK {
+                let column = j / V41_BLOCK * V41_BLOCK + k;
+                let magnitude = [0.0, 5.0, 9.0][expert];
+                let sign = if expert == 1 && ((j == 1) ^ (column == 1)) {
+                    -1.0
+                } else {
+                    1.0
+                };
+                assert_eq!(
+                    moments[(expert * cols + j) * V41_BLOCK + k],
+                    sign * magnitude
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------

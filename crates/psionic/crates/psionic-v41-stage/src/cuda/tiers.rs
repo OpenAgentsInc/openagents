@@ -330,7 +330,7 @@ pub fn stage_options(
 ) -> Result<(V41StageOptions, bool), Refused> {
     tiers.check(experts)?;
     let mut options = V41StageOptions {
-        batched_prefill: tiers.batched_prefill,
+        batched_prefill: tiers.batched_prefill || tiers.dspark,
         fast_reductions: tiers.fast_reductions,
         packed_kv: tiers.packed_kv,
         ..V41StageOptions::default()

@@ -22,6 +22,7 @@ Psionic's own kernels. DFlash2 (CC BY-NC-ND) is not used.
 | `--prefill layer-major` | #12464 | Runs a prompt step layer by layer: projections and routed experts batched over the step's tokens, uncached experts streamed once per layer through a device ring. | Yes |
 | `--kv packed` | #12471 | Keeps the window ring as FP8 codes with a power-of-two scale per 32, and compressed KV and index keys as FP4 codes with a scale per 16 or 32. A whole-model stage only. | Yes |
 | `--experts file --consumer-q DIR` | #12465 | Serves a requantized 2- or 3-bit expert artifact under its own profile name. | **No: lossy, unqualified** |
+| `--dspark` | #12469 | Uses the matching checkpoint's three draft blocks and verifies five proposed tokens together. A whole-model CUDA stage or `chain --split 0-40` only; enables layer-major work. | Greedy tokens stay equal to ordinary decode; sampled output uses target verification. |
 
 A stage with any of these flags announces its own profile:
 `consumer-exact-<profile>` (bit-equal answers, its own configuration) or
@@ -198,9 +199,19 @@ source checkpoint, importance digest, and each file's SHA-256.
   3 bits. `q2q3` keeps gate and up at 2 bits and down at 3 (about 2.6 bits a
   weight, 175 GB); `q3` keeps all three at 3 (about 3.3 bits, 221 GB).
 - The quantizer picks each block's scale by importance-weighted squared
-  error over the columns' calibration mean squares
-  (`chain --prefill layer-major --prompts-jsonl FILE --calibrate-out
-  PREFIX`). There is no GPTQ error feedback yet.
+  error. Calibration (`chain --prefill layer-major --prompts-jsonl FILE
+  --calibrate-out PREFIX`) now records full activation second moments
+  inside each 32-column group, per expert, for GPTQ feedback. After each
+  rounded column, the quantizer adjusts the remaining columns using the
+  inverse Hessian's Cholesky factor, with 1% diagonal damping. It keeps the
+  feedback result only when it lowers that group's measured activation
+  error. Correlations between different groups are not modeled. Old
+  `V41IMP01` mean-square files remain readable and use rounding without
+  feedback; new `V41IMP02` files carry the cross-column moments.
+- Calibration also works with streamed experts. A whole-model calibration
+  needs another 13.6 GiB on the device; choose an explicit smaller cache,
+  such as `--experts file --expert-cache slots:64 --engram file` on the
+  96 GB card. The ordinary serving path allocates none of this storage.
 - A stage serving it announces the profile `consumer-q-cuda-device-sm_NN`,
   so a group expecting the exact profile refuses it.
 - The quality card (`scripts/bench/deepseek-v41/consumer_q_card.py`)
@@ -209,6 +220,16 @@ source checkpoint, importance digest, and each file's SHA-256.
   oracle token's log-probability error against the oracle's decode logits;
   G2 suite 2 runs through `g2_check.py` beside the oracle's and the exact
   runtime's answers.
+
+For a batch of teacher-forced cases, each `--prompts-jsonl` line can name
+its own `prompt_ids`, `mode`, and `force_ids`. `--capture DIR` writes
+separate `round-N` folders for multiple rounds. Each folder's
+`request.json` records the prompt, forced history, checkpoint index, and
+consumer artifact manifest hash; the card refuses a prompt, mode, or
+history that differs from the oracle. Nonemitting prefill steps are
+recorded separately from the answer's logits. The independent evaluation
+inputs are frozen in
+[`consumer_q_evaluation.json`](../../scripts/bench/deepseek-v41/consumer_q_evaluation.json).
 
 Calibration ran on one `g4-standard-192` (64 prompts, layer-major prefill,
 39 minutes), and the quantizer then wrote both recipes in 25 s a layer each
@@ -219,6 +240,36 @@ The artifact matches the checkpoint's experts to within the expected error
 down). Served single box, `q2q3` decodes at 26.4 tok/s (p50 37.7 ms, 48% of
 experts in slots, 97% hits), but its answers are garbage from the first
 token, so the profile isn't usable yet; see #12465.
+
+## DSpark drafting (#12469)
+
+Add `--dspark` to a whole-model CUDA worker's existing single-box flags,
+or to `chain --split 0-40 --gpus 0`. It needs at least six step tokens.
+The worker announces `consumer-exact-dspark-<cuda-profile>` (or
+`consumer-q-dspark-<cuda-profile>` with the lossy experts), so drafting is
+an explicit serving choice. A front still sends and receives one token at
+a time: the worker keeps the verified answers ready for later steps. A
+changed input or sampling setting discards the unused answers and restores
+the state for the inputs the front actually sent.
+
+The drafter comes from the pinned MIT `DeepSeek-V4.1-Flash-1017`
+checkpoint's `mtp.*` tensors: three window-only CUDA blocks, reading the
+backbone's stream means before layers 37–39, with its Markov and confidence
+heads. The backbone embedding and output head stay shared. This is a Rust
+and CUDA reimplementation of that checkpoint's `inference/model.py`;
+the incompatible V4 preview drafter and DFlash2 are not used.
+
+Verification returns the target logits after each of six inputs: the
+pending token and five proposals. Greedy decoding accepts only the target
+argmax. Sampling accepts with `min(1, p/q)` and, on rejection, draws from
+normalized `(p-q)+`. A rejected suffix restores device window rows,
+compressor groups, compressed KV and index keys, selections, candidate
+flags, the backbone features, and both device and host Engram history,
+then replays only the accepted prefix. This first version favors complete
+state restoration over avoiding that replay. Invalid verification output
+also restores the saved state before returning an error. `chain --dspark` records
+proposed and accepted counts, accepted prefix lengths, acceptance rate, replayed tokens, and
+measured decode throughput in its answer records.
 
 ## Cost
 

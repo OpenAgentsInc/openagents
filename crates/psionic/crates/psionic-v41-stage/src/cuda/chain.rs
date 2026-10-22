@@ -72,6 +72,7 @@ use psionic_models::{
     stage_state::{CodecLimits, Section, StageInbox, StageMessage, StageWorker, StepKind, encode},
 };
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 use super::{CudaModel, V41CudaStageExecutor};
 use crate::{
@@ -85,6 +86,8 @@ pub const CHAIN_SCHEMA: &str = "openagents.deepseek_v41.chain_run.v1";
 /// What `chain` was asked to do.
 #[derive(Clone, Debug)]
 pub struct ChainOptions {
+    /// Use the checkpoint's DSpark draft blocks on a single GPU.
+    pub dspark: bool,
     pub weights: PathBuf,
     pub split: Vec<Range<u32>>,
     pub gpus: Vec<usize>,
@@ -190,6 +193,7 @@ impl ChainOptions {
         };
         let mode = flag(args, "--mode").map_or(Ok(PromptMode::Thinking), PromptMode::parse)?;
         Ok(Self {
+            dspark: args.iter().any(|a| a == "--dspark"),
             weights,
             split,
             gpus,
@@ -584,7 +588,7 @@ fn stage_thread(
                 let stage = worker.executor().stage();
                 if let Some(prefix) = &options.calibrate_out {
                     let calibration = stage
-                        .calibration()
+                        .calibration_hessians()
                         .map_err(|e| Refused(format!("calibration: {e}")))?
                         .unwrap_or_default();
                     let shape = stage.config().shape;
@@ -594,7 +598,7 @@ fn stage_thread(
                         entry.first_layer,
                         entry.end_layer
                     ));
-                    super::consumer_q::Importance::write(
+                    super::consumer_q::Importance::write_hessians(
                         &path,
                         &calibration,
                         shape.router.experts,
@@ -717,6 +721,9 @@ fn text_side(weights: &Path) -> Result<(Vocabulary, u32, u32), Refused> {
 /// Any refusal of a stage, the model, or the prompt.
 #[allow(clippy::too_many_lines)]
 pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
+    if options.dspark {
+        return super::dspark::run(options);
+    }
     let manifest = checkpoint_manifest(&options.split, &options.gpus)?;
     let keep = |name: &str, bytes: &[u8]| -> Result<(), Refused> {
         if let Some(dir) = &options.capture {
@@ -732,6 +739,16 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
         keep("manifest.json", &json)?;
     }
     let (vocabulary, eos, pad) = text_side(&options.weights)?;
+    let consumer_q_manifest_sha256 = options
+        .tiers
+        .consumer_q
+        .as_ref()
+        .map(|dir| {
+            std::fs::read(dir.join("manifest.json"))
+                .map(|bytes| hex::encode(Sha256::digest(bytes)))
+                .map_err(|e| Refused(format!("can't read the consumer-q manifest: {e}")))
+        })
+        .transpose()?;
     let tokenizer = vocabulary.tokenizer();
     let mode = options.mode;
     // A `--prompts-jsonl` line may carry exact `prompt_ids` and its own
@@ -760,6 +777,18 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             .collect::<Result<_, _>>()?
     };
     let prompt_ids = round_prompts[0].clone();
+    let round_forced: Vec<Option<Vec<u32>>> = options
+        .prompts
+        .iter()
+        .map(|p| {
+            p.get("force_ids")
+                .map(|ids| {
+                    serde_json::from_value(ids.clone())
+                        .map_err(|e| Refused(format!("force_ids: {e}")))
+                })
+                .transpose()
+        })
+        .collect::<Result<_, _>>()?;
     let mut threads = Vec::new();
     let loaded_stages = if options.first_stage_only {
         1
@@ -869,8 +898,41 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             round_prompts.len()
         };
         for round in 0..rounds {
+            let keep_root = &keep;
+            let prefix = if rounds > 1 {
+                format!("round-{round}/")
+            } else {
+                String::new()
+            };
+            if let Some(dir) = &options.capture {
+                std::fs::create_dir_all(dir.join(&prefix)).map_err(|e| {
+                    Refused(format!("can't create the round's capture folder: {e}"))
+                })?;
+            }
+            let keep = |name: &str, bytes: &[u8]| keep_root(&format!("{prefix}{name}"), bytes);
+            let forced = round_forced
+                .get(round)
+                .and_then(Option::as_ref)
+                .or(options.force_ids.as_ref());
+            let max_tokens = forced.map_or(options.max_tokens, |ids| {
+                options.max_tokens.min(ids.len() as u64)
+            });
             let prompt_ids = round_prompts[round % round_prompts.len()].clone();
             let mode = round_modes.get(round).copied().unwrap_or(mode);
+            keep(
+                "request.json",
+                serde_json::to_string_pretty(&json!({
+                    "prompt_ids": prompt_ids,
+                    "force_ids": forced,
+                    "mode": mode.as_str(),
+                    "max_tokens": max_tokens,
+                    "runtime": options.runtime,
+                    "checkpoint_index_sha256": manifest.index_sha256,
+                    "consumer_q_manifest_sha256": consumer_q_manifest_sha256,
+                }))
+                .map_err(|e| Refused(e.to_string()))?
+                .as_bytes(),
+            )?;
             let last = threads.len() - 1;
             let digest = manifest.digest();
             let mut parser = AnswerParser::new(std::sync::Arc::clone(&tokenizer), eos, mode);
@@ -889,7 +951,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             let mut position = 0_u64;
             let mut step = 0_u64;
             let mut produced = 0_u64;
-            while produced < options.max_tokens {
+            while produced < max_tokens {
                 let Some(input) = pending.pop() else {
                     break;
                 };
@@ -1003,14 +1065,14 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
                 tokens.push(token);
                 raw.push_str(&text.push(&tokenizer, token));
                 if matches!(vocabulary, Vocabulary::V41(_)) {
-                    let piece = parser.push(token, produced >= options.max_tokens)?;
+                    let piece = parser.push(token, produced >= max_tokens)?;
                     reasoning.push_str(&piece.reasoning);
                     content.push_str(&piece.content);
                     if piece.finish.is_some() {
                         finish = piece.finish;
                     }
                 }
-                let next = match &options.force_ids {
+                let next = match forced {
                     Some(forced) => match forced.get(tokens.len() - 1) {
                         Some(t) => *t,
                         None => break,

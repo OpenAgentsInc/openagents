@@ -39,6 +39,8 @@ def safetensor(path, name):
 
 
 def log_softmax(x):
+    if x.ndim != 1 or not x.size or not np.isfinite(x).all():
+        raise ValueError("Logits must be a nonempty finite vector")
     m = np.max(x)
     return x - m - math.log(np.sum(np.exp(x - m)))
 
@@ -49,7 +51,28 @@ def captured(folder):
     for path in Path(folder).glob("step-*.logits.f32"):
         steps.append((int(path.name.split("-")[1].split(".")[0]), path))
     steps.sort()
+    if not steps:
+        raise ValueError(f"{folder}: no captured logits")
+    first = steps[0][0]
+    if [step for step, _ in steps] != list(range(first, first + len(steps))):
+        raise ValueError(f"{folder}: captured answer steps have gaps")
+    for step in range(first):
+        metadata = Path(folder) / f"step-{step}.json"
+        if not metadata.is_file() or json.loads(metadata.read_text()).get("emit") is not False:
+            raise ValueError(f"{folder}: no prefill record for skipped step {step}")
     return [np.fromfile(p, dtype=np.float32).astype(np.float64) for _, p in steps]
+
+
+def validate_request(folder, oracle, positions):
+    request = json.loads((Path(folder) / "request.json").read_text())
+    if request["prompt_ids"] != oracle["prompt_token_ids"]:
+        raise ValueError(f"{folder}: prompt tokens differ from the oracle")
+    if oracle.get("thinking_mode") is not None and request.get("mode") != oracle["thinking_mode"]:
+        raise ValueError(f"{folder}: prompt mode differs from the oracle")
+    forced = request.get("force_ids")
+    if not isinstance(forced, list) or forced[:positions] != oracle["generated_ids"][:positions]:
+        raise ValueError(f"{folder}: forced history differs from the oracle")
+    return request
 
 
 def main():
@@ -66,16 +89,21 @@ def main():
         run = json.loads((oracle_dir / case / "run.json").read_text())
         generated = run["generated_ids"]
         logits = captured(folder)
+        request = validate_request(folder, run, len(logits))
         for k, q in enumerate(logits):
             name = f"{case}.decode.g{k + 1}.logits"
             if name not in files or k >= len(generated):
-                break
+                raise ValueError(f"{case}: no matching oracle position for capture step {k}")
             o = safetensor(oracle_dir / files[name], name)
+            if o.shape != q.shape:
+                raise ValueError(f"{case}: oracle and capture vocabulary sizes differ")
             lo, lq = log_softmax(o), log_softmax(q)
             po, pq = np.exp(lo), np.exp(lq)
             kl = float(np.sum(po * (lo - lq)))
             tv = float(0.5 * np.sum(np.abs(po - pq)))
             ref = generated[k]
+            if not isinstance(ref, int) or not 0 <= ref < len(o):
+                raise ValueError(f"{case}: oracle token is outside the vocabulary")
             row = {
                 "label": label,
                 "case": case,
@@ -84,6 +112,9 @@ def main():
                 "tv": tv,
                 "top1_agrees": int(np.argmax(o)) == int(np.argmax(q)),
                 "ref_logprob_error": float(lq[ref] - lo[ref]),
+                "runtime": request["runtime"],
+                "checkpoint_index_sha256": request["checkpoint_index_sha256"],
+                "consumer_q_manifest_sha256": request.get("consumer_q_manifest_sha256"),
             }
             rows.append(row)
             pooled.setdefault(label, []).append(row)
@@ -103,6 +134,8 @@ def main():
     card = {
         "schema": "openagents.deepseek_v41.consumer_q_card.v1",
         "issue": 12465,
+        "lossy": True,
+        "qualified": False,
         "note": "Teacher-forced decode logits against the oracle's at the same positions. consumer-q is lossy and unqualified.",
         "summary": summary,
         "rows": rows,

@@ -143,7 +143,7 @@ impl PrefillWork {
         backend: &mut CudaBackend,
         config: &V41StageConfig,
         max: usize,
-        stream: Option<(crate::v41_expert_lane::V41ExpertDims, usize)>,
+        stream: Option<([(usize, usize); 3], usize)>,
     ) -> Result<Self, RuntimeError> {
         let shape = config.shape;
         let g = shape.attention;
@@ -259,13 +259,13 @@ impl PrefillWork {
             .write_bytes_at_offset(0, &words(&identity))?;
         this.dense_tiles
             .write_bytes_at_offset(0, &words(&dense_tiles))?;
-        if let Some((dims, slots)) = stream {
+        if let Some((parts, slots)) = stream {
             let slots = slots.max(1);
             let mut stacks = Vec::new();
             let mut staging = Vec::new();
             let mut ptrs = Vec::new();
             for p in 0..3 {
-                let (wb, sb) = dims.part_bytes(p);
+                let (wb, sb) = parts[p];
                 let w = backend.byte_buffer(&vec![0; wb * slots])?;
                 let sc = backend.byte_buffer(&vec![0; sb * slots])?;
                 bytes += w.byte_len() + sc.byte_len();
@@ -392,7 +392,7 @@ impl V41Stage {
         if missing.is_empty() {
             return Ok(());
         }
-        let streamer = cache.streamer();
+        let streamer = cache.streamer(model_layer);
         let dims = streamer.dims;
         let ptrs = ring.staging_ptrs;
         let groups: Vec<Vec<usize>> = missing.chunks(ring.slots).map(<[usize]>::to_vec).collect();
@@ -987,6 +987,9 @@ impl V41Stage {
                 let mut s = backend.begin_submission()?;
                 s.set_v41_fast_reductions(self.fast_reductions);
                 s.set_v41_packed_kv(self.packed_kv);
+                if let Some(capture) = &self.dspark {
+                    capture.record(&mut s, lw.layer, r[cur], &p.pos, tokens)?;
+                }
                 if let Some(eng) = &lw.engram {
                     let rows = tokens * V41_ENGRAM_COLUMNS;
                     let (ids, table) = match &self.engram_staging {
@@ -1341,8 +1344,9 @@ impl V41Stage {
                     &p.routed_tiles,
                     &p.routed_count,
                 )?;
-                let routed_format =
-                    |proj: usize| cached.map_or(fp4, |(cache, _)| cache.dims.formats[proj]);
+                let routed_format = |proj: usize| {
+                    cached.map_or(fp4, |(cache, _)| cache.layer_dims(lw.layer).formats[proj])
+                };
                 for (proj, packed, out) in [(0, &lw.w1, &p.g), (2, &lw.w3, &p.u)] {
                     s.v41_block_matmul(
                         routed_format(proj),
@@ -1402,12 +1406,6 @@ impl V41Stage {
                     V41Output::Bf16,
                 )?;
                 s.v41_act_quant_fp8(&p.hh, &p.codes, &p.scales, entries, e)?;
-                if let Some(cal) = p.calibration.as_ref().map(|c| &c[i]) {
-                    s.v41_importance(
-                        &p.ids, entries, k, false, &p.codes, &p.scales, e, experts, &cal[2],
-                        &cal[3],
-                    )?;
-                }
                 s.v41_block_matmul(
                     routed_format(1),
                     lw.w2.as_ref().map(Packed::matrix),
@@ -1457,6 +1455,27 @@ impl V41Stage {
                 stats.synchronizations += 1;
             }
             self.stream_routed(backend, i, tokens, stats)?;
+            if let Some(p) = self.prefill.as_ref().filter(|p| p.calibration.is_some()) {
+                let cal = &p
+                    .calibration
+                    .as_ref()
+                    .ok_or_else(|| invalid("calibration"))?[i];
+                let mut s = backend.begin_submission()?;
+                s.v41_act_quant_fp8(&p.hh, &p.codes, &p.scales, tokens * k, e)?;
+                s.v41_importance(
+                    &p.ids,
+                    tokens * k,
+                    k,
+                    false,
+                    &p.codes,
+                    &p.scales,
+                    e,
+                    experts,
+                    &cal[2],
+                    &cal[3],
+                )?;
+                s.commit(crate::CudaCommandWait::Completed)?;
+            }
             lap = self.prefill_lap(lap, 8);
             {
                 // The expert sum and the FFN expansion, for every token.
@@ -1495,6 +1514,9 @@ impl V41Stage {
             &p.mf
         };
         let residual = if cur == 0 { &p.r } else { &p.r2 };
+        if let Some(capture) = &self.dspark {
+            capture.keep_tail(&mut s, residual, previous, tokens)?;
+        }
         if c.samples() {
             s.copy_buffer_region(
                 residual,
@@ -1584,16 +1606,15 @@ impl V41Stage {
 
 impl V41Stage {
     /// Starts collecting calibration sums for the `consumer-q` quantizer
-    /// (#12465) during layer-major prompt steps. Every expert must run on
-    /// the device, so a stage with an expert cache is refused.
+    /// (#12465) during layer-major prompt steps, including streamed experts.
+    /// Each 32-column group keeps its full activation second moments for
+    /// GPTQ feedback. Reserve `4 × experts × (hidden + width) × 32` bytes
+    /// per layer when choosing an expert cache size.
     ///
     /// # Errors
     ///
-    /// Refuses a stage without the layer-major prefill or with a cache.
+    /// Refuses a stage without layer-major prefill or enough device memory.
     pub fn enable_calibration(&mut self, backend: &mut CudaBackend) -> Result<(), RuntimeError> {
-        if self.expert_cache.is_some() {
-            return Err(invalid("calibration needs every expert on the device"));
-        }
         let shape = self.config.shape;
         let (h, e, n) = (shape.hidden, shape.expert_width, shape.router.experts);
         let layers = self.layers.len();
@@ -1604,9 +1625,9 @@ impl V41Stage {
         let mut all = Vec::with_capacity(layers);
         for _ in 0..layers {
             all.push([
-                backend.byte_buffer(&vec![0; 4 * n * h])?,
+                backend.byte_buffer(&vec![0; 4 * n * h * V41_BLOCK])?,
                 backend.byte_buffer(&vec![0; 4 * n])?,
-                backend.byte_buffer(&vec![0; 4 * n * e])?,
+                backend.byte_buffer(&vec![0; 4 * n * e * V41_BLOCK])?,
                 backend.byte_buffer(&vec![0; 4 * n])?,
             ]);
         }
@@ -1622,6 +1643,30 @@ impl V41Stage {
     ///
     /// Any device read failure.
     pub fn calibration(
+        &self,
+    ) -> Result<Option<BTreeMap<usize, (Vec<f32>, Vec<f32>)>>, RuntimeError> {
+        Ok(self.calibration_hessians()?.map(|layers| {
+            layers
+                .into_iter()
+                .map(|(layer, (input, hidden))| {
+                    let diagonal = |data: Vec<f32>| {
+                        data.chunks_exact(V41_BLOCK * V41_BLOCK)
+                            .flat_map(|h| (0..V41_BLOCK).map(move |j| h[j * V41_BLOCK + j]))
+                            .collect()
+                    };
+                    (layer, (diagonal(input), diagonal(hidden)))
+                })
+                .collect()
+        }))
+    }
+
+    /// Per-expert 32-column activation second moments, normalized by the
+    /// number of routed entries. Both parts use `[expert, group, 32, 32]`.
+    ///
+    /// # Errors
+    ///
+    /// Returns any device read failure.
+    pub fn calibration_hessians(
         &self,
     ) -> Result<Option<BTreeMap<usize, (Vec<f32>, Vec<f32>)>>, RuntimeError> {
         let Some(cal) = self.prefill.as_ref().and_then(|p| p.calibration.as_ref()) else {

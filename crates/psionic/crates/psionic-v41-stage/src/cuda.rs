@@ -27,6 +27,7 @@
 
 pub mod chain;
 pub mod consumer_q;
+pub mod dspark;
 pub mod synthetic;
 pub mod tiers;
 
@@ -97,6 +98,7 @@ pub fn wire_geometry(shape: &V41StageShape) -> V41StageGeometry {
 
 /// W9's [`StageExecutor`] over W7's [`V41Stage`] on one GPU.
 pub struct V41CudaStageExecutor {
+    dspark: Option<dspark::Streaming>,
     backend: CudaBackend,
     stage: V41Stage,
     geometry: V41StageGeometry,
@@ -127,6 +129,7 @@ impl V41CudaStageExecutor {
         let next = (!stage.config().samples())
             .then(|| stage_contract(&geometry, index + 1, layers.end..layers.end + 1));
         Self {
+            dspark: None,
             backend,
             stage,
             geometry,
@@ -382,10 +385,15 @@ impl StageExecutor for V41CudaStageExecutor {
             candidates: candidates.as_deref(),
             sampling: self.sampling.get(),
         };
-        let out = self
-            .stage
-            .step_with_output(&self.backend, &input, self.observe, self.emit.get())
-            .map_err(|e| fail(format!("the CUDA stage failed: {e}")))?;
+        let out = match &mut self.dspark {
+            Some(dspark) => dspark
+                .step(&mut self.stage, &self.backend, &input, self.emit.get())
+                .map_err(fail)?,
+            None => self
+                .stage
+                .step_with_output(&self.backend, &input, self.observe, self.emit.get())
+                .map_err(|e| fail(format!("the CUDA stage failed: {e}")))?,
+        };
         self.sampled.set(None);
         if self.next.is_none() && self.emit.get() {
             let token = out
@@ -399,6 +407,9 @@ impl StageExecutor for V41CudaStageExecutor {
     fn reset(&mut self, _request_id: &str) {
         // A request restarts at position 0, which clears the device state.
         self.sampled.set(None);
+        if let Some(dspark) = &mut self.dspark {
+            dspark.reset();
+        }
     }
 }
 
@@ -427,6 +438,9 @@ impl StageBackend for V41CudaStageExecutor {
     }
 
     fn logits(&self) -> Option<Vec<f32>> {
+        if let Some(dspark) = &self.dspark {
+            return dspark.logits.clone();
+        }
         self.next
             .is_none()
             .then(|| self.stage.logits().ok())
@@ -626,6 +640,18 @@ enum CudaWeights {
 }
 
 impl CudaModel {
+    /// Opens the backbone and MTP tensors together and verifies their
+    /// shard bytes against the same pin used by an ordinary stage.
+    pub(super) fn load_dspark(dir: &Path) -> Result<Self, Refused> {
+        let model = Self::load(dir, None)?;
+        if let CudaWeights::Checkpoint(checkpoint, _) = &model.kind {
+            checkpoint
+                .verify_shard_hashes(None)
+                .map_err(|e| Refused(format!("DSpark checkpoint verification: {e}")))?;
+        }
+        Ok(model)
+    }
+
     /// Loads the model in `dir`: the synthetic model, or the checkpoint's
     /// shards for `selection` (hashed against the pin).
     ///
@@ -640,7 +666,7 @@ impl CudaModel {
                 digest: model.digest,
                 eos: synthetic::EOS,
                 pad: synthetic::PAD,
-                kind: CudaWeights::Synthetic(Box::new(synthetic::store(synthetic::SEED))),
+                kind: CudaWeights::Synthetic(Box::new(synthetic::dspark_store(synthetic::SEED))),
                 experts_on_host: false,
                 experts: crate::Experts::Device,
                 tiers: crate::HostTiers::default(),
@@ -900,14 +926,36 @@ pub fn cuda_worker_for(
     control: Option<Control>,
 ) -> Result<StageWorker<V41CudaStageExecutor>, Refused> {
     let mut backend = cuda_backend()?;
-    let stage = model.stage_for(
+    if model.tiers.dspark
+        && (observe || control.is_some() || entry.first_layer != 0 || entry.end_layer != 40)
+    {
+        return Err(Refused(
+            "--dspark needs an ordinary whole-model CUDA stage".into(),
+        ));
+    }
+    let reservation = if model.tiers.dspark && matches!(&model.kind, CudaWeights::Checkpoint(..)) {
+        Some(
+            psionic_backend_cuda::v41_stage::dspark::Drafter::reservation(&mut backend)
+                .map_err(|e| Refused(e.to_string()))?,
+        )
+    } else {
+        None
+    };
+    let mut stage = model.stage_for(
         &mut backend,
         entry.first_layer as usize..entry.end_layer as usize,
         max_context,
         observe,
         control,
     )?;
+    drop(reservation);
+    let dspark = if model.tiers.dspark {
+        Some(dspark::Streaming::load(model, &mut backend, &mut stage)?)
+    } else {
+        None
+    };
     let mut executor = V41CudaStageExecutor::new(backend, stage, entry.stage);
+    executor.dspark = dspark;
     if control == Some(Control::StaleCache) {
         executor = executor.with_stale_cache();
     }
@@ -936,7 +984,22 @@ pub fn run_stage(
     let mask = std::env::var("CUDA_VISIBLE_DEVICES").ok();
     let device = crate::select_device(mask.as_deref(), options.gpu)?;
     unsafe { std::env::set_var("CUDA_VISIBLE_DEVICES", device) };
-    let mut model = CudaModel::load(&options.weights, selection)?;
+    if options.tiers.dspark
+        && (options.observe
+            || options.control.is_some()
+            || entry.first_layer != 0
+            || entry.end_layer != 40
+            || options.max_step_tokens < 6)
+    {
+        return Err(Refused(
+            "--dspark needs an ordinary whole-model CUDA stage and at least six step tokens".into(),
+        ));
+    }
+    let mut model = if options.tiers.dspark {
+        CudaModel::load_dspark(&options.weights)?
+    } else {
+        CudaModel::load(&options.weights, selection)?
+    };
     model.experts_on_host = options.experts == crate::Experts::Host;
     model.experts = options.experts;
     model.tiers = options.tiers.clone();
@@ -948,6 +1011,15 @@ pub fn run_stage(
         ));
     }
     let mut backend = cuda_backend()?;
+    let reservation = if options.tiers.dspark && matches!(&model.kind, CudaWeights::Checkpoint(..))
+    {
+        Some(
+            psionic_backend_cuda::v41_stage::dspark::Drafter::reservation(&mut backend)
+                .map_err(|e| Refused(e.to_string()))?,
+        )
+    } else {
+        None
+    };
     let mut loaded = model.stage_with(
         &mut backend,
         entry.first_layer as usize..entry.end_layer as usize,
@@ -966,12 +1038,19 @@ pub fn run_stage(
             .enable_fp8_reference()
             .map_err(|e| Refused(e.to_string()))?;
     }
+    drop(reservation);
+    let dspark = if options.tiers.dspark {
+        Some(dspark::Streaming::load(model, &mut backend, &mut loaded)?)
+    } else {
+        None
+    };
     let device = device_info(&backend, options.experts);
     if let Some(plan) = tiers::memory_plan(&loaded) {
         // The single-box plan, once at load, for the operator's log (#12467).
         eprintln!("{}", serde_json::json!({"memory_plan": plan}));
     }
     let mut executor = V41CudaStageExecutor::new(backend, loaded, entry.stage);
+    executor.dspark = dspark;
     if options.control == Some(Control::StaleCache) {
         executor = executor.with_stale_cache();
     }
