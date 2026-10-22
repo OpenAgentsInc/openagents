@@ -321,7 +321,7 @@ async fn paused(store: &Store) -> bool {
     value["paused"].as_bool().unwrap_or(false)
 }
 
-fn origins() -> Vec<String> {
+pub(crate) fn origins() -> Vec<String> {
     std::env::var(ORIGINS_ENV)
         .unwrap_or_else(|_| "https://openagents.com".into())
         .split(',')
@@ -331,7 +331,7 @@ fn origins() -> Vec<String> {
 }
 
 /// The Foreman's key commands must be signed by.
-fn foreman_key() -> String {
+pub(crate) fn foreman_key() -> String {
     std::env::var("OPENAGENTS_FOREMAN_PUBKEY")
         .ok()
         .map(|k| k.trim().to_ascii_lowercase())
@@ -353,6 +353,25 @@ pub(crate) fn verify(
     key: &str,
     origins: &[String],
 ) -> Result<String, &'static str> {
+    verify_at(
+        authorization,
+        body,
+        now,
+        key,
+        origins,
+        grid_foreman::COMMANDS_PATH,
+    )
+}
+
+/// Check the same signed HTTP contract for one explicitly selected route.
+pub(crate) fn verify_at(
+    authorization: Option<&str>,
+    body: &[u8],
+    now: u64,
+    key: &str,
+    origins: &[String],
+    path: &str,
+) -> Result<String, &'static str> {
     let token = authorization
         .and_then(|h| h.strip_prefix("Nostr "))
         .filter(|t| t.len() <= MAX_BYTES)
@@ -373,10 +392,7 @@ pub(crate) fn verify(
     let url: Vec<&str> = event.tag_values("u").collect();
     let method: Vec<&str> = event.tag_values("method").collect();
     let payload: Vec<&str> = event.tag_values("payload").collect();
-    let url_ok = url.len() == 1
-        && origins
-            .iter()
-            .any(|o| url[0] == format!("{o}{}", grid_foreman::COMMANDS_PATH));
+    let url_ok = url.len() == 1 && origins.iter().any(|o| url[0] == format!("{o}{path}"));
     if !url_ok || method != ["POST"] {
         return Err("foreman_bad_signature");
     }

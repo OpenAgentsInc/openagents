@@ -37,6 +37,7 @@ mod layertree;
 pub mod live;
 mod pricing;
 pub mod profile;
+mod pylon_work;
 mod pylons;
 mod pylons_field;
 mod retired;
@@ -118,6 +119,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(affiliates::routes())
         .merge(everglade::routes())
         .merge(pylons::routes())
+        .merge(pylon_work::routes())
         .merge(lander8::routes())
         .merge(lander10::routes())
         .merge(lander11::routes())
