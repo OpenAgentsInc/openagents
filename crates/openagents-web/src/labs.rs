@@ -723,6 +723,95 @@ impl Door for LabsDoor {
 mod tests {
     use super::*;
 
+    /// The dictation path's model step, live (#12485): spoken requests, as
+    /// dictation types them into Game Lab's chat, go to the real chat model
+    /// with the house's tools, and the house changes. Needs Vertex
+    /// credentials (`GOOGLE_APPLICATION_CREDENTIALS`); writes what happened
+    /// to `HAUNT_DICTATION_OUT` when set.
+    #[tokio::test]
+    #[ignore = "calls the live chat model"]
+    async fn spoken_requests_reach_the_house_tools() {
+        let Some(gemini) = Gemini::from_env_for(vertex::ARGON) else {
+            panic!("no Vertex credentials");
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut results = Vec::new();
+        for (said, check) in [
+            ("turn the music down", "music"),
+            ("make it louder", "master"),
+            ("make the parlor glow orange like jack o lanterns", "parlor"),
+            (
+                "add a werewolf in the long hall that howls when you get near",
+                "werewolf",
+            ),
+        ] {
+            let hosted = Arc::new(crate::game_lab::hosted::Hosted::for_test(
+                dir.path(),
+                &format!("dictation-{check}"),
+                false,
+            ));
+            let before = hosted.haunt_version(None).await.unwrap().content;
+            let labs = vec![Lab {
+                kind: Kind::Game,
+                url: String::new(),
+                tools: game_lab::haunt::tools()["tools"]
+                    .as_array()
+                    .unwrap()
+                    .clone(),
+                documents: vec![
+                    json!({"id": game_lab::haunt::HAUNTED_HOUSE, "title": game_lab::haunt::TITLE, "kind": haunt_rules::KIND, "versions": 1}),
+                ],
+                hosted: None,
+                platform: None,
+                game: Some(hosted.clone()),
+            }];
+            let turns = vec![Turn {
+                role: TurnRole::User,
+                text: said.into(),
+                meta: None,
+                request: None,
+                stopped: false,
+                at: None,
+                model: None,
+            }];
+            let store = crate::chat_store::Store::local(dir.path().join("chat"));
+            let instructions = guidance(&labs, None);
+            let started = std::time::Instant::now();
+            let ending = converse(&gemini, &store, &labs, &instructions, &turns).await;
+            let after = hosted.haunt_version(None).await.unwrap();
+            let changed = match check {
+                "music" => {
+                    after.content["audio"]["music"].as_f64() < before["audio"]["music"].as_f64()
+                }
+                "master" => {
+                    after.content["audio"]["master"].as_f64() > before["audio"]["master"].as_f64()
+                }
+                "parlor" => after.content["areas"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|a| a["id"] == "parlor" && a["light"]["preset"] == "jack-o-glow"),
+                _ => {
+                    after.content.to_string().contains("\"werewolf\"")
+                        && after.content.to_string().contains("howl-wolf")
+                }
+            };
+            let answer = match &ending {
+                Ok(Ending::Answer { text, .. }) => text.clone(),
+                Ok(Ending::Handoff) => "(handed off)".into(),
+                Err(e) => format!("(error: {e})"),
+            };
+            results.push(
+                json!({"said": said, "version": after.number, "summary": after.summary,
+                "changed": changed, "seconds": started.elapsed().as_secs_f64(), "answer": answer}),
+            );
+            assert!(changed, "{said}: {answer}");
+        }
+        if let Ok(path) = std::env::var("HAUNT_DICTATION_OUT") {
+            std::fs::write(path, serde_json::to_string_pretty(&results).unwrap()).unwrap();
+        }
+    }
+
     fn labs() -> Vec<Lab> {
         vec![
             Lab {

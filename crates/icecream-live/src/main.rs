@@ -12,6 +12,10 @@
 //! icecream-live grid     DIR                            deploy a Grid build as tenant `grid`
 //! ```
 //!
+//! A deploy to the website's store takes `--store gs://BUCKET` and
+//! `--key FILE` (the game tenant's own deploy key), and `--relay` the
+//! website's relay; `scripts/deploy/games.sh` runs it.
+//!
 //! Every command takes `--work DIR` (default `~/.openagents/icecream-live`),
 //! `--relay URL` (default `ws://127.0.0.1:7448`, from
 //! `crates/livehost/scripts/relay.sh`), and `--host URL` (default
@@ -63,7 +67,14 @@ impl Args {
         let relay = self
             .value("--relay")
             .unwrap_or_else(|| "ws://127.0.0.1:7448".into());
-        host::Work { dir, relay }
+        let store = self.value("--store");
+        let key = self.value("--key").map(PathBuf::from);
+        host::Work {
+            dir,
+            relay,
+            store,
+            key,
+        }
     }
 
     pub fn host(&mut self) -> String {
@@ -374,6 +385,7 @@ pub async fn rollback_once(
     work: &host::Work,
     host: &str,
     tenant: &str,
+    channel: &str,
     wait: Option<(Duration, usize)>,
 ) -> Result<serde_json::Value> {
     let started = epoch_ms();
@@ -381,7 +393,7 @@ pub async fn rollback_once(
         Some(_) => Some(host::Acks::open(host).await?),
         None => None,
     };
-    let report = work.rollback(tenant, "live").await?;
+    let report = work.rollback(tenant, channel).await?;
     let manifest = report.manifest.clone().unwrap_or_default();
     let mut line = serde_json::json!({
         "manifest": manifest,
@@ -399,7 +411,14 @@ fn rollback(mut args: Args) -> Result<()> {
     let host = args.host();
     let wait = args.wait()?;
     let tenant = args.game()?.tenant();
-    let line = runtime()?.block_on(rollback_once(&work, &host, tenant, wait.map(|w| (w, 1))))?;
+    let channel = args.value("--channel").unwrap_or_else(|| "live".into());
+    let line = runtime()?.block_on(rollback_once(
+        &work,
+        &host,
+        tenant,
+        &channel,
+        wait.map(|w| (w, 1)),
+    ))?;
     println!("{line}");
     Ok(())
 }

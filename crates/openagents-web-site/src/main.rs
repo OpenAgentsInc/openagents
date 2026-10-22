@@ -550,6 +550,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Ok(false) => {}
         Err(error) => eprintln!("openagents-web: {error}; serving compiled-in content"),
     }
+    // Game tenants (The Haunted House, The Ice Cream Man) at /t/<tenant>/,
+    // when OPENAGENTS_LIVE_GAMES names them (#12486).
+    match openagents_web::live_games::start_from_env() {
+        Ok(tenants) if !tenants.is_empty() => {
+            println!("Following game tenants: {}", tenants.join(", "))
+        }
+        Ok(_) => {}
+        Err(error) => eprintln!("openagents-web: {error}; no game tenants"),
+    }
     let analytics = std::sync::Arc::new(openagents_web::analytics::Analytics::from_env()?);
     if analytics.has_store() {
         analytics.spawn();

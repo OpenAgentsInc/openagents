@@ -152,6 +152,8 @@ to{opacity:0;transform:translate(-50%,50%) scale(4.5)}\
 #pylon-composer{position:fixed;inset:0;z-index:6;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .3s ease,visibility .3s}\
 #pylon-composer.ready{opacity:1;visibility:visible}\
 .game-playing #pylon-composer{z-index:21}\
+.hosted-open #pylon-composer{z-index:21}\
+html.hosted-open :is(#pylons-field,#pylon-card,#pylons-panel,header){visibility:hidden!important}\
 .home-chat-mount{position:absolute;inset:0;pointer-events:none;clip-path:inset(50%)}\
 .home-frame{position:fixed;z-index:7;border:0;background:#0b0a08}\
 .kiln-open :is(#pylons-field,#pylon-card){visibility:hidden!important}\
@@ -320,7 +322,8 @@ if(show&&!chatShown)track(globalThis.openagentsChatDesk?\"help_desk_opened\":glo
 globalThis.openagentsChatOpen=show;\n\
 composer.classList.toggle(\"open\",show);\n\
 composer.setAttribute(\"aria-hidden\",String(!show));\n\
-composer.inert=!show;\n\
+// A hosted zone open takes its Back to the Grid from the chat.\n\
+composer.inert=!show&&!globalThis.openagentsHostedZone;\n\
 keep.style.display=show?\"block\":\"none\";\n\
 if(chatField){chatField.disabled=!show;\n\
 if(show&&focusPending)requestAnimationFrame(()=>{if(focusPending&&terminalNear&&chatReady){focusPending=false;\n\
@@ -338,12 +341,16 @@ for(const f of o.frames){live.add(f.id);let el=frames.get(f.id);const shown=!el|
 if(!el){el=document.createElement(\"iframe\");el.id=f.id+\"-frame\";el.className=\"home-frame\";el.title=f.title;el.allow=\"fullscreen\";\n\
 if(f.keep)el.dataset.keep=\"1\";\n\
 el.addEventListener(\"load\",()=>{try{el.contentWindow.addEventListener(\"keydown\",e=>{if(e.key===\"Escape\")dispatchEvent(new KeyboardEvent(\"keydown\",{key:\"Escape\"}))},true)}catch(e){}\n\
-if(!f.keep){const back=()=>{if(document.activeElement===el&&chatField&&!chatField.disabled)chatField.focus({preventScroll:true})};setTimeout(back);setTimeout(back,800);setTimeout(back,2000)}});\n\
+if(!f.keep&&!f.focus){const back=()=>{if(document.activeElement===el&&chatField&&!chatField.disabled)chatField.focus({preventScroll:true})};setTimeout(back);setTimeout(back,800);setTimeout(back,2000)}});\n\
 frames.set(f.id,el);document.body.append(el)}\n\
 if(el.getAttribute(\"src\")!==f.src)el.src=f.src;el.hidden=false;\n\
 Object.assign(el.style,{left:f.x+\"px\",top:f.y+\"px\",width:f.w+\"px\",height:f.h+\"px\"});\n\
-if(shown&&f.keep)el.focus()}\n\
+if(shown&&(f.keep||f.focus))el.focus()}\n\
 for(const [id,el] of frames)if(!live.has(id)){if(el.dataset.keep)el.hidden=true;else{el.remove();frames.delete(id)}}};\n\
+// A hosted zone walked into on the Grid (#12487): the chat stands its page full screen with\n\
+// Back to the Grid; the house's mic sends words to Game Lab's chat (#12485).\n\
+globalThis.homeHostedOpen=t=>{globalThis.openagentsHostedZone=t||null;document.documentElement.classList.toggle(\"hosted-open\",!!t);syncChat();if(t)loadChat().catch(()=>{});else world.focus({preventScroll:true})};\n\
+globalThis.homeChatSay=t=>{t=String(t||\"\").trim().slice(0,500);if(t)globalThis.openagentsChatSay=t};\n\
 const prepareChat=()=>chatAssets||(chatAssets=(async()=>{const dir=\"/lander8/build/\"+await variant()+\"/\";\n\
 return Promise.all([WebAssembly.compileStreaming(fetch(dir+\"openagents_web_lander_chat_bg.wasm\",{priority:\"low\"})),import(dir+\"openagents_web_lander_chat.js\")])})());\n\
 const loadChat=()=>chatLoad||(chatLoad=(async()=>{performance.mark(\"home-chat-start\");\n\
@@ -660,6 +667,18 @@ mod tests {
         assert!(!html.contains("game-lab-open") && !html.contains("href=\"/?lab=game\""));
         assert!(!html.contains("data-off"));
         assert!(!crate::features::Features::default().on(crate::features::Feature::HomeAccount));
+    }
+
+    #[test]
+    fn the_loader_has_no_stray_escapes_and_opens_hosted_zones_through_the_chat() {
+        // A doubled escape in a line continuation reaches the page as a
+        // backslash and stops the whole module.
+        assert!(!LOADER.contains("\\n"), "a stray \\n in the loader");
+        assert!(LOADER.contains("globalThis.homeHostedOpen="));
+        assert!(LOADER.contains("globalThis.homeChatSay="));
+        assert!(LOADER.contains("f.keep||f.focus"));
+        // The chat's Back to the Grid takes clicks while a zone is open.
+        assert!(LOADER.contains("composer.inert=!show&&!globalThis.openagentsHostedZone"));
     }
 
     #[test]

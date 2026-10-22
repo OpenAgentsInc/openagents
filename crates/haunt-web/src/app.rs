@@ -91,6 +91,8 @@ struct App {
     fired: Vec<String>,
     live: Option<Live>,
     follow: Option<crate::follow::Follow>,
+    /// The mic button, in a house Game Lab shows on the Grid.
+    mic: Option<crate::mic::Mic>,
     /// The library page shown, in library mode.
     library: Option<usize>,
     /// The sound test's progress: the next sound and when, and what played.
@@ -179,6 +181,7 @@ impl App {
             fired: Vec::new(),
             live: None,
             follow: None,
+            mic: None,
             library: None,
             sound_test: None,
             played: Vec::new(),
@@ -349,7 +352,17 @@ impl App {
             let origin = self.window.location().origin().unwrap_or_default();
             let _ = parent.post_message(&message, &origin);
         } else {
-            let _ = self.window.location().set_href("/");
+            let here = self.window.location().origin().unwrap_or_default();
+            let came = self
+                .window
+                .document()
+                .map(|d| d.referrer())
+                .unwrap_or_default();
+            if !here.is_empty() && came.starts_with(&here) {
+                let _ = self.window.history().and_then(|h| h.back());
+            } else {
+                let _ = self.window.location().set_href("/");
+            }
         }
     }
 
@@ -379,6 +392,15 @@ impl App {
                 self.say("Music louder");
             }
             "grid" => self.back_to_grid(),
+            "mic" => {
+                if let Some(mic) = &self.mic {
+                    self.sound.wake();
+                    mic.toggle();
+                    if mic.listening() {
+                        self.say("Listening… say what to change");
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -403,6 +425,7 @@ impl App {
             "Escape" | "Tab" if self.mode == Mode::Playing => self.mode = Mode::Menu,
             "Escape" if self.mode == Mode::Menu => self.begin(),
             "g" | "G" => self.act("gentle"),
+            "v" | "V" => self.act("mic"),
             "m" | "M" => {
                 self.muted = !self.muted;
                 self.sound.set_levels(self.levels(), 0.05);
@@ -780,6 +803,11 @@ impl App {
         }
         if let Some((_, centre, thumb)) = self.touch_move {
             view.stick = Some((centre, thumb));
+        }
+        if matches!(self.mode, Mode::Playing | Mode::Menu)
+            && let Some(mic) = &self.mic
+        {
+            view.mic = Some(mic.listening());
         }
         if let Some(page) = self.library {
             view.title = None;
@@ -1278,6 +1306,23 @@ impl App {
         self.live = Some(live);
     }
 
+    /// Sends what the mic heard to Game Lab's chat.
+    fn pump_mic(&mut self) {
+        let Some(mic) = &self.mic else { return };
+        match mic.take() {
+            crate::mic::Heard::Words(text) => {
+                let sent = crate::mic::say(&text);
+                self.say(&if sent {
+                    format!("Sent: \u{201c}{text}\u{201d}")
+                } else {
+                    "Game Lab's chat isn't open. Open it to change the house.".to_owned()
+                });
+            }
+            crate::mic::Heard::Missed => self.say("The mic didn't catch that. Try again."),
+            _ => {}
+        }
+    }
+
     /// A newer version from the followed address, applied in place.
     fn pump_follow(&mut self) {
         let Some(found) = self.follow.as_mut().and_then(crate::follow::Follow::pump) else {
@@ -1310,6 +1355,7 @@ impl App {
         self.last = now_ms;
         self.pump_live();
         self.pump_follow();
+        self.pump_mic();
         self.step(dt);
         self.render();
         self.publish(false);
@@ -1415,6 +1461,7 @@ fn launch_with(
         app.install_assets(assets);
     }
     app.live = live;
+    app.mic = follow.as_ref().and_then(|_| crate::mic::Mic::new());
     app.follow = follow;
     let hash = window.location().hash().unwrap_or_default();
     // `#at=X,Z[,YAW]` stands the player there, and `#begin` starts at

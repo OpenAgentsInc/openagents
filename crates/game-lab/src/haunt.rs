@@ -538,12 +538,14 @@ pub fn tools() -> Value {
 /// What the chat's model is told about the house.
 #[must_use]
 pub fn guidance() -> &'static str {
-    "\nThe Haunted House (the-haunted-house) is changed with the haunt_* tools, one edit a call. Read it with \
-haunt_describe first (library true lists every prepared asset and sound). To add a creature or decoration, \
-call haunt_place with a library asset; it brings its default trigger and sound. Volume requests (\"turn the \
-music down\", \"louder\") are haunt_audio: lower or raise the bus by about a quarter unless a level is given. \
-A light or mood request is haunt_light. Every edit is checked; if it's refused, say why in plain words. The \
-house the person has open shows the change within a second or two.\n"
+    "\nThe Haunted House (the-haunted-house) is changed with the haunt_* tools, one edit a call. Volume \
+requests (\"turn the music down\", \"louder\") are haunt_audio straight away, with no need to read the house \
+first: change the bus by about a quarter (by -0.25 or 0.25; louder with no bus named is master) unless a level \
+is given. A request to change an area's light, a creature, a decoration or the layout: read the house with \
+haunt_describe first (library true lists every prepared asset and sound), then haunt_light, haunt_place (it \
+brings the asset's default trigger and sound), haunt_trigger, haunt_add_area or haunt_remove_area. Every edit \
+is checked; if it's refused, say why in plain words. The house the person has open shows the change within a \
+second or two.\n"
 }
 
 /// Game Lab's Haunted House as a Labs platform kind.

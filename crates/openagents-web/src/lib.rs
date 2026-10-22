@@ -145,6 +145,7 @@ pub mod layout;
 mod lightning_address;
 mod link_preview;
 pub mod live_content;
+pub mod live_games;
 pub mod mac_jobs;
 #[doc(hidden)]
 pub mod mac_jobs_actor;
@@ -815,6 +816,7 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         .route("/favicon.svg", get(favicon))
         .route("/favicon.ico", get(favicon))
         .merge(pages::routes())
+        .merge(live_games::routes())
         .merge(sand_gallery::routes())
         .merge(purchases::routes())
         .merge(chat_html::routes())

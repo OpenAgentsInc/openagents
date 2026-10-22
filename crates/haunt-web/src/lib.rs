@@ -28,6 +28,8 @@ mod gpu;
 #[cfg(target_arch = "wasm32")]
 mod live;
 #[cfg(target_arch = "wasm32")]
+mod mic;
+#[cfg(target_arch = "wasm32")]
 mod sound;
 #[cfg(target_arch = "wasm32")]
 mod ui;

@@ -46,10 +46,13 @@ struct State {
     /// Each arch's tenant and prefetch.
     arches: Vec<(String, Prefetch)>,
     /// The open zone's tenant and its frame and button.
-    overlay: Option<(String, web_sys::Element, web_sys::Element)>,
+    /// The open zone's tenant.
+    overlay: Option<String>,
     back: bool,
     /// What checks last read from `window.verse_hosted`.
     shown: String,
+    /// Arches the server says it serves, waiting for the next frame.
+    found: Option<Vec<HostedPortal>>,
 }
 
 thread_local! {
@@ -91,6 +94,39 @@ pub fn from_query(window: &web_sys::Window) -> Vec<HostedPortal> {
     arches
 }
 
+/// Asks the server which game tenants it serves (`/live/games`) and stands
+/// an arch for each on the next frame: the website's Grid, where the
+/// address names none.
+pub fn discover(window: &web_sys::Window) {
+    let window = window.clone();
+    spawn_local(async move {
+        let Ok(bodies) = fetch_bytes(&window, &["/live/games".to_owned()]).await else {
+            return;
+        };
+        let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bodies[0]) else {
+            return;
+        };
+        let tenants: Vec<String> = value["tenants"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|t| t.as_str().map(str::to_owned))
+            .collect();
+        if tenants.is_empty() {
+            return;
+        }
+        let (arches, _) = HostedPortal::list(&tenants, &[]);
+        STATE.with_borrow_mut(|state| {
+            state.arches = arches
+                .iter()
+                .map(|p| (p.tenant.clone(), Prefetch::Idle))
+                .collect();
+            state.found = Some(arches);
+        });
+        listen_for_back(&window);
+    });
+}
+
 /// A zone page on this origin can ask to go back to the Grid itself (its
 /// own in-world control) with `{"type": "hosted-back"}`.
 fn listen_for_back(window: &web_sys::Window) {
@@ -116,6 +152,11 @@ fn listen_for_back(window: &web_sys::Window) {
 /// come back. `true` while a zone is open, so the Grid ignores its own
 /// input.
 pub fn frame(runtime: &mut WorldRuntime) -> bool {
+    if let Some(found) = STATE.with_borrow_mut(|state| state.found.take())
+        && runtime.hosted_gates().is_empty()
+    {
+        runtime.set_hosted_portals(found);
+    }
     let near: Vec<String> = runtime
         .hosted_distances()
         .into_iter()
@@ -182,10 +223,7 @@ fn publish(runtime: &WorldRuntime) {
                         .iter()
                         .find(|(t, _)| *t == portal.tenant)
                         .map_or("idle", |(_, p)| p.word()),
-                    state
-                        .overlay
-                        .as_ref()
-                        .is_some_and(|(t, _, _)| *t == portal.tenant),
+                    state.overlay.as_ref().is_some_and(|t| *t == portal.tenant),
                 )
             });
             serde_json::json!({
@@ -326,53 +364,58 @@ async fn prefetch(tenant: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn style(element: &web_sys::Element, css: &str) {
-    let _ = element.set_attribute("style", css);
+/// Calls the page's `name` with `arg`; whether the page has it.
+fn call(name: &str, arg: &JsValue) -> bool {
+    let Some(window) = web_sys::window() else {
+        return false;
+    };
+    let Some(function) = Reflect::get(&window, &name.into())
+        .ok()
+        .and_then(|f| f.dyn_into::<js_sys::Function>().ok())
+    else {
+        return false;
+    };
+    function.call1(&JsValue::NULL, arg).is_ok()
 }
 
+/// Opens the zone. On the Grid homepage the GPUI chat stands its page full
+/// screen with Back to the Grid (`homeHostedOpen`, #12487): no page
+/// elements over the world. Elsewhere the zone opens as its own page, and
+/// the browser's Back returns.
 fn open(tenant: &str) {
-    let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+    install_back();
+    if call("homeHostedOpen", &JsValue::from_str(tenant)) {
+        STATE.with_borrow_mut(|state| state.overlay = Some(tenant.to_owned()));
         return;
-    };
-    let Some(body) = document.body() else {
-        return;
-    };
-    let Ok(frame) = document.create_element("iframe") else {
-        return;
-    };
-    let _ = frame.set_attribute("src", &format!("/t/{tenant}/"));
-    let _ = frame.set_attribute("title", "Hosted zone");
-    let _ = frame.set_attribute("allow", "autoplay; fullscreen; pointer-lock");
-    style(
-        &frame,
-        "position:fixed;inset:0;width:100vw;height:100vh;border:0;z-index:2147483000;background:#2b1a12",
-    );
-    let Ok(back) = document.create_element("button") else {
-        return;
-    };
-    back.set_text_content(Some("Back to the Grid"));
-    style(
-        &back,
-        "position:fixed;top:12px;right:12px;z-index:2147483001;font:600 15px system-ui,sans-serif;\
-         padding:8px 14px;border-radius:10px;border:1px solid #888;background:#111;color:#eee;cursor:pointer",
-    );
-    let click = Closure::<dyn FnMut()>::new(|| {
-        STATE.with_borrow_mut(|state| state.back = true);
-    });
-    let _ = back.add_event_listener_with_callback("click", click.as_ref().unchecked_ref());
-    click.forget();
-    let _ = body.append_child(&frame);
-    let _ = body.append_child(&back);
-    if let Ok(html) = frame.clone().dyn_into::<web_sys::HtmlElement>() {
-        let _ = html.focus();
     }
-    let _ = Reflect::set(&frame, &"tabIndex".into(), &0.into());
-    STATE.with_borrow_mut(|state| state.overlay = Some((tenant.to_owned(), frame, back)));
+    if let Some(window) = web_sys::window() {
+        let _ = window.location().assign(&format!("/t/{tenant}/"));
+    }
 }
 
 fn close() {
-    if let Some((_, frame, back)) = STATE.with_borrow_mut(|state| state.overlay.take()) {
-        frame.remove();
-        back.remove();
+    if STATE
+        .with_borrow_mut(|state| state.overlay.take())
+        .is_some()
+    {
+        call("homeHostedOpen", &JsValue::NULL);
     }
+}
+
+/// `homeHostedBack()`: the chat's Back to the Grid.
+fn install_back() {
+    thread_local! {
+        static INSTALLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    }
+    if INSTALLED.with(|i| i.replace(true)) {
+        return;
+    }
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let back = Closure::<dyn FnMut()>::new(|| {
+        STATE.with_borrow_mut(|state| state.back = state.overlay.is_some());
+    });
+    let _ = Reflect::set(&window, &"homeHostedBack".into(), back.as_ref());
+    back.forget();
 }

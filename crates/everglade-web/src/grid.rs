@@ -326,7 +326,13 @@ impl Presence {
                 );
                 (arrival.pos, arrival.yaw)
             };
-            let _ = runtime.set_spawn(pos, yaw);
+            // A capture's `?at=` place stands (`web::run_grid`).
+            let placed = web_sys::window()
+                .and_then(|w| crate::web::query_value(&w, "at"))
+                .is_some();
+            if !placed {
+                let _ = runtime.set_spawn(pos, yaw);
+            }
             web_sys::console::info_1(&JsValue::from_str(&format!(
                 "Grid: spawned at {:.2},{:.2} ({} others shown{})",
                 pos.x,

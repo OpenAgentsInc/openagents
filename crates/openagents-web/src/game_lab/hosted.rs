@@ -49,6 +49,28 @@ fn now() -> u64 {
 }
 
 impl Hosted {
+    /// An account's Game Lab over a store on disk, for tests.
+    #[cfg(test)]
+    pub(crate) fn for_test(root: &std::path::Path, account: &str, admin: bool) -> Self {
+        let files = Arc::new(crate::chat_store::Store::local(root.join("chats")));
+        let backend = Arc::new(storage::ChatBackend(files.clone()));
+        Self {
+            store: Store::new(
+                backend,
+                &SpaceRef::Personal {
+                    account: account.into(),
+                },
+            )
+            .expect("a store"),
+            files,
+            account: account.into(),
+            owner: crate::chat_store::account_owner(account),
+            admin,
+            analytics: Arc::new(crate::analytics::Analytics::default()),
+            count_events: false,
+        }
+    }
+
     pub(crate) async fn for_request(app: &App, headers: &HeaderMap) -> Result<Self, Response> {
         let headers = crate::labs_api::caller_headers(app, headers);
         if headers

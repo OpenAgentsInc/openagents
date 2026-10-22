@@ -225,8 +225,14 @@ async fn measure(
                 // The page stops on the failed step; let it sit stopped for
                 // a moment, then roll back.
                 tokio::time::sleep(Duration::from_millis(1500)).await;
-                let mut line =
-                    rollback_once(work, host, icecream_zone::TENANT, Some((wait, pages))).await?;
+                let mut line = rollback_once(
+                    work,
+                    host,
+                    icecream_zone::TENANT,
+                    "live",
+                    Some((wait, pages)),
+                )
+                .await?;
                 line["case"] = "rollback".into();
                 line["run"] = run.into();
                 eprintln!(

@@ -721,7 +721,7 @@ fn query_has(window: &Window, name: &str) -> bool {
 
 /// The value of `name` in the page's query string: empty for a bare
 /// `name`.
-fn query_value(window: &Window, name: &str) -> Option<String> {
+pub(crate) fn query_value(window: &Window, name: &str) -> Option<String> {
     let query = window.location().search().ok()?;
     query
         .trim_start_matches('?')
@@ -1004,7 +1004,10 @@ async fn run_grid(
     runtime.defer_grid_portals(true);
     // `?hosted=TENANT[,TENANT...]`: arches to zones hosted on this origin.
     let hosted = crate::hosted::from_query(&window);
-    if !hosted.is_empty() {
+    if hosted.is_empty() {
+        // The website's Grid: the arches to the games this server serves.
+        crate::hosted::discover(&window);
+    } else {
         runtime.set_hosted_portals(hosted);
     }
     runtime.interact_hint = verse::runtime::InteractHint::None;

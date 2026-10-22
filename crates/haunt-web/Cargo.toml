@@ -50,6 +50,7 @@ web-sys = { version = "0.3", features = [
     "EventTarget",
     "GainNode",
     "HtmlCanvasElement",
+    "History",
     "HtmlElement",
     "KeyboardEvent",
     "Location",

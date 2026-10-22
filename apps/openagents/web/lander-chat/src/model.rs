@@ -194,6 +194,27 @@ pub const GAME_LAB_CALL: &str = "homeGameLab";
 /// The page function that shows a game full screen, or hides it with
 /// `null`.
 pub const GAME_PLAY_CALL: &str = "homeGamePlay";
+/// The hosted zone the visitor walked into on the Grid (a livehost tenant
+/// such as `haunt`), set by Verse; the chat stands its page full screen
+/// with Back to the Grid (#12487).
+pub const HOSTED_GLOBAL: &str = "openagentsHostedZone";
+/// Called when the visitor chooses Back to the Grid from a hosted zone;
+/// Verse closes it and stands them in front of its arch.
+pub const HOSTED_BACK_CALL: &str = "homeHostedBack";
+/// Text from the house's mic button, waiting to be sent in Game Lab's chat
+/// (#12485).
+pub const SAY_GLOBAL: &str = "openagentsChatSay";
+
+/// A hosted zone's page.
+#[must_use]
+pub fn hosted_src(tenant: &str) -> Option<String> {
+    let ok = !tenant.is_empty()
+        && tenant.len() <= 64
+        && tenant
+            .bytes()
+            .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-');
+    ok.then(|| format!("/t/{tenant}/"))
+}
 /// `true` while a game is shown full screen; the page's own Back to Game
 /// Lab, for keyboards, sets it back.
 pub const GAME_PLAYING_GLOBAL: &str = "openagentsGamePlaying";
@@ -224,6 +245,8 @@ pub const KILN_PAGE: &str = "/admin/kiln/";
 pub const BRAND: &str = "OpenAgents";
 pub const GAME_LAB: &str = "Game Lab";
 pub const BACK_TO_GRID: &str = "Back to the Grid";
+/// The hosted zone's frame, for screen readers.
+pub const HOSTED_TITLE: &str = "A game on the Grid";
 pub const BACK_TO_LAB: &str = "Back to Game Lab";
 pub const GAME_OPENING: &str = "Opening Game Lab\u{2026}";
 pub const GAME_SIGN_IN_LINE: &str = "Sign in to make your own version.";
@@ -337,6 +360,9 @@ pub struct Frame {
     /// Kept loaded, hidden, while its box is gone, so it opens again at
     /// once.
     pub keep: bool,
+    /// Takes the keyboard when it opens and keeps it (a hosted zone).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub focus: bool,
 }
 
 /// Where Game Lab's panel goes on a `w` by `h` page: right of the
@@ -697,6 +723,32 @@ impl Layout {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn a_hosted_zone_opens_only_a_tenant_page_and_takes_the_keyboard() {
+        assert_eq!(hosted_src("haunt").as_deref(), Some("/t/haunt/"));
+        assert!(hosted_src("../admin").is_none());
+        assert!(hosted_src("").is_none());
+        let frame = Frame {
+            id: "hosted",
+            src: "/t/haunt/".into(),
+            title: HOSTED_TITLE.into(),
+            x: 0.,
+            y: 0.,
+            w: 10.,
+            h: 10.,
+            keep: false,
+            focus: true,
+        };
+        let json = serde_json::to_string(&frame).unwrap();
+        assert!(json.contains("\"focus\":true"));
+        let quiet = Frame {
+            focus: false,
+            ..frame
+        };
+        assert!(!serde_json::to_string(&quiet).unwrap().contains("focus"));
+    }
+
     use super::*;
 
     fn message(role: &str, text: &str) -> ThreadMessage {

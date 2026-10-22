@@ -1456,3 +1456,39 @@ on staging.openagents.com in 3.8 s median, 8.5 s worst; rollback visible in
 3.1 s median. The deploy command takes about 1 s; most of the rest is the
 script's Cargo freshness checks. The server swaps 0–58 ms after the pointer
 arrives.
+
+## Game tenants (#12486)
+
+The Grid's HAUNTED HOUSE and ICE CREAM MAN arches open the `haunt` and
+`icecream` livehost tenants at `/t/<tenant>/` on the website itself. A server
+serves them when its environment names them:
+
+- `OPENAGENTS_LIVE_GAMES`: `haunt=PUBKEY,icecream=PUBKEY`, each tenant with
+  the public key of its own deploy key. The `openagents` content tenant is
+  refused here.
+- `OPENAGENTS_LIVE_GAMES_CHANNEL`: the channel followed (default `live`;
+  staging sets `staging`).
+- `OPENAGENTS_LIVE_GAMES_RELAY` and `OPENAGENTS_LIVE_GAMES_STORE`, else the
+  content tier's `OPENAGENTS_LIVE_RELAY` and `OPENAGENTS_LIVE_STORE`
+  (`wss://relay.openagents.com`, `gs://openagentsgemini-livehost`). The
+  service's runtime account needs `roles/storage.objectViewer` on the
+  bucket.
+
+`/live/games` lists the tenants served, and the Grid stands an arch for each.
+Without the variables, the routes answer 404 and the Grid stands none.
+
+Deploy keys: `~/work/.secrets/livehost-haunt.key` and
+`~/work/.secrets/livehost-icecream.key` (mode 600, made with
+`cargo run -p livehost -- keygen --out FILE`). They sign only their own
+tenant's pointers.
+
+- **Deploy:** `scripts/deploy/games.sh deploy haunt` points the staging
+  channel at a new build; `--live` points the live channel.
+- **Rollback:** `scripts/deploy/games.sh rollback haunt [--live]`.
+- **Public key:** `scripts/deploy/games.sh pubkey haunt`, for
+  `OPENAGENTS_LIVE_GAMES`.
+
+On the Grid homepage, walking through an arch asks the GPUI chat to stand
+the tenant's page full screen with its own Back to the Grid button
+(`homeHostedOpen`); no page elements are drawn over the world. On other
+pages the arch opens the tenant as its own page.

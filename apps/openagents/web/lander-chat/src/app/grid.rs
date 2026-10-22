@@ -81,6 +81,8 @@ pub(super) struct Grid {
     back: ScrollHandle,
     /// What the page was last told, as JSON.
     published: String,
+    /// The hosted zone open full screen, by tenant.
+    pub(super) hosted: Option<String>,
 }
 
 /// Reads a page global as a flag.
@@ -186,6 +188,28 @@ impl LanderChat {
             }
         }
         self.grid.ticks = self.grid.ticks.wrapping_add(1);
+        // Words from the house's mic button (#12485): sent as the visitor's
+        // message in Game Lab's chat, where the model chooses the tool.
+        if let Some(said) = js_sys::Reflect::get(&js_sys::global(), &model::SAY_GLOBAL.into())
+            .ok()
+            .and_then(|v| v.as_string())
+            .filter(|s| !s.trim().is_empty())
+            && self.grid.lab.state == LabState::Open
+            && self.live.is_none()
+            && !self.sending
+        {
+            set_global(model::SAY_GLOBAL, &JsValue::UNDEFINED);
+            track("game_lab_spoken", "{}");
+            self.send_text(said, cx);
+        }
+        let hosted = js_sys::Reflect::get(&js_sys::global(), &model::HOSTED_GLOBAL.into())
+            .ok()
+            .and_then(|v| v.as_string())
+            .filter(|t| model::hosted_src(t).is_some());
+        if hosted != self.grid.hosted {
+            self.grid.hosted = hosted;
+            cx.notify();
+        }
         if self.grid.lab.playing.is_some() && !flag(model::GAME_PLAYING_GLOBAL) {
             self.grid.lab.playing = None;
             cx.notify();
@@ -374,7 +398,27 @@ impl LanderChat {
     fn publish_overlay(&mut self) {
         let mut overlay = Overlay::default();
         let lab = &self.grid.lab;
-        if lab.playing.is_some() {
+        if let Some(src) = self.grid.hosted.as_deref().and_then(model::hosted_src) {
+            // A hosted zone full screen: its page, and only the way back.
+            let (w, h) = web_sys::window().map_or((0., 0.), |w| {
+                (
+                    w.inner_width().ok().and_then(|v| v.as_f64()).unwrap_or(0.) as f32,
+                    w.inner_height().ok().and_then(|v| v.as_f64()).unwrap_or(0.) as f32,
+                )
+            });
+            overlay.regions.push(rect_of(self.grid.back.bounds()));
+            overlay.frames.push(Frame {
+                id: "hosted",
+                src,
+                title: model::HOSTED_TITLE.to_owned(),
+                x: 0.,
+                y: 0.,
+                w,
+                h,
+                keep: false,
+                focus: true,
+            });
+        } else if lab.playing.is_some() {
             overlay.regions.push(rect_of(self.grid.back.bounds()));
         } else {
             overlay.regions.push(rect_of(self.grid.brand.bounds()));
@@ -422,6 +466,7 @@ impl LanderChat {
                                 w,
                                 h,
                                 keep: false,
+                                focus: false,
                             });
                         }
                     }
@@ -533,6 +578,29 @@ impl LanderChat {
                     .track_scroll(&self.grid.back)
                     .bg(gpui::hsla(0., 0., 0.04, 0.85))
                     .on_click(cx.listener(|this, _: &ClickEvent, _, cx| this.stop_playing(cx))),
+            )
+            .into_any_element()
+    }
+
+    /// "Back to the Grid" over a hosted zone full screen: Verse closes the
+    /// zone and stands the visitor in front of its arch.
+    pub(super) fn render_hosted_back(&self, cx: &mut Context<Self>) -> AnyElement {
+        div()
+            .absolute()
+            .top(px(16.))
+            .left_0()
+            .right_0()
+            .flex()
+            .justify_center()
+            .child(
+                button("hosted-back", model::BACK_TO_GRID, false)
+                    .track_scroll(&self.grid.back)
+                    .bg(gpui::hsla(0., 0., 0.04, 0.85))
+                    .on_click(cx.listener(|this, _: &ClickEvent, _, cx| {
+                        call(model::HOSTED_BACK_CALL, &JsValue::NULL);
+                        this.grid.hosted = None;
+                        cx.notify();
+                    })),
             )
             .into_any_element()
     }

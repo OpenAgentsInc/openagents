@@ -704,12 +704,20 @@ impl LanderChat {
     }
 
     fn send(&mut self, text: String, window: &mut Window, cx: &mut Context<Self>) {
+        if self.send_text(text, cx) {
+            window.focus(&self.composer.focus_handle(cx), cx);
+        }
+        cx.notify();
+    }
+
+    /// Sends `text` as the visitor's message; whether it went.
+    pub(super) fn send_text(&mut self, text: String, cx: &mut Context<Self>) -> bool {
         let text = text.trim().to_owned();
         if text.is_empty() || self.sending || self.live.is_some() {
             if !text.is_empty() {
                 self.put_back(&text, cx);
             }
-            return;
+            return false;
         }
         if text.chars().count() > model::MAX_CHARS {
             self.put_back(&text, cx);
@@ -718,7 +726,7 @@ impl LanderChat {
                 sign_in: false,
             });
             cx.notify();
-            return;
+            return false;
         }
         let Some(client) = self.active_client() else {
             self.put_back(&text, cx);
@@ -727,7 +735,7 @@ impl LanderChat {
                 sign_in: false,
             });
             cx.notify();
-            return;
+            return false;
         };
         let request = uuid::Uuid::new_v4().to_string();
         let index = self.entries.len();
@@ -795,8 +803,7 @@ impl LanderChat {
             .ok();
         })
         .detach();
-        window.focus(&self.composer.focus_handle(cx), cx);
-        cx.notify();
+        true
     }
 
     /// The client for the open chat: the help desk's asks the site's
@@ -1257,6 +1264,9 @@ impl Render for LanderChat {
             .text_size(px(theme::BODY));
         root = if base() != model::HOME_BASE {
             root.child(column)
+        } else if self.grid.hosted.is_some() {
+            // A hosted zone full screen: only the way back to the Grid.
+            root.child(self.render_hosted_back(cx))
         } else if self.grid.lab.playing.is_some() {
             // A game full screen: only the way back.
             root.child(self.render_back(cx))

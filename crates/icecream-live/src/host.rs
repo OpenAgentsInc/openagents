@@ -29,6 +29,13 @@ pub const TENANTS: [&str; 3] = [icecream_zone::TENANT, "grid", crate::haunt::TEN
 pub struct Work {
     pub dir: PathBuf,
     pub relay: String,
+    /// The object store (`--store`): `WORK/store` when none, or a
+    /// directory or `gs://BUCKET[/PREFIX]`, the website's store.
+    pub store: Option<String>,
+    /// A tenant's deploy key file (`--key`), in place of `WORK/TENANT.key`:
+    /// the deploy to the website's store signs with the game tenant's own
+    /// key, never another tenant's.
+    pub key: Option<PathBuf>,
 }
 
 impl Work {
@@ -41,6 +48,9 @@ impl Work {
     /// # Errors
     /// The key can't be read or written.
     pub fn key(&self, tenant: &str) -> Result<RelaySigner> {
+        if let Some(path) = &self.key {
+            return livehost::keys::load(path);
+        }
         let path = self.key_path(tenant);
         if !path.exists() {
             livehost::keys::generate(&path)?;
@@ -53,7 +63,10 @@ impl Work {
     /// # Errors
     /// The directory can't be made.
     pub fn store(&self) -> Result<Store> {
-        Store::parse(&self.dir.join("store").to_string_lossy())
+        match &self.store {
+            Some(spec) => Store::parse(spec),
+            None => Store::parse(&self.dir.join("store").to_string_lossy()),
+        }
     }
 
     /// The host config: each tenant follows its `live` channel under
