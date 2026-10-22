@@ -985,6 +985,10 @@ uses, and marks which are implemented and which are only specified.
   player. The data lives in `crates/verse-zone-everglade/townsfolk/`;
   `openagents verse town` is its command, and only the owner admits. Read
   "Authoring townsfolk" in `docs/verse/generative-agents.md` first.
+- `crates/deploy-board` — the Grid's build billboard (#12442): NIP-DEPLOY
+  statuses (`nostr::deploy`, published by `openagents deploy event` from
+  `scripts/deploy/`) and livehost pointers folded into a staging and a
+  production lane, and the board's line art. Pure; `everglade-web` draws it.
 - `crates/everglade-web` — Everglade in a browser: a `cdylib` over Verse's
   `web` feature (`wasm32-unknown-unknown`) that fetches the pinned pack from
   the same origin and draws the zone with WebGPU or WebGL2.

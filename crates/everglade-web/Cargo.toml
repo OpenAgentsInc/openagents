@@ -23,6 +23,8 @@ openagents-web-hands = { path = "../../apps/openagents/web/hands" }
 # Everything else is browser-only; a native build of this crate holds only that data.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 pylons-view = { path = "../pylons-view" }
+# The Grid's build billboard (#12442).
+deploy-board = { path = "../deploy-board" }
 coder-browser = { path = "../coder-browser" }
 coder-ui = { path = "../coder-ui" }
 coder-host-wire = { path = "../coder-host-wire" }

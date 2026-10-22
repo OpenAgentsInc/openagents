@@ -208,6 +208,17 @@ impl Presence {
         self.joined
     }
 
+    /// Opens a live subscription of the page's own on this session's
+    /// relay connection ([`Session::watch`]).
+    pub fn watch(&mut self, id: &str, filters: Vec<serde_json::Value>) {
+        self.session.watch(id, filters);
+    }
+
+    /// What [`Self::watch`] subscriptions received since the last call.
+    pub fn take_watched(&mut self) -> Vec<nostr::domain::Event> {
+        self.session.take_watched()
+    }
+
     /// The players as this page sees them, for `verse_players`.
     pub fn players(&self, runtime: &WorldRuntime) -> serde_json::Value {
         let now = Instant::now();

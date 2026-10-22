@@ -5945,6 +5945,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5729f5117e208430e437df2f4843f5e5952997175992d1414f94c57d61e270b4"
 
 [[package]]
+name = "deploy-board"
+version = "1.0.0"
+dependencies = [
+ "nostr",
+ "openagents-workspace-hack",
+ "serde_json",
+]
+
+[[package]]
 name = "der"
 version = "0.7.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6841,6 +6850,7 @@ dependencies = [
  "coder-reach",
  "coder-ui",
  "console_error_panic_hook",
+ "deploy-board",
  "futures-util",
  "glam",
  "gloo-timers",

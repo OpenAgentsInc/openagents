@@ -75,6 +75,8 @@ const STATE_SUB: &str = "mv-state";
 /// unanswered before the session sends it again.
 pub const JOIN_RETRY: Duration = Duration::from_secs(5);
 const ME_SUB: &str = "mv-me";
+/// The most events [`Session::watch`] subscriptions hold for the host.
+pub const WATCHED_CAP: usize = 512;
 const SCAN_WAIT: Duration = Duration::from_millis(1200);
 /// Agents closer than this greet each other, in meters.
 pub const GREET_RADIUS: f32 = 7.0;
@@ -334,6 +336,10 @@ pub struct Session {
     seat: Option<(String, &'static str)>,
     /// When the last body snapshot went out, and its `created_at`.
     last_snapshot: Option<(Instant, u64)>,
+    /// Subscriptions a host opened with [`Session::watch`], and the events
+    /// they received since it last took them, oldest first.
+    watched: Vec<String>,
+    watched_in: VecDeque<nostr::domain::Event>,
     /// Every event handed to the link, for tests.
     #[cfg(test)]
     published: std::cell::RefCell<Vec<nostr::domain::Event>>,
@@ -509,9 +515,33 @@ impl Session {
             boat_entries: Vec::new(),
             seat: None,
             last_snapshot: None,
+            watched: Vec::new(),
+            watched_in: VecDeque::new(),
             #[cfg(test)]
             published: std::cell::RefCell::default(),
         })
+    }
+
+    /// Opens a live subscription of the host's own on this session's relay
+    /// connection, kept across reconnects, such as the Grid's build
+    /// billboard asking for deploy statuses (#12442). Its events skip the
+    /// world's handling; take them with [`Session::take_watched`] and check
+    /// them there.
+    pub fn watch(&mut self, id: &str, filters: Vec<serde_json::Value>) {
+        if !self.watched.iter().any(|w| w == id) {
+            self.watched.push(id.to_owned());
+        }
+        self.link.send(Out::Subscribe {
+            id: id.to_owned(),
+            filters,
+            live: true,
+        });
+    }
+
+    /// The events [`Session::watch`] subscriptions received since the last
+    /// call, oldest first. At most [`WATCHED_CAP`] wait; older ones drop.
+    pub fn take_watched(&mut self) -> Vec<nostr::domain::Event> {
+        self.watched_in.drain(..).collect()
     }
 
     /// The profile name.
@@ -1059,6 +1089,13 @@ impl Session {
 
     fn handle(&mut self, message: In, now: Instant) {
         match message {
+            // A host's own subscriptions: unchecked here, the host checks.
+            In::Event { sub, event } if self.watched.contains(&sub) => {
+                if self.watched_in.len() == WATCHED_CAP {
+                    self.watched_in.pop_front();
+                }
+                self.watched_in.push_back(*event);
+            }
             // A blocked player's events never reach the crowd or the log.
             In::Event { event, .. } if self.people.is_blocked(&event.pubkey) => {}
             In::Connected => {
@@ -2128,6 +2165,42 @@ mod tests {
         }
         assert_eq!(session.status, Status::Online);
         session
+    }
+
+    #[test]
+    fn watched_subscriptions_hand_their_events_to_the_host() {
+        let mut session = online_presence();
+        session.watch("deploys", vec![json!({"kinds": [3205]})]);
+        let signer = nostr::domain::RelaySigner::from_secret_hex(&"5".repeat(64)).unwrap();
+        let event = signer.sign(1, 3205, vec![], "{}".into());
+        let now = Instant::now();
+        session.handle(
+            In::Event {
+                sub: "deploys".into(),
+                event: Box::new(event.clone()),
+            },
+            now,
+        );
+        // Another subscription's event of the same kind isn't the host's.
+        session.handle(
+            In::Event {
+                sub: LIVE_SUB.into(),
+                event: Box::new(event.clone()),
+            },
+            now,
+        );
+        assert_eq!(session.take_watched(), vec![event.clone()]);
+        assert!(session.take_watched().is_empty());
+        for _ in 0..WATCHED_CAP + 5 {
+            session.handle(
+                In::Event {
+                    sub: "deploys".into(),
+                    event: Box::new(event.clone()),
+                },
+                now,
+            );
+        }
+        assert_eq!(session.take_watched().len(), WATCHED_CAP);
     }
 
     #[test]

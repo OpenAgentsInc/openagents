@@ -74,6 +74,8 @@ thread_local! {
     static WHERE: RefCell<String> = const { RefCell::new(String::new()) };
     /// The Grid's players as this page sees them, for [`verse_players`].
     static PLAYERS: RefCell<String> = const { RefCell::new(String::new()) };
+    /// What the build billboard shows, for [`verse_build_board`].
+    static BOARD: RefCell<String> = const { RefCell::new(String::new()) };
     /// A ground point the player should turn to face, from [`verse_face`].
     static FACE: RefCell<Option<[f32; 2]>> = const { RefCell::new(None) };
     /// What the Grid homepage's visit records of joining (#12439). Zone
@@ -181,6 +183,15 @@ pub fn verse_where() -> String {
 #[wasm_bindgen]
 pub fn verse_players() -> String {
     PLAYERS.with(|p| p.borrow().clone())
+}
+
+/// What the Grid homepage's build billboard shows, as JSON, for checks
+/// (#12442): each lane's status word, commit, strip, last result, history
+/// length, and flash, plus the events it refused. Refreshed about four
+/// times a second; empty on pages without the board.
+#[wasm_bindgen]
+pub fn verse_build_board() -> String {
+    BOARD.with(|b| b.borrow().clone())
 }
 
 /// Turns the player to face the ground point (`x`, `z`) on the next frame,
@@ -608,6 +619,8 @@ pub(crate) struct Page {
     grove_row: usize,
     /// The Grid's presence session, when the page opened the Grid online.
     presence: Option<Presence>,
+    /// The build billboard on the Grid homepage's plaza (#12442).
+    board: Option<crate::build_board::BuildBoard>,
     /// With `?frames`, the frame times gathered for the console's
     /// once-a-second line.
     frames: Option<Frames>,
@@ -956,6 +969,7 @@ async fn run() -> Result<(), String> {
         grove_keys: Vec::new(),
         grove_row: 0,
         presence: None,
+        board: None,
         frames: query_has(&window, "frames").then(Frames::default),
         water_dry: query_has(&window, "frames") && query_has(&window, "water-dry"),
         backends,
@@ -1070,6 +1084,9 @@ async fn run_grid(
         grove_keys: Vec::new(),
         grove_row: 0,
         presence,
+        board: home.then(|| {
+            crate::build_board::BuildBoard::new(crate::build_board::BuildBoard::wants_test(&window))
+        }),
         frames: None,
         water_dry: false,
         backends,
@@ -1685,6 +1702,18 @@ impl Page {
             let mut dynamic = grid_frame::dynamic(&self.runtime, &peers, &[]);
             if HOME.with(std::cell::Cell::get) && self.runtime.is_plaza() {
                 crate::pylon_bay::instances(self.now, &mut dynamic);
+            }
+            if let Some(board) = &mut self.board {
+                board.tick(self.presence.as_mut());
+                if self.runtime.is_plaza() {
+                    board.instances(dynamic.len(), &mut dynamic);
+                }
+                if (self.now / 250.0).floor()
+                    != ((self.now - f64::from(dt) * 1000.0) / 250.0).floor()
+                {
+                    let report = board.report().to_string();
+                    BOARD.with(|b| *b.borrow_mut() = report);
+                }
             }
             let lighting = grid_frame::lighting(&self.runtime.atmosphere());
             // Name tags, the connection line, and a player's card, laid

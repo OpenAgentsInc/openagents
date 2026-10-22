@@ -1,5 +1,5 @@
-//! The shared pylon computer and the Pylon Bay in the Grid's
-//! depth-tested world pass.
+//! The shared pylon computer, the Pylon Bay, and the build billboard in
+//! the Grid's depth-tested world pass.
 
 use glam::Vec3;
 use verse::{
@@ -60,6 +60,7 @@ pub fn content() -> Result<Content, String> {
         scale: 1.,
     });
     crate::pylon_bay::add(&mut pack, white, &white_id)?;
+    crate::build_board::add(&mut pack, white, &white_id)?;
     let statics = grid_frame::statics(&pack);
     let prepared = Prepared::from_bytes(
         pack,

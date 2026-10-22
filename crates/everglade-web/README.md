@@ -156,6 +156,18 @@ The module tells the page where the player is:
 `verse_where()` reports the place, the control scheme, the trip's step, and
 the zone panel's buttons for checks.
 
+#### The build billboard
+
+The Grid homepage's plaza has a build billboard west of the spawn (#12442):
+two lanes, STAGING and PRODUCTION, with each lane's commit and subject, its
+phase on a five-step strip, the elapsed time, the last result, and the last
+few deploys. The page's Grid session subscribes to NIP-DEPLOY statuses
+([`nips/openagents/NIP-DEPLOY.md`](../../nips/openagents/NIP-DEPLOY.md)) and
+livehost's staging pointer on its relay connection, and the board accepts
+only events the deploy announcer's key signs. `?deploys=test` shows only test
+events (`openagents deploy event --test`), and `verse_build_board()` reports
+what each lane shows, for checks.
+
 Once a second the module logs `Grid frames {...}` to the console: frame
 times, the players drawn, and the session's status and refusals. The
 receipt is `docs/verse/verification/2026-10-05-grid-browser/`.
