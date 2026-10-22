@@ -28,7 +28,53 @@ pub struct Config {
     pub checkout: PathBuf,
     pub token_file: PathBuf,
     pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serving_profile: Option<ServingProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pylon: Option<PylonKey>,
     pub crates: BTreeSet<String>,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ServingProfile {
+    Qualified,
+    ConsumerExact,
+    ConsumerQ,
+}
+
+impl ServingProfile {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Qualified => "qualified",
+            Self::ConsumerExact => "consumer-exact",
+            Self::ConsumerQ => "consumer-q",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(try_from = "String", into = "String")]
+pub struct PylonKey(String);
+
+impl TryFrom<String> for PylonKey {
+    type Error = String;
+
+    fn try_from(value: String) -> Result<Self> {
+        if !hex(&value, 64) {
+            return Err("pylon must be a 64-character public key".into());
+        }
+        let key = value
+            .parse::<secp256k1::XOnlyPublicKey>()
+            .map_err(|_| "pylon is not a valid public key")?;
+        Ok(Self(key.to_string()))
+    }
+}
+
+impl From<PylonKey> for String {
+    fn from(key: PylonKey) -> Self {
+        key.0
+    }
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -42,6 +88,15 @@ pub struct Task {
     pub text: String,
 }
 impl Config {
+    fn route(&self) -> (Option<String>, pylon::group::Want) {
+        let want = pylon::group::Want::Model(self.model.clone());
+        let want = match self.serving_profile {
+            Some(profile) => pylon::group::Want::Profiled(Box::new(want), profile.as_str().into()),
+            None => want,
+        };
+        (self.pylon.as_ref().map(|key| key.0.clone()), want)
+    }
+
     pub fn validate(&self) -> Result<()> {
         if !hex(&self.authority, 64)
             || !hex(&self.runner, 64)
@@ -468,9 +523,10 @@ pub async fn advance(root: &Path, c: &Config, key: &keys::Signer, path: &Path) -
         j.phase = "model".into();
         save(path, &j)?;
         let files = listing(c, &j, &remote::crate_directory(&j.task.krate))?.join("\n");
+        let (pylon, want) = c.route();
         let ask = pylon::client::Ask {
             relay: c.relay.clone(),
-            pylon: None,
+            pylon,
             prompt: j.agent.prompt(&files),
             wait: Duration::from_secs(j.until.saturating_sub(now()).min(600)),
             publish_receipt: false,
@@ -483,7 +539,7 @@ pub async fn advance(root: &Path, c: &Config, key: &keys::Signer, path: &Path) -
         let answered = pylon::client::ask_model_within(
             &buyer,
             &ask,
-            &pylon::group::Want::Model(c.model.clone()),
+            &want,
             &within,
             &[],
             Some(&j.agent.instructions),
@@ -862,6 +918,104 @@ async fn deliver(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn legacy_config() -> Value {
+        let key = kiln::cj::Key::from_bytes([1; 32]).unwrap();
+        json!({
+            "relay": "wss://relay.example",
+            "authority": key.pubkey(),
+            "repository": format!("30617:{}:repo", key.pubkey()),
+            "runner": key.pubkey(),
+            "checkout": "/fixture/repo",
+            "token_file": "/fixture/token",
+            "model": "fixture@sha256:1234",
+            "crates": ["kiln"]
+        })
+    }
+
+    #[test]
+    fn omitted_routing_settings_preserve_the_existing_config_and_route() {
+        let legacy = legacy_config();
+        let config: Config = serde_json::from_value(legacy.clone()).unwrap();
+        config.validate().unwrap();
+        assert_eq!(serde_json::to_value(&config).unwrap(), legacy);
+        assert_eq!(
+            config.route(),
+            (None, pylon::group::Want::Model(config.model.clone()))
+        );
+        assert_eq!(config.route().1.profile(), "qualified");
+        let mut explicit_null = legacy;
+        explicit_null["serving_profile"] = Value::Null;
+        explicit_null["pylon"] = Value::Null;
+        let explicit_null: Config = serde_json::from_value(explicit_null).unwrap();
+        assert_eq!(
+            serde_json::to_vec(&config).unwrap(),
+            serde_json::to_vec(&explicit_null).unwrap()
+        );
+    }
+
+    #[test]
+    fn explicit_routing_pins_the_profile_and_producer_without_fallback() {
+        let provider = kiln::cj::Key::from_bytes([2; 32]).unwrap();
+        let signer = keys::Signer {
+            secret: secp256k1::SecretKey::from_byte_array([1; 32]).unwrap(),
+            key: kiln::cj::Key::from_bytes([1; 32]).unwrap(),
+        };
+        let default: Config = serde_json::from_value(legacy_config()).unwrap();
+        for name in nostr::pylon::GROUP_PROFILES {
+            let mut input = legacy_config();
+            input["serving_profile"] = json!(name);
+            input["pylon"] = json!(provider.pubkey().to_uppercase());
+            let config: Config = serde_json::from_value(input).unwrap();
+            config.validate().unwrap();
+            let (pylon, want) = config.route();
+            assert_eq!(pylon.as_deref(), Some(provider.pubkey()));
+            assert_eq!(want.profile(), name);
+            assert_eq!(want.target(), config.model);
+            assert!(matches!(want, pylon::group::Want::Profiled(_, _)));
+            assert_ne!(profile(&config, &signer), profile(&default, &signer));
+        }
+        let mut input = legacy_config();
+        input["pylon"] = json!(provider.pubkey());
+        let pinned_only: Config = serde_json::from_value(input.clone()).unwrap();
+        assert_eq!(pinned_only.route().0.as_deref(), Some(provider.pubkey()));
+        assert_eq!(pinned_only.route().1, default.route().1);
+        input.as_object_mut().unwrap().remove("pylon");
+        input["serving_profile"] = json!("consumer-q");
+        let profile_only: Config = serde_json::from_value(input).unwrap();
+        assert_eq!(profile_only.route().0, None);
+        assert_eq!(profile_only.route().1.profile(), "consumer-q");
+    }
+
+    #[test]
+    fn malformed_routing_settings_are_rejected_instead_of_using_the_default() {
+        for invalid in [
+            json!(""),
+            json!("consumer_q"),
+            json!("consumer-q-cuda-sm_120"),
+            json!(42),
+        ] {
+            let mut input = legacy_config();
+            input["serving_profile"] = invalid;
+            assert!(serde_json::from_value::<Config>(input).is_err());
+        }
+        for invalid in [
+            json!(""),
+            json!("npub1bad"),
+            json!("11".repeat(31)),
+            json!("gg".repeat(32)),
+            json!("ff".repeat(32)),
+            json!(42),
+        ] {
+            let mut input = legacy_config();
+            input["pylon"] = invalid;
+            assert!(serde_json::from_value::<Config>(input).is_err());
+        }
+        let mut unknown = legacy_config();
+        unknown["profile"] = json!("consumer-q");
+        assert!(serde_json::from_value::<Config>(unknown).is_err());
+    }
+
     #[test]
     fn paths_cannot_escape_or_change_build_inputs() {
         let t = Task {
@@ -905,6 +1059,8 @@ mod tests {
             checkout: temp.path().into(),
             token_file: temp.path().join("token"),
             model: "fixture".into(),
+            serving_profile: None,
+            pylon: None,
             crates: ["kiln".into()].into(),
         };
         let task = Task {
