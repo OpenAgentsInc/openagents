@@ -107,19 +107,16 @@ among `log --acceptances` and backs no playtest award.
 
 ## The suggestion box
 
-The Grid's suggestion box (#12460), a mailbox on the landing plaza at
-(12, -10), and `openagents suggest TEXT` send a suggestion as a NIP-17
-message sealed to the triage key, signed by the sender's own key
-(`crates/playtest/src/suggestion.rs`). `openagents playtest inbox` opens them
-beside reports and keeps each one once in `suggestions/SG-….json`.
+The Grid mailbox at `(12, -10)` and the web and app menu links open the same
+suggestion composer. `openagents suggest TEXT` sends to the same dedicated
+inbox. Clients fetch its public key and relays at runtime, seal the message
+with NIP-17, and keep an encrypted outbox for offline retry.
 
-- Every well-formed suggestion is kept. Screening only decides who reads it:
-  a quarantined one (unsafe text, or text that tries to instruct an agent)
-  is for the owner only, with `openagents playtest suggestions --quarantined`.
-- `openagents playtest suggestions --agents` is all a delegated agent reads:
-  normal suggestions only, quoted as a player's words, never instructions.
-- The relay limits gift wraps per sender and recipient, so one sender's
-  flood never blocks another's suggestion.
+The [suggestion inbox service](../../crates/suggestion-inbox/README.md) stores
+every well-formed suggestion as its original encrypted gift wrap. Delegated
+agents authenticate with their own keys and receive only normal feedback,
+quoted as untrusted user content. A separate owner key can deliberately open
+quarantine. Agents never receive the inbox key or raw wraps.
 
 ## Drafts
 

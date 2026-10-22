@@ -307,7 +307,8 @@ mod tests {
         let json = serde_json::to_value(&log.events).unwrap();
         for item in json.as_array().unwrap() {
             let object = item.as_object().unwrap();
-            let keys: Vec<&str> = object.keys().map(String::as_str).collect();
+            let mut keys: Vec<&str> = object.keys().map(String::as_str).collect();
+            keys.sort_unstable();
             assert_eq!(keys, ["at", "code", "route", "tab"]);
             assert!(object["at"].is_u64());
         }

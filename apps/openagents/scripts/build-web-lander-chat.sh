@@ -77,6 +77,11 @@ awk -v from="$opaque_only" '
 ' "$source_dir/src/backend/webgpu.rs" > "$backend"
 
 build() { # MANIFEST PACKAGE NAME DEST
+  # Each renderer is a separate Cargo workspace. Keep its compiler state
+  # keyed to that manifest when both builds share the app target directory.
+  oa_build_manifest="$1"
+  . "$app/../../scripts/dev/cargo-build-env.sh"
+  export CARGO_INCREMENTAL=0
   cargo build --locked --manifest-path "$1" -p "$2" --release --target "$target" ${renderer_features[@]+"${renderer_features[@]}"}
   mkdir -p "$4"
   wasm-bindgen --target web --no-typescript --out-name openagents_web_lander_chat --out-dir "$4" \

@@ -1,6 +1,6 @@
 //! The suggestion box (#12460): a player's suggestion, sealed with NIP-17 to
-//! the triage key ([`crate::TRIAGE_KEY`]) like a playtest report, and read in
-//! `openagents playtest inbox`.
+//! a dedicated runtime-configured inbox ([`InboxConfig`]). The inbox service
+//! holds its private key and screens messages before delegated readers see them.
 //!
 //! Anyone can always send one: no credits, no account step beyond the key
 //! the player already has, and no approval in front of sending. The only
@@ -9,11 +9,11 @@
 //! and bidirectional-override characters taken out ([`clean`]). Links stay
 //! plain text.
 //!
-//! The kind-14 rumor names the triage key in `p`, carries
+//! The kind-14 rumor names the inbox key in `p`, carries
 //! `["subject", "suggestion"]`, the [`MARKER`] topic, and where it was sent
 //! from (`["client", …]`, and for the Grid, `["place", "x", "z"]`). Its
 //! content is the [`Suggestion`] as JSON. [`wrap`] seals one copy to the
-//! triage key and one to the sender, so the sender keeps theirs.
+//! inbox key and one to the sender, so the sender keeps theirs.
 //!
 //! The inbox stores every well-formed suggestion. [`screen`] decides only
 //! who sees it: a [`Screen::Quarantined`] one stays readable by the owner
@@ -27,6 +27,43 @@ use secp256k1::{SecretKey, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 
 use crate::report::Randomness;
+
+/// Public runtime configuration. Changing the inbox or delegated readers
+/// does not require a client rebuild. The inbox service owns the secret.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InboxConfig {
+    pub inbox: String,
+    pub relays: Vec<String>,
+    #[serde(default)]
+    pub agents: Vec<String>,
+}
+
+impl InboxConfig {
+    pub fn check(&self) -> Result<(), String> {
+        let _: XOnlyPublicKey = self
+            .inbox
+            .parse()
+            .map_err(|_| "The suggestion box key couldn't be read.")?;
+        if self.relays.is_empty()
+            || self.relays.len() > 3
+            || self.relays.iter().any(|r| {
+                !(r.starts_with("wss://") || r.starts_with("ws://127.0.0.1:"))
+                    || r.chars().any(char::is_whitespace)
+            })
+        {
+            return Err("The suggestion box relay couldn't be read.".into());
+        }
+        if self
+            .agents
+            .iter()
+            .any(|key| key.parse::<XOnlyPublicKey>().is_err())
+        {
+            return Err("The suggestion box readers couldn't be read.".into());
+        }
+        Ok(())
+    }
+}
 
 /// The suggestion body's schema.
 pub const SCHEMA: &str = "openagents.suggestion.v1";

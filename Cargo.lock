@@ -13330,6 +13330,7 @@ dependencies = [
  "serde_json",
  "sha2 0.11.0",
  "squeeze",
+ "suggestion-inbox",
  "supervise",
  "tempfile",
  "tenancy",
@@ -13819,6 +13820,7 @@ dependencies = [
  "openagents-workspace-hack",
  "openui-lang",
  "pay-ledger",
+ "playtest",
  "plugin-registry",
  "pulldown-cmark",
  "pylon",
@@ -18851,6 +18853,24 @@ name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
+
+[[package]]
+name = "suggestion-inbox"
+version = "1.0.0"
+dependencies = [
+ "axum 0.8.9",
+ "base64 0.22.1",
+ "http-body-util",
+ "nostr",
+ "playtest",
+ "secp256k1 0.31.1",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tower 0.5.3",
+ "verse-net",
+]
 
 [[package]]
 name = "supervise"

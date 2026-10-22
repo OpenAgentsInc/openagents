@@ -1456,6 +1456,23 @@ async fn handle_event(
         }
     }
 
+    if event.kind == 1059
+        && event
+            .gift_wrap_recipient()
+            .is_some_and(|p| context.state.rate.suggestion_to(p))
+        && !context
+            .auth
+            .as_ref()
+            .is_some_and(|a| !a.authenticated_pubkeys().is_empty())
+    {
+        pending.push_back(ok_message(
+            &event.id,
+            false,
+            "auth-required: sign in with your key to send a suggestion",
+        ));
+        return Ok(());
+    }
+
     if let Some(rejection) = event_key_rate_rejection(context, &event) {
         let reason = match rejection {
             EventKeyRateRejection::Event => "rate-limited: event rate exceeded",
@@ -2239,7 +2256,15 @@ fn event_preflight(
     ip: std::net::IpAddr,
     event: &Event,
 ) -> Result<(), EventPreflightRejection> {
-    let allowed = if is_pose_lane(event.kind) {
+    let allowed = if event.kind == 1059
+        && event
+            .gift_wrap_recipient()
+            .is_some_and(|p| rate.suggestion_to(p))
+    {
+        // Attempt work is bounded separately; accepted sends charge the
+        // address only after the sender budget, so a flooder stays isolated.
+        rate.suggestion_preflight_from_ip(event.gift_wrap_recipient().unwrap_or_default(), ip)
+    } else if is_pose_lane(event.kind) {
         rate.pose_from_ip(ip)
     } else {
         rate.event_from_ip(ip)
@@ -2267,7 +2292,17 @@ fn event_key_rate_rejection(
         .as_ref()
         .and_then(|auth| auth.authenticated_pubkeys().into_iter().min())
         .unwrap_or_else(|| context.ip.to_string());
-    event_key_rate_rejection_for(&context.state.rate, event, virtual_owner, &sender)
+    let rejected = event_key_rate_rejection_for(&context.state.rate, event, virtual_owner, &sender);
+    if rejected.is_none()
+        && event.kind == 1059
+        && event
+            .gift_wrap_recipient()
+            .is_some_and(|recipient| !context.state.rate.suggestion_from_ip(recipient, context.ip))
+    {
+        Some(EventKeyRateRejection::GiftWrapRecipient)
+    } else {
+        rejected
+    }
 }
 
 fn event_key_rate_rejection_for(

@@ -182,6 +182,7 @@ mod ship_lab;
 pub mod shutdown;
 #[doc(hidden)]
 pub mod sign_in_keys;
+mod suggestion_box;
 #[doc(hidden)]
 pub mod suggestions;
 mod systemone_openapi;
@@ -802,6 +803,10 @@ pub fn router_with(mut config: Config, extend: fn(Router<App>) -> Router<App>) -
         .route("/api/flow/{*path}", get(pay_proxy))
         .route("/api/stats", get(pay_proxy))
         .route("/health", get(|| async { "ok" }))
+        .route(
+            "/suggestions/config.json",
+            get(suggestion_box::configuration),
+        )
         .route("/static/legacy-demo.css", get(legacy_stylesheet))
         .route(theme::STYLESHEET_PATH, get(theme::stylesheet))
         .route(theme::SCRIPT_PATH, get(theme::script))

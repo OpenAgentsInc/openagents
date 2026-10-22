@@ -18,7 +18,13 @@ pub struct Landmark {
     pub z: f32,
 }
 
-pub const LANDMARKS: [Landmark; 12] = [
+pub const LANDMARKS: [Landmark; 13] = [
+    Landmark {
+        id: "suggestion-box",
+        label: "Suggestion box",
+        x: 12.,
+        z: -10.,
+    },
     Landmark {
         id: "computer",
         label: "Computer",

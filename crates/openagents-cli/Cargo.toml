@@ -130,6 +130,7 @@ pay-ledger = { path = "../pay-ledger" }
 plugin = { path = "../plugin" }
 # The playtest triage inbox: reports, drafts, and the triage log.
 playtest = { path = "../playtest" }
+suggestion-inbox = { path = "../suggestion-inbox" }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 # ES256 App Store Connect API tokens for `playtest testflight`.
 ring = "0.17"

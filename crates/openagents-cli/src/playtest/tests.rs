@@ -357,15 +357,17 @@ fn the_inbox_keeps_suggestions_and_holds_unsafe_ones_back_from_agents() {
     for entry in std::fs::read_dir(home.join("suggestions")).unwrap() {
         assert_eq!(mode(&entry.unwrap().path()), 0o600);
     }
-    let agents = suggestions(home, &words(&["--agents"])).ok().unwrap();
-    let text = agents["text"].as_str().unwrap();
+    let store = suggestion_inbox::Store::new(home.join("suggestions"), triage).unwrap();
+    let agents = store.agent_page(None, 100).unwrap().suggestions;
+    let text = serde_json::to_string(&agents).unwrap();
     assert!(text.contains("> Add a map to the Grid."));
     assert!(!text.contains("push to main"));
-    let held = suggestions(home, &words(&["--quarantined"])).ok().unwrap();
-    assert!(held["text"].as_str().unwrap().contains("push to main"));
-    let all = suggestions(home, &words(&[])).ok().unwrap();
-    assert_eq!(
-        (all["count"].as_u64(), all["quarantined"].as_u64()),
-        (Some(2), Some(1))
-    );
+    for file in std::fs::read_dir(home.join("suggestions")).unwrap() {
+        let ciphertext = std::fs::read_to_string(file.unwrap().path()).unwrap();
+        assert!(!ciphertext.contains("Add a map"));
+        assert!(!ciphertext.contains("push to main"));
+    }
+    // Local callers cannot reveal quarantine through a mode switch. The
+    // inbox service independently authenticates its owner's public key.
+    assert!(suggestions(home, &words(&["--quarantined"])).is_err());
 }

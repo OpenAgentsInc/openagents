@@ -44,14 +44,15 @@ pub(crate) const USAGE: &str = "usage: openagents playtest COMMAND [OPTIONS]
         --build \"1.0.0 (15)\" [--code PT-…] [--moderator KEY]
   log [--acceptances | --pending]
   suggest TEXT|- [--category bug|idea|praise|other] [--as PROFILE] [--relay URL]
+        [--config URL] | suggest --retry [--as PROFILE]
                                 Drop a suggestion in the suggestion box: sealed
                                 to OpenAgents from your Verse profile's key.
                                 `openagents suggest` is the same.
-  suggestions [--agents | --quarantined]
+  suggestions --inbox URL [--as PROFILE] [--agents | --quarantined]
                                 The suggestion box's messages the inbox kept:
                                 the team's view; --agents, what a delegated
                                 agent may read (quoted, never quarantined);
-                                --quarantined, the owner's view of the rest.
+                                --quarantined requires the separate owner key.
   award (CODE | --issue N [--verified] | --script NAME --tester KEY)
         --quest ID@VERSION [--session ID] [--triager KEY] [--commit SHA]
         [--referee-key PATH] [--relay URL] [--repo OWNER/REPO] [--publish]
@@ -113,6 +114,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             "publish",
             "agents",
             "quarantined",
+            "retry",
         ],
     ) {
         Ok(args) => args,
@@ -358,13 +360,11 @@ pub fn ingest(
             Err(_) => match suggestion::open(event, triage) {
                 Ok(found) => {
                     // Every well-formed suggestion is kept, once.
-                    let path = box_dir.join(format!("{}.json", found.code));
-                    if path.exists() {
+                    let store = suggestion_inbox::Store::new(box_dir.clone(), *triage)?;
+                    if !store.receive(event, at)? {
                         result.repeats += 1;
                         continue;
                     }
-                    private_dir(&box_dir)?;
-                    private_file(&path, stored(&found, at).to_string().as_bytes())?;
                     result.suggestions.push(suggestion_line(&found));
                 }
                 Err(_) => result.refused += 1,
@@ -395,19 +395,6 @@ fn suggestions_dir(home: &Path) -> PathBuf {
     home.join("suggestions")
 }
 
-/// A kept suggestion as its file holds it.
-fn stored(found: &suggestion::Opened, at: u64) -> Value {
-    json!({
-        "code": found.code,
-        "received": at,
-        "sender": found.sender,
-        "rumor_id": found.rumor_id,
-        "wrap_id": found.wrap_id,
-        "screen": found.screen,
-        "suggestion": found.suggestion,
-    })
-}
-
 /// `SG-1A2B3C4D idea from verse-grid at (7.0, -8.0): the text`, or, held
 /// back, `SG-1A2B3C4D quarantined (why): …`.
 fn suggestion_line(found: &suggestion::Opened) -> String {
@@ -434,114 +421,233 @@ fn suggestion_line(found: &suggestion::Opened) -> String {
     }
 }
 
-/// The kept suggestions, oldest first.
-fn kept_suggestions(home: &Path) -> Result<Vec<suggestion::Opened>, String> {
-    let dir = suggestions_dir(home);
-    let entries = match std::fs::read_dir(&dir) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
-        Err(error) => return Err(format!("reading {}: {error}", dir.display())),
-    };
-    let mut kept = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
-            continue;
+/// Fetch the public inbox identity at runtime. No personal or triage key
+/// is compiled into suggestion clients.
+fn suggestion_config(args: &Args) -> Result<suggestion::InboxConfig, String> {
+    let url = args
+        .option("config")
+        .map(str::to_owned)
+        .or_else(|| std::env::var("OPENAGENTS_SUGGESTION_CONFIG").ok())
+        .unwrap_or_else(|| "https://openagents.com/suggestions/config.json".into());
+    let cache = home().join("suggestion-config.json");
+    let fetched = (|| {
+        let config: suggestion::InboxConfig = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(8))
+            .build()
+            .map_err(|e| e.to_string())?
+            .get(&url)
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|_| "The suggestion box couldn't be reached.".to_owned())?
+            .json()
+            .map_err(|_| "The suggestion box settings couldn't be read.".to_owned())?;
+        config.check()?;
+        Ok::<_, String>(config)
+    })();
+    match fetched {
+        Ok(config) => {
+            write_suggestion_atomic(
+                &cache,
+                &serde_json::to_vec(&json!({"source":url,"config":config}))
+                    .map_err(|e| e.to_string())?,
+            )?;
+            Ok(config)
         }
-        let text = std::fs::read_to_string(&path)
-            .map_err(|e| format!("reading {}: {e}", path.display()))?;
-        let value: Value =
-            serde_json::from_str(&text).map_err(|e| format!("reading {}: {e}", path.display()))?;
-        let read = |name: &str| value[name].as_str().unwrap_or_default().to_owned();
-        let Ok(found) = serde_json::from_value(value["suggestion"].clone()) else {
-            continue;
-        };
-        let Ok(screen) = serde_json::from_value(value["screen"].clone()) else {
-            continue;
-        };
-        kept.push((
-            value["received"].as_u64().unwrap_or(0),
-            suggestion::Opened {
-                sender: read("sender"),
-                rumor_id: read("rumor_id"),
-                code: read("code"),
-                wrap_id: read("wrap_id"),
-                suggestion: found,
-                screen,
-            },
-        ));
+        Err(error) => {
+            let config = std::fs::read(cache)
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+                .filter(|cached| cached["source"].as_str() == Some(url.as_str()))
+                .and_then(|cached| {
+                    serde_json::from_value::<suggestion::InboxConfig>(cached["config"].clone()).ok()
+                })
+                .filter(|config| config.check().is_ok());
+            config.ok_or(error)
+        }
     }
-    kept.sort_by(|a, b| (a.0, &a.1.code).cmp(&(b.0, &b.1.code)));
-    Ok(kept.into_iter().map(|(_, found)| found).collect())
 }
 
-/// `openagents playtest suggest TEXT` (and `openagents suggest`): a
-/// suggestion sealed to the triage key from the Verse profile's key, with
-/// the sender's own copy, published to the relay (#12460).
-fn suggest(args: &Args) -> Result<Value, Failure> {
-    let [text] = args.positional() else {
-        return Err(usage(
-            "suggest takes the suggestion's text, or - to read it",
-        ));
-    };
-    let text = if text == "-" {
-        let mut text = String::new();
-        std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
-            .map_err(|error| format!("cannot read stdin: {error}"))?;
-        text
-    } else {
-        text.clone()
-    };
-    let category = match args.option("category") {
-        Some(name) => suggestion::Category::from_name(name)
-            .ok_or_else(|| usage("--category is bug, idea, praise, or other"))?,
-        None => suggestion::Category::Idea,
-    };
-    let inbox = playtest::triage_key(std::env::var(playtest::TRIAGE_KEY_ENV).ok().as_deref())
-        .ok_or_else(|| "this build has no suggestion box key".to_owned())?;
-    let s = suggestion::Suggestion::new(
-        suggestion::Client::Cli,
-        category,
-        &text,
-        None,
-        Some(env!("CARGO_PKG_VERSION").to_owned()),
-        now(),
-    )
-    .map_err(usage)?;
-    let me = crate::relay::identity_for(args.option("as"))?;
-    let random = || report::Randomness {
+fn suggestion_relay(config: &suggestion::InboxConfig, args: &Args) -> Result<String, String> {
+    let relay = args.option("relay").unwrap_or(&config.relays[0]);
+    if !config.relays.iter().any(|listed| listed == relay) {
+        return Err("This relay isn't listed by the suggestion box.".into());
+    }
+    Ok(relay.to_owned())
+}
+
+fn write_suggestion_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or("The suggestion's folder couldn't be read.")?;
+    private_dir(parent)?;
+    let mut file = tempfile::NamedTempFile::new_in(parent).map_err(|e| e.to_string())?;
+    file.write_all(bytes)
+        .and_then(|()| file.as_file().sync_all())
+        .map_err(|e| e.to_string())?;
+    file.persist(path).map_err(|e| e.error.to_string())?;
+    #[cfg(unix)]
+    std::fs::File::open(parent)
+        .and_then(|dir| dir.sync_all())
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn suggestion_random() -> report::Randomness {
+    report::Randomness {
         wrapper: SecretKey::new(&mut secp256k1::rand::rng()),
         seal_nonce: rand_bytes(),
         wrap_nonce: rand_bytes(),
         seal_earlier: u64::from(u16::from_le_bytes(rand_bytes::<2>())) * 2,
         wrap_earlier: u64::from(u16::from_le_bytes(rand_bytes::<2>())) * 2,
-    };
-    let sealed = suggestion::wrap(&s, &me.secret, &inbox, &random(), &random())?;
-    let url = crate::relay::relay_url(args.option("relay"));
-    let mut client = crate::relay::Client::connect(&url, me.signer);
-    let mut refused = None;
-    for event in [sealed.wrap, sealed.copy] {
-        match client.publish(event, crate::relay::DEFAULT_WAIT) {
-            Ok(published) if published.accepted => {}
-            Ok(published) => {
-                refused = Some(published.message);
-                break;
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+struct QueuedSuggestion {
+    sender: String,
+    code: String,
+    relay: String,
+    wrap: Event,
+    copy: Event,
+}
+
+/// Durable ciphertext outbox. A failed publish leaves the exact events
+/// available for the next send or `openagents suggest --retry`.
+fn suggest(args: &Args) -> Result<Value, Failure> {
+    let me = crate::relay::identity_for(args.option("as"))?;
+    let sender = me.secret.x_only_public_key(&Secp256k1::new()).0.to_string();
+    let dir = home().join("suggestion-outbox");
+    private_dir(&dir)?;
+    let mut newest = None;
+    let config = suggestion_config(args).ok();
+    if !args.switch("retry") {
+        let [text] = args.positional() else {
+            return Err(usage("suggest takes text, or --retry"));
+        };
+        let text = if text == "-" {
+            let mut text = String::new();
+            std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+                .map_err(|e| e.to_string())?;
+            text
+        } else {
+            text.clone()
+        };
+        let category = args
+            .option("category")
+            .map(|name| {
+                suggestion::Category::from_name(name)
+                    .ok_or_else(|| usage("--category is bug, idea, praise, or other"))
+            })
+            .transpose()?
+            .unwrap_or_default();
+
+        let s = suggestion::Suggestion::new(
+            suggestion::Client::Cli,
+            category,
+            &text,
+            None,
+            Some(env!("CARGO_PKG_VERSION").into()),
+            now(),
+        )
+        .map_err(usage)?;
+        let recipient = match &config {
+            Some(config) => config
+                .inbox
+                .parse()
+                .map_err(|_| "The suggestion box key couldn't be read.".to_owned())?,
+            None => me.secret.x_only_public_key(&Secp256k1::new()).0,
+        };
+        let sealed = suggestion::wrap(
+            &s,
+            &me.secret,
+            &recipient,
+            &suggestion_random(),
+            &suggestion_random(),
+        )?;
+        newest = Some(sealed.code.clone());
+        let waiting = QueuedSuggestion {
+            sender: sender.clone(),
+            code: sealed.code,
+            relay: config
+                .as_ref()
+                .map(|c| suggestion_relay(c, args))
+                .transpose()?
+                .unwrap_or_default(),
+            wrap: sealed.wrap,
+            copy: sealed.copy,
+        };
+        write_suggestion_atomic(
+            &dir.join(format!("{}.json", sealed.rumor_id)),
+            &serde_json::to_vec(&waiting).map_err(|e| e.to_string())?,
+        )?;
+    }
+    let mut delivered = Vec::new();
+    let mut pending = 0;
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if path.extension().and_then(|x| x.to_str()) != Some("json") {
+            continue;
+        }
+        let mut waiting: QueuedSuggestion =
+            serde_json::from_slice(&std::fs::read(&path).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+        if waiting.sender != sender {
+            continue;
+        }
+        if waiting.relay.is_empty() {
+            let Some(config) = &config else {
+                pending += 1;
+                continue;
+            };
+            let opened = suggestion::open(&waiting.copy, &me.secret)?;
+            let sealed = suggestion::wrap(
+                &opened.suggestion,
+                &me.secret,
+                &config
+                    .inbox
+                    .parse()
+                    .map_err(|_| "The suggestion box key couldn't be read.".to_owned())?,
+                &suggestion_random(),
+                &suggestion_random(),
+            )?;
+            if newest.as_ref() == Some(&waiting.code) {
+                newest = Some(sealed.code.clone());
             }
-            Err(error) => {
-                refused = Some(error);
-                break;
-            }
+            waiting.code = sealed.code;
+            waiting.wrap = sealed.wrap;
+            waiting.copy = sealed.copy;
+            waiting.relay = suggestion_relay(config, args)?;
+            write_suggestion_atomic(
+                &path,
+                &serde_json::to_vec(&waiting).map_err(|e| e.to_string())?,
+            )?;
+        }
+        let mut client = crate::relay::Client::connect(&waiting.relay, me.signer.clone());
+        let inbox_ok = client
+            .publish(waiting.wrap, crate::relay::DEFAULT_WAIT)
+            .is_ok_and(|p| p.accepted);
+        let copy_ok = client
+            .publish(waiting.copy, crate::relay::DEFAULT_WAIT)
+            .is_ok_and(|p| p.accepted);
+        client.close();
+        if inbox_ok {
+            delivered.push(waiting.code);
+        }
+        if inbox_ok && copy_ok {
+            std::fs::remove_file(path).map_err(|e| e.to_string())?;
+        } else {
+            pending += 1;
         }
     }
-    client.close();
-    if let Some(reason) = refused {
-        return Err(Failure::Failed(format!("{url} didn't take it: {reason}")));
-    }
-    Ok(json!({
-        "code": sealed.code,
-        "relay": url,
-        "text": format!("Delivered as {}. Thank you!", sealed.code),
-    }))
+    let received = newest.as_ref().is_some_and(|code| delivered.contains(code));
+    let text = if received || (newest.is_none() && !delivered.is_empty()) {
+        suggestion::DELIVERED.to_owned()
+    } else if pending > 0 {
+        "Saved on this device. Run `openagents suggest --retry` when you're online.".into()
+    } else {
+        "No suggestions are waiting to send.".into()
+    };
+    Ok(json!({"code": newest, "delivered": delivered, "pending": pending, "text": text}))
 }
 
 fn rand_bytes<const N: usize>() -> [u8; N] {
@@ -553,39 +659,54 @@ fn rand_bytes<const N: usize>() -> [u8; N] {
 /// `openagents playtest suggestions`: the team's view of the box, what an
 /// agent may read (`--agents`), or the owner's view of the quarantined ones
 /// (`--quarantined`).
-fn suggestions(home: &Path, args: &Args) -> Result<Value, Failure> {
-    let kept = kept_suggestions(home)?;
-    let quarantined = |f: &&suggestion::Opened| f.screen != suggestion::Screen::Normal;
-    if args.switch("agents") {
-        let views: Vec<String> = kept.iter().filter_map(suggestion::for_agents).collect();
-        return Ok(json!({"suggestions": views, "text": views.join("\n")}));
+fn suggestions(_home: &Path, args: &Args) -> Result<Value, Failure> {
+    let origin = args
+        .option("inbox")
+        .map(str::to_owned)
+        .or_else(|| std::env::var("OPENAGENTS_SUGGESTION_INBOX").ok())
+        .ok_or_else(|| usage("Set --inbox to the suggestion inbox service URL."))?;
+    let path = if args.switch("quarantined") {
+        "/v1/quarantine"
+    } else {
+        "/v1/suggestions"
+    };
+    let mut url = format!("{}{path}", origin.trim_end_matches('/'));
+    if let Some(after) = args.option("after") {
+        if after.len() != 64 || !after.bytes().all(|b| b.is_ascii_hexdigit()) {
+            return Err(usage("--after takes a message ID"));
+        }
+        url.push_str("?after=");
+        url.push_str(after);
     }
-    if args.switch("quarantined") {
-        let held: Vec<&suggestion::Opened> = kept.iter().filter(quarantined).collect();
-        let lines: Vec<String> = held
-            .iter()
-            .map(|f| {
-                let why = match &f.screen {
-                    suggestion::Screen::Quarantined(why) => why.as_str(),
-                    suggestion::Screen::Normal => "",
-                };
-                format!(
-                    "{} ({why}) from {}: {}",
-                    f.code, f.sender, f.suggestion.text
-                )
-            })
-            .collect();
-        return Ok(json!({
-            "quarantined": held.iter().map(|f| f.code.clone()).collect::<Vec<_>>(),
-            "text": if lines.is_empty() { "Nothing is held back.".to_owned() } else { lines.join("\n") },
-        }));
-    }
-    let lines: Vec<String> = kept.iter().map(suggestion_line).collect();
-    Ok(json!({
-        "count": kept.len(),
-        "quarantined": kept.iter().filter(quarantined).count(),
-        "text": if lines.is_empty() { "The suggestion box is empty.".to_owned() } else { lines.join("\n") },
-    }))
+    let me = crate::relay::identity_for(args.option("as"))?;
+    let proof = me.signer.sign(
+        now(),
+        27235,
+        vec![
+            nostr::domain::Tag::new(vec!["u".into(), url.clone()]),
+            nostr::domain::Tag::new(vec!["method".into(), "GET".into()]),
+        ],
+        String::new(),
+    );
+    let auth = format!(
+        "Nostr {}",
+        base64::engine::general_purpose::STANDARD
+            .encode(serde_json::to_vec(&proof).map_err(|e| e.to_string())?)
+    );
+    let value: Value = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?
+        .get(url)
+        .header("authorization", auth)
+        .send()
+        .and_then(reqwest::blocking::Response::error_for_status)
+        .map_err(|_| "You can't read this inbox with that key.".to_owned())?
+        .json()
+        .map_err(|e| e.to_string())?;
+    Ok(
+        json!({"suggestions":value["suggestions"], "next":value["next"], "text":serde_json::to_string_pretty(&value).unwrap_or_default()}),
+    )
 }
 
 /// `PT-1A2B3C4D on “the selected text” (turn 3, model gpt-5.4): the comment`.
