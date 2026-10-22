@@ -7,6 +7,7 @@ import json
 import struct
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 import numpy as np
@@ -84,8 +85,8 @@ class FrozenCard(unittest.TestCase):
         write_json(self.oracle / "manifest.json", {"revision": checker.REVISION, "tensors": tensors})
         write_json(self.oracle / "holdout-corpus.json", {"cases": [{"id": "case", "n_gen": 2}]})
         write_json(self.oracle / "case/run.json", {
-            "id": "case", "n_gen": 2, "prompt_token_ids": [2], "generated_ids": [0, 1],
-            "steps": [{"position": k, "input_token": token, "argmax": k,
+            "id": "case", "n_gen": 2, "prompt_token_ids": [2, 2], "generated_ids": [0, 1],
+            "steps": [{"position": k + 1, "input_token": token, "argmax": k,
                        "logits_sha256": tensors[k]["sha256"]} for k, token in enumerate((2, 0))],
         })
         self.checkpoint = "a" * 64
@@ -98,6 +99,7 @@ class FrozenCard(unittest.TestCase):
                                     "checkpoint_index_sha256": self.checkpoint,
                                     "oracle_manifest_sha256": sha256(self.oracle / "manifest.json"),
                                     "oracle_corpus_sha256": sha256(self.oracle / "holdout-corpus.json"),
+                                    "oracle_run_sha256": {"case": sha256(self.oracle / "case/run.json")},
                                     "cases": [{"id": "case", "positions": 2}]})
         self.folders = {}
         for label in ("exact", "consumer-q"):
@@ -105,13 +107,13 @@ class FrozenCard(unittest.TestCase):
             folder.mkdir()
             self.folders[label] = folder
             write_json(folder / "manifest.json", {"index_sha256": self.checkpoint})
-            write_json(folder / "request.json", {"prompt_ids": [2], "force_ids": [0, 1], "max_tokens": 2,
+            write_json(folder / "request.json", {"prompt_ids": [2, 2], "force_ids": [0, 1], "max_tokens": 2,
                                                 "runtime": "native" if label == "exact" else "consumer-q-fast",
                                                 "checkpoint_index_sha256": self.checkpoint,
                                                 "consumer_q_manifest_sha256": None if label == "exact" else sha256(self.artifact)})
             for k, vector in enumerate(self.vectors[:2]):
                 vector.tofile(folder / f"step-{k}.logits.f32")
-                write_json(folder / f"step-{k}.json", {"position": k, "tokens": 1, "emit": True})
+                write_json(folder / f"step-{k}.json", {"position": 0 if k == 0 else k + 1, "tokens": 2 if k == 0 else 1, "emit": True})
                 (folder / f"step-{k}.msg").write_bytes(bytes([2 if k == 0 else 0]))
         self.args = argparse.Namespace(final=True, evaluation=self.evaluation,
                                        evaluation_sha256=sha256(self.evaluation),
@@ -133,7 +135,8 @@ class FrozenCard(unittest.TestCase):
         self.assertEqual(set(card["oracle_tensors"]), {"case.decode.last.logits", "case.decode.g1.logits"})
 
     def test_changed_frozen_inputs_or_checker_pin_are_refused(self):
-        for path in (self.evaluation, self.oracle / "manifest.json", self.oracle / "holdout-corpus.json"):
+        for path in (self.evaluation, self.oracle / "manifest.json", self.oracle / "holdout-corpus.json",
+                     self.oracle / "case/run.json"):
             original = path.read_bytes()
             path.write_bytes(original + b" ")
             with self.subTest(path=path), self.assertRaisesRegex(ValueError, "SHA-256"):
@@ -183,7 +186,7 @@ class FrozenCard(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "oracle tensor"):
             build_card(self.args)
         self.tensor_path.write_bytes(original)
-        write_json(self.folders["exact"] / "step-0.json", {"position": 1, "tokens": 1, "emit": True})
+        write_json(self.folders["exact"] / "step-0.json", {"position": 1, "tokens": 2, "emit": True})
         with self.assertRaisesRegex(ValueError, "token position"):
             build_card(self.args)
 
@@ -195,6 +198,31 @@ class FrozenCard(unittest.TestCase):
         self.assertFalse(card["final"])
         self.assertTrue(card["diagnostic"])
         self.assertTrue(card["partial"])
+
+    def test_matching_changes_to_earlier_prompt_tokens_do_not_bypass_frozen_oracle(self):
+        run_path = self.oracle / "case/run.json"
+        run = json.loads(run_path.read_text())
+        run["prompt_token_ids"][0] = 1
+        write_json(run_path, run)
+        for folder in self.folders.values():
+            path = folder / "request.json"
+            request = json.loads(path.read_text())
+            request["prompt_ids"][0] = 1
+            write_json(path, request)
+        with self.assertRaisesRegex(ValueError, "run.json: SHA-256"):
+            build_card(self.args)
+
+    def test_final_output_cannot_replace_a_historical_card(self):
+        output = self.root / "card.json"
+        output.write_text("historical data\n")
+        argv = ["consumer_q_card.py", "--final", "--evaluation", str(self.evaluation),
+                "--evaluation-sha256", self.args.evaluation_sha256,
+                "--checker-sha256", self.args.checker_sha256,
+                "--artifact-manifest", str(self.artifact), str(self.oracle), str(output),
+                *self.args.specs]
+        with patch("sys.argv", argv), self.assertRaises(FileExistsError):
+            checker.main()
+        self.assertEqual(output.read_text(), "historical data\n")
 
 
 if __name__ == "__main__":

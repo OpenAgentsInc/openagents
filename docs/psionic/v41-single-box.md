@@ -238,8 +238,9 @@ checker before capture. Run the checker with `--final`,
 and all eight `CASE=CAPTURE_DIR,LABEL` pairs for each of the `exact` and
 `consumer-q` labels. It refuses changed inputs, incomplete cases, or a
 capture from another artifact. The card records hashes of each capture's
-files, the oracle run records, and the oracle tensors it scores. Without
-`--final`, it writes a partial diagnostic card.
+files and the oracle tensors it scores, and verifies all eight oracle run
+records against their frozen hashes. Final output files must be new.
+Without `--final`, it writes a partial diagnostic card.
 
 The first emitted logits predict the first generated token and match
 `decode.last.logits`; later outputs match `decode.g1.logits`, and so on.
