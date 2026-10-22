@@ -126,6 +126,25 @@ pub fn choose_model(
         .cloned()
 }
 
+/// Whether a busy beacon can serve the requested model after its current
+/// work ends. Availability is checked by the caller; this only matches the
+/// advertised lane, model, and profile.
+fn advertises_while_busy(beacon: &Beacon, want: Option<&Want>) -> bool {
+    let Some(want) = want else {
+        return beacon.serves(Lane::CjConversation).is_some();
+    };
+    if group::profile_of(beacon) != want.profile()
+        || matches!(want, Want::Profiled(_, profile) if profile == pylon::QUALIFIED_PROFILE)
+            && !group::numerically_qualified(beacon)
+    {
+        return false;
+    }
+    beacon
+        .services
+        .iter()
+        .any(|service| service.lanes.contains(&Lane::CjConversation) && want.matches(service))
+}
+
 /// What `ask` returns.
 #[derive(Debug, Clone, Serialize)]
 pub struct Answer {
@@ -379,7 +398,7 @@ async fn ask_for(
                     && matches!(beacon.status, Status::Online | Status::Draining)
                     && beacon.slots.free == 0
                     && !beacon.is_stage()
-                    && beacon.serves(Lane::CjConversation).is_some()
+                    && advertises_while_busy(beacon, want)
             });
         let remaining = ask.wait.saturating_sub(started.elapsed());
         if !pinned_waiting || remaining.is_zero() {
