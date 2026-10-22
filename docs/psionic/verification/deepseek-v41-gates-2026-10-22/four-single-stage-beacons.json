@@ -1,0 +1,139 @@
+{
+  "schema": "openagents.pylon.qualification_beacons.v1",
+  "observed_at": 1792697833,
+  "relay": "ws://127.0.0.1:58761",
+  "events": [
+    {
+      "id": "dfee93ed2be36849faa7870820049aec49f27c93e634207a3afe4d14f49796d1",
+      "pubkey": "c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685",
+      "created_at": 1792697825,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "deepseek-gates-four-head"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v2"
+        ],
+        [
+          "x",
+          "3f8ee86a331ee322e196c7c0c43b4c69dc6cf3f113d3e4d72a7dda104b2f72f8"
+        ],
+        [
+          "expiration",
+          "1792698065"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":64,\"tier\":\"xl\"},\"generation\":1,\"group\":{\"artifact\":\"sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8\",\"deadline_secs\":600,\"generation\":1,\"id\":\"deepseek-gates-four\",\"max_output_tokens\":4096,\"readiness\":\"ready\",\"role\":\"head\"},\"label\":\"DeepSeek private qualification\",\"meta\":{\"answer_profile\":{\"answers\":4,\"first_token_ms\":795,\"max_answer_ms\":1638,\"max_tokens\":2,\"median_tokens\":2,\"tokens_per_s\":22.28},\"max_input_bytes\":98304,\"numerical_qualification\":{\"state\":\"unqualified\"},\"request_limits\":{\"max_context_tokens\":8192,\"max_input_bytes\":98304,\"max_input_tokens\":2872,\"max_prefill_tokens\":2872,\"max_step_tokens\":2872,\"modes\":[\"thinking\",\"chat\"],\"prefill_chunk_tokens\":null}},\"observed_at\":1792697825,\"pools\":[\"everglade\"],\"provider\":\"c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685\",\"pylon\":\"deepseek-gates-four-head\",\"requires\":[],\"services\":[{\"capability\":\"c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685:pylon/text-generation\",\"lanes\":[\"cj-conversation\"],\"model\":\"deepseek-v4.1-flash@sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1792697123,\"slots\":{\"free\":1,\"total\":1},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v2\",\"valid_until\":1792698065}",
+      "sig": "db41f24f47c0413ff1f2d000d8db30bf8cda226de093d2f8fd5e409bc9480244869a16054837ab001dbde4a76b52214ce40eb5b1e1065f1d4a2c5460fde27e4e"
+    },
+    {
+      "id": "20bf8006ac1030a9deea4e27f30bd97900735e24f72a98c508baa89435f0352a",
+      "pubkey": "c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685",
+      "created_at": 1792697825,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "deepseek-gates-four-head-s0"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v2"
+        ],
+        [
+          "x",
+          "e8edf7dea146b4307c5a1af019df02325340e30b3b6e5a4bc12deb7b21614c53"
+        ],
+        [
+          "expiration",
+          "1792698065"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":64,\"tier\":\"xl\"},\"generation\":1,\"group\":{\"artifact\":\"sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8\",\"generation\":1,\"id\":\"deepseek-gates-four\",\"layers\":{\"from\":0,\"to\":10},\"role\":\"stage\"},\"label\":\"DeepSeek private qualification s0\",\"meta\":{\"max_input_bytes\":98304,\"stage_device\":{\"bundle\":\"95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e\",\"class\":\"cuda-sm_120\",\"execution_config_sha256\":\"07649fd2bcb8580c8573ecd0f64332b4f1a70828fc095c0dd3dfb8d161fb7c6e\",\"experts\":\"device\",\"manifest\":\"sha256:cd2f590c7e8dae9a3773777b6136bf9e9e63b4714626dbfbb47a59e8a555977b\",\"name\":\"NVIDIA RTX PRO 6000 Blackwell Server Edition\",\"profile\":\"cuda-fp8-mma-tp8-sm_120\"}},\"observed_at\":1792697825,\"pools\":[\"everglade\"],\"provider\":\"c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685\",\"pylon\":\"deepseek-gates-four-head-s0\",\"requires\":[],\"services\":[],\"settlement\":[\"free-v1\"],\"since\":1792697123,\"slots\":{\"free\":0,\"total\":0},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v2\",\"valid_until\":1792698065}",
+      "sig": "4d2afe3729970bbcfe57ca473ae687103e74a7caffc152f126e12349178844c6b9d8e95c3e0892aac7ea2ee8430828b183681101c5654312f9777926fe5ff8f0"
+    },
+    {
+      "id": "0115ed0c8749f76ecade1ef73a1dcdf30565a517ca357fdd4966ed177606e701",
+      "pubkey": "c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685",
+      "created_at": 1792697825,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "deepseek-gates-four-head-s1"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v2"
+        ],
+        [
+          "x",
+          "46625cd51e71a0bb16be24748399ab16d6b322fafa054750e39718a6c1ec94f7"
+        ],
+        [
+          "expiration",
+          "1792698065"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":64,\"tier\":\"xl\"},\"generation\":1,\"group\":{\"artifact\":\"sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8\",\"generation\":1,\"id\":\"deepseek-gates-four\",\"layers\":{\"from\":10,\"to\":20},\"role\":\"stage\"},\"label\":\"DeepSeek private qualification s1\",\"meta\":{\"max_input_bytes\":98304,\"stage_device\":{\"bundle\":\"95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e\",\"class\":\"cuda-sm_120\",\"execution_config_sha256\":\"07649fd2bcb8580c8573ecd0f64332b4f1a70828fc095c0dd3dfb8d161fb7c6e\",\"experts\":\"device\",\"manifest\":\"sha256:cd2f590c7e8dae9a3773777b6136bf9e9e63b4714626dbfbb47a59e8a555977b\",\"name\":\"NVIDIA RTX PRO 6000 Blackwell Server Edition\",\"profile\":\"cuda-fp8-mma-tp8-sm_120\"}},\"observed_at\":1792697825,\"pools\":[\"everglade\"],\"provider\":\"c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685\",\"pylon\":\"deepseek-gates-four-head-s1\",\"requires\":[],\"services\":[],\"settlement\":[\"free-v1\"],\"since\":1792697123,\"slots\":{\"free\":0,\"total\":0},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v2\",\"valid_until\":1792698065}",
+      "sig": "3b8a7cc4b9e5f9ccb653ea639c6c3a807d8c4fe3e2a8b434a78fce5bc2fd9377667cea5148f4811fa2eb355b89384d75c74dabc444f913c4b82c34e29750aad4"
+    },
+    {
+      "id": "1cf0891e164df2478c876b9a6b1abf3ffb48bb11341ff05f63566209fb18efbd",
+      "pubkey": "c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685",
+      "created_at": 1792697825,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "deepseek-gates-four-head-s2"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v2"
+        ],
+        [
+          "x",
+          "a82f3491bf182cc8b091fcb71a98c788d1a717b5f3344a48494fbbaf4474f04a"
+        ],
+        [
+          "expiration",
+          "1792698065"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":64,\"tier\":\"xl\"},\"generation\":1,\"group\":{\"artifact\":\"sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8\",\"generation\":1,\"id\":\"deepseek-gates-four\",\"layers\":{\"from\":20,\"to\":30},\"role\":\"stage\"},\"label\":\"DeepSeek private qualification s2\",\"meta\":{\"max_input_bytes\":98304,\"stage_device\":{\"bundle\":\"95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e\",\"class\":\"cuda-sm_120\",\"execution_config_sha256\":\"07649fd2bcb8580c8573ecd0f64332b4f1a70828fc095c0dd3dfb8d161fb7c6e\",\"experts\":\"device\",\"manifest\":\"sha256:cd2f590c7e8dae9a3773777b6136bf9e9e63b4714626dbfbb47a59e8a555977b\",\"name\":\"NVIDIA RTX PRO 6000 Blackwell Server Edition\",\"profile\":\"cuda-fp8-mma-tp8-sm_120\"}},\"observed_at\":1792697825,\"pools\":[\"everglade\"],\"provider\":\"c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685\",\"pylon\":\"deepseek-gates-four-head-s2\",\"requires\":[],\"services\":[],\"settlement\":[\"free-v1\"],\"since\":1792697123,\"slots\":{\"free\":0,\"total\":0},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v2\",\"valid_until\":1792698065}",
+      "sig": "e5a2a62fea15b1914a8663d14c3c828f58ecce3f3106932b8e7f6c476f60b81c71757bb8b84fdd9e9f50f8af0830cecbc921c516fca3ded00d18acec64536957"
+    },
+    {
+      "id": "c499f1925e0d15da559b7fb5d14e577ec4ed3925ed6fb308b6833d144af0cc4a",
+      "pubkey": "c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685",
+      "created_at": 1792697825,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "deepseek-gates-four-head-s3"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v2"
+        ],
+        [
+          "x",
+          "3622124bc4b229a3271ebe8566a43d992ba87771facb28d43fd752a63777f0c8"
+        ],
+        [
+          "expiration",
+          "1792698065"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":64,\"tier\":\"xl\"},\"generation\":1,\"group\":{\"artifact\":\"sha256:74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8\",\"generation\":1,\"id\":\"deepseek-gates-four\",\"layers\":{\"from\":30,\"to\":40},\"role\":\"stage\"},\"label\":\"DeepSeek private qualification s3\",\"meta\":{\"max_input_bytes\":98304,\"stage_device\":{\"bundle\":\"95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e\",\"class\":\"cuda-sm_120\",\"execution_config_sha256\":\"07649fd2bcb8580c8573ecd0f64332b4f1a70828fc095c0dd3dfb8d161fb7c6e\",\"experts\":\"device\",\"manifest\":\"sha256:cd2f590c7e8dae9a3773777b6136bf9e9e63b4714626dbfbb47a59e8a555977b\",\"name\":\"NVIDIA RTX PRO 6000 Blackwell Server Edition\",\"profile\":\"cuda-fp8-mma-tp8-sm_120\"}},\"observed_at\":1792697825,\"pools\":[\"everglade\"],\"provider\":\"c2fa3c7ae84a9bce7509efc6f80122f9599933534524a6f1ca1dd65022629685\",\"pylon\":\"deepseek-gates-four-head-s3\",\"requires\":[],\"services\":[],\"settlement\":[\"free-v1\"],\"since\":1792697123,\"slots\":{\"free\":0,\"total\":0},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v2\",\"valid_until\":1792698065}",
+      "sig": "a1a25c05a34fb5eb60e1e155d63e6292a9eede22c03dce7564d2ab2abb5a5921dd9195a3e814b1ec962da37456cab2a91246cc0234d3ce226532aee1324388df"
+    }
+  ],
+  "purpose": "Verified observed head and four native stage beacons; numerical qualification remains pending.",
+  "reader_source_sha256": "751da2efd6a0bdca551f0c8c2ef6a49cb9107e4a713ec27159f5741b5ebf39fd"
+}

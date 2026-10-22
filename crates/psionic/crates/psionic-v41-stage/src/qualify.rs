@@ -2451,11 +2451,16 @@ pub fn router_margin_violations(
         return vec![format!("{name}: no router evidence for the margin rule")];
     }
     for layer in router["layers"].as_array().into_iter().flatten() {
-        if layer["local_changed"].as_u64() != Some(0) {
-            out.push(format!(
-                "{name}: router layer {} scores do not reproduce {} actual selections",
-                layer["layer"], layer["local_changed"]
-            ));
+        match layer["local_changed"].as_u64() {
+            None => out.push(format!(
+                "{name}: router layer {} has malformed local selection count",
+                layer["layer"]
+            )),
+            Some(changed) if changed > 0 => out.push(format!(
+                "{name}: router layer {} scores do not reproduce {changed} actual selections",
+                layer["layer"]
+            )),
+            Some(_) => {}
         }
         let l = layer["layer"].as_u64().unwrap_or_default() as usize;
         let Some(eps) = budget.get(l).copied() else {
@@ -2596,7 +2601,15 @@ pub fn self_check(
     }
     let mut detected = Vec::new();
     for c in controls {
-        let failures = judge_report(policy, c);
+        let mut rejudged = c.clone();
+        for case in rejudged["cases"].as_array_mut().into_iter().flatten() {
+            if let Some(router) = case["router"].as_object_mut() {
+                for field in ["failed", "unresolved", "over_budget"] {
+                    router.remove(field);
+                }
+            }
+        }
+        let failures = judge_report(policy, &rejudged);
         let name = c["control"].as_str().unwrap_or("unnamed");
         if failures.is_empty() {
             return Err(refused(format!(
@@ -3254,6 +3267,15 @@ sys.exit(subprocess.call([sys.executable, '-c', worker, sys.argv[1], sys.argv[2]
             self_check(&p, &[r.clone()], &[control.clone()]).unwrap()["reference_passes"],
             true
         );
+        // A pending recording-policy verdict alone cannot detect a control.
+        let mut blind = r.clone();
+        blind["control"] = json!("blind");
+        assert!(self_check(&p, &[r.clone()], &[blind.clone()]).is_err());
+        blind["cases"][0]["router"]["layers"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("local_changed");
+        assert!(self_check(&p, &[r.clone()], &[blind]).is_err());
         r["cases"][0]["router"]["changes"][0]["regret"] = json!(1.0);
         assert!(self_check(&p, &[r], &[control]).is_err());
     }

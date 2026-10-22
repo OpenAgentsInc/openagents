@@ -1385,3 +1385,37 @@ regret exceeds the derived rule. Publication still requires zero failed and
 unresolved decisions under the frozen release policy. All 33 stage unit tests
 pass, with one optional test ignored. The inference worker and limits stay
 unchanged.
+
+### Current CUDA and cross-machine evidence (2026-10-22)
+
+The pinned `06e5158778` source now passes **144 component tests on each of
+SM89 and SM120**, with no failures and six optional tests ignored on each.
+The SM89 run includes the B200 FP8 row and 37 independent CPU mixed-row
+controls. See [the SM89 result](verification/deepseek-v41-gates-2026-10-22/sm89-receipt-components.json).
+
+The same pinned worker passed the frozen G2 suite on two dual-GPU machines:
+**5/6 versus the oracle's 5/6, all mandatory checks held, every answer ended**.
+The token sequences match the one-quad run. See
+[the two-dual result](verification/deepseek-v41-gates-2026-10-22/g2-candidate-06-two-dual.json).
+
+A guarded `pylon cloud up four-single` cold launch also completed its private
+Pylon runtime checks: arithmetic, repeated-request state, continuation from the
+actual previous answer, an honest 4096-token refusal, and a fresh answer after
+that refusal. The capped answer ran for 197 seconds. All four signed stage
+beacons report the same original-weight bundle and actual execution
+fingerprint `07649fd2bcb8580c8573ecd0f64332b4f1a70828fc095c0dd3dfb8d161fb7c6e`;
+[the signed observations](verification/deepseek-v41-gates-2026-10-22/four-single-stage-beacons.json)
+retain their identities. The read-only `qualification_beacons` example uses
+the existing verified relay reader and a temporary identity. It includes
+stage beacons, which ordinary routing excludes. All 328 Pylon tests pass.
+These are runtime and identity checks; four-single numerical acceptance is
+still pending.
+
+Prospective calibration now discards the recording policy's verdict counters
+for negative controls too, then rejudges their measured errors and changed
+rows. A pending verdict alone cannot detect a control. Missing local selection
+counts are classified as malformed evidence. The stage package passes 62
+tests, with one optional test ignored. The current diagnostic correctly
+refuses the historical stale-cache control for insufficient numerical evidence;
+new controls on the pinned candidate are required before the final freeze.
+The model worker, thresholds, and publication requirements do not change.
