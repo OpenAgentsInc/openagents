@@ -759,7 +759,15 @@ mod tests {
                 assert!(!hud.down(1, at, &map));
                 assert!(!hud.captured(1));
             }
-            let boundary = hud.snapshot([144.0, 280.0], [0.0, 0.0], true, "", None);
+            let height = 64.0
+                + if expanded {
+                    76.0 + LANDMARKS.len().div_ceil(3) as f32 * 28.0 + 28.0
+                } else {
+                    160.0
+                };
+            let below = hud.snapshot([144.0, height - 1.0], [0.0, 0.0], true, "", None);
+            assert!(!below.visible);
+            let boundary = hud.snapshot([144.0, height], [0.0, 0.0], true, "", None);
             assert!(boundary.visible);
         }
     }

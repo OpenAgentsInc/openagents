@@ -82,6 +82,7 @@ pub const SENDING: &str = "Sending\u{2026}";
 pub const DELIVERED: &str = "Delivered. Thank you!";
 pub const SAVED: &str = "Saved. It sends when you're back online.";
 pub const EMPTY: &str = "Write your suggestion first.";
+pub const TOO_LONG: &str = "Suggestions can be at most 2,000 characters.";
 
 /// What a suggestion is about.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -194,11 +195,11 @@ fn unwanted(c: char) -> bool {
 }
 
 /// The text a suggestion carries: control and bidirectional-override
-/// characters taken out, trimmed, and cut to [`MAX_CHARS`].
+/// characters taken out and trimmed. Oversized text is refused before sending.
 #[must_use]
 pub fn clean(text: &str) -> String {
     let kept: String = text.chars().filter(|c| !unwanted(*c)).collect();
-    kept.trim().chars().take(MAX_CHARS).collect()
+    kept.trim().to_owned()
 }
 
 impl Suggestion {
@@ -241,7 +242,7 @@ impl Suggestion {
             return Err(EMPTY.into());
         }
         if self.text.chars().count() > MAX_CHARS {
-            return Err(format!("Keep it under {MAX_CHARS} characters."));
+            return Err(TOO_LONG.into());
         }
         if self.text.chars().any(unwanted) {
             return Err("The suggestion has characters it can't carry.".into());

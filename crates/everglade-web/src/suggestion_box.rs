@@ -318,8 +318,10 @@ fn follow(now: f64) {
                     wrapper: verse::identity::random_secret(),
                     seal_nonce: verse::identity::random_bytes(),
                     wrap_nonce: verse::identity::random_bytes(),
-                    seal_earlier: 0,
-                    wrap_earlier: 0,
+                    seal_earlier: u64::from(u16::from_le_bytes(verse::identity::random_bytes()))
+                        * 2,
+                    wrap_earlier: u64::from(u16::from_le_bytes(verse::identity::random_bytes()))
+                        * 2,
                 };
                 let sealed = suggestion::wrap(
                     &opened.suggestion,

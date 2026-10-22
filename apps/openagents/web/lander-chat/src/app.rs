@@ -776,7 +776,7 @@ impl LanderChat {
             if text.chars().count() > model::SUGGEST_MAX {
                 self.put_back(&text, cx);
                 self.notice = Some(Notice {
-                    text: model::TOO_LONG.into(),
+                    text: model::SUGGEST_TOO_LONG.into(),
                     sign_in: false,
                 });
                 cx.notify();

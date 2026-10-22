@@ -10,7 +10,14 @@ fn words(text: &[&str]) -> Args {
     let words: Vec<String> = text.iter().map(|w| (*w).to_owned()).collect();
     Args::parse(
         &words,
-        &["approve", "acceptances", "pending", "agents", "quarantined"],
+        &[
+            "approve",
+            "acceptances",
+            "pending",
+            "agents",
+            "quarantined",
+            "retry",
+        ],
     )
     .expect("args")
 }
@@ -370,4 +377,65 @@ fn the_inbox_keeps_suggestions_and_holds_unsafe_ones_back_from_agents() {
     // Local callers cannot reveal quarantine through a mode switch. The
     // inbox service independently authenticates its owner's public key.
     assert!(suggestions(home, &words(&["--quarantined"])).is_err());
+}
+
+#[test]
+fn offline_suggestions_keep_every_ciphertext_without_an_inbox_configuration() {
+    const CHILD: &str = "OA_SUGGESTION_OFFLINE_TEST_CHILD";
+    if std::env::var_os(CHILD).is_some() {
+        let text = "A first offline suggestion";
+        for n in 0..21 {
+            let value = suggest(&words(&[
+                &format!("{text} {n}"),
+                "--config",
+                "http://127.0.0.1:9/config.json",
+                "--as",
+                "offline-fixture",
+            ]))
+            .ok()
+            .expect("saved offline suggestion");
+            assert_eq!(value["pending"], n + 1);
+            assert!(value["delivered"].as_array().unwrap().is_empty());
+        }
+        let me = crate::relay::identity_for(Some("offline-fixture")).unwrap();
+        let files = std::fs::read_dir(home().join("suggestion-outbox")).unwrap();
+        let mut count = 0;
+        for file in files {
+            let bytes = std::fs::read(file.unwrap().path()).unwrap();
+            assert!(!String::from_utf8_lossy(&bytes).contains(text));
+            let waiting: QueuedSuggestion = serde_json::from_slice(&bytes).unwrap();
+            assert!(waiting.relay.is_empty());
+            assert!(
+                suggestion::open(&waiting.copy, &me.secret)
+                    .unwrap()
+                    .suggestion
+                    .text
+                    .starts_with(text)
+            );
+            count += 1;
+        }
+        assert_eq!(count, 21);
+        let retried = suggest(&words(&[
+            "--retry",
+            "--as",
+            "offline-fixture",
+            "--config",
+            "http://127.0.0.1:9/config.json",
+        ]))
+        .ok()
+        .unwrap();
+        assert_eq!(retried["pending"], 21);
+        return;
+    }
+    // Environment changes are isolated from every parallel test and from
+    // the owner's profile and home directory.
+    let directory = tempfile::tempdir().unwrap();
+    let result = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", "playtest::tests::offline_suggestions_keep_every_ciphertext_without_an_inbox_configuration", "--nocapture"])
+        .env(CHILD,"1")
+        .env("HOME",directory.path())
+        .env("VERSE_HOME",directory.path().join("verse"))
+        .env("OPENAGENTS_PLAYTEST_HOME",directory.path().join("playtest"))
+        .status().unwrap();
+    assert!(result.success());
 }
