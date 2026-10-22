@@ -8,6 +8,19 @@ Status: the definitive checklist for
 place that says what finishes the epic. Those docs still hold the reasoning
 and the evidence. Update this file as items land.
 
+**Current status, 2026-10-22:** the owner reopened qualification after the
+[closed-issue audit](../audits/2026-10-22-deepseek-closed-issues.md).
+[#12369](https://github.com/OpenAgentsInc/openagents/issues/12369) is open
+again, owned by Codex for the remaining G1–G8 acceptance work. Its earlier
+closure authorized an experimental preview; it did not pass the original
+gates. Policy 2.3 failed, including one 38-token Engram case, and remains
+failed. G2 suite 2 has a retained 5/6 result against the oracle's 5/6;
+the audit's checker controls must be fixed and the answers rescored before
+using that result. G3's component evidence remains valid for its recorded
+bundles and devices. G4–G6 still need numerical acceptance; pinned G7 and
+qualified G8 evidence remain outstanding. The separate Maya optimization
+issues retain their existing owners and experimental profiles.
+
 ## What "done" means
 
 The epic's goal: **serve DeepSeek-V4.1-Flash with Psionic as the only
@@ -24,7 +37,8 @@ listed as an after-close check.
 v2 release contract: qualify the served GPU runtime directly against the
 oracle. The [review addendum](#qualification-review-addendum-2026-10-21)
 defines the required evidence and the transition from v1. G1 v1 remains
-failed; G1 v2 is pending a frozen numerical policy, harness, and full run.
+failed; G1 v2 failed under frozen policies 2.1 and 2.3. A successor requires
+independent calibration, complete evidence, and fresh confirmation data.
 No existing result becomes a pass through this revision.
 
 **Launch scope revision, 2026-10-21 (owner decision):** the launch uses the

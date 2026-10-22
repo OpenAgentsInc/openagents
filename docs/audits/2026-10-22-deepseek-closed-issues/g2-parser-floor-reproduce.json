@@ -1,0 +1,32 @@
+{
+  "task": {
+    "thinking_mode": "thinking",
+    "assertions": [
+      {
+        "kind": "last_line_exact",
+        "pattern": "^72$",
+        "must_pass": true
+      }
+    ]
+  },
+  "ended": true,
+  "reasoning": "",
+  "content": "72",
+  "result": [
+    false,
+    [
+      {
+        "check": "reasoning split",
+        "passed": false
+      },
+      {
+        "check": "last_line_exact",
+        "passed": true,
+        "detail": "last line '72'",
+        "must_pass": true,
+        "known_shared_failure": null
+      }
+    ],
+    true
+  ]
+}

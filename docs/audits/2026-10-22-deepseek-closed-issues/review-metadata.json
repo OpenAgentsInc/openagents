@@ -1,0 +1,27 @@
+{
+  "source_commit": "50b42cce21",
+  "issues_closed_from": "2026-10-20T00:00:00Z",
+  "issue_inventory_at": "2026-10-22T13:25:15Z",
+  "source_of_confirmation_report": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/policy-2.3/confirmation/confirmation/report.json",
+  "confirmation_report_generation": "1792658190056916",
+  "confirmation_report_bytes": 48775520,
+  "confirmation_report_sha256": "656a3787e30f79bf6cef5453205131f12a73f44c18624cd3136a88c723a53527",
+  "confirmation_stdout": "{\"passed\":true,\"out\":\"/mnt/stage/out/confirmation\"}",
+  "g2_answers_sha256": "40b1eb85ca3b860ebfc5206917cb2b61d0a48905f14ec61fb6712a12db03708a",
+  "g2_rescored_sha256": "49d3a97f6e2ae918f7a1b85b40e63adacf83f73fdb7d29f181f6ad2ffcfec887",
+  "local_checks": {
+    "g2_negative_positive_controls": {
+      "passed": 13
+    },
+    "cloud_budget_unit_tests": {
+      "passed": 41
+    },
+    "rust_tests_rerun": false,
+    "gpu_runs": 0,
+    "vms_allocated": 0,
+    "production_chats_created": 0
+  },
+  "subsequent_changes_not_source_audited": [
+    "62d86e8a99: --kv packed for open issue #12471"
+  ]
+}

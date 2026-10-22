@@ -1,0 +1,1187 @@
+[
+  {
+    "number": 12369,
+    "title": "Epic: serve DeepSeek-V4.1-Flash natively in Psionic across stage Pylons",
+    "closed_at": "2026-10-22T13:23:12Z",
+    "comments": 10,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12369",
+    "commits": [
+      {
+        "commit": "9d873415d7",
+        "on_audited_main": true
+      },
+      {
+        "commit": "d9495f4bee",
+        "on_audited_main": true
+      },
+      {
+        "commit": "96a1323cac",
+        "on_audited_main": true
+      },
+      {
+        "commit": "73bc61b455",
+        "on_audited_main": true
+      },
+      {
+        "commit": "4d86ee1844",
+        "on_audited_main": true
+      },
+      {
+        "commit": "e71077e800",
+        "on_audited_main": true
+      },
+      {
+        "commit": "1947313448",
+        "on_audited_main": true
+      },
+      {
+        "commit": "5b64d287e9",
+        "on_audited_main": true
+      },
+      {
+        "commit": "fb71b92f82",
+        "on_audited_main": true
+      },
+      {
+        "commit": "13f2b9825a",
+        "on_audited_main": true
+      },
+      {
+        "commit": "804995951f",
+        "on_audited_main": true
+      },
+      {
+        "commit": "7c370e31d8",
+        "on_audited_main": true
+      },
+      {
+        "commit": "d912ed9392",
+        "on_audited_main": true
+      },
+      {
+        "commit": "d85e58b2f0",
+        "on_audited_main": true
+      },
+      {
+        "commit": "20ec8240ef",
+        "on_audited_main": true
+      },
+      {
+        "commit": "83ae7ac7f7",
+        "on_audited_main": true
+      },
+      {
+        "commit": "91c68c4281",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12403,
+    "title": "DeepSeek-V4.1 W16: Launch V4.1 as a visible Pylon group and close #12369",
+    "closed_at": "2026-10-22T13:22:55Z",
+    "comments": 8,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12403",
+    "commits": [
+      {
+        "commit": "9d873415d7",
+        "on_audited_main": true
+      },
+      {
+        "commit": "91c68c4281",
+        "on_audited_main": true
+      },
+      {
+        "commit": "64092571b4",
+        "on_audited_main": true
+      },
+      {
+        "commit": "0898e1ceaf",
+        "on_audited_main": true
+      },
+      {
+        "commit": "70af56e80c",
+        "on_audited_main": true
+      },
+      {
+        "commit": "3d44d55ace",
+        "on_audited_main": true
+      },
+      {
+        "commit": "4a1302b8b2",
+        "on_audited_main": true
+      },
+      {
+        "commit": "94bf966eed",
+        "on_audited_main": true
+      },
+      {
+        "commit": "f9ce2d88dd",
+        "on_audited_main": true
+      },
+      {
+        "commit": "bd31eb3a16",
+        "on_audited_main": true
+      },
+      {
+        "commit": "41ad65226e",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12389,
+    "title": "DeepSeek-V4.1 W2: Complete answers on CPU for the V4.1 oracle prompts",
+    "closed_at": "2026-10-22T13:22:40Z",
+    "comments": 11,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12389",
+    "commits": [
+      {
+        "commit": "9d873415d7",
+        "on_audited_main": true
+      },
+      {
+        "commit": "30ba21cb1e",
+        "on_audited_main": true
+      },
+      {
+        "commit": "9d7a7e0903",
+        "on_audited_main": true
+      },
+      {
+        "commit": "d6c4550dfc",
+        "on_audited_main": true
+      },
+      {
+        "commit": "364cf9ffe9",
+        "on_audited_main": true
+      },
+      {
+        "commit": "ccebc18cca",
+        "on_audited_main": true
+      },
+      {
+        "commit": "2908764df4",
+        "on_audited_main": true
+      },
+      {
+        "commit": "41ad65226e",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12424,
+    "title": "DeepSeek-V4.1: capture the G1 v2 holdout oracle and qualify the launch profile",
+    "closed_at": "2026-10-22T13:22:24Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12424",
+    "commits": [
+      {
+        "commit": "41ad65226e",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12405,
+    "title": "DeepSeek-V4.1: G1 v2 policy and direct SM120 comparison harness",
+    "closed_at": "2026-10-22T13:22:05Z",
+    "comments": 22,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12405",
+    "commits": [
+      {
+        "commit": "9d873415d7",
+        "on_audited_main": true
+      },
+      {
+        "commit": "d85e58b2f0",
+        "on_audited_main": true
+      },
+      {
+        "commit": "20ec8240ef",
+        "on_audited_main": true
+      },
+      {
+        "commit": "30ba21cb1e",
+        "on_audited_main": true
+      },
+      {
+        "commit": "af238b4018",
+        "on_audited_main": true
+      },
+      {
+        "commit": "d3525df8ef",
+        "on_audited_main": true
+      },
+      {
+        "commit": "70af56e80c",
+        "on_audited_main": true
+      },
+      {
+        "commit": "91c68c4281",
+        "on_audited_main": true
+      },
+      {
+        "commit": "250bc4bb90",
+        "on_audited_main": true
+      },
+      {
+        "commit": "8ef88b4018",
+        "on_audited_main": true
+      },
+      {
+        "commit": "3d44d55ace",
+        "on_audited_main": true
+      },
+      {
+        "commit": "a7ee0d7577",
+        "on_audited_main": true
+      },
+      {
+        "commit": "510b328481",
+        "on_audited_main": true
+      },
+      {
+        "commit": "64092571b4",
+        "on_audited_main": true
+      },
+      {
+        "commit": "0898e1ceaf",
+        "on_audited_main": true
+      },
+      {
+        "commit": "7ddb199581",
+        "on_audited_main": true
+      },
+      {
+        "commit": "b390516b13",
+        "on_audited_main": true
+      },
+      {
+        "commit": "e4e649c8ff",
+        "on_audited_main": true
+      },
+      {
+        "commit": "f6aefeccea",
+        "on_audited_main": true
+      },
+      {
+        "commit": "cd5e9251e9",
+        "on_audited_main": true
+      },
+      {
+        "commit": "f5fb59bfa9",
+        "on_audited_main": true
+      },
+      {
+        "commit": "21c8ad7a42",
+        "on_audited_main": true
+      },
+      {
+        "commit": "7347c5a982",
+        "on_audited_main": true
+      },
+      {
+        "commit": "2129597789",
+        "on_audited_main": true
+      },
+      {
+        "commit": "87a8e98fdf",
+        "on_audited_main": true
+      },
+      {
+        "commit": "41ad65226e",
+        "on_audited_main": true
+      },
+      {
+        "commit": "5ca020e18a",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12420,
+    "title": "DeepSeek-V4.1: Metal stage backend for Mac Pylons",
+    "closed_at": "2026-10-22T00:16:16Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12420",
+    "commits": [
+      {
+        "commit": "692a5d8f1f",
+        "on_audited_main": true
+      },
+      {
+        "commit": "33c09216bf",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12434,
+    "title": "Budget DeepSeek V4.1 group turns and say when the group is busy",
+    "closed_at": "2026-10-21T22:02:13Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12434",
+    "commits": [
+      {
+        "commit": "703414d9e7",
+        "on_audited_main": true
+      },
+      {
+        "commit": "48f9b9f8c7",
+        "on_audited_main": true
+      },
+      {
+        "commit": "6e1f4398ec",
+        "on_audited_main": true
+      },
+      {
+        "commit": "f06d4a2f7b",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12426,
+    "title": "Microcoder on Flint (rec) and DeepSeek V4.1 Pylons",
+    "closed_at": "2026-10-21T20:50:12Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12426",
+    "commits": [
+      {
+        "commit": "199b62c77c",
+        "on_audited_main": true
+      },
+      {
+        "commit": "f8270686df",
+        "on_audited_main": true
+      },
+      {
+        "commit": "179fdd6980",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12418,
+    "title": "DeepSeek-V4.1: mixed-device stage groups (CUDA sm_80/89/90/120, CPU, and a Metal plan)",
+    "closed_at": "2026-10-21T19:52:37Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12418",
+    "commits": [
+      {
+        "commit": "8224affd2f",
+        "on_audited_main": true
+      },
+      {
+        "commit": "5637985df3",
+        "on_audited_main": true
+      },
+      {
+        "commit": "b13ec37306",
+        "on_audited_main": true
+      },
+      {
+        "commit": "36681ba8f0",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12421,
+    "title": "Grid terminal: identical answers, duplicate DeepSeek label, hidden DeepSeek control",
+    "closed_at": "2026-10-21T19:23:54Z",
+    "comments": 4,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12421",
+    "commits": [
+      {
+        "commit": "d2a5b5d250",
+        "on_audited_main": true
+      },
+      {
+        "commit": "2d929ceba4",
+        "on_audited_main": true
+      },
+      {
+        "commit": "2377822736",
+        "on_audited_main": true
+      },
+      {
+        "commit": "db92b8bcf4",
+        "on_audited_main": true
+      },
+      {
+        "commit": "6ca46a1128",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12404,
+    "title": "DeepSeek-V4.1: fix connected CPU TP8 divergence and finish G1 coverage",
+    "closed_at": "2026-10-21T16:54:11Z",
+    "comments": 12,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12404",
+    "commits": [
+      {
+        "commit": "9d873415d7",
+        "on_audited_main": true
+      },
+      {
+        "commit": "cdb2d227b4",
+        "on_audited_main": true
+      },
+      {
+        "commit": "80f5cdeec4",
+        "on_audited_main": true
+      },
+      {
+        "commit": "1e9db70ba1edef4f3d8d8b925a547f99fac765a4",
+        "on_audited_main": true
+      },
+      {
+        "commit": "f07112cfdf",
+        "on_audited_main": true
+      },
+      {
+        "commit": "bc78a63ec9",
+        "on_audited_main": true
+      },
+      {
+        "commit": "6cccaa8f2b",
+        "on_audited_main": true
+      },
+      {
+        "commit": "cf248896aa",
+        "on_audited_main": true
+      },
+      {
+        "commit": "b390516b13",
+        "on_audited_main": true
+      },
+      {
+        "commit": "fdd4db7794",
+        "on_audited_main": true
+      },
+      {
+        "commit": "93496b2929",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12414,
+    "title": "DeepSeek-V4.1: long prompts \u2014 chunked prefill, step buffers by chunk, and 20k qualification",
+    "closed_at": "2026-10-21T16:50:51Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12414",
+    "commits": [
+      {
+        "commit": "ce4392b3a6",
+        "on_audited_main": true
+      },
+      {
+        "commit": "b0f5af34b5",
+        "on_audited_main": true
+      },
+      {
+        "commit": "f091302aeb",
+        "on_audited_main": true
+      },
+      {
+        "commit": "41c07961ad",
+        "on_audited_main": true
+      },
+      {
+        "commit": "2a1b037d70",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12390,
+    "title": "DeepSeek-V4.1 W3: Measure V4.1 memory, cache sizes and active parameters",
+    "closed_at": "2026-10-21T15:29:23Z",
+    "comments": 5,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12390",
+    "commits": [
+      {
+        "commit": "9d873415d7",
+        "on_audited_main": true
+      },
+      {
+        "commit": "364cf9ffe9",
+        "on_audited_main": true
+      },
+      {
+        "commit": "ccebc18cca",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12412,
+    "title": "DeepSeek-V4.1: incremental raw-text decoding in the stage worker (review R3)",
+    "closed_at": "2026-10-21T15:23:20Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12412",
+    "commits": [
+      {
+        "commit": "64eeda374e",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12410,
+    "title": "DeepSeek-V4.1: bind the whole build bundle through qualification and launch (review R1)",
+    "closed_at": "2026-10-21T15:23:04Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12410",
+    "commits": [
+      {
+        "commit": "af238b4018",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12411,
+    "title": "DeepSeek-V4.1: reject reused VM names' timestamps in the spend guard (review R2)",
+    "closed_at": "2026-10-21T15:13:20Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12411",
+    "commits": [
+      {
+        "commit": "74c02c1799",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12408,
+    "title": "DeepSeek-V4.1: context budget, link backpressure and chat mode for the served stage (audit F6\u2013F8)",
+    "closed_at": "2026-10-21T14:20:29Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12408",
+    "commits": [
+      {
+        "commit": "9d7a7e0903",
+        "on_audited_main": true
+      },
+      {
+        "commit": "d6c4550dfc",
+        "on_audited_main": true
+      },
+      {
+        "commit": "8e1e741217",
+        "on_audited_main": true
+      },
+      {
+        "commit": "6a37be230c",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12401,
+    "title": "DeepSeek-V4.1 W14: V4.1 deadline and answer profile through Pylon",
+    "closed_at": "2026-10-21T14:10:01Z",
+    "comments": 7,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12401",
+    "commits": [
+      {
+        "commit": "e3eec8a0c4",
+        "on_audited_main": true
+      },
+      {
+        "commit": "9d873415d7",
+        "on_audited_main": true
+      },
+      {
+        "commit": "30ba21cb1e",
+        "on_audited_main": true
+      },
+      {
+        "commit": "c25c9f880f",
+        "on_audited_main": true
+      },
+      {
+        "commit": "b2645cf06d",
+        "on_audited_main": true
+      },
+      {
+        "commit": "5f68ee9798",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12399,
+    "title": "DeepSeek-V4.1 W12: A V4.1 stage-Pylon group across machines in two placements",
+    "closed_at": "2026-10-21T14:09:32Z",
+    "comments": 6,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12399",
+    "commits": [
+      {
+        "commit": "50c051fa55",
+        "on_audited_main": true
+      },
+      {
+        "commit": "9d873415d7",
+        "on_audited_main": true
+      },
+      {
+        "commit": "c25c9f880f",
+        "on_audited_main": true
+      },
+      {
+        "commit": "b2645cf06d",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12407,
+    "title": "DeepSeek-V4.1: bind the build, executable and arithmetic a stage serves (audit F1\u2013F3, F5, F9)",
+    "closed_at": "2026-10-21T14:05:10Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12407",
+    "commits": [
+      {
+        "commit": "a12ffcb141",
+        "on_audited_main": true
+      },
+      {
+        "commit": "26013912cd",
+        "on_audited_main": true
+      },
+      {
+        "commit": "9de4d7c34b",
+        "on_audited_main": true
+      },
+      {
+        "commit": "57d02f9f33",
+        "on_audited_main": true
+      },
+      {
+        "commit": "07dee5dbfc",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12409,
+    "title": "DeepSeek-V4.1: flex-start settlement in the cloud spend guard (audit F4)",
+    "closed_at": "2026-10-21T13:44:35Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12409",
+    "commits": [
+      {
+        "commit": "32254036c8",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12398,
+    "title": "DeepSeek-V4.1 W11: A full V4.1 stage-Pylon group on one machine",
+    "closed_at": "2026-10-21T09:42:30Z",
+    "comments": 4,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12398",
+    "commits": [
+      {
+        "commit": "20b36fad01",
+        "on_audited_main": true
+      },
+      {
+        "commit": "ac62ed94f9",
+        "on_audited_main": true
+      },
+      {
+        "commit": "2d929ceba4",
+        "on_audited_main": true
+      },
+      {
+        "commit": "3b6c028dce",
+        "on_audited_main": true
+      },
+      {
+        "commit": "9b624aa209",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12395,
+    "title": "DeepSeek-V4.1 W8: Choose the V4.1 target GPU",
+    "closed_at": "2026-10-21T05:47:36Z",
+    "comments": 4,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12395",
+    "commits": [
+      {
+        "commit": "11b6369e40",
+        "on_audited_main": true
+      },
+      {
+        "commit": "ac62ed94f9",
+        "on_audited_main": true
+      },
+      {
+        "commit": "7e4bd01f22",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12394,
+    "title": "DeepSeek-V4.1 W7: Device-resident V4.1 stage step on one GPU",
+    "closed_at": "2026-10-21T05:40:17Z",
+    "comments": 4,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12394",
+    "commits": [
+      {
+        "commit": "ac62ed94f9",
+        "on_audited_main": true
+      },
+      {
+        "commit": "89372bf52a",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12392,
+    "title": "DeepSeek-V4.1 W5: CUDA kernels: V4.1 attention modes, indexer and candidate selection",
+    "closed_at": "2026-10-21T04:29:22Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12392",
+    "commits": [
+      {
+        "commit": "5732916bf0",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12402,
+    "title": "DeepSeek-V4.1 W15: `pylon cloud up` for a V4.1 group",
+    "closed_at": "2026-10-21T04:09:08Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12402",
+    "commits": [
+      {
+        "commit": "9fcb2d7dac",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12388,
+    "title": "DeepSeek-V4.1 W1: Original-weight CPU parity run for the V4.1 CPU model",
+    "closed_at": "2026-10-21T03:43:23Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12388",
+    "commits": [
+      {
+        "commit": "1e9db70ba1edef4f3d8d8b925a547f99fac765a4",
+        "on_audited_main": true
+      },
+      {
+        "commit": "1e9db70ba1",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12393,
+    "title": "DeepSeek-V4.1 W6: CUDA kernels: V4.1 Sinkhorn mixing, Engram gather and expert routing",
+    "closed_at": "2026-10-21T02:32:09Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12393",
+    "commits": [
+      {
+        "commit": "0db996665f",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12391,
+    "title": "DeepSeek-V4.1 W4: CUDA kernels: FP4 and FP8 block-scaled matrix-vector for V4.1",
+    "closed_at": "2026-10-21T01:55:52Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12391",
+    "commits": [
+      {
+        "commit": "11b6369e40",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12397,
+    "title": "DeepSeek-V4.1 W10: V4.1 stage group lifecycle: readiness, fencing and per-stage recovery",
+    "closed_at": "2026-10-21T01:45:26Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12397",
+    "commits": [
+      {
+        "commit": "3bbddec7c1",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12396,
+    "title": "DeepSeek-V4.1 W9: V4.1 stage-state codec and group manifest",
+    "closed_at": "2026-10-21T01:31:50Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12396",
+    "commits": [
+      {
+        "commit": "efe9d3618b",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12400,
+    "title": "DeepSeek-V4.1 W13: Group beacon and model-aware routing for V4.1",
+    "closed_at": "2026-10-21T01:20:40Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12400",
+    "commits": [
+      {
+        "commit": "0caa656517",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12387,
+    "title": "DeepSeek-V4.1 CPU port: bounded greedy decoding and pinned checkpoint runner",
+    "closed_at": "2026-10-21T01:07:09Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12387",
+    "commits": [
+      {
+        "commit": "d912ed9392",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12386,
+    "title": "DeepSeek-V4.1 CPU port: assemble the full 40-layer text transformer",
+    "closed_at": "2026-10-21T01:01:45Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12386",
+    "commits": []
+  },
+  {
+    "number": 12385,
+    "title": "DeepSeek-V4.1 CPU port: complete text block wiring and precision boundaries",
+    "closed_at": "2026-10-21T00:55:50Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12385",
+    "commits": []
+  },
+  {
+    "number": 12371,
+    "title": "DeepSeek-V4.1-Flash oracle: golden activations from the official reference",
+    "closed_at": "2026-10-21T00:50:00Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12371",
+    "commits": [
+      {
+        "commit": "fcfc9cf1ab",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12384,
+    "title": "DeepSeek-V4.1 CPU port: request-owned shared KV and indexer state",
+    "closed_at": "2026-10-21T00:38:17Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12384",
+    "commits": []
+  },
+  {
+    "number": 12383,
+    "title": "DeepSeek-V4.1 CPU port: BF16 and FP8/FP4 activation boundaries",
+    "closed_at": "2026-10-21T00:31:34Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12383",
+    "commits": []
+  },
+  {
+    "number": 12382,
+    "title": "DeepSeek-V4.1 CPU port: adjacent-pair RoPE and YaRN frequencies",
+    "closed_at": "2026-10-21T00:25:39Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12382",
+    "commits": []
+  },
+  {
+    "number": 12381,
+    "title": "DeepSeek-V4.1 CPU port: wire checkpoint projections and grouped attention output",
+    "closed_at": "2026-10-21T00:23:22Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12381",
+    "commits": []
+  },
+  {
+    "number": 12373,
+    "title": "Safetensors loader with exact FP8/FP4 block-scaled layouts for DeepSeek-V4.1",
+    "closed_at": "2026-10-20T22:46:17Z",
+    "comments": 5,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12373",
+    "commits": [
+      {
+        "commit": "cc6d1352c5",
+        "on_audited_main": true
+      },
+      {
+        "commit": "4383d409f435082337ce237a997efa9c3f3f71a0",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12380,
+    "title": "DeepSeek-V4.1 CPU port: Engram token normalization, n-gram hashing, and gated lookup (P1.6)",
+    "closed_at": "2026-10-20T23:32:34Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12380",
+    "commits": [
+      {
+        "commit": "4d86ee1844",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12379,
+    "title": "DeepSeek-V4.1 CPU port: sparse attention, compression, and selection primitives (P1.4a/P1.5a)",
+    "closed_at": "2026-10-20T23:26:43Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12379",
+    "commits": []
+  },
+  {
+    "number": 12378,
+    "title": "DeepSeek-V4.1 CPU port: sqrtsoftplus routing and routed/shared experts (P1.7)",
+    "closed_at": "2026-10-20T23:22:38Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12378",
+    "commits": []
+  },
+  {
+    "number": 12376,
+    "title": "Spend guard: refuse corrupt ledgers, one budget host, and storage reserve",
+    "closed_at": "2026-10-20T23:20:48Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12376",
+    "commits": [
+      {
+        "commit": "5e8aed51ac",
+        "on_audited_main": true
+      },
+      {
+        "commit": "aa1c0e6956",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12377,
+    "title": "DeepSeek-V4.1 CPU port: hyper-connections and Sinkhorn mixing (P1.3)",
+    "closed_at": "2026-10-20T23:19:48Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12377",
+    "commits": [
+      {
+        "commit": "d9495f4bee",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12372,
+    "title": "DeepSeek-V4.1 protocol adapter from deepseek-recipe (DS1)",
+    "closed_at": "2026-10-20T23:12:26Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12372",
+    "commits": [
+      {
+        "commit": "ec51d47c9a",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12370,
+    "title": "Cloud spend guard and budget alerts for the DeepSeek-V4.1 work",
+    "closed_at": "2026-10-20T22:46:57Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12370",
+    "commits": [
+      {
+        "commit": "737fe18504",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12368,
+    "title": "Replace llama.cpp with native Psionic CUDA for the pinned DeepSeek R1 1.5B profile",
+    "closed_at": "2026-10-20T22:48:21Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12368",
+    "commits": [
+      {
+        "commit": "19d35ac356",
+        "on_audited_main": true
+      },
+      {
+        "commit": "a6533bde83",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12367,
+    "title": "Run the managed DeepSeek serial GPU profile through pylon up",
+    "closed_at": "2026-10-20T21:57:18Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12367",
+    "commits": [
+      {
+        "commit": "bbd5fc4f57",
+        "on_audited_main": true
+      },
+      {
+        "commit": "929ef009de",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12360,
+    "title": "Qualify serial Pylon serving for the pinned DeepSeek R1 GPU profile",
+    "closed_at": "2026-10-20T21:03:26Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12360",
+    "commits": [
+      {
+        "commit": "4cb1aa99b8",
+        "on_audited_main": true
+      },
+      {
+        "commit": "0faeb87ab4",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12357,
+    "title": "Plan reliable single-generation DeepSeek serving with Pylon and Psionic",
+    "closed_at": "2026-10-20T20:02:39Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12357",
+    "commits": [
+      {
+        "commit": "07469889b0",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12470,
+    "title": "Psionic V4.1: check Maya's layer 20\u201339 prompt skip against the reference",
+    "closed_at": "2026-10-22T06:51:40Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12470",
+    "commits": [
+      {
+        "commit": "f0a6a3308c",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12468,
+    "title": "Pylon: advertise and route V4.1 by serving profile (qualified, consumer-exact, consumer-q)",
+    "closed_at": "2026-10-22T12:57:42Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12468",
+    "commits": [
+      {
+        "commit": "62eaecb242",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12466,
+    "title": "Psionic V4.1: serve Engram tables from SSD (mmap) with a row cache",
+    "closed_at": "2026-10-22T06:00:57Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12466",
+    "commits": [
+      {
+        "commit": "2b60a2a23c",
+        "on_audited_main": true
+      },
+      {
+        "commit": "605757bfb1",
+        "on_audited_main": true
+      },
+      {
+        "commit": "2491c77fb9",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12463,
+    "title": "Psionic V4.1: VRAM hot-expert cache over --experts host, with host-CPU compute for misses",
+    "closed_at": "2026-10-22T06:00:31Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12463",
+    "commits": [
+      {
+        "commit": "2b60a2a23c",
+        "on_audited_main": true
+      },
+      {
+        "commit": "2491c77fb9",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12364,
+    "title": "Recover crashed or stuck serial Pylon llama.cpp workers automatically",
+    "closed_at": "2026-10-20T21:43:03Z",
+    "comments": 2,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12364",
+    "commits": [
+      {
+        "commit": "0aea613a01",
+        "on_audited_main": true
+      }
+    ]
+  },
+  {
+    "number": 12358,
+    "title": "Add serial Psionic generation admission and strict Pylon completion checks",
+    "closed_at": "2026-10-20T20:27:34Z",
+    "comments": 3,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/12358",
+    "commits": []
+  }
+]
