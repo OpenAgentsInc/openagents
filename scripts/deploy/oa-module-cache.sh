@@ -157,36 +157,61 @@ digest_inputs() { # LIST [BEFORE]
 }
 
 # The registry and git crates the input packages use, as `crate WS NAME
-# VERSION` lines, from `cargo tree` in each workspace (WS) whose lock names
-# one of them; `lock WS` stands for a whole lock when the tree can't be
-# read. A workspace whose pinned toolchain isn't installed is skipped: the
-# module can't have built there.
+# VVERSION` lines: the closure of those packages over their workspace's
+# Cargo.lock dependency graph (every target and feature the lock records,
+# so a superset), read with awk: no Cargo, no network.
 crates_of() { # INPUTS
-    for ws in . apps/openagents/web; do
-        [ -f "$ROOT/$ws/Cargo.lock" ] || continue
-        pin=$ROOT/$ws/rust-toolchain.toml
-        [ -f "$pin" ] || pin=$(dirname "$ROOT/$ws")/rust-toolchain.toml
-        channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' "$pin" 2> /dev/null | head -n 1)
-        if [ -n "$channel" ] && command -v rustup > /dev/null 2>&1 &&
-            ! rustup toolchain list 2> /dev/null | grep -q "^$channel"; then
-            continue
-        fi
-        # One package at a time: several -p specs together refuse a path
-        # package outside the workspace's members.
-        named=0 read=0
-        while IFS= read -r dir; do
-            [ -f "$ROOT/$dir/Cargo.toml" ] || continue
-            pkg=$(sed -n '/^\[package\]/,/^\[/s/^name *= *"\(.*\)"/\1/p' "$ROOT/$dir/Cargo.toml" | head -n 1)
-            [ -n "$pkg" ] && grep -qx "name = \"$pkg\"" "$ROOT/$ws/Cargo.lock" || continue
-            named=$((named + 1))
-            if tree=$(cd "$ROOT/$ws" && RUSTUP_AUTO_INSTALL=0 cargo tree --locked --offline -e normal,build \
-                --target all --prefix none -f '{p}' -p "$pkg" 2> /dev/null); then
-                read=$((read + 1))
-                printf '%s\n' "$tree" | sed 's/ (\*)$//' | grep -v ' (/' | awk -v ws="$ws" 'NF >= 2 { print "crate", ws, $1, $2 }'
-            fi
-        done < "$1"
-        if [ "$named" -gt 0 ] && [ "$read" -eq 0 ]; then echo "lock $ws"; fi
-    done | LC_ALL=C sort -u
+    : > "$work/names"
+    while IFS= read -r dir; do
+        [ -f "$ROOT/$dir/Cargo.toml" ] || continue
+        sed -n '/^\[package\]/,/^\[/s/^name *= *"\(.*\)"/\1/p' "$ROOT/$dir/Cargo.toml" | head -n 1 >> "$work/names"
+    done < "$1"
+    # The GPUI web workspace's builds write target-gpuiweb (the Dockerfile's
+    # CARGO_TARGET_DIR there) and use its lock; every other build uses the
+    # root workspace's.
+    ws=.
+    if grep -q '/target-gpuiweb/' "$work/depinfo" 2> /dev/null; then ws=apps/openagents/web; fi
+    {
+        [ -f "$ROOT/$ws/Cargo.lock" ] || exit 0
+        awk -v ws="$ws" '
+            FNR == NR { if ($0 != "") start[$0] = 1; next }
+            function flush() {
+                if (name == "") return
+                id = name " " version
+                versions[name] = versions[name] " " version
+                if (source != "") remote[id] = 1
+                deps[id] = list
+                name = ""; version = ""; source = ""; list = ""; indeps = 0
+            }
+            /^\[\[package\]\]/ { flush(); next }
+            /^name = / { name = $3; gsub(/"/, "", name); next }
+            /^version = / { version = $3; gsub(/"/, "", version); next }
+            /^source = / { source = $3; next }
+            /^dependencies = \[/ { indeps = 1; next }
+            indeps && /^\]/ { indeps = 0; next }
+            indeps { d = $0; gsub(/^ *"|",?$/, "", d); list = list "|" d; next }
+            END {
+                flush()
+                n = 0
+                for (id in deps) {
+                    split(id, part, " ")
+                    if ((part[1] in start) && !(id in remote)) queue[n++] = id
+                }
+                for (i = 0; i < n; i++) {
+                    id = queue[i]
+                    if (id in seen) continue
+                    seen[id] = 1
+                    if (id in remote) { split(id, part, " "); print "crate", ws, part[1], "v" part[2] }
+                    m = split(deps[id], dl, "|")
+                    for (j = 2; j <= m; j++) {
+                        split(dl[j], f, " ")
+                        if (f[2] != "") next_id = f[1] " " f[2]
+                        else { v = versions[f[1]]; sub(/^ /, "", v); next_id = f[1] " " v }
+                        if (!(next_id in seen)) queue[n++] = next_id
+                    }
+                }
+            }' "$work/names" "$ROOT/$ws/Cargo.lock"
+    } | LC_ALL=C sort -u
 }
 
 # The lock entries (or whole locks) a crates_of list names.
