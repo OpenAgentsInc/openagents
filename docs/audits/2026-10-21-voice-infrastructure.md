@@ -59,6 +59,12 @@ that is an ancestor of `origin/main`.
   streaming Parakeet, the chosen agent, then a Psionic text-to-speech voice)
   that runs on the user's own computer or a Pylon. Measure before you build:
   a latency harness comes first. See [Recommendations](#recommendations).
+- **Owner direction, 2026-10-21:** relying on Codex for voice is not
+  enough. The owned engine is required, not a fallback, and it must also
+  serve **voices as creator assets**: people enroll their own voice, list
+  it, and are paid each time a creator uses it in Game Lab, Video Lab or
+  the Verse, next to commissioned human voice actors. See
+  [Owned engine and the voice marketplace](#owned-engine-and-the-voice-marketplace).
 
 ## Timeline
 
@@ -684,6 +690,55 @@ Build one Rust voice engine and keep each shell thin. Specifically:
   hosted voice gateway. Each was built and measured here, and each cost more
   than it returned.
 
+### Owned engine and the voice marketplace
+
+Owner direction after this audit, 2026-10-21:
+
+1. **We run our own voice engine.** Talk with Codex depends on each user's
+   ChatGPT login and on a voice we can't choose, extend or sell. It stays as
+   a backend, but the `cascade` backend becomes the product default and the
+   first thing we build after the harness. The order is V1, V3, V4, V5, V6.
+2. **Voices are assets creators own and sell.** The co-founder's idea: where
+   ElevenLabs sells AI voices, the Verse and Game Lab honor human labor.
+   - **Commission a human.** A creator pays a voice actor (for example $20)
+     to record lines for a game or film. The recording comes back as a
+     source in Video Lab or Game Lab.
+   - **License a trained voice.** A person gives the Verse their voice once,
+     a voice model is made from it with their consent, and they list it. A
+     creator who uses it pays for each use, and the owner is paid without
+     recording every line or renting a studio. This lowers the barrier for
+     people with no recording setup.
+
+How this changes the stack:
+
+- **Two speeds of speech.** Live calls need speech to start in under
+  500 ms. Lines for a game, a film or an NPC are a **batch render**: a
+  job that makes a WAV file, the way `lab_voice` already places a recorded
+  voiceover on a cut. Batch rendering is where cloning works first, because
+  speed matters much less there (CosyVoice2's 3 to 5.8 s to the first chunk,
+  under [What failed](#what-failed), is fine for a batch job).
+  Realtime cloned voices come later, on a GPU Pylon.
+- **The voice is a private asset.** A voice model and its enrollment
+  recordings follow the MetaHuman rule in `docs/video-lab/README.md`:
+  they are never uploaded to a shared bucket in raw form, never put in a
+  dataset, trace or Gym run, and every render made with them carries
+  `no_training` and the voice's identity. They live on the owner's computer,
+  or on a Pylon the owner chooses, as `private-local` inputs under Labs job
+  placement (`docs/labs/README.md`, "Jobs and placement").
+- **Consent is a record, not a checkbox.** Enrollment has the person read a
+  prompt with a fresh challenge phrase, which ties the recording to the
+  account that lists the voice. The listing states what it allows (games,
+  films, ads, live NPCs, explicit content) and can be withdrawn. Withdrawal
+  stops new uses; renders already made stay licensed.
+- **Every use is metered.** A render job that uses a listed voice records
+  the voice, the creator, the length in seconds and the price. Payouts reuse
+  the account earnings and Lightning address work (#12307) instead of a new
+  payment path.
+- **Provider lock-in is the reason to own it.** The audit records OpenAI
+  Realtime refusing Sarah's custom voice (`270.md`, line 33). A marketplace
+  of people's own voices can't depend on a provider that decides which
+  voices exist.
+
 ### Draft issues
 
 These are drafts. None has been filed.
@@ -739,3 +794,32 @@ their results live. Start with a design note and an acceptance journey.
 Either wire `apps/openagents/crates/audio` into V6 or delete it; align its
 `cpal` version with `crates/voice`; remove the empty `voice-experimental`
 feature; and decide whether NIP-A0 voice notes belong in chat.
+
+**V9. Voice enrollment and consent records.**
+A person records a short enrollment with a challenge phrase from any
+OpenAgents surface. The engine stores it as a `private-local` voice asset
+with a consent record (owner, allowed uses, withdrawable) and makes a voice
+model with an owned cloning model on the owner's computer or a chosen
+Pylon. Acceptance: one test account enrolls, a sample line renders in the
+enrolled voice, withdrawal blocks the next render, and nothing from the
+enrollment reaches a shared bucket, dataset or trace.
+
+**V10. Voice lines as a Lab job.**
+Add a `speak` job (text, voice, style) to the Labs job types that returns a
+WAV artifact, usable from `lab_voice` in Video Lab and for Game Lab NPC
+lines. It inherits `no_training` and names the voice in the artifact.
+Acceptance: a cut gets a voiceover rendered from text in an enrolled voice,
+and `cut.py check` passes on it.
+
+**V11. Voice marketplace: listings, metering and payouts.**
+List enrolled voices with samples, allowed uses and a price for each use or
+each second. Meter every `speak` job that uses a listed voice and pay the
+owner through account earnings (#12307). Acceptance: a test creator renders
+lines in a test voice owner's listed voice, and the owner's earnings show
+the payment with the job as its receipt.
+
+**V12. Commissioned human voice work.**
+A creator posts lines with a fixed fee, and a voice actor records them in
+the browser or uploads them. The recording arrives as a Video Lab or Game
+Lab source with the actor credited, and payment is released on acceptance.
+Acceptance: one end-to-end commission between two test accounts.
