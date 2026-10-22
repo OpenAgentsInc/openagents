@@ -15,8 +15,7 @@ again, owned by Codex for the remaining G1–G8 acceptance work. Its earlier
 closure authorized an experimental preview; it did not pass the original
 gates. Policy 2.3 failed, including one 38-token Engram case, and remains
 failed. G2 suite 2 has a retained 5/6 result against the oracle's 5/6;
-the audit's checker controls must be fixed and the answers rescored before
-using that result. G3's component evidence remains valid for its recorded
+the corrected checker retains that result with the reasoning/completion floor held. G3's component evidence remains valid for its recorded
 bundles and devices. G4–G6 still need numerical acceptance; pinned G7 and
 qualified G8 evidence remain outstanding. The separate Maya optimization
 issues retain their existing owners and experimental profiles.
@@ -34,6 +33,32 @@ ignored). Rescoring the unchanged retained answers still gives 5/6 versus
 [new report](verification/deepseek-v41-gates-2026-10-22/g2-rescored.json)
 records the checker hash. This repairs the checker and verdict; it does not
 pass G1 or qualify a different runtime bundle.
+
+**Numerical repair progress, 2026-10-22:** the optional
+`fp8-mma-tp8` CUDA diagnostic reproduces the retained B200 FP8 row, agrees
+exactly with the independent CPU sums on 37 mixed rows at both real
+projection widths, and passes the formerly failing 38-token Engram case
+under the unchanged policy 2.3. Layer 15's worst score error falls from
+0.862554 to 0.668646, below its 0.836315 budget; the case takes 8.08 s
+versus 6.85 s. The [complete diagnostic report](verification/deepseek-v41-gates-2026-10-22/gpu-fp8-c4-diagnostic.json)
+is a regression result, not release qualification. The separate profile
+requires recording and cannot pass `--release`; default serving arithmetic
+is unchanged. The [corrected SM120 package](verification/deepseek-v41-gates-2026-10-22/sm120-fp8-components.json)
+passes 114 tests, with six ignored.
+
+The expanded B200 capture retains every tracked index row and full inputs
+at cuts 10, 20, and 30. Its [comparison with the previous oracle](verification/deepseek-v41-gates-2026-10-22/oracle-capture-comparison.json)
+finds all 31,325 shared tensor hashes unchanged, none missing, and 8,742
+additional tensors. It uses the exposed confirmation-2.3 corpus for
+calibration only. Full-model index evaluation, isolated-stage checks, and
+fresh confirmation remain outstanding; no policy has been loosened or
+promoted. The CPU and CUDA recorders now expose raw causal scores,
+selections, and packed candidate flags; CPU controls preserve outputs bit
+for bit. The next policy must evaluate that evidence rather than repeat
+the historical claim that no index evidence exists. Within this launch's
+8,192-token context, at most 1,024 candidate blocks are visible, below the
+model's 2,048-block allowance; the candidate-mask check must still hold,
+while competition among candidate blocks belongs to the longer profile.
 
 **Recovery repair, 2026-10-22:** `scripts/pylon/v41-live.py` discovers every
 allocation carrying its run ID directly from the guard ledger, including a
@@ -55,9 +80,7 @@ adds no host inference or score reconstruction. The harness requires those
 stage scores for release and rejects a score table that selects different
 experts, including the older F64 proxy's disagreements. Nonfinite recorded
 scores are refused. The recording kernel has controls for ties, bias,
-two-token row order, and unchanged IDs and route weights. Local stage and
-CUDA-backend CPU/stub checks pass; the new kernel's dedicated SM120 run and
-full-model score capture are pending. Existing 2.1–2.3 reports are unchanged.
+two-token row order, and unchanged IDs and route weights. The dedicated SM120 component run passes, and full-model direct-score regressions are retained; the first run exposed and fixed the synthetic reader's width assumption. Existing 2.1–2.3 reports are unchanged.
 
 The first dedicated SM120 package run on bundle `986a5a89…` passed all 64
 CUDA backend checks, including the direct-score recording control. The
