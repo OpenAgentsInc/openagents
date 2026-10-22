@@ -68,13 +68,15 @@ pub(super) struct Grid {
     links: Vec<Link>,
     pub(super) lab: Lab,
     pub(super) kiln: bool,
+    /// Kiln's panel, made the first time it opens (#12456).
+    pub(super) kiln_ui: Option<super::kiln::KilnUi>,
     ticks: u32,
     brand: ScrollHandle,
     bar: ScrollHandle,
     panel: ScrollHandle,
     previews: [ScrollHandle; 2],
     kiln_panel: ScrollHandle,
-    kiln_body: ScrollHandle,
+    pub(super) kiln_body: ScrollHandle,
     back: ScrollHandle,
     /// What the page was last told, as JSON.
     published: String,
@@ -162,6 +164,11 @@ impl LanderChat {
         if kiln != self.grid.kiln {
             self.grid.kiln = kiln;
             cx.notify();
+        }
+        // Kiln keeps working with its panel closed, and the terminal's
+        // screen keeps saying so.
+        if self.grid.kiln_ui.is_some() {
+            self.kiln_tick(cx);
         }
         if self.grid.ticks % LINKS_EVERY == 0 {
             let links: Vec<Link> = account_links()
@@ -420,20 +427,8 @@ impl LanderChat {
                 }
             }
             if self.grid.kiln {
+                // Kiln draws here, in GPUI (#12456); no page stands in it.
                 overlay.regions.push(rect_of(self.grid.kiln_panel.bounds()));
-                let [x, y, w, h] = rect_of(self.grid.kiln_body.bounds());
-                if w > 1. && h > 1. {
-                    overlay.frames.push(Frame {
-                        id: "kiln",
-                        src: model::KILN_EMBED.to_owned(),
-                        title: model::KILN.to_owned(),
-                        x,
-                        y,
-                        w,
-                        h,
-                        keep: true,
-                    });
-                }
             }
         }
         overlay.regions.retain(|r| r[2] > 0. && r[3] > 0.);
@@ -752,9 +747,15 @@ impl LanderChat {
         column.child(meta).into_any_element()
     }
 
-    /// Kiln's panel: its name, a new tab, and Back to the Grid over the box
-    /// Kiln's page stands in.
-    pub(super) fn render_kiln_panel(&self, w: f32, h: f32, cx: &mut Context<Self>) -> AnyElement {
+    /// Kiln's panel: its name, a new tab, and Back to the Grid over Kiln's
+    /// cards and its run.
+    pub(super) fn render_kiln_panel(
+        &mut self,
+        w: f32,
+        h: f32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let Rect {
             x,
             y,
@@ -775,8 +776,6 @@ impl LanderChat {
             .overflow_hidden()
             .border_1()
             .border_color(theme::border_strong())
-            // Kiln's embedded page draws its own translucent panel under
-            // the header; the world shows through the rest.
             .child(
                 div()
                     .flex_none()
@@ -815,13 +814,7 @@ impl LanderChat {
                         )),
                     ),
             )
-            .child(
-                div()
-                    .id("kiln-body")
-                    .track_scroll(&self.grid.kiln_body)
-                    .flex_1()
-                    .min_h_0(),
-            )
+            .child(self.render_kiln_body(width < 760., window, cx))
             .into_any_element()
     }
 }

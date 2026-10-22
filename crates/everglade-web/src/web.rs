@@ -1709,7 +1709,11 @@ impl Page {
             if let Some(board) = &mut self.board {
                 board.tick(self.presence.as_mut());
                 if self.runtime.is_plaza() {
-                    board.screen_instances(crate::foreman::screen_task().as_deref(), &mut dynamic);
+                    board.screen_instances(
+                        crate::foreman::screen_task().as_deref(),
+                        kiln_screen().as_deref(),
+                        &mut dynamic,
+                    );
                     board.instances(dynamic.len(), &mut dynamic);
                 }
                 if (self.now / 250.0).floor()
@@ -2817,4 +2821,13 @@ fn status_element(document: &Document) -> Option<HtmlElement> {
     let _ = style.set_property("color", &format!("#{:06x}", coder_ui::coder_noir::CONTENT));
     document.body()?.append_child(&element).ok()?;
     Some(element)
+}
+
+/// Kiln's task while it works for this visitor at the terminal (#12456),
+/// which the page's chat sets as `openagentsKilnScreen`.
+fn kiln_screen() -> Option<String> {
+    js_sys::Reflect::get(&js_sys::global(), &"openagentsKilnScreen".into())
+        .ok()?
+        .as_string()
+        .filter(|task| !task.trim().is_empty())
 }

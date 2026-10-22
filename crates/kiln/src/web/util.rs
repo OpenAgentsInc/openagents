@@ -3,12 +3,14 @@
 use js_sys::Reflect;
 use wasm_bindgen::prelude::*;
 
-/// Milliseconds on the page's monotonic clock.
+/// Milliseconds since the epoch, on the page's monotonic clock.
 pub fn now_ms() -> f64 {
     Reflect::get(&js_sys::global(), &"performance".into())
         .ok()
         .and_then(|p| p.dyn_into::<web_sys::Performance>().ok())
-        .map_or_else(js_sys::Date::now, |p| p.now())
+        // Since the epoch, so the transcript's times are clock times; the
+        // differences the timings take are unchanged.
+        .map_or_else(js_sys::Date::now, |p| p.time_origin() + p.now())
 }
 
 /// Seconds since the Unix epoch.

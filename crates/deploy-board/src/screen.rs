@@ -104,10 +104,29 @@ pub const LINES: [&str; 3] = [
 /// how to ask it.
 #[must_use]
 pub fn foreman_lines(task: &str) -> Vec<(String, Ink)> {
+    work_lines("FOREMAN AT WORK:", task, "WALK UP TO ASK")
+}
+
+/// The rows while Kiln works for the visitor at the terminal (#12456):
+/// its task, cut at a word to fit, as only this visitor's screen shows it.
+#[must_use]
+pub fn kiln_lines(task: &str) -> Vec<(String, Ink)> {
+    work_lines("KILN AT WORK:", task, "PROPOSING A CHANGE")
+}
+
+fn work_lines(head: &str, task: &str, foot: &str) -> Vec<(String, Ink)> {
     let fit = font::fits(WIDTH - 2.0 * PAD, LINE_SIZE);
     let mut row = String::new();
     for word in task.split_whitespace() {
-        let word = word.to_ascii_uppercase();
+        let word: String = word
+            .to_ascii_uppercase()
+            .bytes()
+            .filter(|c| font::CHARSET.contains(c))
+            .map(char::from)
+            .collect();
+        if word.is_empty() {
+            continue;
+        }
         let extra = usize::from(!row.is_empty()) + word.len();
         if row.len() + extra > fit {
             break;
@@ -117,11 +136,11 @@ pub fn foreman_lines(task: &str) -> Vec<(String, Ink)> {
         }
         row.push_str(&word);
     }
-    let mut out = vec![("FOREMAN AT WORK:".to_owned(), Ink::Bright)];
+    let mut out = vec![(head.to_owned(), Ink::Bright)];
     if !row.is_empty() {
         out.push((row, Ink::Bright));
     }
-    out.push(("WALK UP TO ASK".to_owned(), Ink::Bright));
+    out.push((foot.to_owned(), Ink::Bright));
     out
 }
 
@@ -190,9 +209,15 @@ mod tests {
 
     #[test]
     fn its_words_are_plain() {
-        for text in [HEADER, "FOREMAN AT WORK:", "WALK UP TO ASK"]
-            .into_iter()
-            .chain(LINES)
+        for text in [
+            HEADER,
+            "FOREMAN AT WORK:",
+            "WALK UP TO ASK",
+            "KILN AT WORK:",
+            "PROPOSING A CHANGE",
+        ]
+        .into_iter()
+        .chain(LINES)
         {
             assert!(oa_copy::violations(text, &[]).is_empty(), "{text}");
         }
@@ -207,6 +232,16 @@ mod tests {
         assert!(rows[1].0.len() <= fit);
         assert_eq!(rows.last().unwrap().0, "WALK UP TO ASK");
         assert_eq!(foreman_lines("").len(), 2);
+        let kiln = kiln_lines("In `crates/memory-stream`, add half_life_hours()");
+        assert_eq!(kiln[0].0, "KILN AT WORK:");
+        assert!(kiln[1].0.starts_with("IN"), "{kiln:?}");
+        assert!(kiln[1].0.len() <= fit);
+        assert!(
+            kiln[1]
+                .0
+                .bytes()
+                .all(|c| c == b' ' || font::CHARSET.contains(&c))
+        );
         for p in rows_pieces(rows, 10.2) {
             assert!(p.at[0] + p.size * 5.0 / 7.0 <= WIDTH, "{p:?}");
         }

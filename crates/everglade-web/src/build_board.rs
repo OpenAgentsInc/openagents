@@ -308,14 +308,24 @@ impl BuildBoard {
 
     /// This frame's screen instances on the shared computer. While the
     /// Grid Foreman works at the terminal (#12447), `foreman` is its task,
-    /// and the screen shows it instead of the usual rows.
-    pub fn screen_instances(&self, foreman: Option<&str>, out: &mut Vec<Instance>) {
+    /// and the screen shows it instead of the usual rows. While Kiln works
+    /// for this visitor there (#12456), `kiln` is its crate, and the screen
+    /// shows that first.
+    pub fn screen_instances(
+        &self,
+        foreman: Option<&str>,
+        kiln: Option<&str>,
+        out: &mut Vec<Instance>,
+    ) {
         let screen = screen_transform();
-        let pieces = match foreman {
-            Some(task) => {
+        let pieces = match (kiln, foreman) {
+            (Some(task), _) => {
+                deploy_board::screen::rows_pieces(deploy_board::screen::kiln_lines(task), wall())
+            }
+            (None, Some(task)) => {
                 deploy_board::screen::rows_pieces(deploy_board::screen::foreman_lines(task), wall())
             }
-            None => deploy_board::screen::pieces(wall()),
+            (None, None) => deploy_board::screen::pieces(wall()),
         };
         for placed in pieces {
             let Piece::Letter(c, ink) = placed.piece else {

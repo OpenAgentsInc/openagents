@@ -14,6 +14,7 @@ crate-type = ["cdylib", "rlib"]
 # (filesystem, WASI host, agent loop, NIP-CJ buyer) and `kiln-dev`, the
 # local server, build natively and carry the tests.
 [dependencies]
+kiln-view = { path = "../kiln-view" }
 nostr = { path = "../nostr" }
 secp256k1 = "0.31.1"
 serde = { version = "1.0.229", features = ["derive"] }

@@ -16,7 +16,10 @@ license = "MIT"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["webgl"]
+default = ["webgl", "export"]
+# Exports `mount` and `show` to Kiln's page. The Grid's chat links this
+# crate without them and embeds the view itself (#12456).
+export = []
 webgpu = ["openagents-gpui-web/webgpu"]
 webgl = ["openagents-gpui-web/webgl"]
 

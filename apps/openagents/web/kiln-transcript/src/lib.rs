@@ -17,6 +17,8 @@ use serde::Deserialize;
 
 #[cfg(target_family = "wasm")]
 mod app;
+#[cfg(target_family = "wasm")]
+pub use app::KilnTranscript;
 
 /// A tool's output kept in the card; the rest is behind Kiln's raw log.
 const OUTPUT_MAX: usize = 4_000;
@@ -228,11 +230,11 @@ pub(crate) fn latest() -> (u64, Run) {
     )
 }
 
-#[cfg(target_family = "wasm")]
+#[cfg(all(target_family = "wasm", feature = "export"))]
 use wasm_bindgen::prelude::*;
 
 /// Draws the transcript in `#gpui-mount`.
-#[cfg(target_family = "wasm")]
+#[cfg(all(target_family = "wasm", feature = "export"))]
 #[wasm_bindgen]
 pub fn mount() {
     use std::rc::Rc;
@@ -280,7 +282,7 @@ pub fn mount() {
 }
 
 /// Hands the transcript Kiln's run ([`take`]).
-#[cfg(target_family = "wasm")]
+#[cfg(all(target_family = "wasm", feature = "export"))]
 #[wasm_bindgen]
 pub fn show(json: &str) {
     take(json);

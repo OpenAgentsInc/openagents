@@ -217,10 +217,8 @@ pub const GAME_SIGN_IN: &str = "/login?return_to=%2F%3Flab%3Dgame";
 pub const SIGN_IN_CALL: &str = "homeSignIn";
 /// Counts the popup sign-ins that finished on this page.
 pub const SIGNED_IN_GLOBAL: &str = "openagentsSignIns";
-/// Kiln's page, opened in a new tab, and as the Grid embeds it in the
-/// panel's frame: its run on a translucent panel over the world (#12441).
+/// Kiln's own page, opened in a new tab from its panel.
 pub const KILN_PAGE: &str = "/admin/kiln/";
-pub const KILN_EMBED: &str = "/admin/kiln/?embed=grid";
 
 pub const BRAND: &str = "OpenAgents";
 pub const GAME_LAB: &str = "Game Lab";

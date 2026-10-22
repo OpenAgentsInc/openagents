@@ -65,6 +65,12 @@ struct App {
     /// The Kiln build this page runs (`tools/manifest.json`'s `kiln.build`),
     /// or `site` for the host's own build.
     build: RefCell<String>,
+    /// The last `cargo test`: whether it passed, and its summary.
+    last_test: RefCell<Option<(bool, String)>>,
+    /// The proposed patch: its ID, review page, and the runner's check.
+    patch: RefCell<Option<kiln_view::Patch>>,
+    /// The last problem, in a sentence, until the next run.
+    problem: RefCell<Option<String>>,
     /// The one pylon a run may use, from `?pylon=` (hex or npub).
     pin_pylon: RefCell<Option<String>>,
     /// The run as the transcript draws it.
@@ -88,9 +94,67 @@ struct ToolRun {
     output: String,
 }
 
+thread_local! {
+    /// Where Kiln's files are, such as `/admin/kiln/`, when another page
+    /// runs Kiln ([`run_headless`]); empty for Kiln's own page.
+    static BASE: RefCell<String> = const { RefCell::new(String::new()) };
+    /// The controls Kiln reads and writes when another page runs it: a
+    /// detached copy of its own page's, never shown.
+    static HEADLESS: RefCell<Option<Element>> = const { RefCell::new(None) };
+}
+
+/// The controls a page without Kiln's own markup gets, by ID.
+const HEADLESS_CONTROLS: &str = r#"<textarea id="task"></textarea>
+<input id="slice" value="crates/memory-stream"><input id="ref" value="main">
+<input id="model" value="deepseek-v4.1-flash"><input type="checkbox" id="fallback" checked>
+<input id="relay" value="wss://relay.openagents.com"><input id="runner">
+<span id="admin-key"></span><textarea id="credential"></textarea><div id="identity"></div>
+<span id="key"></span><span id="env"></span><span id="build"></span>
+<div id="usage"></div><div id="files"></div><div id="viewer-name"></div><pre id="viewer"></pre>
+<div id="metrics"></div><div id="log"></div>"#;
+
+/// `path` under [`BASE`] when it's relative.
+fn asset(path: &str) -> String {
+    if path.starts_with('/') || path.contains("://") {
+        return path.to_owned();
+    }
+    let path = path.strip_prefix("./").unwrap_or(path);
+    BASE.with(|base| format!("{}{path}", base.borrow()))
+}
+
+fn headless() -> bool {
+    HEADLESS.with(|h| h.borrow().is_some())
+}
+
 fn el(doc: &Document, id: &str) -> Element {
+    if let Some(found) = HEADLESS.with(|h| {
+        h.borrow()
+            .as_ref()
+            .and_then(|root| root.query_selector(&format!("#{id}")).ok().flatten())
+    }) {
+        return found;
+    }
     doc.get_element_by_id(id)
         .unwrap_or_else(|| wasm_bindgen::throw_str(&format!("#{id} is missing")))
+}
+
+/// Run Kiln inside another page, such as the Grid's terminal (#12456),
+/// with its files under `base` and no markup of its own: the page draws
+/// Kiln from `kilnState()` and drives it through the `kiln*` functions.
+pub async fn run_headless(base: String) {
+    let base = if base.ends_with('/') {
+        base
+    } else {
+        format!("{base}/")
+    };
+    BASE.with(|b| *b.borrow_mut() = base);
+    let root = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.create_element("div").ok())
+        .unwrap_or_else(|| wasm_bindgen::throw_str("no document"));
+    root.set_inner_html(HEADLESS_CONTROLS);
+    HEADLESS.with(|h| *h.borrow_mut() = Some(root));
+    run().await;
 }
 
 pub async fn run() {
@@ -117,6 +181,9 @@ pub async fn run() {
         pending_build: RefCell::new(None),
         run_view: RefCell::new(crate::transcript::Run::default()),
         pin_pylon: RefCell::new(None),
+        last_test: RefCell::new(None),
+        patch: RefCell::new(None),
+        problem: RefCell::new(None),
         current_tool: RefCell::new(None),
         admin_key: RefCell::new(None),
         key,
@@ -143,10 +210,16 @@ pub async fn run() {
     if let Some(node) = app.doc.get_element_by_id("build") {
         node.set_text_content(Some(&app.build.borrow()));
     }
-    wasm_bindgen_futures::spawn_local(app.clone().watch_builds());
-    let params =
-        web_sys::UrlSearchParams::new_with_str(&window.location().search().unwrap_or_default())
-            .ok();
+    if !headless() {
+        wasm_bindgen_futures::spawn_local(app.clone().watch_builds());
+    }
+    // Another page's address is its own business.
+    let search = if headless() {
+        String::new()
+    } else {
+        window.location().search().unwrap_or_default()
+    };
+    let params = web_sys::UrlSearchParams::new_with_str(&search).ok();
     let param = |name: &str| params.as_ref().and_then(|p| p.get(name));
     // The host names the runner, the repository, and the relay in
     // `config.json` beside the page; every URL here is relative, so the
@@ -202,7 +275,9 @@ pub async fn run() {
     app.expose();
     // A reload (Kiln's own hot reload among them) mustn't repeat a load or
     // a task the address asked for once.
-    if let Ok(history) = window.history() {
+    if !headless()
+        && let Ok(history) = window.history()
+    {
         let path = window.location().pathname().unwrap_or_default();
         let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&path));
     }
@@ -211,12 +286,22 @@ pub async fn run() {
 
 impl App {
     fn log(&self, class: &str, text: &str) {
+        if matches!(class, "error" | "err") {
+            *self.problem.borrow_mut() = Some(text.to_owned());
+        }
         let log = el(&self.doc, "log");
         if let Ok(line) = self.doc.create_element("div") {
             line.set_class_name(class);
             line.set_text_content(Some(text));
             let _ = log.append_child(&line);
             log.set_scroll_top(log.scroll_height());
+            // Nobody reads the log of a page run elsewhere; keep it short.
+            while headless()
+                && log.child_element_count() > 400
+                && let Some(first) = log.first_element_child()
+            {
+                first.remove();
+            }
         }
     }
 
@@ -721,7 +806,7 @@ impl App {
         }
         let options = WorkerOptions::new();
         options.set_type(WorkerType::Module);
-        Worker::new_with_options("./worker.js", &options).map_err(|e| text(&e))
+        Worker::new_with_options(&asset("worker.js"), &options).map_err(|e| text(&e))
     }
 
     /// Run one tool in the worker against the workspace, apply what it
@@ -1556,6 +1641,9 @@ impl App {
         if outcome.code == Some(0) && job.args[0] == "test" {
             *self.green.borrow_mut() = Some(self.slice_digest(&repo));
         }
+        if job.args[0] == "test" {
+            *self.last_test.borrow_mut() = Some((outcome.code == Some(0), outcome.summary.clone()));
+        }
         self.metrics.borrow_mut().runs.push(json!({
             "tool": format!("cargo {}", argv.get(1).map_or("", String::as_str)),
             "wall_ms": wall,
@@ -1727,10 +1815,15 @@ impl App {
         let check = checked
             .ok()
             .and_then(|got| serde_json::from_str::<crate::remote::Outcome>(&got.text).ok());
-        let review = format!("review.html#{}", event.id);
+        let review = asset(&format!("review.html#{}", event.id));
         if let Some(window) = web_sys::window() {
             set(&window, "kilnPatch", event.id.clone());
         }
+        *self.patch.borrow_mut() = Some(kiln_view::Patch {
+            id: event.id.clone(),
+            review: review.clone(),
+            check: check.as_ref().map(|c| c.summary.clone()),
+        });
         if let Some(log) = self.doc.get_element_by_id("log")
             && let Ok(link) = self.doc.create_element("a")
         {
@@ -1816,6 +1909,134 @@ impl App {
         });
         set(&window, "kilnSelfEdit", edit.as_ref().clone());
         edit.forget();
+        self.expose_cards(&window);
+    }
+
+    /// What the Grid terminal's cards draw (`kiln_view::State`).
+    fn state(&self) -> kiln_view::State {
+        let repo = self.repo();
+        let base = self.base.borrow();
+        let vfs = self.vfs.borrow();
+        let mut files = Vec::new();
+        let mut file_count = 0;
+        for (path, node) in vfs.iter() {
+            if path.is_empty() || node.is_dir() || path.starts_with(".kiln/") {
+                continue;
+            }
+            file_count += 1;
+            if files.len() < kiln_view::FILES_SHOWN {
+                let changed = repo.is_some() && base.read(path).ok() != vfs.read(path).ok();
+                files.push(kiln_view::File {
+                    path: path.clone(),
+                    bytes: usize::try_from(node.size()).unwrap_or(usize::MAX),
+                    changed,
+                });
+            }
+        }
+        drop((base, vfs));
+        let (changed, green) = match &repo {
+            Some(repo) => {
+                let changed = self.slice_files(repo, true) != self.slice_files(repo, false);
+                let green =
+                    self.green.borrow().as_deref() == Some(self.slice_digest(repo).as_str());
+                (changed, green)
+            }
+            None => (false, false),
+        };
+        let runner: HtmlInputElement = el(&self.doc, "runner").unchecked_into();
+        kiln_view::State {
+            ready: true,
+            busy: self.busy.get(),
+            working: self.run_view.borrow().activity().map(str::to_owned),
+            repo: repo.map(|r| kiln_view::Repo {
+                slice: repo_slices(&r)
+                    .iter()
+                    .map(|s| s.trim_end_matches('/'))
+                    .collect::<Vec<_>>()
+                    .join(","),
+                reference: String::new(),
+                commit: r["commit"].as_str().unwrap_or_default().to_owned(),
+            }),
+            files,
+            file_count,
+            runner: !runner.value().trim().is_empty(),
+            tests: self
+                .last_test
+                .borrow()
+                .clone()
+                .map(|(passed, summary)| kiln_view::Tests { passed, summary }),
+            changed,
+            green,
+            patch: self.patch.borrow().clone(),
+            problem: self.problem.borrow().clone(),
+        }
+    }
+
+    /// The Grid terminal's hooks (#12456): `kilnState()` returns the
+    /// cards' state as JSON; `kilnAgent(task)`, `kilnStop()`,
+    /// `kilnLoad(directory)`, and `kilnPublish()` do what the cards'
+    /// buttons say.
+    fn expose_cards(self: &Rc<Self>, window: &web_sys::Window) {
+        let app = self.clone();
+        let state = Closure::<dyn Fn() -> String>::new(move || {
+            serde_json::to_string(&app.state()).unwrap_or_default()
+        });
+        set(window, "kilnState", state.as_ref().clone());
+        state.forget();
+        let app = self.clone();
+        let agent = Closure::<dyn Fn(String)>::new(move |task: String| {
+            if task.trim().is_empty() || app.busy.get() {
+                return;
+            }
+            let area: HtmlTextAreaElement = el(&app.doc, "task").unchecked_into();
+            area.set_value(&task);
+            *app.patch.borrow_mut() = None;
+            *app.problem.borrow_mut() = None;
+            wasm_bindgen_futures::spawn_local(app.clone().agent(task));
+        });
+        set(window, "kilnAgent", agent.as_ref().clone());
+        agent.forget();
+        let app = self.clone();
+        let stop = Closure::<dyn Fn()>::new(move || app.stop.set(true));
+        set(window, "kilnStop", stop.as_ref().clone());
+        stop.forget();
+        let app = self.clone();
+        let load = Closure::<dyn Fn(String)>::new(move |slice: String| {
+            if slice.trim().is_empty() || app.busy.get() {
+                return;
+            }
+            *app.patch.borrow_mut() = None;
+            *app.problem.borrow_mut() = None;
+            *app.last_test.borrow_mut() = None;
+            let reference: HtmlInputElement = el(&app.doc, "ref").unchecked_into();
+            wasm_bindgen_futures::spawn_local(app.clone().load_repo(slice, reference.value()));
+        });
+        set(window, "kilnLoad", load.as_ref().clone());
+        load.forget();
+        let app = self.clone();
+        let publish = Closure::<dyn Fn()>::new(move || {
+            if app.busy.get() {
+                return;
+            }
+            let area: HtmlTextAreaElement = el(&app.doc, "task").unchecked_into();
+            let task = area.value();
+            let subject: String = task
+                .lines()
+                .next()
+                .unwrap_or("Kiln change")
+                .chars()
+                .take(72)
+                .collect();
+            let app = app.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                app.busy.set(true);
+                let run = app.publish(&subject, "").await;
+                app.log(if run.code == 0 { "done" } else { "err" }, &run.output);
+                app.busy.set(false);
+            });
+        });
+        set(window, "kilnPublish", publish.as_ref().clone());
+        publish.forget();
     }
 
     /// The key runner jobs are signed with: this browser's lasting admin
@@ -2174,6 +2395,7 @@ async fn fetch_json_fresh(url: &str) -> Result<Value, String> {
     let window = web_sys::window().ok_or("no window")?;
     let init = web_sys::RequestInit::new();
     init.set_cache(web_sys::RequestCache::NoStore);
+    let url = &asset(url);
     let response: web_sys::Response = JsFuture::from(window.fetch_with_str_and_init(url, &init))
         .await
         .map_err(|e| text(&e))?
@@ -2241,6 +2463,7 @@ pub(super) async fn fetch_json(url: &str) -> Result<Value, String> {
 
 async fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
     let window = web_sys::window().ok_or("no window")?;
+    let url = &asset(url);
     let response: web_sys::Response = JsFuture::from(window.fetch_with_str(url))
         .await
         .map_err(|e| text(&e))?

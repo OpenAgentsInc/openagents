@@ -194,6 +194,7 @@ const ADDITION: Addition = Addition {
     main: Some(MAIN),
     grid: None,
     connect: "",
+    workers: "",
 };
 
 /// The last document made, and the background build it came from.

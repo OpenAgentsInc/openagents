@@ -16,6 +16,13 @@ pub fn start() {
     wasm_bindgen_futures::spawn_local(app::run());
 }
 
+/// Start Kiln inside another page, with its files under `base` (such as
+/// `/admin/kiln/`) and no markup of its own (#12456).
+#[wasm_bindgen]
+pub fn start_headless(base: String) {
+    wasm_bindgen_futures::spawn_local(app::run_headless(base));
+}
+
 /// Start the patch viewer (`review.html`).
 #[wasm_bindgen]
 pub fn start_review() {

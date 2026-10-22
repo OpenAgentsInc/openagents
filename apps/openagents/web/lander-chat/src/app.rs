@@ -28,6 +28,7 @@ use web_time::Instant;
 use crate::model::{self, Layout, Session};
 
 mod grid;
+mod kiln;
 
 /// How long between tries to reach the site before the first message.
 const RETRY: Duration = Duration::from_secs(3);
@@ -1260,12 +1261,13 @@ impl Render for LanderChat {
             root.child(self.render_back(cx))
         } else {
             root.child(self.render_bar(layout.narrow, cx))
-                .when(self.grid.open, |root| root.child(column))
+                // Kiln's panel covers the terminal's chat while it's open.
+                .when(self.grid.open && !self.grid.kiln, |root| root.child(column))
                 .when(self.grid.lab.state != grid::LabState::Closed, |root| {
                     root.child(self.render_lab(w, h, cx))
                 })
                 .when(self.grid.kiln, |root| {
-                    root.child(self.render_kiln_panel(w, h, cx))
+                    root.child(self.render_kiln_panel(w, h, window, cx))
                 })
         };
         root.text_style().font_fallbacks = Some(theme::fallbacks());

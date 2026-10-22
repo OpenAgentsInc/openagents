@@ -5,8 +5,9 @@ Phases 1 and 2 are built (#12432, #12437). Phase 3's agent identities,
 the repository announcement, and runner admission (#12449, #12451), phase
 4's maintainer apply (#12452), phase 5's GitHub bridge and pull requests
 (#12453, #12455), and a lasting runner on `oa-kiln` (#12454) are built;
-see [maintainers.md](maintainers.md). NIP-07 and NIP-46 signing for
-players, phase 6 (#12456), and phase 7 (#12457) are not.
+see [maintainers.md](maintainers.md). Phase 6, Kiln at the Grid terminal
+(#12456), is built for site admins; see [Phase 6 as built](#phase-6-as-built).
+NIP-07 and NIP-46 signing for players and phase 7 (#12457) are not.
 
 ## The vision
 
@@ -148,6 +149,52 @@ announcement, runner keys and quota tiers in a maintainer-signed list.
 | **5. Bridge and PRs** | The GitHub bridge for maintainer-opened events; `1618` PRs with a git host; `1619` updates; comment mirroring. | A Nostr PR opens a GitHub PR, and the merge comes back as `1631`. |
 | **6. The Grid terminal** | The workstation as the terminal in front of the Pylon Bay: the Kiln page's views as Rust Native cards in the Grid; per-visitor workspaces over a shared base cached by blob id; more of the tree (sparse gitoxide reads). Coordinated with the agents who own `crates/openagents-web/src/pages/grid_home.rs` and the lander chat. | A player walks up to the terminal and does phase 2 there. |
 | **7. Runners on Pylons** | Runner capacity as a Pylon service with its own beacon lane, paid under NIP-X402, checked like other Pylon work. | Many runners, chosen like Pylons. |
+
+## Phase 6 as built
+
+A site admin walks up to the terminal in front of the Pylon Bay on `/`.
+The terminal's chat opens, with **Kiln** beside the model choice. Kiln
+opens in a panel the GPUI chat draws over the world; nothing in it is HTML
+(#12459):
+
+- **Cards.** Task, Crate, Patch, and Files are Rust Native views from
+  `crates/kiln-view`, drawn by the shared GPUI adapter
+  (`openagents_chat_view::rust_native_gpui`), so the desktop app can mount
+  the same cards. The task and directory fields are the chat's own text
+  inputs, supplied through the adapter's field hook.
+- **The run.** Kiln's transcript, `openagents-web-kiln-transcript`, is
+  embedded in the panel: thinking blocks, tool cards with diffs, and the
+  test card.
+- **The engine.** The page loads Kiln's module from `/admin/kiln/pkg/`
+  when the panel first opens and starts it without markup
+  (`start_headless("/admin/kiln/")`). Kiln keeps its OPFS workspace, tool
+  worker, Pylon client, and runner jobs, publishes its state as JSON
+  (`kilnState()`, the `kiln_view::State` shape), and takes the cards'
+  presses through `kilnAgent`, `kilnStop`, `kilnLoad`, and `kilnPublish`.
+  It keeps working with the panel closed.
+- **In the world.** While Kiln works, the terminal's screen in the world
+  shows "KILN AT WORK:", the crate, and "PROPOSING A CHANGE" for that
+  visitor (`openagentsKilnScreen`, `deploy_board::screen::kiln_lines`).
+- **The page's policy.** `/` allows `worker-src 'self'` for Kiln's tool
+  worker and `connect-src` to `api.github.com` and
+  `raw.githubusercontent.com` for public crate reads.
+
+Checked locally on 2026-10-22 against the synthetic-account preview
+(`browser_preview` with `OA_GAME_PREVIEW_ADMIN=1` and
+`OA_GAME_PREVIEW_KILN=DIR`): walk up, open Kiln, load
+`crates/memory-stream`, and run the default task. DeepSeek V4.1 Flash
+edited the crate, the local runner's `cargo test -p memory-stream` passed
+(6 tests), and Kiln proposed patch `f13cbaebfb14` with the runner's
+passing check, 627 s after Run. Captures are in
+[captures/2026-10-22-grid](captures/2026-10-22-grid/): the terminal with
+Kiln beside the model choice (`terminal.png`), the cards and the run while
+it works (`working.png`), the terminal's screen in the world
+(`screen.png`), the proposed patch (`proposed.png`), and the panel at phone
+width (`phone.png`).
+
+Not built yet: Kiln for players who aren't site admins (it waits on NIP-07
+signing and runner quotas by identity), a shared base cached by blob ID,
+and sparse reads of more of the tree.
 
 ## Risks
 

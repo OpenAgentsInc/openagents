@@ -33,7 +33,9 @@ impl AccountsFixture {
                 let account=if auth==format!("Bearer {}",token("alice")) {"alice"} else if auth==format!("Bearer {}",token("bob")) {"bob"} else { return (StatusCode::UNAUTHORIZED,Json(json!({"error":{"code":"signed_out","message":"Sign in to continue."}}))).into_response(); };
                 if flag.load(Ordering::SeqCst) { return (StatusCode::UNAUTHORIZED,Json(json!({"error":{"code":"signed_out","message":"Sign in to continue."}}))).into_response(); }
                 Json(if resource=="session" {json!({"session":{"id":format!("game-session-{account}"),"kind":"user","state":"active","account":account,"expires_at":4_000_000_000u64}})} else {
-                    json!({"account":{"id":account,"label":account,"admin":false},"workspaces":[]})
+                    // The browser preview may make alice a site admin, for Kiln at the terminal (#12456).
+                    let admin = account == "alice" && std::env::var_os("OA_GAME_PREVIEW_ADMIN").is_some();
+                    json!({"account":{"id":account,"label":account,"admin":admin},"workspaces":[]})
                 }).into_response()
             }
         }));
@@ -208,6 +210,11 @@ async fn browser_preview() {
     // The live pylons, for the Grid's Pylon Bay: read only (#12459).
     if let Ok(relay) = std::env::var("OA_GAME_PREVIEW_RELAY") {
         config.pylons_relay = Some(relay);
+    }
+    // Kiln's build, for Kiln at the terminal (#12456), with its runner,
+    // repository, and relay from OPENAGENTS_KILN_*.
+    if let Ok(kiln) = std::env::var("OA_GAME_PREVIEW_KILN") {
+        config.kiln = Some(Arc::new(crate::pages::admin::Kiln::from_env(kiln.into())));
     }
     let app = crate::router(config.clone());
     eprintln!("Game Lab preview: http://127.0.0.1:{port}/?lab=game");

@@ -1,0 +1,18 @@
+[package]
+name = "kiln-view"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Kiln's cards as Rust Native views: the task, the loaded crate, its files, and the patch, from the state Kiln's page publishes."
+
+[dependencies]
+rust-native = { path = "../rust-native", default-features = false }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
+oa-copy = { path = "../oa-copy" }
+
+[lints]
+workspace = true

@@ -33,6 +33,10 @@ openagents-chat-view.workspace = true
 openagents-web-client.workspace = true
 openagents-doc = { path = "../../crates/doc" }
 openagents-proto = { path = "../../crates/proto" }
+# Kiln at the Grid terminal (#12456): its cards and its run.
+kiln-view = { path = "../../../../crates/kiln-view" }
+openagents-web-kiln-transcript = { path = "../kiln-transcript", default-features = false }
+rust-native = { path = "../../../../crates/rust-native", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 web-time.workspace = true

@@ -209,6 +209,12 @@ impl Run {
     }
 
     /// What the agent is doing now; `None` when it's idle.
+    /// What the agent is doing now, while it works.
+    #[must_use]
+    pub fn activity(&self) -> Option<&str> {
+        self.working.as_deref()
+    }
+
     pub fn working(&mut self, label: Option<&str>, now_ms: f64) {
         match label {
             Some(label) => {

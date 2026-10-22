@@ -154,8 +154,7 @@ to{opacity:0;transform:translate(-50%,50%) scale(4.5)}\
 .game-playing #pylon-composer{z-index:21}\
 .home-chat-mount{position:absolute;inset:0;pointer-events:none;clip-path:inset(50%)}\
 .home-frame{position:fixed;z-index:7;border:0;background:#0b0a08}\
-#kiln-frame{border-radius:0 0 15px 15px}\
-html:has(#kiln-frame:not([hidden])) :is(#pylons-field,#pylon-card){visibility:hidden!important}\
+.kiln-open :is(#pylons-field,#pylon-card){visibility:hidden!important}\
 .home-chat-mount canvas{position:absolute;pointer-events:auto}\
 #lander-chat-keep{position:fixed;pointer-events:none;display:none}\
 @media(prefers-reduced-motion:reduce){#pylon-composer{transition:none}\
@@ -167,7 +166,6 @@ html:has(#kiln-frame:not([hidden])) :is(#pylons-field,#pylon-card){visibility:hi
 #game-lab-play{position:fixed;inset:0;z-index:20;background:#000}\
 #game-lab-play-frame{width:100%;height:100%;border:0}\
 #game-lab-back{position:absolute;z-index:22;top:16px;left:16px}\
-#kiln-frame{background:transparent;color-scheme:dark}\
 ";
 
 /// The mark and the name as the page's heading, and the account links
@@ -468,7 +466,10 @@ pub(crate) fn loader() -> &'static str {
 
 /// The relay the Grid's players meet on, which the page's policy admits
 /// (#12406).
-const HOME_CONNECT: &str = super::everglade::GRID_RELAY;
+/// The Grid's relay, and the public GitHub reads Kiln loads a crate with
+/// at the terminal (#12456).
+const HOME_CONNECT: &str =
+    "wss://relay.openagents.com https://api.github.com https://raw.githubusercontent.com";
 
 const ADDITION: Addition = Addition {
     style: STYLE,
@@ -478,6 +479,8 @@ const ADDITION: Addition = Addition {
     main: None,
     grid: None,
     connect: HOME_CONNECT,
+    // Kiln's tool worker, from `/admin/kiln/worker.js` (#12456).
+    workers: "'self'",
 };
 
 /// The last document and the live list it came from.
@@ -690,9 +693,9 @@ mod tests {
         let policy = document.policy.to_str().unwrap();
         assert!(policy.contains(&super::super::lander5::source_hash(LOADER)));
         assert!(policy.contains(&super::super::lander5::source_hash(STYLE)));
-        assert!(
-            policy.contains("connect-src 'self' wss://relay.openagents.com; worker-src blob:;")
-        );
+        assert!(policy.contains(&format!(
+            "connect-src 'self' {HOME_CONNECT}; worker-src blob: 'self';"
+        )));
         assert!(!policy.contains("unsafe-inline"));
         for copy in [
             heading(true).as_str(),
@@ -707,21 +710,27 @@ mod tests {
 
     #[test]
     fn kiln_opens_in_a_panel_only_for_a_site_admin() {
-        // The chat draws Kiln's panel and asks the page to stand Kiln's
-        // page in it; only a `/home/me` that says admin lets it open, and
-        // the server refuses `/admin/kiln/` to everyone else (#12440).
+        // The chat draws Kiln's panel, cards, and run in GPUI (#12456);
+        // only a `/home/me` that says admin lets it open and loads Kiln's
+        // module, and the server refuses `/admin/kiln/` to everyone else
+        // (#12440).
         for account in [true, false] {
             let html = main_html("<ul></ul>", account);
-            assert!(!html.contains("kiln-panel") && !html.contains("/admin/kiln/"));
+            assert!(!html.contains("kiln-panel") && !html.contains("kiln-frame"));
         }
+        let gate = LOADER
+            .find("open = !!open && globalThis.openagentsAdmin === true;")
+            .unwrap();
+        assert!(LOADER[gate..].contains("startKiln();"));
+        assert!(LOADER.contains("start_headless('/admin/kiln/')"));
         assert!(LOADER.contains("if(me.admin===true)globalThis.openagentsAdmin=true;"));
         assert!(LOADER.contains("globalThis.homeKiln"));
         assert!(LOADER.contains("open = !!open && globalThis.openagentsAdmin === true;"));
         assert!(LOADER.contains("globalThis.homeOverlay"));
-        assert!(STYLE.contains(
-            "html:has(#kiln-frame:not([hidden])) \
-             :is(#pylons-field,#pylon-card){visibility:hidden!important}"
-        ));
+        assert!(
+            STYLE
+                .contains(".kiln-open :is(#pylons-field,#pylon-card){visibility:hidden!important}")
+        );
     }
 
     #[test]

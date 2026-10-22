@@ -244,6 +244,7 @@ const ADDITION: Addition = Addition {
     main: None,
     grid: Some(still_gray_grid),
     connect: "",
+    workers: "",
 };
 
 /// The last document made: the runner build and the list it came from.

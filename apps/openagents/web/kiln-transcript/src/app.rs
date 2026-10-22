@@ -21,6 +21,7 @@ const POLL: Duration = Duration::from_millis(100);
 const MOUNT_ID: &str = "gpui-mount";
 
 /// Tells the page something: an event on `#gpui-mount`.
+#[cfg_attr(not(feature = "export"), allow(dead_code))]
 pub(crate) fn signal(name: &str) {
     let mount = web_sys::window()
         .and_then(|window| window.document())

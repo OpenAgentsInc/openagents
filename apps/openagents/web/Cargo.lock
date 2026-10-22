@@ -3227,6 +3227,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
+name = "kiln-view"
+version = "1.0.0"
+dependencies = [
+ "rust-native",
+ "serde",
+]
+
+[[package]]
 name = "kurbo"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5230,6 +5238,7 @@ dependencies = [
  "getrandom 0.3.4",
  "gpui",
  "js-sys",
+ "kiln-view",
  "log",
  "oa-copy",
  "openagents-chat-view",
@@ -5238,6 +5247,8 @@ dependencies = [
  "openagents-proto",
  "openagents-web-chat-view",
  "openagents-web-client",
+ "openagents-web-kiln-transcript",
+ "rust-native",
  "serde",
  "serde_json",
  "uuid",

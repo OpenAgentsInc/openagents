@@ -10018,6 +10018,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.3.4",
  "js-sys",
+ "kiln-view",
  "livehost",
  "nostr",
  "oa-copy",
@@ -10074,6 +10075,16 @@ version = "1.0.0"
 dependencies = [
  "openagents-workspace-hack",
  "rhai",
+]
+
+[[package]]
+name = "kiln-view"
+version = "1.0.0"
+dependencies = [
+ "oa-copy",
+ "rust-native",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

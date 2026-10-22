@@ -168,6 +168,9 @@ pub(super) struct Addition {
     /// More `connect-src` sources than the page's own origin, separated
     /// by spaces (`/home`'s relay, #12406); empty for none.
     pub connect: &'static str,
+    /// More `worker-src` sources than `blob:`, separated by spaces (the
+    /// Grid's `'self'` for Kiln's tool worker, #12456); empty for none.
+    pub workers: &'static str,
 }
 
 /// The page, with the runner when a build is given.
@@ -271,11 +274,16 @@ for(let i=0;i<s.length;i++)b[i]=s.charCodeAt(i);const ready=__wbg_init({{module_
                 "<script type=\"module\">{}</script>",
                 addition.script
             ));
+            let workers = if addition.workers.is_empty() {
+                "blob:".to_owned()
+            } else {
+                format!("blob: {}", addition.workers)
+            };
             connect = if addition.connect.is_empty() {
-                "connect-src 'self'; worker-src blob:; ".to_owned()
+                format!("connect-src 'self'; worker-src {workers}; ")
             } else {
                 format!(
-                    "connect-src 'self' {}; worker-src blob:; ",
+                    "connect-src 'self' {}; worker-src {workers}; ",
                     addition.connect
                 )
             };
