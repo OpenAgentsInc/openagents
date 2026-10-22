@@ -323,7 +323,7 @@ pub struct Drafter {
 
 pub struct Proposal {
     pub logits: Vec<Vec<f32>>,
-    pub confidence: Vec<f32>,
+    pub hidden: Vec<f32>,
 }
 
 impl Drafter {
@@ -851,7 +851,7 @@ impl Drafter {
         }
         let block = self.blocks.last().ok_or_else(|| invalid("draft blocks"))?;
         let mut logits = Vec::new();
-        let mut confidence = Vec::new();
+        let mut hidden = Vec::new();
         for i in 0..BLOCK {
             let wk = &block.work;
             let mut s = backend.begin_submission()?;
@@ -881,7 +881,7 @@ impl Drafter {
             s.commit(CudaCommandWait::Completed)?;
             logits.push(floats(&wk.head_logits, shape.vocabulary)?);
             // Keep the pre-norm collapsed hidden for the confidence head.
-            confidence.extend(floats(&self.hidden, h)?);
+            hidden.extend(floats(&self.hidden, h)?);
         }
         Ok(Proposal { logits, confidence })
     }

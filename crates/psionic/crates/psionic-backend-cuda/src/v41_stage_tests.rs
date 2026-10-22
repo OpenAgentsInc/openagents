@@ -2582,7 +2582,7 @@ fn dspark_cuda_blocks_and_heads_propose_finite_logits() -> TestResult {
         let confidence = drafter.finish_token(
             &backend,
             3,
-            &proposal.confidence[i * h..(i + 1) * h],
+            &proposal.hidden[i * h..(i + 1) * h],
             &mut proposal.logits[i],
         )?;
         assert!(confidence.is_finite());
