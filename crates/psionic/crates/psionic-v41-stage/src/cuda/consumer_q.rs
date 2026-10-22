@@ -20,10 +20,14 @@
 //! in place, as `--experts file` maps the checkpoint.
 //!
 //! Recipes: `q2q3` keeps gate and up (w1, w3) at 2 bits and down (w2) at
-//! 3 bits, about 2.6 bits per weight (175 GB); `q3` keeps all three at 3
-//! bits, about 3.3 bits per weight (221 GB).
+//! 3 bits, with gate and up widened to 3 bits in model layers 0 and 39
+//! (about 2.6 bits per weight, 178 GB). `q3` keeps all three at 3 bits
+//! (about 3.3 bits per weight, 221 GB). Optional `layer_formats` overrides
+//! give those boundary layers their own byte strides; older manifests
+//! without overrides retain their original layout.
 //!
-//! The quantizer is importance-weighted rounding after Project Maya's
+//! The quantizer uses importance-weighted rounding, with GPTQ feedback
+//! when full activation moments are supplied, after Project Maya's
 //! calibration recipe (`mw00/project-maya` at `451f9cb6a2`, MIT),
 //! reimplemented; see `psionic_backend_cuda::v41_quantize`.
 

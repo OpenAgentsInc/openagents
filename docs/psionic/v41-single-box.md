@@ -195,8 +195,11 @@ and an `f32` scale per row; `manifest.json` records the recipe, formats,
 source checkpoint, importance digest, and each file's SHA-256.
 
 - Values are Lloyd–Max levels of a unit normal: 4 levels at 2 bits, 8 at
-  3 bits. `q2q3` keeps gate and up at 2 bits and down at 3 (about 2.6 bits a
-  weight, 175 GB); `q3` keeps all three at 3 (about 3.3 bits, 221 GB).
+  3 bits. `q2q3` keeps gate and up at 2 bits and down at 3, with gate and
+  up widened to 3 bits in model layers 0 and 39 (about 2.6 bits a weight,
+  178 GB); `q3` keeps all three at 3 (about 3.3 bits, 221 GB). Optional
+  `layer_formats` overrides set the boundary layers' layouts; older
+  manifests without overrides retain their original formats and strides.
 - The quantizer picks each block's scale by importance-weighted squared
   error. Calibration (`chain --prefill layer-major --prompts-jsonl FILE
   --calibrate-out PREFIX`) now records full activation second moments
