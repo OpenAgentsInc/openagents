@@ -39,6 +39,9 @@ struct Foreman {
     live: Option<Live>,
     /// Whether the visitor is in talking range.
     near: bool,
+    /// Page time the visitor came into range, ms, for its wave (#12461);
+    /// `Some(None)` until the next frame stamps it.
+    waved: Option<Option<f64>>,
     /// Where the talk offer was last drawn, CSS pixels: x, y, width, height.
     prompt: Option<[f32; 4]>,
     touch: Option<bool>,
@@ -109,6 +112,7 @@ pub fn talk_frame(player: Vec3, plaza: bool) {
     });
     if near && !was {
         crate::visit::send([("foreman_reached", serde_json::json!({}))]);
+        FOREMAN.with(|f| f.borrow_mut().waved = Some(None));
     }
     if !near && was && open_now() {
         call(false);
@@ -214,32 +218,70 @@ fn home() -> Vec3 {
     )
 }
 
+/// How long its wave plays when someone walks up, ms.
+const WAVE_MS: f64 = 2_500.0;
+
+/// The clip it plays standing still (#12461): leaning on the console while
+/// it works, a wave when this visitor walks up, talking while this visitor's
+/// chat with it is open, a shake of the head while someone is in its way,
+/// arms folded at its other stops, and the plain idle at home.
+fn standing_clip(status: Option<&str>, waving: bool, talking: bool) -> Selection {
+    let status = status.unwrap_or_default();
+    if grid_foreman::is_work(status) {
+        Selection::Legacy(grid_robot::CLIP_RAIL)
+    } else if waving {
+        Selection::Legacy(grid_robot::CLIP_RAIL_CALL)
+    } else if talking {
+        Selection::Legacy(grid_robot::CLIP_TALK)
+    } else if status == "EXCUSE ME" {
+        Selection::Legacy(grid_robot::CLIP_NO)
+    } else if matches!(
+        status,
+        "WATCHING THE PYLONS" | "READING THE BUILD BOARD" | "SAYING HELLO"
+    ) {
+        Selection::Legacy(grid_robot::CLIP_FOLD_ARMS)
+    } else {
+        Selection::Named(State::Idle)
+    }
+}
+
 /// Its pose at page time `now` (ms): where the host has it, else idle at
 /// home facing the terminal.
 fn pose(now: f64) -> Pose {
     let seconds = ((now / 1000.0) % 1000.0) as f32;
-    FOREMAN.with(|f| match &f.borrow().live {
-        Some(live) if live.speed > 0.1 => Pose {
-            pos: live.pos,
-            yaw: live.yaw,
-            animation: Selection::Named(State::Walk),
-            time: seconds * grid_foreman::WALK_CLIP_RATE,
-            speed: live.speed,
-        },
-        Some(live) => Pose {
-            pos: live.pos,
-            yaw: live.yaw,
-            animation: Selection::Named(State::Idle),
-            time: seconds,
-            speed: 0.0,
-        },
-        None => Pose {
-            pos: home(),
-            yaw: grid_foreman::home_yaw() as f32,
-            animation: Selection::Named(State::Idle),
-            time: seconds,
-            speed: 0.0,
-        },
+    let talking = open_now();
+    FOREMAN.with(|f| {
+        let mut f = f.borrow_mut();
+        if let Some(waved) = &mut f.waved {
+            let at = *waved.get_or_insert(now);
+            if now - at > WAVE_MS {
+                f.waved = None;
+            }
+        }
+        let wave = f.waved.flatten().map(|at| ((now - at) / 1000.0) as f32);
+        match &f.live {
+            Some(live) if live.speed > 0.1 => Pose {
+                pos: live.pos,
+                yaw: live.yaw,
+                animation: Selection::Named(State::Walk),
+                time: seconds * grid_foreman::WALK_CLIP_RATE,
+                speed: live.speed,
+            },
+            Some(live) => Pose {
+                pos: live.pos,
+                yaw: live.yaw,
+                animation: standing_clip(live.status.as_deref(), wave.is_some(), talking),
+                time: wave.unwrap_or(seconds),
+                speed: 0.0,
+            },
+            None => Pose {
+                pos: home(),
+                yaw: grid_foreman::home_yaw() as f32,
+                animation: standing_clip(None, wave.is_some(), talking),
+                time: wave.unwrap_or(seconds),
+                speed: 0.0,
+            },
+        }
     })
 }
 

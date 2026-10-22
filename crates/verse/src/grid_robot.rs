@@ -31,6 +31,9 @@ pub const ROBOT_FAR: &str = "grid/robot-far";
 pub const SOURCES: &str = "assets/verse/characters/original/grid-robot";
 /// The Universal Animation Library's gaits, relative to the repository root.
 pub const GAITS: &str = "assets/verse/characters/quaternius/gaits.glb";
+/// The Universal Animation Library's other clips, relative to the
+/// repository root: the Grid Foreman's reactions come from here (#12461).
+pub const ANIMATIONS: &str = "assets/verse/characters/quaternius/animations.glb";
 /// Eye distance beyond which the far level is drawn, in meters.
 pub const FAR_METERS: f32 = 30.0;
 
@@ -40,6 +43,14 @@ pub const CLIP_RUN: u16 = 3;
 pub const CLIP_AIRBORNE: u16 = 4;
 /// Dancing in place, on a loop.
 pub const CLIP_DANCE: u16 = 5;
+/// The Grid Foreman's reactions (#12461): arms folded while it waits at a
+/// stop, leaning on the console while it works, a wave when someone walks
+/// up, talking, and a shake of the head.
+pub const CLIP_FOLD_ARMS: u16 = 6;
+pub const CLIP_RAIL: u16 = 7;
+pub const CLIP_RAIL_CALL: u16 = 8;
+pub const CLIP_TALK: u16 = 9;
+pub const CLIP_NO: u16 = 10;
 /// Each clip and the Universal clip it plays.
 const CLIPS: [(u16, &str); 5] = [
     (CLIP_IDLE, "Idle_Loop"),
@@ -48,8 +59,26 @@ const CLIPS: [(u16, &str); 5] = [
     (CLIP_AIRBORNE, "Jump_Loop"),
     (CLIP_DANCE, "Dance_Loop"),
 ];
+/// The Foreman's reactions and the clips in [`ANIMATIONS`] they play.
+const REACTIONS: [(u16, &str); 5] = [
+    (CLIP_FOLD_ARMS, "Idle_FoldArms_Loop"),
+    (CLIP_RAIL, "Idle_Rail_Loop"),
+    (CLIP_RAIL_CALL, "Idle_Rail_Call"),
+    (CLIP_TALK, "Idle_TalkingPhone_Loop"),
+    (CLIP_NO, "Idle_No_Loop"),
+];
 /// The loops whose last key is set to their first, so they cycle cleanly.
-const LOOPS: [u16; 5] = [CLIP_IDLE, CLIP_WALK, CLIP_RUN, CLIP_AIRBORNE, CLIP_DANCE];
+const LOOPS: [u16; 9] = [
+    CLIP_IDLE,
+    CLIP_WALK,
+    CLIP_RUN,
+    CLIP_AIRBORNE,
+    CLIP_DANCE,
+    CLIP_FOLD_ARMS,
+    CLIP_RAIL,
+    CLIP_TALK,
+    CLIP_NO,
+];
 /// `Walk_Loop`'s length, s, and the ground its stride covers in that time,
 /// m, as `characters::loop_distance` gives it.
 pub const WALK_LOOP_SECONDS: f32 = 4.0 / 3.0;
@@ -85,9 +114,15 @@ fn gaits() -> PathBuf {
         .join(GAITS)
 }
 
+fn animations() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(ANIMATIONS)
+}
+
 /// The robot's sources as the pack's inventory records them: every file the
-/// manifest pins, checked against its digest, then the manifest and the
-/// gaits. Returns the bundle's digest and size.
+/// manifest pins, checked against its digest, then the manifest, the
+/// gaits, and the other animations. Returns the bundle's digest and size.
 pub fn sources() -> Result<(String, u64), String> {
     let dir = sources_dir();
     let read = |path: &Path| std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()));
@@ -109,6 +144,7 @@ pub fn sources() -> Result<(String, u64), String> {
     }
     parts.push(manifest);
     parts.push(read(&gaits())?);
+    parts.push(read(&animations())?);
     let parts: Vec<&[u8]> = parts.iter().map(Vec::as_slice).collect();
     Ok(crate::imported::inventory::bundle(&parts))
 }
@@ -132,6 +168,9 @@ pub fn model(dir: &Path, white: usize, variant: &str, name: &str) -> Result<Mode
     let mut imported = characters::import(&mut scratch, dir, &path)?;
     for (id, clip) in CLIPS {
         characters::retarget_clip(&mut imported, &gaits(), id, clip)?;
+    }
+    for (id, clip) in REACTIONS {
+        characters::retarget_clip(&mut imported, &animations(), id, clip)?;
     }
     let skin = imported.skin.as_mut().ok_or("The Grid robot has no skin")?;
     // The importer stores vertices in the chamber's basis; the Grid draws
