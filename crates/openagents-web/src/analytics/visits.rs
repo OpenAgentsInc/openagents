@@ -227,6 +227,20 @@ pub const EVENTS: &[Spec] = &[
         name: "plaza_returned",
         details: &[("from", Values::One(&ZONES))],
     },
+    // The help desk near the spawn (#12443): reached it, opened its chat,
+    // and sent a message there. Never what anyone typed.
+    Spec {
+        name: "help_desk_reached",
+        details: &[],
+    },
+    Spec {
+        name: "help_desk_opened",
+        details: &[],
+    },
+    Spec {
+        name: "help_desk_message",
+        details: &[("nth", Values::One(&["first", "later"]))],
+    },
     // Chat at the terminal.
     Spec {
         name: "terminal_opened",

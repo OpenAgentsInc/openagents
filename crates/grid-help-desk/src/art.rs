@@ -24,10 +24,14 @@ const SIGN_FOOT: f64 = 2.45;
 /// The top of the sign's posts, m.
 pub const SIGN_TOP: f64 = SIGN_FOOT + LETTERS + 0.2;
 /// The sign stands this far behind the counter's middle, m.
-const SIGN_BACK: f64 = -0.6;
+pub const SIGN_BACK: f64 = -0.6;
 
 /// Where the phone's stand stands on the counter: x and z, m.
 pub const PHONE_STAND: [f64; 2] = [0.62, 0.08];
+/// The height of the phone's back over the counter, m: its foot rests on
+/// the stand's base (0.015 m) and its half length, 0.0755 m drawn at
+/// [`crate::DEVICE_SCALE`], leans 72 degrees back (sin 72 = 0.951).
+pub const PHONE_LIFT: f64 = 0.015 + 0.0755 * 2.0 * 0.951;
 
 /// The desk as line art.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -107,7 +111,7 @@ pub fn desk() -> Art {
     for side in [-0.04, 0.04] {
         art.line(
             [x + side, TOP + 0.015, z - 0.06],
-            [x + side, TOP + 0.115, z - 0.015],
+            [x + side, TOP + PHONE_LIFT - 0.01, z - 0.02],
             PRESENT,
         );
     }

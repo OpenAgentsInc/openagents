@@ -25,6 +25,8 @@ openagents-web-hands = { path = "../../apps/openagents/web/hands" }
 pylons-view = { path = "../pylons-view" }
 # The Grid's build billboard (#12442).
 deploy-board = { path = "../deploy-board" }
+# The help desk near the spawn (#12443).
+grid-help-desk = { path = "../grid-help-desk" }
 coder-browser = { path = "../coder-browser" }
 coder-ui = { path = "../coder-ui" }
 coder-host-wire = { path = "../coder-host-wire" }

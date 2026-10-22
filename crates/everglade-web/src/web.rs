@@ -1367,6 +1367,7 @@ impl Page {
             .map_or(now, |p| p.now());
         self.draw_frame(now);
         if HOME.with(|home| home.get()) {
+            crate::help_desk::frame(self.runtime.player.pos, self.runtime.is_plaza());
             thread_local! { static GAME_NEAR: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
             let near = GAME_NEAR.with(|old| {
                 // Game Lab stands on the Grid plaza only, never in a zone
@@ -1730,6 +1731,11 @@ impl Page {
                     view.eye,
                 );
             }
+            if let Some(atlas) = &self.layout
+                && HOME.with(std::cell::Cell::get)
+            {
+                crate::help_desk::draw(&mut ui, atlas, css, view.view_proj);
+            }
             if let Some(atlas) = &self.layout {
                 super::terminal::draw(&mut ui, atlas, css);
             }
@@ -1853,6 +1859,10 @@ impl Page {
     /// A press at `at` (CSS pixels) on the Grid's name tags or open card.
     /// Returns whether the Grid used it.
     fn press_grid(&mut self, at: [f32; 2]) -> bool {
+        // The help desk's prompt opens the chat (#12443).
+        if HOME.with(std::cell::Cell::get) && crate::help_desk::press(at) {
+            return true;
+        }
         let size = self.css_size();
         let aspect = self.renderer.aspect();
         let view = self.runtime.view(aspect);
@@ -2384,6 +2394,18 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 WALK.with(|walk| walk.set(true));
             }
             if !walking() {
+                return;
+            }
+            // E at the help desk opens the chat there (#12443).
+            if home
+                && down
+                && !event.repeat()
+                && !event.ctrl_key()
+                && !event.alt_key()
+                && !event.meta_key()
+                && crate::help_desk::key(&event.code())
+            {
+                event.prevent_default();
                 return;
             }
             if super::terminal::active() {

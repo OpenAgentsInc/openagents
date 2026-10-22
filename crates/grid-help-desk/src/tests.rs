@@ -66,6 +66,11 @@ fn the_desk_is_admitted_with_its_screens() {
     add(&mut pack, 0, "verse:texture:grid/0", &tint).unwrap();
     pack.validate().unwrap();
     assert_eq!(pack.models.len(), 3);
+    // Static instances carry no emission: an emissive screen would draw
+    // black, so the screens are plain unlit surfaces.
+    for model in pack.models.values() {
+        assert!(model.surfaces.iter().all(|s| s.unlit && !s.emissive));
+    }
     assert_eq!(pack.placements.len(), 3);
     let mut files = vec![(WHITE_FILE, WHITE)];
     files.extend(files_list());

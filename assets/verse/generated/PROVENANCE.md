@@ -338,5 +338,5 @@ keeps it current.
 | --- | ---: | ---: | --- |
 | `help_desk/macbook.glb` | 3,050 (body 3,000, display 50) | 153,980 | `b1a3663c3354a274bf872c2120e24c0b21e848bd3fd57f82f7020cc0993ac46c` |
 | `help_desk/iphone.glb` | 850 (body 800, display 50) | 37,928 | `ee58bbcd32d4ebd87a90d2260a42c5541edce288716ec61cdb83ba1c7883be3b` |
-| `help_desk/macbook-screen.png` | 512 × 332 | 31,348 | `075c3b66f840708123c1671a48c3a75ac6efc19dbed40000194d2276067a6190` |
-| `help_desk/iphone-screen.png` | 192 × 418 | 8,203 | `9b3a51318a720df6160ae9a1d8d292398abe714f7213c44c47a695bac541b49c` |
+| `help_desk/macbook-screen.png` | 384 × 249 | 20,311 | `425c7a1a774ac3a3b04bf77852627a70b8a1b88d0064a42b0e4665d5cfd0042d` |
+| `help_desk/iphone-screen.png` | 144 × 313 | 5,527 | `da91aab1ea4db49ba1c1c5755a1b459a31fd1101e29ce7b325cc96147aa4b6a5` |

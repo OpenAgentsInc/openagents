@@ -371,6 +371,14 @@ pub fn report(rows: &[VisitRow], days: u64) -> Markup {
         .fact("Entered the Pylon Bay", number(bay))
         .fact("Opened a Pylon", number(opened))
         .fact(
+            "Reached the help desk",
+            number(all.iter().filter(|v| v.has("help_desk_reached")).count() as u64),
+        )
+        .fact(
+            "Asked at the help desk",
+            number(all.iter().filter(|v| v.has("help_desk_message")).count() as u64),
+        )
+        .fact(
             "Went through a portal",
             number(all.iter().filter(|v| v.has("portal_entered")).count() as u64),
         )

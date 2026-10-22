@@ -1,5 +1,5 @@
-//! The shared pylon computer, the Pylon Bay, and the build billboard in
-//! the Grid's depth-tested world pass.
+//! The shared pylon computer, the Pylon Bay, the build billboard, and the
+//! help desk in the Grid's depth-tested world pass.
 
 use glam::Vec3;
 use verse::{
@@ -61,21 +61,20 @@ pub fn content() -> Result<Content, String> {
     });
     crate::pylon_bay::add(&mut pack, white, &white_id)?;
     crate::build_board::add(&mut pack, white, &white_id)?;
+    grid_help_desk::add(&mut pack, white, &white_id, &crate::pylon_bay::tint)?;
     let statics = grid_frame::statics(&pack);
-    let prepared = Prepared::from_bytes(
-        pack,
-        &[
-            (
-                flat::WHITE_TEXTURE,
-                include_bytes!("../../../assets/verse/grid/verse-flat-white.png"),
-            ),
-            (
-                grid_pack::PORTAL_VIEW,
-                include_bytes!("../../../assets/verse/grid/everglade-portal.png"),
-            ),
-        ],
-        Default::default(),
-    )?;
+    let mut files: Vec<(&str, &[u8])> = vec![
+        (
+            flat::WHITE_TEXTURE,
+            include_bytes!("../../../assets/verse/grid/verse-flat-white.png"),
+        ),
+        (
+            grid_pack::PORTAL_VIEW,
+            include_bytes!("../../../assets/verse/grid/everglade-portal.png"),
+        ),
+    ];
+    files.extend(grid_help_desk::files());
+    let prepared = Prepared::from_bytes(pack, &files, Default::default())?;
     Ok(Content {
         prepared,
         statics,

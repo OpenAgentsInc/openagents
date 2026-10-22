@@ -23,6 +23,8 @@ mod grid;
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 mod hand_input;
 #[cfg(target_arch = "wasm32")]
+mod help_desk;
+#[cfg(target_arch = "wasm32")]
 mod home_terminal;
 #[cfg(target_arch = "wasm32")]
 mod hosted;

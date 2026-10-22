@@ -50,7 +50,7 @@ fn pipe_key(parts: u32, lit: bool) -> String {
     format!("bay/pipe{parts}-{}", u8::from(lit))
 }
 
-fn tint(tone: u8) -> [f32; 3] {
+pub(crate) fn tint(tone: u8) -> [f32; 3] {
     let step = Intensity::ALL[usize::from(tone.min(3))];
     palette::neutral(palette::amber(step))
 }

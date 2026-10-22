@@ -161,6 +161,10 @@ pub const KILN: &str = "Kiln";
 /// The page global the Grid sets to `true` when `/home/me` says the
 /// visitor is a site admin.
 pub const ADMIN_GLOBAL: &str = "openagentsAdmin";
+/// The page global that is `true` while the chat is open at the Grid's
+/// help desk (#12443): the chat then asks the site's free hosted agent, in
+/// a chat of its own, and offers no model choice.
+pub const DESK_GLOBAL: &str = "openagentsChatDesk";
 /// The page function that opens Kiln's panel.
 pub const OPEN_KILN: &str = "homeKiln";
 

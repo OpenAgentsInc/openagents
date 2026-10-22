@@ -65,6 +65,12 @@ pub struct LanderChat {
     game_mode: bool,
     game_chat: Option<String>,
     grid_chat: Option<String>,
+    /// The Grid's help desk (#12443): while it is open, the chat asks the
+    /// site's free hosted agent through [`Self::plain`], with the visitor's
+    /// usual limits, in a chat of its own.
+    desk_mode: bool,
+    desk_chat: Option<String>,
+    plain: Option<Client>,
     title: String,
     entries: Vec<SessionMessageEntry>,
     live: Option<Live>,
@@ -138,6 +144,9 @@ impl LanderChat {
             game_mode: is_game_lab(),
             game_chat: None,
             grid_chat: None,
+            desk_mode: false,
+            desk_chat: None,
+            plain: None,
             title: String::new(),
             entries: Vec::new(),
             live: None,
@@ -179,6 +188,7 @@ impl LanderChat {
                     .update(cx, |this, cx| match read {
                         Ok(session) => {
                             let client = Client::with_csrf(session.csrf.clone());
+                            this.plain = Some(client.clone());
                             this.client = Some(if base() == model::HOME_BASE {
                                 client.with_chat_surface("home")
                             } else {
@@ -237,6 +247,27 @@ impl LanderChat {
                 self.load(chat, cx);
             }
         }
+        let desk = is_desk();
+        if desk != self.desk_mode && self.live.is_none() && !self.sending {
+            if self.desk_mode {
+                self.desk_chat = self.current.clone();
+            } else {
+                self.grid_chat = self.current.clone();
+            }
+            self.new_chat(cx);
+            self.desk_mode = desk;
+            self.sync_pick();
+            let chat = if desk {
+                self.desk_chat.clone()
+            } else {
+                self.grid_chat.clone()
+            };
+            if let Some(chat) = chat {
+                self.current = Some(chat.clone());
+                push_path(Some(&chat));
+                self.load(chat, cx);
+            }
+        }
         if base() == model::HOME_BASE {
             let ready = js_sys::Reflect::get(&js_sys::global(), &model::GROUP_READY_GLOBAL.into())
                 .ok()
@@ -277,7 +308,9 @@ impl LanderChat {
             let _ = panel.set_attribute("data-message-count", &self.entries.len().to_string());
             let _ = panel.set_attribute(
                 "data-pylon-pick",
-                if self.ask_flint {
+                if self.desk_mode {
+                    "none"
+                } else if self.ask_flint {
                     "flint"
                 } else {
                     match (self.group_ready, self.ask_group) {
@@ -356,7 +389,7 @@ impl LanderChat {
     /// Shows `chat`, reading its messages, and follows its answer when one
     /// is being written.
     fn load(&mut self, chat: String, cx: &mut Context<Self>) {
-        let Some(client) = self.client.clone() else {
+        let Some(client) = self.active_client() else {
             return;
         };
         self.generation += 1;
@@ -430,7 +463,7 @@ impl LanderChat {
     /// [`model::GROUP_MODEL`] on each turn while DeepSeek V4.1 is chosen and
     /// a ready group is online.
     fn sync_pick(&self) {
-        let value = if is_game_lab() {
+        let value = if is_game_lab() || self.desk_mode {
             JsValue::UNDEFINED
         } else if self.ask_flint {
             let pin = js_sys::Reflect::get(&js_sys::global(), &model::FLINT_PIN_GLOBAL.into())
@@ -493,7 +526,7 @@ impl LanderChat {
     }
 
     fn follow(&mut self, chat: String, request: String, cx: &mut Context<Self>) {
-        let Some(client) = self.client.clone() else {
+        let Some(client) = self.active_client() else {
             return;
         };
         let (follow, mut events) = match client.follow(&chat, &request) {
@@ -658,7 +691,7 @@ impl LanderChat {
             cx.notify();
             return;
         }
-        let Some(client) = self.client.clone() else {
+        let Some(client) = self.active_client() else {
             self.put_back(&text, cx);
             self.notice = Some(Notice {
                 text: model::CONNECTING.into(),
@@ -677,18 +710,22 @@ impl LanderChat {
         mark("lander8-send");
         self.sent_at = Some(Instant::now());
         self.sent_count += 1;
-        track(
-            "message_sent",
-            &format!(
-                "{{\"model\":\"{}\",\"nth\":\"{}\"}}",
-                model::pick_word(self.group_ready && self.ask_group, self.ask_flint),
-                if self.sent_count == 1 {
-                    "first"
-                } else {
-                    "later"
-                }
-            ),
-        );
+        let nth = if self.sent_count == 1 {
+            "first"
+        } else {
+            "later"
+        };
+        if self.desk_mode {
+            track("help_desk_message", &format!("{{\"nth\":\"{nth}\"}}"));
+        } else {
+            track(
+                "message_sent",
+                &format!(
+                    "{{\"model\":\"{}\",\"nth\":\"{nth}\"}}",
+                    model::pick_word(self.group_ready && self.ask_group, self.ask_flint),
+                ),
+            );
+        }
         cx.spawn(async move |this, cx| {
             let sent = match &current {
                 Some(id) => client.reply(id, &request, &text).await.map(|()| id.clone()),
@@ -731,6 +768,16 @@ impl LanderChat {
         cx.notify();
     }
 
+    /// The client for the open chat: the help desk's asks the site's
+    /// hosted agent, the terminal's asks the pylons first.
+    fn active_client(&self) -> Option<Client> {
+        if self.desk_mode {
+            self.plain.clone()
+        } else {
+            self.client.clone()
+        }
+    }
+
     fn put_back(&mut self, text: &str, cx: &mut Context<Self>) {
         self.composer.update(cx, |composer, cx| {
             if composer.is_empty() {
@@ -740,7 +787,7 @@ impl LanderChat {
     }
 
     fn stop(&mut self, cx: &mut Context<Self>) {
-        let (Some(client), Some(chat)) = (self.client.clone(), self.current.clone()) else {
+        let (Some(client), Some(chat)) = (self.active_client(), self.current.clone()) else {
             return;
         };
         let Some(live) = &mut self.live else {
@@ -964,7 +1011,7 @@ impl LanderChat {
     /// Kiln, beside the model choice, for a site admin on the Grid (#12440):
     /// it opens Kiln's panel over the Grid.
     fn render_kiln(&self, layout: &Layout) -> Option<AnyElement> {
-        if !model::offers_kiln(base(), is_game_lab(), self.admin) {
+        if self.desk_mode || !model::offers_kiln(base(), is_game_lab(), self.admin) {
             return None;
         }
         Some(
@@ -999,7 +1046,7 @@ impl LanderChat {
     /// DeepSeek V4.1 or any Pylon, beside the send button: on the Grid
     /// terminal while a ready V4.1 group is online (#12421).
     fn render_pick(&self, layout: &Layout, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if is_game_lab() {
+        if is_game_lab() || self.desk_mode {
             return None;
         }
         if base() != model::HOME_BASE || !(self.group_ready || self.flint_ready || self.ask_flint) {
@@ -1216,11 +1263,15 @@ fn route_chat() -> Option<String> {
     }
 }
 
-/// Shows `chat`'s address without loading the page again.
+/// Shows `chat`'s address without loading the page again. A chat at the
+/// help desk keeps the page's address: it belongs to the desk.
 fn push_path(chat: Option<&str>) {
     let Some(window) = web_sys::window() else {
         return;
     };
+    if chat.is_some() && is_desk() {
+        return;
+    }
     let mut path = model::path_for(base(), chat);
     if is_game_lab() {
         path.push_str(if path.contains('?') {
@@ -1339,6 +1390,14 @@ fn mark(name: &str) {
     if let Some(performance) = web_sys::window().and_then(|w| w.performance()) {
         let _ = performance.mark(name);
     }
+}
+
+/// Whether the chat is open at the Grid's help desk (#12443).
+fn is_desk() -> bool {
+    js_sys::Reflect::get(&js_sys::global(), &model::DESK_GLOBAL.into())
+        .ok()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 fn is_game_lab() -> bool {

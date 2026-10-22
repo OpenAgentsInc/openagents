@@ -126,8 +126,8 @@ def build(kind):
 # display's aspect (never stretched) and scaled down. (x0, y0, x1, y1) in
 # source pixels, and the output size.
 SCREENS = {
-    "macbook": ("docs/verse/film/shots/chat-desktop.png", (0, 0, 1218, 790), (512, 332)),
-    "iphone": ("docs/verse/film/shots/home-phone.png", (60, 0, 689, 1368), (192, 418)),
+    "macbook": ("docs/verse/film/shots/chat-desktop.png", (0, 0, 1218, 790), (384, 249)),
+    "iphone": ("docs/verse/film/shots/home-phone.png", (60, 0, 689, 1368), (144, 313)),
 }
 
 

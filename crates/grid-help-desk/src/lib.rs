@@ -32,8 +32,6 @@ pub const STAND: f64 = 1.3;
 pub const ENTER_RANGE: f64 = 2.6;
 /// The prompt stays until the visitor is this far, m.
 pub const LEAVE_RANGE: f64 = 3.4;
-/// The prompt's height over the floor, m: just over the counter.
-pub const PROMPT_LIFT: f64 = 1.75;
 
 /// The sign over the desk.
 pub const SIGN: &str = "ASK US";
@@ -63,10 +61,11 @@ pub fn world(local: [f64; 3]) -> [f64; 3] {
     ]
 }
 
-/// Where the prompt floats, over the counter's front.
+/// Where the prompt floats: over the sign, clear of the visitor's own name
+/// tag as they stand at the counter.
 #[must_use]
 pub fn prompt_at() -> [f64; 3] {
-    world([0.0, PROMPT_LIFT, 0.6])
+    world([0.0, art::SIGN_TOP + 0.45, art::SIGN_BACK])
 }
 
 /// Whether a visitor at `player` is close enough to ask, with a little
@@ -94,15 +93,22 @@ pub const IPHONE_SCREEN_FILE: &str = "help-desk-iphone-screen.png";
 
 /// The devices are drawn this much larger than life, so they read from
 /// the walk in.
-pub const DEVICE_SCALE: f32 = 1.5;
+pub const DEVICE_SCALE: f32 = 2.0;
 /// The laptop's place on the counter, desk coordinates.
-const MACBOOK_AT: [f64; 3] = [-0.42, art::TOP, -0.05];
+const MACBOOK_AT: [f64; 3] = [-0.45, art::TOP, -0.08];
 /// The phone's place on its stand, desk coordinates: its back's middle,
 /// high enough that its foot rests on the stand's base. And its lean back
 /// from upright, degrees, as the film poses it.
-const IPHONE_AT: [f64; 3] = [art::PHONE_STAND[0], art::TOP + 0.123, art::PHONE_STAND[1]];
+const IPHONE_AT: [f64; 3] = [
+    art::PHONE_STAND[0],
+    art::TOP + art::PHONE_LIFT,
+    art::PHONE_STAND[1],
+];
 const IPHONE_LEAN: f32 = 72.0;
 
+/// The screens' brightness: the stills are dark interfaces, so they are
+/// lifted to read from the walk in, as a lit display would.
+const SCREEN_GAIN: f32 = 2.0;
 /// The faces' tint: the terminal's near-black.
 const DARK: [f32; 3] = [0.002; 3];
 
@@ -231,8 +237,7 @@ fn device_model(
         }
         surfaces.push(lines.surface);
     }
-    let mut display = surface(screen, [1.0; 3], Topology::Triangles);
-    display.emissive = true;
+    let mut display = surface(screen, [SCREEN_GAIN; 3], Topology::Triangles);
     display.vertices = device
         .screen
         .iter()
