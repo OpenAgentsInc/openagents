@@ -220,7 +220,39 @@ __global__ void __launch_bounds__(kThreads) v41_act_quant_kernel(
     }
 }
 
-template <int kFormat>
+// The measured B200 FP8 MMA sum, from the retained SM100 probe: exact
+// products aligned to the largest factor-exponent sum, truncated at 25
+// fractional bits, then one round toward zero. Scales are powers of two
+// and remain outside the 32-value block, as in the reference kernel.
+__device__ float fp8_mma_block(const uint32_t* words, const float* x) {
+    int emax = -10000;
+    for (int j = 0; j < 32; ++j) {
+        const float w = e4m3((words[j / 4] >> (8 * (j % 4))) & 0xffu);
+        if (!isfinite(w) || !isfinite(x[j])) return CUDART_NAN_F;
+        if (w != 0.0f && x[j] != 0.0f) {
+            const int ew = static_cast<int>((__float_as_uint(w) >> 23) & 255u) - 127;
+            const int ex = static_cast<int>((__float_as_uint(x[j]) >> 23) & 255u) - 127;
+            emax = max(emax, ew + ex);
+        }
+    }
+    if (emax == -10000) return 0.0f;
+    long long sum = 0;
+    for (int j = 0; j < 32; ++j) {
+        const float w = e4m3((words[j / 4] >> (8 * (j % 4))) & 0xffu);
+        if (w == 0.0f || x[j] == 0.0f) continue;
+        const uint32_t a = __float_as_uint(w), b = __float_as_uint(x[j]);
+        const int exponent = static_cast<int>((a >> 23) & 255u)
+                           + static_cast<int>((b >> 23) & 255u) - 254;
+        const unsigned long long product = static_cast<unsigned long long>((a & 0x7fffffu) | 0x800000u)
+                                         * ((b & 0x7fffffu) | 0x800000u);
+        const int shift = emax - exponent + 21;
+        const long long units = shift < 64 ? static_cast<long long>(product >> shift) : 0;
+        sum += ((a ^ b) >> 31) ? -units : units;
+    }
+    return ldexpf(__ll2float_rz(sum), emax - 25);
+}
+
+template <int kFormat, bool kReference = false, int kShards = 1>
 __global__ void __launch_bounds__(kThreads) v41_block_matvec_kernel(
     const uint8_t* __restrict__ weights,
     const uint8_t* __restrict__ weight_scales,
@@ -280,6 +312,7 @@ __global__ void __launch_bounds__(kThreads) v41_block_matvec_kernel(
     const long long rows_at = (static_cast<long long>(rows) * blocks + 3) / 4 * 4;
     const float d_row = kQ && valid && row < rows ? *reinterpret_cast<const float*>(ws + rows_at + 4LL * row) : 0.0f;
     float acc = 0.0f;
+    float rank_total = 0.0f;
     for (int base = 0; base < blocks; base += kStageBlocks) {
         const int count = min(kStageBlocks, blocks - base);
         __syncthreads();
@@ -319,12 +352,16 @@ __global__ void __launch_bounds__(kThreads) v41_block_matvec_kernel(
                     const uint4 lo = p[0];
                     const uint4 hi = p[1];
                     const uint32_t words[8] = {lo.x, lo.y, lo.z, lo.w, hi.x, hi.y, hi.z, hi.w};
+                    if constexpr (kReference) {
+                        partial = fp8_mma_block(words, x);
+                    } else {
 #pragma unroll
                     for (int q = 0; q < 8; ++q) {
 #pragma unroll
                         for (int t = 0; t < 4; ++t) {
                             partial = __fmaf_rn(x[q * 4 + t], e4m3((words[q] >> (8 * t)) & 0xffu), partial);
                         }
+                    }
                     }
                 } else {
                     float wq[kBlock];
@@ -340,11 +377,17 @@ __global__ void __launch_bounds__(kThreads) v41_block_matvec_kernel(
             const int n = min(32, count - sub);
             for (int t = 0; t < n; ++t) {
                 acc = __fadd_rn(acc, __shfl_sync(0xffffffffu, scaled, t));
+                if constexpr (kShards > 1) {
+                    if ((base + sub + t + 1) % (blocks / kShards) == 0) {
+                        rank_total = __fadd_rn(rank_total, bf16_round(acc));
+                        acc = 0.0f;
+                    }
+                }
             }
         }
     }
     if (row < rows && lane == 0) {
-        float value = valid ? acc : CUDART_NAN_F;
+        float value = valid ? (kShards > 1 ? rank_total : acc) : CUDART_NAN_F;
         if (round_bf16) {
             value = bf16_round(value);
         }
@@ -696,6 +739,22 @@ extern "C" int psionic_v41_block_matvec(
     // `fp4` carries the format id: 0 FP8, 1 FP4, 2 Q2, 3 Q3 (#12465).
     switch (fp4) {
         case kFormatFp8: V41_MATVEC(kFormatFp8); break;
+        // Diagnostic/reference-order variants use the same packed FP8
+        // layout. The high byte states the number of TP8 rank partials.
+        case 256:
+            v41_block_matvec_kernel<kFormatFp8, true, 1><<<grid, kThreads, 0, s>>>(
+                static_cast<const uint8_t*>(weights), static_cast<const uint8_t*>(weight_scales),
+                matrix_bytes, matrix_scale_bytes, matrices, static_cast<const int*>(ids),
+                static_cast<const uint8_t*>(act), static_cast<const uint8_t*>(act_scales), act_shared,
+                static_cast<float*>(out), rows, cols, round_bf16, nullptr, nullptr, nullptr);
+            break;
+        case 2048:
+            v41_block_matvec_kernel<kFormatFp8, true, 8><<<grid, kThreads, 0, s>>>(
+                static_cast<const uint8_t*>(weights), static_cast<const uint8_t*>(weight_scales),
+                matrix_bytes, matrix_scale_bytes, matrices, static_cast<const int*>(ids),
+                static_cast<const uint8_t*>(act), static_cast<const uint8_t*>(act_scales), act_shared,
+                static_cast<float*>(out), rows, cols, round_bf16, nullptr, nullptr, nullptr);
+            break;
         case kFormatFp4: V41_MATVEC(kFormatFp4); break;
         case kFormatQ2: V41_MATVEC(kFormatQ2); break;
         case kFormatQ3: V41_MATVEC(kFormatQ3); break;

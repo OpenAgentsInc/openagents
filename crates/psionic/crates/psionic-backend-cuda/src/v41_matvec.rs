@@ -404,6 +404,55 @@ impl CudaSubmission {
         out: &CudaBuffer,
         output: V41Output,
     ) -> Result<(), RuntimeError> {
+        self.v41_block_matvec_order(matrix, codes, scales, slots, out, output, 0)
+    }
+
+    /// Packed FP8 with the measured B200 32-product sum. With eight
+    /// `shards`, rounds each row-parallel rank partial to BF16 before its
+    /// F32 sum. This is a numerical diagnostic, separate from the default
+    /// serving order; it does not change the checkpoint layout.
+    ///
+    /// # Errors
+    ///
+    /// Refuses non-FP8 weights, a rank count other than one or eight, or
+    /// columns that do not divide into complete 32-value blocks per rank.
+    pub fn v41_block_matvec_reference(
+        &mut self,
+        matrix: V41Matrix<'_>,
+        codes: &CudaBuffer,
+        scales: &CudaBuffer,
+        slots: V41Slots<'_>,
+        out: &CudaBuffer,
+        output: V41Output,
+        shards: usize,
+    ) -> Result<(), RuntimeError> {
+        if matrix.format != V41MatvecFormat::Fp8Block32x32
+            || !matches!(shards, 1 | 8)
+            || !matrix.cols.is_multiple_of(shards * V41_BLOCK)
+        {
+            return Err(invalid("reference FP8 rank geometry".into()));
+        }
+        self.v41_block_matvec_order(
+            matrix,
+            codes,
+            scales,
+            slots,
+            out,
+            output,
+            (shards as i32) << 8,
+        )
+    }
+
+    fn v41_block_matvec_order(
+        &mut self,
+        matrix: V41Matrix<'_>,
+        codes: &CudaBuffer,
+        scales: &CudaBuffer,
+        slots: V41Slots<'_>,
+        out: &CudaBuffer,
+        output: V41Output,
+        order: i32,
+    ) -> Result<(), RuntimeError> {
         let (rows, cols) = (matrix.rows, matrix.cols);
         check_v41_matvec_dims(rows, cols, matrix.matrices, slots.count)?;
         let matrix_bytes = matrix.format.weight_bytes(rows, cols);
@@ -439,7 +488,7 @@ impl CudaSubmission {
         // checked above; ids outside the stack are refused on the device.
         let code = unsafe {
             psionic_v41_block_matvec(
-                matrix.format.id(),
+                matrix.format.id() | order,
                 weights,
                 weight_scales,
                 to_i64(matrix_bytes)?,
