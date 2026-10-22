@@ -69,10 +69,17 @@ impl Stop {
         match self {
             Self::Terminal => [FACES[0] as f32, FACES[1] as f32],
             Self::Bay => [22.0, 6.0],
-            Self::Billboard => [
-                deploy_board::layout::SITE[0] as f32,
-                deploy_board::layout::SITE[1] as f32,
-            ],
+            // Just in front of the board's face, which looks into the Bay
+            // (#12482), so it reads the face at a slant from its end.
+            Self::Billboard => {
+                let (site, faces) = (deploy_board::layout::SITE, deploy_board::layout::FACES);
+                let (dx, dz) = (faces[0] - site[0], faces[1] - site[1]);
+                let length = dx.hypot(dz).max(1e-6);
+                [
+                    (site[0] + dx / length * 4.0) as f32,
+                    (site[1] + dz / length * 4.0) as f32,
+                ]
+            }
             Self::HelpDesk => [verse::world::SPAWN.x, verse::world::SPAWN.z],
         }
     }
@@ -188,7 +195,10 @@ pub fn keep_outs() -> Vec<KeepOut> {
         1.2,
     );
     add("the help desk", Vec3::new(-6.0, 0.0, -5.0), 2.2);
-    add("the spawn", verse::world::SPAWN, 2.5);
+    // Small enough to leave a lane between the spawn and the pillar, so the
+    // walk from the terminal to the Bay and the billboard doesn't circle
+    // the plaza; it waits for anyone in its way.
+    add("the spawn", verse::world::SPAWN, 1.5);
     // The billboard: its face, as points along its width.
     let site = deploy_board::layout::SITE;
     let faces = deploy_board::layout::FACES;
@@ -884,6 +894,25 @@ mod tests {
             assert!(line.len() <= crate::STATUS_MAX, "{line}");
             assert_eq!(crate::clean_line(line), line);
             assert!(oa_copy::violations(line, &[]).is_empty(), "{line}");
+        }
+    }
+
+    #[test]
+    fn legs_stay_short_enough_to_walk() {
+        // No leg circles the plaza: each is at most twice its straight line
+        // plus a detour's allowance.
+        for (from, to, path) in legs() {
+            let mut at = from.at();
+            let mut walked = 0.0;
+            for p in &path {
+                walked += (p[0] - at[0]).hypot(p[1] - at[1]);
+                at = *p;
+            }
+            let straight = (to.at()[0] - from.at()[0]).hypot(to.at()[1] - from.at()[1]);
+            assert!(
+                walked <= straight * 2.0 + 20.0,
+                "{from:?} to {to:?}: {walked:.0} m for {straight:.0} m"
+            );
         }
     }
 }
