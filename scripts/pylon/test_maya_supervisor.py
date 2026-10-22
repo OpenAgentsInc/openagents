@@ -145,10 +145,25 @@ class Controls(unittest.TestCase):
         m.tick(b, b.state, NOW)
         self.assertIn(("create", m.NAMES[0]), b.calls)
 
-    def test_unknown_github_freezes_allocations_and_adoption(self):
+    def test_unknown_github_freezes_allocations_and_adoption_but_cleans_lost_slot(self):
         b = Lifecycle()
         b.done = None
         b.seen[m.NAMES[0]] = None
+        self.assertFalse(m.tick(b, b.state, NOW))
+        self.assertEqual(b.calls, [("cleanup", m.NAMES[0])])
+
+    def test_unknown_github_cleans_stopped_and_expired_slots_without_new_spend(self):
+        b = Lifecycle()
+        b.done = None
+        b.seen[m.NAMES[0]]["status"] = "TERMINATED"
+        b.state["slots"][1]["expires"] = NOW
+        self.assertFalse(m.tick(b, b.state, NOW))
+        self.assertEqual(b.calls, [("cleanup", n) for n in m.NAMES])
+
+    def test_unknown_github_does_not_renew_before_current_deadline(self):
+        b = Lifecycle()
+        b.done = None
+        b.state["slots"][0]["expires"] = NOW + 60
         self.assertFalse(m.tick(b, b.state, NOW))
         self.assertEqual(b.calls, [])
 
