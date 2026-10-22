@@ -63,6 +63,18 @@ def captured(folder):
     return [np.fromfile(p, dtype=np.float32).astype(np.float64) for _, p in steps]
 
 
+def validate_request(folder, oracle, positions):
+    request = json.loads((Path(folder) / "request.json").read_text())
+    if request["prompt_ids"] != oracle["prompt_token_ids"]:
+        raise ValueError(f"{folder}: prompt tokens differ from the oracle")
+    if oracle.get("thinking_mode") is not None and request.get("mode") != oracle["thinking_mode"]:
+        raise ValueError(f"{folder}: prompt mode differs from the oracle")
+    forced = request.get("force_ids")
+    if not isinstance(forced, list) or forced[:positions] != oracle["generated_ids"][:positions]:
+        raise ValueError(f"{folder}: forced history differs from the oracle")
+    return request
+
+
 def main():
     oracle_dir = Path(sys.argv[1])
     out = Path(sys.argv[2])
@@ -77,6 +89,7 @@ def main():
         run = json.loads((oracle_dir / case / "run.json").read_text())
         generated = run["generated_ids"]
         logits = captured(folder)
+        request = validate_request(folder, run, len(logits))
         for k, q in enumerate(logits):
             name = f"{case}.decode.g{k + 1}.logits"
             if name not in files or k >= len(generated):
@@ -99,6 +112,9 @@ def main():
                 "tv": tv,
                 "top1_agrees": int(np.argmax(o)) == int(np.argmax(q)),
                 "ref_logprob_error": float(lq[ref] - lo[ref]),
+                "runtime": request["runtime"],
+                "checkpoint_index_sha256": request["checkpoint_index_sha256"],
+                "consumer_q_manifest_sha256": request.get("consumer_q_manifest_sha256"),
             }
             rows.append(row)
             pooled.setdefault(label, []).append(row)
