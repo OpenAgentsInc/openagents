@@ -218,7 +218,7 @@ For desktop and phone playback, a web view is one possible way to reuse the brow
 
 ## Evidence needed before selecting an engine
 
-Keep [the Haunted House shader/Kiln issue, #12500](https://github.com/OpenAgentsInc/openagents/issues/12500), as the Rust baseline. This audit does not start or expand its implementation.
+Use the existing Rust demos as reference measurements. [The Haunted House shader/Kiln issue, #12500](https://github.com/OpenAgentsInc/openagents/issues/12500), now specifies the first WebGPU/WGSL slice in the [browser editor implementation plan](../verse/browser-editor-implementation-plan.md). Its scope has been updated from the earlier WebGL2 demo; no implementation has started.
 
 The next evaluation should use one small Haunted House slice, the same assets, and the same target devices. It should demonstrate these tasks for each serious candidate:
 
@@ -240,6 +240,6 @@ The acceptance bar is uninterrupted compatible edits, useful errors, reversible 
 
 - **Selected browser architecture:** own the editor and runtime contracts; use TypeScript + Effect with direct WebGPU and WGSL. See the [follow-up assessment](2026-10-22-owned-renderer-webgpu-and-effect.md).
 - **Rust reuse:** existing services and Kiln can remain behind bounded APIs; use browser Wasm kernels where measured CPU benefits justify them.
-- **Scope of the existing issue:** #12500 calls for shader editing and recovery without requiring a renderer rewrite.
+- **First implementation slice:** #12500 calls for a bounded Haunted House WebGPU/WGSL shader-editing demo connected to Kiln, with retained player state and last working pipeline on failure.
 - **Unresolved implementation decisions:** full editor versus guided creator flow, supported browser capabilities, module replacement details, and performance budgets. Browser-first and language freedom are explicit assumptions; hosted authoring services are outside the product direction.
 - **Validation of this document:** repository docs and targeted source inspection, plus upstream primary documentation and source. No prototype, engine benchmark, production change, or product-code change was made.
