@@ -35,6 +35,20 @@ ignored). Rescoring the unchanged retained answers still gives 5/6 versus
 records the checker hash. This repairs the checker and verdict; it does not
 pass G1 or qualify a different runtime bundle.
 
+**Recovery repair, 2026-10-22:** `scripts/pylon/v41-live.py` discovers every
+allocation carrying its run ID directly from the guard ledger, including a
+lost create reply before `cloud.json` exists. After a launch ends, it stops
+remaining allocations through the guard with `stop --record ID`; another
+run's allocation is excluded. It refuses another launch until cleanup
+settles, recalculates time and money before every zone attempt, rounds the
+booking down to whole provider minutes, and terminates a blocked launch at
+the absolute end time. Unreadable ledger records stop admission. Nine
+isolated watcher controls and all 42 guard tests pass. The
+[audit controls rerun](verification/deepseek-v41-gates-2026-10-22/audit-controls-fixed.json)
+now reject both forged outputs and the missing reasoning split, and keep
+the retry booking within $300. This source repair has not yet replaced the
+running preview watcher; rotation is part of G8's pinned launch check.
+
 ## What "done" means
 
 The epic's goal: **serve DeepSeek-V4.1-Flash with Psionic as the only

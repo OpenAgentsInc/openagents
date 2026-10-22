@@ -932,6 +932,8 @@ def cmd_stop(a: argparse.Namespace) -> int:
         raise Refused(f"{a.name} is a production machine; this guard never touches it")
     with locked(a.budget) as path:
         live = [m for m in machines(read_ledger(path)) if m["vm"] == a.name and m.get("stop_epoch") is None]
+    if getattr(a, "record", None):
+        live = [m for m in live if m["id"] == a.record]
     if not live:
         raise Refused(f"{a.name} is not running in budget {a.budget}")
     m = live[-1]
@@ -1188,6 +1190,7 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--json", action="store_true")
     s = sub.add_parser("stop", parents=[common])
     s.add_argument("name")
+    s.add_argument("--record", help="stop only this exact ledger allocation, even if the name was reused")
     s.add_argument("--keep-machine", action="store_true", help="record the stop without deleting the machine")
     k = sub.add_parser("correct", parents=[common],
                        help="append a correction to a finished machine's cost; history is never rewritten")

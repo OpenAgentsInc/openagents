@@ -43,11 +43,14 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import importlib.util
 import json
+import math
 import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -61,6 +64,7 @@ HOME = DIR / "pylon-home"
 LEDGER_DIR = Path(os.environ.get("OA_CLOUD_BUDGET_DIR", str(Path.home() / ".openagents" / "cloud-budget")))
 PRICES = REPO / "scripts" / "dev" / "cloud-prices.json"
 AGENT_RUN = REPO / "scripts" / "dev" / "agent-run.py"
+GUARD = REPO / "scripts" / "dev" / "cloud-budget.py"
 SA_CONFIG = Path.home() / "work" / ".secrets" / "gcloud-sa-config"
 
 PLACEMENT = "one-quad"
@@ -125,47 +129,83 @@ def spot_price() -> float:
 
 
 def ledger_records() -> list[dict]:
-    out = []
-    try:
-        for line in (LEDGER_DIR / f"{BUDGET}.jsonl").read_text().splitlines():
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-    except OSError:
-        pass
-    return out
+    # Use the guard's corruption handling and settlement rules. Losing a
+    # reservation must stop admission, not make the watcher spend less.
+    records = budget_module().read_ledger(LEDGER_DIR / f"{BUDGET}.jsonl")
+    records.refuse_if_corrupt()
+    return records
+
+
+_budget_module = None
+
+
+def budget_module():
+    global _budget_module
+    if _budget_module is None:
+        spec = importlib.util.spec_from_file_location("v41_live_budget", GUARD)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        _budget_module = module
+    return _budget_module
+
+
+def owned_machines(state: dict) -> list[dict]:
+    records = ledger_records()
+    known = set(state.get("ledger_ids", []))
+    # A start is durable before create. It remains attributable even when
+    # gcloud loses its reply and pylon never writes cloud.json.
+    ids = known | {r["id"] for r in records if r.get("event") == "start"
+                   and state.get("run_id") and r.get("run_id") == state["run_id"]}
+    machines = [m for m in budget_module().machines(records) if m["id"] in ids]
+    for m in machines:
+        if m["id"] not in known and m.get("reason") != "create-failed":
+            if m["zone"].rsplit("-", 1)[0] not in REGIONAL:
+                state["transfer_usd"] = state.get("transfer_usd", 0.0) + TRANSFER_USD
+    state["ledger_ids"] = sorted(ids)
+    return machines
 
 
 def spend(state: dict, now: float) -> float:
     """What the watcher's machines cost or may cost, plus transfers."""
-    ids = set(state.get("ledger_ids", []))
-    # The machine of the launch running now, which `launch` records once it
-    # ends.
-    if state.get("child"):
-        try:
-            record = json.loads((HOME / "cloud.json").read_text())
-            ids |= {m["ledger_id"] for m in record.get("machines", []) if m.get("ledger_id")}
-        except (OSError, json.JSONDecodeError):
-            pass
-    starts: dict[str, dict] = {}
-    stops: dict[str, float] = {}
-    for r in ledger_records():
-        rid = r.get("id")
-        if rid not in ids:
-            continue
-        if r.get("event") == "start":
-            starts[rid] = r
-        elif r.get("event") in ("stop", "correction") and isinstance(r.get("cost"), (int, float)):
-            stops[rid] = float(r["cost"])
+    machines = owned_machines(state)
     total = float(state.get("transfer_usd", 0.0))
-    for rid in ids:
-        if rid in stops:
-            total += stops[rid]
-        elif rid in starts:
-            s = starts[rid]
-            total += float(s.get("price_per_hour", 0.0)) * float(s.get("hours_requested", 0.0))
+    guard = budget_module()
+    for m in machines:
+        total += (guard.cost(m, m["stop_epoch"]) if m.get("stop_epoch") is not None
+                  else guard.committed(m, now))
     return round(total, 4)
+
+
+def run_guard(state: dict, *args: str) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, str(GUARD), *args, "--budget", BUDGET],
+                          env=run_labels_env(state), capture_output=True, text=True, timeout=180)
+
+
+def cleanup_owned(state: dict) -> bool:
+    """End this watcher's stranded allocations before another generation."""
+    if not state.get("run_id") and not state.get("ledger_ids"):
+        return True
+    live = [m for m in owned_machines(state) if m.get("stop_epoch") is None]
+    if not live:
+        return True
+    try:
+        result = run_guard(state, "sync")
+        if result.returncode:
+            log(f"cleanup waits for guard sync: {result.stderr.strip()[-500:]}")
+            return False
+        for m in owned_machines(state):
+            if m.get("stop_epoch") is None:
+                result = run_guard(state, "stop", m["vm"], "--record", m["id"])
+                if result.returncode:
+                    log(f"cleanup could not settle {m['vm']} ({m['id']}): {result.stderr.strip()[-500:]}")
+        remaining = [m for m in owned_machines(state) if m.get("stop_epoch") is None]
+        state["cleanup_pending"] = [m["id"] for m in remaining]
+        save_state(state)
+        return not remaining
+    except (OSError, subprocess.TimeoutExpired) as error:
+        log(f"cleanup waits: {error}")
+        return False
 
 
 def run_labels_env(state: dict) -> dict:
@@ -177,11 +217,18 @@ def run_labels_env(state: dict) -> dict:
     return env
 
 
+def signal_launch(child, signum):
+    try:
+        os.killpg(child.pid, signum)
+    except ProcessLookupError:
+        pass
+
+
 def launch(state: dict, zone: str, hours: float) -> tuple[str, str]:
     """One `pylon cloud up`; returns (outcome, detail): `ended` once a group
     ran and ended, `refused` when it never started."""
     region = zone.rsplit("-", 1)[0]
-    words = [state["pylon"], "cloud", "up", PLACEMENT, "--zone", zone, "--hours", f"{hours:.2f}"]
+    words = [state["pylon"], "cloud", "up", PLACEMENT, "--zone", zone, "--hours", f"{hours:.9f}"]
     if region in REGIONAL:
         words += ["--weights", REGIONAL[region]]
     words += state["extra"]
@@ -193,9 +240,18 @@ def launch(state: dict, zone: str, hours: float) -> tuple[str, str]:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        start_new_session=True,
     )
     state["child"] = child.pid
     save_state(state)
+    # A silent or blocked create must not extend the absolute end time.
+    remaining = max(0.0, state["until"] - time.time())
+    timer = threading.Timer(remaining, signal_launch, args=(child, signal.SIGTERM))
+    kill_timer = threading.Timer(remaining + 30, signal_launch, args=(child, signal.SIGKILL))
+    timer.daemon = True
+    kill_timer.daemon = True
+    timer.start()
+    kill_timer.start()
     ready = False
     last = ""
     assert child.stdout is not None
@@ -215,18 +271,10 @@ def launch(state: dict, zone: str, hours: float) -> tuple[str, str]:
         with open(DIR / "up.log", "a") as fh:
             fh.write(line + "\n")
     code = child.wait()
+    timer.cancel()
+    kill_timer.cancel()
     state["child"] = None
-    # The launch record names the machines and their ledger IDs.
-    try:
-        record = json.loads((HOME / "cloud.json").read_text())
-        for m in record.get("machines", []):
-            lid = m.get("ledger_id")
-            if lid and lid not in state["ledger_ids"]:
-                state["ledger_ids"].append(lid)
-                if region not in REGIONAL:
-                    state["transfer_usd"] = state.get("transfer_usd", 0.0) + TRANSFER_USD
-    except (OSError, json.JSONDecodeError):
-        pass
+    owned_machines(state)
     save_state(state)
     log(f"pylon cloud up exited {code}: {last}")
     return ("ended" if ready else "refused", last)
@@ -254,11 +302,22 @@ def serve(args: argparse.Namespace) -> int:
         for zone in zones:
             if STOP.exists():
                 break
+            if not cleanup_owned(state):
+                log("no new launch until this run's earlier allocations are stopped and settled")
+                break
+            # A failed launch may have spent money or hours. Reconcile the
+            # allowance for every attempt, not just once per zone sweep.
+            now = time.time()
+            allowance = state["cap"] - spend(state, now)
+            left_h = (state["until"] - now) / 3600
             region = zone.rsplit("-", 1)[0]
-            h = hours if region in REGIONAL else min(hours, (allowance - TRANSFER_USD) / price)
+            transfer = 0.0 if region in REGIONAL else TRANSFER_USD
+            # The guard rounds bookings up to whole minutes. Book whole
+            # minutes down here, and preserve them in the CLI argument.
+            h = math.floor(min(left_h, (allowance - transfer) / price) * 60) / 60
             if h < MIN_HOURS:
                 continue
-            outcome, detail = launch(state, zone, round(h, 2))
+            outcome, detail = launch(state, zone, h)
             if outcome == "ended":
                 started = True
                 state["launches"] = state.get("launches", 0) + 1
@@ -269,6 +328,7 @@ def serve(args: argparse.Namespace) -> int:
             log("stopped on request")
             break
         time.sleep(RELAUNCH_WAIT if started else ALL_REFUSED_WAIT)
+    cleanup_owned(state)
     state["ended_at"] = time.time()
     state["spent"] = spend(state, time.time())
     save_state(state)

@@ -737,6 +737,7 @@ class CloudBudgetTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("didn't delete it", r.stderr)
         self.assertFalse([c for c in self.calls() if c.startswith('["compute", "instances", "delete"')])
+
         stop = self.records()[-1]
         self.assertEqual((stop["event"], stop["reason"], stop["cost"], stop["instance_id"]),
                          ("stop", "never-started", 0.0, "111"))
@@ -762,6 +763,18 @@ class CloudBudgetTests(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertEqual(self.records()[-1]["event"], "start")
         self.assertFalse([c for c in self.calls() if c.startswith('["compute", "instances", "delete"')])
+
+    def test_stop_by_record_refuses_a_different_allocation_before_cloud_access(self):
+        self.assertEqual(self.create("vm-pinned-stop", hours="2").returncode, 0)
+        self.log.write_text("")
+        r = self.run_guard("stop", "vm-pinned-stop", "--budget", "test", "--record", "another-record")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(self.calls())
+        record = next(r for r in self.records() if r["event"] == "start")
+        r = self.run_guard("stop", "vm-pinned-stop", "--budget", "test", "--record", record["id"], at=T0 + 120)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.records()[-1]["id"], record["id"])
+
 
 if __name__ == "__main__":
     unittest.main()
