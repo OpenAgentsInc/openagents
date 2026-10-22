@@ -11,6 +11,14 @@ Phase 7, runners on Pylons (#12457), is built with free runs; see
 [rust-tests.md](rust-tests.md#many-runners-chosen-like-pylons). NIP-07 and
 NIP-46 signing for players and paid runner time are not.
 
+The [Grid Foreman standing-objective plan](../foreman/grid-foreman-plan.md#14-standing-project-objectives-and-kiln)
+puts Kiln under Foreman's task-selection loop. Foreman chooses a bounded
+task from an issue or an ongoing project objective; Kiln edits and
+proposes, a runner checks, and the bridge opens a draft PR. A persistent
+native Kiln host and Psionic workspace/device runner profiles are still
+needed for that unattended path. The browser's `start_headless` entry
+point is a presentation option, not that native host.
+
 ## The vision
 
 The computer terminal that stands in front of the Pylon Bay in the Verse

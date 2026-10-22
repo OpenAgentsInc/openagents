@@ -48,7 +48,7 @@ SDK calls only. Roadmap items 19 to 22 do the work.
 | Template and instructions | [`crates/agent-lab/src/templates.rs`](../../crates/agent-lab/src/templates.rs), [`templates/foreman/`](../../crates/agent-lab/src/templates/foreman/) | Claude Code on Opus 5.5, host-default access, five Agent Lab tests (#11926). |
 | Claim-to-chat join | `harnessSessionId` on `list_chats` in [`apps/openagents/crates/mcp/src/tools.rs`](../../apps/openagents/crates/mcp/src/tools.rs) | On `main` (#11927). A claim whose session matches no chat is reported as "outside the app". |
 | Ask from the CLI, web, and phone chats | `openagents agents ask Foreman …`, the chat agents door | On `main` (#11934). |
-| Check-ins, standing authority, decision log | [`apps/openagents/crates/engine/src/foreman.rs`](../../apps/openagents/crates/engine/src/foreman.rs), [`doc_host/foreman.rs`](../../apps/openagents/crates/engine/src/doc_host/foreman.rs), Settings → General → Foreman | On `main` (#11965, `96876f7206`, `a33cdd25ba`). Off until the owner picks Foreman's chat in Settings. Never turned on on the owner's Mac (see [chat-review.md](chat-review.md#what-the-autonomy-code-did-and-didnt-do)). |
+| Check-ins, standing authority, decision log | Now in [`engine/src/agent_wakes.rs`](../../apps/openagents/crates/engine/src/agent_wakes.rs) and [`doc_host/agent_wakes.rs`](../../apps/openagents/crates/engine/src/doc_host/agent_wakes.rs); originally `foreman.rs`, Settings → General → Foreman | On `main` (#11965, `96876f7206`, `a33cdd25ba`). Off until the owner picks Foreman's chat in Settings. Never turned on on the owner's Mac (see [chat-review.md](chat-review.md#what-the-autonomy-code-did-and-didnt-do)). |
 | Push order by file area | `changed_paths` tool, [`changed_paths.rs`](../../apps/openagents/crates/mcp/src/changed_paths.rs) | On `main` (#11972). |
 | Two-minute cap on blocking waits | `wait_for_turn` in `tools.rs` (`MAX_WAIT_SECS`) | On `main` (#11969). |
 | Saved-agent identity and runtime setting | Custom agents (#11966) | On `main`. |
@@ -67,8 +67,12 @@ The user guide is [`docs/agent-lab/foreman.md`](../agent-lab/foreman.md).
   surface that Foreman and outside harnesses need.
 - [built-on-the-sdk.md](built-on-the-sdk.md): how Foreman is made of SDK
   primitives, what is still Foreman-only, and how anyone forks it.
-- [grid-foreman-plan.md](grid-foreman-plan.md): a plan for a permanent,
-  read-only Foreman with a giant robot body on the Grid at openagents.com.
+- [grid-foreman-plan.md](grid-foreman-plan.md): the permanent robot on the
+  Grid, its commands to coding agents that open draft PRs, and the proposed
+  standing-objective loop with Kiln.
+- [objectives.md](objectives.md): the initial Psionic, Kiln, Pylon, Coder,
+  and Microcoder objectives, their measurable outcomes, the machine-readable
+  catalog, and their mapping to NIP-WORK and NIP-AUTO.
 
 Related records:
 

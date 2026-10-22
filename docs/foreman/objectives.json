@@ -1,0 +1,204 @@
+{
+  "$schema": "./objectives.schema.json",
+  "v": "openagents.foreman-objective-catalog.v1",
+  "requires": [],
+  "repository": "OpenAgentsInc/openagents",
+  "stage": "authoring",
+  "selection": {
+    "trigger": "no_eligible_issue",
+    "explicit_requests_first": true,
+    "unknown_backlog": "report_and_wait",
+    "equal_priority_order": "least_recently_explored",
+    "duplicate_checks": ["claims", "issues", "pull_requests", "objective_history"],
+    "no_candidate": "record_and_back_off",
+    "review_interval_seconds": 600,
+    "max_active_explorations": 1,
+    "excluded_issues": [12469]
+  },
+  "execution": {
+    "preferred_computers": ["coderos-4080"],
+    "requires_host_admission": true,
+    "delivery": "draft_pull_request",
+    "limits": "existing_grants",
+    "merge": "owner_only",
+    "deploy": "owner_only",
+    "new_spend": "owner_only",
+    "owner_account_tests": "forbidden"
+  },
+  "objectives": [
+    {
+      "id": "improve-psionic",
+      "title": "Improve Psionic",
+      "desired_state": "active",
+      "priority": "normal",
+      "intent": "Make native inference faster, support more model families, and support more device types while preserving each workload's correctness requirements.",
+      "source_paths": ["crates/psionic/", "docs/psionic/"],
+      "read_first": ["docs/psionic/README.md", "crates/psionic/README.md"],
+      "outcomes": [
+        "Increase decode tokens per second and improve prefill or time to first token for currently supported models.",
+        "Add a licensed model family with tokenizer, template, numerical checks, and a qualified inference path.",
+        "Add or improve a device backend with a real model run on the target hardware."
+      ],
+      "measurements": [
+        "Paired baseline and candidate on the same model artifact, precision, device, prompt/output lengths, concurrency, warm-up, and build configuration.",
+        "Decode tokens per second, affected prefill latency, time to first token, peak memory, and correctness results."
+      ],
+      "candidate_examples": [
+        "Profile a supported model and remove one measured allocation, transfer, synchronization, or kernel bottleneck.",
+        "Find a repeated unsupported-model or device gap and qualify the smallest useful extension."
+      ],
+      "constraints": [
+        "Use the separate crates/psionic/Cargo.toml workspace and its applicable instructions.",
+        "Keep lossy quantization evidence separate from optimizations that preserve correctness.",
+        "Use isolated benchmark processes; do not stop production model processes or Pylons."
+      ]
+    },
+    {
+      "id": "improve-kiln",
+      "title": "Improve Kiln",
+      "desired_state": "active",
+      "priority": "normal",
+      "intent": "Make Kiln reliably turn bounded coding tasks into checked, reviewable changes, including persistent execution without an open browser tab.",
+      "source_paths": ["crates/kiln/", "crates/kiln-tools/", "crates/kiln-runner/", "crates/kiln-git/", "crates/kiln-view/", "docs/kiln/"],
+      "read_first": ["docs/kiln/workstation.md", "docs/kiln/rust-tests.md", "docs/kiln/maintainers.md"],
+      "outcomes": [
+        "Persist and resume the shared agent loop, workspace, pending calls, and task history across native host restarts.",
+        "Improve coding success, tool reliability, context use, and the time from task start to a checked patch.",
+        "Add qualified workspace and device runner profiles, and reliable patch-to-draft-PR delivery."
+      ],
+      "measurements": [
+        "Independently checked task success, steps, model/tool/test time, and exact patch/check/PR identities.",
+        "Recovery outcomes after interruption, stale checks refused, and duplicate runs or PRs prevented."
+      ],
+      "candidate_examples": [
+        "Drive kiln::agent from a persistent Rust host using the existing loop and runner contracts.",
+        "Add one explicit nested-workspace runner profile with boundary and stale-check fixtures."
+      ],
+      "constraints": [
+        "Keep Foreman's objective selection separate from Kiln execution and runner verification.",
+        "Preserve runner path, command, quota, and identity checks.",
+        "Task execution does not grant Kiln's admin self-publish or revert permissions."
+      ]
+    },
+    {
+      "id": "improve-pylon",
+      "title": "Improve Pylon",
+      "desired_state": "active",
+      "priority": "normal",
+      "intent": "Make model service through Pylons more reliable, faster, and easier to operate on the devices and capacity already available.",
+      "source_paths": ["crates/pylon/", "crates/pylons-view/", "docs/compute/"],
+      "read_first": ["crates/pylon/README.md", "docs/compute/pylon.md", "docs/compute/pylon-network-runbook.md"],
+      "outcomes": [
+        "Improve discovery, model matching, placement, and truthful capacity reporting.",
+        "Recover cleanly from busy peers, lost connections, expired deadlines, and failed model processes.",
+        "Reduce routing overhead and end-to-end latency, and improve throughput on existing hardware."
+      ],
+      "measurements": [
+        "Successful verified requests, first-contact and end-to-end latency distributions, throughput, and queue time under matched workloads.",
+        "Timeout, refusal, recovery, and unknown-outcome rates with request and result identities retained."
+      ],
+      "candidate_examples": [
+        "Reproduce and fix one routing or reconnect failure with bounded transport fixtures.",
+        "Measure a bottleneck between buyer admission and the model call, then remove it."
+      ],
+      "constraints": [
+        "Read the Nostr skill and applicable NIPs before changing protocol behavior.",
+        "A timeout does not authorize replaying an uncertain effect or claiming that a peer completed work.",
+        "Do not change paid admission, spend limits, or running production services without the required authority."
+      ]
+    },
+    {
+      "id": "improve-coder",
+      "title": "Improve Coder",
+      "desired_state": "active",
+      "priority": "normal",
+      "intent": "Help Coder complete more real coding tasks correctly, recover interrupted work, and provide clear evidence for review.",
+      "source_paths": ["crates/coder/", "crates/coder-runtime/", "crates/coder-task/", "crates/coder-new/", "docs/coder/"],
+      "read_first": ["docs/coder/README.md", "docs/coder/harness-acceptance.md", "docs/coder/permissions.md", "docs/audits/2026-10-16-coder-1.0-big-bang.md"],
+      "outcomes": [
+        "Increase independently verified coding-task completion and reduce failed tool or harness interactions.",
+        "Improve restart, cancellation, handoff, and resume behavior without duplicate effects or lost work.",
+        "Improve targeted verification, usable progress reporting, and evidence attached to a delivery."
+      ],
+      "measurements": [
+        "Verified task success, time to a checked delivery, model/tool usage, and failure or recovery counts on a fixed task set.",
+        "Regressions in permissions, cancellation, host/account isolation, and exact retry behavior."
+      ],
+      "candidate_examples": [
+        "Turn a repeated real task failure into a regression fixture and fix the responsible runtime path.",
+        "Remove a measured source of unnecessary tool calls or rebuilds without reducing verification coverage."
+      ],
+      "constraints": [
+        "Preserve tool permissions, independent checks, account isolation, and durable task history.",
+        "Read the release brief before changes to Coder or its server routes; release publication remains with the release agent.",
+        "Do not add another session, transport, or task implementation alongside an existing one."
+      ]
+    },
+    {
+      "id": "improve-microcoder",
+      "title": "Improve Microcoder",
+      "desired_state": "active",
+      "priority": "normal",
+      "intent": "Complete more independently verified coding tasks with less inference, time, and cost, using small models and useful decisions where measurements support them.",
+      "source_paths": ["crates/microcoder/", "docs/coder/"],
+      "read_first": ["docs/coder/guides/microcoder.md", "docs/coder/runtime/microcoder-repository.md", "docs/coder/cheapest-verified-passes.md", "docs/coder/terminal-bench-contract.md"],
+      "outcomes": [
+        "Improve success on held-out tasks and reduce wasted repair steps or repeated tool failures.",
+        "Improve repository context selection, decision use, and model routing with attributable measurements.",
+        "Reduce cost and latency per verified result while retaining independent verification."
+      ],
+      "measurements": [
+        "Verified successes, cost and wall time per success, tokens, repair steps, and fallback frequency on paired fixed tasks.",
+        "Every attempt's result, including failure, cancellation, timeout, and unknown cost."
+      ],
+      "candidate_examples": [
+        "Study a repeated held-out failure and improve the smallest context, tool, or repair behavior responsible.",
+        "Compare a decision or routing change with the existing baseline under the same task and resource limits."
+      ],
+      "constraints": [
+        "Do not weaken verifiers, train on protected evaluation cases, or compare only successful attempts.",
+        "Read the TypeSafe and decision API skills before changing question sets, thresholds, or decision clients.",
+        "A cheaper failed run is not an improvement in cost per verified result."
+      ]
+    },
+    {
+      "id": "improve-foreman",
+      "title": "Improve Foreman",
+      "desired_state": "proposed",
+      "priority": "normal",
+      "intent": "Turn eligible issues and standing objectives into useful checked deliveries with reliable follow-up and no duplicate work.",
+      "source_paths": ["crates/grid-foreman/", "crates/agent-lab/", "crates/agent-contract/", "docs/foreman/"],
+      "read_first": ["docs/foreman/grid-foreman-plan.md", "docs/foreman/lessons-learned.md", "docs/foreman/report.md"],
+      "outcomes": ["Improve objective selection, evidence-backed task discovery, stall recovery, and continuity across restarts."],
+      "measurements": ["Time to checked delivery, stall minutes, duplicate tasks or PRs, recovery results, and missed check-ins."],
+      "candidate_examples": ["Replay an observed coordination failure and fix the smallest host or selection behavior that would have prevented it."],
+      "constraints": ["Foreman cannot broaden its own grants, replace its acceptance checks, or hide failures by changing its metrics."]
+    },
+    {
+      "id": "improve-gym",
+      "title": "Improve Gym",
+      "desired_state": "proposed",
+      "priority": "normal",
+      "intent": "Make agent and model improvements easier to reproduce, compare fairly, and reject when the evidence does not support them.",
+      "source_paths": ["crates/gym/", "crates/gym-leaderboard/", "docs/gym/"],
+      "read_first": ["docs/gym/README.md", "docs/gym/regression.md", "docs/gym/head-to-head.md"],
+      "outcomes": ["Improve regression coverage, paired measurements, failure analysis, and reproducibility of published results."],
+      "measurements": ["Replay agreement, incomplete evidence detected, paired outcome differences, and time to reproduce a result."],
+      "candidate_examples": ["Capture a real evaluation reproducibility gap and add the missing evidence or check."],
+      "constraints": ["Preserve evaluation partitions and immutable results; never lower a gate to make a candidate pass."]
+    },
+    {
+      "id": "improve-openagents",
+      "title": "Improve OpenAgents",
+      "desired_state": "proposed",
+      "priority": "normal",
+      "intent": "Make the shared chat and coding experience more reliable and understandable across desktop, phone, and web.",
+      "source_paths": ["apps/openagents/", "crates/openagents-sdk/"],
+      "read_first": ["apps/openagents/OPENAGENTS.md", "docs/sdk/agents.md"],
+      "outcomes": ["Improve message delivery, visible progress, reconnect behavior, and consistent shared controls."],
+      "measurements": ["Reproduced user-flow failures fixed, end-to-end latency, reconnect outcomes, and accessibility checks on affected surfaces."],
+      "candidate_examples": ["Reproduce one confusing or broken chat flow and fix it through the existing shared Rust domain and view layers."],
+      "constraints": ["Keep domain logic in Rust and shared cards in Rust Native; do not add TypeScript or duplicate domain implementations.", "Use an admitted device for device-only checks; do not interrupt the owner's live chats or test on the owner's account."]
+    }
+  ]
+}

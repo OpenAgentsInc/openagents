@@ -10,6 +10,15 @@ owner's request of 2026-10-21:
 > version of the robot, and then he can walk around and has a name tag over
 > his head saying foreman."
 
+**2026-10-22 direction:** Foreman also works from standing project
+objectives when no eligible GitHub issue is available. The initial
+[objectives](objectives.md) cover Psionic, Kiln, Pylon, Coder, and
+Microcoder. Psionic includes faster supported models, more supported models,
+and more device types. Use the existing `coderos-4080` computer; do not select
+#12469 for this rollout. [Section 14](#14-standing-project-objectives-and-kiln)
+defines the proposed loop and its connection to Kiln. P4's issue picker
+does not implement this part.
+
 The request said "doc/first"; this page lives in `docs/foreman/` beside the
 other Foreman documents, which matches the existing layout.
 
@@ -33,6 +42,7 @@ for a part are the last commit that touched it.
 - [11. Phases](#11-phases)
 - [12. Draft issues](#12-draft-issues)
 - [13. Owner decisions](#13-owner-decisions)
+- [14. Standing project objectives and Kiln](#14-standing-project-objectives-and-kiln)
 
 ## Summary
 
@@ -886,3 +896,202 @@ Filed issues:
 | P4 | #12448 | #12447, #12449 |
 | Reaction clips | #12461 | #12445 |
 | Bay line to the answering Pylon | #12484 | #12446 |
+
+## 14. Standing project objectives and Kiln
+
+Status: proposed implementation following the owner's direction of
+2026-10-22. The objective is ongoing; each task is bounded and ends in
+evidence and a reviewable change. Foreman selects the next in-scope task
+without asking the owner after every task.
+
+### The work-selection loop
+
+1. Follow up existing work first: a running task, a failed check, a patch
+   awaiting a check, or a draft PR awaiting review. A retry belongs to that
+   work item; it is not another assignment.
+2. Take an explicit owner request, then an eligible GitHub issue. Check
+   current claim and release comments, blockers, open PRs, denied labels,
+   and owner deferrals. Assignees alone do not prove that a claim is live.
+   An unreadable GitHub response is unknown, not an empty backlog.
+3. If no issue is eligible, select an active standing objective and start
+   one bounded exploration on its allowed computer. Query the code graph
+   for the pinned checkout, read the relevant source, and examine current
+   tests and measurements. Do not generate tasks from the title alone.
+4. Produce one concrete proposal: the problem and source evidence, why it
+   advances the objective, affected packages and workspace, required
+   hardware, acceptance checks, baseline, and expected resource use.
+   Search issues, PRs, and previous objective runs before accepting it.
+5. Save the work item before execution. Create or reuse one GitHub issue
+   for the selected change and link it to the objective. The working app
+   chat claims it; Foreman holds no batch of claims. Ordinary changes
+   within the objective's approved scope and existing resource grants
+   need no further planning approval.
+6. Run the worker, collect its checks and measurements, and return a
+   draft PR. Record whether it improved the objective, failed, or needs
+   hardware or an owner decision. Recheck the backlog before choosing
+   another objective task.
+
+If exploration finds nothing useful within the available scope or
+resources, save that result and back off until new evidence or the
+configured review interval. Do not keep generating issues, cosmetic
+changes, or repeated failed experiments. Deferred issues such as #12469
+stay deferred for this rollout; do not change their labels, assignees, or
+claims to influence the picker.
+
+### Durable records
+
+The [objective catalog](objectives.json) defines the five requested
+objectives and three proposed additions. Its [Nostr mapping](objectives.md#representation-in-nostr)
+uses WORK initiatives for ongoing objectives and child WORK items for
+concrete changes. AUTO supplies finite execution campaigns. No new NIP or
+event kind is required. The catalog importer and execution adapters still
+need implementation; saving this file does not activate the loop.
+
+Keep these records on the host/account, outside a model's context or a
+browser tab. The Grid, app chat, CLI, and Kiln use the same work IDs.
+
+| Record | Required fields |
+| --- | --- |
+| Standing objective | Stable ID and revision; owner; repository; title and desired outcomes; source scope and Cargo workspace; priority; active or paused; allowed computers/devices; existing budget references; excluded issues; review interval |
+| Work item | Stable ID; objective ID/revision or source issue; pinned repository revision; proposal and source evidence; scope; checks and benchmark definition; worker/executor; linked issue, chat, and run IDs; status |
+| Attempt and result | Attempt ID; deadline; progress/checkpoint; exact tested base and head or patch hash; commands and outputs; benchmark metadata and before/after values; failure or cancellation; known or unknown cost; patch event and draft PR links |
+
+This table describes the complete host view, not extra fields in WORK's
+closed schema. Keep selection and execution policy in the host's admitted
+policy, linked to the WORK initiative. Use the existing WORK history and
+conditional commands rather than a separate writable objective history.
+
+Reuse the task inbox and Studio's goal/plan/run relationships
+(`coder_task::task::studio`) for bounded tasks and dependency release.
+A Studio goal currently represents one accepted plan, not a recurring
+standing objective. Add the ongoing selection policy around those tasks;
+do not keep a second worker queue in the Grid or wait for the full
+[Forge](../forge/README.md) product.
+
+Persist a stable request ID before dispatch, tied to the saved work item
+and attempt. Re-signing after a lost response must not create a second
+task, issue, patch, or PR. On restart, follow the saved attempt first.
+Start with one exploration across the catalog. Planning and coding attempts
+count against the existing running-agent and daily-start limits. Bound
+the draft queue so completed work does not accumulate without review.
+
+P4 accepts only `agent.start` with an issue number and `agent.draft_pr`.
+It cannot express an objective exploration. Add a typed, signed objective
+request referencing an owner-saved objective ID and revision; load its
+scope and brief on the server. Visitor-supplied instructions never grant
+authority to explore or dispatch. Objective updates and pause are
+owner/admin actions. An objective grants no merge, deploy, secret, spend,
+or additional-computer permission.
+
+### Example objective: Improve Psionic
+
+| Direction | A useful task must establish |
+| --- | --- |
+| Faster supported models | A measured bottleneck and before/after results under the same model artifact, precision, device, prompt/output lengths, batch/concurrency, warm-up, and build settings. Report decode tokens/s, prefill or time to first token where affected, and memory use. Preserve the workload's correctness checks. |
+| More supported models | A permitted checkpoint and license, the missing architecture/tokenizer/template work, deterministic fixtures, and real inference qualification. A catalog entry alone is not support. |
+| More device types | A named backend/device gap, available hardware or an explicit device wait, backend tests, and an end-to-end model run. Compiling a backend alone is not device qualification. |
+
+The first worker runs on `coderos-4080` in its own worktree. An initial
+task may improve the benchmark or fix a measured bottleneck. Do not invent
+a performance claim to make every run look like a win. Keep approximate
+quantization results separate from optimizations that preserve
+correctness. Different models, devices, or precisions are not matched
+baselines. Unavailable hardware stays a named wait; Foreman does not buy
+it or start new paid resources on its own.
+
+Psionic is a separate Cargo workspace at `crates/psionic/Cargo.toml`.
+Every task names that manifest, the affected packages, and the workspace's
+shared target, following its applicable instructions. Benchmarks use an
+isolated process and the available device budget. This objective does not
+authorize stopping the owner's production model processes or Pylons.
+
+### How Foreman uses Kiln
+
+Foreman owns the objective, task selection, assignment, and follow-up.
+Kiln executes a bounded coding task. `kiln-runner` separately builds and
+tests its proposed files; `kiln-git` reviews and bridges a checked proposal
+to a draft PR. Those roles do not merge or deploy.
+
+```text
+active objective or eligible issue
+  -> Foreman: save one scoped work item
+  -> app coding worker now, or Kiln worker when supported
+  -> checks and measurements bound to the exact change
+  -> checked Kiln patch + bridge, or a worker's direct draft PR
+  -> human review and the existing landing path
+  -> objective history and the next selection
+```
+
+These are two executors and delivery adapters for one work item, not two
+coordinators. Save the chosen route. A Kiln patch the bridge has already
+opened must not also receive a direct worker-created PR.
+
+Kiln's current browser host owns the workspace and drives the portable
+`kiln::agent::Agent` loop. Its `start_headless` entry point mounts that
+browser module without HTML controls; it is not a native daemon. Closing
+the tab still removes that live executor. Unattended Foreman needs a Rust
+host adapter that persists Kiln's workspace, transcript, pending calls,
+and results while driving the shared agent, Pylon, and runner contracts.
+Do not implement a second Kiln loop or depend on an owner's open Chrome
+tab. Keep its app chat/run visible through the existing task/session path.
+
+Kiln's runner currently admits allowlisted root-workspace crate sources,
+refuses `Cargo.toml` and `build.rs` edits, and accepts bounded `cargo test`
+or `cargo check` requests. It does not yet provide the nested Psionic
+workspace or GPU benchmark execution contract. Use an app worker on
+`coderos-4080` for those tasks first. Extend the runner with explicit
+workspace, package, device, and benchmark profiles before routing Psionic
+work to it; do not weaken existing path or command checks.
+
+For a supported Kiln task:
+
+- The worker signs with its own agent key and an owner-approved mandate
+  for `git.propose` and `kiln.test`. Runner admission and quota are
+  explicit; the worker has no maintainer-status or self-publish authority.
+- A listed runner's check covers exactly the patch hash, base, and every
+  changed package. Changed bytes or a rebase invalidate that check. CPU
+  unit tests do not prove GPU performance; attach the benchmark separately.
+- Foreman reads `kiln_git::review::fetch`. After the required checks pass,
+  its key may open the patch through the bridge's `--openers` grant, or
+  call `kiln_git::bridge::open` under the same scoped authority. P4's
+  two-action command list does not grant this yet.
+- The bridge returns the draft PR link to the same work item. Larger
+  changes use the existing NIP-34 PR path, whose runner qualification is
+  separately limited today. Never label an unchecked PR as checked.
+- Kiln's admin self-edit/publish/revert path stays separate. Improving
+  software does not grant permission to change the running website.
+
+Sources: [Kiln workstation](../kiln/workstation.md),
+[runner contract](../kiln/rust-tests.md),
+[maintainer and bridge contract](../kiln/maintainers.md), and
+[self-edit authority](../kiln/self-edit.md).
+
+### Ship order and acceptance
+
+1. **Make the current worker path usable.** Register the real project on
+   `coderos-4080`, bind the worker account, and expose truthful setup
+   status. Read-only checks on 2026-10-22 found the Grid host active and
+   commands enabled, but `worker: false`, no recorded commands, and no
+   projects advertised by the online worker. Fix authenticated activation;
+   do not assume a failed admin request enabled it.
+2. **Add the standing-objective fallback.** Import the five requested
+   objectives from the catalog, with their scopes and deferrals, and
+   dispatch one exploration when no eligible
+   issue exists. It examines source, creates or reuses one concrete issue,
+   and starts a visible coding run without another owner prompt. Keep
+   P4's draft PR review boundary. This first autonomous slice does not wait
+   for the native Kiln adapter or Forge UI.
+3. **Connect Kiln for supported work.** Add the persistent host adapter
+   and bind its runner checks, patch, and bridge PR to the same work item.
+   Add workspace/device profiles before Psionic tasks select Kiln.
+
+Acceptance covers a backlog containing only claimed, blocked, deferred,
+or denied issues; an unknown GitHub read; duplicate proposals; a restart
+between saving and dispatch; an unavailable device; a failed benchmark;
+pause during a run; a stale patch check; and a lost bridge response. No
+case creates a duplicate issue, run, or PR. One recorded pilot on
+`coderos-4080` must reach a draft PR with its exact checks and, for a
+performance change, its paired measurement. A following check-in resumes
+the objective without redoing that task. Tests use fixtures or the
+dedicated test account; the real objective run is actual work, not an
+owner-account smoke.
