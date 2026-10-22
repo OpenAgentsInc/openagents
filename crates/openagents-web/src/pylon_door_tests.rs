@@ -622,6 +622,7 @@ fn the_log_line_never_holds_the_message() {
         candidates: 2,
         deciders: 1,
         failed: vec![],
+        failures: vec![],
         group: None,
         sent_tokens: None,
     };
@@ -647,6 +648,18 @@ fn the_log_line_names_each_failed_pylon_and_why() {
                 "not_admitted: this pylon serves listed keys only".into(),
             ),
             ("30200:bb:rig".into(), "no answer within\n30 s".into()),
+        ],
+        failures: vec![
+            router::Failure {
+                label: "30200:aa:mac-net".into(),
+                reason: "not_admitted: this pylon serves listed keys only".into(),
+                kind: router::FailureKind::RequestFailed,
+            },
+            router::Failure {
+                label: "30200:bb:rig".into(),
+                reason: "no answer within\n30 s".into(),
+                kind: router::FailureKind::RequestFailed,
+            },
         ],
         group: None,
         sent_tokens: None,
