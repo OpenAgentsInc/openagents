@@ -781,6 +781,7 @@ pub fn build_identity() -> Value {
                 "cuda": cfg!(feature = "cuda"),
                 "cuda_arch": cuda_arch(),
                 "metal": cfg!(all(feature = "metal", target_os = "macos")),
+                "metal_kernels_sha256": metal_kernels_sha256(),
             })
         })
         .clone()
@@ -793,10 +794,28 @@ fn sha256_file(path: &Path) -> std::io::Result<String> {
     Ok(hex::encode(digest.finalize()))
 }
 
+/// The SHA-256 of the Metal kernel source this executable compiles, or
+/// `None` in a build without the Metal stage.
+#[must_use]
+pub fn metal_kernels_sha256() -> Option<String> {
+    #[cfg(all(feature = "metal", target_os = "macos"))]
+    {
+        Some(hex::encode(Sha256::digest(
+            psionic_backend_metal::v41::kernel_source().as_bytes(),
+        )))
+    }
+    #[cfg(not(all(feature = "metal", target_os = "macos")))]
+    {
+        None
+    }
+}
+
 /// Checks the build bundle in `dir` and returns its hash, the SHA-256 of
 /// `dir/BUILD.json`. The document must be schema v2 and list `worker_sha256`
 /// as the worker's hash, and `dir/lib` must hold exactly the libraries it
-/// lists, each with the hash it lists.
+/// lists, each with the hash it lists. A Metal bundle (`"backend":
+/// "metal"`) lists no libraries and names the SHA-256 of the Metal kernel
+/// source the executable compiles.
 ///
 /// # Errors
 ///
@@ -818,6 +837,29 @@ pub fn verify_bundle(dir: &Path, worker_sha256: &str) -> Result<String, String> 
             "the executable hashes to {worker_sha256}, but BUILD.json says {}",
             build["sha256"]
         ));
+    }
+    if build["backend"] == "metal" {
+        // A Metal bundle (#12420): the worker alone. Its kernels are Metal
+        // source compiled when the stage starts, so the bundle names their
+        // SHA-256, which must be the source inside this executable.
+        if build["libraries"]
+            .as_object()
+            .is_some_and(|l| !l.is_empty())
+        {
+            return Err("a Metal BUILD.json lists libraries".into());
+        }
+        let want = build["metal_kernels_sha256"].as_str();
+        match metal_kernels_sha256() {
+            Some(have) if want == Some(have.as_str()) => {}
+            Some(have) => {
+                return Err(format!(
+                    "the Metal kernels hash to {have}, but BUILD.json says {}",
+                    build["metal_kernels_sha256"]
+                ));
+            }
+            None => return Err("a Metal BUILD.json for a build without Metal kernels".into()),
+        }
+        return Ok(hex::encode(Sha256::digest(&bytes)));
     }
     let Some(libraries) = build["libraries"].as_object().filter(|l| !l.is_empty()) else {
         return Err("BUILD.json lists no CUDA libraries".into());

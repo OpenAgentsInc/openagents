@@ -77,3 +77,53 @@ fn a_metal_stage_announces_its_runtime_class_and_wire() {
     assert_eq!(hello["wire"], json!({"residual": "f32", "cache": "bf16"}));
     assert_eq!(hello["device"]["experts"], "unified");
 }
+
+/// A Metal bundle (#12420) is the worker and a BUILD.json naming its hash
+/// and its Metal kernel source's hash; the worker announces the bundle hash
+/// only while both match.
+#[test]
+fn a_metal_bundle_names_the_worker_and_its_kernels() {
+    use sha2::{Digest, Sha256};
+    let dir = tempfile::tempdir().unwrap();
+    let exe = dir.path().join("psionic-v41-stage");
+    std::fs::copy(common::BIN, &exe).unwrap();
+    let info = |exe: &std::path::Path| -> serde_json::Value {
+        let out = common::run_bounded(
+            std::process::Command::new(exe).arg("build-info"),
+            common::LIMIT,
+        );
+        assert!(out.status.success());
+        serde_json::from_slice(&out.stdout).unwrap()
+    };
+    let before = info(&exe);
+    let kernels = before["metal_kernels_sha256"].as_str().unwrap().to_owned();
+    assert_eq!(kernels.len(), 64);
+    let record = |kernels: &str| {
+        json!({
+            "schema": psionic_v41_stage::BUILD_SCHEMA,
+            "backend": "metal",
+            "sha256": before["sha256"],
+            "libraries": {},
+            "metal_kernels_sha256": kernels,
+        })
+        .to_string()
+    };
+    let good = record(&kernels);
+    std::fs::write(dir.path().join("BUILD.json"), &good).unwrap();
+    let after = info(&exe);
+    assert_eq!(after["bundle"], "verified");
+    assert_eq!(
+        after["bundle_sha256"],
+        hex::encode(Sha256::digest(good.as_bytes()))
+    );
+    // Another kernel source is another build.
+    std::fs::write(dir.path().join("BUILD.json"), record(&"0".repeat(64))).unwrap();
+    let wrong = info(&exe);
+    assert_eq!(wrong["bundle_sha256"], serde_json::Value::Null);
+    assert!(
+        wrong["bundle"]
+            .as_str()
+            .unwrap()
+            .contains("Metal kernels hash to")
+    );
+}
