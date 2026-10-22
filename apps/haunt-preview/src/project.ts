@@ -1,4 +1,5 @@
 import { IS_TOWN, LAB } from "./lab.ts";
+import { MAX_SOURCE_BYTES } from "./protocol.ts";
 import {
   TownFloor,
   initialTown,
@@ -24,6 +25,8 @@ export const SCENE_PATH = LAB.scene;
 export const MAX_ASSETS = 64;
 export const MAX_BATCH_EDITS = 32;
 export const MAX_SCENE_BYTES = 64 * 1024;
+export const MAX_PROJECT_BYTES =
+  MAX_SCENE_BYTES + 6 * MAX_SOURCE_BYTES + 256;
 export type AssetKind = keyof typeof catalog;
 export const ASSETS = Object.fromEntries(
   Object.entries(catalog).filter(([, a]) =>
@@ -57,6 +60,7 @@ export type Project = {
   entities: SceneAsset[];
   layout?: Layout;
   town?: Town;
+  materialDraft?: { asset: typeof LAB.material; source: string };
 };
 export type Operation =
   | { kind: "add_asset" | "add_pumpkin"; entity: SceneAsset }
@@ -196,6 +200,20 @@ export function readProject(value: unknown): Project {
     );
   const layout = p.layout === undefined ? undefined : readLayout(p.layout);
   const town = IS_TOWN ? readTown(p.town, p.entities) : undefined;
+  let materialDraft: Project["materialDraft"];
+  if (p.materialDraft !== undefined) {
+    const d = p.materialDraft;
+    if (
+      !d ||
+      typeof d !== "object" ||
+      d.asset !== LAB.material ||
+      typeof d.source !== "string"
+    )
+      throw new Error("This material draft has invalid contents.");
+    if (new TextEncoder().encode(d.source).length > MAX_SOURCE_BYTES)
+      throw new Error("This material draft is too large.");
+    materialDraft = { asset: LAB.material, source: d.source };
+  }
   const floor = town
     ? new TownFloor(p.entities, town)
     : layout
@@ -216,6 +234,7 @@ export function readProject(value: unknown): Project {
     tint: p.tint,
     ...(layout === undefined || IS_TOWN ? {} : { layout }),
     ...(town ? { town } : {}),
+    ...(materialDraft === undefined ? {} : { materialDraft }),
     entities: p.entities.map((e) => ({
       id: e.id,
       kind: e.kind,
@@ -226,10 +245,13 @@ export function readProject(value: unknown): Project {
       ...(e.y === undefined ? {} : { y: e.y }),
     })),
   };
-  if (new TextEncoder().encode(JSON.stringify(result)).length > MAX_SCENE_BYTES)
+  const { materialDraft: _draft, ...scene } = result;
+  if (new TextEncoder().encode(JSON.stringify(scene)).length > MAX_SCENE_BYTES)
     throw new Error(
       "This scene is full. Remove a room or asset before adding more.",
     );
+  if (new TextEncoder().encode(JSON.stringify(result)).length > MAX_PROJECT_BYTES)
+    throw new Error("This project file is too large.");
   return result;
 }
 
