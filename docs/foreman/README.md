@@ -55,6 +55,17 @@ SDK calls only. Roadmap items 19 to 22 do the work.
 
 The user guide is [`docs/agent-lab/foreman.md`](../agent-lab/foreman.md).
 
+## Grid Foreman objective loop
+
+As of 2026-10-22, Grid Foreman runs on `oa-foreman-1` and dispatches app
+assignments to `coderos-4080`. When no eligible issue is available, it selects
+from the five active [standing objectives](objectives.md). The saved worker
+uses Codex; its runtime setting overrides the factory's Claude default.
+The first objective produced [draft PR #12493](https://github.com/OpenAgentsInc/openagents/pull/12493),
+a Psionic CPU decoding fix with a failing baseline regression and 21 passing
+package tests. Delivery stays draft-only. Native WORK/AUTO publication and
+the persistent Kiln executor remain separate integrations.
+
 ## In this folder
 
 - [chat-review.md](chat-review.md): a review of the two app chats titled
