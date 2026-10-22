@@ -42,7 +42,13 @@ fn collect(service: Arc<Service>, key_file: std::path::PathBuf) -> Result<(), St
         reader.count = 0;
         reader.oldest = now();
         reader.link.send(Out::Publish(advertised.clone()));
-        reader.link.send(Out::Subscribe { id:"suggestion-live".into(), filters:vec![serde_json::json!({"kinds":[1059],"#p":[inbox],"since":now().saturating_sub(172800),"limit":500})],live:true });
+        // Offline senders may publish wraps with old hidden timestamps.
+        // The live subscription must accept them after history has finished.
+        reader.link.send(Out::Subscribe {
+            id: "suggestion-live".into(),
+            filters: vec![serde_json::json!({"kinds":[1059],"#p":[inbox],"limit":1})],
+            live: true,
+        });
         subscribe(reader, inbox, now());
     }
     let mut readers: Vec<_> = service
