@@ -457,9 +457,22 @@ pub fn kiln_panel(w: f32, h: f32) -> Rect {
     }
 }
 
-/// The line over the composer before the first message./// The line over the composer before the first message.
+/// The line over the composer before the first message.
 pub const WELCOME: &str = "What can we help with?";
 pub const PLACEHOLDER: &str = "Message OpenAgents";
+
+/// The input names the conversation the visitor opened on the Grid.
+pub fn composer_placeholder(game: bool, desk: bool, foreman: bool, suggest: bool) -> &'static str {
+    if suggest {
+        "Message the Suggestion Box"
+    } else if game {
+        "Message Game Lab"
+    } else if foreman && !desk {
+        "Message the Foreman"
+    } else {
+        PLACEHOLDER
+    }
+}
 pub const NEW_CHAT: &str = "New chat";
 pub const TOO_LONG: &str = "Messages can be at most 4,000 characters.";
 pub const SIGN_IN: &str = "Sign in";
@@ -981,10 +994,33 @@ mod tests {
     }
 
     #[test]
+    fn the_composer_names_the_active_conversation() {
+        assert_eq!(
+            composer_placeholder(false, false, true, false),
+            "Message the Foreman"
+        );
+        assert_eq!(
+            composer_placeholder(false, false, false, false),
+            PLACEHOLDER
+        );
+        assert_eq!(composer_placeholder(false, true, true, false), PLACEHOLDER);
+        assert_eq!(
+            composer_placeholder(true, false, false, false),
+            "Message Game Lab"
+        );
+        assert_eq!(
+            composer_placeholder(false, false, true, true),
+            "Message the Suggestion Box"
+        );
+    }
+
+    #[test]
     fn the_page_s_words_are_plain() {
         for text in [
             WELCOME,
             PLACEHOLDER,
+            composer_placeholder(false, false, true, false),
+            composer_placeholder(false, false, false, true),
             NEW_CHAT,
             TOO_LONG,
             SIGN_IN,

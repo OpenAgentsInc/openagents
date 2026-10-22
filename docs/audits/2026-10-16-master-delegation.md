@@ -485,6 +485,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12529: deploy the Grid gateway decoration removal and chat input labels, then
+  check the Foreman, Suggestion Box, and Game Lab inputs in Verse.
+
 - #12519, #12521, and #12522: install the bounded Kiln workspace binary on `coderos-4080` and run
   real browser-editor work through both explicitly pinned Maya Pylons, with
   external TypeScript and browser checks before draft PRs.

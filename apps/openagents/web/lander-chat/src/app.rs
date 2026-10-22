@@ -120,12 +120,15 @@ pub struct LanderChat {
     sent_count: u32,
     /// The Grid homepage's overlay around the chat (#12459).
     grid: grid::Grid,
+    composer_placeholder: &'static str,
     _ticker: Task<()>,
 }
 
 impl LanderChat {
     pub fn new(still: bool, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let composer = cx.new(|cx| TextInput::new(model::PLACEHOLDER, cx));
+        let composer_placeholder =
+            model::composer_placeholder(is_game_lab(), is_desk(), is_foreman(), is_suggest());
+        let composer = cx.new(|cx| TextInput::new(composer_placeholder, cx));
         cx.subscribe_in(
             &composer,
             window,
@@ -194,6 +197,7 @@ impl LanderChat {
             sent_at: None,
             sent_count: 0,
             grid: grid::Grid::default(),
+            composer_placeholder,
             _ticker: ticker,
         };
         let kept = kept_pick(this.current.as_deref());
@@ -255,6 +259,22 @@ impl LanderChat {
     }
 
     fn tick(&mut self, cx: &mut Context<Self>) {
+        let placeholder =
+            model::composer_placeholder(is_game_lab(), is_desk(), is_foreman(), is_suggest());
+        if let Some(field) = web_sys::window()
+            .and_then(|window| window.document())
+            .and_then(|document| document.get_element_by_id("pylon-message"))
+            && field.get_attribute("aria-label").as_deref() != Some(placeholder)
+        {
+            let _ = field.set_attribute("aria-label", placeholder);
+        }
+        if placeholder != self.composer_placeholder {
+            self.composer_placeholder = placeholder;
+            self.composer.update(cx, |input, cx| {
+                input.set_placeholder(placeholder);
+                cx.notify();
+            });
+        }
         let game = is_game_lab();
         if game != self.game_mode && self.live.is_none() && !self.sending {
             if self.game_mode {
