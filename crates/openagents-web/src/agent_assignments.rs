@@ -15,7 +15,9 @@ use openagents_sdk::agents::{AgentDefinition, assignments::*, valid_id};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::BTreeMap;
-const MAX_BYTES: usize = 4 * 1024 * 1024;
+// Keep the account book within the shared store's existing record limit.
+// Frozen briefs also appear in retry receipts, so the book outgrows a response.
+const MAX_BYTES: usize = 16 * 1024 * 1024;
 /// The largest `result` a host may report: an agent's final answer, in UTF-8 bytes.
 pub(crate) const RESULT_BYTES: usize = 16 * 1024;
 #[derive(Default, Serialize, Deserialize)]
@@ -498,6 +500,75 @@ mod tests {
             );
         }
     }
+    #[tokio::test]
+    async fn large_books_preserve_replays_and_accept_reports_and_controls() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::local(root.path().into());
+        let owner = crate::chat_store::account_owner("large-assignment-fixture");
+        let mut book = Book::default();
+        let mut original = None;
+        for n in 100..140 {
+            let Change::Create {
+                mut body,
+                definition,
+            } = create()
+            else {
+                unreachable!()
+            };
+            body.request_id = format!("{n:064x}");
+            body.spec.task = "x".repeat(60 * 1024);
+            let change = Change::Create { body, definition };
+            let made = book.apply(&change).unwrap();
+            if original.is_none() {
+                original = Some((change, made));
+            }
+        }
+        let bytes = serde_json::to_vec(&book).unwrap();
+        assert!(bytes.len() > 4 * 1024 * 1024);
+        let key = Store::owner_key(&owner, "agent-assignments.json").unwrap();
+        store.write_key(&key, bytes, None).await.unwrap();
+        let (initial, a) = original.unwrap();
+        let report = Change::Report {
+            id: a.id.clone(),
+            body: AssignmentReport {
+                request_id: format!("{:064x}", 200),
+                host: a.spec.host.clone(),
+                expected_revision: a.revision,
+                state: AssignmentState::Completed,
+                result: Some("Checked the fixture".into()),
+                active_command: Some(a.commands[0].request_id.clone()),
+                after_seq: 0,
+            },
+        };
+        let done = mutate(&store, &owner, report.clone())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(done.state, AssignmentState::Completed);
+        assert_eq!(done, mutate(&store, &owner, report).await.unwrap().unwrap());
+        let stop = Change::Command {
+            id: a.id.clone(),
+            body: AssignmentCommand {
+                request_id: format!("{:064x}", 201),
+                action: AssignmentAction::Stop,
+            },
+        };
+        assert_eq!(
+            mutate(&store, &owner, stop)
+                .await
+                .unwrap()
+                .unwrap()
+                .commands
+                .len(),
+            2
+        );
+        assert_eq!(a, mutate(&store, &owner, initial).await.unwrap().unwrap());
+        let reopened = Store::local(root.path().into());
+        let (saved, _) = load(&reopened, &owner).await.unwrap();
+        assert_eq!(saved.assignments.len(), 40);
+        assert_eq!(saved.receipts.len(), 42);
+    }
+
     #[tokio::test]
     async fn assignment_identity_commands_reports_and_recovery() {
         let root = tempfile::tempdir().unwrap();

@@ -485,6 +485,8 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12491: deploy the 16 MiB assignment-book bound, retry the saved stop
+  and continuation requests, and restore the Grid objective loop on Codex.
 - #12490: redeploy the Foreman GitHub credential fix and complete #12489's
   real objective-to-draft-PR check; the first deployment stopped dispatch
   because the stored token contained surrounding whitespace.
