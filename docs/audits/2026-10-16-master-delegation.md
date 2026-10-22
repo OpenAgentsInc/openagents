@@ -485,6 +485,17 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12445: after the next web, Everglade, and relay deploys (the relay
+  exempts the Foreman's key from the world cap by default): open `/` in two
+  browsers on two machines as signed-out visitors and check that both show
+  the Foreman at the same stop within a second, walking its round with its
+  status line; stop the service on `oa-foreman-1`
+  (`sudo systemctl stop grid-foreman`) and check that both show it parked at
+  the terminal with `BACK SOON` within about 10 seconds, then start it and
+  check that it walks again; stand in its path and check that it waits, says
+  `EXCUSE ME`, and goes around; after 24 hours, check
+  `journalctl -u grid-foreman` for restarts the watchdog didn't log. The host
+  is already live on `oa-foreman-1` at `6500eed27a`.
 - #12444: after the next web and Everglade deploy, on staging and then
   production as a signed-out visitor: capture `/` with the Foreman robot
   (about 5.6 m) beside the terminal, `FOREMAN` over it and the status line
