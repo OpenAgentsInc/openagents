@@ -250,8 +250,12 @@ stage_modules() { # FULL SHA CTX
 
 # Print what a build's module cache reused and built.
 report_modules() { # LOG
-    reused=$(grep -c 'oa-module-cache [a-z0-9-]*: reused' "$1" || true)
-    built=$(sed -n 's/.*oa-module-cache \([a-z0-9-]*\): built in \([0-9]*\) s.*/\1 (\2 s)/p' "$1" | sort -u | tr '\n' ' ')
+    # The build's log stays in Cloud Logging; the local file names its ID.
+    id=$(grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' "$1" | head -n 1)
+    [ -n "$id" ] || return 0
+    g builds log --project "$PROJECT" "$id" > "$1.cloud" 2> /dev/null || return 0
+    reused=$(grep -c 'oa-module-cache [a-z0-9-]*: reused' "$1.cloud" || true)
+    built=$(sed -n 's/.*oa-module-cache \([a-z0-9-]*\): built in \([0-9]*\) s.*/\1 (\2 s)/p' "$1.cloud" | sort -u | tr '\n' ' ')
     say "  browser modules: $reused reused; built: ${built:-none}"
 }
 
