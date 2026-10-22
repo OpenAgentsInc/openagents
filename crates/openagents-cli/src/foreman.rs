@@ -10,6 +10,13 @@ mod report;
 
 pub(crate) const USAGE: &str =
     "usage: openagents foreman report --agent ID --day YYYY-MM-DD [OPTIONS]
+       openagents foreman publish --file FILE
+  publish      Send the Grid Foreman a public status record
+               (openagents.foreman-status.v1) from FILE, or - for standard
+               input: issue numbers, titles, states, and minutes since
+               progress, the landing queue's length, and velocity numbers.
+               Never chat titles or contents, machine names, or paths. Admins
+               only; docs/foreman/grid-foreman-plan.md, section 7.
   report       Daily issue, stall, check-in, disk, probe, deploy, and owner wait measurements.
   --agent ID   Saved agent definition ID; never an agent name.
   --day DATE   Calendar day in America/Chicago. Times include CDT or CST.
@@ -24,11 +31,13 @@ Missing observations are reported as unknown; zero means zero recorded events.
 Input and measurement definitions: docs/foreman/report.md.";
 
 #[cfg(test)]
-pub(crate) const EFFECTS: &[coder::cli_route::tree::Declared] =
-    &[coder::cli_route::tree::Declared::computer(
-        "report",
-        coder::cli_route::tree::Effect::ReadOnly,
-    )];
+pub(crate) const EFFECTS: &[coder::cli_route::tree::Declared] = &[
+    coder::cli_route::tree::Declared::computer("report", coder::cli_route::tree::Effect::ReadOnly),
+    coder::cli_route::tree::Declared::computer(
+        "publish",
+        coder::cli_route::tree::Effect::Publishes,
+    ),
+];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     if words
@@ -42,6 +51,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         Ok(a) => a,
         Err(e) => return output.usage("foreman report", &e, USAGE),
     };
+    if words.first().map(String::as_str) == Some("publish") {
+        return publish(output, &args);
+    }
     if words.first().map(String::as_str) != Some("report") || !args.positional().is_empty() {
         return output.usage("foreman report", "expected report and its options", USAGE);
     }
@@ -97,6 +109,70 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             0
         }
         Err(e) => output.fail("foreman report", &e),
+    }
+}
+
+/// The record's schema.
+const RECORD_SCHEMA: &str = "openagents.foreman-status.v1";
+
+/// Checks the record in `text` before it goes anywhere: the schema, and no
+/// fields beyond the record's.
+fn record(text: &str) -> Result<Value, String> {
+    let value: Value =
+        serde_json::from_str(text).map_err(|_| "The record isn't JSON.".to_owned())?;
+    if value["schema"] != RECORD_SCHEMA {
+        return Err(format!("The record's schema must be {RECORD_SCHEMA}."));
+    }
+    let allowed = ["schema", "issues", "queue", "velocity"];
+    if let Some(extra) = value
+        .as_object()
+        .and_then(|o| o.keys().find(|k| !allowed.contains(&k.as_str())))
+    {
+        return Err(format!("The record can't carry `{extra}`."));
+    }
+    Ok(value)
+}
+
+/// `foreman publish --file FILE`: `POST /v1/foreman/status`.
+fn publish(output: &Output, args: &Args) -> u8 {
+    for key in args.option_names() {
+        if !["file", "account-dir"].contains(&key) {
+            return output.usage("foreman publish", &format!("unknown option --{key}"), USAGE);
+        }
+    }
+    let Some(file) = args.option("file") else {
+        return output.usage("foreman publish", "--file FILE (or -) is required", USAGE);
+    };
+    let result = (|| {
+        let text = if file == "-" {
+            let mut text = String::new();
+            std::io::Read::read_to_string(&mut std::io::stdin(), &mut text)
+                .map_err(|e| format!("couldn't read standard input: {e}"))?;
+            text
+        } else {
+            read(Path::new(file))?
+        };
+        let body = record(&text)?;
+        let site = crate::keys::Site::open(args.option("account-dir"))?;
+        crate::keys::Site::answer(
+            site.http
+                .post(site.url("/v1/foreman/status"))
+                .bearer_auth(site.saved.token())
+                .json(&body)
+                .send(),
+        )
+    })();
+    match result {
+        Ok(value) => {
+            output.emit(&value, |v| {
+                format!(
+                    "Sent the Foreman's status: {} issues.",
+                    v["issues"].as_u64().unwrap_or_default()
+                )
+            });
+            0
+        }
+        Err(e) => output.fail("foreman publish", &e),
     }
 }
 
@@ -305,4 +381,19 @@ async fn collect(args: &Args, agent: &str, start: i64, end: i64) -> Result<repor
     }
     input.sources.push(format!("GitHub: {repo}"));
     Ok(input)
+}
+
+#[cfg(test)]
+mod publish_tests {
+    use super::record;
+
+    #[test]
+    fn a_record_carries_only_its_fields() {
+        let ok = r#"{"schema":"openagents.foreman-status.v1","issues":[{"number":1,"title":"A","state":"working","minutes":3}],"queue":0,"velocity":{"commits":4}}"#;
+        assert!(record(ok).is_ok());
+        assert!(record(r#"{"schema":"other"}"#).is_err());
+        assert!(record("not json").is_err());
+        let chat = r#"{"schema":"openagents.foreman-status.v1","chats":["private"]}"#;
+        assert_eq!(record(chat).unwrap_err(), "The record can't carry `chats`.");
+    }
 }

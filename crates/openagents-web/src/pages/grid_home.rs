@@ -288,7 +288,7 @@ const held=new Set(),blocked=new Set();\n\
 const world=document.getElementById(\"everglade-canvas\");\n\
 const syncFocus=()=>world.toggleAttribute(\"data-composing\",chatReady&&terminalNear&&document.activeElement===chatField);\n\
 const syncChat=()=>{const show=terminalNear&&chatReady;\n\
-if(show&&!chatShown)track(globalThis.openagentsChatDesk?\"help_desk_opened\":\"terminal_opened\");chatShown=show;\n\
+if(show&&!chatShown)track(globalThis.openagentsChatDesk?\"help_desk_opened\":globalThis.openagentsChatForeman?\"foreman_opened\":\"terminal_opened\");chatShown=show;\n\
 composer.classList.toggle(\"open\",show);\n\
 composer.setAttribute(\"aria-hidden\",String(!show));\n\
 composer.inert=!show;\n\
@@ -334,13 +334,16 @@ syncChat();ok()},{once:true});\n\
 performance.mark(\"home-chat-mounting\");glue.mount(still)}));\n\
 return glue})().catch(error=>{chatStatus.textContent=\"Chat couldn't open. Reload to try again.\";\n\
 console.warn(error);track(\"terminal_failed\");focusPending=false;syncFocus();throw error}));\n\
-globalThis.homeTerminal=near=>{const walked=near&&globalThis.openagentsLab!==\"game\"&&!globalThis.openagentsChatDesk;near=(globalThis.openagentsLab===\"game\"||near)&&world.classList.contains(\"ready\");\n\
-if(!near&&globalThis.openagentsChatDesk){globalThis.openagentsChatDesk=false;composer.setAttribute(\"aria-label\",\"Chat with the pylons\")}\n\
+globalThis.homeTerminal=near=>{const walked=near&&globalThis.openagentsLab!==\"game\"&&!globalThis.openagentsChatDesk&&!globalThis.openagentsChatForeman;near=(globalThis.openagentsLab===\"game\"||near)&&world.classList.contains(\"ready\");\n\
+if(!near&&(globalThis.openagentsChatDesk||globalThis.openagentsChatForeman)){globalThis.openagentsChatDesk=false;globalThis.openagentsChatForeman=false;composer.setAttribute(\"aria-label\",\"Chat with the pylons\")}\n\
 if(walked&&near&&!terminalNear)track(\"terminal_reached\",{time:Math.round(performance.now())});terminalNear=near;focusPending=near;\n\
 syncChat();\n\
 if(near)loadChat().catch(()=>{})};\n\
 globalThis.homeDesk=open=>{open=!!open&&world.classList.contains(\"ready\");\n\
-if(open){globalThis.openagentsChatDesk=true;composer.setAttribute(\"aria-label\",\"Ask OpenAgents\")}\n\
+if(open){globalThis.openagentsChatForeman=false;globalThis.openagentsChatDesk=true;composer.setAttribute(\"aria-label\",\"Ask OpenAgents\")}\n\
+homeTerminal(open)};\n\
+globalThis.homeForeman=open=>{open=!!open&&world.classList.contains(\"ready\");\n\
+if(open){globalThis.openagentsChatDesk=false;globalThis.openagentsChatForeman=true;composer.setAttribute(\"aria-label\",\"Ask the Foreman\")}\n\
 homeTerminal(open)};\n\
 world.addEventListener(\"pointerdown\",()=>{focusPending=false;\n\
 if(chatField&&document.activeElement===chatField)chatField.blur();\n\

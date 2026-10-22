@@ -8,8 +8,9 @@ description = "The OpenAgents website: public pages, legal documents, the instal
 
 [dependencies]
 bitcoin-amount = { path = "../bitcoin-amount" }
-# The machine-talk guard, under `test-support` (see [features]).
-oa-copy = { path = "../oa-copy", optional = true }
+# The machine-talk guard: test-time for every page, and at run time for the
+# Grid Foreman's answers (#12446).
+oa-copy = { path = "../oa-copy" }
 cad = { path = "../cad" }
 async-trait = "0.1"
 lab-api = { path = "../lab-api" }
@@ -145,7 +146,7 @@ workbench = { path = "../workbench" }
 [features]
 # The site's machine-talk guard for other crates' tests
 # (`openagents-web-site`, #12184).
-test-support = ["dep:oa-copy"]
+test-support = []
 
 [dev-dependencies]
 nostr = { path = "../nostr", features = ["test-invoice"] }

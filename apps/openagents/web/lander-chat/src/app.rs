@@ -71,6 +71,12 @@ pub struct LanderChat {
     desk_mode: bool,
     desk_chat: Option<String>,
     plain: Option<Client>,
+    /// The Grid Foreman (#12446): while its chat is open, the chat asks the
+    /// Foreman through [`Self::foreman`], with the visitor's usual limits,
+    /// in a chat of its own.
+    foreman_mode: bool,
+    foreman_chat: Option<String>,
+    foreman: Option<Client>,
     title: String,
     entries: Vec<SessionMessageEntry>,
     live: Option<Live>,
@@ -146,6 +152,9 @@ impl LanderChat {
             grid_chat: None,
             desk_mode: false,
             desk_chat: None,
+            foreman_mode: false,
+            foreman_chat: None,
+            foreman: None,
             plain: None,
             title: String::new(),
             entries: Vec::new(),
@@ -189,6 +198,7 @@ impl LanderChat {
                         Ok(session) => {
                             let client = Client::with_csrf(session.csrf.clone());
                             this.plain = Some(client.clone());
+                            this.foreman = Some(client.clone().with_chat_surface("foreman"));
                             this.client = Some(if base() == model::HOME_BASE {
                                 client.with_chat_surface("home")
                             } else {
@@ -247,18 +257,26 @@ impl LanderChat {
                 self.load(chat, cx);
             }
         }
-        let desk = is_desk();
-        if desk != self.desk_mode && self.live.is_none() && !self.sending {
+        let (desk, foreman) = (is_desk(), !is_desk() && is_foreman());
+        if (desk, foreman) != (self.desk_mode, self.foreman_mode)
+            && self.live.is_none()
+            && !self.sending
+        {
             if self.desk_mode {
                 self.desk_chat = self.current.clone();
+            } else if self.foreman_mode {
+                self.foreman_chat = self.current.clone();
             } else {
                 self.grid_chat = self.current.clone();
             }
             self.new_chat(cx);
             self.desk_mode = desk;
+            self.foreman_mode = foreman;
             self.sync_pick();
             let chat = if desk {
                 self.desk_chat.clone()
+            } else if foreman {
+                self.foreman_chat.clone()
             } else {
                 self.grid_chat.clone()
             };
@@ -308,7 +326,7 @@ impl LanderChat {
             let _ = panel.set_attribute("data-message-count", &self.entries.len().to_string());
             let _ = panel.set_attribute(
                 "data-pylon-pick",
-                if self.desk_mode {
+                if self.desk_mode || self.foreman_mode {
                     "none"
                 } else if self.ask_flint {
                     "flint"
@@ -463,7 +481,7 @@ impl LanderChat {
     /// [`model::GROUP_MODEL`] on each turn while DeepSeek V4.1 is chosen and
     /// a ready group is online.
     fn sync_pick(&self) {
-        let value = if is_game_lab() || self.desk_mode {
+        let value = if is_game_lab() || self.desk_mode || self.foreman_mode {
             JsValue::UNDEFINED
         } else if self.ask_flint {
             let pin = js_sys::Reflect::get(&js_sys::global(), &model::FLINT_PIN_GLOBAL.into())
@@ -717,6 +735,8 @@ impl LanderChat {
         };
         if self.desk_mode {
             track("help_desk_message", &format!("{{\"nth\":\"{nth}\"}}"));
+        } else if self.foreman_mode {
+            track("foreman_message", &format!("{{\"nth\":\"{nth}\"}}"));
         } else {
             track(
                 "message_sent",
@@ -773,6 +793,8 @@ impl LanderChat {
     fn active_client(&self) -> Option<Client> {
         if self.desk_mode {
             self.plain.clone()
+        } else if self.foreman_mode {
+            self.foreman.clone()
         } else {
             self.client.clone()
         }
@@ -1011,7 +1033,10 @@ impl LanderChat {
     /// Kiln, beside the model choice, for a site admin on the Grid (#12440):
     /// it opens Kiln's panel over the Grid.
     fn render_kiln(&self, layout: &Layout) -> Option<AnyElement> {
-        if self.desk_mode || !model::offers_kiln(base(), is_game_lab(), self.admin) {
+        if self.desk_mode
+            || self.foreman_mode
+            || !model::offers_kiln(base(), is_game_lab(), self.admin)
+        {
             return None;
         }
         Some(
@@ -1046,7 +1071,7 @@ impl LanderChat {
     /// DeepSeek V4.1 or any Pylon, beside the send button: on the Grid
     /// terminal while a ready V4.1 group is online (#12421).
     fn render_pick(&self, layout: &Layout, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if is_game_lab() || self.desk_mode {
+        if is_game_lab() || self.desk_mode || self.foreman_mode {
             return None;
         }
         if base() != model::HOME_BASE || !(self.group_ready || self.flint_ready || self.ask_flint) {
@@ -1269,7 +1294,7 @@ fn push_path(chat: Option<&str>) {
     let Some(window) = web_sys::window() else {
         return;
     };
-    if chat.is_some() && is_desk() {
+    if chat.is_some() && (is_desk() || is_foreman()) {
         return;
     }
     let mut path = model::path_for(base(), chat);
@@ -1390,6 +1415,14 @@ fn mark(name: &str) {
     if let Some(performance) = web_sys::window().and_then(|w| w.performance()) {
         let _ = performance.mark(name);
     }
+}
+
+/// Whether the chat is open with the Grid Foreman (#12446).
+fn is_foreman() -> bool {
+    js_sys::Reflect::get(&js_sys::global(), &model::FOREMAN_GLOBAL.into())
+        .ok()
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 /// Whether the chat is open at the Grid's help desk (#12443).

@@ -197,6 +197,7 @@ pub mod upstream;
 pub mod vault;
 mod verse_key;
 mod grid_foreman;
+mod grid_foreman_door;
 mod visitor_api;
 mod wallet_browser;
 mod wallet_restore;

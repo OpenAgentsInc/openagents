@@ -241,6 +241,20 @@ pub const EVENTS: &[Spec] = &[
         name: "help_desk_message",
         details: &[("nth", Values::One(&["first", "later"]))],
     },
+    // The Grid Foreman (#12446): came within talking range, opened its chat,
+    // and asked it something. Never what anyone typed.
+    Spec {
+        name: "foreman_reached",
+        details: &[],
+    },
+    Spec {
+        name: "foreman_opened",
+        details: &[],
+    },
+    Spec {
+        name: "foreman_message",
+        details: &[("nth", Values::One(&["first", "later"]))],
+    },
     // Chat at the terminal.
     Spec {
         name: "terminal_opened",

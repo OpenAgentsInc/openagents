@@ -53,6 +53,33 @@ pub const WALK_CLIP_RATE: f32 = 0.6;
 /// Rotation: `docs/deployment/grid-foreman.md`.
 pub const PUBKEY: &str = "2d9fad1a83555dc66198d94d58a24ea1541ba8857d2407c456635a3421456f36";
 
+/// A visitor this close to the Foreman's center, m, is offered a talk: it
+/// is larger than the help desk's range because of its size.
+pub const TALK_RANGE: f64 = 6.0;
+/// The talk offer stays until the visitor is this far, m.
+pub const TALK_LEAVE: f64 = 7.0;
+/// The talk offer with a keyboard.
+pub const PROMPT_KEYS: &str = "Press E to talk to the Foreman";
+/// The talk offer on a touch screen.
+pub const PROMPT_TOUCH: &str = "Tap here to talk to the Foreman";
+/// The key that opens the talk.
+pub const KEY: &str = "KeyE";
+/// How high over its feet the talk offer stands, m.
+pub const PROMPT_LIFT: f32 = 3.2;
+
+/// Whether a visitor at `player` is in talking range of the Foreman at
+/// `foreman`, with a little hysteresis; never from inside the terminal's
+/// reach, where the terminal's chat opens instead.
+#[must_use]
+pub fn in_talk_range(player: [f64; 3], foreman: [f64; 3], already_near: bool) -> bool {
+    let range = if already_near { TALK_LEAVE } else { TALK_RANGE };
+    let terminal = [0.0, 0.0, 4.0];
+    player.iter().all(|v| v.is_finite())
+        && (player[1] - foreman[1]).abs() <= 2.0
+        && (player[0] - foreman[0]).hypot(player[2] - foreman[2]) <= range
+        && (player[0] - terminal[0]).hypot(player[2] - terminal[2]) > 3.8
+}
+
 /// The site's route for the Foreman's status.
 pub const STATUS_PATH: &str = "/v1/foreman/status";
 /// The status document's schema.

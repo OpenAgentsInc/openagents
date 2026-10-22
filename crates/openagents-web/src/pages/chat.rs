@@ -2893,6 +2893,11 @@ async fn answer(
                     pylons.fallback = Some(door);
                     Some(Box::new(pylons))
                 }
+                // The Grid Foreman's chat (#12446): its answer from a Pylon,
+                // else from this chain with its facts.
+                None if crate::grid_foreman_door::foreman_surface(&headers) => {
+                    Some(crate::grid_foreman_door::door(&app, door))
+                }
                 None => Some(door),
             }
         }
@@ -2950,6 +2955,8 @@ async fn answer(
             crate::labs::DEADLINE
         } else if let Some(timeout) = pylons_timeout {
             timeout
+        } else if crate::grid_foreman_door::foreman_surface(&headers) {
+            crate::grid_foreman_door::turn_timeout()
         } else {
             Duration::from_secs(130)
         };

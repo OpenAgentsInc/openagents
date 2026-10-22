@@ -71,7 +71,7 @@ pub const SCRIPT: &str = "/static/a.js";
 pub const DASHBOARD: &str = "/admin/analytics";
 
 /// Every product event name a row may carry.
-pub const EVENTS: [&str; 25] = [
+pub const EVENTS: [&str; 27] = [
     "lab_entered",
     "lab_version_saved",
     "lab_edit_refused",
@@ -107,6 +107,10 @@ pub const EVENTS: [&str; 25] = [
     "grid_answer",
     // The family of the model that answered it (`visits::model_family`).
     "grid_answer_model",
+    // Who answered a question to the Grid Foreman (#12446): `flint`, `pylon`,
+    // or `hosted`; and why it couldn't: `long`, `budget`, or `timeout`.
+    "foreman_answered",
+    "foreman_answer_failed",
 ];
 
 /// The fixed detail of `grid_answer`.

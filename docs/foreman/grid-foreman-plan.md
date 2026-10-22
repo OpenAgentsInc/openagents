@@ -569,13 +569,17 @@ never coordinates outside an app chat.
 - **How.** Within its talk range, "Press E to talk to Foreman" (or a tap on
   phones), as the help desk does. That opens the homepage chat with
   `openagentsChatForeman = true`, so the composer reads "Ask Foreman".
-- **Route.** The chat sends the message to `POST /v1/foreman/ask` on
-  `openagents-web`, which applies limits and forwards to the host over a
-  private connection with a site-held shared secret. The host answers from
-  the status feed and a Pylon model call and returns the text; the site
-  streams it to the chat. The host also publishes a gesture-like state
-  change so other viewers see Foreman turn and "talk".
-- **Limits.**
+- **Route (as built, #12446).** The chat sends with the surface `foreman`
+  (`x-openagents-chat-surface: foreman`) through the site's ordinary chat
+  routes, so it gets the signed-out chat's limits and storage for free.
+  `crate::grid_foreman_door` answers: the facts (the open issues and the
+  desktop Foreman's record) go to a free Pylon under the Foreman's own
+  buyer key, and to the hosted chat when no Pylon answers. The site answers
+  in-process rather than forwarding to the host, so the host keeps no
+  listening port and no shared secret. The Bay line is #12484.
+- **Limits.** As built, the visitor limits are the signed-out chat's
+  (10 messages per visitor), and the daily budget below is shared by
+  every instance through the site's store.
   - Signed out: 5 questions per visitor per day, 30 per IP per hour.
   - Signed in: 30 per day.
   - Admins: no daily cap, but the host's daily Pylon budget still holds.
@@ -879,3 +883,4 @@ Filed issues:
 | kiln-runner allowlist | #12449 | none |
 | P4 | #12448 | #12447, #12449 |
 | Reaction clips | #12461 | #12445 |
+| Bay line to the answering Pylon | #12484 | #12446 |

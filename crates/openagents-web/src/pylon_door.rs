@@ -164,6 +164,9 @@ pub(crate) struct PylonDoor {
     pub queue: Duration,
     /// Where who answered is counted ([`answer_source`]).
     pub analytics: Option<Arc<crate::analytics::Analytics>>,
+    /// What a pylon is told instead of the terminal's instructions, such as
+    /// the Grid Foreman's (#12446).
+    pub instructions: Option<String>,
 }
 
 /// What `grid_answer` counts for a turn: a pylon, a model group, the
@@ -218,7 +221,57 @@ pub(crate) fn door(app: &App, headers: &HeaderMap, payer: &str) -> Option<PylonD
         fallback: None,
         queue: GROUP_QUEUE,
         analytics: Some(app.config.analytics.clone()),
+        instructions: None,
     })
+}
+
+/// The payer the Grid Foreman's pylon jobs are sent as: one buyer key for
+/// all of them, so the Pylon Bay can tell its jobs apart (#12446).
+pub(crate) const FOREMAN_PAYER: &str = "grid-foreman";
+
+/// A pylon door for the Grid Foreman's answers (#12446): the terminal's deadline,
+/// the Foreman's own buyer key, `instructions`, and no fallback or counting
+/// of its own; [`crate::grid_foreman_door`] adds those. `None` when this
+/// server watches no pylon relay or the router is switched off.
+pub(crate) fn foreman(app: &App, instructions: String) -> Option<PylonDoor> {
+    if std::env::var(SWITCH_VAR).is_ok_and(|v| v.trim().eq_ignore_ascii_case("off")) {
+        return None;
+    }
+    let relay = app.config.pylons_relay.clone()?;
+    let mut settings = Settings::new(
+        relay,
+        std::env::var(HOME_VAR).map_or_else(
+            |_| std::env::temp_dir().join("openagents-web-pylons"),
+            PathBuf::from,
+        ),
+    );
+    // The terminal's profile: complete reasoning models such as Flint
+    // declare their deadline and refuse a shorter one.
+    settings.deadline = Some(pylon::flint::DEADLINE);
+    settings.checkers = std::env::var("OPENAGENTS_PYLON_CHECKERS")
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|key| pylon::identity::hex_pubkey(key.trim()))
+        .collect();
+    let client = DecisionsClient::new(decisions_url(app))
+        .ok()?
+        .timeout(settings.decide);
+    Some(PylonDoor {
+        buyer: Identity::from_secret(buyer(&app.config.ask_salt, FOREMAN_PAYER)).ok()?,
+        settings,
+        decide: Arc::new(Api { client }),
+        fallback: None,
+        queue: Duration::ZERO,
+        analytics: None,
+        instructions: Some(instructions),
+    })
+}
+
+/// The Grid Foreman's pylon buyer public key, for the page (#12446).
+pub(crate) fn foreman_buyer(app: &App) -> Option<String> {
+    Identity::from_secret(buyer(&app.config.ask_salt, FOREMAN_PAYER))
+        .ok()
+        .map(|id| id.pubkey().to_owned())
 }
 
 /// Whether the turn names [`GROUP_MODEL`] in [`MODEL_HEADER`]; any other
@@ -419,12 +472,13 @@ impl Door for PylonDoor {
             .as_ref()
             .filter(|_| self.settings.want.is_none())
             .map(|door| door.ask(turns.clone(), context, reply.clone()));
-        let (settings, buyer, decide, queue, analytics) = (
+        let (settings, buyer, decide, queue, analytics, custom) = (
             self.settings.clone(),
             self.buyer.clone(),
             self.decide.clone(),
             self.queue,
             self.analytics.clone(),
+            self.instructions.clone(),
         );
         let wants_group =
             matches!(&settings.want, Some(pylon::group::Want::Model(m)) if m == GROUP_MODEL);
@@ -462,6 +516,7 @@ impl Door for PylonDoor {
                 }
                 _ => INSTRUCTIONS,
             };
+            let instructions = custom.as_deref().unwrap_or(instructions);
             let started = Instant::now();
             let mut routed = router::route(
                 &buyer,

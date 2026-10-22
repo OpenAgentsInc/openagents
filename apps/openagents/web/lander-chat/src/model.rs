@@ -165,6 +165,10 @@ pub const ADMIN_GLOBAL: &str = "openagentsAdmin";
 /// help desk (#12443): the chat then asks the site's free hosted agent, in
 /// a chat of its own, and offers no model choice.
 pub const DESK_GLOBAL: &str = "openagentsChatDesk";
+/// The page global that is `true` while the chat is open with the Grid
+/// Foreman (#12446): the chat then names the `foreman` surface, so the site
+/// answers as the Foreman, in a chat of its own, with no model choice.
+pub const FOREMAN_GLOBAL: &str = "openagentsChatForeman";
 /// The page function that opens Kiln's panel.
 pub const OPEN_KILN: &str = "homeKiln";
 

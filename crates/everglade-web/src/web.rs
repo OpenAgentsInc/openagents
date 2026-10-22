@@ -1369,6 +1369,7 @@ impl Page {
         if HOME.with(|home| home.get()) {
             crate::help_desk::frame(self.runtime.player.pos, self.runtime.is_plaza());
             crate::foreman::frame(now);
+            crate::foreman::talk_frame(self.runtime.player.pos, self.runtime.is_plaza());
             thread_local! { static GAME_NEAR: std::cell::Cell<bool> = const { std::cell::Cell::new(false) }; }
             let near = GAME_NEAR.with(|old| {
                 // Game Lab stands on the Grid plaza only, never in a zone
@@ -1747,6 +1748,7 @@ impl Page {
                 crate::help_desk::draw(&mut ui, atlas, css, view.view_proj);
                 if self.runtime.is_plaza() {
                     crate::foreman::draw(&mut ui, atlas, css, view.view_proj, view.eye, self.now);
+                    crate::foreman::draw_prompt(&mut ui, atlas, css, view.view_proj);
                 }
             }
             // A model group's details over its sign, when it is near or
@@ -1888,7 +1890,9 @@ impl Page {
     /// Returns whether the Grid used it.
     fn press_grid(&mut self, at: [f32; 2]) -> bool {
         // The help desk's prompt opens the chat (#12443).
-        if HOME.with(std::cell::Cell::get) && crate::help_desk::press(at) {
+        if HOME.with(std::cell::Cell::get)
+            && (crate::help_desk::press(at) || crate::foreman::press(at))
+        {
             return true;
         }
         let size = self.css_size();
@@ -2431,7 +2435,7 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
                 && !event.ctrl_key()
                 && !event.alt_key()
                 && !event.meta_key()
-                && crate::help_desk::key(&event.code())
+                && (crate::help_desk::key(&event.code()) || crate::foreman::key(&event.code()))
             {
                 event.prevent_default();
                 return;

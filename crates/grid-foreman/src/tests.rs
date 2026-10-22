@@ -117,6 +117,8 @@ fn clean_lines_keep_only_what_the_fonts_draw() {
 #[test]
 fn the_words_are_plain() {
     for text in [
+        PROMPT_KEYS,
+        PROMPT_TOUCH,
         TAG,
         STATUS_WAITING,
         BACK_SOON,
@@ -135,4 +137,26 @@ fn the_pinned_key_is_a_public_key() {
             .bytes()
             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     );
+}
+
+#[test]
+fn the_talk_offer_shows_in_range_but_not_at_the_terminal() {
+    let foreman = HOME;
+    assert!(in_talk_range(
+        [HOME[0] + 4.0, 0.0, HOME[2] - 2.0],
+        foreman,
+        false
+    ));
+    assert!(!in_talk_range(
+        [HOME[0] + 6.5, 0.0, HOME[2]],
+        foreman,
+        false
+    ));
+    assert!(in_talk_range([HOME[0] + 6.5, 0.0, HOME[2]], foreman, true));
+    assert!(!in_talk_range([HOME[0] + 7.5, 0.0, HOME[2]], foreman, true));
+    // At the terminal the terminal's chat opens instead.
+    assert!(!in_talk_range([0.0, 0.0, 2.0], foreman, true));
+    assert!(!in_talk_range([f64::NAN, 0.0, 0.0], foreman, true));
+    // The terminal (0, 0, 4) is pylons_view::terminal::POSITION.
+    assert_eq!(pylons_view::terminal::POSITION, [0.0, 0.0, 4.0]);
 }

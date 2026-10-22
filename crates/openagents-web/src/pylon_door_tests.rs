@@ -725,6 +725,7 @@ fn group_door(url: &str, home: &std::path::Path, queue: Duration) -> PylonDoor {
         fallback: Some(Box::new(Hosted)),
         queue,
         analytics: None,
+        instructions: None,
     }
 }
 
