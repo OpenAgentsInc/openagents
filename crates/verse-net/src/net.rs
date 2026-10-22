@@ -68,6 +68,13 @@ pub enum In {
     },
     /// End of stored events for a subscription.
     Eose(String),
+    /// NIP-67 completeness, delivered immediately before the ordinary EOSE.
+    EoseHint {
+        /// Subscription id.
+        sub: String,
+        /// Whether the relay sent every matching stored event.
+        complete: bool,
+    },
     /// The relay's verdict on a published event.
     Ok {
         /// Event id.
@@ -112,6 +119,27 @@ pub fn parse(text: &str) -> Option<In> {
     }
 }
 
+fn eose_hint(text: &str) -> Option<In> {
+    let value = nostr::contracts::parse_strict_bounded(text.as_bytes(), MAX_WIRE).ok()?;
+    let parts = value.as_array()?;
+    if parts.first()?.as_str()? != "EOSE" {
+        return None;
+    }
+    let hints = parts.get(2)?.as_array()?;
+    let has = |hint: &str| hints.iter().any(|value| value.as_str() == Some(hint));
+    let complete = if has("more") {
+        false
+    } else if has("finish") {
+        true
+    } else {
+        return None;
+    };
+    Some(In::EoseHint {
+        sub: parts.get(1)?.as_str()?.to_owned(),
+        complete,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,6 +158,22 @@ mod tests {
         assert!(matches!(parse(r#"["AUTH","abc"]"#), Some(In::Auth(c)) if c == "abc"));
         assert!(parse("not json").is_none());
         assert!(parse(r#"["EVENT","s1",{"bad":1}]"#).is_none());
+    }
+
+    #[test]
+    fn completeness_hints_preserve_the_ordinary_eose_and_ignore_unknown_hints() {
+        for (text, complete) in [
+            (r#"["EOSE","s1",["finish","future"]]"#, true),
+            (r#"["EOSE","s1",["more"]]"#, false),
+            (r#"["EOSE","s1",["more","finish"]]"#, false),
+        ] {
+            assert!(matches!(parse(text), Some(In::Eose(sub)) if sub == "s1"));
+            assert!(
+                matches!(eose_hint(text), Some(In::EoseHint { sub, complete: value }) if sub == "s1" && value == complete)
+            );
+        }
+        assert!(eose_hint(r#"["EOSE","s1",["auth","future"]]"#).is_none());
+        assert!(eose_hint(r#"["EOSE","s1"]"#).is_none());
     }
 
     #[test]

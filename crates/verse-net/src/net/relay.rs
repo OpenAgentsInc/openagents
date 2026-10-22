@@ -230,6 +230,10 @@ async fn connected(
                         subscriptions.remove(id);
                         write(socket,&json!(["CLOSE",id])).await?;
                     }
+                    if matches!(&message, In::Eose(_))
+                        && let Some(hint) = super::eose_hint(&text) {
+                        inbox.try_send(hint).map_err(|_| ())?;
+                    }
                     inbox.try_send(message).map_err(|_| ())?;
                 },
                 Some(Ok(Message::Ping(bytes))) => { socket.send(Message::Pong(bytes)).await.map_err(|_| ())?; },

@@ -215,7 +215,7 @@ impl Spectator {
                     Status::Offline
                 };
             }
-            In::Ok { .. } | In::Closed(..) | In::Notice(_) => {}
+            In::Ok { .. } | In::Closed(..) | In::Notice(_) | In::EoseHint { .. } => {}
         }
     }
 

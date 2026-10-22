@@ -236,6 +236,11 @@ fn connect(inner: &Rc<RefCell<Inner>>) {
             };
             match inner.wire.received(&text) {
                 Some(step) => {
+                    if matches!(step.message.as_ref(), Some(In::Eose(_)))
+                        && let Some(hint) = super::eose_hint(&text)
+                    {
+                        inner.deliver(hint);
+                    }
                     if let Some(message) = step.message {
                         inner.deliver(message);
                     }
