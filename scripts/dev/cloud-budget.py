@@ -48,6 +48,8 @@ A reused name is another machine (#12411). A described machine whose instance ID
 differs from the record's, or from its creation operation's when the record has
 none, lends no timestamps to the record. `stop` never deletes such a replacement:
 it settles the record from Google's records, or leaves it counted, and exits 1.
+`stop --record ID` can also delete that exact stopped machine after `sync` settled
+its cost. It preserves the earlier cost and refuses a running or unidentified machine.
 
 Before admitting, `create` runs `sync`, which also records machines that carry
 the budget's label but have no running record (a lost create reply), so they
@@ -931,21 +933,29 @@ def cmd_stop(a: argparse.Namespace) -> int:
     if PROTECTED.match(a.name):
         raise Refused(f"{a.name} is a production machine; this guard never touches it")
     with locked(a.budget) as path:
-        live = [m for m in machines(read_ledger(path)) if m["vm"] == a.name and m.get("stop_epoch") is None]
+        live = [m for m in machines(read_ledger(path)) if m["vm"] == a.name]
     if getattr(a, "record", None):
         live = [m for m in live if m["id"] == a.record]
+    else:
+        live = [m for m in live if m.get("stop_epoch") is None]
     if not live:
         raise Refused(f"{a.name} is not running in budget {a.budget}")
     m = live[-1]
+    settled = m.get("stop_epoch") is not None
+    if settled and a.keep_machine:
+        print(f"{m['vm']}: already settled; nothing to record")
+        return 0
     flex = m.get("provisioning") == "flex-start"
     # A queued flex-start request costs nothing until Google starts the machine. The snapshot
     # before the delete only names the machine: it may start between it and the delete.
     seen = describe(m)
     if seen.get("other_id"):
         # The ledger's machine is gone and another machine now has its name: never delete that one.
-        done = resolve(m, {"status": "GONE"})
         print(f"cloud-budget: {m['vm']} is now another machine (instance {seen['other_id']}); the "
               "ledger's machine is gone, so stop didn't delete it", file=sys.stderr)
+        if settled:
+            return 1
+        done = resolve(m, {"status": "GONE"})
         if done is None:
             print(f"cloud-budget: Google's records don't yet say when the ledger's {m['vm']} ran; it "
                   "counts until `cloud-budget.py sync` settles it", file=sys.stderr)
@@ -956,6 +966,13 @@ def cmd_stop(a: argparse.Namespace) -> int:
                 append(path, record)
                 print(f"{m['vm']}: {record['reason']} at {record['stop']}, cost {money(record['cost'])}")
         return 1
+    if settled:
+        if seen.get("status") == "GONE":
+            print(f"{m['vm']}: already deleted; earlier cost unchanged")
+            return 0
+        ident = m.get("instance_id") or creation_id(m, lifecycle_events(m, audit=False))
+        if seen.get("status") not in ("TERMINATED", "STOPPED") or not ident or seen.get("id") != ident:
+            raise Refused(f"{m['vm']}: cannot confirm the exact settled machine is stopped; didn't delete it")
     if seen.get("status") == "GONE" or not flex:
         seen = {}
     if not a.keep_machine:
@@ -964,6 +981,9 @@ def cmd_stop(a: argparse.Namespace) -> int:
         if r.returncode != 0 and "was not found" not in r.stderr:
             print(r.stderr.strip()[-2000:], file=sys.stderr)
             return 1
+    if settled:
+        print(f"{m['vm']}: deleted the already-stopped machine; earlier cost unchanged")
+        return 0
     at = min(now(), m["expires_epoch"])
     if a.keep_machine:
         # The machine stays, so nothing ends it: count it until now, from its start if Google says
@@ -984,6 +1004,9 @@ def cmd_stop(a: argparse.Namespace) -> int:
               f"it counts until `cloud-budget.py sync` settles it")
         return 0
     with locked(a.budget) as path:
+        if not any(x["id"] == m["id"] and x.get("stop_epoch") is None for x in machines(read_ledger(path))):
+            print(f"{m['vm']}: deleted; another check already recorded its cost")
+            return 0
         record = stop_record(m, done)
         append(path, record)
     print(f"{m['vm']}: stopped at {record['stop']}, cost {money(record['cost'])}")

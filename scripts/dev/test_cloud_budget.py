@@ -28,6 +28,9 @@ with open(os.environ["FAKE_LOG"], "a") as fh:
 args = sys.argv[1:]
 deleted = os.path.join(os.path.dirname(os.environ["FAKE_LOG"]), "deleted")
 if args[:3] == ["compute", "instances", "delete"]:
+    if os.environ.get("FAKE_SETTLE_ON_DELETE"):
+        with open(os.environ["FAKE_LEDGER"], "a") as fh:
+            fh.write(os.environ["FAKE_SETTLE_ON_DELETE"] + "\n")
     open(deleted, "w").close()
     sys.exit(0)
 after = os.path.exists(deleted)
@@ -774,6 +777,61 @@ class CloudBudgetTests(unittest.TestCase):
         r = self.run_guard("stop", "vm-pinned-stop", "--budget", "test", "--record", record["id"], at=T0 + 120)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.records()[-1]["id"], record["id"])
+
+    def settled_stopped_machine(self):
+        name = "vm-settled-stop"
+        self.assertEqual(self.create(name, hours="2").returncode, 0)
+        r = self.run_guard("sync", "--budget", "test", at=T0 + 180,
+                           FAKE_DESCRIBE="TERMINATED", FAKE_ID="111",
+                           FAKE_STOPPED="2027-01-15T08:02:00Z")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        record = next(r for r in self.records() if r["event"] == "start")
+        self.assertEqual(self.records()[-1]["instance_id"], "111")
+        self.log.write_text("")
+        return name, record, self.records()
+
+    def test_record_pinned_cleanup_deletes_a_settled_stopped_machine_without_changing_cost(self):
+        name, record, before = self.settled_stopped_machine()
+        spent = self.report(T0 + 180)["spent"]
+        r = self.run_guard("stop", name, "--budget", "test", "--record", record["id"], at=T0 + 300,
+                           FAKE_DESCRIBE="TERMINATED", FAKE_ID="111")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(len([c for c in self.calls() if c.startswith('["compute", "instances", "delete"')]), 1)
+        self.assertEqual(self.records(), before)
+        self.assertEqual(self.report(T0 + 300)["spent"], spent)
+        self.log.write_text("")
+        r = self.run_guard("stop", name, "--budget", "test", "--record", record["id"], at=T0 + 360,
+                           FAKE_DESCRIBE="GONE")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse([c for c in self.calls() if c.startswith('["compute", "instances", "delete"')])
+        self.assertEqual(self.records(), before)
+
+    def test_settled_cleanup_requires_an_explicit_record_and_matching_stopped_instance(self):
+        name, record, before = self.settled_stopped_machine()
+        r = self.run_guard("stop", name, "--budget", "test", at=T0 + 300)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertFalse(self.calls())
+        for state, ident in [("TERMINATED", "222"), ("RUNNING", "111"),
+                             ("UNKNOWN", "111"), ("TERMINATED", "")]:
+            with self.subTest(state=state, ident=ident):
+                self.log.write_text("")
+                r = self.run_guard("stop", name, "--budget", "test", "--record", record["id"],
+                                   at=T0 + 300, FAKE_DESCRIBE=state, FAKE_ID=ident)
+                self.assertNotEqual(r.returncode, 0)
+                self.assertFalse([c for c in self.calls() if c.startswith('["compute", "instances", "delete"')])
+                self.assertEqual(self.records(), before)
+
+    def test_stop_does_not_overwrite_a_concurrent_settlement(self):
+        self.assertEqual(self.create("vm-stop-race", hours="2").returncode, 0)
+        record = next(r for r in self.records() if r["event"] == "start")
+        settled = {"event": "stop", "id": record["id"], "vm": record["vm"],
+                   "stop_epoch": T0 + 60, "stop": "2027-01-15T08:01:00Z",
+                   "reason": "stopped", "cost": round(A4_SPOT / 60, 6), "instance_id": "111"}
+        r = self.run_guard("stop", record["vm"], "--budget", "test", "--record", record["id"],
+                           at=T0 + 300, FAKE_SETTLE_ON_DELETE=json.dumps(settled),
+                           FAKE_LEDGER=str(self.ledger))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual([r for r in self.records() if r["event"] == "stop"], [settled])
 
 
 if __name__ == "__main__":
