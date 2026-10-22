@@ -148,6 +148,7 @@ fn finish_verification(
     rng: &mut u64,
     eos: Option<u32>,
 ) -> Result<(usize, Option<u32>), Refused> {
+    let initial_rng = *rng;
     let result = (|| {
         if inputs.len() != VERIFY || target.len() != VERIFY || q.len() != BLOCK {
             return Err(bad("incomplete draft verification"));
@@ -182,6 +183,7 @@ fn finish_verification(
         Ok((accepted, next))
     })();
     if result.is_err() {
+        *rng = initial_rng;
         stage.restore_dspark(backend, snapshot).map_err(bad)?;
     }
     result
@@ -683,6 +685,7 @@ mod streaming_tests {
                 q.push(distribution(&targets[i], Sampling::GREEDY)?);
             }
             targets[bad_row][0] = f32::NAN;
+            let mut rng = 17;
             let error = finish_verification(
                 &mut stage,
                 &backend,
@@ -692,11 +695,12 @@ mod streaming_tests {
                 &targets,
                 &q,
                 Sampling::GREEDY,
-                &mut 0,
+                &mut rng,
                 None,
             )
             .unwrap_err();
             assert!(error.0.contains("invalid logits"));
+            assert_eq!(rng, 17);
             assert_eq!(stage.logits()?, plain.logits()?);
         }
         stage.save_dspark(&backend, &mut stream.snapshot)?;
