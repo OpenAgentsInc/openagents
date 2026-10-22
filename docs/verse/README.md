@@ -8,6 +8,11 @@ Cargo feature declarations.
 The [Verse Engine roadmap](engine/roadmap.md) sequences original content,
 owned physics reuse, and authoritative multiplayer.
 
+The [browser editor implementation plan](browser-editor-implementation-plan.md)
+sequences the browser-first TypeScript/Effect and direct WebGPU direction,
+starting with the Haunted House WGSL hot-reload demo connected to Kiln (#12500).
+It is planned work, with issue dependencies and acceptance gates.
+
 The [AAA MMORPG code audit](../audits/2026-10-04-verse-engine-audit.md) reviews
 the implemented engine and world services, prioritizes improvements, and defines
 proposed acceptance for persistent multiplayer and measured scale.

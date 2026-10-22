@@ -4,6 +4,8 @@ Date: 2026-10-22. Updated at OpenAgents snapshot: `2ae6722ad5`.
 Status: architecture assessment; no implementation or new performance measurements.
 Decision assumptions: browser-first, designed from scratch, complete ownership of the editor/runtime/services, and no Rust-only constraint. Existing Rust investment and native reuse do not determine the choice.
 
+Delivery: [browser editor implementation plan](../verse/browser-editor-implementation-plan.md), starting with the WebGPU Haunted House/Kiln demo in #12500. The plan records proposed work, issue dependencies, and acceptance gates.
+
 ## Recommendation
 
 **Choose TypeScript + Effect for the editor and asynchronous orchestration, an allocation-conscious TypeScript runtime and direct WebGPU renderer, and editable WGSL shaders. Use Rust/Wasm selectively for measured CPU bottlenecks.** This is the recommended default under the stated assumptions, rather than a choice deferred between two equal candidates.
@@ -174,7 +176,7 @@ The target is a direct path from a shader edit to a candidate GPU pipeline, inde
 
 WebGPU exposes [`getCompilationInfo`](https://gpuweb.github.io/types/interfaces/GPUShaderModule.html) and [`createRenderPipelineAsync`](https://gpuweb.github.io/types/interfaces/GPUDevice.html). Successful module creation alone is not proof that a compatible render pipeline exists. Resource layout changes need validation or an explicit migration. If the device is lost, recover GPU resources from the project/runtime state; the previous pipeline belongs to the lost device and cannot be the recovery mechanism.
 
-The selected TypeScript/Effect runtime coordinates this lifecycle directly. Rust can implement the same mechanism; it is not exclusive to this recommendation. The current [Haunted House shader/Kiln issue](https://github.com/OpenAgentsInc/openagents/issues/12500) remains a focused existing test scope; this audit does not start, implement, or expand it.
+The selected TypeScript/Effect runtime coordinates this lifecycle directly. Rust can implement the same mechanism; it is not exclusive to this recommendation. The [Haunted House shader/Kiln issue](https://github.com/OpenAgentsInc/openagents/issues/12500) now specifies the bounded WebGPU/WGSL first slice in the [implementation plan](../verse/browser-editor-implementation-plan.md), replacing its earlier GLSL/WebGL2 scope. No implementation starts with this documentation update.
 
 ## Kiln and retained Rust
 
