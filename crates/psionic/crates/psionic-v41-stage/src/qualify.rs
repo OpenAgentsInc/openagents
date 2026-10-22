@@ -997,6 +997,20 @@ fn router_case(
         // selection function on the stage's router input (`FfnIn`).
         let candidate_scores =
             candidate_router_scores(record, rec, layer, row_step.len(), weights)?;
+        let experts = candidate_scores
+            .as_ref()
+            .map_or(EXPERTS as usize, |(_, scores)| {
+                scores.len() / row_step.len()
+            });
+        if experts < top_k
+            || tops
+                .as_ref()
+                .is_some_and(|(_, ids, _)| ids.iter().any(|id| *id < 0 || *id as usize >= experts))
+        {
+            return Err(refused(format!(
+                "layer {layer}: oracle router IDs exceed the candidate score width {experts}"
+            )));
+        }
         let budget = policy
             .router_score_budget
             .as_ref()
@@ -1039,12 +1053,12 @@ fn router_case(
                 candidate: c,
                 boundary_gap: gap,
                 oracle_scores: row_scores.as_ref(),
-                universe: EXPERTS,
+                universe: experts as u32,
             });
             // The measured score error on the oracle's retained experts.
             let row_error = match (&candidate_scores, &row_scores) {
                 (Some((_, cs)), Some(retained)) => {
-                    let row_s = &cs[row * WIDE..(row + 1) * WIDE];
+                    let row_s = &cs[row * experts..(row + 1) * experts];
                     let e = retained
                         .iter()
                         .map(|(id, s)| (row_s[*id as usize] - s).abs())
@@ -1166,9 +1180,6 @@ fn router_case(
     }))
 }
 
-/// The router's expert count as an index width.
-const WIDE: usize = EXPERTS as usize;
-
 fn top_k_of(scores: &[f64], k: usize) -> Vec<u32> {
     let mut idx: Vec<u32> = (0..scores.len() as u32).collect();
     idx.sort_by(|a, b| {
@@ -1231,7 +1242,8 @@ fn checkpoint_tensor(weights: &Path, name: &str) -> Result<Vec<f32>, Refused> {
     }
 }
 
-/// The candidate's selection scores for every row of one layer, 384 per row:
+/// The candidate's selection scores for every row of one layer (384 per
+/// original-weight row, or the synthetic model's smaller expert count):
 /// the stage's own `RouterScores` when it reports them, else an F64
 /// evaluation on its recorded router input (`FfnIn`) with the checkpoint's
 /// gate. `None` when neither is recorded.
@@ -1259,7 +1271,7 @@ fn candidate_router_scores(
         Ok(Some(out))
     };
     if let Some(words) = gather("RouterScores")? {
-        if words.len() != rows * WIDE {
+        if rows == 0 || words.is_empty() || !words.len().is_multiple_of(rows) {
             return Err(refused(format!(
                 "layer {layer}: {} router scores for {rows} rows",
                 words.len()
@@ -1281,10 +1293,11 @@ fn candidate_router_scores(
     };
     let gate = checkpoint_tensor(weights, &format!("layers.{layer}.ffn.gate.weight"))?;
     let bias = checkpoint_tensor(weights, &format!("layers.{layer}.ffn.gate.bias"))?;
-    if bias.len() != WIDE || gate.len() % WIDE != 0 {
+    let experts = bias.len();
+    if experts == 0 || !gate.len().is_multiple_of(experts) {
         return Err(refused(format!("layer {layer}: gate shape")));
     }
-    let width = gate.len() / WIDE;
+    let width = gate.len() / experts;
     if words.len() != rows * width {
         return Err(refused(format!(
             "layer {layer}: {} router input words for {rows} rows",
@@ -1292,14 +1305,14 @@ fn candidate_router_scores(
         )));
     }
     let gate: Vec<f64> = gate.iter().map(|v| f64::from(*v)).collect();
-    let mut scores = vec![0.0f64; rows * WIDE];
+    let mut scores = vec![0.0f64; rows * experts];
     let threads = std::thread::available_parallelism().map_or(8, std::num::NonZero::get);
     let per = rows.div_ceil(threads).max(1);
     std::thread::scope(|scope| {
-        for (chunk, out) in scores.chunks_mut(per * WIDE).enumerate() {
+        for (chunk, out) in scores.chunks_mut(per * experts).enumerate() {
             let (gate, bias, words) = (&gate, &bias, &words);
             scope.spawn(move || {
-                for (i, row_out) in out.chunks_mut(WIDE).enumerate() {
+                for (i, row_out) in out.chunks_mut(experts).enumerate() {
                     let row = chunk * per + i;
                     let x: Vec<f64> = words[row * width..(row + 1) * width]
                         .iter()
@@ -2593,6 +2606,35 @@ mod tests {
             .collect();
         json!({"case": name, "modes": [{"case": name, "mode": "decode", "positions": ps}],
             "router": {"layers": layers, "changes": [], "layers_with_candidate_scores": LAYERS}})
+    }
+
+    #[test]
+    fn captured_router_scores_support_small_models_and_refuse_malformed_rows() {
+        let root = tempfile::tempdir().unwrap();
+        let name = "s.L0.RouterScores.u32".to_owned();
+        let record = Recorded {
+            logits: BTreeMap::new(),
+            replay_last: None,
+            records: vec![vec![name.clone()]],
+            seconds: 0.0,
+        };
+        let write = |scores: &[f32]| {
+            let bytes: Vec<u8> = scores
+                .iter()
+                .flat_map(|s| s.to_bits().to_le_bytes())
+                .collect();
+            std::fs::write(root.path().join(&name), bytes).unwrap();
+        };
+        write(&vec![0.5; 2 * 16]);
+        let (source, scores) = candidate_router_scores(root.path(), &record, 0, 2, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(source, "stage");
+        assert_eq!(scores, vec![0.5; 32]);
+        write(&vec![0.5; 31]);
+        assert!(candidate_router_scores(root.path(), &record, 0, 2, None).is_err());
+        write(&vec![f32::NAN; 32]);
+        assert!(candidate_router_scores(root.path(), &record, 0, 2, None).is_err());
     }
 
     #[test]

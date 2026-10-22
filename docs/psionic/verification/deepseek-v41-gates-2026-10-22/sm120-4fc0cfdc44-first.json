@@ -1,0 +1,14 @@
+{
+  "purpose": "first GPU execution, failed synthetic harness retained",
+  "source_commit": "4fc0cfdc44",
+  "archive_sha256": "27628d1913428f5dd28298e7cb96bf7b9e78f8eeacf2b4b82d6300ab3d818510",
+  "worker_bundle_sha256": "986a5a8993074fa29ff8e485f41ffb9b9bc70386a9d2520a0b1cf59632e8af0f",
+  "vm": "oa-dsv41-gates-gpu",
+  "instance_id": "8383147145384403997",
+  "gpu_class": "sm_120",
+  "passed": 111,
+  "failed": 1,
+  "ignored": 6,
+  "log_sha256": "d00d1fb22961a7e9bb9c1eb276974d648754e51bbbf38b1e067ea7782546c29a",
+  "failure": "The reader assumed 384 scores per token for a 16-expert synthetic model. The direct-score kernel and the other GPU parity checks passed. Reader fix and full rerun required."
+}

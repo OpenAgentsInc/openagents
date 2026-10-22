@@ -59,6 +59,17 @@ two-token row order, and unchanged IDs and route weights. Local stage and
 CUDA-backend CPU/stub checks pass; the new kernel's dedicated SM120 run and
 full-model score capture are pending. Existing 2.1–2.3 reports are unchanged.
 
+The first dedicated SM120 package run on bundle `986a5a89…` passed all 64
+CUDA backend checks, including the direct-score recording control. The
+[complete package log](verification/deepseek-v41-gates-2026-10-22/sm120-4fc0cfdc44-first.log)
+retains one failed synthetic qualification test: the harness assumed 384
+expert scores for the 16-expert model. The reader now derives the width
+from the recorded rows, checks oracle IDs against it, and refuses malformed
+or nonfinite rows. Seven local qualification controls pass; the corrected
+GPU package rerun remains required. The original-weight model still has
+384 experts. Calibration is running on dedicated CPU and G4 machines;
+these regressions do not supply fresh confirmation evidence.
+
 ## What "done" means
 
 The epic's goal: **serve DeepSeek-V4.1-Flash with Psionic as the only

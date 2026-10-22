@@ -1,0 +1,210 @@
+NVIDIA RTX PRO 6000 Blackwell Server Edition, 580.178.04, 12.0, 97887 MiB
+NVIDIA RTX PRO 6000 Blackwell Server Edition, 580.178.04, 12.0, 97887 MiB
+NVIDIA RTX PRO 6000 Blackwell Server Edition, 580.178.04, 12.0, 97887 MiB
+NVIDIA RTX PRO 6000 Blackwell Server Edition, 580.178.04, 12.0, 97887 MiB
+== answer-eb151ae8ff57530b 
+
+running 8 tests
+test a_literal_end_of_thinking_marker_stays_text ... ok
+test chat_mode_continues_a_conversation_as_the_checkpoint_renders_it ... ok
+test chat_mode_parses_every_token_as_the_answer ... ok
+test chat_mode_renders_the_oracle_p2_prompt_exactly ... ok
+test modes_parse_by_name_and_default_to_thinking ... ok
+test split_characters_come_out_whole ... ok
+test the_end_of_thinking_token_splits_reasoning_from_the_answer ... ok
+test the_output_limit_reports_length ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.81s
+
+== budget-6316bd4f7969fcd2 
+
+running 5 tests
+test a_request_is_checked_against_the_prompt_and_context_bounds ... ok
+test chunks_fit_every_boundary_at_odd_positions_and_long_contexts ... ok
+test the_cloud_chunk_profile_matches_measured_memory_and_reserved_runtime ... ok
+test the_context_and_the_operator_cap_lower_the_prompt_bound ... ok
+test the_real_wire_bounds_the_prompt_below_the_default_context ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+== cuda-eafa423b1158ed37 
+
+running 5 tests
+test a_chained_group_answers_like_the_unsplit_cuda_stage_and_reports_its_memory ... ok
+test a_cuda_stage_announces_a_runtime_a_cpu_group_refuses ... ok
+test cuda_groups_answer_like_the_unsplit_cuda_stage ... ok
+test layer_major_prefill_answers_like_the_unsplit_stage ... ok
+test one_gpu_with_an_expert_cache_answers_like_the_unsplit_stage ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.01s
+
+== handoff-79fff1c63618fded 
+
+running 1 test
+test a_stalled_executor_holds_the_link_to_its_bounds_and_recovers ... psionic-v41-stage s1: {"event":"refused","stage":"s1","pid":6581,"generation":1,"request":"r","step":2,"reason":"a link frame whose stage state names another step"}
+psionic-v41-stage s1: {"event":"refused","stage":"s1","pid":6581,"generation":1,"request":"r","step":3,"reason":"a link frame whose stage state names another step"}
+psionic-v41-stage s1: {"event":"refused","stage":"s1","pid":6581,"generation":1,"request":"r","step":4,"reason":"a link frame whose stage state names another step"}
+psionic-v41-stage s1: {"event":"refused","stage":"s1","pid":6581,"generation":1,"request":"r","step":5,"reason":"a link frame whose stage state names another step"}
+psionic-v41-stage s1: {"event":"refused","stage":"s1","pid":6581,"generation":1,"request":"r","step":6,"reason":"a link frame whose stage state names another step"}
+psionic-v41-stage s1: {"event":"refused","stage":"s1","pid":6581,"generation":1,"request":"r","step":7,"reason":"a link frame whose stage state names another step"}
+psionic-v41-stage s1: {"event":"refused","stage":"s1","pid":6581,"generation":1,"request":"r","step":8,"reason":"a link frame whose stage state names another step"}
+psionic-v41-stage s1: {"event":"refused","stage":"s1","pid":6581,"generation":1,"request":"r","step":9,"reason":"a link frame whose stage state names another step"}
+psionic-v41-stage s1: {"event":"refused","stage":"s1","pid":6581,"generation":1,"request":"r","step":10,"reason":"a link frame whose stage state names another step"}
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.17s
+
+== identity-8b49385c39e85c96 
+
+running 5 tests
+test an_arithmetic_the_backend_does_not_run_is_refused_before_loading ... ok
+test every_backend_and_arithmetic_pair_is_implemented_or_refused ... ok
+test gpu_counts_the_devices_this_process_may_see ... ok
+test hello_and_build_info_name_the_executable_and_its_profile ... ok
+test the_identity_is_the_verified_bundle_not_only_the_executable ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.27s
+
+== metal-0db324df3ccbe10e 
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+== process-283619f52de5ae25 
+
+running 6 tests
+test an_oversized_request_is_rejected_before_any_stage_runs_it ... ok
+test cpu_stages_on_the_cuda_wire_announce_it_and_answer ... ok
+test groups_of_two_to_four_processes_answer_like_the_unsplit_model ... ok
+test missing_weights_and_a_mismatched_layer_range_are_refused ... ok
+test plan_places_a_mixed_device_group ... ok
+test wrong_generation_and_stale_state_are_refused_before_use ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.30s
+
+== psionic_backend_cuda-aae56e8838fb3dce v41_
+
+running 69 tests
+test v41_attention::tests::cache_quantizers_match_the_cpu ... ok
+test v41_attention::tests::compressed_attention_matches_the_cpu ... ok
+test v41_attention::tests::compressor_chunks_and_tails_match_the_cpu ... ok
+test v41_attention::tests::compressor_matches_the_cpu_on_real_inputs ... ok
+test v41_attention::tests::dense_products_for_many_tokens_equal_one_token_at_a_time ... ok
+test v41_attention::tests::fast_reductions_stay_close_to_the_exact_order ... ok
+test v41_attention::tests::host_decoders_and_schedule_match_the_cpu ... ok
+test v41_attention::tests::host_models_match_the_cpu_components ... ok
+test v41_attention::tests::host_quantizers_match_the_cpu ... ok
+test v41_attention::tests::host_selection_matches_the_cpu ... ok
+test v41_attention::tests::indexer_matches_the_cpu ... ok
+test v41_attention::tests::real_inputs_cpu_and_host_models_agree ... ok
+test v41_attention::tests::rope_matches_the_cpu ... ok
+test v41_attention::tests::selection_and_candidates_match_the_oracle ... ok
+test v41_attention::tests::shared_sources_are_read_on_the_device ... ok
+test v41_attention::tests::v41_attention_decode_latency ... ignored, measurement; needs a CUDA device
+test v41_attention::tests::window_attention_matches_the_cpu ... ok
+test v41_engram_rows::tests::history_restarts_at_position_zero ... ok
+test v41_expert_lane::tests::act_quant_equals_the_cpu_path ... ok
+test v41_expert_lane::tests::consumer_q_matvec_equals_the_device_host_model ... ok
+test v41_expert_lane::tests::decoders_match_the_device ... ok
+test v41_expert_lane::tests::expert_forward_equals_the_chained_host_models ... ok
+test v41_expert_lane::tests::fp4_matvec_equals_the_device_host_model ... ok
+test v41_matvec::tests::activation_quantization_edges_match_the_cpu_rule ... ok
+test v41_matvec::tests::batched_expert_product_timing ... ignored, timing on a CUDA device
+test v41_matvec::tests::batched_products_equal_the_host_model_per_row ... ok
+test v41_matvec::tests::consumer_q_kernels_equal_the_host_model ... ok
+test v41_matvec::tests::dimension_checks_refuse_bad_shapes ... ok
+test v41_matvec::tests::exact_sums_match_the_cpu_path_bit_for_bit ... ok
+test v41_matvec::tests::extreme_scales_saturation_and_nan_match_the_host_model ... ok
+test v41_matvec::tests::host_decoders_match_the_weight_loader_for_every_code ... ok
+test v41_matvec::tests::real_rows_cpu_rule_and_host_model_agree ... ok
+test v41_matvec::tests::real_rows_match_the_cpu_path_on_device ... ok
+test v41_matvec::tests::stacked_matrices_follow_device_ids ... ok
+test v41_matvec::tests::synthetic_shapes_match_the_cpu_path_on_device ... ok
+test v41_matvec::tests::v41_decode_bandwidth ... ignored, measurement; needs a CUDA device
+test v41_mix::tests::collapse_and_expand_match_the_cpu_path_at_every_recorded_layer ... ok
+test v41_mix::tests::configurations_refuse_bad_shapes ... ok
+test v41_mix::tests::engram_gate_matches_the_cpu_path ... ok
+test v41_mix::tests::engram_gather_reads_only_the_requested_rows ... ok
+test v41_mix::tests::host_decoders_match_the_weight_loader_for_every_code ... ok
+test v41_mix::tests::moe_step_runs_from_device_ids ... ok
+test v41_mix::tests::moe_sum_matches_the_cpu_forward ... ok
+test v41_mix::tests::real_inputs_cpu_and_host_models_agree ... ok
+test v41_mix::tests::real_mixes_match_the_cpu_path ... ok
+test v41_mix::tests::real_router_matches_the_cpu_path ... ok
+test v41_mix::tests::recorded_router_scores_reproduce_selections_without_changing_outputs ... ok
+test v41_mix::tests::routing_edges_match_the_cpu_path ... ok
+test v41_mix::tests::routing_matches_the_cpu_path_on_oracle_scores ... ok
+test v41_mix::tests::sinkhorn_edges_match_the_cpu_path ... ok
+test v41_mix::tests::swiglu_matches_the_cpu_path_and_the_oracle ... ok
+test v41_mix::tests::synthetic_mixes_match_the_cpu_path ... ok
+test v41_mix::tests::v41_mix_decode_latency ... ignored, measurement; needs a CUDA device
+test v41_quantize::tests::quantizer_error_and_importance ... ok
+test v41_stage::tests::boundaries_match_the_stage_contract ... ok
+test v41_stage::tests::cached_experts_equal_device_experts ... ok
+test v41_stage::tests::consumer_q_tiers_agree ... ok
+test v41_stage::tests::cpu_stage_matches_the_cpu_transformer ... ok
+test v41_stage::tests::decode_steps_stay_on_the_device ... ok
+test v41_stage::tests::engram_hash_matches_the_cpu ... ok
+test v41_stage::tests::host_engram_hasher_matches_the_cpu ... ok
+test v41_stage::tests::host_experts_equal_device_experts ... ok
+test v41_stage::tests::intermediate_prompt_chunks_skip_the_head_and_preserve_the_answer ... ok
+test v41_stage::tests::layer_major_prefill_equals_the_ordinary_step ... ok
+test v41_stage::tests::layer_major_prefill_first_difference ... ignored, diagnostic
+test v41_stage::tests::sampling_matches_its_definition ... ok
+test v41_stage::tests::split_stages_equal_the_whole ... ok
+test v41_stage::tests::staged_engram_rows_equal_pinned_tables ... ok
+test v41_stage::tests::synthetic_stage_matches_the_cpu ... ok
+
+test result: ok. 64 passed; 0 failed; 5 ignored; 0 measured; 125 filtered out; finished in 46.51s
+
+== psionic_v41_stage-711e979ed2305167 
+
+running 2 tests
+test qualification_tests::answer_collection_does_not_claim_qualification ... ok
+test qualification_tests::release_summary_uses_the_release_verdict ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+== psionic_v41_stage-eb0af08d3fb5fcf5 
+
+running 14 tests
+test cuda::synthetic::tests::the_ends_of_the_53_bit_range_map_inside_minus_one_to_one ... ok
+test cuda::synthetic::tests::unit_draws_cover_both_signs_inside_minus_one_to_one ... ok
+test parser_tests::a_token_after_the_end_is_refused ... ok
+test parser_tests::incremental_parsing_matches_the_whole_answer ... ok
+test parser_tests::measure_parsing_at_the_output_cap ... ignored, prints a timing
+test parser_tests::the_text_stream_decodes_a_bounded_window_per_token ... ok
+test parser_tests::the_text_stream_matches_decoding_the_whole_answer ... ok
+test qualify::tests::captured_rows_cover_all_chunks_in_absolute_prompt_order ... ok
+test qualify::tests::release_mode_refuses_missing_evidence ... ok
+test qualify::tests::rule_2_1_rejects_its_own_reference_and_rule_2_2_does_not ... ok
+test qualify::tests::rule_2_3_takes_only_the_plain_bf16_reference ... ok
+test qualify::tests::the_policy_follows_the_reference_and_must_catch_every_control ... ok
+test qualify::tests::the_router_margin_rule_judges_every_changed_row ... ok
+test tier_tests::host_tiers_name_their_profiles ... ok
+
+test result: ok. 13 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 4.42s
+
+== qualify-c1d0c8240c5754b2 
+
+running 3 tests
+test answers_run_greedily_from_the_oracle_prompt_to_the_cap ... ok
+test cuda_observations_match_and_every_negative_control_fails ... FAILED
+test the_harness_passes_its_own_run_and_fails_a_changed_one_on_the_cpu ... ok
+
+failures:
+
+---- cuda_observations_match_and_every_negative_control_fails stdout ----
+
+thread 'cuda_observations_match_and_every_negative_control_fails' (11118) panicked at crates/psionic-v41-stage/tests/qualify.rs:91:33:
+no report: psionic-v41-stage: layer 0: 176 router scores for 11 rows
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    cuda_observations_match_and_every_negative_control_fails
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.11s
+
