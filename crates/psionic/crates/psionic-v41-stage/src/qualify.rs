@@ -66,6 +66,7 @@ const ORACLE_TIE_CAP: usize = 64;
 mod calibration;
 mod index;
 mod isolated;
+mod isolated_check;
 mod scope;
 
 /// Collects isolated-stage output metrics on original oracle inputs.
@@ -75,6 +76,15 @@ mod scope;
 /// Refuses missing captures, a wrong bundle, and unsupported execution modes.
 pub fn run_isolated(args: &[String]) -> Result<(), Refused> {
     isolated::run(args)
+}
+
+/// Rechecks hashed isolated outputs against original stage inputs.
+///
+/// # Errors
+///
+/// Refuses missing, changed, incomplete, or malformed boundary records.
+pub fn run_isolated_check(args: &[String]) -> Result<(), Refused> {
+    isolated_check::run(args)
 }
 
 /// Rechecks hashed index observations against a complete oracle capture.

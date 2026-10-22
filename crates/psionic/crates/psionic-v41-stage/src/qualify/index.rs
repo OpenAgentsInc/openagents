@@ -96,7 +96,12 @@ fn assess(
 
 // Keep raw decision measurements independent of the policy used to collect
 // them. A later frozen rule must not inherit an earlier rule's verdict.
-fn change(scores: &[f32], allowed: Option<&[bool]>, oracle: &[u32], candidate: &[u32]) -> Value {
+pub(super) fn change(
+    scores: &[f32],
+    allowed: Option<&[bool]>,
+    oracle: &[u32],
+    candidate: &[u32],
+) -> Value {
     let a: BTreeSet<_> = oracle.iter().copied().collect();
     let b: BTreeSet<_> = candidate.iter().copied().collect();
     let substitutions = a.difference(&b).count();

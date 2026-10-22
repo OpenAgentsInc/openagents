@@ -82,7 +82,7 @@ pub(super) fn preflight(opts: &QualifyOptions) -> Result<(), Refused> {
     {
         return Err(refused("the corpus does not name exactly the frozen cases"));
     }
-    let mut oracle = OracleDump::open(&opts.oracle)?;
+    let oracle = OracleDump::open(&opts.oracle)?;
     for name in &scope.cases {
         if !oracle.run_hashes.contains_key(&format!("{name}/run.json"))
             || oracle.run(name)?["corpus_sha256"] != scope.corpus_sha256
