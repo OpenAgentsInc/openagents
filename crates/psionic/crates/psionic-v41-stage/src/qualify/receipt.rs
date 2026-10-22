@@ -426,7 +426,7 @@ mod tests {
                 |m| json!({"mode":m,"positions":scope::comparison_labels(2).into_iter().map(|label|json!({"label":label,"metrics":metrics})).collect::<Vec<_>>(),"missing":[]}),
             )
             .collect();
-        let layers:Vec<_>=(0..40).map(|l|json!({"layer":l,"same":3,"substituted":0,"failed":0,"unresolved":0,"mismatch":0.0,"score_error":{"from":"stage","rows":3,"max":0.0}})).collect();
+        let layers:Vec<_>=(0..40).map(|l|json!({"layer":l,"same":3,"substituted":0,"failed":0,"unresolved":0,"over_budget":0,"local_changed":0,"mismatch":0.0,"score_error":{"from":"stage","rows":3,"max":0.0}})).collect();
         let index = json!({"complete":true,"local_changed":0,"score_error_max":0.0,"kinds":{"indices":{"rows":1,"changed":0},"candidate_blocks":{"rows":1,"changed":0}},"changes":[]});
         let g1 = json!({"schema":"psionic.deepseek_v41.g1_v2_report.v1","release":true,"release_passed":true,"passed":true,"observe":true,"launch":"pinned","control":null,"release_refusals":[],
             "weights":scope["weights"],"manifest":scope["manifest"],"profile":scope["numerical_profile"],"stage_bundle_sha256":scope["stage_bundle_sha256"],"expected_bundle_sha256":scope["stage_bundle_sha256"],
@@ -551,5 +551,71 @@ mod tests {
             l["score_error"]["rows"] = json!(1);
         }
         assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
+    }
+    #[test]
+    fn publication_rejects_failed_unresolved_and_malformed_router_evidence() {
+        let (p, doc, g1, g2, answers, g4, suite) = fixture();
+        for field in ["failed", "unresolved"] {
+            let mut bad = g1.clone();
+            let r = &mut bad["cases"][0]["router"];
+            r["same"] = json!(80);
+            r[field] = json!(40);
+            for l in r["layers"].as_array_mut().unwrap() {
+                l["same"] = json!(2);
+                l[field] = json!(1);
+                l["mismatch"] = json!(1.0 / 3.0);
+            }
+            assert!(
+                check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err(),
+                "{field}"
+            );
+        }
+        for field in ["mismatch", "local_changed", "over_budget"] {
+            for value in [json!(-1), Value::Null, json!("0")] {
+                let mut bad = g1.clone();
+                bad["cases"][0]["router"]["layers"][0][field] = value;
+                assert!(
+                    check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err(),
+                    "{field}"
+                );
+            }
+        }
+        for value in [json!(-1.0), Value::Null, json!("0")] {
+            let mut bad = g1.clone();
+            bad["cases"][0]["router"]["layers"][0]["score_error"]["max"] = value;
+            assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
+        }
+        let mut bad = g1;
+        bad["cases"][0]["router"]["layers"][0]["mismatch"] = json!(0.01);
+        assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
+    }
+
+    #[test]
+    fn publication_keeps_within_margin_router_substitutions() {
+        let (mut p, doc, mut g1, g2, answers, g4, suite) = fixture();
+        p.router_layer_mismatch.as_mut().unwrap()[0] = 0.5;
+        p.router.max_substituted_fraction = Some(0.02);
+        let r = &mut g1["cases"][0]["router"];
+        r["same"] = json!(119);
+        r["substituted"] = json!(1);
+        r["layers"][0]["same"] = json!(2);
+        r["layers"][0]["substituted"] = json!(1);
+        r["layers"][0]["mismatch"] = json!(1.0 / 3.0);
+        r["changes"] =
+            json!([{"layer":0,"row":1,"substitutions":1,"oracle_gap":0.01,"regret":0.01}]);
+        check(&p, &doc, &g1, &g2, &answers, &g4, &suite, &lengths()).unwrap();
+        for field in ["oracle_gap", "regret"] {
+            let mut bad = g1.clone();
+            bad["cases"][0]["router"]["changes"][0][field] = json!(-1);
+            assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
+        }
+        let mut bad = g1.clone();
+        bad["cases"][0]["router"]["changes"] = json!([]);
+        assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
+        let mut bad = g1.clone();
+        bad["cases"][0]["router"]["changes"][0]["row"] = json!(3);
+        assert!(check(&p, &doc, &bad, &g2, &answers, &g4, &suite, &lengths()).is_err());
+        p.router.max_substituted_fraction = Some(0.001);
+        assert!(check(&p, &doc, &g1, &g2, &answers, &g4, &suite, &lengths()).is_err());
     }
 }

@@ -40,17 +40,54 @@ pub(super) fn complete_router(router: &Value, prompt: u64, generated: u64) -> bo
         && layers.iter().all(|l| {
             l["score_error"]["from"] == "stage"
                 && l["score_error"]["rows"].as_u64() == Some(rows)
+                && ["failed", "unresolved", "over_budget", "local_changed"]
+                    .iter()
+                    .all(|k| l[*k].as_u64() == Some(0))
+                && l["score_error"]["max"]
+                    .as_f64()
+                    .is_some_and(|n| n.is_finite() && n >= 0.0)
+                && l["same"].as_u64().is_some_and(|same| {
+                    same <= rows
+                        && l["mismatch"].as_f64().is_some_and(|m| {
+                            m.is_finite()
+                                && (0.0..=1.0).contains(&m)
+                                && (m - (rows - same) as f64 / rows as f64).abs() <= 1e-12
+                        })
+                })
                 && counts
                     .iter()
                     .try_fold(0_u64, |n, k| n.checked_add(l[*k].as_u64()?))
                     == Some(rows)
         })
+        && complete_router_changes(router, rows)
         && counts.iter().all(|k| {
             layers
                 .iter()
                 .try_fold(0_u64, |n, l| n.checked_add(l[*k].as_u64()?))
                 == router[*k].as_u64()
         })
+}
+
+fn complete_router_changes(router: &Value, rows: u64) -> bool {
+    let Some(changes) = router["changes"].as_array() else {
+        return false;
+    };
+    let mut seen = BTreeSet::new();
+    let mut counts = [0_u64; 40];
+    for change in changes {
+        let (Some(layer), Some(row)) = (change["layer"].as_u64(), change["row"].as_u64()) else {
+            return false;
+        };
+        if layer >= 40 || row >= rows || !seen.insert((layer, row)) {
+            return false;
+        }
+        counts[layer as usize] += 1;
+    }
+    router["layers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|l| l["substituted"].as_u64() == Some(counts[l["layer"].as_u64().unwrap() as usize]))
 }
 
 #[derive(serde::Deserialize)]

@@ -132,7 +132,7 @@ pub(super) fn derive(
 mod tests {
     use super::*;
     fn reference() -> Value {
-        let layers:Vec<_>=(0..LAYERS).map(|l|json!({"layer":l,"mismatch":0.0,"max_row_substitutions":1,"score_error":{"rows":20,"max":0.01}})).collect();
+        let layers:Vec<_>=(0..LAYERS).map(|l|json!({"layer":l,"mismatch":0.0,"local_changed":0,"max_row_substitutions":1,"score_error":{"rows":20,"max":0.01}})).collect();
         json!({"profile":"cpu-bf16","backend":"cpu","control":null,"stage_bundle_sha256":"a".repeat(64),"cases":[{
             "case":"c","router":{"layers":layers,"changes":[]},"modes":[{"mode":"decode","positions":[{"label":"last","metrics":{
                 "total_variation":0.01,"jensen_shannon":0.001,"reference_logprob_error":0.01,"centered_logit_error":0.01,

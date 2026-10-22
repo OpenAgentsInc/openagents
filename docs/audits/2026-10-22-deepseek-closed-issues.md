@@ -603,3 +603,10 @@ labels in both modes, all router rows per layer, valid metrics, and canonical
 oracle row mappings and tensors. The prospective corpus requires 1,056
 distribution comparisons; no acceptance limits were relaxed. These code fixes
 do not close the pending full-model qualification.
+
+The second publication review found a remaining router acceptance gap. The
+checker now rejects failed/unresolved decisions, malformed counts or errors,
+inconsistent fractions, and missing changed-row evidence. Its positive control
+keeps valid within-margin substitutions. All 66 stage tests pass (one optional
+test ignored). This repairs gate enforcement; fresh GPU numerical acceptance
+is still pending.

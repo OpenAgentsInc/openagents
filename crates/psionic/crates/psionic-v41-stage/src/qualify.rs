@@ -2393,7 +2393,13 @@ pub fn judge_report(policy: &Policy, report: &Value) -> Vec<String> {
         if let Some(limits) = &policy.router_layer_mismatch {
             for layer in case["router"]["layers"].as_array().into_iter().flatten() {
                 let l = layer["layer"].as_u64().unwrap_or_default() as usize;
-                let m = layer["mismatch"].as_f64().unwrap_or_default();
+                let Some(m) = layer["mismatch"]
+                    .as_f64()
+                    .filter(|n| n.is_finite() && (0.0..=1.0).contains(n))
+                else {
+                    out.push(format!("{name}: router layer {l} has malformed mismatch"));
+                    continue;
+                };
                 if let Some(limit) = limits.get(l).filter(|limit| m > **limit) {
                     out.push(format!(
                         "{name}: router layer {l} mismatch {m:.4} > {limit:.4}"
@@ -2445,7 +2451,7 @@ pub fn router_margin_violations(
         return vec![format!("{name}: no router evidence for the margin rule")];
     }
     for layer in router["layers"].as_array().into_iter().flatten() {
-        if layer["local_changed"].as_u64().unwrap_or(0) > 0 {
+        if layer["local_changed"].as_u64() != Some(0) {
             out.push(format!(
                 "{name}: router layer {} scores do not reproduce {} actual selections",
                 layer["layer"], layer["local_changed"]
@@ -2460,10 +2466,27 @@ pub fn router_margin_violations(
             None => out.push(format!(
                 "{name}: router layer {l} has no measured score error"
             )),
+            Some(e) if !e.is_finite() || e < 0.0 => out.push(format!(
+                "{name}: router layer {l} has malformed score error"
+            )),
             Some(e) if e > eps => out.push(format!(
                 "{name}: router layer {l} score error {e:.3e} > budget {eps:.3e}"
             )),
             Some(_) => {}
+        }
+    }
+    for field in ["failed", "unresolved", "over_budget"] {
+        if router.get(field).is_some_and(|v| v.as_u64() != Some(0)) {
+            out.push(format!("{name}: router {field} decisions remain"));
+        }
+    }
+    if let Some(limit) = policy.router.max_substituted_fraction {
+        match (router["substituted"].as_u64(), router["rows"].as_u64()) {
+            (Some(changed), Some(rows)) if rows > 0 && changed as f64 > limit * rows as f64 => out
+                .push(format!(
+                    "{name}: router substituted fraction exceeds {limit}"
+                )),
+            _ => {}
         }
     }
     let (mut unresolved, mut capped, mut stable, mut regret_over) =
@@ -2482,7 +2505,9 @@ pub fn router_margin_violations(
             unresolved += 1;
             continue;
         };
-        if gap > 2.0 * eps {
+        if !gap.is_finite() || gap < 0.0 || !regret.is_finite() || regret < 0.0 || subs == 0 {
+            unresolved += 1;
+        } else if gap > 2.0 * eps {
             stable += 1;
         } else if regret > 2.0 * eps * subs as f64 {
             regret_over += 1;
@@ -3067,7 +3092,7 @@ sys.exit(subprocess.call([sys.executable, '-c', worker, sys.argv[1], sys.argv[2]
                     .iter()
                     .find(|(x, _)| *x == l)
                     .map_or(0.0, |(_, m)| *m);
-                json!({"layer": l, "mismatch": m, "max_row_substitutions": 1,
+                json!({"layer": l, "mismatch": m, "max_row_substitutions": 1, "local_changed": 0,
                     "score_error": {"rows": 10, "max": 0.001 * (1.0 + l as f64)}})
             })
             .collect();

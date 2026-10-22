@@ -1,0 +1,22 @@
+{
+  "schema": "psionic.deepseek_v41.checker_verification.v1",
+  "inference_worker_unchanged": "06e5158778",
+  "stage_bundle_sha256": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+  "review_finding": "Independent re-review found explicit failed/unresolved router decisions and malformed numeric fields could survive receipt checking.",
+  "fix": [
+    "Require nonnegative typed counts and finite measured score errors.",
+    "Require zero failed/unresolved/over-budget/local-selection mismatch rows.",
+    "Recompute mismatch from complete decision counts.",
+    "Require one unique changed-row record for every admitted substituted decision.",
+    "Reapply existing layer/global fractions, substitution, margin, and regret rules; retain allowed nonzero substitutions."
+  ],
+  "command": "cargo test -p psionic-v41-stage",
+  "results": {
+    "passed": 66,
+    "failed": 0,
+    "ignored": 1
+  },
+  "log_sha256": "bf145823aaa383412cfbf8ff343b3c5e444941bdea81f6b37639f66d82e5ccd2",
+  "log": "/Users/christopherdavid/.openagents/scratch/codex-01a15a9a-faed-7a80-85b6-9c521cc6afb5/deepseek-gates/router-publication-final.log",
+  "limitations": "Local CPU tests verify checker behavior and process handling; they do not establish GPU numerical qualification."
+}

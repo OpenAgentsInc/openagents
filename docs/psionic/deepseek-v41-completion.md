@@ -1345,3 +1345,19 @@ The native Pylon head then served `17 × 23` as `391`, with finish `stop`, in
 direct stage links. This is preflight evidence, not final G6 or release
 acceptance. The private head's legacy `qualified` profile label does not grant
 numerical qualification. Pinned crash and freeze drills are in progress.
+
+### Router publication recheck (2026-10-22)
+
+The independent re-review found that receipt checking could accept explicit
+failed or unresolved router decisions, or malformed numeric fields. The checker
+now requires valid counts, measured score errors, and consistent mismatch
+fractions. Every substituted row needs its own unique change record. Existing
+margin, regret, substitution, and fraction limits apply again at publication;
+within-margin swaps remain allowed. The stage package passes 66 tests, with
+one optional test ignored. The worker bundle and numerical limits do not change.
+See [the checker evidence](verification/deepseek-v41-gates-2026-10-22/router-publication-fix.json).
+
+The complete-answer acceptance rules were committed in `3244d4f7b0` at
+2026-10-22 19:12:12 UTC, before the candidate run. The `frozen_at` value of
+19:20 in `g2-quality-freeze.json` is a timestamp transcription error; the
+commit time records the actual freeze. The frozen rules and file remain intact.
