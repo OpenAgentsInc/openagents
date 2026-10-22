@@ -50,19 +50,42 @@ livehost() {
   cargo run --quiet --locked --release --manifest-path "$root/Cargo.toml" -p livehost -- "$@"
 }
 
+# The Grid's build billboard (#12442): best-effort announcements, skipped
+# when web.sh, which announces its own content deploys, called this script.
+. "$root/scripts/deploy/deploy-event.sh"
+announce=1
+[[ -z "${DEPLOY_EVENT_RUN:-}" ]] || announce=0
+export DEPLOY_EVENT_ROOT="$root"
+content_event() {
+  if [[ "$announce" == 1 ]]; then
+    deploy_event staging "$1" content "$(git -C "$root" rev-parse HEAD 2> /dev/null || true)"
+  fi
+}
+
 case "${1:-}" in
   deploy)
     work="$(mktemp -d)"
     trap 'rm -rf "$work"' EXIT
     started=$(date +%s)
-    "$root/scripts/deploy/web-content.sh" "$work/content"
+    [[ "$announce" == 0 ]] || deploy_event_begin
+    content_event deploying
+    if ! "$root/scripts/deploy/web-content.sh" "$work/content"; then
+      content_event deploy_failed
+      exit 1
+    fi
     echo "livehost.sh: content assembled in $(( $(date +%s) - started )) s"
-    livehost deploy "$work/content" --tenant openagents --channel "$channel" \
-      --store "$store" --relay "$relay" --key "$key"
+    if ! livehost deploy "$work/content" --tenant openagents --channel "$channel" \
+      --store "$store" --relay "$relay" --key "$key"; then
+      content_event deploy_failed
+      exit 1
+    fi
+    content_event live
     ;;
   rollback)
+    [[ "$announce" == 0 ]] || deploy_event_begin
     livehost rollback --tenant openagents --channel "$channel" \
       --store "$store" --relay "$relay" --key "$key"
+    content_event rolled_back
     ;;
   promote)
     confirm="${2:?usage: livehost.sh promote MANIFEST_HASH}"
