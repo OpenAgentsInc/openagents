@@ -150,7 +150,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             "--dspark needs --split 0-40, one GPU, and at least six step tokens; capture, forcing, calibration, and load-only use ordinary decode",
         ));
     }
-    let mut model = CudaModel::load(&options.weights, None)?;
+    let mut model = CudaModel::load_dspark(&options.weights)?;
     model.experts = options.experts;
     model.experts_on_host = options.experts == crate::Experts::Host;
     model.tiers = options.tiers.clone();
