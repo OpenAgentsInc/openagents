@@ -485,6 +485,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12512: activate the deadline-aware native Kiln host and confirm that the real
+  Foreman task reaches its checked PR as part of #12497 below.
+
 - #12497: deploy the native WORK publisher, persistent Kiln host, and dedicated
   runner; enable the native dispatch route and follow a real objective through
   its checked Nostr patch to a draft PR. Targeted native and dispatch tests pass.

@@ -35,6 +35,12 @@ pub struct Relay {
 
 impl Drop for Relay {
     fn drop(&mut self) {
+        // Closing queues a browser event. Detach handlers before their Rust
+        // closures are dropped, so that event cannot call freed callbacks.
+        self.ws.set_onopen(None);
+        self.ws.set_onmessage(None);
+        self.ws.set_onclose(None);
+        self.ws.set_onerror(None);
         let _ = self.ws.close();
     }
 }

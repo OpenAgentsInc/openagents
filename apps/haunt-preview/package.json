@@ -1,0 +1,26 @@
+{
+  "name": "@openagents/haunt-preview",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "prepare:kiln": "node scripts/prepare-kiln.mjs",
+    "predev": "npm run prepare:kiln",
+    "dev": "vite --host 127.0.0.1",
+    "check": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "build": "npm run check && npm run prepare:kiln && vite build",
+    "verify:browser": "node scripts/verify-browser.mjs"
+  },
+  "dependencies": {
+    "effect": "4.0.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "26.6.5",
+    "@webgpu/types": "0.1.74",
+    "pngjs": "7.0.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}

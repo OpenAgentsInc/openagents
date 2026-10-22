@@ -21,6 +21,7 @@ pub mod remote;
 pub mod repo;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod serve;
+pub mod shader;
 pub mod transcript;
 pub mod vfs;
 pub mod wasi;

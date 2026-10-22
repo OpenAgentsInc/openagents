@@ -6,7 +6,8 @@
 #   scripts/build-kiln.sh [--serve PORT]
 #
 # Output goes to $KILN_OUT (default $CARGO_TARGET_DIR/kiln-site). With
-# --serve, kiln-dev then serves it on 127.0.0.1:PORT.
+# --serve, kiln-dev then serves it on 127.0.0.1:PORT. Set KILN_DEV=0 to
+# skip the native server build when another browser host serves these files.
 #
 # Needs: the wasm32-wasip1 and wasm32-unknown-unknown targets, wasm-bindgen
 # matching the lock (0.2.128), and a clang with the WebAssembly target for
@@ -38,7 +39,9 @@ fi
 
 cargo build -p kiln-tools --bins --profile guest --target wasm32-wasip1
 cargo build -p kiln --lib --profile kiln-web --target wasm32-unknown-unknown
-cargo build -p kiln --bin kiln-dev
+if [ "${KILN_DEV:-1}" != 0 ] || [ "${1:-}" = "--serve" ]; then
+  cargo build -p kiln --bin kiln-dev
+fi
 
 rm -rf "$out"
 mkdir -p "$out/tools" "$out/pkg"
@@ -79,4 +82,6 @@ du -sh "$out/pkg/kiln_bg.wasm" "$out/tools" "$out/transcript" 2>/dev/null | sed 
 if [ "${1:-}" = "--serve" ]; then
   exec "$CARGO_TARGET_DIR/debug/kiln-dev" --dir "$out" --port "${2:-8787}"
 fi
-echo "serve it: $CARGO_TARGET_DIR/debug/kiln-dev --dir $out --port 8787"
+if [ "${KILN_DEV:-1}" != 0 ]; then
+  echo "serve it: $CARGO_TARGET_DIR/debug/kiln-dev --dir $out --port 8787"
+fi

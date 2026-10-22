@@ -1,6 +1,6 @@
 # Browser editor implementation plan
 
-- **Status:** planning only, 2026-10-22. No implementation, claim, assignment, or deployment starts with this plan.
+- **Status:** Phase 0 implemented locally, 2026-10-22 (#12500). Phases 1–5 remain planned. Public deployment is outside Phase 0.
 - **Architecture:** our TypeScript editor and runtime, Effect for asynchronous orchestration, direct WebGPU, editable WGSL, and selective Wasm CPU kernels. Browser-first with no Rust-only constraint is the owner's explicit direction for this work.
 - **Decision:** [Owned renderer, WebGPU, and Effect](../audits/2026-10-22-owned-renderer-webgpu-and-effect.md).
 - **Goal:** make one Haunted House change through Kiln or the editor, see it in a running game, understand and repair errors, save the editable project, and explicitly publish a chosen version.
@@ -37,13 +37,14 @@ flowchart TD
 ```
 
 - Native GitHub blockers and the OpenAgents project board mirror these prerequisites.
-- #12500 is ready; the follow-ups wait on the listed open issues. None is assigned or claimed by this planning task.
+- #12500 supplies the working proof; #12502 is next, with Kiki's UX flow as its top priority. Later follow-ups wait on their listed prerequisites.
 - Issues in the same phase can satisfy their own contracts using fixtures. Phase 3 integrates the Phase 2 outputs; neither Phase 2 issue secretly depends on the other.
 - The plan is the issue directory; no additional umbrella issue is needed to begin.
 
 ## Phase 0: Haunted House WebGPU shader hot reload through Kiln
 
-- **Issue:** [#12500](https://github.com/OpenAgentsInc/openagents/issues/12500), updated from its earlier GLSL/WebGL2 scope.
+- **Issue:** [#12500](https://github.com/OpenAgentsInc/openagents/issues/12500), implemented in [`apps/haunt-preview`](../../apps/haunt-preview/README.md).
+- **Verification:** [browser results and timing](verification/2026-10-22-haunted-house-webgpu/README.md). The real Rust/Wasm Kiln workspace and Pylon agent drive an OffscreenCanvas WebGPU worker; no Rust build runs for shader edits.
 - **Deliver a complete small loop before generalizing the engine.**
   - Render two connected Haunted House spaces, or a room and corridor, directly in WebGPU.
   - Reuse original geometry, palette, decorations, and first-person movement intent from [the existing game](games/the-haunted-house.md). Full game parity is outside this demo.

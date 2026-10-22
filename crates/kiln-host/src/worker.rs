@@ -472,17 +472,19 @@ pub async fn advance(root: &Path, c: &Config, key: &keys::Signer, path: &Path) -
             relay: c.relay.clone(),
             pylon: None,
             prompt: j.agent.prompt(&files),
-            wait: Duration::from_secs(240),
+            wait: Duration::from_secs(j.until.saturating_sub(now()).min(600)),
             publish_receipt: false,
             home: root.join("receipts"),
             checkers: Default::default(),
             pay: None,
         };
         let buyer = pylon::identity::Identity::from_secret(key.secret)?;
-        let answered = pylon::client::ask_model(
+        let within = pylon::client::Within::new(ask.wait);
+        let answered = pylon::client::ask_model_within(
             &buyer,
             &ask,
             &pylon::group::Want::Model(c.model.clone()),
+            &within,
             &[],
             Some(&j.agent.instructions),
         )
