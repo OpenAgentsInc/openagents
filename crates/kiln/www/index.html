@@ -7,11 +7,11 @@
 <style>
   :root { color-scheme: dark; --bg: #0b0a08; --panel: #14120e; --line: #2b261d; --text: #e9e2d0; --dim: #9a907b; --amber: #f2b33d; --red: #ff6b5b; --green: #7bd88f; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; display: flex; flex-direction: column; height: 100vh; }
   header { padding: 14px 18px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap; }
   h1 { margin: 0; font-size: 18px; color: var(--amber); letter-spacing: 0.06em; }
   .sub { color: var(--dim); font-size: 12px; }
-  main { display: grid; grid-template-columns: minmax(300px, 440px) 1fr; gap: 0; height: calc(100vh - 56px); }
+  main { display: grid; grid-template-columns: minmax(300px, 440px) 1fr; gap: 0; flex: 1; min-height: 0; }
   aside { border-right: 1px solid var(--line); padding: 14px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
   aside > * { flex-shrink: 0; }
   .group { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: #100e0b; }
@@ -66,7 +66,7 @@
   #log .error { color: var(--red); }
   #log .done { color: var(--green); font-weight: 600; }
   #log .info { color: var(--dim); font-size: 12px; }
-  @media (max-width: 760px) { main { grid-template-columns: 1fr; height: auto; } aside { border-right: 0; border-bottom: 1px solid var(--line); } }
+  @media (max-width: 760px) { body { height: auto; } main { grid-template-columns: 1fr; height: auto; flex: none; } aside { border-right: 0; border-bottom: 1px solid var(--line); } }
 </style>
 </head>
 <body>
@@ -110,7 +110,7 @@
     </section>
     <details class="group">
       <summary>Settings</summary>
-      <label>Model <input type="text" id="model" value="deepseek-v4.1-flash"></label>
+      <label>Model <input type="text" id="model" value="flint"></label>
       <label class="check"><input type="checkbox" id="fallback" checked> Fall back to any Pylon when no pylon serves this model</label>
       <label>Relay <input type="text" id="relay" value="wss://relay.openagents.com"></label>
       <label>Test runner key (hex or npub) <input type="text" id="runner" placeholder="from kiln-runner"></label>

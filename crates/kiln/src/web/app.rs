@@ -110,7 +110,7 @@ thread_local! {
 /// The controls a page without Kiln's own markup gets, by ID.
 const HEADLESS_CONTROLS: &str = r#"<textarea id="task"></textarea>
 <input id="slice" value="crates/memory-stream"><input id="ref" value="main">
-<input id="model" value="deepseek-v4.1-flash"><input type="checkbox" id="fallback" checked>
+<input id="model" value="flint"><input type="checkbox" id="fallback" checked>
 <input id="relay" value="wss://relay.openagents.com"><input id="runner">
 <span id="admin-key"></span><textarea id="credential"></textarea><div id="identity"></div>
 <span id="key"></span><span id="env"></span><span id="build"></span>
@@ -809,7 +809,20 @@ impl App {
                 let _ = list.append_child(&item);
             }
         }
-        el(&self.doc, "usage").set_text_content(Some(&format!("{count} files, {bytes} bytes")));
+        // Name the crates the workspace holds, so it's clear what the agent
+        // is looking at whatever the Repository field says.
+        let crates: Vec<&str> = vfs
+            .iter()
+            .filter(|(path, node)| node.is_dir() && path.matches('/').count() == 1)
+            .filter_map(|(path, _)| path.strip_prefix("crates/"))
+            .collect();
+        let held = if crates.is_empty() {
+            String::new()
+        } else {
+            format!("{} · ", crates.join(", "))
+        };
+        el(&self.doc, "usage")
+            .set_text_content(Some(&format!("{held}{count} files, {bytes} bytes")));
     }
 
     fn take_worker(&self) -> Result<Worker, String> {

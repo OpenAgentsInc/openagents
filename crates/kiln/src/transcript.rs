@@ -266,7 +266,11 @@ pub fn pylon_words(note: &str) -> String {
 #[must_use]
 pub fn who(label: &str, model: &str) -> String {
     let name = model_words(model);
-    let first = name.split_whitespace().next().unwrap_or("").to_lowercase();
+    let first = name
+        .split(|c: char| c.is_whitespace() || c == '-')
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
     if !first.is_empty() && label.to_lowercase().contains(&first) {
         label.to_string()
     } else {
@@ -279,7 +283,7 @@ pub fn who(label: &str, model: &str) -> String {
 pub fn model_words(model: &str) -> String {
     let name = model.split('@').next().unwrap_or(model);
     match name {
-        "deepseek-v4.1-flash" => "DeepSeek V4.1 Flash · Experimental preview".into(),
+        "deepseek-v4.1-flash" => "DeepSeek-V4.1-Flash-1017 · Experimental preview".into(),
         "flint" => "Flint".into(),
         other => other.to_string(),
     }
