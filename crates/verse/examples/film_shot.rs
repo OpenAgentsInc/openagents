@@ -221,9 +221,13 @@ enum SceneSpec {
     /// The Grid, with the Everglade portal standing and nobody's avatar
     /// drawn, so the rig is the eye. `bob` walks the eye: a step's rise
     /// and fall and a half-rate sway, scaled by how fast the rig moves.
+    /// `walkers` are people and agents walking their routes across it
+    /// ([`verse::grid_frame::Walker`]), drawn as the Grid draws peers.
     Grid {
         #[serde(default)]
         bob: Option<Bob>,
+        #[serde(default)]
+        walkers: Vec<verse::grid_frame::Walker>,
     },
     /// The Draconia peacock guardian: the feathers of light in the void
     /// (`part` `feathers`, flashing white at `flash_at`), or Draconia
@@ -345,6 +349,8 @@ enum Stage {
         ui: verse::ui::UiBatch,
         /// Keeps the zone cache that stands the Everglade portal.
         _cache: tempfile::TempDir,
+        /// The film time the simulation has reached, for the walkers.
+        clock: f32,
     },
     /// The Draconia peacock guardian, drawn by the shared physical
     /// renderer on its own stage.
@@ -604,6 +610,7 @@ impl Stage {
                     renderer: Box::new(renderer),
                     ui: verse::ui::UiBatch::default(),
                     _cache: cache,
+                    clock: 0.0,
                 })
             }
             SceneSpec::Lagrange => {
@@ -735,11 +742,12 @@ impl Stage {
                     }
                 }
             }
-            Self::Grid { runtime, .. } => {
+            Self::Grid { runtime, clock, .. } => {
                 let steps = (dt * 120.0).ceil().max(1.0) as usize;
                 for _ in 0..steps {
                     runtime.tick_unoccupied(dt / steps as f32);
                 }
+                *clock = t;
             }
             Self::LayerTree { set, .. } => set.advance(dt),
             Self::Peacock { set, .. } => set.advance(dt, t),
@@ -769,7 +777,7 @@ impl Stage {
     fn camera(&self, shot: &Shot, t: f32) -> CameraSample {
         let rig = &shot.rig;
         let mut camera = rig.sample(t);
-        if let SceneSpec::Grid { bob: Some(bob) } = &shot.scene {
+        if let SceneSpec::Grid { bob: Some(bob), .. } = &shot.scene {
             // How fast the rig walks here, from a short central difference.
             let h = 1.0 / 120.0;
             let ahead = rig.sample(t + h).eye - rig.sample((t - h).max(0.0)).eye;
@@ -836,11 +844,20 @@ impl Stage {
                 runtime,
                 renderer,
                 ui,
+                clock,
                 ..
             } => {
                 let (view_proj, eye) =
                     camera_rig::lens_view_projection(&camera, aspect, shot.near, shot.far, lens);
-                let dynamic = verse::grid_frame::dynamic(runtime, &[], &[]);
+                let crowd: Vec<_> = match &shot.scene {
+                    SceneSpec::Grid { walkers, .. } => walkers
+                        .iter()
+                        .enumerate()
+                        .map(|(i, w)| w.figure(&format!("walker-{i}"), *clock))
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                let dynamic = verse::grid_frame::dynamic(runtime, &crowd, &[]);
                 let lighting = verse::grid_frame::lighting(&runtime.atmosphere());
                 renderer.draw(View { view_proj, eye }, &dynamic, ui, &lighting)
             }

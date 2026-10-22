@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+  A mock-up phone screen for the Verse trailer's voice beat (#12458): a
+  person says what world they want, an agent answers, and the world's parts
+  come together. Building a world by voice doesn't exist yet, so the trailer
+  shows this only under a CONCEPT tag. concept-voice.mjs films it frame by
+  frame by setting window.filmTime (seconds) and calling window.draw().
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #08090a; color: #eceef1;
+    font: 15px/1.4 "Geist", -apple-system, "Helvetica Neue", sans-serif; overflow: hidden; }
+  .top { position: absolute; top: 58px; left: 0; right: 0; text-align: center;
+    font: 600 13px/1 "Geist Mono", ui-monospace, Menlo, monospace; letter-spacing: 0.24em; color: #a9acb2; }
+  .feed { position: absolute; top: 104px; left: 18px; right: 18px; bottom: 210px; display: flex;
+    flex-direction: column; justify-content: flex-end; gap: 12px; }
+  .bubble { max-width: 82%; padding: 12px 15px; border-radius: 18px; opacity: 0; transform: translateY(8px); }
+  .me { align-self: flex-end; background: #1d2024; border: 1px solid #2c3036; }
+  .agent { align-self: flex-start; background: transparent; border: 1px solid #3a3f46; }
+  .who { font: 500 10px/1 "Geist Mono", ui-monospace, Menlo, monospace; letter-spacing: 0.18em; color: #8d9198;
+    margin-bottom: 7px; }
+  .steps { margin: 8px 0 0; padding: 0; list-style: none; font: 13px/1.9 "Geist Mono", ui-monospace, Menlo, monospace; }
+  .steps li { opacity: 0; }
+  .steps li b { display: inline-block; width: 18px; color: #7fd18b; font-weight: 400; }
+  .world { margin-top: 10px; height: 120px; border-radius: 12px; border: 1px solid #2c3036; position: relative;
+    overflow: hidden; background: #050606; }
+  .world canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .enter { margin-top: 10px; display: inline-block; padding: 9px 16px; border-radius: 999px; background: #eceef1;
+    color: #08090a; font-weight: 600; opacity: 0; }
+  .mic { position: absolute; left: 50%; bottom: 74px; width: 78px; height: 78px; margin-left: -39px;
+    border-radius: 50%; border: 2px solid #eceef1; display: grid; place-items: center; }
+  .mic svg { width: 28px; height: 28px; }
+  .ring { position: absolute; inset: -2px; border-radius: 50%; border: 2px solid #eceef1; opacity: 0; }
+  .hint { position: absolute; left: 0; right: 0; bottom: 34px; text-align: center; color: #8d9198; font-size: 13px; }
+  .wave { position: absolute; left: 50%; bottom: 168px; height: 30px; margin-left: -90px; width: 180px;
+    display: flex; align-items: center; justify-content: space-between; }
+  .wave i { display: block; width: 4px; border-radius: 2px; background: #eceef1; }
+</style>
+</head>
+<body>
+<div class="top">THE VERSE</div>
+<div class="feed">
+  <div class="bubble me" id="me"><div class="who">YOU</div><span id="said"></span></div>
+  <div class="bubble agent" id="agent"><div class="who">AGENT</div><span id="reply"></span>
+    <ul class="steps" id="steps">
+      <li><b>✓</b>Ground and paths</li>
+      <li><b>✓</b>Old oaks, lit low</li>
+      <li><b>✓</b>A ring of standing stones</li>
+      <li><b>✓</b>A druid to meet you</li>
+    </ul>
+    <div class="world"><canvas id="world" width="900" height="360"></canvas></div>
+    <div class="enter" id="enter">Step inside</div>
+  </div>
+</div>
+<div class="wave" id="wave"></div>
+<div class="mic"><div class="ring" id="ring"></div>
+  <svg viewBox="0 0 24 24" fill="none" stroke="#eceef1" stroke-width="1.8" stroke-linecap="round">
+    <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div>
+<div class="hint" id="hint">Hold to talk</div>
+<script>
+const SAID = "Make me a quiet forest grove, with standing stones and a druid.";
+const REPLY = "On it. Building your grove.";
+const ease = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * (3 - 2 * x); };
+const show = (el, a) => { el.style.opacity = a; el.style.transform = `translateY(${(1 - a) * 8}px)`; };
+const wave = document.getElementById("wave");
+for (let i = 0; i < 24; i++) wave.append(document.createElement("i"));
+const ctx = document.getElementById("world").getContext("2d");
+
+// The little world takes shape as a line drawing: ground grid, then trees,
+// then the stone ring, then the druid, each as its step ticks.
+function world(t, p) {
+  const w = 900, h = 360;
+  ctx.fillStyle = "#050606"; ctx.fillRect(0, 0, w, h);
+  ctx.strokeStyle = "rgba(236,238,241,0.85)"; ctx.lineWidth = 2;
+  const hor = 120, cx = w / 2;
+  const g = ease(p[0]);
+  ctx.globalAlpha = g;
+  for (let i = -12; i <= 12; i++) { ctx.beginPath(); ctx.moveTo(cx + i * 18, hor); ctx.lineTo(cx + i * 120, h); ctx.stroke(); }
+  for (let k = 0; k < 8; k++) { const y = hor + Math.pow(k / 7, 2) * (h - hor); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+  ctx.globalAlpha = ease(p[1]);
+  for (const [x, s] of [[110, 1], [210, 0.7], [700, 0.9], [800, 1.2], [620, 0.6], [300, 0.55]]) {
+    const base = hor + 30 * s + 40, top = base - 120 * s;
+    ctx.beginPath(); ctx.moveTo(x, base); ctx.lineTo(x, top + 40 * s); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(x, top + 30 * s, 46 * s, 44 * s, 0, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.globalAlpha = ease(p[2]);
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * Math.PI * 2, x = cx + Math.cos(a) * 150, y = 250 + Math.sin(a) * 42;
+    ctx.strokeRect(x - 9, y - 46, 18, 46);
+  }
+  ctx.globalAlpha = ease(p[3]);
+  ctx.beginPath(); ctx.arc(cx, 196, 10, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx - 16, 262); ctx.lineTo(cx, 208); ctx.lineTo(cx + 16, 262); ctx.closePath(); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + 24, 262); ctx.lineTo(cx + 24, 190); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+window.draw = function () {
+  const t = window.filmTime || 0;
+  // 0.3-3.4 s: speaking. The words appear as they're said.
+  const talking = t > 0.3 && t < 3.6;
+  const words = SAID.split(" ");
+  const n = Math.max(0, Math.min(words.length, Math.floor((t - 0.4) / 0.27) + 1));
+  document.getElementById("said").textContent = t > 0.4 ? words.slice(0, n).join(" ") : "";
+  show(document.getElementById("me"), ease((t - 0.35) / 0.3));
+  [...wave.children].forEach((bar, i) => {
+    const level = talking ? 0.25 + 0.75 * Math.abs(Math.sin(t * 9 + i * 1.7) * Math.sin(t * 3.1 + i)) : 0.08;
+    bar.style.height = `${4 + level * 26}px`;
+  });
+  wave.style.opacity = talking ? 1 : 0.3;
+  const ring = document.getElementById("ring");
+  const pulse = (t * 1.4) % 1;
+  ring.style.opacity = talking ? (1 - pulse) * 0.7 : 0;
+  ring.style.transform = `scale(${1 + pulse * 0.45})`;
+  document.getElementById("hint").textContent = talking ? "Listening" : "Hold to talk";
+  // 3.8 s on: the agent answers, and the world's parts tick off.
+  show(document.getElementById("agent"), ease((t - 3.8) / 0.35));
+  const r = Math.max(0, Math.min(REPLY.length, Math.floor((t - 4.0) / 0.035)));
+  document.getElementById("reply").textContent = REPLY.slice(0, r);
+  const marks = [5.0, 5.7, 6.4, 7.1];
+  const items = document.querySelectorAll("#steps li");
+  items.forEach((li, i) => { li.style.opacity = ease((t - marks[i]) / 0.25); });
+  world(t, marks.map((m) => (t - m + 0.3) / 0.6));
+  show(document.getElementById("enter"), ease((t - 7.9) / 0.3));
+  const enter = document.getElementById("enter");
+  enter.style.transform += t > 8.6 && t < 8.85 ? " scale(0.94)" : "";
+};
+window.draw();
+</script>
+</body>
+</html>

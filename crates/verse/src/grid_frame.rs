@@ -109,6 +109,115 @@ pub struct Standing {
     pub yaw: f32,
 }
 
+/// A figure that walks a fixed route on the Grid, for films and captures
+/// that have no NIP-MV peers. It walks `route`'s ground points `[x, z]` in
+/// order at `speed` meters per second, starting `start` meters along, and
+/// faces the way it walks. A `looped` route closes back to its first point
+/// and goes round again; an open one ends standing at its last point.
+/// `agent` draws an agent's spade instead of a person.
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Walker {
+    /// Ground points `[x, z]`, at least two.
+    pub route: Vec<[f32; 2]>,
+    /// Meters per second.
+    pub speed: f32,
+    /// Meters along the route at time 0.
+    #[serde(default)]
+    pub start: f32,
+    /// Whether the route closes and repeats.
+    #[serde(default)]
+    pub looped: bool,
+    /// Whether this is an agent (a spade) rather than a person.
+    #[serde(default)]
+    pub agent: bool,
+}
+
+impl Walker {
+    /// The route's legs: each start, its direction, and its length.
+    fn legs(&self) -> Vec<(Vec3, Vec3, f32)> {
+        let mut points: Vec<Vec3> = self
+            .route
+            .iter()
+            .map(|[x, z]| Vec3::new(*x, 0.0, *z))
+            .collect();
+        if self.looped
+            && let Some(first) = points.first().copied()
+        {
+            points.push(first);
+        }
+        points
+            .windows(2)
+            .filter_map(|pair| {
+                let d = pair[1] - pair[0];
+                let len = d.length();
+                (len > 1e-4).then(|| (pair[0], d / len, len))
+            })
+            .collect()
+    }
+
+    /// Where the walker stands at `t` seconds, which way it faces, and its
+    /// ground speed then.
+    #[must_use]
+    pub fn pose(&self, t: f32) -> (Vec3, Quat, f32) {
+        let legs = self.legs();
+        let Some(&(first, dir0, _)) = legs.first() else {
+            let at = self
+                .route
+                .first()
+                .map_or(Vec3::ZERO, |[x, z]| Vec3::new(*x, 0.0, *z));
+            return (at, Quat::IDENTITY, 0.0);
+        };
+        let total: f32 = legs.iter().map(|l| l.2).sum();
+        let mut s = self.start + self.speed.max(0.0) * t.max(0.0);
+        let speed = self.speed.max(0.0);
+        if self.looped {
+            s = s.rem_euclid(total);
+        } else if s >= total {
+            let (from, dir, len) = legs[legs.len() - 1];
+            return (from + dir * len, yaw_of(dir), 0.0);
+        }
+        if s <= 0.0 {
+            return (first, yaw_of(dir0), speed);
+        }
+        for &(from, dir, len) in &legs {
+            if s <= len {
+                return (from + dir * s, yaw_of(dir), speed);
+            }
+            s -= len;
+        }
+        let (from, dir, len) = legs[legs.len() - 1];
+        (from + dir * len, yaw_of(dir), speed)
+    }
+
+    /// The walker at `t` seconds as a crowd figure named `id`, its walk
+    /// cycle advanced by the distance it has covered.
+    #[must_use]
+    pub fn figure(&self, id: &str, t: f32) -> Figure {
+        let (pos, rot, speed) = self.pose(t);
+        let mut gait = Gait::default();
+        let walked = self.start + self.speed.max(0.0) * t.max(0.0);
+        if walked > 0.0 {
+            gait.advance(1.0, false, walked);
+        }
+        Figure {
+            pubkey: "film".into(),
+            id: id.into(),
+            role: if self.agent { "agent" } else { "avatar" }.into(),
+            pos,
+            rot,
+            online: true,
+            speed,
+            gait,
+        }
+    }
+}
+
+/// The turn that faces a figure along `dir`, as the player's yaw is.
+fn yaw_of(dir: Vec3) -> Quat {
+    Quat::from_rotation_y(dir.x.atan2(dir.z))
+}
+
 /// The Grid's dynamic instances this frame: the arches the runtime stands,
 /// the local player unless the camera is in first person or nobody plays
 /// here, every peer the crowd shows (avatars as figures, agents as spades),
@@ -314,6 +423,63 @@ mod tests {
             grid_pack::gates(&spectator).len() + 5,
             "a spectator sees the arches and the five robots"
         );
+    }
+
+    fn walker(looped: bool) -> Walker {
+        Walker {
+            route: vec![[0.0, 0.0], [4.0, 0.0], [4.0, 3.0]],
+            speed: 2.0,
+            start: 0.0,
+            looped,
+            agent: false,
+        }
+    }
+
+    #[test]
+    fn a_walker_follows_its_route_and_faces_the_way_it_walks() {
+        let w = walker(false);
+        let (pos, rot, speed) = w.pose(1.0);
+        assert!(pos.distance(Vec3::new(2.0, 0.0, 0.0)) < 1e-5);
+        assert_eq!(speed, 2.0);
+        // Facing +x, as a player with yaw pi/2 does.
+        assert!((rot * Vec3::Z).distance(Vec3::X) < 1e-5);
+        let (pos, rot, _) = w.pose(3.0);
+        assert!(pos.distance(Vec3::new(4.0, 0.0, 2.0)) < 1e-5);
+        assert!((rot * Vec3::Z).distance(Vec3::Z) < 1e-5);
+        // An open route ends standing at its last point.
+        let (pos, _, speed) = w.pose(60.0);
+        assert!(pos.distance(Vec3::new(4.0, 0.0, 3.0)) < 1e-5);
+        assert_eq!(speed, 0.0);
+        let figure = w.figure("one", 60.0);
+        assert_eq!(figure.role, "avatar");
+    }
+
+    #[test]
+    fn a_looped_walker_goes_round_again_from_its_start() {
+        // Round trip: 4 + 3 + 5 = 12 m.
+        let mut w = walker(true);
+        w.start = 1.0;
+        let (pos, _, speed) = w.pose(6.0);
+        assert!(pos.distance(Vec3::new(1.0, 0.0, 0.0)) < 1e-4, "{pos}");
+        assert_eq!(speed, 2.0);
+        let (pos, rot, _) = w.pose(4.5);
+        // 10 m along: on the closing leg, heading back to the start.
+        assert!(pos.distance(Vec3::new(1.6, 0.0, 1.2)) < 1e-4, "{pos}");
+        assert!((rot * Vec3::Z).distance(Vec3::new(-0.8, 0.0, -0.6)) < 1e-4);
+    }
+
+    #[test]
+    fn walkers_join_the_grid_frame_as_people_and_agents() {
+        let spectator = WorldRuntime::unoccupied();
+        let mut agent = walker(true);
+        agent.agent = true;
+        let crowd = [walker(true).figure("a", 1.0), agent.figure("b", 1.0)];
+        let base = grid_pack::gates(&spectator).len();
+        let frame = dynamic(&spectator, &crowd, &[]);
+        assert_eq!(frame.len(), base + 2 + 5);
+        assert_eq!(frame[base].model.as_str(), grid_pack::FIGURE);
+        assert_eq!(frame[base].animation, Selection::Named(State::Walk));
+        assert_eq!(frame[base + 1].model.as_str(), grid_pack::SPADE);
     }
 
     #[test]
