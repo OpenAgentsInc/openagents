@@ -201,7 +201,11 @@ fn consumer_q_matvec_equals_the_device_host_model() {
             for isa in isas() {
                 let mut got = vec![0.0; rows];
                 v41_expert_matvec(isa, format, &w, &s, rows, &x, 0..rows, &mut got);
-                assert_eq!(bits(&got), bits(&want), "{format:?} {isa:?} {blocks} blocks");
+                assert_eq!(
+                    bits(&got),
+                    bits(&want),
+                    "{format:?} {isa:?} {blocks} blocks"
+                );
                 let mut part = vec![0.0; 4];
                 v41_expert_matvec(isa, format, &w, &s, rows, &x, 13..17, &mut part);
                 assert_eq!(bits(&part), bits(&want[13..17]));

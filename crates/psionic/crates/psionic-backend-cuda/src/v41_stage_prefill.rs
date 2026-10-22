@@ -432,6 +432,7 @@ impl V41Stage {
                     })
                 });
                 let mut s = backend.begin_submission()?;
+                s.set_v41_fast_reductions(self.fast_reductions);
                 s.v41_act_quant_fp8(nf, codes, scales, tokens, h)?;
                 for (proj, out) in [(0, g_out), (2, u_out)] {
                     s.v41_block_matmul(
@@ -698,6 +699,7 @@ impl V41Stage {
             .is_some();
         if !reset {
             let mut s = backend.begin_captured_submission()?;
+            s.set_v41_fast_reductions(self.fast_reductions);
             let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
             s.copy_buffer(&p.zero, &self.work.index)?;
             let (_, exec) = s.commit_captured(crate::CudaCommandWait::Completed)?;
@@ -724,6 +726,7 @@ impl V41Stage {
         let mut remaining = tokens;
         if !captured {
             let mut s = backend.begin_captured_submission()?;
+            s.set_v41_fast_reductions(self.fast_reductions);
             match which {
                 None => self.record_prefill_begin(&mut s)?,
                 Some((i, phase)) => self.record_prefill_phase(&mut s, i, phase)?,
@@ -797,6 +800,7 @@ impl V41Stage {
                 let lw = &self.layers[i];
                 let r = [&p.r, &p.r2];
                 let mut s = backend.begin_submission()?;
+                s.set_v41_fast_reductions(self.fast_reductions);
                 if let Some(eng) = &lw.engram {
                     let rows = tokens * V41_ENGRAM_COLUMNS;
                     let (ids, table) = match &self.engram_staging {
@@ -901,6 +905,7 @@ impl V41Stage {
                 let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
                 let lw = &self.layers[i];
                 let mut s = backend.begin_submission()?;
+                s.set_v41_fast_reductions(self.fast_reductions);
                 s.v41_act_quant_fp8(&p.na, &p.codes, &p.scales, tokens, h)?;
                 s.v41_block_matmul(
                     fp8,
@@ -940,6 +945,7 @@ impl V41Stage {
                 let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
                 let lw = &self.layers[i];
                 let mut s = backend.begin_submission()?;
+                s.set_v41_fast_reductions(self.fast_reductions);
                 s.v41_rms_norm(
                     &p.q_low,
                     &lw.q_norm,
@@ -965,6 +971,7 @@ impl V41Stage {
                 let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
                 let lw = &self.layers[i];
                 let mut s = backend.begin_submission()?;
+                s.set_v41_fast_reductions(self.fast_reductions);
                 s.v41_act_quant_fp8(&p.q_norm, &p.codes, &p.scales, tokens, shape.q_rank)?;
                 s.v41_block_matmul(
                     fp8,
@@ -1006,6 +1013,7 @@ impl V41Stage {
                 let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
                 let lw = &self.layers[i];
                 let mut s = backend.begin_submission()?;
+                s.set_v41_fast_reductions(self.fast_reductions);
                 s.v41_dense(
                     V41Dense {
                         weights: &lw.wo_a,
@@ -1047,6 +1055,7 @@ impl V41Stage {
                 let lw = &self.layers[i];
                 let r = [&p.r, &p.r2];
                 let mut s = backend.begin_submission()?;
+                s.set_v41_fast_reductions(self.fast_reductions);
                 s.v41_hc_expand_tokens(
                     hc,
                     &p.ao,
@@ -1117,6 +1126,7 @@ impl V41Stage {
                     })
                 };
                 let mut s = backend.begin_submission()?;
+                s.set_v41_fast_reductions(self.fast_reductions);
                 s.v41_act_quant_fp8(&p.nf, &p.codes, &p.scales, tokens, h)?;
                 if let Some(cal) = p.calibration.as_ref().map(|c| &c[i]) {
                     s.v41_importance(
@@ -1252,6 +1262,7 @@ impl V41Stage {
                 let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
                 let r = [&p.r, &p.r2];
                 let mut s = backend.begin_submission()?;
+                s.set_v41_fast_reductions(self.fast_reductions);
                 s.v41_moe_combine_tokens(&p.y, k, Some(&p.sy), h, &p.moe, V41Output::Bf16, tokens)?;
                 s.v41_hc_expand_tokens(
                     hc,
@@ -1273,6 +1284,7 @@ impl V41Stage {
         let c = &self.config;
         let last = tokens - 1;
         let mut s = backend.begin_submission()?;
+        s.set_v41_fast_reductions(self.fast_reductions);
         let previous = if self.layers.is_empty() {
             &p.pre0
         } else {

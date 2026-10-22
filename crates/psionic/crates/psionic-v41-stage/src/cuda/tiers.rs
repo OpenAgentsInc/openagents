@@ -295,6 +295,7 @@ pub fn stage_options(
     tiers.check(experts)?;
     let mut options = V41StageOptions {
         batched_prefill: tiers.batched_prefill,
+        fast_reductions: tiers.fast_reductions,
         ..V41StageOptions::default()
     };
     let engram_layers: Vec<usize> = [1_usize, 14]
@@ -328,7 +329,9 @@ pub fn stage_options(
                 Some(artifact)
             }
             (Some(_), TierSource::Synthetic(_)) => {
-                return Err(Refused("the synthetic model has no consumer-q artifact".into()));
+                return Err(Refused(
+                    "the synthetic model has no consumer-q artifact".into(),
+                ));
             }
             (None, _) => None,
         };
@@ -357,7 +360,9 @@ pub fn stage_options(
         }
         config.formats = dims.formats;
         let host: Option<Arc<dyn V41ExpertBytes>> = match (experts, &source) {
-            (_, _) if consumer_q.is_some() => consumer_q.map(|q| Arc::new(q) as Arc<dyn V41ExpertBytes>),
+            (_, _) if consumer_q.is_some() => {
+                consumer_q.map(|q| Arc::new(q) as Arc<dyn V41ExpertBytes>)
+            }
             (Experts::Host, _) => None,
             (_, TierSource::Checkpoint(c)) => Some(Arc::new(CheckpointExperts::open(
                 c,

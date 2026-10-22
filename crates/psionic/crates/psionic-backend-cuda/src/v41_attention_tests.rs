@@ -3614,3 +3614,74 @@ fn v41_attention_decode_latency() -> TestResult {
     eprintln!("{}", serde_json::to_string(&report)?);
     Ok(())
 }
+
+/// The `consumer-q` profile's reordered dense product and RMS norm
+/// (#12465): close to the exact order's, but not its bit patterns, and only
+/// when a submission turns them on.
+#[test]
+fn fast_reductions_stay_close_to_the_exact_order() -> TestResult {
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let (rows, cols) = (96, 4096);
+    let w: Vec<f32> = (0..rows * cols)
+        .map(|i| ((i * 7919 % 1000) as f32 - 500.0) * 1e-3)
+        .collect();
+    let x: Vec<f32> = (0..cols)
+        .map(|i| ((i * 104_729 % 997) as f32 - 498.0) * 1e-2)
+        .collect();
+    let weights = upload_f32(&mut backend, &w)?;
+    let input = upload_f32(&mut backend, &x)?;
+    let norm_w = upload_f32(&mut backend, &vec![1.0; cols])?;
+    let mut results = Vec::new();
+    for fast in [false, true] {
+        let out = f32_buffer(&mut backend, rows)?;
+        let normed = f32_buffer(&mut backend, cols)?;
+        let mut s = backend.begin_submission()?;
+        s.set_v41_fast_reductions(fast);
+        s.v41_dense(
+            V41Dense {
+                weights: &weights,
+                scales: None,
+                format: V41DenseFormat::F32,
+                rows,
+                cols,
+                groups: 1,
+            },
+            &input,
+            &out,
+            1,
+            false,
+            V41Output::F32,
+        )?;
+        s.v41_rms_norm(&input, &norm_w, &normed, 1, cols, 1e-6, V41Output::F32)?;
+        s.commit(CudaCommandWait::Completed)?;
+        results.push((read_f32(&out, rows)?, read_f32(&normed, cols)?));
+    }
+    let (exact, fast) = (&results[0], &results[1]);
+    let dense_diff = exact
+        .0
+        .iter()
+        .zip(&fast.0)
+        .filter(|(a, b)| a.to_bits() != b.to_bits())
+        .count();
+    let norm_diff = exact
+        .1
+        .iter()
+        .zip(&fast.1)
+        .filter(|(a, b)| a.to_bits() != b.to_bits())
+        .count();
+    println!(
+        "fast reductions changed {dense_diff} of {rows} dense outputs and {norm_diff} of {cols} norms"
+    );
+    assert!(dense_diff > 0, "the fast dense kernel didn't run");
+    for (a, b) in exact
+        .0
+        .iter()
+        .zip(&fast.0)
+        .chain(exact.1.iter().zip(&fast.1))
+    {
+        assert!((a - b).abs() <= 1e-4 * (1.0 + a.abs()), "{a} vs {b}");
+    }
+    Ok(())
+}

@@ -549,6 +549,10 @@ pub struct V41StageOptions {
     /// Run prompt steps layer by layer with batched weight products
     /// (#12464). Results are bit-equal to the ordinary step.
     pub batched_prefill: bool,
+    /// Warp-parallel dense products and RMS norms, whose sums differ from
+    /// the CPU path's order: lossy, for the `consumer-q` profile only
+    /// (#12465). A stage refuses it without `consumer-q` experts.
+    pub fast_reductions: bool,
 }
 
 impl std::fmt::Debug for V41StageOptions {
@@ -557,6 +561,7 @@ impl std::fmt::Debug for V41StageOptions {
             .field("expert_cache", &self.expert_cache)
             .field("engram_rows", &self.engram_rows.is_some())
             .field("batched_prefill", &self.batched_prefill)
+            .field("fast_reductions", &self.fast_reductions)
             .finish()
     }
 }
@@ -1068,6 +1073,8 @@ pub struct V41Stage {
     engram_staging: Option<EngramStaging>,
     /// Layer-major prefill (#12464), when enabled.
     prefill: Option<prefill::PrefillWork>,
+    /// The `consumer-q` profile's reordered reductions (#12465).
+    fast_reductions: bool,
     config: V41StageConfig,
     layers: Vec<LayerWeights>,
     sources: BTreeMap<usize, SourceState>,
@@ -1396,7 +1403,17 @@ impl V41Stage {
             expert_cache: cache,
             engram_rows,
             batched_prefill,
+            fast_reductions,
         } = options;
+        if fast_reductions
+            && cache
+                .as_ref()
+                .is_none_or(|c| c.config.formats.iter().all(|f| f.q_bits().is_none()))
+        {
+            return Err(invalid(
+                "fast reductions are for the lossy consumer-q profile only",
+            ));
+        }
         if cache
             .as_ref()
             .is_some_and(|c| c.host.is_none() && !config.experts_on_host)
@@ -1961,6 +1978,7 @@ impl V41Stage {
             expert_cache,
             engram_staging,
             prefill,
+            fast_reductions,
             config,
             layers,
             sources,
@@ -3246,6 +3264,7 @@ impl V41Stage {
             };
             if graph.is_none() {
                 let mut submission = backend.begin_captured_submission()?;
+                submission.set_v41_fast_reductions(self.fast_reductions);
                 self.record_body(&mut submission, observe)?;
                 let (_, exec) = submission.commit_captured(crate::CudaCommandWait::Completed)?;
                 stats.graph_captures += 1;
@@ -3273,6 +3292,7 @@ impl V41Stage {
         if c.samples() && emit {
             if self.tail.is_none() {
                 let mut submission = backend.begin_captured_submission()?;
+                submission.set_v41_fast_reductions(self.fast_reductions);
                 self.record_tail(&mut submission)?;
                 let (_, exec) = submission.commit_captured(crate::CudaCommandWait::Completed)?;
                 stats.graph_captures += 1;

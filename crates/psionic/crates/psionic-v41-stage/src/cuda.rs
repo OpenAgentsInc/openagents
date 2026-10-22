@@ -982,7 +982,9 @@ pub fn run_stage(
         data_listen: options.data_listen.clone(),
         data_advertise: options.data_advertise.clone(),
         runtime: Backend::Cuda.runtime(),
-        profile: options.tiers.profile(crate::profile_name(Backend::Cuda, None)),
+        profile: options
+            .tiers
+            .profile(crate::profile_name(Backend::Cuda, None)),
         device,
         events: options.events.clone(),
         record: options.record.clone(),

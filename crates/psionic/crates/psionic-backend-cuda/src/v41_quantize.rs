@@ -120,10 +120,17 @@ pub fn v41_quantize_matrix(
             // The least-squares scale of the first guess's codes.
             let s0 = v41_q_block_scale(d, start);
             encode_block(levels, v, w, s0, &mut trial);
-            let (num, den) = v.iter().zip(w).zip(&trial).fold((0.0_f64, 0.0_f64), |(n, m), ((x, wi), q)| {
-                let l = f64::from(levels[*q as usize]);
-                (n + f64::from(*wi) * f64::from(*x) * l, m + f64::from(*wi) * l * l)
-            });
+            let (num, den) =
+                v.iter()
+                    .zip(w)
+                    .zip(&trial)
+                    .fold((0.0_f64, 0.0_f64), |(n, m), ((x, wi), q)| {
+                        let l = f64::from(levels[*q as usize]);
+                        (
+                            n + f64::from(*wi) * f64::from(*x) * l,
+                            m + f64::from(*wi) * l * l,
+                        )
+                    });
             if den > 0.0 && num > 0.0 {
                 candidates.push(scale_byte(d, (num / den) as f32));
             }
@@ -138,7 +145,8 @@ pub fn v41_quantize_matrix(
                 }
             }
             scales[r * blocks + b] = best.1;
-            let out = &mut weights[(r * blocks + b) * block_bytes..(r * blocks + b + 1) * block_bytes];
+            let out =
+                &mut weights[(r * blocks + b) * block_bytes..(r * blocks + b + 1) * block_bytes];
             for (j, q) in codes.iter().enumerate() {
                 let at = bits * j;
                 let packed = u32::from(*q) << (at % 8);
@@ -172,10 +180,15 @@ pub fn v41_dequantize_matrix(
     let block_bytes = 4 * bits;
     let mut out = Vec::with_capacity(rows * cols);
     for r in 0..rows {
-        let d = f32::from_le_bytes(scales[rows_at + 4 * r..rows_at + 4 * r + 4].try_into().unwrap_or([0; 4]));
+        let d = f32::from_le_bytes(
+            scales[rows_at + 4 * r..rows_at + 4 * r + 4]
+                .try_into()
+                .unwrap_or([0; 4]),
+        );
         for b in 0..blocks {
             let s = v41_q_block_scale(d, scales[r * blocks + b]);
-            let block = &weights[(r * blocks + b) * block_bytes..(r * blocks + b + 1) * block_bytes];
+            let block =
+                &weights[(r * blocks + b) * block_bytes..(r * blocks + b + 1) * block_bytes];
             for j in 0..V41_BLOCK {
                 out.push(s * levels[crate::v41_matvec::v41_q_code(bits, block, j)]);
             }
@@ -209,14 +222,24 @@ mod tests {
     fn quantizer_error_and_importance() {
         let mut seed = 0x1234_5678_9abc_def1;
         let (rows, cols) = (64, 256);
-        let values: Vec<f32> = gaussian(&mut seed, rows * cols).iter().map(|v| v * 0.02).collect();
+        let values: Vec<f32> = gaussian(&mut seed, rows * cols)
+            .iter()
+            .map(|v| v * 0.02)
+            .collect();
         let power: f64 = values.iter().map(|v| f64::from(*v).powi(2)).sum::<f64>();
-        for (format, ceiling) in [(V41MatvecFormat::Q2Row32, 0.15), (V41MatvecFormat::Q3Row32, 0.05)] {
+        for (format, ceiling) in [
+            (V41MatvecFormat::Q2Row32, 0.15),
+            (V41MatvecFormat::Q3Row32, 0.05),
+        ] {
             let (w, s) = v41_quantize_matrix(format, &values, rows, cols, None);
             assert_eq!(w.len(), format.weight_bytes(rows, cols));
             assert_eq!(s.len(), format.scale_bytes(rows, cols));
             let back = v41_dequantize_matrix(format, &w, &s, rows, cols);
-            let err: f64 = values.iter().zip(&back).map(|(a, b)| f64::from(a - b).powi(2)).sum();
+            let err: f64 = values
+                .iter()
+                .zip(&back)
+                .map(|(a, b)| f64::from(a - b).powi(2))
+                .sum();
             let relative = err / power;
             assert!(relative < ceiling, "{format:?}: relative error {relative}");
             // Column 5 weighted heavily: its error drops.
@@ -224,7 +247,11 @@ mod tests {
             imp[5] = 1000.0;
             let (w2, s2) = v41_quantize_matrix(format, &values, rows, cols, Some(&imp));
             let back2 = v41_dequantize_matrix(format, &w2, &s2, rows, cols);
-            let col = |b: &[f32]| -> f64 { (0..rows).map(|r| f64::from(values[r * cols + 5] - b[r * cols + 5]).powi(2)).sum() };
+            let col = |b: &[f32]| -> f64 {
+                (0..rows)
+                    .map(|r| f64::from(values[r * cols + 5] - b[r * cols + 5]).powi(2))
+                    .sum()
+            };
             assert!(col(&back2) <= col(&back), "{format:?}");
         }
     }

@@ -1161,12 +1161,23 @@ struct CudaSubmissionScratchBuffer {
 pub struct CudaSubmission {
     encoded_operations: usize,
     capturing: bool,
+    /// The `consumer-q` profile's faster, reordered reductions (#12465):
+    /// V4.1's dense products and RMS norms launch their warp-parallel
+    /// kernels. Off unless a lossy stage turns it on.
+    pub(crate) v41_fast_reductions: bool,
     retained_buffers: Vec<CudaBuffer>,
     scratch_buffers: Vec<CudaSubmissionScratchBuffer>,
     platform: platform::PlatformSubmission,
 }
 
 impl CudaSubmission {
+    /// Lets V4.1's dense products and RMS norms use warp-parallel sums
+    /// whose order differs from the CPU path's: the lossy `consumer-q`
+    /// profile only (#12465).
+    pub fn set_v41_fast_reductions(&mut self, on: bool) {
+        self.v41_fast_reductions = on;
+    }
+
     fn allocate_scratch_buffer(
         &mut self,
         label: &'static str,
@@ -4741,6 +4752,7 @@ impl CudaBackend {
         Ok(CudaSubmission {
             encoded_operations: 0,
             capturing: false,
+            v41_fast_reductions: false,
             retained_buffers: Vec::new(),
             scratch_buffers: Vec::new(),
             platform: backend.platform.begin_submission()?,
@@ -4755,6 +4767,7 @@ impl CudaBackend {
         Ok(CudaSubmission {
             encoded_operations: 0,
             capturing: true,
+            v41_fast_reductions: false,
             retained_buffers: Vec::new(),
             scratch_buffers: Vec::new(),
             platform: backend.platform.begin_capture_submission()?,
@@ -6610,6 +6623,7 @@ impl AvailableCudaBackend {
         let mut submission = CudaSubmission {
             encoded_operations: 0,
             capturing: false,
+            v41_fast_reductions: false,
             retained_buffers: Vec::new(),
             scratch_buffers: Vec::new(),
             platform: self.platform.begin_submission()?,

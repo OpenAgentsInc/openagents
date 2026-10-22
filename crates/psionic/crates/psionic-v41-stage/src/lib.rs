@@ -256,6 +256,9 @@ pub struct HostTiers {
     /// profile's requantized experts from this artifact (#12465). Needs
     /// `--experts file`.
     pub consumer_q: Option<PathBuf>,
+    /// `--fast-reductions`: warp-parallel dense products and RMS norms,
+    /// whose sums leave the CPU path's order; `consumer-q` only.
+    pub fast_reductions: bool,
 }
 
 /// The flags [`HostTiers::from_args`] reads, each with a value except
@@ -318,6 +321,7 @@ impl HostTiers {
         };
         Ok(Self {
             consumer_q: value("--consumer-q").map(PathBuf::from),
+            fast_reductions: args.iter().any(|a| a == "--fast-reductions"),
             batched_prefill,
             expert_cache,
             miss_lane,
@@ -352,6 +356,9 @@ impl HostTiers {
             _ if self.consumer_q.is_some() && experts != Experts::File => {
                 refuse("--consumer-q needs --experts file")
             }
+            _ if self.fast_reductions && self.consumer_q.is_none() => {
+                refuse("--fast-reductions is for the lossy consumer-q profile only")
+            }
             _ => Ok(()),
         }
     }
@@ -370,9 +377,10 @@ impl HostTiers {
     /// that expects the exact one.
     #[must_use]
     pub fn profile(&self, exact: String) -> String {
-        match &self.consumer_q {
-            Some(_) => format!("consumer-q-{exact}"),
-            None => exact,
+        match (&self.consumer_q, self.fast_reductions) {
+            (Some(_), true) => format!("consumer-q-fast-{exact}"),
+            (Some(_), false) => format!("consumer-q-{exact}"),
+            (None, _) => exact,
         }
     }
 }
@@ -1107,7 +1115,7 @@ impl Options {
                 "--embeddings" => embeddings = true,
                 "--head" => head = true,
                 "--observe" => observe = true,
-                "--frozen-cache" => {}
+                "--frozen-cache" | "--fast-reductions" => {}
                 "--weights" | "--layers" | "--gpu" | "--manifest" | "--stage" | "--generation"
                 | "--front" | "--token" | "--backend" | "--arithmetic" | "--max-context"
                 | "--listen" | "--events" | "--data-listen" | "--data-advertise" | "--record"

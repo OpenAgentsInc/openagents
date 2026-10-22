@@ -439,6 +439,78 @@ __global__ void __launch_bounds__(kDenseThreads) v41_dense_kernel(
     }
 }
 
+// The `consumer-q` profile's faster reductions (#12465, lossy and
+// unqualified): a warp per output row and a block-wide tree for norms, so
+// the sums no longer follow the CPU path's order. The exact profile never
+// launches these.
+__global__ void __launch_bounds__(kDenseThreads) v41_dense_fast_kernel(
+    const void* weights,
+    const uint8_t* scales,
+    const float* input,
+    float* out,
+    int format,
+    int rows,
+    int cols,
+    int groups,
+    int round_input,
+    int round_bf16) {
+    const int warp = threadIdx.x >> 5;
+    const int lane = threadIdx.x & 31;
+    const int row = blockIdx.x * (kDenseThreads / 32) + warp;
+    const int token = blockIdx.y;
+    if (row >= rows) {
+        return;
+    }
+    const int per_group = rows / groups;
+    const float* x = input + (static_cast<long long>(token) * groups + row / per_group) * cols;
+    float acc = 0.0f;
+    for (int c = lane; c < cols; c += 32) {
+        const float w = dense_weight(weights, scales, format, row, c, cols);
+        const float v = round_input ? bf16_round(x[c]) : x[c];
+        acc = fmaf(w, v, acc);
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        acc += __shfl_xor_sync(0xffffffffu, acc, offset);
+    }
+    if (lane == 0) {
+        out[static_cast<long long>(token) * rows + row] = round_bf16 ? bf16_round(acc) : acc;
+    }
+}
+
+__global__ void v41_rms_norm_fast_kernel(
+    const float* input, const float* weight, float* out, int width, float epsilon, int round_bf16) {
+    __shared__ float partial[32];
+    const long long base = static_cast<long long>(blockIdx.x) * width;
+    float sum = 0.0f;
+    for (int i = threadIdx.x; i < width; i += blockDim.x) {
+        const float v = input[base + i];
+        sum = fmaf(v, v, sum);
+    }
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        sum += __shfl_xor_sync(0xffffffffu, sum, offset);
+    }
+    if ((threadIdx.x & 31) == 0) {
+        partial[threadIdx.x >> 5] = sum;
+    }
+    __syncthreads();
+    if (threadIdx.x < 32) {
+        float s = threadIdx.x < (blockDim.x >> 5) ? partial[threadIdx.x] : 0.0f;
+        for (int offset = 16; offset > 0; offset >>= 1) {
+            s += __shfl_xor_sync(0xffffffffu, s, offset);
+        }
+        if (threadIdx.x == 0) {
+            const float variance = s / static_cast<float>(width);
+            partial[0] = isfinite(variance) ? rsqrtf(variance + epsilon) : CUDART_NAN_F;
+        }
+    }
+    __syncthreads();
+    const float scale = partial[0];
+    for (int i = threadIdx.x; i < width; i += blockDim.x) {
+        const float v = bf16_round(weight[i]) * (input[base + i] * scale);
+        out[base + i] = round_bf16 ? bf16_round(v) : v;
+    }
+}
+
 __global__ void v41_rms_norm_kernel(
     const float* input, const float* weight, float* out, int width, float epsilon, int round_bf16) {
     extern __shared__ float shared[];
@@ -1504,5 +1576,40 @@ extern "C" int psionic_v41_sparse_attention(
         static_cast<const uint16_t*>(ring), ring_rows, static_cast<const uint16_t*>(compressed),
         capacity, static_cast<const int*>(indices), index_stride, static_cast<const int*>(positions),
         static_cast<float*>(out), heads, head_dim, window, ratio, top_k, scale);
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_v41_dense_fast(
+    const void* weights,
+    const void* scales,
+    const void* input,
+    void* out,
+    int format,
+    int rows,
+    int cols,
+    int groups,
+    int tokens,
+    int round_input,
+    int round_bf16,
+    void* stream) {
+    v41_dense_fast_kernel<<<dim3(blocks_for(rows, kDenseThreads / 32), tokens), kDenseThreads, 0,
+                            static_cast<cudaStream_t>(stream)>>>(
+        weights, static_cast<const uint8_t*>(scales), static_cast<const float*>(input),
+        static_cast<float*>(out), format, rows, cols, groups, round_input, round_bf16);
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_v41_rms_norm_fast(
+    const void* input,
+    const void* weight,
+    void* out,
+    int tokens,
+    int width,
+    float epsilon,
+    int round_bf16,
+    void* stream) {
+    v41_rms_norm_fast_kernel<<<tokens, 256, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const float*>(input), static_cast<const float*>(weight),
+        static_cast<float*>(out), width, epsilon, round_bf16);
     return static_cast<int>(cudaGetLastError());
 }

@@ -291,8 +291,16 @@ impl V41OwnedExperts {
 
 impl V41OwnedExperts {
     /// Sets projection `projection` of `expert` in `layer`.
-    pub fn insert(&mut self, layer: usize, expert: usize, projection: usize, weights: Vec<u8>, scales: Vec<u8>) {
-        self.parts.insert((layer, expert, projection), (weights, scales));
+    pub fn insert(
+        &mut self,
+        layer: usize,
+        expert: usize,
+        projection: usize,
+        weights: Vec<u8>,
+        scales: Vec<u8>,
+    ) {
+        self.parts
+            .insert((layer, expert, projection), (weights, scales));
     }
 
     /// Requantizes every held FP4 expert to `formats` with the `consumer-q`
@@ -310,13 +318,20 @@ impl V41OwnedExperts {
                     for j in 0..V41_BLOCK {
                         let byte = w[r * cols / 2 + b * 16 + j / 2];
                         let code = if j % 2 == 0 { byte & 15 } else { byte >> 4 };
-                        let magnitude = f32::from_bits(u32::from(code & 7) << 22) * f32::from_bits((126 + 127) << 23);
+                        let magnitude = f32::from_bits(u32::from(code & 7) << 22)
+                            * f32::from_bits((126 + 127) << 23);
                         let v = if code & 8 != 0 { -magnitude } else { magnitude };
                         values.push(v * scale);
                     }
                 }
             }
-            let (qw, qs) = crate::v41_quantize::v41_quantize_matrix(dims.formats[*p], &values, rows, cols, None);
+            let (qw, qs) = crate::v41_quantize::v41_quantize_matrix(
+                dims.formats[*p],
+                &values,
+                rows,
+                cols,
+                None,
+            );
             out.insert(*layer, *expert, *p, qw, qs);
         }
         out

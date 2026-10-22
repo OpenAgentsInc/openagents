@@ -118,6 +118,30 @@ unsafe extern "C" {
         round_bf16: i32,
         stream: *mut c_void,
     ) -> i32;
+    fn psionic_v41_dense_fast(
+        weights: *const c_void,
+        scales: *const c_void,
+        input: *const c_void,
+        out: *mut c_void,
+        format: i32,
+        rows: i32,
+        cols: i32,
+        groups: i32,
+        tokens: i32,
+        round_input: i32,
+        round_bf16: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_v41_rms_norm_fast(
+        input: *const c_void,
+        weight: *const c_void,
+        out: *mut c_void,
+        tokens: i32,
+        width: i32,
+        epsilon: f32,
+        round_bf16: i32,
+        stream: *mut c_void,
+    ) -> i32;
     fn psionic_v41_rms_norm(
         input: *const c_void,
         weight: *const c_void,
@@ -816,8 +840,13 @@ impl CudaSubmission {
             V41DenseFormat::Fp8Block => 2,
         };
         // SAFETY: every extent was checked against its buffer above.
+        let launch = if self.v41_fast_reductions {
+            psionic_v41_dense_fast
+        } else {
+            psionic_v41_dense
+        };
         let code = unsafe {
-            psionic_v41_dense(
+            launch(
                 weights,
                 scales,
                 input,
@@ -864,8 +893,13 @@ impl CudaSubmission {
         let weight = span(weight, 0, width, 4, "norm weight")?;
         let out = span(out, 0, tokens * width, 4, "norm output")?;
         // SAFETY: every extent was checked against its buffer above.
+        let launch = if self.v41_fast_reductions {
+            psionic_v41_rms_norm_fast
+        } else {
+            psionic_v41_rms_norm
+        };
         let code = unsafe {
-            psionic_v41_rms_norm(
+            launch(
                 input,
                 weight,
                 out,

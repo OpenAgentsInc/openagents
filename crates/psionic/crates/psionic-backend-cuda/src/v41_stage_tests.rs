@@ -1388,6 +1388,7 @@ fn load_cached_stage(
             expert_cache: Some(setup),
             engram_rows: None,
             batched_prefill: false,
+            fast_reductions: false,
         },
     )?)
 }
@@ -1616,6 +1617,7 @@ fn staged_engram_rows_equal_pinned_tables() -> TestResult {
             expert_cache: None,
             engram_rows: Some(rows.clone()),
             batched_prefill: false,
+            fast_reductions: false,
         },
         V41StageOptions {
             expert_cache: Some(V41ExpertCacheSetup {
@@ -1624,6 +1626,7 @@ fn staged_engram_rows_equal_pinned_tables() -> TestResult {
             }),
             engram_rows: Some(rows.clone()),
             batched_prefill: false,
+            fast_reductions: false,
         },
     ];
     let (prompt, decode) = tokens();
@@ -1820,6 +1823,7 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
                     config: streamed,
                     host: Some(experts),
                 }),
+                fast_reductions: false,
             },
         ),
         (
@@ -2037,7 +2041,11 @@ fn consumer_q_tiers_agree() -> TestResult {
     let rows: Arc<dyn V41EngramRows> =
         Arc::new(V41OwnedEngram::from_source(&store, &[1, 14], ENGRAM_WIDTH)?);
     for formats in [
-        [V41MatvecFormat::Q2Row32, V41MatvecFormat::Q3Row32, V41MatvecFormat::Q2Row32],
+        [
+            V41MatvecFormat::Q2Row32,
+            V41MatvecFormat::Q3Row32,
+            V41MatvecFormat::Q2Row32,
+        ],
         [V41MatvecFormat::Q3Row32; 3],
     ] {
         let dims = V41ExpertDims {
@@ -2065,6 +2073,7 @@ fn consumer_q_tiers_agree() -> TestResult {
                 }),
                 engram_rows: Some(rows.clone()),
                 batched_prefill: batched,
+                fast_reductions: false,
             }
         };
         let (prompt, decode) = tokens();
@@ -2072,7 +2081,8 @@ fn consumer_q_tiers_agree() -> TestResult {
         steps.extend(decode.iter().map(|t| vec![*t]));
         let mut runs = Vec::new();
         for (slots, batched) in [(sh.router.experts, false), (3, false), (3, true)] {
-            let mut stage = load_with_options(&mut backend, &store, 0..40, false, config(slots, batched))?;
+            let mut stage =
+                load_with_options(&mut backend, &store, 0..40, false, config(slots, batched))?;
             let mut position = 0;
             let mut out = Vec::new();
             for step in &steps {
@@ -2090,13 +2100,67 @@ fn consumer_q_tiers_agree() -> TestResult {
                     },
                     false,
                 )?;
-                out.push((o.token, stage.logits()?.iter().map(|v| v.to_bits()).collect::<Vec<_>>()));
+                out.push((
+                    o.token,
+                    stage
+                        .logits()?
+                        .iter()
+                        .map(|v| v.to_bits())
+                        .collect::<Vec<_>>(),
+                ));
                 position += step.len();
             }
             runs.push(out);
         }
-        assert_eq!(runs[0], runs[1], "{formats:?}: host lane differs from device slots");
+        assert_eq!(
+            runs[0], runs[1],
+            "{formats:?}: host lane differs from device slots"
+        );
         assert_eq!(runs[0], runs[2], "{formats:?}: layer-major prefill differs");
+        // The faster, reordered reductions change the sums, not the model:
+        // finite logits, close to the exact order's, the same first token.
+        let mut options = config(sh.router.experts, false);
+        options.fast_reductions = true;
+        let mut stage = load_with_options(&mut backend, &store, 0..40, false, options)?;
+        let out = stage.step(
+            &backend,
+            &V41StepInput {
+                position: 0,
+                tokens: &steps[0],
+                residual: None,
+                pre_mix: None,
+                source_rows: None,
+                selection: None,
+                candidates: None,
+                sampling: V41Sampling::greedy(),
+            },
+            false,
+        )?;
+        let fast = stage.logits()?;
+        assert!(fast.iter().all(|v| v.is_finite()));
+        let exact: Vec<f32> = runs[0][0].1.iter().map(|b| f32::from_bits(*b)).collect();
+        let worst = fast
+            .iter()
+            .zip(&exact)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f32, f32::max);
+        println!("{formats:?}: fast reductions move logits by at most {worst}");
+        assert_eq!(
+            out.token, runs[0][0].0,
+            "{formats:?}: fast reductions changed the token"
+        );
     }
+    // The exact profile refuses them.
+    let refused = load_with_options(
+        &mut backend,
+        &store,
+        0..40,
+        false,
+        V41StageOptions {
+            fast_reductions: true,
+            ..V41StageOptions::default()
+        },
+    );
+    assert!(refused.is_err());
     Ok(())
 }

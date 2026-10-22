@@ -740,7 +740,16 @@ pub fn v41_expert_gate_up(
     up: &mut [f32],
 ) {
     let (w1, w3) = (dims.formats[0], dims.formats[2]);
-    v41_expert_matvec(isa, w1, weights.w1.0, weights.w1.1, dims.width, x, rows.clone(), gate);
+    v41_expert_matvec(
+        isa,
+        w1,
+        weights.w1.0,
+        weights.w1.1,
+        dims.width,
+        x,
+        rows.clone(),
+        gate,
+    );
     v41_expert_matvec(isa, w3, weights.w3.0, weights.w3.1, dims.width, x, rows, up);
     for v in gate.iter_mut().chain(up.iter_mut()) {
         *v = v41_bf16_round(*v);
@@ -783,7 +792,16 @@ pub fn v41_expert_down(
     rows: std::ops::Range<usize>,
     out: &mut [f32],
 ) {
-    v41_expert_matvec(isa, dims.formats[1], weights.w2.0, weights.w2.1, dims.hidden, h, rows, out);
+    v41_expert_matvec(
+        isa,
+        dims.formats[1],
+        weights.w2.0,
+        weights.w2.1,
+        dims.hidden,
+        h,
+        rows,
+        out,
+    );
     for v in out.iter_mut() {
         *v = v41_bf16_round(*v);
     }

@@ -37,8 +37,8 @@ use std::{
 
 use memmap2::Mmap;
 use psionic_backend_cuda::{
-    v41_expert_cache::V41ExpertBytes, v41_expert_lane::V41ExpertDims,
-    v41_matvec::V41MatvecFormat, v41_quantize::v41_quantize_matrix,
+    v41_expert_cache::V41ExpertBytes, v41_expert_lane::V41ExpertDims, v41_matvec::V41MatvecFormat,
+    v41_quantize::v41_quantize_matrix,
 };
 use psionic_models::deepseek_v41_weights::{decode_e2m1, decode_f8_e8m0fnu};
 use psionic_runtime::RuntimeError;
@@ -113,7 +113,8 @@ impl Importance {
         if bytes.len() < 24 || &bytes[..8] != IMPORTANCE_MAGIC {
             return Err(bad());
         }
-        let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap_or([0; 4])) as usize;
+        let word =
+            |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap_or([0; 4])) as usize;
         let (layers, experts, hidden, width) = (word(8), word(12), word(16), word(20));
         let mut at = 24;
         let mut this = Self {
@@ -136,8 +137,12 @@ impl Importance {
                 .collect();
             at += need;
             let (inputs, hidden_part) = values.split_at(experts * hidden);
-            this.inputs.insert(layer, inputs.chunks(hidden).map(<[f32]>::to_vec).collect());
-            this.hidden.insert(layer, hidden_part.chunks(width).map(<[f32]>::to_vec).collect());
+            this.inputs
+                .insert(layer, inputs.chunks(hidden).map(<[f32]>::to_vec).collect());
+            this.hidden.insert(
+                layer,
+                hidden_part.chunks(width).map(<[f32]>::to_vec).collect(),
+            );
         }
         Ok(this)
     }
@@ -231,7 +236,8 @@ pub fn quantize(
         formats,
         ..V41ExpertDims::fp4(hidden, width, 10.0)
     };
-    std::fs::create_dir_all(out).map_err(|e| Refused(format!("can't make {}: {e}", out.display())))?;
+    std::fs::create_dir_all(out)
+        .map_err(|e| Refused(format!("can't make {}: {e}", out.display())))?;
     let source = CheckpointExperts::open(checkpoint, layers.clone(), experts)?;
     let expert_bytes = dims.expert_bytes();
     let mut files = serde_json::Map::new();
@@ -247,14 +253,18 @@ pub fn quantize(
                     let values = dequantize_fp4(w, s, rows, cols);
                     let imp = importance.and_then(|i| {
                         let table = if p == 1 { &i.hidden } else { &i.inputs };
-                        table.get(&layer).and_then(|v| v.get(e)).filter(|v| v.len() == cols)
+                        table
+                            .get(&layer)
+                            .and_then(|v| v.get(e))
+                            .filter(|v| v.len() == cols)
                     });
                     // Columns no calibration row reached keep a small floor.
                     let floored: Option<Vec<f32>> = imp.map(|v| {
                         let mean = v.iter().sum::<f32>() / v.len().max(1) as f32;
                         v.iter().map(|x| x.max(mean * 1e-3).max(1e-12)).collect()
                     });
-                    let (qw, qs) = v41_quantize_matrix(formats[p], &values, rows, cols, floored.as_deref());
+                    let (qw, qs) =
+                        v41_quantize_matrix(formats[p], &values, rows, cols, floored.as_deref());
                     bytes.extend_from_slice(&qw);
                     bytes.extend_from_slice(&qs);
                 }
@@ -264,7 +274,8 @@ pub fn quantize(
             .map_err(|e| Refused(format!("layer {layer}: {e}")))?;
         let path = out.join(format!("layer-{layer:02}.bin"));
         let mut hasher = Sha256::new();
-        let mut file = File::create(&path).map_err(|e| Refused(format!("can't write {}: {e}", path.display())))?;
+        let mut file = File::create(&path)
+            .map_err(|e| Refused(format!("can't write {}: {e}", path.display())))?;
         for part in &parts {
             hasher.update(part);
             file.write_all(part)
@@ -296,8 +307,11 @@ pub fn quantize(
         "method": "importance-weighted rounding to Lloyd-Max levels with a log-scale byte per 32 values and an f32 scale per row; after Project Maya (mw00/project-maya 451f9cb6a2, MIT), reimplemented",
     });
     let path = out.join("manifest.json");
-    std::fs::write(&path, serde_json::to_vec_pretty(&manifest).map_err(|e| Refused(e.to_string()))?)
-        .map_err(|e| Refused(format!("can't write {}: {e}", path.display())))?;
+    std::fs::write(
+        &path,
+        serde_json::to_vec_pretty(&manifest).map_err(|e| Refused(e.to_string()))?,
+    )
+    .map_err(|e| Refused(format!("can't write {}: {e}", path.display())))?;
     Ok(manifest)
 }
 
@@ -317,14 +331,23 @@ impl ConsumerQExperts {
     /// # Errors
     ///
     /// Refuses a missing or malformed artifact.
-    pub fn open(dir: &Path, layers: Range<usize>, hidden: usize, width: usize) -> Result<Self, Refused> {
+    pub fn open(
+        dir: &Path,
+        layers: Range<usize>,
+        hidden: usize,
+        width: usize,
+    ) -> Result<Self, Refused> {
         let path = dir.join("manifest.json");
         let manifest: Value = serde_json::from_slice(
-            &std::fs::read(&path).map_err(|e| Refused(format!("can't read {}: {e}", path.display())))?,
+            &std::fs::read(&path)
+                .map_err(|e| Refused(format!("can't read {}: {e}", path.display())))?,
         )
         .map_err(|e| Refused(format!("{} is not JSON: {e}", path.display())))?;
         if manifest["schema"] != CONSUMER_Q_SCHEMA {
-            return Err(Refused(format!("{} is not a {CONSUMER_Q_SCHEMA} manifest", path.display())));
+            return Err(Refused(format!(
+                "{} is not a {CONSUMER_Q_SCHEMA} manifest",
+                path.display()
+            )));
         }
         let f = |name: &str| parse_format(manifest["formats"][name].as_str().unwrap_or_default());
         let formats = [f("w1")?, f("w2")?, f("w3")?];
@@ -336,12 +359,19 @@ impl ConsumerQExperts {
         let mut maps = BTreeMap::new();
         for layer in layers {
             let path = dir.join(format!("layer-{layer:02}.bin"));
-            let file = File::open(&path).map_err(|e| Refused(format!("can't open {}: {e}", path.display())))?;
+            let file = File::open(&path)
+                .map_err(|e| Refused(format!("can't open {}: {e}", path.display())))?;
             // SAFETY: artifact files are read-only and nothing writes them
             // while a stage runs.
-            let map = unsafe { Mmap::map(&file) }.map_err(|e| Refused(format!("can't map {}: {e}", path.display())))?;
+            let map = unsafe { Mmap::map(&file) }
+                .map_err(|e| Refused(format!("can't map {}: {e}", path.display())))?;
             if map.len() != experts * dims.expert_bytes() {
-                return Err(Refused(format!("{} has {} bytes, not {}", path.display(), map.len(), experts * dims.expert_bytes())));
+                return Err(Refused(format!(
+                    "{} has {} bytes, not {}",
+                    path.display(),
+                    map.len(),
+                    experts * dims.expert_bytes()
+                )));
             }
             maps.insert(layer, map);
         }
@@ -370,26 +400,37 @@ impl ConsumerQExperts {
             .maps
             .par_iter()
             .filter(|(layer, map)| {
-                self.manifest["layers"][layer.to_string()].as_str() != Some(&hex::encode(Sha256::digest(&map[..])))
+                self.manifest["layers"][layer.to_string()].as_str()
+                    != Some(&hex::encode(Sha256::digest(&map[..])))
             })
             .map(|(layer, _)| *layer)
             .collect();
         if bad.is_empty() {
             Ok(())
         } else {
-            Err(Refused(format!("the consumer-q layer files {bad:?} don't match the manifest")))
+            Err(Refused(format!(
+                "the consumer-q layer files {bad:?} don't match the manifest"
+            )))
         }
     }
 }
 
 impl V41ExpertBytes for ConsumerQExperts {
-    fn projection(&self, layer: usize, expert: usize, projection: usize) -> Result<(&[u8], &[u8]), RuntimeError> {
+    fn projection(
+        &self,
+        layer: usize,
+        expert: usize,
+        projection: usize,
+    ) -> Result<(&[u8], &[u8]), RuntimeError> {
         let map = self
             .maps
             .get(&layer)
             .ok_or_else(|| RuntimeError::Backend(format!("the artifact holds no layer {layer}")))?;
         if expert >= self.experts || projection > 2 {
-            return Err(RuntimeError::Backend(format!("expert {expert} w{}", projection + 1)));
+            return Err(RuntimeError::Backend(format!(
+                "expert {expert} w{}",
+                projection + 1
+            )));
         }
         let mut at = expert * self.dims.expert_bytes();
         for p in 0..projection {

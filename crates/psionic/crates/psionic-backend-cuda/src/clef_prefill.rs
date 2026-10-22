@@ -14,22 +14,168 @@ use psionic_runtime::RuntimeError;
 use crate::{CudaBuffer, CudaSubmission};
 
 unsafe extern "C" {
-    fn psionic_clef_dequant_q8_0_f16(src: *const c_void, dst: *mut c_void, blocks: i64, stream: *mut c_void) -> i32;
-    fn psionic_clef_dequant_q4_k_f16(src: *const c_void, dst: *mut c_void, super_blocks: i64, stream: *mut c_void) -> i32;
-    fn psionic_clef_f16_to_f32(src: *const c_void, dst: *mut c_void, count: i64, accumulate: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_f32_to_f16(src: *const c_void, dst: *mut c_void, count: i64, stream: *mut c_void) -> i32;
-    fn psionic_clef_rms_norm_to_f16(x: *const c_void, w: *const c_void, out: *mut c_void, rows: i32, d: i32, eps: f32, stream: *mut c_void) -> i32;
-    fn psionic_clef_rms_norm_f32(x: *const c_void, w: *const c_void, out: *mut c_void, rows: i32, d: i32, eps: f32, stream: *mut c_void) -> i32;
-    fn psionic_clef_layer_norm_f32(x: *const c_void, w: *const c_void, b: *const c_void, out: *mut c_void, rows: i32, d: i32, eps: f32, stream: *mut c_void) -> i32;
-    fn psionic_clef_conv1d_seq_silu(input: *const c_void, state: *mut c_void, w: *const c_void, out: *mut c_void, n: i32, channels: i32, k: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_delta_prep(conv: *const c_void, alpha: *const c_void, beta_in: *const c_void, ssm_a: *const c_void, ssm_dt: *const c_void, qn: *mut c_void, kn: *mut c_void, decay: *mut c_void, beta: *mut c_void, kq: *mut c_void, n: i32, key_heads: i32, value_heads: i32, dim: i32, conv_width: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_delta_seq(qn: *const c_void, kn: *const c_void, conv: *const c_void, decay: *const c_void, beta: *const c_void, kq: *const c_void, state: *mut c_void, out: *mut c_void, n: i32, key_heads: i32, value_heads: i32, dim: i32, v_head_reordered: i32, conv_width: i32, value_offset: i32, staged: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_gated_norm_to_f16(o: *const c_void, z: *const c_void, w: *const c_void, out: *mut c_void, n: i32, heads: i32, dim: i32, eps: f32, stream: *mut c_void) -> i32;
-    fn psionic_clef_attention_prep(qg: *const c_void, k: *const c_void, v: *const c_void, qw: *const c_void, kw: *const c_void, cos_sin: *const c_void, q16: *mut c_void, gate: *mut c_void, kcache: *mut c_void, vcache: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, rot: i32, pos0: i32, scale: f32, eps: f32, stream: *mut c_void) -> i32;
-    fn psionic_clef_causal_softmax_to_f16(scores: *const c_void, probs: *mut c_void, rows: i32, n: i32, keys: i32, pos0: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_softmax_rows_f32(scores: *mut c_void, rows: i32, keys: i32, scale: f32, stream: *mut c_void) -> i32;
-    fn psionic_clef_sigmoid_gate_to_f16(o: *const c_void, gate: *const c_void, out: *mut c_void, count: i64, stream: *mut c_void) -> i32;
-    fn psionic_clef_silu_mul_to_f16(gate: *const c_void, up: *const c_void, out: *mut c_void, count: i64, stream: *mut c_void) -> i32;
+    fn psionic_clef_dequant_q8_0_f16(
+        src: *const c_void,
+        dst: *mut c_void,
+        blocks: i64,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_dequant_q4_k_f16(
+        src: *const c_void,
+        dst: *mut c_void,
+        super_blocks: i64,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_f16_to_f32(
+        src: *const c_void,
+        dst: *mut c_void,
+        count: i64,
+        accumulate: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_f32_to_f16(
+        src: *const c_void,
+        dst: *mut c_void,
+        count: i64,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_rms_norm_to_f16(
+        x: *const c_void,
+        w: *const c_void,
+        out: *mut c_void,
+        rows: i32,
+        d: i32,
+        eps: f32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_rms_norm_f32(
+        x: *const c_void,
+        w: *const c_void,
+        out: *mut c_void,
+        rows: i32,
+        d: i32,
+        eps: f32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_layer_norm_f32(
+        x: *const c_void,
+        w: *const c_void,
+        b: *const c_void,
+        out: *mut c_void,
+        rows: i32,
+        d: i32,
+        eps: f32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_conv1d_seq_silu(
+        input: *const c_void,
+        state: *mut c_void,
+        w: *const c_void,
+        out: *mut c_void,
+        n: i32,
+        channels: i32,
+        k: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_delta_prep(
+        conv: *const c_void,
+        alpha: *const c_void,
+        beta_in: *const c_void,
+        ssm_a: *const c_void,
+        ssm_dt: *const c_void,
+        qn: *mut c_void,
+        kn: *mut c_void,
+        decay: *mut c_void,
+        beta: *mut c_void,
+        kq: *mut c_void,
+        n: i32,
+        key_heads: i32,
+        value_heads: i32,
+        dim: i32,
+        conv_width: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_delta_seq(
+        qn: *const c_void,
+        kn: *const c_void,
+        conv: *const c_void,
+        decay: *const c_void,
+        beta: *const c_void,
+        kq: *const c_void,
+        state: *mut c_void,
+        out: *mut c_void,
+        n: i32,
+        key_heads: i32,
+        value_heads: i32,
+        dim: i32,
+        v_head_reordered: i32,
+        conv_width: i32,
+        value_offset: i32,
+        staged: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_gated_norm_to_f16(
+        o: *const c_void,
+        z: *const c_void,
+        w: *const c_void,
+        out: *mut c_void,
+        n: i32,
+        heads: i32,
+        dim: i32,
+        eps: f32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_attention_prep(
+        qg: *const c_void,
+        k: *const c_void,
+        v: *const c_void,
+        qw: *const c_void,
+        kw: *const c_void,
+        cos_sin: *const c_void,
+        q16: *mut c_void,
+        gate: *mut c_void,
+        kcache: *mut c_void,
+        vcache: *mut c_void,
+        n: i32,
+        heads: i32,
+        kv_heads: i32,
+        dim: i32,
+        rot: i32,
+        pos0: i32,
+        scale: f32,
+        eps: f32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_causal_softmax_to_f16(
+        scores: *const c_void,
+        probs: *mut c_void,
+        rows: i32,
+        n: i32,
+        keys: i32,
+        pos0: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_softmax_rows_f32(
+        scores: *mut c_void,
+        rows: i32,
+        keys: i32,
+        scale: f32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_sigmoid_gate_to_f16(
+        o: *const c_void,
+        gate: *const c_void,
+        out: *mut c_void,
+        count: i64,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_silu_mul_to_f16(
+        gate: *const c_void,
+        up: *const c_void,
+        out: *mut c_void,
+        count: i64,
+        stream: *mut c_void,
+    ) -> i32;
     fn psionic_clef_stream_create(stream: *mut *mut c_void) -> i32;
     fn psionic_clef_stream_destroy(stream: *mut c_void) -> i32;
     fn psionic_clef_event_create(event: *mut *mut c_void) -> i32;
@@ -38,29 +184,244 @@ unsafe extern "C" {
     fn psionic_clef_event_elapsed(start: *mut c_void, end: *mut c_void, ms: *mut f32) -> i32;
     fn psionic_clef_event_record(event: *mut c_void, stream: *mut c_void) -> i32;
     fn psionic_clef_stream_wait_event(stream: *mut c_void, event: *mut c_void) -> i32;
-    fn psionic_clef_fused_linear(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, rows: i32, k: i32, format: i32, segment: i32, accumulate: i32, stream: *mut c_void) -> i32;
+    fn psionic_clef_fused_linear(
+        x: *const c_void,
+        w: *const c_void,
+        out: *mut c_void,
+        n: i32,
+        rows: i32,
+        k: i32,
+        format: i32,
+        segment: i32,
+        accumulate: i32,
+        stream: *mut c_void,
+    ) -> i32;
     fn psionic_clef_hopper_supported() -> i32;
-    fn psionic_clef_hopper_linear(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, rows: i32, k: i32, format: i32, accumulate: i32, token_tile: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_hopper_attention(q16: *const c_void, kcache: *const c_void, vcache: *const c_void, out: *mut c_void, gate: *const c_void, out16: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, first: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_hopper_linear_silu(x: *const c_void, w: *const c_void, gate: *const c_void, out16: *mut c_void, n: i32, rows: i32, k: i32, format: i32, token_tile: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_delta_block(qn: *const c_void, kn: *const c_void, conv: *const c_void, decay: *const c_void, beta: *const c_void, coef: *mut c_void, state: *mut c_void, out: *mut c_void, n: i32, key_heads: i32, value_heads: i32, dim: i32, v_head_reordered: i32, conv_width: i32, value_offset: i32, variant: i32, snap_blocks: i32, snap: *mut c_void, stream: *mut c_void) -> i32;
+    fn psionic_clef_hopper_linear(
+        x: *const c_void,
+        w: *const c_void,
+        out: *mut c_void,
+        n: i32,
+        rows: i32,
+        k: i32,
+        format: i32,
+        accumulate: i32,
+        token_tile: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_hopper_attention(
+        q16: *const c_void,
+        kcache: *const c_void,
+        vcache: *const c_void,
+        out: *mut c_void,
+        gate: *const c_void,
+        out16: *mut c_void,
+        n: i32,
+        heads: i32,
+        kv_heads: i32,
+        dim: i32,
+        first: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_hopper_linear_silu(
+        x: *const c_void,
+        w: *const c_void,
+        gate: *const c_void,
+        out16: *mut c_void,
+        n: i32,
+        rows: i32,
+        k: i32,
+        format: i32,
+        token_tile: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_delta_block(
+        qn: *const c_void,
+        kn: *const c_void,
+        conv: *const c_void,
+        decay: *const c_void,
+        beta: *const c_void,
+        coef: *mut c_void,
+        state: *mut c_void,
+        out: *mut c_void,
+        n: i32,
+        key_heads: i32,
+        value_heads: i32,
+        dim: i32,
+        v_head_reordered: i32,
+        conv_width: i32,
+        value_offset: i32,
+        variant: i32,
+        snap_blocks: i32,
+        snap: *mut c_void,
+        stream: *mut c_void,
+    ) -> i32;
     fn psionic_clef_fake_e4m3_rows(x: *mut c_void, rows: i32, k: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_conv1d_state_into(input: *const c_void, state: *const c_void, out: *mut c_void, n: i32, channels: i32, k: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_embed_q4_k(table: *const c_void, ids: *const c_void, out: *mut c_void, n: i32, hidden: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_flash_attention(q16: *const c_void, kcache: *const c_void, vcache: *const c_void, out: *mut c_void, n: i32, heads: i32, kv_heads: i32, dim: i32, first: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_linear_f32_ordered(x: *const c_void, w: *const c_void, out: *mut c_void, n: i32, m: i32, k: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_head_side(q: *const c_void, wk: *const c_void, side: *mut c_void, n: i32, heads: i32, width: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_head_context(mixed: *const c_void, wv: *const c_void, bv: *const c_void, out: *mut c_void, n: i32, heads: i32, width: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_bias_act(x: *mut c_void, b: *const c_void, rows: i64, cols: i32, gelu: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_span_sums(rows: *const c_void, spans: *const c_void, sums: *mut c_void, span_count: i32, d: i32, first: i32, n: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_head_layer_norm(x: *const c_void, w: *const c_void, b: *const c_void, out: *mut c_void, rows: i32, d: i32, eps: f32, stream: *mut c_void) -> i32;
-    fn psionic_clef_head_add(x: *mut c_void, y: *const c_void, count: i64, stream: *mut c_void) -> i32;
-    fn psionic_clef_head_route(context: *const c_void, lexical: *const c_void, question: *const c_void, owner: *const c_void, routed: *mut c_void, options: i32, w: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_head_route_scores(routed: *const c_void, base: *const c_void, owner: *const c_void, scores: *mut c_void, options: i32, w: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_head_fields(routed: *const c_void, scores: *mut c_void, base: *const c_void, global: *const c_void, types: *const c_void, meta: *const c_void, norm_w: *const c_void, norm_b: *const c_void, fields: *mut c_void, questions: i32, w: i32, eps: f32, stream: *mut c_void) -> i32;
-    fn psionic_clef_head_self_attention(q: *const c_void, k: *const c_void, v: *const c_void, scores: *mut c_void, context: *mut c_void, rows: i32, heads: i32, w: i32, scale: f32, stream: *mut c_void) -> i32;
-    fn psionic_clef_head_features(fields: *const c_void, options: *const c_void, owner: *const c_void, features: *mut c_void, count: i32, w: i32, stream: *mut c_void) -> i32;
-    fn psionic_clef_head_logits(lexical: *const c_void, questions: *const c_void, global: *const c_void, owner: *const c_void, fields: *const c_void, options: *const c_void, hidden: *const c_void, scorer_out: *const c_void, logits: *mut c_void, count: i32, d: i32, w: i32, scorer_out_bias: f32, prior_scale: f32, joint_scale: f32, gate: f32, stream: *mut c_void) -> i32;
+    fn psionic_clef_conv1d_state_into(
+        input: *const c_void,
+        state: *const c_void,
+        out: *mut c_void,
+        n: i32,
+        channels: i32,
+        k: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_embed_q4_k(
+        table: *const c_void,
+        ids: *const c_void,
+        out: *mut c_void,
+        n: i32,
+        hidden: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_flash_attention(
+        q16: *const c_void,
+        kcache: *const c_void,
+        vcache: *const c_void,
+        out: *mut c_void,
+        n: i32,
+        heads: i32,
+        kv_heads: i32,
+        dim: i32,
+        first: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_linear_f32_ordered(
+        x: *const c_void,
+        w: *const c_void,
+        out: *mut c_void,
+        n: i32,
+        m: i32,
+        k: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_head_side(
+        q: *const c_void,
+        wk: *const c_void,
+        side: *mut c_void,
+        n: i32,
+        heads: i32,
+        width: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_head_context(
+        mixed: *const c_void,
+        wv: *const c_void,
+        bv: *const c_void,
+        out: *mut c_void,
+        n: i32,
+        heads: i32,
+        width: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_bias_act(
+        x: *mut c_void,
+        b: *const c_void,
+        rows: i64,
+        cols: i32,
+        gelu: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_span_sums(
+        rows: *const c_void,
+        spans: *const c_void,
+        sums: *mut c_void,
+        span_count: i32,
+        d: i32,
+        first: i32,
+        n: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_head_layer_norm(
+        x: *const c_void,
+        w: *const c_void,
+        b: *const c_void,
+        out: *mut c_void,
+        rows: i32,
+        d: i32,
+        eps: f32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_head_add(
+        x: *mut c_void,
+        y: *const c_void,
+        count: i64,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_head_route(
+        context: *const c_void,
+        lexical: *const c_void,
+        question: *const c_void,
+        owner: *const c_void,
+        routed: *mut c_void,
+        options: i32,
+        w: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_head_route_scores(
+        routed: *const c_void,
+        base: *const c_void,
+        owner: *const c_void,
+        scores: *mut c_void,
+        options: i32,
+        w: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_head_fields(
+        routed: *const c_void,
+        scores: *mut c_void,
+        base: *const c_void,
+        global: *const c_void,
+        types: *const c_void,
+        meta: *const c_void,
+        norm_w: *const c_void,
+        norm_b: *const c_void,
+        fields: *mut c_void,
+        questions: i32,
+        w: i32,
+        eps: f32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_head_self_attention(
+        q: *const c_void,
+        k: *const c_void,
+        v: *const c_void,
+        scores: *mut c_void,
+        context: *mut c_void,
+        rows: i32,
+        heads: i32,
+        w: i32,
+        scale: f32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_head_features(
+        fields: *const c_void,
+        options: *const c_void,
+        owner: *const c_void,
+        features: *mut c_void,
+        count: i32,
+        w: i32,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_clef_head_logits(
+        lexical: *const c_void,
+        questions: *const c_void,
+        global: *const c_void,
+        owner: *const c_void,
+        fields: *const c_void,
+        options: *const c_void,
+        hidden: *const c_void,
+        scorer_out: *const c_void,
+        logits: *mut c_void,
+        count: i32,
+        d: i32,
+        w: i32,
+        scorer_out_bias: f32,
+        prior_scale: f32,
+        joint_scale: f32,
+        gate: f32,
+        stream: *mut c_void,
+    ) -> i32;
 }
 
 /// Where [`CudaSubmission::clef_delta_block`] also writes the state after
@@ -132,12 +493,20 @@ pub struct ClefOperand<'a> {
 impl<'a> ClefOperand<'a> {
     #[must_use]
     pub const fn f32(buffer: &'a CudaBuffer, offset: usize) -> Self {
-        Self { buffer, offset, element: ClefElement::F32 }
+        Self {
+            buffer,
+            offset,
+            element: ClefElement::F32,
+        }
     }
 
     #[must_use]
     pub const fn f16(buffer: &'a CudaBuffer, offset: usize) -> Self {
-        Self { buffer, offset, element: ClefElement::F16 }
+        Self {
+            buffer,
+            offset,
+            element: ClefElement::F16,
+        }
     }
 
     /// Device pointer after checking that `extent` elements from the offset
@@ -176,11 +545,19 @@ pub(crate) fn span(
     }
 }
 
-pub(crate) fn f32s<'a>(buffer: &'a CudaBuffer, extent: usize, what: &str) -> Result<*mut c_void, RuntimeError> {
+pub(crate) fn f32s<'a>(
+    buffer: &'a CudaBuffer,
+    extent: usize,
+    what: &str,
+) -> Result<*mut c_void, RuntimeError> {
     span(buffer, 0, extent, 4, what)
 }
 
-fn f16s<'a>(buffer: &'a CudaBuffer, extent: usize, what: &str) -> Result<*mut c_void, RuntimeError> {
+fn f16s<'a>(
+    buffer: &'a CudaBuffer,
+    extent: usize,
+    what: &str,
+) -> Result<*mut c_void, RuntimeError> {
     span(buffer, 0, extent, 2, what)
 }
 
@@ -200,8 +577,12 @@ fn dequantize(
     let dst = f16s(destination, elements, "dequantize destination")?;
     Ok(unsafe {
         match format {
-            ClefWeightFormat::Q8_0 => psionic_clef_dequant_q8_0_f16(src, dst, (elements / 32) as i64, stream),
-            ClefWeightFormat::Q4K => psionic_clef_dequant_q4_k_f16(src, dst, (elements / 256) as i64, stream),
+            ClefWeightFormat::Q8_0 => {
+                psionic_clef_dequant_q8_0_f16(src, dst, (elements / 32) as i64, stream)
+            }
+            ClefWeightFormat::Q4K => {
+                psionic_clef_dequant_q4_k_f16(src, dst, (elements / 256) as i64, stream)
+            }
             ClefWeightFormat::F32 => psionic_clef_f32_to_f16(src, dst, elements as i64, stream),
         }
     })
@@ -211,7 +592,9 @@ fn check(code: i32, operation: &str) -> Result<(), RuntimeError> {
     if code == 0 {
         Ok(())
     } else {
-        Err(RuntimeError::Backend(format!("{operation} failed with CUDA error {code}")))
+        Err(RuntimeError::Backend(format!(
+            "{operation} failed with CUDA error {code}"
+        )))
     }
 }
 
@@ -224,7 +607,10 @@ pub struct ClefStream {
 impl ClefStream {
     pub fn new() -> Result<Self, RuntimeError> {
         let mut raw = std::ptr::null_mut();
-        check(unsafe { psionic_clef_stream_create(&mut raw) }, "cudaStreamCreate")?;
+        check(
+            unsafe { psionic_clef_stream_create(&mut raw) },
+            "cudaStreamCreate",
+        )?;
         Ok(Self { raw })
     }
 
@@ -236,15 +622,24 @@ impl ClefStream {
         destination: &CudaBuffer,
         elements: usize,
     ) -> Result<(), RuntimeError> {
-        check(dequantize(format, source, destination, elements, self.raw)?, "psionic_clef_dequantize")
+        check(
+            dequantize(format, source, destination, elements, self.raw)?,
+            "psionic_clef_dequantize",
+        )
     }
 
     pub fn record(&self, event: &ClefEvent) -> Result<(), RuntimeError> {
-        check(unsafe { psionic_clef_event_record(event.raw, self.raw) }, "cudaEventRecord")
+        check(
+            unsafe { psionic_clef_event_record(event.raw, self.raw) },
+            "cudaEventRecord",
+        )
     }
 
     pub fn wait(&self, event: &ClefEvent) -> Result<(), RuntimeError> {
-        check(unsafe { psionic_clef_stream_wait_event(self.raw, event.raw) }, "cudaStreamWaitEvent")
+        check(
+            unsafe { psionic_clef_stream_wait_event(self.raw, event.raw) },
+            "cudaStreamWaitEvent",
+        )
     }
 }
 
@@ -262,7 +657,10 @@ pub struct ClefEvent {
 impl ClefEvent {
     pub fn new() -> Result<Self, RuntimeError> {
         let mut raw = std::ptr::null_mut();
-        check(unsafe { psionic_clef_event_create(&mut raw) }, "cudaEventCreate")?;
+        check(
+            unsafe { psionic_clef_event_create(&mut raw) },
+            "cudaEventCreate",
+        )?;
         Ok(Self { raw })
     }
 }
@@ -272,14 +670,20 @@ impl ClefEvent {
     /// inside a submission, read after it completes, no extra waits).
     pub fn timing() -> Result<Self, RuntimeError> {
         let mut raw = std::ptr::null_mut();
-        check(unsafe { psionic_clef_timing_event_create(&mut raw) }, "cudaEventCreate")?;
+        check(
+            unsafe { psionic_clef_timing_event_create(&mut raw) },
+            "cudaEventCreate",
+        )?;
         Ok(Self { raw })
     }
 
     /// Milliseconds from `self` to `end` (both recorded and completed).
     pub fn elapsed_ms(&self, end: &ClefEvent) -> Result<f32, RuntimeError> {
         let mut ms = 0.0f32;
-        check(unsafe { psionic_clef_event_elapsed(self.raw, end.raw, &mut ms) }, "cudaEventElapsedTime")?;
+        check(
+            unsafe { psionic_clef_event_elapsed(self.raw, end.raw, &mut ms) },
+            "cudaEventElapsedTime",
+        )?;
         Ok(ms)
     }
 }
@@ -377,13 +781,17 @@ impl CudaSubmission {
             _ => return Ok(false),
         };
         if !matches!(segment, 0 | 1 | 2 | 4 | 8 | 16) {
-            return Err(RuntimeError::Backend(format!("clef fused linear: segment {segment} is not 0, 1, 2, 4, 8 or 16")));
+            return Err(RuntimeError::Backend(format!(
+                "clef fused linear: segment {segment} is not 0, 1, 2, 4, 8 or 16"
+            )));
         }
         if n == 0 {
             return Ok(true);
         }
         let bytes = format.byte_len(rows * k).ok_or_else(|| {
-            RuntimeError::Backend(String::from("clef fused linear: weights are not whole blocks"))
+            RuntimeError::Backend(String::from(
+                "clef fused linear: weights are not whole blocks",
+            ))
         })?;
         let w = span(weights, 0, bytes, 1, "fused weights")?;
         let x = f16s(x16, n * k, "fused x")?;
@@ -545,7 +953,15 @@ impl CudaSubmission {
         let op = span(out, out_offset, n * m, 4, "ordered out")?;
         let stream = self.platform.raw_stream()?;
         let code = unsafe {
-            psionic_clef_linear_f32_ordered(xp, wp, op, int(n, "n")?, int(m, "m")?, int(k, "k")?, stream)
+            psionic_clef_linear_f32_ordered(
+                xp,
+                wp,
+                op,
+                int(n, "n")?,
+                int(m, "m")?,
+                int(k, "k")?,
+                stream,
+            )
         };
         self.clef_launch(code, "psionic_clef_linear_f32_ordered")
     }
@@ -568,7 +984,14 @@ impl CudaSubmission {
         let bp = span(b, b_offset, cols, 4, "bias b")?;
         let stream = self.platform.raw_stream()?;
         let code = unsafe {
-            psionic_clef_bias_act(xp, bp, rows as i64, int(cols, "cols")?, i32::from(gelu), stream)
+            psionic_clef_bias_act(
+                xp,
+                bp,
+                rows as i64,
+                int(cols, "cols")?,
+                i32::from(gelu),
+                stream,
+            )
         };
         self.clef_launch(code, "psionic_clef_bias_act")
     }
@@ -592,7 +1015,15 @@ impl CudaSubmission {
         let sp = f32s(side, n * heads * width, "head side out")?;
         let stream = self.platform.raw_stream()?;
         let code = unsafe {
-            psionic_clef_head_side(qp, wp, sp, int(n, "n")?, int(heads, "heads")?, int(width, "width")?, stream)
+            psionic_clef_head_side(
+                qp,
+                wp,
+                sp,
+                int(n, "n")?,
+                int(heads, "heads")?,
+                int(width, "width")?,
+                stream,
+            )
         };
         self.clef_launch(code, "psionic_clef_head_side")
     }
@@ -616,7 +1047,16 @@ impl CudaSubmission {
         let op = f32s(out, n * width, "head context out")?;
         let stream = self.platform.raw_stream()?;
         let code = unsafe {
-            psionic_clef_head_context(mp, wp, bp, op, int(n, "n")?, int(heads, "heads")?, int(width, "width")?, stream)
+            psionic_clef_head_context(
+                mp,
+                wp,
+                bp,
+                op,
+                int(n, "n")?,
+                int(heads, "heads")?,
+                int(width, "width")?,
+                stream,
+            )
         };
         self.clef_launch(code, "psionic_clef_head_context")
     }
@@ -697,8 +1137,16 @@ impl CudaSubmission {
             return Ok(true);
         }
         let q = f16s(query16, n * heads * dim, "hopper attention q")?;
-        let k = f16s(key_cache, (first + n) * kv_heads * dim, "hopper attention keys")?;
-        let v = f16s(value_cache, (first + n) * kv_heads * dim, "hopper attention values")?;
+        let k = f16s(
+            key_cache,
+            (first + n) * kv_heads * dim,
+            "hopper attention keys",
+        )?;
+        let v = f16s(
+            value_cache,
+            (first + n) * kv_heads * dim,
+            "hopper attention values",
+        )?;
         let (o, g, o16) = match out {
             ClefAttentionOut::F32(out) => (
                 f32s(out, n * heads * dim, "hopper attention out")?,
@@ -761,7 +1209,11 @@ impl CudaSubmission {
         variant: usize,
         snapshot: Option<ClefStateSnapshot<'_>>,
     ) -> Result<bool, RuntimeError> {
-        if dim != 128 || value_offset % 4 != 0 || conv_width % 4 != 0 || !matches!(variant, 101 | 102 | 104) {
+        if dim != 128
+            || value_offset % 4 != 0
+            || conv_width % 4 != 0
+            || !matches!(variant, 101 | 102 | 104)
+        {
             return Ok(false);
         }
         let (snap_blocks, snap) = match snapshot {
@@ -773,7 +1225,13 @@ impl CudaSubmission {
                 }
                 (
                     int(target.tokens / 16, "snapshot blocks")?,
-                    span(target.buffer, target.offset, value_heads * dim * dim, 4, "delta snapshot")?,
+                    span(
+                        target.buffer,
+                        target.offset,
+                        value_heads * dim * dim,
+                        4,
+                        "delta snapshot",
+                    )?,
                 )
             }
             None => (0, std::ptr::null_mut()),
@@ -786,7 +1244,11 @@ impl CudaSubmission {
         let conv = f32s(conv, n * conv_width, "delta conv")?;
         let decay = f32s(decay, n * value_heads, "decay")?;
         let beta = f32s(beta, n * value_heads, "beta")?;
-        let coef = f32s(coef, clef_delta_block_coef_len(n, value_heads), "delta coef")?;
+        let coef = f32s(
+            coef,
+            clef_delta_block_coef_len(n, value_heads),
+            "delta coef",
+        )?;
         let state = f32s(state, value_heads * dim * dim, "delta state")?;
         let out = f32s(out, n * value_heads * dim, "delta out")?;
         if value_offset + value_heads * dim > conv_width {
@@ -855,13 +1317,19 @@ impl CudaSubmission {
     /// Records `event` on this submission's stream.
     pub fn clef_record(&mut self, event: &ClefEvent) -> Result<(), RuntimeError> {
         let stream = self.platform.raw_stream()?;
-        check(unsafe { psionic_clef_event_record(event.raw, stream) }, "cudaEventRecord")
+        check(
+            unsafe { psionic_clef_event_record(event.raw, stream) },
+            "cudaEventRecord",
+        )
     }
 
     /// Makes this submission's stream wait for `event`.
     pub fn clef_wait(&mut self, event: &ClefEvent) -> Result<(), RuntimeError> {
         let stream = self.platform.raw_stream()?;
-        check(unsafe { psionic_clef_stream_wait_event(stream, event.raw) }, "cudaStreamWaitEvent")
+        check(
+            unsafe { psionic_clef_stream_wait_event(stream, event.raw) },
+            "cudaStreamWaitEvent",
+        )
     }
 
     /// `dst (+)= f32(src)` over `count` elements.
@@ -875,7 +1343,9 @@ impl CudaSubmission {
         let src = f16s(source, count, "f16 source")?;
         let dst = f32s(destination, count, "f32 destination")?;
         let stream = self.platform.raw_stream()?;
-        let code = unsafe { psionic_clef_f16_to_f32(src, dst, count as i64, i32::from(accumulate), stream) };
+        let code = unsafe {
+            psionic_clef_f16_to_f32(src, dst, count as i64, i32::from(accumulate), stream)
+        };
         self.clef_launch(code, "psionic_clef_f16_to_f32")
     }
 
@@ -1262,7 +1732,13 @@ impl CudaSubmission {
         let scores = f32s(scores, rows * keys, "scores")?;
         let stream = self.platform.raw_stream()?;
         let code = unsafe {
-            psionic_clef_softmax_rows_f32(scores, int(rows, "rows")?, int(keys, "keys")?, scale, stream)
+            psionic_clef_softmax_rows_f32(
+                scores,
+                int(rows, "rows")?,
+                int(keys, "keys")?,
+                scale,
+                stream,
+            )
         };
         self.clef_launch(code, "psionic_clef_softmax_rows_f32")
     }
@@ -1284,10 +1760,17 @@ impl CudaSubmission {
 
     /// FP8 simulation (#11445): rounds the f16 rows `x` `[rows, k]` in
     /// place to E4M3 with one scale per 128 k of a row (amax to 448).
-    pub fn clef_fake_e4m3_rows(&mut self, x: &CudaBuffer, rows: usize, k: usize) -> Result<(), RuntimeError> {
+    pub fn clef_fake_e4m3_rows(
+        &mut self,
+        x: &CudaBuffer,
+        rows: usize,
+        k: usize,
+    ) -> Result<(), RuntimeError> {
         let pointer = f16s(x, rows * k, "fp8 rows")?;
         let stream = self.platform.raw_stream()?;
-        let code = unsafe { psionic_clef_fake_e4m3_rows(pointer, int(rows, "rows")?, int(k, "k")?, stream) };
+        let code = unsafe {
+            psionic_clef_fake_e4m3_rows(pointer, int(rows, "rows")?, int(k, "k")?, stream)
+        };
         self.clef_launch(code, "psionic_clef_fake_e4m3_rows")
     }
 

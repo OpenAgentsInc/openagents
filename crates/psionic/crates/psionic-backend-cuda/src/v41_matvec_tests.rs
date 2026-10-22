@@ -1266,7 +1266,10 @@ fn consumer_q_kernels_equal_the_host_model() -> TestResult {
             for e in 0..ids.len() {
                 let want = host(e, e);
                 for (r, (a, b)) in gpu[e * rows..(e + 1) * rows].iter().zip(&want).enumerate() {
-                    assert!(same_bits(*a, *b), "{format:?} matvec slot {e} row {r}: {a} vs {b}");
+                    assert!(
+                        same_bits(*a, *b),
+                        "{format:?} matvec slot {e} row {r}: {a} vs {b}"
+                    );
                 }
             }
             // The cached form: matrices 1 and 3 in device slots 0 and 1, the
@@ -1302,7 +1305,10 @@ fn consumer_q_kernels_equal_the_host_model() -> TestResult {
             for e in 0..ids.len() {
                 let want = host(e, e);
                 assert!(
-                    gpu[e * rows..(e + 1) * rows].iter().zip(&want).all(|(a, b)| same_bits(*a, *b)),
+                    gpu[e * rows..(e + 1) * rows]
+                        .iter()
+                        .zip(&want)
+                        .all(|(a, b)| same_bits(*a, *b)),
                     "{format:?} cached slot {e}"
                 );
             }
@@ -1315,7 +1321,15 @@ fn consumer_q_kernels_equal_the_host_model() -> TestResult {
             let tile_count = backend.byte_buffer(&[0; 4])?;
             let out = f32_buffer(&mut backend, rows * count)?;
             let mut sub = backend.begin_submission()?;
-            sub.v41_group_entries(&id_buffer, count, stack, &scratch, &entries, &tiles, &tile_count)?;
+            sub.v41_group_entries(
+                &id_buffer,
+                count,
+                stack,
+                &scratch,
+                &entries,
+                &tiles,
+                &tile_count,
+            )?;
             sub.v41_block_matmul(
                 format,
                 Some(V41Matrix {
@@ -1351,7 +1365,10 @@ fn consumer_q_kernels_equal_the_host_model() -> TestResult {
             for e in 0..count {
                 let want = host(e, e);
                 assert!(
-                    gpu[e * rows..(e + 1) * rows].iter().zip(&want).all(|(a, b)| same_bits(*a, *b)),
+                    gpu[e * rows..(e + 1) * rows]
+                        .iter()
+                        .zip(&want)
+                        .all(|(a, b)| same_bits(*a, *b)),
                     "{format:?} batched entry {e}"
                 );
             }
