@@ -3685,3 +3685,87 @@ fn fast_reductions_stay_close_to_the_exact_order() -> TestResult {
     }
     Ok(())
 }
+
+/// The token-tiled dense kernel (#12464) answers every format, group
+/// layout, and ragged width bit for bit as one token at a time does.
+#[test]
+fn dense_products_for_many_tokens_equal_one_token_at_a_time() -> TestResult {
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let mut seed = 0x9e37_79b9_u64;
+    let mut next = move || {
+        seed ^= seed << 13;
+        seed ^= seed >> 7;
+        seed ^= seed << 17;
+        seed
+    };
+    for (format, rows, cols, groups) in [
+        (V41DenseFormat::F32, 384, 600, 1),
+        (V41DenseFormat::Bf16, 256, 96, 2),
+        (V41DenseFormat::Fp8Block, 512, 128, 2),
+        (V41DenseFormat::Bf16, 64, 5120, 1),
+    ] {
+        let (weights, scales) = match format {
+            V41DenseFormat::F32 => {
+                let w: Vec<f32> = (0..rows * cols)
+                    .map(|_| (next() % 2001) as f32 * 1e-3 - 1.0)
+                    .collect();
+                (upload_f32(&mut backend, &w)?, None)
+            }
+            V41DenseFormat::Bf16 => {
+                let w: Vec<u8> = (0..rows * cols)
+                    .flat_map(|_| {
+                        let v = (next() % 2001) as f32 * 1e-3 - 1.0;
+                        ((v.to_bits() >> 16) as u16).to_le_bytes()
+                    })
+                    .collect();
+                (backend.byte_buffer(&w)?, None)
+            }
+            V41DenseFormat::Fp8Block => {
+                let w: Vec<u8> = (0..rows * cols).map(|_| (next() % 0x7f) as u8).collect();
+                let s: Vec<u8> = (0..(rows / 32) * (cols / 32))
+                    .map(|_| 120 + (next() % 10) as u8)
+                    .collect();
+                (backend.byte_buffer(&w)?, Some(backend.byte_buffer(&s)?))
+            }
+        };
+        let tokens = 37;
+        let x: Vec<f32> = (0..tokens * groups * cols)
+            .map(|_| (next() % 4001) as f32 * 1e-3 - 2.0)
+            .collect();
+        let dense = V41Dense {
+            weights: &weights,
+            scales: scales.as_ref(),
+            format,
+            rows,
+            cols,
+            groups,
+        };
+        for (round_input, output) in [(false, V41Output::F32), (true, V41Output::Bf16)] {
+            let input = upload_f32(&mut backend, &x)?;
+            let all = f32_buffer(&mut backend, tokens * rows)?;
+            let mut s = backend.begin_submission()?;
+            s.v41_dense(dense, &input, &all, tokens, round_input, output)?;
+            s.commit(CudaCommandWait::Completed)?;
+            let all = read_f32(&all, tokens * rows)?;
+            for t in 0..tokens {
+                let one_input =
+                    upload_f32(&mut backend, &x[t * groups * cols..(t + 1) * groups * cols])?;
+                let one = f32_buffer(&mut backend, rows)?;
+                let mut s = backend.begin_submission()?;
+                s.v41_dense(dense, &one_input, &one, 1, round_input, output)?;
+                s.commit(CudaCommandWait::Completed)?;
+                let one = read_f32(&one, rows)?;
+                for (r, (a, b)) in all[t * rows..(t + 1) * rows].iter().zip(&one).enumerate() {
+                    assert_eq!(
+                        a.to_bits(),
+                        b.to_bits(),
+                        "{format:?} {rows}x{cols}/{groups} token {t} row {r}: {a} vs {b}"
+                    );
+                }
+            }
+        }
+    }
+    Ok(())
+}

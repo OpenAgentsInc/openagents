@@ -443,6 +443,87 @@ __global__ void __launch_bounds__(kDenseThreads) v41_dense_kernel(
 // unqualified): a warp per output row and a block-wide tree for norms, so
 // the sums no longer follow the CPU path's order. The exact profile never
 // launches these.
+// The same products as `v41_dense_kernel` for many tokens at once (#12464):
+// each block takes kDenseTileRows rows and kDenseTileTokens tokens, stages a
+// 32-column slice of the rows and of the tokens' inputs in shared memory, and
+// each thread adds its row's slice into one running sum per token. Every
+// sum still starts at -0 and adds `w[r, k] x[k]` in column order, then adds
+// to 0, so the results are bit-equal to one token at a time. The block's
+// rows must lie in one group.
+constexpr int kDenseTileRows = 128;
+constexpr int kDenseTileTokens = 16;
+constexpr int kDenseTileCols = 32;
+
+__global__ void __launch_bounds__(kDenseTileRows) v41_dense_tokens_kernel(
+    const void* weights,
+    const uint8_t* scales,
+    const float* input,
+    float* out,
+    int format,
+    int rows,
+    int cols,
+    int groups,
+    int tokens,
+    int round_input,
+    int round_bf16) {
+    __shared__ float tile[kDenseTileRows][kDenseTileCols + 1];
+    __shared__ float xs[kDenseTileTokens][kDenseTileCols];
+    const int first = blockIdx.x * kDenseTileRows;
+    const int token0 = blockIdx.y * kDenseTileTokens;
+    const int count = min(kDenseTileTokens, tokens - token0);
+    const int mine = first + threadIdx.x;
+    const int per_group = rows / groups;
+    const int group = first / per_group;
+    float sum[kDenseTileTokens];
+#pragma unroll
+    for (int t = 0; t < kDenseTileTokens; ++t) {
+        sum[t] = -0.0f;
+    }
+    for (int base = 0; base < cols; base += kDenseTileCols) {
+        const int width = min(kDenseTileCols, cols - base);
+        __syncthreads();
+        for (int e = threadIdx.x; e < kDenseTileRows * kDenseTileCols; e += kDenseTileRows) {
+            const int r = e / kDenseTileCols;
+            const int c = e % kDenseTileCols;
+            tile[r][c] = (c < width && first + r < rows)
+                ? dense_weight(weights, scales, format, first + r, base + c, cols)
+                : 0.0f;
+        }
+        for (int e = threadIdx.x; e < kDenseTileTokens * kDenseTileCols; e += kDenseTileRows) {
+            const int t = e / kDenseTileCols;
+            const int c = e % kDenseTileCols;
+            float x = 0.0f;
+            if (t < count && c < width) {
+                x = input[(static_cast<long long>(token0 + t) * groups + group) * cols + base + c];
+                if (round_input) {
+                    x = bf16_round(x);
+                }
+            }
+            xs[t][c] = x;
+        }
+        __syncthreads();
+        if (mine < rows) {
+            for (int c = 0; c < width; ++c) {
+                const float w = tile[threadIdx.x][c];
+#pragma unroll
+                for (int t = 0; t < kDenseTileTokens; ++t) {
+                    sum[t] = __fadd_rn(sum[t], __fmul_rn(w, xs[t][c]));
+                }
+            }
+        }
+    }
+    if (mine < rows) {
+#pragma unroll
+        for (int t = 0; t < kDenseTileTokens; ++t) {
+            if (t < count) {
+                const float total = __fadd_rn(0.0f, sum[t]);
+                out[static_cast<long long>(token0 + t) * rows + mine] =
+                    round_bf16 ? bf16_round(total) : total;
+            }
+        }
+    }
+}
+
 __global__ void __launch_bounds__(kDenseThreads) v41_dense_fast_kernel(
     const void* weights,
     const uint8_t* scales,
@@ -1403,6 +1484,15 @@ extern "C" int psionic_v41_dense(
     int round_input,
     int round_bf16,
     void* stream) {
+    const int per_group = groups > 0 ? rows / groups : 0;
+    if (tokens >= 4 && per_group > 0 && (groups == 1 || per_group % kDenseTileRows == 0)) {
+        v41_dense_tokens_kernel<<<dim3(blocks_for(rows, kDenseTileRows),
+                                       blocks_for(tokens, kDenseTileTokens)),
+                                  kDenseTileRows, 0, static_cast<cudaStream_t>(stream)>>>(
+            weights, static_cast<const uint8_t*>(scales), static_cast<const float*>(input),
+            static_cast<float*>(out), format, rows, cols, groups, tokens, round_input, round_bf16);
+        return static_cast<int>(cudaGetLastError());
+    }
     v41_dense_kernel<<<dim3(blocks_for(rows, kDenseRows), tokens), kDenseThreads, 0,
                        static_cast<cudaStream_t>(stream)>>>(
         weights, static_cast<const uint8_t*>(scales), static_cast<const float*>(input),
