@@ -1222,3 +1222,39 @@ and the H100 and A100 about 13 ms more than RTX PRO 6000s would. With the
 4080's layers and the head in the zone, the same cloud stages would decode
 at about 21 tokens/s. The run cost $6.28. Receipt:
 [`deepseek-v41-gpu-mixed-2026-10-21.json`](verification/deepseek-v41-gpu-mixed-2026-10-21.json).
+
+### Gate repairs and original-input calibration, 2026-10-22 17:00 UTC
+
+The current gate work remains open under #12369. The repaired SM120 package
+passes **121 checks, with no failures and six ignored measurement checks**,
+including the CUDA qualifier's positive case and all four negative controls.
+The synthetic oracle now includes full index observations; a stale-cache
+control saves a failed report when its indices are invalid. The
+[component receipt](verification/deepseek-v41-gates-2026-10-22/sm120-index-components.json)
+names the exact diagnostic source, archive, and retained log.
+
+`isolate` has collected all four native CUDA stages on original oracle
+boundary inputs for C4 and the 1,025-token window case. These are calibration
+measurements, not G4 passes. A separate plain BF16 CPU collection is running
+on the same inputs. `isolated-check` verifies saved output hashes, complete
+boundary shapes, original input-message hashes, and decode/replay coverage
+before recomputing numerical differences. Complete index records also retain
+raw substitutions, margins, and regrets so a later frozen policy can rejudge
+them without trusting an earlier verdict. Index selections and candidate
+blocks use separate changed-decision fractions.
+
+Rule 2.4's derivation is implemented and locally tested, **not frozen**. It
+accepts uncontrolled plain BF16 CPU references, requires matching recorded
+index inputs and bundles, and checks all four numerical controls. It derives
+no threshold from a CUDA candidate. Historical policies and failed reports
+remain unchanged. Release qualification additionally requires an exact frozen
+corpus, all its cases, hashed oracle run metadata, and the actual worker
+bundle, numerical profile, manifest, and execution configuration.
+
+Pylon now separates numerical qualification from the legacy execution label
+`qualified`. The head publishes a numerical claim only when every ready stage
+matches the evidence's bundle, profile, manifest, configuration, and limits.
+An explicit request for qualified service requires that claim. Legacy default
+routing remains available for previews. These changes have local routing,
+lifecycle, cloud-launch, and website-consumer checks; they do not qualify the
+running preview or pass G1, G2, G4, or G8 for a new worker bundle.
