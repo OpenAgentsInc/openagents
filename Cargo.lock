@@ -13774,6 +13774,7 @@ dependencies = [
  "inference",
  "jev",
  "jsonschema",
+ "kiln",
  "lab-api",
  "lab-jobs",
  "lab-kit",

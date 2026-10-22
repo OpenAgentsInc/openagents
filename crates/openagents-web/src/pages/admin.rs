@@ -25,7 +25,7 @@ use axum::Router;
 use axum::extract::{Path as UrlPath, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Redirect, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use maud::html;
 use openagents_ui::content::{MarkdownRoot, PageColumn};
 
@@ -75,6 +75,11 @@ pub struct Kiln {
     /// The NIP-34 repository address patches go to, `30617:KEY:ID`.
     pub repo: String,
     pub relay: String,
+    /// The site's Kiln key (`OPENAGENTS_KILN_SITE_KEY`, a file holding its
+    /// 64-hex secret). With it, signed-in players get Kiln at the Grid
+    /// terminal too, under `/kiln/`, and the site vouches for each
+    /// player's browser key (#12488).
+    pub site_key: Option<secp256k1::SecretKey>,
 }
 
 impl Kiln {
@@ -83,12 +88,22 @@ impl Kiln {
     #[must_use]
     pub fn from_env(dir: PathBuf) -> Self {
         let var = |name: &str| std::env::var(name).unwrap_or_default();
-        Self::new(
+        let mut kiln = Self::new(
             dir,
             &var("OPENAGENTS_KILN_RUNNER"),
             &var("OPENAGENTS_KILN_REPO"),
             &var("OPENAGENTS_KILN_RELAY"),
-        )
+        );
+        kiln.site_key = std::fs::read_to_string(var("OPENAGENTS_KILN_SITE_KEY"))
+            .ok()
+            .and_then(|text| site_secret(&text));
+        kiln
+    }
+
+    /// Whether signed-in players who aren't admins get Kiln.
+    #[must_use]
+    pub fn for_players(&self) -> bool {
+        self.site_key.is_some()
     }
 
     /// The build at `dir`. A value that isn't the shape it should be is
@@ -116,6 +131,7 @@ impl Kiln {
             } else {
                 DEFAULT_RELAY.into()
             },
+            site_key: None,
         }
     }
 
@@ -123,6 +139,19 @@ impl Kiln {
         serde_json::json!({"runner": self.runner, "repo": self.repo, "relay": self.relay})
             .to_string()
     }
+}
+
+/// A 64-hex secret key.
+fn site_secret(text: &str) -> Option<secp256k1::SecretKey> {
+    let text = text.trim();
+    if text.len() != 64 {
+        return None;
+    }
+    let mut bytes = [0u8; 32];
+    for (i, b) in bytes.iter_mut().enumerate() {
+        *b = u8::from_str_radix(text.get(2 * i..2 * i + 2)?, 16).ok()?;
+    }
+    secp256k1::SecretKey::from_byte_array(bytes).ok()
 }
 
 /// 64 hex digits, or an `npub1` key.
@@ -160,11 +189,147 @@ pub(crate) fn routes() -> Router<App> {
         .route("/admin/kiln", get(kiln_bare))
         .route(KILN, get(kiln_page))
         .route("/admin/kiln/{*file}", get(kiln_file))
+        .route(PLAYERS_IDENTITY, post(player_identity))
+        .route("/kiln/{*file}", get(player_file))
+}
+
+/// Kiln's files for players at the Grid terminal (#12488).
+pub(crate) const PLAYERS: &str = "/kiln/";
+const PLAYERS_IDENTITY: &str = "/kiln/identity";
+/// How long the site vouches for a player's browser key.
+const VOUCH_SECS: u64 = 24 * 3_600;
+/// Browser keys the site vouches for, per account per UTC day.
+const VOUCHES_A_DAY: u32 = 5;
+
+/// Whether this visitor gets Kiln at the Grid terminal: an admin, or a
+/// signed-in player when the site has its Kiln key.
+pub(crate) async fn offers(app: &App, headers: &HeaderMap) -> bool {
+    match visitor(app, headers).await {
+        Visitor::Admin => build(app).is_some(),
+        Visitor::Member => build(app).is_some_and(Kiln::for_players),
+        Visitor::SignedOut => false,
+    }
+}
+
+/// Kiln's module, worker, tools, and configuration for whoever
+/// [`offers`] Kiln to. Kiln's own page stays under `/admin/kiln/`.
+async fn player_file(
+    State(app): State<App>,
+    UrlPath(file): UrlPath<String>,
+    headers: HeaderMap,
+) -> Response {
+    if file == "index.html" || !offers(&app, &headers).await {
+        return guarded(crate::not_found().await);
+    }
+    serve(&app, &file, &headers).await
+}
+
+/// Vouch for a signed-in player's browser key: a NIP-OA `auth` tag and a
+/// mandate for `git.propose` and `kiln.test`, signed by the site's Kiln
+/// key, for a day. Runners list the site key with `each=N`, so each
+/// player's key gets its own quota (#12488).
+async fn player_identity(
+    State(app): State<App>,
+    headers: HeaderMap,
+    body: axum::body::Bytes,
+) -> Response {
+    let refuse = |status: StatusCode, message: &str| {
+        guarded(
+            (
+                status,
+                [(header::CONTENT_TYPE, "application/json")],
+                serde_json::json!({"error": message}).to_string(),
+            )
+                .into_response(),
+        )
+    };
+    // A JSON body can't come from another site's form, and a fetch from
+    // another origin says so.
+    let json = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("application/json"));
+    let foreign = headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .zip(headers.get(header::HOST).and_then(|v| v.to_str().ok()))
+        .is_some_and(|(origin, host)| origin.split("://").nth(1) != Some(host));
+    if !json || foreign {
+        return refuse(StatusCode::FORBIDDEN, "This request can't be accepted.");
+    }
+    let Some(service) = app.config.cloud.as_deref() else {
+        return refuse(StatusCode::NOT_FOUND, "Kiln isn't here.");
+    };
+    let Ok(viewer) = service.authenticate(&headers).await else {
+        return refuse(StatusCode::UNAUTHORIZED, "Sign in to use Kiln.");
+    };
+    let Some(secret) = build(&app).and_then(|k| k.site_key) else {
+        return refuse(StatusCode::NOT_FOUND, "Kiln isn't open to players here.");
+    };
+    let key = serde_json::from_slice::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| v["key"].as_str().map(str::to_lowercase))
+        .filter(|k| k.len() == 64 && k.bytes().all(|b| b.is_ascii_hexdigit()));
+    let Some(key) = key else {
+        return refuse(StatusCode::BAD_REQUEST, "Send this browser's Kiln key.");
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    if !vouch_allowed(&viewer.account_id, now) {
+        return refuse(
+            StatusCode::TOO_MANY_REQUESTS,
+            "Kiln has set up enough browsers for you today. Try again tomorrow.",
+        );
+    }
+    match kiln::identity::mint(
+        &secret,
+        &key,
+        &["git.propose", "kiln.test"],
+        now + VOUCH_SECS,
+    ) {
+        Ok(credential) => guarded(
+            (
+                [(header::CONTENT_TYPE, "application/json")],
+                serde_json::to_string(&credential).unwrap_or_default(),
+            )
+                .into_response(),
+        ),
+        Err(_) => refuse(StatusCode::BAD_REQUEST, "Send this browser's Kiln key."),
+    }
+}
+
+/// Count one vouch for `account` today; `false` past [`VOUCHES_A_DAY`].
+fn vouch_allowed(account: &str, now: u64) -> bool {
+    static COUNTS: std::sync::Mutex<(u64, Vec<(String, u32)>)> =
+        std::sync::Mutex::new((0, Vec::new()));
+    let Ok(mut counts) = COUNTS.lock() else {
+        return false;
+    };
+    let day = now / 86_400;
+    if counts.0 != day {
+        *counts = (day, Vec::new());
+    }
+    match counts.1.iter_mut().find(|(a, _)| a == account) {
+        Some((_, n)) if *n >= VOUCHES_A_DAY => false,
+        Some((_, n)) => {
+            *n += 1;
+            true
+        }
+        None => {
+            counts.1.push((account.to_owned(), 1));
+            true
+        }
+    }
 }
 
 /// Whether `path` is one of these pages, for [`crate::upstream::owned`].
 pub(crate) fn owns(path: &str) -> bool {
-    path == ADMIN || path == "/admin/" || path == "/admin/kiln" || path.starts_with(KILN)
+    path == ADMIN
+        || path == "/admin/"
+        || path == "/admin/kiln"
+        || path.starts_with(KILN)
+        || path.starts_with(PLAYERS)
 }
 
 /// Who is asking.
@@ -297,16 +462,21 @@ async fn kiln_file(
     if visitor(&app, &headers).await != Visitor::Admin {
         return guarded(crate::not_found().await);
     }
-    let Some(kiln) = build(&app) else {
+    serve(&app, &file, &headers).await
+}
+
+/// One of the build's files.
+async fn serve(app: &App, file: &str, headers: &HeaderMap) -> Response {
+    let Some(kiln) = build(app) else {
         return guarded(crate::not_found().await);
     };
-    let response = match kind(&file) {
+    let response = match kind(file) {
         Some(Kind::Config) => {
             ([(header::CONTENT_TYPE, "application/json")], kiln.config()).into_response()
         }
-        Some(Kind::Html) => return html_file(&kiln.dir, &file).await,
+        Some(Kind::Html) => return html_file(&kiln.dir, file).await,
         Some(Kind::Asset(content_type, cache)) => {
-            super::everglade::serve_build_cached(&kiln.dir, &file, content_type, &headers, cache)
+            super::everglade::serve_build_cached(&kiln.dir, file, content_type, headers, cache)
                 .await
         }
         None => crate::not_found().await,

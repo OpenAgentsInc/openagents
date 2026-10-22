@@ -48,7 +48,7 @@ Tools:
 - grep [-i] TEXT [PATH]   find lines; prints path:line:text (TEXT may be a\|b)
 - cargo test -p CRATE [-- FILTER]   build and run the crate's tests on a remote runner (takes 10 s to a few minutes)
 - cargo check -p CRATE              type-check the crate on the remote runner
-The crates you can test: {crates}. The runner applies your changed files to the repository at the loaded commit, with no network. You can't change Cargo.toml or build.rs, and you can only change files inside the crate.
+The crates you can test: {crates}. The runner applies your changed files to the repository at the loaded commit, with no network. You can't change Cargo.toml or build.rs, and you can only change files inside the crate. Other repository paths (another crate, docs) load the first time ls, view, or grep names them, so you can read them for context.
 
 Reply with ONLY one JSON object, no prose and no code fences:
 {"thought": "one short sentence", "commands": [ ... ]}

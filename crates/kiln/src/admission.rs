@@ -8,7 +8,13 @@
 //! npub1...                 # 30 jobs a day (the runner's member quota)
 //! npub1... jobs=200        # 200 jobs a day
 //! npub1... unlimited       # no daily quota (maintainers, the Grid Foreman)
+//! npub1... each=10         # each agent this key authorizes: 10 jobs a day
 //! ```
+//!
+//! `each=N` is for a key that vouches for many agents, such as the site's
+//! Kiln key, which authorizes each signed-in player's browser key at the
+//! Grid terminal (#12488): every agent gets its own N jobs a day instead of
+//! sharing one quota.
 //!
 //! A job is admitted when its request is signed by a listed key, or by an
 //! agent key whose request carries a valid NIP-OA `auth` tag and a mandate
@@ -35,6 +41,9 @@ pub enum Tier {
     Jobs(u32),
     /// No daily quota.
     Unlimited,
+    /// A stated number of jobs a day for each agent the key authorizes,
+    /// counted per agent.
+    Each(u32),
 }
 
 /// The admission list: listed keys (lowercase hex) and their tiers.
@@ -75,15 +84,22 @@ impl Roster {
             let tier = match words.next() {
                 None => Tier::Member,
                 Some("unlimited") => Tier::Unlimited,
-                Some(word) => match word.strip_prefix("jobs=").map(str::parse::<u32>) {
-                    Some(Ok(n)) => Tier::Jobs(n),
-                    _ => {
-                        return Err(format!(
-                            "line {}: {word} is not a tier; use jobs=N or unlimited",
-                            number + 1
-                        ));
+                Some(word) => {
+                    let number_of = |prefix: &str| {
+                        word.strip_prefix(prefix)
+                            .and_then(|n| n.parse::<u32>().ok())
+                    };
+                    match (number_of("jobs="), number_of("each=")) {
+                        (Some(n), _) => Tier::Jobs(n),
+                        (_, Some(n)) => Tier::Each(n),
+                        _ => {
+                            return Err(format!(
+                                "line {}: {word} is not a tier; use jobs=N, each=N, or unlimited",
+                                number + 1
+                            ));
+                        }
                     }
-                },
+                }
             };
             if let Some(extra) = words.next() {
                 return Err(format!("line {}: unexpected {extra}", number + 1));
@@ -131,7 +147,7 @@ impl Policy {
     fn limit(&self, tier: Tier) -> Option<u32> {
         match tier {
             Tier::Member => Some(self.member_jobs),
-            Tier::Jobs(n) => Some(n),
+            Tier::Jobs(n) | Tier::Each(n) => Some(n),
             Tier::Unlimited => None,
         }
     }
@@ -163,6 +179,13 @@ impl Policy {
                     key: owner.to_string(),
                     limit: None,
                     via: "agent of an admin",
+                });
+            }
+            if let Some(Tier::Each(n)) = self.roster.keys.get(owner) {
+                return Ok(Holder {
+                    key: requester.to_string(),
+                    limit: Some(*n),
+                    via: "agent of a listed key, counted alone",
                 });
             }
             if let Some(tier) = self.roster.keys.get(owner) {
@@ -276,6 +299,23 @@ mod tests {
         let mut admin = policy("", false);
         admin.admins.insert(stranger.clone());
         assert_eq!(admin.admit(&stranger, None).unwrap().limit, None);
+    }
+
+    #[test]
+    fn a_vouching_key_gives_each_agent_its_own_quota() {
+        let p = policy(&format!("{A} each=3\n"), false);
+        assert_eq!(
+            Roster::parse(&format!("{A} each=3")).unwrap().keys[A],
+            Tier::Each(3)
+        );
+        let (one, two) = ("d".repeat(64), "e".repeat(64));
+        let first = p.admit(&one, Some(A)).unwrap();
+        let second = p.admit(&two, Some(A)).unwrap();
+        assert_eq!((first.key.as_str(), first.limit), (one.as_str(), Some(3)));
+        assert_ne!(first.key, second.key, "each agent is counted alone");
+        // The vouching key still can't run jobs for a stranger without
+        // vouching for it.
+        assert!(p.admit(&one, None).is_err());
     }
 
     #[test]

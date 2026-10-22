@@ -212,6 +212,12 @@ pub async fn run() {
     app.restore_session();
     app.render_metrics();
     app.load_admin_key();
+    if headless() {
+        // At the Grid terminal, the site vouches for this browser's key
+        // (#12488), so the runner counts its jobs and readers see whose
+        // agent it is.
+        wasm_bindgen_futures::spawn_local(app.clone().site_identity());
+    }
     *app.build.borrow_mut() = current_build().await.unwrap_or_else(|| "site".into());
     if let Some(node) = app.doc.get_element_by_id("build") {
         node.set_text_content(Some(&app.build.borrow()));
@@ -947,6 +953,7 @@ impl App {
                 let run = if call.argv[0] == "cargo" {
                     self.remote_cargo(&call.argv).await
                 } else {
+                    self.read_sparse(&call.argv).await;
                     self.run_tool(&call.argv, &call.stdin).await
                 };
                 *self.current_tool.borrow_mut() = None;
@@ -1436,22 +1443,35 @@ impl App {
                         continue;
                     }
                     let path = entry["path"].as_str().unwrap_or_default();
-                    wanted.push(format!("{slice}/{path}"));
+                    let blob = entry["sha"].as_str().unwrap_or_default().to_string();
+                    wanted.push((format!("{slice}/{path}"), blob));
                 }
             }
             let listed_ms = now_ms() - started;
-            // Every file at once; raw.githubusercontent.com serves them in parallel.
-            let fetched = futures_util::future::join_all(wanted.iter().map(|full| {
+            // Every file at once, from this browser's blob cache when it
+            // has the blob, else from raw.githubusercontent.com.
+            let fetched = futures_util::future::join_all(wanted.iter().map(|(full, blob)| {
                 let url = format!("https://raw.githubusercontent.com/{REPO}/{sha}/{full}");
-                async move { fetch_bytes(&url).await }
+                async move { fetch_blob(&url, blob).await }
             }))
             .await;
             let mut vfs = Vfs::default();
             let mut bytes = 0;
-            for (full, data) in wanted.iter().zip(fetched) {
-                let data = data?;
+            let mut cached = 0;
+            for ((full, _), data) in wanted.iter().zip(fetched) {
+                let (data, hit) = data?;
                 bytes += data.len();
+                cached += usize::from(hit);
                 vfs.put(full, &data, 0).map_err(String::from)?;
+            }
+            if cached > 0 {
+                self.log(
+                    "info",
+                    &format!(
+                        "{cached} of {} files came from this browser's blob cache",
+                        wanted.len()
+                    ),
+                );
             }
             Ok((sha, vfs, bytes, listed_ms))
         }
@@ -1507,6 +1527,86 @@ impl App {
             set(&window, "kilnLoaded", true);
         }
         self.busy.set(false);
+    }
+
+    /// Fetch the repository paths a reading tool names that the workspace
+    /// lacks (#12488): a file, or a directory's files, at the loaded
+    /// commit, into the base and the workspace, so the agent can read other
+    /// crates. They count as unchanged.
+    async fn read_sparse(&self, argv: &[String]) {
+        let Some(repo) = self.repo() else {
+            return;
+        };
+        let commit = repo["commit"].as_str().unwrap_or_default().to_string();
+        for path in crate::remote::read_paths(argv) {
+            let present = {
+                let vfs = self.vfs.borrow();
+                let prefix = format!("{path}/");
+                vfs.get(&path).is_some() || vfs.iter().any(|(p, _)| p.starts_with(&prefix))
+            };
+            if present {
+                continue;
+            }
+            let last = path.rsplit('/').next().unwrap_or_default();
+            let raw = |p: &str| format!("https://raw.githubusercontent.com/{REPO}/{commit}/{p}");
+            let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+            if last.contains('.') {
+                if let Ok(data) = fetch_bytes(&raw(&path)).await {
+                    files.push((path.clone(), data));
+                }
+            } else if let Ok(tree) = fetch_json(&format!(
+                "https://api.github.com/repos/{REPO}/git/trees/{commit}:{path}?recursive=1"
+            ))
+            .await
+            {
+                let entries: Vec<(String, String)> = tree["tree"]
+                    .as_array()
+                    .map(|a| {
+                        a.iter()
+                            .filter(|e| {
+                                e["type"] == "blob" && e["size"].as_u64().unwrap_or(0) <= 512 * 1024
+                            })
+                            .take(300)
+                            .map(|e| {
+                                (
+                                    format!("{path}/{}", e["path"].as_str().unwrap_or_default()),
+                                    e["sha"].as_str().unwrap_or_default().to_string(),
+                                )
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let fetched = futures_util::future::join_all(
+                    entries
+                        .iter()
+                        .map(|(full, blob)| async move { fetch_blob(&raw(full), blob).await }),
+                )
+                .await;
+                for ((full, _), data) in entries.into_iter().zip(fetched) {
+                    if let Ok((data, _)) = data {
+                        files.push((full, data));
+                    }
+                }
+            }
+            if files.is_empty() {
+                continue;
+            }
+            {
+                let mut vfs = self.vfs.borrow_mut();
+                let mut base = self.base.borrow_mut();
+                for (full, data) in &files {
+                    let _ = vfs.put(full, data, 0);
+                    let _ = base.put(full, data, 0);
+                }
+            }
+            self.persist().await;
+            self.persist_base().await;
+            self.render_files();
+            self.log(
+                "info",
+                &format!("Read {} files of {path} from the repository", files.len()),
+            );
+        }
     }
 
     /// Run `cargo ...` on the runner: send the files that differ from the
@@ -2219,6 +2319,28 @@ impl App {
         }
     }
 
+    /// Ask the site for a credential for this browser's key, when it holds
+    /// no valid one: `POST identity` beside Kiln's files, which answers a
+    /// signed-in visitor (#12488).
+    async fn site_identity(self: Rc<Self>) {
+        let Some(key) = self.admin_key.borrow().clone() else {
+            return;
+        };
+        if super::identity::holds(key.pubkey()) {
+            return;
+        }
+        let body = json!({"key": key.pubkey()}).to_string();
+        match post_json(&asset("identity"), &body).await {
+            Ok(text) => {
+                super::identity::adopt(&self.doc, key.pubkey(), &text);
+                if super::identity::holds(key.pubkey()) {
+                    self.log("info", "The site vouched for this browser's key.");
+                }
+            }
+            Err(e) => self.log("info", &format!("No identity from the site: {e}")),
+        }
+    }
+
     /// Ask the runner to publish Kiln from this workspace, or to revert or
     /// reset it. Only the runner's admin keys get an answer other than a
     /// refusal.
@@ -2593,6 +2715,65 @@ fn nostr_hex(text: &str) -> Option<String> {
 }
 
 /// Fetch and parse a JSON document.
+/// A file at `url` whose git blob ID is `blob`: from this browser's blob
+/// cache when it holds it, else fetched, checked against `blob`, and kept
+/// (#12488). Returns whether it came from the cache.
+async fn fetch_blob(url: &str, blob: &str) -> Result<(Vec<u8>, bool), String> {
+    let key = format!("https://kiln.invalid/blob/{blob}");
+    let cache = match web_sys::window().map(|w| w.caches()) {
+        Some(Ok(caches)) => JsFuture::from(caches.open("kiln-blobs-v1"))
+            .await
+            .ok()
+            .and_then(|c| c.dyn_into::<web_sys::Cache>().ok()),
+        _ => None,
+    };
+    if let Some(cache) = &cache
+        && let Ok(hit) = JsFuture::from(cache.match_with_str(&key)).await
+        && let Ok(response) = hit.dyn_into::<web_sys::Response>()
+        && let Ok(buffer) = response.array_buffer()
+        && let Ok(buffer) = JsFuture::from(buffer).await
+    {
+        let data = Uint8Array::new(&buffer).to_vec();
+        if crate::patch::blob_id(&data) == blob {
+            return Ok((data, true));
+        }
+    }
+    let data = fetch_bytes(url).await?;
+    if !blob.is_empty() && crate::patch::blob_id(&data) != blob {
+        return Err(format!("{url} doesn't match its blob ID"));
+    }
+    if let Some(cache) = &cache {
+        let mut copy = data.clone();
+        if let Ok(response) = web_sys::Response::new_with_opt_u8_array(Some(&mut copy)) {
+            let _ = JsFuture::from(cache.put_with_str(&key, &response)).await;
+        }
+    }
+    Ok((data, false))
+}
+
+/// POST `body` as JSON to `url` and return the answer's text.
+async fn post_json(url: &str, body: &str) -> Result<String, String> {
+    let window = web_sys::window().ok_or("no window")?;
+    let init = web_sys::RequestInit::new();
+    init.set_method("POST");
+    init.set_body(&JsValue::from_str(body));
+    let headers = Object::new();
+    let _ = js_sys::Reflect::set(&headers, &"content-type".into(), &"application/json".into());
+    init.set_headers(&headers);
+    let response: web_sys::Response = JsFuture::from(window.fetch_with_str_and_init(url, &init))
+        .await
+        .map_err(|e| text(&e))?
+        .dyn_into()
+        .map_err(|e| text(&e))?;
+    if !response.ok() {
+        return Err(format!("HTTP {}", response.status()));
+    }
+    let body = JsFuture::from(response.text().map_err(|e| text(&e))?)
+        .await
+        .map_err(|e| text(&e))?;
+    Ok(body.as_string().unwrap_or_default())
+}
+
 pub(super) async fn fetch_json(url: &str) -> Result<Value, String> {
     let bytes = fetch_bytes(url).await?;
     serde_json::from_slice(&bytes).map_err(|e| e.to_string())

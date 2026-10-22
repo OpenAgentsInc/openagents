@@ -1,15 +1,16 @@
-// Presentation glue for Kiln at the terminal (#12440, #12456): the
-// terminal's Kiln control, drawn only for site admins, opens it. The GPUI
-// chat draws Kiln's panel, its cards, and its run; this loads Kiln's module
-// once, without its page (`start_headless`), so the chat can read
-// `kilnState()` and call `kilnAgent` and the rest. The server refuses Kiln's
-// files to everyone else.
+// Presentation glue for Kiln at the terminal (#12440, #12456, #12488): the
+// terminal's Kiln control, drawn for signed-in players the site offers Kiln
+// to (`/home/me`'s `kiln`), opens it. The GPUI chat draws Kiln's panel, its
+// cards, and its run; this loads Kiln's module once, without its page
+// (`start_headless`), so the chat can read `kilnState()` and call
+// `kilnAgent` and the rest. The server refuses Kiln's files to everyone
+// else.
 let kilnModule;
 const startKiln = () => {
-  kilnModule ??= import('/admin/kiln/pkg/kiln.js')
+  kilnModule ??= import('/kiln/pkg/kiln.js')
     .then(async kiln => {
-      await kiln.default({module_or_path: '/admin/kiln/pkg/kiln_bg.wasm'});
-      kiln.start_headless('/admin/kiln/');
+      await kiln.default({module_or_path: '/kiln/pkg/kiln_bg.wasm'});
+      kiln.start_headless('/kiln/');
     })
     .catch(error => {
       kilnModule = undefined;
@@ -18,7 +19,7 @@ const startKiln = () => {
   return kilnModule;
 };
 globalThis.homeKiln = open => {
-  open = !!open && globalThis.openagentsAdmin === true;
+  open = !!open && globalThis.openagentsKiln === true;
   globalThis.openagentsKilnOpen = open;
   document.documentElement.classList.toggle('kiln-open', open);
   if (open) {

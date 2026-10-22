@@ -89,3 +89,17 @@ pub(super) fn wire(doc: &Document, agent: &str) {
     let _ = area.add_event_listener_with_callback("change", closure.as_ref().unchecked_ref());
     closure.forget();
 }
+
+/// Hold `text` as this page's credential for `agent`, as if pasted.
+pub(super) fn adopt(doc: &Document, agent: &str, text: &str) {
+    take(doc, agent, text);
+}
+
+/// Whether the page holds a credential that is still valid for `agent`.
+pub(super) fn holds(agent: &str) -> bool {
+    HELD.with(|held| {
+        held.borrow()
+            .as_ref()
+            .is_some_and(|c| verify_credential(c, agent, super::util::unix() + 600).is_ok())
+    })
+}

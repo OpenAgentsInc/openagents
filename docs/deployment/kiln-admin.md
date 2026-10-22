@@ -51,13 +51,37 @@ covers the `invite_only` list that sets it).
 
 ## The Grid terminal
 
-`GET /home/me` answers `"admin": true` for a site admin, and the Grid's
-loader sets `openagentsAdmin`. The terminal then shows **Kiln** beside
-**DeepSeek V4.1 | Any Pylon**. It opens Kiln's page in a panel over the
-Grid, with **Open in a new tab** and **Back to the Grid**. Back to the Grid
-hides the panel and keeps the page loaded, so a running task continues.
-Nobody else sees the control, and the server refuses the page to them
-either way.
+`GET /home/me` answers `"kiln": true` when the site offers this visitor
+Kiln at the terminal: a site admin, or, when the site has its Kiln key, any
+signed-in player (#12488). The Grid's loader then sets `openagentsKiln`,
+and the terminal shows **Kiln** beside the model choice. Kiln opens in a
+panel the GPUI chat draws, with its cards and its run (#12456). The page
+loads Kiln's module from `/kiln/`, which answers only those visitors; Kiln's
+own page stays at `/admin/kiln/`, for admins.
+
+### Kiln for players
+
+Set `OPENAGENTS_KILN_SITE_KEY` to a file holding the site's Kiln secret key
+(64 hex digits, readable only by the site). Then:
+
+- `/kiln/` serves Kiln's module, worker, tools, and `config.json` to every
+  signed-in player.
+- `POST /kiln/identity` with `{"key": "<64 hex>"}` vouches for that
+  browser's key: a NIP-OA `auth` tag and a mandate for `git.propose` and
+  `kiln.test`, signed by the site key, for 24 hours. It takes a JSON body
+  from this site only, and at most five keys per account a day. Kiln asks
+  for it when it starts at the terminal.
+- On each runner, list the site key with a per-agent quota, so every
+  player's key gets its own daily runs:
+
+  ```text
+  npub1<site key>  each=10   # players at the Grid terminal
+  ```
+
+  `each=N` counts each agent the key vouches for alone, apart from the
+  site key's own runs.
+
+Patches from players then read "agent, authorized by" the site key.
 
 ## How Kiln reaches a runner
 

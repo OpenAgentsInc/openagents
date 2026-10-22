@@ -155,12 +155,12 @@ pub fn failure_word(code: Option<&str>) -> &'static str {
     }
 }
 
-/// The Kiln control beside the model choice (#12440), for site admins:
-/// it opens Kiln, the in-browser coding agent, in a panel over the Grid.
+/// The Kiln control beside the model choice (#12440): it opens Kiln, the
+/// in-browser coding agent, in a panel over the Grid.
 pub const KILN: &str = "Kiln";
-/// The page global the Grid sets to `true` when `/home/me` says the
-/// visitor is a site admin.
-pub const ADMIN_GLOBAL: &str = "openagentsAdmin";
+/// The page global that is `true` when the site offers this visitor Kiln
+/// at the terminal: an admin, or a signed-in player (#12488).
+pub const KILN_GLOBAL: &str = "openagentsKiln";
 /// The page global that is `true` while the chat is open at the Grid's
 /// help desk (#12443): the chat then asks the site's free hosted agent, in
 /// a chat of its own, and offers no model choice.
@@ -173,10 +173,11 @@ pub const FOREMAN_GLOBAL: &str = "openagentsChatForeman";
 pub const OPEN_KILN: &str = "homeKiln";
 
 /// Whether the terminal offers Kiln: on the Grid homepage, outside Game
-/// Lab, and only to a site admin. The server refuses Kiln to everyone else
-/// too; this only keeps the control from showing.
-pub fn offers_kiln(base: &str, game: bool, admin: bool) -> bool {
-    admin && !game && base == HOME_BASE
+/// Lab, and only when the site offers it to this visitor (`offered`: an
+/// admin, or a signed-in player, #12488). The server refuses Kiln's files
+/// to everyone else too; this only keeps the control from showing.
+pub fn offers_kiln(base: &str, game: bool, offered: bool) -> bool {
+    offered && !game && base == HOME_BASE
 }
 
 /// The Grid homepage's overlay (#12459): the page globals and functions
@@ -703,7 +704,7 @@ mod tests {
     }
 
     #[test]
-    fn only_a_site_admin_on_the_grid_is_offered_kiln() {
+    fn kiln_shows_only_on_the_grid_and_only_when_offered() {
         assert!(offers_kiln(HOME_BASE, false, true));
         assert!(!offers_kiln(HOME_BASE, false, false));
         assert!(!offers_kiln(HOME_BASE, true, true));

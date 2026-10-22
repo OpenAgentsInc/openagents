@@ -103,8 +103,8 @@ pub struct LanderChat {
     group_ready: bool,
     ask_group: bool,
     flint_ready: bool,
-    /// The visitor is a site admin, so the Grid terminal offers Kiln.
-    admin: bool,
+    /// The site offers this visitor Kiln at the Grid terminal (#12488).
+    kiln_offered: bool,
     ask_flint: bool,
     /// When the last message was sent, and how many this page has sent,
     /// for the visit's events.
@@ -177,7 +177,7 @@ impl LanderChat {
             group_ready: false,
             ask_group: true,
             flint_ready: false,
-            admin: false,
+            kiln_offered: false,
             ask_flint: false,
             sent_at: None,
             sent_count: 0,
@@ -301,12 +301,12 @@ impl LanderChat {
                 .ok()
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            let admin = js_sys::Reflect::get(&js_sys::global(), &model::ADMIN_GLOBAL.into())
+            let kiln_offered = js_sys::Reflect::get(&js_sys::global(), &model::KILN_GLOBAL.into())
                 .ok()
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false);
-            if admin != self.admin {
-                self.admin = admin;
+            if kiln_offered != self.kiln_offered {
+                self.kiln_offered = kiln_offered;
                 cx.notify();
             }
             if flint != self.flint_ready {
@@ -1048,12 +1048,13 @@ impl LanderChat {
             .into_any_element()
     }
 
-    /// Kiln, beside the model choice, for a site admin on the Grid (#12440):
+    /// Kiln, beside the model choice, for whom the site offers it (#12440,
+    /// #12488):
     /// it opens Kiln's panel over the Grid.
     fn render_kiln(&self, layout: &Layout) -> Option<AnyElement> {
         if self.desk_mode
             || self.foreman_mode
-            || !model::offers_kiln(base(), is_game_lab(), self.admin)
+            || !model::offers_kiln(base(), is_game_lab(), self.kiln_offered)
         {
             return None;
         }

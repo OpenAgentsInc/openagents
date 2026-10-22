@@ -287,6 +287,7 @@ const idle=t=>new Promise(r=>(window.requestIdleCallback||(f=>setTimeout(f,1)))(
 const account=()=>fetch(\"/home/me\").then(r=>r.ok?r.json():null).then(me=>{if(!me||!me.signed_in)return;\
 globalThis.oaSignedIn&&oaSignedIn();\
 if(me.admin===true)globalThis.openagentsAdmin=true;\
+if(me.kiln===true)globalThis.openagentsKiln=true;\
 const grid=document.getElementById(\"everglade-canvas\");\
 if(me.verse_name)grid.dataset.name=me.verse_name;\
 if(me.csrf)grid.dataset.csrf=me.csrf;\
@@ -615,8 +616,10 @@ async fn me(State(app): State<App>, headers: HeaderMap) -> Response {
             "profile": profile,
             "chat": CHAT,
             "csrf": csrf,
-            // A site admin's terminal offers Kiln (#12440).
+            // A site admin's terminal offers Kiln (#12440), and a
+            // player's when the site has its Kiln key (#12488).
             "admin": viewer.admin,
+            "kiln": super::admin::offers(&app, &headers).await,
         });
     }
     let mut response = (
@@ -709,23 +712,25 @@ mod tests {
     }
 
     #[test]
-    fn kiln_opens_in_a_panel_only_for_a_site_admin() {
+    fn kiln_opens_in_a_panel_only_for_whom_the_site_offers_it() {
         // The chat draws Kiln's panel, cards, and run in GPUI (#12456);
-        // only a `/home/me` that says admin lets it open and loads Kiln's
-        // module, and the server refuses `/admin/kiln/` to everyone else
-        // (#12440).
+        // only a `/home/me` that says `kiln` (an admin, or a signed-in
+        // player when the site has its Kiln key, #12488) lets it open and
+        // loads Kiln's module from `/kiln/`, which the server refuses to
+        // everyone else.
         for account in [true, false] {
             let html = main_html("<ul></ul>", account);
             assert!(!html.contains("kiln-panel") && !html.contains("kiln-frame"));
         }
         let gate = LOADER
-            .find("open = !!open && globalThis.openagentsAdmin === true;")
+            .find("open = !!open && globalThis.openagentsKiln === true;")
             .unwrap();
         assert!(LOADER[gate..].contains("startKiln();"));
-        assert!(LOADER.contains("start_headless('/admin/kiln/')"));
+        assert!(LOADER.contains("start_headless('/kiln/')"));
+        assert!(LOADER.contains("if(me.kiln===true)globalThis.openagentsKiln=true;"));
         assert!(LOADER.contains("if(me.admin===true)globalThis.openagentsAdmin=true;"));
         assert!(LOADER.contains("globalThis.homeKiln"));
-        assert!(LOADER.contains("open = !!open && globalThis.openagentsAdmin === true;"));
+        assert!(LOADER.contains("open = !!open && globalThis.openagentsKiln === true;"));
         assert!(LOADER.contains("globalThis.homeOverlay"));
         assert!(
             STYLE

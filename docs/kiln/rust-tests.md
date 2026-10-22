@@ -126,7 +126,9 @@ The runner refuses to start until you say who may use it:
 
 - `--allow FILE` names the keys that may run jobs, one a line, hex or
   `npub`, each with an optional daily quota: nothing for the member quota
-  (`--member-jobs`, default 30), `jobs=N`, or `unlimited`. The runner reads
+  (`--member-jobs`, default 30), `jobs=N`, `unlimited`, or `each=N` for a
+  key that vouches for many agents (the site's Kiln key): each agent gets
+  its own N jobs a day, counted apart from the key's own. The runner reads
   the file again for every job, so you can add or remove a key without a
   restart.
 - An agent key gets in when its job request carries a valid NIP-OA `auth`

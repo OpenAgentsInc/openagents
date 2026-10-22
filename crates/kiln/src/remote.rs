@@ -180,6 +180,40 @@ pub fn touched_crates<'a>(paths: impl IntoIterator<Item = &'a String>) -> Vec<St
     out
 }
 
+/// The repository paths a reading tool names (`ls`, `cat`, `view`,
+/// `grep`), which Kiln fetches the first time when they aren't in the
+/// workspace (#12488): normalized, and only plain relative paths.
+#[must_use]
+pub fn read_paths(argv: &[String]) -> Vec<String> {
+    let Some(tool) = argv.first() else {
+        return Vec::new();
+    };
+    let words: Vec<&str> = argv[1..]
+        .iter()
+        .map(String::as_str)
+        .filter(|w| !w.starts_with('-'))
+        .collect();
+    let named: Vec<&str> = match tool.as_str() {
+        "ls" | "cat" => words,
+        "view" => words.into_iter().take(1).collect(),
+        // The first word is the text to find.
+        "grep" => words.into_iter().skip(1).collect(),
+        _ => Vec::new(),
+    };
+    named
+        .into_iter()
+        .map(|p| p.trim_start_matches("./").trim_end_matches('/'))
+        .filter(|p| {
+            !p.is_empty()
+                && !p.starts_with('/')
+                && !p.split('/').any(|part| part == ".." || part.is_empty())
+                && p.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"_.-/".contains(&b))
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
 /// The crates a Cargo command names with `-p`.
 #[must_use]
 pub fn named_crates(args: &[String]) -> Vec<String> {
@@ -381,6 +415,23 @@ pub fn trim_log(log: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reading_tools_name_their_paths() {
+        let argv = |line: &str| line.split(' ').map(str::to_string).collect::<Vec<_>>();
+        assert_eq!(read_paths(&argv("ls -R crates/atif/")), ["crates/atif"]);
+        assert_eq!(
+            read_paths(&argv("view crates/atif/src/lib.rs 1 40")),
+            ["crates/atif/src/lib.rs"]
+        );
+        assert_eq!(
+            read_paths(&argv("grep -n Step crates/atif ./docs")),
+            ["crates/atif", "docs"]
+        );
+        assert!(read_paths(&argv("grep Step")).is_empty());
+        assert!(read_paths(&argv("cat ../secret /etc/passwd a//b")).is_empty());
+        assert!(read_paths(&argv("write crates/x.rs")).is_empty());
+    }
 
     fn crates() -> Vec<String> {
         vec!["memory-stream".to_string()]

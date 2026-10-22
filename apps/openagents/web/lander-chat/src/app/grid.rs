@@ -9,7 +9,8 @@
 //! - Game Lab's panel: opened in the world, under its arch, it checks that
 //!   the visitor is signed in, then shows their version of the game with
 //!   Play and Compare beside the chat.
-//! - Kiln's panel for a site admin, around Kiln's own page.
+//! - Kiln's panel, for whom the site offers it: its cards and its run
+//!   (`kiln`).
 //!
 //! The canvas covers the page, so each frame the chat tells the page which
 //! boxes it drew in ([`model::Overlay`]): the page clips the canvas to them,
@@ -160,7 +161,7 @@ impl LanderChat {
             self.grid.open = open;
             cx.notify();
         }
-        let kiln = flag(model::KILN_OPEN_GLOBAL) && self.admin;
+        let kiln = flag(model::KILN_OPEN_GLOBAL) && self.kiln_offered;
         if kiln != self.grid.kiln {
             self.grid.kiln = kiln;
             cx.notify();

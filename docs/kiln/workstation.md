@@ -194,9 +194,17 @@ it works (`working.png`), the terminal's screen in the world
 (`screen.png`), the proposed patch (`proposed.png`), and the panel at phone
 width (`phone.png`).
 
-Not built yet: Kiln for players who aren't site admins (it waits on NIP-07
-signing and runner quotas by identity), a shared base cached by blob ID,
-and sparse reads of more of the tree.
+Since #12488, signed-in players get it too when the site has its Kiln key:
+the site vouches for each player's browser key for a day, and runners list
+the site key with `each=N`, so every player's key has its own quota
+([kiln-admin.md](../deployment/kiln-admin.md#kiln-for-players)). Files
+load through this browser's blob cache, keyed and checked by git blob ID,
+and a path outside the loaded crate that `ls`, `view`, or `grep` names is
+read from the repository at the loaded commit the first time. Checked
+locally the same way as above with a player who isn't an admin: the site
+vouched for the browser's key, the runner admitted it as "agent of a listed
+key, counted alone", and Kiln proposed patch `7fb989310556`
+(`player-proposed.png`).
 
 ## Risks
 

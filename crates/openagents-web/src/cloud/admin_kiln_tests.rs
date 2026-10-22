@@ -174,3 +174,146 @@ async fn without_a_build_the_hub_says_kiln_isnt_installed() {
     assert_eq!(page.status, StatusCode::SERVICE_UNAVAILABLE);
     crate::copy_guard::assert_plain("/admin/kiln/", &page.body);
 }
+
+/// POST `body` as JSON, as Kiln's page does.
+async fn post_json(site: &Router, path: &str, cookies: &Cookies, body: &str) -> Answer {
+    let mut request = Request::builder()
+        .method(Method::POST)
+        .uri(path)
+        .header(header::HOST, HOST)
+        .header(header::CONTENT_TYPE, "application/json")
+        .header(header::ORIGIN, format!("http://{HOST}"));
+    if !cookies.0.is_empty() {
+        request = request.header(header::COOKIE, cookies.header());
+    }
+    let response = site
+        .clone()
+        .oneshot(request.body(Body::from(body.to_owned())).unwrap())
+        .await
+        .unwrap();
+    let status = response.status();
+    let headers = response.headers().clone();
+    let body = String::from_utf8(
+        to_bytes(response.into_body(), 1024 * 1024)
+            .await
+            .unwrap()
+            .to_vec(),
+    )
+    .unwrap();
+    Answer {
+        status,
+        headers,
+        body,
+    }
+}
+
+#[tokio::test]
+async fn players_get_kiln_and_a_vouched_key_when_the_site_has_its_kiln_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let build = dir.path().join("kiln");
+    std::fs::create_dir_all(build.join("pkg")).unwrap();
+    std::fs::write(build.join("index.html"), PAGE).unwrap();
+    std::fs::write(build.join("pkg/kiln_bg.wasm"), b"\0asm").unwrap();
+    let mut kiln = crate::pages::admin::Kiln::new(build, &"ab".repeat(32), "", "");
+    let secret = secp256k1::SecretKey::from_byte_array([9; 32]).unwrap();
+    let site_key = secp256k1::Keypair::from_secret_key(&secp256k1::Secp256k1::new(), &secret)
+        .x_only_public_key()
+        .0
+        .to_string();
+    kiln.site_key = Some(secret);
+    let f = fixture_with(|c| c.kiln = Some(Arc::new(kiln))).await;
+    let player = Cookies(BTreeMap::from([("oa_cloud_session".into(), token("bob"))]));
+    let away = Cookies::default();
+
+    // The terminal offers Kiln to a signed-in player, and its files answer.
+    let me = request(&f.site, Method::GET, "/home/me", &player, None, None).await;
+    let me: serde_json::Value = serde_json::from_str(&me.body).unwrap();
+    assert_eq!(
+        (me["admin"].clone(), me["kiln"].clone()),
+        (json!(false), json!(true))
+    );
+    let wasm = request(
+        &f.site,
+        Method::GET,
+        "/kiln/pkg/kiln_bg.wasm",
+        &player,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(wasm.status, StatusCode::OK);
+    // Kiln's own page stays for admins; nobody signed out gets a file.
+    for (path, who) in [
+        ("/kiln/index.html", &player),
+        ("/kiln/pkg/kiln_bg.wasm", &away),
+        ("/admin/kiln/pkg/kiln_bg.wasm", &player),
+    ] {
+        let answer = request(&f.site, Method::GET, path, who, None, None).await;
+        assert_eq!(answer.status, StatusCode::NOT_FOUND, "{path}");
+    }
+
+    // The site vouches for the player's browser key for a day.
+    let agent = secp256k1::Keypair::from_secret_key(
+        &secp256k1::Secp256k1::new(),
+        &secp256k1::SecretKey::from_byte_array([7; 32]).unwrap(),
+    )
+    .x_only_public_key()
+    .0
+    .to_string();
+    let body = json!({"key": agent}).to_string();
+    let vouched = post_json(&f.site, "/kiln/identity", &player, &body).await;
+    assert_eq!(vouched.status, StatusCode::OK, "{}", vouched.body);
+    let credential: kiln::identity::Credential = serde_json::from_str(&vouched.body).unwrap();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let mandate = kiln::identity::verify_credential(&credential, &agent, now).unwrap();
+    assert_eq!(mandate.owner, site_key);
+    assert!(mandate.actions.iter().any(|a| a == "kiln.test"));
+    // Signed out, a form post, or another site's page gets nothing.
+    let refused = post_json(&f.site, "/kiln/identity", &away, &body).await;
+    assert_eq!(refused.status, StatusCode::UNAUTHORIZED);
+    let form = request(
+        &f.site,
+        Method::POST,
+        "/kiln/identity",
+        &player,
+        Some("key=x"),
+        None,
+    )
+    .await;
+    assert_eq!(form.status, StatusCode::FORBIDDEN);
+    // A day's vouches run out.
+    for _ in 0..5 {
+        post_json(&f.site, "/kiln/identity", &player, &body).await;
+    }
+    let spent = post_json(&f.site, "/kiln/identity", &player, &body).await;
+    assert_eq!(spent.status, StatusCode::TOO_MANY_REQUESTS);
+    crate::copy_guard::assert_plain("/kiln/identity", &spent.body);
+}
+
+#[tokio::test]
+async fn without_the_site_key_players_get_no_kiln() {
+    let dir = tempfile::tempdir().unwrap();
+    let build = dir.path().join("kiln");
+    std::fs::create_dir_all(build.join("pkg")).unwrap();
+    std::fs::write(build.join("index.html"), PAGE).unwrap();
+    std::fs::write(build.join("pkg/kiln_bg.wasm"), b"\0asm").unwrap();
+    let kiln = crate::pages::admin::Kiln::new(build, "", "", "");
+    let f = fixture_with(|c| c.kiln = Some(Arc::new(kiln))).await;
+    let player = Cookies(BTreeMap::from([("oa_cloud_session".into(), token("bob"))]));
+    let me = request(&f.site, Method::GET, "/home/me", &player, None, None).await;
+    let me: serde_json::Value = serde_json::from_str(&me.body).unwrap();
+    assert_eq!(me["kiln"], false);
+    let wasm = request(
+        &f.site,
+        Method::GET,
+        "/kiln/pkg/kiln_bg.wasm",
+        &player,
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(wasm.status, StatusCode::NOT_FOUND);
+}
