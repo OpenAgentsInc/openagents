@@ -13,6 +13,7 @@ pub struct Completed {
     pub request: Event,
     pub reply: Event,
     pub archive: Event,
+    pub check: Option<Event>,
 }
 pub enum Prior {
     Absent,
@@ -75,6 +76,12 @@ pub fn prior(root: &Path, request: &Event) -> Result<Prior, String> {
         c.request.validate_crypto().map_err(|e| e.to_string())?;
         c.reply.validate_crypto().map_err(|e| e.to_string())?;
         nostr::private_artifact::admit(&c.archive).map_err(|e| e.to_string())?;
+        if let Some(check) = &c.check {
+            check.validate_crypto().map_err(|e| e.to_string())?;
+            if check.pubkey != c.archive.pubkey {
+                return Err("runner check signer differs".into());
+            }
+        }
         if c.request != *request
             || !kiln::cj::answers(&c.reply, &request.id, &c.archive.pubkey, &request.pubkey)
         {
@@ -110,6 +117,7 @@ pub fn complete(
     secret: &SecretKey,
     request: &Event,
     reply: &Event,
+    check: Option<&Event>,
     now: u64,
 ) -> Result<Event, String> {
     if !matches!(prior(root, request)?, Prior::Pending) {
@@ -150,6 +158,7 @@ pub fn complete(
             request: request.clone(),
             reply: reply.clone(),
             archive: archive.clone(),
+            check: check.cloned(),
         },
         false,
     )?;
@@ -163,18 +172,29 @@ pub fn outbox(root: &Path) -> Result<Vec<(String, Event)>, String> {
     let mut events = Vec::new();
     for e in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
         let p = e.map_err(|e| e.to_string())?.path();
-        if p.extension().is_none_or(|s| s != "done") || p.with_extension("ack").exists() {
+        if p.extension().is_none_or(|s| s != "done") {
             continue;
         }
         let c: Completed = read(&p)?;
-        nostr::private_artifact::admit(&c.archive).map_err(|e| e.to_string())?;
-        events.push((c.request.id, c.archive));
+        if p.file_stem().and_then(|s| s.to_str()) != Some(c.request.id.as_str())
+            || !matches!(prior(root, &c.request)?, Prior::Completed(_))
+        {
+            return Err("runner outbox identity differs".into());
+        }
+        for event in c.check.into_iter().chain(std::iter::once(c.archive)) {
+            if !dir
+                .join(format!("{}.{}.ack", c.request.id, event.id))
+                .exists()
+            {
+                events.push((c.request.id.clone(), event));
+            }
+        }
     }
     Ok(events)
 }
-pub fn acknowledge(root: &Path, request: &str) -> Result<(), String> {
+pub fn acknowledge(root: &Path, request: &str, event: &str) -> Result<(), String> {
     write(
-        &root.join("history").join(format!("{request}.ack")),
+        &root.join("history").join(format!("{request}.{event}.ack")),
         &true,
         false,
     )
@@ -213,11 +233,13 @@ mod tests {
                 101,
             )
             .unwrap();
+        let check = runner.sign(kiln::patch::COMMENT_KIND, vec![], "passed".into(), 101);
         let archive = complete(
             &root,
             &SecretKey::from_byte_array([2; 32]).unwrap(),
             &request,
             &reply,
+            Some(&check),
             101,
         )
         .unwrap();
@@ -228,11 +250,16 @@ mod tests {
             serde_json::from_slice(opened.inline_bytes().unwrap()).unwrap();
         assert_eq!(record.event, reply);
         match prior(&root, &request).unwrap() {
-            Prior::Completed(c) => assert_eq!(c.reply, reply),
+            Prior::Completed(c) => {
+                assert_eq!(c.reply, reply);
+                assert_eq!(c.check.as_ref(), Some(&check));
+            }
             _ => panic!("result was not retained"),
         }
+        assert_eq!(outbox(&root).unwrap().len(), 2);
+        acknowledge(&root, &request.id, &archive.id).unwrap();
         assert_eq!(outbox(&root).unwrap().len(), 1);
-        acknowledge(&root, &request.id).unwrap();
+        acknowledge(&root, &request.id, &check.id).unwrap();
         assert!(outbox(&root).unwrap().is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }

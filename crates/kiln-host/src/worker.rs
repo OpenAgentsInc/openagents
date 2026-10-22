@@ -758,6 +758,8 @@ async fn deliver(
 ) -> Result<Job> {
     let event = j.patch.clone().ok_or("saved patch missing")?;
     if j.phase == "publishing" {
+        let current = objectives::consult(key, &c.authority, &c.relay, &j.task.objective).await?;
+        validate_objective(&j.task, &current)?;
         relay::publish(&c.relay, &key.secret, &event).await?;
         let job = remote::Job {
             v: remote::NATIVE_JOB_V.into(),
@@ -812,7 +814,11 @@ async fn deliver(
         "OpenAgentsInc/openagents",
         &c.token_file,
     );
-    if now() >= j.until
+    let objective_current = objectives::consult(key, &c.authority, &c.relay, &j.task.objective)
+        .await
+        .is_ok_and(|current| validate_objective(&j.task, &current).is_ok());
+    if !objective_current
+        || now() >= j.until
         || root
             .join("jobs")
             .join(format!("{}.cancel", j.task.id))
@@ -828,7 +834,7 @@ async fn deliver(
             save(path, &j)?;
             return Ok(j);
         }
-        return Err("PR delivery remains unresolved after its deadline or cancellation".into());
+        return Err("PR delivery remains unresolved after its authorization changed".into());
     }
     let config = bridge::Config {
         relay: c.relay.clone(),

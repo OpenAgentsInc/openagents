@@ -994,7 +994,7 @@ async fn main() {
                 }
                 frame = conn.next() => {
                     let Ok(frame) = frame else { break };
-                    if frame[0]=="OK"&&frame[2]==true {if let Some((request,_))=frame[1].as_str().and_then(|id|archives.remove(id)){if let Err(e)=history::acknowledge(&config.state,&request){eprintln!("result acknowledgement: {e}");}}continue;}
+                    if frame[0]=="OK"&&frame[2]==true {if let Some((request,_))=frame[1].as_str().and_then(|id|archives.remove(id)){if let Err(e)=history::acknowledge(&config.state,&request,frame[1].as_str().unwrap_or_default()){eprintln!("result acknowledgement: {e}");}}continue;}
                     if frame[0] != "EVENT" || frame[1] != "jobs" {
                         continue;
                     }
@@ -1048,7 +1048,7 @@ async fn main() {
                         }
                     };
                     match history::prior(&config.state,&request) {
-                        Ok(history::Prior::Completed(c))=>{let _=out_tx.send(c.archive);let _=out_tx.send(c.reply);continue;}
+                        Ok(history::Prior::Completed(c))=>{if let Some(check)=c.check {let _=out_tx.send(check);}let _=out_tx.send(c.archive);let _=out_tx.send(c.reply);continue;}
                         Ok(history::Prior::Pending)=>{
                             let body=if seen.contains(&request.id){json!({"v":1,"requires":[],"type":"status","status":"processing","message":"The original request is still running"})}else{error_body("unknown","An earlier admission is unresolved; it was not run again")};
                             if let Some(event)=reply(&key,&request,cj::FEEDBACK_KIND,&body){let _=out_tx.send(event);}continue;
@@ -1101,6 +1101,7 @@ async fn main() {
                             (Some(action), Some(p)) => publish::restore(&config, p, action),
                             _ => run_cargo(&config, &job, &|line| feedback(Some(line))),
                         };
+                        let mut signed_check = None;
                         if let Some(patch) = &job.patch {
                             let passed = outcome.code == Some(0);
                             let digest = kiln::sha256_hex(patch.content.as_bytes());
@@ -1117,14 +1118,14 @@ async fn main() {
                             );
                             let comment = key.sign(kiln::patch::COMMENT_KIND, tags, content, unix());
                             outcome.check = Some(comment.id.clone());
-                            let _ = out.send(comment);
+                            signed_check = Some(comment);
                         }
                         println!("job {}: {} in {} ms", &request.id[..8], outcome.summary, outcome.ms);
                         let text = serde_json::to_string(&outcome).unwrap_or_default();
                         let body = json!({"v": 1, "requires": [], "type": "result", "text": text, "model": "kiln/cargo"});
                         if let Some(event) = reply(&key, &request, cj::RESULT_KIND, &body) {
-                            match history::complete(&config.state,&secret,&request,&event,unix()) {
-                                Ok(archive)=>{let _=out.send(archive);let _=out.send(event);}
+                            match history::complete(&config.state,&secret,&request,&event,signed_check.as_ref(),unix()) {
+                                Ok(archive)=>{if let Some(check)=signed_check {let _=out.send(check);}let _=out.send(archive);let _=out.send(event);}
                                 Err(e)=>eprintln!("result retention: {e}"),
                             }
                         }
@@ -1133,7 +1134,7 @@ async fn main() {
                 }
                 event = out_rx.recv() => {
                     let Some(event) = event else { return };
-                    if event.kind==3188 {match history::outbox(&config.state){Ok(entries)=>for(request,e)in entries{archives.insert(e.id.clone(),(request,e));},Err(e)=>eprintln!("history: {e}")}}
+                    if event.kind==3188||event.kind==kiln::patch::COMMENT_KIND {match history::outbox(&config.state){Ok(entries)=>for(request,e)in entries{archives.insert(e.id.clone(),(request,e));},Err(e)=>eprintln!("history: {e}")}}
                     if conn.send(json!(["EVENT", event.clone()])).await.is_err() {
                         pending.push(event);
                         break;
