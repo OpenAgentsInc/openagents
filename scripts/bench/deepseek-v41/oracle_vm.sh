@@ -146,10 +146,12 @@ holdout() {
   local out=$OUT/g1-v2-${DEST_NAME:-holdout} dest=$ORACLE/g1-v2/${DEST_NAME:-holdout}
   DUMP_TOOL_COMMIT=${DUMP_TOOL_COMMIT:-} $VENV/bin/torchrun --nproc-per-node 8 $SCRIPTS/oracle_dump.py \
     --ckpt $TP8 --reference $REF --out $out --upload $dest \
-    --cases-file "$CORPUS" --router-tops 8 --captures-only
+    --cases-file "$CORPUS" --router-tops ${ROUTER_TOPS:-8} --captures-only
   $PY -I $SCRIPTS/oracle_manifest.py --dump $out --out $out/manifest.json
   cp "$CORPUS" $out/${CORPUS_NAME:-holdout-corpus.json}
   gcloud storage rsync -r -x '^patched/__pycache__/' $out $dest
+  # Written last: the dump is complete.
+  date -u +%FT%TZ | gcloud storage cp - $dest/CAPTURED
   if [ -n "${SUITE:-}" ]; then
     # G2 v2: the frozen task suite's complete greedy answers, to the end token or cap
     local g2=$OUT/g2-v2-oracle g2dest=$ORACLE/g2-v2/oracle
@@ -159,6 +161,16 @@ holdout() {
     gcloud storage rsync -r -x '^patched/__pycache__/' $g2 $g2dest
   fi
   log "holdout done"
+}
+
+# Policy 2.3 (#12405): the holdout again with every router score (6 + 378 =
+# 384 per row), then the confirmation corpus the same way, in one session.
+full() {
+  gcloud storage ls $ORACLE/g1-v2/holdout-full/CAPTURED >/dev/null 2>&1 ||
+    ROUTER_TOPS=378 DEST_NAME=holdout-full CORPUS=$SCRIPTS/holdout-corpus.json holdout
+  ROUTER_TOPS=378 DEST_NAME=confirmation-2.3 CORPUS=$SCRIPTS/confirmation-corpus-2.2.json \
+    CORPUS_NAME=confirmation-corpus.json holdout
+  log "full captures done"
 }
 
 "$@"

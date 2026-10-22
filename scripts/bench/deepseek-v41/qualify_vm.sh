@@ -104,7 +104,7 @@ run-gpu() {
 # shorter cases; the 2k and 20k prompts take more than a day on CPU.
 run-cpu() {
   : "${MANIFEST:?}" "${RESULTS:?}"
-  qualify $ROOT/out/reference-cpu --backend cpu --arithmetic bf16-tp8 --observe --step-secs 36000 \
+  qualify $ROOT/out/${OUT_NAME:-reference-cpu} --backend cpu --arithmetic ${ARITH:-bf16-tp8} --observe --step-secs 36000 \
     --cases p1-chat-thinking,p2-code,e-window-127,e-window-128,e-window-129,e-engram
   log "CPU reference done"
 }
@@ -152,10 +152,13 @@ run-final() {
 run-cpu-ref22() {
   : "${MANIFEST:?}" "${RESULTS:?}"
   local oracle=gs://openagents-psionic-oracle/deepseek-v41/1bae0e1
+  local src=$oracle/g1-v2/${HOLDOUT_NAME:-holdout}
   mkdir -p $ROOT/holdout
-  gcloud storage rsync -q -r $oracle/g1-v2/holdout $ROOT/holdout
-  ORACLE_DIR=$ROOT/holdout MAX_CONTEXT=8192 qualify $ROOT/out/reference-cpu-holdout --backend cpu \
-    --arithmetic bf16-tp8 --observe --step-secs 36000 \
+  # Wait (bounded) for a capture still in progress elsewhere.
+  for _ in $(seq 1 180); do gcloud storage ls $src/CAPTURED >/dev/null 2>&1 && break; sleep 60; done
+  gcloud storage rsync -q -r $src $ROOT/holdout
+  ORACLE_DIR=$ROOT/holdout MAX_CONTEXT=8192 qualify $ROOT/out/${OUT_NAME:-reference-cpu-holdout} --backend cpu \
+    --arithmetic ${ARITH:-bf16-tp8} --observe --step-secs 36000 \
     --cases "${CASES:-h1-chat-seasons,h2-code-palindrome,h3-engram-forms,h5-window-255}"
   log "CPU reference 2.2 done"
 }
