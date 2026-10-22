@@ -7,12 +7,12 @@ const wood: V3 = [0.39, 0.24, 0.19];
 const plum: V3 = [0.25, 0.18, 0.25];
 const orange: V3 = [0.88, 0.34, 0.1];
 
-function face(points: V3[], normal: V3, color: V3, glow = 0) {
+export function face(points: V3[], normal: V3, color: V3, glow = 0) {
   for (const i of [0, 1, 2, 0, 2, 3])
     data.push(...points[i], ...normal, ...color, glow);
 }
 
-function box(
+export function box(
   x: number,
   y: number,
   z: number,
@@ -349,7 +349,13 @@ export function houseGeometry(
   return new Float32Array(data);
 }
 
-export type Pose = { x: number; z: number; yaw: number; pitch: number };
+export type Pose = {
+  y?: number;
+  x: number;
+  z: number;
+  yaw: number;
+  pitch: number;
+};
 export const canWalk = walkable;
 
 export function move(
@@ -376,7 +382,7 @@ export function cameraMatrix(out: Float32Array, pose: Pose, aspect: number) {
   const right = [c, 0, s],
     up = [-s * p, q, c * p],
     forward = [s * q, p, -c * q];
-  const eye = [pose.x, 1.55, pose.z];
+  const eye = [pose.x, (pose.y ?? 0) + 1.55, pose.z];
   const dot = (a: number[], b: number[]) =>
     a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const view = [
@@ -424,4 +430,10 @@ export function cameraMatrix(out: Float32Array, pose: Pose, aspect: number) {
       for (let k = 0; k < 4; k++)
         out[col * 4 + row] += proj[k * 4 + row] * view[col * 4 + k];
     }
+}
+
+export function buildGeometry(paint: () => void): Float32Array {
+  data.length = 0;
+  paint();
+  return new Float32Array(data);
 }

@@ -1,8 +1,17 @@
-# Haunted House creator preview
+# Browser creator labs
 
 A local browser editor with direct WebGPU, Effect, the real Kiln WASI/OPFS
 workspace, and the Rust Jev SDK. Scene controls apply typed commands immediately.
 Natural language takes one bounded decision request, then uses those same commands.
+
+- `/` opens **Haunted House**, with its spooky props and existing room editor.
+- `/medieval/` opens **Medieval Town Lab**, with a fullscreen world and floating
+  hotbar. Asset, building, and shader tools open as small popovers.
+
+The labs share the renderer and command runtime, with separate project IDs,
+scene/material paths, catalogs, and Kiln OPFS snapshots. Older Haunted House saves
+lose their medieval prefabs and outdoor additions while keeping spooky props and
+authored indoor rooms; the cleaned scene is saved back to Kiln.
 
 ## Creator flow
 
@@ -58,47 +67,55 @@ candles and potion have glowing surfaces, without adding dynamic light sources.
 Every kind supports move, resize, remove, groups, undo/redo, and Kiln save/reopen.
 Try `Add three ghosts to my right` or `Add a cauldron at (1, 3)`.
 
-Eight textured assets also come from Everglade's **Modular Medieval Town** kit:
-a one-story cottage (`house`), a two-story townhouse (`manor`), a barrel, bench,
-chair, market stall, cart (`wagon`), and fountain. These use actual licensed kit
-meshes and base-color textures at 256 px, with our own house placement recipes.
-They are static prefabs; the existing room tools still control walkable house
-extensions. Prefabs do not yet add their own wall collision or editable interiors.
+The renderer, picker, project validation, and Rust Jev questions use
+[`src/assets.json`](src/assets.json). Existing pumpkin scenes still load, and the
+old pumpkin command names remain accepted. Controls enable after the saved scene
+opens, so an early edit cannot race restoration.
 
-Choose an outside wall in **House layout**, then **Add courtyard · 32 m** for
-full-size buildings. The courtyard adds an outdoor floor and a connected doorway;
-it has low boundary walls and no ceiling. Room, wing, and courtyard changes share
-save, undo, and redo. Try `Add a courtyard here`, then place a house using its
-X/Z coordinates. Exact catalog aliases resolve in code (`house` means cottage);
-Jev still checks the action, size, and placement. Mixed kinds are not treated as
-one exact catalog match.
+## Medieval Town Lab
 
-On a machine with Everglade's private `medieval-town/kit-build` directory, run:
+Walk through either house's front doorway. The cottage has two ground-floor
+rooms; the townhouse has two floors, with stairs along its right wall. Floors,
+stairs, walls, aiming, and collision read the same saved plan. Your location names
+the building, room, and floor. Try `knock down this wall`, `add a room to my left`,
+or `add a small wing to my left`. Rooms attach to the aimed outside wall on your
+current floor; a wing adds three connected rooms in one change. Wall removal
+changes both visible kit pieces and collision. Added rooms have floors, ceilings,
+kit walls, and connecting doorways. Undo refuses to remove an occupied upper-floor
+extension. Upstairs furniture retains its height after save/reopen.
+
+The eight placeable kit assets are cottage (`house`), townhouse (`manor`), barrel,
+bench, chair, market stall, cart (`wagon`), and fountain. New houses immediately
+get rooms and collision. Relative requests find clear outdoor plots; a single
+explicit coordinate stays exact. Exact catalog aliases resolve in code, while Jev
+checks the action, placement, and size. The town supports twelve houses, sixteen
+rooms per floor, a 96 m boundary, and a 64 KiB scene file. Moving/resizing a house keeps its local plan.
+
+To prepare Everglade's licensed **Modular Medieval Town** export, run:
 
 ```sh
 npm run prepare:medieval
 ```
 
-This uses Pillow and writes the compiled bundle under
-`~/.openagents/verse/private/medieval-town/haunt-webgpu`. Override the input with
-`HAUNT_MEDIEVAL_SOURCE` or output with `HAUNT_MEDIEVAL_OUT`. Dev/build copies the
-prepared files into ignored `public/medieval-kit/`; licensed geometry, textures,
-and captures stay outside Git. The tracked `src/medieval-kit.json` pins the mesh
-ranges, dimensions, file lengths, and SHA-256 identities. If a recipe changes,
-review its output and update those pins together. The loader verifies both files.
-A checkout without the kit keeps the ordinary props and disables kit choices;
-saved kit objects remain in its scene data until the bundle is available again.
+The Pillow conversion reads `~/.openagents/verse/private/medieval-town/kit-build`
+and writes `haunt-webgpu` beside it. Override input with `HAUNT_MEDIEVAL_SOURCE`
+or output with `HAUNT_MEDIEVAL_OUT`. Dev/build copies prepared files into ignored
+`public/medieval-kit/`; licensed geometry, images, and captures stay outside Git.
+`src/medieval-kit.json` pins ranges, dimensions, part roles, lengths, and hashes.
+Review and update the pins together when changing recipes. Opaque source materials
+ignore packed texture alpha; cutout materials retain it. Textures are 256 px.
 
-Kit geometry and its texture array load once. Add/move/resize changes update a
-preallocated instance buffer, without rebuilding the house or compiling a shader.
-The kit uses a separate fixed textured material and the shared camera/light
-uniform; advanced edits to `material.wgsl` continue to affect the original house
-and procedural props. Disposal releases both renderers' buffers and textures.
+Geometry and textures load once. Wall edits update kit instances and the small
+floor/stair mesh without shader builds. Advanced WGSL edits affect ground, floors,
+stairs, and extension roofs; the kit has its own fixed material. Missing bundles
+draw wall proxies, preserve saved objects, and disable new kit placements. Both
+renderers release their GPU resources on teardown.
 
-The renderer, picker, project validation, and Rust Jev questions use
-[`src/assets.json`](src/assets.json). Existing pumpkin scenes still load, and the
-old pumpkin command names remain accepted. Controls enable after the saved scene
-opens, so an early edit cannot race restoration.
+Rust's `start_lab("/kiln/", "medieval")` selects `medieval/scene.json`,
+`medieval/material.wgsl`, `kiln-medieval-workspace-v1.bin`, and
+`kiln-medieval-base-v1.bin`. Existing Haunted House paths and `start_headless`
+stay compatible. Both pages retain `hauntPreview` for test clients; Medieval Town
+also exposes `townPreview`.
 
 ## House construction
 
@@ -169,9 +186,10 @@ handles exact arguments and execution.
 
 ## Project and command contract
 
-- `haunt/scene.json` is a schema-1 project with a stable project ID, monotonically
+- Each lab scene is a schema-1 project with a stable project ID, monotonically
   increasing revision, material asset path, tint enum, and up to 64 stable asset
-  IDs with X/Z/scale. `readProject` copies only saved fields and refuses unsupported
+  IDs with X/Z/scale. Town furniture can also have a floor height; houses keep
+  local room plans. `readProject` copies only saved fields and refuses unsupported
   versions, duplicate IDs, invalid assets, out-of-room coordinates, and invalid sizes.
 - GPU handles, Effect values, player pose, model responses, and undo history are
   outside saved project data. Inspection returns copies.

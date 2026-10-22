@@ -1,57 +1,369 @@
 {
   "schema": 1,
   "kit": "Modular Medieval Town",
-  "layers": 17,
+  "layers": 18,
   "meshes": {
     "cottage": {
       "first": 0,
       "count": 10008,
-      "dimensions": [11.0, 8.8892, 12.2194]
+      "dimensions": [11.0, 8.8892, 12.2194],
+      "parts": [
+        {
+          "first": 0,
+          "count": 306,
+          "role": "wall"
+        },
+        {
+          "first": 306,
+          "count": 324,
+          "role": "wall"
+        },
+        {
+          "first": 630,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 1218,
+          "count": 324,
+          "role": "wall"
+        },
+        {
+          "first": 1542,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 2130,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 2718,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 3306,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 3894,
+          "count": 96,
+          "role": "wall"
+        },
+        {
+          "first": 3990,
+          "count": 96,
+          "role": "wall"
+        },
+        {
+          "first": 4086,
+          "count": 765,
+          "role": "roof"
+        },
+        {
+          "first": 4851,
+          "count": 765,
+          "role": "roof"
+        },
+        {
+          "first": 5616,
+          "count": 765,
+          "role": "roof"
+        },
+        {
+          "first": 6381,
+          "count": 765,
+          "role": "roof"
+        },
+        {
+          "first": 7146,
+          "count": 858,
+          "role": "roof"
+        },
+        {
+          "first": 8004,
+          "count": 858,
+          "role": "roof"
+        },
+        {
+          "first": 8862,
+          "count": 432,
+          "role": "roof"
+        },
+        {
+          "first": 9294,
+          "count": 714,
+          "role": "roof"
+        }
+      ]
     },
     "townhouse": {
       "first": 10008,
       "count": 14376,
-      "dimensions": [11.0, 12.8892, 12.2194]
+      "dimensions": [11.0, 12.8892, 12.2194],
+      "parts": [
+        {
+          "first": 10008,
+          "count": 306,
+          "role": "wall"
+        },
+        {
+          "first": 10314,
+          "count": 324,
+          "role": "wall"
+        },
+        {
+          "first": 10638,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 11226,
+          "count": 324,
+          "role": "wall"
+        },
+        {
+          "first": 11550,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 12138,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 12726,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 13314,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 13902,
+          "count": 96,
+          "role": "wall"
+        },
+        {
+          "first": 13998,
+          "count": 96,
+          "role": "wall"
+        },
+        {
+          "first": 14094,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 14682,
+          "count": 324,
+          "role": "wall"
+        },
+        {
+          "first": 15006,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 15594,
+          "count": 324,
+          "role": "wall"
+        },
+        {
+          "first": 15918,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 16506,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 17094,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 17682,
+          "count": 588,
+          "role": "wall"
+        },
+        {
+          "first": 18270,
+          "count": 96,
+          "role": "wall"
+        },
+        {
+          "first": 18366,
+          "count": 96,
+          "role": "wall"
+        },
+        {
+          "first": 18462,
+          "count": 765,
+          "role": "roof"
+        },
+        {
+          "first": 19227,
+          "count": 765,
+          "role": "roof"
+        },
+        {
+          "first": 19992,
+          "count": 765,
+          "role": "roof"
+        },
+        {
+          "first": 20757,
+          "count": 765,
+          "role": "roof"
+        },
+        {
+          "first": 21522,
+          "count": 858,
+          "role": "roof"
+        },
+        {
+          "first": 22380,
+          "count": 858,
+          "role": "roof"
+        },
+        {
+          "first": 23238,
+          "count": 432,
+          "role": "roof"
+        },
+        {
+          "first": 23670,
+          "count": 714,
+          "role": "roof"
+        }
+      ]
     },
     "barrel": {
       "first": 24384,
       "count": 2481,
-      "dimensions": [0.8287, 1.165, 0.8413]
+      "dimensions": [0.8287, 1.165, 0.8413],
+      "parts": [
+        {
+          "first": 24384,
+          "count": 2481,
+          "role": "wall"
+        }
+      ]
     },
     "bench": {
       "first": 26865,
       "count": 1431,
-      "dimensions": [0.8925, 1.3117, 2.0354]
+      "dimensions": [0.8925, 1.3117, 2.0354],
+      "parts": [
+        {
+          "first": 26865,
+          "count": 1431,
+          "role": "wall"
+        }
+      ]
     },
     "chair": {
       "first": 28296,
       "count": 1647,
-      "dimensions": [0.4973, 0.9274, 0.4657]
+      "dimensions": [0.4973, 0.9274, 0.4657],
+      "parts": [
+        {
+          "first": 28296,
+          "count": 1647,
+          "role": "wall"
+        }
+      ]
     },
     "market-stall": {
       "first": 29943,
       "count": 2664,
-      "dimensions": [4.2055, 3.485, 2.6435]
+      "dimensions": [4.2055, 3.485, 2.6435],
+      "parts": [
+        {
+          "first": 29943,
+          "count": 2664,
+          "role": "wall"
+        }
+      ]
     },
     "cart": {
       "first": 32607,
       "count": 2934,
-      "dimensions": [3.3127, 1.2244, 1.7526]
+      "dimensions": [3.3127, 1.2244, 1.7526],
+      "parts": [
+        {
+          "first": 32607,
+          "count": 2934,
+          "role": "wall"
+        }
+      ]
     },
     "fountain": {
       "first": 35541,
       "count": 23256,
-      "dimensions": [6.1858, 2.1463, 6.1858]
+      "dimensions": [6.1858, 2.1463, 6.1858],
+      "parts": [
+        {
+          "first": 35541,
+          "count": 23256,
+          "role": "wall"
+        }
+      ]
+    },
+    "piece/wall-4-timber": {
+      "first": 58797,
+      "count": 324,
+      "dimensions": [4.0, 4.0, 0.75],
+      "parts": [
+        {
+          "first": 58797,
+          "count": 324,
+          "role": "wall"
+        }
+      ]
+    },
+    "piece/window-4": {
+      "first": 59121,
+      "count": 588,
+      "dimensions": [4.0, 4.0, 0.6217],
+      "parts": [
+        {
+          "first": 59121,
+          "count": 588,
+          "role": "wall"
+        }
+      ]
+    },
+    "piece/door-4": {
+      "first": 59709,
+      "count": 306,
+      "dimensions": [4.0, 4.0, 0.6046],
+      "parts": [
+        {
+          "first": 59709,
+          "count": 306,
+          "role": "wall"
+        }
+      ]
     }
   },
   "files": {
     "meshes.bin": {
-      "bytes": 2822256,
-      "sha256": "72142081d9fe45a9838969574d5d2aa9a5c72eee25593d4eb9d6c7d67bb8880b"
+      "bytes": 2880720,
+      "sha256": "f13df7e636cf41a2a182288f6be7095e4bcca73349335b9661db7985fdf4bd28"
     },
     "atlas.png": {
-      "bytes": 2159869,
-      "sha256": "26ffc79425840bf9643ae7cdc7db921ddab45342915f23c090d8bd25f38c95e9"
+      "bytes": 1968331,
+      "sha256": "223e4b6e89a6eb6136fd0771f7a43dbc4f287c8e0a28bbc7c42be92b380ba8b6"
     }
   }
 }

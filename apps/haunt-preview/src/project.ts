@@ -1,3 +1,13 @@
+import { IS_TOWN, LAB } from "./lab.ts";
+import {
+  TownFloor,
+  initialTown,
+  readTown,
+  editTown,
+  housePositions,
+  isHouse,
+  type Town,
+} from "./town.ts";
 import kit from "./medieval-kit.json" with { type: "json" };
 import {
   DEFAULT_LAYOUT,
@@ -9,11 +19,16 @@ import {
 import catalog from "./assets.json" with { type: "json" };
 import type { Pose } from "./scene.ts";
 
-export const PROJECT_ID = "haunt-webgpu-v1";
-export const SCENE_PATH = "haunt/scene.json";
+export const PROJECT_ID = LAB.id;
+export const SCENE_PATH = LAB.scene;
 export const MAX_ASSETS = 64;
-export const ASSETS = catalog;
-export type AssetKind = keyof typeof ASSETS;
+export const MAX_SCENE_BYTES = 64 * 1024;
+export type AssetKind = keyof typeof catalog;
+export const ASSETS = Object.fromEntries(
+  Object.entries(catalog).filter(([, a]) =>
+    IS_TOWN ? "source" in a : !("source" in a),
+  ),
+) as typeof catalog;
 export const TINTS = {
   warm: [1, 1, 1],
   orange: [1, 0.55, 0.28],
@@ -30,33 +45,40 @@ export type SceneAsset = {
   z: number;
   scale: number;
   behavior?: Behavior;
+  y?: number;
 };
 export type Project = {
   schema: 1;
   id: typeof PROJECT_ID;
   revision: number;
-  material: "haunt/material.wgsl";
+  material: typeof LAB.material;
   tint: Tint;
   entities: SceneAsset[];
   layout?: Layout;
+  town?: Town;
 };
 export type Operation =
   | { kind: "add_asset" | "add_pumpkin"; entity: SceneAsset }
-  | { kind: "move_asset" | "move_pumpkin"; id: string; x: number; z: number }
+  | {
+      kind: "move_asset" | "move_pumpkin";
+      id: string;
+      x: number;
+      z: number;
+      y?: number;
+    }
   | { kind: "resize_asset" | "resize_pumpkin"; id: string; scale: number }
   | { kind: "remove_asset" | "remove_pumpkin"; id: string }
   | {
       kind: "set_behavior";
       ids: string[];
       behavior: Behavior;
-      positions?: { id: string; x: number; z: number }[];
+      positions?: { id: string; x: number; z: number; y?: number }[];
     }
   | {
       kind: "add_room" | "add_wing";
       wall: string;
       size: number;
       at?: { x: number; z: number };
-      outdoor?: boolean;
     }
   | { kind: "remove_wall"; wall: string }
   | { kind: "set_tint"; tint: Tint }
@@ -74,11 +96,20 @@ const clone = <T>(x: T): T => structuredClone(x);
 const defaultFloor = new HouseFloor();
 export const walkable = (x: number, z: number) => defaultFloor.canStand(x, z);
 export function initialProject(): Project {
+  if (IS_TOWN)
+    return {
+      schema: 1,
+      id: PROJECT_ID,
+      revision: 0,
+      material: LAB.material,
+      tint: "warm",
+      ...initialTown(),
+    };
   return {
     schema: 1,
     id: PROJECT_ID,
     revision: 0,
-    material: "haunt/material.wgsl",
+    material: LAB.material,
     tint: "warm",
     entities: [
       [-2.5, 0, 1.3],
@@ -97,7 +128,9 @@ export function initialProject(): Project {
 }
 function validEntity(
   value: unknown,
-  floor = defaultFloor,
+  floor: {
+    canStand: (x: number, z: number, radius?: number, y?: number) => boolean;
+  } = defaultFloor,
 ): asserts value is SceneAsset {
   const e = value as SceneAsset;
   if (
@@ -107,7 +140,10 @@ function validEntity(
     !/^[a-zA-Z0-9-]{1,64}$/.test(e.id) ||
     !Number.isFinite(e.x) ||
     !Number.isFinite(e.z) ||
-    !floor.canStand(e.x, e.z) ||
+    (!(IS_TOWN && isHouse(e.kind)) &&
+      !floor.canStand(e.x, e.z, 0.24, e.y ?? 0)) ||
+    (e.y !== undefined &&
+      (!IS_TOWN || !Number.isFinite(e.y) || e.y < 0 || e.y > 24)) ||
     !Number.isFinite(e.scale) ||
     e.scale < 0.3 ||
     e.scale > 2.5 ||
@@ -118,13 +154,36 @@ function validEntity(
       "Place an asset inside the rooms, with size between 0.3 and 2.5.",
     );
 }
+/** Retire medieval additions from old Haunted House saves, retaining authored spooky rooms. */
+export function cleanHaunt(value: unknown): unknown {
+  if (IS_TOWN || !value || typeof value !== "object") return value;
+  const p = structuredClone(value) as Project;
+  if (Array.isArray(p.entities))
+    p.entities = p.entities.filter((e) => !(e && e.kind in kit.meshes));
+  if (p.layout && Array.isArray(p.layout.rooms)) {
+    const ids = new Set(
+      p.layout.rooms.filter((r) => !r.outdoor).map((r) => r.id),
+    );
+    p.layout.rooms = p.layout.rooms.filter((r) => !r.outdoor);
+    if (Array.isArray(p.layout.removedWalls))
+      p.layout.removedWalls = p.layout.removedWalls.filter((id) =>
+        ids.has(id.split(":")[0]),
+      );
+  }
+  return p;
+}
+export function projectFloor(project: Project) {
+  return IS_TOWN && project.town
+    ? new TownFloor(project.entities, project.town)
+    : new HouseFloor(project.layout ?? DEFAULT_LAYOUT);
+}
 export function readProject(value: unknown): Project {
-  const p = value as Project;
+  const p = cleanHaunt(value) as Project;
   if (
     !p ||
     p.schema !== 1 ||
     p.id !== PROJECT_ID ||
-    p.material !== "haunt/material.wgsl" ||
+    p.material !== LAB.material ||
     !Number.isSafeInteger(p.revision) ||
     p.revision < 0 ||
     !Object.hasOwn(TINTS, p.tint) ||
@@ -135,7 +194,12 @@ export function readProject(value: unknown): Project {
       "This scene file has an unsupported version or invalid contents.",
     );
   const layout = p.layout === undefined ? undefined : readLayout(p.layout);
-  const floor = layout ? new HouseFloor(layout) : defaultFloor;
+  const town = IS_TOWN ? readTown(p.town, p.entities) : undefined;
+  const floor = town
+    ? new TownFloor(p.entities, town)
+    : layout
+      ? new HouseFloor(layout)
+      : defaultFloor;
   const ids = new Set<string>();
   for (const e of p.entities) {
     validEntity(e, floor);
@@ -143,13 +207,14 @@ export function readProject(value: unknown): Project {
     ids.add(e.id);
   }
   // Copy only project fields. GPU handles, player state, and model data never enter a save.
-  return {
+  const result: Project = {
     schema: 1,
     id: PROJECT_ID,
     revision: p.revision,
-    material: "haunt/material.wgsl",
+    material: LAB.material,
     tint: p.tint,
-    ...(layout === undefined ? {} : { layout }),
+    ...(layout === undefined || IS_TOWN ? {} : { layout }),
+    ...(town ? { town } : {}),
     entities: p.entities.map((e) => ({
       id: e.id,
       kind: e.kind,
@@ -157,8 +222,14 @@ export function readProject(value: unknown): Project {
       z: e.z,
       scale: e.scale,
       ...(e.behavior === undefined ? {} : { behavior: e.behavior }),
+      ...(e.y === undefined ? {} : { y: e.y }),
     })),
   };
+  if (new TextEncoder().encode(JSON.stringify(result)).length > MAX_SCENE_BYTES)
+    throw new Error(
+      "This scene is full. Remove a room or asset before adding more.",
+    );
+  return result;
 }
 
 /** One reversible command path for controls, decisions, and Kiln workspace edits. */
@@ -199,14 +270,20 @@ export class SceneHistory {
     switch (op.kind) {
       case "add_asset":
       case "add_pumpkin":
-        validEntity(op.entity, new HouseFloor(next.layout ?? DEFAULT_LAYOUT));
+        validEntity(op.entity, projectFloor(next));
         if (next.entities.some((e) => e.id === op.entity.id))
           throw new Error("That asset name is already in use.");
         next.entities.push(clone(op.entity));
+        if (IS_TOWN && next.town)
+          next.town = editTown(next.town, next.entities, op);
         break;
       case "move_asset":
       case "move_pumpkin":
-        Object.assign(find(op.id), { x: op.x, z: op.z });
+        Object.assign(find(op.id), {
+          x: op.x,
+          z: op.z,
+          ...(IS_TOWN && "y" in op ? { y: op.y } : {}),
+        });
         break;
       case "resize_asset":
       case "resize_pumpkin":
@@ -216,19 +293,29 @@ export class SceneHistory {
       case "remove_pumpkin":
         find(op.id);
         next.entities = next.entities.filter((e) => e.id !== op.id);
+        if (IS_TOWN && next.town)
+          next.town = editTown(next.town, next.entities, op);
         break;
       case "add_room":
       case "add_wing":
+        if (IS_TOWN && next.town) {
+          next.town = editTown(next.town, next.entities, op);
+          break;
+        }
         next.layout = extendLayout(
           next.layout ?? DEFAULT_LAYOUT,
           op.wall,
           op.size,
           op.kind === "add_wing",
           op.at,
-          op.outdoor,
+          false,
         );
         break;
       case "remove_wall": {
+        if (IS_TOWN && next.town) {
+          next.town = editTown(next.town, next.entities, op);
+          break;
+        }
         const layout = next.layout ?? structuredClone(DEFAULT_LAYOUT);
         const floor = new HouseFloor(layout);
         if (!floor.walls.some((w) => w.id === op.wall))
@@ -452,7 +539,7 @@ function groupPositions(
     );
   };
   const radius = footprint(kind, scale);
-  const floor = new HouseFloor(project.layout ?? DEFAULT_LAYOUT);
+  const floor = projectFloor(project);
   const candidates: { x: number; z: number; distance: number }[] = [];
   for (let row = 0; row < 36; row++) {
     for (let column = 0; column < 15; column++) {
@@ -484,11 +571,19 @@ function groupPositions(
       if (Math.hypot(point.x - pose.x, point.z - pose.z) < radius + 0.5)
         continue;
       if (
-        !Array.from({ length: 8 }, (_, i) => (i * Math.PI) / 4).every((angle) =>
-          floor.canStand(
-            point.x + Math.cos(angle) * radius,
-            point.z + Math.sin(angle) * radius,
-          ),
+        !Array.from({ length: 8 }, (_, i) => (i * Math.PI) / 4).every(
+          (angle) =>
+            floor instanceof TownFloor
+              ? floor.canStand(
+                  point.x + Math.cos(angle) * radius,
+                  point.z + Math.sin(angle) * radius,
+                  0.24,
+                  pose.y ?? 0,
+                )
+              : floor.canStand(
+                  point.x + Math.cos(angle) * radius,
+                  point.z + Math.sin(angle) * radius,
+                ),
         )
       )
         continue;
@@ -534,7 +629,7 @@ export function decisionOperation(
   pose: Pose,
   selected: string | null,
   project: Project = initialProject(),
-  wallTarget?: { id: string; x: number; z: number },
+  wallTarget?: { id: string; x: number; z: number; y?: number },
 ): Operation {
   if (
     !d ||
@@ -616,17 +711,28 @@ export function decisionOperation(
       const size = scale(),
         anchor = position();
       const positions =
-        count === 1
-          ? [anchor]
-          : groupPositions(
+        IS_TOWN && isHouse(kind) && project.town
+          ? housePositions(
+              project.entities,
+              project.town,
+              kind as "cottage" | "townhouse",
               count,
-              kind as AssetKind,
               size,
-              d.placement,
               pose,
+              d.placement,
               anchor,
-              project,
-            );
+            )
+          : count === 1
+            ? [anchor]
+            : groupPositions(
+                count,
+                kind as AssetKind,
+                size,
+                d.placement,
+                pose,
+                anchor,
+                project,
+              );
       const operations: Operation[] = positions.map((p) => ({
         kind: d.action === "add_pumpkin" ? "add_pumpkin" : "add_asset",
         entity: {
@@ -634,6 +740,7 @@ export function decisionOperation(
           kind: kind as AssetKind,
           ...p,
           scale: size,
+          ...(IS_TOWN ? { y: isHouse(kind) ? 0 : (pose.y ?? 0) } : {}),
         },
       }));
       return count === 1 ? operations[0] : { kind: "batch", operations };
@@ -644,6 +751,7 @@ export function decisionOperation(
         kind: d.action as "move_asset" | "move_pumpkin",
         id: target(),
         ...position(),
+        ...(IS_TOWN ? { y: pose.y ?? 0 } : {}),
       };
     case "resize_asset":
     case "resize_pumpkin":
@@ -661,7 +769,7 @@ export function decisionOperation(
     case "add_room":
     case "add_wing":
     case "remove_wall": {
-      const floor = new HouseFloor(project.layout ?? DEFAULT_LAYOUT);
+      const floor = projectFloor(project);
       const turn =
         d.placement === "left"
           ? -Math.PI / 2
@@ -696,8 +804,8 @@ export function decisionOperation(
       return {
         kind: d.action,
         wall: wall.id,
-        size: /\bcourtyard\b/i.test(text) ? 32 : size,
-        ...(/\bcourtyard\b/i.test(text) ? { outdoor: true } : {}),
+        size,
+
         at: { x: wall.x, z: wall.z },
       };
     }

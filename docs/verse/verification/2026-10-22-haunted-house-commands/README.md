@@ -128,6 +128,10 @@ routes into new rooms, and wall removal remaining open after an extension.
 
 ## Everglade medieval kit
 
+This earlier asset-only stage has moved into **Medieval Town Lab**; see the
+[walkable lab results](#medieval-town-lab) below. Haunted House no longer offers
+these assets.
+
 The [medieval receipt](medieval-receipt.json) records eight textured assets from
 Everglade's licensed **Modular Medieval Town**: cottage, townhouse, barrel, bench,
 chair, market stall, cart, and fountain. Our house recipes assemble the actual
@@ -159,3 +163,37 @@ Checks: 46 Kiln library tests, 23 browser project/protocol/simulation/layout tes
 TypeScript check, production build, and all six browser scripts through isolated
 `openagents browser run` profiles. The final asset and medieval checks run again
 after exact-alias resolution and the missing-bundle save preservation change.
+
+
+## Medieval Town Lab
+
+The [town lab receipt](town-lab-receipt.json) verifies the separate `/medieval/`
+page, fullscreen canvas, floating hotbar, and small asset/building popovers.
+Haunted House keeps its seven spooky asset types; Medieval Town has eight kit
+assets, daylight, enterable cottages, and townhouses with stairs and two floors.
+Both use the same typed commands, with separate project IDs, material/scene paths,
+and real Kiln OPFS snapshots. Old Haunted House saves remove medieval prefabs and
+outdoor additions, preserve authored indoor rooms and props, and save the cleanup.
+
+Real browser movement enters doors, stops at walls, traverses a removed interior
+wall, enters a new room, climbs the townhouse stairs, and enters an upstairs room.
+Undo refuses to remove the occupied upper floor. New cottages immediately get
+rooms and collision; wings add three connected rooms in one undoable edit.
+Upstairs furniture, layouts, and wall changes survive save/reopen. Invalid WGSL
+keeps the working shader, scene, player, and device. The named worker and these
+same storage/editing paths also pass against the production multi-page build.
+
+Six real Jev requests, including saving, measure 163–284 ms: wall removal,
+downstairs/upstairs rooms, a three-room wing, an upstairs chair, and a new cottage.
+The existing five Haunted House browser checks pass, including 30 shader edits,
+30 scene edits, ghost behaviors, room/wall edits, and OPFS reopen. Scoped Rust
+checks pass 48 Kiln library tests; TypeScript and production builds pass; 30 unit
+tests include doorway collision, stair ascent/descent, overlap rejection, floor
+selection, undo, old-save cleanup, and refusing scene files over 64 KiB.
+
+The kit converter now retains roof part ranges, admits three raw wall/door/window
+pieces, and respects source material alpha modes. Textures and licensed captures
+stay outside Git. The task scratch directory contains `town-lab-final/town/`
+captures of the exterior, cottage interior, upstairs, and a newly added house.
+The [creator README](../../../../apps/haunt-preview/README.md#medieval-town-lab)
+describes the controls, private preparation, shared runtime, and limits.

@@ -4,6 +4,48 @@ pub const SCENE_PATH: &str = "haunt/scene.json";
 pub const PATH: &str = "haunt/material.wgsl";
 pub const MAX_BYTES: usize = 64 * 1024;
 
+/// The two creator labs keep separate workspace snapshots and editable files.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Lab {
+    #[default]
+    Haunt,
+    Medieval,
+}
+impl Lab {
+    pub fn parse(name: &str) -> Result<Self, &'static str> {
+        match name {
+            "haunt" => Ok(Self::Haunt),
+            "medieval" => Ok(Self::Medieval),
+            _ => Err("Choose Haunted House or Medieval Town Lab."),
+        }
+    }
+    pub const fn shader(self) -> &'static str {
+        match self {
+            Self::Haunt => PATH,
+            Self::Medieval => "medieval/material.wgsl",
+        }
+    }
+    pub const fn scene(self) -> &'static str {
+        match self {
+            Self::Haunt => SCENE_PATH,
+            Self::Medieval => "medieval/scene.json",
+        }
+    }
+    pub const fn snapshot(self) -> &'static str {
+        match self {
+            Self::Haunt => "kiln-workspace-v1.bin",
+            Self::Medieval => "kiln-medieval-workspace-v1.bin",
+        }
+    }
+    pub const fn base_snapshot(self) -> &'static str {
+        match self {
+            Self::Haunt => "kiln-base-v1.bin",
+            Self::Medieval => "kiln-medieval-base-v1.bin",
+        }
+    }
+}
+
 /// Instructions for the existing Kiln agent, not a second agent loop.
 pub const INSTRUCTIONS: &str = r#"You are Kiln editing the running Haunted House WebGPU preview.
 The editable file is haunt/material.wgsl. It is WGSL, not Rust or Rhai.
@@ -31,6 +73,15 @@ pub fn validate(source: &str) -> Result<(), &'static str> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn labs_have_closed_names_and_separate_files_and_snapshots() {
+        assert_eq!(Lab::parse("medieval"), Ok(Lab::Medieval));
+        assert!(Lab::parse("../anything").is_err());
+        assert_ne!(Lab::Haunt.scene(), Lab::Medieval.scene());
+        assert_ne!(Lab::Haunt.shader(), Lab::Medieval.shader());
+        assert_ne!(Lab::Haunt.snapshot(), Lab::Medieval.snapshot());
+        assert_ne!(Lab::Haunt.base_snapshot(), Lab::Medieval.base_snapshot());
+    }
     #[test]
     fn bounds_are_bytes_and_invalid_wgsl_can_reach_gpu_diagnostics() {
         assert!(validate("  \n").is_err());

@@ -199,30 +199,27 @@ test("removed wall references survive extensions and an internal opening does no
   assert.equal(target?.id, next.rooms.at(-1)!.id + ":east");
 });
 
-test("courtyards keep outdoor floors, low boundaries, save and undo through the shared plan", () => {
-  const s = new SceneHistory();
-  apply(s, { kind: "add_room", wall: "hall:south", size: 16, outdoor: true });
-  const court = s.project.layout!.rooms.at(-1)!;
-  assert.equal(court.outdoor, true);
-  assert.equal(court.name, "Courtyard");
-  const floor = new HouseFloor(s.project.layout);
-  assert.equal(floor.canStand(0, 10), true);
-  assert.equal(floor.canStand(0, 8), true);
-  assert.equal(floor.canStand(9, 16), false);
-  const saved = readLayout(JSON.parse(JSON.stringify(s.project.layout)));
-  assert.equal(saved.rooms.at(-1)?.outdoor, true);
-  assert.throws(() =>
-    readLayout({
-      ...saved,
-      rooms: saved.rooms.map((r) => ({ ...r, outdoor: "yes" })),
-    }),
+test("old medieval additions leave Haunted House saves without removing its authored rooms", async () => {
+  const { readProject, initialProject } = await import("../src/project.ts");
+  const original = initialProject();
+  const layout = extendLayout(
+    DEFAULT_LAYOUT,
+    "gallery:west",
+    16,
+    false,
+    undefined,
+    true,
   );
-  apply(s, { kind: "undo" });
-  assert.equal(s.project.layout, undefined);
-  apply(s, { kind: "redo" });
-  assert.deepEqual(s.project.layout, saved);
-  assert.throws(() => extendLayout(DEFAULT_LAYOUT, "hall:south", 16));
-  assert.throws(() =>
-    extendLayout(DEFAULT_LAYOUT, "hall:south", 16, true, undefined, true),
-  );
+  const migrated = readProject({
+    ...original,
+    layout,
+    entities: [
+      ...original.entities,
+      { id: "cottage-old", kind: "cottage", x: -10, z: -13, scale: 1 },
+    ],
+  });
+  assert.deepEqual(migrated.entities, original.entities);
+  assert.equal(migrated.layout?.rooms.length, 3);
+  assert.ok(migrated.layout?.rooms.every((r) => !r.outdoor));
+  assert.throws(() => readProject({ ...original, id: "medieval-town-v1" }));
 });

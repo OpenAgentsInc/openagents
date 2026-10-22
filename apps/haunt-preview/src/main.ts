@@ -1,3 +1,5 @@
+import { IS_TOWN, LAB } from "./lab.ts";
+import "./town.css";
 import { Effect } from "effect";
 import { ASSET, PROJECT, sourceHash, type ShaderEdit } from "./protocol.ts";
 import "./style.css";
@@ -16,6 +18,7 @@ declare global {
 
     kilnState: () => string;
 
+    townPreview?: Window["hauntPreview"];
     hauntPreview: {
       save: (source: string) => Promise<Record<string, unknown>>;
       snapshot: () => unknown;
@@ -222,10 +225,11 @@ async function start() {
     throw new Error(
       "This preview needs a current Chrome or Edge with WebGPU and graphics acceleration. No alternate renderer is used.",
     );
-  original = await (await fetch("/material.wgsl")).text();
+  original = await (await fetch(LAB.shader)).text();
   shader.value = original;
   worker = new Worker(new URL("./preview.worker.ts", import.meta.url), {
     type: "module",
+    name: IS_TOWN ? "medieval" : "haunt",
   });
   const workerReady = new Promise<void>((resolve, reject) => {
     worker!.onerror = (event) => reject(new Error(event.message));
@@ -319,7 +323,11 @@ async function start() {
   const kilnPath = new URL("/kiln/pkg/kiln.js", location.origin).href;
   const kiln = await import(/* @vite-ignore */ kilnPath);
   await kiln.default();
-  kiln.start_headless("/kiln/");
+  if (IS_TOWN) {
+    if (typeof kiln.start_lab !== "function")
+      throw new Error("Rebuild Kiln to open Medieval Town Lab.");
+    kiln.start_lab("/kiln/", "medieval");
+  } else kiln.start_headless("/kiln/");
   const until = performance.now() + 30000;
   while (!window.kilnReady) {
     if (performance.now() > until)
@@ -367,13 +375,16 @@ async function start() {
         post({ type: "capture", request: id });
       }),
   };
+  if (IS_TOWN) window.townPreview = window.hauntPreview;
   const previousDraft = window.kilnReadShader();
   // A new device always starts with a working baseline, even if OPFS holds a bad draft.
   activeRequest = forward(original);
   await activeRequest;
   if (previousDraft) {
     // Upgrade this demo's v1 shader layout while preserving its authored tint/code.
-    const upgraded = upgradeLegacyShader(previousDraft);
+    const upgraded = IS_TOWN
+      ? previousDraft
+      : upgradeLegacyShader(previousDraft);
     activeRequest = forward(upgraded);
     await activeRequest;
   } else await save(original);
@@ -412,3 +423,25 @@ Effect.runPromise(
   el("shader-status").textContent = "The preview couldn't start.";
   showError(error);
 });
+
+if (IS_TOWN) {
+  window.addEventListener("keydown", (event) => {
+    if ((event.target as HTMLElement)?.closest("input,textarea,select")) return;
+    if ((event.ctrlKey || event.metaKey) && event.code === "KeyZ") {
+      event.preventDefault();
+      void editor
+        .submit({ kind: event.shiftKey ? "redo" : "undo" })
+        .catch(showError);
+      return;
+    }
+    if (event.code === "Digit1") el("walk").click();
+    if (event.code === "Digit2") el("open-assets").click();
+    if (event.code === "Digit3") el("open-build").click();
+  });
+  el("request").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      el("ask").click();
+    }
+  });
+}
