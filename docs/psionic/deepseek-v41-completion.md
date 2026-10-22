@@ -1635,3 +1635,16 @@ groups drained before the next run. A separate combined 2,872-input /
 4,096-output probe is now running on each placement; it uses bounded remote
 drain polling and remains outside the G2 score. G1, G4, and qualified G8
 acceptance remain pending.
+
+The combined boundary run now passes on
+[two-dual](verification/deepseek-v41-gates-2026-10-22/native-joint-two.json)
+and [four-single](verification/deepseek-v41-gates-2026-10-22/native-joint-four.json):
+an exactly counted 2,872-token chat input reaches a 4,096-token `length`
+finish in 332.093 s and 332.378 s, respectively, under the same
+75 s decode-step, 150 s prefill, and 600 s request limits. The six G2
+answers repeat exactly and the unchanged checker again passes 5/6 versus
+5/6. Observed GPU peaks remain 73,319 / 72,029 / 71,687 / 72,939 MiB.
+Bounded remote polling verifies all worker processes and GPU contexts gone
+before any reuse; two-dual needs one retry, and four-single none. These
+runtime measurements exercise the input and output bounds together. They
+do not freeze rule 2.4 or pass the outstanding numerical gates.
