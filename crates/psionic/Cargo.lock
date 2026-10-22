@@ -5382,6 +5382,7 @@ dependencies = [
  "psionic-backend-metal",
  "psionic-models",
  "psionic-runtime",
+ "rayon",
  "serde",
  "serde_json",
  "sha2",

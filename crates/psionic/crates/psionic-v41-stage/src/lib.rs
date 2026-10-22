@@ -252,11 +252,16 @@ pub struct HostTiers {
     /// `--prefill layer-major`: run prompt steps layer by layer with
     /// batched weight products (#12464); bit-equal to `token`, the default.
     pub batched_prefill: bool,
+    /// `--consumer-q DIR`: serve the lossy, unqualified `consumer-q`
+    /// profile's requantized experts from this artifact (#12465). Needs
+    /// `--experts file`.
+    pub consumer_q: Option<PathBuf>,
 }
 
 /// The flags [`HostTiers::from_args`] reads, each with a value except
 /// `--frozen-cache`.
-pub const HOST_TIER_FLAGS: [&str; 6] = [
+pub const HOST_TIER_FLAGS: [&str; 7] = [
+    "--consumer-q",
     "--expert-cache",
     "--miss-lane",
     "--expert-profile",
@@ -312,6 +317,7 @@ impl HostTiers {
             Some(other) => return refuse(format!("--prefill {other} is not token or layer-major")),
         };
         Ok(Self {
+            consumer_q: value("--consumer-q").map(PathBuf::from),
             batched_prefill,
             expert_cache,
             miss_lane,
@@ -343,6 +349,9 @@ impl HostTiers {
             _ if self.miss_lane.as_deref() == Some("bus") && experts != Experts::Host => {
                 refuse("--miss-lane bus needs --experts host")
             }
+            _ if self.consumer_q.is_some() && experts != Experts::File => {
+                refuse("--consumer-q needs --experts file")
+            }
             _ => Ok(()),
         }
     }
@@ -350,7 +359,21 @@ impl HostTiers {
     /// Whether any tier differs from a plain stage.
     #[must_use]
     pub fn any(&self) -> bool {
-        self.expert_cache.is_some() || self.engram_file || self.batched_prefill
+        self.expert_cache.is_some()
+            || self.engram_file
+            || self.batched_prefill
+            || self.consumer_q.is_some()
+    }
+
+    /// The numerical profile a CUDA stage with these tiers announces: the
+    /// lossy `consumer-q` profile names itself, so it never joins a group
+    /// that expects the exact one.
+    #[must_use]
+    pub fn profile(&self, exact: String) -> String {
+        match &self.consumer_q {
+            Some(_) => format!("consumer-q-{exact}"),
+            None => exact,
+        }
     }
 }
 
@@ -1090,7 +1113,8 @@ impl Options {
                 | "--listen" | "--events" | "--data-listen" | "--data-advertise" | "--record"
                 | "--control" | "--max-input-tokens" | "--max-step-tokens" | "--prefill-chunk"
                 | "--experts" | "--wire" | "--expert-cache" | "--miss-lane"
-                | "--expert-profile" | "--host-threads" | "--engram" | "--prefill" => {
+                | "--expert-profile" | "--host-threads" | "--engram" | "--prefill"
+                | "--consumer-q" => {
                     let Some(value) = args.get(i + 1) else {
                         return refuse(format!("{flag} needs a value"));
                     };

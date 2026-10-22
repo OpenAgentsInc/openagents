@@ -19393,6 +19393,7 @@ pub mod v41_expert_cache;
 pub mod v41_expert_lane;
 pub mod v41_matvec;
 pub mod v41_mix;
+pub mod v41_quantize;
 pub mod v41_stage;
 
 #[cfg(test)]

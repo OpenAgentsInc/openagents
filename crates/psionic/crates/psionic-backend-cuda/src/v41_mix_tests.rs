@@ -2078,12 +2078,18 @@ impl MatrixRows for Packed {
                     &self.scales[b * blocks..(b + 1) * blocks],
                 )?
             }
+            V41MatvecFormat::Q2Row32 | V41MatvecFormat::Q3Row32 => {
+                unreachable!("the CPU path has no consumer-q matrices")
+            }
         })
     }
     fn precision(&self) -> MatrixPrecision {
         match self.format {
             V41MatvecFormat::Fp4E2M1Row32 => MatrixPrecision::Fp4,
             V41MatvecFormat::Fp8Block32x32 => MatrixPrecision::Fp8,
+            V41MatvecFormat::Q2Row32 | V41MatvecFormat::Q3Row32 => {
+                unreachable!("the CPU path has no consumer-q matrices")
+            }
         }
     }
 }

@@ -2014,3 +2014,89 @@ fn layer_major_prefill_first_difference() -> TestResult {
     }
     Ok(())
 }
+
+/// The `consumer-q` profile's plumbing (#12465): experts requantized to
+/// the 2- and 3-bit formats run the same with every expert in device
+/// slots, with most on the host CPU lane and swapping, and through the
+/// layer-major prefill's ring, bit for bit. (The profile is lossy against
+/// the checkpoint; this checks only that its tiers agree.)
+#[test]
+fn consumer_q_tiers_agree() -> TestResult {
+    use crate::v41_engram_rows::{V41EngramRows, V41OwnedEngram};
+    use crate::v41_expert_cache::{
+        V41ExpertBytes, V41ExpertCacheConfig, V41ExpertCacheSetup, V41MissLane, V41OwnedExperts,
+        V41SwapPolicy,
+    };
+    use crate::v41_expert_lane::V41ExpertDims;
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let store = synthetic_store(61);
+    let sh = shape();
+    let fp4 = V41OwnedExperts::from_source(&store, 0..40, sh.router.experts)?;
+    let rows: Arc<dyn V41EngramRows> =
+        Arc::new(V41OwnedEngram::from_source(&store, &[1, 14], ENGRAM_WIDTH)?);
+    for formats in [
+        [V41MatvecFormat::Q2Row32, V41MatvecFormat::Q3Row32, V41MatvecFormat::Q2Row32],
+        [V41MatvecFormat::Q3Row32; 3],
+    ] {
+        let dims = V41ExpertDims {
+            formats,
+            ..V41ExpertDims::fp4(sh.hidden, sh.expert_width, sh.swiglu_limit)
+        };
+        let q: Arc<dyn V41ExpertBytes> = Arc::new(fp4.requantized(dims));
+        let config = |slots: usize, batched: bool| {
+            let mut c = V41ExpertCacheConfig::new(slots);
+            c.miss_lane = V41MissLane::Host;
+            c.formats = formats;
+            c.stream_slots = 3;
+            c.policy = V41SwapPolicy {
+                decay: 0.5,
+                window: 1,
+                ratio: 1.0,
+                margin: 0.0,
+                max_swaps_per_step: 8,
+                staging: 8,
+            };
+            V41StageOptions {
+                expert_cache: Some(V41ExpertCacheSetup {
+                    config: c,
+                    host: Some(q.clone()),
+                }),
+                engram_rows: Some(rows.clone()),
+                batched_prefill: batched,
+            }
+        };
+        let (prompt, decode) = tokens();
+        let mut steps = vec![prompt];
+        steps.extend(decode.iter().map(|t| vec![*t]));
+        let mut runs = Vec::new();
+        for (slots, batched) in [(sh.router.experts, false), (3, false), (3, true)] {
+            let mut stage = load_with_options(&mut backend, &store, 0..40, false, config(slots, batched))?;
+            let mut position = 0;
+            let mut out = Vec::new();
+            for step in &steps {
+                let o = stage.step(
+                    &backend,
+                    &V41StepInput {
+                        position,
+                        tokens: step,
+                        residual: None,
+                        pre_mix: None,
+                        source_rows: None,
+                        selection: None,
+                        candidates: None,
+                        sampling: V41Sampling::greedy(),
+                    },
+                    false,
+                )?;
+                out.push((o.token, stage.logits()?.iter().map(|v| v.to_bits()).collect::<Vec<_>>()));
+                position += step.len();
+            }
+            runs.push(out);
+        }
+        assert_eq!(runs[0], runs[1], "{formats:?}: host lane differs from device slots");
+        assert_eq!(runs[0], runs[2], "{formats:?}: layer-major prefill differs");
+    }
+    Ok(())
+}

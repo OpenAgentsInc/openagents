@@ -86,6 +86,10 @@ pub(super) struct PrefillWork {
     reset: Option<CudaGraphExec>,
     begin: Option<CudaGraphExec>,
     pub(super) ring: Option<Ring>,
+    /// Calibration sums for the `consumer-q` quantizer (#12465), per stage
+    /// layer: inputs `[experts, hidden]` with counts, and hidden
+    /// `[experts, width]` with counts.
+    pub(super) calibration: Option<Vec<[CudaBuffer; 4]>>,
     /// Per stage layer: phases A, C, E, G, I.
     phases: Vec<[Option<CudaGraphExec>; 5]>,
     /// Device bytes of all of the above.
@@ -197,6 +201,7 @@ impl PrefillWork {
             reset: None,
             begin: None,
             ring: None,
+            calibration: None,
             phases: (0..config.layers.len())
                 .map(|_| Default::default())
                 .collect(),
@@ -208,17 +213,11 @@ impl PrefillWork {
             .write_bytes_at_offset(0, &words(&dense_tiles))?;
         if let Some((dims, slots)) = stream {
             let slots = slots.max(1);
-            let fp4 = V41MatvecFormat::Fp4E2M1Row32;
-            let shapes = [
-                (dims.width, dims.hidden),
-                (dims.hidden, dims.width),
-                (dims.width, dims.hidden),
-            ];
             let mut stacks = Vec::new();
             let mut staging = Vec::new();
             let mut ptrs = Vec::new();
-            for (rows, cols) in shapes {
-                let (wb, sb) = (fp4.weight_bytes(rows, cols), fp4.scale_bytes(rows, cols));
+            for p in 0..3 {
+                let (wb, sb) = dims.part_bytes(p);
                 let w = backend.byte_buffer(&vec![0; wb * slots])?;
                 let sc = backend.byte_buffer(&vec![0; sb * slots])?;
                 bytes += w.byte_len() + sc.byte_len();
@@ -359,8 +358,7 @@ impl V41Stage {
             return Ok(());
         }
         let streamer = cache.streamer();
-        let fp4 = V41MatvecFormat::Fp4E2M1Row32;
-        let shapes = [(e, h), (h, e), (e, h)];
+        let dims = streamer.dims;
         let ptrs = ring.staging_ptrs;
         let groups: Vec<Vec<usize>> = missing.chunks(ring.slots).map(<[usize]>::to_vec).collect();
         let started = Instant::now();
@@ -369,12 +367,8 @@ impl V41Stage {
         for (g, group) in groups.iter().enumerate() {
             // Staging into the ring, and the ring's map.
             for part in 0..6 {
-                let (rows, cols) = shapes[part / 2];
-                let size = if part % 2 == 0 {
-                    fp4.weight_bytes(rows, cols)
-                } else {
-                    fp4.scale_bytes(rows, cols)
-                };
+                let (wb, sb) = dims.part_bytes(part / 2);
+                let size = if part % 2 == 0 { wb } else { sb };
                 let bytes = &ring.staging[part].read_bytes_prefix_view()[..size * group.len()];
                 let (w, sc) = &mut ring.stacks[part / 2];
                 if part % 2 == 0 {
@@ -427,7 +421,7 @@ impl V41Stage {
                 s.v41_act_quant_fp8(nf, codes, scales, tokens, h)?;
                 for (proj, out) in [(0, g_out), (2, u_out)] {
                     s.v41_block_matmul(
-                        fp4,
+                        dims.formats[proj],
                         None,
                         Some(ring_cache(proj)),
                         e,
@@ -454,7 +448,7 @@ impl V41Stage {
                 )?;
                 s.v41_act_quant_fp8(hh, codes, scales, entries, e)?;
                 s.v41_block_matmul(
-                    fp4,
+                    dims.formats[1],
                     None,
                     Some(ring_cache(1)),
                     h,
@@ -1127,6 +1121,9 @@ impl V41Stage {
                 };
                 let mut s = backend.begin_submission()?;
                 s.v41_act_quant_fp8(&p.nf, &p.codes, &p.scales, tokens, h)?;
+                if let Some(cal) = p.calibration.as_ref().map(|c| &c[i]) {
+                    s.v41_importance(&p.ids, entries, k, true, &p.codes, &p.scales, h, experts, &cal[0], &cal[1])?;
+                }
                 s.v41_group_entries(
                     &p.ids,
                     entries,
@@ -1136,9 +1133,12 @@ impl V41Stage {
                     &p.routed_tiles,
                     &p.routed_count,
                 )?;
+                let routed_format = |proj: usize| {
+                    cached.map_or(fp4, |(cache, _)| cache.dims.formats[proj])
+                };
                 for (proj, packed, out) in [(0, &lw.w1, &p.g), (2, &lw.w3, &p.u)] {
                     s.v41_block_matmul(
-                        fp4,
+                        routed_format(proj),
                         packed.as_ref().map(Packed::matrix),
                         cache_for(proj),
                         e,
@@ -1195,8 +1195,11 @@ impl V41Stage {
                     V41Output::Bf16,
                 )?;
                 s.v41_act_quant_fp8(&p.hh, &p.codes, &p.scales, entries, e)?;
+                if let Some(cal) = p.calibration.as_ref().map(|c| &c[i]) {
+                    s.v41_importance(&p.ids, entries, k, false, &p.codes, &p.scales, e, experts, &cal[2], &cal[3])?;
+                }
                 s.v41_block_matmul(
-                    fp4,
+                    routed_format(1),
                     lw.w2.as_ref().map(Packed::matrix),
                     cache_for(1),
                     h,
@@ -1341,5 +1344,72 @@ impl V41Stage {
             ("nf", read(&p.nf, h)?),
             ("ids", read(&p.ids, shape.router.top_k)?),
         ])
+    }
+}
+
+impl V41Stage {
+    /// Starts collecting calibration sums for the `consumer-q` quantizer
+    /// (#12465) during layer-major prompt steps. Every expert must run on
+    /// the device, so a stage with an expert cache is refused.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a stage without the layer-major prefill or with a cache.
+    pub fn enable_calibration(&mut self, backend: &mut CudaBackend) -> Result<(), RuntimeError> {
+        if self.expert_cache.is_some() {
+            return Err(invalid("calibration needs every expert on the device"));
+        }
+        let shape = self.config.shape;
+        let (h, e, n) = (shape.hidden, shape.expert_width, shape.router.experts);
+        let layers = self.layers.len();
+        let p = self.prefill.as_mut().ok_or_else(|| invalid("calibration needs the layer-major prefill"))?;
+        let mut all = Vec::with_capacity(layers);
+        for _ in 0..layers {
+            all.push([
+                backend.byte_buffer(&vec![0; 4 * n * h])?,
+                backend.byte_buffer(&vec![0; 4 * n])?,
+                backend.byte_buffer(&vec![0; 4 * n * e])?,
+                backend.byte_buffer(&vec![0; 4 * n])?,
+            ]);
+        }
+        p.calibration = Some(all);
+        Ok(())
+    }
+
+    /// The calibration so far, by model layer: per expert the mean square
+    /// of each input column (`[experts × hidden]`) and of each hidden
+    /// column (`[experts × width]`).
+    ///
+    /// # Errors
+    ///
+    /// Any device read failure.
+    pub fn calibration(&self) -> Result<Option<BTreeMap<usize, (Vec<f32>, Vec<f32>)>>, RuntimeError> {
+        let Some(cal) = self.prefill.as_ref().and_then(|p| p.calibration.as_ref()) else {
+            return Ok(None);
+        };
+        let floats = |b: &CudaBuffer| -> Result<Vec<f32>, RuntimeError> {
+            Ok(b.read_bytes()?
+                .chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect())
+        };
+        let mut out = BTreeMap::new();
+        for (lw, bufs) in self.layers.iter().zip(cal) {
+            let mut parts = Vec::new();
+            for (sums, counts) in [(&bufs[0], &bufs[1]), (&bufs[2], &bufs[3])] {
+                let (sums, counts) = (floats(sums)?, floats(counts)?);
+                let cols = sums.len() / counts.len().max(1);
+                parts.push(
+                    sums.chunks(cols.max(1))
+                        .zip(&counts)
+                        .flat_map(|(row, n)| row.iter().map(move |v| if *n > 0.0 { v / n } else { 0.0 }))
+                        .collect::<Vec<f32>>(),
+                );
+            }
+            let hidden = parts.pop().unwrap_or_default();
+            let inputs = parts.pop().unwrap_or_default();
+            out.insert(lw.layer, (inputs, hidden));
+        }
+        Ok(Some(out))
     }
 }

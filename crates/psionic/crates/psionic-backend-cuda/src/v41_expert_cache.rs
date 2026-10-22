@@ -71,6 +71,7 @@ const PAYLOAD: usize = 128;
 
 unsafe extern "C" {
     fn psionic_v41_block_matvec_cached(
+        format: i32,
         weights: *const c_void,
         weight_scales: *const c_void,
         cache_weights: *const c_void,
@@ -213,6 +214,9 @@ pub struct V41ExpertCacheConfig {
     /// Device slots a layer-major prefill streams uncached experts through
     /// (#12464), 32 by default.
     pub stream_slots: usize,
+    /// How the host source stores `[w1, w2, w3]`: the checkpoint's FP4, or
+    /// a `consumer-q` format (#12465).
+    pub formats: [V41MatvecFormat; 3],
 }
 
 impl V41ExpertCacheConfig {
@@ -230,6 +234,7 @@ impl V41ExpertCacheConfig {
             wait_timeout: Duration::from_secs(30),
             frozen: false,
             stream_slots: 32,
+            formats: [V41MatvecFormat::Fp4E2M1Row32; 3],
         }
     }
 }
@@ -284,6 +289,40 @@ impl V41OwnedExperts {
     }
 }
 
+impl V41OwnedExperts {
+    /// Sets projection `projection` of `expert` in `layer`.
+    pub fn insert(&mut self, layer: usize, expert: usize, projection: usize, weights: Vec<u8>, scales: Vec<u8>) {
+        self.parts.insert((layer, expert, projection), (weights, scales));
+    }
+
+    /// Requantizes every held FP4 expert to `formats` with the `consumer-q`
+    /// quantizer (#12465), for tests of the lossy profile's plumbing.
+    #[must_use]
+    pub fn requantized(&self, dims: crate::v41_expert_lane::V41ExpertDims) -> Self {
+        let mut out = Self::default();
+        for ((layer, expert, p), (w, s)) in &self.parts {
+            let (rows, cols) = dims.shape(*p);
+            let blocks = cols / V41_BLOCK;
+            let mut values = Vec::with_capacity(rows * cols);
+            for r in 0..rows {
+                for b in 0..blocks {
+                    let scale = crate::v41_expert_lane::v41_e8m0(s[r * blocks + b]);
+                    for j in 0..V41_BLOCK {
+                        let byte = w[r * cols / 2 + b * 16 + j / 2];
+                        let code = if j % 2 == 0 { byte & 15 } else { byte >> 4 };
+                        let magnitude = f32::from_bits(u32::from(code & 7) << 22) * f32::from_bits((126 + 127) << 23);
+                        let v = if code & 8 != 0 { -magnitude } else { magnitude };
+                        values.push(v * scale);
+                    }
+                }
+            }
+            let (qw, qs) = crate::v41_quantize::v41_quantize_matrix(dims.formats[*p], &values, rows, cols, None);
+            out.insert(*layer, *expert, *p, qw, qs);
+        }
+        out
+    }
+}
+
 impl V41ExpertBytes for V41OwnedExperts {
     fn projection(
         &self,
@@ -311,6 +350,8 @@ impl V41ExpertBytes for V41OwnedExperts {
 /// memory.
 #[derive(Clone, Copy, Debug)]
 pub struct V41CachedStack<'a> {
+    /// How the experts store their weights: FP4, or a `consumer-q` format.
+    pub format: V41MatvecFormat,
     /// Output rows and input values of one expert's matrix.
     pub rows: usize,
     pub cols: usize,
@@ -344,7 +385,7 @@ impl CudaSubmission {
         out: &CudaBuffer,
         output: V41Output,
     ) -> Result<(), RuntimeError> {
-        let format = V41MatvecFormat::Fp4E2M1Row32;
+        let format = stack.format;
         let (rows, cols) = (stack.rows, stack.cols);
         check_v41_matvec_dims(rows, cols, stack.experts, slots.count)?;
         let matrix_bytes = format.weight_bytes(rows, cols);
@@ -370,6 +411,7 @@ impl CudaSubmission {
         // below `cache_slots`, which the cache owner guarantees.
         let code = unsafe {
             psionic_v41_block_matvec_cached(
+                format.id(),
                 host_w,
                 host_s,
                 cache_w.cast_const(),
@@ -767,7 +809,7 @@ impl LaneWork {
             .for_each(|(c, (g, u))| {
                 let row = c * LANE_ROWS;
                 let (e, r) = (row / w, row % w);
-                v41_expert_gate_up(isa, &experts[e], x, r..r + g.len(), g, u);
+                v41_expert_gate_up(isa, dims, &experts[e], x, r..r + g.len(), g, u);
             });
         self.hidden.resize_with(n, V41DecodedActivation::default);
         let (gate, up) = (&self.gate, &self.up);
@@ -795,7 +837,7 @@ impl LaneWork {
             .for_each(|(c, o)| {
                 let row = c * LANE_ROWS;
                 let (e, r) = (row / h, row % h);
-                v41_expert_down(isa, &experts[e], &hidden[e], r..r + o.len(), o);
+                v41_expert_down(isa, dims, &experts[e], &hidden[e], r..r + o.len(), o);
             });
         Ok(())
     }
@@ -829,14 +871,14 @@ struct StagerState {
 /// Byte offsets of an expert's six parts in a staging buffer:
 /// `[w1 w, w1 s, w2 w, w2 s, w3 w, w3 s]`.
 fn part_offsets(dims: V41ExpertDims) -> [(usize, usize); 6] {
-    let (w13, s13) = V41ExpertDims::fp4_bytes(dims.width, dims.hidden);
-    let (w2, s2) = V41ExpertDims::fp4_bytes(dims.hidden, dims.width);
-    let sizes = [w13, s13, w2, s2, w13, s13];
     let mut out = [(0, 0); 6];
     let mut at = 0;
-    for (i, n) in sizes.into_iter().enumerate() {
-        out[i] = (at, n);
-        at += n;
+    for p in 0..3 {
+        let (w, s) = dims.part_bytes(p);
+        out[2 * p] = (at, w);
+        at += w;
+        out[2 * p + 1] = (at, s);
+        at += s;
     }
     out
 }
@@ -1081,12 +1123,6 @@ impl ExpertCache {
                 "the bus lane needs the routed experts in page-locked host memory (--experts host)",
             ));
         }
-        let fp4 = V41MatvecFormat::Fp4E2M1Row32;
-        let shapes = [
-            (dims.width, dims.hidden),
-            (dims.hidden, dims.width),
-            (dims.width, dims.hidden),
-        ];
         let lane = V41LaneDevice::new(
             backend,
             dims.hidden,
@@ -1109,9 +1145,10 @@ impl ExpertCache {
             let mut resident = vec![None; k];
             let mut map = vec![V41_LANE_HOST; experts];
             let mut slots = Vec::with_capacity(3);
-            for (rows, cols) in shapes {
-                let w = backend.byte_buffer(&vec![0; (fp4.weight_bytes(rows, cols) * k).max(4)])?;
-                let s = backend.byte_buffer(&vec![0; (fp4.scale_bytes(rows, cols) * k).max(4)])?;
+            for p in 0..3 {
+                let (wb, sb) = dims.part_bytes(p);
+                let w = backend.byte_buffer(&vec![0; (wb * k).max(4)])?;
+                let s = backend.byte_buffer(&vec![0; (sb * k).max(4)])?;
                 device_bytes += w.byte_len() + s.byte_len();
                 slots.push((w, s));
             }
@@ -1120,9 +1157,14 @@ impl ExpertCache {
             for (slot, &expert) in order.iter().take(k).enumerate() {
                 for (p, (w, s)) in slots.iter_mut().enumerate() {
                     let (wb, sb) = host.projection(layer, expert, p)?;
-                    let (rows, cols) = shapes[p];
-                    w.write_bytes_at_offset(slot * fp4.weight_bytes(rows, cols), wb)?;
-                    s.write_bytes_at_offset(slot * fp4.scale_bytes(rows, cols), sb)?;
+                    let (wl, sl) = dims.part_bytes(p);
+                    if wb.len() != wl || sb.len() != sl {
+                        return Err(invalid(format!(
+                            "expert {expert} of layer {layer} doesn't have the cache's format"
+                        )));
+                    }
+                    w.write_bytes_at_offset(slot * wl, wb)?;
+                    s.write_bytes_at_offset(slot * sl, sb)?;
                 }
                 resident[slot] = Some(expert);
                 map[expert] = i32::try_from(slot).map_err(|_| invalid("slot"))?;
@@ -1396,12 +1438,6 @@ impl ExpertCache {
                 .collect()
         };
         let offsets = part_offsets(self.dims);
-        let fp4 = V41MatvecFormat::Fp4E2M1Row32;
-        let shapes = [
-            (self.dims.width, self.dims.hidden),
-            (self.dims.hidden, self.dims.width),
-            (self.dims.width, self.dims.hidden),
-        ];
         let policy = self.config.policy;
         for (i, l, e) in ready {
             let cache = &mut self.caches[l];
@@ -1416,18 +1452,11 @@ impl ExpertCache {
                 }
                 let staged = stager.buffers[i].read_bytes_prefix_view();
                 for p in 0..3 {
-                    let (rows, cols) = shapes[p];
                     let (w_at, w_len) = offsets[2 * p];
                     let (s_at, s_len) = offsets[2 * p + 1];
                     let (w, s) = &mut cache.slots[p];
-                    w.write_bytes_at_offset(
-                        slot * fp4.weight_bytes(rows, cols),
-                        &staged[w_at..w_at + w_len],
-                    )?;
-                    s.write_bytes_at_offset(
-                        slot * fp4.scale_bytes(rows, cols),
-                        &staged[s_at..s_at + s_len],
-                    )?;
+                    w.write_bytes_at_offset(slot * w_len, &staged[w_at..w_at + w_len])?;
+                    s.write_bytes_at_offset(slot * s_len, &staged[s_at..s_at + s_len])?;
                 }
                 let code = i32::try_from(slot).map_err(|_| invalid("slot"))?;
                 cache.map[e] = code;

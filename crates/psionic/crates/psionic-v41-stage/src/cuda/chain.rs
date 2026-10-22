@@ -106,6 +106,13 @@ pub struct ChainOptions {
     /// Load and time only the first stage's prompt steps (`--first-stage-only`),
     /// to measure one stage's prefill on one GPU.
     pub first_stage_only: bool,
+    /// One prompt per round, from a JSON-lines file of message lists
+    /// (`--prompts-jsonl`); the round count follows the file.
+    pub prompts: Vec<Value>,
+    /// Collect `consumer-q` calibration sums during layer-major prompt steps
+    /// and write each stage's to `PREFIX.layers-A-B` (`--calibrate-out`,
+    /// #12465).
+    pub calibrate_out: Option<PathBuf>,
 }
 
 fn flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
@@ -201,6 +208,20 @@ impl ChainOptions {
             save_profile: flag(args, "--save-expert-profile").map(PathBuf::from),
             repeat_answer: number(args, "--repeat-answer", 1_usize)?.max(1),
             first_stage_only: args.iter().any(|a| a == "--first-stage-only"),
+            prompts: match flag(args, "--prompts-jsonl") {
+                Some(file) => std::fs::read_to_string(file)
+                    .map_err(|e| Refused(format!("can't read {file}: {e}")))?
+                    .lines()
+                    .filter(|l| !l.trim().is_empty())
+                    .map(|l| {
+                        serde_json::from_str::<Value>(l)
+                            .map_err(|e| Refused(format!("{file}: {e}")))
+                            .map(|v| v.get("messages").cloned().unwrap_or(v))
+                    })
+                    .collect::<Result<_, _>>()?,
+                None => Vec::new(),
+            },
+            calibrate_out: flag(args, "--calibrate-out").map(PathBuf::from),
         })
     }
 }
@@ -444,12 +465,17 @@ fn stage_thread(
         .unwrap_or_default();
     let (free_before, total) = free(&backend)?;
     let started = Instant::now();
-    let stage = model.stage_sized(
+    let mut stage = model.stage_sized(
         &mut backend,
         entry.first_layer as usize..entry.end_layer as usize,
         options.max_context,
         options.max_step_tokens,
     )?;
+    if options.calibrate_out.is_some() {
+        stage
+            .enable_calibration(&mut backend)
+            .map_err(|e| Refused(format!("calibration: {e}")))?;
+    }
     let load_s = started.elapsed().as_secs_f64();
     let (free_loaded, _) = free(&backend)?;
     let engram = engram_bench(&mut backend, &stage, options.engram_lookups)?;
@@ -528,6 +554,26 @@ fn stage_thread(
             }
             Command::Report => {
                 let stage = worker.executor().stage();
+                if let Some(prefix) = &options.calibrate_out {
+                    let calibration = stage
+                        .calibration()
+                        .map_err(|e| Refused(format!("calibration: {e}")))?
+                        .unwrap_or_default();
+                    let shape = stage.config().shape;
+                    let path = PathBuf::from(format!(
+                        "{}.layers-{}-{}",
+                        prefix.display(),
+                        entry.first_layer,
+                        entry.end_layer
+                    ));
+                    super::consumer_q::Importance::write(
+                        &path,
+                        &calibration,
+                        shape.router.experts,
+                        shape.hidden,
+                        shape.expert_width,
+                    )?;
+                }
                 if let (Some(path), Some(profile)) = (&options.save_profile, stage.expert_profile())
                 {
                     super::tiers::write_profile(
@@ -657,7 +703,16 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
     let (vocabulary, eos, pad) = text_side(&options.weights)?;
     let tokenizer = vocabulary.tokenizer();
     let mode = options.mode;
-    let prompt_ids = vocabulary.encode(options.prompt.as_ref(), pad, mode)?;
+    let round_prompts: Vec<Vec<u32>> = if options.prompts.is_empty() {
+        vec![vocabulary.encode(options.prompt.as_ref(), pad, mode)?]
+    } else {
+        options
+            .prompts
+            .iter()
+            .map(|p| vocabulary.encode(Some(p), pad, mode))
+            .collect::<Result<_, _>>()?
+    };
+    let prompt_ids = round_prompts[0].clone();
     let mut threads = Vec::new();
     let loaded_stages = if options.first_stage_only {
         1
@@ -761,10 +816,13 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
         }
         let rounds = if options.load_only || options.first_stage_only {
             0
-        } else {
+        } else if options.prompts.is_empty() {
             options.repeat_answer
+        } else {
+            round_prompts.len()
         };
         for round in 0..rounds {
+            let prompt_ids = round_prompts[round % round_prompts.len()].clone();
             let last = threads.len() - 1;
             let digest = manifest.digest();
             let mut parser = AnswerParser::new(std::sync::Arc::clone(&tokenizer), eos, mode);

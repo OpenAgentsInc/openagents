@@ -38,6 +38,52 @@ pub enum V41MatvecFormat {
     /// Packed E2M1 `[rows, cols / 2]` bytes, the low nibble holding element
     /// `2i`, and `F8_E8M0` scales `[rows, cols / 32]`.
     Fp4E2M1Row32,
+    /// The `consumer-q` profile's 2-bit routed experts (#12465, lossy):
+    /// codes `[rows, cols / 4]` (value `j` of a 32-value block in bits
+    /// `2j..2j+2` of the block's 8 bytes), one log-scale byte per block
+    /// `[rows, cols / 32]` padded to 4 bytes, then one `f32` scale per row.
+    /// A value is `row × 2^((u - 255) / 32) × V41_Q2_LEVELS[code]`.
+    Q2Row32,
+    /// The same with 3-bit codes, 12 bytes per block, and
+    /// [`V41_Q3_LEVELS`].
+    Q3Row32,
+}
+
+/// The 2-bit levels: the Lloyd–Max quantizer of a unit normal.
+pub const V41_Q2_LEVELS: [f32; 4] = [-1.5104, -0.4528, 0.4528, 1.5104];
+/// The 3-bit levels: the Lloyd–Max quantizer of a unit normal.
+pub const V41_Q3_LEVELS: [f32; 8] = [-2.152, -1.344, -0.756, -0.2451, 0.2451, 0.756, 1.344, 2.152];
+
+/// `2^(f / 32)` rounded to `f32`, for `f` in `0..32`; the device kernels
+/// carry the same table.
+const V41_Q_FRACTIONS: [u32; 32] = [
+    1065353216, 1065536903, 1065724611, 1065916431, 1066112450, 1066312762, 1066517459,
+    1066726640, 1066940400, 1067158842, 1067382066, 1067610179, 1067843287, 1068081499,
+    1068324927, 1068573686, 1068827891, 1069087663, 1069353124, 1069624397, 1069901610,
+    1070184894, 1070474380, 1070770206, 1071072509, 1071381432, 1071697119, 1072019719,
+    1072349383, 1072686266, 1073030525, 1073382323,
+];
+
+/// A `consumer-q` block's weight scale: `row × 2^((u - 255) / 32)`, one
+/// rounding (the power of two is exact).
+#[must_use]
+pub fn v41_q_block_scale(row: f32, u: u8) -> f32 {
+    let t = i32::from(u) - 255;
+    let a = t.div_euclid(32);
+    let f = t.rem_euclid(32) as usize;
+    let power = f32::from_bits(((127 + a) as u32) << 23);
+    row * (f32::from_bits(V41_Q_FRACTIONS[f]) * power)
+}
+
+/// Code `j` (0 to 31) of a `consumer-q` block's packed bytes.
+#[must_use]
+pub fn v41_q_code(bits: usize, block: &[u8], j: usize) -> usize {
+    let at = bits * j;
+    let mut word = u32::from(block[at / 8]);
+    if at / 8 + 1 < block.len() {
+        word |= u32::from(block[at / 8 + 1]) << 8;
+    }
+    ((word >> (at % 8)) & ((1 << bits) - 1)) as usize
 }
 
 impl V41MatvecFormat {
@@ -47,6 +93,29 @@ impl V41MatvecFormat {
         match self {
             Self::Fp8Block32x32 => rows * cols,
             Self::Fp4E2M1Row32 => rows * cols / 2,
+            Self::Q2Row32 => rows * cols / 4,
+            Self::Q3Row32 => rows * cols * 3 / 8,
+        }
+    }
+
+    /// Code bits per value of a `consumer-q` format.
+    #[must_use]
+    pub const fn q_bits(self) -> Option<usize> {
+        match self {
+            Self::Q2Row32 => Some(2),
+            Self::Q3Row32 => Some(3),
+            _ => None,
+        }
+    }
+
+    /// The device's format id: 0 FP8, 1 FP4, 2 Q2, 3 Q3.
+    #[must_use]
+    pub const fn id(self) -> i32 {
+        match self {
+            Self::Fp8Block32x32 => 0,
+            Self::Fp4E2M1Row32 => 1,
+            Self::Q2Row32 => 2,
+            Self::Q3Row32 => 3,
         }
     }
 
@@ -56,6 +125,7 @@ impl V41MatvecFormat {
         match self {
             Self::Fp8Block32x32 => rows.div_ceil(V41_BLOCK) * (cols / V41_BLOCK),
             Self::Fp4E2M1Row32 => rows * (cols / V41_BLOCK),
+            Self::Q2Row32 | Self::Q3Row32 => (rows * (cols / V41_BLOCK)).div_ceil(4) * 4 + 4 * rows,
         }
     }
 }
@@ -163,6 +233,19 @@ unsafe extern "C" {
         cache_weights: *const c_void,
         cache_scales: *const c_void,
         slot_map: *const c_void,
+        stream: *mut c_void,
+    ) -> i32;
+    fn psionic_v41_importance(
+        ids: *const c_void,
+        count: i32,
+        top_k: i32,
+        act_shared: i32,
+        act: *const c_void,
+        act_scales: *const c_void,
+        cols: i32,
+        experts: i32,
+        sums: *mut c_void,
+        counts: *mut c_void,
         stream: *mut c_void,
     ) -> i32;
     fn psionic_v41_group_entries(
@@ -357,7 +440,7 @@ impl CudaSubmission {
         // checked above; ids outside the stack are refused on the device.
         let code = unsafe {
             psionic_v41_block_matvec(
-                i32::from(matrix.format == V41MatvecFormat::Fp4E2M1Row32),
+                matrix.format.id(),
                 weights,
                 weight_scales,
                 to_i64(matrix_bytes)?,
@@ -376,6 +459,48 @@ impl CudaSubmission {
             )
         };
         self.clef_launch(code, "v41 block-scaled matvec")
+    }
+
+    /// Calibration for the `consumer-q` quantizer (#12465): adds the square
+    /// of each of `count` entries' FP8 activations (row `e / top_k` when
+    /// `shared_input`, else `e`) to `sums[ids[e]][column]` (`experts × cols`
+    /// floats) and one to `counts[ids[e]]`.
+    ///
+    /// # Errors
+    ///
+    /// Refuses buffers too small for the shapes.
+    #[allow(clippy::too_many_arguments)]
+    pub fn v41_importance(
+        &mut self,
+        ids: &CudaBuffer,
+        count: usize,
+        top_k: usize,
+        shared_input: bool,
+        codes: &CudaBuffer,
+        scales: &CudaBuffer,
+        cols: usize,
+        experts: usize,
+        sums: &CudaBuffer,
+        counts: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        let rows = if shared_input { count / top_k.max(1) } else { count };
+        // SAFETY: every extent was checked against its buffer.
+        let code = unsafe {
+            psionic_v41_importance(
+                span(ids, 0, count, 4, "expert ids")?.cast_const(),
+                int(count, "entries")?,
+                int(top_k, "top-k")?,
+                i32::from(shared_input),
+                span(codes, 0, rows * cols, 1, "activation codes")?.cast_const(),
+                span(scales, 0, rows * cols / V41_BLOCK, 1, "activation scales")?.cast_const(),
+                int(cols, "cols")?,
+                int(experts, "experts")?,
+                span(sums, 0, experts * cols, 4, "sums")?,
+                span(counts, 0, experts, 4, "counts")?,
+                self.platform.raw_stream()?,
+            )
+        };
+        self.clef_launch(code, "v41 importance")
     }
 
     /// Sorts `count` routed entries by expert (`ids[e]`, `i32`) into a
@@ -482,7 +607,7 @@ impl CudaSubmission {
         // and `out_rows`, which the batch's builder guarantees.
         let code = unsafe {
             psionic_v41_block_matmul(
-                i32::from(format == V41MatvecFormat::Fp4E2M1Row32),
+                format.id(),
                 weights,
                 weight_scales,
                 to_i64(matrix_bytes)?,
@@ -577,14 +702,36 @@ pub fn v41_block_matvec_host(
                             let byte = weights[row * cols / 2 + k / 2];
                             e2m1(if k % 2 == 0 { byte & 15 } else { byte >> 4 })
                         }
+                        V41MatvecFormat::Q2Row32 | V41MatvecFormat::Q3Row32 => {
+                            let bits = format.q_bits().unwrap_or(2);
+                            let block_bytes = 4 * bits;
+                            let at = (row * blocks + b) * block_bytes;
+                            let code = v41_q_code(bits, &weights[at..at + block_bytes], j);
+                            if bits == 2 {
+                                V41_Q2_LEVELS[code]
+                            } else {
+                                V41_Q3_LEVELS[code]
+                            }
+                        }
                     };
                     partial = e4m3(codes[k]).mul_add(w, partial);
                 }
                 let weight_scale = match format {
-                    V41MatvecFormat::Fp8Block32x32 => weight_scales[(row / V41_BLOCK) * blocks + b],
-                    V41MatvecFormat::Fp4E2M1Row32 => weight_scales[row * blocks + b],
+                    V41MatvecFormat::Fp8Block32x32 => {
+                        e8m0(weight_scales[(row / V41_BLOCK) * blocks + b])
+                    }
+                    V41MatvecFormat::Fp4E2M1Row32 => e8m0(weight_scales[row * blocks + b]),
+                    V41MatvecFormat::Q2Row32 | V41MatvecFormat::Q3Row32 => {
+                        let rows_at = (rows * blocks).div_ceil(4) * 4;
+                        let d = f32::from_le_bytes(
+                            weight_scales[rows_at + 4 * row..rows_at + 4 * row + 4]
+                                .try_into()
+                                .unwrap_or([0; 4]),
+                        );
+                        v41_q_block_scale(d, weight_scales[row * blocks + b])
+                    }
                 };
-                acc += partial * e8m0(scales[b]) * e8m0(weight_scale);
+                acc += partial * e8m0(scales[b]) * weight_scale;
             }
             acc
         })

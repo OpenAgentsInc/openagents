@@ -179,6 +179,9 @@ impl Packed {
                     &self.scales[block_row * blocks..(block_row + 1) * blocks],
                 )
             }
+            V41MatvecFormat::Q2Row32 | V41MatvecFormat::Q3Row32 => {
+                unreachable!("the CPU path has no consumer-q matrices")
+            }
         };
         result.expect("fixture rows fit their scales")
     }
@@ -195,6 +198,9 @@ impl MatrixRows for Packed {
         match self.format {
             V41MatvecFormat::Fp4E2M1Row32 => MatrixPrecision::Fp4,
             V41MatvecFormat::Fp8Block32x32 => MatrixPrecision::Fp8,
+            V41MatvecFormat::Q2Row32 | V41MatvecFormat::Q3Row32 => {
+                unreachable!("the CPU path has no consumer-q matrices")
+            }
         }
     }
 }
@@ -779,7 +785,7 @@ fn extreme_scales_saturation_and_nan_match_the_host_model() -> TestResult {
         let blocks = cols / V41_BLOCK;
         let scale_row = |row: usize| match format {
             V41MatvecFormat::Fp8Block32x32 => row / V41_BLOCK * blocks,
-            V41MatvecFormat::Fp4E2M1Row32 => row * blocks,
+            _ => row * blocks,
         };
         // Row 0: smallest scales (2^-127, subnormal); row 33: largest
         // (2^127) with saturated codes, which overflows; row 70: a NaN scale.
@@ -792,6 +798,7 @@ fn extreme_scales_saturation_and_nan_match_the_host_model() -> TestResult {
         let saturated = match format {
             V41MatvecFormat::Fp8Block32x32 => 0x7e,
             V41MatvecFormat::Fp4E2M1Row32 => 0x77,
+            V41MatvecFormat::Q2Row32 | V41MatvecFormat::Q3Row32 => 0xff,
         };
         matrix.weights[33 * row_bytes..34 * row_bytes].fill(saturated);
         if format == V41MatvecFormat::Fp8Block32x32 {
@@ -1186,6 +1193,167 @@ fn batched_products_equal_the_host_model_per_row() -> TestResult {
                         "dense entry {e} row {row}"
                     );
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// The `consumer-q` formats (#12465) on the device: the matrix-vector
+/// kernel over a stack with device ids, the cached form, and the batched
+/// product all equal the host model bit for bit.
+#[test]
+fn consumer_q_kernels_equal_the_host_model() -> TestResult {
+    use crate::v41_expert_cache::{V41_LANE_BUS, V41CachedStack};
+    use crate::v41_quantize::v41_quantize_matrix;
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let mut rng = Rng(5150);
+    let words = |v: &[i32]| v.iter().flat_map(|i| i.to_le_bytes()).collect::<Vec<u8>>();
+    for format in [V41MatvecFormat::Q2Row32, V41MatvecFormat::Q3Row32] {
+        for (rows, cols) in [(40, 96), (72, 32 * 37)] {
+            let stack = 4;
+            let mut w = Vec::new();
+            let mut s = Vec::new();
+            for _ in 0..stack {
+                let values: Vec<f32> = (0..rows * cols).map(|_| rng.activation() * 0.02).collect();
+                let (wm, sm) = v41_quantize_matrix(format, &values, rows, cols, None);
+                w.push(wm);
+                s.push(sm);
+            }
+            let weights = backend.byte_buffer(&w.concat())?;
+            let scales = backend.byte_buffer(&s.concat())?;
+            let ids: [i32; 5] = [3, 0, 2, 2, 1];
+            let id_buffer = backend.byte_buffer(&words(&ids))?;
+            let x: Vec<f32> = (0..cols * ids.len()).map(|_| rng.activation()).collect();
+            let input = quantize_on_device(&mut backend, &x, ids.len())?;
+            let host = |e: usize, slot: usize| {
+                v41_block_matvec_host(
+                    format,
+                    &w[ids[e] as usize],
+                    &s[ids[e] as usize],
+                    rows,
+                    cols,
+                    &input.host_codes[slot * cols..(slot + 1) * cols],
+                    &input.host_scales[slot * cols / 32..(slot + 1) * cols / 32],
+                )
+            };
+            // Matrix-vector over the stack.
+            let out = f32_buffer(&mut backend, rows * ids.len())?;
+            let mut sub = backend.begin_submission()?;
+            sub.v41_block_matvec(
+                V41Matrix {
+                    format,
+                    weights: &weights,
+                    scales: &scales,
+                    rows,
+                    cols,
+                    matrices: stack,
+                },
+                &input.codes,
+                &input.scales,
+                V41Slots {
+                    count: ids.len(),
+                    ids: Some(&id_buffer),
+                    shared_input: false,
+                },
+                &out,
+                V41Output::F32,
+            )?;
+            sub.commit(CudaCommandWait::Completed)?;
+            let gpu = read_f32(&out)?;
+            for e in 0..ids.len() {
+                let want = host(e, e);
+                for (r, (a, b)) in gpu[e * rows..(e + 1) * rows].iter().zip(&want).enumerate() {
+                    assert!(same_bits(*a, *b), "{format:?} matvec slot {e} row {r}: {a} vs {b}");
+                }
+            }
+            // The cached form: matrices 1 and 3 in device slots 0 and 1, the
+            // rest read from the stack over the bus lane.
+            let cache_w = backend.byte_buffer(&[w[1].clone(), w[3].clone()].concat())?;
+            let cache_s = backend.byte_buffer(&[s[1].clone(), s[3].clone()].concat())?;
+            let map = backend.byte_buffer(&words(&[V41_LANE_BUS, 0, V41_LANE_BUS, 1]))?;
+            let out = f32_buffer(&mut backend, rows * ids.len())?;
+            let mut sub = backend.begin_submission()?;
+            sub.v41_block_matvec_cached(
+                V41CachedStack {
+                    format,
+                    rows,
+                    cols,
+                    experts: stack,
+                    host: Some((&weights, &scales)),
+                    cache: (&cache_w, &cache_s),
+                    cache_slots: 2,
+                    slot_map: &map,
+                },
+                &input.codes,
+                &input.scales,
+                V41Slots {
+                    count: ids.len(),
+                    ids: Some(&id_buffer),
+                    shared_input: false,
+                },
+                &out,
+                V41Output::F32,
+            )?;
+            sub.commit(CudaCommandWait::Completed)?;
+            let gpu = read_f32(&out)?;
+            for e in 0..ids.len() {
+                let want = host(e, e);
+                assert!(
+                    gpu[e * rows..(e + 1) * rows].iter().zip(&want).all(|(a, b)| same_bits(*a, *b)),
+                    "{format:?} cached slot {e}"
+                );
+            }
+            // The batched product, grouped by matrix.
+            let count = ids.len();
+            let max_tiles = V41Batch::max_tiles(count, stack);
+            let scratch = backend.byte_buffer(&vec![0; 8 * (stack + 1)])?;
+            let entries = backend.byte_buffer(&vec![0; 4 * count])?;
+            let tiles = backend.byte_buffer(&vec![0; 16 * max_tiles])?;
+            let tile_count = backend.byte_buffer(&[0; 4])?;
+            let out = f32_buffer(&mut backend, rows * count)?;
+            let mut sub = backend.begin_submission()?;
+            sub.v41_group_entries(&id_buffer, count, stack, &scratch, &entries, &tiles, &tile_count)?;
+            sub.v41_block_matmul(
+                format,
+                Some(V41Matrix {
+                    format,
+                    weights: &weights,
+                    scales: &scales,
+                    rows,
+                    cols,
+                    matrices: stack,
+                }),
+                None,
+                rows,
+                cols,
+                stack,
+                V41Batch {
+                    entries: &entries,
+                    tiles: &tiles,
+                    tile_count: &tile_count,
+                    max_tiles,
+                    count,
+                    top_k: 1,
+                    shared_input: false,
+                },
+                &input.codes,
+                &input.scales,
+                count,
+                &out,
+                count,
+                V41Output::F32,
+            )?;
+            sub.commit(CudaCommandWait::Completed)?;
+            let gpu = read_f32(&out)?;
+            for e in 0..count {
+                let want = host(e, e);
+                assert!(
+                    gpu[e * rows..(e + 1) * rows].iter().zip(&want).all(|(a, b)| same_bits(*a, *b)),
+                    "{format:?} batched entry {e}"
+                );
             }
         }
     }

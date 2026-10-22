@@ -19,6 +19,8 @@
 //! psionic-v41-stage qualify-derive --rule 2.1|2.2 --reference R[,R] --control C[,C] --out FILE
 //! psionic-v41-stage qualify-judge --policy FILE --report R[,R]
 //! psionic-v41-stage replay --weights DIR --capture DIR
+//! psionic-v41-stage quantize --weights DIR --out DIR [--recipe q2q3|q3]
+//!     [--importance FILE] [--layers A-B]
 //! psionic-v41-stage build-info
 //! psionic-v41-stage chunk-memory
 //! psionic-v41-stage chain --weights DIR [--split A-B,...] [--gpus N,...]
@@ -51,6 +53,7 @@ fn main() -> ExitCode {
         Some("qualify-judge") => psionic_v41_stage::qualify::run_judge(&args[1..]),
         Some("build-info") => run_build_info(),
         Some("chain") => run_chain(&args[1..]),
+        Some("quantize") => run_quantize(&args[1..]),
         Some("replay") => run_replay(&args[1..]),
         Some("chunk-memory") if args.len() == 1 => {
             psionic_v41_stage::chunk_memory_profile().map(|v| println!("{v}"))
@@ -223,6 +226,45 @@ fn run_chain(args: &[String]) -> Result<(), Refused> {
     let json = serde_json::to_string(&report).map_err(|e| Refused(e.to_string()))?;
     let _ = writeln!(std::io::stdout(), "{json}");
     Ok(())
+}
+
+/// Requantizes the checkpoint's routed experts into a `consumer-q` artifact
+/// (#12465): lossy and unqualified, served only under its own profile.
+#[cfg(feature = "cuda")]
+fn run_quantize(args: &[String]) -> Result<(), Refused> {
+    use psionic_models::deepseek_v41_weights::{CheckpointOpenOptions, DeepSeekV41Checkpoint};
+    use psionic_v41_stage::cuda::consumer_q::{Importance, quantize};
+    let weights = flag(args, "--weights").ok_or_else(|| Refused("--weights is required".into()))?;
+    let out = flag(args, "--out").ok_or_else(|| Refused("--out is required".into()))?;
+    let recipe = flag(args, "--recipe").unwrap_or("q2q3");
+    let layers = flag(args, "--layers").map_or(Ok(0..40), parse_layers)?;
+    let importance = flag(args, "--importance")
+        .map(|list| {
+            let paths: Vec<&Path> = list.split(',').map(Path::new).collect();
+            Importance::read_many(&paths)
+        })
+        .transpose()?;
+    let options = CheckpointOpenOptions::pinned_flash()
+        .map_err(|e| Refused(format!("the checkpoint pin: {e}")))?;
+    let checkpoint = DeepSeekV41Checkpoint::open(Path::new(weights), options)
+        .map_err(|e| Refused(format!("the checkpoint: {e}")))?;
+    let manifest = quantize(
+        &checkpoint,
+        Path::new(out),
+        recipe,
+        importance.as_ref(),
+        layers.start as usize..layers.end as usize,
+        384,
+        5120,
+        2304,
+    )?;
+    let _ = writeln!(std::io::stdout(), "{manifest}");
+    Ok(())
+}
+
+#[cfg(not(feature = "cuda"))]
+fn run_quantize(_args: &[String]) -> Result<(), Refused> {
+    Err(Refused("quantize needs a build with --features cuda".into()))
 }
 
 #[cfg(not(feature = "cuda"))]

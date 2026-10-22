@@ -122,11 +122,7 @@ fn act_quant_equals_the_cpu_path() -> Result<(), Box<dyn std::error::Error>> {
 fn expert_forward_equals_the_chained_host_models() {
     let mut rng = Rng(9);
     for (hidden, width) in [(128, 64), (256, 96), (5120 / 8, 2304 / 8)] {
-        let dims = V41ExpertDims {
-            hidden,
-            width,
-            swiglu_limit: 10.0,
-        };
+        let dims = V41ExpertDims::fp4(hidden, width, 10.0);
         let (w1, s1) = fp4_matrix(&mut rng, width, hidden);
         let (w3, s3) = fp4_matrix(&mut rng, width, hidden);
         let (w2, s2) = fp4_matrix(&mut rng, hidden, width);
@@ -184,6 +180,32 @@ fn decoders_match_the_device() {
                 v,
                 psionic_models::deepseek_v41_weights::decode_f8_e4m3fn(byte)
             );
+        }
+    }
+}
+
+/// The `consumer-q` formats (#12465): every path equals the device's host
+/// model bit for bit, on matrices the quantizer wrote.
+#[test]
+fn consumer_q_matvec_equals_the_device_host_model() {
+    use crate::v41_quantize::v41_quantize_matrix;
+    let mut rng = Rng(0xfeed_0042);
+    for format in [V41MatvecFormat::Q2Row32, V41MatvecFormat::Q3Row32] {
+        for blocks in [1, 2, 7, 8, 9, 16, 17, 33, 72] {
+            let (rows, cols) = (21, blocks * 32);
+            let values: Vec<f32> = (0..rows * cols).map(|_| rng.unit() * 0.03).collect();
+            let (w, s) = v41_quantize_matrix(format, &values, rows, cols, None);
+            let (codes, scales) = activation(&mut rng, cols, 3.0);
+            let want = v41_block_matvec_host(format, &w, &s, rows, cols, &codes, &scales);
+            let x = V41DecodedActivation::new(&codes, &scales);
+            for isa in isas() {
+                let mut got = vec![0.0; rows];
+                v41_expert_matvec(isa, format, &w, &s, rows, &x, 0..rows, &mut got);
+                assert_eq!(bits(&got), bits(&want), "{format:?} {isa:?} {blocks} blocks");
+                let mut part = vec![0.0; 4];
+                v41_expert_matvec(isa, format, &w, &s, rows, &x, 13..17, &mut part);
+                assert_eq!(bits(&part), bits(&want[13..17]));
+            }
         }
     }
 }

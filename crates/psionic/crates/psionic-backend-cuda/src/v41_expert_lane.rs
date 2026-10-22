@@ -31,7 +31,9 @@
 //! GPU kernel's order so its tiers agree bit for bit. This is a
 //! reimplementation for V4.1's native FP4 experts, not a copy.
 
-use crate::v41_matvec::V41_BLOCK;
+use crate::v41_matvec::{
+    V41_BLOCK, V41_Q2_LEVELS, V41_Q3_LEVELS, V41MatvecFormat, v41_q_block_scale, v41_q_code,
+};
 
 /// The E2M1 values of the 16 FP4 codes; code 8 is negative zero.
 const E2M1: [f32; 16] = [
@@ -63,21 +65,55 @@ pub struct V41ExpertDims {
     pub width: usize,
     /// SwiGLU clamp (10.0); zero or less disables it.
     pub swiglu_limit: f32,
+    /// How `[w1, w2, w3]` store their weights: the checkpoint's FP4, or a
+    /// `consumer-q` format (#12465).
+    pub formats: [V41MatvecFormat; 3],
 }
 
 impl V41ExpertDims {
+    /// The checkpoint's experts: FP4 everywhere.
+    #[must_use]
+    pub const fn fp4(hidden: usize, width: usize, swiglu_limit: f32) -> Self {
+        let f = V41MatvecFormat::Fp4E2M1Row32;
+        Self {
+            hidden,
+            width,
+            swiglu_limit,
+            formats: [f, f, f],
+        }
+    }
+
     /// Weight and scale bytes of a `rows × cols` FP4 matrix.
     #[must_use]
     pub const fn fp4_bytes(rows: usize, cols: usize) -> (usize, usize) {
         (rows * cols / 2, rows * (cols / V41_BLOCK))
     }
 
+    /// `(rows, cols)` of projection `p` (0 for w1, 1 for w2, 2 for w3).
+    #[must_use]
+    pub const fn shape(&self, p: usize) -> (usize, usize) {
+        if p == 1 {
+            (self.hidden, self.width)
+        } else {
+            (self.width, self.hidden)
+        }
+    }
+
+    /// Weight and scale bytes of projection `p`.
+    #[must_use]
+    pub const fn part_bytes(&self, p: usize) -> (usize, usize) {
+        let (rows, cols) = self.shape(p);
+        let f = self.formats[p];
+        (f.weight_bytes(rows, cols), f.scale_bytes(rows, cols))
+    }
+
     /// Bytes of one expert's three projections, weights and scales.
     #[must_use]
     pub const fn expert_bytes(&self) -> usize {
-        let (w, s) = Self::fp4_bytes(self.width, self.hidden);
-        let (w2, s2) = Self::fp4_bytes(self.hidden, self.width);
-        2 * (w + s) + w2 + s2
+        let (w1, s1) = self.part_bytes(0);
+        let (w2, s2) = self.part_bytes(1);
+        let (w3, s3) = self.part_bytes(2);
+        w1 + s1 + w2 + s2 + w3 + s3
     }
 }
 
@@ -331,6 +367,81 @@ pub fn v41_fp4_matvec(
 
 use V41LaneIsa as Isa;
 
+/// Rows `rows` of any routed-expert matrix of `total_rows` rows times a
+/// decoded activation: [`v41_fp4_matvec`] for FP4, or the `consumer-q`
+/// formats (#12465) in the same order as their device kernel: each
+/// block's fused chain from element 0, times the activation scale, times
+/// the block's weight scale, added in ascending block order.
+///
+/// # Panics
+///
+/// Panics when the slices are too short or `isa` isn't available.
+#[allow(clippy::too_many_arguments)]
+pub fn v41_expert_matvec(
+    isa: V41LaneIsa,
+    format: V41MatvecFormat,
+    weights: &[u8],
+    scales: &[u8],
+    total_rows: usize,
+    x: &V41DecodedActivation,
+    rows: std::ops::Range<usize>,
+    out: &mut [f32],
+) {
+    let Some(bits) = format.q_bits() else {
+        return v41_fp4_matvec(isa, weights, scales, x, rows, out);
+    };
+    let blocks = x.blocks;
+    let block_bytes = 4 * bits;
+    let row_bytes = blocks * block_bytes;
+    let rows_at = (total_rows * blocks).div_ceil(4) * 4;
+    assert!(weights.len() >= rows.end * row_bytes, "weights too short");
+    assert!(scales.len() >= rows_at + 4 * total_rows, "scales too short");
+    assert_eq!(out.len(), rows.len());
+    assert!(isa.available(), "{isa:?} is not available on this CPU");
+    let levels: &[f32] = if bits == 2 {
+        &V41_Q2_LEVELS
+    } else {
+        &V41_Q3_LEVELS
+    };
+    let mut scaled = vec![0.0_f32; blocks];
+    let mut ws = vec![0.0_f32; blocks];
+    for (o, row) in out.iter_mut().zip(rows) {
+        let w = &weights[row * row_bytes..(row + 1) * row_bytes];
+        let u = &scales[row * blocks..(row + 1) * blocks];
+        let d = f32::from_le_bytes(
+            scales[rows_at + 4 * row..rows_at + 4 * row + 4]
+                .try_into()
+                .unwrap_or([0; 4]),
+        );
+        for (s, u) in ws.iter_mut().zip(u) {
+            *s = v41_q_block_scale(d, *u);
+        }
+        let done = match isa {
+            Isa::Scalar => 0,
+            #[cfg(target_arch = "x86_64")]
+            Isa::Avx2 => unsafe { x86::q_blocks_avx2(bits, w, &ws, x, levels, &mut scaled) },
+            #[cfg(target_arch = "x86_64")]
+            Isa::Avx512 => unsafe { x86::q_blocks_avx512(bits, w, &ws, x, levels, &mut scaled) },
+            #[cfg(not(target_arch = "x86_64"))]
+            _ => 0,
+        };
+        for b in done..blocks {
+            let block = &w[b * block_bytes..(b + 1) * block_bytes];
+            let mut partial = 0.0_f32;
+            for j in 0..V41_BLOCK {
+                partial =
+                    x.values[j * blocks + b].mul_add(levels[v41_q_code(bits, block, j)], partial);
+            }
+            scaled[b] = partial * x.scales[b] * ws[b];
+        }
+        let mut acc = 0.0_f32;
+        for v in &scaled {
+            acc += *v;
+        }
+        *o = acc;
+    }
+}
+
 /// One block of one row: the fused chain from element 0, then the two scale
 /// multiplies.
 fn block_scalar(w: &[u8], s: &[u8], x: &V41DecodedActivation, b: usize) -> f32 {
@@ -451,6 +562,127 @@ mod x86 {
         }
         full
     }
+
+    /// Where code `j` of a block sits in its gathered 32-bit words: the
+    /// word, the shift, and whether it continues into the next word.
+    #[inline(always)]
+    fn q_word_shift(bits: usize, j: usize) -> (usize, u32, bool) {
+        let bit = bits * j;
+        let shift = (bit % 32) as u32;
+        (bit / 32, shift, shift + bits as u32 > 32)
+    }
+
+    /// The `consumer-q` blocks of a row, sixteen at a time.
+    #[target_feature(enable = "avx512f")]
+    pub(super) unsafe fn q_blocks_avx512(
+        bits: usize,
+        w: &[u8],
+        ws: &[f32],
+        x: &V41DecodedActivation,
+        levels: &[f32],
+        scaled: &mut [f32],
+    ) -> usize {
+        let blocks = x.blocks;
+        let full = blocks / 16 * 16;
+        let block_bytes = (4 * bits) as i32;
+        unsafe {
+            let mut table = [0.0_f32; 16];
+            table[..levels.len()].copy_from_slice(levels);
+            let table = _mm512_loadu_ps(table.as_ptr());
+            let lane = _mm512_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15);
+            let stride = _mm512_mullo_epi32(lane, _mm512_set1_epi32(block_bytes));
+            let mask = _mm512_set1_epi32((1 << bits) - 1);
+            let mut b0 = 0;
+            while b0 < full {
+                let base = w.as_ptr().add(b0 * 4 * bits);
+                let mut gathered = [_mm512_setzero_si512(); 3];
+                for (k, g) in gathered.iter_mut().enumerate().take(bits) {
+                    let offsets = _mm512_add_epi32(stride, _mm512_set1_epi32(4 * k as i32));
+                    *g = _mm512_i32gather_epi32::<1>(offsets, base.cast());
+                }
+                let mut partial = _mm512_setzero_ps();
+                for j in 0..32 {
+                    let (k, shift, spill) = q_word_shift(bits, j);
+                    let mut v = _mm512_srlv_epi32(gathered[k], _mm512_set1_epi32(shift as i32));
+                    if spill {
+                        let hi = _mm512_sllv_epi32(
+                            gathered[k + 1],
+                            _mm512_set1_epi32(32 - shift as i32),
+                        );
+                        v = _mm512_or_si512(v, hi);
+                    }
+                    let code = _mm512_and_si512(v, mask);
+                    let wv = _mm512_permutexvar_ps(code, table);
+                    let xv = _mm512_loadu_ps(x.values.as_ptr().add(j * blocks + b0));
+                    partial = _mm512_fmadd_ps(xv, wv, partial);
+                }
+                let xs = _mm512_loadu_ps(x.scales.as_ptr().add(b0));
+                let wsv = _mm512_loadu_ps(ws.as_ptr().add(b0));
+                _mm512_storeu_ps(
+                    scaled.as_mut_ptr().add(b0),
+                    _mm512_mul_ps(_mm512_mul_ps(partial, xs), wsv),
+                );
+                b0 += 16;
+            }
+        }
+        full
+    }
+
+    /// The `consumer-q` blocks of a row, eight at a time.
+    #[target_feature(enable = "avx2,fma")]
+    pub(super) unsafe fn q_blocks_avx2(
+        bits: usize,
+        w: &[u8],
+        ws: &[f32],
+        x: &V41DecodedActivation,
+        levels: &[f32],
+        scaled: &mut [f32],
+    ) -> usize {
+        let blocks = x.blocks;
+        let full = blocks / 8 * 8;
+        let block_bytes = (4 * bits) as i32;
+        unsafe {
+            let mut table = [0.0_f32; 8];
+            table[..levels.len()].copy_from_slice(levels);
+            let table = _mm256_loadu_ps(table.as_ptr());
+            let lane = _mm256_setr_epi32(0, 1, 2, 3, 4, 5, 6, 7);
+            let stride = _mm256_mullo_epi32(lane, _mm256_set1_epi32(block_bytes));
+            let mask = _mm256_set1_epi32((1 << bits) - 1);
+            let mut b0 = 0;
+            while b0 < full {
+                let base = w.as_ptr().add(b0 * 4 * bits).cast::<i32>();
+                let mut gathered = [_mm256_setzero_si256(); 3];
+                for (k, g) in gathered.iter_mut().enumerate().take(bits) {
+                    let offsets = _mm256_add_epi32(stride, _mm256_set1_epi32(4 * k as i32));
+                    *g = _mm256_i32gather_epi32::<1>(base, offsets);
+                }
+                let mut partial = _mm256_setzero_ps();
+                for j in 0..32 {
+                    let (k, shift, spill) = q_word_shift(bits, j);
+                    let mut v = _mm256_srlv_epi32(gathered[k], _mm256_set1_epi32(shift as i32));
+                    if spill {
+                        let hi = _mm256_sllv_epi32(
+                            gathered[k + 1],
+                            _mm256_set1_epi32(32 - shift as i32),
+                        );
+                        v = _mm256_or_si256(v, hi);
+                    }
+                    let code = _mm256_and_si256(v, mask);
+                    let wv = _mm256_permutevar8x32_ps(table, code);
+                    let xv = _mm256_loadu_ps(x.values.as_ptr().add(j * blocks + b0));
+                    partial = _mm256_fmadd_ps(xv, wv, partial);
+                }
+                let xs = _mm256_loadu_ps(x.scales.as_ptr().add(b0));
+                let wsv = _mm256_loadu_ps(ws.as_ptr().add(b0));
+                _mm256_storeu_ps(
+                    scaled.as_mut_ptr().add(b0),
+                    _mm256_mul_ps(_mm256_mul_ps(partial, xs), wsv),
+                );
+                b0 += 8;
+            }
+        }
+        full
+    }
 }
 
 /// Scratch for [`v41_expert_forward`], reused between calls.
@@ -500,14 +732,16 @@ fn sigmoid_once(x: f32) -> f32 {
 /// Panics as [`v41_fp4_matvec`] does.
 pub fn v41_expert_gate_up(
     isa: V41LaneIsa,
+    dims: V41ExpertDims,
     weights: &V41ExpertWeights<'_>,
     x: &V41DecodedActivation,
     rows: std::ops::Range<usize>,
     gate: &mut [f32],
     up: &mut [f32],
 ) {
-    v41_fp4_matvec(isa, weights.w1.0, weights.w1.1, x, rows.clone(), gate);
-    v41_fp4_matvec(isa, weights.w3.0, weights.w3.1, x, rows, up);
+    let (w1, w3) = (dims.formats[0], dims.formats[2]);
+    v41_expert_matvec(isa, w1, weights.w1.0, weights.w1.1, dims.width, x, rows.clone(), gate);
+    v41_expert_matvec(isa, w3, weights.w3.0, weights.w3.1, dims.width, x, rows, up);
     for v in gate.iter_mut().chain(up.iter_mut()) {
         *v = v41_bf16_round(*v);
     }
@@ -543,12 +777,13 @@ pub fn v41_expert_hidden(
 /// Panics as [`v41_fp4_matvec`] does.
 pub fn v41_expert_down(
     isa: V41LaneIsa,
+    dims: V41ExpertDims,
     weights: &V41ExpertWeights<'_>,
     h: &V41DecodedActivation,
     rows: std::ops::Range<usize>,
     out: &mut [f32],
 ) {
-    v41_fp4_matvec(isa, weights.w2.0, weights.w2.1, h, rows, out);
+    v41_expert_matvec(isa, dims.formats[1], weights.w2.0, weights.w2.1, dims.hidden, h, rows, out);
     for v in out.iter_mut() {
         *v = v41_bf16_round(*v);
     }
@@ -578,6 +813,7 @@ pub fn v41_expert_forward(
     scratch.hidden_scales.resize(width / V41_BLOCK, 0);
     v41_expert_gate_up(
         isa,
+        dims,
         weights,
         x,
         0..width,
@@ -595,7 +831,7 @@ pub fn v41_expert_forward(
     scratch
         .decoded
         .fill(&scratch.hidden_codes, &scratch.hidden_scales);
-    v41_expert_down(isa, weights, &scratch.decoded, 0..dims.hidden, out);
+    v41_expert_down(isa, dims, weights, &scratch.decoded, 0..dims.hidden, out);
 }
 
 #[cfg(test)]

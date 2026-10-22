@@ -1252,6 +1252,9 @@ impl Loader<'_> {
                 [rows, cols / 2],
                 [rows, cols / V41_BLOCK],
             ),
+            V41MatvecFormat::Q2Row32 | V41MatvecFormat::Q3Row32 => {
+                return Err(invalid("the checkpoint stores no consumer-q tensors"));
+            }
         };
         let mut weights = self.backend.host_buffer(weight_bytes * stems.len())?;
         let mut scales = self.backend.host_buffer(scale_bytes * stems.len())?;
@@ -1298,6 +1301,9 @@ impl Loader<'_> {
                 V41TensorDtype::I8,
                 [rows, cols / V41_BLOCK],
             ),
+            V41MatvecFormat::Q2Row32 | V41MatvecFormat::Q3Row32 => {
+                return Err(invalid("the checkpoint stores no consumer-q tensors"));
+            }
         };
         let mut weights = self.alloc(weight_bytes * stems.len())?;
         let mut scales = self.alloc(scale_bytes * stems.len())?;
@@ -1861,9 +1867,8 @@ impl V41Stage {
             let stream = cache.as_ref().map(|c| {
                 (
                     V41ExpertDims {
-                        hidden: h,
-                        width: shape.expert_width,
-                        swiglu_limit: shape.swiglu_limit,
+                        formats: c.config.formats,
+                        ..V41ExpertDims::fp4(h, shape.expert_width, shape.swiglu_limit)
                     },
                     c.config.stream_slots,
                 )
@@ -1879,10 +1884,16 @@ impl V41Stage {
             None => None,
             Some(setup) => {
                 let dims = V41ExpertDims {
-                    hidden: h,
-                    width: shape.expert_width,
-                    swiglu_limit: shape.swiglu_limit,
+                    formats: setup.config.formats,
+                    ..V41ExpertDims::fp4(h, shape.expert_width, shape.swiglu_limit)
                 };
+                if setup.host.is_none()
+                    && dims.formats != V41ExpertDims::fp4(h, shape.expert_width, 0.0).formats
+                {
+                    return Err(invalid(
+                        "experts in another format need a host source; the checkpoint's are FP4",
+                    ));
+                }
                 let host_source: Arc<dyn V41ExpertBytes> = match setup.host {
                     Some(host) => host,
                     None => {
@@ -2002,8 +2013,10 @@ impl V41Stage {
             (dims.hidden, dims.width),
             (dims.width, dims.hidden),
         ];
+        let formats = cache.dims.formats;
         let time = |backend: &mut CudaBackend,
-                    parts: [(&CudaBuffer, &CudaBuffer, usize); 3]|
+                    parts: [(&CudaBuffer, &CudaBuffer, usize); 3],
+                    formats: [V41MatvecFormat; 3]|
          -> Result<f64, RuntimeError> {
             let mut best = f64::INFINITY;
             for _ in 0..5 {
@@ -2013,7 +2026,7 @@ impl V41Stage {
                     let (rows, cols) = shapes[p];
                     s.v41_block_matvec(
                         V41Matrix {
-                            format: fp4,
+                            format: formats[p],
                             weights: w,
                             scales: sc,
                             rows,
@@ -2048,6 +2061,7 @@ impl V41Stage {
                 (&slot.slots[1].0, &slot.slots[1].1, k),
                 (&slot.slots[2].0, &slot.slots[2].1, k),
             ],
+            formats,
         )?;
         let experts = self.config.shape.router.experts;
         let bus = match (&lw.w1, &lw.w2, &lw.w3) {
@@ -2058,6 +2072,7 @@ impl V41Stage {
                     (&w2.weights, &w2.scales, experts),
                     (&w3.weights, &w3.scales, experts),
                 ],
+                [fp4; 3],
             )?),
             _ => None,
         };
@@ -2870,6 +2885,7 @@ impl V41Stage {
             match cached {
                 Some((cache, _, lc)) => s.v41_block_matvec_cached(
                     V41CachedStack {
+                        format: cache.dims.formats[p],
                         rows,
                         cols,
                         experts,

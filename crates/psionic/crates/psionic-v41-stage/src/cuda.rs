@@ -26,6 +26,7 @@
 //! FP8 and FP4 blocks, and a 64-token vocabulary (`t0` to `t63`).
 
 pub mod chain;
+pub mod consumer_q;
 pub mod synthetic;
 pub mod tiers;
 
@@ -981,7 +982,7 @@ pub fn run_stage(
         data_listen: options.data_listen.clone(),
         data_advertise: options.data_advertise.clone(),
         runtime: Backend::Cuda.runtime(),
-        profile: crate::profile_name(Backend::Cuda, None),
+        profile: options.tiers.profile(crate::profile_name(Backend::Cuda, None)),
         device,
         events: options.events.clone(),
         record: options.record.clone(),

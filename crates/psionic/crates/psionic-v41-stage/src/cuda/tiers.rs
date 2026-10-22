@@ -316,10 +316,27 @@ pub fn stage_options(
         options.engram_rows = Some(rows);
     }
     if let Some(size) = tiers.expert_cache {
+        let consumer_q = match (&tiers.consumer_q, &source) {
+            (Some(dir), TierSource::Checkpoint(_)) => {
+                let artifact = super::consumer_q::ConsumerQExperts::open(
+                    dir,
+                    layers.clone(),
+                    shape.hidden,
+                    shape.expert_width,
+                )?;
+                artifact.verify()?;
+                Some(artifact)
+            }
+            (Some(_), TierSource::Synthetic(_)) => {
+                return Err(Refused("the synthetic model has no consumer-q artifact".into()));
+            }
+            (None, _) => None,
+        };
         let dims = V41ExpertDims {
-            hidden: shape.hidden,
-            width: shape.expert_width,
-            swiglu_limit: shape.swiglu_limit,
+            formats: consumer_q
+                .as_ref()
+                .map_or(V41ExpertDims::fp4(0, 0, 0.0).formats, |q| q.formats()),
+            ..V41ExpertDims::fp4(shape.hidden, shape.expert_width, shape.swiglu_limit)
         };
         let slots = match size {
             CacheSize::Auto => 0,
@@ -338,7 +355,9 @@ pub fn stage_options(
         if let Some(path) = &tiers.expert_profile {
             config.profile = read_profile(path)?;
         }
+        config.formats = dims.formats;
         let host: Option<Arc<dyn V41ExpertBytes>> = match (experts, &source) {
+            (_, _) if consumer_q.is_some() => consumer_q.map(|q| Arc::new(q) as Arc<dyn V41ExpertBytes>),
             (Experts::Host, _) => None,
             (_, TierSource::Checkpoint(c)) => Some(Arc::new(CheckpointExperts::open(
                 c,
