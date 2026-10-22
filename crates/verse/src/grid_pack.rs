@@ -42,6 +42,28 @@ pub const ARCH_LAGRANGE: &str = "grid/arch-lagrange-1";
 pub const ARCH_LAGRANGE2: &str = "grid/arch-lagrange-2";
 /// The RITUAL arch, at the origin facing +Z.
 pub const ARCH_RITUAL: &str = "grid/arch-ritual";
+/// An arch to a hosted zone with no lettering of its own, at the origin
+/// facing +Z.
+pub const ARCH_HOSTED: &str = "grid/arch-hosted";
+/// The lettered arches to the hosted zones the Grid knows
+/// ([`gate::KNOWN_HOSTED`]): `grid/arch-hosted-TENANT`, at the origin
+/// facing +Z.
+pub const ARCH_HOSTED_PREFIX: &str = "grid/arch-hosted-";
+
+/// The pack model for a hosted arch: its tenant's lettered arch when the
+/// Grid knows the tenant and the sign is the known one, else the plain
+/// arch.
+#[must_use]
+pub fn hosted_model(portal: &gate::HostedPortal) -> String {
+    let known = gate::KNOWN_HOSTED
+        .iter()
+        .any(|(tenant, sign, _)| *tenant == portal.tenant && *sign == portal.sign);
+    if known {
+        format!("{ARCH_HOSTED_PREFIX}{}", portal.tenant)
+    } else {
+        ARCH_HOSTED.into()
+    }
+}
 /// The view of Everglade in the Everglade arch's opening, at the origin
 /// facing +Z: a soft disc showing the baked town ([`PORTAL_VIEW_SOURCE`]),
 /// which the renderer swirls and rims by its model source
@@ -191,7 +213,19 @@ pub fn compile(dir: &Path) -> Result<Pack, String> {
         (ARCH_LAGRANGE, ZoneId::Plaza, ZoneId::Lagrange1.sign()),
         (ARCH_LAGRANGE2, ZoneId::Plaza, ZoneId::Lagrange2.sign()),
         (ARCH_RITUAL, ZoneId::Plaza, gate::RITUAL_SIGN),
-    ] {
+    ]
+    .into_iter()
+    .map(|(name, zone, sign)| (name.to_owned(), zone, sign))
+    .chain(gate::KNOWN_HOSTED.iter().map(|(tenant, sign, _)| {
+        (
+            format!("{ARCH_HOSTED_PREFIX}{tenant}"),
+            ZoneId::Plaza,
+            *sign,
+        )
+    }))
+    .chain([(ARCH_HOSTED.to_owned(), ZoneId::Plaza, "")])
+    {
+        let name = name.as_str();
         let mut arch = Mesh::default();
         if name == ARCH_EVERGLADE {
             // Its opening shows the town ([`PORTAL_EVERGLADE`]), not rings.
@@ -338,6 +372,13 @@ pub fn gates(runtime: &crate::runtime::WorldRuntime) -> Vec<verse_engine::presen
         (ARCH_RITUAL, runtime.ritual_gate(), 0.0),
     ]
     .into_iter()
+    .map(|(model, gate, time)| (model.to_owned(), gate, time))
+    .chain(
+        runtime
+            .hosted_gates()
+            .into_iter()
+            .map(|(portal, gate)| (hosted_model(portal), Some(gate), 0.0)),
+    )
     .filter_map(|(model, gate, time)| {
         let gate = gate?;
         Some(verse_engine::presentation::Instance {
@@ -810,6 +851,9 @@ mod tests {
             ARCH_LAGRANGE,
             ARCH_LAGRANGE2,
             ARCH_RITUAL,
+            ARCH_HOSTED,
+            "grid/arch-hosted-icecream",
+            "grid/arch-hosted-haunt",
             FIGURE,
             BOARDS,
             crate::zones::game_place::MODEL,
@@ -821,6 +865,30 @@ mod tests {
         }
         assert_eq!(pack.placements.len(), 4);
         verse_engine::loading::Prepared::load(pack, &pinned_dir(), Default::default()).unwrap();
+    }
+
+    #[test]
+    fn hosted_arches_stand_as_their_own_lettered_models() {
+        use crate::zones::gate::HostedPortal;
+        let mut runtime = crate::runtime::WorldRuntime::bare();
+        let names = [
+            "icecream".to_owned(),
+            "haunt".to_owned(),
+            "my-game".to_owned(),
+        ];
+        let (arches, _) = HostedPortal::list(&names, &[]);
+        runtime.set_hosted_portals(arches);
+        let drawn = gates(&runtime);
+        let model = |name: &str| drawn.iter().find(|i| i.model.as_str() == name).cloned();
+        let ice = model("grid/arch-hosted-icecream").expect("ICE CREAM MAN");
+        let haunt = model("grid/arch-hosted-haunt").expect("HAUNTED HOUSE");
+        assert!(
+            model(ARCH_HOSTED).is_some(),
+            "an unknown tenant gets the plain arch"
+        );
+        let at = |i: &verse_engine::presentation::Instance| i.transform.w_axis.truncate();
+        assert!((at(&ice).distance(at(&haunt)) - 7.0).abs() < 0.5);
+        assert_eq!(runtime.hosted_gate_of("haunt").unwrap().at, at(&haunt));
     }
 
     #[test]
