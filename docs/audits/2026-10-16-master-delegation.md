@@ -510,6 +510,11 @@ The status lines below summarize each issue and its comments. Open the issue for
   DIR --click-pick --pin sha256:ARTIFACT` with the Mac Pylon's INT4 Metal
   artifact, and confirm the turn sends `flint@sha256:...` and the Mac
   Pylon answers it.
+- #12449: restart each lasting `kiln-runner` with `--allow FILE` (and
+  `--admins`), list each admin's Kiln **Admin key** `npub`, then from
+  `/admin/kiln/` run `cargo test -p memory-stream` and confirm it runs.
+  From a browser whose admin key isn't listed, confirm the page shows "this
+  runner only takes jobs from keys on its list".
 - #12440: after the next web deploy, confirm the image log builds or
   reuses the `kiln` module and `/srv/kiln/index.html` exists. Signed out,
   `/admin` redirects to `/login?return_to=%2Fadmin`; signed in as the test

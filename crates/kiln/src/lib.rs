@@ -7,10 +7,12 @@
 //!   and the host runs them as tools.
 //! - [`cj`]: a NIP-CJ buyer that asks Pylons over the relay with a key the
 //!   page generates.
+//! - [`admission`]: who may spend a runner's time, and their daily quotas.
 //! - `web` (wasm32 only): the page, the worker, OPFS, and the relay socket.
 //!
 //! Read `docs/kiln/README.md`.
 
+pub mod admission;
 pub mod agent;
 pub mod cj;
 pub mod patch;

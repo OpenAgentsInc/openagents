@@ -75,7 +75,7 @@ learns its key from `kiln-dev --runner KEY` (served as `/config.json`), a
 ```sh
 # The runner, with its own state directory (a shallow clone, about 3 GB with its worktree).
 cargo build -p kiln-runner
-kiln-runner --state "$(openagents scratch)/kiln-runner" --jobs 4
+kiln-runner --state "$(openagents scratch)/kiln-runner" --jobs 4 --open
 # The page, pointed at the runner's key.
 scripts/build-kiln.sh
 kiln-dev --dir "$CARGO_TARGET_DIR/kiln-web" --port 8787 --runner "$(cat "$(openagents scratch)/kiln-runner/pubkey")"
@@ -84,6 +84,32 @@ open "http://127.0.0.1:8787/?load=crates/memory-stream"
 
 `kiln-runner --crates a,b` names the crates it tests (default
 `memory-stream`, `xp-ledger`, `atif`).
+
+## Who may run jobs
+
+The runner refuses to start until you say who may use it:
+
+- `--allow FILE` names the keys that may run jobs, one a line, hex or
+  `npub`, each with an optional daily quota: nothing for the member quota
+  (`--member-jobs`, default 30), `jobs=N`, or `unlimited`. The runner reads
+  the file again for every job, so you can add or remove a key without a
+  restart.
+- An agent key gets in when its job request carries a valid NIP-OA `auth`
+  tag from a listed key, and draws from that key's quota.
+- Keys on the self-edit admin list (`--admins`) are always unlimited.
+- `--open` also takes jobs from any other key, each within the anonymous
+  quota (`--anonymous-jobs`, default 5 a day). Use it only for a local demo.
+
+A key that isn't let in gets "this runner only takes jobs from keys on its
+list; ask an admin to add npub1...". Counts are per UTC day and live in
+`STATE/quota.json`.
+
+```text
+# kiln-runner admission list
+npub1...              # the member quota
+npub1... jobs=200
+npub1... unlimited    # the Grid Foreman, maintainers
+```
 
 ## Reused, and not
 

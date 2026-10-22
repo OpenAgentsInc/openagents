@@ -84,12 +84,11 @@ connected to the same relay.
   [workstation.md](workstation.md)), the runner should run with
   `--no-announce`, accept that address, and be listed as a trusted check
   key there; that is phase 3 work.
-- **Who may use it.** Today the runner accepts a job from any key, one at a
-  time, for its allowed crates only. That is acceptable behind an admin
-  page on a machine with nothing else on it; it isn't acceptable for a
-  public page. Before Kiln is public, add an admission list (the admin
-  pages' keys, or keys with an owner attestation) and per-key quotas, as
-  [workstation.md](workstation.md#access-control) describes.
+- **Who may use it.** Only keys on its admission list (`--allow FILE`),
+  agents those keys authorized with a NIP-OA `auth` tag on the job
+  request, and its admins, each within a daily quota; `--open` lets any key
+  in with a small anonymous quota for a local demo
+  ([rust-tests.md](rust-tests.md#who-may-run-jobs)).
 - **Where it runs.** Not on the owner's Mac and not on a production web
   host: on a dedicated build machine with a Rust toolchain and a warm
   Cargo cache, with `--state` on a disk that can hold a shallow clone,

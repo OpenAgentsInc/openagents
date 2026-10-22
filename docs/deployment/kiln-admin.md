@@ -81,7 +81,9 @@ never reaches the site or the page.
 
   ```sh
   cargo build --release -p kiln-runner
-  kiln-runner --state ~/.openagents/kiln-runner --jobs 4
+  touch ~/.openagents/kiln-runner.allow   # one npub a line; see docs/kiln/rust-tests.md
+  kiln-runner --state ~/.openagents/kiln-runner --jobs 4 \
+    --allow ~/.openagents/kiln-runner.allow --admins ~/.openagents/kiln-runner.admins
   cat ~/.openagents/kiln-runner/pubkey ~/.openagents/kiln-runner/repository
   ```
 
@@ -89,8 +91,9 @@ never reaches the site or the page.
   of `STATE/pubkey` and `OPENAGENTS_KILN_REPO` to `STATE/repository` on the
   production web service. These are public keys; never copy `STATE/key`
   anywhere.
-- **Limits.** The runner accepts a job from any key, one at a time, for
-  its listed crates only, offline inside `coder-boundary`. That's
-  acceptable while only admins see the page and the key. Before Kiln is
-  public, the runner needs an admission list and quotas
-  ([workstation.md](../kiln/workstation.md#access-control)).
+- **Limits.** The runner takes jobs only from keys on its admission list,
+  their NIP-OA agents, and its admins, each within a daily quota, one job
+  at a time, for its listed crates only, offline inside `coder-boundary`
+  ([rust-tests.md](../kiln/rust-tests.md#who-may-run-jobs)). Add each
+  admin's Kiln **Admin key** `npub` (under **Self-edit**) to the admin
+  file; the page signs its test runs with that key too.

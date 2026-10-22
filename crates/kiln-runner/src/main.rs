@@ -1,8 +1,9 @@
 //! `kiln-runner`: runs Kiln's remote `cargo` jobs on this computer.
 //!
 //! ```text
-//! kiln-runner --state DIR [--relay URL] [--crates a,b] [--reference CHECKOUT]
-//!             [--timeout SECS] [--jobs N]
+//! kiln-runner --state DIR (--allow FILE | --open) [--relay URL] [--crates a,b]
+//!             [--reference CHECKOUT] [--timeout SECS] [--jobs N]
+//!             [--member-jobs N] [--anonymous-jobs N]
 //! ```
 //!
 //! The runner holds its own key in `DIR/key`, listens on the relay for
@@ -23,7 +24,10 @@
 //!    seconds, and the result: exit code, test summary, and the log's end.
 //!
 //! It runs one job at a time and answers a second with `busy`. It publishes
-//! no beacon. Read `docs/kiln/rust-tests.md`.
+//! no beacon. Only keys on its admission list (`--allow`), agents those keys
+//! authorized with NIP-OA, and its admins get a run, each within a daily
+//! quota ([`kiln::admission`]); `--open` lets any key in with the small
+//! anonymous quota, for a local demo. Read `docs/kiln/rust-tests.md`.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -438,6 +442,68 @@ fn run_cargo(config: &Config, job: &Job, progress: &dyn Fn(String)) -> Outcome {
     cargo_outcome(config, &job.args, started, progress)
 }
 
+/// Who may run jobs here: the admission list and the admin list, both read
+/// again for every job, and today's counts in the state directory.
+struct Admission {
+    allow: Option<PathBuf>,
+    admins: PathBuf,
+    open: bool,
+    member_jobs: u32,
+    anonymous_jobs: u32,
+    usage: PathBuf,
+}
+
+fn read_roster(path: &Path) -> Result<kiln::admission::Roster, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    kiln::admission::Roster::parse(&text).map_err(|e| format!("{}: {e}", path.display()))
+}
+
+impl Admission {
+    fn policy(&self) -> Result<kiln::admission::Policy, String> {
+        let roster = match &self.allow {
+            Some(path) => read_roster(path).map_err(|e| {
+                eprintln!("admission list: {e}");
+                "the runner can't read its admission list right now; try again later".to_string()
+            })?,
+            None => kiln::admission::Roster::default(),
+        };
+        let admins = if self.admins.as_os_str().is_empty() {
+            Default::default()
+        } else {
+            publish::read_admins(&self.admins).unwrap_or_default()
+        };
+        Ok(kiln::admission::Policy {
+            roster,
+            admins,
+            open: self.open,
+            member_jobs: self.member_jobs,
+            anonymous_jobs: self.anonymous_jobs,
+        })
+    }
+
+    /// Whether `request`'s signer, or the owner its NIP-OA tag names, may run.
+    fn admit(&self, request: &Event) -> Result<kiln::admission::Holder, String> {
+        let owner = kiln::admission::request_owner(request);
+        self.policy()?.admit(&request.pubkey, owner.as_deref())
+    }
+
+    /// Count one job against `holder`'s daily quota.
+    fn charge(&self, holder: &kiln::admission::Holder) -> Result<(), String> {
+        let mut usage: kiln::admission::Usage = std::fs::read(&self.usage)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .unwrap_or_default();
+        usage.charge(holder, unix())?;
+        let tmp = self.usage.with_extension("json.tmp");
+        if let Ok(bytes) = serde_json::to_vec(&usage)
+            && std::fs::write(&tmp, bytes).is_ok()
+        {
+            let _ = std::fs::rename(&tmp, &self.usage);
+        }
+        Ok(())
+    }
+}
+
 fn reply(key: &Key, request: &Event, kind: u16, body: &Value) -> Option<Event> {
     let tags = vec![
         Tag::new(vec!["p".into(), request.pubkey.clone()]),
@@ -477,6 +543,10 @@ async fn main() {
     let mut publish_relay = String::new();
     let mut admins_file = PathBuf::new();
     let mut browser_smoke = true;
+    let mut allow_file: Option<PathBuf> = None;
+    let mut open = false;
+    let mut member_jobs: u32 = 30;
+    let mut anonymous_jobs: u32 = 5;
     let mut config = Config {
         state: PathBuf::new(),
         relay: "wss://relay.openagents.com".into(),
@@ -507,9 +577,14 @@ async fn main() {
             "--publish-prefix" => publish_prefix = value(),
             "--publish-relay" => publish_relay = value(),
             "--no-browser-smoke" => browser_smoke = false,
+            "--allow" => allow_file = Some(PathBuf::from(value())),
+            "--open" => open = true,
+            "--member-jobs" => member_jobs = value().parse().unwrap_or(30),
+            "--anonymous-jobs" => anonymous_jobs = value().parse().unwrap_or(5),
             _ => {
                 eprintln!(
-                    "usage: kiln-runner --state DIR [--relay URL] [--crates a,b] [--reference CHECKOUT] [--timeout SECS] [--jobs N] [--no-announce]\n\
+                    "usage: kiln-runner --state DIR (--allow FILE | --open) [--relay URL] [--crates a,b] [--reference CHECKOUT] [--timeout SECS] [--jobs N] [--no-announce]\n\
+                     \x20 admission: --allow FILE (keys that may run jobs, read for every job) [--member-jobs N] [--anonymous-jobs N] [--open]\n\
                      \x20 self-edit: --admins FILE --publish-store STORE --publish-key FILE [--publish-tenant NAME] [--publish-channel NAME] [--publish-prefix PREFIX] [--publish-relay URL] [--no-browser-smoke]"
                 );
                 std::process::exit(2);
@@ -518,6 +593,18 @@ async fn main() {
     }
     if config.state.as_os_str().is_empty() {
         eprintln!("kiln-runner: --state DIR is required");
+        std::process::exit(2);
+    }
+    if allow_file.is_none() && !open {
+        eprintln!(
+            "kiln-runner: name who may run jobs with --allow FILE, or pass --open to take jobs from any key"
+        );
+        std::process::exit(2);
+    }
+    if let Some(file) = &allow_file
+        && let Err(e) = read_roster(file)
+    {
+        eprintln!("kiln-runner: --allow: {e}");
         std::process::exit(2);
     }
     if let Err(e) = std::fs::create_dir_all(&config.state) {
@@ -587,6 +674,22 @@ async fn main() {
             browser_smoke,
         }))
     };
+    let admission = Arc::new(Admission {
+        allow: allow_file,
+        admins: admins_file.clone(),
+        open,
+        member_jobs,
+        anonymous_jobs,
+        usage: config.state.join("quota.json"),
+    });
+    println!(
+        "admission: {}",
+        if open {
+            "any key, within the anonymous quota".to_string()
+        } else {
+            "listed keys and their agents only".to_string()
+        }
+    );
     let config = Arc::new(config);
     let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Event>();
     let busy = Arc::new(AtomicBool::new(false));
@@ -661,9 +764,10 @@ async fn main() {
                                 Err("only an admin's key may publish, revert, or reset Kiln".to_string())
                             }
                             (Some(_), Some(_)) => Ok(job),
-                        });
-                    let job = match job {
-                        Ok(job) => job,
+                        })
+                        .and_then(|job| admission.admit(&request).map(|holder| (job, holder)));
+                    let (job, holder) = match job {
+                        Ok(admitted) => admitted,
                         Err(why) => {
                             println!("refused {}: {why}", &request.id[..8]);
                             if let Some(event) = reply(&key, &request, cj::FEEDBACK_KIND, &error_body("refused", &why)) {
@@ -678,6 +782,15 @@ async fn main() {
                         }
                         continue;
                     }
+                    if let Err(why) = admission.charge(&holder) {
+                        busy.store(false, Ordering::SeqCst);
+                        println!("refused {}: {why}", &request.id[..8]);
+                        if let Some(event) = reply(&key, &request, cj::FEEDBACK_KIND, &error_body("quota", &why)) {
+                            let _ = out_tx.send(event);
+                        }
+                        continue;
+                    }
+                    println!("admitted {} ({})", &request.id[..8], holder.via);
                     println!("job {} from {}: {} with {} files at {}", &request.id[..8], &request.pubkey[..8], job.action.clone().unwrap_or_else(|| format!("cargo {}", job.args.join(" "))), job.files.len() + job.diff.as_ref().map_or(0, |d| kiln::remote::patch_paths(d).len()), &job.base[..10]);
                     let (key, config, out, busy) = (key.clone(), config.clone(), out_tx.clone(), busy.clone());
                     let publisher = publisher.clone();

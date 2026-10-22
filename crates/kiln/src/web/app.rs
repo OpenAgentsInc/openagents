@@ -1353,7 +1353,7 @@ impl App {
         let relay_url = relay_url.value();
         let mut relay = match self.runner_relay.borrow_mut().take() {
             Some(relay) if !relay.closed => relay,
-            _ => match Relay::connect(&relay_url, &self.key).await {
+            _ => match Relay::connect(&relay_url, &self.runner_key()).await {
                 Ok(relay) => relay,
                 Err(e) => return fail(e),
             },
@@ -1380,7 +1380,13 @@ impl App {
             }
         };
         let result = relay
-            .exchange(&self.key, &runner, &body, REMOTE_WAIT_SECS, &progress)
+            .exchange(
+                &self.runner_key(),
+                &runner,
+                &body,
+                REMOTE_WAIT_SECS,
+                &progress,
+            )
             .await;
         *self.runner_relay.borrow_mut() = Some(relay);
         let got = match result {
@@ -1496,7 +1502,7 @@ impl App {
         let relay_url = relay_url.value();
         let mut relay = match self.runner_relay.borrow_mut().take() {
             Some(relay) if !relay.closed => relay,
-            _ => match Relay::connect(&relay_url, &self.key).await {
+            _ => match Relay::connect(&relay_url, &self.runner_key()).await {
                 Ok(relay) => relay,
                 Err(e) => return fail(e),
             },
@@ -1546,7 +1552,13 @@ impl App {
             }
         };
         let checked = relay
-            .exchange(&self.key, &runner, &body, REMOTE_WAIT_SECS, &progress)
+            .exchange(
+                &self.runner_key(),
+                &runner,
+                &body,
+                REMOTE_WAIT_SECS,
+                &progress,
+            )
             .await;
         *self.runner_relay.borrow_mut() = Some(relay);
         let check = checked
@@ -1641,6 +1653,16 @@ impl App {
         });
         set(&window, "kilnSelfEdit", edit.as_ref().clone());
         edit.forget();
+    }
+
+    /// The key runner jobs are signed with: this browser's lasting admin
+    /// key, which an operator lists on the runner (#12449), or the page's
+    /// key before it loads.
+    fn runner_key(&self) -> Key {
+        self.admin_key
+            .borrow()
+            .clone()
+            .unwrap_or_else(|| self.key.clone())
     }
 
     /// The admin key, from this browser's storage, made on first use.

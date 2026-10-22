@@ -95,7 +95,7 @@ stays in OPFS.
 S="$(openagents scratch)"
 (umask 077; python3 -c 'import secrets; print(secrets.token_hex(32))' > "$S/kiln-dev-tenant.key")
 touch "$S/kiln-admins"; mkdir -p "$S/livehost-store"
-kiln-runner --state "$S/kiln-runner" --jobs 6 --admins "$S/kiln-admins" \
+kiln-runner --state "$S/kiln-runner" --jobs 6 --open --admins "$S/kiln-admins" \
   --publish-store "$S/livehost-store" --publish-key "$S/kiln-dev-tenant.key" \
   --publish-tenant kiln-dev --publish-channel staging
 # The runner prints the publishing key's public half; follow it:
