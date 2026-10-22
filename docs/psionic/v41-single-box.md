@@ -320,6 +320,20 @@ use was 92.06 GiB. This separate run used no captures, routing seed,
 concurrent quantization, scoring or transfers. This is a short,
 single-prompt sample. **The 35 tok/s target was not met.**
 
+Two experimental Pylons started on 2026-10-22 for Foreman's coding work
+(#12517), each with one `g4-standard-48` and one serving slot. Both loaded
+the retained GPTQ artifact and passed complete, provider-pinned relay
+requests as `consumer-q`; they remain lossy and unqualified. Foreman then
+confirmed real work on #12503 and #12504. The initial native caller didn't
+save its request IDs; #12523 adds that evidence for later turns.
+
+The [deployment record](verification/maya-pylons-2026-10-22.json) pins both
+providers, the head/stage builds, settings, replies, guard allocations,
+24-hour deletion deadlines and stop commands. It records the initial
+app-server lifecycle dependency. Continuing supervision, renewal and
+cleanup are tracked separately in #12520, within the owner's $1,000 Maya
+cap and unchanged $3,000 global cap.
+
 ## DSpark drafting (#12469)
 
 Add `--dspark` to a whole-model CUDA worker's existing single-box flags,
