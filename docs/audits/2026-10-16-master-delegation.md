@@ -492,6 +492,12 @@ The status lines below summarize each issue and its comments. Open the issue for
   its body and the terminal still opens; check that `GET /v1/foreman/status`
   answers counts, a line, and a time, with no token. Optionally set
   `OPENAGENTS_FOREMAN_GITHUB_TOKEN` (read-only issues) on the web service.
+- #12427: measure `scripts/deploy/web.sh stage` on staging for a
+  content-only commit (a guide edit; expect the content path and about a
+  minute), a one-module commit (a GPUI chat source edit; expect the modules
+  path), and a server-only commit, now that module keys ignore unrelated
+  lock changes. Record the times in docs/deployment/openagents-web.md. Also
+  try `WEB_MODULES_FAST=1` once kache holds the staging-profile crates.
 - #12443: after the next web deploy, run `openagents browser run --
   python3 scripts/dev/check-grid-home-desk.py --url URL --out DIR` against
   staging, then production (the script refuses a remote address; drop its

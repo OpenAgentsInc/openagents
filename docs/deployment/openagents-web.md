@@ -1391,6 +1391,23 @@ in its serving revision) to REF:
   publishes them with the content, so the manifest never hides the image's
   newer copies. `WEB_PATH=image` always takes this path.
 
+A module's key covers its own `Cargo.lock` entries (the closure of its
+packages over the lock's graph), not whole lock files: after a lock-only
+change to an unrelated crate (`coder-pty`), 15 of 19 modules were reused
+(`a150d0a1`; the base build `b50ae05d` rebuilt all of them).
+
+Measured on staging (`web.sh stage`, 2026-10-22):
+
+| Path | Commit | Build | Staging deploy | livehost publish | Smoke | Total |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| Image, first with the new tooling (every module rebuilt, first 1 GB livehost upload) | `fce8df90f9` | 1,230 s | 369 s | 430 s | 73 s | 2,119 s |
+| Image, server change plus a `Cargo.lock` change (every module rebuilt, since fixed) | `8aeabb175b` | 1,587 s | 342 s | 54 s | 74 s | 2,089 s |
+
+On Cloud Build alone: a server-only change 391 s (`c5730f48`), one changed
+GPUI module on the modules path 281 s (`a1596994`). The content path's
+livehost deploy measured 3.8 s median to visible (#12435). The content and
+modules paths through `web.sh stage` aren't measured on staging yet.
+
 A modules index lists `SHA256 BYTES MODE PATH` for every file under `/srv`;
 each file is stored once as `web-modules/blobs/SHA256`. `web.sh` keeps the
 blobs it has downloaded in its state directory
