@@ -485,6 +485,14 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12461, #12484: after the next web, Everglade, and pylons-layer deploy
+  (the Grid pack with the reaction clips landed in `5c6d153f2fa1`): watch
+  the Foreman fold its arms at the Bay, billboard, and help desk, lean on
+  the console while it answers, wave when you walk up, talk while your chat
+  with it is open, and shake its head while waiting for someone in its way;
+  ask it a question as the test account and check that, once a Pylon
+  answers, a line runs from the Foreman to that Pylon in the Bay for the
+  result's 20 seconds.
 - #12448: after the next web deploy (the host is at `280907fdfb` on
   `oa-foreman-1`; commands stay off until the site sets
   `OPENAGENTS_FOREMAN_COMMANDS=on`): on staging, with
