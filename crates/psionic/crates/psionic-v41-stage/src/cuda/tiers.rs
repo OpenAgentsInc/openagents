@@ -31,6 +31,32 @@ fn backend_error(message: impl Into<String>) -> RuntimeError {
     RuntimeError::Backend(message.into())
 }
 
+fn cache_slots(
+    size: CacheSize,
+    dims: V41ExpertDims,
+    layers: Range<usize>,
+    source: Option<&dyn V41ExpertBytes>,
+) -> usize {
+    match size {
+        CacheSize::Auto => 0,
+        CacheSize::Slots(n) => n.max(1),
+        CacheSize::Gigabytes(gb) => {
+            let bytes: usize = layers
+                .map(|layer| {
+                    V41ExpertDims {
+                        formats: source
+                            .and_then(|s| s.layer_formats(layer))
+                            .unwrap_or(dims.formats),
+                        ..dims
+                    }
+                    .expert_bytes()
+                })
+                .sum();
+            ((gb * 1e9) as usize / bytes.max(1)).max(1)
+        }
+    }
+}
+
 /// The checkpoint's shards, mapped read-only.
 struct MappedShards {
     maps: Vec<Mmap>,
@@ -378,13 +404,12 @@ pub fn stage_options(
                 .map_or(V41ExpertDims::fp4(0, 0, 0.0).formats, |q| q.formats()),
             ..V41ExpertDims::fp4(shape.hidden, shape.expert_width, shape.swiglu_limit)
         };
-        let slots = match size {
-            CacheSize::Auto => 0,
-            CacheSize::Slots(n) => n.max(1),
-            CacheSize::Gigabytes(gb) => {
-                ((gb * 1e9) as usize / (dims.expert_bytes() * layers.len().max(1))).max(1)
-            }
-        };
+        let slots = cache_slots(
+            size,
+            dims,
+            layers.clone(),
+            consumer_q.as_ref().map(|q| q as &dyn V41ExpertBytes),
+        );
         let mut config = V41ExpertCacheConfig::new(slots);
         config.miss_lane = match tiers.miss_lane.as_deref() {
             Some(lane) => V41MissLane::parse(lane).map_err(|e| Refused(e.to_string()))?,
@@ -414,6 +439,52 @@ pub fn stage_options(
         options.expert_cache = Some(V41ExpertCacheSetup { config, host });
     }
     Ok((options, experts == Experts::Host))
+}
+
+#[cfg(test)]
+mod cache_budget_tests {
+    use super::*;
+    use psionic_backend_cuda::v41_matvec::V41MatvecFormat;
+
+    struct Mixed;
+
+    impl V41ExpertBytes for Mixed {
+        fn layer_formats(&self, layer: usize) -> Option<[V41MatvecFormat; 3]> {
+            matches!(layer, 0 | 39).then_some([V41MatvecFormat::Q3Row32; 3])
+        }
+
+        fn projection(&self, _: usize, _: usize, _: usize) -> Result<(&[u8], &[u8]), RuntimeError> {
+            unreachable!("budget sizing reads only the formats")
+        }
+    }
+
+    #[test]
+    fn a_gb_boundary_includes_wider_first_and_last_layer_strides() {
+        let dims = V41ExpertDims {
+            formats: [
+                V41MatvecFormat::Q2Row32,
+                V41MatvecFormat::Q3Row32,
+                V41MatvecFormat::Q2Row32,
+            ],
+            ..V41ExpertDims::fp4(64, 32, 10.0)
+        };
+        let wide = V41ExpertDims {
+            formats: [V41MatvecFormat::Q3Row32; 3],
+            ..dims
+        };
+        let local_bytes = 38 * dims.expert_bytes() + 2 * wide.expert_bytes();
+        let legacy_budget = 10 * 40 * dims.expert_bytes();
+        let gb = legacy_budget as f64 / 1e9;
+        let slots = cache_slots(CacheSize::Gigabytes(gb), dims, 0..40, Some(&Mixed));
+        assert_eq!(slots, 9);
+        assert!(slots * local_bytes <= legacy_budget);
+        assert!((slots + 1) * local_bytes > legacy_budget);
+        assert_eq!(cache_slots(CacheSize::Auto, dims, 0..40, Some(&Mixed)), 0);
+        assert_eq!(
+            cache_slots(CacheSize::Slots(10), dims, 0..40, Some(&Mixed)),
+            10
+        );
+    }
 }
 
 /// The single-box memory plan a stage with host tiers settles on at load
