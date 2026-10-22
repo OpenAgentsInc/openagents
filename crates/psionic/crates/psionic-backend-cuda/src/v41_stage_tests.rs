@@ -2007,6 +2007,92 @@ fn layer_major_prefill_equals_the_ordinary_step() -> TestResult {
     Ok(())
 }
 
+#[test]
+fn v41_calibration_matches_device_and_streamed_experts() -> TestResult {
+    use crate::v41_expert_cache::{
+        V41ExpertBytes, V41ExpertCacheConfig, V41ExpertCacheSetup, V41MissLane, V41OwnedExperts,
+    };
+    let Some(mut backend) = cuda() else {
+        return Ok(());
+    };
+    let store = synthetic_store(41);
+    let (prompt, _) = tokens();
+    let input = V41StepInput {
+        position: 0,
+        tokens: &prompt,
+        residual: None,
+        pre_mix: None,
+        source_rows: None,
+        selection: None,
+        candidates: None,
+        sampling: V41Sampling::greedy(),
+    };
+    let mut plain = load_with_options(
+        &mut backend,
+        &store,
+        0..40,
+        false,
+        V41StageOptions {
+            batched_prefill: true,
+            ..V41StageOptions::default()
+        },
+    )?;
+    plain.enable_calibration(&mut backend)?;
+    plain.step(&backend, &input, false)?;
+    let logits = plain.logits()?;
+    let moments = plain.calibration_hessians()?.ok_or("no calibration")?;
+    assert!(
+        moments
+            .values()
+            .any(|(input, _)| input.iter().any(|v| *v != 0.0))
+    );
+    drop(plain);
+    let experts: Arc<dyn V41ExpertBytes> = Arc::new(V41OwnedExperts::from_source(
+        &store,
+        0..40,
+        shape().router.experts,
+    )?);
+    let mut config = V41ExpertCacheConfig::new(4);
+    config.miss_lane = V41MissLane::Host;
+    config.stream_slots = 3;
+    let mut streamed = load_with_options(
+        &mut backend,
+        &store,
+        0..40,
+        false,
+        V41StageOptions {
+            batched_prefill: true,
+            expert_cache: Some(V41ExpertCacheSetup {
+                config,
+                host: Some(experts),
+            }),
+            ..V41StageOptions::default()
+        },
+    )?;
+    streamed.enable_calibration(&mut backend)?;
+    streamed.step(&backend, &input, false)?;
+    assert_eq!(streamed.logits()?, logits);
+    assert!(streamed.prefill_stream_stats().ok_or("no ring")?.0 > 0);
+    let actual = streamed.calibration_hessians()?.ok_or("no calibration")?;
+    for (layer, (inputs, hidden)) in moments {
+        let (actual_inputs, actual_hidden) = &actual[&layer];
+        for (kind, want, got) in [
+            ("input", &inputs, actual_inputs),
+            ("hidden", &hidden, actual_hidden),
+        ] {
+            assert_eq!(want.len(), got.len());
+            for (column, (a, b)) in want.iter().zip(got).enumerate() {
+                assert!(a.is_finite() && b.is_finite());
+                assert!(
+                    (a - b).abs() <= 1e-7 + 1e-5 * a.abs(),
+                    "layer {layer} {kind} moment {column}: {a} != {b}"
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Diagnostic: the first stage end where layer-major prefill differs.
 #[test]
 #[ignore = "diagnostic"]
