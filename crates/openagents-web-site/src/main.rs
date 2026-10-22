@@ -189,6 +189,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         openagents_web::computers::configure(&url, token);
         println!("Chats run on their own computers through {url}");
     }
+    // The browser builds below ship under /srv in the image. A server that
+    // follows a livehost pointer serves the manifest's `modules/` copies of
+    // them first (#12427, #12435).
     // The Ice Cream Man's build ships at /srv/icecream in the image; the
     // live revision's arguments, which production copies, name no flag.
     if config.icecream.is_none() && std::path::Path::new("/srv/icecream/start.js").is_file() {
