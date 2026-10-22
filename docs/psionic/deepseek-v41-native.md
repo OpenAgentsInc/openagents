@@ -1879,6 +1879,42 @@ Harness changes after the review (e4e649c8ff and later):
   on this finite suite; it is not a statistical noninferiority claim.
   Suite 1 and its results stay retained.
 
+### Layer 0–1 components on common inputs (step 3)
+
+`g1_router_components.py` and `g1_layer_diag.py` compared the h6 run's
+observed sites with the holdout oracle (results in
+`g1-v2/qualification-20261021/diagnostics/`):
+
+- **The router is not the cause.** In all 2,652 rows of layers 0 and 1,
+  decode and replay, the runtime's selected experts equal an F64 evaluation
+  of `sqrt(softplus(W x)) + bias` on the runtime's own router input. The F64
+  formula also reproduces the oracle's scores from the oracle's own input to
+  within 2.4e-6. Every changed set (92 rows in layer 0, 409 in layer 1) comes
+  from a different router input.
+- **Changed rows are near ties with small regret.** Every changed row's
+  removed and added experts are within the oracle's 14 retained scores. The
+  oracle boundary gap is at most 0.0016 in layer 0 and 0.024 in layer 1,
+  the regret at most 0.0031 and 0.029, and no regret exceeds twice that
+  row's measured connected score error (median 0.0012 in layer 0, 0.0079 in
+  layer 1; maximum 0.028 and 0.072). These are empirical, connected
+  budgets, not rigorous bounds.
+- **The first difference is layer-0 attention.** At row 0, the attention
+  input is bit-identical to the oracle's and the row attends only to
+  itself, yet 1,998 of 5,120 attention output values differ (0.24% RMS of
+  the output; 0.6% by the last prompt row). The differences reach several
+  BF16 ULPs, which fits FP8 re-quantization between the attention
+  projections amplifying differences in GEMM accumulation order. Layer-0
+  hyper-connection mixes also differ by about one F32 ULP from row 1 on.
+  Matching them would mean reproducing B200 tensor-core accumulation in
+  each FP8 projection and the mix reductions. That is a sequence of
+  unrelated kernels, so under the review's stopping rule no arithmetic
+  profile was changed.
+
+G2 suite 2 on the pinned runtime with the prompt-mode fix (answers SHA-256
+`0c1eddbe…aa83ee82`, report `49d3a97f…cfec887`): every task ended within the
+cap; the runtime passes 5 of 6, the oracle 5 of 6, and the must-pass floor
+holds. Both fail the shared `fib(186)` assertion.
+
 ## W3 measurements and W2 answers (2026-10-21)
 
 Provisional: the runtime is not yet numerically qualified (G1 v2, #12405),

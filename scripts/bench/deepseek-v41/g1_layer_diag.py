@@ -10,29 +10,45 @@ input and output, the expanded stream, the FFN mixes, and the router input.
 Reports, per site, how many values differ and by how much.
 """
 import json
+import struct
 import sys
 from pathlib import Path
 
 import numpy as np
-from safetensors import safe_open
 
 record, oracle, case, out = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], Path(sys.argv[4])
 run = json.loads((oracle / case / "run.json").read_text())
 prompt = run["prompt_tokens"]
-files = [safe_open(str(oracle / case / f"tensors-rank{r}.safetensors"), "np") for r in range(8)]
-keys = [set(f.keys()) for f in files]
+
+
+def read_safetensors(path):
+    """Name -> (dtype, shape, bytes offset) and a reader; BF16 becomes F32."""
+    with open(path, "rb") as f:
+        n = struct.unpack("<Q", f.read(8))[0]
+        header = json.loads(f.read(n))
+    header.pop("__metadata__", None)
+    return path, 8 + n, header
+
+
+files = [read_safetensors(p) for p in sorted((oracle / case).glob("tensors-rank*.safetensors"))]
 
 
 def oracle_tensor(name):
-    for f, k in zip(files, keys):
-        if name in k:
-            t = f.get_tensor(name)
-            return t.astype(np.float32).reshape(-1)
+    for path, base, header in files:
+        if name in header:
+            meta = header[name]
+            a, b = meta["data_offsets"]
+            with open(path, "rb") as f:
+                f.seek(base + a)
+                raw = f.read(b - a)
+            if meta["dtype"] == "BF16":
+                return (np.frombuffer(raw, "<u2").astype(np.uint32) << 16).view(np.float32)
+            return np.frombuffer(raw, "<f4").astype(np.float32)
     return None
 
 
 def site(step, layer, name, row, tokens):
-    hits = sorted(record.glob(f"{case}-0-{step}*.L{layer}.{name}.u32"))
+    hits = sorted(record.glob(f"{case}-0-{step}.stage*.L{layer}.{name}.u32"))
     if not hits:
         return None
     words = np.concatenate([np.fromfile(h, dtype="<u4") for h in hits])
@@ -41,12 +57,14 @@ def site(step, layer, name, row, tokens):
 
 
 SITES = [
+    ("HcIn", ["hc.in"]),
     ("AttnMixes", ["hc.attn.pre", "hc.attn.post", "hc.attn.comb"]),
     ("AttnIn", ["attn.in"]),
     ("AttnOut", ["attn.out"]),
     ("AttnExpanded", ["hc.attn.expanded"]),
     ("FfnMixes", ["hc.ffn.pre", "hc.ffn.post", "hc.ffn.comb"]),
     ("FfnIn", ["ffn.gate.in"]),
+    ("HcOut", ["hc.out"]),
 ]
 rows = []
 for label, position in run["labels"].items():
