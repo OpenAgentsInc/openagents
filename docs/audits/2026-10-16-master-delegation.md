@@ -494,6 +494,15 @@ The status lines below summarize each issue and its comments. Open the issue for
   screen goes back to the Pylon and deploy rows after it leaves; check
   that a player can still open the terminal's chat beside it. Delete the
   test chats.
+- #12459: after the next web, Everglade, Pylons layer, pylon card, and
+  lander-chat deploy, on staging and then production, at desktop and phone
+  width: check that no HTML shows over the world (no Game Lab button, no
+  HTML pylon labels or walking hint); walk under the GAME LAB arch, press E
+  (tap on a phone), and check the GPUI panel's sign-in line signed out and
+  the game with Play signed in as the dedicated test account; click a
+  pylon and check its GPUI card; check that the transcript has no card
+  behind it and New chat sits in the composer's row; as an admin, check
+  that Kiln opens in its GPUI frame.
 - #12446: after the next web, Everglade, and lander-chat deploy, as the
   dedicated test account on staging and then production: walk up to the
   Foreman, check that "Press E to talk to the Foreman" shows and opens the
