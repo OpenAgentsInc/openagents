@@ -325,7 +325,7 @@ peak sampled every two seconds was 67,989 MiB.
 | `p4-20k` | 19,989 | 2.449 | 1.211 | 20/40 |
 
 For these eight cases, ordinary decode took 62.721 seconds and DSpark took
-211.811 seconds: **3.954 versus 1.171 tokens/s**. Each denominator is 248
+211.811 seconds: **3.954 versus 1.171 tokens/s**. Each rate counts 248
 decode tokens, excluding each prompt's first prefill prediction. DSpark
 accepted 160 of 340 proposals (47.06%); accepted-prefix counts for lengths
 0–5 were `[13, 13, 12, 10, 7, 13]`. Drafting was slower in this trial.
@@ -337,7 +337,10 @@ accepted lengths. Its rate was 2.093 tokens/s, compared with 0.990 on the
 first DSpark pass. The ordinary command ignores `--repeat-answer` with a
 prompt file, so there is no ordinary warm-repeat comparison; the repeat
 is excluded from every paired aggregate above. Equality here compares
-DSpark with ordinary CUDA decode, not with reference-checkpoint qualification.
+DSpark with ordinary CUDA decode. Both paths differ from the golden IDs on
+`e-window-127` (4 of 8 positions match), `p1-chat-thinking` (26 of 32), and
+`p3-2k` (1 of 32); the other five recorded prefixes match. These results do
+not establish reference-checkpoint qualification.
 
 The [native summary](verification/deepseek-v41-dspark-2026-10-22/native-summary.json)
 retains token arrays, per-case accepted lengths, timings, configuration,
