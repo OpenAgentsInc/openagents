@@ -103,7 +103,7 @@ fn sections(
             }
             SectionKind::Candidates { .. } => {
                 let mask = oracle.integers(&format!("{prefix}.candidate_mask"))?;
-                if mask.len() % tokens.len() != 0 {
+                if mask.is_empty() || mask.len() % tokens.len() != 0 {
                     return Err(refused("candidate mask shape"));
                 }
                 let stride = mask.len() / tokens.len();
@@ -244,7 +244,7 @@ fn compare_output(
             SectionKind::Candidates { .. } => {
                 let mask = oracle.integers(&format!("{prefix}.candidate_mask"))?;
                 let rows = section.shape[0] as usize;
-                if mask.len() % rows != 0 {
+                if rows == 0 || mask.is_empty() || mask.len() % rows != 0 {
                     return Err(refused("isolated candidate shape"));
                 }
                 let got = section.to_u32().map_err(|e| refused(e.to_string()))?;
@@ -276,7 +276,7 @@ fn compare_output(
             }
             _ => return Err(refused("unsupported isolated-stage output")),
         };
-        metrics.push(json!({"kind":section.kind,"shape":section.shape,"first_row":section.first_row,"metrics":value,
+        metrics.push(json!({"kind":section.kind,"dtype":section.dtype,"shape":section.shape,"first_row":section.first_row,"metrics":value,
             "sha256":hex::encode(Sha256::digest(&section.data))}));
     }
     Ok(metrics)
@@ -409,7 +409,13 @@ fn collect<E: StageBackend>(
                     std::fs::write(directory.join(format!("{i}.bin")), &section.data)
                         .map_err(|e| refused(e.to_string()))?;
                 }
-                steps.push(json!({"mode":mode,"step":step,"position":position,"seconds":seconds,"input_message_sha256":input_hash,"output":metrics}));
+                let step_report = json!({"mode":mode,"step":step,"position":position,"seconds":seconds,"input_message_sha256":input_hash,"output":metrics});
+                std::fs::write(
+                    directory.join("step.json"),
+                    serde_json::to_vec_pretty(&step_report).map_err(|e| refused(e.to_string()))?,
+                )
+                .map_err(|e| refused(e.to_string()))?;
+                steps.push(step_report);
                 std::fs::write(
                     opts.out.join("report.partial.json"),
                     serde_json::to_vec_pretty(&json!({"case":name,"steps":steps}))

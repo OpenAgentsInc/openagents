@@ -6,6 +6,41 @@ const BLOCK_ROWS: usize = 8;
 const TOP_BLOCKS: usize = psionic_models::deepseek_v41_stage_cpu::CANDIDATE_BLOCKS;
 const TOP_INDICES: usize = 512;
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Geometry {
+    top_k: usize,
+    block_size: usize,
+    candidate_blocks: usize,
+    window: usize,
+}
+impl Geometry {
+    fn from_run(run: &Value) -> Result<Self, Refused> {
+        let g = if run["index_geometry"].is_null() {
+            Self {
+                top_k: TOP_INDICES,
+                block_size: BLOCK_ROWS,
+                candidate_blocks: TOP_BLOCKS,
+                window: 128,
+            }
+        } else {
+            serde_json::from_value(run["index_geometry"].clone())
+                .map_err(|e| refused(e.to_string()))?
+        };
+        if g.top_k == 0
+            || g.top_k > 8192
+            || g.block_size == 0
+            || g.block_size > 8192
+            || g.candidate_blocks == 0
+            || g.candidate_blocks > 1_048_576
+            || g.window == 0
+            || g.window > 8192
+        {
+            return Err(refused("invalid oracle index geometry"));
+        }
+        Ok(g)
+    }
+}
+
 fn words(record: &Path, files: &[String], layer: usize, site: &str) -> Result<Vec<u32>, Refused> {
     let mut out = Vec::new();
     for file in files
@@ -69,6 +104,7 @@ pub(super) fn case(
     record: &Path,
     rec: &Recorded,
 ) -> Result<Value, Refused> {
+    let geometry = Geometry::from_run(run)?;
     let prompt = run["prompt_tokens"].as_u64().unwrap_or(0) as usize;
     let generated = ids(&run["generated_ids"]);
     if prompt == 0 || rec.records.len() != generated.len() + 1 || rec.replay_records.is_empty() {
@@ -126,7 +162,7 @@ pub(super) fn case(
                     || oracle_ids.len() % rows != 0
                     || candidate_scores.is_empty()
                     || candidate_scores.len() % rows != 0
-                    || candidate_ids.len() != rows * TOP_INDICES
+                    || candidate_ids.len() != rows * geometry.top_k
                     || (layer >= 20 && (flags.is_empty() || flags.len() % rows != 0))
                 {
                     missing.push(format!("{prefix}: missing or malformed stage rows"));
@@ -171,7 +207,7 @@ pub(super) fn case(
                     layer_max = layer_max.max(error);
                     max_error = max_error.max(error);
                     over_budget += usize::from(policy.index.epsilon.is_some_and(|e| error > e));
-                    let offset = if start == 0 { rows } else { 128 } as i64;
+                    let offset = if start == 0 { rows } else { geometry.window } as i64;
                     let o: Vec<u32> = oracle_ids[row * iw..(row + 1) * iw]
                         .iter()
                         .filter(|i| **i >= 0)
@@ -181,7 +217,8 @@ pub(super) fn case(
                                 .ok_or_else(|| refused(format!("{prefix}: bad shifted index")))
                         })
                         .collect::<Result<_, _>>()?;
-                    let c: Vec<u32> = candidate_ids[row * TOP_INDICES..(row + 1) * TOP_INDICES]
+                    let c: Vec<u32> = candidate_ids
+                        [row * geometry.top_k..(row + 1) * geometry.top_k]
                         .iter()
                         .filter(|i| **i != u32::MAX)
                         .copied()
@@ -189,7 +226,7 @@ pub(super) fn case(
                     if o.iter().chain(&c).any(|i| *i as usize >= visible) {
                         return Err(refused(format!("{prefix} row {row}: noncausal index")));
                     }
-                    let nblocks = visible.div_ceil(BLOCK_ROWS);
+                    let nblocks = visible.div_ceil(geometry.block_size);
                     let mask: Vec<bool> = if layer >= 20 {
                         let fw = flags.len() / rows;
                         let bytes: Vec<_> = flags[row * fw..(row + 1) * fw]
@@ -222,7 +259,7 @@ pub(super) fn case(
                         }
                         let block_scores = |scores: &[f32]| -> Vec<f32> {
                             scores
-                                .chunks(BLOCK_ROWS)
+                                .chunks(geometry.block_size)
                                 .map(|r| r.iter().copied().fold(f32::NEG_INFINITY, f32::max))
                                 .collect()
                         };
@@ -244,7 +281,11 @@ pub(super) fn case(
                         // compete on their maximum scores.
                         let allowed: Vec<_> =
                             (0..nblocks).map(|i| Some(i as u32) != newest).collect();
-                        let want = picks(&bb, Some(&allowed), TOP_BLOCKS.saturating_sub(1));
+                        let want = picks(
+                            &bb,
+                            Some(&allowed),
+                            geometry.candidate_blocks.saturating_sub(1),
+                        );
                         if !same_set(&want, &cb) {
                             local_changed += 1;
                         }
@@ -270,21 +311,21 @@ pub(super) fn case(
                         )));
                     }
                     let allowed: Vec<_> = (0..visible)
-                        .map(|i| layer <= 20 || mask[i / BLOCK_ROWS])
+                        .map(|i| layer <= 20 || mask[i / geometry.block_size])
                         .collect();
-                    let want = picks(&b, Some(&allowed), TOP_INDICES);
+                    let want = picks(&b, Some(&allowed), geometry.top_k);
                     if !same_set(&want, &c) {
                         local_changed += 1;
                     }
                     // A previously qualified candidate-block substitution changes
                     // the allowed set. Judge index picks against the oracle's
                     // raw scores conditioned on the actual candidate mask.
-                    let conditioned = picks(a, Some(&allowed), TOP_INDICES);
+                    let conditioned = picks(a, Some(&allowed), geometry.top_k);
                     if layer <= 20 && !same_set(&conditioned, &o) {
                         // A zero-margin oracle tie may choose either set.
                         let tied = DecisionRule {
                             epsilon: Some(0.0),
-                            max_substitutions: TOP_INDICES,
+                            max_substitutions: geometry.top_k,
                             max_substituted_fraction: None,
                         }
                         .check(&Selection {
@@ -331,7 +372,7 @@ pub(super) fn case(
         .max_substituted_fraction
         .is_some_and(|f| changed as f64 <= f * total.max(1) as f64);
     Ok(
-        json!({"complete":complete,"missing":missing,"rows":total,"changed":changed,"failed":failed,
+        json!({"geometry":geometry,"complete":complete,"missing":missing,"rows":total,"changed":changed,"failed":failed,
         "unresolved":unresolved,"local_changed":local_changed,"over_budget":over_budget,
         "score_error_max":max_error,"layers":layers,"decisions":decisions,
         "passed": complete && policy.index.epsilon.is_some() && failed==0 && unresolved==0
