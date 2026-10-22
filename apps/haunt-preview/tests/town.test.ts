@@ -219,3 +219,76 @@ test("large town plans are refused before they can create a save that cannot reo
     /supported town assets/,
   );
 });
+
+test("delegated buildings preserve exact counts, choose usable styles and clear plots, and undo as one edit", () => {
+  const s = new SceneHistory(),
+    before = structuredClone(s.project);
+  const pose = { x: -11, z: 3, y: 0, yaw: 0, pitch: 0 };
+  const d = {
+    action: "add_asset",
+    asset: "building",
+    placement: "anywhere",
+    size: "normal",
+    confidence: 0.99,
+    needs_review: false,
+    tint: "unsupported",
+    model: "fixture",
+    model_ms: 1,
+  };
+  const text = "add 2 buildings your choice anywhere u want";
+  apply(s, decisionOperation(d, text, pose, null, s.project));
+  const added = s.project.entities.slice(before.entities.length);
+  assert.equal(added.length, 2);
+  assert.deepEqual(
+    added.map((e) => e.kind),
+    ["cottage", "townhouse"],
+  );
+  const f = floor(s);
+  assert.ok(f.canStand(pose.x, pose.z));
+  for (const e of added) {
+    assert.ok(f.canStand(e.x - 2 * e.scale, e.z + 5 * e.scale));
+    assert.equal(
+      f.roomAt(e.x - 2 * e.scale, e.z + 2 * e.scale, 0)?.room.name,
+      "Front room",
+    );
+  }
+  assert.deepEqual(
+    readProject(JSON.parse(JSON.stringify(s.project))),
+    s.project,
+  );
+  apply(s, { kind: "undo" });
+  assert.deepEqual(s.project.entities, before.entities);
+  apply(s, { kind: "redo" });
+  assert.deepEqual(s.project.entities.slice(before.entities.length), added);
+  for (const text of [
+    "add 0 buildings anywhere",
+    "add 9 buildings anywhere",
+    "add 2.5 buildings anywhere",
+    "add buildings anywhere",
+  ]) {
+    const unchanged = structuredClone(s.project);
+    assert.throws(() => decisionOperation(d, text, pose, null, s.project));
+    assert.deepEqual(s.project, unchanged);
+  }
+  for (const text of [
+    "place two buildings wherever you choose",
+    "add 2 huge buildings anywhere",
+  ]) {
+    const next = new SceneHistory();
+    apply(
+      next,
+      decisionOperation(
+        { ...d, size: text.includes("huge") ? "huge" : "normal" },
+        text,
+        pose,
+        null,
+        next.project,
+      ),
+    );
+    assert.equal(next.project.entities.length, before.entities.length + 2);
+  }
+  const next = new SceneHistory();
+  const distantPose = { ...pose, x: 35, z: -35 };
+  apply(next, decisionOperation(d, text, distantPose, null, next.project));
+  assert.equal(next.project.entities.length, before.entities.length + 2);
+});
