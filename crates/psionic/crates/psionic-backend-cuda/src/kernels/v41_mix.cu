@@ -112,10 +112,15 @@ __global__ void __launch_bounds__(kThreads) v41_hc_project_kernel(
     const float* __restrict__ weights,
     float* __restrict__ partials,
     int mixes,
-    int elements) {
+    int elements,
+    long long partials_stride) {
     __shared__ float scratch[kWarps];
     const int split = blockIdx.x;
     const int row = blockIdx.y;
+    // A token per z index (#12464): its residual and partials follow the
+    // previous token's.
+    residual += static_cast<long long>(blockIdx.z) * elements;
+    partials += static_cast<long long>(blockIdx.z) * partials_stride;
     const int chunk = (elements + kHcSplits - 1) / kHcSplits;
     const int begin = split * chunk;
     const int end = min(elements, begin + chunk);
@@ -215,10 +220,14 @@ __global__ void v41_hc_finish_kernel(
     int elements,
     float norm_epsilon,
     float mix_epsilon,
-    int iterations) {
+    int iterations,
+    long long partials_stride) {
     const int lane = threadIdx.x;
     const int h = streams;
     const int mixes = (h + 2) * h;
+    partials += static_cast<long long>(blockIdx.x) * partials_stride;
+    projected += static_cast<long long>(blockIdx.x) * partials_stride;
+    out += static_cast<long long>(blockIdx.x) * mixes;
     float squares = partials[mixes * kHcSplits];
     for (int s = 1; s < kHcSplits; ++s) {
         squares = __fadd_rn(squares, partials[mixes * kHcSplits + s]);
@@ -267,11 +276,16 @@ __global__ void __launch_bounds__(kThreads) v41_hc_collapse_kernel(
     float* __restrict__ out,
     int streams,
     int width,
-    int round_bf16) {
+    int round_bf16,
+    long long mixes_stride) {
     const int d = blockIdx.x * kThreads + threadIdx.x;
     if (d >= width) {
         return;
     }
+    const long long t = blockIdx.y;
+    residual += t * streams * width;
+    mixes += t * mixes_stride;
+    out += t * width;
     float acc = __fmul_rn(mixes[0], residual[d]);
     for (int j = 1; j < streams; ++j) {
         acc = __fadd_rn(acc, __fmul_rn(mixes[j], residual[static_cast<long long>(j) * width + d]));
@@ -287,11 +301,17 @@ __global__ void __launch_bounds__(kThreads) v41_hc_expand_kernel(
     float* __restrict__ out,
     int streams,
     int width,
-    int round_bf16) {
+    int round_bf16,
+    long long mixes_stride) {
     const long long index = static_cast<long long>(blockIdx.x) * kThreads + threadIdx.x;
     if (index >= static_cast<long long>(streams) * width) {
         return;
     }
+    const long long t = blockIdx.y;
+    output += t * width;
+    residual += t * streams * width;
+    mixes += t * mixes_stride;
+    out += t * streams * width;
     const int k = static_cast<int>(index / width);
     const int d = static_cast<int>(index % width);
     const int h = streams;
@@ -362,6 +382,12 @@ __global__ void __launch_bounds__(kThreads) v41_engram_gate_kernel(
     __shared__ float scratch[kWarps];
     __shared__ float gate_shared;
     const int h = blockIdx.x;
+    {
+        const long long t = blockIdx.y;
+        residual += t * streams * width;
+        projected += t * (static_cast<long long>(streams) + 1) * width;
+        out += t * streams * width;
+    }
     const long long start = static_cast<long long>(h) * width;
     const float* x = residual + start;
     const float* key = projected + start;
@@ -420,6 +446,8 @@ __global__ void __launch_bounds__(kThreads) v41_gate_logits_kernel(
     if (row >= experts) {
         return;  // uniform across the warp
     }
+    input += static_cast<long long>(blockIdx.y) * cols;
+    logits += static_cast<long long>(blockIdx.y) * experts;
     const uint16_t* w = weight + static_cast<long long>(row) * cols;
     float acc = 0.0f;
     for (int chunk = lane; chunk * 8 < cols; chunk += 32) {
@@ -478,6 +506,9 @@ __global__ void __launch_bounds__(kRouteThreads) v41_route_kernel(
     float temperature,
     int normalize,
     float route_scale) {
+    logits += static_cast<long long>(blockIdx.x) * experts;
+    ids += static_cast<long long>(blockIdx.x) * top_k;
+    weights += static_cast<long long>(blockIdx.x) * top_k;
     __shared__ float scores[kRouteThreads];
     __shared__ unsigned char taken[kRouteThreads];
     __shared__ Candidate warp_winners[kRouteThreads / 32];
@@ -607,6 +638,12 @@ __global__ void __launch_bounds__(kThreads) v41_moe_combine_kernel(
     if (d >= width) {
         return;
     }
+    const long long t = blockIdx.y;
+    routed += t * slots * width;
+    if (shared != nullptr) {
+        shared += t * width;
+    }
+    out += t * width;
     float acc = 0.0f;
     for (int s = 0; s < slots; ++s) {
         acc = __fadd_rn(acc, routed[static_cast<long long>(s) * width + d]);
@@ -635,18 +672,20 @@ extern "C" int psionic_v41_hc_mixes(
     float norm_epsilon,
     float mix_epsilon,
     int iterations,
+    int tokens,
     void* stream) {
     const cudaStream_t s = static_cast<cudaStream_t>(stream);
     const int mixes = (streams + 2) * streams;
     const int elements = streams * width;
     float* partials = static_cast<float*>(scratch);
-    v41_hc_project_kernel<<<dim3(kHcSplits, mixes + 1), kThreads, 0, s>>>(
+    const long long stride = static_cast<long long>(mixes + 1) * kHcSplits + mixes;
+    v41_hc_project_kernel<<<dim3(kHcSplits, mixes + 1, tokens), kThreads, 0, s>>>(
         static_cast<const float*>(residual), static_cast<const float*>(weights), partials, mixes,
-        elements);
-    v41_hc_finish_kernel<<<1, 32, 0, s>>>(
+        elements, stride);
+    v41_hc_finish_kernel<<<tokens, 32, 0, s>>>(
         partials, static_cast<const float*>(scale), static_cast<const float*>(base),
         partials + (mixes + 1) * kHcSplits, static_cast<float*>(out), streams, elements,
-        norm_epsilon, mix_epsilon, iterations);
+        norm_epsilon, mix_epsilon, iterations, stride);
     return static_cast<int>(cudaGetLastError());
 }
 
@@ -673,10 +712,12 @@ extern "C" int psionic_v41_hc_collapse(
     int streams,
     int width,
     int round_bf16,
+    int tokens,
+    long long mixes_stride,
     void* stream) {
-    v41_hc_collapse_kernel<<<blocks_for(width), kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
+    v41_hc_collapse_kernel<<<dim3(blocks_for(width), tokens), kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const float*>(residual), static_cast<const float*>(mixes),
-        static_cast<float*>(out), streams, width, round_bf16);
+        static_cast<float*>(out), streams, width, round_bf16, mixes_stride);
     return static_cast<int>(cudaGetLastError());
 }
 
@@ -688,11 +729,14 @@ extern "C" int psionic_v41_hc_expand(
     int streams,
     int width,
     int round_bf16,
+    int tokens,
+    long long mixes_stride,
     void* stream) {
     const long long n = static_cast<long long>(streams) * width;
-    v41_hc_expand_kernel<<<blocks_for(n), kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
+    v41_hc_expand_kernel<<<dim3(blocks_for(n), tokens), kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const float*>(output), static_cast<const float*>(residual),
-        static_cast<const float*>(mixes), static_cast<float*>(out), streams, width, round_bf16);
+        static_cast<const float*>(mixes), static_cast<float*>(out), streams, width, round_bf16,
+        mixes_stride);
     return static_cast<int>(cudaGetLastError());
 }
 
@@ -723,8 +767,9 @@ extern "C" int psionic_v41_engram_gate(
     float epsilon,
     float inv_sqrt_width,
     int round_bf16,
+    int tokens,
     void* stream) {
-    v41_engram_gate_kernel<<<streams, kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
+    v41_engram_gate_kernel<<<dim3(streams, tokens), kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const float*>(residual), static_cast<const float*>(projected),
         static_cast<const float*>(q_weight), static_cast<const float*>(k_weight),
         static_cast<float*>(out), streams, width, epsilon, inv_sqrt_width, round_bf16);
@@ -737,8 +782,9 @@ extern "C" int psionic_v41_gate_logits(
     void* logits,
     int experts,
     int cols,
+    int tokens,
     void* stream) {
-    const unsigned grid = static_cast<unsigned>((experts + kWarps - 1) / kWarps);
+    const dim3 grid(static_cast<unsigned>((experts + kWarps - 1) / kWarps), static_cast<unsigned>(tokens));
     v41_gate_logits_kernel<<<grid, kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const uint16_t*>(weight), static_cast<const float*>(input),
         static_cast<float*>(logits), experts, cols);
@@ -755,8 +801,9 @@ extern "C" int psionic_v41_route(
     float temperature,
     int normalize,
     float route_scale,
+    int tokens,
     void* stream) {
-    v41_route_kernel<<<1, kRouteThreads, 0, static_cast<cudaStream_t>(stream)>>>(
+    v41_route_kernel<<<tokens, kRouteThreads, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const float*>(logits), static_cast<const float*>(bias), static_cast<int*>(ids),
         static_cast<float*>(weights), experts, top_k, temperature, normalize, route_scale);
     return static_cast<int>(cudaGetLastError());
@@ -787,8 +834,9 @@ extern "C" int psionic_v41_moe_combine(
     int slots,
     int width,
     int round_bf16,
+    int tokens,
     void* stream) {
-    v41_moe_combine_kernel<<<blocks_for(width), kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
+    v41_moe_combine_kernel<<<dim3(blocks_for(width), tokens), kThreads, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const float*>(routed), static_cast<const float*>(shared),
         static_cast<float*>(out), slots, width, round_bf16);
     return static_cast<int>(cudaGetLastError());

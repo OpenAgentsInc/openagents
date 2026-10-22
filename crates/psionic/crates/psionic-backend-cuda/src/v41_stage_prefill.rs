@@ -86,12 +86,26 @@ pub(super) struct PrefillWork {
     reset: Option<CudaGraphExec>,
     begin: Option<CudaGraphExec>,
     pub(super) ring: Option<Ring>,
+    /// The second residual array: sub-blocks write their output residual
+    /// to the array they didn't read (#12464).
+    r2: CudaBuffer,
+    /// Per-token hyper-connection scratch, collapsed inputs, router logits,
+    /// and MoE sums.
+    hc_scratch: CudaBuffer,
+    collapsed: CudaBuffer,
+    logits: CudaBuffer,
+    moe: CudaBuffer,
+    /// Per Engram layer: each token's 24 row ids, gathered rows, and
+    /// projections.
+    eslot: Vec<CudaBuffer>,
+    erows: CudaBuffer,
+    eproj: CudaBuffer,
     /// Calibration sums for the `consumer-q` quantizer (#12465), per stage
     /// layer: inputs `[experts, hidden]` with counts, and hidden
     /// `[experts, width]` with counts.
     pub(super) calibration: Option<Vec<[CudaBuffer; 4]>>,
-    /// Per stage layer: phases A, C, E, G, I.
-    phases: Vec<[Option<CudaGraphExec>; 5]>,
+    /// Per stage layer: the ordered attention phase.
+    phases: Vec<[Option<CudaGraphExec>; 1]>,
     /// Device bytes of all of the above.
     pub(super) bytes: usize,
 }
@@ -201,6 +215,16 @@ impl PrefillWork {
             reset: None,
             begin: None,
             ring: None,
+            r2: f(max * s * h)?,
+            hc_scratch: f(max * shape.hc.scratch_floats())?,
+            collapsed: f(max * h)?,
+            logits: f(max * shape.router.experts)?,
+            moe: f(max * h)?,
+            eslot: (0..config.engram_layers().len())
+                .map(|_| f(max * V41_ENGRAM_COLUMNS * 2))
+                .collect::<Result<_, _>>()?,
+            erows: f(max * V41_ENGRAM_COLUMNS * shape.engram_width)?,
+            eproj: f(max * (s * h + h))?,
             calibration: None,
             phases: (0..config.layers.len())
                 .map(|_| Default::default())
@@ -263,29 +287,19 @@ impl PrefillWork {
     }
 }
 
-/// Which per-token phase of a layer a graph records.
+/// Which per-token phase of a layer a graph records. Everything else in a
+/// layer runs for all of the step's tokens at once.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
-    /// Engram, the attention mixes, collapse, and norm.
-    A,
-    /// The query and KV norms.
-    C,
-    /// RoPE, the window ring, the compressor, the indexer, and attention.
+    /// RoPE, the window ring, the compressor, the indexer, and attention:
+    /// the work that must see tokens in order.
     E,
-    /// The attention expansion, the FFN mixes, collapse, norm, and routing.
-    G,
-    /// The expert sum and the FFN expansion.
-    I,
 }
 
 impl Phase {
     const fn slot(self) -> usize {
         match self {
-            Self::A => 0,
-            Self::C => 1,
-            Self::E => 2,
-            Self::G => 3,
-            Self::I => 4,
+            Self::E => 0,
         }
     }
 }
@@ -555,6 +569,16 @@ impl V41Stage {
                 &wk.engram_ids,
             )?;
             self.store_row(s, &wk.engram_ids, &p.eids, layers * V41_ENGRAM_COLUMNS * 2)?;
+            for (slot, eslot) in p.eslot.iter().enumerate() {
+                s.copy_buffer_region(
+                    &wk.engram_ids,
+                    slot * V41_ENGRAM_COLUMNS * 8,
+                    &wk.engram_slot_ids,
+                    0,
+                    V41_ENGRAM_COLUMNS * 8,
+                )?;
+                self.store_row(s, &wk.engram_slot_ids, eslot, V41_ENGRAM_COLUMNS * 2)?;
+            }
         }
         if let Some(boundary) = (c.layers.start > 0).then(|| V41Boundary::at(c.layers.start)) {
             if let Some(owner) = boundary.selection {
@@ -595,151 +619,12 @@ impl V41Stage {
         let c = &self.config;
         let shape = c.shape;
         let g = shape.attention;
-        let (h, streams) = (shape.hidden, shape.hc.streams);
-        let mixes = shape.hc.mixes();
+        let h = shape.hidden;
         let wk = &self.work;
         let lw = &self.layers[index];
         let layer = lw.layer;
-        let first = index == 0;
         self.load_row(s, &p.pos, &wk.positions, 1)?;
         match phase {
-            Phase::A => {
-                self.load_row(s, &p.r, &wk.residual[0], streams * h)?;
-                let previous = &wk.pre_in;
-                self.load_row(s, if first { &p.pre0 } else { &p.mf }, previous, mixes)?;
-                let mut cur = 0;
-                if let Some(e) = &lw.engram {
-                    let ids = &wk.engram_slot_ids;
-                    let layers = c.engram_layers().len();
-                    self.load_row(s, &p.eids, &wk.engram_ids, layers * V41_ENGRAM_COLUMNS * 2)?;
-                    if let Some(staging) = &self.engram_staging {
-                        let table = staging
-                            .tables
-                            .iter()
-                            .find(|t| t.layer == layer)
-                            .ok_or_else(|| invalid("Engram staging table"))?;
-                        s.v41_stage_copy(
-                            &staging.ids,
-                            ids,
-                            &wk.index,
-                            V41_ENGRAM_COLUMNS * 2,
-                            c.max_step_tokens,
-                            false,
-                        )?;
-                        s.v41_engram_gather(
-                            V41EngramTable {
-                                codes: &table.codes,
-                                scales: &table.scales,
-                                rows: (c.max_step_tokens * V41_ENGRAM_COLUMNS) as u64,
-                                width: shape.engram_width,
-                            },
-                            ids,
-                            V41_ENGRAM_COLUMNS,
-                            &wk.engram_rows,
-                            V41Output::Bf16,
-                        )?;
-                    } else {
-                        let table = self
-                            .engram_tables
-                            .iter()
-                            .find(|t| t.layer == layer)
-                            .ok_or_else(|| invalid("Engram table"))?;
-                        s.copy_buffer_region(
-                            &wk.engram_ids,
-                            e.slot * V41_ENGRAM_COLUMNS * 8,
-                            ids,
-                            0,
-                            V41_ENGRAM_COLUMNS * 8,
-                        )?;
-                        s.v41_engram_gather(
-                            V41EngramTable {
-                                codes: &table.codes,
-                                scales: &table.scales,
-                                rows: table.rows,
-                                width: shape.engram_width,
-                            },
-                            ids,
-                            V41_ENGRAM_COLUMNS,
-                            &wk.engram_rows,
-                            V41Output::Bf16,
-                        )?;
-                    }
-                    let k = V41_ENGRAM_COLUMNS * shape.engram_width;
-                    s.v41_act_quant_fp8(&wk.engram_rows, &wk.act_codes, &wk.act_scales, 1, k)?;
-                    s.v41_block_matvec(
-                        e.wkv.matrix(),
-                        &wk.act_codes,
-                        &wk.act_scales,
-                        V41Slots::single(),
-                        &wk.engram_projected,
-                        V41Output::Bf16,
-                    )?;
-                    s.v41_engram_gate(
-                        V41EngramGate {
-                            streams,
-                            width: h,
-                            epsilon: g.norm_epsilon,
-                        },
-                        &wk.residual[0],
-                        &wk.engram_projected,
-                        &e.q,
-                        &e.k,
-                        &wk.residual[1],
-                        V41Output::Bf16,
-                    )?;
-                    cur = 1;
-                }
-                s.v41_hc_mixes(
-                    shape.hc,
-                    lw.hc_attn.weights(),
-                    &wk.residual[cur],
-                    &wk.scratch,
-                    &lw.mixes_attn,
-                )?;
-                s.v41_hc_collapse(
-                    shape.hc,
-                    &wk.residual[cur],
-                    previous,
-                    &wk.collapsed,
-                    V41Output::Bf16,
-                )?;
-                s.v41_rms_norm(
-                    &wk.collapsed,
-                    &lw.attn_norm,
-                    &wk.normalized,
-                    1,
-                    h,
-                    g.norm_epsilon,
-                    V41Output::Bf16,
-                )?;
-                self.store_row(s, &wk.normalized, &p.na, h)?;
-                self.store_row(s, &lw.mixes_attn, &p.ma, mixes)?;
-                self.store_row(s, &wk.residual[cur], &p.r, streams * h)?;
-            }
-            Phase::C => {
-                self.load_row(s, &p.q_low, &wk.q_low, shape.q_rank)?;
-                self.load_row(s, &p.kv, &wk.kv, g.head_dim)?;
-                s.v41_rms_norm(
-                    &wk.q_low,
-                    &lw.q_norm,
-                    &wk.q_norm,
-                    1,
-                    shape.q_rank,
-                    g.norm_epsilon,
-                    V41Output::Bf16,
-                )?;
-                s.v41_rms_norm(
-                    &wk.kv,
-                    &lw.kv_norm,
-                    &wk.kv_norm,
-                    1,
-                    g.head_dim,
-                    g.norm_epsilon,
-                    V41Output::Bf16,
-                )?;
-                self.store_row(s, &wk.q_norm, &p.q_norm, shape.q_rank)?;
-                self.store_row(s, &wk.kv_norm, &p.kv_norm, g.head_dim)?;
-            }
             Phase::E => {
                 self.load_row(s, &p.qh, &wk.q_heads, g.heads * g.head_dim)?;
                 self.load_row(s, &p.kv_norm, &wk.kv_norm, g.head_dim)?;
@@ -791,79 +676,6 @@ impl V41Stage {
                 if layer == V41_STAGE_CANDIDATE_SOURCE {
                     self.store_row(s, &wk.blocks, &p.cand, shape.candidate_blocks)?;
                 }
-            }
-            Phase::G => {
-                self.load_row(s, &p.r, &wk.residual[0], streams * h)?;
-                self.load_row(s, &p.ao, &wk.attn_out, h)?;
-                self.load_row(s, &p.ma, &lw.mixes_attn, mixes)?;
-                s.v41_hc_expand(
-                    shape.hc,
-                    &wk.attn_out,
-                    &wk.residual[0],
-                    &lw.mixes_attn,
-                    &wk.residual[1],
-                    V41Output::Bf16,
-                )?;
-                s.v41_hc_mixes(
-                    shape.hc,
-                    lw.hc_ffn.weights(),
-                    &wk.residual[1],
-                    &wk.scratch,
-                    &lw.mixes_ffn,
-                )?;
-                s.v41_hc_collapse(
-                    shape.hc,
-                    &wk.residual[1],
-                    &lw.mixes_attn,
-                    &wk.collapsed,
-                    V41Output::Bf16,
-                )?;
-                s.v41_rms_norm(
-                    &wk.collapsed,
-                    &lw.ffn_norm,
-                    &wk.normalized,
-                    1,
-                    h,
-                    g.norm_epsilon,
-                    V41Output::Bf16,
-                )?;
-                s.v41_gate_logits(
-                    &lw.gate,
-                    &wk.normalized,
-                    &wk.logits,
-                    shape.router.experts,
-                    h,
-                )?;
-                s.v41_route(
-                    shape.router,
-                    &wk.logits,
-                    &lw.bias,
-                    &wk.ids,
-                    &wk.route_weights,
-                )?;
-                let top_k = shape.router.top_k;
-                self.store_row(s, &wk.normalized, &p.nf, h)?;
-                self.store_row(s, &lw.mixes_ffn, &p.mf, mixes)?;
-                self.store_row(s, &wk.residual[1], &p.r, streams * h)?;
-                self.store_row(s, &wk.ids, &p.ids, top_k)?;
-                self.store_row(s, &wk.route_weights, &p.rw, top_k)?;
-            }
-            Phase::I => {
-                let top_k = shape.router.top_k;
-                self.load_row(s, &p.y, &wk.y, top_k * h)?;
-                self.load_row(s, &p.sy, &wk.sy, h)?;
-                self.load_row(s, &p.r, &wk.residual[0], streams * h)?;
-                self.load_row(s, &p.mf, &lw.mixes_ffn, mixes)?;
-                s.v41_moe_combine(&wk.y, top_k, Some(&wk.sy), h, &wk.moe_out, V41Output::Bf16)?;
-                s.v41_hc_expand(
-                    shape.hc,
-                    &wk.moe_out,
-                    &wk.residual[0],
-                    &lw.mixes_ffn,
-                    &wk.residual[1],
-                    V41Output::Bf16,
-                )?;
-                self.store_row(s, &wk.residual[1], &p.r, streams * h)?;
             }
         }
         s.v41_stage_advance(&wk.index)
@@ -972,8 +784,119 @@ impl V41Stage {
         self.replay(backend, None, tokens, stats)?;
         let fp8 = V41MatvecFormat::Fp8Block32x32;
         let fp4 = V41MatvecFormat::Fp4E2M1Row32;
+        // The residual sits in `prefill.r` (cur 0) or `prefill.r2` (cur 1);
+        // each sub-block writes the array it didn't read.
+        let mut cur = 0_usize;
+        let hc = shape.hc;
+        let (streams, mixes) = (hc.streams, hc.mixes());
         for i in 0..self.layers.len() {
-            self.replay(backend, Some((i, Phase::A)), tokens, stats)?;
+            // Engram, the attention mixes, collapse, and norm, for every
+            // token at once.
+            {
+                let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
+                let lw = &self.layers[i];
+                let r = [&p.r, &p.r2];
+                let mut s = backend.begin_submission()?;
+                if let Some(eng) = &lw.engram {
+                    let rows = tokens * V41_ENGRAM_COLUMNS;
+                    let (ids, table) = match &self.engram_staging {
+                        Some(staging) => {
+                            let t = staging
+                                .tables
+                                .iter()
+                                .find(|t| t.layer == lw.layer)
+                                .ok_or_else(|| invalid("Engram staging table"))?;
+                            (
+                                &staging.ids,
+                                V41EngramTable {
+                                    codes: &t.codes,
+                                    scales: &t.scales,
+                                    rows: (self.config.max_step_tokens * V41_ENGRAM_COLUMNS) as u64,
+                                    width: shape.engram_width,
+                                },
+                            )
+                        }
+                        None => {
+                            let t = self
+                                .engram_tables
+                                .iter()
+                                .find(|t| t.layer == lw.layer)
+                                .ok_or_else(|| invalid("Engram table"))?;
+                            (
+                                &p.eslot[eng.slot],
+                                V41EngramTable {
+                                    codes: &t.codes,
+                                    scales: &t.scales,
+                                    rows: t.rows,
+                                    width: shape.engram_width,
+                                },
+                            )
+                        }
+                    };
+                    s.v41_engram_gather(table, ids, rows, &p.erows, V41Output::Bf16)?;
+                    let kk = V41_ENGRAM_COLUMNS * shape.engram_width;
+                    s.v41_act_quant_fp8(&p.erows, &p.codes, &p.scales, tokens, kk)?;
+                    s.v41_block_matmul(
+                        fp8,
+                        Some(eng.wkv.matrix()),
+                        None,
+                        streams * h + h,
+                        kk,
+                        1,
+                        p.dense(tokens),
+                        &p.codes,
+                        &p.scales,
+                        tokens,
+                        &p.eproj,
+                        tokens,
+                        V41Output::Bf16,
+                    )?;
+                    s.v41_engram_gate_tokens(
+                        V41EngramGate {
+                            streams,
+                            width: h,
+                            epsilon: g.norm_epsilon,
+                        },
+                        r[cur],
+                        &p.eproj,
+                        &eng.q,
+                        &eng.k,
+                        r[1 - cur],
+                        V41Output::Bf16,
+                        tokens,
+                    )?;
+                    cur = 1 - cur;
+                }
+                let previous = if i == 0 { &p.pre0 } else { &p.mf };
+                s.v41_hc_mixes_tokens(
+                    hc,
+                    lw.hc_attn.weights(),
+                    r[cur],
+                    &p.hc_scratch,
+                    &p.ma,
+                    tokens,
+                )?;
+                s.v41_hc_collapse_tokens(
+                    hc,
+                    r[cur],
+                    previous,
+                    &p.collapsed,
+                    V41Output::Bf16,
+                    tokens,
+                    mixes,
+                )?;
+                s.v41_rms_norm(
+                    &p.collapsed,
+                    &lw.attn_norm,
+                    &p.na,
+                    tokens,
+                    h,
+                    g.norm_epsilon,
+                    V41Output::Bf16,
+                )?;
+                s.commit(crate::CudaCommandWait::Completed)?;
+                stats.synchronizations += 1;
+            }
             {
                 let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
                 let lw = &self.layers[i];
@@ -1012,7 +935,32 @@ impl V41Stage {
                 s.commit(crate::CudaCommandWait::Completed)?;
                 stats.synchronizations += 1;
             }
-            self.replay(backend, Some((i, Phase::C)), tokens, stats)?;
+            {
+                // The query and KV norms, for every token at once.
+                let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
+                let lw = &self.layers[i];
+                let mut s = backend.begin_submission()?;
+                s.v41_rms_norm(
+                    &p.q_low,
+                    &lw.q_norm,
+                    &p.q_norm,
+                    tokens,
+                    shape.q_rank,
+                    g.norm_epsilon,
+                    V41Output::Bf16,
+                )?;
+                s.v41_rms_norm(
+                    &p.kv,
+                    &lw.kv_norm,
+                    &p.kv_norm,
+                    tokens,
+                    g.head_dim,
+                    g.norm_epsilon,
+                    V41Output::Bf16,
+                )?;
+                s.commit(crate::CudaCommandWait::Completed)?;
+                stats.synchronizations += 1;
+            }
             {
                 let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
                 let lw = &self.layers[i];
@@ -1092,7 +1040,56 @@ impl V41Stage {
                 s.commit(crate::CudaCommandWait::Completed)?;
                 stats.synchronizations += 1;
             }
-            self.replay(backend, Some((i, Phase::G)), tokens, stats)?;
+            {
+                // The attention expansion, the FFN mixes, collapse, norm, and
+                // routing, for every token at once.
+                let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
+                let lw = &self.layers[i];
+                let r = [&p.r, &p.r2];
+                let mut s = backend.begin_submission()?;
+                s.v41_hc_expand_tokens(
+                    hc,
+                    &p.ao,
+                    r[cur],
+                    &p.ma,
+                    r[1 - cur],
+                    V41Output::Bf16,
+                    tokens,
+                    mixes,
+                )?;
+                let after = 1 - cur;
+                s.v41_hc_mixes_tokens(
+                    hc,
+                    lw.hc_ffn.weights(),
+                    r[after],
+                    &p.hc_scratch,
+                    &p.mf,
+                    tokens,
+                )?;
+                s.v41_hc_collapse_tokens(
+                    hc,
+                    r[after],
+                    &p.ma,
+                    &p.collapsed,
+                    V41Output::Bf16,
+                    tokens,
+                    mixes,
+                )?;
+                s.v41_rms_norm(
+                    &p.collapsed,
+                    &lw.ffn_norm,
+                    &p.nf,
+                    tokens,
+                    h,
+                    g.norm_epsilon,
+                    V41Output::Bf16,
+                )?;
+                s.v41_gate_logits_tokens(&lw.gate, &p.nf, &p.logits, experts, h, tokens)?;
+                s.v41_route_tokens(shape.router, &p.logits, &lw.bias, &p.ids, &p.rw, tokens)?;
+                s.commit(crate::CudaCommandWait::Completed)?;
+                stats.synchronizations += 1;
+            }
+            cur = 1 - cur;
             {
                 let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
                 let lw = &self.layers[i];
@@ -1122,7 +1119,9 @@ impl V41Stage {
                 let mut s = backend.begin_submission()?;
                 s.v41_act_quant_fp8(&p.nf, &p.codes, &p.scales, tokens, h)?;
                 if let Some(cal) = p.calibration.as_ref().map(|c| &c[i]) {
-                    s.v41_importance(&p.ids, entries, k, true, &p.codes, &p.scales, h, experts, &cal[0], &cal[1])?;
+                    s.v41_importance(
+                        &p.ids, entries, k, true, &p.codes, &p.scales, h, experts, &cal[0], &cal[1],
+                    )?;
                 }
                 s.v41_group_entries(
                     &p.ids,
@@ -1133,9 +1132,8 @@ impl V41Stage {
                     &p.routed_tiles,
                     &p.routed_count,
                 )?;
-                let routed_format = |proj: usize| {
-                    cached.map_or(fp4, |(cache, _)| cache.dims.formats[proj])
-                };
+                let routed_format =
+                    |proj: usize| cached.map_or(fp4, |(cache, _)| cache.dims.formats[proj]);
                 for (proj, packed, out) in [(0, &lw.w1, &p.g), (2, &lw.w3, &p.u)] {
                     s.v41_block_matmul(
                         routed_format(proj),
@@ -1196,7 +1194,10 @@ impl V41Stage {
                 )?;
                 s.v41_act_quant_fp8(&p.hh, &p.codes, &p.scales, entries, e)?;
                 if let Some(cal) = p.calibration.as_ref().map(|c| &c[i]) {
-                    s.v41_importance(&p.ids, entries, k, false, &p.codes, &p.scales, e, experts, &cal[2], &cal[3])?;
+                    s.v41_importance(
+                        &p.ids, entries, k, false, &p.codes, &p.scales, e, experts, &cal[2],
+                        &cal[3],
+                    )?;
                 }
                 s.v41_block_matmul(
                     routed_format(1),
@@ -1246,13 +1247,30 @@ impl V41Stage {
                 stats.synchronizations += 1;
             }
             self.stream_routed(backend, i, tokens, stats)?;
-            self.replay(backend, Some((i, Phase::I)), tokens, stats)?;
+            {
+                // The expert sum and the FFN expansion, for every token.
+                let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
+                let r = [&p.r, &p.r2];
+                let mut s = backend.begin_submission()?;
+                s.v41_moe_combine_tokens(&p.y, k, Some(&p.sy), h, &p.moe, V41Output::Bf16, tokens)?;
+                s.v41_hc_expand_tokens(
+                    hc,
+                    &p.moe,
+                    r[cur],
+                    &p.mf,
+                    r[1 - cur],
+                    V41Output::Bf16,
+                    tokens,
+                    mixes,
+                )?;
+                s.commit(crate::CudaCommandWait::Completed)?;
+                stats.synchronizations += 1;
+            }
+            cur = 1 - cur;
         }
         // Leave the step's outputs where the ordinary step leaves them.
         let p = self.prefill.as_ref().ok_or_else(|| invalid("prefill"))?;
         let c = &self.config;
-        let streams = shape.hc.streams;
-        let mixes = shape.hc.mixes();
         let last = tokens - 1;
         let mut s = backend.begin_submission()?;
         let previous = if self.layers.is_empty() {
@@ -1260,9 +1278,10 @@ impl V41Stage {
         } else {
             &p.mf
         };
+        let residual = if cur == 0 { &p.r } else { &p.r2 };
         if c.samples() {
             s.copy_buffer_region(
-                &p.r,
+                residual,
                 4 * last * streams * h,
                 &self.work.residual[0],
                 0,
@@ -1272,7 +1291,7 @@ impl V41Stage {
         } else {
             for t in 0..tokens {
                 s.copy_buffer_region(
-                    &p.r,
+                    residual,
                     4 * t * streams * h,
                     &self.work.residual_out,
                     4 * t * streams * h,
@@ -1362,7 +1381,10 @@ impl V41Stage {
         let shape = self.config.shape;
         let (h, e, n) = (shape.hidden, shape.expert_width, shape.router.experts);
         let layers = self.layers.len();
-        let p = self.prefill.as_mut().ok_or_else(|| invalid("calibration needs the layer-major prefill"))?;
+        let p = self
+            .prefill
+            .as_mut()
+            .ok_or_else(|| invalid("calibration needs the layer-major prefill"))?;
         let mut all = Vec::with_capacity(layers);
         for _ in 0..layers {
             all.push([
@@ -1383,7 +1405,9 @@ impl V41Stage {
     /// # Errors
     ///
     /// Any device read failure.
-    pub fn calibration(&self) -> Result<Option<BTreeMap<usize, (Vec<f32>, Vec<f32>)>>, RuntimeError> {
+    pub fn calibration(
+        &self,
+    ) -> Result<Option<BTreeMap<usize, (Vec<f32>, Vec<f32>)>>, RuntimeError> {
         let Some(cal) = self.prefill.as_ref().and_then(|p| p.calibration.as_ref()) else {
             return Ok(None);
         };
@@ -1402,7 +1426,9 @@ impl V41Stage {
                 parts.push(
                     sums.chunks(cols.max(1))
                         .zip(&counts)
-                        .flat_map(|(row, n)| row.iter().map(move |v| if *n > 0.0 { v / n } else { 0.0 }))
+                        .flat_map(|(row, n)| {
+                            row.iter().map(move |v| if *n > 0.0 { v / n } else { 0.0 })
+                        })
                         .collect::<Vec<f32>>(),
                 );
             }

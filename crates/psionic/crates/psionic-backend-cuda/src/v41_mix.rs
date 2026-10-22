@@ -62,6 +62,7 @@ unsafe extern "C" {
         norm_epsilon: f32,
         mix_epsilon: f32,
         iterations: i32,
+        tokens: i32,
         stream: *mut c_void,
     ) -> i32;
     fn psionic_v41_hc_split(
@@ -81,6 +82,8 @@ unsafe extern "C" {
         streams: i32,
         width: i32,
         round_bf16: i32,
+        tokens: i32,
+        mixes_stride: i64,
         stream: *mut c_void,
     ) -> i32;
     fn psionic_v41_hc_expand(
@@ -91,6 +94,8 @@ unsafe extern "C" {
         streams: i32,
         width: i32,
         round_bf16: i32,
+        tokens: i32,
+        mixes_stride: i64,
         stream: *mut c_void,
     ) -> i32;
     fn psionic_v41_engram_gather(
@@ -115,6 +120,7 @@ unsafe extern "C" {
         epsilon: f32,
         inv_sqrt_width: f32,
         round_bf16: i32,
+        tokens: i32,
         stream: *mut c_void,
     ) -> i32;
     fn psionic_v41_gate_logits(
@@ -123,6 +129,7 @@ unsafe extern "C" {
         logits: *mut c_void,
         experts: i32,
         cols: i32,
+        tokens: i32,
         stream: *mut c_void,
     ) -> i32;
     fn psionic_v41_route(
@@ -135,6 +142,7 @@ unsafe extern "C" {
         temperature: f32,
         normalize: i32,
         route_scale: f32,
+        tokens: i32,
         stream: *mut c_void,
     ) -> i32;
     fn psionic_v41_swiglu(
@@ -155,6 +163,7 @@ unsafe extern "C" {
         slots: i32,
         width: i32,
         round_bf16: i32,
+        tokens: i32,
         stream: *mut c_void,
     ) -> i32;
 }
@@ -271,14 +280,32 @@ impl CudaSubmission {
         scratch: &CudaBuffer,
         mixes: &CudaBuffer,
     ) -> Result<(), RuntimeError> {
+        self.v41_hc_mixes_tokens(hc, weights, residual, scratch, mixes, 1)
+    }
+
+    /// [`Self::v41_hc_mixes`] for `tokens` tokens at once (#12464): token
+    /// `t`'s residual, scratch, and mixes follow token `t - 1`'s.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::v41_hc_mixes`].
+    pub fn v41_hc_mixes_tokens(
+        &mut self,
+        hc: V41HyperConfig,
+        weights: V41HcWeights<'_>,
+        residual: &CudaBuffer,
+        scratch: &CudaBuffer,
+        mixes: &CudaBuffer,
+        tokens: usize,
+    ) -> Result<(), RuntimeError> {
         hc.check()?;
         let m = hc.mixes();
-        let residual = span(residual, 0, hc.elements(), 4, "residual")?;
+        let residual = span(residual, 0, hc.elements() * tokens, 4, "residual")?;
         let projection = span(weights.projection, 0, m * hc.elements(), 4, "projection")?;
         let scale = span(weights.scale, 0, 3, 4, "scale")?;
         let base = span(weights.base, 0, m, 4, "base")?;
-        let scratch = span(scratch, 0, hc.scratch_floats(), 4, "scratch")?;
-        let out = span(mixes, 0, m, 4, "mixes")?;
+        let scratch = span(scratch, 0, hc.scratch_floats() * tokens, 4, "scratch")?;
+        let out = span(mixes, 0, m * tokens, 4, "mixes")?;
         // SAFETY: every extent was checked against its buffer above.
         let code = unsafe {
             psionic_v41_hc_mixes(
@@ -293,6 +320,7 @@ impl CudaSubmission {
                 hc.norm_epsilon,
                 hc.mix_epsilon,
                 int(hc.sinkhorn_iterations, "iterations")?,
+                int(tokens, "tokens")?,
                 self.platform.raw_stream()?,
             )
         };
@@ -353,10 +381,37 @@ impl CudaSubmission {
         out: &CudaBuffer,
         output: V41Output,
     ) -> Result<(), RuntimeError> {
+        self.v41_hc_collapse_tokens(hc, residual, previous_mixes, out, output, 1, 0)
+    }
+
+    /// [`Self::v41_hc_collapse`] for `tokens` tokens, with each token's
+    /// previous mixes `mixes_stride` floats after the last.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::v41_hc_collapse`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn v41_hc_collapse_tokens(
+        &mut self,
+        hc: V41HyperConfig,
+        residual: &CudaBuffer,
+        previous_mixes: &CudaBuffer,
+        out: &CudaBuffer,
+        output: V41Output,
+        tokens: usize,
+        mixes_stride: usize,
+    ) -> Result<(), RuntimeError> {
         hc.check()?;
-        let residual = span(residual, 0, hc.elements(), 4, "residual")?;
-        let mixes = span(previous_mixes, 0, hc.streams, 4, "previous mixes")?;
-        let out = span(out, 0, hc.width, 4, "collapsed output")?;
+        let t = tokens.max(1);
+        let residual = span(residual, 0, hc.elements() * t, 4, "residual")?;
+        let mixes = span(
+            previous_mixes,
+            0,
+            (t - 1) * mixes_stride + hc.streams,
+            4,
+            "previous mixes",
+        )?;
+        let out = span(out, 0, hc.width * t, 4, "collapsed output")?;
         // SAFETY: every extent was checked against its buffer above.
         let code = unsafe {
             psionic_v41_hc_collapse(
@@ -366,6 +421,8 @@ impl CudaSubmission {
                 int(hc.streams, "streams")?,
                 int(hc.width, "width")?,
                 rounds(output),
+                int(t, "tokens")?,
+                i64::try_from(mixes_stride).map_err(|_| invalid(String::from("stride")))?,
                 self.platform.raw_stream()?,
             )
         };
@@ -389,11 +446,33 @@ impl CudaSubmission {
         out: &CudaBuffer,
         output: V41Output,
     ) -> Result<(), RuntimeError> {
+        self.v41_hc_expand_tokens(hc, sublayer_output, residual, mixes, out, output, 1, 0)
+    }
+
+    /// [`Self::v41_hc_expand`] for `tokens` tokens, with each token's mixes
+    /// `mixes_stride` floats after the last.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::v41_hc_expand`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn v41_hc_expand_tokens(
+        &mut self,
+        hc: V41HyperConfig,
+        sublayer_output: &CudaBuffer,
+        residual: &CudaBuffer,
+        mixes: &CudaBuffer,
+        out: &CudaBuffer,
+        output: V41Output,
+        tokens: usize,
+        mixes_stride: usize,
+    ) -> Result<(), RuntimeError> {
         hc.check()?;
-        let sublayer = span(sublayer_output, 0, hc.width, 4, "sub-block output")?;
-        let residual = span(residual, 0, hc.elements(), 4, "residual")?;
-        let mixes = span(mixes, 0, hc.mixes(), 4, "mixes")?;
-        let out = span(out, 0, hc.elements(), 4, "expanded output")?;
+        let t = tokens.max(1);
+        let sublayer = span(sublayer_output, 0, hc.width * t, 4, "sub-block output")?;
+        let residual = span(residual, 0, hc.elements() * t, 4, "residual")?;
+        let mixes = span(mixes, 0, (t - 1) * mixes_stride + hc.mixes(), 4, "mixes")?;
+        let out = span(out, 0, hc.elements() * t, 4, "expanded output")?;
         // SAFETY: every extent was checked against its buffer above.
         let code = unsafe {
             psionic_v41_hc_expand(
@@ -404,6 +483,8 @@ impl CudaSubmission {
                 int(hc.streams, "streams")?,
                 int(hc.width, "width")?,
                 rounds(output),
+                int(t, "tokens")?,
+                i64::try_from(mixes_stride).map_err(|_| invalid(String::from("stride")))?,
                 self.platform.raw_stream()?,
             )
         };
@@ -553,6 +634,29 @@ impl CudaSubmission {
         out: &CudaBuffer,
         output: V41Output,
     ) -> Result<(), RuntimeError> {
+        self.v41_engram_gate_tokens(
+            gate, residual, projected, q_weight, k_weight, out, output, 1,
+        )
+    }
+
+    /// [`Self::v41_engram_gate`] for `tokens` tokens one after another.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::v41_engram_gate`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn v41_engram_gate_tokens(
+        &mut self,
+        gate: V41EngramGate,
+        residual: &CudaBuffer,
+        projected: &CudaBuffer,
+        q_weight: &CudaBuffer,
+        k_weight: &CudaBuffer,
+        out: &CudaBuffer,
+        output: V41Output,
+        tokens: usize,
+    ) -> Result<(), RuntimeError> {
+        let t = tokens.max(1);
         let elements = gate
             .streams
             .checked_mul(gate.width)
@@ -561,11 +665,17 @@ impl CudaSubmission {
         if gate.streams > 65_535 || !positive(gate.epsilon) {
             return Err(invalid(format!("Engram gate {gate:?}")));
         }
-        let residual = span(residual, 0, elements, 4, "residual")?;
-        let projected = span(projected, 0, elements + gate.width, 4, "keys and value")?;
+        let residual = span(residual, 0, elements * t, 4, "residual")?;
+        let projected = span(
+            projected,
+            0,
+            (elements + gate.width) * t,
+            4,
+            "keys and value",
+        )?;
         let q_weight = span(q_weight, 0, elements, 4, "query weight")?;
         let k_weight = span(k_weight, 0, elements, 4, "key weight")?;
-        let out = span(out, 0, elements, 4, "gated residual")?;
+        let out = span(out, 0, elements * t, 4, "gated residual")?;
         // SAFETY: every extent was checked against its buffer above.
         let code = unsafe {
             psionic_v41_engram_gate(
@@ -579,6 +689,7 @@ impl CudaSubmission {
                 gate.epsilon,
                 gate.inv_sqrt_width(),
                 rounds(output),
+                int(t, "tokens")?,
                 self.platform.raw_stream()?,
             )
         };
@@ -648,6 +759,24 @@ impl CudaSubmission {
         experts: usize,
         cols: usize,
     ) -> Result<(), RuntimeError> {
+        self.v41_gate_logits_tokens(weight, input, logits, experts, cols, 1)
+    }
+
+    /// [`Self::v41_gate_logits`] for `tokens` inputs one after another.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::v41_gate_logits`].
+    pub fn v41_gate_logits_tokens(
+        &mut self,
+        weight: &CudaBuffer,
+        input: &CudaBuffer,
+        logits: &CudaBuffer,
+        experts: usize,
+        cols: usize,
+        tokens: usize,
+    ) -> Result<(), RuntimeError> {
+        let t = tokens.max(1);
         if experts == 0 || cols == 0 || !cols.is_multiple_of(8) {
             return Err(invalid(format!("gate {experts}x{cols}")));
         }
@@ -656,8 +785,8 @@ impl CudaSubmission {
             .filter(|n| i32::try_from(*n).is_ok())
             .ok_or_else(|| invalid(format!("gate {experts}x{cols}")))?;
         let weight = span(weight, 0, elements, 2, "gate weight")?;
-        let input = span(input, 0, cols, 4, "gate input")?;
-        let logits = span(logits, 0, experts, 4, "logits")?;
+        let input = span(input, 0, cols * t, 4, "gate input")?;
+        let logits = span(logits, 0, experts * t, 4, "logits")?;
         // SAFETY: every extent was checked against its buffer above.
         let code = unsafe {
             psionic_v41_gate_logits(
@@ -666,6 +795,7 @@ impl CudaSubmission {
                 logits,
                 int(experts, "experts")?,
                 int(cols, "cols")?,
+                int(t, "tokens")?,
                 self.platform.raw_stream()?,
             )
         };
@@ -696,11 +826,29 @@ impl CudaSubmission {
         ids: &CudaBuffer,
         weights: &CudaBuffer,
     ) -> Result<(), RuntimeError> {
+        self.v41_route_tokens(router, logits, bias, ids, weights, 1)
+    }
+
+    /// [`Self::v41_route`] for `tokens` tokens one after another.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::v41_route`].
+    pub fn v41_route_tokens(
+        &mut self,
+        router: V41Router,
+        logits: &CudaBuffer,
+        bias: &CudaBuffer,
+        ids: &CudaBuffer,
+        weights: &CudaBuffer,
+        tokens: usize,
+    ) -> Result<(), RuntimeError> {
         router.check()?;
-        let logits = span(logits, 0, router.experts, 4, "logits")?;
+        let t = tokens.max(1);
+        let logits = span(logits, 0, router.experts * t, 4, "logits")?;
         let bias = span(bias, 0, router.experts, 4, "bias")?;
-        let ids = span(ids, 0, router.top_k, 4, "expert ids")?;
-        let weights = span(weights, 0, router.top_k, 4, "route weights")?;
+        let ids = span(ids, 0, router.top_k * t, 4, "expert ids")?;
+        let weights = span(weights, 0, router.top_k * t, 4, "route weights")?;
         // SAFETY: every extent was checked against its buffer above.
         let code = unsafe {
             psionic_v41_route(
@@ -713,6 +861,7 @@ impl CudaSubmission {
                 router.temperature,
                 i32::from(router.normalize),
                 router.route_scale,
+                int(t, "tokens")?,
                 self.platform.raw_stream()?,
             )
         };
@@ -790,16 +939,36 @@ impl CudaSubmission {
         out: &CudaBuffer,
         output: V41Output,
     ) -> Result<(), RuntimeError> {
+        self.v41_moe_combine_tokens(routed, slots, shared, width, out, output, 1)
+    }
+
+    /// [`Self::v41_moe_combine`] for `tokens` tokens one after another.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::v41_moe_combine`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn v41_moe_combine_tokens(
+        &mut self,
+        routed: &CudaBuffer,
+        slots: usize,
+        shared: Option<&CudaBuffer>,
+        width: usize,
+        out: &CudaBuffer,
+        output: V41Output,
+        tokens: usize,
+    ) -> Result<(), RuntimeError> {
+        let t = tokens.max(1);
         let n = slots
             .checked_mul(width)
             .filter(|n| width > 0 && i32::try_from(*n).is_ok())
             .ok_or_else(|| invalid(format!("MoE sum {slots}x{width}")))?;
-        let routed = span(routed, 0, n, 4, "routed outputs")?;
+        let routed = span(routed, 0, n * t, 4, "routed outputs")?;
         let shared = match shared {
-            Some(shared) => span(shared, 0, width, 4, "shared output")?.cast_const(),
+            Some(shared) => span(shared, 0, width * t, 4, "shared output")?.cast_const(),
             None => std::ptr::null(),
         };
-        let out = span(out, 0, width, 4, "MoE output")?;
+        let out = span(out, 0, width * t, 4, "MoE output")?;
         // SAFETY: every extent was checked against its buffer above.
         let code = unsafe {
             psionic_v41_moe_combine(
@@ -809,6 +978,7 @@ impl CudaSubmission {
                 int(slots, "slots")?,
                 int(width, "width")?,
                 rounds(output),
+                int(t, "tokens")?,
                 self.platform.raw_stream()?,
             )
         };
