@@ -266,8 +266,9 @@ normalized `(p-q)+`. A rejected suffix restores device window rows,
 compressor groups, compressed KV and index keys, selections, candidate
 flags, the backbone features, and both device and host Engram history,
 then replays only the accepted prefix. This first version favors complete
-state restoration over avoiding that replay. `chain --dspark` records
-proposed and accepted counts, acceptance rate, replayed tokens, and
+state restoration over avoiding that replay. Invalid verification output
+also restores the saved state before returning an error. `chain --dspark` records
+proposed and accepted counts, accepted prefix lengths, acceptance rate, replayed tokens, and
 measured decode throughput in its answer records.
 
 ## Cost

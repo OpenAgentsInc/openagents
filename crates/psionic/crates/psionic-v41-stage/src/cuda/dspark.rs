@@ -6,7 +6,7 @@ use psionic_backend_cuda::{
     CudaBackend,
     v41_stage::{
         V41Sampling, V41Stage, V41StepInput,
-        dspark::{BLOCK, Drafter, VERIFY},
+        dspark::{BLOCK, Drafter, Snapshot, VERIFY},
     },
 };
 use serde_json::{Value, json};
@@ -134,6 +134,59 @@ fn step(
     Ok(())
 }
 
+/// Decides the accepted prefix before committing it. Any invalid target
+/// distribution or failed prefix replay restores the pre-verification state.
+fn finish_verification(
+    stage: &mut V41Stage,
+    backend: &CudaBackend,
+    snapshot: &Snapshot,
+    position: usize,
+    inputs: &[u32],
+    target: &[Vec<f32>],
+    q: &[Vec<f64>],
+    sampling: Sampling,
+    rng: &mut u64,
+    eos: Option<u32>,
+) -> Result<(usize, Option<u32>), Refused> {
+    let result = (|| {
+        if inputs.len() != VERIFY || target.len() != VERIFY || q.len() != BLOCK {
+            return Err(bad("incomplete draft verification"));
+        }
+        let mut accepted = 0;
+        let mut next = None;
+        let mut ended = false;
+        for i in 0..BLOCK {
+            let p = distribution(&target[i], sampling)?;
+            check_proposal(&p, &q[i], inputs[i + 1])?;
+            match accept(&p, &q[i], inputs[i + 1], uniform(rng)) {
+                Ok(()) => {
+                    accepted += 1;
+                    if Some(inputs[i + 1]) == eos {
+                        ended = true;
+                        break;
+                    }
+                }
+                Err(residual) => {
+                    next = Some(draw(&residual, uniform(rng)));
+                    break;
+                }
+            }
+        }
+        if next.is_none() && !ended {
+            next = Some(draw(&distribution(&target[BLOCK], sampling)?, uniform(rng)));
+        }
+        if accepted < BLOCK {
+            stage.restore_dspark(backend, snapshot).map_err(bad)?;
+            step(stage, backend, position, &inputs[..accepted + 1], false)?;
+        }
+        Ok((accepted, next))
+    })();
+    if result.is_err() {
+        stage.restore_dspark(backend, snapshot).map_err(bad)?;
+    }
+    result
+}
+
 /// Runs only the new explicit single-box drafting path. Other chain
 /// profiles and every qualification bundle retain their ordinary decode.
 pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
@@ -247,6 +300,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
         let mut kept = 0_u64;
         let mut blocks = 0_u64;
         let mut replay_tokens = 0_usize;
+        let mut accepted_lengths = Vec::new();
         let mut confidence_sum = 0.0_f64;
         let started = Instant::now();
         if options.max_tokens > 0 {
@@ -305,48 +359,29 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             };
             blocks += 1;
             proposed += BLOCK as u64;
-            let mut accepted = 0;
-            let mut correction = None;
-            for i in 0..BLOCK {
-                let p = distribution(&target[i], options.sampling)?;
-                check_proposal(&p, &q[i], drafts[i])?;
-                match accept(&p, &q[i], drafts[i], uniform(&mut rng)) {
-                    Ok(()) => {
-                        accepted += 1;
-                        if drafts[i] == model.eos {
-                            break;
-                        }
-                    }
-                    Err(residual) => {
-                        correction = Some(draw(&residual, uniform(&mut rng)));
-                        break;
-                    }
-                }
-            }
+            let (accepted, next) = finish_verification(
+                &mut stage,
+                &backend,
+                &snapshot,
+                position,
+                &inputs,
+                &target,
+                &q,
+                options.sampling,
+                &mut rng,
+                Some(model.eos),
+            )?;
+            accepted_lengths.push(accepted);
             kept += accepted as u64;
             tokens.extend_from_slice(&drafts[..accepted]);
             if accepted < BLOCK {
-                stage.restore_dspark(&backend, &snapshot).map_err(bad)?;
-                step(
-                    &mut stage,
-                    &backend,
-                    position,
-                    &inputs[..accepted + 1],
-                    false,
-                )?;
                 replay_tokens += accepted + 1;
             }
             position += accepted + 1;
             if tokens.last() == Some(&model.eos) {
                 break;
             }
-            token = match correction {
-                Some(token) => token,
-                None => draw(
-                    &distribution(&target[BLOCK], options.sampling)?,
-                    uniform(&mut rng),
-                ),
-            };
+            token = next.ok_or_else(|| bad("missing verified next token"))?;
             tokens.push(token);
         }
         let decode_seconds = started.elapsed().as_secs_f64();
@@ -356,6 +391,7 @@ pub fn run(options: &ChainOptions) -> Result<Value, Refused> {
             "tokens": tokens, "text": text, "prefill_seconds": prefill_seconds,
             "decode_seconds": decode_seconds, "decode_tokens_per_second": tokens.len().saturating_sub(1) as f64 / decode_seconds,
             "dspark": {"blocks": blocks, "proposed": proposed, "accepted": kept,
+                "accepted_lengths": accepted_lengths,
                 "acceptance_rate": if proposed == 0 {0.0} else {kept as f64 / proposed as f64},
                 "replay_tokens": replay_tokens, "mean_confidence": if proposed == 0 {0.0} else {confidence_sum / proposed as f64}}});
         eprintln!(
@@ -563,36 +599,19 @@ impl Streaming {
                 return Err(bad(e));
             }
         };
-        let mut accepted = 0;
-        let mut correction = None;
-        for i in 0..BLOCK {
-            let p = distribution(&target[i], sampling)?;
-            check_proposal(&p, &q[i], inputs[i + 1])?;
-            match accept(&p, &q[i], inputs[i + 1], uniform(&mut self.rng)) {
-                Ok(()) => accepted += 1,
-                Err(residual) => {
-                    correction = Some(draw(&residual, uniform(&mut self.rng)));
-                    break;
-                }
-            }
-        }
-        if accepted < BLOCK {
-            stage.restore_dspark(backend, &self.snapshot).map_err(bad)?;
-            step(
-                stage,
-                backend,
-                input.position,
-                &inputs[..accepted + 1],
-                false,
-            )?;
-        }
-        let correction = match correction {
-            Some(token) => token,
-            None => draw(
-                &distribution(&target[BLOCK], sampling)?,
-                uniform(&mut self.rng),
-            ),
-        };
+        let (accepted, correction) = finish_verification(
+            stage,
+            backend,
+            &self.snapshot,
+            input.position,
+            &inputs,
+            &target,
+            &q,
+            sampling,
+            &mut self.rng,
+            None,
+        )?;
+        let correction = correction.ok_or_else(|| bad("missing verified next token"))?;
         let mut outputs = inputs[1..accepted + 1].to_vec();
         outputs.push(correction);
         self.baseline = input.position;
@@ -653,8 +672,34 @@ mod streaming_tests {
         plain.step(&backend, &input(0, &prompt), false)?;
         stream.step(&mut stage, &backend, &input(0, &prompt), true)?;
         let baseline = prompt.len();
-        stage.save_dspark(&backend, &mut stream.snapshot)?;
         let inputs = [2, 3, 5, 7, 11, 13];
+        for bad_row in [0, BLOCK] {
+            stage.save_dspark(&backend, &mut stream.snapshot)?;
+            let mut targets = stage.verify_dspark(&backend, baseline, &inputs)?;
+            let mut q = Vec::new();
+            for i in 0..BLOCK {
+                targets[i].fill(0.0);
+                targets[i][inputs[i + 1] as usize] = 1.0;
+                q.push(distribution(&targets[i], Sampling::GREEDY)?);
+            }
+            targets[bad_row][0] = f32::NAN;
+            let error = finish_verification(
+                &mut stage,
+                &backend,
+                &stream.snapshot,
+                baseline,
+                &inputs,
+                &targets,
+                &q,
+                Sampling::GREEDY,
+                &mut 0,
+                None,
+            )
+            .unwrap_err();
+            assert!(error.0.contains("invalid logits"));
+            assert_eq!(stage.logits()?, plain.logits()?);
+        }
+        stage.save_dspark(&backend, &mut stream.snapshot)?;
         let targets = stage.verify_dspark(&backend, baseline, &inputs)?;
         stream.baseline = baseline;
         stream.consumed.clear();
