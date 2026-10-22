@@ -23,6 +23,18 @@ pub enum SettingsEffect {
     ChooseWallpaper { ticket: String },
     PreferencesChanged { preferences: SettingsPreferences },
     ShareText { title: String, text: String },
+    OpenSuggestionBox,
+}
+
+/// Opens the same compose form as the Grid, including for signed-out guests.
+#[uniffi::export]
+pub fn suggestion_box_url() -> String {
+    let client = if cfg!(target_os = "android") {
+        "android"
+    } else {
+        "ios"
+    };
+    format!("{}{client}", openagents_brand::SUGGESTION_BOX_URL)
 }
 #[uniffi::export(with_foreign)]
 pub trait SettingsListener: Send + Sync {
@@ -326,6 +338,10 @@ impl CoreSettings {
             }
             Action::ShareApp => {
                 effect = share_app();
+                Ok(None)
+            }
+            Action::Suggestion => {
+                effect = SettingsEffect::OpenSuggestionBox;
                 Ok(None)
             }
         };

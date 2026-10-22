@@ -36,6 +36,7 @@ pub(super) struct Input {
 #[derive(Clone, Debug, Serialize)]
 enum Intent {
     About,
+    Suggestion,
     Close,
     ShareApp,
     Pair,
@@ -76,6 +77,7 @@ pub(super) enum Action {
     Notifications,
     ChooseWallpaper { ticket: String },
     ShareApp,
+    Suggestion,
 }
 enum Dialog {
     None,
@@ -309,6 +311,12 @@ impl Model {
                 Intent::Notifications,
             ));
         }
+        children.push(button(
+            "suggestion",
+            "Send a suggestion",
+            enabled,
+            Intent::Suggestion,
+        ));
         children.push(button("about", "About", enabled, Intent::About));
         if self.input.signed_in {
             children.push(button("sign-out", "Sign out", enabled, Intent::SignOut));
@@ -503,6 +511,7 @@ impl Model {
             Intent::Wallet if self.input.caps.wallet => Action::Wallet,
             Intent::Notifications => Action::Notifications,
             Intent::ShareApp => Action::ShareApp,
+            Intent::Suggestion => Action::Suggestion,
             _ => return Err("Open Settings again to continue.".into()),
         };
         Ok(Some((self.begin(), action)))
@@ -664,6 +673,20 @@ mod tests {
             revision: view["revision"].as_u64().unwrap(),
             node: key.into(),
         }
+    }
+    #[test]
+    fn guests_can_open_suggestions_only_from_the_current_settings_view() {
+        let mut guest = input();
+        guest.signed_in = false;
+        let mut model = Model::new(guest, Default::default(), None);
+        let view = shown(&mut model);
+        let (operation, action) = model.activate(event(&view, "suggestion")).unwrap().unwrap();
+        assert!(matches!(action, Action::Suggestion));
+        assert!(model.complete(&operation, Ok(None)));
+        let current = shown(&mut model);
+        assert!(model.activate(event(&view, "suggestion")).is_err());
+        model.close();
+        assert!(model.activate(event(&current, "suggestion")).is_err());
     }
     #[test]
     fn deletion_requires_current_mounted_warning_and_a_second_paid_credit_confirmation() {

@@ -491,6 +491,13 @@ The status lines below summarize each issue and its comments. Open the issue for
 - #12489: deploy `0fa694b293` to the Grid host and website, bind the
   `coderos-4080` worker/project, and record an objective assignment reaching
   a checked draft PR. Importer and command checks passed (31 Grid, 12 server).
+- #12460: deploy the [suggestion inbox](../../crates/suggestion-inbox/README.md)
+  under a dedicated service account, with separate inbox, owner-review, and
+  delegated-reader keys. Set `NOSTR_RELAY_SUGGESTION_INBOX` on the relay and
+  `OPENAGENTS_SUGGESTION_INBOX` on the website, then deploy the relay, website,
+  and both browser chat renderers. With throwaway keys, check first-offline
+  delivery and retry, each client's source label, and owner-only quarantine.
+  Check the desktop Help menu and phone Settings links after the next app builds.
 - #12468, #12470: with a `consumer-q` group and a qualified group live on
   the relay, run `pylon ask --model deepseek-v4.1-flash` with and without
   `--profile consumer-q`, and check each request lands only on the profile

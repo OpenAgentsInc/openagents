@@ -94,6 +94,9 @@ pub const DOWNLOAD_URL: &str = "https://openagents.com/download";
 /// Product documentation.
 pub const DOCS_URL: &str = "https://openagents.com/docs";
 
+/// Shared suggestion form; append the sending app's client name.
+pub const SUGGESTION_BOX_URL: &str = "https://openagents.com/?suggest=";
+
 /// The edge URL the app should use: the hosted edge when one is configured,
 /// otherwise the never-resolving placeholder.
 pub fn default_edge_url() -> &'static str {

@@ -1356,6 +1356,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_openagents_mobile_checksum_func_open_settings(
     ): Int
+    external fun uniffi_openagents_mobile_checksum_func_suggestion_box_url(
+    ): Int
     external fun uniffi_openagents_mobile_checksum_func_file_mention_link(
     ): Int
     external fun uniffi_openagents_mobile_checksum_func_default_voice_styles(
@@ -2297,6 +2299,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_openagents_mobile_checksum_constructor_orbrenderer_new(
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_corewallet_android(
+    ): Int
+    external fun uniffi_openagents_mobile_checksum_constructor_corewallet_fixture(
     ): Int
     external fun uniffi_openagents_mobile_checksum_constructor_corewallet_new(
     ): Int
@@ -3540,6 +3544,8 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_openagents_mobile_fn_constructor_corewallet_android(`home`: RustBuffer.ByValue,`current`: Long,`retired`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
+    external fun uniffi_openagents_mobile_fn_constructor_corewallet_fixture(`home`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
+    ): Long
     external fun uniffi_openagents_mobile_fn_constructor_corewallet_new(`home`: RustBuffer.ByValue,`store`: Long,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
     external fun uniffi_openagents_mobile_fn_method_corewallet_activate(`ptr`: Long,`instance`: RustBuffer.ByValue,`revision`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus,
@@ -3636,6 +3642,8 @@ internal object UniffiLib {
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_func_open_settings(`account`: Long,`client`: RustBuffer.ByValue,`capabilities`: RustBuffer.ByValue,`version`: RustBuffer.ByValue,`listener`: Long,uniffi_out_err: UniffiRustCallStatus,
     ): Long
+    external fun uniffi_openagents_mobile_fn_func_suggestion_box_url(uniffi_out_err: UniffiRustCallStatus,
+    ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_func_file_mention_link(`path`: RustBuffer.ByValue,`isDir`: Byte,uniffi_out_err: UniffiRustCallStatus,
     ): RustBuffer.ByValue
     external fun uniffi_openagents_mobile_fn_func_default_voice_styles(uniffi_out_err: UniffiRustCallStatus,
@@ -3861,6 +3869,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_func_open_settings() and 0xFFFF) != 24464) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_func_suggestion_box_url() and 0xFFFF) != 40571) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_func_file_mention_link() and 0xFFFF) != 21705) {
@@ -5274,6 +5285,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_corewallet_android() and 0xFFFF) != 16399) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_openagents_mobile_checksum_constructor_corewallet_fixture() and 0xFFFF) != 43539) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_openagents_mobile_checksum_constructor_corewallet_new() and 0xFFFF) != 43285) {
@@ -23527,6 +23541,24 @@ open class CoreWallet: Disposable, AutoCloseable, CoreWalletInterface
         FfiConverterString.lower(`home`),
         FfiConverterTypeAndroidSecretStorage.lower(`current`),
         FfiConverterTypeAndroidRetiredWalletSeed.lower(`retired`),
+        FfiConverterTypeWalletListener.lower(`listener`),_status)
+}
+    )
+    }
+
+
+
+    /**
+     * An offline wallet for simulator captures: a fixed balance and
+     * history, a seed held only in memory, and no network. It never touches
+     * the Keychain and holds no money.
+     */ fun `fixture`(`home`: kotlin.String, `listener`: WalletListener): CoreWallet {
+            return FfiConverterTypeCoreWallet.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_constructor_corewallet_fixture(
+
+
+        FfiConverterString.lower(`home`),
         FfiConverterTypeWalletListener.lower(`listener`),_status)
 }
     )
@@ -44855,6 +44887,9 @@ sealed class SettingsEffect {
         companion object
     }
 
+    object OpenSuggestionBox : SettingsEffect()
+
+
 
 
 
@@ -44887,6 +44922,7 @@ public object FfiConverterTypeSettingsEffect : FfiConverterRustBuffer<SettingsEf
                 FfiConverterString.read(buf),
                 FfiConverterString.read(buf),
                 )
+            10 -> SettingsEffect.OpenSuggestionBox
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
     }
@@ -44950,6 +44986,12 @@ public object FfiConverterTypeSettingsEffect : FfiConverterRustBuffer<SettingsEf
                 + FfiConverterString.allocationSize(value.`text`)
             )
         }
+        is SettingsEffect.OpenSuggestionBox -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
     }
 
     override fun write(value: SettingsEffect, buf: ByteBuffer) {
@@ -44992,6 +45034,10 @@ public object FfiConverterTypeSettingsEffect : FfiConverterRustBuffer<SettingsEf
                 buf.putInt(9)
                 FfiConverterString.write(value.`title`, buf)
                 FfiConverterString.write(value.`text`, buf)
+                Unit
+            }
+            is SettingsEffect.OpenSuggestionBox -> {
+                buf.putInt(10)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -50359,6 +50405,19 @@ public object FfiConverterMapStringString: FfiConverterRustBuffer<Map<kotlin.Str
         FfiConverterTypeSettingsCapabilities.lower(`capabilities`),
         FfiConverterString.lower(`version`),
         FfiConverterTypeSettingsListener.lower(`listener`),_status)
+}
+    )
+    }
+
+
+        /**
+         * Opens the same compose form as the Grid, including for signed-out guests.
+         */ fun `suggestionBoxUrl`(): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_openagents_mobile_fn_func_suggestion_box_url(
+
+        _status)
 }
     )
     }

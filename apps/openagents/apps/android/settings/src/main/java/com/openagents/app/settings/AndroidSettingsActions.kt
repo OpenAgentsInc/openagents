@@ -10,6 +10,7 @@ import android.provider.Settings
 import uniffi.openagents_core.SettingsAppearance
 import uniffi.openagents_core.SettingsEffect
 import uniffi.openagents_core.SettingsPreferences
+import uniffi.openagents_core.suggestionBoxUrl
 
 /** Android framework calls only. Register navigation callbacks before advertising
  * their Rust capabilities; project-sharing UI uses its existing Rust Native form.
@@ -35,6 +36,9 @@ class AndroidSettingsActions(
             SettingsEffect.OpenArchive -> requireNotNull(openArchive).invoke()
             SettingsEffect.OpenProjectSharing -> requireNotNull(openProjectSharing).invoke()
             SettingsEffect.OpenWallet -> requireNotNull(openWallet).invoke()
+            SettingsEffect.OpenSuggestionBox -> activity.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(suggestionBoxUrl()))
+            )
             SettingsEffect.OpenNotificationSettings -> {
                 val intent = if (Build.VERSION.SDK_INT >= 26) {
                     Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName)

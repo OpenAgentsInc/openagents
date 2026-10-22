@@ -33,6 +33,7 @@ actions!(
         AppearanceSystem,
         AppearanceLight,
         AppearanceDark,
+        SendSuggestion,
     ]
 );
 
@@ -47,6 +48,9 @@ pub fn init(cx: &mut App) {
     // Global, not per-window: it must work with every window closed, and the
     // update lifecycle is app-wide (see `app_update`).
     cx.on_action(|_: &CheckForUpdates, cx| crate::app_update::check_for_updates(cx));
+    cx.on_action(|_: &SendSuggestion, cx| {
+        cx.open_url(&format!("{}desktop", openagents_brand::SUGGESTION_BOX_URL));
+    });
     // Application-menu verbs — gpui wraps NSApp `hide` / `hideOtherApplications`
     // / `unhideAllApplications` (zed registers the same trio in
     // crates/zed/src/zed.rs `init`).
@@ -228,6 +232,7 @@ pub fn app_menus() -> Vec<Menu> {
             MenuItem::action("Close Window", CloseWindow),
         ]));
     }
+    menus.push(Menu::new("Help").items([MenuItem::action("Send a suggestion…", SendSuggestion)]));
     menus
 }
 

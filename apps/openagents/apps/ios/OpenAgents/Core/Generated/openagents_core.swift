@@ -32575,6 +32575,7 @@ public enum SettingsEffect: Equatable, Hashable {
     )
     case shareText(title: String, text: String
     )
+    case openSuggestionBox
 
 
 
@@ -32616,6 +32617,8 @@ public struct FfiConverterTypeSettingsEffect: FfiConverterRustBuffer {
         
         case 9: return .shareText(title: try FfiConverterString.read(from: &buf), text: try FfiConverterString.read(from: &buf)
         )
+
+        case 10: return .openSuggestionBox
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -32663,6 +32666,10 @@ public struct FfiConverterTypeSettingsEffect: FfiConverterRustBuffer {
             writeInt(&buf, Int32(9))
             FfiConverterString.write(title, into: &buf)
             FfiConverterString.write(text, into: &buf)
+
+
+        case .openSuggestionBox:
+            writeInt(&buf, Int32(10))
             
         }
     }
@@ -37779,6 +37786,16 @@ public func openSettings(account: CoreAccount, client: CoreClient?, capabilities
 })
 }
 /**
+ * Opens the same compose form as the Grid, including for signed-out guests.
+ */
+public func suggestionBoxUrl() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_func_suggestion_box_url(uniffiCallStatus
+    )
+})
+}
+/**
  * The canonical mention link the host understands (`[name](openagents-file:path)`).
  */
 public func fileMentionLink(path: String, isDir: Bool) -> String  {
@@ -38008,6 +38025,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_open_settings() != 24464) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_func_suggestion_box_url() != 40571) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_func_file_mention_link() != 21705) {

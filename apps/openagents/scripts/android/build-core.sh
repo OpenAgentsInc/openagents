@@ -25,13 +25,13 @@ case "$CARGO_TARGET_DIR/" in
 esac
 export CARGO_TARGET_DIR
 export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.98.1}"
-export CARGO_INCREMENTAL=0
 
 OUT="${1:-$CARGO_TARGET_DIR/android-core}"
 mkdir -p "$OUT/kotlin"
 OUT="$(cd "$OUT" && pwd -P)"
 cd "$ROOT"
 . "$ROOT/../../scripts/dev/cargo-build-env.sh"
+export CARGO_INCREMENTAL=0
 
 if [[ -z "${ANDROID_NDK_HOME:-}" ]] || ! command -v cargo-ndk >/dev/null; then
   echo "error: enter the pinned Android shell from os/README.md" >&2
@@ -45,8 +45,9 @@ unset CC CXX AR
 
 cargo build --locked -p openagents-mobile --lib --bin uniffi-bindgen \
   --features bindgen --profile mobile
-cargo ndk -t arm64-v8a build --locked -p openagents-mobile --lib --profile mobile
-cargo ndk -t x86_64 build --locked -p openagents-mobile --lib --profile mobile
+# Match the app's minimum API level; AAudio is available starting at 26.
+cargo ndk -t arm64-v8a --platform 26 build --locked -p openagents-mobile --lib --profile mobile
+cargo ndk -t x86_64 --platform 26 build --locked -p openagents-mobile --lib --profile mobile
 
 # Extract UniFFI metadata from the Android artifact so Android-gated exports
 # appear in the Kotlin binding. UniFFI library mode reads object-file metadata;

@@ -250,7 +250,10 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             Row(id: "archived", title: "Archived Sessions", symbol: "archivebox"),
         ])
         s.appendSections(["About"])
-        s.appendItems([Row(id: "about", title: "OpenAgents", subtitle: Self.versionText, symbol: "info.circle")])
+        s.appendItems([
+            Row(id: "suggestion", title: "Send a suggestion", symbol: "envelope"),
+            Row(id: "about", title: "OpenAgents", subtitle: Self.versionText, symbol: "info.circle"),
+        ])
         if app.isSignedIn, !app.isDemo {
             s.appendSections([" "])
             s.appendItems([
@@ -285,6 +288,8 @@ final class MoreViewController: UIViewController, UICollectionViewDelegate {
             }
         case "about":
             navigationController?.pushViewController(AboutViewController(version: Self.versionText), animated: true)
+        case "suggestion":
+            if let url = URL(string: suggestionBoxUrl()) { UIApplication.shared.open(url) }
         case "wallet": router?.showWallet()
         case "voice": navigationController?.pushViewController(VoiceViewController(app: app), animated: true)
         case "scan-code":

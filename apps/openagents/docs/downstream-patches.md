@@ -2,6 +2,11 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- OpenAgents #12460: open the shared Grid suggestion form from the desktop
+  Help menu and phone Settings, including for guests, with the sending app
+  named in the form's client tag. Build the Android core at API 26 to match
+  the app's minimum version and link AAudio.
+
 - OpenAgents #12184: extract native media and Lab card views into
   `openagents-media-view`, preserving the `openagents-ui` module imports.
   Share bundled font statics with desktop typography.
