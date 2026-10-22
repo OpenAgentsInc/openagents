@@ -1838,14 +1838,11 @@ pub fn run(opts: &QualifyOptions) -> Result<Value, Refused> {
             (None, None)
         };
         let index = if opts.observe {
-            Some(index::case(
-                &policy,
-                &mut oracle,
-                &run,
-                case,
-                &record,
-                &rec,
-            )?)
+            Some(
+                index::case(&policy, &mut oracle, &run, case, &record, &rec).unwrap_or_else(
+                    |error| json!({"complete":false,"passed":false,"error":error.to_string()}),
+                ),
+            )
         } else {
             None
         };
@@ -2187,11 +2184,17 @@ pub fn judge_report(policy: &Policy, report: &Value) -> Vec<String> {
                 &case["router"],
             ));
         }
-        if policy.index_out_of_scope.is_none()
-            && policy.index.epsilon.is_some()
-            && case["index"]["passed"] != true
-        {
-            out.push(format!("{name}: index rule failed or is incomplete"));
+        if case["index"]["error"].is_string() {
+            out.push(format!(
+                "{name}: malformed index evidence: {}",
+                case["index"]["error"]
+            ));
+        } else if policy.index_out_of_scope.is_none() && policy.index.epsilon.is_some() {
+            out.extend(
+                index::violations(policy.index, &case["index"])
+                    .into_iter()
+                    .map(|v| format!("{name}: {v}")),
+            );
         }
         if case["exact"]["passed"] == json!(false) {
             out.push(format!("{name}: exact checks failed"));
