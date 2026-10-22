@@ -14,6 +14,7 @@ use nostr::pylon::{PoolPolicy, parse_receipt};
 use pylon::client::{self, Ask};
 use pylon::engine::Echo;
 use pylon::field::{Live, RelayField};
+use pylon::group::Want;
 use pylon::identity::Identity;
 use pylon::lease::Leases;
 use pylon::pool;
@@ -155,15 +156,24 @@ async fn wait_for_beacon(hub: &Arc<Mutex<Hub>>) {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_pinned_buyer_waits_for_a_busy_beacon_to_become_free() {
-    pinned_buyer_waits(nostr::pylon::Status::Online).await;
+    pinned_buyer_waits(nostr::pylon::Status::Online, None).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_pinned_buyer_waits_for_worker_recovery_before_publishing() {
-    pinned_buyer_waits(nostr::pylon::Status::Draining).await;
+    pinned_buyer_waits(nostr::pylon::Status::Draining, None).await;
 }
 
-async fn pinned_buyer_waits(status: nostr::pylon::Status) {
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_pinned_model_buyer_waits_for_a_matching_busy_beacon() {
+    pinned_buyer_waits(
+        nostr::pylon::Status::Online,
+        Some(Want::Model("echo".into())),
+    )
+    .await;
+}
+
+async fn pinned_buyer_waits(status: nostr::pylon::Status, want: Option<Want>) {
     let (url, hub) = relay().await;
     let home = tempfile::tempdir().unwrap();
     let provider_key = Identity::generate();
@@ -207,8 +217,19 @@ async fn pinned_buyer_waits(status: nostr::pylon::Status) {
         checkers: BTreeSet::new(),
         pay: None,
     };
-    let answer = client::ask(&buyer, &ask).await.unwrap();
+    let model_requested = matches!(want, Some(Want::Model(_)));
+    let answer = match want {
+        Some(want) => client::ask_model(&buyer, &ask, &want, &[], None).await,
+        None => client::ask(&buyer, &ask).await,
+    }
+    .unwrap();
     assert_eq!(answer.text.as_deref(), Some("echo: olleh"));
+    if model_requested {
+        eprintln!(
+            "matching busy model became available after {} ms",
+            answer.discover_ms
+        );
+    }
     assert!(answer.discover_ms >= 300);
     stop_tx.send(()).unwrap();
     running.await.unwrap().unwrap();
@@ -218,6 +239,55 @@ async fn pinned_buyer_waits(status: nostr::pylon::Status) {
 async fn a_pinned_busy_pylon_does_not_wait_beyond_the_buyers_budget() {
     pinned_unavailable_budget(nostr::pylon::Status::Online).await;
     pinned_unavailable_budget(nostr::pylon::Status::Draining).await;
+}
+
+#[tokio::test]
+async fn a_pinned_model_buyer_does_not_wait_for_an_unrelated_busy_beacon() {
+    let (url, hub) = relay().await;
+    let home = tempfile::tempdir().unwrap();
+    let key = Identity::generate();
+    let provider = Provider::new(
+        Config::new(&url, "busy-other-model", home.path().into()),
+        key.clone(),
+        Arc::new(Echo),
+    )
+    .unwrap();
+    let mut busy = provider.beacon(None).await;
+    busy.slots.free = 0;
+    hub.lock()
+        .await
+        .stored
+        .push(nostr::pylon::owned_beacon_event(key.signer(), &busy, None).unwrap());
+    let ask = Ask {
+        relay: url,
+        pylon: Some(key.pubkey().into()),
+        prompt: "hello".into(),
+        wait: Duration::from_secs(1),
+        publish_receipt: false,
+        home: home.path().into(),
+        checkers: BTreeSet::new(),
+        pay: None,
+    };
+
+    let wants = [
+        Want::Model("different-model".into()),
+        Want::Profiled(Box::new(Want::Model("echo".into())), "consumer-q".into()),
+    ];
+    for want in wants {
+        let started = std::time::Instant::now();
+        let result = tokio::time::timeout(
+            Duration::from_millis(400),
+            client::ask_model(&Identity::generate(), &ask, &want, &[], None),
+        )
+        .await
+        .expect("an unrelated pylon must be rejected without waiting");
+        let elapsed = started.elapsed();
+        eprintln!(
+            "unrelated busy model/profile refused in {} ms",
+            elapsed.as_millis()
+        );
+        assert!(result.unwrap_err().contains("no fresh online pylon"));
+    }
 }
 
 async fn pinned_unavailable_budget(status: nostr::pylon::Status) {
