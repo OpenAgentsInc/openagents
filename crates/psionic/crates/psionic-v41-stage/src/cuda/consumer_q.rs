@@ -37,8 +37,10 @@ use std::{
 
 use memmap2::Mmap;
 use psionic_backend_cuda::{
-    v41_expert_cache::V41ExpertBytes, v41_expert_lane::V41ExpertDims, v41_matvec::V41MatvecFormat,
-    v41_quantize::v41_quantize_matrix,
+    v41_expert_cache::V41ExpertBytes,
+    v41_expert_lane::V41ExpertDims,
+    v41_matvec::V41MatvecFormat,
+    v41_quantize::{v41_quantize_matrix, v41_quantize_matrix_gptq},
 };
 use psionic_models::deepseek_v41_weights::{decode_e2m1, decode_f8_e8m0fnu};
 use psionic_runtime::RuntimeError;
@@ -53,6 +55,8 @@ use crate::Refused;
 pub const CONSUMER_Q_SCHEMA: &str = "openagents.deepseek_v41.consumer_q.v1";
 /// The importance file's schema.
 pub const IMPORTANCE_MAGIC: &[u8; 8] = b"V41IMP01";
+/// Full 32-column activation second moments.
+pub const HESSIAN_MAGIC: &[u8; 8] = b"V41IMP02";
 
 /// Which formats a recipe gives `[w1, w2, w3]`.
 ///
@@ -93,6 +97,8 @@ fn parse_format(name: &str) -> Result<V41MatvecFormat, Refused> {
 pub struct Importance {
     pub inputs: BTreeMap<usize, Vec<Vec<f32>>>,
     pub hidden: BTreeMap<usize, Vec<Vec<f32>>>,
+    pub input_hessians: BTreeMap<usize, Vec<Vec<f32>>>,
+    pub hidden_hessians: BTreeMap<usize, Vec<Vec<f32>>>,
     pub digest: Option<String>,
 }
 
@@ -110,9 +116,11 @@ impl Importance {
             .and_then(|mut f| f.read_to_end(&mut bytes))
             .map_err(|e| Refused(format!("can't read {}: {e}", path.display())))?;
         let bad = || Refused(format!("{} is not an importance file", path.display()));
-        if bytes.len() < 24 || &bytes[..8] != IMPORTANCE_MAGIC {
+        if bytes.len() < 24 || (&bytes[..8] != IMPORTANCE_MAGIC && &bytes[..8] != HESSIAN_MAGIC) {
             return Err(bad());
         }
+        let covariance = &bytes[..8] == HESSIAN_MAGIC;
+        let factor = if covariance { 32 } else { 1 };
         let word =
             |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().unwrap_or([0; 4])) as usize;
         let (layers, experts, hidden, width) = (word(8), word(12), word(16), word(20));
@@ -127,7 +135,10 @@ impl Importance {
             }
             let layer = word(at);
             at += 4;
-            let need = 4 * experts * (hidden + width);
+            let need = experts
+                .checked_mul(hidden.checked_add(width).ok_or_else(bad)?)
+                .and_then(|n| n.checked_mul(4 * factor))
+                .ok_or_else(bad)?;
             if at + need > bytes.len() {
                 return Err(bad());
             }
@@ -136,13 +147,51 @@ impl Importance {
                 .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                 .collect();
             at += need;
-            let (inputs, hidden_part) = values.split_at(experts * hidden);
-            this.inputs
-                .insert(layer, inputs.chunks(hidden).map(<[f32]>::to_vec).collect());
+            if experts == 0
+                || hidden == 0
+                || width == 0
+                || !hidden.is_multiple_of(32)
+                || !width.is_multiple_of(32)
+            {
+                return Err(bad());
+            }
+            let (inputs, hidden_part) = values.split_at(experts * hidden * factor);
+            let diagonal = |v: &[f32]| -> Vec<f32> {
+                if covariance {
+                    v.chunks_exact(32 * 32)
+                        .flat_map(|h| (0..32).map(move |j| h[j * 32 + j]))
+                        .collect()
+                } else {
+                    v.to_vec()
+                }
+            };
+            this.inputs.insert(
+                layer,
+                inputs.chunks(hidden * factor).map(diagonal).collect(),
+            );
             this.hidden.insert(
                 layer,
-                hidden_part.chunks(width).map(<[f32]>::to_vec).collect(),
+                hidden_part.chunks(width * factor).map(diagonal).collect(),
             );
+            if covariance {
+                this.input_hessians.insert(
+                    layer,
+                    inputs
+                        .chunks(hidden * factor)
+                        .map(<[f32]>::to_vec)
+                        .collect(),
+                );
+                this.hidden_hessians.insert(
+                    layer,
+                    hidden_part
+                        .chunks(width * factor)
+                        .map(<[f32]>::to_vec)
+                        .collect(),
+                );
+            }
+        }
+        if at != bytes.len() {
+            return Err(bad());
         }
         Ok(this)
     }
@@ -163,6 +212,8 @@ impl Importance {
                 }
             }
             all.hidden.extend(one.hidden);
+            all.input_hessians.extend(one.input_hessians);
+            all.hidden_hessians.extend(one.hidden_hessians);
             digests.extend(one.digest);
         }
         all.digest = Some(hex::encode(Sha256::digest(digests.join(",").as_bytes())));
@@ -182,6 +233,32 @@ impl Importance {
         width: usize,
     ) -> Result<(), Refused> {
         let mut out = IMPORTANCE_MAGIC.to_vec();
+        for n in [layers.len(), experts, hidden, width] {
+            out.extend_from_slice(&(n as u32).to_le_bytes());
+        }
+        for (layer, (inputs, hidden_part)) in layers {
+            out.extend_from_slice(&(*layer as u32).to_le_bytes());
+            for v in inputs.iter().chain(hidden_part) {
+                out.extend_from_slice(&v.to_le_bytes());
+            }
+        }
+        File::create(path)
+            .and_then(|mut f| f.write_all(&out))
+            .map_err(|e| Refused(format!("can't write {}: {e}", path.display())))
+    }
+    /// Writes full 32-column activation second moments for GPTQ feedback.
+    ///
+    /// # Errors
+    ///
+    /// Refuses a file that can't be written.
+    pub fn write_hessians(
+        path: &Path,
+        layers: &BTreeMap<usize, (Vec<f32>, Vec<f32>)>,
+        experts: usize,
+        hidden: usize,
+        width: usize,
+    ) -> Result<(), Refused> {
+        let mut out = HESSIAN_MAGIC.to_vec();
         for n in [layers.len(), experts, hidden, width] {
             out.extend_from_slice(&(n as u32).to_le_bytes());
         }
@@ -264,8 +341,19 @@ pub fn quantize(
                             let mean = v.iter().sum::<f32>() / v.len().max(1) as f32;
                             v.iter().map(|x| x.max(mean * 1e-3).max(1e-12)).collect()
                         });
-                        let (qw, qs) =
-                            v41_quantize_matrix(formats[p], values, rows, cols, floored.as_deref());
+                        let hessian = importance.and_then(|i| {
+                            let table = if p == 1 {
+                                &i.hidden_hessians
+                            } else {
+                                &i.input_hessians
+                            };
+                            table.get(&layer).and_then(|experts| experts.get(e))
+                        });
+                        let (qw, qs) = if let Some(h) = hessian {
+                            v41_quantize_matrix_gptq(formats[p], values, rows, cols, h)
+                        } else {
+                            v41_quantize_matrix(formats[p], values, rows, cols, floored.as_deref())
+                        };
                         bytes.extend_from_slice(&qw);
                         bytes.extend_from_slice(&qs);
                     }
@@ -306,7 +394,12 @@ pub fn quantize(
             "repo": psionic_models::deepseek_v41_weights::DEEPSEEK_V41_FLASH_REPO,
             "revision": psionic_models::deepseek_v41_weights::DEEPSEEK_V41_FLASH_REVISION,
         },
-        "method": "importance-weighted rounding to Lloyd-Max levels with a log-scale byte per 32 values and an f32 scale per row; after Project Maya (mw00/project-maya 451f9cb6a2, MIT), reimplemented",
+        "method": if importance.is_some_and(|i| !i.input_hessians.is_empty()) {
+            "GPTQ error feedback within 32-column groups using calibrated activation second moments, 1% diagonal damping, and a measured-error fallback; Lloyd-Max codebooks; after Project Maya (mw00/project-maya 451f9cb6a2, MIT) and GPTQ, reimplemented"
+        } else {
+            "importance-weighted rounding without error feedback; Lloyd-Max codebooks; after Project Maya (mw00/project-maya 451f9cb6a2, MIT), reimplemented"
+        },
+        "gptq_group_columns": if importance.is_some_and(|i| !i.input_hessians.is_empty()) { Some(32) } else { None },
     });
     let path = out.join("manifest.json");
     std::fs::write(
@@ -441,5 +534,40 @@ impl V41ExpertBytes for ConsumerQExperts {
         }
         let (w, s) = self.dims.part_bytes(projection);
         Ok((&map[at..at + w], &map[at + w..at + w + s]))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn covariance_files_preserve_cross_column_moments_and_diagonal_compatibility() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut input = vec![0.0; 2 * 32 * 32];
+        for (e, block) in input.chunks_exact_mut(32 * 32).enumerate() {
+            for j in 0..32 {
+                block[j * 32 + j] = (e + j + 1) as f32;
+            }
+            block[1] = 0.75;
+            block[32] = 0.75;
+        }
+        let parts = BTreeMap::from([(3, (input.clone(), input.clone()))]);
+        let path = dir.path().join("hessian");
+        Importance::write_hessians(&path, &parts, 2, 32, 32).unwrap();
+        let read = Importance::read(&path).unwrap();
+        assert_eq!(read.input_hessians[&3][0][1], 0.75);
+        assert_eq!(read.hidden_hessians[&3][1][32], 0.75);
+        assert_eq!(read.inputs[&3][0][7], 8.0);
+        assert_eq!(read.inputs[&3][1][7], 9.0);
+        assert_eq!(read.hidden[&3], read.inputs[&3]);
+        let mean_squares =
+            BTreeMap::from([(3, (read.inputs[&3].concat(), read.hidden[&3].concat()))]);
+        let old = dir.path().join("importance");
+        Importance::write(&old, &mean_squares, 2, 32, 32).unwrap();
+        let old = Importance::read(&old).unwrap();
+        assert_eq!(old.inputs, read.inputs);
+        assert!(old.input_hessians.is_empty());
+        assert_ne!(old.digest, read.digest);
     }
 }

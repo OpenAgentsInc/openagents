@@ -584,7 +584,7 @@ fn stage_thread(
                 let stage = worker.executor().stage();
                 if let Some(prefix) = &options.calibrate_out {
                     let calibration = stage
-                        .calibration()
+                        .calibration_hessians()
                         .map_err(|e| Refused(format!("calibration: {e}")))?
                         .unwrap_or_default();
                     let shape = stage.config().shape;
@@ -594,7 +594,7 @@ fn stage_thread(
                         entry.first_layer,
                         entry.end_layer
                     ));
-                    super::consumer_q::Importance::write(
+                    super::consumer_q::Importance::write_hessians(
                         &path,
                         &calibration,
                         shape.router.experts,

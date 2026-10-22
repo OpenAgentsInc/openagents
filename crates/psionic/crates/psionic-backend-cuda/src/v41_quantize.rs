@@ -206,6 +206,153 @@ pub fn v41_dequantize_matrix(
     out
 }
 
+/// Quantizes with GPTQ error feedback inside each 32-column scale group.
+/// `hessians` holds the uncentered activation second moments as
+/// `[cols / 32, 32, 32]`, in column order. A one-percent diagonal damping
+/// makes low-rank calibration groups invertible. Correlations between
+/// different scale groups are not modeled.
+///
+/// # Panics
+///
+/// Panics for the same invalid shapes as [`v41_quantize_matrix`], or an
+/// incorrectly sized Hessian.
+#[must_use]
+pub fn v41_quantize_matrix_gptq(
+    format: V41MatvecFormat,
+    values: &[f32],
+    rows: usize,
+    cols: usize,
+    hessians: &[f32],
+) -> (Vec<u8>, Vec<u8>) {
+    const N: usize = V41_BLOCK;
+    assert_eq!(hessians.len(), cols * N);
+    let diagonal: Vec<f32> = (0..cols)
+        .map(|c| hessians[(c / N * N + c % N) * N + c % N].max(1e-12))
+        .collect();
+    let (mut weights, scales) = v41_quantize_matrix(format, values, rows, cols, Some(&diagonal));
+    let bits = format.q_bits().expect("a consumer-q format");
+    let levels = v41_q_levels(format);
+    let blocks = cols / N;
+    let rows_at = (rows * blocks).div_ceil(4) * 4;
+    for b in 0..blocks {
+        let h = &hessians[b * N * N..(b + 1) * N * N];
+        let Some(upper) = inverse_cholesky(h) else {
+            continue;
+        };
+        for r in 0..rows {
+            let d = f32::from_le_bytes(
+                scales[rows_at + 4 * r..rows_at + 4 * r + 4]
+                    .try_into()
+                    .unwrap(),
+            );
+            let scale = v41_q_block_scale(d, scales[r * blocks + b]);
+            if scale <= 0.0 {
+                continue;
+            }
+            let original = &values[r * cols + b * N..r * cols + (b + 1) * N];
+            let at = (r * blocks + b) * 4 * bits;
+            let encoded = &mut weights[at..at + 4 * bits];
+            let mut adjusted = [0.0_f64; N];
+            for (v, x) in adjusted.iter_mut().zip(original) {
+                *v = f64::from(*x);
+            }
+            let mut codes = [0_u8; N];
+            let mut errors = [0.0_f64; N];
+            let mut initial_errors = [0.0_f64; N];
+            for j in 0..N {
+                let q = nearest(levels, (adjusted[j] / f64::from(scale)) as f32);
+                codes[j] = q as u8;
+                let quantized = f64::from(scale) * f64::from(levels[q]);
+                errors[j] = f64::from(original[j]) - quantized;
+                initial_errors[j] = f64::from(original[j])
+                    - f64::from(scale)
+                        * f64::from(levels[crate::v41_matvec::v41_q_code(bits, encoded, j)]);
+                let error = (adjusted[j] - quantized) / upper[j * N + j];
+                for k in j + 1..N {
+                    adjusted[k] -= error * upper[j * N + k];
+                }
+            }
+            // Feedback must improve the measured activation objective,
+            // including when damping was needed for a sparse expert.
+            let loss = |e: &[f64; N]| -> f64 {
+                (0..N)
+                    .map(|j| {
+                        (0..N)
+                            .map(|k| e[j] * f64::from(h[j * N + k]) * e[k])
+                            .sum::<f64>()
+                    })
+                    .sum()
+            };
+            if loss(&errors) >= loss(&initial_errors) {
+                continue;
+            }
+            encoded.fill(0);
+            for (j, q) in codes.iter().enumerate() {
+                let bit = bits * j;
+                let word = u16::from(*q) << (bit % 8);
+                encoded[bit / 8] |= word as u8;
+                if bit % 8 + bits > 8 {
+                    encoded[bit / 8 + 1] |= (word >> 8) as u8;
+                }
+            }
+        }
+    }
+    (weights, scales)
+}
+
+// Upper Cholesky factor of the inverse damped activation Hessian: GPTQ's
+// update uses U[j, k] / U[j, j] to compensate later columns for column j.
+fn inverse_cholesky(h: &[f32]) -> Option<Vec<f64>> {
+    const N: usize = V41_BLOCK;
+    let trace: f64 = (0..N).map(|j| f64::from(h[j * N + j])).sum();
+    if !trace.is_finite() || trace <= 0.0 || h.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    let cholesky = |a: &[f64]| -> Option<Vec<f64>> {
+        let mut l = vec![0.0; N * N];
+        for j in 0..N {
+            for k in 0..=j {
+                let v = a[j * N + k] - (0..k).map(|m| l[j * N + m] * l[k * N + m]).sum::<f64>();
+                if j == k {
+                    if v <= 0.0 || !v.is_finite() {
+                        return None;
+                    }
+                    l[j * N + k] = v.sqrt();
+                } else {
+                    l[j * N + k] = v / l[k * N + k];
+                }
+            }
+        }
+        Some(l)
+    };
+    let mut a: Vec<f64> = h.iter().map(|v| f64::from(*v)).collect();
+    for j in 0..N {
+        a[j * N + j] += 0.01 * trace / N as f64;
+    }
+    let l = cholesky(&a)?;
+    let mut inverse_l = vec![0.0; N * N];
+    for col in 0..N {
+        for row in col..N {
+            let target = if row == col { 1.0 } else { 0.0 };
+            inverse_l[row * N + col] = (target
+                - (col..row)
+                    .map(|k| l[row * N + k] * inverse_l[k * N + col])
+                    .sum::<f64>())
+                / l[row * N + row];
+        }
+    }
+    let mut inverse = vec![0.0; N * N];
+    for j in 0..N {
+        for k in 0..N {
+            inverse[j * N + k] = (j.max(k)..N)
+                .map(|m| inverse_l[m * N + j] * inverse_l[m * N + k])
+                .sum();
+        }
+    }
+    let lower = cholesky(&inverse)?;
+    Some((0..N * N).map(|i| lower[(i % N) * N + i / N]).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -262,6 +409,56 @@ mod tests {
                     .sum()
             };
             assert!(col(&back2) <= col(&back), "{format:?}");
+        }
+    }
+
+    #[test]
+    fn gptq_feedback_uses_correlations_and_reduces_activation_error() {
+        let (rows, cols) = (32, 64);
+        let mut seed = 0x1234_5678_9abc_def1;
+        let values = gaussian(&mut seed, rows * cols);
+        let mut h = vec![0.0; cols * V41_BLOCK];
+        for block in h.chunks_exact_mut(V41_BLOCK * V41_BLOCK) {
+            for j in 0..V41_BLOCK {
+                block[j * V41_BLOCK + j] = 1.0;
+                block[j * V41_BLOCK + (j ^ 1)] = 0.98;
+            }
+        }
+        for format in [V41MatvecFormat::Q2Row32, V41MatvecFormat::Q3Row32] {
+            let (w, s) = v41_quantize_matrix(format, &values, rows, cols, None);
+            let ordinary = v41_dequantize_matrix(format, &w, &s, rows, cols);
+            let (qw, qs) = v41_quantize_matrix_gptq(format, &values, rows, cols, &h);
+            let feedback = v41_dequantize_matrix(format, &qw, &qs, rows, cols);
+            let loss = |quantized: &[f32]| -> f64 {
+                values
+                    .chunks_exact(2)
+                    .zip(quantized.chunks_exact(2))
+                    .map(|(v, q)| {
+                        let (a, b) = (f64::from(v[0] - q[0]), f64::from(v[1] - q[1]));
+                        a * a + b * b + 1.96 * a * b
+                    })
+                    .sum()
+            };
+            assert!(loss(&feedback) < 0.8 * loss(&ordinary), "{format:?}");
+            // The diagonal is identical to ordinary importance weighting;
+            // only the cross-column moments can explain the improvement.
+            let mut identity = h.clone();
+            for block in identity.chunks_exact_mut(V41_BLOCK * V41_BLOCK) {
+                for j in 0..V41_BLOCK {
+                    block[j * V41_BLOCK + (j ^ 1)] = 0.0;
+                }
+            }
+            let (iw, is) = v41_quantize_matrix_gptq(format, &values, rows, cols, &identity);
+            assert_eq!(w, iw);
+            assert_eq!(s, is);
+            let zero = vec![0.0; cols * V41_BLOCK];
+            let (zw, zs) = v41_quantize_matrix_gptq(format, &values, rows, cols, &zero);
+            assert_eq!(zw.len(), w.len());
+            assert!(
+                v41_dequantize_matrix(format, &zw, &zs, rows, cols)
+                    .iter()
+                    .all(|v| v.is_finite())
+            );
         }
     }
 }

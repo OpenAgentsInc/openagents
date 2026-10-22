@@ -245,6 +245,7 @@ unsafe extern "C" {
         experts: i32,
         sums: *mut c_void,
         counts: *mut c_void,
+        covariance: i32,
         stream: *mut c_void,
     ) -> i32;
     fn psionic_v41_group_entries(
@@ -536,6 +537,8 @@ impl CudaSubmission {
         } else {
             count
         };
+        let covariance = sums.byte_len() == 4 * experts * cols * V41_BLOCK;
+        let extent = if covariance { cols * V41_BLOCK } else { cols };
         // SAFETY: every extent was checked against its buffer.
         let code = unsafe {
             psionic_v41_importance(
@@ -547,8 +550,9 @@ impl CudaSubmission {
                 span(scales, 0, rows * cols / V41_BLOCK, 1, "activation scales")?.cast_const(),
                 int(cols, "cols")?,
                 int(experts, "experts")?,
-                span(sums, 0, experts * cols, 4, "sums")?,
+                span(sums, 0, experts * extent, 4, "sums")?,
                 span(counts, 0, experts, 4, "counts")?,
+                i32::from(covariance),
                 self.platform.raw_stream()?,
             )
         };

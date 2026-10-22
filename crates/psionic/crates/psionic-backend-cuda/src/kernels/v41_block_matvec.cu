@@ -613,7 +613,8 @@ __global__ void v41_importance_kernel(
     int cols,
     int experts,
     float* __restrict__ sums,
-    float* __restrict__ counts) {
+    float* __restrict__ counts,
+    int covariance) {
     const int e = blockIdx.x;
     const int expert = ids[e];
     if (expert < 0 || expert >= experts) {
@@ -621,9 +622,14 @@ __global__ void v41_importance_kernel(
     }
     const long long row = act_shared ? e / top_k : e;
     const int c = blockIdx.y * blockDim.x + threadIdx.x;
-    if (c < cols) {
-        const float x = __fmul_rn(e4m3(act[row * cols + c]), e8m0(act_scales[row * (cols / kBlock) + c / kBlock]));
-        atomicAdd(&sums[static_cast<long long>(expert) * cols + c], __fmul_rn(x, x));
+    const int extent = covariance ? cols * kBlock : cols;
+    if (c < extent) {
+        const int j = covariance ? c / kBlock : c;
+        const int k = covariance ? (j / kBlock) * kBlock + c % kBlock : j;
+        const float scale = e8m0(act_scales[row * (cols / kBlock) + j / kBlock]);
+        const float x = __fmul_rn(e4m3(act[row * cols + j]), scale);
+        const float y = __fmul_rn(e4m3(act[row * cols + k]), scale);
+        atomicAdd(&sums[static_cast<long long>(expert) * extent + c], __fmul_rn(x, y));
     }
     if (c == 0) {
         atomicAdd(&counts[expert], 1.0f);
@@ -819,11 +825,13 @@ extern "C" int psionic_v41_importance(
     int experts,
     void* sums,
     void* counts,
+    int covariance,
     void* stream) {
-    const dim3 grid(static_cast<unsigned>(count), static_cast<unsigned>((cols + 255) / 256));
+    const int extent = covariance ? cols * kBlock : cols;
+    const dim3 grid(static_cast<unsigned>(count), static_cast<unsigned>((extent + 255) / 256));
     v41_importance_kernel<<<grid, 256, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const int*>(ids), top_k, act_shared, static_cast<const uint8_t*>(act),
         static_cast<const uint8_t*>(act_scales), cols, experts, static_cast<float*>(sums),
-        static_cast<float*>(counts));
+        static_cast<float*>(counts), covariance);
     return static_cast<int>(cudaGetLastError());
 }
