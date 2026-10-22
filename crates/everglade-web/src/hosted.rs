@@ -1,9 +1,13 @@
-//! The Grid's arch to a hosted zone (`docs/verse/ice-cream-man-live.md`).
+//! The Grid's arches to hosted zones (`docs/verse/ice-cream-man-live.md`,
+//! `docs/verse/games/the-haunted-house.md`).
 //!
-//! `?hosted=TENANT` (and optionally `hosted-sign=WORDS`) puts an arch on
-//! the Grid that leads to a livehost tenant on the same origin, such as
-//! The Ice Cream Man at `/t/icecream/`. As the player walks within
-//! [`HOSTED_PREFETCH`] metres of the arch, the page fetches the zone's
+//! `?hosted=TENANT` puts an arch on the Grid that leads to a livehost
+//! tenant on the same origin, such as The Ice Cream Man at `/t/icecream/`.
+//! Several arches stand side by side with `?hosted=icecream,haunt` (or a
+//! repeated `hosted=`); `hosted-sign=WORDS` letters them in the same order
+//! (a comma list), and known tenants have their own lettering and site
+//! ([`HostedPortal::list`]). As the player walks within
+//! [`HOSTED_PREFETCH`] metres of an arch, the page fetches that zone's
 //! first play (its shell, its logic module, its tuning, its models, and the
 //! rooms near its spawn) into the browser's cache, so stepping through
 //! loads from the cache. Walking through opens the zone over the Grid in a
@@ -39,9 +43,10 @@ impl Prefetch {
 
 #[derive(Default)]
 struct State {
-    tenant: String,
-    prefetch: Prefetch,
-    overlay: Option<(web_sys::Element, web_sys::Element)>,
+    /// Each arch's tenant and prefetch.
+    arches: Vec<(String, Prefetch)>,
+    /// The open zone's tenant and its frame and button.
+    overlay: Option<(String, web_sys::Element, web_sys::Element)>,
     back: bool,
     /// What checks last read from `window.verse_hosted`.
     shown: String,
@@ -51,57 +56,94 @@ thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
 }
 
-/// The hosted arch the page's address asks for.
+/// The hosted arches the page's address asks for.
 #[must_use]
-pub fn from_query(window: &web_sys::Window) -> Option<HostedPortal> {
-    let search = window.location().search().ok()?;
-    let params = web_sys::UrlSearchParams::new_with_str(&search).ok()?;
-    let tenant = params.get("hosted")?;
-    let sign = params
-        .get("hosted-sign")
-        .unwrap_or_else(|| default_sign(&tenant));
-    match HostedPortal::new(&tenant, &sign) {
-        Ok(portal) => {
-            STATE.with_borrow_mut(|state| state.tenant = portal.tenant.clone());
-            Some(portal)
-        }
-        Err(error) => {
-            web_sys::console::warn_1(&error.into());
-            None
-        }
+pub fn from_query(window: &web_sys::Window) -> Vec<HostedPortal> {
+    let Some(params) = window
+        .location()
+        .search()
+        .ok()
+        .and_then(|search| web_sys::UrlSearchParams::new_with_str(&search).ok())
+    else {
+        return Vec::new();
+    };
+    let split = |name: &str| -> Vec<String> {
+        params
+            .get_all(name)
+            .iter()
+            .filter_map(|v| v.as_string())
+            .flat_map(|v| v.split(',').map(str::to_owned).collect::<Vec<_>>())
+            .collect()
+    };
+    let (arches, refused) = HostedPortal::list(&split("hosted"), &split("hosted-sign"));
+    for error in refused {
+        web_sys::console::warn_1(&error.into());
     }
-}
-
-fn default_sign(tenant: &str) -> String {
-    match tenant {
-        "icecream" => "ICE CREAM MAN".into(),
-        other => other.replace('-', " ").to_ascii_uppercase(),
-    }
-}
-
-/// The hosted arch's work for one frame: prefetch when the player is near,
-/// open the zone when they walk through, close it when they come back.
-/// `true` while the zone is open, so the Grid ignores its own input.
-pub fn frame(runtime: &mut WorldRuntime) -> bool {
-    let near = runtime
-        .hosted_distance()
-        .is_some_and(|d| d < HOSTED_PREFETCH);
-    let start = STATE.with_borrow_mut(|state| {
-        let idle = matches!(state.prefetch, Prefetch::Idle);
-        if near && idle && !state.tenant.is_empty() {
-            state.prefetch = Prefetch::Running;
-            Some(state.tenant.clone())
-        } else {
-            None
-        }
+    STATE.with_borrow_mut(|state| {
+        state.arches = arches
+            .iter()
+            .map(|p| (p.tenant.clone(), Prefetch::Idle))
+            .collect();
     });
-    if let Some(tenant) = start {
+    if !arches.is_empty() {
+        listen_for_back(window);
+    }
+    arches
+}
+
+/// A zone page on this origin can ask to go back to the Grid itself (its
+/// own in-world control) with `{"type": "hosted-back"}`.
+fn listen_for_back(window: &web_sys::Window) {
+    let origin = window.location().origin().unwrap_or_default();
+    let on_message =
+        Closure::<dyn FnMut(web_sys::MessageEvent)>::new(move |event: web_sys::MessageEvent| {
+            if event.origin() != origin {
+                return;
+            }
+            let kind = Reflect::get(&event.data(), &"type".into())
+                .ok()
+                .and_then(|v| v.as_string());
+            if kind.as_deref() == Some("hosted-back") {
+                STATE.with_borrow_mut(|state| state.back = state.overlay.is_some());
+            }
+        });
+    let _ = window.add_event_listener_with_callback("message", on_message.as_ref().unchecked_ref());
+    on_message.forget();
+}
+
+/// The hosted arches' work for one frame: prefetch a zone when the player
+/// is near its arch, open it when they walk through, close it when they
+/// come back. `true` while a zone is open, so the Grid ignores its own
+/// input.
+pub fn frame(runtime: &mut WorldRuntime) -> bool {
+    let near: Vec<String> = runtime
+        .hosted_distances()
+        .into_iter()
+        .filter(|(_, d)| *d < HOSTED_PREFETCH)
+        .map(|(t, _)| t)
+        .collect();
+    let start: Vec<String> = STATE.with_borrow_mut(|state| {
+        state
+            .arches
+            .iter_mut()
+            .filter(|(t, p)| matches!(p, Prefetch::Idle) && near.contains(t))
+            .map(|(t, p)| {
+                *p = Prefetch::Running;
+                t.clone()
+            })
+            .collect()
+    });
+    for tenant in start {
         spawn_local(async move {
             let result = prefetch(&tenant).await;
             if let Err(error) = result {
-                web_sys::console::warn_1(&format!("prefetch: {error}").into());
+                web_sys::console::warn_1(&format!("prefetch {tenant}: {error}").into());
             }
-            STATE.with_borrow_mut(|state| state.prefetch = Prefetch::Done);
+            STATE.with_borrow_mut(|state| {
+                if let Some((_, p)) = state.arches.iter_mut().find(|(t, _)| *t == tenant) {
+                    *p = Prefetch::Done;
+                }
+            });
         });
     }
     if let Some(portal) = runtime.take_hosted_crossing() {
@@ -116,24 +158,59 @@ pub fn frame(runtime: &mut WorldRuntime) -> bool {
     STATE.with_borrow(|state| state.overlay.is_some())
 }
 
-/// `window.verse_hosted` for checks: the arch, where to stand in front of
-/// it facing it, the player's distance, and the prefetch's state.
+/// `window.verse_hosted` for checks: the nearest arch (where it is, where
+/// to stand in front of it facing it, the player's distance, its
+/// prefetch, whether its zone is open), and every arch by tenant.
 fn publish(runtime: &WorldRuntime) {
-    let Some(gate) = runtime.hosted_gate() else {
+    let distances = runtime.hosted_distances();
+    let arches: Vec<serde_json::Value> = runtime
+        .hosted_gates()
+        .into_iter()
+        .map(|(portal, gate)| {
+            let (front, away) = gate.front();
+            let distance = distances
+                .iter()
+                .find(|(t, _)| *t == portal.tenant)
+                .map_or(f32::MAX, |(_, d)| *d);
+            let (prefetch, open) = STATE.with_borrow(|state| {
+                (
+                    state
+                        .arches
+                        .iter()
+                        .find(|(t, _)| *t == portal.tenant)
+                        .map_or("idle", |(_, p)| p.word()),
+                    state
+                        .overlay
+                        .as_ref()
+                        .is_some_and(|(t, _, _)| *t == portal.tenant),
+                )
+            });
+            serde_json::json!({
+                "tenant": portal.tenant,
+                "sign": portal.sign,
+                "at": [gate.at.x, gate.at.z],
+                "front": [front.x, front.z, away + std::f32::consts::PI],
+                "distance": (distance * 10.0).round() / 10.0,
+                "near": distance < HOSTED_PREFETCH,
+                "prefetch": prefetch,
+                "open": open,
+            })
+        })
+        .collect();
+    let Some(nearest) = arches
+        .iter()
+        .min_by(|a, b| {
+            let d = |v: &serde_json::Value| v["distance"].as_f64().unwrap_or(f64::MAX);
+            d(a).total_cmp(&d(b))
+        })
+        .cloned()
+    else {
         return;
     };
-    let (front, away) = gate.front();
-    let distance = runtime.hosted_distance().unwrap_or(f32::MAX);
-    let text = STATE.with_borrow(|state| {
-        serde_json::json!({
-            "at": [gate.at.x, gate.at.z],
-            "front": [front.x, front.z, away + std::f32::consts::PI],
-            "near": distance < HOSTED_PREFETCH,
-            "prefetch": state.prefetch.word(),
-            "open": state.overlay.is_some(),
-        })
-        .to_string()
-    });
+    let mut value = nearest;
+    value["open"] = STATE.with_borrow(|state| state.overlay.is_some()).into();
+    value["arches"] = arches.into();
+    let text = value.to_string();
     let changed = STATE.with_borrow_mut(|state| {
         let changed = state.shown != text;
         state.shown.clone_from(&text);
@@ -287,11 +364,11 @@ fn open(tenant: &str) {
         let _ = html.focus();
     }
     let _ = Reflect::set(&frame, &"tabIndex".into(), &0.into());
-    STATE.with_borrow_mut(|state| state.overlay = Some((frame, back)));
+    STATE.with_borrow_mut(|state| state.overlay = Some((tenant.to_owned(), frame, back)));
 }
 
 fn close() {
-    if let Some((frame, back)) = STATE.with_borrow_mut(|state| state.overlay.take()) {
+    if let Some((_, frame, back)) = STATE.with_borrow_mut(|state| state.overlay.take()) {
         frame.remove();
         back.remove();
     }

@@ -3002,43 +3002,92 @@ impl WorldRuntime {
         self.place_player(pos, yaw)
     }
 
-    /// The Grid's arch to a hosted zone, when the page has one
-    /// ([`Self::set_hosted_portal`]); none elsewhere.
+    /// The Grid's hosted arches with their gates, when the page has any
+    /// ([`Self::set_hosted_portals`]); none elsewhere.
+    #[must_use]
+    pub fn hosted_gates(&self) -> Vec<(&super::gate::HostedPortal, super::Gate)> {
+        if !(self.is_bare() && self.is_plaza()) {
+            return Vec::new();
+        }
+        let layout = crate::blocks::Layout::grid();
+        self.zone_state
+            .hosted
+            .iter()
+            .map(|p| (p, super::Gate::hosted_at(&layout, p.site)))
+            .collect()
+    }
+
+    /// The Grid's first hosted arch, when the page has one; none elsewhere.
     #[must_use]
     pub fn hosted_gate(&self) -> Option<super::Gate> {
-        (self.is_bare() && self.is_plaza() && self.zone_state.hosted.is_some())
-            .then(|| super::Gate::hosted(&crate::blocks::Layout::grid()))
+        self.hosted_gates().first().map(|(_, gate)| *gate)
     }
 
-    /// Puts an arch to a hosted zone on the Grid, or removes it.
+    /// The gate of the hosted arch to `tenant`.
+    #[must_use]
+    pub fn hosted_gate_of(&self, tenant: &str) -> Option<super::Gate> {
+        self.hosted_gates()
+            .into_iter()
+            .find(|(p, _)| p.tenant == tenant)
+            .map(|(_, gate)| gate)
+    }
+
+    /// Puts the hosted arches on the Grid (an empty list removes them).
+    pub fn set_hosted_portals(&mut self, portals: Vec<super::gate::HostedPortal>) {
+        self.zone_state.hosted = portals;
+        self.zone_state.hosted_crossed = None;
+        self.zone_state.hosted_last = None;
+    }
+
+    /// Puts one arch to a hosted zone on the Grid, or removes them all.
     pub fn set_hosted_portal(&mut self, portal: Option<super::gate::HostedPortal>) {
-        self.zone_state.hosted = portal;
-        self.zone_state.hosted_crossed = false;
+        self.set_hosted_portals(portal.into_iter().collect());
     }
 
-    /// How far the player stands from the hosted arch, m, for a page that
-    /// fetches the zone before the player reaches it.
+    /// How far the player stands from the nearest hosted arch, m.
     #[must_use]
     pub fn hosted_distance(&self) -> Option<f32> {
-        let gate = self.hosted_gate()?;
+        self.hosted_distances()
+            .into_iter()
+            .map(|(_, d)| d)
+            .min_by(f32::total_cmp)
+    }
+
+    /// How far the player stands from each hosted arch, m, by tenant, for a
+    /// page that fetches a zone before the player reaches its arch.
+    #[must_use]
+    pub fn hosted_distances(&self) -> Vec<(String, f32)> {
         let feet = self.player.pos;
-        Some(glam::Vec2::new(feet.x - gate.at.x, feet.z - gate.at.z).length())
+        self.hosted_gates()
+            .into_iter()
+            .map(|(p, gate)| {
+                (
+                    p.tenant.clone(),
+                    glam::Vec2::new(feet.x - gate.at.x, feet.z - gate.at.z).length(),
+                )
+            })
+            .collect()
     }
 
-    /// The hosted zone, once per walk through its arch. The page opens it
-    /// and, on return, calls [`Self::return_from_hosted`].
+    /// The hosted zone whose arch was walked through, once per walk. The
+    /// page opens it and, on return, calls [`Self::return_from_hosted`].
     pub fn take_hosted_crossing(&mut self) -> Option<super::gate::HostedPortal> {
-        std::mem::take(&mut self.zone_state.hosted_crossed)
-            .then(|| self.zone_state.hosted.clone())
-            .flatten()
+        let i = self.zone_state.hosted_crossed.take()?;
+        self.zone_state.hosted.get(i).cloned()
     }
 
-    /// Puts the player back in front of the hosted arch, facing away.
+    /// Puts the player back in front of the hosted arch they last walked
+    /// through (the first when none), facing away.
     ///
     /// # Errors
     /// The Grid has no hosted arch, or the player cannot be placed.
     pub fn return_from_hosted(&mut self) -> Result<(), String> {
-        let gate = self.hosted_gate().ok_or("The Grid has no hosted arch")?;
+        let i = self.zone_state.hosted_last.unwrap_or(0);
+        let gate = self
+            .hosted_gates()
+            .get(i)
+            .map(|(_, gate)| *gate)
+            .ok_or("The Grid has no hosted arch")?;
         let (pos, yaw) = gate.front();
         self.zone_state.gate_cooldown = super::gate::COOLDOWN;
         self.place_player(pos, yaw)
@@ -3149,7 +3198,7 @@ impl WorldRuntime {
             if let Some(gate) = self.ritual_gate() {
                 mesh.extend(&gate.mesh(ZoneId::Plaza, super::gate::RITUAL_SIGN, elapsed));
             }
-            if let (Some(gate), Some(hosted)) = (self.hosted_gate(), &self.zone_state.hosted) {
+            for (hosted, gate) in self.hosted_gates() {
                 mesh.extend(&gate.mesh(ZoneId::Plaza, &hosted.sign, elapsed));
             }
             return mesh;
@@ -3193,13 +3242,15 @@ impl WorldRuntime {
         }
         let to = self.player.pos;
         if self.is_plaza() {
-            if self
-                .hosted_gate()
-                .is_some_and(|gate| gate.crossed(from, to))
+            if let Some(i) = self
+                .hosted_gates()
+                .iter()
+                .position(|(_, gate)| gate.crossed(from, to))
             {
                 self.cancel_navigation();
                 self.doors.cancel_transient();
-                self.zone_state.hosted_crossed = true;
+                self.zone_state.hosted_crossed = Some(i);
+                self.zone_state.hosted_last = Some(i);
                 self.zone_state.gate_cooldown = super::gate::COOLDOWN;
                 return;
             }

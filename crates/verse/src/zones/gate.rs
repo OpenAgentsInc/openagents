@@ -52,10 +52,18 @@ pub const GRID_LAGRANGE2_AT: [f64; 2] = [-20.0, 19.0];
 /// the side arches and the blocks before reaching it. Shown only when the
 /// desktop has a pinned chamber to join ([`crate::ritual`]). Side, forward, m.
 pub const GRID_RITUAL_AT: [f64; 2] = [0.0, 26.0];
-/// The Grid's arch to a hosted zone in the same frame: the Lagrange 2
-/// arch's mirror image, on the dominoes' side and farther out, clear of the
-/// blocks, the pillar, and the other arches' approaches. Side, forward, m.
+/// The Grid's first arch to a hosted zone in the same frame (THE ICE CREAM
+/// MAN's): the Lagrange 2 arch's mirror image, on the dominoes' side and
+/// farther out, clear of the blocks, the pillar, and the other arches'
+/// approaches. Side, forward, m.
 pub const GRID_HOSTED_AT: [f64; 2] = [20.0, 19.0];
+/// THE HAUNTED HOUSE's arch, 7 m outboard of the first hosted arch, because
+/// both are horror games. Side, forward, m.
+pub const GRID_HAUNT_AT: [f64; 2] = [27.0, 19.0];
+/// How far apart further hosted arches stand, outboard of the last, m.
+pub const HOSTED_SPACING: f64 = 7.0;
+/// The most hosted arches the Grid shows.
+pub const MAX_HOSTED: usize = 6;
 /// How near the hosted arch a page starts fetching the zone's first play,
 /// m: a few seconds' walk.
 pub const HOSTED_PREFETCH: f32 = 24.0;
@@ -76,22 +84,113 @@ pub const COOLDOWN: f32 = 1.0;
 /// A zone hosted on livehost that the Grid has an arch to: a tenant whose
 /// page the application opens when the player walks through
 /// (`docs/verse/ice-cream-man-live.md`). The world draws the arch and says
-/// when it is crossed; it never loads the zone itself.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// when it is crossed; it never loads the zone itself. The Grid takes a
+/// list of them as data (tenant, sign, site), so an arch can be added
+/// without a new build.
+#[derive(Clone, Debug, PartialEq)]
 pub struct HostedPortal {
     /// The livehost tenant, such as `icecream`.
     pub tenant: String,
     /// The arch's lettering.
     pub sign: String,
+    /// Where it stands: side, forward, m, in the frame the Grid's other
+    /// arches use.
+    pub site: [f64; 2],
 }
 
+/// The arches the Grid knows by tenant: their lettering and site. Others
+/// get their tenant as lettering and the next free site.
+pub const KNOWN_HOSTED: [(&str, &str, [f64; 2]); 2] = [
+    ("icecream", "ICE CREAM MAN", GRID_HOSTED_AT),
+    ("haunt", "HAUNTED HOUSE", GRID_HAUNT_AT),
+];
+
 impl HostedPortal {
-    /// A portal to `tenant` lettered `sign`.
+    /// A portal to `tenant` lettered `sign`, at its known site or the
+    /// first hosted arch's.
     ///
     /// # Errors
     /// The tenant isn't a livehost name, or the sign has letters the arch
     /// can't draw or is longer than 16.
     pub fn new(tenant: &str, sign: &str) -> Result<Self, String> {
+        let site = KNOWN_HOSTED
+            .iter()
+            .find(|(t, _, _)| *t == tenant)
+            .map_or(GRID_HOSTED_AT, |(_, _, site)| *site);
+        Self::at(tenant, sign, site)
+    }
+
+    /// The lettering an arch to `tenant` has when the page names none.
+    #[must_use]
+    pub fn default_sign(tenant: &str) -> String {
+        KNOWN_HOSTED
+            .iter()
+            .find(|(t, _, _)| *t == tenant)
+            .map_or_else(
+                || tenant.replace('-', " ").to_ascii_uppercase(),
+                |(_, sign, _)| (*sign).to_owned(),
+            )
+    }
+
+    /// The arches a page asks for, in order: each tenant at its known site,
+    /// or outboard of the last arch, [`HOSTED_SPACING`] apart. `signs`
+    /// letters them in order where given. Duplicates and names that aren't
+    /// tenants are dropped (and named in the second list); at most
+    /// [`MAX_HOSTED`].
+    #[must_use]
+    pub fn list(tenants: &[String], signs: &[String]) -> (Vec<Self>, Vec<String>) {
+        let mut out: Vec<Self> = Vec::new();
+        let mut refused = Vec::new();
+        for (i, tenant) in tenants.iter().enumerate() {
+            let tenant = tenant.trim();
+            if tenant.is_empty() || out.iter().any(|p| p.tenant == tenant) {
+                continue;
+            }
+            if out.len() >= MAX_HOSTED {
+                refused.push(format!(
+                    "{tenant}: the Grid shows at most {MAX_HOSTED} hosted arches"
+                ));
+                continue;
+            }
+            let sign = signs
+                .get(i)
+                .filter(|s| !s.trim().is_empty())
+                .cloned()
+                .unwrap_or_else(|| Self::default_sign(tenant));
+            let known = KNOWN_HOSTED.iter().find(|(t, _, _)| *t == tenant);
+            let site = match known {
+                Some((_, _, site)) if !out.iter().any(|p| p.site == *site) => *site,
+                _ => {
+                    // Outboard of the farthest arch so far.
+                    let side = out
+                        .iter()
+                        .map(|p| p.site[0])
+                        .chain(KNOWN_HOSTED.iter().map(|(_, _, s)| s[0]))
+                        .fold(GRID_HOSTED_AT[0], f64::max);
+                    let taken = |x: f64| out.iter().any(|p| (p.site[0] - x).abs() < 1.0);
+                    let mut x = side + HOSTED_SPACING;
+                    while taken(x) {
+                        x += HOSTED_SPACING;
+                    }
+                    [x, GRID_HOSTED_AT[1]]
+                }
+            };
+            match Self::at(tenant, &sign, site) {
+                Ok(portal) => out.push(portal),
+                Err(error) => refused.push(error),
+            }
+        }
+        (out, refused)
+    }
+
+    /// A portal to `tenant` lettered `sign` at `site`.
+    ///
+    /// # Errors
+    /// As [`Self::new`], or the site isn't a finite point.
+    pub fn at(tenant: &str, sign: &str, site: [f64; 2]) -> Result<Self, String> {
+        if !site.iter().all(|v| v.is_finite()) {
+            return Err(format!("{tenant}'s arch needs a real place"));
+        }
         let name_ok = !tenant.is_empty()
             && tenant.len() <= 64
             && tenant
@@ -112,6 +211,7 @@ impl HostedPortal {
         Ok(Self {
             tenant: tenant.into(),
             sign,
+            site,
         })
     }
 }
@@ -143,11 +243,18 @@ impl Gate {
         Self::on_grid(layout, GRID_LAGRANGE2_AT)
     }
 
-    /// The Grid's arch to a hosted zone, placed and turned as
+    /// The Grid's first arch to a hosted zone, placed and turned as
     /// [`Self::grid`].
     #[must_use]
     pub fn hosted(layout: &crate::blocks::Layout) -> Self {
         Self::on_grid(layout, GRID_HOSTED_AT)
+    }
+
+    /// A hosted arch at `site` (side, forward), placed and turned as
+    /// [`Self::grid`].
+    #[must_use]
+    pub fn hosted_at(layout: &crate::blocks::Layout, site: [f64; 2]) -> Self {
+        Self::on_grid(layout, site)
     }
 
     /// The Grid's RITUAL arch to the pinned chamber, placed and turned as
@@ -403,6 +510,111 @@ mod tests {
         }
         assert!(gate.at.x.abs() < crate::world::HALF - 5.0);
         assert!(gate.at.z.abs() < crate::world::HALF - 5.0);
+    }
+
+    /// The distance from `p` to the segment `a`-`b`, on the ground.
+    fn off_line(p: Vec3, a: Vec3, b: Vec3) -> f32 {
+        let (p, a, b) = (p.with_y(0.0), a.with_y(0.0), b.with_y(0.0));
+        let ab = b - a;
+        let t = ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0);
+        p.distance(a + ab * t)
+    }
+
+    #[test]
+    fn the_haunted_house_arch_stands_beside_ice_cream_man_with_both_approaches_clear() {
+        let layout = crate::blocks::Layout::grid();
+        let haunt = Gate::hosted_at(&layout, GRID_HAUNT_AT);
+        let ice = Gate::hosted(&layout);
+        let spawn = crate::world::SPAWN;
+        for gate in [haunt, ice] {
+            // Faces the spawn, lettered side toward it.
+            assert!(gate.local(spawn).z < -8.0);
+            assert!(gate.local(spawn).x.abs() < 0.01);
+            let ball = crate::ball::Ball::new();
+            let world = ball.world();
+            let blocks = ball.blocks();
+            let ball_at = ball.body().pos.as_vec3();
+            assert!(ball_at.with_y(0.0).distance(gate.at) - crate::ball::RADIUS as f32 > 6.0);
+            for &id in blocks.cubes().iter().chain(blocks.dominoes()) {
+                let p = world[id].pos.as_vec3().with_y(0.0);
+                assert!(p.distance(gate.at) > 5.0, "{p} is near the arch");
+                // Nothing on the straight walk in from the spawn.
+                assert!(off_line(p, spawn, gate.at) > 1.0, "{p} is on the way");
+            }
+            for (center, radius) in [blocks.stack_pool(), blocks.domino_pool()] {
+                assert!(center.with_y(0.0).distance(gate.at) - radius > 1.0);
+            }
+            let pillar = crate::pillar::AT.as_vec3().with_y(0.0);
+            assert!(pillar.distance(gate.at) > 6.0);
+            // The last 8 m in front of the arch are clear of it.
+            let approach = gate.at + (gate.front().0 - gate.at).normalize() * 8.0;
+            assert!(off_line(pillar, approach, gate.at) > 4.0);
+            for wall in crate::world::GymSite::GRID.walls() {
+                let nearest = Vec3::new(
+                    gate.at.x.clamp(wall.min[0], wall.max[0]),
+                    0.0,
+                    gate.at.z.clamp(wall.min[1], wall.max[1]),
+                );
+                assert!(nearest.distance(gate.at) > 14.0, "{wall:?}");
+            }
+            for other in [
+                Gate::grid(&layout),
+                Gate::everglade(&layout),
+                Gate::ritual(&layout),
+                Gate::lagrange2(&layout),
+            ] {
+                assert!(other.at.distance(gate.at) > 10.0, "{}", other.at);
+                assert!(gate.front().0.distance(other.at) > 8.0);
+            }
+            assert!(gate.at.x.abs() < crate::world::HALF - 5.0);
+            assert!(gate.at.z.abs() < crate::world::HALF - 5.0);
+        }
+        // Side by side, and each one's walk in from the spawn passes clear
+        // of the other's pillars.
+        let apart = haunt.at.distance(ice.at);
+        assert!((6.0..8.0).contains(&apart), "{apart}");
+        let pillars = |g: Gate| {
+            let side = g.rotation() * Vec3::X;
+            [
+                g.at + side * (OPENING_HALF + 0.4),
+                g.at - side * (OPENING_HALF + 0.4),
+            ]
+        };
+        for (gate, other) in [(haunt, ice), (ice, haunt)] {
+            for pillar in pillars(other) {
+                let d = off_line(pillar, spawn, gate.front().0);
+                assert!(d > 1.5, "{} m from {pillar}", d);
+                assert!(off_line(pillar, gate.front().0, gate.at) > 1.5);
+            }
+        }
+    }
+
+    #[test]
+    fn a_page_can_ask_for_several_hosted_arches_as_data() {
+        let names = |list: &[&str]| list.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+        let (arches, refused) = HostedPortal::list(&names(&["icecream", "haunt"]), &[]);
+        assert!(refused.is_empty());
+        assert_eq!(arches[0].sign, "ICE CREAM MAN");
+        assert_eq!(arches[0].site, GRID_HOSTED_AT);
+        assert_eq!(arches[1].sign, "HAUNTED HOUSE");
+        assert_eq!(arches[1].site, GRID_HAUNT_AT);
+        // One arch, as before.
+        let (one, _) = HostedPortal::list(&names(&["icecream"]), &names(&["Ice Cream Man"]));
+        assert_eq!(
+            one,
+            vec![HostedPortal::new("icecream", "ICE CREAM MAN").unwrap()]
+        );
+        // A new tenant stands outboard of the known ones; duplicates and
+        // bad names drop out.
+        let (more, refused) =
+            HostedPortal::list(&names(&["haunt", "my-game", "haunt", "Bad Name"]), &[]);
+        assert_eq!(more.len(), 2);
+        assert_eq!(more[1].sign, "MY GAME");
+        assert_eq!(
+            more[1].site,
+            [GRID_HAUNT_AT[0] + HOSTED_SPACING, GRID_HOSTED_AT[1]]
+        );
+        assert_eq!(refused.len(), 1);
     }
 
     #[test]

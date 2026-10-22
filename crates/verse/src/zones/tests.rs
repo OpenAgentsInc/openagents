@@ -591,6 +591,61 @@ fn a_hosted_arch_hands_its_tenant_over_once_and_says_how_near_it_is() {
 }
 
 #[test]
+fn two_hosted_arches_each_hand_over_their_own_tenant_and_return_in_front_of_it() {
+    use super::gate::HostedPortal;
+    let names = ["icecream".to_owned(), "haunt".to_owned()];
+    let (arches, _) = HostedPortal::list(&names, &[]);
+    let mut runtime = WorldRuntime::bare();
+    let bare = runtime.grid_portal_mesh().lines.len();
+    runtime.set_hosted_portals(arches.clone());
+    let one = {
+        let mut r = WorldRuntime::bare();
+        r.set_hosted_portal(Some(arches[0].clone()));
+        r.grid_portal_mesh().lines.len()
+    };
+    assert!(runtime.grid_portal_mesh().lines.len() > one && one > bare);
+    let forward = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    for portal in &arches {
+        let gate = runtime.hosted_gate_of(&portal.tenant).unwrap();
+        let (front, away) = gate.front();
+        runtime
+            .place_player(front, away + std::f32::consts::PI)
+            .unwrap();
+        // Each arch says how near it is.
+        let near = runtime
+            .hosted_distances()
+            .into_iter()
+            .find(|(t, _)| t == &portal.tenant)
+            .unwrap()
+            .1;
+        assert!(near < super::gate::HOSTED_PREFETCH && near > 3.0);
+        let mut crossing = None;
+        for _ in 0..240 {
+            runtime.tick(&forward, 1.0 / 60.0);
+            if let Some(found) = runtime.take_hosted_crossing() {
+                crossing = Some(found);
+                break;
+            }
+        }
+        assert_eq!(crossing.as_ref(), Some(portal), "{}", portal.tenant);
+        // Back to the Grid puts you in front of this arch, not the other.
+        runtime.return_from_hosted().unwrap();
+        assert!(
+            runtime.player.pos.distance(front) < 0.5,
+            "{}",
+            portal.tenant
+        );
+        // Let the cooldown pass.
+        for _ in 0..90 {
+            runtime.tick(&InputState::default(), 1.0 / 60.0);
+        }
+    }
+}
+
+#[test]
 fn walking_through_the_grid_portal_enters_lagrange_2_and_flying_back_returns() {
     let mut runtime = WorldRuntime::bare();
     // Shown on every Grid: the factory is generated, not downloaded.

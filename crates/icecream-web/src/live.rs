@@ -22,6 +22,8 @@ use icecream_rules::{Game, Input, Tuning};
 use icecream_zone::chunk::{self, Part};
 use icecream_zone::{Objects, Update, Zone, object_url};
 use js_sys::{Function, Reflect, Uint8Array, WebAssembly};
+pub use live_web::{Pointer, transferred};
+use live_web::{fetch_all, fetch_text, js_error, now, url_of};
 use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::{JsCast, JsValue};
@@ -31,17 +33,6 @@ use wasm_bindgen_futures::{JsFuture, spawn_local};
 const STREAMING: usize = 4;
 /// The session storage key that carries a run across a shell reload.
 const CARRY_KEY: &str = "icecream.live.carry.v1";
-
-fn js_error(value: JsValue) -> String {
-    value
-        .as_string()
-        .or_else(|| {
-            value
-                .dyn_ref::<js_sys::Error>()
-                .map(|e| String::from(e.message()))
-        })
-        .unwrap_or_else(|| format!("{value:?}"))
-}
 
 /// The rules module of one manifest.
 pub struct Logic {
@@ -177,13 +168,6 @@ impl Logic {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
-struct Pointer {
-    manifest: String,
-    #[serde(default)]
-    seq: u64,
-}
-
 /// A version fetched and prepared, waiting for the next safe point.
 pub struct Ready {
     pub manifest: String,
@@ -236,50 +220,6 @@ pub struct Live {
     /// Kept so the stream stays open.
     _stream: web_sys::EventSource,
     _on_message: Closure<dyn FnMut(web_sys::MessageEvent)>,
-}
-
-fn now() -> f64 {
-    web_sys::window()
-        .and_then(|w| w.performance())
-        .map_or(0.0, |p| p.now())
-}
-
-async fn fetch_all(urls: &[String]) -> Result<Vec<Vec<u8>>, String> {
-    let window = web_sys::window().ok_or("no window")?;
-    // Start every request before waiting for any.
-    let requests: Vec<_> = urls
-        .iter()
-        .map(|url| JsFuture::from(window.fetch_with_str(url)))
-        .collect();
-    let mut bodies = Vec::new();
-    for (request, url) in requests.into_iter().zip(urls) {
-        let response: web_sys::Response = request
-            .await
-            .map_err(js_error)?
-            .dyn_into()
-            .map_err(js_error)?;
-        if !response.ok() {
-            return Err(format!("{url}: {}", response.status()));
-        }
-        bodies.push(JsFuture::from(response.array_buffer().map_err(js_error)?));
-    }
-    let mut out = Vec::new();
-    for body in bodies {
-        out.push(Uint8Array::new(&body.await.map_err(js_error)?).to_vec());
-    }
-    Ok(out)
-}
-
-async fn fetch_text(url: &str) -> Result<String, String> {
-    let bytes = fetch_all(&[url.to_owned()]).await?.remove(0);
-    String::from_utf8(bytes).map_err(|_| format!("{url} isn't text"))
-}
-
-fn url_of(objects: &Objects, path: &str) -> Result<String, String> {
-    objects
-        .get(path)
-        .map(|hash| object_url(path, hash))
-        .ok_or_else(|| format!("the manifest has no {path}"))
 }
 
 /// Fetches and prepares the version `pointer` names. With `old`, only what
@@ -571,68 +511,9 @@ impl Live {
     /// `note`'s fields: livehost's ack stream, which `icecream-live deploy
     /// --wait` and benchmarks read.
     pub fn ack(&self, kind: &str, mut note: serde_json::Value) {
-        let Some(window) = web_sys::window() else {
-            return;
-        };
-        note["tenant"] = self.tenant.clone().into();
-        note["manifest"] = self.manifest.clone().into();
-        note["seq"] = self.seq.into();
         note["logic_module"] = self.logic.hash.get(..12).unwrap_or_default().into();
-        note["kind"] = kind.into();
-        note["page_epoch_ms"] = js_sys::Date::now().into();
-        let init = web_sys::RequestInit::new();
-        init.set_method("POST");
-        init.set_body(&JsValue::from_str(&note.to_string()));
-        let _ = window.fetch_with_str_and_init("/_livehost/ack", &init);
+        live_web::ack(&self.tenant, &self.manifest, self.seq, kind, note);
     }
-}
-
-/// Bytes moved over the network for resources fetched since `since`
-/// (`performance.now()`) whose address ends with one of `urls` (all
-/// resources when `urls` is empty), from the browser's resource timing. A
-/// cache hit moves none.
-#[must_use]
-pub fn transferred(urls: &[String], since: f64) -> (f64, u32) {
-    let Some(performance) = web_sys::window().and_then(|w| w.performance()) else {
-        return (0.0, 0);
-    };
-    let entries = performance.get_entries_by_type("resource");
-    let mut bytes = 0.0;
-    let mut files = 0;
-    for entry in entries.iter() {
-        let name = Reflect::get(&entry, &"name".into())
-            .ok()
-            .and_then(|v| v.as_string())
-            .unwrap_or_default();
-        if !urls.is_empty() && !urls.iter().any(|u| name.ends_with(u.as_str())) {
-            continue;
-        }
-        let start = Reflect::get(&entry, &"startTime".into())
-            .ok()
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        if start < since {
-            continue;
-        }
-        let size = Reflect::get(&entry, &"transferSize".into())
-            .ok()
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0);
-        bytes += size;
-        if size > 0.0 {
-            files += 1;
-        }
-    }
-    if urls.is_empty() {
-        let navigation = performance.get_entries_by_type("navigation");
-        for entry in navigation.iter() {
-            bytes += Reflect::get(&entry, &"transferSize".into())
-                .ok()
-                .and_then(|v| v.as_f64())
-                .unwrap_or(0.0);
-        }
-    }
-    (bytes, files)
 }
 
 /// Milliseconds since the page started loading.

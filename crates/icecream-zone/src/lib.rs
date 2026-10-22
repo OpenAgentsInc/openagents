@@ -1,4 +1,5 @@
-//! The Ice Cream Man's hosted zone as data (`docs/verse/ice-cream-man-live.md`).
+//! A hosted zone as data (`docs/verse/ice-cream-man-live.md`): The Ice Cream
+//! Man's first, and The Haunted House's (`docs/verse/games/the-haunted-house.md`).
 //!
 //! The zone is a livehost tenant. Its manifest maps paths to content hashes,
 //! and `zone.json`, one of those paths, says what the paths are: the shell
@@ -8,7 +9,9 @@
 //! the Grid (`everglade-web`), and the deploy tool (`icecream-live`) share
 //! it, so they agree on what loads first and what a deploy changed.
 
+pub mod audio;
 pub mod chunk;
+pub mod image;
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -36,10 +39,17 @@ pub struct Zone {
     pub spawn: [f32; 2],
     /// The page, then the files it loads before anything else.
     pub shell: Vec<String>,
-    /// The rules as a WebAssembly module.
+    /// The rules as a WebAssembly module; empty for a zone whose rules are
+    /// in its shell.
+    #[serde(default)]
     pub logic: String,
-    /// The numbers a run plays by.
+    /// The numbers a run plays by; empty when the zone has none.
+    #[serde(default)]
     pub tuning: String,
+    /// Small data files needed before the first frame, such as a house
+    /// document's global settings.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data: Vec<String>,
     pub chunks: Vec<Chunk>,
     pub budget: Budget,
 }
@@ -55,6 +65,9 @@ pub struct Chunk {
     /// For a room, its index in the house.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub room: Option<usize>,
+    /// For an area, the asset chunks it draws with: they load with it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub needs: Vec<String>,
     /// Uncompressed bytes.
     pub bytes: u64,
 }
@@ -66,6 +79,19 @@ pub enum Kind {
     Room,
     /// A character model, needed before the first frame.
     Model,
+    /// A part of a house document (an area), placed like a room.
+    Area,
+    /// An asset an area draws with (a mesh, an image, or a sound); it
+    /// loads with the first area that needs it.
+    Asset,
+}
+
+impl Kind {
+    /// Whether chunks of this kind have a place and stream by distance.
+    #[must_use]
+    pub fn placed(self) -> bool {
+        matches!(self, Self::Room | Self::Area)
+    }
 }
 
 /// The first-play budget.
@@ -102,8 +128,12 @@ impl Zone {
     #[must_use]
     pub fn first_play(&self) -> Vec<String> {
         let mut paths: Vec<String> = self.shell.clone();
-        paths.push(self.logic.clone());
-        paths.push(self.tuning.clone());
+        for path in [&self.logic, &self.tuning] {
+            if !path.is_empty() {
+                paths.push(path.clone());
+            }
+        }
+        paths.extend(self.data.iter().cloned());
         paths.extend(
             self.chunks
                 .iter()
@@ -111,13 +141,37 @@ impl Zone {
                 .map(|c| c.path.clone()),
         );
         let spawn = self.spawn;
-        paths.extend(
-            self.rooms_by_distance(spawn)
-                .into_iter()
-                .take_while(|(d, _)| *d <= self.budget.near_m)
-                .map(|(_, c)| c.path.clone()),
-        );
+        let near: Vec<&Chunk> = self
+            .rooms_by_distance(spawn)
+            .into_iter()
+            .take_while(|(d, _)| *d <= self.budget.near_m)
+            .map(|(_, c)| c)
+            .collect();
+        paths.extend(near.iter().map(|c| c.path.clone()));
+        for chunk in near {
+            for need in &chunk.needs {
+                if !paths.contains(need) {
+                    paths.push(need.clone());
+                }
+            }
+        }
         paths
+    }
+
+    /// The asset chunks a placed chunk needs that aren't `loaded` yet.
+    #[must_use]
+    pub fn needs_of(&self, path: &str, loaded: &BTreeSet<String>) -> Vec<String> {
+        self.chunks
+            .iter()
+            .find(|c| c.path == path)
+            .map(|c| {
+                c.needs
+                    .iter()
+                    .filter(|n| !loaded.contains(*n))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// The rooms nearest `at` first, with their distances.
@@ -126,6 +180,7 @@ impl Zone {
         let mut rooms: Vec<(f32, &Chunk)> = self
             .chunks
             .iter()
+            .filter(|c| c.kind.placed())
             .filter_map(|c| c.at.map(|p| ((p[0] - at[0]).hypot(p[1] - at[1]), c)))
             .collect();
         rooms.sort_by(|a, b| a.0.total_cmp(&b.0));
@@ -195,7 +250,8 @@ pub struct Update {
 /// fetched again.
 #[must_use]
 pub fn update(zone: &Zone, old: &Objects, new: &Objects) -> Update {
-    let changed = |path: &str| new.get(path).is_some_and(|h| old.get(path) != Some(h));
+    let changed =
+        |path: &str| !path.is_empty() && new.get(path).is_some_and(|h| old.get(path) != Some(h));
     let mut update = Update {
         logic: changed(&zone.logic),
         tuning: changed(&zone.tuning),
@@ -296,6 +352,7 @@ mod tests {
             kind: Kind::Room,
             at: Some([x, 5.0]),
             room: Some(i),
+            needs: Vec::new(),
             bytes: 100,
         };
         Zone {
@@ -307,6 +364,7 @@ mod tests {
             shell: vec!["index.html".into(), "icecream_web_bg.wasm".into()],
             logic: "logic.wasm".into(),
             tuning: "tuning.json".into(),
+            data: Vec::new(),
             chunks: vec![
                 room(2, 25.0),
                 room(0, 5.0),
@@ -316,6 +374,7 @@ mod tests {
                     kind: Kind::Model,
                     at: None,
                     room: None,
+                    needs: Vec::new(),
                     bytes: 50,
                 },
             ],
@@ -394,6 +453,90 @@ mod tests {
         assert_eq!(report.total_bytes, 800);
         assert!(budget::check(&index, |_| Some(200), &all).is_err());
         assert!(budget::check(&index, |p| (p != "logic.wasm").then_some(1), &all).is_err());
+    }
+
+    #[test]
+    fn a_house_zone_loads_its_near_areas_with_their_assets() {
+        let area = |id: &str, z: f32, needs: &[&str]| Chunk {
+            path: format!("chunks/areas/{id}.json"),
+            kind: Kind::Area,
+            at: Some([8.0, z]),
+            room: None,
+            needs: needs.iter().map(|s| (*s).to_owned()).collect(),
+            bytes: 10,
+        };
+        let asset = |name: &str| Chunk {
+            path: name.into(),
+            kind: Kind::Asset,
+            at: None,
+            room: None,
+            needs: Vec::new(),
+            bytes: 10,
+        };
+        let zone = Zone {
+            schema: SCHEMA.into(),
+            tenant: "haunt".into(),
+            state_version: 0,
+            seed: 0,
+            spawn: [8.0, 4.0],
+            shell: vec!["templates/index.html".into()],
+            logic: String::new(),
+            tuning: String::new(),
+            data: vec!["house.json".into()],
+            chunks: vec![
+                area(
+                    "yard",
+                    10.0,
+                    &["chunks/meshes/tree.bin", "chunks/meshes/pumpkin.bin"],
+                ),
+                area(
+                    "hall",
+                    26.0,
+                    &["chunks/meshes/pumpkin.bin", "chunks/meshes/portrait.bin"],
+                ),
+                area("kitchen", 62.0, &["chunks/cards/cat.ici"]),
+                asset("chunks/meshes/tree.bin"),
+                asset("chunks/meshes/pumpkin.bin"),
+                asset("chunks/meshes/portrait.bin"),
+                asset("chunks/cards/cat.ici"),
+            ],
+            budget: Budget {
+                near_m: 24.0,
+                first_play_bytes: 1000,
+                first_play_ms: 1500,
+            },
+        };
+        assert_eq!(
+            zone.first_play(),
+            [
+                "templates/index.html",
+                "house.json",
+                "chunks/areas/yard.json",
+                "chunks/areas/hall.json",
+                "chunks/meshes/tree.bin",
+                "chunks/meshes/pumpkin.bin",
+                "chunks/meshes/portrait.bin",
+            ]
+        );
+        // Assets never stream on their own; areas bring them.
+        assert_eq!(
+            zone.stream_order([8.0, 4.0], &BTreeSet::new()),
+            [
+                "chunks/areas/yard.json",
+                "chunks/areas/hall.json",
+                "chunks/areas/kitchen.json"
+            ]
+        );
+        assert_eq!(
+            zone.needs_of("chunks/areas/kitchen.json", &BTreeSet::new()),
+            ["chunks/cards/cat.ici"]
+        );
+        // A zone without logic or tuning never reports them changed.
+        let old = Objects::from([("house.json".into(), "a".into())]);
+        let new = Objects::from([("house.json".into(), "b".into())]);
+        let up = update(&zone, &old, &new);
+        assert!(!up.logic && !up.tuning);
+        assert_eq!(up.fetch, BTreeSet::from(["house.json".to_owned()]));
     }
 
     #[test]

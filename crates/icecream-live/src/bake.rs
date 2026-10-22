@@ -211,6 +211,7 @@ pub fn bake(sources: &Sources, shell: &Path, logic: &Path, out: &Path) -> Result
             kind: Kind::Room,
             at: Some([at.x, at.z]),
             room: Some(index),
+            needs: Vec::new(),
             bytes: size,
         });
     }
@@ -223,6 +224,7 @@ pub fn bake(sources: &Sources, shell: &Path, logic: &Path, out: &Path) -> Result
         shell: SHELL.iter().map(|s| (*s).to_owned()).collect(),
         logic: LOGIC.into(),
         tuning: "tuning.json".into(),
+        data: Vec::new(),
         chunks,
         budget: Budget {
             near_m: level.near_m,
@@ -243,6 +245,7 @@ fn model(path: &str, bytes: u64) -> Chunk {
         kind: Kind::Model,
         at: None,
         room: None,
+        needs: Vec::new(),
         bytes,
     }
 }

@@ -1002,9 +1002,10 @@ async fn run_grid(
     // The page opens a portal's zone itself: it says what loads first, and
     // refuses a zone this build can't open ([`crate::transit`]).
     runtime.defer_grid_portals(true);
-    // `?hosted=TENANT`: an arch to a zone hosted on this origin.
-    if let Some(portal) = crate::hosted::from_query(&window) {
-        runtime.set_hosted_portal(Some(portal));
+    // `?hosted=TENANT[,TENANT...]`: arches to zones hosted on this origin.
+    let hosted = crate::hosted::from_query(&window);
+    if !hosted.is_empty() {
+        runtime.set_hosted_portals(hosted);
     }
     runtime.interact_hint = verse::runtime::InteractHint::None;
     // `?at=X,Z` or `?at=X,Z,YAW` stands the player there, as on the
