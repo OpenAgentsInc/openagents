@@ -1493,3 +1493,20 @@ The prompt helper also supports `TOKENIZER_DIR --count MESSAGES_JSON` to count
 retained chat requests with the serving template, without running inference.
 Its original boundary generation remains byte-for-byte reproducible; malformed
 arguments return an error. Raw private request text stays outside the repository.
+
+### Three-placement answer quality and VM replacement (2026-10-22)
+
+The frozen G2 suite now passes on four single-GPU machines too: 5/6 runtime
+and 5/6 oracle tasks, all mandatory floors held, with every answer ending
+within 4096 tokens. All six token sequences, reasoning, and final text match
+the one-quad and two-dual runs. The shared `fib(186)` failure remains visible.
+See [the four-single result](verification/deepseek-v41-gates-2026-10-22/g2-candidate-06-four.json).
+
+The bounded private one-quad watcher also replaced a lost VM automatically.
+The old allocation stopped before the new allocation started; the replacement
+used a new provider identity and returned a fresh `391` with a normal stop.
+The interrupted request returned no answer after its 600-second budget and
+10-second relay allowance, as the current NIP-PYLON contract specifies. Both
+allocations were deleted when the test ended, with estimated compute cost
+$4.45. See [the replacement record](verification/deepseek-v41-gates-2026-10-22/one-quad-watcher-recovery.json).
+Numerical release acceptance remains pending.

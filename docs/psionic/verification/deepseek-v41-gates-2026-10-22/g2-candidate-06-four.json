@@ -1,0 +1,222 @@
+{
+ "schema": "psionic.deepseek_v41.g2_v2_report.v1",
+ "issue": 12405,
+ "suite_sha256": "aa3b4a3c37a3f5f70e805e0589d1e3bb348f9d177f42ecbf45a878e3f79c6da2",
+ "checker_sha256": "a823346420d9be7974cfaf68203ae890abe1d12ffb4f9c27e350fbddf68a165c",
+ "answers_sha256": "556722d4a4140a4910a3051dd93a3dd0b17af194448e54b98b245cebf597c5ac",
+ "source": {
+  "runtime": "psionic-v41-stage/1+cuda",
+  "profile": "cuda-fp8-mma-tp8-sm_120",
+  "stage_bundle_sha256": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+  "stage_executable_sha256": "52f389509cc3afe67c529a1a7b44286c6ef31bafec79910dd5d24df250d61c48",
+  "expected_bundle_sha256": "95184e4cad2467f2f462fdd71d86a70fbe2cdaf478759b7e9fa33785fae6699e",
+  "execution_config_sha256": [
+   "07649fd2bcb8580c8573ecd0f64332b4f1a70828fc095c0dd3dfb8d161fb7c6e",
+   "07649fd2bcb8580c8573ecd0f64332b4f1a70828fc095c0dd3dfb8d161fb7c6e",
+   "07649fd2bcb8580c8573ecd0f64332b4f1a70828fc095c0dd3dfb8d161fb7c6e",
+   "07649fd2bcb8580c8573ecd0f64332b4f1a70828fc095c0dd3dfb8d161fb7c6e"
+  ],
+  "launch": "pinned",
+  "manifest": "sha256:cd2f590c7e8dae9a3773777b6136bf9e9e63b4714626dbfbb47a59e8a555977b",
+  "oracle_manifest_sha256": "b70972e278421c5bd59c91363ccd51fbf75868ecf7085cab5296503a1cf9df4f",
+  "cap": 4096
+ },
+ "oracle_passes": 5,
+ "runtime_passes": 5,
+ "tasks": 6,
+ "missing": [],
+ "floor_held": true,
+ "passed": true,
+ "rows": [
+  {
+   "case": "g2-p1-sky",
+   "oracle_passed": true,
+   "runtime_passed": true,
+   "runtime_must_pass_held": true,
+   "oracle_checks": [
+    {
+     "check": "sentences_at_most",
+     "passed": true,
+     "detail": "2 sentences",
+     "must_pass": false,
+     "known_shared_failure": null
+    },
+    {
+     "check": "contains_all",
+     "passed": true,
+     "detail": "missing [], found ['wavelength', 'shorter', 'blue light']",
+     "must_pass": false,
+     "known_shared_failure": null
+    }
+   ],
+   "runtime_checks": [
+    {
+     "check": "sentences_at_most",
+     "passed": true,
+     "detail": "2 sentences",
+     "must_pass": false,
+     "known_shared_failure": null
+    },
+    {
+     "check": "contains_all",
+     "passed": true,
+     "detail": "missing [], found ['wavelength', 'shorter', 'blue light']",
+     "must_pass": false,
+     "known_shared_failure": null
+    }
+   ],
+   "oracle_tokens": 122,
+   "runtime_tokens": 99,
+   "same_ids": false
+  },
+  {
+   "case": "g2-p2-fib",
+   "oracle_passed": false,
+   "runtime_passed": false,
+   "runtime_must_pass_held": true,
+   "oracle_checks": [
+    {
+     "check": "rust_tests",
+     "passed": true,
+     "detail": "all cases hold",
+     "must_pass": true,
+     "known_shared_failure": null
+    },
+    {
+     "check": "rust_tests",
+     "passed": false,
+     "detail": "cases [0] failed",
+     "must_pass": false,
+     "known_shared_failure": "the oracle's own loop returns None at 186"
+    }
+   ],
+   "runtime_checks": [
+    {
+     "check": "rust_tests",
+     "passed": true,
+     "detail": "all cases hold",
+     "must_pass": true,
+     "known_shared_failure": null
+    },
+    {
+     "check": "rust_tests",
+     "passed": false,
+     "detail": "cases [0] failed",
+     "must_pass": false,
+     "known_shared_failure": "the oracle's own loop returns None at 186"
+    }
+   ],
+   "oracle_tokens": 268,
+   "runtime_tokens": 269,
+   "same_ids": false
+  },
+  {
+   "case": "g2-gcd",
+   "oracle_passed": true,
+   "runtime_passed": true,
+   "runtime_must_pass_held": true,
+   "oracle_checks": [
+    {
+     "check": "rust_tests",
+     "passed": true,
+     "detail": "all cases hold",
+     "must_pass": true,
+     "known_shared_failure": null
+    }
+   ],
+   "runtime_checks": [
+    {
+     "check": "rust_tests",
+     "passed": true,
+     "detail": "all cases hold",
+     "must_pass": true,
+     "known_shared_failure": null
+    }
+   ],
+   "oracle_tokens": 67,
+   "runtime_tokens": 67,
+   "same_ids": true
+  },
+  {
+   "case": "g2-speed",
+   "oracle_passed": true,
+   "runtime_passed": true,
+   "runtime_must_pass_held": true,
+   "oracle_checks": [
+    {
+     "check": "last_line_exact",
+     "passed": true,
+     "detail": "last line '72'",
+     "must_pass": true,
+     "known_shared_failure": null
+    }
+   ],
+   "runtime_checks": [
+    {
+     "check": "last_line_exact",
+     "passed": true,
+     "detail": "last line '72'",
+     "must_pass": true,
+     "known_shared_failure": null
+    }
+   ],
+   "oracle_tokens": 49,
+   "runtime_tokens": 58,
+   "same_ids": false
+  },
+  {
+   "case": "g2-json-moon",
+   "oracle_passed": true,
+   "runtime_passed": true,
+   "runtime_must_pass_held": true,
+   "oracle_checks": [
+    {
+     "check": "json_only",
+     "passed": true,
+     "detail": "fields hold",
+     "must_pass": true,
+     "known_shared_failure": null
+    }
+   ],
+   "runtime_checks": [
+    {
+     "check": "json_only",
+     "passed": true,
+     "detail": "fields hold",
+     "must_pass": true,
+     "known_shared_failure": null
+    }
+   ],
+   "oracle_tokens": 15,
+   "runtime_tokens": 15,
+   "same_ids": true
+  },
+  {
+   "case": "g2-palindrome-py",
+   "oracle_passed": true,
+   "runtime_passed": true,
+   "runtime_must_pass_held": true,
+   "oracle_checks": [
+    {
+     "check": "python_tests",
+     "passed": true,
+     "detail": "all cases hold",
+     "must_pass": true,
+     "known_shared_failure": null
+    }
+   ],
+   "runtime_checks": [
+    {
+     "check": "python_tests",
+     "passed": true,
+     "detail": "all cases hold",
+     "must_pass": true,
+     "known_shared_failure": null
+    }
+   ],
+   "oracle_tokens": 45,
+   "runtime_tokens": 46,
+   "same_ids": false
+  }
+ ]
+}
