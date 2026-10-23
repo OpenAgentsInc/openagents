@@ -1658,3 +1658,45 @@ Observed per-GPU peaks are unchanged; median local data-socket RTTs are
 every worker process and GPU context absent. All three supported placements
 now pass this native direct-pipeline coverage; numerical confirmation and
 qualified public routing remain pending.
+
+### Completed CPU calibration and prospective rule 2.4, 2026-10-23
+
+The connected 2,726-token plain-BF16 CPU case is complete: both decode and
+replay retain all 33 distributions for its 32-token continuation, with no
+missing position or worker-stop error. The independent raw index recheck
+is complete and finds no local score/selection inconsistency. Its recording
+is retained under the calibration bucket's
+reference-cpu2-index-replacement prefix. The finished CPU allocation was
+deleted through its exact guard record at 02:11:53 UTC, costing $92.34.
+
+The [prospective policy review](verification/deepseek-v41-gates-2026-10-22/policy-2.4-review.json)
+verifies all 30 input bindings, seven distinct CPU cases, 334 distribution
+comparisons across 14 case/mode pairs, and eight original-input CPU stage
+records. Every CPU reference passes. Wrong weights, routing, RoPE, and
+stale cache still have 2, 1, 11, and 4 numerical failures, respectively;
+the cache control's separate malformed evidence does not substitute for
+those numerical failures. The repeated C4 run is excluded as a duplicate.
+All numerical fields remain identical to the CPU derivation.
+
+The scopes bind [one-quad](verification/deepseek-v41-gates-2026-10-22/policy-2.4-one-quad.json),
+[two-dual](verification/deepseek-v41-gates-2026-10-22/policy-2.4-two-dual.json), and
+[four-single](verification/deepseek-v41-gates-2026-10-22/policy-2.4-four-single.json)
+to their actual manifests and execution configurations. The prepared
+16-case confirmation corpus has 32 generated positions in both modes for
+each case: 1,056 matched distributions. Prefix cases are correlated; this
+is a finite engineering check, not 1,056 independent samples or a confidence
+bound for arbitrary prompts. Exact input files and fault reports are
+content-addressed in the [input bindings](verification/deepseek-v41-gates-2026-10-22/calibration-inputs.json).
+
+Two CPU-derived bounds are nonbinding at this scope: per-position total
+variation exceeds its mathematical maximum, and the index changed-row
+fraction is one. Case-mean and tail checks, log-probability error, router
+constraints, index score/regret and per-row substitution limits, and exact
+local consistency remain separate requirements. The frozen complete-answer
+suite remains a finite 5/6 comparison with its disclosed Fibonacci failure.
+These limits do not establish bit-exact equivalence or qualify Maya's
+different consumer-q model.
+
+The reviewed package is ready for a timestamped freeze before any fresh
+B200 allocation or capture. G1/G4 confirmation and qualified public G8
+routing remain outstanding.
