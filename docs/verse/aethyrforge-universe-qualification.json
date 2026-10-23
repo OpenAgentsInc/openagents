@@ -1,8 +1,8 @@
 {
   "schema": "openagents.verse.universe-qualification.v1",
   "issue": 12550,
-  "status": "code complete; native consumer browser qualification pending",
-  "native_source_revision": "35843c9437",
+  "status": "guest native-consumer browser checks pass; toolbar defect #12563 and real-provider qualification remain",
+  "native_source_revision": "15c76f91775b9f4f185c3c6a8b2132f5c67f12a4",
   "engine": {
     "release": "u101d1eed6d2aa9f11",
     "editor": "https://u101d1eed6d2aa9f11---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app",
@@ -25,8 +25,9 @@
     "focused_website_tests": 4,
     "public_wasm_check_and_build": true,
     "private_typecheck_and_vite_build": true,
-    "native_consumer_browser_complete": false,
-    "real_provider_sign_in_complete": false
+    "native_consumer_browser_complete": true,
+    "real_provider_sign_in_complete": false,
+    "native_consumer_build": true
   },
   "implemented": [
     "Rust guest/member entry and explicit Explore or Haunted House choice.",
@@ -37,10 +38,51 @@
     "Readable marketing and destination/back/retry links when graphics cannot open."
   ],
   "unfinished_checks": [
-    "Finish the fresh openagents-web-site consumer build and run scripts/check-verse-universe.mjs against these immutable origins.",
-    "Inspect actual desktop/mobile captures and verify pre-entry resource use, input lock, reduced motion, destination focus, house handoff, and map return.",
+    "Fix and recapture desktop/mobile toolbar overlap in #12563 before #12561 completes.",
     "Complete real test-account provider sign-in with the integrated journey in #12561; #12549 records the provider access step and popup reproducer."
   ],
   "source_rights": "The ported OpenAgents universe renderer keeps Apache-2.0 attribution and its license in private release notices. Other Aethyrforge implementation stays private. This does not change art rights.",
-  "activation": "Isolated immutable tags only. No production traffic shift, root homepage promotion, or launch schedule."
+  "activation": "Isolated immutable tags only. No production traffic shift, root homepage promotion, or launch schedule.",
+  "native_binary_sha256": "71a5210b53d431d7ff05619e298229bd877ce0129e550932c02a9d7b72cf6cad",
+  "browser": {
+    "qualification": "real native Rust pages and pinned hosted universe/house; guest checks only",
+    "browser": "155.0.8059.85",
+    "release": "u101d1eed6d2aa9f11",
+    "no_engine_or_microphone_before_enter": true,
+    "centered_entry_card": true,
+    "pre_choice_manual_input_locked": true,
+    "gentle_drift": true,
+    "reduced_motion_stops_drift": true,
+    "guest_explore_or_house_choice": true,
+    "company_world_locked": true,
+    "keyboard_destination_selection": true,
+    "post_choice_camera_input": true,
+    "mobile_layout": true,
+    "house_handoff_replaces_universe_frames": true,
+    "return_restores_map_selection_and_camera": true,
+    "unsupported_webgpu_keeps_links_and_back": true,
+    "private_requests_without_account_credentials": 82,
+    "real_provider_sign_in_complete": false,
+    "errors": []
+  },
+  "private_captures": [
+    {
+      "file": "universe-entry.png",
+      "sha256": "e38312dbc877484795b26c1d5bd3e5103ea4a7d7174d76429e55cd598ad2713d",
+      "reviewer": "Codex",
+      "human_review": false
+    },
+    {
+      "file": "universe-explore.png",
+      "sha256": "fc314c05455816f920638ab3aa4e0347dae5360e8571acd32824b443de8f5dee",
+      "reviewer": "Codex",
+      "human_review": false
+    },
+    {
+      "file": "universe-mobile-entry.png",
+      "sha256": "b2699f7bdca4bc045a029d1c7cf7452ab6d9aa30af6b3bdc1b8f3831413cb462",
+      "reviewer": "Codex",
+      "human_review": false
+    }
+  ]
 }

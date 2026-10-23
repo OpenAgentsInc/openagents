@@ -485,13 +485,14 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
-- #12550: universe implementation and isolated immutable release complete; 20
-  public host tests, four focused website tests, the public Wasm build, and the
-  private typecheck/build pass. [Qualification record](../verse/aethyrforge-universe-qualification.json)
-  lists the pending fresh-consumer browser run and desktop/mobile capture review.
-  Run `scripts/check-verse-universe.mjs` for guest entry, input lock, reduced motion,
-  keyboard destinations, house handoff, and map return. Real-provider completion
-  stays with #12561 and the #12549 entry in `NEEDS_OWNER.md`. No root promotion.
+- #12550: universe code, isolated release, 20 public host tests, four focused
+  website tests, private build, fresh native consumer, and real guest browser
+  checks pass. [Qualification record](../verse/aethyrforge-universe-qualification.json)
+  records input lock, drift/reduced motion, keyboard/camera control, mobile width,
+  house handoff/map return, unsupported-WebGPU links, and 82 credential-free
+  private requests. Codex capture review found toolbar overlap: fix and recapture
+  desktop/mobile in #12563 before #12561 completes. No human review is claimed.
+  Real-provider completion remains with #12561 and `NEEDS_OWNER.md`. No root promotion.
 
 - #12549: code complete: native scoped-grant checks (3), public host checks (18),
   private adapter checks (13), Wasm SDK, and the fresh website consumer pass.
