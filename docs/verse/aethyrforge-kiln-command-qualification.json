@@ -1,0 +1,160 @@
+{
+  "schema": "openagents.verse.kiln-command-qualification.v1",
+  "issue": 12573,
+  "date": "2026-10-23",
+  "public_kiln_source": "c20ac6e2ff8c9cbb1298300218e31632825107d1",
+  "host_sdk_source": "315138015de4056532254fbd078846c8744450eb",
+  "private_engine_source": "0a28e7d32ed8eee81b8924e60289e9651d096a26",
+  "focused_checks": {
+    "verse_tests": 7,
+    "browser_wasm_build": true,
+    "formatting": true,
+    "malformed_reply_recovery": true,
+    "strict_parser_and_workspace_boundary_preserved": true
+  },
+  "kiln_wasm": {
+    "sha256": "fc24e0573684303d73f9a5d75e3935f5d4db45aae3c569cc49680c4b0143bd36",
+    "bytes": 4395504,
+    "explicit_json_command_contract_present": true
+  },
+  "actual_model": {
+    "provider": "Flint on GCP",
+    "model": "flint@sha256:e2e253557466548339ec3ba3d866ef6cd60440dfc895de7717b81f3ba320f58f",
+    "answers": 2,
+    "candidate_legal": true,
+    "candidate_project_matches_observed_hosted_context": true,
+    "candidate_ready_status_observed_ms": 123428,
+    "measurement": "Driver start through world/Kiln setup and polling the second model answer; not first-frame presentation or model-only latency.",
+    "answer_ms": [
+      33201.98486328125,
+      79965.794921875
+    ],
+    "whole_agent_turn_completed": false,
+    "bounded_run_elapsed_ms": 369231,
+    "terminal_gap": "The loop remained Asking a Pylon; kilnAgentDone is set only after the loop exits. Cancellation was requested and the isolated browser closed. This timed-out run is not a whole-pipeline completion pass.",
+    "scope": "Actual current public Kiln Wasm and real relay/model; helper static fixture with an observed hosted-house context. Scoped Verse intentionally skips runner identity; the service key was not used."
+  },
+  "candidate_application": {
+    "passed": true,
+    "actual_model": true,
+    "actual_model_completed": false,
+    "retained_real_model_candidate": true,
+    "candidate_ready_status_observed_ms": 123428,
+    "terminal_service_gap": "The prior bounded run remained Asking a Pylon; its loop did not exit and no agent-done flag was observed.",
+    "synthetic_account_service": false,
+    "isolated_account_store": true,
+    "real_oauth_provider": false,
+    "bearer_injection": true,
+    "synthetic_recognition": false,
+    "microphone_checked": false,
+    "observed_hosted_project_context": true,
+    "helper_static_fixture": true,
+    "native_product_kiln_bootstrap_checked": false,
+    "native_grants_and_explicit_draft_compile_confirmation": true,
+    "hosted_private_renderer": true,
+    "pose_preserved": true,
+    "before_revision": 0,
+    "after_revision": 1,
+    "rendered": {
+      "bytes": 738527,
+      "width": 1440,
+      "height": 1000
+    },
+    "elapsed_ms": 7381,
+    "errors": [],
+    "session_retirement": 200
+  },
+  "native_calls": [
+    {
+      "route": "/api/v1/sessions",
+      "status": 200
+    },
+    {
+      "route": "/v1/verse/studio/session",
+      "status": 200
+    },
+    {
+      "route": "/v1/verse/studio/grants",
+      "status": 200
+    },
+    {
+      "route": "/v1/verse/studio/authorize",
+      "status": 200
+    },
+    {
+      "route": "/v1/verse/studio/grants",
+      "status": 200
+    },
+    {
+      "route": "/v1/verse/studio/authorize",
+      "status": 200
+    }
+  ],
+  "render_capture_review": "Codex-reviewed private full-size GPU capture; no human/Kiki approval.",
+  "sdk_closure": {
+    "sha256": "ecad4bd9e63ad54c48a7260458de1536b11738cd480af6e90d580a07e40d06d5",
+    "files": 16,
+    "includes_kiln_js_and_wasm": true,
+    "release_identity": "private source + full SDK closure + asset-set identity; changed Kiln bytes receive new release tags.",
+    "prior_bytes_and_tags_preserved": true
+  },
+  "replacement_runtimes": [
+    {
+      "profile": "house",
+      "role": "editor",
+      "release": "q61h58fea2816065441d",
+      "revision": "aethyrforge-editor-00023-rep",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-editor@sha256:b44a7e1d607bc53e6679e66a3b1cbd3ce4222e6d6d69203eb7b8bdbba8f6d6c2"
+    },
+    {
+      "profile": "house",
+      "role": "preview",
+      "release": "q61h58fea2816065441d",
+      "revision": "aethyrforge-preview-00023-lix",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-preview@sha256:d1fa4cbc7cd5df49ef38a38b0f55e50827b9afd902cae218c939b18fba246207"
+    },
+    {
+      "profile": "universe",
+      "role": "editor",
+      "release": "q61uede2132c04007498",
+      "revision": "aethyrforge-editor-00024-poq",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-editor@sha256:05a63034c909d18d698d31362319717d3959a80b1748e6a0b387c0160f601072"
+    },
+    {
+      "profile": "universe",
+      "role": "preview",
+      "release": "q61uede2132c04007498",
+      "revision": "aethyrforge-preview-00024-yup",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-preview@sha256:62151123021c00718d2f5be381d7fcf1cdfbbab6eb30c6dbfb818096534764b2"
+    },
+    {
+      "profile": "personal",
+      "role": "editor",
+      "release": "q61p0f1c25c9cbd3f5e8",
+      "revision": "aethyrforge-editor-00025-xud",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-editor@sha256:01d9a941c1093b1bf8960e975f6f0f482dee57e86cc804bd258e8b2e81de9f75"
+    },
+    {
+      "profile": "personal",
+      "role": "preview",
+      "release": "q61p0f1c25c9cbd3f5e8",
+      "revision": "aethyrforge-preview-00025-lit",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-preview@sha256:ca79a9029cc50e5d175ecbe9e7273c69f78b7cb8bc53c476ff8c9722c58094c8"
+    }
+  ],
+  "remaining_12561": [
+    "Qualify the new immutable profiles and the in-product Kiln bootstrap; investigate the outstanding request/terminal-service gap without claiming agent completion.",
+    "Finish actual isolated GCS save/open/shared-role checks and independent artifact cleanup.",
+    "Complete dirty-material device recovery, repeated-session resources, actual pointer-brush timing, integrated journey, and private printable Kiki review packet.",
+    "Real browser-provider login, microphone capture/ASR, and Kiki human review remain explicit pending checks."
+  ],
+  "private_evidence": [
+    "real-kiln-hosted-1/model.json",
+    "real-kiln-hosted-1/result.json",
+    "real-kiln-apply-1/result.json",
+    "real-kiln-apply-1/real-kiln-hosted.png",
+    "kiln-verse-contract-tests.log",
+    "kiln-12573-build.log"
+  ],
+  "production_traffic_changed": false
+}

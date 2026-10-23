@@ -485,6 +485,22 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12573: public `c20ac6e2ff` supplies the scoped Kiln JSON command shapes without
+  widening its parser, tools, or files. Seven focused tests and the browser Wasm
+  build pass. The real Flint run produced the legal 0.98 world-effect Draft with
+  matching observed hosted context after two answers; the six-minute run did not
+  finish its agent turn and is not a pipeline-completion pass. After cancellation,
+  that retained candidate passed explicit Draft/Compile confirmation through the
+  actual native grants service and pinned hosted renderer: four HTTP200 responses,
+  revision0→1, matching active source, preserved pose, full-size GPU capture, no
+  browser errors, and test-session retirement200. Identity/storage are isolated;
+  the static Kiln helper is not the in-product bootstrap or provider-login proof.
+  New runtime tags include the full SDK closure, including changed Kiln bytes;
+  prior tags and traffic are preserved. The terminal-service gap, current-profile
+  integration, storage cleanup, and remaining full journey continue in #12561.
+  [Kiln command evidence](../verse/aethyrforge-kiln-command-qualification.json).
+
+
 - #12572: the local public-API backend was not the production sidecar contract.
   No project permissions or storage-home logic changed. One focused regression
   covers legacy records, current viewer/editor/owner roles, original storage home,
