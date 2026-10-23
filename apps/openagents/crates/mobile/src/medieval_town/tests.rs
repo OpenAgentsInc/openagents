@@ -12,6 +12,9 @@ fn file(length: usize, count: usize) -> FileSpec {
         width: 1,
         height: 1,
         triangle_count: length / 36,
+        layers: 0,
+        mip_count: 0,
+        format: None,
     }
 }
 fn manifest() -> Manifest {
@@ -19,13 +22,18 @@ fn manifest() -> Manifest {
         schema: "native-town.v1".into(),
         vertices: file(96, 3),
         indices: file(12, 3),
-        atlas: file(4, 0),
+        instances: None,
+        atlas: Some(file(4, 0)),
+        texture_arrays: None,
         collision: file(36, 0),
         draws: vec![Draw {
             first_index: 0,
             index_count: 3,
             model: identity(),
             atlas_rect: [0., 0., 1., 1.],
+            material_layer: 0,
+            first_instance: 0,
+            instance_count: 1,
             uv_scale: unit_uv(),
             alpha_cutoff: 0.,
             bounds: Bounds {
@@ -56,14 +64,72 @@ fn manifest_limits_reject_invalid_indices_bounds_and_numbers() {
     m.vertices.stride = 48;
     assert!(validate_manifest(&m).is_err());
     m.vertices.stride = 32;
-    m.atlas.width = 4096;
+    m.atlas.as_mut().unwrap().width = 4096;
     assert!(validate_manifest(&m).is_err());
-    m.atlas.width = 1;
+    m.atlas.as_mut().unwrap().width = 1;
     m.draws[0].bounds.min[0] = 2.;
     assert!(validate_manifest(&m).is_err());
     assert!(decode_floats(&f32::NAN.to_le_bytes()).is_err());
     assert!(decode_floats(&[1, 2, 3]).is_err());
 }
+#[test]
+fn material_arrays_require_matching_layers_complete_mips_and_linear_normal_maps() {
+    fn texture(format: &str, channels: usize) -> FileSpec {
+        let mut spec = file((16 + 4 + 1) * channels * 2, 0);
+        spec.width = 4;
+        spec.height = 4;
+        spec.layers = 2;
+        spec.mip_count = 3;
+        spec.format = Some(format.into());
+        spec
+    }
+    let mut m = manifest();
+    m.schema = "native-town.v2".into();
+    m.vertices.stride = 48;
+    m.vertices.byte_length = 144;
+    m.atlas = None;
+    m.texture_arrays = Some(TextureArraySpecs {
+        base_color: texture("rgba8unorm-srgb", 4),
+        normal: texture("rg8unorm", 2),
+        mra: texture("rgba8unorm", 4),
+    });
+    m.draws[0].material_layer = 1;
+    assert!(validate_manifest(&m).is_ok());
+    m.texture_arrays.as_mut().unwrap().normal.layers = 1;
+    assert!(validate_manifest(&m).is_err());
+    m.texture_arrays.as_mut().unwrap().normal.layers = 2;
+    m.texture_arrays.as_mut().unwrap().normal.mip_count = 2;
+    assert!(validate_manifest(&m).is_err());
+    m.texture_arrays.as_mut().unwrap().normal.mip_count = 3;
+    m.texture_arrays.as_mut().unwrap().normal.format = Some("rgba8unorm-srgb".into());
+    assert!(validate_manifest(&m).is_err());
+    m.texture_arrays.as_mut().unwrap().normal.format = Some("rg8unorm".into());
+    m.texture_arrays.as_mut().unwrap().normal.byte_length += 1;
+    assert!(validate_manifest(&m).is_err());
+    m.texture_arrays.as_mut().unwrap().normal.byte_length -= 1;
+    m.draws[0].material_layer = 2;
+    assert!(validate_manifest(&m).is_err());
+    m.draws[0].material_layer = 1;
+    assert!(validate_manifest(&m).is_ok());
+    let mut placements = file(112, 1);
+    placements.stride = 112;
+    placements.format = Some("float32x28-le".into());
+    m.instances = Some(placements);
+    m.draws.push(m.draws[0].clone());
+    assert!(
+        validate_manifest(&m).is_ok(),
+        "Two batches can reuse one source mesh"
+    );
+    m.draws[1].first_instance = 1;
+    assert!(validate_manifest(&m).is_err());
+    m.draws[1].first_instance = 0;
+    m.draws[1].instance_count = 0;
+    assert!(validate_manifest(&m).is_err());
+    m.draws[1].instance_count = 1;
+    m.instances.as_mut().unwrap().stride = 96;
+    assert!(validate_manifest(&m).is_err());
+}
+
 #[test]
 fn compressed_files_require_exact_decoded_length_and_hash() {
     use std::io::Write;
@@ -134,12 +200,7 @@ fn private_native_package_parses_and_walks_on_its_source_collision() {
     let manifest: Manifest = serde_json::from_slice(&bytes).unwrap();
     validate_manifest(&manifest).unwrap();
     let mut parts = Vec::new();
-    for spec in [
-        &manifest.vertices,
-        &manifest.indices,
-        &manifest.atlas,
-        &manifest.collision,
-    ] {
+    for spec in manifest.files() {
         let bytes = std::fs::read(root.join(&spec.url)).unwrap();
         assert_eq!(bytes.len(), spec.byte_length);
         assert_eq!(digest(&bytes), spec.sha256);
@@ -170,15 +231,15 @@ fn private_native_package_parses_and_walks_on_its_source_collision() {
     }
     let stopped = camera.position;
     assert!(
-        (2.2..2.5).contains(&stopped.x) && (27.0..28.0).contains(&stopped.z),
-        "The forecourt architecture did not stop the capsule: {stopped:?}"
+        (2.2..2.5).contains(&stopped.x) && (25.2..25.6).contains(&stopped.z),
+        "The restored town barrel did not stop the capsule: {stopped:?}"
     );
     for i in 300..360 {
         camera.update(&mesh, i as f64 / 60., 0., 1., 0., 0., false, false);
     }
     assert!(
         (camera.position - stopped).length() < 0.01,
-        "The capsule crossed the source wall: {:?}",
+        "The capsule crossed the source obstacle: {:?}",
         camera.position
     );
 }

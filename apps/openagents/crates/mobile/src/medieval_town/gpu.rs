@@ -1,7 +1,7 @@
 use super::{Camera, Mesh, Result, failed};
 use glam::{Mat4, Vec3, Vec4};
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -17,9 +17,15 @@ struct Completions {
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct FrameUniform {
     matrix: [[f32; 4]; 4],
+    inverse_matrix: [[f32; 4]; 4],
+    near_shadow: [[f32; 4]; 4],
+    far_shadow: [[f32; 4]; 4],
     eye: [f32; 4],
     sun: [f32; 4],
+    sun_color: [f32; 4],
+    ambient: [f32; 4],
     fog: [f32; 4],
+    settings: [f32; 4],
 }
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -27,6 +33,8 @@ struct DrawUniform {
     model: [f32; 16],
     rect: [f32; 4],
     uv: [f32; 4],
+    base_color: [f32; 4],
+    material: [f32; 4],
 }
 pub(super) struct Gpu {
     surface: wgpu::Surface<'static>,
@@ -37,6 +45,11 @@ pub(super) struct Gpu {
     indices: wgpu::Buffer,
     frame: wgpu::Buffer,
     frame_group: wgpu::BindGroup,
+    shadow_group: wgpu::BindGroup,
+    near_shadow: wgpu::TextureView,
+    far_shadow: wgpu::TextureView,
+    shadow_pipelines: [wgpu::RenderPipeline; 2],
+    cached_shadows: Option<[Mat4; 2]>,
     draw_groups: Vec<wgpu::BindGroup>,
     world: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
@@ -121,9 +134,16 @@ impl Gpu {
                 view_formats: vec![],
             };
             surface.configure(&device, &config);
+            let expanded;
+            let vertex_data = if mesh.vertex_stride == 32 {
+                expanded = expand_legacy_vertices(&mesh.vertices);
+                &expanded
+            } else {
+                &mesh.vertices
+            };
             let vertices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("Town vertices"),
-                contents: bytemuck::cast_slice(&mesh.vertices),
+                contents: bytemuck::cast_slice(vertex_data),
                 usage: wgpu::BufferUsages::VERTEX,
             });
             let indices = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -131,115 +151,203 @@ impl Gpu {
                 contents: bytemuck::cast_slice(&mesh.indices),
                 usage: wgpu::BufferUsages::INDEX,
             });
-            let atlas = device.create_texture(&wgpu::TextureDescriptor {
-                label: Some("Town atlas"),
-                size: wgpu::Extent3d {
+            let (base_view, normal_view, mra_view) = if let Some(arrays) = &mesh.texture_arrays {
+                (
+                    upload_array(
+                        &device,
+                        &queue,
+                        "Town base colors",
+                        &arrays.base_color,
+                        wgpu::TextureFormat::Rgba8UnormSrgb,
+                        4,
+                    ),
+                    upload_array(
+                        &device,
+                        &queue,
+                        "Town tangent normals",
+                        &arrays.normal,
+                        wgpu::TextureFormat::Rg8Unorm,
+                        2,
+                    ),
+                    upload_array(
+                        &device,
+                        &queue,
+                        "Town metallic roughness occlusion",
+                        &arrays.mra,
+                        wgpu::TextureFormat::Rgba8Unorm,
+                        4,
+                    ),
+                )
+            } else {
+                let atlas = super::TextureArray {
+                    bytes: mesh.atlas.clone(),
                     width: mesh.atlas_width,
                     height: mesh.atlas_height,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
-            });
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &atlas,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                &mesh.atlas,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(mesh.atlas_width * 4),
-                    rows_per_image: Some(mesh.atlas_height),
-                },
-                wgpu::Extent3d {
-                    width: mesh.atlas_width,
-                    height: mesh.atlas_height,
-                    depth_or_array_layers: 1,
-                },
-            );
-            let view = atlas.create_view(&Default::default());
+                    layers: 1,
+                    mip_count: 1,
+                };
+                let normal = super::TextureArray {
+                    bytes: vec![128, 128],
+                    width: 1,
+                    height: 1,
+                    layers: 1,
+                    mip_count: 1,
+                };
+                let mra = super::TextureArray {
+                    bytes: vec![0, 210, 255, 255],
+                    width: 1,
+                    height: 1,
+                    layers: 1,
+                    mip_count: 1,
+                };
+                (
+                    upload_array(
+                        &device,
+                        &queue,
+                        "Town legacy colors",
+                        &atlas,
+                        wgpu::TextureFormat::Rgba8UnormSrgb,
+                        4,
+                    ),
+                    upload_array(
+                        &device,
+                        &queue,
+                        "Town legacy normals",
+                        &normal,
+                        wgpu::TextureFormat::Rg8Unorm,
+                        2,
+                    ),
+                    upload_array(
+                        &device,
+                        &queue,
+                        "Town legacy roughness",
+                        &mra,
+                        wgpu::TextureFormat::Rgba8Unorm,
+                        4,
+                    ),
+                )
+            };
             let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-                label: Some("Town texture filtering"),
+                label: Some("Town anisotropic material filtering"),
+                address_mode_u: wgpu::AddressMode::Repeat,
+                address_mode_v: wgpu::AddressMode::Repeat,
                 mag_filter: wgpu::FilterMode::Linear,
                 min_filter: wgpu::FilterMode::Linear,
-                mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+                mipmap_filter: wgpu::MipmapFilterMode::Linear,
+                anisotropy_clamp: 8,
+                ..Default::default()
+            });
+            let near_shadow = make_shadow(&device, 2048, "Town near sun shadow");
+            let far_shadow = make_shadow(&device, 1024, "Town distant sun shadow");
+            let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                label: Some("Town shadow comparisons"),
+                compare: Some(wgpu::CompareFunction::LessEqual),
+                mag_filter: wgpu::FilterMode::Linear,
+                min_filter: wgpu::FilterMode::Linear,
                 ..Default::default()
             });
             let frame = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("Town camera"),
+                label: Some("Town camera and sunlight"),
                 size: std::mem::size_of::<FrameUniform>() as u64,
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
+            let global_entries = [
+                uniform_binding(0),
+                image_binding(1),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                image_binding(3),
+                image_binding(4),
+                shadow_binding(5),
+                shadow_binding(6),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 7,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                    count: None,
+                },
+            ];
             let globals = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: None,
+                label: Some("Town surface lighting layout"),
+                entries: &global_entries,
+            });
+            // Shadow passes do not bind their own depth attachment for sampling.
+            let shadow_globals =
+                device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Town shadow material layout"),
+                    entries: &global_entries[..3],
+                });
+            let instances = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Town shared instance transforms"),
+                contents: bytemuck::cast_slice(&mesh.instances),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+            let local = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Town material and instances"),
                 entries: &[
+                    uniform_binding(0),
                     wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::VERTEX,
                         ty: wgpu::BindingType::Buffer {
-                            ty: wgpu::BufferBindingType::Uniform,
+                            ty: wgpu::BufferBindingType::Storage { read_only: true },
                             has_dynamic_offset: false,
                             min_binding_size: None,
                         },
                         count: None,
                     },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 2,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
                 ],
             });
-            let local = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: None,
-                entries: &[wgpu::BindGroupLayoutEntry {
+            let frame_entries = [
+                wgpu::BindGroupEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
+                    resource: frame.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&base_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&normal_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&mra_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&near_shadow),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(&far_shadow),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 7,
+                    resource: wgpu::BindingResource::Sampler(&shadow_sampler),
+                },
+            ];
             let frame_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-                label: None,
+                label: Some("Town surface lighting"),
                 layout: &globals,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: frame.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::TextureView(&view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 2,
-                        resource: wgpu::BindingResource::Sampler(&sampler),
-                    },
-                ],
+                entries: &frame_entries,
             });
+            let shadow_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Town shadow materials"),
+                layout: &shadow_globals,
+                entries: &frame_entries[..3],
+            });
+            let mut materials: HashMap<[u8; 128], wgpu::BindGroup> = HashMap::new();
             let draw_groups = mesh
                 .draws
                 .iter()
@@ -247,21 +355,40 @@ impl Gpu {
                     let uniform = DrawUniform {
                         model: draw.model,
                         rect: draw.atlas_rect,
-                        uv: [draw.uv_scale[0], draw.uv_scale[1], draw.alpha_cutoff, 0.],
+                        uv: [
+                            draw.uv_scale[0],
+                            draw.uv_scale[1],
+                            draw.alpha_cutoff,
+                            draw.material_layer as f32,
+                        ],
+                        base_color: [1.; 4],
+                        material: [1.; 4],
                     };
+                    let key: [u8; 128] = bytemuck::bytes_of(&uniform).try_into().unwrap();
+                    if let Some(group) = materials.get(&key) {
+                        return group.clone();
+                    }
                     let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                         label: Some("Town material"),
                         contents: bytemuck::bytes_of(&uniform),
                         usage: wgpu::BufferUsages::UNIFORM,
                     });
-                    device.create_bind_group(&wgpu::BindGroupDescriptor {
-                        label: None,
+                    let group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                        label: Some("Town shared material"),
                         layout: &local,
-                        entries: &[wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: buffer.as_entire_binding(),
-                        }],
-                    })
+                        entries: &[
+                            wgpu::BindGroupEntry {
+                                binding: 0,
+                                resource: buffer.as_entire_binding(),
+                            },
+                            wgpu::BindGroupEntry {
+                                binding: 1,
+                                resource: instances.as_entire_binding(),
+                            },
+                        ],
+                    });
+                    materials.insert(key, group.clone());
+                    group
                 })
                 .collect();
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -273,9 +400,10 @@ impl Gpu {
                 label: Some("Town lighting and sky"),
                 source: wgpu::ShaderSource::Wgsl(include_str!("town.wgsl").into()),
             });
-            let attributes = wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2];
+            let attributes =
+                wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Float32x4];
             let buffers = [wgpu::VertexBufferLayout {
-                array_stride: 32,
+                array_stride: 48,
                 step_mode: wgpu::VertexStepMode::Vertex,
                 attributes: &attributes,
             }];
@@ -320,6 +448,51 @@ impl Gpu {
                     cache: None,
                 })
             };
+            let shadow_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Town directional shadows"),
+                bind_group_layouts: &[Some(&shadow_globals), Some(&local)],
+                immediate_size: 0,
+            });
+            let shadow_pipeline = |entry: &'static str| {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some(entry),
+                    layout: Some(&shadow_layout),
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: Some(entry),
+                        compilation_options: Default::default(),
+                        buffers: &buffers,
+                    },
+                    primitive: wgpu::PrimitiveState {
+                        cull_mode: None,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: wgpu::TextureFormat::Depth32Float,
+                        depth_write_enabled: Some(true),
+                        depth_compare: Some(wgpu::CompareFunction::LessEqual),
+                        stencil: Default::default(),
+                        bias: wgpu::DepthBiasState {
+                            constant: 1,
+                            slope_scale: 1.,
+                            clamp: 0.,
+                        },
+                    }),
+                    multisample: Default::default(),
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: Some("shadowFragment"),
+                        compilation_options: Default::default(),
+                        targets: &[],
+                    }),
+                    multiview_mask: None,
+                    cache: None,
+                })
+            };
+            let shadow_pipelines = [
+                shadow_pipeline("nearShadowVertex"),
+                shadow_pipeline("farShadowVertex"),
+            ];
             let world = pipeline(false);
             let sky = pipeline(true);
             let depth = make_depth(&device, width, height);
@@ -332,6 +505,11 @@ impl Gpu {
                 indices,
                 frame,
                 frame_group,
+                shadow_group,
+                near_shadow,
+                far_shadow,
+                shadow_pipelines,
+                cached_shadows: None,
                 draw_groups,
                 world,
                 sky,
@@ -429,16 +607,25 @@ impl Gpu {
             65f32.to_radians(),
             self.config.width as f32 / self.config.height as f32,
             0.07,
-            700.,
+            4000.,
         ) * Mat4::look_to_rh(camera.eye(), camera.direction(), Vec3::Y);
+        let sun = Vec3::new(-0.50, 0.78, -0.37).normalize();
+        let shadows = shadow_matrices(camera.eye(), mesh.spawn, sun);
         self.queue.write_buffer(
             &self.frame,
             0,
             bytemuck::bytes_of(&FrameUniform {
                 matrix: matrix.to_cols_array_2d(),
+                inverse_matrix: matrix.inverse().to_cols_array_2d(),
+                near_shadow: shadows[0].to_cols_array_2d(),
+                far_shadow: shadows[1].to_cols_array_2d(),
                 eye: camera.eye().extend(1.).to_array(),
-                sun: [-0.5, 0.8, -0.3, 0.],
-                fog: [45., 420., 0., 0.],
+                sun: sun.extend(1.).to_array(),
+                sun_color: [4.3, 3.95, 3.35, 1.],
+                ambient: [0.20, 0.26, 0.34, 1.],
+                // Light aerial perspective leaves the distant castle’s materials visible.
+                fog: [0.00045, 12., 0.012, 65.],
+                settings: [0.95, 0., 0., 0.],
             }),
         );
         let target = frame.texture.create_view(&Default::default());
@@ -449,6 +636,52 @@ impl Gpu {
             });
         let mut draws = 0;
         let mut triangles = 0;
+        for cascade in 0..2 {
+            if self
+                .cached_shadows
+                .is_some_and(|old| old[cascade] == shadows[cascade])
+            {
+                continue;
+            }
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some(if cascade == 0 {
+                    "Town near sunlight"
+                } else {
+                    "Town distant sunlight"
+                }),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: if cascade == 0 {
+                        &self.near_shadow
+                    } else {
+                        &self.far_shadow
+                    },
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+            pass.set_pipeline(&self.shadow_pipelines[cascade]);
+            pass.set_bind_group(0, &self.shadow_group, &[]);
+            pass.set_vertex_buffer(0, self.vertices.slice(..));
+            pass.set_index_buffer(self.indices.slice(..), wgpu::IndexFormat::Uint32);
+            for (i, draw) in mesh.draws.iter().enumerate() {
+                if visible(shadows[cascade], &draw.bounds) {
+                    pass.set_bind_group(1, &self.draw_groups[i], &[]);
+                    pass.draw_indexed(
+                        draw.first_index..draw.first_index + draw.index_count,
+                        0,
+                        draw.first_instance..draw.first_instance + draw.instance_count,
+                    );
+                    draws += 1;
+                    triangles += draw.index_count / 3 * draw.instance_count;
+                }
+            }
+        }
+        self.cached_shadows = Some(shadows);
         {
             let colors = [Some(wgpu::RenderPassColorAttachment {
                 view: &target,
@@ -487,10 +720,10 @@ impl Gpu {
                 pass.draw_indexed(
                     draw.first_index..draw.first_index + draw.index_count,
                     0,
-                    0..1,
+                    draw.first_instance..draw.first_instance + draw.instance_count,
                 );
                 draws += 1;
-                triangles += draw.index_count / 3;
+                triangles += draw.index_count / 3 * draw.instance_count;
             }
         }
         self.queue.submit(Some(encoder.finish()));
@@ -532,29 +765,27 @@ fn make_depth(device: &wgpu::Device, width: u32, height: u32) -> wgpu::TextureVi
         .create_view(&Default::default())
 }
 fn visible(matrix: Mat4, bounds: &super::Bounds) -> bool {
-    let corners: Vec<Vec4> = (0..8)
-        .map(|n| {
-            matrix
-                * Vec3::new(
-                    if n & 1 == 0 {
-                        bounds.min[0]
-                    } else {
-                        bounds.max[0]
-                    },
-                    if n & 2 == 0 {
-                        bounds.min[1]
-                    } else {
-                        bounds.max[1]
-                    },
-                    if n & 4 == 0 {
-                        bounds.min[2]
-                    } else {
-                        bounds.max[2]
-                    },
-                )
-                .extend(1.)
-        })
-        .collect();
+    let corners: [Vec4; 8] = std::array::from_fn(|n| {
+        matrix
+            * Vec3::new(
+                if n & 1 == 0 {
+                    bounds.min[0]
+                } else {
+                    bounds.max[0]
+                },
+                if n & 2 == 0 {
+                    bounds.min[1]
+                } else {
+                    bounds.max[1]
+                },
+                if n & 4 == 0 {
+                    bounds.min[2]
+                } else {
+                    bounds.max[2]
+                },
+            )
+            .extend(1.)
+    });
     !(0..6).any(|plane| {
         corners.iter().all(|p| match plane {
             0 => p.x < -p.w,
@@ -565,4 +796,223 @@ fn visible(matrix: Mat4, bounds: &super::Bounds) -> bool {
             _ => p.z > p.w,
         })
     })
+}
+
+fn uniform_binding(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+        ty: wgpu::BindingType::Buffer {
+            ty: wgpu::BufferBindingType::Uniform,
+            has_dynamic_offset: false,
+            min_binding_size: None,
+        },
+        count: None,
+    }
+}
+fn image_binding(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+            view_dimension: wgpu::TextureViewDimension::D2Array,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+fn shadow_binding(binding: u32) -> wgpu::BindGroupLayoutEntry {
+    wgpu::BindGroupLayoutEntry {
+        binding,
+        visibility: wgpu::ShaderStages::FRAGMENT,
+        ty: wgpu::BindingType::Texture {
+            sample_type: wgpu::TextureSampleType::Depth,
+            view_dimension: wgpu::TextureViewDimension::D2,
+            multisampled: false,
+        },
+        count: None,
+    }
+}
+fn upload_array(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    array: &super::TextureArray,
+    format: wgpu::TextureFormat,
+    channels: u32,
+) -> wgpu::TextureView {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width: array.width,
+            height: array.height,
+            depth_or_array_layers: array.layers,
+        },
+        mip_level_count: array.mip_count,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    let mut offset = 0;
+    for mip in 0..array.mip_count {
+        let width = (array.width >> mip).max(1);
+        let height = (array.height >> mip).max(1);
+        let length = (width * height * array.layers * channels) as usize;
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: mip,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &array.bytes[offset..offset + length],
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(width * channels),
+                rows_per_image: Some(height),
+            },
+            wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: array.layers,
+            },
+        );
+        offset += length;
+    }
+    texture.create_view(&wgpu::TextureViewDescriptor {
+        dimension: Some(wgpu::TextureViewDimension::D2Array),
+        ..Default::default()
+    })
+}
+fn make_shadow(device: &wgpu::Device, resolution: u32, label: &str) -> wgpu::TextureView {
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width: resolution,
+                height: resolution,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        })
+        .create_view(&Default::default())
+}
+fn expand_legacy_vertices(vertices: &[f32]) -> Vec<f32> {
+    let mut expanded = Vec::with_capacity(vertices.len() / 8 * 12);
+    for vertex in vertices.chunks_exact(8) {
+        expanded.extend_from_slice(vertex);
+        let n = Vec3::from_slice(&vertex[3..6]).normalize();
+        let axis = if n.y.abs() > 0.95 { Vec3::X } else { Vec3::Y };
+        expanded.extend_from_slice(&axis.cross(n).normalize().extend(1.).to_array());
+    }
+    expanded
+}
+fn shadow_matrices(eye: Vec3, spawn: Vec3, sun: Vec3) -> [Mat4; 2] {
+    let right = Vec3::Y.cross(sun).normalize();
+    let up = sun.cross(right);
+    let focus = Vec3::new(eye.x, eye.y + 10., eye.z);
+    // Whole-texel five-meter steps keep sunlight stable and reuse the near map
+    // while walking within a tile; reconstructing the center avoids float drift.
+    let quantum = 80. / 2048. * 128.;
+    let center = [right, up, sun]
+        .into_iter()
+        .fold(Vec3::ZERO, |center, axis| {
+            center + axis * ((focus.dot(axis) / quantum).round() * quantum)
+        });
+    [
+        Mat4::orthographic_rh(-40., 40., -40., 40., 1., 800.)
+            * Mat4::look_at_rh(center + sun * 350., center, Vec3::Y),
+        {
+            let center = spawn + Vec3::new(0., 55., -165.);
+            Mat4::orthographic_rh(-480., 480., -480., 480., 1., 1800.)
+                * Mat4::look_at_rh(center + sun * 800., center, Vec3::Y)
+        },
+    ]
+}
+
+#[cfg(test)]
+mod shader_tests {
+    use super::*;
+    #[test]
+    fn shader_uniform_offsets_match_native_buffers() {
+        let module = naga::front::wgsl::parse_str(include_str!("town.wgsl")).unwrap();
+        for (name, size, offsets) in [
+            (
+                "Frame",
+                352,
+                vec![0, 64, 128, 192, 256, 272, 288, 304, 320, 336],
+            ),
+            ("Draw", 128, vec![0, 64, 80, 96, 112]),
+            ("Instance", 112, vec![0, 64, 80, 96]),
+        ] {
+            let ty = module
+                .types
+                .iter()
+                .map(|(_, ty)| ty)
+                .find(|ty| ty.name.as_deref() == Some(name))
+                .unwrap();
+            let naga::TypeInner::Struct { members, span } = &ty.inner else {
+                panic!("uniform must be a struct")
+            };
+            assert_eq!(*span, size);
+            assert_eq!(
+                members
+                    .iter()
+                    .map(|member| member.offset)
+                    .collect::<Vec<_>>(),
+                offsets
+            );
+        }
+    }
+    #[test]
+    fn uniform_layout_and_shadow_ranges_match_wgsl() {
+        assert_eq!(std::mem::size_of::<FrameUniform>(), 352);
+        assert_eq!(std::mem::size_of::<DrawUniform>(), 128);
+        let sun = Vec3::new(-0.5, 0.78, -0.37).normalize();
+        let eye = Vec3::new(6., 3.37, 20.);
+        let matrices = shadow_matrices(eye, eye, sun);
+        for matrix in matrices {
+            assert!(matrix.is_finite());
+        }
+        let origin = matrices[0].project_point3(eye);
+        assert!(origin.x.abs() < 1. && origin.y.abs() < 1. && (0. ..1.).contains(&origin.z));
+        // The castle remains inside the far sunlight volume, rather than being
+        // whitened by fog to hide absent lighting.
+        let castle = matrices[1].project_point3(Vec3::new(0., 100., -380.));
+        assert!(castle.x.abs() < 1. && castle.y.abs() < 1. && (0. ..1.).contains(&castle.z));
+        assert_eq!(matrices, shadow_matrices(eye + Vec3::X * 0.001, eye, sun));
+    }
+    #[test]
+    fn frustum_culling_keeps_intersections_and_rejects_behind_camera() {
+        let matrix = Mat4::perspective_rh(65f32.to_radians(), 1., 0.1, 100.);
+        assert!(visible(
+            matrix,
+            &super::super::Bounds {
+                min: [-1., -1., -4.],
+                max: [1., 1., -2.]
+            }
+        ));
+        assert!(!visible(
+            matrix,
+            &super::super::Bounds {
+                min: [-1., -1., 2.],
+                max: [1., 1., 4.]
+            }
+        ));
+        assert!(!visible(
+            matrix,
+            &super::super::Bounds {
+                min: [500., -1., -4.],
+                max: [501., 1., -2.]
+            }
+        ));
+    }
 }

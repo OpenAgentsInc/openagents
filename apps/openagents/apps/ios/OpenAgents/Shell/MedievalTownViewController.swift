@@ -8,6 +8,8 @@ final class MedievalTownViewController: UIViewController {
     private let move = MedievalTownMoveControl()
     private let look = UIView()
     private let status = UILabel()
+    private var statusWidth: NSLayoutConstraint?
+    private var statusHeight: NSLayoutConstraint?
     private let retry = UIButton(type: .system)
     private let sprint = UIButton(type: .system)
     private let jump = UIButton(type: .system)
@@ -73,7 +75,7 @@ final class MedievalTownViewController: UIViewController {
         configureButton(close)
         status.text = "Opening Medieval Town…"
         status.textColor = .white
-        status.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
+        status.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
         status.textAlignment = .center
         status.numberOfLines = 2
         status.backgroundColor = UIColor.black.withAlphaComponent(0.55)
@@ -109,16 +111,19 @@ final class MedievalTownViewController: UIViewController {
             view.addSubview($0)
         }
         let safe = view.safeAreaLayoutGuide
+        let statusWidth = status.widthAnchor.constraint(equalToConstant: 160)
+        let statusHeight = status.heightAnchor.constraint(equalToConstant: 40)
+        self.statusWidth = statusWidth
+        self.statusHeight = statusHeight
         NSLayoutConstraint.activate([
             close.leadingAnchor.constraint(equalTo: safe.leadingAnchor, constant: 12),
             close.topAnchor.constraint(equalTo: safe.topAnchor, constant: 8),
             close.widthAnchor.constraint(equalToConstant: 44),
             close.heightAnchor.constraint(equalToConstant: 44),
-            status.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
+            status.trailingAnchor.constraint(equalTo: safe.trailingAnchor, constant: -14),
             status.topAnchor.constraint(equalTo: safe.topAnchor, constant: 10),
-            status.widthAnchor.constraint(lessThanOrEqualTo: safe.widthAnchor, multiplier: 0.65),
-            status.widthAnchor.constraint(greaterThanOrEqualToConstant: 164),
-            status.heightAnchor.constraint(equalToConstant: 40),
+            statusWidth,
+            statusHeight,
             retry.centerXAnchor.constraint(equalTo: safe.centerXAnchor),
             retry.topAnchor.constraint(equalTo: status.bottomAnchor, constant: 10),
             retry.widthAnchor.constraint(equalToConstant: 120),
@@ -201,6 +206,8 @@ final class MedievalTownViewController: UIViewController {
     private func loadTown() {
         guard visible else { return }
         stopTown()
+        statusWidth?.constant = 160
+        statusHeight?.constant = 40
         status.text = "Opening Medieval Town…"
         status.accessibilityValue = "Opening Medieval Town."
         retry.isHidden = true
@@ -290,6 +297,8 @@ final class MedievalTownViewController: UIViewController {
         guard current == generation else { return }
         displayLink?.isPaused = true
         if let town = renderer { renderQueue.async { town.setActive(active: false) } }
+        statusWidth?.constant = 160
+        statusHeight?.constant = 40
         status.text = "Couldn't open the town."
         status.accessibilityValue = "Couldn't open the town."
         retry.isHidden = false
@@ -367,11 +376,14 @@ final class MedievalTownViewController: UIViewController {
         else { return }
         let fpsKey = benchmarking ? "fps" : "liveFps"
         let fps = (values[fpsKey] as? NSNumber)?.doubleValue ?? 0
+        statusWidth?.constant = 74
+        statusHeight?.constant = 28
         status.text = String(format: "%.0f FPS", fps)
         status.accessibilityValue = diagnosticMetrics ? json : String(format: "%.0f frames per second", fps)
         if benchmarking, values["benchmarkComplete"] as? Bool == true, !benchmarkSaved {
             benchmarkSaved = true
             displayLink?.isPaused = true
+            statusWidth?.constant = 176
             status.text = String(format: "%.1f FPS · Test complete", fps)
             let destination = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("medieval-town-benchmark.json")

@@ -1,8 +1,8 @@
 //! Native Medieval Town surface. Rust owns loading, movement, rendering, and timing.
 //! The host retains a CAMetalLayer and forwards display callbacks and touch input.
 
-const MANIFEST_URL: &str = "https://m274c6ec08bba1370---aethyrforge-preview-ezxz4mgdsq-uc.a.run.app/private-assets/native-town-274c6ec08bba1370c0515e14cd3f7e3a3269201ec6f681345a3aacfbf51a8edb.json";
-const MANIFEST_SHA256: &str = "274c6ec08bba1370c0515e14cd3f7e3a3269201ec6f681345a3aacfbf51a8edb";
+const MANIFEST_URL: &str = "https://m4552b29fd280c68f---aethyrforge-preview-ezxz4mgdsq-uc.a.run.app/private-assets/native-town-4552b29fd280c68fd91ce2ba00311e3297838a536f87b71212103214c0d21ea6.json";
+const MANIFEST_SHA256: &str = "4552b29fd280c68fd91ce2ba00311e3297838a536f87b71212103214c0d21ea6";
 
 mod collision;
 mod gpu;
@@ -56,6 +56,12 @@ struct FileSpec {
     height: u32,
     #[serde(default)]
     triangle_count: usize,
+    #[serde(default)]
+    layers: u32,
+    #[serde(default)]
+    mip_count: u32,
+    #[serde(default)]
+    format: Option<String>,
 }
 #[derive(Clone, Deserialize)]
 struct Bounds {
@@ -64,6 +70,12 @@ struct Bounds {
 }
 fn identity() -> [f32; 16] {
     Mat4::IDENTITY.to_cols_array()
+}
+fn one_instance() -> u32 {
+    1
+}
+fn full_texture() -> [f32; 4] {
+    [0., 0., 1., 1.]
 }
 fn unit_uv() -> [f32; 2] {
     [1., 1.]
@@ -75,7 +87,14 @@ struct Draw {
     index_count: u32,
     #[serde(default = "identity")]
     model: [f32; 16],
+    #[serde(default = "full_texture")]
     atlas_rect: [f32; 4],
+    #[serde(default)]
+    material_layer: u32,
+    #[serde(default)]
+    first_instance: u32,
+    #[serde(default = "one_instance")]
+    instance_count: u32,
     #[serde(default = "unit_uv")]
     uv_scale: [f32; 2],
     #[serde(default)]
@@ -87,7 +106,12 @@ struct Manifest {
     schema: String,
     vertices: FileSpec,
     indices: FileSpec,
-    atlas: FileSpec,
+    #[serde(default)]
+    instances: Option<FileSpec>,
+    #[serde(default)]
+    atlas: Option<FileSpec>,
+    #[serde(rename = "textureArrays", default)]
+    texture_arrays: Option<TextureArraySpecs>,
     collision: FileSpec,
     draws: Vec<Draw>,
     spawn: [f32; 3],
@@ -95,9 +119,46 @@ struct Manifest {
     #[serde(rename = "walkBounds", default)]
     walk_bounds: Option<Bounds>,
 }
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TextureArraySpecs {
+    base_color: FileSpec,
+    normal: FileSpec,
+    mra: FileSpec,
+}
+struct TextureArray {
+    bytes: Vec<u8>,
+    width: u32,
+    height: u32,
+    layers: u32,
+    mip_count: u32,
+}
+struct TextureArrays {
+    base_color: TextureArray,
+    normal: TextureArray,
+    mra: TextureArray,
+}
+impl Manifest {
+    fn files(&self) -> Vec<&FileSpec> {
+        let mut files = vec![&self.vertices, &self.indices];
+        if let Some(instances) = &self.instances {
+            files.push(instances);
+        }
+        if let Some(arrays) = &self.texture_arrays {
+            files.extend([&arrays.base_color, &arrays.normal, &arrays.mra]);
+        } else if let Some(atlas) = &self.atlas {
+            files.push(atlas);
+        }
+        files.push(&self.collision);
+        files
+    }
+}
 struct Mesh {
     vertices: Vec<f32>,
     indices: Vec<u32>,
+    vertex_stride: u64,
+    instances: Vec<[f32; 28]>,
+    texture_arrays: Option<TextureArrays>,
     atlas: Vec<u8>,
     atlas_width: u32,
     atlas_height: u32,
@@ -116,21 +177,83 @@ fn valid_hash(hash: &str) -> bool {
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase())
 }
 fn validate_manifest(m: &Manifest) -> Result<()> {
-    if m.schema != "native-town.v1"
-        || m.vertices.stride != 32
-        || m.vertices.count > 2_000_000
-        || m.vertices.count.checked_mul(32) != Some(raw_length(&m.vertices))
-        || m.indices.count > 1_500_000
+    let v2 = m.schema == "native-town.v2";
+    let stride = if v2 { 48 } else { 32 };
+    let instance_count = if let Some(instances) = &m.instances {
+        if !v2
+            || instances.format.as_deref() != Some("float32x28-le")
+            || instances.stride != 112
+            || instances.count == 0
+            || instances.count > 65_536
+            || instances.count.checked_mul(112) != Some(raw_length(instances))
+        {
+            return Err(failed(
+                "The town placements have an unsupported size or format.",
+            ));
+        }
+        instances.count
+    } else {
+        1
+    };
+    let texture_layers = if let Some(arrays) = &m.texture_arrays {
+        if !v2 || m.atlas.is_some() {
+            return Err(failed("The town textures have an unsupported format."));
+        }
+        let layers = arrays.base_color.layers;
+        for (spec, format, channels) in [
+            (&arrays.base_color, "rgba8unorm-srgb", 4usize),
+            (&arrays.normal, "rg8unorm", 2),
+            (&arrays.mra, "rgba8unorm", 4),
+        ] {
+            if spec.format.as_deref() != Some(format)
+                || spec.width == 0
+                || spec.width != spec.height
+                || !spec.width.is_power_of_two()
+                || spec.width > 1024
+                || spec.layers == 0
+                || spec.layers > 128
+                || spec.layers != layers
+                || spec.mip_count != spec.width.ilog2() + 1
+            {
+                return Err(failed(
+                    "The town textures have an unsupported size or format.",
+                ));
+            }
+            let expected = (0..spec.mip_count).try_fold(0usize, |sum, level| {
+                let size = (spec.width >> level).max(1) as usize;
+                size.checked_mul(size)?
+                    .checked_mul(channels)?
+                    .checked_mul(layers as usize)?
+                    .checked_add(sum)
+            });
+            if expected != Some(raw_length(spec)) {
+                return Err(failed("A town texture has an unexpected size."));
+            }
+        }
+        layers
+    } else {
+        if v2
+            || m.atlas
+                .as_ref()
+                .is_none_or(|a| a.width == 0 || a.height == 0 || a.width > 2048 || a.height > 2048)
+        {
+            return Err(failed(
+                "The town textures have an unsupported size or format.",
+            ));
+        }
+        1
+    };
+    if (!v2 && m.schema != "native-town.v1")
+        || m.vertices.stride != stride
+        || m.vertices.count > 6_000_000
+        || m.vertices.count.checked_mul(stride) != Some(raw_length(&m.vertices))
+        || m.indices.count > 18_000_000
         || m.indices.count % 3 != 0
         || m.indices.count.checked_mul(4) != Some(raw_length(&m.indices))
         || m.collision.triangle_count > 500_000
         || m.collision.triangle_count.checked_mul(36) != Some(raw_length(&m.collision))
-        || m.atlas.width == 0
-        || m.atlas.height == 0
-        || m.atlas.width > 2048
-        || m.atlas.height > 2048
         || m.draws.is_empty()
-        || m.draws.len() > 128
+        || m.draws.len() > 8192
         || !m
             .spawn
             .iter()
@@ -140,11 +263,19 @@ fn validate_manifest(m: &Manifest) -> Result<()> {
     {
         return Err(failed("The town files have an unsupported size or format."));
     }
-    for file in [&m.vertices, &m.indices, &m.atlas, &m.collision] {
+    let files = m.files();
+    if files
+        .iter()
+        .try_fold(0usize, |sum, file| sum.checked_add(raw_length(file)))
+        .is_none_or(|bytes| bytes > 512 * 1024 * 1024)
+    {
+        return Err(failed("The town files are too large for this device."));
+    }
+    for file in files {
         if !valid_hash(&file.sha256)
             || file.byte_length == 0
-            || file.byte_length > 64 * 1024 * 1024
-            || raw_length(file) > 64 * 1024 * 1024
+            || file.byte_length > 256 * 1024 * 1024
+            || raw_length(file) > 256 * 1024 * 1024
             || file.encoding.as_deref().is_some_and(|v| v != "gzip")
             || (file.encoding.is_some()
                 && (file.decoded_byte_length.is_none()
@@ -168,8 +299,15 @@ fn validate_manifest(m: &Manifest) -> Result<()> {
         return Err(failed("The town has invalid walking bounds."));
     }
     let mut covered = 0u32;
+    let mut referenced_indices = 0u64;
     for d in &m.draws {
-        if d.first_index != covered
+        if d.material_layer >= texture_layers
+            || (m.instances.is_none() && d.first_index != covered)
+            || d.first_index % 3 != 0
+            || d.instance_count == 0
+            || d.first_instance
+                .checked_add(d.instance_count)
+                .is_none_or(|n| n as usize > instance_count)
             || d.first_index
                 .checked_add(d.index_count)
                 .is_none_or(|n| n as usize > m.indices.count)
@@ -193,9 +331,14 @@ fn validate_manifest(m: &Manifest) -> Result<()> {
         {
             return Err(failed("A town section has invalid geometry."));
         }
-        covered += d.index_count;
+        if m.instances.is_none() {
+            covered += d.index_count;
+        }
+        referenced_indices += d.index_count as u64 * d.instance_count as u64;
     }
-    if covered as usize != m.indices.count {
+    if referenced_indices > 24_000_000
+        || (m.instances.is_none() && covered as usize != m.indices.count)
+    {
         return Err(failed("The town mesh is incomplete."));
     }
     Ok(())
@@ -219,12 +362,19 @@ fn decode_file(bytes: Vec<u8>, spec: &FileSpec) -> Result<Vec<u8>> {
     }
     Ok(decoded)
 }
-fn validate_vertices(values: &[f32]) -> Result<()> {
-    if values.len() % 8 != 0
-        || values.chunks_exact(8).any(|v| {
+fn validate_vertices(values: &[f32], stride: usize) -> Result<()> {
+    if ![32, 48].contains(&stride) {
+        return Err(failed("The town vertex format is unsupported."));
+    }
+    let floats = stride / 4;
+    if values.len() % floats != 0
+        || values.chunks_exact(floats).any(|v| {
             v[..3].iter().any(|n| n.abs() > 30_000.)
                 || !(0.25..=1.1).contains(&(v[3] * v[3] + v[4] * v[4] + v[5] * v[5]))
-                || v[6..].iter().any(|n| n.abs() > 65536.)
+                || v[6..8].iter().any(|n| n.abs() > 65536.)
+                || (floats == 12
+                    && (!(0.25..=1.1).contains(&(v[8] * v[8] + v[9] * v[9] + v[10] * v[10]))
+                        || (v[11].abs() - 1.).abs() > 0.001))
         })
     {
         return Err(failed("The town mesh has invalid positions or normals."));
@@ -256,7 +406,7 @@ async fn download(
             return Ok(bytes);
         }
     }
-    let maximum = size.unwrap_or(1024 * 1024);
+    let maximum = size.unwrap_or(8 * 1024 * 1024);
     let mut last = String::new();
     for _ in 0..3 {
         let attempt = async {
@@ -318,7 +468,7 @@ async fn load(cache: &Path) -> Result<Mesh> {
         .map_err(|_| failed("The town could not be saved on this device."))?;
     let client = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(10))
-        .timeout(std::time::Duration::from_secs(45))
+        .timeout(std::time::Duration::from_secs(180))
         .build()
         .map_err(|_| failed("The town download could not start."))?;
     let bytes = download(&client, &url, expected, None, &cache.join("manifest.json")).await?;
@@ -335,7 +485,7 @@ async fn load(cache: &Path) -> Result<Mesh> {
         Ok((target, cache.join(&spec.sha256)))
     };
     let mut parts = Vec::new();
-    for spec in [&m.vertices, &m.indices, &m.atlas, &m.collision] {
+    for spec in m.files() {
         let (url, path) = file(spec)?;
         parts.push(decode_file(
             download(&client, &url, &spec.sha256, Some(spec.byte_length), &path).await?,
@@ -345,40 +495,105 @@ async fn load(cache: &Path) -> Result<Mesh> {
     decode_mesh(m, parts)
 }
 fn decode_mesh(m: Manifest, parts: Vec<Vec<u8>>) -> Result<Mesh> {
-    let vertices = decode_floats(&parts[0])?;
-    validate_vertices(&vertices)?;
-    let indices: Vec<u32> = parts[1]
+    validate_manifest(&m)?;
+    if parts.len() != m.files().len() {
+        return Err(failed("The town files are incomplete."));
+    }
+    for (spec, part) in m.files().into_iter().zip(&parts) {
+        if part.len() != raw_length(spec) {
+            return Err(failed("A town file has an unexpected size."));
+        }
+    }
+    let mut parts = parts.into_iter();
+    let vertices = decode_floats(&parts.next().unwrap())?;
+    validate_vertices(&vertices, m.vertices.stride)?;
+    let indices: Vec<u32> = parts
+        .next()
+        .unwrap()
         .chunks_exact(4)
         .map(|b| u32::from_le_bytes(b.try_into().unwrap()))
         .collect();
     if indices.iter().any(|&i| i as usize >= m.vertices.count) {
         return Err(failed("A town mesh points to a missing vertex."));
     }
-    let dimensions =
-        image::ImageReader::with_format(Cursor::new(&parts[2]), image::ImageFormat::Png)
-            .into_dimensions()
-            .map_err(|_| failed("The town texture could not be read."))?;
-    if dimensions != (m.atlas.width, m.atlas.height) {
-        return Err(failed("The town texture has an unexpected size."));
-    }
-    let image = image::load_from_memory_with_format(&parts[2], image::ImageFormat::Png)
-        .map_err(|_| failed("The town texture could not be read."))?
-        .into_rgba8();
-    if image.width() != m.atlas.width || image.height() != m.atlas.height {
-        return Err(failed("The town texture has an unexpected size."));
-    }
-    let collision = Collision::new(&decode_floats(&parts[3])?)?;
+    let instances = if m.instances.is_some() {
+        let values = decode_floats(&parts.next().unwrap())?;
+        let mut instances = Vec::with_capacity(values.len() / 28);
+        for values in values.chunks_exact(28) {
+            if values.iter().any(|v| v.abs() > 30_000.)
+                || values[3].abs() > 0.0001
+                || values[7].abs() > 0.0001
+                || values[11].abs() > 0.0001
+                || (values[15] - 1.).abs() > 0.0001
+                || (values[19].abs() - 1.).abs() > 0.001
+            {
+                return Err(failed("A town placement has an invalid transform."));
+            }
+            instances.push(values.try_into().unwrap());
+        }
+        instances
+    } else {
+        vec![identity_instance()]
+    };
+    let (texture_arrays, atlas, atlas_width, atlas_height) = if let Some(arrays) = &m.texture_arrays
+    {
+        let mut array = |spec: &FileSpec| TextureArray {
+            bytes: parts.next().unwrap(),
+            width: spec.width,
+            height: spec.height,
+            layers: spec.layers,
+            mip_count: spec.mip_count,
+        };
+        (
+            Some(TextureArrays {
+                base_color: array(&arrays.base_color),
+                normal: array(&arrays.normal),
+                mra: array(&arrays.mra),
+            }),
+            Vec::new(),
+            0,
+            0,
+        )
+    } else {
+        let spec = m.atlas.as_ref().unwrap();
+        let bytes = parts.next().unwrap();
+        let dimensions =
+            image::ImageReader::with_format(Cursor::new(&bytes), image::ImageFormat::Png)
+                .into_dimensions()
+                .map_err(|_| failed("The town texture could not be read."))?;
+        if dimensions != (spec.width, spec.height) {
+            return Err(failed("The town texture has an unexpected size."));
+        }
+        let image = image::load_from_memory_with_format(&bytes, image::ImageFormat::Png)
+            .map_err(|_| failed("The town texture could not be read."))?
+            .into_rgba8();
+        (None, image.into_raw(), spec.width, spec.height)
+    };
+    let collision = Collision::new(&decode_floats(&parts.next().unwrap())?)?;
     Ok(Mesh {
         vertices,
         indices,
-        atlas: image.into_raw(),
-        atlas_width: m.atlas.width,
-        atlas_height: m.atlas.height,
+        vertex_stride: m.vertices.stride as u64,
+        instances,
+        texture_arrays,
+        atlas,
+        atlas_width,
+        atlas_height,
         draws: m.draws,
         collision,
         spawn: Vec3::from_array(m.spawn),
         walk_bounds: m.walk_bounds,
     })
+}
+
+fn identity_instance() -> [f32; 28] {
+    let mut value = [0.; 28];
+    value[..16].copy_from_slice(&identity());
+    value[16] = 1.;
+    value[19] = 1.;
+    value[21] = 1.;
+    value[26] = 1.;
+    value
 }
 
 struct Camera {
@@ -691,7 +906,7 @@ impl MedievalTownRenderer {
             .get((cpu.len() as f64 * 0.95) as usize)
             .copied()
             .unwrap_or(0.);
-        serde_json::json!({"ready":gpu.is_some(),"submittedFrames":state.timing.submitted,"completedFrames":completed,"fps":if elapsed>0.{completed as f64/elapsed}else{0.},"liveFps":gpu.as_ref().map_or(0.,|g|g.live_fps()),"cpuMs":mean,"cpuP95Ms":p95,"gpuMs":serde_json::Value::Null,"frameP95Ms":frame_p95,"missedFramesOver25Ms":missed,"benchmarkComplete":state.benchmark.as_ref().is_some_and(|b|b.done),"elapsed":elapsed,"playerPosition":state.camera.position.to_array(),"distanceWalked":state.timing.distance_walked,"maxDisplacement":state.timing.max_displacement,"yaw":state.camera.yaw,"pitch":state.camera.pitch,"drawCalls":state.timing.draws,"triangles":state.timing.triangles,"width":state.width,"height":state.height,"backend":"Metal","manifestSha256":option_env!("OPENAGENTS_MEDIEVAL_MANIFEST_SHA256").unwrap_or(MANIFEST_SHA256)}).to_string()
+        serde_json::json!({"ready":gpu.is_some(),"submittedFrames":state.timing.submitted,"completedFrames":completed,"fps":if elapsed>0.{completed as f64/elapsed}else{0.},"liveFps":gpu.as_ref().map_or(0.,|g|g.live_fps()),"cpuMs":mean,"cpuP95Ms":p95,"gpuMs":serde_json::Value::Null,"frameP95Ms":frame_p95,"missedFramesOver25Ms":missed,"benchmarkComplete":state.benchmark.as_ref().is_some_and(|b|b.done),"elapsed":elapsed,"playerPosition":state.camera.position.to_array(),"distanceWalked":state.timing.distance_walked,"maxDisplacement":state.timing.max_displacement,"yaw":state.camera.yaw,"pitch":state.camera.pitch,"drawCalls":state.timing.draws,"triangles":state.timing.triangles,"width":state.width,"height":state.height,"backend":"Metal","materialLayers":state.mesh.as_ref().and_then(|m| m.texture_arrays.as_ref()).map_or(1, |a| a.base_color.layers),"sceneDrawGroups":state.mesh.as_ref().map_or(0,|m|m.draws.len()),"sceneTriangles":state.mesh.as_ref().map_or(0,|m|m.draws.iter().map(|d|d.index_count as u64 / 3 * d.instance_count as u64).sum::<u64>()),"manifestSha256":option_env!("OPENAGENTS_MEDIEVAL_MANIFEST_SHA256").unwrap_or(MANIFEST_SHA256)}).to_string()
     }
 }
 fn extent(width: u32, height: u32, scale: f32) -> Result<(u32, u32)> {

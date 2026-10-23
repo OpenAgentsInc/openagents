@@ -95,7 +95,80 @@ final class MedievalTownTests: XCTestCase {
         let completed = number(after, "completedFrames")
         XCTAssertGreaterThan(completed, 100)
         XCTAssertLessThan(number(after, "missedFramesOver25Ms") / max(1, completed), 0.01)
+        XCTAssertGreaterThan(number(after, "materialLayers"), 100)
+        XCTAssertGreaterThan(number(after, "sceneTriangles"), 4_000_000)
+        XCTAssertGreaterThan(number(after, "distanceWalked"), 10)
         app.buttons["medieval-town-close"].tap()
+    }
+
+    func testTownVisualWalkthrough() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let app = XCUIApplication()
+        app.launchArguments = ["-demo", "-route", "medieval-town", "-town-metrics"]
+        app.launch()
+        let metric = app.staticTexts["medieval-town-metrics"]
+        XCTAssertTrue(metric.waitForExistence(timeout: 10))
+        try waitForMetrics(metric, timeout: 180) { values in
+            values["ready"] as? Bool == true
+                && self.number(values, "completedFrames") >= 60
+                && self.number(values, "width") > self.number(values, "height")
+        }
+        let initial = try readMetrics(metric)
+        XCTAssertGreaterThan(number(initial, "materialLayers"), 100)
+        XCTAssertGreaterThan(number(initial, "sceneTriangles"), 4_000_000)
+        try captureTownView(app, metric: metric, name: "01-arch-arrival")
+
+        let stick = app.otherElements["medieval-town-move"]
+        XCTAssertTrue(stick.exists)
+        let center = stick.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let forward = stick.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.16))
+        center.press(forDuration: 0.1, thenDragTo: forward, withVelocity: .slow, thenHoldForDuration: 1.8)
+        try captureTownView(app, metric: metric, name: "02-arch-walking")
+        let walked = try readMetrics(metric)
+        XCTAssertGreaterThan(number(walked, "distanceWalked") - number(initial, "distanceWalked"), 0.5)
+
+        try orientTownCamera(app, metric: metric, yaw: .pi / 2, pitch: 0)
+        try captureTownView(app, metric: metric, name: "03-street-east")
+        try orientTownCamera(app, metric: metric, yaw: -.pi / 2, pitch: 0)
+        try captureTownView(app, metric: metric, name: "04-street-west")
+        try orientTownCamera(app, metric: metric, yaw: -0.058, pitch: 0.27)
+        try captureTownView(app, metric: metric, name: "05-castle-skyline")
+        app.buttons["medieval-town-close"].tap()
+    }
+
+    private func captureTownView(_ app: XCUIApplication, metric: XCUIElement, name: String) throws {
+        let frames = number(try readMetrics(metric), "completedFrames")
+        try waitForMetrics(metric, timeout: 15) { self.number($0, "completedFrames") >= frames + 30 }
+        let pose = try readMetrics(metric)
+        XCTAssertGreaterThan(number(pose, "width"), number(pose, "height"))
+        saveMetrics(pose, name: "native-town-visual-\(name)-pose")
+        let screen = XCUIScreen.main.screenshot()
+        XCTAssertGreaterThan(screen.image.size.width, screen.image.size.height, "The full display capture is landscape")
+        let image = XCTAttachment(screenshot: screen)
+        image.name = "native-town-visual-\(name)"
+        image.lifetime = .keepAlways
+        add(image)
+    }
+
+    private func orientTownCamera(_ app: XCUIApplication, metric: XCUIElement, yaw: Double, pitch: Double) throws {
+        let look = app.otherElements["medieval-town-look"]
+        XCTAssertTrue(look.exists)
+        for _ in 0..<16 {
+            let pose = try readMetrics(metric)
+            let yawError = atan2(sin(yaw - number(pose, "yaw")), cos(yaw - number(pose, "yaw")))
+            let pitchError = pitch - number(pose, "pitch")
+            if abs(yawError) < 0.07 && abs(pitchError) < 0.04 { return }
+            let width = Double(max(1, look.frame.width))
+            let height = Double(max(1, look.frame.height))
+            let dx = max(-width * 0.35, min(width * 0.35, yawError / 0.004))
+            let dy = max(-height * 0.2, min(height * 0.2, -pitchError / 0.004))
+            let start = look.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+            let end = look.coordinate(withNormalizedOffset: CGVector(dx: CGFloat(0.5 + dx / width), dy: CGFloat(0.4 + dy / height)))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.05)
+            let frames = number(try readMetrics(metric), "completedFrames")
+            try waitForMetrics(metric, timeout: 15) { self.number($0, "completedFrames") >= frames + 20 }
+        }
+        XCTFail("Look gestures did not reach the requested camera angle")
     }
 
     private func number(_ values: [String: Any], _ key: String) -> Double {

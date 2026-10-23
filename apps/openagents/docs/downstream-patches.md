@@ -6,6 +6,8 @@ Keep fork-specific changes here so upstream updates can review each integration.
   Metal layer; Rust loads a checksum-pinned mobile asset pack, controls the
   player, draws the world, and measures completed GPU frames. Pause rendering
   in the background and release the surface when the town closes.
+  Preserve the full town and its surroundings with instanced geometry,
+  material texture arrays, normal maps, and cached directional shadows.
 
 - OpenAgents #12460: open the shared Grid suggestion form from the desktop
   Help menu and phone Settings, including for guests, with the sending app

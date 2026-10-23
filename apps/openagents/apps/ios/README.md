@@ -99,19 +99,23 @@ OpenAgentsShared/   Compiled into the app and the extension: the activity's
 
 Open the navigation menu and choose **Medieval Town**. Use the left stick to
 move, drag the right half to look, and use **Run** or **Jump**. The native
-mobile scene keeps the town square, nearby buildings, and distant castle,
-with simplified lighting and one texture atlas. Its first visit downloads
-about 12.7 MB; later visits use a verified local cache.
+mobile scene keeps the source town, trees, castle, and mountain backdrops,
+with normal and material maps, mipmapped textures, and directional shadows.
+Its first visit downloads about 97 MB; later visits use a verified local cache.
 
 `-demo -route medieval-town -town-bench` runs an offline-account simulator
 check against the real scene download: five seconds of warm-up, then 30
 seconds of movement and camera turns. Completed GPU frames and frame timing
 are saved to `Documents/medieval-town-benchmark.json`.
 
-The 2026-10-23 Release check on the iPhone 17 simulator (iOS 26.5, M5 Max)
-completed 1,800 GPU frames in 30 seconds: 60.0 FPS, a 16.85 ms 95th-percentile
-frame interval, and no intervals over 25 ms. The camera moved 21.76 m and turned
-during the check. Touch movement, look, and background/resume checks also passed.
+The build 1020 Release check on the iPhone 17 simulator (iOS 26.5, M5 Max)
+completed 1,800 GPU frames in 30 seconds: 60.0 FPS, a 16.78 ms 95th-percentile
+frame interval, and one interval over 25 ms. The camera moved 21.76 m and turned
+through a scene with 4.33 million placed triangles and 103 material layers.
+The native process used 312 MB after loading and peaked at 569 MB while loading.
+Five landscape views, touch movement, look, background/resume, and offline chat
+checks passed, along with 12 Rust checks. These are simulator measurements;
+physical-device performance has not been measured.
 
 ## Launch arguments
 

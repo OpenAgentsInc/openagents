@@ -1,3 +1,14 @@
+# OpenAgents 1.0.0 (1020)
+
+Medieval Town now keeps the full town and its trees, castle, and mountain
+backdrops. Sharper textures, surface detail, sun shadows, and lighter haze
+replace the stripped-down scene from 1019. The FPS display is smaller.
+
+This scene downloads about 97 MB once, then uses its saved files. Open the
+menu and choose Medieval Town. Walk around, turn toward the distant castle,
+and check the light and shadows from several streets. Try Run, Jump,
+rotation, and returning after switching apps; watch the FPS display as you move.
+
 # OpenAgents 1.0.0 (1019)
 
 Open the menu and choose Medieval Town to explore the town square in a native
