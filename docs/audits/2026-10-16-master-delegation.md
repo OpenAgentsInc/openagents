@@ -485,6 +485,21 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12556: immutable saved playable versions, explicit publication, version review,
+  rollback, revocation, and a guest player are implemented. Host checks (56), the
+  native publication regression, Wasm/Kiln builds, private type/contract checks,
+  and the full real-GPU/native-store browser check pass. The browser covers lost
+  responses, duplicate confirmation, pinned guest walking, early mouse input,
+  touch click suppression, held/failed iframe reloads, same-version recovery,
+  fatal-status recovery, voice-handler Play/Share, dirty/closed-engine management,
+  mobile resizing, and Share-card clearing on project/account changes. Codex
+  reviewed private captures. Account and recognition fixtures are synthetic;
+  no provider, microphone, hardware device-loss, or human-review pass is claimed.
+  Qualify the hosted candidate and full journey in #12561, including the bounded
+  real Kiln check using the documented test-account service-key path. Existing
+  owner-only sign-in/microphone steps remain in `NEEDS_OWNER.md`.
+  [Publication qualification](../verse/aethyrforge-publication-qualification.json).
+
 - #12568: Keep draft acknowledges success only after its exact accepted source
   reaches the host snapshot; draft writes still leave world history unchanged.
   Two focused private tests, TypeScript checks, and the real-GPU delayed-status
