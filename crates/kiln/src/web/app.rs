@@ -2211,6 +2211,17 @@ impl App {
         set(&window, "kilnReadScene", scene.as_ref().clone());
         scene.forget();
         let app = self.clone();
+        let changes = Closure::<dyn Fn() -> JsValue>::new(move || {
+            if app.repo().is_some() {
+                return JsValue::NULL;
+            }
+            let path = scene_path().replace("scene.json", "changes.json");
+            app.workspace_source(&path)
+                .map_or(JsValue::NULL, |s| JsValue::from_str(&s))
+        });
+        set(&window, "kilnReadChanges", changes.as_ref().clone());
+        changes.forget();
+        let app = self.clone();
         let edit = Closure::<dyn Fn(String) -> js_sys::Promise>::new(move |action: String| {
             let app = app.clone();
             wasm_bindgen_futures::future_to_promise(async move {

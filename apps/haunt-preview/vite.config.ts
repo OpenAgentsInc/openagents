@@ -11,6 +11,7 @@ export default defineConfig({
       input: {
         haunt: new URL("./index.html", import.meta.url).pathname,
         medieval: new URL("./medieval/index.html", import.meta.url).pathname,
+        verse: new URL("./verse/index.html", import.meta.url).pathname,
       },
     },
   },

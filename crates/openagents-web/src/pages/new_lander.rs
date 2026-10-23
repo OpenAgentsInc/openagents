@@ -217,7 +217,9 @@ async fn marketing(State(app): State<App>) -> Response {
 }
 
 async fn universe(State(app): State<App>, headers: HeaderMap) -> Response {
-    let haunt = if crate::live_games::tenants().iter().any(|t| t == "haunt") {
+    let haunt = if super::new_lander_house::available() {
+        Some(super::new_lander_house::HOUSE)
+    } else if crate::live_games::tenants().iter().any(|t| t == "haunt") {
         Some("/t/haunt/")
     } else if app.config.haunt.is_some() {
         Some(super::haunt::HAUNT_PATH)
@@ -297,7 +299,10 @@ mod tests {
             }
             if path == VERSE {
                 assert!(body.contains(SCRIPT_PATH) && body.contains("Locked for now"));
-                assert!(!body.contains("Enter Haunted House"));
+                assert_eq!(
+                    body.contains("Enter Haunted House"),
+                    super::super::new_lander_house::available()
+                );
             }
         }
     }

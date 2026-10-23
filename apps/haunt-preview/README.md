@@ -31,6 +31,51 @@ Kiln's general coding loop, rewrite source, or compile a shader. Tint changes
 update a uniform; procedural object changes update geometry; kit edits update instances. New behaviors or shader programs
 belong in an explicit authoring workflow, rather than the placement interaction.
 
+## Verse entrance and editing panels
+
+`/new-lander/house` mounts this same house runtime inside the isolated marketing
+preview. Guests can walk, return to the planets, and open **Edit**. Edit opens
+translucent panels for objects/light, instructions, layout, material source, and
+the contribution log over the running world. Closing the panels preserves the
+player and renderer. The first requested change prompts sign-in through the
+existing account service. A local server without that service offers exploration
+and tool review; it does not display an unavailable login action. The standalone
+labs keep their existing local editing behavior.
+
+The log combines a committed snapshot of actual source changes, linked to their
+commits, with successful edits saved in this browser. Those local records carry
+the server-provided creator label, time, description, and version, and save to
+`haunt/changes.json` through Kiln. Rejected edits add no entry. This is local
+authoring history, not a shared world or payment ledger. Amounts show **Not
+recorded** because no house payment records exist; browser files cannot invent
+earnings. Shared collaboration and real reward attribution need their existing
+domain services. The optional natural-language adapter remains available in the
+standalone lab; this Rust mount offers its working direct controls.
+
+Build Kiln as described below, then build the browser files:
+
+```sh
+KILN_OUT=/path/to/built/kiln npm run build:verse --prefix apps/haunt-preview
+```
+
+Start `openagents-web` with `OPENAGENTS_VERSE_HOUSE_DIR` pointing to the absolute
+`apps/haunt-preview/dist-verse` directory. A development checkout also finds that
+directory automatically. The selector exposes house entry only when these files
+exist. The Rust server serves the built module, worker, shader, and Kiln files
+under `/new-lander/house/`; it does not serve source files or another directory.
+Build artifacts stay outside Git. `/` and the existing game routes are unchanged.
+
+```sh
+NEW_LANDER_URL=http://127.0.0.1:PORT \
+HAUNT_EVIDENCE="$(openagents scratch)/verse-house-browser" \
+openagents browser run -- node apps/haunt-preview/scripts/verify-verse.mjs
+```
+
+The check covers the real guest journey, panels, blocked guest edits, position
+continuity, and mobile layout. Two clearly named response fixtures exercise the
+member UI, Kiln saves/reopen, attribution, undo, and invalid-shader recovery in an
+isolated browser. They do not establish live sign-in, collaboration, or payments.
+
 ## Natural requests and defaults
 
 Both labs treat omitted preferences and phrases such as `your choice`, `anywhere`,

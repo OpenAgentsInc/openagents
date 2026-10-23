@@ -1,4 +1,4 @@
-import { IS_TOWN } from "./lab.ts";
+import { IS_TOWN, IS_VERSE } from "./lab.ts";
 import { TownFloor, isHouse } from "./town.ts";
 import { townGeometry } from "./town-geometry.ts";
 import { MedievalRenderer, medievalKinds } from "./medieval.ts";
@@ -858,6 +858,23 @@ scope.onmessage = (event: MessageEvent) => {
   }
   if (!runtime || message?.preview !== preview || message?.token !== token)
     return;
+  if (IS_VERSE && message.type === "restore-pose") {
+    const p = message.pose;
+    if (
+      p &&
+      [p.x, p.z, p.yaw, p.pitch].every(Number.isFinite) &&
+      Math.abs(p.x) <= 64 &&
+      Math.abs(p.z) <= 64 &&
+      runtime.floor.canStand(p.x, p.z, 0.22)
+    ) {
+      runtime.pose.x = p.x;
+      runtime.pose.z = p.z;
+      runtime.pose.yaw = p.yaw % (Math.PI * 2);
+      runtime.pose.pitch = Math.max(-1.2, Math.min(1.2, p.pitch));
+      runtime.keys = [];
+    }
+    return;
+  }
   if (
     message.type === "scene" &&
     message.project === PROJECT_ID &&

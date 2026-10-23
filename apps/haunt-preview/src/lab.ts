@@ -1,6 +1,11 @@
 /** Separate lab identities share the preview runtime, never a saved project. */
 const path = typeof location === "undefined" ? "" : location.pathname;
 const search = typeof location === "undefined" ? "" : location.search;
+export const IS_VERSE =
+  path.startsWith("/new-lander/house") || path.startsWith("/verse/");
+export const LAB_BASE = path.startsWith("/new-lander/house")
+  ? "/new-lander/house/"
+  : "/";
 export const IS_TOWN =
   (typeof document === "undefined" &&
     typeof self !== "undefined" &&
@@ -20,7 +25,7 @@ export const LAB = IS_TOWN
       id: "haunt-webgpu-v1",
       scene: "haunt/scene.json",
       material: "haunt/material.wgsl",
-      shader: "/material.wgsl",
+      shader: `${LAB_BASE}material.wgsl`,
       decision: "/api/haunt/decision",
       name: "The Haunted House",
     } as const);
