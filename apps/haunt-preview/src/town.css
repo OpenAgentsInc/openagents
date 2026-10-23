@@ -1,8 +1,8 @@
 body.town-lab {
   margin: 0;
   overflow: hidden;
-  background: #a3c2d9;
-  color: #f1f0df;
+  background: #bdbdbd;
+  color: #efefef;
   font:
     14px/1.4 system-ui,
     sans-serif;
@@ -39,19 +39,19 @@ body.town-lab {
   display: flex;
   gap: 12px;
   align-items: center;
-  filter: drop-shadow(0 1px 3px #15221b99);
+  filter: drop-shadow(0 1px 3px #1f1f1f99);
 }
 .town-mark {
   width: 35px;
   height: 35px;
   display: grid;
   place-items: center;
-  border: 1px solid #fff5;
+  border: 1px solid #ffffff55;
   border-radius: 11px;
   font-size: 12px;
   font-weight: 650;
   letter-spacing: 1px;
-  background: #253b2b99;
+  background: #35353599;
 }
 .town-lab h1 {
   font:
@@ -67,10 +67,10 @@ body.town-lab {
 }
 .town-header a {
   pointer-events: auto;
-  color: #f9f8eb;
-  background: #253b2baa;
+  color: #f7f7f7;
+  background: #353535aa;
   padding: 9px 12px;
-  border: 1px solid #fff2;
+  border: 1px solid #ffffff22;
   border-radius: 9px;
   font-size: 11px;
   letter-spacing: 0;
@@ -82,9 +82,9 @@ body.town-lab {
   left: 50%;
   transform: translate(-50%, -50%);
   pointer-events: none;
-  color: #fff9;
+  color: #ffffff99;
   font-size: 17px;
-  filter: drop-shadow(0 1px 2px #000);
+  filter: drop-shadow(0 1px 2px #000000);
 }
 .town-target {
   position: fixed;
@@ -92,7 +92,7 @@ body.town-lab {
   left: 50%;
   transform: translateX(-50%);
   font-size: 10px;
-  text-shadow: 0 1px 4px #000;
+  text-shadow: 0 1px 4px #000000;
   opacity: 0.75;
   pointer-events: none;
   max-width: 90vw;
@@ -110,17 +110,17 @@ body.town-lab {
   font-size: 11px;
   text-align: center;
   margin: 0 0 8px;
-  color: #fff;
+  color: #ffffff;
   min-height: 16px;
-  text-shadow: 0 1px 4px #15221b;
+  text-shadow: 0 1px 4px #1f1f1f;
 }
 .town-command-row {
   display: flex;
   gap: 6px;
-  background: #152b22e8;
+  background: #262626e8;
   backdrop-filter: blur(16px);
   border: 1px solid #ffffff32;
-  box-shadow: 0 7px 24px #15221b33;
+  box-shadow: 0 7px 24px #1f1f1f33;
   border-radius: 13px;
   padding: 5px;
 }
@@ -134,12 +134,12 @@ body.town-lab {
   background: transparent;
   resize: none;
   font: 13px/19px system-ui;
-  color: #fff;
+  color: #ffffff;
   outline: none;
   margin: 0;
 }
 .town-lab #request::placeholder {
-  color: #d1ddcd99;
+  color: #d9d9d999;
 }
 .town-command button {
   flex: none;
@@ -158,19 +158,19 @@ body.town-lab {
   align-items: center;
   gap: 4px;
   padding: 5px;
-  background: #152b22eb;
+  background: #262626eb;
   border: 1px solid #ffffff32;
   border-radius: 13px;
   backdrop-filter: blur(16px);
-  box-shadow: 0 7px 24px #15221b33;
+  box-shadow: 0 7px 24px #1f1f1f33;
 }
 .town-lab button {
   font: 500 12px/1.4 system-ui;
   letter-spacing: 0;
   text-transform: none;
-  color: #f5f2df;
+  color: #f1f1f1;
   background: #ffffff0a;
-  border: 1px solid #fff2;
+  border: 1px solid #ffffff22;
   cursor: pointer;
   border-radius: 7px;
   min-height: 34px;
@@ -182,16 +182,16 @@ body.town-lab {
 }
 .town-lab button:hover:not(:disabled) {
   background: #ffffff20;
-  border-color: #fff5;
+  border-color: #ffffff55;
 }
 .town-lab button:disabled {
   opacity: 0.4;
   cursor: default;
 }
 .town-lab button.primary {
-  background: #ccaa70;
-  color: #14251b;
-  border-color: #ccaa70;
+  background: #adadad;
+  color: #212121;
+  border-color: #adadad;
 }
 .town-lab kbd {
   font: 10px system-ui;
@@ -200,7 +200,7 @@ body.town-lab {
 }
 .hotbar-divider {
   height: 20px;
-  border-left: 1px solid #fff2;
+  border-left: 1px solid #ffffff22;
   margin: 0 3px;
 }
 .town-help {
@@ -210,15 +210,15 @@ body.town-lab {
   right: 0;
   text-align: center;
   font-size: 10px;
-  color: #fff9;
-  text-shadow: 0 1px 4px #15221b;
+  color: #ffffff99;
+  text-shadow: 0 1px 4px #1f1f1f;
   pointer-events: none;
 }
 .town-loading {
   position: fixed;
   inset: 0;
   z-index: 10;
-  background: #152b22;
+  background: #262626;
   display: grid;
   place-items: center;
 }
@@ -233,13 +233,13 @@ body.town-lab {
   max-height: calc(100dvh - 180px);
   overflow: auto;
   box-sizing: border-box;
-  color: #eeeedd;
-  background: #172c24f5;
+  color: #ededed;
+  background: #272727f5;
   backdrop-filter: blur(20px);
-  border: 1px solid #fff3;
+  border: 1px solid #ffffff33;
   border-radius: 15px;
   padding: 16px;
-  box-shadow: 0 15px 55px #0c211850;
+  box-shadow: 0 15px 55px #1c1c1c50;
 }
 .town-lab .lab-panel::backdrop {
   background: transparent;
@@ -264,15 +264,15 @@ body.town-lab {
   font-size: 11px;
   display: block;
   margin: 12px 0 5px;
-  color: #d6decf;
+  color: #dbdbdb;
 }
 .town-lab select,
 .town-lab input {
   width: 100%;
   min-height: 35px;
-  background: #0f221b;
-  border: 1px solid #fff2;
-  color: #f4f2df;
+  background: #1d1d1d;
+  border: 1px solid #ffffff22;
+  color: #f1f1f1;
   border-radius: 7px;
   box-sizing: border-box;
   padding: 7px;
@@ -295,7 +295,7 @@ body.town-lab {
 .town-lab .lab-panel p,
 .town-lab #scene-count {
   font-size: 11px;
-  color: #bccbbc;
+  color: #c7c7c7;
   margin: 8px 0;
 }
 .town-lab details {
@@ -307,9 +307,9 @@ body.town-lab {
   height: 190px;
   box-sizing: border-box;
   font: 11px/1.4 monospace;
-  background: #0d1a14;
-  color: #ddd;
-  border: 1px solid #fff2;
+  background: #171717;
+  color: #dddddd;
+  border: 1px solid #ffffff22;
   margin-top: 10px;
 }
 .town-lab pre {
@@ -343,3 +343,11 @@ body.town-lab {
     text-overflow: ellipsis;
   }
 }
+
+:root { color-scheme: dark; --background: #000; --foreground: #fafafa; --card: #18181b; --muted: #a1a1aa; --border: #ffffff1f; --primary: #fafafa; --radius: .75rem; }
+body { background: var(--background); color: var(--foreground); font-family: ui-sans-serif, system-ui, sans-serif; }
+button, input, select, textarea { font: inherit; border-radius: 6px; }
+button, select { min-height: 40px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid #d4d4d8; outline-offset: 3px; }
+input, select, textarea { color: #fafafa; background: #09090b; border: 1px solid #3f3f46; }
+input[type=range], input[type=checkbox] { accent-color: #fafafa; }

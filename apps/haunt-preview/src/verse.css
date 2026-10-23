@@ -1,7 +1,7 @@
 .verse-house {
-  --glass: linear-gradient(145deg, #19232d9c, #080d15b5);
-  color: #e7edf3;
-  background: #070a0f;
+  --glass: linear-gradient(145deg, #2222229c, #0d0d0db5);
+  color: #ececec;
+  background: #0a0a0a;
   font-family: ui-sans-serif, system-ui, sans-serif;
   overflow: hidden;
 }
@@ -17,18 +17,18 @@
   inset: 0 0 auto;
   height: 72px;
   z-index: 2;
-  background: linear-gradient(#06090dc9, transparent);
+  background: linear-gradient(#090909c9, transparent);
   border: 0;
   pointer-events: none;
 }
 .verse-house .brand {
-  color: #e1e8ee;
+  color: #e7e7e7;
   pointer-events: auto;
   letter-spacing: 0.1em;
 }
 .verse-house .brand span,
 .verse-house .tag {
-  color: #a6b2bf;
+  color: #b0b0b0;
 }
 .verse-house main {
   display: block;
@@ -47,14 +47,14 @@
   border-radius: 0;
 }
 .verse-house .viewport:after {
-  box-shadow: inset 0 0 120px 20px #0005;
+  box-shadow: inset 0 0 120px 20px #00000055;
 }
 .verse-house .house-title {
   position: fixed;
   top: 102px;
   left: 40px;
   pointer-events: none;
-  text-shadow: 0 2px 25px #000;
+  text-shadow: 0 2px 25px #000000;
 }
 .verse-house .house-title h1 {
   font:
@@ -62,14 +62,14 @@
     system-ui,
     sans-serif;
   letter-spacing: -0.05em;
-  color: #f1f4f8;
+  color: #f4f4f4;
 }
 .verse-house .house-title > p:last-child {
   font-size: 12px;
-  color: #acb8c6;
+  color: #b6b6b6;
 }
 .verse-house .eyebrow {
-  color: #a4b6c6;
+  color: #b3b3b3;
   font:
     9px ui-monospace,
     monospace;
@@ -80,15 +80,15 @@
   bottom: 100px;
   left: 40px;
   right: 40px;
-  color: #acbac7;
+  color: #b8b8b8;
   pointer-events: none;
 }
 .verse-house .caption #timing {
-  color: #acbac7;
+  color: #b8b8b8;
 }
 .verse-house .room-label {
   bottom: 160px;
-  color: #c8d5e0;
+  color: #d3d3d3;
 }
 .verse-house .room-label #wall-aim {
   display: none;
@@ -103,15 +103,15 @@
 }
 .verse-house .walk-help {
   margin-right: auto;
-  color: #b1bdc8;
+  color: #bbbbbb;
   font-size: 11px;
 }
 .verse-house .map-button {
   background: var(--glass);
-  border: 1px solid #dcecff38;
+  border: 1px solid #eaeaea38;
   border-radius: 3px;
   padding: 12px 18px;
-  color: #e3ebf4;
+  color: #eaeaea;
   text-decoration: none;
   font-size: 13px;
   backdrop-filter: blur(10px);
@@ -120,27 +120,27 @@
   margin-left: 9px;
 }
 .verse-house button {
-  color: #dae5ee;
-  background: #d5eaff0b;
-  border-color: #c2d9ed30;
+  color: #e3e3e3;
+  background: #e7e7e70b;
+  border-color: #d6d6d630;
   border-radius: 3px;
 }
 .verse-house button:hover {
-  background: #d5eaff1c;
-  border-color: #c2d9ed65;
+  background: #e7e7e71c;
+  border-color: #d6d6d665;
 }
 .verse-house button:focus-visible,
 .verse-house a:focus-visible {
-  outline: 2px solid #e1efff;
+  outline: 2px solid #ededed;
   outline-offset: 4px;
 }
 .verse-house #open-edit {
   min-width: 128px;
   display: flex;
   justify-content: space-between;
-  background: #e0e8ef;
-  color: #0b1520;
-  border-color: #e0e8ef;
+  background: #e7e7e7;
+  color: #141414;
+  border-color: #e7e7e7;
 }
 .verse-house #edit-workspace {
   position: fixed;
@@ -153,11 +153,11 @@
   padding: 25px 30px;
   border: 0;
   background: transparent;
-  color: #e7edf3;
+  color: #ececec;
   overflow: auto;
 }
 .verse-house #edit-workspace::backdrop {
-  background: #02060c9c;
+  background: #0606069c;
 }
 .verse-house .workspace-heading {
   display: flex;
@@ -167,7 +167,7 @@
   margin-bottom: 24px;
 }
 .verse-house h2 {
-  color: #e8eef5;
+  color: #ededed;
   font:
     400 32px ui-sans-serif,
     system-ui,
@@ -190,22 +190,22 @@
 }
 .verse-house .workspace-panel {
   background: var(--glass);
-  border: 1px solid #d9eaff30;
+  border: 1px solid #e8e8e830;
   border-radius: 3px;
   padding: 19px;
   backdrop-filter: blur(10px);
   min-width: 0;
-  box-shadow: 0 18px 50px #0004;
+  box-shadow: 0 18px 50px #00000044;
 }
 .verse-house .panel-heading {
   display: flex;
   justify-content: space-between;
-  color: #a3b6c7;
+  color: #b3b3b3;
   font:
     9px ui-monospace,
     monospace;
   letter-spacing: 0.14em;
-  border-bottom: 1px solid #dcecff20;
+  border-bottom: 1px solid #eaeaea20;
   padding-bottom: 13px;
   margin-bottom: 17px;
 }
@@ -214,7 +214,7 @@
   letter-spacing: -0.025em;
   font-weight: 450;
   margin-bottom: 13px;
-  color: #edf3f8;
+  color: #f2f2f2;
 }
 .verse-house .panel-objects {
   grid-column: 1;
@@ -238,25 +238,25 @@
 }
 .verse-house .scene-controls label,
 .verse-house .agent label {
-  color: #b6c5d2;
+  color: #c3c3c3;
 }
 .verse-house input,
 .verse-house select,
 .verse-house textarea {
-  color: #d4e1ec;
-  background: #030a1266;
-  border-color: #b9d5f52e;
+  color: #dfdfdf;
+  background: #09090966;
+  border-color: #d1d1d12e;
   font-size: 11px;
 }
 .verse-house input:focus,
 .verse-house textarea:focus,
 .verse-house select:focus {
-  outline: 1px solid #b9d5f5;
+  outline: 1px solid #d1d1d1;
 }
 .verse-house .primary {
-  color: #0a1520;
-  background: #d6e3ee;
-  border-color: #d6e3ee;
+  color: #131313;
+  background: #e1e1e1;
+  border-color: #e1e1e1;
 }
 .verse-house .actions {
   flex-wrap: wrap;
@@ -271,23 +271,23 @@
   margin: 0;
   padding: 0;
   border: 0;
-  color: #b8c6d2;
+  color: #c4c4c4;
 }
 .verse-house .agent p,
 .verse-house #scene-count,
 .verse-house #shader-status,
 .verse-house #draft-state,
 .verse-house #wall-target {
-  color: #a4b9cb;
+  color: #b6b6b6;
 }
 .verse-house .layout-tools summary,
 .verse-house .shader-tools summary {
-  color: #edf3f8;
+  color: #f2f2f2;
   font-size: 14px;
   margin-bottom: 15px;
 }
 .verse-house #floorplan {
-  background: #030a1255;
+  background: #09090955;
   height: 150px;
 }
 .verse-house #shader {
@@ -296,21 +296,21 @@
   font-size: 10px;
 }
 .verse-house .file-tab {
-  background: #d5eaff08;
-  color: #b9cbdc;
+  background: #e7e7e708;
+  color: #c8c8c8;
   font-size: 9px;
 }
 .verse-house .file-dot {
-  background: #c8e5ff;
+  background: #e1e1e1;
 }
 .verse-house .panel-note,
 .verse-house #changes-status {
-  color: #b3c1ce;
+  color: #bfbfbf;
   font-size: 11px;
   line-height: 1.7;
 }
 .verse-house #changes-status {
-  color: #97b0c5;
+  color: #acacac;
 }
 .verse-house .changes-table {
   max-height: 295px;
@@ -325,13 +325,13 @@
   table-layout: fixed;
 }
 .verse-house th {
-  color: #9db4c7;
+  color: #b0b0b0;
   font:
     9px ui-monospace,
     monospace;
   padding: 10px 6px;
   font-weight: 400;
-  border-bottom: 1px solid #d1eaff33;
+  border-bottom: 1px solid #e6e6e633;
 }
 .verse-house th:first-child {
   width: 27%;
@@ -342,42 +342,42 @@
 .verse-house td {
   vertical-align: top;
   padding: 12px 6px;
-  border-bottom: 1px solid #d1eaff18;
+  border-bottom: 1px solid #e6e6e618;
   overflow-wrap: anywhere;
   line-height: 1.6;
-  color: #c6d3df;
+  color: #d1d1d1;
 }
 .verse-house td strong {
   display: block;
   font-weight: 500;
-  color: #ecf2f6;
+  color: #f1f1f1;
 }
 .verse-house td time,
 .verse-house td small {
   display: block;
   font-size: 9px;
-  color: #97aabd;
+  color: #a7a7a7;
   margin-top: 4px;
 }
 .verse-house td a {
-  color: #dbe8f5;
-  text-decoration-color: #c0dcf444;
+  color: #e6e6e6;
+  text-decoration-color: #d8d8d844;
   text-underline-offset: 3px;
 }
 .verse-house td:last-child {
-  color: #9eafbe;
+  color: #acacac;
 }
 .verse-house #edit-signin {
   width: min(390px, calc(100% - 32px));
   padding: 29px;
-  background: linear-gradient(135deg, #15202aeb, #080e16ed);
-  border: 1px solid #c9e5fc4d;
+  background: linear-gradient(135deg, #1e1e1eeb, #0d0d0ded);
+  border: 1px solid #e1e1e14d;
   border-radius: 3px;
-  color: #d7e5f0;
+  color: #e3e3e3;
   backdrop-filter: blur(16px);
 }
 .verse-house #edit-signin::backdrop {
-  background: #03070d80;
+  background: #07070780;
 }
 .verse-house #edit-signin h2 {
   font-size: 31px;
@@ -386,7 +386,7 @@
 .verse-house #edit-signin p {
   font-size: 13px;
   line-height: 1.8;
-  color: #b4c5d3;
+  color: #c2c2c2;
 }
 .verse-house .signin-action,
 .verse-house #keep-exploring {
@@ -400,14 +400,14 @@
   text-decoration: none;
 }
 .verse-house .signin-action {
-  background: #dde8f3;
-  color: #0d1722;
+  background: #e6e6e6;
+  color: #161616;
 }
 .verse-house .no-script {
   position: fixed;
   top: 35%;
   padding: 30px;
-  background: #101824;
+  background: #171717;
   z-index: 10;
 }
 @media (max-width: 1100px) {
@@ -516,3 +516,11 @@
     order: 3;
   }
 }
+
+:root { color-scheme: dark; --background: #000; --foreground: #fafafa; --card: #18181b; --muted: #a1a1aa; --border: #ffffff1f; --primary: #fafafa; --radius: .75rem; }
+body { background: var(--background); color: var(--foreground); font-family: ui-sans-serif, system-ui, sans-serif; }
+button, input, select, textarea { font: inherit; border-radius: 6px; }
+button, select { min-height: 40px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible { outline: 2px solid #d4d4d8; outline-offset: 3px; }
+input, select, textarea { color: #fafafa; background: #09090b; border: 1px solid #3f3f46; }
+input[type=range], input[type=checkbox] { accent-color: #fafafa; }

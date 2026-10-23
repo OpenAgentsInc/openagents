@@ -52,3 +52,7 @@ openagents browser run -- node apps/verse-ui/tools/verify.mjs
 It checks real guest entry and first-edit sign-in/cancellation, keyboard focus,
 workspace retention, engine generation/frame/pose retention, and narrow layouts.
 It does not complete provider sign-in, publish anything, or record speech.
+
+The Verse flow uses a dark zinc theme: black backgrounds, zinc cards, light text,
+and light primary actions. Keep the private engine controls on the same palette.
+Scene materials and world lighting are independent of the interface theme.

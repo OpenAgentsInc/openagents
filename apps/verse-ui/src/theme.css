@@ -27,20 +27,20 @@
 }
 :root {
   color-scheme: dark;
-  --background: #090b10;
-  --foreground: #e9edf5;
-  --card: #11151df0;
-  --popover: #141922;
-  --primary: #b3e9df;
-  --primary-foreground: #10251f;
-  --secondary: #242c38;
-  --muted: #1a202b;
-  --muted-foreground: #9daabc;
-  --accent: #25333b;
+  --background: #000000;
+  --foreground: #fafafa;
+  --card: #18181bef;
+  --popover: #18181b;
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --secondary: #27272a;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --accent: #3f3f46;
   --border: #ffffff1f;
   --input: #ffffff28;
-  --ring: #8bdccc;
-  --destructive: #fb8e8e;
+  --ring: #d4d4d8;
+  --destructive: #f87171;
   --radius: 0.75rem;
   --ink: var(--foreground);
   --line: var(--border);
@@ -88,7 +88,7 @@
   justify-content: center;
   gap: 8px;
   text-decoration: none;
-  box-shadow: 0 1px 2px #0002;
+  box-shadow: 0 1px 2px #00000022;
   cursor: pointer;
   transition:
     background 0.15s,
@@ -123,13 +123,13 @@
 [data-verse-ui] select {
   border: 1px solid var(--input);
   border-radius: 7px;
-  background: #0a0f16;
+  background: #0e0e0e;
   color: var(--foreground);
   font: 400 13px/1.5 var(--font-sans);
   padding: 10px 12px;
   max-width: 100%;
   min-height: 40px;
-  box-shadow: inset 0 1px 2px #0002;
+  box-shadow: inset 0 1px 2px #00000022;
 }
 [data-verse-ui] input::placeholder,
 [data-verse-ui] textarea::placeholder {
@@ -155,7 +155,7 @@
   font-family: var(--font-sans);
 }
 [data-verse-ui] label {
-  color: #c4cddd;
+  color: #cccccc;
   font-size: 12px;
   font-weight: 500;
 }
@@ -185,18 +185,18 @@
   background: var(--primary);
   color: var(--primary-foreground);
   border-color: transparent;
-  box-shadow: 0 1px 2px #0004;
+  box-shadow: 0 1px 2px #00000044;
 }
 [data-verse-ui] #project-publish {
-  border-color: #8bdccc66;
+  border-color: #cacaca66;
   color: var(--primary);
 }
 [data-verse-ui] #verse-entry,
 [data-verse-ui] .destination-panel {
-  border: 1px solid #a8d5df36;
-  background: linear-gradient(135deg, #17232de6, #0c141ed6);
+  border: 1px solid #cccccc36;
+  background: linear-gradient(135deg, #212121e6, #131313d6);
   box-shadow:
-    0 20px 80px #0006,
+    0 20px 80px #00000066,
     inset 0 1px 0 #ffffff0a;
   border-radius: 16px;
   backdrop-filter: blur(22px);
@@ -212,7 +212,7 @@
   font-weight: 550;
 }
 [data-verse-ui] #verse-entry p {
-  color: #b4c3d1;
+  color: #c1c1c1;
   font-size: 14px;
   line-height: 1.65;
 }
@@ -225,12 +225,12 @@
   min-height: 44px;
 }
 [data-verse-ui] .entry-label {
-  color: #aac0d0;
+  color: #bcbcbc;
   font-size: 10px;
   letter-spacing: 0.16em;
 }
 [data-verse-ui] .entry-symbol {
-  color: #c7e9e4;
+  color: #e1e1e1;
 }
 [data-verse-ui] .entry-back {
   color: var(--muted-foreground);
@@ -248,8 +248,8 @@
   min-height: 60px;
 }
 [data-verse-ui] .world-option[aria-pressed="true"] {
-  background: #b3e9df0d;
-  border-color: #b3e9df40;
+  background: #dddddd0d;
+  border-color: #dddddd40;
 }
 [data-verse-ui] .world-option small {
   color: var(--muted-foreground);
@@ -261,7 +261,7 @@
   color: var(--muted-foreground);
 }
 [data-verse-ui] .atlas-heading p {
-  color: #becbda;
+  color: #c9c9c9;
 }
 [data-verse-ui] .atlas-heading h1 {
   font-weight: 450;
@@ -306,8 +306,8 @@
 [data-verse-ui="studio"] #world-controls > span {
   flex: 1;
   font-size: 11px;
-  color: #d2dae5;
-  text-shadow: 0 1px 4px #000;
+  color: #d9d9d9;
+  text-shadow: 0 1px 4px #000000;
 }
 [data-verse-ui="studio"] #world-controls a {
   border: 1px solid var(--border);
@@ -331,7 +331,7 @@
   color: var(--foreground);
   padding: 24px 28px;
   text-align: center;
-  box-shadow: 0 16px 60px #0005;
+  box-shadow: 0 16px 60px #00000055;
   z-index: 1;
 }
 [data-verse-ui="universe"] #world-notice {
@@ -344,7 +344,7 @@
   position: fixed;
   inset: 0;
   z-index: 3;
-  background: #02050a90;
+  background: #05050590;
   backdrop-filter: blur(2px);
 }
 [data-verse-ui] #edit-panel {
@@ -401,11 +401,11 @@
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 12px 40px #0003;
+  box-shadow: 0 12px 40px #00000033;
   backdrop-filter: blur(18px);
   overflow: auto;
   scrollbar-width: thin;
-  scrollbar-color: #546070 transparent;
+  scrollbar-color: #5f5f5f transparent;
   min-width: 0;
   min-height: 0;
   resize: both;
@@ -523,14 +523,14 @@
   color: var(--foreground);
   font-weight: 500;
 }
-[data-verse-ui] #face-controls {
+[data-verse-ui] #bfbfbfee-controls {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 14px;
   margin: 16px 0;
   min-width: 0;
 }
-[data-verse-ui] #face-canvas {
+[data-verse-ui] #bfbfbfee-canvas {
   display: block;
   max-width: 256px;
   width: 100%;
@@ -539,10 +539,10 @@
   touch-action: none;
   cursor: crosshair;
   border-radius: 8px;
-  background: repeating-conic-gradient(#202733 0% 25%, #303a48 0% 50%) 0/20px
+  background: repeating-conic-gradient(#262626 0% 25%, #393939 0% 50%) 0/20px
     20px;
 }
-[data-verse-ui] #face-controls:disabled #face-canvas {
+[data-verse-ui] #bfbfbfee-controls:disabled #bfbfbfee-canvas {
   opacity: 0.4;
   pointer-events: none;
 }
@@ -562,7 +562,7 @@
   border-radius: 12px;
   background: var(--card);
   backdrop-filter: blur(18px);
-  box-shadow: 0 10px 32px #0003;
+  box-shadow: 0 10px 32px #00000033;
   padding: 16px;
 }
 [data-verse-ui] #world-voice {
@@ -634,7 +634,7 @@
 }
 [data-verse-ui] #publish-share-link {
   display: block;
-  background: #070c13;
+  background: #0b0b0b;
   border: 1px solid var(--input);
   padding: 12px;
   border-radius: 7px;
@@ -649,10 +649,10 @@
   width: min(460px, calc(100vw - 32px));
   max-height: 85dvh;
   overflow: auto;
-  box-shadow: 0 24px 100px #0009;
+  box-shadow: 0 24px 100px #00000099;
 }
 [data-verse-ui] dialog::backdrop {
-  background: #02050c9c;
+  background: #0505059c;
   backdrop-filter: blur(5px);
 }
 [data-verse-ui] dialog:not(#verse-entry) section {
@@ -723,7 +723,7 @@
   min-height: 100dvh;
   overflow: auto;
   background:
-    radial-gradient(ellipse at top, #18312d55, transparent 60%),
+    radial-gradient(ellipse at top, #2b2b2b55, transparent 60%),
     var(--background);
 }
 [data-verse-ui="setup"] main,
@@ -737,7 +737,7 @@
   border: 1px solid var(--border);
   border-radius: 16px;
   background: var(--card);
-  box-shadow: 0 18px 80px #0003;
+  box-shadow: 0 18px 80px #00000033;
 }
 [data-verse-ui="setup"] h1,
 [data-verse-ui="invite"] h1 {
@@ -795,7 +795,7 @@
   position: fixed;
   bottom: 16px;
   left: 20px;
-  color: #d2dae5;
+  color: #d9d9d9;
   font-size: 11px;
 }
 [data-verse-ui] #visit {

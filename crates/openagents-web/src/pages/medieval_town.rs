@@ -131,7 +131,7 @@ async fn boot() -> Response {
         Some(&r.origin()),
     )
 }
-const STYLE: &str = "html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#0b1217;color:#e3eeee;font:14px system-ui}main{position:fixed;inset:0}iframe{width:100%;height:100%;border:0;display:block}#world-notice{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);box-sizing:border-box;width:calc(100% - 32px);max-width:420px;padding:24px;background:#10202aee;border:1px solid #426171;border-radius:8px;line-height:1.5}#world-notice[hidden],#world-host-controls{display:none}";
+const STYLE: &str = "html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#000000;color:#fafafa;font:14px system-ui}main{position:fixed;inset:0}iframe{width:100%;height:100%;border:0;display:block}#world-notice{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);box-sizing:border-box;width:calc(100% - 32px);max-width:420px;padding:24px;background:#18181bee;border:1px solid #3f3f46;border-radius:8px;line-height:1.5}#world-notice[hidden],#world-host-controls{display:none}";
 async fn style() -> Response {
     response(StatusCode::OK, STYLE, "text/css; charset=utf-8", None)
 }
