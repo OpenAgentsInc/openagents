@@ -437,4 +437,22 @@ mod tests {
         source.artifacts[0].path = "/private-assets/vendor.blend".into();
         assert!(source.validate().is_err());
     }
+    #[test]
+    fn literal_v7_release_keeps_its_manifest_hash_and_exact_serialization() {
+        let literal = include_bytes!("../tests/fixtures/playable-v7.json");
+        let release: PlayableRelease = serde_json::from_slice(literal).unwrap();
+        assert_eq!(
+            release.id,
+            "ede982981cc65ebd5b25ed7b333b41a68ac13eba9bc72ddd0b04ab7b8ec2f78a"
+        );
+        release.validate().unwrap();
+        assert_eq!(
+            project_hash(&serde_json::to_vec(&release.manifest).unwrap()),
+            release.id
+        );
+        assert_eq!(
+            serde_json::to_vec(&release).unwrap(),
+            literal.strip_suffix(b"\n").unwrap()
+        );
+    }
 }

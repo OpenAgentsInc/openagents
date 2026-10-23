@@ -391,6 +391,15 @@ pub(super) async fn tutorial_publication(
     release: &str,
 ) -> Result<aethyrforge_host::TutorialPublication, Response> {
     let p = resolve(app, headers, world, Some(release)).await?;
+    let Some(house_runtime) = app.config.verse_publish_runtime.as_ref() else {
+        return Err(denied());
+    };
+    if p.manifest.content.document.namespace != WorldNamespace::HauntedHouse
+        || p.manifest.runtime.template_world != house_runtime.template_world
+        || p.manifest.content.document.template.world != house_runtime.template_world
+    {
+        return Err(denied());
+    }
     let (book, _) = read::<PublishedWorld>(
         &app.config.chat_store,
         &world_key(world).map_err(|_| missing())?,

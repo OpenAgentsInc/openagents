@@ -81,3 +81,5 @@ pub use player_browser::*;
 
 mod tutorial;
 pub use tutorial::*;
+mod planet;
+pub use planet::*;
