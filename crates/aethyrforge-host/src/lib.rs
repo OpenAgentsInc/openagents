@@ -1,7 +1,9 @@
 //! Public integration types. This crate contains no engine implementation.
 
+mod catalog;
 mod host;
 mod protocol;
+pub use catalog::*;
 pub use host::*;
 pub use protocol::*;
 

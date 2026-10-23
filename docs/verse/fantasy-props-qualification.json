@@ -1,0 +1,54 @@
+{
+  "schema": "openagents.verse.fantasy-qualification.v1",
+  "issue": 12548,
+  "privateCommit": "eeb5efbf23bb60d1535ad2f33234520715264b3f",
+  "rendererBase": "816ae68",
+  "catalogSha256": "0903a4651c357d1634d5e7feb53b8c3ae497a1649f0148e01aed15b78cb1b533",
+  "reviewSceneSha256": "7694650ce2136a6994503ea0e2ef77421140086cd0c6dac0247fbe9b9c0e6d90",
+  "publicMetadataSha256": "5a2cabaa27476bb3e17ec14493ba8e8b759d81afb03608a75b7d220445245c50",
+  "sourceAssets": 94,
+  "resolvedSourceResources": 201,
+  "runtimeAssets": 35,
+  "runtimeVertices": 37936,
+  "preparedResources": 24,
+  "transferBytes": 9726140,
+  "preparedTrimAndTownMaps": 18,
+  "browser": "155.0.8059.85",
+  "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3",
+    "device": "",
+    "description": ""
+  },
+  "viewport": [
+    1440,
+    900
+  ],
+  "captureSha256": {
+    "contact-sheet": "e743ecf9b6bcd2622aa14114ca8ed28bc1666b691cd97e20f8a514851a298fac",
+    "werewolf": "ccb472f2f45657baf118c35f905613e2782b8738a3361b294191071898c3f1e3",
+    "pumpkin": "c7a04d98c7a2f8b26a3e3ab13a418f20ea91dabe613d131d973792e1536ba967",
+    "ghost": "07441845cc7d4b5eafd501ad6fe05861a76e03146d6135dc8cdf57569fb030d6",
+    "coffin": "335a92e3031ee276b6f6787dd7182198a1a0281b5f11cc56349ffa009ba48ece",
+    "gravestone": "888daa529af16f32a1202c67036ad89ba9edec264a20fca231c66b928d2b9c6f",
+    "cauldron": "a9f34e2f671b56f03788f7d006e6956c2782944e5b933cabe7d3daf7be52c6a2",
+    "chest_wood": "ce977077d5df935521d8dfdb201a5278dd897db72a088706b71a4991b151e381",
+    "wall-4": "517b066f31c2e417cfc6f36274e5a66a8e049219c3cbbc597b070252392c8c2e"
+  },
+  "checks": {
+    "publicRustTests": 13,
+    "syntheticImporterTests": 11,
+    "independentRealRebuildsMatch": true,
+    "sourceResourcesUnchanged": true,
+    "outputHashesVerified": true,
+    "sharedImageFetches": 1,
+    "gpuErrors": [],
+    "customArtRights": "openagents-project-runtime"
+  },
+  "limits": [
+    "Static custom characters and a closed baked chest; no animation claim.",
+    "Town modules retain the existing color-only kit-build material profile.",
+    "This qualifies asset preparation, not the house or full tutorial."
+  ],
+  "captures": "Private scratch artifacts; screenshots are not distributed in public Git."
+}
