@@ -1385,6 +1385,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-compat"
+version = "0.2.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c97d7ff3c25d6c10d64170c12acaf5d4245e76dece3779c1d92b153a64f11df"
+dependencies = [
+ "futures-core",
+ "futures-io",
+ "once_cell",
+ "pin-project-lite",
+ "tokio",
+]
+
+[[package]]
 name = "async-compression"
 version = "0.4.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11348,6 +11361,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "openagents-bindgen"
+version = "1.0.0"
+dependencies = [
+ "uniffi",
+]
+
+[[package]]
 name = "openagents-brand"
 version = "1.0.0"
 dependencies = [
@@ -11704,14 +11724,19 @@ dependencies = [
  "async-trait",
  "bitcoin-amount",
  "breez-sdk-spark",
+ "bytemuck",
  "chat-home",
  "coder-access",
  "coder-sharing",
  "coder-ui",
  "computer-driver",
+ "flate2",
+ "glam",
+ "image",
  "jni 0.22.4",
  "lab-kit",
  "lab-ui",
+ "naga",
  "ndk-context",
  "nostr",
  "oa-copy",
@@ -11731,6 +11756,7 @@ dependencies = [
  "openagents-visual-gpu",
  "openagents-voice-session",
  "openagents-workspace-hack",
+ "pollster 0.4.0",
  "push-gateway",
  "reqwest 0.12.28",
  "rust-native",
@@ -11748,6 +11774,7 @@ dependencies = [
  "unicode-segmentation",
  "uniffi",
  "uuid",
+ "wgpu",
 ]
 
 [[package]]
@@ -18366,6 +18393,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7530ae8efeaaa488622865966763fe0294832779fff80508c36d69c6a874a6a"
 dependencies = [
  "anyhow",
+ "async-compat",
  "bytes",
  "once_cell",
  "static_assertions",

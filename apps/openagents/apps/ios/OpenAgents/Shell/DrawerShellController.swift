@@ -348,6 +348,19 @@ final class DrawerShellController: UIViewController, AppRouter, UINavigationCont
         closeDrawer()
     }
 
+    func showMedievalTown() {
+        guard !(presentedViewController is MedievalTownViewController) else { return }
+        closeDrawer(animated: false)
+        view.endEditing(true)
+        let show = { [weak self] in
+            let town = MedievalTownViewController()
+            town.modalPresentationStyle = .fullScreen
+            self?.present(town, animated: true)
+        }
+        if presentedViewController != nil { dismiss(animated: false, completion: show) }
+        else { show() }
+    }
+
     /// The sessions list lives in the drawer.
     func showSessions() {
         if presentedViewController != nil { dismiss(animated: true) }

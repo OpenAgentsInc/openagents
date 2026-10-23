@@ -17,6 +17,7 @@ mod android_bootstrap;
 pub mod caption;
 mod client_ffi;
 pub mod layout;
+pub mod medieval_town;
 pub mod orb;
 mod push;
 pub mod visual;

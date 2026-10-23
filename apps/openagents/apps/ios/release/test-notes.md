@@ -1,4 +1,17 @@
-# OpenAgents 1.0.0 (1018)
+# OpenAgents 1.0.0 (1019)
+
+Open the menu and choose Medieval Town to explore the town square in a native
+3D view. Use the left stick to move, drag on the right to look, and use Run
+and Jump. Close the town to return to your conversation.
+
+The mobile walking scene uses fewer buildings and simpler lighting. The
+first visit downloads about 12.7 MB; later visits use the saved scene.
+
+Check movement along the paving and steps, walls that stop the player,
+portrait and landscape, and returning after switching apps. The small FPS
+display shows completed frames.
+
+OpenAgents 1.0.0 (1018)
 
 The app no longer closes by itself on a long chat.
 

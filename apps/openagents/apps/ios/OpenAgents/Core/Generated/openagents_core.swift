@@ -3391,7 +3391,7 @@ public protocol CoreAccountProtocol: AnyObject, Sendable {
     func startIdentity(deviceName: String) 
     
     func lightningAddress(wallet: CoreWallet) throws  -> CoreLightningAddress
-
+    
     /**
      * The own-computer card's record for whoever is signed in, or this
      * install while signed out.
@@ -3997,7 +3997,7 @@ open func startIdentity(deviceName: String)  {try! rustCall() {
     )
 }
 }
-
+    
 open func lightningAddress(wallet: CoreWallet)throws  -> CoreLightningAddress  {
     return try  FfiConverterTypeCoreLightningAddress_lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
@@ -5008,7 +5008,7 @@ public protocol CoreAndroidHostProtocol: AnyObject, Sendable {
     func history() throws  -> CoreSavedHistory?
     
     func lightningAddress() throws  -> CoreLightningAddress
-
+    
     func navigate(route: AndroidHostRoute) throws 
     
     /**
@@ -5347,7 +5347,7 @@ open func lightningAddress()throws  -> CoreLightningAddress  {
     )
 })
 }
-
+    
 open func navigate(route: AndroidHostRoute)throws   {try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
     uniffi_openagents_mobile_fn_method_coreandroidhost_navigate(
@@ -9207,16 +9207,16 @@ public func FfiConverterTypeCoreLabCard_lower(_ value: CoreLabCard) -> UInt64 {
 
 
 public protocol CoreLightningAddressProtocol: AnyObject, Sendable {
-
+    
     /**
      * Returns a copy effect only after validating the displayed action.
      */
     func activate(instance: String, revision: UInt64, key: String) async throws  -> String
-
-    func refresh() async throws
-
+    
+    func refresh() async throws 
+    
     func snapshot() throws  -> String
-
+    
 }
 open class CoreLightningAddress: CoreLightningAddressProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -9268,9 +9268,9 @@ open class CoreLightningAddress: CoreLightningAddressProtocol, @unchecked Sendab
         try! rustCall { uniffi_openagents_mobile_fn_free_corelightningaddress(handle, $0) }
     }
 
+    
 
-
-
+    
     /**
      * Returns a copy effect only after validating the displayed action.
      */
@@ -9289,7 +9289,7 @@ open func activate(instance: String, revision: UInt64, key: String)async throws 
             errorHandler: FfiConverterTypeCoreError_lift
         )
 }
-
+    
 open func refresh()async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -9305,7 +9305,7 @@ open func refresh()async throws   {
             errorHandler: FfiConverterTypeCoreError_lift
         )
 }
-
+    
 open func snapshot()throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeCoreError_lift) {
         uniffiCallStatus in
@@ -9314,9 +9314,9 @@ open func snapshot()throws  -> String  {
     )
 })
 }
+    
 
-
-
+    
 }
 
 
@@ -12622,6 +12622,235 @@ public func FfiConverterTypeLayoutListener_lift(_ handle: UInt64) throws -> Layo
 #endif
 public func FfiConverterTypeLayoutListener_lower(_ value: LayoutListener) -> UInt64 {
     return FfiConverterTypeLayoutListener.lower(value)
+}
+
+
+
+
+
+
+public protocol MedievalTownRendererProtocol: AnyObject, Sendable {
+    
+    func attach(layer: UInt64, width: UInt32, height: UInt32, scale: Float) throws 
+    
+    func beginBenchmark() 
+    
+    func detach() 
+    
+    func frame(timestamp: Double, moveX: Float, moveZ: Float, lookX: Float, lookY: Float, run: Bool, jump: Bool) throws 
+    
+    func metrics()  -> String
+    
+    func prepare() async throws 
+    
+    func resetMetrics() 
+    
+    func resize(width: UInt32, height: UInt32, scale: Float) throws 
+    
+    func setActive(active: Bool) 
+    
+}
+open class MedievalTownRenderer: MedievalTownRendererProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_openagents_mobile_fn_clone_medievaltownrenderer(self.handle, $0) }
+    }
+public convenience init(cacheDirectory: String) {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_constructor_medievaltownrenderer_new(
+        FfiConverterString.lower(cacheDirectory),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_openagents_mobile_fn_free_medievaltownrenderer(handle, $0) }
+    }
+
+    
+
+    
+open func attach(layer: UInt64, width: UInt32, height: UInt32, scale: Float)throws   {try rustCallWithError(FfiConverterTypeMedievalTownError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_medievaltownrenderer_attach(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(layer),
+        FfiConverterUInt32.lower(width),
+        FfiConverterUInt32.lower(height),
+        FfiConverterFloat.lower(scale),uniffiCallStatus
+    )
+}
+}
+    
+open func beginBenchmark()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_medievaltownrenderer_begin_benchmark(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func detach()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_medievaltownrenderer_detach(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func frame(timestamp: Double, moveX: Float, moveZ: Float, lookX: Float, lookY: Float, run: Bool, jump: Bool)throws   {try rustCallWithError(FfiConverterTypeMedievalTownError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_medievaltownrenderer_frame(
+            self.uniffiCloneHandle(),
+        FfiConverterDouble.lower(timestamp),
+        FfiConverterFloat.lower(moveX),
+        FfiConverterFloat.lower(moveZ),
+        FfiConverterFloat.lower(lookX),
+        FfiConverterFloat.lower(lookY),
+        FfiConverterBool.lower(run),
+        FfiConverterBool.lower(jump),uniffiCallStatus
+    )
+}
+}
+    
+open func metrics() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_medievaltownrenderer_metrics(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func prepare()async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_openagents_mobile_fn_method_medievaltownrenderer_prepare(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_openagents_mobile_rust_future_poll_void,
+            completeFunc: ffi_openagents_mobile_rust_future_complete_void,
+            freeFunc: ffi_openagents_mobile_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeMedievalTownError_lift
+        )
+}
+    
+open func resetMetrics()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_medievaltownrenderer_reset_metrics(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+open func resize(width: UInt32, height: UInt32, scale: Float)throws   {try rustCallWithError(FfiConverterTypeMedievalTownError_lift) {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_medievaltownrenderer_resize(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(width),
+        FfiConverterUInt32.lower(height),
+        FfiConverterFloat.lower(scale),uniffiCallStatus
+    )
+}
+}
+    
+open func setActive(active: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_openagents_mobile_fn_method_medievaltownrenderer_set_active(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(active),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMedievalTownRenderer: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = MedievalTownRenderer
+
+    public static func lift(_ handle: UInt64) throws -> MedievalTownRenderer {
+        return MedievalTownRenderer(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: MedievalTownRenderer) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MedievalTownRenderer {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: MedievalTownRenderer, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMedievalTownRenderer_lift(_ handle: UInt64) throws -> MedievalTownRenderer {
+    return try FfiConverterTypeMedievalTownRenderer.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMedievalTownRenderer_lower(_ value: MedievalTownRenderer) -> UInt64 {
+    return FfiConverterTypeMedievalTownRenderer.lower(value)
 }
 
 
@@ -27624,7 +27853,7 @@ public struct FfiConverterTypeAndroidHostRoute: FfiConverterRustBuffer {
         case 11: return .browserPayments
         
         case 12: return .lightningAddress
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -27676,10 +27905,10 @@ public struct FfiConverterTypeAndroidHostRoute: FfiConverterRustBuffer {
         case .browserPayments:
             writeInt(&buf, Int32(11))
         
-
+        
         case .lightningAddress:
             writeInt(&buf, Int32(12))
-
+        
         }
     }
 }
@@ -27766,7 +27995,7 @@ public struct FfiConverterTypeAndroidHostSurface: FfiConverterRustBuffer {
         case 13: return .browserPayments
         
         case 14: return .lightningAddress
-
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -27826,10 +28055,10 @@ public struct FfiConverterTypeAndroidHostSurface: FfiConverterRustBuffer {
         case .browserPayments:
             writeInt(&buf, Int32(13))
         
-
+        
         case .lightningAddress:
             writeInt(&buf, Int32(14))
-
+        
         }
     }
 }
@@ -30426,6 +30655,81 @@ public func FfiConverterTypeLabMediaView_lower(_ value: LabMediaView) -> RustBuf
 
 
 
+public 
+enum MedievalTownError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case Failed(message: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension MedievalTownError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeMedievalTownError: FfiConverterRustBuffer {
+    typealias SwiftType = MedievalTownError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> MedievalTownError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Failed(
+            message: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: MedievalTownError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Failed(message):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(message, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMedievalTownError_lift(_ buf: RustBuffer) throws -> MedievalTownError {
+    return try FfiConverterTypeMedievalTownError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeMedievalTownError_lower(_ value: MedievalTownError) -> RustBuffer {
+    return FfiConverterTypeMedievalTownError.lower(value)
+}
+
+
 
 public enum NativeActionResult: Equatable, Hashable {
     
@@ -32617,7 +32921,7 @@ public struct FfiConverterTypeSettingsEffect: FfiConverterRustBuffer {
         
         case 9: return .shareText(title: try FfiConverterString.read(from: &buf), text: try FfiConverterString.read(from: &buf)
         )
-
+        
         case 10: return .openSuggestionBox
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -32666,11 +32970,11 @@ public struct FfiConverterTypeSettingsEffect: FfiConverterRustBuffer {
             writeInt(&buf, Int32(9))
             FfiConverterString.write(title, into: &buf)
             FfiConverterString.write(text, into: &buf)
-
-
+            
+        
         case .openSuggestionBox:
             writeInt(&buf, Int32(10))
-            
+        
         }
     }
 }
@@ -39305,6 +39609,33 @@ private let initializationResult: InitializationResult = {
     if (uniffi_openagents_mobile_checksum_method_transcriptview_attach_cloud() != 17521) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_attach() != 3633) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_begin_benchmark() != 64463) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_detach() != 58514) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_frame() != 27745) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_metrics() != 3761) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_prepare() != 19591) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_reset_metrics() != 59133) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_resize() != 43208) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_method_medievaltownrenderer_set_active() != 56339) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_openagents_mobile_checksum_method_orbrenderer_next_frame() != 5432) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -39435,6 +39766,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_transcriptview_new() != 32269) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_openagents_mobile_checksum_constructor_medievaltownrenderer_new() != 17730) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_openagents_mobile_checksum_constructor_orbrenderer_new() != 33643) {

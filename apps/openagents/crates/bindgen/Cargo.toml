@@ -1,0 +1,10 @@
+[package]
+name = "openagents-bindgen"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# The binding generator runs on the build machine and does not link the app.
+[dependencies]
+uniffi = { version = "0.32", features = ["cli"] }

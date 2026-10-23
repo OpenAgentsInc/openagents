@@ -2,6 +2,11 @@
 
 Keep fork-specific changes here so upstream updates can review each integration.
 
+- Add Medieval Town to the iOS navigation menu. The UIKit host mounts a
+  Metal layer; Rust loads a checksum-pinned mobile asset pack, controls the
+  player, draws the world, and measures completed GPU frames. Pause rendering
+  in the background and release the surface when the town closes.
+
 - OpenAgents #12460: open the shared Grid suggestion form from the desktop
   Help menu and phone Settings, including for guests, with the sending app
   named in the form's client tag. Build the Android core at API 26 to match

@@ -95,6 +95,24 @@ OpenAgentsShared/   Compiled into the app and the extension: the activity's
    arrives (rasterized on the worker thread) and forwards touches; the demo's
    "Agent visuals" chat (`-demo -route chat:chat-visuals`) has one of each.
 
+## Medieval Town
+
+Open the navigation menu and choose **Medieval Town**. Use the left stick to
+move, drag the right half to look, and use **Run** or **Jump**. The native
+mobile scene keeps the town square, nearby buildings, and distant castle,
+with simplified lighting and one texture atlas. Its first visit downloads
+about 12.7 MB; later visits use a verified local cache.
+
+`-demo -route medieval-town -town-bench` runs an offline-account simulator
+check against the real scene download: five seconds of warm-up, then 30
+seconds of movement and camera turns. Completed GPU frames and frame timing
+are saved to `Documents/medieval-town-benchmark.json`.
+
+The 2026-10-23 Release check on the iPhone 17 simulator (iOS 26.5, M5 Max)
+completed 1,800 GPU frames in 30 seconds: 60.0 FPS, a 16.85 ms 95th-percentile
+frame interval, and no intervals over 25 ms. The camera moved 21.76 m and turned
+during the check. Touch movement, look, and background/resume checks also passed.
+
 ## Launch arguments
 
 | Arg | Effect |

@@ -32,6 +32,11 @@ if [[ "$(uname -s)" == Darwin ]]; then
 fi
 mkdir -p "$OUT/include"
 
+# Keep compiler state separate for this checkout in the shared app target.
+export CARGO_TARGET_DIR="$CARGO_OUT"
+source "$ROOT/../../scripts/dev/cargo-build-env.sh"
+export CARGO_INCREMENTAL=0
+
 CORE_FEATURES=()
 if [[ "${OPENAGENTS_ACCOUNT_FIXTURE:-}" == "1" ]]; then
   if [[ "${CONFIGURATION:-Debug}" == "Release" || "$PLATFORM" != "iphonesimulator" ]]; then
@@ -63,18 +68,20 @@ run_cargo() {
     IPHONEOS_DEPLOYMENT_TARGET=26.0 \
     RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-1.98.1}" \
     CARGO_TARGET_DIR="$CARGO_OUT" \
-    CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-1}" \
+    RUSTC="$RUSTC" CARGO_BUILD_BUILD_DIR="$CARGO_BUILD_BUILD_DIR" \
+    KACHE_BASE_DIR="$KACHE_BASE_DIR" KACHE_LOCAL_ONLY="${KACHE_LOCAL_ONLY:-1}" \
+    CARGO_INCREMENTAL=0 \
     ${jobs_env[@]+"${jobs_env[@]}"} cargo "$@"
 }
 
 run_cargo build --locked -p openagents-mobile --lib --profile "$PROFILE" --target "$TARGET" ${CORE_FEATURES[@]+"${CORE_FEATURES[@]}"}
-run_cargo build --locked -p openagents-mobile --bin uniffi-bindgen --features bindgen --profile mobile
+run_cargo build --locked -p openagents-bindgen --profile mobile
 
 LIB="$CARGO_OUT/$TARGET/$PROFILE/libopenagents_mobile.a"
 cp -p "$LIB" "$OUT/libopenagents_mobile.a"
 
 GEN="$OUT/gen"
-"$CARGO_OUT/mobile/uniffi-bindgen" generate --library "$LIB" --language swift --out-dir "$GEN" >/dev/null
+"$CARGO_OUT/mobile/openagents-bindgen" generate --library "$LIB" --language swift --out-dir "$GEN" >/dev/null
 cp "$GEN/openagents_coreFFI.h" "$OUT/include/openagents_coreFFI.h"
 cp "$GEN/openagents_coreFFI.modulemap" "$OUT/include/module.modulemap"
 # Only touch the Swift file when it changed so Xcode doesn't recompile it.

@@ -11,6 +11,7 @@ protocol AppRouter: AnyObject {
     func showSettings()
     func showSearch()
     func showWallet()
+    func showMedievalTown()
 }
 
 /// iPad shell: OpenAgents mobile with a sidebar. The sidebar is the phone's
@@ -165,6 +166,18 @@ final class SplitRootController: UISplitViewController, UISplitViewControllerDel
         sidebar.focusSearch()
     }
 
+    func showMedievalTown() {
+        guard !isCollapsed else { return tabs.showMedievalTown() }
+        guard !(presentedViewController is MedievalTownViewController) else { return }
+        let show = { [weak self] in
+            let town = MedievalTownViewController()
+            town.modalPresentationStyle = .fullScreen
+            self?.present(town, animated: true)
+        }
+        if presentedViewController != nil { dismiss(animated: false, completion: show) }
+        else { show() }
+    }
+
     /// A session came on screen in either shell (sidebar, drawer, search):
     /// it's the one to keep across a width change.
     func sessionDidAppear(_ chatId: String) {
@@ -278,6 +291,11 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
         })
         wallet.accessibilityLabel = "Wallet"
         wallet.accessibilityIdentifier = "sidebar-wallet"
+        let town = UIBarButtonItem(image: UIImage(systemName: "building.2"), primaryAction: UIAction { [weak self] _ in
+            self?.router?.showMedievalTown()
+        })
+        town.accessibilityLabel = "Medieval Town"
+        town.accessibilityIdentifier = "sidebar-medieval-town"
         let options = UIBarButtonItem(image: UIImage(systemName: "ellipsis"), menu: list.optionsMenu())
         options.accessibilityLabel = "Options"
         let compose = UIBarButtonItem(image: UIImage(systemName: "plus"), primaryAction: UIAction { [weak self] _ in
@@ -288,14 +306,14 @@ final class SidebarViewController: UIViewController, UISearchResultsUpdating {
         compose.accessibilityLabel = "New session"
         compose.accessibilityIdentifier = "new-session"
         list.navigationItem.rightBarButtonItem = nil
-        list.toolbarItems = [chat, wallet, settings, options, .flexibleSpace(), compose]
+        list.toolbarItems = [chat, wallet, town, settings, options, .flexibleSpace(), compose]
         nav.isToolbarHidden = false
         // Voice beside compose, once a host can run it.
         let voiceBar = VoiceBarItem(app: app, host: self)
         self.voiceBar = voiceBar
         let syncVoice = { [weak self, weak voiceBar] in
             guard let self, let voiceBar else { return }
-            let items = voiceBar.visible ? [chat, wallet, settings, options, .flexibleSpace(), voiceBar.item, compose] : [chat, wallet, settings, options, .flexibleSpace(), compose]
+            let items = voiceBar.visible ? [chat, wallet, town, settings, options, .flexibleSpace(), voiceBar.item, compose] : [chat, wallet, town, settings, options, .flexibleSpace(), compose]
             if self.list.toolbarItems?.count != items.count {
                 self.list.setToolbarItems(items, animated: self.view.window != nil)
             }

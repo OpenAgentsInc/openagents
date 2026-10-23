@@ -83,6 +83,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 if route == "more" { router.showSettings() }
                 if route == "search" { router.showSearch() }
                 if route == "wallet" { router.showWallet() }
+                if route == "medieval-town" { router.showMedievalTown() }
                 if route == "cloud" || route == "welcome" { router.showChat() }
             }
         }
