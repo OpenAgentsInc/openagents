@@ -137,6 +137,10 @@ impl PlanetRecipe {
         next.validate()?;
         Ok(next)
     }
+    pub fn time_label(&self) -> String {
+        let minute = (self.initial_hour * 60.).round() as u32 % (24 * 60);
+        format!("{:02}:{:02}", minute / 60, minute % 60)
+    }
     pub fn hour_at(&self, now_ms: u64) -> f64 {
         let elapsed = if self.cycle_enabled {
             now_ms.saturating_sub(self.clock_anchor_unix_ms) as f64 * 24.
@@ -151,12 +155,19 @@ impl PlanetRecipe {
         let hour = self.hour_at(now_ms);
         let elevation = (65. * ((hour - 6.) * std::f64::consts::TAU / 24.).sin()).clamp(-20., 80.);
         let day = (elevation / 15.).clamp(0., 1.);
+        let night = hour < 6. || hour >= 19.;
         BTreeMap::from([
-            ("sunAzimuth".into(), (hour * 15.).rem_euclid(360.)),
-            ("sunElevation".into(), elevation),
+            (
+                "sunAzimuth".into(),
+                (hour * 15. + if night { 180. } else { 0. }).rem_euclid(360.),
+            ),
+            (
+                "sunElevation".into(),
+                if night { -elevation } else { elevation },
+            ),
             ("sunIntensity".into(), day * 3.),
-            ("moonIntensity".into(), (1. - day) * 1.5),
-            ("ambientIntensity".into(), 0.65 + day * 0.55),
+            ("moonIntensity".into(), (1. - day) * 3.),
+            ("ambientIntensity".into(), 3.5 - day * 2.3),
             ("skyIntensity".into(), 0.45 + day * 0.65),
             ("skyBackgroundIntensity".into(), 0.45 + day * 0.55),
             ("fogDensity".into(), 0.003),

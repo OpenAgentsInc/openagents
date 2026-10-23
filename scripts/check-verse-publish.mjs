@@ -284,6 +284,16 @@ try {
       response.status() >= 300 && response.status() < 400
         ? Buffer.alloc(0)
         : await response.body();
+    if(process.env.AETHYRFORGE_PERSONAL_CHECK==='1' && url.pathname==='/v1/verse/studio/grants') {
+      const action=JSON.parse(request.postData()).action;
+      fs.writeFileSync(path.join(out,'personal-request-action.json'),JSON.stringify(action,null,2));
+      if(response.ok()) {
+        const native=JSON.parse(body).grant.action_sha256;
+        const wasm=await page.evaluate(async({action,url})=>{const sdk=await import(url);return sdk.action_sha256(JSON.stringify(action));},{action,url:config.personal_runtime.sdk_url});
+        fs.writeFileSync(path.join(out,'personal-action-digest.json'),JSON.stringify({native,wasm,equal:native===wasm},null,2));
+        assert.equal(wasm,native,'The exact browser fixture action has the same native and Wasm digest');
+      }
+    }
     if (url.pathname === "/v1/verse/studio/grants" && response.ok()) {
       grants++;
       lastGrant = JSON.parse(body).grant;
@@ -311,7 +321,7 @@ try {
   });
   page=await context.newPage();
   page.on("pageerror",e=>errors.push(e.message));
-  page.on("console",m=>{if(m.type()==="error")console.log("Browser console:",m.text());});
+  page.on("console",m=>{if(["error","warning"].includes(m.type()))console.log("Browser console:",m.text());});
   await page.setViewportSize({width:1440,height:1000});
   if(process.env.AETHYRFORGE_FIXTURE_DIRECT_SESSION==="1") {
     // This fixture bootstrap does not exercise browser/provider sign-in.
@@ -707,7 +717,7 @@ try {
     for(const f of guestPage.frames())if(f.url().startsWith(config.editor)||f.url().startsWith(config.preview))frames.push(await f.evaluate(()=>({url:location.href,body:document.body.innerText,state:window.aethyrforge?.snapshot(),width:innerWidth,height:innerHeight})).catch(error=>({error:String(error)})));
     fs.writeFileSync(path.join(out,'guest-private-frame-error.json'),JSON.stringify(frames,null,2));
   }
-  if(page&&!page.isClosed()){await page.screenshot({path:path.join(out,'publish-error.png')});fs.writeFileSync(path.join(out,'publish-error-state.json'),JSON.stringify({error:String(error),errors,body:await page.locator('body').innerText()},null,2));}
+  if(page&&!page.isClosed()){await page.screenshot({path:path.join(out,'publish-error.png')});fs.writeFileSync(path.join(out,'publish-error-state.json'),JSON.stringify({error:String(error),errors,body:await page.locator('body').innerText(),snapshot:await page.evaluate(()=>window.hauntDemo?.snapshot()),frames:await Promise.all(page.frames().filter(f=>f.url().startsWith(config.editor)).map(f=>f.evaluate(()=>window.aethyrforgeEditor?.snapshot())))},null,2));}
   throw error;
 } finally {
   releaseRefreshSession?.();releaseAllocationAck?.();releasePublish?.();releaseSave?.();releaseCheckpoint?.();

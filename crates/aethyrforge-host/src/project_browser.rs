@@ -25,6 +25,7 @@ pub(super) struct Controller {
     last_recovery: String,
     next_access_check: f64,
     reopening_session: Option<String>,
+    planet_recipe: Option<PlanetRecipe>,
 }
 pub(super) struct Prepared {
     project: String,
@@ -657,6 +658,18 @@ async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
     }
     Ok(())
 }
+pub(super) fn preparing_planet(s: &State) {
+    if world_namespace() == WorldNamespace::PersonalPlanet
+        && s.pending.as_ref().is_some_and(|p| {
+            matches!(
+                p.pending.action,
+                Action::RestoreProject { .. } | Action::RestoreMaterialProject { .. }
+            )
+        })
+    {
+        planet_note("Preparing your courtyard… Cancel to keep the current world.");
+    }
+}
 pub(super) fn cancel_planet(s: &mut State) -> bool {
     if world_namespace() != WorldNamespace::PersonalPlanet
         || !s.busy
@@ -677,6 +690,10 @@ pub(super) fn cancel_planet(s: &mut State) -> bool {
     s.projects.opening = false;
     s.projects.restored_visit = None;
     s.projects.save = None;
+    s.projects.next_access_check = 0.;
+    s.projects.history = history::View::default();
+    history::clear();
+    publishing::context_changed(s);
     s.pending = None;
     s.busy = false;
     s.persist();
@@ -823,7 +840,9 @@ async fn prepare_planet(
                 checkpoint: None,
             }
         } else {
-            files::restore(&weak, &scope.project, document, None).await?
+            let checkpoint =
+                serde_json::from_value(rc.borrow().snapshot()["status"]["checkpoint"].clone()).ok();
+            files::restore(&weak, &scope.project, document, checkpoint).await?
         };
         if !scope.accepts(confirmation_scope(&rc.borrow()).as_ref()) {
             return Ok(None);
@@ -843,9 +862,9 @@ async fn prepare_planet(
             )
         } else {
             format!(
-                "Review {} at {:.1}:00 with the day cycle {}. Confirm change to apply.",
+                "Review {} · Starting time {} · Day cycle {}. Confirm change to apply.",
                 recipe.style.label(),
-                recipe.initial_hour,
+                recipe.time_label(),
                 if recipe.cycle_enabled {
                     "running"
                 } else {
@@ -857,6 +876,53 @@ async fn prepare_planet(
         planet_note(&message);
     }
     Ok(())
+}
+pub(super) async fn history_applied(weak: &Weak<RefCell<State>>, scope: &ConfirmationScope) {
+    if world_namespace() != WorldNamespace::PersonalPlanet {
+        return;
+    }
+    for _ in 0..6 {
+        if require_scope(weak, scope).is_err() {
+            return;
+        }
+        match exported(weak).await {
+            Ok(document) => {
+                if require_scope(weak, scope).is_err() {
+                    return;
+                }
+                let Ok(recipe) = PlanetRecipe::from_document(&document) else {
+                    return;
+                };
+                let Some(rc) = weak.upgrade() else {
+                    return;
+                };
+                let mut s = rc.borrow_mut();
+                let source = element("edit-source").unchecked_into::<HtmlTextAreaElement>();
+                if s.projects
+                    .planet_recipe
+                    .as_ref()
+                    .is_some_and(|old| source.value() == old.style.effect())
+                {
+                    if let Some(draft) = s.snapshot()["status"]["authoring"]["draft"].as_str() {
+                        source.set_value(draft);
+                        s.visit.source = draft.into();
+                    }
+                }
+                planet_settings(&recipe);
+                s.projects.planet_recipe = Some(recipe);
+                planet_note(
+                    "World settings restored. Unconfirmed style and time choices were reset.",
+                );
+                return;
+            }
+            Err(_) => pause(100).await,
+        }
+    }
+    if require_scope(weak, scope).is_ok() {
+        planet_note(
+            "The world changed, but its controls could not refresh. Open the latest saved world before reviewing settings.",
+        );
+    }
 }
 pub(super) fn personal_request(rc: &Rc<RefCell<State>>, text: &str) -> bool {
     if world_namespace() != WorldNamespace::PersonalPlanet {
@@ -1112,6 +1178,7 @@ pub(super) fn restored(s: &mut State, action: &Value) {
         if let Ok(d) = serde_json::from_value::<ProjectDocument>(action["document"].clone()) {
             if let Ok(recipe) = PlanetRecipe::from_document(&d) {
                 planet_settings(&recipe);
+                s.projects.planet_recipe = Some(recipe);
                 planet_note(
                     "Your courtyard is ready. Walk, inspect, or save it to your planet project.",
                 );

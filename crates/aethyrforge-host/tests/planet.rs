@@ -92,3 +92,38 @@ fn spoken_pause_resume_and_style_preserve_elapsed_clock_and_layout_seed() {
     assert_eq!(time.seed, 42);
     assert!(accepted.changed(PlanetChange::Hour(24.), 31_000).is_err());
 }
+
+#[test]
+fn generated_recipe_action_digest_survives_json_hops() {
+    let document = PlanetRecipe::new(42, 1000)
+        .document(WorldTemplate {
+            world: "personal-planet".into(),
+            engine_release: "fixture".into(),
+            asset_set_sha256: "a".repeat(64),
+            scene_sha256: "b".repeat(64),
+        })
+        .unwrap();
+    let mut action = Action::RestoreProject {
+        document,
+        checkpoint: None,
+    };
+    let expected = action_digest(&action).unwrap();
+    for _ in 0..4 {
+        action = serde_json::from_slice(&serde_json::to_vec(&action).unwrap()).unwrap();
+        assert_eq!(action_digest(&action).unwrap(), expected);
+    }
+}
+
+#[test]
+fn review_time_uses_a_normal_clock() {
+    let mut r = PlanetRecipe::new(42, 1000);
+    for (hour, label) in [
+        (8., "08:00"),
+        (8.5, "08:30"),
+        (14., "14:00"),
+        (23.5, "23:30"),
+    ] {
+        r.initial_hour = hour;
+        assert_eq!(r.time_label(), label);
+    }
+}

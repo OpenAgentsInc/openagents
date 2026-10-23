@@ -348,6 +348,10 @@ impl State {
                     "Apply generated scars and handmade paint to {}'s face. Other objects stay as they are.",
                     material.document.target.entity
                 )],
+                Action::RestoreProject {document,..}|Action::RestoreMaterialProject{document,..}
+                    if document.namespace==WorldNamespace::PersonalPlanet => {
+                    PlanetRecipe::from_document(document).map(|r|vec![format!("{} · Starting time {} · Day cycle {} · Layout {}",r.style.label(),r.time_label(),if r.cycle_enabled{"running"}else{"paused"},r.seed),format!("Open a courtyard with {} objects. Confirm to replace the current view.",document.entities.len())]).unwrap_or_else(|_|vec!["Review this courtyard before applying it.".into()])
+                }
                 Action::Undo => vec!["Undo the most recent change.".into()],
                 Action::Redo => vec!["Redo the last undone change.".into()],
                 _ => vec!["Apply the requested change.".into()],
@@ -620,6 +624,7 @@ async fn confirm(weak: Weak<RefCell<State>>) {
             scope,
         )
     };
+    projects::preparing_planet(&rc.borrow());
     let result = async {
         require_scope(&weak, &scope)?;
         let value = api("grants", Some(sent.clone())).await?;
@@ -636,7 +641,12 @@ async fn confirm(weak: Weak<RefCell<State>>) {
         require_scope(&weak, &scope)?;
         receipt(&weak, Action::Authorize { grant }, &scope).await?;
         require_scope(&weak, &scope)?;
-        receipt(&weak, action, &scope).await
+        let history = matches!(action, Action::Undo | Action::Redo);
+        let result = receipt(&weak, action, &scope).await;
+        if history && result.is_ok() {
+            projects::history_applied(&weak, &scope).await;
+        }
+        result
     }
     .await;
     if let Some(rc) = weak.upgrade() {
@@ -923,9 +933,10 @@ fn route_request(rc: &Rc<RefCell<State>>) {
             say("Choose an option, or say its name.");
         }
         Ok(RequestControl::CancelReview) => {
-            hide("edit-auth", true);
             rc.borrow_mut().stop_request();
-            say("Your requested change is still here.");
+            element("edit-cancel")
+                .unchecked_into::<web_sys::HtmlElement>()
+                .click();
         }
         Ok(RequestControl::ReviewCandidate) => {
             if materials::review_voice(rc) {
@@ -1621,8 +1632,9 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
     })?;
     listen(&mut listeners, "edit-auth", "cancel", |event| {
         event.prevent_default();
-        hide("edit-auth", true);
-        say("Your requested change is still here.");
+        element("edit-cancel")
+            .unchecked_into::<web_sys::HtmlElement>()
+            .click();
     })?;
     let weak = Rc::downgrade(&rc);
     listen(&mut listeners, "edit-signin", "click", move |event| {
