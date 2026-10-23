@@ -61,6 +61,7 @@ async function verified(name: keyof typeof pinned.files) {
 }
 /** Immutable kit geometry and images; edits update only a small instance buffer. */
 export class MedievalRenderer {
+  private device: GPUDevice;
   vertices: GPUBuffer;
   instances: GPUBuffer;
   texture: GPUTexture;
@@ -70,13 +71,14 @@ export class MedievalRenderer {
   instanceCount = 0;
   partCount = 0;
   constructor(
-    private device: GPUDevice,
+    device: GPUDevice,
     vertices: GPUBuffer,
     instances: GPUBuffer,
     texture: GPUTexture,
     pipeline: GPURenderPipeline,
     group: GPUBindGroup,
   ) {
+    this.device = device;
     this.vertices = vertices;
     this.instances = instances;
     this.texture = texture;
