@@ -485,6 +485,19 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12572: the local public-API backend was not the production sidecar contract.
+  No project permissions or storage-home logic changed. One focused regression
+  covers legacy records, current viewer/editor/owner roles, original storage home,
+  and independence from GitHub connection state. The current hosted native image
+  reads and creates projects through the actual gateway in a separate staging-NFS
+  test prefix; raw account records stay private. The production-style candidate
+  keeps `GATEWAY_HOLD=serving`, all serving traffic, and prior tags. Actual GCS
+  save/open, shared-role execution, and test-artifact cleanup remain in #12561;
+  the timed-out cleanup is not a pass. Its isolated sessions are revoked and
+  retained traces are redacted. No production accounts were mutated.
+  [Account-contract evidence](../verse/aethyrforge-account-contract-qualification.json).
+
+
 - #12571: the official website upload filter now includes only the public Fantasy
   Props catalog under `docs/verse`. The installed Cloud SDK's actual file chooser
   confirms exactly one added file, no removals, and no private inputs. The original

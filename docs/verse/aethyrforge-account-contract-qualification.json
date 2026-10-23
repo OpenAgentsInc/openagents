@@ -1,0 +1,98 @@
+{
+  "schema": "openagents.verse.account-contract-qualification.v1",
+  "issue": 12572,
+  "date": "2026-10-23",
+  "conclusion": "The local public-API backend was not the production account-service contract. No project permission or storage-home implementation changed.",
+  "native_candidate": {
+    "source": "7072ded3ccc5958bdd57b60049c12348d73ab74e",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:975eb1303b6e06c15f418f87ab7802f957ec68be057d803814c2d5bdaa0dcbd0",
+    "revision": "coder-q61-7072ded3cc-r2",
+    "tag": "q61-native-7072-r2",
+    "url": "https://q61-native-7072-r2---coder-ezxz4mgdsq-uc.a.run.app",
+    "production_baseline": "coder-web-b3afdd3d3b-20261023175314",
+    "traffic_unchanged": true,
+    "prior_tags_unchanged": true,
+    "gateway_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-stack@sha256:7957656f0f1c933b1c47de92d7fd2e1d658beb520260f866326caaa28cc928f9",
+    "gateway_hold": "serving",
+    "native_account_service": "http://127.0.0.1:8791",
+    "runtime_releases": {
+      "house": "q61h44f81355c5605976",
+      "personal": "q61p864ed2ba86051322",
+      "universe": "q61u585772252086992b"
+    }
+  },
+  "isolated_stack": {
+    "service": "verse-qualification-12561",
+    "url": "https://verse-qualification-12561-ezxz4mgdsq-uc.a.run.app",
+    "revision": "verse-qualification-12561-r6-7072ded3cc",
+    "native_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-web@sha256:975eb1303b6e06c15f418f87ab7802f957ec68be057d803814c2d5bdaa0dcbd0",
+    "gateway_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/openagents-stack@sha256:7957656f0f1c933b1c47de92d7fd2e1d658beb520260f866326caaa28cc928f9",
+    "account_service": "http://127.0.0.1:8791",
+    "account_store": "files",
+    "account_prefix": "/stack/qualification/epic12562-20261023-r4",
+    "web_prefix": "/state/qualification/epic12562-20261023-r4",
+    "shared_production_state": false,
+    "existing_staging_accounts_used": false,
+    "gateway_launcher": "unchanged production launcher; unique isolated state, no production database or shared handoff"
+  },
+  "checks": {
+    "focused_role_home_regression": {
+      "passed": true,
+      "count": 1,
+      "coverage": [
+        "legacy owned project records",
+        "current viewer/editor/owner records",
+        "original storage home across owner roles",
+        "GitHub none/connected/reconnect independence",
+        "public facade and error bodies are not authoritative project records"
+      ]
+    },
+    "actual_hosted_sidecar": {
+      "native_session": 200,
+      "native_projects_read": 200,
+      "native_project_create": 201,
+      "raw_account_project_route_public": 404,
+      "invalid_native_bearer": {
+        "status": 403,
+        "code": "permission_ended"
+      },
+      "operator_provisioned_isolated_accounts": true,
+      "synthetic_account_service": false,
+      "production_account_records_used": false,
+      "real_browser_provider_login": false
+    },
+    "production_held_candidate": {
+      "house_page": 200,
+      "native_projects": 403,
+      "code": "permission_ended",
+      "gateway_log": "waiting for this revision to serve traffic before taking the store",
+      "meaning": "The held sidecar cannot validate the bearer; this is not evidence the dedicated production credential is invalid."
+    },
+    "exposed_isolated_sessions_retired": {
+      "count": 2,
+      "status": 200,
+      "retained_timeout_traces_redacted": true
+    }
+  },
+  "remaining_12561": [
+    "Finish actual GCS save/open and shared-role checks after correcting qualification storage configuration.",
+    "Remove isolated test projects/accounts and qualification prefixes; failed cleanup is not counted as completed.",
+    "Repeat integrated pinned-runtime and current coder-sync checks, real Kiln draft/review, dirty-material recovery, resource cleanup, and timing.",
+    "Prepare private printable actual-screen packet; human review, browser-provider login, and microphone remain separate pending checks."
+  ],
+  "failed_attempts": [
+    "A reduced config omitted chat salt and inference proxy settings; corrected without product changes.",
+    "The provisional bucket name differed from the staging spec; corrected to openagentsgemini-web-chats-stage.",
+    "The harness used the inference API key instead of the issued app session; corrected through the actual session issuer.",
+    "A 30-second cleanup request timed out. Its request headers were redacted and its isolated sessions revoked. Storage cleanup remains pending."
+  ],
+  "private_evidence": [
+    "hosted-account-stack-6/result.json",
+    "hosted-account-stack-7/result.json",
+    "isolated-session-retirement.json",
+    "held-candidate-preflight.json",
+    "account-project-contract-test.log"
+  ],
+  "production_traffic_changed": false,
+  "prior_tags_changed": false
+}

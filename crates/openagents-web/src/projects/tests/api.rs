@@ -11,6 +11,43 @@ struct Api {
     token: Option<String>,
 }
 
+#[test]
+fn account_project_records_define_roles_and_storage_homes() {
+    use crate::projects::api::{home_of, role_of};
+    use oa_auth::repos::{Role, Status};
+
+    let legacy =
+        json!({"id":"prj_0123456789abcdef","name":"House","created_unix":1,"repositories":[]});
+    for github in [
+        json!({"state":"none"}),
+        json!({"state":"connected","login":"builder","private":true}),
+        json!({"state":"reconnect","login":"builder"}),
+    ] {
+        let read = |project: Value| {
+            Status::from_body(&json!({"github":github,"projects":[project]}))
+                .unwrap()
+                .projects
+                .remove(0)
+        };
+        let old = read(legacy.clone());
+        assert_eq!(role_of(&old), Role::Owner);
+        assert_eq!(home_of(&old, "acct_reader"), "acct_reader");
+        for (word, role) in [
+            ("viewer", Role::Viewer),
+            ("editor", Role::Editor),
+            ("owner", Role::Owner),
+        ] {
+            let mut current = legacy.clone();
+            current["sharing"] = json!({"role":word,"home":"acct_creator","members":2});
+            let current = read(current);
+            assert_eq!(role_of(&current), role);
+            assert_eq!(home_of(&current, "acct_reader"), "acct_creator");
+        }
+    }
+    assert!(Status::from_body(&json!({"error":{"code":"not_found"}})).is_none());
+    assert!(Status::from_body(&json!({"data":[legacy],"next":null})).is_none());
+}
+
 #[tokio::test]
 async fn project_contract_preserves_partial_changes_and_cursor_errors() {
     let world = world().await;
