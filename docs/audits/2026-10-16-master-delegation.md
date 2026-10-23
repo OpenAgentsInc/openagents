@@ -485,6 +485,20 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12558: one durable account-owned personal planet follows an owner-authored house
+  publication, explicit Play/Share, and return. Creation retries preserve edits;
+  deletion keeps a receipt and never recreates the project. Three account checks
+  (file and Postgres serialization), tutorial/native form checks, gateway, Wasm/Kiln,
+  and private type checks pass. Two clean real-GPU/native-store browser runs cover
+  old-service 404 and transient failures, concurrent tabs/replay, delayed identity
+  responses, account switches, congratulations/resume, rename/reopen, and mobile
+  layout. Codex reviewed private captures. Account/provider fixtures are synthetic;
+  live Postgres, provider sign-in, microphone, and human review are not claimed.
+  Complete hosted and full-journey qualification in #12561; existing owner-only
+  steps remain in `NEEDS_OWNER.md`. No production traffic changed.
+  [Tutorial qualification](../verse/aethyrforge-tutorial-qualification.json).
+
+
 - #12556: immutable saved playable versions, explicit publication, version review,
   rollback, revocation, and a guest player are implemented. Host checks (56), the
   native publication regression, Wasm/Kiln builds, private type/contract checks,

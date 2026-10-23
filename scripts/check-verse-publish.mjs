@@ -469,11 +469,17 @@ try {
       await page.waitForTimeout(2200);
       assert.equal(await page.locator('#planet-owned').isVisible(),true,'A late old allocation cannot overwrite the rechecked award');
     }
+    assert.match(await page.locator('#option-openagents small').textContent(),/Locked/);
     assert.equal(await page.locator('.verse-page .account-nav').isHidden(),true,'Confirmed owners are not offered Log in or Sign up');
     if(process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE==='1')assert.equal(await page.locator('#planet-owned h3').innerText(),'Congratulations');
     const planetPath=await page.locator('#planet-setup').getAttribute('href');assert.ok(planetPath.startsWith('/new-lander/planet/planet_'));
     assert.equal(projects.length,count+1);
     await page.screenshot({path:path.join(out,'planet-awarded-desktop.png')});
+    if(process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE==='1'){
+      await page.setViewportSize({width:390,height:844});
+      await page.screenshot({path:path.join(out,'planet-congratulations-mobile.png')});
+      await page.setViewportSize({width:1440,height:1000});
+    }
     await page.reload();await page.locator('#planet-owned').waitFor({state:'visible'});
     assert.equal(await page.locator('#planet-setup').getAttribute('href'),planetPath);
     assert.match(await page.locator('#planet-status').innerText(),/Welcome back/);
