@@ -1069,3 +1069,181 @@ async fn publication_uses_saved_bytes_and_pinned_guest_links_with_retry_failure_
         StatusCode::OK
     );
 }
+
+#[tokio::test]
+async fn tutorial_award_requires_owner_choice_return_and_survives_membership_failure() {
+    let world = crate::projects::tests::world_with(crate::projects::tests::Options {
+        verse_publish_runtime: Some(publish_runtime()),
+        ..Default::default()
+    })
+    .await;
+    let mut alice = Client::signed(&world, "octo-local").await;
+    let mut bob = Client::signed(&world, "quiet-local").await;
+    const T: &str = "/v1/verse/studio/tutorial";
+    assert_eq!(
+        alice
+            .call(&world, "POST", T, json!({"operation":"allocate"}))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    let (_, made) = alice
+        .call(
+            &world,
+            "POST",
+            "/v1/verse/studio/projects",
+            json!({"name":"Tutorial house"}),
+        )
+        .await;
+    let id = made["id"].as_str().unwrap();
+    let path = format!("/v1/verse/studio/projects/{id}/haunted-house/main");
+    let mut d = document();
+    d.source_draft = d.active_source.clone();
+    let (_, saved) = alice
+        .call(&world, "POST", &path, save("tutorial-save", 0, &d))
+        .await;
+    let (status,published)=alice.call(&world,"POST",&format!("{path}/publications"),json!({"command_id":"tutorial-publish","expected_sequence":0,"operation":"publish","saved_version":1,"document_sha256":saved["saved"]["document_sha256"],"public":true,"confirm_runtime_distribution":true,"release":null})).await;
+    assert_eq!(status, StatusCode::OK, "{published}");
+    let mut proof = json!({"operation":"published","world":published["world"],"release":published["event"]["release"]});
+    assert_eq!(
+        bob.call(&world, "POST", T, proof.clone()).await.0,
+        StatusCode::NOT_FOUND
+    );
+    assert_eq!(
+        alice.call(&world, "POST", T, proof.clone()).await.0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        alice
+            .call(&world, "POST", T, json!({"operation":"return"}))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    proof["operation"] = "share".into();
+    assert_eq!(alice.call(&world, "POST", T, proof).await.0, StatusCode::OK);
+    assert_eq!(
+        alice
+            .call(&world, "POST", T, json!({"operation":"allocate"}))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        alice
+            .call(&world, "POST", T, json!({"operation":"return"}))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (status, revoked)=alice.call(&world,"POST",&format!("{path}/publications"),json!({"command_id":"tutorial-revoke","expected_sequence":1,"operation":"revoke","saved_version":1,"document_sha256":saved["saved"]["document_sha256"],"public":true,"confirm_runtime_distribution":true,"release":published["event"]["release"]})).await;
+    assert_eq!(status, StatusCode::OK, "{revoked}");
+    assert_eq!(
+        alice
+            .call(&world, "POST", T, json!({"operation":"allocate"}))
+            .await
+            .0,
+        StatusCode::NOT_FOUND
+    );
+    d.environment.insert("fogDensity".into(), 0.015);
+    let (_, saved_b) = alice
+        .call(&world, "POST", &path, save("tutorial-save-b", 1, &d))
+        .await;
+    let (status,published_b)=alice.call(&world,"POST",&format!("{path}/publications"),json!({"command_id":"tutorial-publish-b","expected_sequence":2,"operation":"publish","saved_version":2,"document_sha256":saved_b["saved"]["document_sha256"],"public":true,"confirm_runtime_distribution":true,"release":null})).await;
+    assert_eq!(status, StatusCode::OK, "{published_b}");
+    let (status,choice_b)=alice.call(&world,"POST",T,json!({"operation":"play","world":published_b["world"],"release":published_b["event"]["release"]})).await;
+    assert_eq!(status, StatusCode::OK, "{choice_b}");
+    assert_eq!(
+        choice_b["progress"]["returned_unix"],
+        Value::Null,
+        "A new explicit choice requires a new return"
+    );
+    assert_eq!(
+        alice
+            .call(&world, "POST", T, json!({"operation":"allocate"}))
+            .await
+            .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        alice
+            .call(&world, "POST", T, json!({"operation":"return"}))
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let mut second_tab = Client {
+        browser: Browser(alice.browser.0.clone()),
+        csrf: alice.csrf.clone(),
+    };
+    let (one, two) = tokio::join!(
+        alice.call(&world, "POST", T, json!({"operation":"allocate"})),
+        second_tab.call(&world, "POST", T, json!({"operation":"allocate"}))
+    );
+    let (status, first) = one;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert_eq!(two.0, StatusCode::OK, "{}", two.1);
+    assert_eq!(two.1, first, "Two tabs allocate exactly the same planet");
+    let planet = first["progress"]["planet"].clone();
+    assert!(planet["id"].as_str().unwrap().starts_with("planet_"));
+    assert_ne!(planet["project"], made["id"]);
+    assert_eq!(
+        alice
+            .call(&world, "POST", T, json!({"operation":"allocate"}))
+            .await
+            .1,
+        first
+    );
+    let store = world.root().join("accounts/projects/store.json");
+    let retained = std::fs::read(&store).unwrap();
+    // Fail the membership service after authentication, then restore its exact records.
+    std::fs::write(&store, b"not a project store").unwrap();
+    let (status, failed) = alice.call(&world, "GET", T, Value::Null).await;
+    assert!(status.is_server_error(), "{status}: {failed}");
+    assert_ne!(failed["error"]["code"], "planet_removed");
+    assert!(
+        alice
+            .call(&world, "POST", T, json!({"operation":"allocate"}))
+            .await
+            .0
+            .is_server_error()
+    );
+    std::fs::write(&store, retained).unwrap();
+    let (status, recovered) = alice.call(&world, "GET", T, Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{recovered}");
+    assert_eq!(recovered["planet_available"], true);
+    assert_eq!(recovered["progress"]["planet"], planet);
+    let (_, renamed) = alice
+        .call(
+            &world,
+            "POST",
+            T,
+            json!({"operation":"name","name":"Moon garden"}),
+        )
+        .await;
+    assert_eq!(renamed["progress"]["planet"]["name"], "Moon garden");
+    let project = planet["project"].as_str().unwrap();
+    assert_eq!(
+        alice
+            .call(
+                &world,
+                "DELETE",
+                &format!("/v1/projects/{project}"),
+                Value::Null
+            )
+            .await
+            .0,
+        StatusCode::OK
+    );
+    let (status, deleted) = alice.call(&world, "GET", T, Value::Null).await;
+    assert_eq!(status, StatusCode::OK, "{deleted}");
+    assert_eq!(deleted["planet_available"], false);
+    assert_eq!(deleted["progress"]["planet"]["id"], planet["id"]);
+    assert_eq!(
+        alice
+            .call(&world, "POST", T, json!({"operation":"allocate"}))
+            .await
+            .0,
+        StatusCode::GONE
+    );
+}

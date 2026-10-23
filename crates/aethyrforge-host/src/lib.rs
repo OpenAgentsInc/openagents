@@ -78,3 +78,6 @@ pub use publication::*;
 mod player_browser;
 #[cfg(target_arch = "wasm32")]
 pub use player_browser::*;
+
+mod tutorial;
+pub use tutorial::*;

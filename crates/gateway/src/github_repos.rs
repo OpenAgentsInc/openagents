@@ -24,6 +24,7 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
         ("/v1/account/github/repositories", get(repositories)),
         ("/v1/account/github/token", post(token)),
         ("/v1/projects", post(add)),
+        ("/v1/projects/ensure", post(ensure)),
         ("/v1/projects/{id}", delete(remove).patch(edit)),
         ("/v1/projects/{id}/members", get(members)),
         (
@@ -162,6 +163,17 @@ async fn add(
 ) -> Response {
     match oa_auth::repos::new_project(&body) {
         Some(new) => run(&state, &headers, Call::CreateProject(new)).await,
+        None => invalid(),
+    }
+}
+
+async fn ensure(
+    State(state): State<Arc<ServeState>>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Response {
+    match oa_auth::repos::ensure_project_body(&body) {
+        Some(call) => run(&state, &headers, call).await,
         None => invalid(),
     }
 }

@@ -709,6 +709,8 @@ pub enum Call {
     /// `POST /v1/projects` `{name?, instructions?, repositories?}` (or
     /// the older `{repository}`): always a new project.
     CreateProject(NewProject),
+    /// Retry-safe empty project creation, scoped to the authenticated account.
+    EnsureProject { key: String, name: String },
     /// `PATCH /v1/projects/{id}` ([`ProjectChange::from_body`]).
     EditProject { id: String, change: ProjectChange },
     /// `DELETE /v1/account/projects/{id}`
@@ -814,6 +816,9 @@ pub async fn answer_with(
                     found.push(look_up(dir, oauth, via_app, account, repository).await?);
                 }
                 json!({"project": create_project(dir, account, &new, &found)?})
+            }
+            Call::EnsureProject { key, name } => {
+                json!({"project": ensure_project(dir, account, &key, &name)?})
             }
             Call::EditProject { id, change } => {
                 let found = match &change.add_repository {
@@ -1307,6 +1312,60 @@ fn follow_into(project: &mut Project, found: &Repository, installation: Option<u
             held.installation_id = installation;
         }
     }
+}
+
+/// Read the bounded retry key and display name for an empty project.
+pub fn ensure_project_body(body: &Value) -> Option<Call> {
+    let key = body.get("key")?.as_str()?;
+    let name = body.get("name")?.as_str()?;
+    if !creation_key(key)
+        || clean(name, MAX_NAME, false)
+            .ok()
+            .is_none_or(|n| n.is_empty())
+    {
+        return None;
+    }
+    Some(Call::EnsureProject {
+        key: key.into(),
+        name: name.into(),
+    })
+}
+pub const PERSONAL_CREATION_KEY: &str = "verse-personal-v1";
+fn creation_key(key: &str) -> bool {
+    key == PERSONAL_CREATION_KEY
+        && !key.is_empty()
+        && key.len() <= 128
+        && key
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-_.:".contains(&b))
+}
+/// Ensure one empty project for this account and key, preserving later edits.
+/// The project store's transaction also enforces its existing membership limit.
+pub fn ensure_project(
+    dir: &Path,
+    account: &str,
+    key: &str,
+    name: &str,
+) -> Result<Project, RepoError> {
+    check_account(account)?;
+    if !creation_key(key) {
+        return Err(RepoError::Invalid);
+    }
+    let name = clean(name, MAX_NAME, false)?;
+    if name.is_empty() {
+        return Err(RepoError::Invalid);
+    }
+    let digest = Sha256::digest(format!("project-create-v1\0{account}\0{key}").as_bytes());
+    let project = Project {
+        id: format!("prj_{}", hex(&digest[..8])),
+        name,
+        instructions: None,
+        created_unix: now(),
+        repositories: Vec::new(),
+        sharing: None,
+    };
+    forget(dir, account);
+    members::ensure(dir, account, project, hex(&digest))
 }
 
 /// Make a new project: always new, even when another project has the same

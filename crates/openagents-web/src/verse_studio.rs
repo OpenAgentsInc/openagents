@@ -26,6 +26,7 @@ pub(crate) fn owns(path: &str) -> bool {
         || path.starts_with("/v1/verse/studio/")
         || path.starts_with("/v1/verse/play/")
         || path.starts_with("/new-lander/play/")
+        || path.starts_with("/new-lander/planet/")
 }
 pub(crate) fn routes() -> Router<App> {
     Router::new()

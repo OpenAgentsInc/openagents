@@ -19,6 +19,7 @@ pub(super) fn router(service: LocalService) -> Router {
         .route("/v1/account/github/repositories", get(repositories))
         .route("/v1/account/github/token", post(token))
         .route("/v1/projects", post(add))
+        .route("/v1/projects/ensure", post(ensure))
         .route("/v1/projects/{id}", delete(remove).patch(edit))
         .route("/v1/projects/{id}/members", get(members))
         .route(
@@ -129,6 +130,20 @@ async fn add(
         .and_then(|axum::Json(body)| repos::new_project(&body))
     {
         Some(new) => run(&state, &headers, Call::CreateProject(new)).await,
+        None => invalid(),
+    }
+}
+
+async fn ensure(
+    State(state): State<LocalService>,
+    headers: HeaderMap,
+    body: Result<axum::Json<Value>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    match body
+        .ok()
+        .and_then(|axum::Json(body)| repos::ensure_project_body(&body))
+    {
+        Some(call) => run(&state, &headers, call).await,
         None => invalid(),
     }
 }

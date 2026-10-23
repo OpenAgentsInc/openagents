@@ -1,7 +1,7 @@
 //! Rust entry controls and destination state over the private universe profile.
 use crate::*;
 use js_sys::Promise;
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::{cell::RefCell, rc::Rc};
 use wasm_bindgen::{JsCast, prelude::*};
 use wasm_bindgen_futures::{JsFuture, spawn_local};
@@ -31,14 +31,66 @@ struct State {
     desired: Option<String>,
     restore_sent: bool,
     popup: Option<web_sys::Window>,
+    account: Option<String>,
+    csrf: Option<String>,
+    tutorial: Value,
+    tutorial_available: bool,
+    tutorial_busy: bool,
+    tutorial_serial: u64,
+    tutorial_error: Option<String>,
 }
 impl State {
+    fn identity(&mut self, session: &Value) {
+        let account = session["account"]
+            .as_str()
+            .filter(|_| session["signed_in"] == true)
+            .map(str::to_string);
+        if self.account != account {
+            self.tutorial_serial = self.tutorial_serial.wrapping_add(1);
+            self.tutorial_busy = false;
+            self.tutorial = Value::Null;
+            self.tutorial_available = false;
+            self.tutorial_error = if account.is_none() {
+                Some("Log in again to open your planet.".into())
+            } else {
+                None
+            };
+        }
+        self.account = account;
+        self.csrf = session["csrf"].as_str().map(str::to_string);
+        if self.account.is_some() && self.visit.choice.is_none() {
+            self.visit.enter(EntryChoice::Member);
+            self.save();
+        }
+    }
     fn save(&self) {
         if let Ok(Some(storage)) = window().session_storage() {
             let _ = storage.set_item(SAVED, &serde_json::to_string(&self.visit).unwrap());
         }
     }
     fn render(&self) {
+        let progress = &self.tutorial["progress"];
+        let owned = progress["planet"].is_object();
+        let ready = !owned && progress["returned_unix"].is_u64();
+        hidden("planet-ready", !ready);
+        hidden("planet-owned", !owned);
+        let button = element("planet-create");
+        if self.tutorial_busy || !self.tutorial_available {
+            button.set_attribute("disabled", "").ok();
+        } else {
+            button.remove_attribute("disabled").ok();
+        }
+        let setup = element("planet-setup");
+        setup.remove_attribute("href").ok();
+        if owned && self.tutorial_available && self.tutorial["planet_available"] == true {
+            if let Some(id) = progress["planet"]["id"].as_str() {
+                setup
+                    .set_attribute("href", &format!("/new-lander/planet/{id}"))
+                    .ok();
+            }
+        }
+        element("planet-status").set_text_content(Some(self.tutorial_error.as_deref().unwrap_or(if self.tutorial_busy {"Creating your planet…"}else if owned && self.tutorial["planet_available"]==false && self.tutorial_available {"This planet's project was removed. It cannot be recreated by repeating the tutorial."}else if owned {"Welcome back. Your planet is waiting."}else if ready {"Your first planet is ready to create."}else {"Publish your own house, choose Play or Share, then return here."})));
+
         let entered = self.visit.choice.is_some();
         hidden("verse-account", entered);
         hidden("verse-choices", !entered);
@@ -75,9 +127,22 @@ impl State {
         let _ = element("verse-atlas")
             .set_attribute("data-entry", if entered { "guest" } else { "locked" });
         if let Some(world) = WORLDS.iter().find(|w| w.id == self.visit.selected) {
-            element("world-title").set_text_content(Some(world.name));
-            element("world-category").set_text_content(Some(world.category));
-            element("world-description").set_text_content(Some(world.description));
+            let personal = world.id == "creator-worlds" && owned;
+            element("world-title").set_text_content(Some(if personal {
+                progress["planet"]["name"].as_str().unwrap_or("My planet")
+            } else {
+                world.name
+            }));
+            element("world-category").set_text_content(Some(if personal {
+                "Your personal planet"
+            } else {
+                world.category
+            }));
+            element("world-description").set_text_content(Some(if personal {
+                "Your private place in the Verse. Choose a name and make it your own."
+            } else {
+                world.description
+            }));
             for world in WORLDS {
                 hidden(
                     &format!("destination-{}", world.id),
@@ -182,6 +247,13 @@ pub fn mount_universe() -> Result<BrowserUniverse, JsValue> {
         desired: None,
         restore_sent: false,
         popup: None,
+        account: None,
+        csrf: None,
+        tutorial: Value::Null,
+        tutorial_available: false,
+        tutorial_busy: false,
+        tutorial_serial: 0,
+        tutorial_error: None,
     }));
     rc.borrow().render();
     let mut listeners = Vec::new();
@@ -285,38 +357,174 @@ pub fn mount_universe() -> Result<BrowserUniverse, JsValue> {
         200,
     )?;
     let weak = Rc::downgrade(&rc);
+    listen(&mut listeners, "planet-create", "click", move |_| {
+        let Some(rc) = weak.upgrade() else { return };
+        let (account, csrf, serial) = {
+            let mut s = rc.borrow_mut();
+            if s.tutorial_busy || !s.tutorial_available {
+                return;
+            }
+            let (Some(account), Some(csrf)) = (s.account.clone(), s.csrf.clone()) else {
+                return;
+            };
+            s.tutorial_busy = true;
+            s.tutorial_serial = s.tutorial_serial.wrapping_add(1);
+            s.tutorial_error = None;
+            s.render();
+            (account, csrf, s.tutorial_serial)
+        };
+        let weak = weak.clone();
+        spawn_local(async move {
+            let result = tutorial_fetch(
+                "/v1/verse/studio/tutorial",
+                Some(json!({"csrf":csrf,"operation":"allocate"})),
+            )
+            .await;
+            let session = tutorial_fetch("/v1/verse/studio/session", None).await;
+            let Some(rc) = weak.upgrade() else { return };
+            let mut s = rc.borrow_mut();
+            if s.tutorial_serial != serial {
+                return;
+            }
+            s.tutorial_busy = false;
+            match session {
+                Ok(session)
+                    if session["signed_in"] == true
+                        && session["account"].as_str() == Some(&account) => {}
+                Ok(session) => {
+                    s.identity(&session);
+                    s.tutorial_available = false;
+                    s.tutorial_error = Some("Log in again to open your planet.".into());
+                    s.render();
+                    return;
+                }
+                Err(e) => {
+                    if let Ok(v) = result {
+                        s.tutorial = v;
+                    }
+                    s.tutorial_available = false;
+                    s.tutorial_error = Some(e);
+                    s.render();
+                    return;
+                }
+            }
+            match result {
+                Ok(v) => {
+                    s.tutorial = v;
+                    s.tutorial["planet_available"] = true.into();
+                    s.tutorial_available = true;
+                    s.tutorial_error = None;
+                }
+                Err(e) => {
+                    s.tutorial_error = Some(e);
+                }
+            }
+            s.render();
+        });
+    })?;
+    let weak = Rc::downgrade(&rc);
     spawn_local(async move {
         loop {
-            pause().await;
             let Some(rc) = weak.upgrade() else { break };
-            if rc.borrow().visit.choice.is_some() {
-                continue;
+            // This refresh owns the generation captured before its first await.
+            let serial = rc.borrow().tutorial_serial;
+            let session = tutorial_fetch("/v1/verse/studio/session", None).await;
+            if rc.borrow().tutorial_serial == serial {
+                match session {
+                    Ok(session) => {
+                        {
+                            let mut s = rc.borrow_mut();
+                            s.identity(&session);
+                            s.render();
+                        }
+                        let (account, serial, busy) = {
+                            let s = rc.borrow();
+                            (s.account.clone(), s.tutorial_serial, s.tutorial_busy)
+                        };
+                        if let Some(account) = account.filter(|_| !busy) {
+                            let result = async {
+                                let mut v =
+                                    tutorial_fetch("/v1/verse/studio/tutorial", None).await?;
+                                if v["account"].as_str() != Some(&account) {
+                                    return Err("Your account changed. Try again.".into());
+                                }
+                                {
+                                    let s = rc.borrow();
+                                    if s.tutorial_serial != serial || s.tutorial_busy {
+                                        return Err("Your progress changed. Try again.".into());
+                                    }
+                                }
+                                if v["progress"]["choice"].is_string()
+                                    && v["progress"]["returned_unix"].is_null()
+                                {
+                                    let csrf = session["csrf"].as_str().unwrap_or_default();
+                                    let updated = tutorial_fetch(
+                                        "/v1/verse/studio/tutorial",
+                                        Some(json!({"csrf":csrf,"operation":"return"})),
+                                    )
+                                    .await?;
+                                    v["progress"] = updated["progress"].clone();
+                                }
+                                Ok::<_, String>(v)
+                            }
+                            .await;
+                            let current = tutorial_fetch("/v1/verse/studio/session", None).await;
+                            let mut s = rc.borrow_mut();
+                            if s.tutorial_serial == serial
+                                && !s.tutorial_busy
+                                && s.account.as_ref() == Some(&account)
+                            {
+                                match current {
+                                    Ok(current)
+                                        if current["signed_in"] == true
+                                            && current["account"].as_str() == Some(&account) =>
+                                    {
+                                        match result {
+                                            Ok(v) => {
+                                                let newly_ready =
+                                                    s.tutorial["progress"]["returned_unix"]
+                                                        .is_null()
+                                                        && v["progress"]["returned_unix"].is_u64();
+                                                s.tutorial = v;
+                                                s.tutorial_available = true;
+                                                s.tutorial_error = None;
+                                                if newly_ready {
+                                                    s.visit.enter(EntryChoice::Member);
+                                                    let _ = s.visit.explore();
+                                                    s.select("creator-worlds");
+                                                }
+                                            }
+                                            Err(e) => {
+                                                s.tutorial_available = false;
+                                                s.tutorial_error = Some(e);
+                                            }
+                                        }
+                                    }
+                                    Ok(current) => {
+                                        s.identity(&current);
+                                        s.tutorial_available = false;
+                                        s.tutorial_error =
+                                            Some("Log in again to open your planet.".into());
+                                    }
+                                    Err(e) => {
+                                        s.tutorial_available = false;
+                                        s.tutorial_error = Some(e);
+                                    }
+                                }
+                                s.render();
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let mut s = rc.borrow_mut();
+                        s.tutorial_available = false;
+                        s.tutorial_error = Some(e);
+                        s.render();
+                    }
+                }
             }
-            let promise = window().fetch_with_str("/v1/verse/studio/session");
-            let Ok(response) = JsFuture::from(promise).await else {
-                continue;
-            };
-            let Ok(response) = response.dyn_into::<web_sys::Response>() else {
-                continue;
-            };
-            if !response.ok() {
-                continue;
-            }
-            let Ok(json) = response.json() else { continue };
-            let Ok(value) = JsFuture::from(json).await else {
-                continue;
-            };
-            let Ok(text) = js_sys::JSON::stringify(&value) else {
-                continue;
-            };
-            let value: Value =
-                serde_json::from_str(&text.as_string().unwrap_or_default()).unwrap_or(Value::Null);
-            if value["signed_in"] == true {
-                let mut s = rc.borrow_mut();
-                s.visit.enter(EntryChoice::Member);
-                s.save();
-                s.render();
-            }
+            drop(rc);
+            pause().await;
         }
     });
     Ok(BrowserUniverse {
@@ -325,4 +533,38 @@ pub fn mount_universe() -> Result<BrowserUniverse, JsValue> {
         timer,
         tick,
     })
+}
+
+async fn tutorial_fetch(path: &str, body: Option<Value>) -> Result<Value, String> {
+    let init = web_sys::RequestInit::new();
+    init.set_credentials(web_sys::RequestCredentials::SameOrigin);
+    init.set_method(if body.is_some() { "POST" } else { "GET" });
+    if let Some(body) = body {
+        init.set_body(&JsValue::from_str(&body.to_string()));
+    }
+    let request = web_sys::Request::new_with_str_and_init(path, &init)
+        .map_err(|_| "Your progress could not open. Try again.".to_string())?;
+    request
+        .headers()
+        .set("content-type", "application/json")
+        .map_err(|_| "Try again.".to_string())?;
+    let response = JsFuture::from(window().fetch_with_request(&request))
+        .await
+        .map_err(|_| "Your progress could not open. Try again.".to_string())?
+        .dyn_into::<web_sys::Response>()
+        .map_err(|_| "Try again.".to_string())?;
+    let raw = JsFuture::from(response.text().map_err(|_| "Try again.".to_string())?)
+        .await
+        .map_err(|_| "Try again.".to_string())?
+        .as_string()
+        .unwrap_or_default();
+    let v: Value = serde_json::from_str(&raw)
+        .map_err(|_| "Your progress could not open. Try again.".to_string())?;
+    if !response.ok() {
+        return Err(v["error"]["message"]
+            .as_str()
+            .unwrap_or("Your progress could not open. Try again.")
+            .into());
+    }
+    Ok(v)
 }

@@ -150,6 +150,23 @@ impl Invitation {
     }
 }
 
+/// Kept after deletion so a creation retry cannot revive a removed project.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+struct Creation {
+    key_sha256: String,
+    deleted: bool,
+}
+impl Creation {
+    fn valid(&self) -> bool {
+        self.key_sha256.len() == 64
+            && self
+                .key_sha256
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    }
+}
+
 /// A project with its members and invitations, as kept.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Held {
@@ -158,6 +175,7 @@ pub(crate) struct Held {
     pub(crate) home: String,
     pub(crate) members: Vec<Member>,
     pub(crate) invitations: Vec<Invitation>,
+    creation: Option<Creation>,
 }
 
 impl Held {
@@ -172,11 +190,15 @@ impl Held {
                 joined_unix,
             }],
             invitations: Vec::new(),
+            creation: None,
         }
     }
 
     /// `account`'s role, when it is a member.
     pub(crate) fn role_of(&self, account: &str) -> Option<Role> {
+        if self.creation.as_ref().is_some_and(|c| c.deleted) {
+            return None;
+        }
         self.members
             .iter()
             .find(|m| m.account == account)
@@ -214,6 +236,7 @@ impl Held {
 
 const PROJECTS_DIR: &str = "projects";
 const STORE_SCHEMA: &str = "openagents.projects.v1";
+const CREATION_STORE_SCHEMA: &str = "openagents.projects.v2";
 const STORE_MAX: u64 = 64 * 1024 * 1024;
 
 #[derive(Deserialize, Serialize)]
@@ -233,6 +256,8 @@ struct FileProject {
     members: Vec<FileMember>,
     #[serde(default)]
     invitations: Vec<Invitation>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    creation: Option<Creation>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -259,6 +284,7 @@ impl FileProject {
                 })
                 .collect(),
             invitations: self.invitations.clone(),
+            creation: self.creation.clone(),
         }
     }
 }
@@ -285,7 +311,14 @@ fn load_file(dir: &Path) -> Result<FileStore, RepoError> {
             let bytes = std::fs::read(&path).map_err(|_| RepoError::Storage)?;
             let store: FileStore =
                 serde_json::from_slice(&bytes).map_err(|_| RepoError::Storage)?;
-            if store.v != STORE_SCHEMA {
+            if ![STORE_SCHEMA, CREATION_STORE_SCHEMA].contains(&store.v.as_str())
+                || store.projects.iter().any(|p| {
+                    p.creation.as_ref().is_some_and(|c| {
+                        !c.valid()
+                            || c.deleted && (!p.members.is_empty() || !p.invitations.is_empty())
+                    })
+                })
+            {
                 return Err(RepoError::Storage);
             }
             Ok(store)
@@ -339,6 +372,7 @@ fn imported(dir: &Path) -> Result<FileStore, RepoError> {
                 project: kept(project),
                 home: record.account.clone(),
                 invitations: Vec::new(),
+                creation: None,
             });
         }
     }
@@ -367,7 +401,22 @@ fn write_file(dir: &Path, store: &FileStore) -> Result<(), RepoError> {
 
 #[cfg(feature = "postgres")]
 fn from_row(row: tenancy::db::projects::Row) -> Result<Held, RepoError> {
-    let project: Project = serde_json::from_value(row.record).map_err(|_| RepoError::Storage)?;
+    let mut record = row.record;
+    let creation: Option<Creation> = record
+        .as_object_mut()
+        .and_then(|o| o.remove("_creation_v1"))
+        .map(serde_json::from_value)
+        .transpose()
+        .map_err(|_| RepoError::Storage)?;
+    if creation.as_ref().is_some_and(|c| {
+        !c.valid()
+            || c.deleted
+                && (!row.members.is_empty()
+                    || row.invitations.as_array().is_none_or(|v| !v.is_empty()))
+    }) {
+        return Err(RepoError::Storage);
+    }
+    let project: Project = serde_json::from_value(record).map_err(|_| RepoError::Storage)?;
     let invitations: Vec<Invitation> =
         serde_json::from_value(row.invitations).map_err(|_| RepoError::Storage)?;
     let members = row
@@ -389,15 +438,21 @@ fn from_row(row: tenancy::db::projects::Row) -> Result<Held, RepoError> {
         home: row.home,
         members,
         invitations,
+        creation,
     })
 }
 
 #[cfg(feature = "postgres")]
 fn to_row(held: &Held) -> Result<tenancy::db::projects::Row, RepoError> {
+    let mut record =
+        serde_json::to_value(kept(held.project.clone())).map_err(|_| RepoError::Storage)?;
+    if let Some(creation) = &held.creation {
+        record["_creation_v1"] = serde_json::to_value(creation).map_err(|_| RepoError::Storage)?;
+    }
     Ok(tenancy::db::projects::Row {
         id: held.project.id.clone(),
         home: held.home.clone(),
-        record: serde_json::to_value(kept(held.project.clone())).map_err(|_| RepoError::Storage)?,
+        record,
         invitations: serde_json::to_value(&held.invitations).map_err(|_| RepoError::Storage)?,
         members: held
             .members
@@ -483,7 +538,13 @@ pub(crate) fn change<T>(
                 .iter()
                 .filter(|m| m.role == Role::Owner)
                 .count();
-            if owners != 1
+            let deleted = next.creation.as_ref().is_some_and(|c| c.deleted);
+            if (if deleted {
+                owners != 0 || !next.members.is_empty() || !next.invitations.is_empty()
+            } else {
+                owners != 1
+            }) || next.creation.as_ref().is_some_and(|c| !c.valid())
+                || check_account(&next.home).is_err()
                 || next.members.len() > MAX_MEMBERS
                 || next.project.id != id
                 || next
@@ -565,12 +626,16 @@ pub(crate) fn change<T>(
                 home: next.home,
                 members,
                 invitations: next.invitations,
+                creation: next.creation,
             };
             match at {
                 Some(at) => store.projects[at] = entry,
                 None => store.projects.push(entry),
             }
         }
+    }
+    if store.projects.iter().any(|p| p.creation.is_some()) {
+        store.v = CREATION_STORE_SCHEMA.into();
     }
     write_file(dir, &store)?;
     Ok(out)
@@ -586,6 +651,38 @@ pub(crate) fn create(dir: &Path, account: &str, project: Project) -> Result<Proj
             return Err(RepoError::Invalid);
         }
         let held = Held::new(project, account);
+        let shown = held.shown_to(account);
+        Ok((Some(held), shown))
+    })
+}
+
+/// Retry one account-scoped creation without replacing its current contents.
+pub(crate) fn ensure(
+    dir: &Path,
+    account: &str,
+    project: Project,
+    key_sha256: String,
+) -> Result<Project, RepoError> {
+    let id = project.id.clone();
+    change(dir, &id, |current| {
+        let held = if let Some(held) = current {
+            let creation = held.creation.as_ref().ok_or(RepoError::Invalid)?;
+            if creation.deleted {
+                return Err(RepoError::NotFound);
+            }
+            if creation.key_sha256 != key_sha256 || held.home != account {
+                return Err(RepoError::Invalid);
+            }
+            held.require(account, Role::owns)?;
+            held
+        } else {
+            let mut held = Held::new(project, account);
+            held.creation = Some(Creation {
+                key_sha256,
+                deleted: false,
+            });
+            held
+        };
         let shown = held.shown_to(account);
         Ok((Some(held), shown))
     })
@@ -624,7 +721,20 @@ pub(crate) fn remove(dir: &Path, account: &str, id: &str) -> Result<(), RepoErro
         None => Ok((None, ())),
         Some(held) => match held.role_of(account) {
             None => Ok((Some(held), ())),
-            Some(role) if role.owns() => Ok((None, ())),
+            Some(role) if role.owns() => {
+                let mut held = held;
+                if let Some(creation) = held.creation.as_mut() {
+                    creation.deleted = true;
+                    held.members.clear();
+                    held.invitations.clear();
+                    held.project.name = "Deleted project".into();
+                    held.project.instructions = None;
+                    held.project.repositories.clear();
+                    Ok((Some(held), ()))
+                } else {
+                    Ok((None, ()))
+                }
+            }
             Some(_) => Err(RepoError::NotAllowed),
         },
     })

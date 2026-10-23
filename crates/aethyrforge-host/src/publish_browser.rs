@@ -402,24 +402,46 @@ pub(super) fn mount(
         }
     })?;
     for id in ["project-play", "project-share"] {
+        let weak = Rc::downgrade(rc);
         listen(listeners, id, "click", move |_| {
+            let Some(rc) = weak.upgrade() else { return };
             let Some(path) = element("published-link").get_attribute("href") else {
                 return;
             };
-            if !path.starts_with("/new-lander/play/") {
+            let Some(ids) = path.strip_prefix("/new-lander/play/") else {
                 return;
-            }
-            if id == "project-play" {
-                let _ = window().location().set_href(&path);
-            } else {
-                let origin = window().location().origin().unwrap_or_default();
-                element("publish-share-link").set_text_content(Some(&format!("{origin}{path}")));
-                element("publish-share-link")
-                    .set_attribute("href", &path)
-                    .ok();
-                hide("publish-share-card", false);
-                say("Your exact playable link is ready to copy or open.");
-            }
+            };
+            let Some((world, release)) = ids.split_once('/') else {
+                return;
+            };
+            let body = json!({"operation":if id=="project-play" {"play"}else{"share"},"world":world,"release":release});
+            let scope = ProjectScope::of(&rc.borrow());
+            let weak = weak.clone();
+            spawn_local(async move {
+                let progress = project_api(&weak, "tutorial", Some(body)).await;
+                let Some(rc) = weak.upgrade() else { return };
+                if !scope.accepts(&rc.borrow())
+                    || element("published-link").get_attribute("href").as_deref() != Some(&path)
+                {
+                    return;
+                }
+                if id == "project-play" {
+                    let _ = window().location().set_href(&path);
+                } else {
+                    let origin = window().location().origin().unwrap_or_default();
+                    element("publish-share-link")
+                        .set_text_content(Some(&format!("{origin}{path}")));
+                    element("publish-share-link")
+                        .set_attribute("href", &path)
+                        .ok();
+                    hide("publish-share-card", false);
+                    say(if progress.is_ok() {
+                        "Your playable link is ready. Return to the planets to create your own planet."
+                    } else {
+                        "Your playable link is ready. Tutorial progress could not be saved; try Share again before returning to the planets."
+                    });
+                }
+            });
         })?;
     }
     let weak = Rc::downgrade(rc);

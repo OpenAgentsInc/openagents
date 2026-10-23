@@ -370,3 +370,17 @@ what signed-out visitors and other accounts see).
 To try repository access locally, sign in on the fixture above, then open
 **Connect a GitHub repository** at the bottom of the chat list (or
 `/projects`).
+
+The account service also accepts `POST /v1/projects/ensure` with
+`{key:"verse-personal-v1",name:"My planet"}` under the caller's session.
+This registered creation key returns the same account-owned project across
+concurrent requests and lost-response retries, preserving later edits. Deletion
+keeps a private creation receipt: retrying returns `NotFound` instead of
+recreating the project. Other creation keys are refused. This endpoint has no
+fallback to ordinary project creation on an older account service.
+
+Creation receipts use the existing membership transaction on file and Postgres
+stores. File stores containing a receipt use `openagents.projects.v2`; old v1
+stores remain readable. Postgres keeps the receipt in the private project row.
+After this endpoint is activated, the account service must retain support for
+these records; do not downgrade to a reader that lacks creation receipts.

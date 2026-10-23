@@ -135,7 +135,20 @@ fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Mark
                             @if let Some(path) = haunt { a.small-button href=(path) { "Enter Haunted House ↗" } }
                             @else { p { "The house is not open here yet." } }
                         }
-                        @for id in ["creator-worlds", "new-horizons", "far-field"] { div id=(format!("destination-{id}")) hidden { span.locked-label { "◇ Still taking shape" } } }
+                        div id="destination-creator-worlds" hidden {
+                            p id="planet-status" role="status" { "Publish your own house, choose Play or Share, then return here." }
+                            div id="planet-ready" hidden {
+                                h3 { "A place of your own" }
+                                p { "Your house is published. Create your first personal planet." }
+                                p { "64 × 64 metres · Up to 128 objects · Private to you. Uses one account project; your account's project limit applies." }
+                                button.small-button id="planet-create" type="button" { "Create my planet" }
+                            }
+                            div id="planet-owned" hidden {
+                                h3 { "Your planet is ready" }
+                                a.small-button id="planet-setup" { "Set up my planet ↗" }
+                            }
+                        }
+                        @for id in ["new-horizons", "far-field"] { div id=(format!("destination-{id}")) hidden { span.locked-label { "◇ Still taking shape" } } }
                     }
                     div.world-list aria-label="Choose a destination" {
                         @for world in aethyrforge_host::WORLDS {

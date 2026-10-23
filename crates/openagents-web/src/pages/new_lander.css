@@ -1202,3 +1202,7 @@ h3 {
 .atlas-footer{left:220px;pointer-events:none}
 .atlas-footer .camera-controls{pointer-events:auto}
 @media(max-width:650px){.atlas-footer{left:210px;right:16px}.atlas-footer #universe-status,.atlas-footer .camera-controls a{display:none}.atlas-footer .camera-controls{margin-left:auto}}
+
+#planet-ready,#planet-owned{padding:14px;border:1px solid #56757d;background:#10232bcc;border-radius:8px}
+#planet-ready p{font-size:12px;line-height:1.5}
+#planet-ready .small-button,#planet-owned .small-button{margin-top:10px}

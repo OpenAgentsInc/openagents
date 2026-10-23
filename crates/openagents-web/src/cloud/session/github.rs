@@ -269,6 +269,37 @@ impl CloudSession {
         self.create_project_as(&token, new).await
     }
 
+    /// Create or recover the same empty project after a lost response.
+    /// An older account service must refuse; never fall back to ordinary creation.
+    pub(crate) async fn ensure_project_as(
+        &self,
+        token: &str,
+        key: &str,
+        name: &str,
+    ) -> Result<Project> {
+        let body = self
+            .account_call_as(
+                token,
+                Method::POST,
+                "/v1/projects/ensure",
+                None,
+                Some(json!({"key":key,"name":name})),
+            )
+            .await?;
+        serde_json::from_value(body["project"].clone())
+            .map_err(|_| RepoCallError::Session(SessionError::Unavailable))
+    }
+    pub(crate) async fn ensure_project(
+        &self,
+        headers: &HeaderMap,
+        key: &str,
+        name: &str,
+    ) -> Result<Project> {
+        self.request_host(headers)?;
+        let token = self.credential(headers)?;
+        self.ensure_project_as(&token, key, name).await
+    }
+
     /// Change a project: name, instructions, repositories.
     pub(crate) async fn edit_project(
         &self,

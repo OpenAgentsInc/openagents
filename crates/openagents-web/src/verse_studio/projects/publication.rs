@@ -383,6 +383,40 @@ async fn resolve(
     }
     Ok(p)
 }
+pub(super) async fn tutorial_publication(
+    app: &App,
+    headers: &HeaderMap,
+    actor: &str,
+    world: &str,
+    release: &str,
+) -> Result<aethyrforge_host::TutorialPublication, Response> {
+    let p = resolve(app, headers, world, Some(release)).await?;
+    let (book, _) = read::<PublishedWorld>(
+        &app.config.chat_store,
+        &world_key(world).map_err(|_| missing())?,
+    )
+    .await
+    .map_err(|e| stored(&e))?
+    .ok_or_else(missing)?;
+    let a = access(app, headers, &book.project).await?;
+    if a.actor.account_id != actor
+        || !crate::projects::api::role_of(&a.project).owns()
+        || book.owner != account_owner(actor)
+        || !book
+            .publications
+            .events
+            .iter()
+            .any(|e| e.operation == "publish" && e.release == release && e.actor == actor)
+    {
+        return Err(denied());
+    }
+    Ok(aethyrforge_host::TutorialPublication {
+        world: world.into(),
+        release: release.into(),
+        project: book.project,
+        saved_version: p.manifest.saved_version,
+    })
+}
 async fn playable(
     State(app): State<App>,
     headers: HeaderMap,

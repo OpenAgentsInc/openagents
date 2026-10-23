@@ -22,6 +22,7 @@ let delayCreate=false, releaseCreate, createArrived;
 const fixtureKey = "oak_fixture.synthetic-browser-key";
 const fixtureToken = "sess_" + "a".repeat(64);
 let active = true;
+let failMembership=false, failEnsure=false; let ensuredProject;
 const expiry = Math.floor(Date.now() / 1000) + 3600;
 const fixtureSession = {
   id: "fixture-browser-session",
@@ -54,7 +55,14 @@ const accountServer = http.createServer(async (req, res) => {
         message: "Synthetic fixture signed out.",
       },
     });
-  if (req.url === "/v1/account/github") return send(200,{github:{state:"none"},projects});
+  if (req.url === "/v1/account/github") return failMembership?send(503,{error:{code:"unavailable",message:"Synthetic membership failure."}}):send(200,{github:{state:"none"},projects});
+  if(req.url==="/v1/projects/ensure" && req.method==="POST"){
+    let raw="";for await(const part of req)raw+=part;const body=JSON.parse(raw);
+    if(failEnsure){failEnsure=false;return send(503,{error:{code:"unavailable",message:"Synthetic allocation failure."}});}
+    assert.equal(body.key,"verse-personal-v1");
+    if(!ensuredProject){ensuredProject={id:"prj_ffffffffffffffff",name:body.name,instructions:null,created_unix:Math.floor(Date.now()/1000),repositories:[]};projects.push(ensuredProject);}
+    return send(200,{project:ensuredProject});
+  }
   if ((req.url === "/v1/projects" || req.url === "/v1/account/projects") && req.method === "POST") {
     let raw="";for await(const part of req)raw+=part;
     const body=JSON.parse(raw);
@@ -132,6 +140,7 @@ const server = spawn(
       ...process.env,
       HOME: isolatedHome,
       OPENAGENTS_HAUNT_RELEASE: JSON.stringify(release),
+      OPENAGENTS_UNIVERSE_RELEASE: JSON.stringify({...release,engine_url:config.editor+"/universe.html",project:{id:"universe",branch:"main",revision:0}}),
       OPENAGENTS_VERSE_PUBLISH_RUNTIME: JSON.stringify(config.publish_runtime),
     },
   },
@@ -171,6 +180,8 @@ if(process.env.AETHYRFORGE_LOCAL_PROXY_CONFIG) {
 let page;
 const guestContexts=[];
 let holdPublish=false, publishArrived, releasePublish, losePublishAck=false;
+let holdRefreshSession=false, refreshSessionArrived, releaseRefreshSession;
+let holdAllocationAck=false, allocationArrived, releaseAllocationAck;
 const publicationPosts=[];
 const errors = [];
 let grants = 0;
@@ -228,6 +239,12 @@ try {
         response.status(),
         response.headers().location,
       );
+    if(url.pathname==='/v1/verse/studio/session'&&holdRefreshSession&&request.frame().page()===page){
+      holdRefreshSession=false;refreshSessionArrived?.();await new Promise(resolve=>releaseRefreshSession=resolve);
+    }
+    if(url.pathname==='/v1/verse/studio/tutorial'&&request.method()==='POST'&&JSON.parse(request.postData()).operation==='allocate'&&holdAllocationAck){
+      holdAllocationAck=false;allocationArrived?.();await new Promise(resolve=>releaseAllocationAck=resolve);
+    }
     const returned = { ...response.headers() };
 
     for (const key of [
@@ -396,6 +413,66 @@ try {
   const first=await book();assert.equal(first.book.sequence,1,'Retry returns the existing publication');
   const firstId=first.book.channel,world=first.world;
   const firstPath=`/new-lander/play/${world}/${firstId}`;
+  if(process.env.AETHYRFORGE_PLANET_ONLY==='1') {
+    await options();await page.click('#project-share');
+    await page.locator('#publish-share-card').waitFor({state:'visible'});
+    const chosen=await page.evaluate(async()=>await(await fetch('/v1/verse/studio/tutorial')).json());
+    assert.equal(chosen.progress.choice,'share');assert.equal(chosen.progress.planet,null);
+    await page.goto('https://openagents.com/new-lander/verse');
+    await page.waitForFunction(()=>window.universeDemo&&JSON.parse(window.universeDemo.snapshot()).phase==='open',null,{timeout:30000});
+    await page.locator('#planet-ready').waitFor({state:'visible'});
+    assert.equal(await page.locator('#world-title').innerText(),'My planet');
+    const count=projects.length;failEnsure=true;
+    await page.click('#planet-create');
+    await page.waitForFunction(()=>!document.querySelector('#planet-create').disabled&&document.querySelector('#planet-status').textContent.includes('Try again'));
+    assert.equal(projects.length,count);assert.equal(await page.locator('#planet-owned').isHidden(),true);
+    const refreshHeld=new Promise(resolve=>refreshSessionArrived=resolve);holdRefreshSession=true;
+    await refreshHeld;
+    const allocationHeld=new Promise(resolve=>allocationArrived=resolve);holdAllocationAck=true;
+    await page.click('#planet-create');await allocationHeld;
+    // A refresh that began before allocation must not acquire its new generation.
+    active=false;releaseRefreshSession();
+    await page.waitForFunction(()=>document.querySelector('#planet-status').textContent.includes('Log in again'));
+    assert.equal(await page.locator('#planet-owned').isHidden(),true);
+    active=true;
+    // The new context must poll again while the old allocation response is held.
+    await page.locator('#planet-owned').waitFor({state:'visible'});
+    releaseAllocationAck();
+    await page.waitForTimeout(2200);
+    assert.equal(await page.locator('#planet-owned').isVisible(),true,'A late old allocation cannot overwrite the rechecked award');
+    const planetPath=await page.locator('#planet-setup').getAttribute('href');assert.ok(planetPath.startsWith('/new-lander/planet/planet_'));
+    assert.equal(projects.length,count+1);
+    await page.screenshot({path:path.join(out,'planet-awarded-desktop.png')});
+    await page.reload();await page.locator('#planet-owned').waitFor({state:'visible'});
+    assert.equal(await page.locator('#planet-setup').getAttribute('href'),planetPath);
+    const secondTab=await context.newPage();
+    await secondTab.goto('https://openagents.com/new-lander/verse');await secondTab.locator('#planet-owned').waitFor({state:'visible'});
+    assert.equal(await secondTab.locator('#planet-setup').getAttribute('href'),planetPath);
+    const replay=await secondTab.evaluate(async()=>{
+      const session=await(await fetch('/v1/verse/studio/session')).json();
+      return await(await fetch('/v1/verse/studio/tutorial',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({csrf:session.csrf,operation:'allocate'})})).json();
+    });
+    assert.equal('/new-lander/planet/'+replay.progress.planet.id,planetPath);assert.equal(projects.length,count+1);
+    failMembership=true;
+    await page.waitForFunction(()=>!document.querySelector('#planet-setup').hasAttribute('href'));
+    assert.match(await page.locator('#planet-status').innerText(),/Try again|minute/);
+    failMembership=false;
+    await page.waitForFunction(()=>document.querySelector('#planet-setup').hasAttribute('href'));
+    assert.equal(await page.locator('#planet-setup').getAttribute('href'),planetPath);
+    await page.bringToFront();await page.setViewportSize({width:390,height:844});
+    await page.screenshot({path:path.join(out,'planet-awarded-mobile.png')});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    await page.click('#planet-setup');await page.waitForURL('https://openagents.com'+planetPath);
+    await page.fill('#planet-name','Moon garden');await page.click('button[type="submit"]');
+    await page.waitForFunction(()=>document.querySelector('h1')?.textContent==='Moon garden');
+    await page.reload();assert.equal(await page.locator('h1').innerText(),'Moon garden');
+    await page.screenshot({path:path.join(out,'planet-setup-mobile.png')});
+    await secondTab.reload();await secondTab.waitForFunction(()=>document.querySelector('#world-title').textContent==='Moon garden');
+    await secondTab.close();
+    assert.deepEqual(errors,[]);
+    const result={real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,explicit_published_share_return:true,allocation_failure_recovers:true,refresh_two_tabs_replay_same_planet:true,membership_failure_preserves_award:true,old_refresh_cannot_adopt_allocation_generation:true,account_change_releases_old_busy:true,late_old_allocation_ignored:true,rename_and_reopen:true,company_planet_stays_locked:true,private_captures:true,errors};
+    fs.writeFileSync(path.join(out,'browser-planet.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
+  } else {
   const guest=await browser.newContext({viewport:{width:1280,height:800},hasTouch:true});guestContexts.push(guest);
   if(process.env.AETHYRFORGE_LOCAL_CHECK==='1')await guest.grantPermissions(['local-network-access'],{origin:'https://openagents.com'});
   await guest.route('https://openagents.com/**',async route=>{
@@ -577,6 +654,7 @@ try {
   const result={protocol_version:7,real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,synthetic_recognition:true,microphone_used:false,compile_inspect_revert_without_publication:true,exact_saved_version_publish:true,lost_response_retry_idempotent:true,double_confirm_keeps_busy_owner:true,guest_without_editing_authority:true,guest_walks_published_world:true,trusted_mouse_click_gets_pointer_lock:true,mouse_click_document_ms:mouseClick.time,early_mouse_click_exercised:mouseClick.time<700,touch_ghost_guard:true,player_reload_held_failed_and_same_version_recovered:true,player_post_success_injected_fatal_status_recovers:true,later_drafts_and_releases_do_not_change_opened_version:true,spoken_publish_share_play:true,management_with_bad_source_face_draft_closed_engine:true,selected_version_audience_and_link_reviewed:true,rollback_sequence_advances:true,revoked_link_refuses_new_loads:true,share_clears_on_project_switch_signout_and_publication_refresh:true,private_captures:true,errors};
   fs.writeFileSync(path.join(out,'browser-publish.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
   }
+  }
 } catch(error){
   for(const guest of guestContexts)for(const guestPage of guest.pages())if(!guestPage.isClosed()){
     await guestPage.screenshot({path:path.join(out,'guest-error.png')});
@@ -588,7 +666,7 @@ try {
   if(page&&!page.isClosed()){await page.screenshot({path:path.join(out,'publish-error.png')});fs.writeFileSync(path.join(out,'publish-error-state.json'),JSON.stringify({error:String(error),errors,body:await page.locator('body').innerText()},null,2));}
   throw error;
 } finally {
-  releasePublish?.();releaseSave?.();releaseCheckpoint?.();
+  releaseRefreshSession?.();releaseAllocationAck?.();releasePublish?.();releaseSave?.();releaseCheckpoint?.();
   for(const guest of guestContexts){await guest.unrouteAll({behavior:'wait'});await guest.close();}
   await context.unrouteAll({behavior:'wait'});await context.close();await browser.close();server.kill('SIGTERM');accountServer.close();
   fs.writeFileSync(path.join(out,'native-fixture.log'),log);

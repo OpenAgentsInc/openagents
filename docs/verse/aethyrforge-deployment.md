@@ -72,3 +72,15 @@ Run `scripts/check-haunted-house.mjs` with the same candidate environment as
 the town check. The house adds map return, walking mode, and an honest unsaved
 status. Its [qualification record](haunted-house-qualification.json) records the
 isolated release; it does not authorize a homepage or production traffic shift.
+
+The first-planet tutorial uses this minimum completion rule: the authenticated
+person currently owns the house project, personally published a release that
+passes the native playable-content contract, chooses **Play** or **Share** for
+that release, and returns to the universe map. The map records the return and
+offers explicit planet creation with finite capacity. This is publication,
+choice, and return evidence; it does not attest to server-observed engine
+Compile or Inspect actions. A recipient visit, guest, member without ownership,
+or local completion flag cannot allocate a planet. Allocation uses one durable
+account-project creation receipt per person and tutorial version. Temporary
+membership or storage failures preserve progress and require retry; deletion
+keeps the receipt and does not resurrect a removed project.

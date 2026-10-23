@@ -382,3 +382,50 @@ fn projects_kept_before_sharing_read_back_unchanged() {
         Some("AtlantisPleb/money")
     );
 }
+
+#[test]
+fn ensured_creation_retries_preserve_edits_and_stay_deleted() {
+    each_store(|dir| {
+        let first = crate::repos::ensure_project(dir, A, "verse-personal-v1", "My planet").unwrap();
+        let same = edit(
+            dir,
+            A,
+            &first.id,
+            |_| true,
+            |p| {
+                p.name = "My changed planet".into();
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            crate::repos::ensure_project(dir, A, "verse-personal-v1", "Original name").unwrap(),
+            same
+        );
+        remove(dir, A, &first.id).unwrap();
+        assert_eq!(
+            crate::repos::ensure_project(dir, A, "verse-personal-v1", "Retry").unwrap_err(),
+            RepoError::NotFound
+        );
+        assert!(projects_of(dir, A).unwrap().is_empty());
+        assert_eq!(held(dir, &first.id).unwrap().unwrap().role_of(A), None);
+        remove(dir, A, &first.id).unwrap();
+        assert_eq!(
+            crate::repos::ensure_project(dir, A, "verse-personal-v1", "Retry again").unwrap_err(),
+            RepoError::NotFound
+        );
+    });
+}
+#[cfg(feature = "postgres")]
+#[test]
+fn ensured_creation_and_deletion_survive_postgres_row_serialization() {
+    let mut held = Held::new(project(P, "Planet"), A);
+    held.creation = Some(Creation {
+        key_sha256: "a".repeat(64),
+        deleted: false,
+    });
+    assert_eq!(from_row(to_row(&held).unwrap()).unwrap(), held);
+    held.creation.as_mut().unwrap().deleted = true;
+    held.members.clear();
+    assert_eq!(from_row(to_row(&held).unwrap()).unwrap(), held);
+}

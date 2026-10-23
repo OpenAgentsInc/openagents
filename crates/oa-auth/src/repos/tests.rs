@@ -464,3 +464,37 @@ fn project_bodies_read_back() {
     assert_eq!(ProjectChange::from_body(&change.body()), Some(change));
     assert!(ProjectChange::from_body(&json!({"name": 1})).is_none());
 }
+
+#[test]
+fn ensured_projects_keep_one_owner_and_preserve_changes_across_retries() {
+    let dir = tempfile::tempdir().unwrap();
+    let project = ensure_project(dir.path(), "acct_a", "verse-personal-v1", "My planet").unwrap();
+    members::edit(
+        dir.path(),
+        "acct_a",
+        &project.id,
+        |_| true,
+        |p| {
+            p.name = "Renamed planet".into();
+            Ok(())
+        },
+    )
+    .unwrap();
+    let mut threads = Vec::new();
+    for _ in 0..8 {
+        let path = dir.path().to_owned();
+        threads.push(std::thread::spawn(move || {
+            ensure_project(&path, "acct_a", "verse-personal-v1", "My planet").unwrap()
+        }));
+    }
+    for t in threads {
+        let same = t.join().unwrap();
+        assert_eq!(same.id, project.id);
+        assert_eq!(same.name, "Renamed planet");
+    }
+    assert_eq!(members::projects_of(dir.path(), "acct_a").unwrap().len(), 1);
+    let other = ensure_project(dir.path(), "acct_b", "verse-personal-v1", "My planet").unwrap();
+    assert_ne!(other.id, project.id);
+    assert!(ensure_project(dir.path(), "acct_a", "../invalid", "My planet").is_err());
+    assert!(ensure_project_body(&json!({"key":"verse-personal-v1","name":""})).is_none());
+}

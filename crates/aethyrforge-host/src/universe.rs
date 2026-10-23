@@ -29,9 +29,9 @@ pub const WORLDS: [World; 6] = [
     },
     World {
         id: "creator-worlds",
-        name: "Creator worlds",
+        name: "My planet",
         category: "Locked",
-        description: "More worlds are still taking shape.",
+        description: "Publish your own house, choose Play or Share, then return to create your planet.",
     },
     World {
         id: "new-horizons",
