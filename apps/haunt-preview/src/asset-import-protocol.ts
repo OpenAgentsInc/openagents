@@ -117,8 +117,15 @@ export function validateImportedAsset(description: OwnedAssetDescription, source
   if (!description || description.id !== source.id || !Array.isArray(description.sources) ||
     !Array.isArray(description.meshes) || !Array.isArray(description.images) ||
     !Array.isArray(description.diagnostics) || description.sources.length > MAX_SOURCE_COUNT ||
-    description.meshes.length > 64 || description.images.length > 16 || description.diagnostics.length > 64 ||
-    description.meshes.length + description.images.length === 0) fail();
+    description.meshes.length > 64 || description.images.length > 16 || description.diagnostics.length > 64) fail();
+  for (const diagnostic of description.diagnostics) {
+    if (!diagnostic || !["error", "warning"].includes(diagnostic.severity) || typeof diagnostic.message !== "string" ||
+      diagnostic.message.length > 2048 || typeof diagnostic.code !== "string" || diagnostic.code.length > 128 ||
+      typeof diagnostic.source !== "string" || diagnostic.source.length > 512) fail();
+  }
+  const error = description.diagnostics.find(diagnostic => diagnostic.severity === "error");
+  if (error) throw new Error(`${source.path}: ${error.message}`);
+  if (description.meshes.length + description.images.length === 0) fail();
   const sourceIds = new Set<string>();
   for (const record of description.sources) {
     sourceKey(record);
@@ -174,11 +181,6 @@ export function validateImportedAsset(description: OwnedAssetDescription, source
     }
     for (const mesh of description.meshes) if (mesh.material !== undefined && !materials.has(mesh.material)) fail();
   } else if (description.meshes.some(mesh => mesh.material !== undefined)) fail();
-  for (const diagnostic of description.diagnostics) {
-    if (!diagnostic || diagnostic.severity !== "warning" || typeof diagnostic.message !== "string" ||
-      diagnostic.message.length > 2048 || typeof diagnostic.code !== "string" || diagnostic.code.length > 128 ||
-      typeof diagnostic.source !== "string" || diagnostic.source.length > 512) fail();
-  }
   if (descriptionBytes(description) > MAX_OUTPUT_BYTES) fail();
 }
 

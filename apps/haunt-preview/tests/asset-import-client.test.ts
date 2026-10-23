@@ -175,6 +175,20 @@ test("invalid conversion and failed accept keep the previous runtime and allow s
   assert.equal(selected.disposed, true);
 });
 
+test("a decoder diagnostic names the source once and preserves the selected asset", async t => {
+  const f = setup(async (record, bytes) => new TextDecoder().decode(bytes) === "bad" ? {
+    id: record.id, sources: [record], meshes: [], images: [],
+    diagnostics: [{ code: "decode", severity: "error", source: record.id, message: "This image is truncated." }],
+  } : triangle(record));
+  t.after(() => f.session.dispose());
+  await f.session.importAsset("mesh", "image", "cards/paper.png", text("good"));
+  const previous = f.runtime.selected.get("mesh")!.asset;
+  const failed = await f.session.importAsset("mesh", "image", "cards/paper.png", text("bad"));
+  assert.equal(failed.type, "failed");
+  assert.ok(failed.type === "failed" && failed.message === "cards/paper.png: This image is truncated.");
+  assert.equal(f.runtime.selected.get("mesh")!.asset, previous);
+});
+
 test("late candidates and changed dependency pins cannot replace accepted resources", async t => {
   const f = setup(); t.after(() => f.session.dispose());
   await f.session.importAsset("mesh", "glb", "mesh.glb", text("original"));

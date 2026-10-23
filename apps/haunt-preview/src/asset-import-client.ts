@@ -40,7 +40,8 @@ export class AssetImportClient {
       if (!response || typeof response.requestId !== "string") return this.dispose(new Error("The asset worker returned an invalid response."));
       const pending = this.pending.get(response.requestId);
       if (!pending) return; // Cancelled requests may finish later.
-      if (response.type === "error") pending.done(new Error(`${response.source ? `${response.source}: ` : ""}${response.message}`));
+      if (response.type === "error") pending.done(new Error(
+        response.source && !response.message.startsWith(`${response.source}:`) ? `${response.source}: ${response.message}` : response.message));
       else if (response.type === "cancelled") pending.done(new Cancelled("Import cancelled."));
       else if (response.type !== pending.expected) this.dispose(new Error("The asset worker returned an unexpected response."));
       else pending.done(undefined, response);

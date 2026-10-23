@@ -73,6 +73,19 @@ test("malformed owned attributes and missing material images fail before caching
   }
 });
 
+test("failed converters report the source diagnostic without publishing or caching output", async () => {
+  const input = await source("failed-image");
+  const engine = new AssetWorkerEngine(async record => ({ id: record.id, sources: [record], meshes: [], images: [],
+    diagnostics: [{ code: "unsupported", severity: "error", source: record.id, message: "Choose a PNG or JPEG image." }] }));
+  await engine.handle({ type: "put", requestId: "put", source: input });
+  const result = await engine.handle({ type: "compile", requestId: "convert", revision: 1, source: input.record, files: [] });
+  assert.equal(result.type, "error");
+  if (result.type !== "error") return;
+  assert.equal(result.source, "failed-image.glb");
+  assert.equal(result.message, "failed-image.glb: Choose a PNG or JPEG image.");
+  assert.equal(engine.stats().cacheEntries, 0);
+});
+
 test("worker verifies exact binary inputs and owns cached buffers after transfer", async () => {
   const input = await source("mesh");
   const engine = new AssetWorkerEngine(async record => triangle(record));
