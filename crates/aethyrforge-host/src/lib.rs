@@ -39,3 +39,10 @@ pub fn action_sha256(input: String) -> Result<String, wasm_bindgen::JsValue> {
         .map_err(|_| wasm_bindgen::JsValue::from_str("Invalid action."))?;
     action_digest(&action).map_err(|_| wasm_bindgen::JsValue::from_str("Invalid action."))
 }
+
+mod universe;
+pub use universe::*;
+#[cfg(target_arch = "wasm32")]
+mod universe_browser;
+#[cfg(target_arch = "wasm32")]
+pub use universe_browser::*;

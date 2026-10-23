@@ -15,7 +15,12 @@ const PATH: &str = "/new-lander";
 const VERSE: &str = "/new-lander/verse";
 const SCRIPT_PATH: &str = "/new-lander/assets/verse.js";
 const STYLE: &str = include_str!("new_lander.css");
-const SCRIPT: &str = include_str!("new_lander.js");
+fn universe_release() -> Option<super::medieval_town::Release> {
+    let text = std::env::var("OPENAGENTS_UNIVERSE_RELEASE")
+        .unwrap_or_else(|_| include_str!("../../content/demos/universe.json").into());
+    let release = super::medieval_town::Release::parse(&text)?;
+    (release.project.id == "universe" && release.project.branch == "main").then_some(release)
+}
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
@@ -103,70 +108,77 @@ fn marketing_content() -> Markup {
     }
 }
 
-const WORLDS: [(&str, &str, &str); 6] = [
-    ("openagents", "OpenAgents", "Company world · Locked"),
-    ("blue-rush", "Blue Rush", "Creator studio"),
-    ("haunted-house", "Haunted House", "By Blue Rush"),
-    ("creator-worlds", "Creator worlds", "Future destination"),
-    ("new-horizons", "New horizons", "Future destination"),
-    ("far-field", "The far field", "Future destination"),
-];
-
-fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Markup {
+fn universe_content(haunt: Option<&str>, _account: bool, signed_in: bool) -> Markup {
+    let release = universe_release();
     html! {
-        main.atlas data-entry=(if signed_in {"member"} else {"locked"}) aria-labelledby="atlas-title" {
-            div #universe-exploration inert[!signed_in] {
-            div.universe-stage {
-                div.still-universe aria-hidden="true" { (poster()) }
-                canvas #universe tabindex="0" aria-label="Interactive universe. Drag to orbit, scroll to zoom, or use the arrow keys and plus and minus. Escape resets the view." {}
-                div.world-markers aria-label="Worlds on the map" {
-                    @for (id, name, _) in WORLDS {
-                        button.world-marker id=(format!("marker-{id}")) type="button" data-world=(id) aria-pressed=(if id=="openagents" {"true"} else {"false"}) { span.marker-dot {} span { (name) } }
+        main.atlas id="verse-atlas" data-entry=(if signed_in {"member"} else {"locked"}) aria-labelledby="atlas-title" {
+            div #universe-exploration inert {
+                div.universe-stage {
+                    div.still-universe aria-hidden="true" { (poster()) }
+                    @if let Some(release) = &release {
+                        iframe id="engine" title="The Verse planets" data-engine-url=(&release.engine_url) {}
+                        @let config = serde_json::json!({"release":release.release,"engine_abi":release.engine_abi,"project_format":release.project_format,"project":release.project});
+                        script id="engine-config" type="application/json" { (PreEscaped(config.to_string().replace('<', "\\u003c"))) }
+                    }
+                    p id="world-notice" role="status" { "Opening the planets… You can also choose a destination below." }
+                }
+                div.atlas-heading { p.eyebrow { span.signal {} "THE VERSE" } h1 #atlas-title { "A universe" br; span { "worth exploring." } } p { "Find a world. Follow your curiosity." } }
+                aside.destination-panel aria-labelledby="world-title" {
+                    div.panel-label { span { "DESTINATION" } span { "◎" } }
+                    p #world-category { "Company world · Locked" }
+                    h2 #world-title { "OpenAgents" }
+                    p #world-description { "Our home in the Verse. The Gym and Pylons will open here for their communities." }
+                    div.destination-actions {
+                        div id="destination-openagents" { span.locked-label { "◇ Locked for now" } a.text-link href="/docs" { "About OpenAgents ↗" } }
+                        div id="destination-blue-rush" hidden { a.small-button href=(super::blue_rush::PATH) { "Meet Blue Rush ↗" } }
+                        div id="destination-haunted-house" hidden {
+                            @if let Some(path) = haunt { a.small-button href=(path) { "Enter Haunted House ↗" } }
+                            @else { p { "The house is not open here yet." } }
+                        }
+                        @for id in ["creator-worlds", "new-horizons", "far-field"] { div id=(format!("destination-{id}")) hidden { span.locked-label { "◇ Still taking shape" } } }
+                    }
+                    div.world-list aria-label="Choose a destination" {
+                        @for world in aethyrforge_host::WORLDS {
+                            button.world-option id=(format!("option-{}",world.id)) type="button" aria-pressed=(if world.id=="openagents" {"true"} else {"false"}) { span.world-option-dot {} span { strong { (world.name) } small { (world.category) } } span.option-arrow aria-hidden="true" { "↗" } }
+                        }
                     }
                 }
-            }
-            div.atlas-heading { p.eyebrow { span.signal {} "THE VERSE / A FIRST LOOK" } h1 #atlas-title { "A universe" br; span { "worth exploring." } } p { "Find a world. Follow your curiosity." } }
-            aside.destination-panel aria-labelledby="world-title" {
-                div.panel-label { span { "DESTINATION" } span { "◎" } }
-                p #world-category { "Company world · Locked" }
-                h2 #world-title { "OpenAgents" }
-                p #world-description { "Our home in the Verse. The Gym, Pylons, and more will open here for their communities." }
-                div.destination-actions {
-                    div data-destination="openagents" { span.locked-label { "◇ Locked for now" } a.text-link href="/docs" { "About OpenAgents ↗" } }
-                    div data-destination="blue-rush" hidden { a.small-button href=(super::blue_rush::PATH) { "Meet Blue Rush ↗" } }
-                    div data-destination="haunted-house" hidden {
-                        @if let Some(path) = haunt { a.small-button href=(path) { "Enter Haunted House ↗" } }
-                        @else { p.destination-note { "The house is not open in this preview. You can explore its studio." } a.text-link href=(super::blue_rush::PATH) { "Meet Blue Rush ↗" } }
-                    }
-                    @for id in ["creator-worlds", "new-horizons", "far-field"] { div data-destination=(id) hidden { span.locked-label { "◇ Still taking shape" } } }
-                }
-                div.world-list aria-label="Choose a destination" {
-                    @for (id,name,category) in WORLDS {
-                        button.world-option type="button" data-world=(id) aria-pressed=(if id=="openagents" {"true"} else {"false"}) { span.world-option-dot {} span { strong { (name) } small { (category) } } span.option-arrow aria-hidden="true" { "↗" } }
-                    }
+                div.atlas-footer {
+                    a.map-home href=(PATH) aria-label="Back to the marketing homepage" { "←" }
+                    p id="universe-status" { "Drag to orbit · Scroll to zoom · Select a world" }
+                    div.camera-controls { a id="world-retry" href=(VERSE) { "Reload map" } button id="world-fullscreen" type="button" { "Full screen" } }
                 }
             }
-            div.atlas-footer { a.map-home href=(PATH) aria-label="Back to the marketing homepage" { "←" } p #universe-status role="status" { "Preparing the universe…" } div.camera-controls aria-label="Camera controls" { button #zoom-in type="button" aria-label="Zoom in" { "+" } button #zoom-out type="button" aria-label="Zoom out" { "−" } button #reset-view type="button" { "Reset view" } } }
-            }
-            @if !signed_in {
-                dialog.signin-card aria-labelledby="entry-title" aria-describedby="entry-description" {
-                    div.entry-label { span { "OPENAGENTS / THE VERSE" } span aria-hidden="true" { "◎" } }
-                    div.entry-symbol aria-hidden="true" { (mark()) }
+            dialog.signin-card id="verse-entry" aria-labelledby="entry-title" aria-describedby="entry-description" {
+                div.entry-label { span { "OPENAGENTS / THE VERSE" } span aria-hidden="true" { "◎" } }
+                div.entry-symbol aria-hidden="true" { (mark()) }
+                section id="verse-account" {
                     p.eyebrow { "YOUR PLACE IN THE VERSE" }
                     h2 #entry-title { "Your next world" br; "is waiting." }
-                    p #entry-description {
-                        @if account { "Log in, or look around as a guest." }
-                        @else { "Look around as a guest. Find a world that feels like yours." }
-                    }
+                    p #entry-description { "Log in, or look around as a guest." }
                     div.entry-actions {
-                        @if account { a.small-button href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in ↗" } }
-                        button #continue-guest type="button" { "Continue as guest" span aria-hidden="true" { "↗" } }
+                        a.small-button id="verse-signin" href="/login?return_to=%2Fnew-lander%2Fverse" { "Log in ↗" }
+                        button id="continue-guest" type="button" { "Continue as guest" span aria-hidden="true" { "↗" } }
                     }
-                    a.entry-back href=(PATH) { "← Back to OpenAgents" }
-                    div.entry-footer aria-hidden="true" { span.signal {} "A UNIVERSE OF POSSIBILITIES" }
                 }
+                section id="verse-choices" hidden {
+                    p.eyebrow { "CHOOSE YOUR NEXT STEP" }
+                    h2 id="choice-title" { "Where shall" br; "we go?" }
+                    p id="choice-description" { "Explore the planets, or step inside the Haunted House." }
+                    div.entry-actions {
+                        button id="verse-explore" type="button" { "Explore" span aria-hidden="true" { "↗" } }
+                        @if let Some(path) = haunt { a.small-button href=(path) { "Haunted House ↗" } }
+                    }
+                }
+                a.entry-back href=(PATH) { "← Back to OpenAgents" }
             }
-            noscript { div.no-script { "This is a still preview. Enable JavaScript for destination selection and the interactive view." a href=(PATH) { "Back to OpenAgents" } } }
+            nav.fallback-destinations aria-label="Other ways to explore" {
+                a href=(VERSE) { "Try the 3D view again" }
+                a href=(PATH) { "Back to OpenAgents" }
+                @if let Some(path) = haunt { a href=(path) { "Enter Haunted House" } }
+                a href=(super::blue_rush::PATH) { "Meet Blue Rush" }
+            }
+            noscript { p.no-script { "This is a still view. You can use the links to visit a destination." } }
         }
     }
 }
@@ -190,8 +202,13 @@ fn document(content: Markup, verse: bool, account: bool) -> String {
 fn respond(content: String) -> Response {
     let mut response = Html(content).into_response();
     let headers = response.headers_mut();
+    let engine = universe_release();
+    let origin = engine
+        .as_ref()
+        .map(|r| r.origin())
+        .unwrap_or_else(|| "'none'".into());
     let policy = format!(
-        "default-src 'none'; style-src {}; script-src 'self'; connect-src 'self'; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+        "default-src 'none'; style-src {}; script-src 'self' 'wasm-unsafe-eval' {origin}; connect-src 'self' {origin}; frame-src {origin}; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
         super::lander5::source_hash(STYLE)
     );
     headers.insert(
@@ -240,12 +257,20 @@ async fn universe(State(app): State<App>, headers: HeaderMap) -> Response {
 }
 
 async fn script() -> Response {
+    let body = if let Some(release) = universe_release() {
+        let url = serde_json::to_string(&release.sdk_url).expect("SDK URL");
+        format!(
+            r#"try{{const sdk=await import({url});await sdk.default();window.universeDemo=sdk.mount_universe();}}catch{{document.getElementById('world-notice').textContent='The 3D view could not open. Reload the map or choose a destination below.';}}"#
+        )
+    } else {
+        "document.getElementById('world-notice').textContent='The 3D view is unavailable here. You can use the destination links below.';".into()
+    };
     (
         [
             (header::CONTENT_TYPE, "text/javascript; charset=utf-8"),
             (header::CACHE_CONTROL, "no-cache"),
         ],
-        SCRIPT,
+        body,
     )
         .into_response()
 }

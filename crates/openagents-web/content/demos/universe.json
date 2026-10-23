@@ -1,0 +1,8 @@
+{
+  "engine_url": "https://engine.invalid/universe.html",
+  "sdk_url": "https://engine.invalid/sdk/aethyrforge_host.js",
+  "release": "unconfigured",
+  "engine_abi": "aethyrforge.browser.v1",
+  "project_format": 1,
+  "project": { "id": "universe", "branch": "main", "revision": 0 }
+}
