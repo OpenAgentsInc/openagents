@@ -825,14 +825,13 @@ pub(super) fn mount(
         let Some(work) = &s.materials.work else {
             return;
         };
-        if work
-            .owner
-            .as_ref()
-            .is_some_and(|a| s.account.as_ref() != Some(a))
-            || s.input_context().is_none_or(|c| {
-                c.session != work.context.session || !c.project.same_branch(&work.context.project)
-            })
-        {
+        let context = s.input_context();
+        if !crate::material::material_source_exportable(
+            work.owner.as_deref(),
+            s.account.as_deref(),
+            &work.context.project,
+            context.as_ref().map(|context| &context.project),
+        ) {
             tell("Open this draft in its original world before exporting it.");
             return;
         }

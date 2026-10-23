@@ -8,6 +8,17 @@ pub const SCAR_BACKEND: &str = "local-stylized-scars-v1";
 pub const MATERIAL_SIZE: usize = 256;
 pub const MAX_MATERIAL_PNG: usize = 16 * 1024;
 
+/// Exporting an owned source does not require a working graphics session.
+/// Project changes clear browser drafts; a live world must still match its branch.
+pub fn material_source_exportable(
+    owner: Option<&str>,
+    account: Option<&str>,
+    world: &crate::Project,
+    current_world: Option<&crate::Project>,
+) -> bool {
+    owner == account && current_world.is_none_or(|current| current.same_branch(world))
+}
+
 /// A delayed source read can finish only in the draft, account, and world where it began.
 #[derive(Clone, Debug)]
 pub struct MaterialDraftToken {
@@ -849,6 +860,55 @@ pub fn generate_scars(recipe: &ScarRecipe) -> Result<MaterialPixels, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn owned_face_sources_export_without_a_device_and_after_same_world_reconstruction() {
+        let world = crate::Project {
+            id: "haunted-house".into(),
+            branch: "main".into(),
+            revision: 8,
+        };
+        assert!(material_source_exportable(
+            Some("artist"),
+            Some("artist"),
+            &world,
+            None
+        ));
+        let mut reconstructed = world.clone();
+        reconstructed.revision = 0;
+        assert!(material_source_exportable(
+            Some("artist"),
+            Some("artist"),
+            &world,
+            Some(&reconstructed)
+        ));
+        assert!(!material_source_exportable(
+            Some("artist"),
+            None,
+            &world,
+            None
+        ));
+        assert!(!material_source_exportable(
+            Some("artist"),
+            Some("other"),
+            &world,
+            None
+        ));
+        reconstructed.id = "personal-planet".into();
+        assert!(!material_source_exportable(
+            Some("artist"),
+            Some("artist"),
+            &world,
+            Some(&reconstructed)
+        ));
+        reconstructed.id = world.id.clone();
+        reconstructed.branch = "other".into();
+        assert!(!material_source_exportable(
+            Some("artist"),
+            Some("artist"),
+            &world,
+            Some(&reconstructed)
+        ));
+    }
     fn project() -> crate::ProjectDocument {
         serde_json::from_value(serde_json::json!({"schema":"openagents.verse.project.v1","namespace":"haunted-house","template":{"world":"house","engine_release":"fixture-6","asset_set_sha256":"a".repeat(64),"scene_sha256":"b".repeat(64)},"source_revision":0,"entities":{"wolf-a":{"asset":"custom:haunt:werewolf","position":[0,0,0],"yaw":0,"scale":1}},"rooms":{},"removed_walls":[],"materials":{},"environment":{},"source_draft":"","active_source":"","layers":[],"originals":[]})).unwrap()
     }
