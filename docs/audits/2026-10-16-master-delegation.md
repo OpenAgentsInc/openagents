@@ -485,6 +485,12 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12579: the shared CSS and JavaScript are explicit native asset routes.
+  The Cloud-cookie routing matrix passes for session, login, workspace, WorkOS,
+  and future cookies on configured hosts, while unknown hosts and legacy paths
+  stay blocked. The production check found the missing asset entries after
+  #12578; deploy this fix and repeat the real login-cookie browser check.
+
 - #12578: Verse login and signup handoffs use the shared zinc CSS without
   loading the engine or tool finder. The failed-password form retains its CSRF,
   return address, and HTTP status in focused Rust checks. Native authentication
