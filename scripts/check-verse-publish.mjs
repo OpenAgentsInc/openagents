@@ -357,7 +357,10 @@ try {
     page.locator('form[action="/sign-in"] button[type="submit"]').click(),
   ]);
   }
-  if(process.env.AETHYRFORGE_VISIT_CHECK==='1') {
+  if(process.env.AETHYRFORGE_PROFILE_CONTROLS) {
+    const {checkProfileControls}=await import('./check-verse-profile-controls.mjs');
+    await checkProfileControls({page,context,base,config,out,errors});
+  } else if(process.env.AETHYRFORGE_VISIT_CHECK==='1') {
     const {checkVisits}=await import('./check-verse-visits.mjs');
     await checkVisits({page,context,base,config,out,errors,visitorKey});
   } else if(process.env.AETHYRFORGE_PERSONAL_CHECK==='1') {

@@ -485,6 +485,16 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12569: optional avatar views now require a loaded character in private `833ed1c`;
+  the existing Medieval Town assets and controls remain intact. Type checking and
+  15 interface tests pass. Hosted house and awarded personal-world studio checks
+  pass on desktop and mobile with the current native consumer: no avatar toolbar
+  when `modelLoaded=false`, and Edit/Listen/Stop remain reachable. Accounts are
+  synthetic; captures are Codex-reviewed. Pinned-player checks found the separate
+  zero-viewport failure tracked in #12570; player/chat overlap verification remains
+  in #12561 after that fix. No production traffic or prior tags changed.
+  [Profile-control evidence](../verse/aethyrforge-profile-controls-qualification.json).
+
 - #12560: version-pinned personal-world invitations and Loro chat are implemented
   on `main` (`8a4ed3168c`). Native access/retry/expiry/rate/isolation checks (1),
   room-token checks (5), existing browser-token routes (3), and a real isolated

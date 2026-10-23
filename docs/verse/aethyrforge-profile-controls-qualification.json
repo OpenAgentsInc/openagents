@@ -1,0 +1,112 @@
+{
+  "schema": "openagents.verse.profile-controls-qualification.v1",
+  "issue": 12569,
+  "private_source": "833ed1c43bb241d7a07ea674484d36db889f25a6",
+  "native_consumer_source": "8a4ed3168cd40607b7841926fb3fbe08e887f792",
+  "native_binary": "/Users/christopherdavid/.openagents/scratch/codex-01a16718-7a6f-7303-aef3-e31e4d114c47/openagents-web-8a4ed3168c",
+  "private_type_check": "passed",
+  "private_interface_tests": 15,
+  "checks": [
+    {
+      "run": "profile-house-4",
+      "exit_code": 0,
+      "result": {
+        "profile": "house",
+        "hosted_editor": "https://q61h7cd34066d936d4e3---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app",
+        "real_gpu": true,
+        "current_native_consumer": true,
+        "synthetic_account_service": true,
+        "real_signin_provider": false,
+        "model_loaded": false,
+        "avatar_view_controls_absent": true,
+        "mobile_desktop_native_controls_reachable": true,
+        "pinned_player_checked": false,
+        "pinned_player_pending": "Hidden-frame zero viewport renderer failure; tracked separately."
+      }
+    },
+    {
+      "run": "profile-personal-2",
+      "exit_code": 0,
+      "result": {
+        "profile": "personal",
+        "hosted_editor": "https://q61pf638320bcec930c7---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app/",
+        "real_gpu": true,
+        "current_native_consumer": true,
+        "synthetic_account_service": true,
+        "real_signin_provider": false,
+        "native_only_tutorial_precondition": true,
+        "model_loaded": false,
+        "avatar_view_controls_absent": true,
+        "mobile_desktop_native_controls_reachable": true,
+        "pinned_player_checked": false,
+        "pinned_player_pending": "Hidden-frame zero viewport renderer failure; tracked separately."
+      }
+    }
+  ],
+  "captures_private": true,
+  "capture_review": "Codex; no human/Kiki approval",
+  "pending": [
+    "Pinned player hidden-viewport failure #12570",
+    "Integrated native movement/chat controls in #12561",
+    "Existing provider/microphone/human review steps in NEEDS_OWNER.md"
+  ],
+  "production_traffic_changed": false,
+  "prior_tags_preserved": true,
+  "concurrent_native_baseline_preserved": "coder-web-b3afdd3d3b-20261023170558 at 100%; Medieval Town r308ca999c8bbc714c5 selection",
+  "runtime_deployments": [
+    {
+      "profile": "house",
+      "role": "editor",
+      "release": "q61h7cd34066d936d4e3",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-editor:q61h7cd34066d936d4e3",
+      "build": "b9311ec3-d0ab-4c47-aac3-592bb93e07c3",
+      "digest": "sha256:44fa25957b516d4f53561002de4305a3d0403eef53fad39a9590e448ba09366f",
+      "revision": "aethyrforge-editor-00017-pub"
+    },
+    {
+      "profile": "house",
+      "role": "preview",
+      "release": "q61h7cd34066d936d4e3",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-preview:q61h7cd34066d936d4e3",
+      "build": "6d5b2ea1-506b-42ea-9bc4-e06e86cf55fd",
+      "digest": "sha256:21c2c9b1ea26abb19a7996c19dfffa07a7ae639eaa20188a2650f62d086197a0",
+      "revision": "aethyrforge-preview-00017-lal"
+    },
+    {
+      "profile": "universe",
+      "role": "editor",
+      "release": "q61u585772252086992b",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-editor:q61u585772252086992b",
+      "build": "60f8d27e-4f58-46bd-9e9c-ad8589089d2f",
+      "digest": "sha256:0a08970072500ea3c65845a1f4a2aa1f6a3a409cbafb6574edd4f8d8431b0a5a",
+      "revision": "aethyrforge-editor-00018-bik"
+    },
+    {
+      "profile": "universe",
+      "role": "preview",
+      "release": "q61u585772252086992b",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-preview:q61u585772252086992b",
+      "build": "15c00020-0418-4ed1-8a3a-72a587ef71be",
+      "digest": "sha256:5ecb7b715ab6568e624661e81c95de4e41691f3dec0646a6548496b67a5951b1",
+      "revision": "aethyrforge-preview-00018-yon"
+    },
+    {
+      "profile": "personal",
+      "role": "editor",
+      "release": "q61pf638320bcec930c7",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-editor:q61pf638320bcec930c7",
+      "build": "22344e03-0a5c-4dd4-b4e5-30ff3556b4cc",
+      "digest": "sha256:87580b0d460c867378e0593537eb0c19f6257d6096b5e7d14994768642e5356f",
+      "revision": "aethyrforge-editor-00019-nay"
+    },
+    {
+      "profile": "personal",
+      "role": "preview",
+      "release": "q61pf638320bcec930c7",
+      "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/aethyrforge-preview:q61pf638320bcec930c7",
+      "build": "ce862a2a-d050-4986-9454-7b7283ac1191",
+      "digest": "sha256:ef6963788fb614511a2d5daafbe816c7d1cc22ec88c9237ecd712e938fa96a5f",
+      "revision": "aethyrforge-preview-00019-foj"
+    }
+  ]
+}
