@@ -18,7 +18,9 @@ presentation (#12576, owner-authorized 2026-10-23).
 - Aethyrforge remains a separately pinned private runtime. This package neither
   imports private source nor changes its grants or protocol. `/` stays unchanged.
 - The external sign-in provider keeps its own screen. This package styles the
-  in-Verse entry and first-edit sign-in cards.
+  in-Verse entry and first-edit sign-in cards, plus `/login` and `/signup`
+  when they return to the Verse. Those authentication pages load CSS only;
+  provider actions, CSRF fields, and response status stay with Rust.
 
 Run `npm ci`, `npm run build`, and `npm test` from this directory. Commit the
 source, lockfile, and generated `crates/openagents-web/content/verse-ui/` assets

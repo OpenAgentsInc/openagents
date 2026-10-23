@@ -334,7 +334,9 @@ pub fn render_login(
     if let Some(preview) = crate::link_preview::signed_out(return_to) {
         page = page.link_preview(preview);
     }
-    protect(page.respond(headers))
+    protect(crate::pages::verse_ui::authentication(
+        page, headers, status, return_to,
+    ))
 }
 
 /// Where a sign-in in a popup ends (#12480): a page that tells the page

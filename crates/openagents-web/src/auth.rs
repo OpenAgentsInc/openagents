@@ -219,7 +219,12 @@ pub fn sign_in_page(
     if let Some(preview) = crate::link_preview::signed_out(return_to) {
         page = page.link_preview(preview);
     }
-    protect(page.respond(headers))
+    protect(crate::pages::verse_ui::authentication(
+        page,
+        headers,
+        StatusCode::OK,
+        return_to,
+    ))
 }
 
 async fn start(State(app): State<App>, headers: HeaderMap, Query(back): Query<Back>) -> Response {

@@ -1076,3 +1076,10 @@
     overflow: auto;
   }
 }
+
+[data-verse-ui="auth"] { color-scheme: dark; }
+[data-verse-ui="auth"] .oa-auth-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 20px 70px #0006; }
+[data-verse-ui="auth"] .oa-auth-card-header h1, [data-verse-ui="auth"] .oa-auth-brand { color: var(--foreground); }
+[data-verse-ui="auth"] .oa-auth-card-header p, [data-verse-ui="auth"] .oa-auth-switch, [data-verse-ui="auth"] .oa-auth-fine-print { color: var(--muted-foreground); }
+[data-verse-ui="auth"] .oa-button { display: inline-flex; justify-content: center; gap: 8px; min-height: 44px; border-radius: 6px; background: var(--primary); color: var(--primary-foreground); font-weight: 500; text-decoration: none; }
+[data-verse-ui="auth"] .oa-button:hover { background: #e4e4e7; }

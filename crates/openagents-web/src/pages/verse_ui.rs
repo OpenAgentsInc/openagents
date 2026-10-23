@@ -39,7 +39,7 @@ pub(super) fn routes() -> Router<App> {
 pub(crate) fn document(body: String, surface: &str) -> String {
     assert!(matches!(
         surface,
-        "marketing" | "universe" | "studio" | "player" | "setup" | "invite"
+        "marketing" | "universe" | "studio" | "player" | "setup" | "invite" | "auth"
     ));
     let mut body = body.replacen("<html ", &format!("<html data-verse-ui=\"{surface}\" "), 1);
     for old in [
@@ -49,7 +49,7 @@ pub(crate) fn document(body: String, surface: &str) -> String {
     ] {
         body = body.replace(&format!("<link rel=\"stylesheet\" href=\"{old}\">"), "");
     }
-    let assets = if surface == "marketing" {
+    let assets = if matches!(surface, "marketing" | "auth") {
         STYLE.into()
     } else {
         format!("{STYLE}{SCRIPT}")
@@ -73,6 +73,25 @@ pub(crate) fn document(body: String, surface: &str) -> String {
     output
 }
 
+/// Keep the Verse sign-in handoff on its presentation without changing authentication.
+pub(crate) fn authentication(
+    page: crate::ui_page::UiPage,
+    headers: &axum::http::HeaderMap,
+    status: axum::http::StatusCode,
+    return_to: &str,
+) -> axum::response::Response {
+    use axum::response::{Html, IntoResponse};
+    if return_to == "/new-lander"
+        || return_to.starts_with("/new-lander/")
+        || return_to.starts_with("/new-lander?")
+    {
+        let body = page.without_toggle().render(headers).into_string();
+        (status, Html(document(body, "auth"))).into_response()
+    } else {
+        page.respond(headers)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -91,5 +110,38 @@ mod tests {
         );
         assert!(marketing.contains("/new-lander/ui.css"));
         assert!(!marketing.contains("<script"));
+    }
+    #[tokio::test]
+    async fn verse_login_keeps_authentication_fields_and_status_without_loading_the_engine() {
+        use axum::{
+            body::to_bytes,
+            http::{HeaderMap, StatusCode},
+        };
+        use oa_auth::workos::Method;
+        let response = crate::workos_auth::render_login(
+            &HeaderMap::new(),
+            false,
+            "/new-lander/house",
+            Some("Try again"),
+            Some("test@example.com"),
+            &[Method::Password],
+            "test-csrf",
+            StatusCode::UNAUTHORIZED,
+        );
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let text = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .to_vec(),
+        )
+        .unwrap();
+        assert!(text.contains("data-verse-ui=\"auth\""));
+        assert!(text.contains("name=\"csrf\" value=\"test-csrf\""));
+        assert!(text.contains("name=\"return_to\" value=\"/new-lander/house\""));
+        assert!(text.contains("/new-lander/ui.css"));
+        assert!(!text.contains("/new-lander/ui.js"));
+        assert!(!text.contains("<iframe"));
+        assert!(!text.contains("oa-theme-toggle-form"));
     }
 }
