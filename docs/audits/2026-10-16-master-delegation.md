@@ -485,6 +485,16 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12568: Keep draft acknowledges success only after its exact accepted source
+  reaches the host snapshot; draft writes still leave world history unchanged.
+  Two focused private tests, TypeScript checks, and the real-GPU delayed-status
+  browser regression pass. The latter holds the older snapshot after the command
+  receipt, verifies confirmation stays open, then immediately compiles once the
+  matching source arrives. Evidence stays in private scratch
+  `draft-ack-browser-2/browser-draft-ack.json`. The account service is synthetic;
+  no real sign-in provider or microphone pass is claimed. Deployment and the
+  integrated player journey remain in #12561.
+
 - #12514: wire v6 adds scoped face previews/apply and complete editable material
   restore. Local Rust scar generation and handmade layers share confirmed changes,
   history, saved PNG resources, and device recovery. Host 53, native bounds/house,
