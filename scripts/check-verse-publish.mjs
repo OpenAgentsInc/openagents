@@ -431,8 +431,17 @@ try {
   });
   await guestEditor.waitForFunction(id=>!!window.aethyrforgeEditor.service.receipts.get(id),denied);
   assert.equal(await guestEditor.evaluate(id=>window.aethyrforgeEditor.service.receipts.get(id).ok,denied),false,'Player worker refuses direct editor actions');
+  await guestPage.bringToFront();
+  const guestPreview=guestPage.frames().find(f=>f.url().startsWith(config.preview));assert.ok(guestPreview);
+  await guestPreview.evaluate(()=>{window.playerInputEvents=[];addEventListener('keydown',e=>window.playerInputEvents.push(e.code));});
+  await guestPreview.locator('#world').click();
+  await guestPreview.waitForFunction(()=>document.pointerLockElement?.id==='world',null,{timeout:5000});
+  assert.equal(await guestPreview.evaluate(()=>document.hasFocus()),true,'The nested player canvas has foreground focus');
+  await guestPreview.locator('#world').focus();
   const guestPose=(await guestSnapshot()).engine.status.checkpoint;
-  await guestPage.mouse.click(640,430);await guestPage.keyboard.down('w');await guestPage.waitForTimeout(500);await guestPage.keyboard.up('w');
+  await guestPage.keyboard.down('w');await guestPage.waitForTimeout(700);await guestPage.keyboard.up('w');
+  assert.ok(await guestPreview.evaluate(()=>window.playerInputEvents.includes('KeyW')),'Actual keyboard input reaches the player canvas');
+  await guestPage.waitForFunction(eye=>JSON.parse(window.versePlayer.snapshot()).engine.status.checkpoint.eye.some((n,i)=>Math.abs(n-eye[i])>0.05),guestPose.eye,{timeout:5000});
   const walked=(await guestSnapshot()).engine.status.checkpoint;
   assert.ok(walked.eye.some((n,i)=>Math.abs(n-guestPose.eye[i])>0.05),'The guest actually walks in the published world');
   for(const frame of guestPage.frames())if(frame.url().startsWith(config.preview))await frame.evaluate(()=>document.exitPointerLock?.());
@@ -461,6 +470,7 @@ try {
   assert.equal(await guestEditor.evaluate(()=>window.aethyrforge.snapshot().status.authoring.active_source),changed);
   await guestPage.screenshot({path:path.join(out,'playable-reload-recovered.png')});
   console.log('Player reload failure and recovery passed');
+  await page.bringToFront();
   // Publish another saved version, keeping the first guest pinned.
   await edit('materials');
   const shared=page.locator('#panel-materials details').filter({has:page.locator('#edit-fog')});await shared.locator('summary').click();
