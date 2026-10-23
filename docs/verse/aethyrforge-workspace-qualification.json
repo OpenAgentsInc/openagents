@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse.workspace-qualification.v1",
   "issue": 12552,
-  "status": "code complete; integrated native UI and provider browser qualification pending",
+  "status": "code complete; isolated native guest UI qualified; real provider and integrated editing checks pending",
   "private_source": "3e578227339996e1ce5b5cb1a63f662c2bafa51a",
   "protocol_version": 4,
   "checks": {
@@ -108,11 +108,58 @@
     "human_review": false
   },
   "unfinished_checks": [
-    "Build/pin the v4 SDK/Kiln companion and isolated editor/preview release; use a fresh openagents-web-site consumer.",
-    "Capture desktop/mobile Jarvis UI, verify focus/typing/pointer/touch, preserved draft/window/selection state, compile-to-inspect, and repeated panel open/close against the integrated host.",
     "Complete the synthetic native sign-in fixture separately from the dedicated real-provider check; neither trusted-service GPU mechanics nor fixture sign-in proves real-provider completion.",
     "Complete real Kiln/voice/material/history providers in the owning children and #12561.",
     "Fix and recapture the universe toolbar in #12563 before #12561."
   ],
-  "activation": "No root homepage promotion or production traffic shift."
+  "activation": "No root homepage promotion or production traffic shift.",
+  "isolated_deployment": {
+    "release": "j9ba9687b2db62c0a5",
+    "native_source": "b23a59cecb69051c1a4450e4c6ae810ec762da2a",
+    "sdk_sha256": "ba65cbe56ef5dca1b945d582926600e39309daf18cee84d1ee55ce1d90e4fb92",
+    "asset_set": "d29dcabe5d7fc3a224319e29caddcd69d17485dd264575b6861c4599cd9650c1",
+    "traffic_shift": false,
+    "editor": {
+      "build": "e45389c3-1fe8-469f-a5d9-0fd9fb57a094",
+      "image": "sha256:5cb3acaabb1224afe1103d6f91c3ae1439787b7e6628641307ec2fb1cc183e46",
+      "revision": "aethyrforge-editor-00009-fom"
+    },
+    "preview": {
+      "build": "0e243fde-54e3-40b7-9e17-6c71ea2ebd5f",
+      "image": "sha256:ab2b8b7455958867a1d7023bc7775cfb938495cf7b9542130cde5e7b31e4addc",
+      "revision": "aethyrforge-preview-00009-met"
+    }
+  },
+  "native_guest_browser": {
+    "release": "j9ba9687b2db62c0a5",
+    "errors": [],
+    "desktop_windows": true,
+    "mobile_tabs": true,
+    "typing_pose_preserved": true,
+    "panel_reopen_keeps_session": true,
+    "guest_pending_cancel": true,
+    "readonly_mesh": true,
+    "reload_draft_selection_restored": true,
+    "real_provider": false
+  },
+  "captures": [
+    {
+      "name": "jarvis-desktop.png",
+      "sha256": "303e79fee27bfc7f421957c88d89ebe1d8f728d29e0a44360f4de1b6d74df646",
+      "reviewer": "Codex",
+      "human_review": false
+    },
+    {
+      "name": "jarvis-mobile.png",
+      "sha256": "5c4179a064d41a825083cb3c95d8d6694f1ad8436c61ea0c35ebaacd879a8036",
+      "reviewer": "Codex",
+      "human_review": false
+    },
+    {
+      "name": "jarvis-mesh.png",
+      "sha256": "781933d6d2aefe7ab0f861435f20fd09358be9a3c6d537fa4e00e44a468517ae",
+      "reviewer": "Codex",
+      "human_review": false
+    }
+  ]
 }

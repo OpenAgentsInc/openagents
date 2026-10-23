@@ -490,10 +490,11 @@ The status lines below summarize each issue and its comments. Open the issue for
   navigation are code complete. Public host checks (27), Kiln workspace checks
   (4), website checks (3), private mesh/protocol checks (13), type checks, and the
   real local GPU mesh/touch/recovery run pass. [Qualification record](../verse/aethyrforge-workspace-qualification.json)
-  separates engine mechanics from pending integrated UI/provider checks. Build a
-  pinned v4 SDK/release and fresh native consumer, capture desktop/mobile Jarvis,
-  and verify focus, typing, window/draft restoration, and repeated open/close in
-  #12561. Real provider sign-in remains in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
+  separates engine mechanics from provider checks. Isolated release
+  `j9ba9687b2db62c0a5`, pinned v4 SDK/Kiln companion, and fresh native consumer
+  `b23a59cecb` pass desktop/mobile Jarvis, focus, typing, pending-edit cancel,
+  mesh, window/draft/selection restoration, and repeated open/close checks.
+  Codex reviewed the private captures; no human review is claimed. Real provider sign-in remains in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
   Voice, material painting, and durable contributor history stay with their
   owning children. #12563 still blocks final qualification.
 
