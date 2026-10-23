@@ -84,5 +84,14 @@
       "reviewer": "Codex",
       "human_review": false
     }
-  ]
+  ],
+  "toolbar_follow_up": {
+    "issue": 12563,
+    "implementation": "Preview owns bottom-left zoom/Reset. Header Back remains accessible; host guidance/footer avoids that area, with Full screen only on mobile. House Back to planets is unchanged.",
+    "source_checks": "Focused website tests and browser-script syntax pass.",
+    "browser_checks": "Added parent hit-test and actual preview zoom/reset clicks on desktop/mobile, alongside keyboard and destination checks.",
+    "fresh_native_rerun_and_private_recaptures": "pending",
+    "reviewer": "Codex",
+    "human_review": false
+  }
 }

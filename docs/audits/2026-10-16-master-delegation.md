@@ -485,6 +485,14 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12563: the preview owns bottom-left zoom/Reset controls. The host keeps Back
+  in the header, moves guidance out of that area, and leaves only Full screen in
+  its compact mobile footer. Focused route/copy checks and script syntax pass.
+  The retained universe browser check now hit-tests and clicks the actual plus
+  button on desktop/mobile, retaining keyboard/destination checks. Build the
+  fresh native consumer, rerun, and inspect private desktop/mobile captures
+  before #12561. [Universe qualification](../verse/aethyrforge-universe-qualification.json).
+
 - #12565: each handled request clears the previous response and shows current
   option/review/progress feedback. Listen clears the prior transcript and response.
   Host checks (31), Wasm checks, changed-file formatting, and script syntax pass.

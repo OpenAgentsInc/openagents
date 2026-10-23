@@ -144,7 +144,6 @@ fn universe_content(haunt: Option<&str>, account: bool, signed_in: bool) -> Mark
                     }
                 }
                 div.atlas-footer {
-                    a.map-home href=(PATH) aria-label="Back to the marketing homepage" { "←" }
                     p id="universe-status" { "Drag to orbit · Scroll to zoom · Select a world" }
                     div.camera-controls { a id="world-retry" href=(VERSE) { "Reload map" } button id="world-fullscreen" type="button" { "Full screen" } }
                 }

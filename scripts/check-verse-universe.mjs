@@ -98,6 +98,19 @@ try {
       null,
       { timeout: 60000 },
     );
+  const cameraControls = async (p, frame) => {
+    assert.equal(await p.locator(".map-home").count(),0);
+    assert.ok(await p.locator(".site-header .back-link").isVisible());
+    const plus=frame.locator("#zoom-in");
+    const button=await plus.boundingBox();assert.ok(button);
+    const hit=await p.evaluate(({x,y})=>document.elementFromPoint(x,y)?.id,{x:button.x+button.width/2,y:button.y+button.height/2});
+    assert.equal(hit,"engine");
+    const before=await pose(p);const distance=c=>Math.hypot(...c.eye.map((n,i)=>n-c.target[i]));
+    await plus.click();await p.waitForTimeout(250);
+    assert.equal(new URL(p.url()).pathname,"/new-lander/verse");
+    assert.ok(distance(await pose(p))<distance(before));
+    await frame.locator("#reset").click();
+  };
   const pose = (p) =>
     p.evaluate(
       () => JSON.parse(window.universeDemo.snapshot()).status.checkpoint,
@@ -202,6 +215,7 @@ try {
     .find((f) => f.url().startsWith(config.preview + "/universe-preview.html"));
   assert.ok(preview);
   await preview.locator("#universe").click({ position: { x: 710, y: 500 } });
+  await cameraControls(page,preview);
   const manualBefore = await pose(page);
   await page.keyboard.press("ArrowRight");
   await page.waitForTimeout(500);
@@ -276,6 +290,8 @@ try {
   await reduced.locator("#option-haunted-house").focus();
   await reduced.keyboard.press("Enter");
   assert.ok(await reduced.locator("#destination-haunted-house a").isVisible());
+  await cameraControls(reduced,reducedPreview);
+  await reduced.screenshot({path:path.join(out,"universe-mobile-explore.png")});
   await reduced.close();
   const blocked = await open();
   page = blocked;
@@ -314,6 +330,7 @@ try {
     keyboard_destination_selection: true,
     post_choice_camera_input: true,
     mobile_layout: true,
+    camera_toolbar_hit_test_and_zoom_desktop_mobile:true,
     house_handoff_replaces_universe_frames: true,
     return_restores_map_selection_and_camera: true,
     unsupported_webgpu_keeps_links_and_back: true,
