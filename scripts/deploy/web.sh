@@ -813,6 +813,12 @@ if retire_serve and any(c["name"] == "coder-serve" for c in spec["containers"]):
         annotations.pop("run.googleapis.com/cloudsql-instances", None)
     sys.stderr.write("  coder-serve sidecar removed (container, OPENAGENTS_WEB_UPSTREAM, "
                      "dependency, coder-pg)\n")
+# Optional public demo release override: enables a tested rollback without a rebuild.
+medieval_release = os.environ.get("WEB_MEDIEVAL_RELEASE_JSON")
+if medieval_release:
+    json.loads(medieval_release)
+    web["env"] = [e for e in web.get("env", []) if e["name"] != "OPENAGENTS_MEDIEVAL_RELEASE"]
+    web["env"].append({"name": "OPENAGENTS_MEDIEVAL_RELEASE", "value": medieval_release})
 traffic = []
 for entry in service["spec"].get("traffic", []):
     if entry.get("latestRevision"):
