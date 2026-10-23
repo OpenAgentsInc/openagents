@@ -265,7 +265,7 @@ try {
       .locator("#world-notice[data-state=error]")
       .waitFor({ timeout: 125000 });
     assert.ok(await check.locator("#world-retry").isVisible());
-    assert.ok(await check.locator('a[href="/"]').isVisible());
+    assert.ok(await check.locator('#world-map').isVisible());
     console.log("Unavailable engine offers retry/back:", failure);
     await check.close();
   }
