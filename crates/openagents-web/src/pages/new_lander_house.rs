@@ -8,6 +8,13 @@ fn response(
     origin: Option<&str>,
 ) -> Response {
     let mut result = engine_response(status, body.into(), kind, origin);
+    // Voice input belongs to this host. The cross-origin engine receives no mic access.
+    result.headers_mut().insert(
+        "permissions-policy",
+        axum::http::HeaderValue::from_static(
+            "camera=(), microphone=(self), geolocation=(), payment=()",
+        ),
+    );
     if let Some(value) = result
         .headers()
         .get(axum::http::header::CONTENT_SECURITY_POLICY)
@@ -310,6 +317,16 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(csp.contains("wss://relay.openagents.com"));
+        assert_eq!(
+            response.headers()["permissions-policy"],
+            "camera=(), microphone=(self), geolocation=(), payment=()"
+        );
+        let read_only =
+            super::super::medieval_town::response(StatusCode::OK, "", "text/html", None);
+        assert_eq!(
+            read_only.headers()["permissions-policy"],
+            "camera=(), microphone=(), geolocation=(), payment=()"
+        );
         let bytes = to_bytes(response.into_body(), 65_536).await.unwrap();
         let text = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(text.contains("id=\"author-tools\" hidden"));

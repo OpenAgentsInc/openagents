@@ -76,12 +76,7 @@ impl Speech {
                             .ok()
                             .and_then(|v| v.as_string())
                             .unwrap_or_default();
-                        SpeechEvent::Failed(match code.as_str(){
-                            "not-allowed"|"service-not-allowed"=>"Microphone access was denied. Type your request or allow access in your browser.",
-                            "audio-capture"=>"The microphone isn't available. Check it or type your request.",
-                            "network"=>"Voice input couldn't connect. Type your request or try again.",
-                            _=>"Voice input stopped. Type your request or try again.",
-                        }.into())
+                        SpeechEvent::Failed(crate::voice::speech_problem(&code).into())
                     }
                     _ => {
                         active.set(false);

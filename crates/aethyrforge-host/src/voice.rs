@@ -227,3 +227,25 @@ impl CreatorAsset {
         crate::protocol::id(&self.id) && !self.name.is_empty() && self.name.len() <= 128
     }
 }
+
+/// A browser speech-service refusal is distinct from microphone permission denial.
+pub(crate) fn speech_problem(code: &str) -> &'static str {
+    match code {
+        "not-allowed" => {
+            "Microphone access was denied. Type your request or allow access in your browser."
+        }
+        "service-not-allowed" => {
+            "Your browser's speech service isn't available. Type your request or try another browser."
+        }
+        "audio-capture" => "The microphone isn't available. Check it or type your request.",
+        "network" => "Voice input couldn't connect. Type your request or try again.",
+        _ => "Voice input stopped. Type your request or try again.",
+    }
+}
+#[cfg(test)]
+#[test]
+fn speech_refusals_distinguish_permission_service_and_network() {
+    assert!(speech_problem("not-allowed").contains("access was denied"));
+    assert!(speech_problem("service-not-allowed").contains("speech service"));
+    assert!(speech_problem("network").contains("couldn't connect"));
+}

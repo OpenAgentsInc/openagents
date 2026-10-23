@@ -23,13 +23,70 @@
     "Closed Play/Share/Publish/Save/Revert/style/time/cycle control registry requires a real registered visible control; downstream fixtures do not qualify the integrated journey."
   ],
   "unfinished_checks": [
-    "Build and pin the new host/Kiln companion, isolated private editor/preview release, and fresh native website consumer.",
-    "Run retained synthetic speech state/authorization browser checks; these cannot prove microphone or ASR behavior.",
+    "Pin the corrected host SDK/release and fresh native policy consumer after #12564/#12565; retain old release tags.",
+    "Rerun synthetic speech checks with Share -> Show options current-feedback assertion after #12565.",
     "Try the supplied synthetic-audio fixture through actual browser ASR, clearly separate from transcript injection and a human microphone check.",
     "Complete real dedicated-account provider sign-in and a real spoken edit/inspect/Undo without losing the walk; see NEEDS_OWNER.md.",
     "Complete real Kiln-provider proposals, unsupported/ambiguous requests, interruption and recovery; no generated result or paid generation is claimed from fixtures.",
     "Complete downstream voice Play/Share/planet setup against the owning implementations in #12561."
   ],
   "measurement": "No first-frame, ASR, or model latency claim is made by source checks. Receipt/status timing remains command_status_observed_ms.",
-  "activation": "No root homepage promotion or production traffic shift."
+  "activation": "No root homepage promotion or production traffic shift.",
+  "isolated_deployment": {
+    "release": "v6576145d26c328ed6",
+    "editor": "https://v6576145d26c328ed6---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app",
+    "preview": "https://v6576145d26c328ed6---aethyrforge-preview-ezxz4mgdsq-uc.a.run.app",
+    "private_source": "b4555e58903e230532e99160686ef5bb09ae301c",
+    "sdk_sha256": "405217d1da96017ee3fcdeb3a03e81d7481463b7677c0f352898ca255e37df7b",
+    "sdk_source": "e342033e6dacd15d26cfe9de5b50d88e1b103ccf",
+    "protocol_version": 4,
+    "native_source": "e342033e6dacd15d26cfe9de5b50d88e1b103ccf"
+  },
+  "synthetic_browser": {
+    "release": "v6576145d26c328ed6",
+    "synthetic_speech": true,
+    "real_speech_provider": false,
+    "real_signin_provider": false,
+    "errors": [],
+    "in_world_options": true,
+    "spoken_controls": true,
+    "exact_compile_equivalence": true,
+    "guest_confirm_does_not_grant": true,
+    "stop_late_event_ignored": true,
+    "denial_no_resume": true,
+    "reload_no_resume": true,
+    "same_world_session": true
+  },
+  "capture_review": {
+    "reviewer": "Codex",
+    "human_review": false,
+    "captures": [
+      {
+        "name": "voice-world-desktop.png",
+        "sha256": "3f76edf395311849024ae7d13b7cd5e5eb54800b697a9eb7a6c16a6083cda3c2"
+      },
+      {
+        "name": "voice-world-mobile.png",
+        "sha256": "69783c39cca8d14f990e70eddb871824c5563b31000e751b723664be01c1c36c"
+      }
+    ]
+  },
+  "actual_asr_attempt": {
+    "synthetic_audio": true,
+    "transcript_injection": false,
+    "human_microphone": false,
+    "synthetic_account_service": true,
+    "real_signin_provider": false,
+    "prepared_draft_applied": true,
+    "heard_words": false,
+    "reported_state": "Microphone access was denied. Type your request or allow access in your browser.",
+    "host_response_policy": "camera=(), microphone=(), geolocation=(), payment=()",
+    "classification": "Confirmed host response-policy defect #12564. This attempt does not qualify the speech provider.",
+    "fixture_audio_sha256": "79c0a73388b4c35b16a4d3ea136c289c7efa2c45e5a2db9ff4fb4b889a02cc05"
+  },
+  "follow_up_issues": [
+    12563,
+    12564,
+    12565
+  ]
 }

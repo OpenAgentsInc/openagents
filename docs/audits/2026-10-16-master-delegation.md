@@ -485,6 +485,15 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12564: the house host allows microphone access only to itself; camera and
+  cross-origin engine mic access remain denied, and the read-only Town policy
+  stays unchanged. Permission, speech-service, and network refusals have distinct
+  messages. Focused website checks (3), host library checks (6), Wasm checks,
+  and changed-file formatting pass. The original actual-ASR attempt heard no words under the inherited
+  `microphone=()` policy. Rebuild the fresh native consumer, rerun actual ASR with
+  the documented synthetic audio, and keep a human microphone/real-provider pass
+  separate in #12561. [Voice qualification](../verse/aethyrforge-voice-qualification.json).
+
 - #12553: in-world opt-in voice, spoken options/review/confirmation, shared
   text/button handlers, scoped prop/material/light candidates, bounded stale-input
   cancellation, and hidden-until-registered downstream controls are code complete.
