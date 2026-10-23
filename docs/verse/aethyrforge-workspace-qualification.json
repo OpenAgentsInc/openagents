@@ -1,0 +1,118 @@
+{
+  "schema": "openagents.verse.workspace-qualification.v1",
+  "issue": 12552,
+  "status": "code complete; integrated native UI and provider browser qualification pending",
+  "private_source": "3e578227339996e1ce5b5cb1a63f662c2bafa51a",
+  "protocol_version": 4,
+  "checks": {
+    "public_host_tests": 27,
+    "new_kiln_workspace_tests": 4,
+    "focused_website_tests": 3,
+    "private_mesh_protocol_tests": 13,
+    "private_typecheck": true,
+    "wasm_typecheck": true
+  },
+  "implemented": [
+    "Desktop coordinated Object, Materials, Kiln, Compile, and History windows, with compact mobile tabs over the same DOM.",
+    "Host-origin unsent fields, camera/selection, open windows, and active panel persist across tool close/reopen and sign-in continuation.",
+    "Background world/controls become inert while editing; Escape, roving keyboard focus, and inspection focus return use the same mounted engine.",
+    "Compile failure remains beside the source; success returns to inspection without publishing.",
+    "Guest mesh inspection draws actual triangle edges without a project revision, and returns to shaded view.",
+    "Touch movement/look/reset coexist with keyboard movement and map return.",
+    "Account switch clears account-bound unsent fields and the restricted Kiln workspace; late stopped answers cannot run tools.",
+    "The visit history records only confirmed results, with earnings explicitly Not recorded."
+  ],
+  "real_gpu_browser": {
+    "scope": "Real private renderer/kernel/service. Direct service commands test engine mechanics; this does not prove public authorization or a real Kiln provider.",
+    "errors": [],
+    "timings": [
+      {
+        "action": "propose",
+        "success": true,
+        "command_status_observed_ms": 79
+      },
+      {
+        "action": "draft",
+        "success": true,
+        "command_status_observed_ms": 212
+      },
+      {
+        "action": "compile",
+        "success": true,
+        "command_status_observed_ms": 211
+      },
+      {
+        "action": "draft",
+        "success": true,
+        "command_status_observed_ms": 104
+      },
+      {
+        "action": "compile",
+        "success": false,
+        "command_status_observed_ms": 211
+      },
+      {
+        "action": "draft",
+        "success": true,
+        "command_status_observed_ms": 31
+      },
+      {
+        "action": "compile",
+        "success": true,
+        "command_status_observed_ms": 216
+      },
+      {
+        "action": "undo",
+        "success": true,
+        "command_status_observed_ms": 213
+      },
+      {
+        "action": "undo",
+        "success": true,
+        "command_status_observed_ms": 192
+      },
+      {
+        "action": "undo",
+        "success": true,
+        "command_status_observed_ms": 200
+      },
+      {
+        "action": "redo",
+        "success": true,
+        "command_status_observed_ms": 206
+      },
+      {
+        "action": "redo",
+        "success": true,
+        "command_status_observed_ms": 195
+      }
+    ],
+    "timing_method": "Wall time from command submission through receipt/status polling, not first-frame visibility. Screenshot encoding and model/provider latency are excluded.",
+    "mesh_readonly_pose_preserved": true,
+    "touch_walk_look_release": true,
+    "overlapping_compilation_has_one_adoption": true,
+    "capture_bytes": 1428390,
+    "initial_revision": 0,
+    "final_revision": 9,
+    "pose_preserved": true,
+    "same_service_generation": true,
+    "rendering_continued_after_failure": true,
+    "real_gpu_compile_repair_history": true,
+    "repeated_capture": true,
+    "closed": true
+  },
+  "private_mesh_capture": {
+    "name": "house-mesh.png",
+    "sha256": "aaff5789547e6941614ac3e4118d8cab47828c3f9587ef95045d8d178c20b97f",
+    "reviewer": "Codex",
+    "human_review": false
+  },
+  "unfinished_checks": [
+    "Build/pin the v4 SDK/Kiln companion and isolated editor/preview release; use a fresh openagents-web-site consumer.",
+    "Capture desktop/mobile Jarvis UI, verify focus/typing/pointer/touch, preserved draft/window/selection state, compile-to-inspect, and repeated panel open/close against the integrated host.",
+    "Complete the synthetic native sign-in fixture separately from the dedicated real-provider check; neither trusted-service GPU mechanics nor fixture sign-in proves real-provider completion.",
+    "Complete real Kiln/voice/material/history providers in the owning children and #12561.",
+    "Fix and recapture the universe toolbar in #12563 before #12561."
+  ],
+  "activation": "No root homepage promotion or production traffic shift."
+}

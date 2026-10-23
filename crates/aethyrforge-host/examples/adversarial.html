@@ -5,12 +5,12 @@ const host=document.querySelector('meta[name=host-origin]').content;
 window.addEventListener('message',event=>{
 if(event.source!==parent||event.origin!==host||event.ports.length!==1)return;
 const hello=JSON.parse(event.data),port=event.ports[0];
-const reply={protocol:'openagents.aethyrforge.host',version:3,session:hello.session,sequence:1,message:{type:'ready',release:'fixture-release',engine_abi:'fixture-abi',project_format:1,capabilities:['inspect']}};
+const reply={protocol:'openagents.aethyrforge.host',version:4,session:hello.session,sequence:1,message:{type:'ready',release:'fixture-release',engine_abi:'fixture-abi',project_format:1,capabilities:['inspect']}};
 const variant=location.pathname;
 if(variant.includes('session'))reply.session='forged-session';
 if(variant.includes('version'))reply.version=2;
 if(variant.includes('payload'))reply.message.unexpected=true;
 port.postMessage(variant.includes('bytes')?' '.repeat(65537):variant.includes('object')?reply:JSON.stringify(reply));
 });
-window.addEventListener('load',()=>parent.postMessage('openagents.aethyrforge.host/3/listening',host));
+window.addEventListener('load',()=>parent.postMessage('openagents.aethyrforge.host/4/listening',host));
 </script></html>

@@ -115,11 +115,18 @@
   ],
   "harness_correction": "Initial check read the previous status immediately after a rejection receipt. Waiting for the draft/diagnostic status update resolved it; the corrected full run passed.",
   "unfinished_checks": [
-    "Build the immutable v3 host/Kiln SDK companion and isolated world release, then verify the freshly built native consumer against those pinned artifacts.",
+    "Check an isolated pinned release containing the authoring changes and public SDK/Kiln companion with a freshly built native consumer. The v3 SDK companion build passed; later compatible feature work may use a newer negotiated wire version.",
     "Run real Kiln-provider interpretation through the integrated UI and grant broker; the local GPU check invokes the trusted editor service directly and does not establish provider or authorization evidence.",
     "Complete the dedicated-account provider login and pending-edit checks already listed in NEEDS_OWNER.md and #12561.",
     "Verify integrated panel cleanup, mobile layout, captures, and final journey in #12552 and #12561; fix the universe toolbar defect #12563 before final qualification."
   ],
   "activation": "No production traffic shift or root homepage promotion.",
-  "performance_claim": "No first-frame edit visibility or model latency claim. Recorded command_status_observed_ms samples end at receipt/status polling; screenshot encoding is separate."
+  "performance_claim": "No first-frame edit visibility or model latency claim. Recorded command_status_observed_ms samples end at receipt/status polling; screenshot encoding is separate.",
+  "sdk_build": {
+    "source": "a791e5a5acfadaa3a93da75c306368f1c0d11d58",
+    "protocol_version": 3,
+    "host_wasm_sha256": "87de4b12f222f981f738ed405e9902a1217ac015f2e202a58099aa1134332a07",
+    "kiln_wasm_sha256": "f08cbe1753c6899a3946ed343c026ae3acd93418bca72838fdb9326afce7fd63",
+    "kiln_import_shims_included": true
+  }
 }

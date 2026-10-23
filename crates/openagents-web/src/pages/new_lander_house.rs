@@ -86,57 +86,74 @@ async fn page() -> Response {
                 iframe id="engine" title="Haunted House" data-engine-url=(r.engine_url) {}
                 p id="world-notice" role="status" aria-live="polite" { "Opening the house…" }
             }
-            nav aria-label="World controls" {
+            nav id="world-controls" aria-label="World controls" {
                 a id="world-map" href=(MAP) { "Back to planets" }
+                p id="world-touch-help" { "Left side: move · Right side: look" }
                 span { "Click to look · WASD to walk · Escape to release the pointer" }
                 a id="world-retry" href=(HOUSE) { "Reload world" }
+                button id="world-mesh" type="button" hidden aria-pressed="false" { "Mesh overlay" }
                 button id="world-edit" type="button" { "Edit" }
                 button id="world-fullscreen" type="button" { "Full screen" }
             }
-            aside id="edit-panel" hidden aria-labelledby="edit-title" {
-                header { h2 id="edit-title" { "Edit" } button id="edit-close" type="button" aria-label="Close Edit" { "×" } }
-                p id="edit-target" { "Click an object in the house." }
-                form id="edit-form" {
-                    div class="position-fields" {
-                        @for (id, label) in [("edit-x", "X"), ("edit-y", "Y"), ("edit-z", "Z")] {
-                            label { (label) input id=(id) type="number" step="any" required value="0"; }
-                        }
+            div id="edit-shadow" hidden aria-hidden="true" {}
+            aside id="edit-panel" hidden role="dialog" aria-modal="true" aria-labelledby="edit-title" data-active="objects" {
+                header class="workspace-header" {
+                    div { p class="eyebrow" { "OPENAGENTS / STUDIO" } h1 id="edit-title" { "Jarvis" } }
+                    button id="edit-close" type="button" { "Inspect world" }
+                }
+                div id="jarvis-toolbar" hidden role="tablist" aria-label="Editing tools" {
+                    @for (id,label) in [("objects","Object"),("materials","Materials"),("request","Request"),("compile","Compile"),("history","History")] {
+                        button id=(format!("tab-{id}")) type="button" role="tab" aria-controls=(format!("panel-{id}")) aria-selected="false" { (label) }
                     }
-                    label for="edit-note" { "Notes" } textarea id="edit-note" maxlength="48000" {}
-                    input id="edit-submit" type="submit" value="Move object" disabled;
+                }
+                section id="panel-objects" class="tool-window" aria-labelledby="objects-title" {
+                    header { h2 id="objects-title" { "01 / Object" } button id="close-objects" class="window-close" type="button" aria-label="Close Object" { "×" } }
+                    p id="edit-target" { "Click an object in the house." }
+                    button id="edit-pick" type="button" { "Select in world" }
+                    form id="edit-form" {
+                        div class="position-fields" {
+                            @for (id,label) in [("edit-x","X"),("edit-y","Y"),("edit-z","Z")] { label { (label) input id=(id) type="number" step="any" required value="0"; } }
+                        }
+                        label for="edit-note" { "Notes" } textarea id="edit-note" maxlength="48000" rows="3" {}
+                        input id="edit-submit" type="submit" value="Move object" disabled;
+                    }
                 }
                 div id="author-tools" hidden {
-                details {
-                    summary { "Materials and lighting" }
-                    label for="edit-material" { "Shared material ID (all surfaces using this ID)" } input id="edit-material" type="text" maxlength="128";
-                    label for="edit-parameter" { "Parameter (red, green, blue, roughness, metallic)" } input id="edit-parameter" type="text" value="roughness";
-                    label for="edit-value" { "Value" } input id="edit-value" type="number" step="any" value="0.8";
-                    button id="edit-material-apply" type="button" { "Apply material" }
-                    label for="edit-fog" { "Fog density (0–0.06)" } input id="edit-fog" type="number" step="0.001" min="0" max="0.06" value="0.01";
-                    button id="edit-fog-apply" type="button" { "Apply fog" }
-                    p id="edit-material-ids" {}
-                }
-                details {
-                    summary { "World effect" }
-                    p { "Applies to every material in the house." }
-                    label for="edit-source" { "WGSL source" } textarea id="edit-source" maxlength="4096" rows="8" {}
-                    button id="edit-source-draft" type="button" { "Keep world-effect draft" }
-                    button id="edit-source-compile" type="button" { "Compile world effect" }
-                    p id="edit-source-status" role="status" {}
-                }
-                details {
-                    summary { "Kiln" }
-                    label for="edit-kiln-request" { "Request" } textarea id="edit-kiln-request" maxlength="4800" rows="3" {}
-                    label { input id="edit-kiln-world" type="checkbox"; "Allow a world effect (all materials)" }
-                    button id="edit-kiln-ask" type="button" { "Ask Kiln" }
-                    button id="edit-kiln-stop" type="button" { "Stop" }
-                    button id="edit-kiln-review" type="button" { "Review Kiln's change" }
-                    p id="edit-kiln-status" role="status" {}
-                }
-                button id="edit-capture" type="button" { "Capture preview" }
-                img id="edit-capture-image" hidden alt="Captured view of the house" width="280";
-                button id="edit-undo" type="button" { "Undo" }
-                button id="edit-redo" type="button" { "Redo" }
+                    section id="panel-materials" class="tool-window" aria-labelledby="materials-title" {
+                        header { h2 id="materials-title" { "02 / Materials" } button id="close-materials" class="window-close" type="button" aria-label="Close Materials" { "×" } }
+                        label for="edit-material" { "Shared material ID (all surfaces using this ID)" } input id="edit-material" type="text" maxlength="128";
+                        p id="edit-material-ids" {}
+                        label for="edit-parameter" { "Parameter: red, green, blue, roughness, metallic" } input id="edit-parameter" type="text" value="roughness";
+                        label for="edit-value" { "Value" } input id="edit-value" type="number" step="any" value="0.8";
+                        button id="edit-material-apply" type="button" { "Apply material" }
+                        label for="edit-fog" { "Fog density (0–0.06)" } input id="edit-fog" type="number" step="0.001" min="0" max="0.06" value="0.01";
+                        button id="edit-fog-apply" type="button" { "Apply fog" }
+                    }
+                    section id="panel-request" class="tool-window" aria-labelledby="request-title" {
+                        header { h2 id="request-title" { "03 / Kiln" } button id="close-request" class="window-close" type="button" aria-label="Close Request" { "×" } }
+                        label for="edit-kiln-request" { "Request" } textarea id="edit-kiln-request" maxlength="4800" rows="5" {}
+                        label class="check-label" { input id="edit-kiln-world" type="checkbox"; "Allow a world effect (all materials)" }
+                        button id="edit-kiln-ask" type="button" { "Ask Kiln" }
+                        button id="edit-kiln-stop" type="button" { "Stop" }
+                        button id="edit-kiln-review" type="button" { "Review Kiln's change" }
+                        p id="edit-kiln-status" role="status" {}
+                    }
+                    section id="panel-compile" class="tool-window" aria-labelledby="compile-title" {
+                        header { h2 id="compile-title" { "04 / World effect" } button id="close-compile" class="window-close" type="button" aria-label="Close Compile" { "×" } }
+                        p { "Applies to every material in the house." }
+                        label for="edit-source" { "WGSL source" } textarea id="edit-source" maxlength="4096" rows="8" spellcheck="false" {}
+                        button id="edit-source-draft" type="button" { "Keep world-effect draft" }
+                        button id="edit-source-compile" type="button" { "Compile world effect" }
+                        p id="edit-source-status" role="status" {}
+                        button id="edit-capture" type="button" { "Capture preview" }
+                        img id="edit-capture-image" hidden alt="Captured view of the house" width="280";
+                    }
+                    section id="panel-history" class="tool-window" aria-labelledby="history-title" {
+                        header { h2 id="history-title" { "05 / This visit" } button id="close-history" class="window-close" type="button" aria-label="Close History" { "×" } }
+                        button id="edit-undo" type="button" { "Undo" } button id="edit-redo" type="button" { "Redo" }
+                        ol id="edit-history-entries" {}
+                        p { "Earnings: " strong { "Not recorded" } }
+                    }
                 }
                 p id="edit-status" role="status" aria-live="polite" {}
             }
@@ -188,7 +205,7 @@ async fn boot() -> Response {
 async fn style() -> Response {
     response(
         StatusCode::OK,
-        "[hidden]{display:none!important}input,textarea{box-sizing:border-box;color:inherit;background:#172027;border:1px solid #727b80;border-radius:4px;padding:8px;width:100%}input[type=checkbox]{width:auto}button,input[type=submit]{cursor:pointer}input:disabled{opacity:.45;cursor:default}#edit-panel{position:fixed;top:24px;right:24px;max-height:80vh;overflow:auto;width:min(320px,80vw);padding:20px;background:#131d23ed;border:1px solid #727b8080;border-radius:10px}#edit-panel header{display:flex;justify-content:space-between;align-items:center}#edit-panel h2{margin:0}#edit-panel label{display:block;margin:12px 0 6px}.position-fields{display:flex;gap:10px}.position-fields label{width:30%}#edit-auth{margin:0;padding:0;border:0;max-width:none;max-height:none;width:100%;height:100%;color:inherit;position:fixed;inset:0;display:grid;place-items:center;background:#0005}#edit-auth section{max-width:360px;padding:32px;background:#131d23eb;border:1px solid #727b8080;border-radius:14px;backdrop-filter:blur(18px)}#edit-auth button,#edit-auth a{margin:8px 6px 0 0;display:inline-block}#edit-auth[hidden],#edit-panel[hidden]{display:none}html,body{height:100%;margin:0;background:#0c1014;color:#f0e9df;font:14px system-ui}main,iframe{position:fixed;inset:0;width:100%;height:100%;border:0}nav{position:fixed;bottom:16px;left:16px;right:16px;display:flex;align-items:center;gap:16px;pointer-events:none}nav>*{pointer-events:auto}nav span{flex:1;text-shadow:0 2px 4px #000}a,button{color:inherit;background:#10171cdd;border:1px solid #727b8080;border-radius:5px;padding:10px 14px;text-decoration:none}a:focus-visible,button:focus-visible{outline:2px solid white;outline-offset:3px}#world-notice{position:fixed;top:40%;left:50%;transform:translateX(-50%);padding:24px;max-width:400px;background:#131d23ee;border:1px solid #727b80}#world-notice[hidden]{display:none}@media(max-width:700px){nav{flex-wrap:wrap;gap:8px}nav span{order:5;flex-basis:100%;font-size:12px}}",
+        include_str!("../../content/new-lander-house.css"),
         "text/css; charset=utf-8",
         None,
     )
@@ -256,6 +273,12 @@ mod tests {
         let text = String::from_utf8(bytes.to_vec()).unwrap();
         assert!(text.contains("id=\"author-tools\" hidden"));
         assert!(text.contains("World effect"));
+        for panel in ["objects", "materials", "request", "compile", "history"] {
+            assert!(text.contains(&format!("id=\"panel-{panel}\"")));
+            assert!(text.contains(&format!("id=\"tab-{panel}\"")));
+        }
+        assert!(text.contains("Earnings: "));
+        assert!(text.contains("Not recorded"));
         assert!(text.contains("Applies to every material in the house."));
         assert!(text.contains("Allow a world effect (all materials)"));
         assert!(!text.contains("id=\"edit-kiln-world\" type=\"checkbox\" checked"));

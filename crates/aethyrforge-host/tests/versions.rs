@@ -46,8 +46,13 @@ fn extended_status_and_authorization_never_cross_the_frozen_v1_boundary() {
     )
     .unwrap();
     let hello = host.hello().unwrap();
-    assert_eq!(hello.version, 3);
-    assert_eq!(hello.message, Message::Hello { versions: vec![3] });
+    assert_eq!(hello.version, VERSION);
+    assert_eq!(
+        hello.message,
+        Message::Hello {
+            versions: vec![VERSION]
+        }
+    );
     let (_, ready) = Engine::accept(
         &hello.encode().unwrap(),
         "release-v2".into(),
@@ -85,4 +90,23 @@ fn v3_authoring_is_never_sent_to_a_v2_consumer() {
             .is_none()
     );
     assert!(include_str!("../schema/host-v3.json").contains("AuthoringView"));
+}
+
+#[test]
+fn mesh_inspection_uses_v4_without_crossing_the_frozen_v3_boundary() {
+    #[derive(Deserialize)]
+    #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+    enum V3Action {
+        Inspect,
+    }
+    let view = serde_json::to_string(&Action::View {
+        mode: ViewMode::Mesh,
+    })
+    .unwrap();
+    assert!(serde_json::from_str::<V3Action>(&view).is_err());
+    let old = r#"{"protocol":"openagents.aethyrforge.host","version":3,"session":"old-session","sequence":1,"message":{"type":"hello","versions":[3]}}"#;
+    assert_eq!(Envelope::decode(old), Err(Error::Version));
+    let v3: serde_json::Value =
+        serde_json::from_str(include_str!("../schema/host-v3.json")).unwrap();
+    assert!(v3["$defs"]["Status"]["properties"].get("view").is_none());
 }

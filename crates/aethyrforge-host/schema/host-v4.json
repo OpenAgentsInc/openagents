@@ -1,0 +1,1173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Envelope",
+  "type": "object",
+  "properties": {
+    "protocol": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "format": "uint16",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "session": {
+      "type": "string"
+    },
+    "sequence": {
+      "type": "integer",
+      "format": "uint64",
+      "minimum": 0
+    },
+    "message": {
+      "$ref": "#/$defs/Message"
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "version",
+    "session",
+    "sequence",
+    "message"
+  ],
+  "$defs": {
+    "Message": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "versions": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "format": "uint16",
+                "minimum": 0,
+                "maximum": 65535
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "hello"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "versions"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "release": {
+              "type": "string"
+            },
+            "engine_abi": {
+              "type": "string"
+            },
+            "project_format": {
+              "type": "integer",
+              "format": "uint16",
+              "minimum": 0,
+              "maximum": 65535
+            },
+            "capabilities": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Capability"
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "ready"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "release",
+            "engine_abi",
+            "project_format",
+            "capabilities"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string"
+            },
+            "project": {
+              "$ref": "#/$defs/Project"
+            },
+            "action": {
+              "$ref": "#/$defs/Action"
+            },
+            "type": {
+              "type": "string",
+              "const": "request"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "request_id",
+            "project",
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string"
+            },
+            "outcome": {
+              "$ref": "#/$defs/Outcome"
+            },
+            "type": {
+              "type": "string",
+              "const": "reply"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "request_id",
+            "outcome"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/Status"
+            },
+            "type": {
+              "type": "string",
+              "const": "status"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "status"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "auth_required"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "request_id",
+            "message"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "message": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "revoked"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "message"
+          ]
+        }
+      ]
+    },
+    "Capability": {
+      "type": "string",
+      "enum": [
+        "inspect",
+        "propose",
+        "draft",
+        "compile",
+        "undo",
+        "redo",
+        "save",
+        "publish",
+        "share",
+        "navigate",
+        "capture",
+        "observe"
+      ]
+    },
+    "Project": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "branch",
+        "revision"
+      ]
+    },
+    "Action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "grant": {
+              "$ref": "#/$defs/ScopedGrant"
+            },
+            "type": {
+              "type": "string",
+              "const": "authorize"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "grant"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "revoke_authorization"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "checkpoint": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Checkpoint"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "open"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "inspect"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "$ref": "#/$defs/ViewMode"
+            },
+            "type": {
+              "type": "string",
+              "const": "view"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "mode"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "select"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "operations": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Edit"
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "propose"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "operations"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "draft"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "asset",
+            "source"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "source_sha256": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "compile"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "undo"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "redo"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "save"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "$ref": "#/$defs/Visibility"
+            },
+            "type": {
+              "type": "string",
+              "const": "publish"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "visibility"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "visibility": {
+              "$ref": "#/$defs/Visibility"
+            },
+            "type": {
+              "type": "string",
+              "const": "share"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "visibility"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "destination": {
+              "$ref": "#/$defs/Destination"
+            },
+            "type": {
+              "type": "string",
+              "const": "navigate"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "destination"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "capture"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "type": {
+              "type": "string",
+              "const": "observe"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "enabled"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "cancel"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "lookup"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "close"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "ScopedGrant": {
+      "type": "object",
+      "properties": {
+        "token": {
+          "type": "string"
+        },
+        "action_sha256": {
+          "type": "string"
+        },
+        "session": {
+          "type": "string"
+        },
+        "release": {
+          "type": "string"
+        },
+        "project": {
+          "description": "The loaded base world, independent of the person's private draft.",
+          "$ref": "#/$defs/Project"
+        },
+        "draft": {
+          "$ref": "#/$defs/Project"
+        },
+        "capability": {
+          "$ref": "#/$defs/Capability"
+        },
+        "expires_at": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "token",
+        "action_sha256",
+        "session",
+        "release",
+        "project",
+        "draft",
+        "capability",
+        "expires_at"
+      ]
+    },
+    "Checkpoint": {
+      "type": "object",
+      "properties": {
+        "eye": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "target": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        },
+        "mode": {
+          "$ref": "#/$defs/CameraMode"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "eye",
+        "target",
+        "mode"
+      ]
+    },
+    "CameraMode": {
+      "type": "string",
+      "enum": [
+        "walk",
+        "fly"
+      ]
+    },
+    "ViewMode": {
+      "type": "string",
+      "enum": [
+        "shaded",
+        "mesh"
+      ]
+    },
+    "Edit": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "position": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "type": {
+              "type": "string",
+              "const": "move"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target",
+            "position"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "parameter": {
+              "type": "string"
+            },
+            "value": {
+              "type": "number",
+              "format": "double"
+            },
+            "type": {
+              "type": "string",
+              "const": "material"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target",
+            "parameter",
+            "value"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "asset": {
+              "type": "string"
+            },
+            "position": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "format": "double"
+              },
+              "minItems": 3,
+              "maxItems": 3
+            },
+            "type": {
+              "type": "string",
+              "const": "place"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "asset",
+            "position"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "target": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "remove"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "target"
+          ]
+        }
+      ]
+    },
+    "Visibility": {
+      "type": "string",
+      "enum": [
+        "private",
+        "public"
+      ]
+    },
+    "Destination": {
+      "type": "string",
+      "enum": [
+        "universe",
+        "house",
+        "personal_planet"
+      ]
+    },
+    "Outcome": {
+      "type": "object",
+      "properties": {
+        "state": {
+          "$ref": "#/$defs/ResultState"
+        },
+        "message": {
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Status"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Detail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "message"
+      ]
+    },
+    "ResultState": {
+      "type": "string",
+      "enum": [
+        "applied",
+        "rejected",
+        "unsupported",
+        "cancelled",
+        "unknown"
+      ]
+    },
+    "Status": {
+      "type": "object",
+      "properties": {
+        "project": {
+          "$ref": "#/$defs/Project"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "frame": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "save": {
+          "$ref": "#/$defs/SaveState"
+        },
+        "checkpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Checkpoint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SelectedObject"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "authoring": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuthoringView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "view": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ViewMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "project",
+        "generation",
+        "frame",
+        "save"
+      ]
+    },
+    "SaveState": {
+      "type": "string",
+      "enum": [
+        "unsaved",
+        "device",
+        "project",
+        "failed"
+      ]
+    },
+    "SelectedObject": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "asset": {
+          "type": "string"
+        },
+        "position": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "format": "double"
+          },
+          "minItems": 3,
+          "maxItems": 3
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "asset",
+        "position"
+      ]
+    },
+    "AuthoringView": {
+      "type": "object",
+      "properties": {
+        "schema": {
+          "type": "string"
+        },
+        "revision": {
+          "type": "integer",
+          "format": "uint64",
+          "minimum": 0
+        },
+        "effect_scope": {
+          "type": "string"
+        },
+        "can_undo": {
+          "type": "boolean"
+        },
+        "can_redo": {
+          "type": "boolean"
+        },
+        "draft": {
+          "type": "string"
+        },
+        "active_source": {
+          "type": "string"
+        },
+        "diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "materials": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MaterialBinding"
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "number",
+            "format": "double"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "revision",
+        "effect_scope",
+        "can_undo",
+        "can_redo",
+        "draft",
+        "active_source",
+        "diagnostics",
+        "materials",
+        "environment"
+      ]
+    },
+    "MaterialBinding": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "objects": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "objects"
+      ]
+    },
+    "Detail": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "png": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "width": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "height": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "capture_preview"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "png",
+            "sha256",
+            "width",
+            "height"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/Diagnostic"
+              }
+            },
+            "type": {
+              "type": "string",
+              "const": "diagnostics"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "items"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "release": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "published"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "release",
+            "url"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "const": "shared"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "url"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            },
+            "sha256": {
+              "type": "string"
+            },
+            "width": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "height": {
+              "type": "integer",
+              "format": "uint32",
+              "minimum": 0
+            },
+            "type": {
+              "type": "string",
+              "const": "capture"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "url",
+            "sha256",
+            "width",
+            "height"
+          ]
+        }
+      ]
+    },
+    "Diagnostic": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "asset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "line": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "column": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "message"
+      ]
+    }
+  }
+}

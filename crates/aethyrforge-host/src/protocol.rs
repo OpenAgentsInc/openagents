@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL: &str = "openagents.aethyrforge.host";
-pub const VERSION: u16 = 3;
+pub const VERSION: u16 = 4;
 pub const MAX_BYTES: usize = 65_536;
 pub const MAX_PENDING: usize = 16;
 pub const MAX_RESULTS: usize = 64;
@@ -113,6 +113,13 @@ pub enum Capability {
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub enum ViewMode {
+    Shaded,
+    Mesh,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum SaveState {
     Unsaved,
     Device,
@@ -162,6 +169,8 @@ pub struct Status {
     pub selection: Option<SelectedObject>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub authoring: Option<crate::AuthoringView>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<ViewMode>,
 }
 impl Status {
     pub fn validate(&self) -> Result<(), Error> {
@@ -235,6 +244,9 @@ pub enum Action {
         checkpoint: Option<Checkpoint>,
     },
     Inspect,
+    View {
+        mode: ViewMode,
+    },
     Select {
         target: String,
     },
@@ -285,7 +297,7 @@ impl Action {
             | Self::Lookup { .. } => {
                 return None;
             }
-            Self::Inspect | Self::Select { .. } => Capability::Inspect,
+            Self::Inspect | Self::View { .. } | Self::Select { .. } => Capability::Inspect,
             Self::Propose { .. } => Capability::Propose,
             Self::Draft { .. } => Capability::Draft,
             Self::Compile { .. } => Capability::Compile,

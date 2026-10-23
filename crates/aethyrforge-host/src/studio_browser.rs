@@ -14,6 +14,7 @@ use web_sys::{
     RequestCredentials, RequestInit, Response,
 };
 const SAVED: &str = "openagents.verse.pending.v1";
+const VISIT: &str = "openagents.verse.studio.v1";
 type Handler = Closure<dyn FnMut(Event)>;
 fn window() -> web_sys::Window {
     web_sys::window().expect("window")
@@ -77,10 +78,114 @@ struct State {
     popup: Option<web_sys::Window>,
     selection: Option<SelectedObject>,
     owned_world: Option<String>,
+    visit: StudioVisit,
+    history: Vec<String>,
+    restore_complete: bool,
 }
 impl State {
     fn snapshot(&self) -> Value {
         serde_json::from_str(&self.demo.snapshot()).unwrap_or(Value::Null)
+    }
+    fn save_visit(&mut self) {
+        self.visit.note = note().value();
+        self.visit.source = element("edit-source")
+            .unchecked_into::<HtmlTextAreaElement>()
+            .value();
+        self.visit.request = element("edit-kiln-request")
+            .unchecked_into::<HtmlTextAreaElement>()
+            .value();
+        let snapshot = self.snapshot();
+        if let Ok(pose) = serde_json::from_value(snapshot["status"]["checkpoint"].clone()) {
+            self.visit.checkpoint = Some(pose);
+        }
+        if self.restore_complete {
+            self.visit.mesh = snapshot["status"]["view"] == "mesh";
+            self.visit.selection = snapshot["status"]["selection"]["id"]
+                .as_str()
+                .map(str::to_string);
+        }
+        if self.visit.owner.is_none() {
+            self.visit.owner = self.account.clone();
+        }
+        if self.visit.validate().is_ok() {
+            if let Ok(Some(storage)) = window().session_storage() {
+                let _ = storage.set_item(VISIT, &serde_json::to_string(&self.visit).unwrap());
+            }
+        }
+    }
+    fn layout(&self) {
+        hide("edit-panel", !self.visit.open);
+        hide("edit-shadow", !self.visit.open);
+        if self.visit.open {
+            let _ = element("engine").set_attribute("inert", "");
+            let _ = element("world-controls").set_attribute("inert", "");
+        } else {
+            let _ = element("engine").remove_attribute("inert");
+            let _ = element("world-controls").remove_attribute("inert");
+        }
+        let _ = element("edit-panel").set_attribute("data-active", &self.visit.active);
+        let compact = window()
+            .inner_width()
+            .ok()
+            .and_then(|n| n.as_f64())
+            .is_some_and(|n| n < 800.);
+        let _ = element("jarvis-toolbar")
+            .set_attribute("role", if compact { "tablist" } else { "toolbar" });
+        for panel in PANELS {
+            let _ = element(&format!("panel-{panel}"))
+                .set_attribute("role", if compact { "tabpanel" } else { "region" });
+            hide(
+                &format!("panel-{panel}"),
+                !self.visit.panels.iter().any(|p| p == panel),
+            );
+            let tab = element(&format!("tab-{panel}"));
+            let _ = tab.set_attribute("role", if compact { "tab" } else { "button" });
+            let _ = tab.set_attribute(
+                "aria-selected",
+                if panel == self.visit.active {
+                    "true"
+                } else {
+                    "false"
+                },
+            );
+            if !compact {
+                let _ = tab.remove_attribute("aria-selected");
+                let _ = tab.set_attribute(
+                    "aria-expanded",
+                    if self.visit.panels.iter().any(|p| p == panel) {
+                        "true"
+                    } else {
+                        "false"
+                    },
+                );
+            } else {
+                let _ = tab.remove_attribute("aria-expanded");
+            }
+            let _ = tab.set_attribute(
+                "tabindex",
+                if panel == self.visit.active {
+                    "0"
+                } else {
+                    "-1"
+                },
+            );
+        }
+    }
+    fn workspace(&mut self, open: bool) {
+        self.visit.open = open;
+        if open && self.visit.panels.is_empty() {
+            self.visit.panels = PANELS.iter().map(|p| p.to_string()).collect();
+        }
+        self.layout();
+        self.save_visit();
+        let id = if open {
+            format!("tab-{}", self.visit.active)
+        } else {
+            "world-edit".into()
+        };
+        if let Some(e) = element(&id).dyn_ref::<web_sys::HtmlElement>() {
+            let _ = e.focus();
+        }
     }
     fn persist(&self) {
         if let Ok(Some(storage)) = window().session_storage() {
@@ -190,6 +295,8 @@ impl BrowserStudio {
 }
 impl Drop for BrowserStudio {
     fn drop(&mut self) {
+        self.state.borrow().demo.close();
+        let _ = kiln_call("kilnStop", None);
         window().clear_interval_with_handle(self.timer);
         for (target, event, handler) in &self.listeners {
             let _ =
@@ -245,7 +352,10 @@ async fn refresh(weak: Weak<RefCell<State>>) {
     let mut s = rc.borrow_mut();
     let account = value["account"].as_str().map(str::to_string);
     let policy = resume_policy(
-        s.pending.as_ref().and_then(|p| p.owner.as_deref()),
+        s.pending
+            .as_ref()
+            .and_then(|p| p.owner.as_deref())
+            .or(s.visit.owner.as_deref()),
         s.account.as_deref(),
         account.as_deref(),
     );
@@ -261,6 +371,17 @@ async fn refresh(weak: Weak<RefCell<State>>) {
         s.pending = None;
         s.persist();
         note().set_value("");
+        element("edit-source")
+            .unchecked_into::<HtmlTextAreaElement>()
+            .set_value("");
+        element("edit-kiln-request")
+            .unchecked_into::<HtmlTextAreaElement>()
+            .set_value("");
+        let _ = kiln_call("kilnVerseClear", None);
+        s.history.clear();
+        s.visit.discard_for(account.clone());
+        s.layout();
+        s.save_visit();
         hide("edit-auth", true);
         say("Account changed. Choose a new change to continue.");
     }
@@ -368,9 +489,34 @@ async fn confirm(weak: Weak<RefCell<State>>) {
                 s.pending = None;
                 s.persist();
                 hide("edit-auth", true);
+                if let Some(action) = sent.get("action") {
+                    let message = if action["type"] == "compile" {
+                        "World effect compiled"
+                    } else if action["type"] == "draft" {
+                        "World-effect draft kept"
+                    } else if action["type"] == "undo" {
+                        "Change undone"
+                    } else if action["type"] == "redo" {
+                        "Change redone"
+                    } else {
+                        "Project change applied"
+                    };
+                    s.history.push(format!("You · {message}"));
+                    if s.history.len() > 32 {
+                        s.history.remove(0);
+                    }
+                    if action["type"] == "compile" {
+                        s.workspace(false);
+                    }
+                }
                 say("We applied your change.");
             }
             Err(error) => {
+                hide("edit-auth", true);
+                if sent["action"]["type"] == "compile" {
+                    s.visit.show("compile");
+                    s.layout();
+                }
                 let _ = s.request(&Action::RevokeAuthorization);
                 say(error
                     .as_string()
@@ -567,7 +713,28 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
         .and_then(|s| s.get_item(SAVED).ok().flatten())
         .and_then(|s| serde_json::from_str::<Resume>(&s).ok())
         .filter(|r| r.pending.validate().is_ok());
+    let mut visit = window()
+        .session_storage()?
+        .and_then(|s| s.get_item(VISIT).ok().flatten())
+        .and_then(|s| serde_json::from_str::<StudioVisit>(&s).ok())
+        .filter(|v| v.validate().is_ok())
+        .unwrap_or_default();
+    if pending.is_some() {
+        visit.open = true;
+    }
+    note().set_value(&visit.note);
+    element("edit-source")
+        .unchecked_into::<HtmlTextAreaElement>()
+        .set_value(&visit.source);
+    element("edit-kiln-request")
+        .unchecked_into::<HtmlTextAreaElement>()
+        .set_value(&visit.request);
     let demo = mount_demo()?;
+    if let Some(pose) = visit.checkpoint.as_ref() {
+        if let Some(h) = demo.host.borrow().as_ref() {
+            h.restore_checkpoint(serde_json::to_string(pose).unwrap())?;
+        }
+    }
     if let Some(p) = &pending {
         if let Some(h) = demo.host.borrow().as_ref() {
             h.restore_checkpoint(serde_json::to_string(&p.pending.checkpoint).unwrap())?;
@@ -597,14 +764,153 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
         popup: None,
         selection: None,
         owned_world: None,
+        visit,
+        history: Vec::new(),
+        restore_complete: false,
     }));
     let mut listeners = Vec::new();
-    listen(&mut listeners, "world-edit", "click", |_| {
-        hide("edit-panel", false)
+    let weak = Rc::downgrade(&rc);
+    listen(&mut listeners, "world-edit", "click", move |_| {
+        if let Some(rc) = weak.upgrade() {
+            rc.borrow_mut().workspace(true);
+        }
     })?;
-    listen(&mut listeners, "edit-close", "click", |_| {
-        hide("edit-panel", true)
+    let weak = Rc::downgrade(&rc);
+    listen(&mut listeners, "edit-close", "click", move |_| {
+        if let Some(rc) = weak.upgrade() {
+            rc.borrow_mut().workspace(false);
+        }
     })?;
+    let weak = Rc::downgrade(&rc);
+    listen(&mut listeners, "edit-pick", "click", move |_| {
+        if let Some(rc) = weak.upgrade() {
+            rc.borrow_mut().workspace(false);
+            say("Click to look, aim at an object, then click to select it.");
+        }
+    })?;
+    for panel in PANELS {
+        let weak = Rc::downgrade(&rc);
+        // The DOM IDs are fixed by the Rust page; listeners use stable names for cleanup.
+        let tab = format!("tab-{panel}");
+        listen(&mut listeners, &tab, "click", move |_| {
+            if let Some(rc) = weak.upgrade() {
+                let mut s = rc.borrow_mut();
+                s.visit.show(panel);
+                s.layout();
+                s.save_visit();
+            }
+        })?;
+        let weak = Rc::downgrade(&rc);
+        let close = format!("close-{panel}");
+        listen(&mut listeners, &close, "click", move |_| {
+            if let Some(rc) = weak.upgrade() {
+                let mut s = rc.borrow_mut();
+                s.visit.hide(panel);
+                s.layout();
+                s.save_visit();
+            }
+        })?;
+    }
+    for id in ["edit-note", "edit-source", "edit-kiln-request"] {
+        let weak = Rc::downgrade(&rc);
+        listen(&mut listeners, id, "input", move |_| {
+            if let Some(rc) = weak.upgrade() {
+                rc.borrow_mut().save_visit();
+            }
+        })?;
+    }
+    let weak = Rc::downgrade(&rc);
+    listen(&mut listeners, "world-mesh", "click", move |_| {
+        let Some(rc) = weak.upgrade() else { return };
+        let current = rc.borrow().snapshot()["status"]["view"].as_str() == Some("mesh");
+        let _ = rc.borrow().request(&Action::View {
+            mode: if current {
+                ViewMode::Shaded
+            } else {
+                ViewMode::Mesh
+            },
+        });
+    })?;
+    let weak = Rc::downgrade(&rc);
+    listen(&mut listeners, "edit-auth", "cancel", move |event| {
+        event.prevent_default();
+        hide("edit-auth", true);
+        if let Some(rc) = weak.upgrade() {
+            rc.borrow_mut().save_visit();
+        }
+        say("Your requested change is still here.");
+    })?;
+    let weak = Rc::downgrade(&rc);
+    let key = Closure::wrap(Box::new(move |event: Event| {
+        let Ok(key) = event.dyn_into::<web_sys::KeyboardEvent>() else {
+            return;
+        };
+        let Some(rc) = weak.upgrade() else { return };
+        if element("edit-auth").has_attribute("open") {
+            return;
+        }
+        if key.key() == "Escape" && rc.borrow().visit.open {
+            key.prevent_default();
+            rc.borrow_mut().workspace(false);
+            return;
+        }
+        let target = key
+            .target()
+            .and_then(|t| t.dyn_into::<web_sys::Element>().ok());
+        if let Some(id) = target.as_ref().map(|e| e.id()) {
+            if let Some(panel) = id.strip_prefix("tab-") {
+                let index = PANELS.iter().position(|p| *p == panel).unwrap_or(0);
+                let next = match key.key().as_str() {
+                    "ArrowRight" => Some((index + 1) % 5),
+                    "ArrowLeft" => Some((index + 4) % 5),
+                    "Home" => Some(0),
+                    "End" => Some(4),
+                    _ => None,
+                };
+                if let Some(next) = next {
+                    key.prevent_default();
+                    let mut s = rc.borrow_mut();
+                    s.visit.show(PANELS[next]);
+                    s.layout();
+                    s.save_visit();
+                    if let Some(tab) =
+                        element(&format!("tab-{}", PANELS[next])).dyn_ref::<web_sys::HtmlElement>()
+                    {
+                        let _ = tab.focus();
+                    }
+                    return;
+                }
+            }
+        }
+        let typing = target.as_ref().is_some_and(|e| {
+            matches!(e.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT")
+                || e.has_attribute("contenteditable")
+        });
+        if !typing && key.alt_key() && key.key().eq_ignore_ascii_case("e") {
+            key.prevent_default();
+            rc.borrow_mut().workspace(true);
+        }
+    }) as Box<dyn FnMut(Event)>);
+    let target: EventTarget = window().into();
+    target.add_event_listener_with_callback("keydown", key.as_ref().unchecked_ref())?;
+    listeners.push((target, "keydown", key));
+    let weak = Rc::downgrade(&rc);
+    let resize = Closure::wrap(Box::new(move |_: Event| {
+        if let Some(rc) = weak.upgrade() {
+            rc.borrow().layout();
+        }
+    }) as Box<dyn FnMut(Event)>);
+    let target: EventTarget = window().into();
+    target.add_event_listener_with_callback("resize", resize.as_ref().unchecked_ref())?;
+    listeners.push((target, "resize", resize));
+    window()
+        .document()
+        .expect("document")
+        .body()
+        .expect("body")
+        .set_attribute("data-jarvis-ready", "true")?;
+    hide("jarvis-toolbar", false);
+    rc.borrow().layout();
     let weak = Rc::downgrade(&rc);
     listen(&mut listeners, "edit-capture", "click", move |_| {
         let weak = weak.clone();
@@ -845,7 +1151,26 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
     let tick = Closure::wrap(Box::new(move || {
         let Some(rc) = weak.upgrade() else { return };
         selected(&rc);
+        let snapshot = rc.borrow().snapshot();
+        if let Some(view) = snapshot["status"]["view"].as_str() {
+            hide("world-mesh", false);
+            let _ = element("world-mesh").set_attribute(
+                "aria-pressed",
+                if view == "mesh" { "true" } else { "false" },
+            );
+        }
+        let list = element("edit-history-entries");
+        list.set_text_content(None);
+        for row in &rc.borrow().history {
+            if let Ok(li) = window().document().expect("document").create_element("li") {
+                li.set_text_content(Some(row));
+                let _ = list.append_child(&li);
+            }
+        }
         polls += 1;
+        if polls % 5 == 0 {
+            rc.borrow_mut().save_visit();
+        }
         if polls % 10 == 0 {
             spawn_local(refresh(weak.clone()));
         }
@@ -862,10 +1187,26 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
             let Some(rc) = weak.upgrade() else { return };
             let s = rc.borrow();
             if s.snapshot()["phase"] == "open" {
-                let target = s.pending.as_ref().and_then(|p| p.pending.selection.clone());
+                let target = s
+                    .pending
+                    .as_ref()
+                    .and_then(|p| p.pending.selection.clone())
+                    .or_else(|| s.visit.selection.clone());
                 drop(s);
                 if let Some(target) = target {
                     let _ = receipt(&weak, Action::Select { target }).await;
+                }
+                if weak.upgrade().is_some_and(|rc| rc.borrow().visit.mesh) {
+                    let _ = receipt(
+                        &weak,
+                        Action::View {
+                            mode: ViewMode::Mesh,
+                        },
+                    )
+                    .await;
+                }
+                if let Some(rc) = weak.upgrade() {
+                    rc.borrow_mut().restore_complete = true;
                 }
                 break;
             }

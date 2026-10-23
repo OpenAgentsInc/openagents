@@ -22,13 +22,13 @@ no secrets, and private engine source maps are not published.
 2. The private engine loads the operator-pinned public Wasm SDK and constructs
    `EngineEndpoint` with its exact allowed host origin and supported capabilities.
    Once its document has loaded, it posts the fixed public string
-   `openagents.aethyrforge.host/3/listening` to that host origin. This carries no
+   `openagents.aethyrforge.host/4/listening` to that host origin. This carries no
    authority. The host accepts it only from the configured origin **and its exact
    iframe window**, once per frame load.
-3. The host generates a 192-bit random session, sends `hello` with version `[3]`
+3. The host generates a 192-bit random session, sends `hello` with version `[4]`
    and sequence 1 to that exact window/origin, and transfers exactly one MessagePort.
    The engine accepts only its configured parent origin/window, one port, version
-   2, and a valid hello. It responds `ready` on that port. All further messages are
+   4, and a valid hello. It responds `ready` on that port. All further messages are
    UTF-8 JSON **strings** on the scoped channel, never arbitrary window messages.
 4. The host checks release, engine ABI, project format, and capabilities before
    sending `open`. Successful open includes status. Requests and results carry a
@@ -43,7 +43,7 @@ no secrets, and private engine source maps are not published.
    of Aethyrforge's richer authoring and release formats; matching it does not imply
    source, runtime, or saved-world compatibility.
 
-The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v3.json)
+The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v4.json)
 defines closed message shapes. Runtime validation adds UTF-8 byte limits, finite
 coordinates, safe integer bounds, state transitions, peer checks, and relationships
 between fields. Schema validation alone is insufficient. `Envelope::decode` and
@@ -168,3 +168,10 @@ World-effect compilation supplies `source_sha256` for the exact kept draft.
 The grant binds that action hash, and the preview checks the source hash before
 preparing a candidate. Changing a source draft cannot reuse consent to compile
 different bytes, even when the active world revision has not changed.
+
+Version 4 adds a read-only `view` action and shaded/mesh status. It uses a
+separate bootstrap and negotiates only version 4; the frozen v3 schema and SDK
+remain unchanged. Mesh inspection draws the compiled triangle edges and does not
+change project revisions, collision, or player pose. The host owns window layout,
+focus, unsent fields, and session checkpoints; opening a panel uses the existing
+engine instance. Mobile uses the same tool DOM with compact tabs.

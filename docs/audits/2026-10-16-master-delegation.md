@@ -485,6 +485,19 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12552: Jarvis desktop windows/mobile tabs, focus and field checkpoints,
+  compile-to-inspect, restricted Kiln cleanup, guest mesh inspection, and touch
+  navigation are code complete. Public host checks (27), Kiln workspace checks
+  (4), website checks (3), private mesh/protocol checks (13), type checks, and the
+  real local GPU mesh/touch/recovery run pass. [Qualification record](../verse/aethyrforge-workspace-qualification.json)
+  separates engine mechanics from pending integrated UI/provider checks. Build a
+  pinned v4 SDK/release and fresh native consumer, capture desktop/mobile Jarvis,
+  and verify focus, typing, window/draft restoration, and repeated open/close in
+  #12561. Real provider sign-in remains in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
+  Voice, material painting, and durable contributor history stay with their
+  owning children. #12563 still blocks final qualification.
+
+
 - #12551: unified project revisions/history, scoped Kiln workspace, confirmed
   source hashes, world-effect compilation/recovery, and bounded capture code are
   complete. Public host checks (24), new Kiln workspace checks (3), website checks
@@ -493,9 +506,9 @@ The status lines below summarize each issue and its comments. Open the issue for
   overlap, history, pose, and repeated-capture checks pass.
   [Qualification record](../verse/aethyrforge-authoring-qualification.json)
   distinguishes trusted-service GPU mechanics from real-provider/authorization
-  evidence and labels receipt/status timing accurately. Build and check the
-  immutable v3 SDK/Kiln companion and isolated release with a fresh native
-  consumer; complete real Kiln/provider/grant integration in #12561. The dedicated
+  evidence and labels receipt/status timing accurately. The v3 SDK/Kiln
+  companion build passes. Check an isolated pinned release carrying the authoring
+  changes with a fresh native consumer; complete real Kiln/provider/grant integration in #12561. The dedicated
   account's provider access remains in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
   Creator controls stay hidden until the loaded release supplies authoring state.
   #12563 still requires desktop/mobile recaptures before final qualification.

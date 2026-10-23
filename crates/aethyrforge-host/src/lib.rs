@@ -49,3 +49,6 @@ pub use universe_browser::*;
 
 mod authoring;
 pub use authoring::*;
+
+mod studio_layout;
+pub use studio_layout::*;

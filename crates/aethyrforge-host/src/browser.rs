@@ -9,7 +9,7 @@ use std::{
 use wasm_bindgen::{JsCast, prelude::*};
 use web_sys::{Event, HtmlIFrameElement, MessageChannel, MessageEvent, MessagePort};
 
-const BOOTSTRAP: &str = "openagents.aethyrforge.host/3/listening";
+const BOOTSTRAP: &str = "openagents.aethyrforge.host/4/listening";
 type Handler<T> = Closure<dyn FnMut(T)>;
 fn js(e: impl std::fmt::Display) -> JsValue {
     JsValue::from_str(&e.to_string())

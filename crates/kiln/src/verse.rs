@@ -22,6 +22,7 @@ pub struct Context {
 pub struct Workspace {
     pub context: Context,
     pub vfs: Vfs,
+    revoked: bool,
 }
 impl Workspace {
     pub fn new(context: Context) -> Result<Self, String> {
@@ -46,7 +47,22 @@ impl Workspace {
             .map_err(|e| format!("{e:?}"))?;
         vfs.put(COMMAND_PATH, b"{}", 0)
             .map_err(|e| format!("{e:?}"))?;
-        Ok(Self { context, vfs })
+        Ok(Self {
+            context,
+            vfs,
+            revoked: false,
+        })
+    }
+    /// Clear account-bound drafts while keeping the restricted execution mode in force.
+    pub fn revoke(&mut self) {
+        self.revoked = true;
+        self.vfs = Vfs::default();
+        self.context.selection = None;
+        self.context.authoring.draft.clear();
+        self.context.authoring.active_source.clear();
+        self.context.authoring.materials.clear();
+        self.context.authoring.environment.clear();
+        self.context.authoring.diagnostics.clear();
     }
     pub fn agent(&self, task: &str) -> Result<Agent, String> {
         if task.is_empty() || task.len() > 4800 {
@@ -57,6 +73,9 @@ impl Workspace {
         Ok(agent)
     }
     pub fn execute(&mut self, command: &Command) -> Result<String, String> {
+        if self.revoked {
+            return Err("This editing context ended. Open the current project again.".into());
+        }
         match command {
             Command::Run(line) => {
                 let args = split(line)?;
@@ -132,6 +151,9 @@ impl Workspace {
     }
     /// Produces a proposal only. The host checks its current revision and grants it separately.
     pub fn candidate(&self) -> Result<Action, String> {
+        if self.revoked {
+            return Err("This editing context ended. Open the current project again.".into());
+        }
         let effect = self.read(EFFECT_PATH)?;
         if effect != self.context.authoring.draft {
             if !self.context.allow_world_effect {
@@ -248,6 +270,22 @@ mod tests {
                 content: r#"{"type":"publish","visibility":"public"}"#.into(),
             })
             .unwrap();
+        assert!(workspace.candidate().is_err());
+    }
+    #[test]
+    fn revoked_workspace_clears_text_and_rejects_late_tools_and_candidates() {
+        let mut workspace = workspace();
+        workspace.revoke();
+        assert!(workspace.vfs.read(EFFECT_PATH).is_err());
+        assert!(workspace.context.authoring.draft.is_empty());
+        assert!(
+            workspace
+                .execute(&Command::Write {
+                    path: EFFECT_PATH.into(),
+                    content: "late answer".into()
+                })
+                .is_err()
+        );
         assert!(workspace.candidate().is_err());
     }
     #[test]

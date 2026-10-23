@@ -1345,6 +1345,9 @@ impl App {
                     continue;
                 }
             };
+            if self.stop.get() {
+                break;
+            }
             step += 1;
             let model_ms = now_ms() - step_started;
             self.log(
@@ -2261,6 +2264,17 @@ impl App {
         });
         set(&window, "kilnVerseCandidate", candidate.as_ref().clone());
         candidate.forget();
+        let app = self.clone();
+        let clear = Closure::<dyn Fn()>::new(move || {
+            app.stop.set(true);
+            if let Some(workspace) = app.verse.borrow_mut().as_mut() {
+                workspace.revoke();
+            }
+            *app.vfs.borrow_mut() = Vfs::default();
+            app.render_files();
+        });
+        set(&window, "kilnVerseClear", clear.as_ref().clone());
+        clear.forget();
         // Only this opt-in API exposes the fixed shader file to a preview.
         let app = self.clone();
         let save = Closure::<dyn Fn(String) -> js_sys::Promise>::new(move |source: String| {
