@@ -321,8 +321,10 @@ try {
     const file=await download.path();return JSON.parse(fs.readFileSync(file));
   };
   const stroke=async(x,y)=>{
-    await page.locator("#face-canvas").scrollIntoViewIfNeeded();
+    await page.locator("#face-controls:not([disabled])").waitFor();
+    await page.locator("#face-canvas").evaluate(e=>e.scrollIntoView({block:"center",inline:"nearest"}));
     const b=await page.locator("#face-canvas").boundingBox();assert.ok(b);
+    assert.equal(await page.evaluate(({b,x,y})=>document.elementFromPoint(b.x+b.width*x,b.y+b.height*y)?.id,{b,x,y}),"face-canvas","The stroke starts on the visible enabled canvas");
     await page.mouse.move(b.x+b.width*x,b.y+b.height*y);await page.mouse.down();
     await page.mouse.move(b.x+b.width*(x+.02),b.y+b.height*(y+.03),{steps:3});await page.mouse.up();
   };
@@ -341,14 +343,40 @@ try {
   await page.click("#edit-request-review");
   await page.click("#tab-materials");
   await page.waitForFunction(()=>document.querySelector("#face-status").textContent.includes("Preview")||document.querySelector("#face-status").textContent.includes("preview"));
+  // Hold a real completed preview at the private bridge, then issue a newer refusal.
+  await editor.evaluate(()=>{
+    const service=window.aethyrforgeEditor.service, original=service.materialView.bind(service);
+    window.heldPreviewStarted=false;window.heldPreviewCompleted=false;
+    service.materialView=async(request,base)=>{
+      const result=await original(request,base);
+      if(request.mode==='preview'&&!window.heldPreviewStarted){
+        window.heldPreviewStarted=true;
+        await new Promise(resolve=>window.releaseHeldPreview=resolve);
+        window.heldPreviewCompleted=true;
+      }
+      return result;
+    };
+    window.restoreMaterialView=()=>service.materialView=original;
+  });
+  const beforeHeld=(await snapshot()).receipts.map(r=>r.request_id);
+  await page.click("#face-preview");
+  await editor.waitForFunction(()=>window.heldPreviewStarted);
+  await page.fill("#face-request","remove all scars");await page.click("#face-generate");
+  const refusal=await page.locator("#face-status").textContent();
+  assert.match(refusal,/Erase handmade paint only removes brush marks/);
+  await editor.evaluate(()=>window.releaseHeldPreview());
+  await page.waitForFunction(ids=>JSON.parse(window.hauntDemo.snapshot()).receipts.some(r=>!ids.includes(r.request_id)&&r.outcome?.detail?.type==='material_preview'),beforeHeld);
+  await page.waitForTimeout(150);
+  assert.equal(await page.locator("#face-status").textContent(),refusal,"An earlier preview cannot replace the newer refusal");
+  await editor.evaluate(()=>window.restoreMaterialView());
   const generated=await face();
   assert.equal(generated.handmade_png,handmade.handmade_png,"Generation preserves handmade pixels");
   assert.equal(generated.document.recipe.count,2);
   assert.deepEqual(generated.document.recipe.color,[72,104,160,225]);
   assert.equal((await snapshot()).status.project.revision,baseline,"Draft preview is read only");
   await page.fill("#face-request","remove all scars");await page.click("#face-generate");
-  const refused=await face();assert.deepEqual(refused,generated);
   await page.waitForFunction(()=>document.querySelector("#face-status").textContent.includes("Erase handmade paint only removes brush marks"));
+  const refused=await face();assert.deepEqual(refused,generated);
   await page.click("#face-open");assert.deepEqual(await face(),generated,"Open reuses the edited draft");
   await page.selectOption("#face-brush-mode","erase");await stroke(.19,.43);
   await page.locator("#face-handmade-strength").evaluate(e=>{e.value="0.6";e.dispatchEvent(new Event("input",{bubbles:true}));});
@@ -407,7 +435,10 @@ try {
   await page.evaluate(()=>{window.faceReadStarted=false;});
   await page.setInputFiles("#face-import",{name:"delayed-face.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(accepted))});
   await page.waitForFunction(()=>window.faceReadStarted);
-  await stroke(.21,.48);const latestStroke=await face();
+  await page.selectOption("#face-brush-mode","paint");
+  const beforeStroke=await face();
+  await stroke(.48,.58);const latestStroke=await face();
+  assert.notEqual(latestStroke.handmade_png,beforeStroke.handmade_png,"The newer stroke actually paints the canvas");
   await page.evaluate(()=>window.releaseFaceRead());await page.waitForTimeout(300);
   assert.deepEqual(await face(),latestStroke,"Delayed import cannot replace newer strokes");
   // A read begun before Save may finish during its POST. The saved base still advances;
@@ -493,7 +524,7 @@ try {
   await page.setViewportSize({width:390,height:844});await page.click("#tab-materials");
   await page.screenshot({path:path.join(out,"face-workspace-mobile.png")});
   assert.deepEqual(errors,[]);
-  const result={release:config.release,protocol_version:6,real_gpu_engine:true,real_native_project_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,microphone_used:false,synthetic_recognition:true,spoken_request_fixture_reaches_generator:true,fixture_direct_session:process.env.AETHYRFORGE_FIXTURE_DIRECT_SESSION==="1",text_request_reaches_local_generator:true,handmade_preserved_on_generation:true,read_only_preview_cancel:true,manual_erase_strength:true,open_reuses_draft:true,refusal_preserves_source:true,delayed_import_keeps_newer_strokes:true,save_blocks_unapplied_face:true,late_import_save_ack_keeps_draft_and_advances_base:true,self_contained_export:true,native_reopen_retains_editable_layers:true,clean_face_reopens_after_undo_redo_and_environment:true,same_context_draft_keeps_canvas_usable:true,missing_image_collected_for_undo_recovery:true,local_generation_cpu_samples:await page.evaluate(()=>window.generationSamples),browser:browser.version(),native_consumer:path.basename(process.env.OPENAGENTS_TEST_WEB_BINARY),sdk_sha256:config.sdk_sha256,preview_timing:previewTiming,timing_method:"Click event through a fresh receipt for the exact draft hash; the private bridge confirms an adopted renderer frame and GPU queue completion. Parent PNG encoding is reported separately within that interval. Screenshot encoding and local generation CPU time are separate; this is not first-screen-pixel or ASR latency.",errors};
+  const result={release:config.release,protocol_version:6,real_gpu_engine:true,real_native_project_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,microphone_used:false,synthetic_recognition:true,spoken_request_fixture_reaches_generator:true,fixture_direct_session:process.env.AETHYRFORGE_FIXTURE_DIRECT_SESSION==="1",text_request_reaches_local_generator:true,handmade_preserved_on_generation:true,read_only_preview_cancel:true,manual_erase_strength:true,open_reuses_draft:true,refusal_preserves_source:true,held_preview_keeps_newer_refusal_feedback:true,delayed_import_keeps_newer_strokes:true,save_blocks_unapplied_face:true,late_import_save_ack_keeps_draft_and_advances_base:true,self_contained_export:true,native_reopen_retains_editable_layers:true,clean_face_reopens_after_undo_redo_and_environment:true,same_context_draft_keeps_canvas_usable:true,missing_image_collected_for_undo_recovery:true,local_generation_cpu_samples:await page.evaluate(()=>window.generationSamples),browser:browser.version(),native_consumer:path.basename(process.env.OPENAGENTS_TEST_WEB_BINARY),sdk_sha256:config.sdk_sha256,preview_timing:previewTiming,timing_method:"Click event through a fresh receipt for the exact draft hash; the private bridge confirms an adopted renderer frame and GPU queue completion. Parent PNG encoding is reported separately within that interval. Screenshot encoding and local generation CPU time are separate; this is not first-screen-pixel or ASR latency.",errors};
   fs.writeFileSync(path.join(out,"browser-material.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 } catch(error) {
   if(page){await page.screenshot({path:path.join(out,"material-error.png")});fs.writeFileSync(path.join(out,"material-error-state.json"),JSON.stringify({error:String(error),errors,body:await page.locator("body").innerText()},null,2));}

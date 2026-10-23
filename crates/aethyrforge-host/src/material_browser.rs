@@ -15,6 +15,7 @@ pub(super) struct Controller {
     work: Option<Work>,
     serial: u64,
     previewing: Option<u64>,
+    preview_feedback: String,
     dirty: bool,
     edited: bool,
     stale: bool,
@@ -29,8 +30,21 @@ struct SourceExport {
     generated_png: String,
     handmade_png: String,
 }
+fn feedback_token() -> String {
+    element("face-status")
+        .get_attribute("data-feedback")
+        .unwrap_or_default()
+}
 fn tell(message: &str) {
-    element("face-status").set_text_content(Some(message));
+    let status = element("face-status");
+    let next = feedback_token().parse::<u64>().unwrap_or(0).wrapping_add(1);
+    let _ = status.set_attribute("data-feedback", &next.to_string());
+    status.set_text_content(Some(message));
+}
+fn tell_current(token: &str, message: &str) {
+    if feedback_token() == token {
+        tell(message);
+    }
 }
 fn canvas() -> HtmlCanvasElement {
     element("face-canvas").unchecked_into()
@@ -279,6 +293,7 @@ async fn open(weak: Weak<RefCell<State>>) -> Option<MaterialDraftToken> {
     };
     let recovering_draft = pending.is_some();
     tell("Opening the face layers…");
+    let feedback = feedback_token();
     let result = async {
         let material = if let Some(bundle) = pending {
             bundle
@@ -317,19 +332,30 @@ async fn open(weak: Weak<RefCell<State>>) -> Option<MaterialDraftToken> {
             s.materials.work = Some(work);
             s.materials.edited = recovering_draft;
             s.materials.stale = false;
-            tell(
+            tell_current(
+                &feedback,
                 "Paint on the color map, or describe scars. Apply your face draft before saving this world.",
             );
             Some(request)
         }
         Err(error) => {
-            failed(error);
+            if feedback_token() == feedback {
+                failed(error);
+            }
             None
         }
     }
 }
 fn preview(rc: &Rc<RefCell<State>>) {
-    let (work, serial) = {
+    {
+        let mut s = rc.borrow_mut();
+        s.materials.dirty = true;
+        s.materials.preview_feedback = feedback_token();
+    }
+    start_preview(rc);
+}
+fn start_preview(rc: &Rc<RefCell<State>>) {
+    let (work, serial, feedback) = {
         let mut s = rc.borrow_mut();
         let Some(work) = s.materials.work.clone() else {
             tell("Open a selected werewolf face first.");
@@ -339,13 +365,16 @@ fn preview(rc: &Rc<RefCell<State>>) {
             tell("The world or selection changed. Open the current face first.");
             return;
         }
-        s.materials.dirty = true;
         if s.materials.previewing.is_some() {
             return;
         }
         s.materials.previewing = Some(s.materials.serial);
         s.materials.dirty = false;
-        (work, s.materials.serial)
+        (
+            work,
+            s.materials.serial,
+            s.materials.preview_feedback.clone(),
+        )
     };
     let weak = Rc::downgrade(rc);
     spawn_local(async move {
@@ -363,7 +392,7 @@ fn preview(rc: &Rc<RefCell<State>>) {
         s.materials.previewing = None;
         let same = s.materials.serial == serial
             && s.materials.work.as_ref().is_some_and(|w| current(&s, w));
-        if same {
+        if same && feedback_token() == feedback {
             match result {
                 Ok(()) => tell(
                     "Face preview ready. Review the change to apply it, or cancel the preview.",
@@ -374,7 +403,7 @@ fn preview(rc: &Rc<RefCell<State>>) {
         let again = s.materials.dirty;
         drop(s);
         if again {
-            preview(&rc);
+            start_preview(&rc);
         }
     });
 }
@@ -707,11 +736,12 @@ pub(super) fn mount(
             clear(&mut s);
         }
         let serial = rc.borrow().materials.serial;
+        let feedback = feedback_token();
         let weak = Rc::downgrade(&rc);
         spawn_local(async move {
             let result = detail(&weak, Action::ClearMaterialPreview).await;
             if let Some(rc) = weak.upgrade() {
-                if rc.borrow().materials.serial == serial {
+                if rc.borrow().materials.serial == serial && feedback_token() == feedback {
                     match result {
                         Ok(_) => tell("Face draft discarded. The applied material is still here."),
                         Err(e) => failed(e),
@@ -728,11 +758,16 @@ pub(super) fn mount(
             s.materials.serial = s.materials.serial.wrapping_add(1);
             s.materials.dirty = false;
         }
+        tell("Closing the face preview…");
+        let feedback = feedback_token();
         let weak = Rc::downgrade(&rc);
         spawn_local(async move {
-            match detail(&weak, Action::ClearMaterialPreview).await {
-                Ok(_) => tell("Applied face restored. Your editable layers are still here."),
-                Err(e) => failed(e),
+            let result = detail(&weak, Action::ClearMaterialPreview).await;
+            if feedback_token() == feedback {
+                match result {
+                    Ok(_) => tell("Applied face restored. Your editable layers are still here."),
+                    Err(e) => failed(e),
+                }
             }
         });
     })?;
@@ -856,6 +891,8 @@ pub(super) fn mount(
                 token(&s, context.clone())
             };
             let Some(request) = request else { return };
+            tell("Opening face sources…");
+            let feedback = feedback_token();
             let result = async {
                 if file.size() > 2. * 1024. * 1024. {
                     return Err(JsValue::from_str("Choose a face-layer export up to 2 MiB."));
@@ -891,9 +928,16 @@ pub(super) fn mount(
                     controls(&work);
                     s.materials.work = Some(work);
                     changed(&mut s);
-                    tell("Face sources opened. Preview and review them before applying.");
+                    tell_current(
+                        &feedback,
+                        "Face sources opened. Preview and review them before applying.",
+                    );
                 }
-                Err(e) => failed(e),
+                Err(e) => {
+                    if feedback_token() == feedback {
+                        failed(e);
+                    }
+                }
             }
         });
     })?;
