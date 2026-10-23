@@ -21,6 +21,17 @@ changes in #12551 and the integrated journey in #12561.
 The bearer account read and the synthetic account-service browser fixture
 are separate checks; neither proves completion through the real provider.
 
+## Qualify the dedicated-account spoken creator journey (#12553, #12561) (2026-10-23)
+
+With the dedicated account's real browser sign-in above, explicitly allow the
+microphone, make a supported spoken material/light/prop request, review and
+confirm the exact change, inspect the world, and undo it by voice. Check Stop,
+permission denial, interruption, and exit without automatic microphone restart.
+Complete Play/Share and planet setup against the integrated implementations.
+The locally generated Samantha audio fixture is synthetic speech, not a human
+microphone check; injected recognition events are a separate host-state test.
+No owner audio or owner account is needed for automated checks.
+
 ## Check the live Maya work cards (#12524) (2026-10-22)
 
 While signed in, refresh [Verse](https://openagents.com/), walk up to each

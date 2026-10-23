@@ -75,6 +75,24 @@ async fn page() -> Response {
     let text = serde_json::to_string(&config)
         .expect("configuration")
         .replace('<', "\\u003c");
+    // Only public catalog metadata enters the host. The engine independently checks availability.
+    let assets: Vec<aethyrforge_host::CreatorAsset> = aethyrforge_host::FantasyCatalog::decode(
+        include_bytes!("../../../../docs/verse/fantasy-props-catalog.json"),
+    )
+    .map(|c| {
+        c.runtime
+            .into_iter()
+            .filter(|a| !a.id.starts_with("medieval-town:"))
+            .map(|a| aethyrforge_host::CreatorAsset {
+                id: a.id,
+                name: a.name.replace('_', " "),
+            })
+            .collect()
+    })
+    .unwrap_or_default();
+    let assets_json = serde_json::to_string(&assets)
+        .expect("asset metadata")
+        .replace('<', "\\u003c");
     let body = html! {
         (DOCTYPE) html lang="en" { head {
             meta id="engine-release" content=(r.release);
@@ -95,6 +113,19 @@ async fn page() -> Response {
                 button id="world-edit" type="button" { "Edit" }
                 button id="world-fullscreen" type="button" { "Full screen" }
             }
+            aside id="world-voice" hidden aria-label="Voice controls" {
+                button id="edit-voice-start" type="button" hidden { "Listen" }
+                button id="edit-voice-stop" type="button" { "Stop / mute" }
+                p id="edit-voice-status" role="status" aria-live="polite" { "Microphone off" }
+                p id="voice-heard" {}
+                p id="voice-response" role="status" aria-live="polite" {}
+                p class="voice-help" { "Browser speech service · say Show options, Review change, or Confirm change" }
+            }
+                        aside id="request-choices" hidden aria-label="Request options" {
+                            @for (id,label) in [("request-inspect","Inspect world"),("request-mesh","Show mesh"),("request-map","Back to planets"),("request-compile","Compile world effect"),("request-undo","Undo")] {
+                                button id=(id) type="button" { (label) }
+                            }
+                        }
             div id="edit-shadow" hidden aria-hidden="true" {}
             aside id="edit-panel" hidden role="dialog" aria-modal="true" aria-labelledby="edit-title" data-active="objects" {
                 header class="workspace-header" {
@@ -110,6 +141,12 @@ async fn page() -> Response {
                     header { h2 id="objects-title" { "01 / Object" } button id="close-objects" class="window-close" type="button" aria-label="Close Object" { "×" } }
                     p id="edit-target" { "Click an object in the house." }
                     button id="edit-pick" type="button" { "Select in world" }
+                    div id="prop-tools" hidden {
+                    label for="edit-place-asset" { "Prop to add at X, Y, Z below" }
+                    input id="edit-place-asset" type="text" list="edit-props" maxlength="128";
+                    datalist id="edit-props" {@for asset in &assets {option value=(&asset.id) {(&asset.name)}}}
+                    button id="edit-place" type="button" { "Add prop" }
+                    }
                     form id="edit-form" {
                         div class="position-fields" {
                             @for (id,label) in [("edit-x","X"),("edit-y","Y"),("edit-z","Z")] { label { (label) input id=(id) type="number" step="any" required value="0"; } }
@@ -133,7 +170,9 @@ async fn page() -> Response {
                         header { h2 id="request-title" { "03 / Kiln" } button id="close-request" class="window-close" type="button" aria-label="Close Request" { "×" } }
                         label for="edit-kiln-request" { "Request" } textarea id="edit-kiln-request" maxlength="4800" rows="5" {}
                         label class="check-label" { input id="edit-kiln-world" type="checkbox"; "Allow a world effect (all materials)" }
-                        button id="edit-kiln-ask" type="button" { "Ask Kiln" }
+                        button id="edit-request-review" type="button" { "Review request" }
+                        button id="edit-kiln-ask" type="button" hidden { "Ask Kiln" }
+                        button id="request-options" type="button" { "Show options" }
                         button id="edit-kiln-stop" type="button" { "Stop" }
                         button id="edit-kiln-review" type="button" { "Review Kiln's change" }
                         p id="edit-kiln-status" role="status" {}
@@ -164,9 +203,11 @@ async fn page() -> Response {
                     ul id="edit-auth-changes" {}
                     a id="edit-signin" href="/login?return_to=%2Fnew-lander%2Fhouse" { "Sign in" }
                     button id="edit-confirm" type="button" hidden { "Confirm change" }
+                    button id="edit-auth-voice-stop" type="button" { "Stop / mute" }
                     button id="edit-cancel" type="button" { "Cancel" }
                 }
             }
+            script id="creator-assets" type="application/json" {(PreEscaped(assets_json))}
             script id="engine-config" type="application/json" { (PreEscaped(text)) }
             script type="module" src="/new-lander/house/boot.js" {}
         } }

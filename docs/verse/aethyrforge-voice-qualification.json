@@ -1,0 +1,35 @@
+{
+  "schema": "openagents.verse.voice-qualification.v1",
+  "issue": 12553,
+  "status": "code complete; isolated integrated voice browser checks and real-provider qualification pending",
+  "protocol_version": 4,
+  "private_implementation_changed": false,
+  "baseline_private_source": "3e578227339996e1ce5b5cb1a63f662c2bafa51a",
+  "baseline_guest_release": "j9ba9687b2db62c0a5",
+  "checks": {
+    "host_library_tests": 5,
+    "kiln_library_tests": 59,
+    "website_tests": 3,
+    "wasm_typecheck": true,
+    "changed_file_formatting": true,
+    "browser_script_syntax": true
+  },
+  "implemented": [
+    "Explicit in-world Listen opt-in; bounded listening session remains across tool close/inspect and stops on Stop/mute, hidden page, offline, permission error, account change, engine close, or exit. No automatic listening after reload.",
+    "Existing Haunt Web Speech input adapted with continuous final results, per-utterance context, bounded event queue, late-event cancellation, and typed text/button equivalents.",
+    "Spoken options, mesh/shaded, Compile, inspect, Undo/Redo, cancel, Review change, and Confirm change use existing host handlers. Spoken mutation confirmation requires a visible reviewed change and sign-in; it never confirms Publish.",
+    "Exact kept-source hash, one-use grant, project/revision/selection/session checks, and stopped/stale Kiln request checks remain enforced.",
+    "Natural-language material/light/prop requests use the existing restricted Kiln agent workspace; only supplied material/object/prop identities are accepted. Focused clarification produces no mutation. Unsupported scale, animation, or local painting is not approximated.",
+    "Closed Play/Share/Publish/Save/Revert/style/time/cycle control registry requires a real registered visible control; downstream fixtures do not qualify the integrated journey."
+  ],
+  "unfinished_checks": [
+    "Build and pin the new host/Kiln companion, isolated private editor/preview release, and fresh native website consumer.",
+    "Run retained synthetic speech state/authorization browser checks; these cannot prove microphone or ASR behavior.",
+    "Try the supplied synthetic-audio fixture through actual browser ASR, clearly separate from transcript injection and a human microphone check.",
+    "Complete real dedicated-account provider sign-in and a real spoken edit/inspect/Undo without losing the walk; see NEEDS_OWNER.md.",
+    "Complete real Kiln-provider proposals, unsupported/ambiguous requests, interruption and recovery; no generated result or paid generation is claimed from fixtures.",
+    "Complete downstream voice Play/Share/planet setup against the owning implementations in #12561."
+  ],
+  "measurement": "No first-frame, ASR, or model latency claim is made by source checks. Receipt/status timing remains command_status_observed_ms.",
+  "activation": "No root homepage promotion or production traffic shift."
+}

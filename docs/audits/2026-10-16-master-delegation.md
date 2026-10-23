@@ -485,6 +485,19 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12553: in-world opt-in voice, spoken options/review/confirmation, shared
+  text/button handlers, scoped prop/material/light candidates, bounded stale-input
+  cancellation, and hidden-until-registered downstream controls are code complete.
+  Host library checks (5), Kiln checks (59), website checks (3), Wasm checks,
+  formatting, and browser-script syntax pass. [Qualification record](../verse/aethyrforge-voice-qualification.json)
+  keeps actual ASR, synthetic events/audio, real-provider sign-in, and human
+  microphone evidence separate. Build/pin the isolated SDK/release and fresh
+  native consumer, run the retained browser checks, and complete real spoken
+  edit/inspect/Undo and downstream Play/Share/planet controls in #12561.
+  The dedicated-account provider and human microphone step is in
+  [NEEDS_OWNER.md](../../NEEDS_OWNER.md). No paid generation or performance
+  result is inferred from source checks.
+
 - #12552: Jarvis desktop windows/mobile tabs, focus and field checkpoints,
   compile-to-inspect, restricted Kiln cleanup, guest mesh inspection, and touch
   navigation are code complete. Public host checks (27), Kiln workspace checks
