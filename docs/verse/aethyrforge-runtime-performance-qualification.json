@@ -1,0 +1,124 @@
+{
+  "schema": "openagents.verse.runtime-performance-qualification.v1",
+  "issue": 12561,
+  "platform": {
+    "GPU": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+    },
+    "browser": "Isolated Chrome via openagents browser run"
+  },
+  "resource_sessions": {
+    "passed": true,
+    "count": 3,
+    "records": [
+      {
+        "session": 0,
+        "cache": "fresh browser context",
+        "host_open_and_rendered_frame_observed_ms": 3267,
+        "browser_response_body_bytes": 9440608,
+        "parent_metrics": {
+          "Documents": 2,
+          "Nodes": 796,
+          "JSHeapUsedSize": 2337048,
+          "JSHeapTotalSize": 4276224
+        },
+        "workers": 1
+      },
+      {
+        "session": 1,
+        "cache": "same browser context repeat",
+        "host_open_and_rendered_frame_observed_ms": 2394,
+        "browser_response_body_bytes": 9437446,
+        "parent_metrics": {
+          "Documents": 8,
+          "Nodes": 1627,
+          "JSHeapUsedSize": 4518004,
+          "JSHeapTotalSize": 7241728
+        },
+        "workers": 1
+      },
+      {
+        "session": 2,
+        "cache": "same browser context repeat",
+        "host_open_and_rendered_frame_observed_ms": 3280,
+        "browser_response_body_bytes": 9437879,
+        "parent_metrics": {
+          "Documents": 2,
+          "Nodes": 1566,
+          "JSHeapUsedSize": 3391296,
+          "JSHeapTotalSize": 8372224
+        },
+        "workers": 1
+      }
+    ],
+    "extra_worker_targets_after_close": 0,
+    "qualification": "The original combined run failed its final window-only no-GPU fixture. These three preceding rendered-session/resource assertions passed. Route interception disables HTTP cache; repeats are not verified warm UI startup.",
+    "private_record": "hosted-resources-2/result.json"
+  },
+  "frames": {
+    "sample_count": 180,
+    "submit_interval_median_ms": 16.69999998807907,
+    "submit_interval_p95_ms": 16.900000005960464,
+    "queue_completion_wall_median_ms": 5.799999982118607,
+    "queue_completion_wall_p95_ms": 6.799999982118607,
+    "method": "Actual preview-worker GPUQueue.submit intervals and onSubmittedWorkDone wall latency; includes queue scheduling, not GPU timestamp/kernel execution. Instrumentation adds a completion promise.",
+    "GPU_memory_bytes": null
+  },
+  "worker_GPU_unavailable": {
+    "passed": true,
+    "private_record": "hosted-no-gpu-1/result.json",
+    "method": "Test-only prelude in the exact dedicated preview worker script sets navigator.gpu to undefined. The actual worker initialization reaches the unavailable path; page shows The world could not open and a Reload control.",
+    "physical_unsupported_browser": false,
+    "window_only_fixture": "Did not affect dedicated worker navigator; its timeout was a simulation-boundary failure."
+  },
+  "immutable_resource_cache": {
+    "passed": true,
+    "release": "q61h58fea2816065441d",
+    "method": "Read-only browser fetch of previously observed immutable house resources from their own origins. No route interception, account, cookies, native requests, mutations, or rendering. Separate from UI startup and first pixel.",
+    "profiles": [
+      {
+        "profile": "editor",
+        "resources": 7,
+        "samples": [
+          {
+            "stage": "cold",
+            "elapsed_ms": 505.80000001192093,
+            "encoded_network_bytes": 662844,
+            "cache_hits": 0
+          },
+          {
+            "stage": "warm",
+            "elapsed_ms": 9.599999994039536,
+            "encoded_network_bytes": 0,
+            "cache_hits": 7
+          }
+        ]
+      },
+      {
+        "profile": "preview",
+        "resources": 35,
+        "samples": [
+          {
+            "stage": "cold",
+            "elapsed_ms": 1654.9000000059605,
+            "encoded_network_bytes": 8396625,
+            "cache_hits": 0
+          },
+          {
+            "stage": "warm",
+            "elapsed_ms": 29.600000023841858,
+            "encoded_network_bytes": 0,
+            "cache_hits": 35
+          }
+        ]
+      }
+    ],
+    "collected_by": "Codex in original app chat; independent isolated read-only profile",
+    "UI_startup_measured": false
+  },
+  "UI_warm_startup_measured": false,
+  "production_traffic_changed": false
+}
