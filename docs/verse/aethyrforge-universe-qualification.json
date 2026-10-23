@@ -1,8 +1,8 @@
 {
   "schema": "openagents.verse.universe-qualification.v1",
   "issue": 12550,
-  "status": "guest native-consumer browser checks pass; toolbar defect #12563 and real-provider qualification remain",
-  "native_source_revision": "15c76f91775b9f4f185c3c6a8b2132f5c67f12a4",
+  "status": "guest native-consumer browser checks and toolbar desktop/mobile checks pass; real-provider qualification remains",
+  "native_source_revision": "6a86568016",
   "engine": {
     "release": "u101d1eed6d2aa9f11",
     "editor": "https://u101d1eed6d2aa9f11---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app",
@@ -38,12 +38,11 @@
     "Readable marketing and destination/back/retry links when graphics cannot open."
   ],
   "unfinished_checks": [
-    "Fix and recapture desktop/mobile toolbar overlap in #12563 before #12561 completes.",
     "Complete real test-account provider sign-in with the integrated journey in #12561; #12549 records the provider access step and popup reproducer."
   ],
   "source_rights": "The ported OpenAgents universe renderer keeps Apache-2.0 attribution and its license in private release notices. Other Aethyrforge implementation stays private. This does not change art rights.",
   "activation": "Isolated immutable tags only. No production traffic shift, root homepage promotion, or launch schedule.",
-  "native_binary_sha256": "71a5210b53d431d7ff05619e298229bd877ce0129e550932c02a9d7b72cf6cad",
+  "native_binary_sha256": "a7d695027dda086f6995d1af8ae7c497298544ebc9acdaf8a2db65a11102fba1",
   "browser": {
     "qualification": "real native Rust pages and pinned hosted universe/house; guest checks only",
     "browser": "155.0.8059.85",
@@ -58,6 +57,7 @@
     "keyboard_destination_selection": true,
     "post_choice_camera_input": true,
     "mobile_layout": true,
+    "camera_toolbar_hit_test_and_zoom_desktop_mobile": true,
     "house_handoff_replaces_universe_frames": true,
     "return_restores_map_selection_and_camera": true,
     "unsupported_webgpu_keeps_links_and_back": true,
@@ -67,20 +67,14 @@
   },
   "private_captures": [
     {
-      "file": "universe-entry.png",
-      "sha256": "e38312dbc877484795b26c1d5bd3e5103ea4a7d7174d76429e55cd598ad2713d",
-      "reviewer": "Codex",
-      "human_review": false
-    },
-    {
       "file": "universe-explore.png",
-      "sha256": "fc314c05455816f920638ab3aa4e0347dae5360e8571acd32824b443de8f5dee",
+      "sha256": "bd94d19111b2259fa6fbed1aaeb756de7987dba06d8f6473ef545e88cfba31b7",
       "reviewer": "Codex",
       "human_review": false
     },
     {
-      "file": "universe-mobile-entry.png",
-      "sha256": "b2699f7bdca4bc045a029d1c7cf7452ab6d9aa30af6b3bdc1b8f3831413cb462",
+      "file": "universe-mobile-explore.png",
+      "sha256": "9674eb7db1c21e2bbf9257173d7ef19729ec6285a1b5f411c49843b08e14d62d",
       "reviewer": "Codex",
       "human_review": false
     }
@@ -90,7 +84,7 @@
     "implementation": "Preview owns bottom-left zoom/Reset. Header Back remains accessible; host guidance/footer avoids that area, with Full screen only on mobile. House Back to planets is unchanged.",
     "source_checks": "Focused website tests and browser-script syntax pass.",
     "browser_checks": "Added parent hit-test and actual preview zoom/reset clicks on desktop/mobile, alongside keyboard and destination checks.",
-    "fresh_native_rerun_and_private_recaptures": "pending",
+    "fresh_native_rerun_and_private_recaptures": "passed: actual desktop/mobile zoom hit tests and clicks, reset, keyboard, and destination controls; private captures inspected by Codex",
     "reviewer": "Codex",
     "human_review": false
   }

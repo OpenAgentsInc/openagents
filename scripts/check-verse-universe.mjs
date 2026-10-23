@@ -110,6 +110,8 @@ try {
     assert.equal(new URL(p.url()).pathname,"/new-lander/verse");
     assert.ok(distance(await pose(p))<distance(before));
     await frame.locator("#reset").click();
+    assert.equal(await frame.evaluate(()=>document.activeElement.id),"reset");
+    await frame.locator("#universe").focus();
   };
   const pose = (p) =>
     p.evaluate(

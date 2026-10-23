@@ -1,7 +1,7 @@
 {
   "schema": "openagents.verse.voice-qualification.v1",
   "issue": 12553,
-  "status": "code complete; isolated integrated voice browser checks and real-provider qualification pending",
+  "status": "code complete; isolated synthetic recognition checks pass; real-provider qualification remains",
   "protocol_version": 4,
   "private_implementation_changed": false,
   "baseline_private_source": "3e578227339996e1ce5b5cb1a63f662c2bafa51a",
@@ -23,8 +23,6 @@
     "Closed Play/Share/Publish/Save/Revert/style/time/cycle control registry requires a real registered visible control; downstream fixtures do not qualify the integrated journey."
   ],
   "unfinished_checks": [
-    "Pin the corrected host SDK/release and fresh native policy consumer after #12564/#12565; retain old release tags.",
-    "Rerun synthetic speech checks with Share -> Show options current-feedback assertion after #12565.",
     "Try the supplied synthetic-audio fixture through actual browser ASR, clearly separate from transcript injection and a human microphone check.",
     "Complete real dedicated-account provider sign-in and a real spoken edit/inspect/Undo without losing the walk; see NEEDS_OWNER.md.",
     "Complete real Kiln-provider proposals, unsupported/ambiguous requests, interruption and recovery; no generated result or paid generation is claimed from fixtures.",
@@ -33,22 +31,23 @@
   "measurement": "No first-frame, ASR, or model latency claim is made by source checks. Receipt/status timing remains command_status_observed_ms.",
   "activation": "No root homepage promotion or production traffic shift.",
   "isolated_deployment": {
-    "release": "v6576145d26c328ed6",
-    "editor": "https://v6576145d26c328ed6---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app",
-    "preview": "https://v6576145d26c328ed6---aethyrforge-preview-ezxz4mgdsq-uc.a.run.app",
-    "private_source": "b4555e58903e230532e99160686ef5bb09ae301c",
-    "sdk_sha256": "405217d1da96017ee3fcdeb3a03e81d7481463b7677c0f352898ca255e37df7b",
-    "sdk_source": "e342033e6dacd15d26cfe9de5b50d88e1b103ccf",
+    "release": "tb86fb66653b0e5545",
+    "editor": "https://tb86fb66653b0e5545---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app",
+    "preview": "https://tb86fb66653b0e5545---aethyrforge-preview-ezxz4mgdsq-uc.a.run.app",
+    "private_source": "0308fc673c0e34359634368bd002629feb3fe3c9",
+    "sdk_sha256": "3fb61916573e29cf98277c2f02af99acda4b8468cb4bc0085ea3306e821fa05e",
+    "sdk_source": "6a86568016",
     "protocol_version": 4,
-    "native_source": "e342033e6dacd15d26cfe9de5b50d88e1b103ccf"
+    "native_source": "6a86568016"
   },
   "synthetic_browser": {
-    "release": "v6576145d26c328ed6",
+    "release": "tb86fb66653b0e5545",
     "synthetic_speech": true,
     "real_speech_provider": false,
     "real_signin_provider": false,
     "errors": [],
     "in_world_options": true,
+    "current_feedback_after_new_request": true,
     "spoken_controls": true,
     "exact_compile_equivalence": true,
     "guest_confirm_does_not_grant": true,
@@ -63,11 +62,11 @@
     "captures": [
       {
         "name": "voice-world-desktop.png",
-        "sha256": "3f76edf395311849024ae7d13b7cd5e5eb54800b697a9eb7a6c16a6083cda3c2"
+        "sha256": "86db1c3b2cf1a455ec2d24afc49bf84b98debc06327e7eb759134c4831dbb49d"
       },
       {
         "name": "voice-world-mobile.png",
-        "sha256": "69783c39cca8d14f990e70eddb871824c5563b31000e751b723664be01c1c36c"
+        "sha256": "d47c20f0d504b0b738b1e1a213187367fbd353e7222a43d13d380dd1c9bcf331"
       }
     ]
   },
@@ -112,6 +111,6 @@
     },
     "implemented": "Clear prior transcript/response on Listen; clear or update response for each current handled request.",
     "browser_assertions": "Share -> Show options checks current feedback on desktop and mobile.",
-    "new_sdk_browser_rerun": "pending"
+    "new_sdk_browser_rerun": "passed: current_feedback_after_new_request=true on desktop and mobile, real_speech_provider=false"
   }
 }

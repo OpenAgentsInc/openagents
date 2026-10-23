@@ -489,16 +489,17 @@ The status lines below summarize each issue and its comments. Open the issue for
   in the header, moves guidance out of that area, and leaves only Full screen in
   its compact mobile footer. Focused route/copy checks and script syntax pass.
   The retained universe browser check now hit-tests and clicks the actual plus
-  button on desktop/mobile, retaining keyboard/destination checks. Build the
-  fresh native consumer, rerun, and inspect private desktop/mobile captures
-  before #12561. [Universe qualification](../verse/aethyrforge-universe-qualification.json).
+  button on desktop/mobile, retaining keyboard/destination checks. Fresh native
+  `6a86568016` passes the full check; Codex inspected the new private desktop/mobile
+  captures. This source/guest check is complete; final journey checks remain in #12561. [Universe qualification](../verse/aethyrforge-universe-qualification.json).
 
 - #12565: each handled request clears the previous response and shows current
   option/review/progress feedback. Listen clears the prior transcript and response.
   Host checks (31), Wasm checks, changed-file formatting, and script syntax pass.
   The retained browser check asserts Share -> Show options on desktop and mobile.
-  Rebuild the pinned SDK/release and fresh native consumer, run that assertion,
-  and replace the private captures before #12561. [Voice qualification](../verse/aethyrforge-voice-qualification.json)
+  Pinned release `tb86fb66653b0e5545` and fresh native `6a86568016` pass that assertion;
+  Codex inspected the new private desktop/mobile captures. Synthetic recognition
+  remains explicitly `real_speech_provider=false`. [Voice qualification](../verse/aethyrforge-voice-qualification.json)
   retains the earlier Codex-reviewed defect and the separate ASR gap.
 
 - #12564: the house host allows microphone access only to itself; camera and
