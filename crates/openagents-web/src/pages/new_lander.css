@@ -1206,3 +1206,5 @@ h3 {
 #planet-ready,#planet-owned{padding:14px;border:1px solid #56757d;background:#10232bcc;border-radius:8px}
 #planet-ready p{font-size:12px;line-height:1.5}
 #planet-ready .small-button,#planet-owned .small-button{margin-top:10px}
+.destination-panel:has(#destination-creator-worlds:not([hidden])){max-height:calc(100dvh - 180px);overflow-y:auto}
+@media(max-width:650px){.destination-panel:has(#destination-creator-worlds:not([hidden])){max-height:calc(100dvh - 230px)}.destination-panel:has(#destination-creator-worlds:not([hidden])) .destination-actions{position:static;margin-top:12px}}

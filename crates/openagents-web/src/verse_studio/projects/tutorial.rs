@@ -207,7 +207,13 @@ async fn update(app: &App, headers: &HeaderMap, sent: Change) -> Response {
                         Ok(v) => v,
                         Err(crate::cloud::session::github::RepoCallError::Repo(
                             oa_auth::repos::RepoError::NotFound,
-                        )) => return gone(),
+                        )) => {
+                            return refused(
+                                StatusCode::SERVICE_UNAVAILABLE,
+                                "planet_creation_unavailable",
+                                "Your planet cannot be created here right now. Try again later.",
+                            );
+                        }
                         Err(e) => return crate::projects::api::failed(e),
                     };
                     if !crate::projects::api::role_of(&project).owns() {

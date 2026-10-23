@@ -84,3 +84,7 @@ or local completion flag cannot allocate a planet. Allocation uses one durable
 account-project creation receipt per person and tutorial version. Temporary
 membership or storage failures preserve progress and require retry; deletion
 keeps the receipt and does not resurrect a removed project.
+A pre-award `404` from project creation can mean that an older account service
+lacks the ensure endpoint. The host reports creation unavailable and keeps the
+tutorial ready; it never substitutes ordinary project creation. Only a missing
+project for an already-recorded planet is reported as removed.
