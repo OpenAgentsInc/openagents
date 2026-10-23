@@ -1,14 +1,17 @@
-## Check Medieval Town on a test iPhone (TestFlight 1019, 2026-10-23)
+## Check the improved Medieval Town on a test iPhone (TestFlight 1020, 2026-10-23)
 
-OpenAgents 1.0.0 (1019) is valid and available to **Internal Testers** and
-**Team (Expo)**. Source: `99d28b3a99`; mobile scene: `274c6ec08bba1370…`.
-Open the menu and choose **Medieval Town**. This native walking scene downloads
-about 12.7 MB, then uses its local cache.
+OpenAgents 1.0.0 (1020) is valid and available to **Internal Testers** and
+**Team (Expo)**. Source: `631a2a724c`; mobile scene: `4552b29fd280c68f…`.
+Open the menu and choose **Medieval Town**. The full town, trees, castle, and
+mountain backdrops now use detailed material maps and directional shadows.
+The first visit downloads about 97 MB, then uses its local cache.
 
 The Release iPhone 17 simulator on iOS 26.5 (M5 Max) completed 1,800 GPU frames
-in 30 seconds: 60.0 FPS, a 16.85 ms 95th-percentile frame interval, and no gaps
-over 25 ms. It moved 21.76 m and turned. Eight Rust checks and the menu, touch
-movement/look, background/resume, close, and offline chat checks passed.
+in 30 seconds: 60.0 FPS, a 16.78 ms 95th-percentile frame interval, and one gap
+over 25 ms. It moved 21.76 m and turned through the 4.33-million-triangle scene.
+The native process used 312 MB after loading and peaked at 569 MB during loading.
+Twelve Rust checks, five landscape captures, and the menu, touch movement/look,
+background/resume, close, and offline chat checks passed.
 
 On a physical iPhone with the dedicated test account, check the FPS display
 while walking, wall collision, look, Run, Jump, rotation, and switching apps.
