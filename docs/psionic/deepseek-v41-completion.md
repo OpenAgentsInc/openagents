@@ -22,8 +22,9 @@ eight runtime checks. Stage crash, freeze, deadline, and full-VM watcher
 recovery checks are retained. G1 and G4 numerical release acceptance and
 qualified G8 evidence remain outstanding. Rule 2.4 froze at 02:16:32 UTC
 after its complete CPU calibration and fault checks; fresh B200 confirmation
-is starting. The frozen bounds and their limits are recorded below. The separate Maya Pylons run
-Foreman's browser-editor work with an experimental consumer-q profile.
+is waiting for capacity. The frozen bounds and their limits are recorded below.
+The separate Maya consumer-q campaign has stopped following the owner's later
+instruction; it supplies no original-weight qualification evidence.
 G5 and G6 still depend on numerical acceptance. Paired native direct-pipeline
 G2 checks and combined 2,872-input / 4,096-output boundary checks now pass
 on all three placements. Runtime checks alone do not pass those gates.
