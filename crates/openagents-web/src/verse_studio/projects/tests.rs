@@ -1213,6 +1213,17 @@ async fn tutorial_award_requires_owner_choice_return_and_survives_membership_fai
     assert_eq!(status, StatusCode::OK, "{recovered}");
     assert_eq!(recovered["planet_available"], true);
     assert_eq!(recovered["progress"]["planet"], planet);
+    let setup_path = format!("/new-lander/planet/{}", planet["id"].as_str().unwrap());
+    let setup = alice
+        .browser
+        .send(&world, Request::builder().uri(setup_path), Body::empty())
+        .await;
+    assert_eq!(setup.status, StatusCode::OK);
+    let policy = setup.headers[axum::http::header::CONTENT_SECURITY_POLICY]
+        .to_str()
+        .unwrap();
+    assert!(policy.contains("form-action 'self'"));
+    assert!(!policy.contains("form-action 'none'"));
     let (_, renamed) = alice
         .call(
             &world,

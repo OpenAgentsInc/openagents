@@ -310,7 +310,14 @@ async fn page(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         .and_then(|v| app.config.cloud.as_ref()?.csrf(&headers, v, SCOPE, "").ok())
         .unwrap_or_default();
     let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{(&planet.name)" · OpenAgents"}link rel="stylesheet" href="/new-lander/planet/style.css";}body{main{a href="/new-lander/verse"{"Back to planets"}p{"YOUR PLANET"}h1{(&planet.name)}p{"Choose a name for your place in the Verse."}form method="post" action=(format!("/new-lander/planet/{id}")){input type="hidden" name="csrf" value=(token);label for="planet-name"{"Planet name"}input id="planet-name" name="name" value=(&planet.name) maxlength="80" required;button type="submit"{"Save name"}}p{"64 × 64 metres · Up to 128 objects · Private to you"}}}}}.into_string();
-    crate::pages::medieval_town::response(StatusCode::OK, body, "text/html; charset=utf-8", None)
+    let mut response = crate::pages::medieval_town::response(
+        StatusCode::OK,
+        body,
+        "text/html; charset=utf-8",
+        None,
+    );
+    response.headers_mut().insert(axum::http::header::CONTENT_SECURITY_POLICY,axum::http::HeaderValue::from_static("default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"));
+    response
 }
 #[derive(Deserialize)]
 struct Name {

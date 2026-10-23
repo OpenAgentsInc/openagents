@@ -183,7 +183,7 @@ const guestContexts=[];
 let holdPublish=false, publishArrived, releasePublish, losePublishAck=false;
 let holdRefreshSession=false, refreshSessionArrived, releaseRefreshSession;
 let holdAllocationAck=false, allocationArrived, releaseAllocationAck;
-let failNextBrowserSession=false;
+let failNextBrowserSession=false;let tutorialGets=0;
 const publicationPosts=[];
 const errors = [];
 let grants = 0;
@@ -201,6 +201,7 @@ try {
     if(url.pathname==='/v1/verse/studio/session'&&failNextBrowserSession&&request.frame().page()===page){
       failNextBrowserSession=false;await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{code:'unavailable',message:'Your progress could not open. Try again.'}})});return;
     }
+    if(url.pathname==="/v1/verse/studio/tutorial"&&request.method()==="GET")tutorialGets++;
     if (url.pathname === "/sign-in")
       console.log("Routed synthetic sign-in", request.method());
     const headers = {
@@ -427,6 +428,8 @@ try {
     await page.waitForFunction(()=>window.universeDemo&&JSON.parse(window.universeDemo.snapshot()).phase==='open',null,{timeout:30000});
     await page.locator('#planet-ready').waitFor({state:'visible'});
     assert.equal(await page.locator('#world-title').innerText(),'My planet');
+    const unsigned=await browser.newContext();guestContexts.push(unsigned);
+    assert.equal((await unsigned.request.post(base+'/v1/verse/studio/tutorial',{headers:{origin:base},data:{csrf:'forged',operation:'allocate'}})).status(),401);
     const count=projects.length;failEnsure=true;
     await page.click('#planet-create');
     await page.waitForFunction(()=>!document.querySelector('#planet-create').disabled&&document.querySelector('#planet-status').textContent.includes('Try again'));
@@ -446,11 +449,13 @@ try {
       assert.match(await page.locator('#planet-status').innerText(),/Try again/);
       assert.equal(await page.locator('#planet-setup').getAttribute('href'),null,'A temporary identity failure preserves the award but disables access');
       assert.doesNotMatch(await page.locator('#planet-status').innerText(),/Log in/);
-      releaseRefreshSession();
+      const getsBefore=tutorialGets;releaseRefreshSession();
+      await page.waitForTimeout(300);assert.equal(tutorialGets,getsBefore,"Refresh from before allocation is discarded before it can fetch progress");
       await page.waitForFunction(()=>document.querySelector('#planet-setup').hasAttribute('href'));
     } else {
       // A refresh that began before allocation must not acquire its new generation.
-      active=false;releaseRefreshSession();
+      active=false;const getsBefore=tutorialGets;releaseRefreshSession();
+      await page.waitForTimeout(300);assert.equal(tutorialGets,getsBefore,"Refresh from before allocation cannot acquire the allocation generation");
       await page.waitForFunction(()=>document.querySelector('#planet-status').textContent.includes('Log in again'));
       assert.equal(await page.locator('#planet-owned').isHidden(),true);
       active=true;
@@ -488,9 +493,8 @@ try {
     await page.reload();assert.equal(await page.locator('h1').innerText(),'Moon garden');
     await page.screenshot({path:path.join(out,'planet-setup-mobile.png')});
     await secondTab.reload();await secondTab.waitForFunction(()=>document.querySelector('#world-title').textContent==='Moon garden');
-    await secondTab.close();
     assert.deepEqual(errors,[]);
-    const result={real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,explicit_published_share_return:true,allocation_failure_recovers:true,old_ensure_endpoint_404_preserves_ready_and_upgrade_retries:true,refresh_two_tabs_replay_same_planet:true,membership_failure_preserves_award:true,old_refresh_cannot_adopt_allocation_generation:true,account_change_releases_old_busy:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE!=="1",late_old_allocation_ignored:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE!=="1",post_allocation_identity_unavailable_preserves_award:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE==="1",rename_and_reopen:true,company_planet_stays_locked:true,private_captures:true,errors};
+    const result={real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,explicit_published_share_return:true,allocation_failure_recovers:true,old_ensure_endpoint_404_preserves_ready_and_upgrade_retries:true,refresh_two_tabs_replay_same_planet:true,membership_failure_preserves_award:true,old_refresh_discarded_before_get:true,account_change_releases_old_busy:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE!=="1",late_old_allocation_ignored:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE!=="1",post_allocation_identity_unavailable_preserves_award:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE==="1",rename_and_reopen:true,company_planet_stays_locked:true,private_captures:true,errors};
     fs.writeFileSync(path.join(out,'browser-planet.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
   } else {
   const guest=await browser.newContext({viewport:{width:1280,height:800},hasTouch:true});guestContexts.push(guest);

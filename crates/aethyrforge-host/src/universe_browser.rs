@@ -74,6 +74,17 @@ impl State {
         let ready = !owned && progress["returned_unix"].is_u64();
         hidden("planet-ready", !ready);
         hidden("planet-owned", !owned);
+        let option = element("option-creator-worlds");
+        if let Ok(Some(label)) = option.query_selector("strong") {
+            label.set_text_content(Some(if owned {
+                progress["planet"]["name"].as_str().unwrap_or("My planet")
+            } else {
+                "My planet"
+            }));
+        }
+        if let Ok(Some(label)) = option.query_selector("small") {
+            label.set_text_content(Some(if owned { "Your planet" } else { "Locked" }));
+        }
         let button = element("planet-create");
         if self.tutorial_busy || !self.tutorial_available {
             button.set_attribute("disabled", "").ok();

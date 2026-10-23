@@ -414,11 +414,14 @@ pub(super) fn mount(
             let Some((world, release)) = ids.split_once('/') else {
                 return;
             };
-            let body = json!({"operation":if id=="project-play" {"play"}else{"share"},"world":world,"release":release});
-            let scope = ProjectScope::of(&rc.borrow());
+            let (scope, csrf) = {
+                let s = rc.borrow();
+                (ProjectScope::of(&s), s.csrf.clone())
+            };
+            let body = json!({"csrf":csrf,"operation":if id=="project-play" {"play"}else{"share"},"world":world,"release":release});
             let weak = weak.clone();
             spawn_local(async move {
-                let progress = project_api(&weak, "tutorial", Some(body)).await;
+                let progress = api_response("tutorial", Some(body)).await;
                 let Some(rc) = weak.upgrade() else { return };
                 if !scope.accepts(&rc.borrow())
                     || element("published-link").get_attribute("href").as_deref() != Some(&path)
@@ -435,11 +438,16 @@ pub(super) fn mount(
                         .set_attribute("href", &path)
                         .ok();
                     hide("publish-share-card", false);
-                    say(if progress.is_ok() {
-                        "Your playable link is ready. Return to the planets to create your own planet."
-                    } else {
-                        "Your playable link is ready. Tutorial progress could not be saved; try Share again before returning to the planets."
-                    });
+                    say(
+                        if progress
+                            .as_ref()
+                            .is_ok_and(|(status, _)| (200..300).contains(status))
+                        {
+                            "Your playable link is ready. Return to the planets to create your own planet."
+                        } else {
+                            "Your playable link is ready. Tutorial progress could not be saved; try Share again before returning to the planets."
+                        },
+                    );
                 }
             });
         })?;
