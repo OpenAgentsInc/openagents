@@ -233,6 +233,12 @@ async fn refresh(weak: Weak<RefCell<State>>) {
         });
     }
     if !was_signed && s.account.is_some() {
+        let account = s.account.clone();
+        if let Some(pending) = s.pending.as_mut() {
+            if pending.owner.is_none() {
+                pending.owner = account;
+            }
+        }
         s.persist();
     }
     if let Some(popup) = &s.popup {
