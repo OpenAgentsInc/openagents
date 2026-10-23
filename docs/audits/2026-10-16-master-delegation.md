@@ -485,14 +485,27 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12570: private `0a28e7d` keeps the last/default positive render size through
+  transient zero-size layout and preserves the existing size limit. Type checking
+  and two viewport/player checks pass. Clean hosted house and personal-player runs
+  force zero-size startup, verify actual rendered desktop/mobile dimensions,
+  hide/show without changing session or revision, and reload the same pinned version.
+  The original parent retained its dimensions; the nested preview intermittently
+  attached at zero. No native visibility or authorization rule was relaxed.
+  Synthetic accounts and Codex-reviewed private captures remain distinct from
+  provider/human evidence. Broader real-account/hosted qualification remains #12561;
+  the official website build-context failure is tracked separately in #12571.
+  [Viewport qualification](../verse/aethyrforge-viewport-qualification.json).
+
 - #12569: optional avatar views now require a loaded character in private `833ed1c`;
   the existing Medieval Town assets and controls remain intact. Type checking and
   15 interface tests pass. Hosted house and awarded personal-world studio checks
   pass on desktop and mobile with the current native consumer: no avatar toolbar
   when `modelLoaded=false`, and Edit/Listen/Stop remain reachable. Accounts are
   synthetic; captures are Codex-reviewed. Pinned-player checks found the separate
-  zero-viewport failure tracked in #12570; player/chat overlap verification remains
-  in #12561 after that fix. No production traffic or prior tags changed.
+  zero-viewport failure tracked in #12570; its subsequent hosted house/personal
+  player checks pass with no avatar toolbar and reachable native/chat-toggle controls.
+  Full chat-panel qualification remains #12561. No production traffic or prior tags changed.
   [Profile-control evidence](../verse/aethyrforge-profile-controls-qualification.json).
 
 - #12560: version-pinned personal-world invitations and Loro chat are implemented

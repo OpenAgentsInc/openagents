@@ -144,7 +144,7 @@ const server = spawn(
     env: {
       ...process.env,
       HOME: isolatedHome,
-      ...(process.env.AETHYRFORGE_VISIT_CHECK==="1"?{OPENAGENTS_WEB_ROOM_TOKEN_KEY:"07".repeat(32),OPENAGENTS_SYNC_ORIGIN:process.env.AETHYRFORGE_TEST_SYNC_ORIGIN}:{}),
+      ...((process.env.AETHYRFORGE_VISIT_CHECK==="1"||process.env.AETHYRFORGE_PROFILE_CONTROLS)?{OPENAGENTS_WEB_ROOM_TOKEN_KEY:"07".repeat(32),OPENAGENTS_SYNC_ORIGIN:process.env.AETHYRFORGE_TEST_SYNC_ORIGIN||"http://127.0.0.1:1"}:{}),
       OPENAGENTS_HAUNT_RELEASE: JSON.stringify(release),
       OPENAGENTS_UNIVERSE_RELEASE: JSON.stringify({...release,engine_url:config.editor+"/universe.html",project:{id:"universe",branch:"main",revision:0}}),
       OPENAGENTS_VERSE_PUBLISH_RUNTIME: JSON.stringify(config.publish_runtime),
