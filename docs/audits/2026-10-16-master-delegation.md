@@ -485,6 +485,15 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12549: code complete: native scoped-grant checks (3), public host checks (18),
+  private adapter checks (13), Wasm SDK, and the fresh website consumer pass.
+  Wire version 2 isolates extended status/actions from frozen version 1 releases;
+  the prior production demo still passes its browser check. The pending-edit browser
+  fixture and real-provider completion remain unfinished. [Qualification record](../verse/aethyrforge-access-qualification.json)
+  distinguishes partial observations, the isolated popup reproducer, and the
+  corrected login-form selector. Complete the integrated flow in #12561; the
+  dedicated-account provider-access step is in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
+
 - #12547: completed the real walkable house, closed ceiling seams, visible-mesh
   picking, wall/doorway collision, shader/startup recovery, and the freshly built
   Rust website against an isolated hosted release. [Qualification evidence](../verse/haunted-house-qualification.json)

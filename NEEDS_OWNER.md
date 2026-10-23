@@ -1,3 +1,23 @@
+## Complete the dedicated-account browser sign-in check (#12549) (2026-10-23)
+
+After the Haunted House review route is deployed, use the dedicated test
+account to cancel and then complete its real WorkOS sign-in. The available
+test credential is a bearer key; it does not provide the account's GitHub
+provider login. Production currently offers only GitHub and hides the Nostr
+sign-in controls. A temporary dedicated-account key was linked and removed
+while checking that alternative; no browser provider login completed. Do not
+use the owner's account.
+
+Open Edit as a guest, select an object, change a position, and enter a note.
+Request the move, cancel sign-in, and verify the view, selection, tools, and
+note stay open. Complete sign-in from the same request and verify the object
+has not moved. Only **Confirm change** should apply the move. Repeat after
+session expiry, then sign out and remove any test artifacts. Record the
+browser, deployed release, and result in the final epic qualification.
+
+The bearer account read and the synthetic account-service browser fixture
+are separate checks; neither proves completion through the real provider.
+
 ## Check the live Maya work cards (#12524) (2026-10-22)
 
 While signed in, refresh [Verse](https://openagents.com/), walk up to each
