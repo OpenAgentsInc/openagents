@@ -1,7 +1,7 @@
 {
   "schema": "openagents.aethyrforge.deployment.v1",
   "issue": 12546,
-  "status": "candidate verified; production shift in progress",
+  "status": "production deployed and verified",
   "url": "https://openagents.com/demo/medieval-town",
   "engine": {
     "source_revision": "97d0465a51460d2e951f96614aff437ed381ca27",
@@ -75,13 +75,96 @@
       },
       "missing_sdk_retry": true,
       "incompatible_release_retry": true
-    }
+    },
+    "production_browser": {
+      "mode": "production",
+      "browser": "155.0.8059.85",
+      "release": "rd4a6dcbc64ecc48e3d",
+      "ready_ms": 29124,
+      "requests_without_account_credentials": 1093,
+      "input_moved_player": true,
+      "reload_restored_checkpoint": true,
+      "close_removed_worker": true,
+      "back_navigation_reopened": true,
+      "fullscreen_worked": true,
+      "errors": [],
+      "failed": [],
+      "status": {
+        "project": {
+          "id": "medieval-town-lab",
+          "branch": "main",
+          "revision": 0
+        },
+        "generation": "f4151d40-1aaa-4653-a99a-048495ee4784",
+        "frame": 13,
+        "save": "device",
+        "checkpoint": {
+          "eye": [
+            4.212496757507324,
+            1.9797804355621336,
+            32.98086166381836
+          ],
+          "target": [
+            4.484333250433894,
+            2.117577273024796,
+            32.028434788568255
+          ],
+          "mode": "fly"
+        }
+      },
+      "missing_sdk_retry": true,
+      "incompatible_release_retry": true
+    },
+    "production_http": [
+      {
+        "path": "/",
+        "status": 200,
+        "bytes": 41460,
+        "type": "text/html; charset=utf-8",
+        "commit": null,
+        "csp": null
+      },
+      {
+        "path": "/health",
+        "status": 200,
+        "bytes": 2,
+        "type": "text/plain; charset=utf-8",
+        "commit": null,
+        "csp": null
+      },
+      {
+        "path": "/demo/medieval-town",
+        "status": 200,
+        "bytes": 1101,
+        "type": "text/html; charset=utf-8",
+        "commit": null,
+        "csp": "default-src 'none'; script-src 'self' https://rd4a6dcbc64ecc48e3d---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self' https://rd4a6dcbc64ecc48e3d---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app; frame-src https://rd4a6dcbc64ecc48e3d---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; object-src 'none'"
+      },
+      {
+        "path": "/demo/medieval-town/boot.js",
+        "status": 200,
+        "bytes": 447,
+        "type": "text/javascript; charset=utf-8",
+        "commit": null,
+        "csp": null
+      },
+      {
+        "path": "/demo/medieval-town/style.css",
+        "status": 200,
+        "bytes": 805,
+        "type": "text/css; charset=utf-8",
+        "commit": null,
+        "csp": null
+      }
+    ]
   },
   "website": {
     "source_revision": "c3b25278ac18fea5152c7ca88ca0d9631d22d1df",
     "build_id": "187d16c4-31cc-42f2-b45f-ee4f4ebd8054",
     "image_digest": "sha256:b3afdd3d3b470400f0ea1d46057589588007136806120546ecd5994e2f113637",
-    "candidate_revision": "coder-web-b3afdd3d3b-20261023043410",
-    "previous_serving_revision": "coder-web-f9fbed854c-20261022221217"
-  }
+    "previous_serving_revision": "coder-web-f9fbed854c-20261022221217",
+    "serving_revision": "coder-web-b3afdd3d3b-20261023043410",
+    "traffic_percent": 100
+  },
+  "verified_at": "2026-10-23T04:39:18.164196+00:00"
 }

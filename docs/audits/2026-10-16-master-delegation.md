@@ -488,8 +488,9 @@ The status lines below summarize each issue and its comments. Open the issue for
 - #12546: immutable private engine releases and the public Rust Medieval Town host
   pass signed-out candidate checks, including movement, fullscreen, checkpoint
   reload, cleanup, return navigation, unavailable releases, and rollout/rollback.
-  Production traffic shift and live verification are in progress;
-  [deployment record](../verse/aethyrforge-medieval-deployment.json).
+  Production revision `coder-web-b3afdd3d3b-20261023043410` serves 100% of traffic;
+  the same live browser checks, homepage, and `/health` pass.
+  [Deployment record](../verse/aethyrforge-medieval-deployment.json).
 
 - #12545: public SDK and private artifact pass local protocol and browser checks;
   [receipt](../verse/aethyrforge-host-conformance.json). #12546 owns immutable private
