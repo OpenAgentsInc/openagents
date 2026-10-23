@@ -150,3 +150,5 @@ pub(crate) fn routes() -> Router<App> {
         .merge(profile::routes())
         .merge(pricing::routes())
 }
+
+pub(crate) mod verse_ui;

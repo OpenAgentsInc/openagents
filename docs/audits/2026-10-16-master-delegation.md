@@ -485,6 +485,17 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12576: the owned shadcn/React/Effect presentation covers Verse entry, the native
+  editor and sign-in cards, publishing/sharing, planet setup, and visits/chat.
+  Fifteen focused Rust checks, TypeScript/build checks, deterministic assets, and
+  isolated Chrome guest/edit/cancel/focus/narrow-layout checks pass. The running
+  private engine keeps its generation, advancing frames, pose, and canvas identity.
+  Setup/invitation/player layouts use synthetic native test pages. After a separate
+  deployment, repeat provider sign-in and saved-version sharing with the dedicated
+  test account; existing human/microphone steps remain in `NEEDS_OWNER.md`.
+  This change does not deploy production or promote the root homepage.
+
+
 - #12561 / #12562: implementation and agent-owned qualification complete across
   30 native children (17 original, 13 follow-ups). The connected hosted journey
   follows the same isolated account and one awarded planet across recorded browser

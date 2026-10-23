@@ -24,6 +24,7 @@ fn universe_release() -> Option<super::medieval_town::Release> {
 
 pub(crate) fn routes() -> Router<App> {
     Router::new()
+        .merge(super::verse_ui::routes())
         .route(PATH, get(marketing))
         .route(VERSE, get(universe))
         .route(SCRIPT_PATH, get(script))
@@ -202,13 +203,14 @@ fn document(content: Markup, verse: bool, account: bool) -> String {
     } else {
         "OpenAgents · Create anything"
     };
-    html! {
+    let body = html! {
         (maud::DOCTYPE)
         html lang="en" {
             head { meta charset="utf-8"; meta name="viewport" content="width=device-width, initial-scale=1"; meta name="robots" content="noindex, nofollow"; meta name="description" content="Tools to create. Agents to help. Explore the OpenAgents toolkit and the Verse."; meta name="color-scheme" content="dark"; title { (title) } link rel="canonical" href=(format!("https://openagents.com{path}")); style { (PreEscaped(STYLE)) } }
             body class=(if verse {"verse-page"} else {"marketing-page"}) { a.skip-link href=(if verse {"#world-title"} else {"#products"}) { "Skip to content" } (header(verse,account)) (content) @if verse { script type="module" src=(SCRIPT_PATH) {} } }
         }
-    }.into_string()
+    }.into_string();
+    super::verse_ui::document(body, if verse { "universe" } else { "marketing" })
 }
 
 fn respond(content: String) -> Response {
@@ -220,7 +222,7 @@ fn respond(content: String) -> Response {
         .map(|r| r.origin())
         .unwrap_or_else(|| "'none'".into());
     let policy = format!(
-        "default-src 'none'; style-src {}; script-src 'self' 'wasm-unsafe-eval' {origin}; connect-src 'self' {origin}; frame-src {origin}; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
+        "default-src 'none'; style-src 'self' {}; script-src 'self' 'wasm-unsafe-eval' {origin}; connect-src 'self' {origin}; frame-src {origin}; img-src 'self' data:; font-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'",
         super::lander5::source_hash(STYLE)
     );
     headers.insert(

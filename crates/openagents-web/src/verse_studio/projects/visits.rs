@@ -635,11 +635,11 @@ async fn manage(
     let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Invite people · OpenAgents"}link rel="stylesheet" href="/new-lander/play/style.css";}body{main{a href="/new-lander/verse"{"Back to planets"}h1{"Invite people"}p{"Version "(version)}p{"Invite people to this saved version. Visitors can play and chat. Editing stays private."}form method="post"{input type="hidden" name="csrf" value=(token);input type="hidden" name="command_id" value=(hash(&secp256k1::rand::random::<[u8;32]>()));label{"Who can visit? " select name="access"{option value="signed-in"{"People who sign in with the link"}option value="anonymous"{"Anyone with the link · sign in to chat"}}}label{" Link expires " select name="hours"{option value="1"{"In 1 hour"}option value="24"{"In 1 day"}option value="168"{"In 7 days"}}}button type="submit"{"Create invitation"}}ul{@for row in rows{li{@if let Some(link)=row["link"].as_str(){a href=(link){"Open invitation"}" · "(if row["revoked"]==true{"Revoked"}else{"Visit and manage chat"})" · "(if row["anonymous"]==true{"Anonymous play · sign in to chat"}else{"Sign in to visit"})" · "(expiry_label(row["expires"].as_u64().unwrap_or(0)))}}}}}}}}.into_string();
     let mut response = crate::pages::medieval_town::response(
         StatusCode::OK,
-        body,
+        crate::pages::verse_ui::document(body, "invite"),
         "text/html; charset=utf-8",
         None,
     );
-    response.headers_mut().insert(axum::http::header::CONTENT_SECURITY_POLICY,axum::http::HeaderValue::from_static("default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"));
+    response.headers_mut().insert(axum::http::header::CONTENT_SECURITY_POLICY,axum::http::HeaderValue::from_static("default-src 'none'; script-src 'self'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"));
     response.headers_mut().insert(
         axum::http::header::REFERRER_POLICY,
         "same-origin".parse().unwrap(),

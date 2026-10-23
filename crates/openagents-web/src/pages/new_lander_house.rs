@@ -389,7 +389,7 @@ fn render(app: &App, r: Release, planet: Option<&aethyrforge_host::PersonalPlane
     .into_string();
     response(
         StatusCode::OK,
-        body,
+        super::verse_ui::document(body, "studio"),
         "text/html; charset=utf-8",
         Some(&r.origin()),
     )

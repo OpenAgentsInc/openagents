@@ -533,7 +533,7 @@ pub(super) fn player_page(p: &PlayableRelease, visit: Option<(&str, &str, bool)>
     let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{"Play · OpenAgents"}link rel="stylesheet" href="/new-lander/play/style.css";}body{header{a href="/new-lander/verse"{"Back to planets"}h1{(title)}span{ "Version " (p.manifest.saved_version) }button id="world-retry" type="button"{"Retry"}button id="world-fullscreen" type="button"{"Full screen"}}main{iframe id="engine" hidden title="Playable world" data-engine-url=(endpoint(&runtime.engine_url).unwrap().join("player.html").unwrap().as_str()){}p id="player-controls"{"Click to look · WASD to walk · Esc to release the pointer"}p id="world-notice" role="status"{"Opening this playable version…"} @if let Some((id,sdk,anonymous))=visit { (super::visits::chat_markup(id,sdk,anonymous)) }}script id="engine-config" type="application/json"{(PreEscaped(config))}script id="playable-release" type="application/json" data-sdk-url=(&runtime.sdk_url){(PreEscaped(playable))}script type="module" src="/new-lander/play/boot.js"{} @if visit.is_some() {script type="module" src="/new-lander/visit/boot.js"{}}}}}.into_string();
     let mut response = crate::pages::medieval_town::response(
         StatusCode::OK,
-        body,
+        crate::pages::verse_ui::document(body, "player"),
         "text/html; charset=utf-8",
         Some(&origin),
     );

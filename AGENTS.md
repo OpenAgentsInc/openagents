@@ -9,6 +9,10 @@ The owner also requested the `/new-lander` marketing preview and its
 Effect/direct-WebGPU universe selector (2026-10-22). Marketing and routes stay
 in Rust; `apps/verse-selector` is the scoped TypeScript browser island. It
 reuses the existing account and world services and does not own domain logic.
+The owner explicitly authorized React, Effect Atom, Effect, and shadcn/ui in
+`apps/verse-ui` for the complete Verse presentation (2026-10-23, #12576). Keep
+account, project, publish, invitation, and engine authority in the existing Rust
+services and controllers; the UI does not receive private engine source.
 The existing product exception is `swift/lev-bridge`, the helper that reaches Apple's
 `FoundationModels` framework, which has no Rust binding; it is built by a
 repo script and supervised as a child process. Coder's iOS host at `bins/coder-ios/host` also uses thin SwiftUI glue for native controls, mounting, and
