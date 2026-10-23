@@ -485,6 +485,13 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12547: completed the real walkable house, closed ceiling seams, visible-mesh
+  picking, wall/doorway collision, shader/startup recovery, and the freshly built
+  Rust website against an isolated hosted release. [Qualification evidence](../verse/haunted-house-qualification.json)
+  records both source revisions, immutable artifacts, private capture hashes, and
+  browser results. Production activation and full journey qualification remain
+  in #12550 and #12561; the current homepage and Medieval Town release stay unchanged.
+
 - #12548: completed asset-preparation evidence: 13 public Rust tests, 11 synthetic
   importer tests, matching independent real rebuilds, unchanged source hashes,
   and Chrome 155 / Apple Metal captures pass. Custom-art project terms remain

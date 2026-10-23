@@ -63,3 +63,12 @@ Keep source revisions, image digests, manifest hashes, and signed-out browser
 results with each release. Licensed scene captures stay in scratch storage,
 not public Git. See `aethyrforge-medieval-deployment.json` for the deployment
 record and `aethyrforge-host-protocol.md` for the public contract.
+
+The Haunted House review route `/new-lander/house` uses its own pinned release
+in `crates/openagents-web/content/demos/haunted-house.json`;
+`OPENAGENTS_HAUNT_RELEASE` selects an explicit override. Build the native
+consumer with `cargo build --locked -p openagents-web-site --bin openagents-web`.
+Run `scripts/check-haunted-house.mjs` with the same candidate environment as
+the town check. The house adds map return, walking mode, and an honest unsaved
+status. Its [qualification record](haunted-house-qualification.json) records the
+isolated release; it does not authorize a homepage or production traffic shift.

@@ -1,0 +1,212 @@
+{
+  "schema": "openagents.verse.house-qualification.v1",
+  "issue": 12547,
+  "status": "isolated hosted release and native review shell verified; no production traffic shift",
+  "review_route": "/new-lander/house",
+  "native_source_revision": "d6b421c9fe96606daf21859d1604f735b61492be",
+  "native_consumer_build": "cargo build --locked -p openagents-web-site --bin openagents-web",
+  "engine": {
+    "source_revision": "e08033b8585f08fee58b378bcb155167b86993df",
+    "release": "hac86e5de276e8c2b1a",
+    "sdk_source_revision": "1523bc66879a16300f3426d9af2cbbe1310509ec",
+    "sdk_wasm_sha256": "27180b672233cc87014557737141913403c4c25a3b634f07a5e7f9857d0e7b9b",
+    "asset_set_sha256": "d29dcabe5d7fc3a224319e29caddcd69d17485dd264575b6861c4599cd9650c1",
+    "compiled_asset_files": 29,
+    "compiled_asset_bytes": 10265849,
+    "manifest_sha256": "76abbb4965dd63af8c8bfc5bd0e218157cea4079c0355a74f57fec295eeee4e4",
+    "editor_origin": "https://hac86e5de276e8c2b1a---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app",
+    "preview_origin": "https://hac86e5de276e8c2b1a---aethyrforge-preview-ezxz4mgdsq-uc.a.run.app",
+    "editor_image_digest": "sha256:5c42f8019463e76d69876d25264d81768da2471b55fcfd00378dc2b7fbb72d3c",
+    "editor_build_id": "e0eb6651-33b4-43df-8676-6c50ea2109a2",
+    "editor_revision": "aethyrforge-editor-00004-sef",
+    "preview_image_digest": "sha256:799f128f56023932023e6c6ae566bf28f78c5ba5d840def81bb50382b2ff6c17",
+    "preview_build_id": "186253c8-0c61-40c0-9e65-99b501c41dec",
+    "preview_revision": "aethyrforge-preview-00004-yav"
+  },
+  "layout": {
+    "rooms": [
+      "hall",
+      "passage",
+      "gallery"
+    ],
+    "structures": 71,
+    "props": 29,
+    "structural_triangle_colliders": 2279,
+    "project_sha256": "7f732b415a931f599cf3a34d7931b0e105143c00366e2cb2070b2b3a931b91c1",
+    "ceiling": "Overlapping tiled kit boards close all unintended interior seams."
+  },
+  "checks": {
+    "public_house_tests": 2,
+    "private_profile_protocol_tests": 11,
+    "private_kernel_tests": 21,
+    "private_typecheck_and_build": true,
+    "public_wasm_build": true,
+    "native_candidate_browser": {
+      "mode": "candidate",
+      "browser": "155.0.8059.85",
+      "release": "hac86e5de276e8c2b1a",
+      "ready_ms": 11364,
+      "requests_without_account_credentials": 124,
+      "input_moved_player": true,
+      "reload_restored_checkpoint": true,
+      "close_removed_worker": true,
+      "map_return_and_back_reopened": true,
+      "fullscreen_worked": true,
+      "errors": [],
+      "failed": [],
+      "status": {
+        "project": {
+          "id": "haunted-house",
+          "branch": "main",
+          "revision": 0
+        },
+        "generation": "eac1b0db-6219-4b8a-acec-6f2c69b3417c",
+        "frame": 15,
+        "save": "unsaved",
+        "checkpoint": {
+          "eye": [
+            0,
+            1.6200000047683716,
+            11.299999237060549
+          ],
+          "target": [
+            0,
+            1.6200000047683716,
+            10.299999237060549
+          ],
+          "mode": "walk"
+        }
+      },
+      "missing_sdk_retry": true,
+      "incompatible_release_retry": true
+    },
+    "private_scene_browser": {
+      "browser": "155.0.8059.85",
+      "viewport": [
+        1440,
+        900
+      ],
+      "checks": [
+        "Actual keyboard walking crosses the entry, hall, passage, and gallery doorways.",
+        "A real centered click picks the visible custom werewolf by its stable identity.",
+        "Visible passage walls stop the walking player.",
+        "A failed shader retains position, selection, revision, the working image, and the same running session.",
+        "Missing content reports a startup error; retry reopens the unchanged house."
+      ],
+      "errors": [],
+      "finalStatus": {
+        "phase": "ready",
+        "message": "Click the world to explore \u00b7 WASD \u00b7 Space/C \u00b7 Shift",
+        "fps": 60,
+        "frame": 717,
+        "revision": 0,
+        "triangles": 7278,
+        "instances": 71,
+        "camera": [
+          0.7583333849906921,
+          1.6200000047683716,
+          -7
+        ],
+        "selection": {
+          "id": "werewolf-1",
+          "name": "custom:haunt:werewolf",
+          "kind": "custom:haunt:werewolf",
+          "position": [
+            -2.4000000953674316,
+            -0.019999999552965164,
+            -14.800000190734863
+          ],
+          "scale": 1
+        },
+        "canUndo": false,
+        "canRedo": false,
+        "saved": false,
+        "view": {
+          "eye": [
+            0.7583333849906921,
+            1.6200000047683716,
+            -7
+          ],
+          "target": [
+            1.7583333849906893,
+            1.6200000047683716,
+            -7.0000000754978995
+          ],
+          "mode": "walk"
+        }
+      }
+    },
+    "http": [
+      {
+        "role": "editor",
+        "path": "/",
+        "status": 200,
+        "content_type": "text/html"
+      },
+      {
+        "role": "editor",
+        "path": "/sdk/27180b672233cc87014557737141913403c4c25a3b634f07a5e7f9857d0e7b9b/aethyrforge_host_bg.wasm",
+        "status": 200,
+        "content_type": "application/wasm"
+      },
+      {
+        "role": "preview",
+        "path": "/preview.html",
+        "status": 200,
+        "content_type": "text/html"
+      },
+      {
+        "role": "preview",
+        "path": "/kernel.wasm",
+        "status": 200,
+        "content_type": "application/wasm"
+      },
+      {
+        "role": "preview",
+        "path": "/private-assets/haunt-profile.json",
+        "status": 200,
+        "content_type": "application/json"
+      },
+      {
+        "role": "editor",
+        "path": "/src/main.ts",
+        "status": 404,
+        "content_type": "text/html"
+      },
+      {
+        "role": "preview",
+        "path": "/apps/preview/preview.worker.ts",
+        "status": 404,
+        "content_type": "text/html"
+      },
+      {
+        "role": "preview",
+        "path": "/assets/preview.worker.js.map",
+        "status": 404,
+        "content_type": "text/html"
+      },
+      {
+        "role": "editor",
+        "path": "/private-assets/haunt-profile.json",
+        "status": 404,
+        "content_type": "text/html"
+      }
+    ]
+  },
+  "captures": {
+    "entrance.png": "935cb5a5188e7831d4c25945ac76481bf5a427eb881649c869b06630f8e51481",
+    "gallery.png": "78771557f5492c780de2fdd083c6929191d1356446f4c30c093caa4f89212600",
+    "hall.png": "199e7ec15d3a3b5a50192509106945e7583f9763b400f7fe1fe1e53a96a830a8",
+    "house-contact-sheet.png": "671d7be0f8d6f18dfb390e8282ceb35e5021c5b761e87965c99d5da214407396",
+    "missing-content.png": "9b5345730bfcb3365dcea20f6b3a567a4da5b2dd659bf50693a5b006bcbfbefd",
+    "passage.png": "ab526f1cece5b570a0d6fc2ba809731604dbcf90e3fc357c1f4b85b248d7f62b",
+    "shader-error-keeps-world.png": "1a621cba2fe93a6f7daf1b7412389242601970dae52826a87e8da1ee24c7a21b"
+  },
+  "capture_location": "Private scratch only; no screenshots or compiled scene content in public Git.",
+  "rights": "Quaternius CC0-1.0; licensed town runtime; OpenAgents original custom art under project runtime terms without a CC0 dedication.",
+  "limits": [
+    "Static characters; no animation claim.",
+    "Guest exploration reports unsaved. Existing first-version saves are handled by the separate migration adapter, not silently imported.",
+    "This qualifies the walkable house and host boundary. Editing, account persistence, publishing, and shared visits remain later epic children."
+  ]
+}
