@@ -1,0 +1,17 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Public engine host · protocol review</title>
+<style>body{margin:0;background:#0b1820;color:#dcf2f3;font:16px system-ui}header{padding:16px;display:flex;gap:12px;align-items:center}button{padding:8px;background:#173a44;color:inherit;border:1px solid #467780}iframe{border:0;width:100%;height:65vh}pre{white-space:pre-wrap;font-size:12px;margin:16px}#panel{position:absolute;top:100px;right:30px;background:#173a44dd;padding:30px}</style>
+<header><strong>Host protocol review</strong><button id="inspect">Inspect</button><button id="observe">Observe</button><button id="panel-toggle">Toggle panel</button><button id="reload">Reload world</button><button id="leave">Leave</button></header>
+<iframe id="engine" title="Engine preview"></iframe><aside id="panel" hidden>Host overlay — the engine keeps running.</aside><pre id="status">Connecting…</pre>
+<script type="module">
+// Conformance fixture UI. The production transport and lifecycle are Rust/Wasm.
+import init,{BrowserHost} from './aethyrforge_host.js';
+await init();
+const q=new URLSearchParams(location.search);
+const config={release:q.get('release')||'fixture-release',engine_abi:q.get('abi')||'fixture-abi',project_format:1,project:{id:q.get('project')||'fixture-world',branch:'main',revision:0}};
+const host=new BrowserHost(document.querySelector('iframe'),q.get('engine')||'http://127.0.0.1:55307/mock.html',JSON.stringify(config),()=>{document.querySelector('#status').textContent=host.snapshot()});
+window.host=host;
+for(const [id,action] of [['inspect',{type:'inspect'}],['observe',{type:'observe',enabled:true}]])document.getElementById(id).onclick=()=>host.request(JSON.stringify(action));
+document.querySelector('#panel-toggle').onclick=()=>{document.querySelector('#panel').hidden=!document.querySelector('#panel').hidden};
+document.querySelector('#reload').onclick=()=>host.reload();document.querySelector('#leave').onclick=()=>{host.close();document.querySelector('#status').textContent='Closed.'};
+window.addEventListener('pagehide',()=>host.close(),{once:true});
+</script></html>

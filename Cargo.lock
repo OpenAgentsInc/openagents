@@ -240,6 +240,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "aethyrforge-host"
+version = "1.0.0"
+dependencies = [
+ "js-sys",
+ "openagents-workspace-hack",
+ "schemars 1.2.2",
+ "serde",
+ "serde_json",
+ "url",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "agent-contract"
 version = "1.0.0"
 dependencies = [
