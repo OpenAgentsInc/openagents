@@ -485,6 +485,19 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12560: version-pinned personal-world invitations and Loro chat are implemented
+  on `main` (`8a4ed3168c`). Native access/retry/expiry/rate/isolation checks (1),
+  room-token checks (5), existing browser-token routes (3), and a real isolated
+  coder-sync/Postgres check (1) pass. A clean native/GPU browser run covers two
+  synthetic identities, actual message exchange, independent visibility/mute/block,
+  reconnect deduplication, queued exact Send and Leave, focus, host report targets,
+  disposal, chat-SDK failure, logout, and revocation. Visits grant no editing and
+  create no extra projects. Captures are Codex-reviewed, not human-approved.
+  Hosted current adapters and real dedicated-account/provider checks remain in
+  #12561; existing provider/microphone/human steps stay in `NEEDS_OWNER.md`.
+  No production traffic changed. [Visit qualification](../verse/aethyrforge-visits-qualification.json).
+
+
 - #12559: bounded seeded personal courtyards, two styles, advancing/paused day cycles,
   scoped editing, durable save/reopen, Undo/Redo controls, and pinned personal players
   are implemented. Host checks (64), native owner/tutorial/save/publication/revocation

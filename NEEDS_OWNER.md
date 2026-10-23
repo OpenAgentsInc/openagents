@@ -21,6 +21,12 @@ changes in #12551 and the integrated journey in #12561.
 The bearer account read and the synthetic account-service browser fixture
 are separate checks; neither proves completion through the real provider.
 
+For #12560, repeat the invitation exchange with two isolated dedicated accounts
+through the real provider flow when both accounts are available. The local
+browser record uses two synthetic identities with real native access and
+coder-sync/Postgres/Loro storage. It does not establish real-provider login or
+human review. Hosted adapter qualification remains agent-owned in #12561.
+
 ## Qualify the dedicated-account spoken creator journey (#12553, #12561) (2026-10-23)
 
 With the dedicated account's real browser sign-in above, explicitly allow the
