@@ -44,6 +44,14 @@ sign back in, find that account's project, and confirm resuming its editable
 content, repairable draft, and valid place. This is separate from native tests
 with two isolated local principals and synthetic browser account services.
 
+For #12559, review the retained Soft pastels, Bold fantasy, and night desktop/mobile
+screens in this app. The local native/GPU checks pass, including mobile microphone
+hit tests; Codex review does not constitute Kiki or human visual approval. The
+[pinned personal-world evidence](docs/verse/aethyrforge-personal-qualification.json)
+records the artifact and capture identities. Hosted combined qualification remains
+in #12561. Real Kiln is an agent-owned check with an available service key, not an
+owner-only prerequisite.
+
 ## Check the live Maya work cards (#12524) (2026-10-22)
 
 While signed in, refresh [Verse](https://openagents.com/), walk up to each

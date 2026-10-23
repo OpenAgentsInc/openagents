@@ -140,7 +140,9 @@ export async function checkPersonalWorld({page,context,base,config,out,errors}) 
     const manifest=await player.evaluate(()=>JSON.parse(document.querySelector('#playable-release').textContent).manifest);
     assert.deepEqual(recipe(manifest.content.document),recipe(kept));assert.deepEqual(manifest.content.document.entities,kept.entities);
     const played=await privatePlayer.evaluate(()=>window.aethyrforgeEditor.snapshot().status);
-    assert.equal(played.authoring.active_source,kept.active_source);assert.ok(played.instances>=344);assert.equal(played.view.mode,'walk');
+    assert.equal(played.authoring.active_source,kept.active_source);assert.ok(played.instances>0);assert.equal(played.view.mode,'walk');
+    assert.deepEqual(played.personalWorld.entities,kept.entities,'Applied authored layout matches the saved world');
+    assert.equal(played.personalWorld.recipeSha256,kept.originals.find(s=>s.name==='planet-v1.json').sha256);
     assert.ok(played.renderedEnvironment.frame>0);
     await player.screenshot({path:path.join(out,'personal-playable-guest.png')});
   } finally {await guest.unrouteAll({behavior:'wait'});await guest.close();}

@@ -485,6 +485,19 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12559: bounded seeded personal courtyards, two styles, advancing/paused day cycles,
+  scoped editing, durable save/reopen, Undo/Redo controls, and pinned personal players
+  are implemented. Host checks (64), native owner/tutorial/save/publication/revocation
+  (1), house (3), private kernel (25), private type/source/history/player checks, and
+  a clean real-GPU/native browser run pass. The browser verifies exact recipe/layout/
+  pose reopening, elapsed Pause, submitted lighting at stable revision/pose, perimeter
+  collision, mobile settings/microphone hit tests, cancel/retry, and guest player load.
+  Captures are Codex-reviewed; account/recognition fixtures are synthetic. Hosted
+  combined qualification, real provider/microphone, and Kiki/human review remain in
+  #12561; owner-only steps stay in `NEEDS_OWNER.md`. Real Kiln remains agent-owned.
+  No production traffic changed. [Personal qualification](../verse/aethyrforge-personal-qualification.json).
+
+
 - #12558: one durable account-owned personal planet follows an owner-authored house
   publication, explicit Play/Share, and return. Creation retries preserve edits;
   deletion keeps a receipt and never recreates the project. Three account checks
