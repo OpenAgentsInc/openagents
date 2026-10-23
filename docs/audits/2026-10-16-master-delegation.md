@@ -485,6 +485,12 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12548: completed asset-preparation evidence: 13 public Rust tests, 11 synthetic
+  importer tests, matching independent real rebuilds, unchanged source hashes,
+  and Chrome 155 / Apple Metal captures pass. Custom-art project terms remain
+  separate from Quaternius CC0 rights. [Qualification record](../verse/fantasy-props-qualification.json).
+  The integrated house and final art review belong to #12547 and #12561.
+
 - #12546: immutable private engine releases and the public Rust Medieval Town host
   pass signed-out candidate checks, including movement, fullscreen, checkpoint
   reload, cleanup, return navigation, unavailable releases, and rollout/rollback.
