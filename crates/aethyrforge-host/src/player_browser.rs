@@ -9,6 +9,8 @@ pub struct BrowserPlayer {
     timer: i32,
     tick: Closure<dyn FnMut()>,
     release: String,
+    frame: web_sys::Element,
+    load: Closure<dyn FnMut(web_sys::Event)>,
 }
 #[wasm_bindgen]
 impl BrowserPlayer {
@@ -24,6 +26,9 @@ impl Drop for BrowserPlayer {
         if let Some(w) = web_sys::window() {
             w.clear_interval_with_handle(self.timer);
         }
+        let _ = self
+            .frame
+            .remove_event_listener_with_callback("load", self.load.as_ref().unchecked_ref());
         self.demo.close();
         let _ = &self.tick;
     }
@@ -44,12 +49,21 @@ pub fn mount_player() -> Result<BrowserPlayer, JsValue> {
     let id = release.id.clone();
     let action =
         serde_json::to_string(&Action::LoadPlayable { release }).map_err(|_| JsValue::NULL)?;
-    let demo = Rc::new(mount_demo()?);
+    let demo = Rc::new(crate::demo::mount_demo_inner(true)?);
     let weak = Rc::downgrade(&demo);
     let notice = doc.get_element_by_id("world-notice").ok_or(JsValue::NULL)?;
     let frame = doc.get_element_by_id("engine").ok_or(JsValue::NULL)?;
     frame.set_attribute("hidden", "")?;
     let state = Rc::new(RefCell::new((String::new(), None::<String>, false)));
+    let loading_frame = frame.clone();
+    let loading_notice = notice.clone();
+    let load = Closure::wrap(Box::new(move |_: web_sys::Event| {
+        let _ = loading_frame.set_attribute("hidden", "");
+        let _ = loading_notice.remove_attribute("hidden");
+        loading_notice.set_text_content(Some("Opening this playable version…"));
+    }) as Box<dyn FnMut(web_sys::Event)>);
+    frame.add_event_listener_with_callback("load", load.as_ref().unchecked_ref())?;
+    let tick_frame = frame.clone();
     let tick = Closure::wrap(Box::new(move || {
         let Some(demo) = weak.upgrade() else { return };
         let Ok(v) = serde_json::from_str::<Value>(&demo.snapshot()) else {
@@ -59,18 +73,30 @@ pub fn mount_player() -> Result<BrowserPlayer, JsValue> {
         let session = v["session"].as_str().unwrap_or_default();
         if state.0 != session {
             *state = (session.into(), None, false);
+            let _ = tick_frame.set_attribute("hidden", "");
+        }
+        if v["error"].as_str().is_some() || v["phase"] == "closed" {
+            state.2 = false;
+            let _ = tick_frame.set_attribute("hidden", "");
+            let _ = notice.remove_attribute("hidden");
+            notice.set_text_content(Some(
+                "This version could not open. Choose Retry to try again.",
+            ));
+            return;
+        }
+        if v["phase"] != "open" {
+            state.2 = false;
+            let _ = tick_frame.set_attribute("hidden", "");
+            let _ = notice.remove_attribute("hidden");
+            notice.set_text_content(Some("Opening this playable version…"));
+            return;
         }
         if state.2 {
             return;
         }
+        let _ = tick_frame.set_attribute("hidden", "");
         let _ = notice.remove_attribute("hidden");
-        if let Some(error) = v["error"].as_str() {
-            notice.set_text_content(Some(error));
-            return;
-        }
-        if v["phase"] != "open" {
-            return;
-        }
+        notice.set_text_content(Some("Opening this playable version…"));
         if let Some(request) = state.1.as_ref() {
             if let Some(receipt) = v["receipts"]
                 .as_array()
@@ -78,11 +104,11 @@ pub fn mount_player() -> Result<BrowserPlayer, JsValue> {
             {
                 if receipt["outcome"]["state"] == "applied" {
                     state.2 = true;
-                    let _ = frame.remove_attribute("hidden");
+                    let _ = tick_frame.remove_attribute("hidden");
                     let _ = notice.set_attribute("hidden", "");
                 } else {
                     notice.set_text_content(Some(
-                        "This version could not open. Reload to try again.",
+                        "This version could not open. Choose Retry to try again.",
                     ));
                 }
             }
@@ -102,5 +128,7 @@ pub fn mount_player() -> Result<BrowserPlayer, JsValue> {
         timer,
         tick,
         release: id,
+        frame,
+        load,
     })
 }

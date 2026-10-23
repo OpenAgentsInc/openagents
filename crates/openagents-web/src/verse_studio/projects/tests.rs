@@ -941,7 +941,10 @@ async fn publication_uses_saved_bytes_and_pinned_guest_links_with_retry_failure_
         let r = Browser::default()
             .send(world, Request::builder().uri(path), Body::empty())
             .await;
-        (r.status, serde_json::from_str(&r.body).unwrap_or(json!({})))
+        (
+            r.status,
+            serde_json::from_str(&r.body).unwrap_or_else(|_| json!({"text":r.body})),
+        )
     }
     let world_id = first["world"].as_str().unwrap();
     let first_id = first["event"]["release"].as_str().unwrap();
@@ -956,6 +959,14 @@ async fn publication_uses_saved_bytes_and_pinned_guest_links_with_retry_failure_
         "Private imported files are absent from player bytes"
     );
     assert_eq!(pinned["manifest"]["runtime"]["protocol_version"], 7);
+    let (status, page) = guest(&world, &format!("/new-lander/play/{world_id}/{first_id}")).await;
+    assert_eq!(status, StatusCode::OK);
+    let page = page["text"].as_str().unwrap();
+    assert!(page.contains("id=\"world-retry\""));
+    assert!(
+        page.contains("id=\"engine\" hidden"),
+        "The base scene starts hidden before SDK initialization"
+    );
     d.environment.insert("fogDensity".into(), 0.03);
     let (_, saved) = alice
         .call(&world, "POST", &path, save("save-2", 1, &d))

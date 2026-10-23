@@ -334,13 +334,14 @@ try {
   const draftEditor=page.frames().find(f=>f.url().startsWith(config.editor));assert.ok(draftEditor);
   await draftEditor.evaluate(()=>{
     const registry=window.aethyrforgeEditor.service.registry, get=registry.get.bind(registry);
-    const previous=window.aethyrforge.snapshot().status.authoring.draft;
+    const previous=window.aethyrforge.snapshot().status.authoring.draft, heldStates=new WeakMap();
     window.draftStatusFixture={held:true,observed:false,release:()=>{registry.get=get;}};
     registry.get=(...args)=>{
       const state=get(...args);
       if(window.draftStatusFixture.held&&state?.authoring&&state.authoring.draft!==previous){
         window.draftStatusFixture.observed=true;
-        return {...state,authoring:{...state.authoring,draft:previous}};
+        if(!heldStates.has(state))heldStates.set(state,{...state,authoring:{...state.authoring,draft:previous}});
+        return heldStates.get(state);
       }
       return state;
     };
@@ -359,6 +360,7 @@ try {
   assert.equal((await snapshot()).status.authoring.active_source,changed);
   const pose=(await snapshot()).status.checkpoint;assert.equal(pose.mode,before.checkpoint.mode);for(const key of ['eye','target'])assert.ok(pose[key].every((n,i)=>Math.abs(n-before.checkpoint[key][i])<0.03));
   if(process.env.AETHYRFORGE_DRAFT_ACK_ONLY==='1'){
+    assert.deepEqual(errors,[]);
     fs.writeFileSync(path.join(out,'browser-draft-ack.json'),JSON.stringify({real_gpu_engine:true,synthetic_account_service:true,real_signin_provider:false,delayed_draft_status_not_acknowledged:true,immediate_compile_after_draft:true,draft_does_not_advance_history:true,errors},null,2));
     console.log('Delayed Draft status and immediate Compile passed');
   } else {
@@ -400,6 +402,21 @@ try {
     const headers={...response.headers()};delete headers['content-length'];delete headers['content-encoding'];
     await route.fulfill({status:response.status(),headers,body:response.status()>=300&&response.status()<400?Buffer.alloc(0):await response.body()});
   });
+  await guest.addInitScript(()=>{
+    if(!location.pathname.endsWith('/player.html')||sessionStorage.getItem('fixture-player-reload-mode')!=='hold-fail')return;
+    let editor;
+    Object.defineProperty(window,'aethyrforgeEditor',{configurable:true,get:()=>editor,set(value){
+      editor=value;if(!value?.service)return;
+      const service=value.service,send=service.send.bind(service),get=service.receipts.get.bind(service.receipts);
+      window.playerLoadFixture={id:null,fail:false,actual:()=>get(window.playerLoadFixture.id)};
+      service.send=(request,...args)=>{const id=send(request,...args);if(request.type==='loadPlayable')window.playerLoadFixture.id=id;return id;};
+      service.receipts.get=id=>{
+        const receipt=get(id);
+        if(id!==window.playerLoadFixture.id)return receipt;
+        return window.playerLoadFixture.fail&&receipt?{...receipt,ok:false,message:'Injected playable load acknowledgment failure'}:undefined;
+      };
+    }});
+  });
   const guestPage=await guest.newPage();guestPage.on('pageerror',e=>errors.push(e.message));await guestPage.goto('https://openagents.com'+firstPath);
   await guestPage.waitForFunction(()=>window.versePlayer&&JSON.parse(window.versePlayer.snapshot()).engine.receipts.some(r=>r.outcome.message==='Playable version opened.'),null,{timeout:125000});
   const guestSnapshot=()=>guestPage.evaluate(()=>JSON.parse(window.versePlayer.snapshot()));
@@ -418,6 +435,28 @@ try {
   assert.ok(walked.eye.some((n,i)=>Math.abs(n-guestPose.eye[i])>0.05),'The guest actually walks in the published world');
   for(const frame of guestPage.frames())if(frame.url().startsWith(config.preview))await frame.evaluate(()=>document.exitPointerLock?.());
   await guestPage.screenshot({path:path.join(out,'playable-guest-desktop.png')});
+  const priorPlayerSession=(await guestSnapshot()).engine.session;
+  await guestEditor.evaluate(()=>{sessionStorage.setItem('fixture-player-reload-mode','hold-fail');location.reload();});
+  await guestEditor.waitForFunction(()=>window.playerLoadFixture?.actual()?.ok===true,null,{timeout:125000});
+  assert.notEqual((await guestSnapshot()).engine.session,priorPlayerSession);
+  await guestPage.waitForTimeout(300);
+  assert.equal(await guestPage.locator('#engine').isHidden(),true,'A replacement frame stays unavailable while LoadPlayable acknowledgment is held');
+  assert.equal(await guestPage.locator('#world-notice').isVisible(),true);
+  await guestPage.screenshot({path:path.join(out,'playable-reload-held.png')});
+  await guestEditor.evaluate(()=>window.playerLoadFixture.fail=true);
+  await guestPage.waitForFunction(()=>document.querySelector('#world-notice').textContent.includes('Choose Retry'));
+  assert.equal(await guestPage.locator('#engine').isHidden(),true,'A failed load cannot expose the fresh base scene');
+  await guestPage.screenshot({path:path.join(out,'playable-reload-failed.png')});
+  const failedSession=(await guestSnapshot()).engine.session;
+  await guestEditor.evaluate(()=>sessionStorage.removeItem('fixture-player-reload-mode'));
+  await guestPage.click('#world-retry');
+  await guestPage.waitForFunction(previous=>{
+    const s=window.versePlayer&&JSON.parse(window.versePlayer.snapshot());
+    return s?.engine.session!==previous&&s?.engine.receipts.some(r=>r.outcome.message==='Playable version opened.')&&!document.querySelector('#engine').hidden;
+  },failedSession,{timeout:125000});
+  assert.equal((await guestSnapshot()).release,firstId,'Retry reloads the same pinned release');
+  assert.equal(await guestEditor.evaluate(()=>window.aethyrforge.snapshot().status.authoring.active_source),changed);
+  await guestPage.screenshot({path:path.join(out,'playable-reload-recovered.png')});
   // Publish another saved version, keeping the first guest pinned.
   await edit('materials');
   const shared=page.locator('#panel-materials details').filter({has:page.locator('#edit-fog')});await shared.locator('summary').click();
@@ -484,7 +523,7 @@ try {
   await page.waitForFunction(()=>document.querySelector('#publish-share-card').hidden&&!document.querySelector('#publish-share-link').hasAttribute('href'));
   assert.equal(await page.locator('#publish-share-link').innerText(),'');
   assert.deepEqual(errors,[]);
-  const result={protocol_version:7,real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,synthetic_recognition:true,microphone_used:false,compile_inspect_revert_without_publication:true,exact_saved_version_publish:true,lost_response_retry_idempotent:true,double_confirm_keeps_busy_owner:true,guest_without_editing_authority:true,guest_walks_published_world:true,later_drafts_and_releases_do_not_change_opened_version:true,spoken_publish_share_play:true,management_with_bad_source_face_draft_closed_engine:true,selected_version_audience_and_link_reviewed:true,rollback_sequence_advances:true,revoked_link_refuses_new_loads:true,share_clears_on_project_switch_signout_and_publication_refresh:true,private_captures:true,errors};
+  const result={protocol_version:7,real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,synthetic_recognition:true,microphone_used:false,compile_inspect_revert_without_publication:true,exact_saved_version_publish:true,lost_response_retry_idempotent:true,double_confirm_keeps_busy_owner:true,guest_without_editing_authority:true,guest_walks_published_world:true,player_reload_held_failed_and_same_version_recovered:true,later_drafts_and_releases_do_not_change_opened_version:true,spoken_publish_share_play:true,management_with_bad_source_face_draft_closed_engine:true,selected_version_audience_and_link_reviewed:true,rollback_sequence_advances:true,revoked_link_refuses_new_loads:true,share_clears_on_project_switch_signout_and_publication_refresh:true,private_captures:true,errors};
   fs.writeFileSync(path.join(out,'browser-publish.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
   }
 } catch(error){

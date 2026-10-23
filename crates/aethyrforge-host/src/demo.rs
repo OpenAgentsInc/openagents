@@ -42,6 +42,9 @@ impl Drop for BrowserDemo {
 }
 #[wasm_bindgen]
 pub fn mount_demo() -> Result<BrowserDemo, JsValue> {
+    mount_demo_inner(false)
+}
+pub(crate) fn mount_demo_inner(player: bool) -> Result<BrowserDemo, JsValue> {
     let window = web_sys::window().ok_or_else(|| JsValue::from_str("window"))?;
     let doc = window
         .document()
@@ -76,7 +79,9 @@ pub fn mount_demo() -> Result<BrowserDemo, JsValue> {
             let _ = notice.remove_attribute("hidden");
             let _ = notice.set_attribute("data-state", "error");
         } else if value["phase"].as_str() == Some("open") {
-            let _ = notice.set_attribute("hidden", "");
+            if !player {
+                let _ = notice.set_attribute("hidden", "");
+            }
             if let Some(session) = value["session"].as_str() {
                 if observing_session != session {
                     observing_session = session.into();
