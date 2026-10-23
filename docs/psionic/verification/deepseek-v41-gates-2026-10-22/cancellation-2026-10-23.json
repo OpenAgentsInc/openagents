@@ -1,0 +1,148 @@
+{
+  "status": "cancelled_by_owner",
+  "issue": "https://github.com/OpenAgentsInc/openagents/issues/12369",
+  "recorded_at": "2026-10-23T02:54:38.663752+00:00",
+  "run_id": "codex-deepseek-gates-20261022-090619-76a1",
+  "numerical_qualification_completed": false,
+  "fresh_b200_confirmation_started": false,
+  "qualification_capacity_controller_stopped": true,
+  "guarded_allocations_stopped": [
+    {
+      "vm": "oa-dsv41-gates-oracle24-us-central1-b-flex",
+      "instance_id": "1366696997917522002",
+      "record_id": "aa0d00bfebd846438cef416824b4bb10",
+      "stop": {
+        "cost": 0.0,
+        "event": "stop",
+        "id": "aa0d00bfebd846438cef416824b4bb10",
+        "instance_id": "1366696997917522002",
+        "reason": "never-started",
+        "stop": "2026-10-23T02:48:22Z",
+        "stop_epoch": 1792723702.16,
+        "vm": "oa-dsv41-gates-oracle24-us-central1-b-flex"
+      }
+    },
+    {
+      "vm": "oa-dsv41-gates-head",
+      "instance_id": "5240178533023084916",
+      "record_id": "a3c7bd81fd3f4d45b2322e765d9c98bb",
+      "stop": {
+        "cost": 4.395872,
+        "event": "stop",
+        "id": "a3c7bd81fd3f4d45b2322e765d9c98bb",
+        "reason": "deleted",
+        "stop": "2026-10-23T02:49:29Z",
+        "stop_epoch": 1792723769.9328399,
+        "vm": "oa-dsv41-gates-head"
+      }
+    },
+    {
+      "vm": "oa-dsv41-gates-quad2",
+      "instance_id": "5296723010130485568",
+      "record_id": "c151c615ef774bbaa29595106df2e9fe",
+      "stop": {
+        "cost": 20.637406,
+        "event": "stop",
+        "id": "c151c615ef774bbaa29595106df2e9fe",
+        "reason": "deleted",
+        "stop": "2026-10-23T02:49:45Z",
+        "stop_epoch": 1792723785.004344,
+        "vm": "oa-dsv41-gates-quad2"
+      }
+    },
+    {
+      "vm": "oa-dsv41-gates-single0",
+      "instance_id": "3166132851485168852",
+      "record_id": "f0735d1cb842403795d8ba6098e2fde6",
+      "stop": {
+        "cost": 11.510732,
+        "event": "stop",
+        "id": "f0735d1cb842403795d8ba6098e2fde6",
+        "reason": "deleted",
+        "stop": "2026-10-23T02:50:46Z",
+        "stop_epoch": 1792723846.483874,
+        "vm": "oa-dsv41-gates-single0"
+      }
+    },
+    {
+      "vm": "oa-dsv41-gates-single1",
+      "instance_id": "2062917690589697165",
+      "record_id": "414acbc03511436c96e1bc453b38b5c8",
+      "stop": {
+        "cost": 11.521574,
+        "event": "stop",
+        "id": "414acbc03511436c96e1bc453b38b5c8",
+        "reason": "deleted",
+        "stop": "2026-10-23T02:51:49Z",
+        "stop_epoch": 1792723909.863082,
+        "vm": "oa-dsv41-gates-single1"
+      }
+    },
+    {
+      "vm": "oa-dsv41-gates-single2",
+      "instance_id": "4020854102420870242",
+      "record_id": "1160f9bef56c4796895d278525d97fd4",
+      "stop": {
+        "cost": 11.529687,
+        "event": "stop",
+        "id": "1160f9bef56c4796895d278525d97fd4",
+        "reason": "deleted",
+        "stop": "2026-10-23T02:52:49Z",
+        "stop_epoch": 1792723969.423419,
+        "vm": "oa-dsv41-gates-single2"
+      }
+    },
+    {
+      "vm": "oa-dsv41-gates-single3",
+      "instance_id": "5904155746562987091",
+      "record_id": "7a4c6bb727df4f798f8c5879f070dec3",
+      "stop": {
+        "cost": 11.535152,
+        "event": "stop",
+        "id": "7a4c6bb727df4f798f8c5879f070dec3",
+        "reason": "deleted",
+        "stop": "2026-10-23T02:53:48Z",
+        "stop_epoch": 1792724028.3113291,
+        "vm": "oa-dsv41-gates-single3"
+      }
+    }
+  ],
+  "remaining_run_instances": [],
+  "remaining_oracle_requests": [],
+  "remaining_oracle_operations": [],
+  "remaining_qualification_disks": [],
+  "queued_b200_actual_cost": 0,
+  "policy_2_4_frozen_at": "2026-10-23T02:16:32.998542+00:00",
+  "policy_freeze_sha256": "d31422c4c824018b4bc1a5f732f72d8d20507a78ac97c05036c60ff8ef2f4812",
+  "retained_artifacts_prefix": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/cancelled-20261023/",
+  "retained_artifacts": {
+    "HEAD-EVIDENCE-INVENTORY.json": {
+      "bytes": 19499729,
+      "md5": "L87F2vVXMvp1pZiqML8ODg==",
+      "crc32c": "ZcZ/Bg==",
+      "generation": "1792723634760328",
+      "storage_url": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/cancelled-20261023/HEAD-EVIDENCE-INVENTORY.json#1792723634760328"
+    },
+    "shared-reports.tar.gz": {
+      "bytes": 17789450,
+      "md5": "0jNmdWPdFKk35Ofc/nouEg==",
+      "crc32c": "r0a2PQ==",
+      "generation": "1792723634881242",
+      "storage_url": "gs://openagents-psionic-oracle/deepseek-v41/1bae0e1/g1-v2/cancelled-20261023/shared-reports.tar.gz#1792723634881242"
+    },
+    "capacity-and-cancellation.tar.gz": {
+      "bytes": 8108,
+      "sha256": "67cec2aa74c4940385b15bdf860a71fda30e3baca4f820ab97db5df37954b171"
+    }
+  },
+  "archived_report_files": 986,
+  "head_inventory_files": 126379,
+  "unpassed_acceptance": [
+    "G1 fresh served-runtime numerical qualification",
+    "G4 original-input numerical qualification",
+    "G5 dependent numerical group acceptance",
+    "G6 dependent numerical multi-machine acceptance",
+    "G8 qualified public routing"
+  ],
+  "note": "Closed at the owner's request. Cancellation does not pass the release gates. Previously retained failed results and calibration inputs remain unchanged."
+}

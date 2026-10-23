@@ -8,13 +8,13 @@ Status: the definitive checklist for
 place that says what finishes the epic. Those docs still hold the reasoning
 and the evidence. Update this file as items land.
 
-**Current status, 2026-10-23:** the owner reopened qualification after the
-[closed-issue audit](../audits/2026-10-22-deepseek-closed-issues.md).
-[#12369](https://github.com/OpenAgentsInc/openagents/issues/12369) is open
-again, owned by Codex for the remaining G1–G8 acceptance work. Its earlier
-closure authorized an experimental preview; it did not pass the original
-gates. Policy 2.3 failed, including one 38-token Engram case, and remains
-failed. The pinned `06e5158778` worker passes the frozen G2 suite at 5/6
+**Current status, 2026-10-23:** the owner cancelled the pending B200 request
+and asked to close [#12369](https://github.com/OpenAgentsInc/openagents/issues/12369).
+The epic closes by request, with qualification unfinished. Its earlier closure
+authorized an experimental preview; it did not pass the original gates.
+The [closed-issue audit](../audits/2026-10-22-deepseek-closed-issues.md) and failed
+checks remain retained. Policy 2.3 remains failed, including its 38-token Engram
+case. The pinned `06e5158778` worker passes the frozen G2 suite at 5/6
 against the oracle's 5/6 on all three placements, with identical answers and
 the reasoning/completion floor held. G3 has current SM89 and SM120 component
 receipts. The private one-quad, two-dual, and four-single Pylons each pass the same
@@ -22,12 +22,15 @@ eight runtime checks. Stage crash, freeze, deadline, and full-VM watcher
 recovery checks are retained. G1 and G4 numerical release acceptance and
 qualified G8 evidence remain outstanding. Rule 2.4 froze at 02:16:32 UTC
 after its complete CPU calibration and fault checks; fresh B200 confirmation
-is waiting for capacity. The frozen bounds and their limits are recorded below.
+never ran. The frozen bounds and their limits are recorded below.
 The separate Maya consumer-q campaign has stopped following the owner's later
 instruction; it supplies no original-weight qualification evidence.
 G5 and G6 still depend on numerical acceptance. Paired native direct-pipeline
 G2 checks and combined 2,872-input / 4,096-output boundary checks now pass
 on all three placements. Runtime checks alone do not pass those gates.
+
+The [cancellation record](verification/deepseek-v41-gates-2026-10-22/cancellation-2026-10-23.json)
+records the guarded resource shutdown and the retained report archive.
 
 The entries below retain earlier checks; later sections record their reruns
 and the current worker's evidence.
