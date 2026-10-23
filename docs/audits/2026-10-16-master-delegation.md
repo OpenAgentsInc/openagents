@@ -510,9 +510,12 @@ The status lines below summarize each issue and its comments. Open the issue for
   reads and creates projects through the actual gateway in a separate staging-NFS
   test prefix; raw account records stay private. The production-style candidate
   keeps `GATEWAY_HOLD=serving`, all serving traffic, and prior tags. Actual GCS
-  save/open, shared-role execution, and test-artifact cleanup remain in #12561;
-  the timed-out cleanup is not a pass. Its isolated sessions are revoked and
-  retained traces are redacted. No production accounts were mutated.
+  save/open and viewer/editor/owner checks now pass through the native GCS
+  adapter, including ownership transfer with the original storage home. The final
+  project and both account deletions returned HTTP 200. Qualification-service and
+  temporary-prefix cleanup remain in #12561. Earlier timed-out attempts are not
+  counted as passes; their sessions are revoked and traces redacted. No production
+  accounts were mutated.
   [Account-contract evidence](../verse/aethyrforge-account-contract-qualification.json).
 
 

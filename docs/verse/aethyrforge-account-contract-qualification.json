@@ -72,11 +72,32 @@
       "count": 2,
       "status": 200,
       "retained_timeout_traces_redacted": true
+    },
+    "actual_hosted_storage_and_roles": {
+      "passed": true,
+      "private_record": "hosted-account-stack-8/result.json",
+      "backend": "actual native GCS adapter, openagentsgemini-web-chats-stage",
+      "coverage": [
+        "owner save and open",
+        "viewer read and write refusal",
+        "editor save",
+        "ownership transfer retains original storage home",
+        "removed member cannot read",
+        "unknown project refusal"
+      ],
+      "accepted_versions": 3,
+      "cleanup": {
+        "project": 200,
+        "accounts": [
+          200,
+          200
+        ]
+      },
+      "real_browser_provider_login": false
     }
   },
   "remaining_12561": [
-    "Finish actual GCS save/open and shared-role checks after correcting qualification storage configuration.",
-    "Remove isolated test projects/accounts and qualification prefixes; failed cleanup is not counted as completed.",
+    "Remove the owned qualification services, temporary account-store prefixes, and visit rooms after integrated checks. Test project and both accounts were deleted successfully.",
     "Repeat integrated pinned-runtime and current coder-sync checks, real Kiln draft/review, dirty-material recovery, resource cleanup, and timing.",
     "Prepare private printable actual-screen packet; human review, browser-provider login, and microphone remain separate pending checks."
   ],
@@ -84,14 +105,15 @@
     "A reduced config omitted chat salt and inference proxy settings; corrected without product changes.",
     "The provisional bucket name differed from the staging spec; corrected to openagentsgemini-web-chats-stage.",
     "The harness used the inference API key instead of the issued app session; corrected through the actual session issuer.",
-    "A 30-second cleanup request timed out. Its request headers were redacted and its isolated sessions revoked. Storage cleanup remains pending."
+    "An earlier 30-second cleanup request timed out. Its traces were redacted and isolated sessions revoked; the final independently attempted project and account cleanup returned HTTP 200."
   ],
   "private_evidence": [
     "hosted-account-stack-6/result.json",
     "hosted-account-stack-7/result.json",
     "isolated-session-retirement.json",
     "held-candidate-preflight.json",
-    "account-project-contract-test.log"
+    "account-project-contract-test.log",
+    "hosted-account-stack-8/result.json"
   ],
   "production_traffic_changed": false,
   "prior_tags_changed": false
