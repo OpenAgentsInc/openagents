@@ -15,13 +15,50 @@ const ctx = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
   }),
   page = await ctx.newPage();
+const candidate = process.env.VERSE_UI_CANDIDATE_URL;
+if (candidate) {
+  await ctx.route(base + "/new-lander/**", async (route) => {
+    const url = new URL(route.request().url());
+    const response = await ctx.request.get(
+      candidate + url.pathname + url.search,
+    );
+    const headers = { ...response.headers() };
+    for (const key of [
+      "content-encoding",
+      "content-length",
+      "transfer-encoding",
+    ])
+      delete headers[key];
+    await route.fulfill({
+      status: response.status(),
+      headers,
+      body: await response.body(),
+    });
+  });
+}
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 page.on("console", (e) => {
   if (e.type() === "error") errors.push(e.text());
 });
 await page.goto(base + "/new-lander/verse");
-await page.waitForFunction(() => window.verseUi && window.universeDemo);
+await page.waitForFunction(
+  () =>
+    window.verseUi &&
+    window.universeDemo &&
+    JSON.parse(window.universeDemo.snapshot()).phase === "open" &&
+    JSON.parse(window.universeDemo.snapshot()).status.frame > 0,
+  undefined,
+  { timeout: 60000 },
+);
+assert.equal(
+  await page.evaluate(() =>
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--background")
+      .trim(),
+  ),
+  "#000000",
+);
 await page.locator("#continue-guest").click();
 assert(await page.locator("#verse-choices").isVisible());
 await page.screenshot({ path: capture("choices-desktop.png") });
