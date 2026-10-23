@@ -1,13 +1,13 @@
 {
   "schema": "openagents.verse.project-qualification.v1",
   "issue": 12554,
-  "status": "source checks complete; new immutable release and integrated browser qualification pending",
+  "status": "Source checks complete; immutable review candidate deployed without traffic; browser restore defect tracked in #12566",
   "protocol_version": 5,
   "private_source": "845df602df1888303f16d9a0f2338cc033b04642",
   "private_predecessor": "515c2958436e07e6a9ed36c7c0b5117a3ffdcb8b",
-  "immutable_release": null,
-  "sdk_sha256": null,
-  "native_consumer_binary_sha256": null,
+  "immutable_release": "p4a25d82b1bf39f001",
+  "sdk_sha256": "81b0289c3e71e5672d0b90507f48b14ca6fa260e94e7f8fb6124875450c2af5e",
+  "native_consumer_binary_sha256": "9cd4189567658c8e8609e8581192ed50c4477ba246eb98665a23f685682633cd",
   "source_checks": {
     "public_host": 40,
     "native_project_storage": 3,
@@ -28,16 +28,27 @@
   ],
   "browser_fixture": {
     "script": "scripts/check-verse-project.mjs",
-    "status": "not yet run against the new release",
+    "status": "Real native store and GPU run: delayed Save typing/base and canceled remote version passed before saved-world restore failed with Line 654: struct member uv not found. #12566 blocks final qualification. Earlier navigation interruption was fixed in the synthetic harness; no real provider completion is claimed.",
     "synthetic_account_service": true,
     "real_signin_provider": false,
     "tests": "Real native store and pinned GPU engine: delayed Save text, acknowledged base, canceled remote-version load, repairable-draft restore, and late checkpoint failure after project switch."
   },
   "unfinished_checks": [
-    "Build/pin the wire-v5 SDK/private release and fresh commit-named native consumer; retain older versioned origins.",
+    "Fix #12566 and pin a replacement candidate; preserve older origins and production traffic.",
     "Run and inspect desktop/mobile browser save/load/recovery/import and late-completion fault cases with the new artifacts; source/unit checks are not browser qualification.",
     "Complete dedicated-account real provider sign-in and save/close/sign-in/resume; see NEEDS_OWNER.md. Synthetic principals and bearer reads are separate evidence.",
     "Qualify rendered material layers with #12514; storing typed PNG references does not prove a rendered paint or generated material."
   ],
-  "activation": "No root homepage promotion, production traffic shift, launch schedule, or new payout rail."
+  "activation": "No root homepage promotion, production traffic shift, launch schedule, or new payout rail.",
+  "candidate_deployment": {
+    "production_traffic_shifted": false,
+    "editor_revision": "aethyrforge-editor-00012-les",
+    "preview_revision": "aethyrforge-preview-00012-roz",
+    "editor_image": "sha256:92f47d5e0b32a43df96089993c380c64ccde75a92bdf701ea621ed60541107ec",
+    "preview_image": "sha256:51218cc2a0d80a98d5cd11e273b6338d4e7f80068b98d6e766818e7ee123260c",
+    "editor_build": "2ade29c4-1850-4d93-85e5-cd79570889e9",
+    "preview_build": "4183be56-6045-4d8b-acd1-5611266c620b",
+    "builds": "SUCCESS",
+    "browser_qualification": "Failed saved restore; #12566. This candidate is not approved for promotion."
+  }
 }

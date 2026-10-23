@@ -69,6 +69,8 @@ impl World {
 /// How [`world_with`] differs from [`world`].
 #[derive(Default)]
 pub(crate) struct Options {
+    pub verse_reward_links: Option<std::path::PathBuf>,
+    pub verse_reward_service: Option<String>,
     pub uploads: Option<crate::ProjectUploadPolicy>,
     pub cad: Option<std::path::PathBuf>,
     pub gpui_chat: Option<std::path::PathBuf>,
@@ -170,6 +172,8 @@ async fn world_at(port: u16, options: Options) -> World {
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
     let mut config = crate::Config::development(root.path().join("tasks"));
     config.project_uploads = options.uploads.unwrap_or_default();
+    config.verse_reward_links = options.verse_reward_links;
+    config.verse_reward_service = options.verse_reward_service;
     config.cad = options.cad;
     config.gpui_chat = options.gpui_chat;
     config.everglade = options.everglade;

@@ -403,6 +403,10 @@ pub use projects::files::uploads::Policy as ProjectUploadPolicy;
 /// How the server runs.
 #[derive(Clone)]
 pub struct Config {
+    /// Operator-owned links from accepted Verse contributions to existing credit sources.
+    pub verse_reward_links: Option<PathBuf>,
+    /// Optional fixed earnings service origin; requests cannot choose it.
+    pub verse_reward_service: Option<String>,
     pub lab_backend: Option<Arc<dyn lab_store::backend::Backend>>,
     pub project_uploads: ProjectUploadPolicy,
     /// The local task store `/app` reads. It is never created.
@@ -661,6 +665,9 @@ impl Config {
     #[must_use]
     pub fn development(store: PathBuf) -> Self {
         Self {
+            verse_reward_links: std::env::var_os("OPENAGENTS_VERSE_REWARD_LINKS")
+                .map(PathBuf::from),
+            verse_reward_service: None,
             owner_notifications_url: std::env::var("OPENAGENTS_NOTIFY_SERVICE")
                 .unwrap_or_else(|_| "https://sync.openagents.com".into()),
             sync_origin: std::env::var("OPENAGENTS_SYNC_ORIGIN")

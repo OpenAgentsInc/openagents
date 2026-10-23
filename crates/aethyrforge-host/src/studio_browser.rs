@@ -626,6 +626,10 @@ async fn confirm(weak: Weak<RefCell<State>>) {
                 say("We applied your change.");
             }
             Err(error) => {
+                s.history.push("You · Change not applied".into());
+                if s.history.len() > 32 {
+                    s.history.remove(0);
+                }
                 if sent["action"]["type"] == "restore_project" {
                     projects::cancel_open(&mut s);
                 }

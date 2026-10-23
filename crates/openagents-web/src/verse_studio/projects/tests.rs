@@ -359,3 +359,260 @@ async fn material_images_are_private_bounded_verified_and_required_before_save()
         .await;
     assert_eq!(response.status, StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn contributor_history_uses_account_members_and_current_signed_test_credits() {
+    use crate::projects::tests::{Options, world_with};
+    use nostr::{domain::RelaySigner, earnings};
+    use std::collections::BTreeMap;
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let fixture = tempfile::tempdir().unwrap();
+    let links = fixture.path().join("operator-reward-links.json");
+    std::fs::write(&links,r#"{"schema":"openagents.verse.reward-links.v1","rule":"operator-recorded-credit-link.v1","test_ledger":true,"links":[]}"#).unwrap();
+    let events = Arc::new(Mutex::new(BTreeMap::<String, nostr::domain::Event>::new()));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let fail = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let route = {
+        let events = events.clone();
+        let calls = calls.clone();
+        let fail = fail.clone();
+        get(move |Path((party, source)): Path<(String, String)>| {
+            let events = events.clone();
+            let calls = calls.clone();
+            let fail = fail.clone();
+            async move {
+                calls.fetch_add(1, Ordering::SeqCst);
+                if fail.load(Ordering::SeqCst) {
+                    return answer(
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        json!({"error":{"message":"Synthetic test ledger unavailable"}}),
+                    );
+                }
+                let row = events.lock().unwrap().get(&source).cloned();
+                match row {
+                    Some(event) if earnings::read(&event).unwrap().party == party => answer(
+                        StatusCode::OK,
+                        json!({"events":[event.clone()],"issuers":[event.pubkey]}),
+                    ),
+                    _ => answer(StatusCode::NOT_FOUND, json!({})),
+                }
+            }
+        })
+    };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().route("/v1/earnings/public/{party}/sources/{source}", route),
+        )
+        .await
+        .unwrap();
+    });
+    let world = world_with(Options {
+        verse_reward_links: Some(links.clone()),
+        verse_reward_service: Some(origin),
+        ..Default::default()
+    })
+    .await;
+    let mut alice = Client::signed(&world, "octo-local").await;
+    let mut bob = Client::signed(&world, "quiet-local").await;
+    let (_, made) = alice
+        .call(
+            &world,
+            "POST",
+            "/v1/verse/studio/projects",
+            json!({"name":"Contribution evidence"}),
+        )
+        .await;
+    let id = made["id"].as_str().unwrap();
+    let path = format!("/v1/verse/studio/projects/{id}/haunted-house/main");
+    let (_, invited) = alice
+        .call(
+            &world,
+            "POST",
+            &format!("/v1/projects/{id}/invitations"),
+            json!({"role":"editor"}),
+        )
+        .await;
+    assert_eq!(
+        bob.call(
+            &world,
+            "POST",
+            "/v1/projects/invitations/accept",
+            json!({"code":invited["url"]})
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    let mut d = document();
+    d.source_draft = "failed WGSL draft".into();
+    let mut revisions = Vec::new();
+    for (index, who) in [0, 1, 1, 0].into_iter().enumerate() {
+        d.environment
+            .insert("fogDensity".into(), 0.01 + index as f64 * 0.001);
+        if index > 0 {
+            d.source_draft = d.active_source.clone();
+        }
+        let client = if who == 0 { &mut alice } else { &mut bob };
+        let (status, v) = client
+            .call(
+                &world,
+                "POST",
+                &path,
+                save(&format!("saved-{index}"), index as u64, &d),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{v}");
+        revisions.push(serde_json::from_value::<SavedRevision>(v["saved"].clone()).unwrap());
+    }
+    let history_path = format!("{path}/history");
+    let (_, before) = alice.call(&world, "GET", &history_path, Value::Null).await;
+    assert_eq!(before["data"][2]["summary"], "World · Fog");
+    assert_eq!(before["data"][2]["saved_summary"], "Changed the house");
+    assert_ne!(before["data"][1]["summary"], before["data"][2]["summary"]);
+    assert_eq!(before["data"][0]["source_state"], "draft");
+    assert_eq!(before["data"][0]["application_state"], "not_recorded");
+    assert_eq!(before["data"][0]["actor"]["name"], "You");
+    assert_ne!(before["data"][1]["actor"]["name"], "You");
+    assert!(
+        before["data"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|r| r["earnings"]["state"] == "not_recorded")
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let signer = RelaySigner::from_secret_hex(&"04".repeat(32)).unwrap();
+    let mut mappings = Vec::new();
+    for (index, state) in [
+        earnings::State::Pending,
+        earnings::State::Earned,
+        earnings::State::Reversed,
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let source = format!("{index:064x}");
+        let party = if index == 0 { "11" } else { "22" }.repeat(32);
+        let receipt = earnings::Receipt {
+            v: earnings::SCHEMA.into(),
+            party: party.clone(),
+            source: source.clone(),
+            category: earnings::Category::Pylon,
+            state,
+            amount_msat: 12001 + index as u64,
+            network: "bitcoin".into(),
+            recorded_at: now() - 10,
+            evidence: None,
+            plugin: None,
+            release: None,
+        };
+        events
+            .lock()
+            .unwrap()
+            .insert(source.clone(), receipt.event(&signer, now() - 1).unwrap());
+        let revision = &revisions[index];
+        mappings.push(json!({"contribution":aethyrforge_host::contribution_id(id,WorldNamespace::HauntedHouse,"main",revision),"actor":revision.actor,"party":party,"source":source}));
+    }
+    std::fs::write(&links,json!({"schema":"openagents.verse.reward-links.v1","rule":"operator-recorded-credit-link.v1","test_ledger":true,"links":mappings}).to_string()).unwrap();
+    for (version, state) in [(1, "pending"), (2, "confirmed"), (3, "reversed")] {
+        let url = format!("{history_path}/{version}/earnings");
+        let (status, value) = alice.call(&world, "GET", &url, Value::Null).await;
+        assert_eq!(status, StatusCode::OK, "{value}");
+        assert_eq!(value["earnings"]["credits"][0]["state"], state);
+        assert_eq!(value["earnings"]["credits"][0]["unit"], "msat");
+        assert_eq!(value["earnings"]["credits"][0]["test_ledger"], true);
+        assert_eq!(
+            alice.call(&world, "GET", &url, Value::Null).await.1,
+            value,
+            "repeated read cannot duplicate a credit"
+        );
+    }
+    assert_eq!(
+        alice
+            .call(
+                &world,
+                "GET",
+                &format!("{history_path}/4/earnings"),
+                Value::Null
+            )
+            .await
+            .1["earnings"]["state"],
+        "not_recorded"
+    );
+    let source = format!("{:064x}", 1);
+    let old = events.lock().unwrap()[&source].clone();
+    let mut receipt = earnings::read(&old).unwrap();
+    receipt.state = earnings::State::Paid;
+    events
+        .lock()
+        .unwrap()
+        .insert(source, receipt.event(&signer, now()).unwrap());
+    assert_eq!(
+        alice
+            .call(
+                &world,
+                "GET",
+                &format!("{history_path}/2/earnings"),
+                Value::Null
+            )
+            .await
+            .1["earnings"]["credits"][0]["state"],
+        "paid"
+    );
+    let (_, inspect) = bob
+        .call(&world, "GET", &format!("{history_path}/2"), Value::Null)
+        .await;
+    assert_eq!(inspect["version"], 2);
+    assert!(!inspect["changes"].as_array().unwrap().is_empty());
+    let mut guest = Client {
+        browser: Browser::default(),
+        csrf: String::new(),
+    };
+    let count = calls.load(Ordering::SeqCst);
+    assert_eq!(
+        guest
+            .call(
+                &world,
+                "GET",
+                &format!("{history_path}/2/earnings"),
+                Value::Null
+            )
+            .await
+            .0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), count);
+    assert_eq!(
+        alice
+            .call(
+                &world,
+                "POST",
+                &format!("{history_path}/2/earnings"),
+                json!({"amount":999999})
+            )
+            .await
+            .0,
+        StatusCode::METHOD_NOT_ALLOWED
+    );
+    fail.store(true, Ordering::SeqCst);
+    assert_eq!(
+        alice
+            .call(
+                &world,
+                "GET",
+                &format!("{history_path}/2/earnings"),
+                Value::Null
+            )
+            .await
+            .1["earnings"]["state"],
+        "unavailable"
+    );
+    assert!(!before.to_string().contains('@'));
+    server.abort();
+}

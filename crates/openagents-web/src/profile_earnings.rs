@@ -27,6 +27,7 @@ pub(crate) fn routes() -> Router<App> {
             any(private),
         )
         .route("/v1/earnings/public/{party}", get(public))
+        .route("/v1/earnings/public/{party}/sources/{source}", get(public))
         .route("/v1/earnings/public/receipts/{id}", get(public))
         .layer(axum::extract::DefaultBodyLimit::max(4096))
 }
@@ -195,6 +196,7 @@ fn valid_path(path: &str) -> bool {
         | ["", "v1", "device", "earnings", party, "receipts"] => key(party),
         ["", "v1", "device", "earnings", party, "receipts", source] => key(party) && key(source),
         ["", "v1", "earnings", "public", party] => key(party),
+        ["", "v1", "earnings", "public", party, "sources", source] => key(party) && key(source),
         ["", "v1", "earnings", "public", "receipts", id] => key(id),
         _ => false,
     }
@@ -230,6 +232,12 @@ pub(crate) fn extend_contract(document: &mut Value) {
             "get",
             "/v1/earnings/public/receipts/{id}",
             "publishedEarningReceipt",
+            false,
+        ),
+        (
+            "get",
+            "/v1/earnings/public/{party}/sources/{source}",
+            "currentPublishedEarning",
             false,
         ),
     ] {
@@ -298,6 +306,9 @@ mod tests {
         let party = "11".repeat(32);
         assert!(valid_path(&format!("/v1/device/earnings/{party}/receipts")));
         assert!(valid_path(&format!("/v1/earnings/public/receipts/{party}")));
+        assert!(valid_path(&format!(
+            "/v1/earnings/public/{party}/sources/{party}"
+        )));
         for path in [
             "/v1/device/earnings/..%2faccount",
             "/v1/device/earnings/../account",

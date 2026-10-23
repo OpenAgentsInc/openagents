@@ -200,6 +200,19 @@ async fn page() -> Response {
                         button id="edit-undo" type="button" { "Undo" } button id="edit-redo" type="button" { "Redo" }
                         ol id="edit-history-entries" {}
                         div id="project-tools" hidden {
+                            section id="contribution-tools" hidden {
+                                h3 { "Saved changes" }
+                                button id="project-history-refresh" type="button" { "Refresh saved changes" }
+                                p id="project-history-status" role="status" {}
+                                ol id="project-history-rows" {}
+                                button id="project-history-more" type="button" hidden { "Show earlier changes" }
+                                section id="project-history-detail" hidden aria-labelledby="project-history-version" {
+                                    h4 id="project-history-version" {}
+                                    ul id="project-history-changes" {}
+                                    p id="project-history-change-limit" {}
+                                    button id="project-history-download" type="button" { "Download editable version" }
+                                }
+                            }
                             h3 { "Saved worlds" }
                             label for="project-picker" { "Project" } select id="project-picker" { option value="" { "Choose a project" } }
                             button id="project-list" type="button" { "Find projects" }
@@ -222,7 +235,7 @@ async fn page() -> Response {
                                 p id="project-import-report" {}
                             }
                         }
-                        p { "Earnings: " strong { "Not recorded" } }
+                        p id="visit-earnings" { "Earnings: " strong { "Not recorded" } }
                     }
                 }
                 p id="edit-status" role="status" aria-live="polite" {}

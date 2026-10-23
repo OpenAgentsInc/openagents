@@ -485,6 +485,17 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12555: saved-version contributors and readable, non-mutating inspection use
+  existing project access. Row summaries name accepted changed fields instead
+  of repeating the save note. Exact current signed credits are read only through
+  bounded operator links; missing links show Not recorded, and test-ledger
+  amounts/states stay labeled. Source drafts and local editor outcomes remain
+  distinct. Focused source checks and integrated checks are recorded in
+  [contribution qualification](../verse/aethyrforge-contribution-qualification.json).
+  Rerun the retained desktop/mobile review and late-inspection checks with the
+  new SDK after #12566, then qualify dedicated-account receipt visibility,
+  revocation, and save/return in #12561. No real payout or provider pass is claimed.
+
 - #12554: wire v5 adds bounded editable exports and confirmed transactional
   restores; v1–v4 remain pinned. Existing account projects/private files own
   versioned saves, actor-aware undo, PNG resources, and per-person checkpoints.
@@ -492,7 +503,9 @@ The status lines below summarize each issue and its comments. Open the issue for
   Wasm checks, private contract checks (25), and kernel checks (23) pass.
   Late Save text stays unsaved; canceled loads and cross-context receipts cannot
   adopt fetched versions or old tools. Run the retained project browser check
-  against a fresh native consumer and new immutable wire-v5 release, then verify
+  against a fresh native consumer and new immutable wire-v5 release. Review
+  candidate `p4a25d82b1bf39f001` passed delayed-Save/base/canceled-load checks,
+  then hit the renderer UV compile defect tracked in #12566. Fix and rerun; verify
   real dedicated-account save/close/sign-in/resume, file imports, conflicts,
   revocation, and storage/network recovery in #12561. Provider access is in
   `NEEDS_OWNER.md`. [Project qualification](../verse/aethyrforge-project-qualification.json).

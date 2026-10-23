@@ -155,6 +155,8 @@ let lastGrant;
 let delaySave=false, releaseSave, saveArrived;
 const savedPosts=[];
 let delayCheckpoint=false, releaseCheckpoint, checkpointArrived;
+let delayInspection=false, releaseInspection, inspectionArrived;
+const checkHistory=process.env.AETHYRFORGE_CHECK_HISTORY === "1";
 
 try {
   await context.route("https://openagents.com/**", async (route) => {
@@ -235,6 +237,9 @@ try {
       delayCheckpoint=false;checkpointArrived?.();await new Promise(resolve=>releaseCheckpoint=resolve);
       await route.fulfill({status:503,headers:{"content-type":"application/json"},body:JSON.stringify({error:{message:"Synthetic late checkpoint transport failure"}})});return;
     }
+    if(delayInspection && url.pathname.endsWith("/history/1")) {
+      delayInspection=false;inspectionArrived?.();await new Promise(resolve=>releaseInspection=resolve);
+    }
     await route.fulfill({ status: response.status(), headers: returned, body });
     if (url.pathname.startsWith("/auth/"))
       console.log("Auth response fulfilled", url.pathname);
@@ -245,8 +250,10 @@ try {
   await page.setViewportSize({width:1440,height:1000});
   await page.goto("https://openagents.com/sign-in");
   await page.fill('input[name="credential"]',fixtureKey);
-  await page.locator('form[action="/sign-in"] button[type="submit"]').click();
-  await page.waitForTimeout(500);
+  await Promise.all([
+    page.waitForURL("https://openagents.com/", {waitUntil:"domcontentloaded"}),
+    page.locator('form[action="/sign-in"] button[type="submit"]').click(),
+  ]);
   await page.goto("https://openagents.com/new-lander/house");
   await page.waitForFunction(()=>window.hauntDemo && JSON.parse(window.hauntDemo.snapshot()).phase==="open" && JSON.parse(window.hauntDemo.snapshot()).status.authoring,null,{timeout:125000});
   await page.click("#world-edit");
@@ -274,6 +281,32 @@ try {
   await page.waitForFunction(()=>document.querySelector("#project-status").textContent.includes("version 2"));
   assert.equal(savedPosts[1].expected_version,1);
   assert.equal(savedPosts[1].document.source_draft,newer);
+  if(checkHistory) {
+    await page.click("#project-history-refresh");
+    await page.locator('[data-inspect-version="2"]').waitFor();
+    const historyRows=await page.locator("#project-history-rows").innerText();
+    assert.ok(historyRows.includes("Earnings: Not recorded"));
+    assert.ok(historyRows.includes("Draft source")&&!historyRows.includes("Saved editable world"),"The list identifies accepted changes before inspection");
+    const beforeInspection=JSON.parse(await page.evaluate(()=>window.hauntDemo.snapshot()));
+    const arrived=new Promise(resolve=>inspectionArrived=resolve);delayInspection=true;
+    await page.click('[data-inspect-version="1"]');await arrived;
+    await page.click('[data-inspect-version="2"]');
+    await page.waitForFunction(()=>document.querySelector("#project-history-changes").textContent.includes("Draft source"));
+    releaseInspection();await page.waitForTimeout(250);
+    assert.equal(await page.locator("#project-history-version").innerText(),"Version 2");
+    const review=await page.locator("#project-history-changes").innerText();
+    assert.ok(review.includes("Draft source")&&!review.includes("oa_material")&&!review.includes('"path"'),"Main inspection is a readable field list, not raw source/JSON");
+    const afterInspection=JSON.parse(await page.evaluate(()=>window.hauntDemo.snapshot()));
+    assert.equal(afterInspection.status.project.revision,beforeInspection.status.project.revision,"Inspection does not mutate the world");
+    const [download]=await Promise.all([page.waitForEvent("download"),page.click("#project-history-download")]);
+    await download.saveAs(path.join(out,"inspected-editable-version.json"));
+    assert.equal(JSON.parse(fs.readFileSync(path.join(out,"inspected-editable-version.json"))).source_draft,newer);
+    await page.screenshot({path:path.join(out,"contribution-review-desktop.png")});
+    await page.setViewportSize({width:390,height:844});
+    await page.locator("#project-history-detail").scrollIntoViewIfNeeded();
+    await page.screenshot({path:path.join(out,"contribution-review-mobile.png")});
+    await page.setViewportSize({width:1440,height:1000});
+  }
   const remote=await page.evaluate(async(id)=>{
     const session=await(await fetch("/v1/verse/studio/session")).json();
     const url=`/v1/verse/studio/projects/${id}/haunted-house/main`;
@@ -299,7 +332,7 @@ try {
   releaseCheckpoint();await page.waitForTimeout(500);
   assert.ok(!(await page.locator("#project-status").innerText()).includes("could not save"),"A late checkpoint failure must not describe another project");
   await page.screenshot({path:path.join(out,"project-workspace-desktop.png")});
-  const result={release:config.release,protocol_version:config.protocol_version,real_gpu_engine:true,real_native_project_store:true,synthetic_account_service:true,real_signin_provider:false,microphone_used:false,late_save_keeps_newer_source:true,acknowledged_base_advances:true,canceled_load_keeps_active_base:true,confirmed_load_restores_repairable_draft:true,late_checkpoint_failure_scoped:true,grants,errors};
+  const result={release:config.release,protocol_version:config.protocol_version,real_gpu_engine:true,real_native_project_store:true,synthetic_account_service:true,real_signin_provider:false,microphone_used:false,readable_contribution_review:checkHistory,late_inspection_keeps_latest:checkHistory,inspection_non_mutating:checkHistory,late_save_keeps_newer_source:true,acknowledged_base_advances:true,canceled_load_keeps_active_base:true,confirmed_load_restores_repairable_draft:true,late_checkpoint_failure_scoped:true,grants,errors};
   assert.deepEqual(errors,[]);
   fs.writeFileSync(path.join(out,"browser-project.json"),JSON.stringify(result,null,2));
   console.log(JSON.stringify(result));

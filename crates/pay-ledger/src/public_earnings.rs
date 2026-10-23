@@ -264,6 +264,13 @@ impl Store {
     pub fn event(&self, id: &str) -> Result<Option<Published>> {
         self.backend.event(id)
     }
+    /// Current owner-selected credit, independent of historical receipt versions.
+    pub fn current(&self, source: &str) -> Result<Option<Published>> {
+        if !hex64(source) {
+            return Err(Error::Invalid("earning source"));
+        }
+        self.backend.publication(source)
+    }
     pub fn hide(&self, account: &str, party: &str, source: &str) -> Result<()> {
         self.backend.hide(account, party, source)
     }
@@ -667,6 +674,22 @@ mod tests {
             .unwrap();
         assert_eq!(store.published(&party, 20).unwrap().len(), 1);
         assert!(store.event(&first.id).unwrap().is_some());
+        assert_eq!(
+            store.current(&paid.source).unwrap().unwrap().event.id,
+            event.id
+        );
+        assert_ne!(first.id, event.id);
+        assert_eq!(
+            earnings::read(&store.current(&paid.source).unwrap().unwrap().event)
+                .unwrap()
+                .state,
+            State::Paid
+        );
+        assert!(store.current("invalid source").is_err());
+        assert!(store.current(&"ff".repeat(32)).unwrap().is_none());
+        store.hide("account-a", &party, &paid.source).unwrap();
+        assert!(store.current(&paid.source).unwrap().is_none());
+        assert!(store.event(&first.id).unwrap().is_none());
         let text = serde_json::to_string(&event).unwrap();
         for private in [
             "private-payment-hash",

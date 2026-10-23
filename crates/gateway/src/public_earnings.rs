@@ -46,6 +46,10 @@ pub(crate) fn routes() -> Vec<(&'static str, MethodRouter<Arc<ServeState>>)> {
             axum::routing::delete(hide),
         ),
         ("/v1/earnings/public/{party}", get(public)),
+        (
+            "/v1/earnings/public/{party}/sources/{source}",
+            get(public_source),
+        ),
         ("/v1/earnings/public/receipts/{id}", get(event)),
     ]
     .into_iter()
@@ -375,6 +379,63 @@ async fn event(State(state): State<Arc<ServeState>>, Path(id): Path<String>) -> 
     match book.lock().await.event(&id) {
         Ok(Some(row)) if visible(&accounts, &row) => {
             answer(StatusCode::OK, json!({"event":row.event}))
+        }
+        Ok(_) => missing(),
+        Err(_) => unavailable(),
+    }
+}
+
+async fn public_source(
+    State(state): State<Arc<ServeState>>,
+    Path((party, source)): Path<(String, String)>,
+) -> Response {
+    if !hex64(&party) || !hex64(&source) {
+        return missing();
+    }
+    let Some(book) = &state.public_receipts else {
+        return unavailable();
+    };
+    let accounts = match tenancy::Accounts::open(&state.dir).and_then(|a| a.store()) {
+        Ok(a) => a,
+        Err(_) => return unavailable(),
+    };
+    let row = match book.lock().await.current(&source) {
+        Ok(Some(row)) => row,
+        Ok(None) => return missing(),
+        Err(_) => return unavailable(),
+    };
+    let receipt = match earnings::read(&row.event) {
+        Ok(r) if r.party == party && r.source == source && visible(&accounts, &row) => r,
+        _ => return missing(),
+    };
+    if let Source::Ledger { sequence, role } = &row.source {
+        let (Some(ledger), Some(signer)) = (&state.earnings, &state.receipt_signer) else {
+            return unavailable();
+        };
+        let current = match ledger.lock().await.public_earning(&party, *sequence, role) {
+            Ok(Some((_, r))) => r,
+            Ok(None) => return missing(),
+            Err(_) => return unavailable(),
+        };
+        if current.source != receipt.source {
+            return unavailable();
+        }
+        if book
+            .lock()
+            .await
+            .refresh(&row, &current, signer, crate::accounts::unix_now())
+            .is_err()
+        {
+            return unavailable();
+        }
+    }
+    match book.lock().await.current(&source) {
+        Ok(Some(row)) if visible(&accounts, &row) => {
+            let issuers = vec![row.event.pubkey.clone()];
+            answer(
+                StatusCode::OK,
+                json!({"events":[row.event],"issuers":issuers}),
+            )
         }
         Ok(_) => missing(),
         Err(_) => unavailable(),

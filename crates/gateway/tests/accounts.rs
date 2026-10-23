@@ -2376,3 +2376,60 @@ async fn apple_sign_in_was_removed_and_answers_gone() {
         "Sign in with Apple has been removed."
     );
 }
+
+#[tokio::test]
+async fn current_public_credit_respects_owner_publication_and_party_binding() {
+    use pay_ledger::public_earnings::{Invoice, Store};
+    use sha2::{Digest, Sha256};
+    let d = deploy(Some(account_config(None)), false).await;
+    let accounts = tenancy::Accounts::open(d.dir.path()).unwrap();
+    let party = "11".repeat(32);
+    let account = accounts
+        .sign_in_nostr(&party, "isolated-receipt-test")
+        .unwrap()
+        .account;
+    let mut book = Store::open(&d.dir.path().join("public-earnings/receipts.sqlite")).unwrap();
+    let signer = book.signer(&"04".repeat(32)).unwrap();
+    let preimage = "07".repeat(32);
+    let invoice = Invoice {
+        payment_hash: hex::encode(Sha256::digest(hex::decode(&preimage).unwrap())),
+        account: account.id.clone(),
+        party: party.clone(),
+        wallet: format!("02{}", "22".repeat(32)),
+        name: "test".into(),
+        revision: 1,
+        amount_msat: 12000,
+        issued_at: 100,
+        expires_at: 3700,
+        tip: true,
+        paid_at: None,
+    };
+    book.remember(&invoice).unwrap();
+    book.confirm(&invoice.payment_hash, &preimage, 200).unwrap();
+    let row = book.tips(&account.id, &party, 20).unwrap().pop().unwrap();
+    let event = book
+        .publish(&account.id, &row.source, &row.receipt, &signer, 201)
+        .unwrap();
+    let url = format!(
+        "{}/v1/earnings/public/{}/sources/{}",
+        d.address, party, row.receipt.source
+    );
+    let client = reqwest::Client::new();
+    let response = client.get(&url).send().await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let value: serde_json::Value = response.json().await.unwrap();
+    assert_eq!(value["events"][0]["id"], event.id);
+    assert_eq!(value["issuers"][0], event.pubkey);
+    assert!(!value.to_string().contains(&invoice.payment_hash));
+    assert!(!value.to_string().contains(&account.id));
+    let wrong = url.replace(&party, &"33".repeat(32));
+    assert_eq!(
+        client.get(wrong).send().await.unwrap().status(),
+        StatusCode::NOT_FOUND
+    );
+    book.hide(&account.id, &party, &row.receipt.source).unwrap();
+    assert_eq!(
+        client.get(&url).send().await.unwrap().status(),
+        StatusCode::NOT_FOUND
+    );
+}

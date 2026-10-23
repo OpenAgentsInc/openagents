@@ -27,8 +27,21 @@ impl CloudSession {
         authorization: Option<&str>,
         body: &[u8],
     ) -> Result<Answer> {
-        let service = std::env::var("OPENAGENTS_EARNINGS_SERVICE")
-            .unwrap_or_else(|_| self.account_service.clone());
+        self.earnings_call_from(method, path, authorization, body, None)
+            .await
+    }
+    pub(crate) async fn earnings_call_from(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        authorization: Option<&str>,
+        body: &[u8],
+        origin: Option<&str>,
+    ) -> Result<Answer> {
+        let service = origin
+            .map(str::to_string)
+            .or_else(|| std::env::var("OPENAGENTS_EARNINGS_SERVICE").ok())
+            .unwrap_or_else(|| self.account_service.clone());
         let url = reqwest::Url::parse(&service).map_err(|_| SessionError::Unavailable)?;
         if !matches!(url.scheme(), "https" | "http")
             || url.host_str().is_none()

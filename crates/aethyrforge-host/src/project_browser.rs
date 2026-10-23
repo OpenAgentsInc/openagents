@@ -1,9 +1,12 @@
 //! Account project saves and explicit host-origin import/export, separate from engine execution.
 use super::*;
 use std::collections::BTreeMap;
+#[path = "history_browser.rs"]
+mod history;
 
 #[derive(Default)]
 pub(super) struct Controller {
+    history: history::View,
     pub save: Option<Prepared>,
     project: String,
     cursor: ProjectCursor,
@@ -39,6 +42,7 @@ fn key(s: &State) -> String {
     )
 }
 pub(super) fn clear(s: &mut State) {
+    history::clear();
     let reopening_session = s.snapshot()["session"].as_str().map(str::to_string);
     s.projects = Controller {
         epoch: s.projects.epoch.wrapping_add(1),
@@ -489,6 +493,7 @@ pub(super) fn mount(
     listeners: &mut Vec<(EventTarget, &'static str, Handler)>,
 ) -> Result<(), JsValue> {
     hide("project-tools", false);
+    history::mount(rc, listeners)?;
     hide("project-save", false);
     for id in [
         "project-list",
@@ -539,6 +544,8 @@ pub(super) fn mount(
             s.pending = None;
             s.persist();
             s.projects.save = None;
+            s.projects.history = history::View::default();
+            history::clear();
             s.busy = false;
             s.projects.project = picker().value();
             s.projects.cursor.version = 0;
@@ -566,6 +573,7 @@ pub(super) fn mount(
     Ok(())
 }
 pub(super) fn poll(rc: &Rc<RefCell<State>>) {
+    history::poll(rc);
     let now = js_sys::Date::now();
     {
         let mut s = rc.borrow_mut();
