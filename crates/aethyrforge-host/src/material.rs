@@ -8,6 +8,24 @@ pub const SCAR_BACKEND: &str = "local-stylized-scars-v1";
 pub const MATERIAL_SIZE: usize = 256;
 pub const MAX_MATERIAL_PNG: usize = 16 * 1024;
 
+/// A delayed source read can finish only in the draft, account, and world where it began.
+#[derive(Clone, Debug)]
+pub struct MaterialDraftToken {
+    pub serial: u64,
+    pub context: crate::InputContext,
+    pub scope: crate::ConfirmationScope,
+}
+impl MaterialDraftToken {
+    pub fn accepts(
+        &self,
+        serial: u64,
+        context: Option<&crate::InputContext>,
+        scope: Option<&crate::ConfirmationScope>,
+    ) -> bool {
+        self.serial == serial && context == Some(&self.context) && self.scope.accepts(scope)
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct MaterialTarget {
@@ -254,6 +272,92 @@ impl ScarRecipe {
         }
         if requested_colors.len() > 1 {
             return Err("Choose one solid scar color for this layer.");
+        }
+        if ["vertical", "horizontal", "diagonal"]
+            .iter()
+            .filter(|word| words.contains(word))
+            .count()
+            > 1
+        {
+            return Err("Choose vertical, horizontal, or diagonal scars.");
+        }
+        const CONTROL_WORDS: &[&str] = &[
+            "add",
+            "make",
+            "give",
+            "create",
+            "generate",
+            "draw",
+            "put",
+            "paint",
+            "some",
+            "a",
+            "an",
+            "the",
+            "my",
+            "this",
+            "selected",
+            "werewolf",
+            "wolf",
+            "face",
+            "its",
+            "his",
+            "her",
+            "their",
+            "with",
+            "on",
+            "across",
+            "over",
+            "to",
+            "of",
+            "and",
+            "please",
+            "can",
+            "you",
+            "local",
+            "stylized",
+            "scar",
+            "scars",
+            "cheek",
+            "cheeks",
+            "forehead",
+            "left",
+            "right",
+            "thin",
+            "thick",
+            "vertical",
+            "horizontal",
+            "diagonal",
+            "healed",
+            "fresh",
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "few",
+            "pink",
+            "brown",
+            "red",
+            "blue",
+            "green",
+            "purple",
+            "tan",
+            "black",
+            "white",
+            "orange",
+            "yellow",
+            "gray",
+            "grey",
+        ];
+        if words
+            .iter()
+            .any(|word| !CONTROL_WORDS.contains(word) && !word.bytes().all(|b| b.is_ascii_digit()))
+        {
+            return Err("Use the listed colors and scar controls, or paint this detail by hand.");
         }
         let color = requested_colors.first().copied().unwrap_or(if healed {
             [167, 120, 102, 215]
@@ -539,6 +643,38 @@ impl MaterialBundle {
     }
 }
 
+/// An editable download includes creator-owned images, never engine or vendor assets.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct MaterialProjectArchive {
+    pub schema: String,
+    pub document: crate::ProjectDocument,
+    pub materials: Vec<MaterialBundle>,
+}
+impl MaterialProjectArchive {
+    pub fn validate(&self) -> Result<(), Error> {
+        if self.schema != "openagents.verse.project-export.v2" {
+            return Err(Error::Invalid("project export"));
+        }
+        crate::Action::RestoreMaterialProject {
+            document: self.document.clone(),
+            checkpoint: None,
+            materials: self.materials.clone(),
+        }
+        .validate()
+    }
+    pub fn restore(&self, checkpoint: Option<crate::Checkpoint>) -> Result<crate::Action, Error> {
+        self.validate()?;
+        let action = crate::Action::RestoreMaterialProject {
+            document: self.document.clone(),
+            checkpoint,
+            materials: self.materials.clone(),
+        };
+        action.validate()?;
+        Ok(action)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum BrushMode {
@@ -715,6 +851,51 @@ mod tests {
         serde_json::from_value(serde_json::json!({"schema":"openagents.verse.project.v1","namespace":"haunted-house","template":{"world":"house","engine_release":"fixture-6","asset_set_sha256":"a".repeat(64),"scene_sha256":"b".repeat(64)},"source_revision":0,"entities":{"wolf-a":{"asset":"custom:haunt:werewolf","position":[0,0,0],"yaw":0,"scale":1}},"rooms":{},"removed_walls":[],"materials":{},"environment":{},"source_draft":"","active_source":"","layers":[],"originals":[]})).unwrap()
     }
     #[test]
+    fn late_source_tokens_refuse_newer_paint_requests_and_other_werewolves_or_accounts() {
+        let context = crate::InputContext {
+            session: "engine-a".into(),
+            project: crate::Project {
+                id: "house".into(),
+                branch: "main".into(),
+                revision: 3,
+            },
+            selection: Some(crate::SelectedObject {
+                id: "wolf-a".into(),
+                asset: "custom:haunt:werewolf".into(),
+                position: [0., 0., 0.],
+            }),
+        };
+        let scope = crate::ConfirmationScope {
+            account: Some("artist-a".into()),
+            project: "saved-a".into(),
+            epoch: 2,
+            engine_session: "engine-a".into(),
+        };
+        let import = MaterialDraftToken {
+            serial: 7,
+            context: context.clone(),
+            scope: scope.clone(),
+        };
+        assert!(import.accepts(7, Some(&context), Some(&scope)));
+        // A stroke, regeneration, newer import, or newer open advances the local token.
+        for serial in [8, 9, 10] {
+            assert!(!import.accepts(serial, Some(&context), Some(&scope)));
+        }
+        let mut other = context.clone();
+        other.selection.as_mut().unwrap().id = "wolf-b".into();
+        assert!(!import.accepts(7, Some(&other), Some(&scope)));
+        let mut changed = scope.clone();
+        changed.epoch += 1;
+        assert!(!import.accepts(7, Some(&context), Some(&changed)));
+        changed = scope.clone();
+        changed.account = Some("artist-b".into());
+        assert!(!import.accepts(7, Some(&context), Some(&changed)));
+        changed = scope.clone();
+        changed.engine_session = "engine-b".into();
+        assert!(!import.accepts(7, Some(&context), Some(&changed)));
+        assert!(!import.accepts(7, None, Some(&scope)));
+    }
+    #[test]
     fn saved_material_sources_and_renderable_bundles_share_the_same_image_bound() {
         let resource = ProjectResource {
             sha256: "a".repeat(64),
@@ -823,6 +1004,10 @@ mod tests {
             "two or four scars",
             "add 999 scars",
             "make scars glow",
+            "two cyan scars",
+            "two beige scars",
+            "two tiny scars",
+            "two vertical diagonal scars",
         ] {
             assert!(
                 ScarRecipe::from_request(text, ScarArea::LeftCheek, 5).is_err(),

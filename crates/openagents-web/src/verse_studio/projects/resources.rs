@@ -71,13 +71,24 @@ pub(super) async fn present(
             .read_key(&k)
             .await
             .map_err(|e| stored(&e))?;
-        if !blob.is_some_and(|(b, _)| {
+        if !blob.as_ref().is_some_and(|(b, _)| {
             b.len() as u64 == layer.texture.bytes && project_hash(&b) == layer.texture.sha256
         }) {
             return Err(refused(
                 StatusCode::CONFLICT,
                 "missing_image",
                 "The material image did not finish saving. Upload it again.",
+            ));
+        }
+        if layer.surface.starts_with("material-")
+            && blob
+                .as_ref()
+                .is_none_or(|(bytes, _)| aethyrforge_host::MaterialImage::new(bytes).is_err())
+        {
+            return Err(refused(
+                StatusCode::BAD_REQUEST,
+                "invalid_material_image",
+                "Use a 256 × 256 PNG up to 16 KiB for each face layer.",
             ));
         }
     }

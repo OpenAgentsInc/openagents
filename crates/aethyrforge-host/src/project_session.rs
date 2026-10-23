@@ -46,13 +46,14 @@ impl ProjectCursor {
         current_revision: u64,
         sent_source: &str,
         current_source: &str,
+        newer_drafts: bool,
     ) -> Option<SaveFeedback> {
         if self.version != expected || accepted != expected.checked_add(1)? {
             return None;
         }
         self.version = accepted;
         Some(
-            if sent_revision == current_revision && sent_source == current_source {
+            if sent_revision == current_revision && sent_source == current_source && !newer_drafts {
                 SaveFeedback::Saved
             } else {
                 SaveFeedback::NewerEdits
@@ -63,6 +64,19 @@ impl ProjectCursor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn a_material_draft_after_post_advances_the_saved_base_but_stays_unsaved() {
+        let mut cursor = ProjectCursor::default();
+        assert_eq!(
+            cursor.saved(0, 1, 4, 4, "same source", "same source", true),
+            Some(SaveFeedback::NewerEdits)
+        );
+        assert_eq!(cursor.version, 1);
+        assert_eq!(
+            cursor.saved(1, 2, 4, 4, "same source", "same source", false),
+            Some(SaveFeedback::Saved)
+        );
+    }
     #[test]
     fn an_applied_restore_receipt_cannot_complete_in_a_different_context() {
         let sent = ConfirmationScope {
@@ -104,18 +118,18 @@ mod tests {
         let posted = editor.clone();
         editor.push_str("\nunfinished new edit");
         assert_eq!(
-            cursor.saved(0, 1, 4, 4, &posted, &editor),
+            cursor.saved(0, 1, 4, 4, &posted, &editor, false),
             Some(SaveFeedback::NewerEdits)
         );
         assert_eq!(cursor.version, 1);
         assert_eq!(editor, "approved source\nunfinished new edit");
-        assert_eq!(cursor.saved(0, 1, 4, 4, &posted, &editor), None);
+        assert_eq!(cursor.saved(0, 1, 4, 4, &posted, &editor, false), None);
         assert_eq!(
-            cursor.saved(1, 2, 4, 5, &editor, &editor),
+            cursor.saved(1, 2, 4, 5, &editor, &editor, false),
             Some(SaveFeedback::NewerEdits)
         );
         assert_eq!(
-            cursor.saved(2, 3, 5, 5, &editor, &editor),
+            cursor.saved(2, 3, 5, 5, &editor, &editor, false),
             Some(SaveFeedback::Saved)
         );
     }

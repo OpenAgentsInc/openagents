@@ -238,11 +238,27 @@ pub(super) fn mount(
     clear();
     let weak = Rc::downgrade(rc);
     listen(listeners, "project-history-download", "click", move |_| {
-        if let Some(rc) = weak.upgrade() {
-            if let Some(document) = &rc.borrow().projects.history.inspected {
-                let _ = download(document);
+        let Some(rc) = weak.upgrade() else { return };
+        let Some(document) = rc.borrow().projects.history.inspected.clone() else {
+            return;
+        };
+        let project = rc.borrow().projects.project.clone();
+        let turn = rc.borrow().projects.history.turn;
+        let weak = Rc::downgrade(&rc);
+        spawn_local(async move {
+            match files::saved_archive(&weak, &project, document).await {
+                Ok(archive) => {
+                    let _ = files::download(&archive);
+                }
+                Err(_) => {
+                    if let Some(rc) = weak.upgrade() {
+                        if rc.borrow().projects.history.turn == turn {
+                            element("project-history-status").set_text_content(Some("The version's source images could not open. Try again before leaving this world."));
+                        }
+                    }
+                }
             }
-        }
+        });
     })?;
     let weak = Rc::downgrade(rc);
     listen(listeners, "project-history-refresh", "click", move |_| {

@@ -1,12 +1,15 @@
 //! Account project saves and explicit host-origin import/export, separate from engine execution.
 use super::*;
 use std::collections::BTreeMap;
+#[path = "project_material_browser.rs"]
+mod files;
 #[path = "history_browser.rs"]
 mod history;
 
 #[derive(Default)]
 pub(super) struct Controller {
     history: history::View,
+    images: BTreeMap<String, MaterialImage>,
     pub save: Option<Prepared>,
     project: String,
     cursor: ProjectCursor,
@@ -61,6 +64,7 @@ pub(super) fn confirmation_scope(s: &State) -> Option<ConfirmationScope> {
     })
 }
 pub(super) fn world_reloading(s: &mut State) {
+    materials::clear(s);
     s.projects.reopening_session = s.snapshot()["session"].as_str().map(str::to_string);
     s.restore_complete = false;
 }
@@ -108,7 +112,8 @@ async fn exported(weak: &Weak<RefCell<State>>) -> Result<ProjectDocument, JsValu
 fn keep(rc: &Rc<RefCell<State>>, d: &ProjectDocument) -> Result<(), JsValue> {
     let mut s = rc.borrow_mut();
     s.save_visit();
-    let value = json!({"owner":s.account,"project":s.projects.project,"version":s.projects.cursor.version,"document":d,"visit":s.visit});
+    let archive = files::cached(&s, d)?;
+    let value = json!({"owner":s.account,"project":s.projects.project,"version":s.projects.cursor.version,"document":d,"materials":archive.materials,"visit":s.visit});
     let storage = window().local_storage()?.ok_or_else(|| {
         JsValue::from_str("Device storage isn't available. Export an editable copy.")
     })?;
@@ -117,23 +122,6 @@ fn keep(rc: &Rc<RefCell<State>>, d: &ProjectDocument) -> Result<(), JsValue> {
         .map_err(|_| {
             JsValue::from_str("Device storage is full or blocked. Export an editable copy.")
         })?;
-    Ok(())
-}
-fn download(d: &ProjectDocument) -> Result<(), JsValue> {
-    let text = serde_json::to_string_pretty(d).map_err(|_| JsValue::NULL)?;
-    let a = window().document().unwrap().create_element("a")?;
-    a.set_attribute(
-        "href",
-        &format!(
-            "data:application/json;charset=utf-8,{}",
-            js_sys::encode_uri_component(&text)
-        ),
-    )?;
-    a.set_attribute("download", "openagents-world.json")?;
-    let body = window().document().unwrap().body().unwrap();
-    body.append_child(&a)?;
-    a.unchecked_ref::<web_sys::HtmlElement>().click();
-    a.remove();
     Ok(())
 }
 fn same(s: &State, account: &Option<String>, epoch: u64) -> bool {
@@ -166,15 +154,31 @@ async fn list(weak: Weak<RefCell<State>>) -> Result<(), JsValue> {
 }
 async fn prepare_save(weak: Weak<RefCell<State>>) -> Result<(), JsValue> {
     let rc = weak.upgrade().ok_or(JsValue::NULL)?;
+    if materials::has_unsaved(&rc.borrow()) {
+        return Err(JsValue::from_str(
+            "Apply your face draft, or export and discard it, before saving this world.",
+        ));
+    }
     if rc.borrow().busy {
         return Err(JsValue::from_str(
             "Let the current change finish before saving.",
         ));
     }
     let d = exported(&weak).await?;
+    if materials::has_unsaved(&rc.borrow()) {
+        return Err(JsValue::from_str(
+            "Apply your face draft, or export and discard it, before saving this world.",
+        ));
+    }
     if rc.borrow().busy {
         return Err(JsValue::from_str(
             "Let the current change finish before saving.",
+        ));
+    }
+    let _archive = files::collect(&weak, &d).await?;
+    if materials::has_unsaved(&rc.borrow()) {
+        return Err(JsValue::from_str(
+            "Apply or export your face draft before saving this world.",
         ));
     }
     let recovery = keep(&rc, &d);
@@ -218,18 +222,30 @@ pub(super) async fn confirm_save(weak: Weak<RefCell<State>>) {
         (s.account.clone(), s.projects.epoch)
     };
     let result=async {
+        if materials::has_unsaved(&rc.borrow()) {return Err(JsValue::from_str("Your face draft changed. Apply it, or export and discard it, then review Save project again."));}
         let current=exported(&weak).await?;
+        let archive=files::collect(&weak,&current).await?;
         let (project, expected, body)={
             let mut s=rc.borrow_mut();
             if !same(&s,&account,epoch) || s.busy {return Ok(());}
+            if materials::has_unsaved(&s) {return Err(JsValue::from_str("Your face draft changed. Apply it, or export and discard it, then review Save project again."));}
             let p=s.projects.save.as_ref().ok_or(JsValue::NULL)?;
-            if p.owner.as_ref().is_some_and(|o|Some(o)!=s.account.as_ref()) || p.document!=current || p.session!=s.snapshot()["session"].as_str().unwrap_or_default() {return Err(JsValue::from_str("The world or source draft changed. Review Save project again."));}
+            if p.owner.as_ref().is_some_and(|o|Some(o)!=s.account.as_ref()) || p.document!=current || current.source_draft!=element("edit-source").unchecked_into::<HtmlTextAreaElement>().value() || s.snapshot()["status"]["project"]["revision"].as_u64()!=Some(current.source_revision) || p.session!=s.snapshot()["session"].as_str().unwrap_or_default() {return Err(JsValue::from_str("The world or source draft changed. Review Save project again."));}
             if s.account.is_none() {s.auth_card();return Ok(());}
             if p.project.is_empty() {hide("edit-auth",true);status("You're signed in. Find or create a project, then choose Save project and confirm.");return Ok(());}
             let body=json!({"csrf":s.csrf,"command_id":p.command,"expected_version":p.version,"document":p.document,"summary":"Saved editable world"});
             let sent=(p.project.clone(),p.version,body);s.busy=true;sent
         };
-        let saved=project_api(&weak,&format!("projects/{project}/haunted-house/main"),Some(body)).await;
+        let saved=async {
+            files::upload(&weak,&project,&archive).await?;
+            {
+                let s=rc.borrow();
+                if !same(&s,&account,epoch) || materials::has_unsaved(&s) || current.source_draft!=element("edit-source").unchecked_into::<HtmlTextAreaElement>().value() || s.snapshot()["status"]["project"]["revision"].as_u64()!=Some(current.source_revision) {
+                    return Err(JsValue::from_str("The world or a draft changed. Review Save project again."));
+                }
+            }
+            project_api(&weak,&format!("projects/{project}/haunted-house/main"),Some(body)).await
+        }.await;
         let cp={
             let mut s=rc.borrow_mut();
             if !same(&s,&account,epoch) {return Ok(());}
@@ -239,7 +255,8 @@ pub(super) async fn confirm_save(weak: Weak<RefCell<State>>) {
             let accepted=value["saved"]["version"].as_u64().ok_or(JsValue::NULL)?;
             let revision=s.snapshot()["status"]["project"]["revision"].as_u64().unwrap_or(MAX_SAFE_INTEGER);
             let source=element("edit-source").unchecked_into::<HtmlTextAreaElement>().value();
-            let feedback=s.projects.cursor.saved(expected,accepted,current.source_revision,revision,&current.source_draft,&source).ok_or_else(||JsValue::from_str("The saved base changed. Open the latest project version before saving again."))?;
+            let newer_material=materials::has_unsaved(&s);
+            let feedback=s.projects.cursor.saved(expected,accepted,current.source_revision,revision,&current.source_draft,&source,newer_material).ok_or_else(||JsValue::from_str("The saved base changed. Open the latest project version before saving again."))?;
             s.projects.save=None;hide("edit-auth",true);
             if feedback==SaveFeedback::NewerEdits {edited(&s);}else{status(&format!("Saved to project · version {}. Publishing is a separate choice.",s.projects.cursor.version));}
             s.save_visit();
@@ -250,7 +267,7 @@ pub(super) async fn confirm_save(weak: Weak<RefCell<State>>) {
         if !same(&s,&account,epoch) {return Ok(());}
         if checkpoint_result.is_err() {
             let source=element("edit-source").unchecked_into::<HtmlTextAreaElement>().value();
-            let newer=source!=current.source_draft || s.snapshot()["status"]["project"]["revision"].as_u64()!=Some(current.source_revision);
+            let newer=source!=current.source_draft || s.snapshot()["status"]["project"]["revision"].as_u64()!=Some(current.source_revision) || materials::has_unsaved(&s);
             status(if newer {"The earlier world version is saved. Newer edits and your place or tools still need saving; keep a device copy."}else{"The world is saved. Your place and tools could not save; keep a device copy before leaving."});
         }
         Ok::<_,JsValue>(())
@@ -332,14 +349,19 @@ async fn open(weak: Weak<RefCell<State>>, undo: bool) -> Result<(), JsValue> {
         })
         .map(|c| c.visit);
     let checkpoint = visit.as_ref().and_then(|v| v.checkpoint.clone());
+    let action = files::restore(&weak, &id, document, checkpoint).await;
+    if !same(&rc.borrow(), &account, epoch) || rc.borrow().projects.open_serial != serial {
+        return Ok(());
+    }
+    let action = match action {
+        Ok(action) => action,
+        Err(error) => {
+            cancel_open(&mut rc.borrow_mut());
+            return Err(error);
+        }
+    };
     rc.borrow_mut().projects.restored_visit = visit;
-    queue_change(
-        &rc,
-        Action::RestoreProject {
-            document,
-            checkpoint,
-        },
-    );
+    queue_change(&rc, action);
     status("Review opening this saved world. Your current world stays until you confirm.");
     Ok(())
 }
@@ -382,12 +404,14 @@ async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
         "project-undo" => return open(weak, true).await,
         "project-device" => {
             let d = exported(&weak).await?;
+            files::collect(&weak, &d).await?;
             keep(&rc, &d)?;
             status("Kept on this device only. Choose Save project to keep it in your account.");
         }
         "project-export" => {
             let d = exported(&weak).await?;
-            download(&d)?;
+            let archive = files::collect(&weak, &d).await?;
+            files::download(&archive)?;
             status("Editable copy exported. It includes unfinished source and original imports.");
         }
         "project-recover" => {
@@ -408,14 +432,37 @@ async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
             let d: ProjectDocument =
                 serde_json::from_value(v["document"].clone()).map_err(|_| JsValue::NULL)?;
             d.validate().map_err(|_| JsValue::NULL)?;
-            drop(s);
-            queue_change(
-                &rc,
+            let action = if let Some(images) = v.get("materials") {
+                let archive = MaterialProjectArchive {
+                    schema: "openagents.verse.project-export.v2".into(),
+                    document: d,
+                    materials: serde_json::from_value(images.clone()).map_err(|_| {
+                        JsValue::from_str(
+                            "The device copy is missing its face images. Keep your exported files.",
+                        )
+                    })?,
+                };
+                archive.restore(None).map_err(|_| {
+                    JsValue::from_str("The device copy needs its matching face images.")
+                })?
+            } else {
+                if !project_materials(&d).map_err(|_| JsValue::NULL)?.is_empty() {
+                    return Err(JsValue::from_str(
+                        "This older device copy has no face images. Open the account save or your complete exported world.",
+                    ));
+                }
                 Action::RestoreProject {
                     document: d,
                     checkpoint: None,
-                },
-            );
+                }
+            };
+            drop(s);
+            if let Action::RestoreMaterialProject { materials, .. } = &action {
+                for bundle in materials {
+                    files::remember(&mut rc.borrow_mut(), bundle);
+                }
+            }
+            queue_change(&rc, action);
             status("Review opening the device copy. It has not been saved to your project.");
         }
         "project-import" => {
@@ -426,6 +473,58 @@ async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
             }
             let account = rc.borrow().account.clone();
             let epoch = rc.borrow().projects.epoch;
+            let serial = rc.borrow().projects.open_serial;
+            if files.length() == 1 {
+                let file = files.get(0).ok_or(JsValue::NULL)?;
+                if file.size() > 1024. * 1024. {
+                    return Err(JsValue::from_str(
+                        "Choose an editable world export up to 1 MiB.",
+                    ));
+                }
+                let text = JsFuture::from(file.text())
+                    .await?
+                    .as_string()
+                    .ok_or(JsValue::NULL)?;
+                if !same(&rc.borrow(), &account, epoch)
+                    || rc.borrow().projects.open_serial != serial
+                {
+                    return Ok(());
+                }
+                let action = if let Ok(archive) =
+                    serde_json::from_str::<MaterialProjectArchive>(&text)
+                {
+                    let action=archive.restore(None).map_err(|_|JsValue::from_str("This exported world has an unsupported or missing face image. Keep the original file."))?;
+                    for bundle in &archive.materials {
+                        files::remember(&mut rc.borrow_mut(), bundle);
+                    }
+                    Some(action)
+                } else if let Ok(document) = serde_json::from_str::<ProjectDocument>(&text) {
+                    document.validate().map_err(|_| {
+                        JsValue::from_str("This world export is too large or unsupported.")
+                    })?;
+                    if !project_materials(&document)
+                        .map_err(|_| JsValue::NULL)?
+                        .is_empty()
+                    {
+                        return Err(JsValue::from_str(
+                            "Open the complete world export that includes its face images.",
+                        ));
+                    }
+                    Some(Action::RestoreProject {
+                        document,
+                        checkpoint: None,
+                    })
+                } else {
+                    None
+                };
+                if let Some(action) = action {
+                    element("project-import-report").set_text_content(Some(
+                        "Editable world and source images opened for review.",
+                    ));
+                    queue_change(&rc, action);
+                    return Ok(());
+                }
+            }
             let mut originals = Vec::new();
             for index in 0..files.length() {
                 let f = files.get(index).ok_or(JsValue::NULL)?;
@@ -444,7 +543,7 @@ async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
                     text,
                 });
             }
-            if !same(&rc.borrow(), &account, epoch) {
+            if !same(&rc.borrow(), &account, epoch) || rc.borrow().projects.open_serial != serial {
                 return Ok(());
             }
             let (document, report) = if originals.len() == 1
@@ -472,7 +571,7 @@ async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
             document
                 .validate()
                 .map_err(|_| JsValue::from_str("This editable file is not supported."))?;
-            if !same(&rc.borrow(), &account, epoch) {
+            if !same(&rc.borrow(), &account, epoch) || rc.borrow().projects.open_serial != serial {
                 return Ok(());
             }
             element("project-import-report").set_text_content(Some(&report));
@@ -545,6 +644,8 @@ pub(super) fn mount(
             s.persist();
             s.projects.save = None;
             s.projects.history = history::View::default();
+            s.projects.images.clear();
+            materials::clear(&mut s);
             history::clear();
             s.busy = false;
             s.projects.project = picker().value();
@@ -727,6 +828,19 @@ pub(super) fn restored(s: &mut State, action: &Value) {
     }
 }
 
+pub(super) fn record_materials(s: &mut State, action: &Value) {
+    if let Ok(action) = serde_json::from_value::<Action>(action.clone()) {
+        match action {
+            Action::ApplyMaterial { material } => files::remember(s, &material),
+            Action::RestoreMaterialProject { materials, .. } => {
+                for material in materials {
+                    files::remember(s, &material)
+                }
+            }
+            _ => {}
+        }
+    }
+}
 pub(super) fn cancel_open(s: &mut State) {
     s.projects.open_serial = s.projects.open_serial.wrapping_add(1);
     s.projects.opening = false;
@@ -745,6 +859,7 @@ pub(super) fn edited(s: &State) {
 }
 
 fn ended(s: &mut State) {
+    materials::clear(s);
     s.stop_input();
     s.pending = None;
     s.persist();

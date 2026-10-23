@@ -21,7 +21,7 @@ url = "2"
 wasm-bindgen = "0.2.128"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
-web-sys = { version = "0.3", features = ["Window", "KeyboardEvent", "Document", "Element", "Node", "HtmlElement", "HtmlIFrameElement", "Event", "EventTarget", "MessageEvent", "MessagePort", "MessageChannel", "Crypto", "Performance", "Location", "Storage", "HtmlDialogElement", "HtmlInputElement", "HtmlSelectElement", "FileList", "File", "Blob", "HtmlTextAreaElement", "Request", "RequestInit", "RequestCredentials", "Response", "Headers", "BroadcastChannel"] }
+web-sys = { version = "0.3", features = ["Window", "KeyboardEvent", "Document", "Element", "Node", "HtmlElement", "HtmlIFrameElement", "Event", "EventTarget", "MessageEvent", "MessagePort", "MessageChannel", "Crypto", "Performance", "Location", "Storage", "HtmlDialogElement", "HtmlInputElement", "HtmlSelectElement", "FileList", "File", "Blob", "HtmlTextAreaElement", "Request", "RequestInit", "RequestCredentials", "Response", "Headers", "BroadcastChannel", "HtmlCanvasElement", "CanvasRenderingContext2d", "ImageData", "ImageBitmap", "PointerEvent", "DomRect"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
 openagents-workspace-hack = { version = "0.1" }

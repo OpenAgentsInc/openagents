@@ -16,6 +16,8 @@ use web_sys::{
 };
 const SAVED: &str = "openagents.verse.pending.v1";
 const VISIT: &str = "openagents.verse.studio.v1";
+#[path = "material_browser.rs"]
+mod materials;
 #[path = "project_browser.rs"]
 mod projects;
 type Handler = Closure<dyn FnMut(Event)>;
@@ -74,6 +76,7 @@ struct Resume {
 }
 struct State {
     projects: projects::Controller,
+    materials: materials::Controller,
     demo: BrowserDemo,
     tab: String,
     account: Option<String>,
@@ -306,6 +309,10 @@ impl State {
                         "Compile and apply the world effect to every material in the house.".into(),
                     ]
                 }
+                Action::ApplyMaterial { material } => vec![format!(
+                    "Apply generated scars and handmade paint to {}'s face. Other objects stay as they are.",
+                    material.document.target.entity
+                )],
                 Action::Undo => vec!["Undo the most recent change.".into()],
                 Action::Redo => vec!["Redo the last undone change.".into()],
                 _ => vec!["Apply the requested change.".into()],
@@ -447,6 +454,7 @@ async fn refresh(weak: Weak<RefCell<State>>) {
     }
     if policy == ResumePolicy::Discard {
         projects::clear(&mut s);
+        materials::clear(&mut s);
         s.stop_input();
         s.pending = None;
         s.persist();
@@ -467,6 +475,7 @@ async fn refresh(weak: Weak<RefCell<State>>) {
     }
     let was_signed = s.account.is_some();
     s.account = account;
+    materials::signed_in(&mut s);
     s.csrf = value["csrf"].as_str().map(str::to_string);
     if policy == ResumePolicy::Reconfirm && (s.pending.is_some() || s.projects.save.is_some()) {
         let _ = s.request(&Action::RevokeAuthorization);
@@ -602,8 +611,15 @@ async fn confirm(weak: Weak<RefCell<State>>) {
         s.busy = false;
         match result {
             Ok(()) => {
-                if sent["action"]["type"] == "restore_project" {
+                if matches!(
+                    sent["action"]["type"].as_str(),
+                    Some("restore_project" | "restore_material_project")
+                ) {
                     projects::restored(&mut s, &sent["action"]);
+                }
+                projects::record_materials(&mut s, &sent["action"]);
+                if sent["action"]["type"] == "apply_material" {
+                    materials::applied(&mut s);
                 }
                 s.owned_world = scope.account.clone();
                 s.pending = None;
@@ -636,7 +652,10 @@ async fn confirm(weak: Weak<RefCell<State>>) {
                 if s.history.len() > 32 {
                     s.history.remove(0);
                 }
-                if sent["action"]["type"] == "restore_project" {
+                if matches!(
+                    sent["action"]["type"].as_str(),
+                    Some("restore_project" | "restore_material_project")
+                ) {
                     projects::cancel_open(&mut s);
                 }
                 hide("edit-auth", true);
@@ -870,6 +889,9 @@ fn route_request(rc: &Rc<RefCell<State>>) {
             say("Your requested change is still here.");
         }
         Ok(RequestControl::ReviewCandidate) => {
+            if materials::review_voice(rc) {
+                return;
+            }
             if let Some(control) = element("edit-kiln-review").dyn_ref::<web_sys::HtmlElement>() {
                 control.click();
             }
@@ -931,7 +953,12 @@ fn route_request(rc: &Rc<RefCell<State>>) {
                 say("This option isn't available here yet. Nothing has changed.");
             }
         }
-        Ok(RequestControl::AskKiln) => spawn_local(ask_kiln(Rc::downgrade(rc))),
+        Ok(RequestControl::AskKiln) => {
+            if !materials::route(rc, &text) {
+                materials::forget_voice(&mut rc.borrow_mut());
+                spawn_local(ask_kiln(Rc::downgrade(rc)));
+            }
+        }
         Err(message) => say(message),
     }
 }
@@ -941,7 +968,10 @@ fn queue_change(rc: &Rc<RefCell<State>>, mut action: Action) {
         return;
     }
     s.projects.save = None;
-    if !matches!(action, Action::RestoreProject { .. }) {
+    if !matches!(
+        action,
+        Action::RestoreProject { .. } | Action::RestoreMaterialProject { .. }
+    ) {
         projects::cancel_open(&mut s);
     }
     let snapshot = s.snapshot();
@@ -1044,6 +1074,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
     }
     let rc = Rc::new(RefCell::new(State {
         projects: projects::Controller::default(),
+        materials: materials::Controller::default(),
         demo,
         tab: random(),
         account: None,
@@ -1070,6 +1101,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
     }));
     let mut listeners = Vec::new();
     projects::mount(&rc, &mut listeners)?;
+    materials::mount(&rc, &mut listeners)?;
     let speech_supported = crate::voice_browser::supported();
     hide("world-voice", false);
     hide("edit-voice-start", !speech_supported);

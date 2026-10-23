@@ -166,6 +166,38 @@ async fn page() -> Response {
                 div id="author-tools" hidden {
                     section id="panel-materials" class="tool-window" aria-labelledby="materials-title" {
                         header { h2 id="materials-title" { "02 / Materials" } button id="close-materials" class="window-close" type="button" aria-label="Close Materials" { "×" } }
+                        h3 { "Werewolf face" }
+                        p { "Edit one selected werewolf. The local scar generator uses no model and has no charge." }
+                        p { "Face layers are 256 × 256 PNGs, up to 16 KiB each for preview and Apply. You can export your sources if a layer is too large." }
+                        button id="face-open" type="button" { "Edit selected werewolf face" }
+                        fieldset id="face-controls" disabled {
+                            legend { "Face color layers" }
+                            label for="face-area" { "Scar area" }
+                            select id="face-area" { option value="left_cheek" { "Left cheek" } option value="right_cheek" { "Right cheek" } option value="forehead" { "Forehead" } }
+                            label for="face-request" { "Describe scars" }
+                            textarea id="face-request" maxlength="1200" rows="2" placeholder="Two thin healed blue scars on the left cheek" {}
+                            p { "Choose one cheek or the forehead, one to eight scars, thin or thick, healed or fresh, and a solid color. Painting also works on a blank face layer." }
+                            details { summary { "Generator colors" } p { "Pink, brown, red, blue, green, purple, tan, black, white, orange, yellow, or gray. Use the brush for other colors." } }
+                            button id="face-generate" type="button" { "Generate local scars" }
+                            canvas id="face-canvas" width="256" height="256" aria-label="Face color map; drag to paint" style="width:100%;max-width:256px;aspect-ratio:1;touch-action:none;background:repeating-conic-gradient(#242736 0% 25%,#35394b 0% 50%) 0/20px 20px;cursor:crosshair;" {}
+                            label for="face-brush-mode" { "Brush" }
+                            select id="face-brush-mode" { option value="paint" { "Paint" } option value="erase" { "Erase handmade paint" } }
+                            label for="face-brush-color" { "Paint color" } input id="face-brush-color" type="color" value="#8096c0";
+                            label for="face-brush-size" { "Brush size" } input id="face-brush-size" type="range" min="1" max="32" value="5";
+                            label for="face-brush-opacity" { "Brush opacity" } input id="face-brush-opacity" type="range" min="0.05" max="1" step="0.05" value="1";
+                            label class="check-label" { input id="face-generated-visible" type="checkbox" checked; "Show generated scars" }
+                            label for="face-generated-strength" { "Scar strength" } input id="face-generated-strength" type="range" min="0" max="1" step="0.05" value="1";
+                            label class="check-label" { input id="face-handmade-visible" type="checkbox" checked; "Show handmade paint" }
+                            label for="face-handmade-strength" { "Paint strength" } input id="face-handmade-strength" type="range" min="0" max="1" step="0.05" value="1";
+                            button id="face-preview" type="button" { "Preview face" }
+                            button id="face-cancel" type="button" { "Cancel preview" }
+                            button id="face-discard" type="button" { "Discard face draft" }
+                            button id="face-apply" type="button" { "Review face change" }
+                            button id="face-export" type="button" { "Export editable face layers" }
+                        }
+                        label for="face-import" { "Open an exported face-layer file" } input id="face-import" type="file" accept="application/json,.json";
+                        p id="face-status" role="status" { "Select a werewolf in the house to begin." }
+                        details { summary { "Shared material and fog" }
                         label for="edit-material" { "Shared material ID (all surfaces using this ID)" } input id="edit-material" type="text" maxlength="128";
                         p id="edit-material-ids" {}
                         label for="edit-parameter" { "Parameter: red, green, blue, roughness, metallic" } input id="edit-parameter" type="text" value="roughness";
@@ -173,6 +205,7 @@ async fn page() -> Response {
                         button id="edit-material-apply" type="button" { "Apply material" }
                         label for="edit-fog" { "Fog density (0–0.06)" } input id="edit-fog" type="number" step="0.001" min="0" max="0.06" value="0.01";
                         button id="edit-fog-apply" type="button" { "Apply fog" }
+                        }
                     }
                     section id="panel-request" class="tool-window" aria-labelledby="request-title" {
                         header { h2 id="request-title" { "03 / Kiln" } button id="close-request" class="window-close" type="button" aria-label="Close Request" { "×" } }

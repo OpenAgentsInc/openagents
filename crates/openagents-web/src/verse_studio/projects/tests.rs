@@ -671,6 +671,24 @@ async fn large_material_restore_fits_grants_and_authorization_and_oversize_keeps
     let world = world().await;
     let mut alice = Client::signed(&world, "octo-local").await;
     let (document, materials, _) = large_material_restore();
+    let archive = aethyrforge_host::MaterialProjectArchive {
+        schema: "openagents.verse.project-export.v2".into(),
+        document: document.clone(),
+        materials: materials.clone(),
+    };
+    let retained = serde_json::to_string_pretty(&archive).unwrap();
+    let reopened: aethyrforge_host::MaterialProjectArchive =
+        serde_json::from_str(&retained).unwrap();
+    assert_eq!(reopened, archive);
+    assert!(
+        matches!(reopened.restore(None).unwrap(), Action::RestoreMaterialProject { materials, .. } if materials.len() == 8)
+    );
+    let mut missing = reopened.clone();
+    missing.materials[0].generated = None;
+    assert!(missing.restore(None).is_err());
+    let mut different = reopened;
+    different.materials[0].document.generated.strength = 0.25;
+    assert!(different.restore(None).is_err());
     let action = Action::RestoreMaterialProject {
         document,
         checkpoint: None,
@@ -820,6 +838,47 @@ async fn material_save_rejects_an_oversized_source_reference_without_accepting_a
         )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST, "{refused}");
+    let mut wrong_size = Cursor::new(Vec::new());
+    image::RgbaImage::new(128, 128)
+        .write_to(&mut wrong_size, image::ImageFormat::Png)
+        .unwrap();
+    let wrong_size = wrong_size.into_inner();
+    let wrong_resource = aethyrforge_host::ProjectResource {
+        sha256: aethyrforge_host::project_hash(&wrong_size),
+        bytes: wrong_size.len() as u64,
+        media_type: "image/png".into(),
+    };
+    let response = alice
+        .browser
+        .send(
+            &world,
+            Request::builder()
+                .method("POST")
+                .uri(format!("{path}/resources/{}", wrong_resource.sha256))
+                .header("origin", world.origin())
+                .header("content-type", "image/png")
+                .header("x-verse-csrf", &alice.csrf),
+            Body::from(wrong_size),
+        )
+        .await;
+    assert_eq!(response.status, StatusCode::OK, "{}", response.body);
+    let mut wrong_document: ProjectDocument =
+        serde_json::from_value(accepted["saved"]["document"].clone()).unwrap();
+    let mut wrong_material = materials[0].document.clone();
+    wrong_material.generated.image = Some(wrong_resource);
+    wrong_material.keep_in(&mut wrong_document).unwrap();
+    assert_eq!(
+        alice
+            .call(
+                &world,
+                "POST",
+                &path,
+                save("wrong-face-dimensions", 1, &wrong_document)
+            )
+            .await
+            .0,
+        StatusCode::BAD_REQUEST
+    );
     let (_, reopened) = alice.call(&world, "GET", &path, Value::Null).await;
     assert_eq!(reopened["head"], accepted["saved"]);
     assert_eq!(reopened["history"].as_array().unwrap().len(), 1);
