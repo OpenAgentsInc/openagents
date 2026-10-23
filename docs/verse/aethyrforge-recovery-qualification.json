@@ -23,5 +23,21 @@
     "hosted-story-3/failure-state.json",
     "sdk-12574-build.log"
   ],
-  "production_traffic_changed": false
+  "production_traffic_changed": false,
+  "export_hosted_recheck": {
+    "passed": true,
+    "private_record": "hosted-story-4/result.json",
+    "actual_GPUDevice_destroy": true,
+    "dirty_face_export_exact_before_and_after_fresh_session": true,
+    "native_grants_for_reconstruction": 200,
+    "active_source_and_unfinished_draft_restored": true,
+    "checkpoint_failed_separately": 12575
+  },
+  "checkpoint_followup": {
+    "issue": 12575,
+    "source": "5169613bc1",
+    "change": "Open device copy passes its validated matching-owner visit checkpoint to both plain and material restores. It does not attach unrelated visit tools or adopt another saved base.",
+    "host_library_tests": 31,
+    "hosted_recheck": "Pending final #12561 record."
+  }
 }

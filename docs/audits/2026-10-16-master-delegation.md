@@ -485,6 +485,14 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12575: public `5169613bc1` passes the valid, matching-owner device-copy
+  checkpoint into both confirmed restore paths. Thirty-one host library tests
+  cover matching/mismatched owners and malformed visit/pose data. The actual
+  hosted run already confirms #12574's dirty face export and fresh authorized
+  shader/draft reconstruction; its separate default-spawn failure found this
+  checkpoint omission. Final eye/target/mode and source checks continue in #12561.
+  [Recovery evidence](../verse/aethyrforge-recovery-qualification.json).
+
 - #12574: public `da4497735e` keeps owned face sources exportable when the
   graphics session is unavailable or reconstructed. Thirty host library tests
   and the Wasm host build pass, including account/world mismatch refusals. The
