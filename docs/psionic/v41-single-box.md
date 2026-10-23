@@ -488,3 +488,26 @@ python3 scripts/pylon/maya-supervisor.py disable
 name, an unconfirmed disk deletion, or exhausted budgets blocks replacement.
 A fresh terminal group failure permits at most three head restarts per VM,
 at least an hour apart; busy requests and startup do not trigger a restart.
+
+
+### Browser campaign stopped on October 23
+
+The owner ended the campaign after superseding the legacy browser engine with
+Aethyrforge. Of its nine issues, #12502 completed and merged through #12543;
+#12503–#12509 closed as not planned, and #12514 remains open under its updated
+Aethyrforge scope. Those cancellations do not mean the unfinished acceptance
+checks passed. The [browser implementation plan](../verse/browser-editor-implementation-plan.md)
+records the handoff.
+
+Both Maya VMs and their boot disks were deleted through the spend guard.
+The supervisor, observer, campaign dispatcher, and heartbeat are disabled.
+The temporary Grid auto-start hold was removed after checking its activation
+receipt; only the Grid service restarted, preserving its binary, identity,
+state, counters, and history. The dispatcher retains its stopped jobs and
+saved objectives; resuming it requires an explicit owner request and an
+available qualified route. Owner engines and #12369 qualification are unchanged.
+
+Unfinished runtime and importer work remains on reference branches, without
+product merges. The [stop receipt](verification/maya-supervisor-2026-10-22/stop-2026-10-23.json)
+records the exact resource cleanup, terminal attempts, branch commits, failed
+checks, and remaining limits. No further campaign work is scheduled.
