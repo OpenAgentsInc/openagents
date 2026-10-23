@@ -336,10 +336,11 @@ observation bound. Neither is a GPU presentation timestamp. Resource counters co
 the demo's objects, not total driver allocations. The earlier Pylon source-patch
 record remains historical evidence, rather than the current interaction.
 
-Scene Undo covers objects, light color, behaviors, and the house layout. Raw WGSL uses the Phase 0
-draft/validation path and **Original**; integrating asset-draft undo into the
-shared transaction history remains in #12502.
+Undo covers objects, light color, behaviors, the house layout, and manual or Kiln
+WGSL drafts through the shared transaction history completed in #12502.
 
-Device reconstruction (#12503), full game parity, shared projects, and public
-publishing remain follow-ups. The scoped browser-language exception is in
-[the agent contract](../../AGENTS.md).
+The owner superseded the separate runtime and asset-compiler work (#12503 and
+#12504) with the Aethyrforge migration. Their closures do not establish device
+reconstruction or full compiler acceptance. See the
+[implementation status and retained work](../../docs/verse/browser-editor-implementation-plan.md).
+The scoped browser-language exception is in [the agent contract](../../AGENTS.md).
