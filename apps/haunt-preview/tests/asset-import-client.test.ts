@@ -220,6 +220,38 @@ test("dependency edits rebuild only accepted users and retain unrelated resource
   assert.deepEqual(f.runtime.get("dependent")!.description.sources.find(source => source.id === "dep"), pin);
 });
 
+test("source-only edits rebuild their accepted users without compiling a palette as a model", async t => {
+  const calls: string[] = [];
+  const f = setup(async (record, bytes, files) => {
+    calls.push(record.id);
+    assert.notEqual(record.id, "palette", "a source-only file must not become a standalone model");
+    const palette = files.find(file => file.record.id === "palette");
+    if (record.id === "house" && palette && new TextDecoder().decode(palette.bytes).startsWith("invalid")) {
+      throw new Error("palettes/paper.json: invalid color");
+    }
+    return triangle(record, record.id === "house" ? [palette!.record] : []);
+  });
+  t.after(() => f.session.dispose());
+  await f.store.put("palette", "gltf", "palettes/paper.json", text("warm"));
+  assert.equal((await f.session.importAsset("house", "gltf", "house.gltf", text("geometry"))).type, "accepted");
+  assert.equal((await f.session.importAsset("other", "glb", "other.glb", text("unrelated"))).type, "accepted");
+  const other = f.runtime.selected.get("other")!.asset;
+  const first = f.runtime.selected.get("house")!.asset;
+  const changed = await f.session.updateSource("palette", "gltf", "palettes/paper.json", text("cool"));
+  assert.equal(changed.type, "stored");
+  assert.ok(changed.type === "stored" && changed.rebuilds.length === 1 && changed.rebuilds[0].type === "accepted");
+  assert.deepEqual(calls, ["house", "other", "house"]);
+  assert.equal(first.disposed, true);
+  assert.equal(f.runtime.selected.get("other")!.asset, other);
+  const lastGood = f.runtime.selected.get("house")!.asset;
+  const failed = await f.session.updateSource("palette", "gltf", "palettes/paper.json", text("invalid palette"));
+  assert.equal(failed.type, "stored");
+  assert.ok(failed.type === "stored" && failed.rebuilds[0].type === "failed" && failed.rebuilds[0].message.includes("palettes/paper.json"));
+  assert.equal(f.runtime.selected.get("house")!.asset, lastGood);
+  const savedPalette = (await f.store.list()).find(source => source.record.id === "palette")!;
+  assert.deepEqual(await f.store.read(savedPalette.original), text("warm"));
+});
+
 test("reopening restores exact accepted pins rather than the latest invalid draft", async t => {
   const f = setup();
   await f.session.importAsset("dep", "image", "dep.png", text("original dep"));

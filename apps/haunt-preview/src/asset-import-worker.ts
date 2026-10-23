@@ -1,6 +1,7 @@
 import * as Compiler from "./asset-compiler.ts";
 import type { SourceRecord } from "./asset-compiler.ts";
 import { sourceBytesHash } from "./protocol.ts";
+import { compileOwnedSource } from "./asset-owned-source-adapter.ts";
 import {
   ASSET_IMPORT_VERSION, MAX_COMPILED_CACHE_BYTES, MAX_SOURCE_COUNT, MAX_SOURCE_STORE_BYTES,
   copyImportedAsset, descriptionBytes, descriptionTransfers, sameSource, sourceKey, validateImportedAsset,
@@ -141,10 +142,12 @@ const scope = globalThis as unknown as { document?: unknown; onmessage: ((event:
   postMessage?: (value: AssetImportResponse, transfer: ArrayBuffer[]) => void };
 if (typeof self !== "undefined" && typeof scope.document === "undefined" && scope.postMessage) {
   const compiler = Compiler as unknown as { compileAsset?: AssetConverter };
-  const engine = new AssetWorkerEngine(async (...args) => {
+  const convert: AssetConverter = async (...args) => {
     if (!compiler.compileAsset) throw new Error("The asset converter is unavailable.");
     return compiler.compileAsset(...args);
-  });
+  };
+  const engine = new AssetWorkerEngine(async (source, bytes, files) =>
+    await compileOwnedSource(source, bytes, files, convert) ?? await convert(source, bytes, files));
   scope.onmessage = event => {
     void engine.handle(event.data).then(response => scope.postMessage!(response,
       response.type === "compiled" ? descriptionTransfers(response.description) : []));

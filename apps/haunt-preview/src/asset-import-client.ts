@@ -118,11 +118,14 @@ export class AssetImportClient {
   }
 }
 
+type ImportFailure =
+  | { type: "failed"; id: string; message: string; source: string }
+  | { type: "stale" | "cancelled"; id: string };
 export type AssetImportOutcome = (
   | { type: "accepted"; id: string; description: AssetDescription; revision: number; metrics: AssetImportMetrics }
-  | { type: "failed"; id: string; message: string; source: string }
-  | { type: "stale" | "cancelled"; id: string }
+  | ImportFailure
 ) & { rebuilds?: AssetImportOutcome[] };
+export type AssetSourceUpdate = { type: "stored"; id: string; revision: number; rebuilds: AssetImportOutcome[] } | ImportFailure;
 type Job = { id: string; controller: AbortController; reason?: "stale" | "cancelled"; committing: boolean; detach(): void };
 
 /** Publishes exact source pins before synchronously selecting prepared resources. */
@@ -155,7 +158,7 @@ export class AssetImportSession {
     job.detach();
     if (this.jobs.get(job.id) === job) this.jobs.delete(job.id);
   }
-  private failure(job: Job, source: string, error: unknown): AssetImportOutcome {
+  private failure(job: Job, source: string, error: unknown): ImportFailure {
     if (this.closed || job.controller.signal.aborted || error instanceof Cancelled || this.jobs.get(job.id) !== job) {
       return { type: job.reason ?? (this.closed ? "cancelled" : "stale"), id: job.id };
     }
@@ -222,19 +225,44 @@ export class AssetImportSession {
       outcome = await this.convert(job, saved.record, inputs, saved.revision);
     } catch (error) { outcome = this.failure(job, path, error); }
     finally { this.finish(job); }
-    const rebuilds: AssetImportOutcome[] = [];
-    if (outcome.type !== "cancelled" && outcome.type !== "stale" && !this.closed) {
-      for (const dependent of dependents) {
-        const next = this.begin(dependent.record.id, options.signal);
-        try {
-          const sources = await this.store.list();
-          const source = sources.find(item => item.record.id === next.id);
-          if (source) rebuilds.push(await this.convert(next, source.record, sources.map(item => item.record), source.revision));
-        } catch (error) { rebuilds.push(this.failure(next, dependent.record.path, error));
-        } finally { this.finish(next); }
-      }
-    }
+    const rebuilds = outcome.type !== "cancelled" && outcome.type !== "stale" ? await this.rebuild(dependents, options) : [];
     return { ...outcome, ...(rebuilds.length ? { rebuilds } : {}) };
+  }
+
+  private async rebuild(dependents: StoredSource[], options: Options): Promise<AssetImportOutcome[]> {
+    const rebuilds: AssetImportOutcome[] = [];
+    for (const dependent of dependents) {
+      if (this.closed) break;
+      const next = this.begin(dependent.record.id, options.signal);
+      try {
+        const sources = await this.store.list();
+        const source = sources.find(item => item.record.id === next.id);
+        if (source) rebuilds.push(await this.convert(next, source.record, sources.map(item => item.record), source.revision));
+      } catch (error) { rebuilds.push(this.failure(next, dependent.record.path, error));
+      } finally { this.finish(next); }
+    }
+    return rebuilds;
+  }
+
+  /** Edits a saved dependency, such as a palette or binary buffer, without importing it as a model. */
+  async updateSource(id: string, kind: SourceKind, path: string, bytes: Uint8Array, options: Options = {}): Promise<AssetSourceUpdate> {
+    if (this.closed) return { type: "cancelled", id };
+    const job = this.begin(id, options.signal);
+    let saved: StoredSource, dependents: StoredSource[];
+    try {
+      if (!(bytes instanceof Uint8Array) || bytes.byteLength < 1 || bytes.byteLength > MAX_SOURCE_BYTES) {
+        throw new Error("Choose an asset file up to 8 MiB.");
+      }
+      const owned = new Uint8Array(bytes);
+      this.check(job);
+      const before = await this.store.list();
+      this.check(job);
+      saved = await this.store.put(id, kind, path, owned);
+      this.check(job);
+      dependents = before.filter(source => source.accepted?.sources.some(pin => pin.id === id));
+    } catch (error) { return this.failure(job, path, error); }
+    finally { this.finish(job); }
+    return { type: "stored", id, revision: saved.revision, rebuilds: await this.rebuild(dependents, options) };
   }
 
   async restore(): Promise<AssetImportOutcome[]> {

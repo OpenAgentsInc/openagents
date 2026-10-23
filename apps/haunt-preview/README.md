@@ -264,6 +264,44 @@ handles exact arguments and execution.
   through the host, and forwards accepted data to this preview. Local undo is not
   a second collaboration authority, identity service, or storage backend.
 
+## Worker asset imports
+
+`AssetImportSession.importAsset` retains source bytes before converting them in
+a worker. `updateSource` edits dependencies such as palettes and binary buffers
+and rebuilds their accepted users. A failed conversion keeps the last accepted
+GPU resources. Reopening recompiles the exact accepted source versions, including
+when a newer draft is invalid. `acquireAssetImportSession` uses an Effect scope to
+close the worker and GPU resources together.
+
+The `OPENAGENTS_haunt` glTF 2 extension describes owned geometry and image cards.
+Declare it in both `extensionsUsed` and `extensionsRequired`. Its version 1
+geometry recipe contains a Haunted House project and an optional inline or
+project-local palette. It reuses `houseGeometry`, preserving positions, normals,
+palette colors, and glow. A card recipe names a local PNG/JPEG and dimensions;
+its compiled quad includes UVs and an image material. The exact recipe and palette
+types are in [`asset-owned-source-adapter.ts`](src/asset-owned-source-adapter.ts).
+Recipes contain data, never executable code.
+
+- Sources: 8 MiB per file, 64 IDs, and 32 MiB across retained original, draft, and
+  accepted versions. Paths stay inside the project; imports never fetch URLs.
+- Outputs: 16 MiB including mesh attributes and decoded images. Meshes have at
+  most 65,536 vertices and 196,608 triangle indices; images use RGBA8 with at most
+  4 MiB per image. Owned recipes have an 80 KiB limit and preflight geometry size.
+- Worker: two conversions at once and a 16 MiB compiled cache. Bulk output buffers
+  transfer ownership; cache entries keep separate copies. Diagnostics name the
+  failed source, and cancelled or stale work cannot replace an accepted output.
+
+Run the isolated Worker/OPFS/WebGPU adapter check without a model or account:
+
+```sh
+HAUNT_EVIDENCE="$(openagents scratch)/haunt-import-check" \
+  openagents browser run -- npm run verify:asset-import
+```
+
+The check records source hashes, compile and total import time, transfer bytes,
+cache counters, GPU readback, dependency edits, cancellation, reopen, and cleanup.
+It uses the minimal runtime adapter; the reusable renderer remains in #12503.
+
 ## Check
 
 Run `npm run verify:source-history` through `openagents browser run` with
@@ -291,9 +329,8 @@ observation bound. Neither is a GPU presentation timestamp. Resource counters co
 the demo's objects, not total driver allocations. The earlier Pylon source-patch
 record remains historical evidence, rather than the current interaction.
 
-Scene Undo covers objects, light color, behaviors, and the house layout. Raw WGSL uses the Phase 0
-draft/validation path and **Original**; integrating asset-draft undo into the
-shared transaction history remains in #12502.
+Scene Undo covers objects, light color, behaviors, the house layout, and raw WGSL
+source. Manual saves, **Original**, and Kiln writes use the same history.
 
 Device reconstruction (#12503), full game parity, shared projects, and public
 publishing remain follow-ups. The scoped browser-language exception is in
