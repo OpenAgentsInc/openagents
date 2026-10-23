@@ -1,0 +1,41 @@
+{
+  "schema": "openagents.aethyrforge.deployment.v1",
+  "issue": 12546,
+  "status": "candidate verification in progress",
+  "url": "https://openagents.com/demo/medieval-town",
+  "engine": {
+    "source_revision": "97d0465a51460d2e951f96614aff437ed381ca27",
+    "release": "rd4a6dcbc64ecc48e3d",
+    "engine_abi": "aethyrforge.browser.v1",
+    "project_format": 1,
+    "sdk_source_revision": "322211133e",
+    "sdk_wasm_sha256": "67a72ae7188437b75b93c939f5d20b73cf47046500dcff4ccab75da1b463b0cb",
+    "asset_set_sha256": "d10b526758e6299e3df1a0162e723a624a9a7200510684fce6e09667a32ec6f5",
+    "compiled_asset_files": 419,
+    "compiled_asset_bytes": 485075120,
+    "manifest_sha256": "8801becadb5b683a6594a9231454ae2e1f17647c6ac7bc5b353219a3a4cba804",
+    "editor_origin": "https://rd4a6dcbc64ecc48e3d---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app",
+    "preview_origin": "https://rd4a6dcbc64ecc48e3d---aethyrforge-preview-ezxz4mgdsq-uc.a.run.app",
+    "editor_image_digest": "sha256:f4abb6bdee38ee4136d5aa5699a0c284f53c7b03feaf1175ad18ebcc90281991",
+    "editor_build_id": "bb335ad3-6cb3-449d-bed7-1ce7bd45674c",
+    "preview_image_digest": "sha256:2a274eff437a5cf06da98b0e183c190999765120d2d6629f9475a4696ddacf6b",
+    "preview_build_id": "a9bbdab5-53a2-4264-9b28-7b48ee2a543f"
+  },
+  "verification": {
+    "public_sdk_contract_tests": 7,
+    "native_release_configuration_test": true,
+    "public_wasm_build": true,
+    "private_unit_tests": 214,
+    "private_build_and_typecheck": true,
+    "workspace_dependency_checks": true,
+    "scene_placements": 8118,
+    "scene_triangles": 4339390,
+    "rollout": {
+      "old_session_continued": true,
+      "new_release_opened": "r1596bb9c556fc67edb",
+      "rollback_opened": "r1280bcf318d6ef1ad9"
+    },
+    "private_source_in_public_git": false,
+    "asset_bucket_public_access": false
+  }
+}

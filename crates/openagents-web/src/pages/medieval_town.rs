@@ -120,7 +120,7 @@ async fn boot() -> Response {
     response(
         StatusCode::OK,
         format!(
-            "import init,{{mount_demo}} from {url}; await init(); window.medievalDemo=mount_demo();"
+            "try{{const {{default:init,mount_demo}}=await import({url});await init();window.medievalDemo=mount_demo();}}catch{{const notice=document.getElementById('world-notice');notice.hidden=false;notice.dataset.state='error';notice.textContent='The world could not open. Reload the page to try again.';}}"
         ),
         "text/javascript; charset=utf-8",
         Some(&r.origin()),
