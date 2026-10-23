@@ -1648,3 +1648,13 @@ Bounded remote polling verifies all worker processes and GPU contexts gone
 before any reuse; two-dual needs one retry, and four-single none. These
 runtime measurements exercise the input and output bounds together. They
 do not freeze rule 2.4 or pass the outstanding numerical gates.
+
+The [one-quad direct run](verification/deepseek-v41-gates-2026-10-22/native-joint-quad.json)
+now completes the same coverage. Its six answers match the earlier front
+run exactly and pass the unchanged G2 checker at 5/6 against 5/6. The combined
+2,872-input / 4,096-output request finishes with `length` in 330.937 s.
+Observed per-GPU peaks are unchanged; median local data-socket RTTs are
+18 / 10 / 11 µs. Remote drain polling needs three retries before proving
+every worker process and GPU context absent. All three supported placements
+now pass this native direct-pipeline coverage; numerical confirmation and
+qualified public routing remain pending.
