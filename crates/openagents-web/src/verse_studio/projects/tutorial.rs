@@ -304,11 +304,28 @@ async fn page(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
     if let Err(r) = planet_access(&app, &headers, &planet).await {
         return r;
     }
-    let token = actor
-        .cookie
+    let Some(cookie) = actor.cookie.as_ref() else {
+        return refused(
+            StatusCode::UNAUTHORIZED,
+            "signin_required",
+            "Sign in to name your planet.",
+        );
+    };
+    let token = match app
+        .config
+        .cloud
         .as_ref()
-        .and_then(|v| app.config.cloud.as_ref()?.csrf(&headers, v, SCOPE, "").ok())
-        .unwrap_or_default();
+        .and_then(|service| service.csrf(&headers, cookie, SCOPE, "").ok())
+    {
+        Some(token) => token,
+        None => {
+            return refused(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "planet_setup_unavailable",
+                "Your planet settings could not open. Try again.",
+            );
+        }
+    };
     let body=html!{(DOCTYPE)html lang="en"{head{meta charset="utf-8";meta name="viewport" content="width=device-width,initial-scale=1";title{(&planet.name)" · OpenAgents"}link rel="stylesheet" href="/new-lander/planet/style.css";}body{main{a href="/new-lander/verse"{"Back to planets"}p{"YOUR PLANET"}h1{(&planet.name)}p{"Choose a name for your place in the Verse."}form method="post" action=(format!("/new-lander/planet/{id}")){input type="hidden" name="csrf" value=(token);label for="planet-name"{"Planet name"}input id="planet-name" name="name" value=(&planet.name) maxlength="80" required;button type="submit"{"Save name"}}p{"64 × 64 metres · Up to 128 objects · Private to you"}}}}}.into_string();
     let mut response = crate::pages::medieval_town::response(
         StatusCode::OK,
@@ -317,6 +334,10 @@ async fn page(State(app): State<App>, headers: HeaderMap, Path(id): Path<String>
         None,
     );
     response.headers_mut().insert(axum::http::header::CONTENT_SECURITY_POLICY,axum::http::HeaderValue::from_static("default-src 'none'; style-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"));
+    response.headers_mut().insert(
+        axum::http::header::REFERRER_POLICY,
+        axum::http::HeaderValue::from_static("same-origin"),
+    );
     response
 }
 #[derive(Deserialize)]

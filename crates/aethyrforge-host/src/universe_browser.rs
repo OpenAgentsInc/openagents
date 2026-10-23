@@ -38,6 +38,7 @@ struct State {
     tutorial_busy: bool,
     tutorial_serial: u64,
     tutorial_error: Option<String>,
+    new_award: bool,
 }
 impl State {
     fn identity(&mut self, session: &Value) {
@@ -48,6 +49,7 @@ impl State {
         if self.account != account {
             self.tutorial_serial = self.tutorial_serial.wrapping_add(1);
             self.tutorial_busy = false;
+            self.new_award = false;
             self.tutorial = Value::Null;
             self.tutorial_available = false;
             self.tutorial_error = if account.is_none() {
@@ -69,11 +71,34 @@ impl State {
         }
     }
     fn render(&self) {
+        if let Ok(Some(nav)) = window()
+            .document()
+            .unwrap()
+            .query_selector(".verse-page .account-nav")
+        {
+            if self.account.is_some() {
+                nav.set_attribute("hidden", "").ok();
+            } else {
+                nav.remove_attribute("hidden").ok();
+            }
+        }
         let progress = &self.tutorial["progress"];
         let owned = progress["planet"].is_object();
         let ready = !owned && progress["returned_unix"].is_u64();
         hidden("planet-ready", !ready);
         hidden("planet-owned", !owned);
+        if let Ok(Some(title)) = element("planet-owned").query_selector("h3") {
+            title.set_text_content(Some(
+                if self.new_award
+                    && self.tutorial_available
+                    && self.tutorial["planet_available"] == true
+                {
+                    "Congratulations"
+                } else {
+                    "Your planet"
+                },
+            ));
+        }
         let option = element("option-creator-worlds");
         if let Ok(Some(label)) = option.query_selector("strong") {
             label.set_text_content(Some(if owned {
@@ -100,7 +125,7 @@ impl State {
                     .ok();
             }
         }
-        element("planet-status").set_text_content(Some(self.tutorial_error.as_deref().unwrap_or(if self.tutorial_busy {"Creating your planet…"}else if owned && self.tutorial["planet_available"]==false && self.tutorial_available {"This planet's project was removed. It cannot be recreated by repeating the tutorial."}else if owned {"Welcome back. Your planet is waiting."}else if ready {"Your first planet is ready to create."}else {"Publish your own house, choose Play or Share, then return here."})));
+        element("planet-status").set_text_content(Some(self.tutorial_error.as_deref().unwrap_or(if self.tutorial_busy {"Creating your planet…"}else if owned && self.tutorial["planet_available"]==false && self.tutorial_available {"This planet's project was removed. It cannot be recreated by repeating the tutorial."}else if owned && self.new_award {"You created your first planet. Choose a name and make it your own."}else if owned {"Welcome back. Your planet is waiting."}else if ready {"Your first planet is ready to create."}else {"Publish your own house, choose Play or Share, then return here."})));
 
         let entered = self.visit.choice.is_some();
         hidden("verse-account", entered);
@@ -265,6 +290,7 @@ pub fn mount_universe() -> Result<BrowserUniverse, JsValue> {
         tutorial_busy: false,
         tutorial_serial: 0,
         tutorial_error: None,
+        new_award: false,
     }));
     rc.borrow().render();
     let mut listeners = Vec::new();
@@ -412,6 +438,7 @@ pub fn mount_universe() -> Result<BrowserUniverse, JsValue> {
                 Err(e) => {
                     if let Ok(v) = result {
                         s.tutorial = v;
+                        s.new_award = true;
                     }
                     s.tutorial_available = false;
                     s.tutorial_error = Some(e);
@@ -422,6 +449,7 @@ pub fn mount_universe() -> Result<BrowserUniverse, JsValue> {
             match result {
                 Ok(v) => {
                     s.tutorial = v;
+                    s.new_award = true;
                     s.tutorial["planet_available"] = true.into();
                     s.tutorial_available = true;
                     s.tutorial_error = None;

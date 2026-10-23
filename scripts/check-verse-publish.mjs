@@ -183,7 +183,7 @@ const guestContexts=[];
 let holdPublish=false, publishArrived, releasePublish, losePublishAck=false;
 let holdRefreshSession=false, refreshSessionArrived, releaseRefreshSession;
 let holdAllocationAck=false, allocationArrived, releaseAllocationAck;
-let failNextBrowserSession=false;let tutorialGets=0;
+let failNextBrowserSession=false;let tutorialGets=0;let planetFormArrived;
 const publicationPosts=[];
 const errors = [];
 let grants = 0;
@@ -250,6 +250,10 @@ try {
     }
     if(url.pathname==='/v1/verse/studio/tutorial'&&request.method()==='POST'&&JSON.parse(request.postData()).operation==='allocate'&&holdAllocationAck){
       holdAllocationAck=false;allocationArrived?.();await new Promise(resolve=>releaseAllocationAck=resolve);
+    }
+    if(url.pathname.startsWith('/new-lander/planet/')&&request.method()==='POST'){
+      console.log('Planet form response',JSON.stringify({status:response.status(),origin:request.headers().origin,site:request.headers()['sec-fetch-site']}));
+      planetFormArrived?.({status:response.status(),origin:request.headers().origin});
     }
     const returned = { ...response.headers() };
 
@@ -465,11 +469,14 @@ try {
       await page.waitForTimeout(2200);
       assert.equal(await page.locator('#planet-owned').isVisible(),true,'A late old allocation cannot overwrite the rechecked award');
     }
+    assert.equal(await page.locator('.verse-page .account-nav').isHidden(),true,'Confirmed owners are not offered Log in or Sign up');
+    if(process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE==='1')assert.equal(await page.locator('#planet-owned h3').innerText(),'Congratulations');
     const planetPath=await page.locator('#planet-setup').getAttribute('href');assert.ok(planetPath.startsWith('/new-lander/planet/planet_'));
     assert.equal(projects.length,count+1);
     await page.screenshot({path:path.join(out,'planet-awarded-desktop.png')});
     await page.reload();await page.locator('#planet-owned').waitFor({state:'visible'});
     assert.equal(await page.locator('#planet-setup').getAttribute('href'),planetPath);
+    assert.match(await page.locator('#planet-status').innerText(),/Welcome back/);
     const secondTab=await context.newPage();
     await secondTab.goto('https://openagents.com/new-lander/verse');await secondTab.locator('#planet-owned').waitFor({state:'visible'});
     assert.equal(await secondTab.locator('#planet-setup').getAttribute('href'),planetPath);
@@ -488,13 +495,14 @@ try {
     await page.screenshot({path:path.join(out,'planet-awarded-mobile.png')});
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
     await page.click('#planet-setup');await page.waitForURL('https://openagents.com'+planetPath);
-    await page.fill('#planet-name','Moon garden');await page.click('button[type="submit"]');
-    await page.waitForFunction(()=>document.querySelector('h1')?.textContent==='Moon garden');
+    await page.fill('#planet-name','Moon garden');const formArrived=new Promise(resolve=>planetFormArrived=resolve);await page.click('button[type="submit"]');
+    const formResult=await formArrived;assert.equal(formResult.status,303);assert.equal(formResult.origin,'https://openagents.com');
+    await page.waitForFunction(()=>document.querySelector('h1')?.textContent==='Moon garden',null,{timeout:10000});
     await page.reload();assert.equal(await page.locator('h1').innerText(),'Moon garden');
     await page.screenshot({path:path.join(out,'planet-setup-mobile.png')});
     await secondTab.reload();await secondTab.waitForFunction(()=>document.querySelector('#world-title').textContent==='Moon garden');
     assert.deepEqual(errors,[]);
-    const result={real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,explicit_published_share_return:true,allocation_failure_recovers:true,old_ensure_endpoint_404_preserves_ready_and_upgrade_retries:true,refresh_two_tabs_replay_same_planet:true,membership_failure_preserves_award:true,old_refresh_discarded_before_get:true,account_change_releases_old_busy:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE!=="1",late_old_allocation_ignored:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE!=="1",post_allocation_identity_unavailable_preserves_award:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE==="1",rename_and_reopen:true,company_planet_stays_locked:true,private_captures:true,errors};
+    const result={real_gpu_engine:true,real_native_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,explicit_published_share_return:true,allocation_failure_recovers:true,old_ensure_endpoint_404_preserves_ready_and_upgrade_retries:true,refresh_two_tabs_replay_same_planet:true,membership_failure_preserves_award:true,old_refresh_discarded_before_get:true,account_change_releases_old_busy:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE!=="1",late_old_allocation_ignored:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE!=="1",post_allocation_identity_unavailable_preserves_award:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE==="1",rename_and_reopen:true,confirmed_identity_hides_map_signin:true,first_confirmed_award_congratulations:process.env.AETHYRFORGE_PLANET_IDENTITY_FAILURE==="1",later_visits_resume:true,company_planet_stays_locked:true,private_captures:true,errors};
     fs.writeFileSync(path.join(out,'browser-planet.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
   } else {
   const guest=await browser.newContext({viewport:{width:1280,height:800},hasTouch:true});guestContexts.push(guest);

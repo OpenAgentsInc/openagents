@@ -1224,6 +1224,57 @@ async fn tutorial_award_requires_owner_choice_return_and_survives_membership_fai
         .unwrap();
     assert!(policy.contains("form-action 'self'"));
     assert!(!policy.contains("form-action 'none'"));
+    assert_eq!(
+        setup.headers[axum::http::header::REFERRER_POLICY],
+        "same-origin"
+    );
+    let token = setup
+        .body
+        .split("name=\"csrf\" value=\"")
+        .nth(1)
+        .and_then(|v| v.split('"').next())
+        .expect("Native form has a token");
+    assert!(token.len() > 16, "The form never contains an empty token");
+    let encoded = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("csrf", token)
+        .append_pair("name", "Native garden")
+        .finish();
+    let page_path = format!("/new-lander/planet/{}", planet["id"].as_str().unwrap());
+    let refused_form = alice
+        .browser
+        .send(
+            &world,
+            Request::builder()
+                .method("POST")
+                .uri(&page_path)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("origin", "null"),
+            Body::from(encoded.clone()),
+        )
+        .await;
+    assert_eq!(
+        refused_form.status,
+        StatusCode::FORBIDDEN,
+        "Null origins never bypass confirmation"
+    );
+    let accepted_form = alice
+        .browser
+        .send(
+            &world,
+            Request::builder()
+                .method("POST")
+                .uri(&page_path)
+                .header("content-type", "application/x-www-form-urlencoded")
+                .header("origin", world.origin()),
+            Body::from(encoded),
+        )
+        .await;
+    assert_eq!(
+        accepted_form.status,
+        StatusCode::SEE_OTHER,
+        "Native same-origin Save name form"
+    );
+
     let (_, renamed) = alice
         .call(
             &world,
