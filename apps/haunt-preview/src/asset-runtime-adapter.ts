@@ -1,7 +1,8 @@
-import type { AssetDescription } from "./asset-compiler.ts";
+import type { OwnedAssetDescription as AssetDescription } from "./asset-import-protocol.ts";
 import { copyImportedAsset } from "./asset-import-protocol.ts";
 
-export type ImportedMesh = { id: string; vertex: GPUBuffer; index: GPUBuffer; indexCount: number };
+export type ImportedMesh = { id: string; vertex: GPUBuffer; index: GPUBuffer; indexCount: number;
+  attributes: Partial<Record<"normal" | "color" | "glow" | "uv", GPUBuffer>>; material?: string };
 export type ImportedImage = { id: string; texture: GPUTexture; width: number; height: number };
 export type PreparedAsset = {
   description: AssetDescription;
@@ -51,7 +52,17 @@ export class AssetRuntimeAdapter implements AssetRuntime {
         buffers.push(index);
         this.device.queue.writeBuffer(vertex, 0, mesh.positions.buffer as ArrayBuffer, mesh.positions.byteOffset, mesh.positions.byteLength);
         this.device.queue.writeBuffer(index, 0, mesh.indices.buffer as ArrayBuffer, mesh.indices.byteOffset, mesh.indices.byteLength);
-        meshes.push({ id: mesh.id, vertex, index, indexCount: mesh.indexCount });
+        const attributes: ImportedMesh["attributes"] = {};
+        for (const [name, data] of [["normal", mesh.normals], ["color", mesh.colors], ["glow", mesh.glow], ["uv", mesh.uvs]] as const) {
+          if (!data) continue;
+          const buffer = this.device.createBuffer({ size: data.byteLength,
+            usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC });
+          buffers.push(buffer);
+          this.device.queue.writeBuffer(buffer, 0, data.buffer as ArrayBuffer, data.byteOffset, data.byteLength);
+          attributes[name] = buffer;
+        }
+        meshes.push({ id: mesh.id, vertex, index, indexCount: mesh.indexCount, attributes,
+          ...(mesh.material !== undefined ? { material: mesh.material } : {}) });
       }
       for (const image of asset.description.images) {
         const texture = this.device.createTexture({ size: [image.width, image.height], format: "rgba8unorm",
@@ -95,7 +106,10 @@ export class AssetRuntimeAdapter implements AssetRuntime {
 
   stats(): { assets: number; buffers: number; textures: number } {
     let buffers = 0, textures = 0;
-    for (const value of this.owned) { buffers += value.meshes.length * 2; textures += value.images.length; }
+    for (const value of this.owned) {
+      for (const mesh of value.meshes) buffers += 2 + Object.keys(mesh.attributes).length;
+      textures += value.images.length;
+    }
     return { assets: this.accepted.size, buffers, textures };
   }
 

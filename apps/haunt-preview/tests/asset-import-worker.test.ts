@@ -4,6 +4,7 @@ import { describeSource } from "../src/asset-compiler.ts";
 import type { AssetDescription, SourceRecord } from "../src/asset-compiler.ts";
 import { AssetWorkerEngine } from "../src/asset-import-worker.ts";
 import { assetPath, descriptionTransfers, sourceKey } from "../src/asset-import-protocol.ts";
+import type { OwnedAssetDescription } from "../src/asset-import-protocol.ts";
 
 async function source(id: string, value = 1) {
   const bytes = new Uint8Array([value, 0xff, 0]);
@@ -16,6 +17,61 @@ function triangle(record: SourceRecord, dependencies: SourceRecord[] = []): Asse
     indices: new Uint32Array([0, 1, 2]), vertexCount: 3, indexCount: 3, bounds: { min: [0, 0, 0], max: [1, 1, 0] },
   }] };
 }
+
+test("owned attributes and material bindings survive transfer and count toward cache limits", async () => {
+  const input = await source("owned");
+  const make = (record: SourceRecord): OwnedAssetDescription => {
+    const output: OwnedAssetDescription = triangle(record);
+    Object.assign(output.meshes[0], { normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+      colors: new Float32Array(9).fill(0.5), glow: new Float32Array([1, 0, 0]),
+      uvs: new Float32Array([0, 0, 1, 0, 0, 1]), material: "paper" });
+    output.materials = [{ id: "paper", baseColor: [1, 1, 1, 1], doubleSided: true, unlit: false }];
+    return output;
+  };
+  const engine = new AssetWorkerEngine(async record => make(record), 156);
+  await engine.handle({ type: "put", requestId: "put-owned", source: input });
+  const compile = (requestId: string) => engine.handle({ type: "compile", requestId, revision: 1, source: input.record, files: [] });
+  const first = await compile("owned-one");
+  assert.equal(first.type, "compiled");
+  if (first.type !== "compiled") return;
+  assert.equal(first.metrics.outputBytes, 156);
+  assert.equal(engine.stats().cacheBytes, 156);
+  const transferred = descriptionTransfers(first.description);
+  assert.equal(transferred.reduce((sum, buffer) => sum + buffer.byteLength, 0), 156);
+  structuredClone(first.description, { transfer: transferred });
+  assert.equal(first.description.meshes[0].normals!.byteLength, 0);
+  const hit = await compile("owned-two");
+  assert.equal(hit.type, "compiled");
+  if (hit.type !== "compiled") return;
+  assert.equal(hit.metrics.cacheHit, true);
+  assert.equal(hit.description.meshes[0].glow![0], 1);
+  assert.equal(hit.description.meshes[0].material, "paper");
+  assert.deepEqual(hit.description.materials, make(input.record).materials);
+  const uncached = new AssetWorkerEngine(async record => make(record), 155);
+  await uncached.handle({ type: "put", requestId: "put", source: input });
+  assert.equal((await uncached.handle({ type: "compile", requestId: "a", revision: 1, source: input.record, files: [] })).type, "compiled");
+  assert.equal(uncached.stats().cacheBytes, 0);
+});
+
+test("malformed owned attributes and missing material images fail before caching", async () => {
+  const input = await source("owned-invalid");
+  for (const invalid of ["attribute", "material", "texture"] as const) {
+    const engine = new AssetWorkerEngine(async record => {
+      const output: OwnedAssetDescription = triangle(record);
+      if (invalid === "attribute") output.meshes[0].colors = new Float32Array([1, 1, 1]);
+      else {
+        output.meshes[0].material = "missing";
+        if (invalid === "texture") output.materials = [{ id: "missing", baseColor: [1, 1, 1, 1],
+          doubleSided: true, unlit: true, baseColorTexture: "no-image" }];
+      }
+      return output;
+    });
+    await engine.handle({ type: "put", requestId: "put", source: input });
+    const result = await engine.handle({ type: "compile", requestId: invalid, revision: 1, source: input.record, files: [] });
+    assert.equal(result.type, "error", invalid);
+    assert.equal(engine.stats().cacheEntries, 0);
+  }
+});
 
 test("worker verifies exact binary inputs and owns cached buffers after transfer", async () => {
   const input = await source("mesh");

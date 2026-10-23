@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AssetDescription } from "../src/asset-compiler.ts";
 import { AssetRuntimeAdapter } from "../src/asset-runtime-adapter.ts";
+import type { OwnedAssetDescription } from "../src/asset-import-protocol.ts";
 
 Object.defineProperty(globalThis, "GPUBufferUsage", { value: { VERTEX: 32, INDEX: 16, COPY_DST: 8, COPY_SRC: 4 }, configurable: true });
 Object.defineProperty(globalThis, "GPUTextureUsage", { value: { TEXTURE_BINDING: 4, COPY_DST: 2, COPY_SRC: 1 }, configurable: true });
@@ -38,6 +39,30 @@ function description(): AssetDescription {
     bounds: { min: [0, 0, 0], max: [1, 1, 0] } }], images: [{ id: "card", source: "mesh", mime: "image/png", width: 1, height: 1,
       bytes: new Uint8Array([255, 16, 32, 255]) }] };
 }
+
+test("owned normals, palette, glow, UVs, and image material reach separate GPU resources", async () => {
+  const fake = device(), runtime = new AssetRuntimeAdapter(fake.gpu);
+  const input: OwnedAssetDescription = description();
+  Object.assign(input.meshes[0], { normals: new Float32Array([0, 0, 1, 0, 0, 1, 0, 0, 1]),
+    colors: new Float32Array(9).fill(0.5), glow: new Float32Array([1, 0, 0]),
+    uvs: new Float32Array([0, 0, 1, 0, 0, 1]), material: "card-material" });
+  input.materials = [{ id: "card-material", baseColor: [1, 1, 1, 1], doubleSided: true, unlit: true, baseColorTexture: "card" }];
+  runtime.commit("mesh", 1, await runtime.prepare(input));
+  const resources = runtime.resources("mesh")!.meshes[0];
+  assert.equal(resources.material, "card-material");
+  for (const [name, field] of [["normal", "normals"], ["color", "colors"], ["glow", "glow"], ["uv", "uvs"]] as const) {
+    const buffer = resources.attributes[name] as unknown as { bytes: Uint8Array };
+    assert.deepEqual(new Float32Array(buffer.bytes.buffer), input.meshes[0][field]);
+  }
+  input.meshes[0].colors![0] = 0;
+  input.materials[0].baseColorTexture = "changed";
+  const saved = runtime.get("mesh")!.description;
+  assert.equal(saved.meshes[0].colors![0], 0.5);
+  assert.equal(saved.materials![0].baseColorTexture, "card");
+  assert.deepEqual(runtime.stats(), { assets: 1, buffers: 6, textures: 1 });
+  runtime.dispose();
+  assert.ok(fake.buffers.every(buffer => buffer.destroyed));
+});
 
 test("runtime uploads compiled mesh/image bytes and replaces only that asset", async () => {
   const fake = device(), runtime = new AssetRuntimeAdapter(fake.gpu);

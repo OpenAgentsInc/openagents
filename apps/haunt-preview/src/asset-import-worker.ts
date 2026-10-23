@@ -1,13 +1,13 @@
 import * as Compiler from "./asset-compiler.ts";
-import type { AssetDescription, SourceRecord } from "./asset-compiler.ts";
+import type { SourceRecord } from "./asset-compiler.ts";
 import { sourceBytesHash } from "./protocol.ts";
 import {
   ASSET_IMPORT_VERSION, MAX_COMPILED_CACHE_BYTES, MAX_SOURCE_COUNT, MAX_SOURCE_STORE_BYTES,
   copyImportedAsset, descriptionBytes, descriptionTransfers, sameSource, sourceKey, validateImportedAsset,
 } from "./asset-import-protocol.ts";
-import type { AssetConverter, AssetImportRequest, AssetImportResponse, SourceBytes, WorkerStats } from "./asset-import-protocol.ts";
+import type { AssetConverter, AssetImportRequest, AssetImportResponse, OwnedAssetDescription, SourceBytes, WorkerStats } from "./asset-import-protocol.ts";
 
-type Cached = { description: AssetDescription; bytes: number };
+type Cached = { description: OwnedAssetDescription; bytes: number };
 
 export class AssetWorkerEngine {
   private readonly sources = new Map<string, Uint8Array>();

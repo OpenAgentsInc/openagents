@@ -1,5 +1,6 @@
 import { Effect } from "effect";
-import type { AssetDescription, SourceKind, SourceRecord } from "./asset-compiler.ts";
+import type { SourceKind, SourceRecord } from "./asset-compiler.ts";
+import type { OwnedAssetDescription as AssetDescription } from "./asset-import-protocol.ts";
 import { AssetSourceStore, type StoredSource } from "./asset-source-store.ts";
 import { AssetRuntimeAdapter, type AssetRuntime, type PreparedAsset } from "./asset-runtime-adapter.ts";
 import { MAX_SOURCE_BYTES, MAX_SOURCE_COUNT, MAX_SOURCE_STORE_BYTES, copyImportedAsset, sameSource, sourceKey, validateImportedAsset } from "./asset-import-protocol.ts";
