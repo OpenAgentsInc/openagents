@@ -392,6 +392,7 @@ try {
   assert.equal((await book()).book.sequence,1,'The native commit exists despite a lost response');
   await page.click('#publish-confirm');await page.locator('#publish-review').waitFor({state:'hidden'});
   assert.equal(publicationPosts.length,2);assert.equal(publicationPosts[0].command_id,publicationPosts[1].command_id);
+  console.log('Publication retry completed');
   const first=await book();assert.equal(first.book.sequence,1,'Retry returns the existing publication');
   const firstId=first.book.channel,world=first.world;
   const firstPath=`/new-lander/play/${world}/${firstId}`;
@@ -418,7 +419,8 @@ try {
     }});
   });
   const guestPage=await guest.newPage();guestPage.on('pageerror',e=>errors.push(e.message));await guestPage.goto('https://openagents.com'+firstPath);
-  await guestPage.waitForFunction(()=>window.versePlayer&&JSON.parse(window.versePlayer.snapshot()).engine.receipts.some(r=>r.outcome.message==='Playable version opened.'),null,{timeout:125000});
+  await guestPage.waitForFunction(()=>window.versePlayer&&JSON.parse(window.versePlayer.snapshot()).engine.receipts.some(r=>r.outcome.message==='Playable version opened.'),null,{timeout:process.env.AETHYRFORGE_LOCAL_CHECK==='1'?30000:125000});
+  console.log('Pinned guest player opened');
   const guestSnapshot=()=>guestPage.evaluate(()=>JSON.parse(window.versePlayer.snapshot()));
   assert.equal((await guestSnapshot()).release,firstId);assert.deepEqual((await guestSnapshot()).engine.capabilities,['inspect','observe']);
   assert.equal((await guestSnapshot()).engine.status.authoring,undefined);
@@ -435,6 +437,7 @@ try {
   assert.ok(walked.eye.some((n,i)=>Math.abs(n-guestPose.eye[i])>0.05),'The guest actually walks in the published world');
   for(const frame of guestPage.frames())if(frame.url().startsWith(config.preview))await frame.evaluate(()=>document.exitPointerLock?.());
   await guestPage.screenshot({path:path.join(out,'playable-guest-desktop.png')});
+  console.log('Guest permissions and walking passed');
   const priorPlayerSession=(await guestSnapshot()).engine.session;
   await guestEditor.evaluate(()=>{sessionStorage.setItem('fixture-player-reload-mode','hold-fail');location.reload();});
   await guestEditor.waitForFunction(()=>window.playerLoadFixture?.actual()?.ok===true,null,{timeout:125000});
@@ -457,6 +460,7 @@ try {
   assert.equal((await guestSnapshot()).release,firstId,'Retry reloads the same pinned release');
   assert.equal(await guestEditor.evaluate(()=>window.aethyrforge.snapshot().status.authoring.active_source),changed);
   await guestPage.screenshot({path:path.join(out,'playable-reload-recovered.png')});
+  console.log('Player reload failure and recovery passed');
   // Publish another saved version, keeping the first guest pinned.
   await edit('materials');
   const shared=page.locator('#panel-materials details').filter({has:page.locator('#edit-fog')});await shared.locator('summary').click();
@@ -469,6 +473,7 @@ try {
     await page.evaluate(text=>window.speechFixture.last.onresult({results:[[{transcript:text}]]}),text);await page.waitForTimeout(200);
   };
   await phrase('confirm publish');await page.locator('#publish-review').waitFor({state:'hidden'});
+  console.log('Second publication confirmed by voice handler');
   const second=await book(),secondId=second.book.channel;assert.notEqual(secondId,firstId);assert.equal(second.book.sequence,2);
   assert.equal(await page.locator('#publish-version').inputValue(),secondId,'Initial selection follows the current channel');
   assert.equal((await guestSnapshot()).release,firstId);
@@ -527,6 +532,13 @@ try {
   fs.writeFileSync(path.join(out,'browser-publish.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
   }
 } catch(error){
+  for(const guest of guestContexts)for(const guestPage of guest.pages())if(!guestPage.isClosed()){
+    await guestPage.screenshot({path:path.join(out,'guest-error.png')});
+    fs.writeFileSync(path.join(out,'guest-error-state.json'),JSON.stringify(await guestPage.evaluate(()=>({body:document.body.innerText,player:window.versePlayer?.snapshot(),frameHidden:document.querySelector('#engine')?.hidden})),null,2));
+    const frames=[];
+    for(const f of guestPage.frames())if(f.url().startsWith(config.editor)||f.url().startsWith(config.preview))frames.push(await f.evaluate(()=>({url:location.href,body:document.body.innerText,state:window.aethyrforge?.snapshot(),width:innerWidth,height:innerHeight})).catch(error=>({error:String(error)})));
+    fs.writeFileSync(path.join(out,'guest-private-frame-error.json'),JSON.stringify(frames,null,2));
+  }
   if(page&&!page.isClosed()){await page.screenshot({path:path.join(out,'publish-error.png')});fs.writeFileSync(path.join(out,'publish-error-state.json'),JSON.stringify({error:String(error),errors,body:await page.locator('body').innerText()},null,2));}
   throw error;
 } finally {

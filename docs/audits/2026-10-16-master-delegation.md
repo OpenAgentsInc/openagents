@@ -491,7 +491,7 @@ The status lines below summarize each issue and its comments. Open the issue for
   browser regression pass. The latter holds the older snapshot after the command
   receipt, verifies confirmation stays open, then immediately compiles once the
   matching source arrives. Evidence stays in private scratch
-  `draft-ack-browser-2/browser-draft-ack.json`. The account service is synthetic;
+  `draft-ack-browser-3/browser-draft-ack.json`. The account service is synthetic;
   no real sign-in provider or microphone pass is claimed. Deployment and the
   integrated player journey remain in #12561.
 
