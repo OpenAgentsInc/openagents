@@ -31,8 +31,10 @@
     ],
     "whole_agent_turn_completed": false,
     "bounded_run_elapsed_ms": 369231,
-    "terminal_gap": "The loop remained Asking a Pylon; kilnAgentDone is set only after the loop exits. Cancellation was requested and the isolated browser closed. This timed-out run is not a whole-pipeline completion pass.",
-    "scope": "Actual current public Kiln Wasm and real relay/model; helper static fixture with an observed hosted-house context. Scoped Verse intentionally skips runner identity; the service key was not used."
+    "scope": "Actual current public Kiln Wasm and real relay/model; helper static fixture with an observed hosted-house context. Scoped Verse intentionally skips runner identity; the service key was not used.",
+    "completion_not_observed_within_qualification_bound": "The loop remained Asking a Pylon; kilnAgentDone is set only after the loop exits. Cancellation was requested and the isolated browser closed. This timed-out run is not a whole-pipeline completion pass.",
+    "declared_request_bound_secs": 300,
+    "bound_interpretation": "The overall qualification ended about246 seconds after answer2, potentially within the next request declared bound. This does not establish a product hang or provider failure."
   },
   "candidate_application": {
     "passed": true,
@@ -40,7 +42,6 @@
     "actual_model_completed": false,
     "retained_real_model_candidate": true,
     "candidate_ready_status_observed_ms": 123428,
-    "terminal_service_gap": "The prior bounded run remained Asking a Pylon; its loop did not exit and no agent-done flag was observed.",
     "synthetic_account_service": false,
     "isolated_account_store": true,
     "real_oauth_provider": false,
@@ -143,7 +144,7 @@
     }
   ],
   "remaining_12561": [
-    "Qualify the new immutable profiles and the in-product Kiln bootstrap; investigate the outstanding request/terminal-service gap without claiming agent completion.",
+    "Qualify the new immutable profiles and in-product Kiln bootstrap; agent-turn completion was not observed within the qualification bound. No hang, provider failure, or relay defect is established.",
     "Finish actual isolated GCS save/open/shared-role checks and independent artifact cleanup.",
     "Complete dirty-material device recovery, repeated-session resources, actual pointer-brush timing, integrated journey, and private printable Kiki review packet.",
     "Real browser-provider login, microphone capture/ASR, and Kiki human review remain explicit pending checks."

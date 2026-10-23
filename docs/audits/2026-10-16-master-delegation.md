@@ -496,8 +496,10 @@ The status lines below summarize each issue and its comments. Open the issue for
   browser errors, and test-session retirement200. Identity/storage are isolated;
   the static Kiln helper is not the in-product bootstrap or provider-login proof.
   New runtime tags include the full SDK closure, including changed Kiln bytes;
-  prior tags and traffic are preserved. The terminal-service gap, current-profile
-  integration, storage cleanup, and remaining full journey continue in #12561.
+  prior tags and traffic are preserved. Agent-turn completion was not observed
+  within the qualification bound; the next request may still have been inside its
+  declared wait. No hang or provider failure is established. Current-profile
+  integration, storage cleanup, and the remaining journey continue in #12561.
   [Kiln command evidence](../verse/aethyrforge-kiln-command-qualification.json).
 
 
