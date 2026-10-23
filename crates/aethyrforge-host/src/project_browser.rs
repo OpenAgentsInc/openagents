@@ -503,6 +503,9 @@ async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
             let d: ProjectDocument =
                 serde_json::from_value(v["document"].clone()).map_err(|_| JsValue::NULL)?;
             d.validate().map_err(|_| JsValue::NULL)?;
+            let checkpoint = serde_json::from_value::<StudioVisit>(v["visit"].clone())
+                .ok()
+                .and_then(|visit| visit.owned_checkpoint(s.account.as_deref()));
             let action = if let Some(images) = v.get("materials") {
                 let archive = MaterialProjectArchive {
                     schema: "openagents.verse.project-export.v2".into(),
@@ -513,7 +516,7 @@ async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
                         )
                     })?,
                 };
-                archive.restore(None).map_err(|_| {
+                archive.restore(checkpoint).map_err(|_| {
                     JsValue::from_str("The device copy needs its matching face images.")
                 })?
             } else {
@@ -524,7 +527,7 @@ async fn action(weak: Weak<RefCell<State>>, id: &str) -> Result<(), JsValue> {
                 }
                 Action::RestoreProject {
                     document: d,
-                    checkpoint: None,
+                    checkpoint,
                 }
             };
             drop(s);

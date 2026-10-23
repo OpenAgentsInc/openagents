@@ -34,6 +34,13 @@ impl Default for StudioVisit {
     }
 }
 impl StudioVisit {
+    /// A device copy can suggest a place only for its matching account.
+    /// The confirmed restore still checks whether that place is safe in the world.
+    pub fn owned_checkpoint(&self, account: Option<&str>) -> Option<Checkpoint> {
+        (self.owner.as_deref() == account && self.validate().is_ok())
+            .then(|| self.checkpoint.clone())
+            .flatten()
+    }
     pub fn validate(&self) -> Result<(), Error> {
         if self.panels.len() > 5
             || !PANELS.contains(&self.active.as_str())
@@ -91,6 +98,27 @@ impl StudioVisit {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn device_places_require_a_valid_visit_and_matching_owner() {
+        let mut visit = StudioVisit {
+            owner: Some("artist".into()),
+            checkpoint: Some(Checkpoint {
+                eye: [-2.3, 1.8, -12.3],
+                target: [-2.4, 1.8, -14.8],
+                mode: crate::CameraMode::Fly,
+            }),
+            source: "unfinished draft".into(),
+            ..StudioVisit::default()
+        };
+        assert_eq!(visit.owned_checkpoint(Some("artist")), visit.checkpoint);
+        assert!(visit.owned_checkpoint(Some("other")).is_none());
+        assert!(visit.owned_checkpoint(None).is_none());
+        visit.checkpoint.as_mut().unwrap().eye[0] = f64::INFINITY;
+        assert!(visit.owned_checkpoint(Some("artist")).is_none());
+        visit.checkpoint.as_mut().unwrap().eye[0] = -2.3;
+        visit.panels.push("unavailable".into());
+        assert!(visit.owned_checkpoint(Some("artist")).is_none());
+    }
     #[test]
     fn windows_close_without_losing_fields_or_pose_and_reopen_in_reading_order() {
         let mut visit = StudioVisit::default();
