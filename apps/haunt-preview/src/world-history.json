@@ -1,0 +1,74 @@
+[
+  {
+    "id": "2d82a4ad8455cee3990714f43834f702bcfff600",
+    "author": "Codex",
+    "at": "2026-10-22T19:31:03-05:00",
+    "summary": "Kept queued edits attached to the version they started from",
+    "scope": "world",
+    "url": "https://github.com/OpenAgentsInc/openagents/commit/2d82a4ad8455cee3990714f43834f702bcfff600",
+    "earnings": null
+  },
+  {
+    "id": "290883335b03a8392648dd30030fc86ea2707e75",
+    "author": "Codex",
+    "at": "2026-10-22T18:58:15-05:00",
+    "summary": "Added material changes to undo and redo",
+    "scope": "world",
+    "url": "https://github.com/OpenAgentsInc/openagents/commit/290883335b03a8392648dd30030fc86ea2707e75",
+    "earnings": null
+  },
+  {
+    "id": "14edd54f9a4be10401767b06163a31c0c1f67f31",
+    "author": "Codex",
+    "at": "2026-10-22T18:51:46-05:00",
+    "summary": "Checked that saved material files match their original bytes",
+    "scope": "world",
+    "url": "https://github.com/OpenAgentsInc/openagents/commit/14edd54f9a4be10401767b06163a31c0c1f67f31",
+    "earnings": null
+  },
+  {
+    "id": "74c02e348f69162b71e286ce747a5178fae649b9",
+    "author": "Codex",
+    "at": "2026-10-22T18:44:20-05:00",
+    "summary": "Kept unfinished material changes with saved worlds",
+    "scope": "world",
+    "url": "https://github.com/OpenAgentsInc/openagents/commit/74c02e348f69162b71e286ce747a5178fae649b9",
+    "earnings": null
+  },
+  {
+    "id": "7d8555ab371fc283a3f5ce10bd75da0519617c2b",
+    "author": "Codex",
+    "at": "2026-10-22T17:25:36-05:00",
+    "summary": "Added support for making several changes together",
+    "scope": "world",
+    "url": "https://github.com/OpenAgentsInc/openagents/commit/7d8555ab371fc283a3f5ce10bd75da0519617c2b",
+    "earnings": null
+  },
+  {
+    "id": "84fd9083c725c048295c522d17c62d2883528b03",
+    "author": "Codex",
+    "at": "2026-10-22T16:54:23-05:00",
+    "summary": "Added useful defaults when a creator leaves a choice open",
+    "scope": "world",
+    "url": "https://github.com/OpenAgentsInc/openagents/commit/84fd9083c725c048295c522d17c62d2883528b03",
+    "earnings": null
+  },
+  {
+    "id": "179f88c0f90822355963995c6760854279145721",
+    "author": "Codex",
+    "at": "2026-10-22T16:40:12-05:00",
+    "summary": "Added automatic building choices and clear-space placement",
+    "scope": "world",
+    "url": "https://github.com/OpenAgentsInc/openagents/commit/179f88c0f90822355963995c6760854279145721",
+    "earnings": null
+  },
+  {
+    "id": "6cb7c7afcc8d6c8fb674b42b349e6bc1f8f52489",
+    "author": "Codex",
+    "at": "2026-10-22T16:30:24-05:00",
+    "summary": "Added walkable houses and floating tools to Medieval Town",
+    "scope": "world",
+    "url": "https://github.com/OpenAgentsInc/openagents/commit/6cb7c7afcc8d6c8fb674b42b349e6bc1f8f52489",
+    "earnings": null
+  }
+]

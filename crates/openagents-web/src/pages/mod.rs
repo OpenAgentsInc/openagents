@@ -36,6 +36,7 @@ mod lander8;
 mod layertree;
 pub mod live;
 mod new_lander;
+mod new_lander_house;
 mod pricing;
 pub mod profile;
 mod pylon_work;
@@ -126,6 +127,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(lander11::routes())
         .merge(grid_home::routes())
         .merge(new_lander::routes())
+        .merge(new_lander_house::routes())
         .merge(bunny::routes())
         .merge(gpui_demo::routes())
         .merge(gpui_fonts::routes())
