@@ -768,10 +768,19 @@ fn route_request(rc: &Rc<RefCell<State>>) {
         .value();
     let capabilities: Vec<Capability> =
         serde_json::from_value(rc.borrow().snapshot()["capabilities"].clone()).unwrap_or_default();
+    // Feedback describes this request; earlier failures remain in their own tool state.
+    say("");
+    element("voice-heard").set_text_content(Some(&text));
     let control = request_control(&text, &capabilities);
     match control {
-        Ok(RequestControl::Stop) => rc.borrow_mut().stop_input(),
-        Ok(RequestControl::Options) => hide("request-choices", false),
+        Ok(RequestControl::Stop) => {
+            rc.borrow_mut().stop_input();
+            say("Listening stopped.");
+        }
+        Ok(RequestControl::Options) => {
+            hide("request-choices", false);
+            say("Choose an option, or say its name.");
+        }
         Ok(RequestControl::CancelReview) => {
             hide("edit-auth", true);
             rc.borrow_mut().stop_request();
@@ -791,6 +800,7 @@ fn route_request(rc: &Rc<RefCell<State>>) {
                     .is_some_and(|p| !matches!(p.pending.action, Action::Publish { .. }));
             drop(s);
             if allowed {
+                say("Applying your reviewed change…");
                 spawn_local(confirm(Rc::downgrade(rc)));
             } else {
                 say("Sign in, then review the change before confirming it.");
@@ -799,6 +809,7 @@ fn route_request(rc: &Rc<RefCell<State>>) {
         Ok(RequestControl::Inspect) => {
             hide("request-choices", true);
             rc.borrow_mut().workspace(false);
+            say("You can keep exploring.");
         }
         Ok(RequestControl::Map) => {
             rc.borrow_mut().stop_input();
@@ -809,8 +820,12 @@ fn route_request(rc: &Rc<RefCell<State>>) {
         Ok(RequestControl::Review(action)) => {
             rc.borrow_mut().stop_request();
             if matches!(action, Action::View { .. }) {
-                let _ = rc.borrow().request(&action);
+                match rc.borrow().request(&action) {
+                    Ok(_) => say("Changing the view…"),
+                    Err(_) => say("The view could not change. Try again."),
+                }
             } else {
+                say("Review the change before confirming it.");
                 queue_change(rc, action);
             }
         }
@@ -981,6 +996,8 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
         };
         let mut s = rc.borrow_mut();
         s.stop_input();
+        say("");
+        element("voice-heard").set_text_content(None);
         let Some(context) = s.input_context() else {
             say("Wait for the house to open.");
             return;

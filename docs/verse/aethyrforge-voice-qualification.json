@@ -88,5 +88,30 @@
     12563,
     12564,
     12565
-  ]
+  ],
+  "asr_policy_diagnostic": {
+    "scope": "Harness-only response-policy override against native e342033e6d; not a corrected native-consumer pass. Actual SpeechRecognition API and supplied synthetic WAV, no transcript injection.",
+    "raw_events": [
+      "start",
+      "end"
+    ],
+    "audio_start_event": false,
+    "recognized_words": false,
+    "result": "Listening timed out after 45 seconds without audiostart or recognition results. Synthetic file-audio input remains unqualified.",
+    "prepared_draft_grants": 1,
+    "synthetic_account_service": true,
+    "real_signin_provider": false,
+    "human_microphone": false
+  },
+  "feedback_follow_up": {
+    "issue": 12565,
+    "source_checks": {
+      "host_tests": 31,
+      "wasm_typecheck": true,
+      "script_syntax": true
+    },
+    "implemented": "Clear prior transcript/response on Listen; clear or update response for each current handled request.",
+    "browser_assertions": "Share -> Show options checks current feedback on desktop and mobile.",
+    "new_sdk_browser_rerun": "pending"
+  }
 }

@@ -264,6 +264,12 @@ try {
   assert.match(await page.locator("#edit-voice-status").innerText(),/Listening/);
   await phrase("share");assert.match(await page.locator("#voice-response").innerText(),/isn't available/);
   assert.equal((await snapshot()).status.project.revision,0);
+  await phrase("show options");
+  assert.ok(await page.locator("#request-choices").isVisible());
+  assert.equal(await page.locator("#voice-heard").innerText(),"show options");
+  assert.equal(await page.locator("#voice-response").innerText(),"Choose an option, or say its name.");
+  assert.equal(await page.locator("#edit-status").innerText(),"Choose an option, or say its name.");
+  await page.screenshot({path:path.join(out,"voice-world-desktop.png")});
   // Hold a queued recognition callback, stop, and deliver it late.
   await page.waitForFunction(()=>window.speechFixture.last && !window.speechFixture.last.aborted);
   await page.evaluate(()=>window.lateSpeech=window.speechFixture.last.queued);
@@ -276,15 +282,18 @@ try {
   assert.match(await page.locator("#edit-voice-status").innerText(),/denied/);
   const deniedStarts=await page.evaluate(()=>window.speechFixture.starts);await page.waitForTimeout(700);
   assert.equal(await page.evaluate(()=>window.speechFixture.starts),deniedStarts);
-  await page.screenshot({path:path.join(out,"voice-world-desktop.png")});
+  await page.screenshot({path:path.join(out,"voice-permission-denied.png")});
   await page.setViewportSize({width:390,height:844});
-  await page.click("#edit-voice-start");await phrase("show options");
+  await page.click("#edit-voice-start");await phrase("share");
+  assert.match(await page.locator("#voice-response").innerText(),/isn't available/);
+  await phrase("show options");
+  assert.equal(await page.locator("#voice-response").innerText(),"Choose an option, or say its name.");
   await page.screenshot({path:path.join(out,"voice-world-mobile.png")});
   await phrase("stop");assert.match(await page.locator("#edit-voice-status").innerText(),/off/);
   assert.equal((await snapshot()).session,original.session);
   await page.reload();await ready();assert.equal(await page.evaluate(()=>window.speechFixture.starts),0);
   assert.deepEqual(errors,[]);
-  fs.writeFileSync(path.join(out,"browser-voice.json"),JSON.stringify({release:config.release,synthetic_speech:true,real_speech_provider:false,real_signin_provider:false,errors,in_world_options:true,spoken_controls:true,exact_compile_equivalence:true,guest_confirm_does_not_grant:true,stop_late_event_ignored:true,denial_no_resume:true,reload_no_resume:true,same_world_session:true},null,2));
+  fs.writeFileSync(path.join(out,"browser-voice.json"),JSON.stringify({release:config.release,synthetic_speech:true,real_speech_provider:false,real_signin_provider:false,errors,in_world_options:true,current_feedback_after_new_request:true,spoken_controls:true,exact_compile_equivalence:true,guest_confirm_does_not_grant:true,stop_late_event_ignored:true,denial_no_resume:true,reload_no_resume:true,same_world_session:true},null,2));
 } catch (error) {
   console.log(
     JSON.stringify({

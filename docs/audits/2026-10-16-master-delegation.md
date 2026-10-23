@@ -485,6 +485,14 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12565: each handled request clears the previous response and shows current
+  option/review/progress feedback. Listen clears the prior transcript and response.
+  Host checks (31), Wasm checks, changed-file formatting, and script syntax pass.
+  The retained browser check asserts Share -> Show options on desktop and mobile.
+  Rebuild the pinned SDK/release and fresh native consumer, run that assertion,
+  and replace the private captures before #12561. [Voice qualification](../verse/aethyrforge-voice-qualification.json)
+  retains the earlier Codex-reviewed defect and the separate ASR gap.
+
 - #12564: the house host allows microphone access only to itself; camera and
   cross-origin engine mic access remain denied, and the read-only Town policy
   stays unchanged. Permission, speech-service, and network refusals have distinct
