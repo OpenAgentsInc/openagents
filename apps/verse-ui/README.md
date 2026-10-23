@@ -58,3 +58,19 @@ It does not complete provider sign-in, publish anything, or record speech.
 The Verse flow uses a dark zinc theme: black backgrounds, zinc cards, light text,
 and light primary actions. Keep the private engine controls on the same palette.
 Scene materials and world lighting are independent of the interface theme.
+
+Check text contrast and phone overflow with the browser audit:
+
+```sh
+VERSE_UI_REVIEW_URL=https://openagents.com \
+VERSE_UI_CAPTURE_DIR=/absolute/scratch/contrast \
+openagents browser run -- node apps/verse-ui/tools/contrast.mjs
+```
+
+The audit covers both homepage actions, hover and focus, login/signup, guest
+entry, Jarvis tabs, the tool finder, first-edit sign-in, and both demo players at
+phone and desktop widths. It runs axe contrast checks and checks computed text
+colors on translucent surfaces. Inspect the saved screenshots for image
+backgrounds that axe cannot measure. Set `VERSE_UI_REVIEW_CSS` to a local built
+stylesheet to test before deployment, and `VERSE_UI_REVIEW_FIXTURES` to the
+Rust test capture directory to include account-only cards without signing in.

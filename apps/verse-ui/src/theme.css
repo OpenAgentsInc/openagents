@@ -104,7 +104,8 @@
 [data-verse-ui] input:disabled,
 [data-verse-ui] select:disabled,
 [data-verse-ui] textarea:disabled {
-  opacity: 0.45;
+  opacity: 1;
+  color: var(--muted-foreground);
   cursor: not-allowed;
 }
 [data-verse-ui] a {
@@ -114,6 +115,33 @@
 }
 [data-verse-ui] a:hover {
   text-decoration: underline;
+}
+[data-verse-ui] .enter-button,
+[data-verse-ui] .enter-button:hover,
+[data-verse-ui] .enter-button:focus-visible,
+[data-verse-ui] .skip-link {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+[data-verse-ui] .enter-button:hover {
+  background: #e4e4e7;
+  text-decoration: none;
+}
+[data-verse-ui] .product-number,
+[data-verse-ui] .hero-caption,
+[data-verse-ui] .orbit-caption,
+[data-verse-ui] .scroll-note {
+  color: var(--muted-foreground);
+}
+[data-verse-ui] .product-number,
+[data-verse-ui] .orbit-caption,
+[data-verse-ui] .scroll-note,
+[data-verse-ui] .world-option small {
+  font-size: 11px;
+  opacity: 1;
+}
+[data-verse-ui] .orbit-caption {
+  color: var(--foreground);
 }
 [data-verse-ui]
   input:not([type="checkbox"]):not([type="range"]):not([type="color"]):not(
@@ -181,11 +209,29 @@
 [data-verse-ui] #planet-enter,
 [data-verse-ui] #planet-generate,
 [data-verse-ui] #visit-send,
-[data-verse-ui] form > button[type="submit"] {
+[data-verse-ui] form > button[type="submit"],
+[data-verse-ui] [data-slot="button"][data-variant="default"] {
   background: var(--primary);
   color: var(--primary-foreground);
   border-color: transparent;
   box-shadow: 0 1px 2px #00000044;
+}
+[data-verse-ui]
+  :is(
+    #continue-guest,
+    #edit-submit,
+    #edit-confirm,
+    #publish-confirm,
+    #world-edit,
+    #planet-create,
+    #planet-enter,
+    #planet-generate,
+    #visit-send,
+    form > button[type="submit"],
+    [data-slot="button"][data-variant="default"]
+  ):hover:not(:disabled) {
+  background: #e4e4e7;
+  color: var(--primary-foreground);
 }
 [data-verse-ui] #project-publish {
   border-color: #cacaca66;
@@ -246,6 +292,12 @@
   border-radius: 9px;
   text-align: left;
   min-height: 60px;
+  min-width: 0;
+  white-space: normal;
+  justify-content: flex-start;
+}
+[data-verse-ui] .world-list {
+  grid-template-columns: minmax(0, 1fr);
 }
 [data-verse-ui] .world-option[aria-pressed="true"] {
   background: #dddddd0d;
@@ -523,14 +575,14 @@
   color: var(--foreground);
   font-weight: 500;
 }
-[data-verse-ui] #bfbfbfee-controls {
+[data-verse-ui] #face-controls {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 14px;
   margin: 16px 0;
   min-width: 0;
 }
-[data-verse-ui] #bfbfbfee-canvas {
+[data-verse-ui] #face-canvas {
   display: block;
   max-width: 256px;
   width: 100%;
@@ -542,7 +594,7 @@
   background: repeating-conic-gradient(#262626 0% 25%, #393939 0% 50%) 0/20px
     20px;
 }
-[data-verse-ui] #bfbfbfee-controls:disabled #bfbfbfee-canvas {
+[data-verse-ui] #face-controls:disabled #face-canvas {
   opacity: 0.4;
   pointer-events: none;
 }
@@ -798,6 +850,12 @@
   color: #d9d9d9;
   font-size: 11px;
 }
+[data-verse-ui="player"] #player-controls,
+[data-verse-ui="studio"] #world-controls > span {
+  background: var(--card);
+  padding: 8px 12px;
+  border-radius: 8px;
+}
 [data-verse-ui] #visit {
   position: fixed;
   right: 20px;
@@ -841,6 +899,13 @@
   overflow-wrap: anywhere;
 }
 @media (max-width: 799px) {
+  [data-verse-ui] .orbit-caption {
+    bottom: 88px;
+    right: 26%;
+  }
+  [data-verse-ui] .world-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
   [data-verse-ui="studio"] #world-controls {
     bottom: 12px;
     left: 12px;
@@ -1077,9 +1142,35 @@
   }
 }
 
-[data-verse-ui="auth"] { color-scheme: dark; }
-[data-verse-ui="auth"] .oa-auth-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 20px 70px #0006; }
-[data-verse-ui="auth"] .oa-auth-card-header h1, [data-verse-ui="auth"] .oa-auth-brand { color: var(--foreground); }
-[data-verse-ui="auth"] .oa-auth-card-header p, [data-verse-ui="auth"] .oa-auth-switch, [data-verse-ui="auth"] .oa-auth-fine-print { color: var(--muted-foreground); }
-[data-verse-ui="auth"] .oa-button { display: inline-flex; justify-content: center; gap: 8px; min-height: 44px; border-radius: 6px; background: var(--primary); color: var(--primary-foreground); font-weight: 500; text-decoration: none; }
-[data-verse-ui="auth"] .oa-button:hover { background: #e4e4e7; }
+[data-verse-ui="auth"] {
+  color-scheme: dark;
+}
+[data-verse-ui="auth"] .oa-auth-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 70px #0006;
+}
+[data-verse-ui="auth"] .oa-auth-card-header h1,
+[data-verse-ui="auth"] .oa-auth-brand {
+  color: var(--foreground);
+}
+[data-verse-ui="auth"] .oa-auth-card-header p,
+[data-verse-ui="auth"] .oa-auth-switch,
+[data-verse-ui="auth"] .oa-auth-fine-print {
+  color: var(--muted-foreground);
+}
+[data-verse-ui="auth"] .oa-button {
+  display: inline-flex;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  border-radius: 6px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 500;
+  text-decoration: none;
+}
+[data-verse-ui="auth"] .oa-button:hover {
+  background: #e4e4e7;
+}
