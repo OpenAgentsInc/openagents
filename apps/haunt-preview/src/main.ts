@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { ASSET, PROJECT, sourceHash, type ShaderEdit } from "./protocol.ts";
 import "./style.css";
 import { createEditor } from "./editor.ts";
+import { MaterialBridge } from "./material-bridge.ts";
 import { upgradeLegacyShader, type Operation } from "./project.ts";
 
 declare global {
@@ -79,15 +80,30 @@ function workspace<T>(job: () => Promise<T>): Promise<T> {
   workspaceQueue = next;
   return next;
 }
+const material = MaterialBridge({
+  project: () => snapshot.project,
+  submit: (source, origin) => editor.submit({ kind: "set_material_source", asset: ASSET, source }, origin),
+  preview: (source) => {
+    if (sourceSent !== source) activeRequest = forward(source, manualSaveStart ?? now());
+    return activeRequest;
+  },
+  write: async (source) => {
+    const code = await workspace(() => window.kilnWrite(ASSET, source));
+    if (code !== 0) throw new Error("Couldn't save your shader. Try again.");
+  },
+  error: showError,
+});
 const editor = createEditor({
   post: (message) => post(message),
   state: () => snapshot,
   workspace,
+  materialChanged: (project) => material.onProject(project),
+  materialSource: () => snapshot.project?.materialDraft?.source ?? sourceSent,
 });
 function controls() {
-  saveButton.disabled = resetButton.disabled = !ready || saving;
-  shader.disabled = !ready;
-  editor.setReady(ready && sceneOpened && !saving);
+  saveButton.disabled = resetButton.disabled = !ready || saving || !sceneOpened;
+  shader.disabled = !ready || !sceneOpened;
+  editor.setReady(ready && sceneOpened);
   el<HTMLButtonElement>("walk").disabled = !ready;
 }
 
@@ -144,6 +160,7 @@ async function save(source: string): Promise<Record<string, unknown>> {
   manualSaveStart = now();
   controls();
   try {
+    if (sceneOpened) return await material.save(source);
     await Effect.runPromise(
       Effect.tryPromise({
         try: () => workspace(() => window.kilnSaveShader(source)),
@@ -341,7 +358,9 @@ async function start() {
       "Rebuild Kiln to include the Haunted House shader connection.",
     );
   window.kilnShaderChanged = (source) => {
-    activeRequest = forward(source, manualSaveStart ?? now());
+    if (sceneOpened) material.fileChanged(source);
+    else if (sourceSent !== source)
+      activeRequest = forward(source, manualSaveStart ?? now());
   };
   ready = true;
   controls();
@@ -380,7 +399,7 @@ async function start() {
   // A new device always starts with a working baseline, even if OPFS holds a bad draft.
   activeRequest = forward(original);
   await activeRequest;
-  if (previousDraft) {
+  if (previousDraft !== null) {
     // Upgrade this demo's v1 shader layout while preserving its authored tint/code.
     const upgraded = IS_TOWN
       ? previousDraft
@@ -392,10 +411,7 @@ async function start() {
     void editor.ingest(source);
   };
   const savedScene = window.kilnReadScene?.();
-  if (savedScene) await editor.ingest(savedScene, true);
-  else
-    document.getElementById("scene-status")!.textContent =
-      "Ready. Place an asset or describe one change.";
+  await editor.ingest(savedScene ?? JSON.stringify(snapshot.project), true);
   sceneOpened = true;
   controls();
   window.addEventListener(

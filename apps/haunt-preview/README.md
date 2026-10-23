@@ -237,11 +237,15 @@ handles exact arguments and execution.
   IDs with X/Z/scale. Town furniture can also have a floor height; houses keep
   local room plans. `readProject` copies only saved fields and refuses unsupported
   versions, duplicate IDs, invalid assets, out-of-room coordinates, and invalid sizes.
+- Manual shader saves, Original, and Kiln WGSL writes share this history. Undo and
+  redo restore both the source file and preview. Empty or invalid drafts stay saved
+  while the last working shader continues. Shader source and scene data each have
+  a separate 64 KiB limit; saved projects also allow room for JSON escapes.
 - GPU handles, Effect values, player pose, model responses, and undo history are
   outside saved project data. Inspection returns copies.
 - A transaction carries its ID, project ID, base revision, and an allowed operation.
-  Add, move, resize, remove, tint, replace, undo, and redo share `SceneHistory`.
-  Batches contain at most eight scene edits and validate atomically.
+  Add, move, resize, remove, tint, shader source, replace, undo, and redo share `SceneHistory`.
+  Batches contain at most eight project edits and validate atomically.
 - The worker validates the targeted preview/token and command, prepares the change,
   and commits at a frame boundary. Failed commands preserve the project, history,
   player, shader, and device. IDs survive undo/redo; revision numbers never rewind.
@@ -261,6 +265,10 @@ handles exact arguments and execution.
   a second collaboration authority, identity service, or storage backend.
 
 ## Check
+
+Run `npm run verify:source-history` through `openagents browser run` with
+`HAUNT_URL` set to the local preview to check shader undo and reopen in both labs.
+
 
 ```sh
 npm run check
