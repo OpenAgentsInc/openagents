@@ -331,7 +331,7 @@ try {
     await page.locator("#edit-auth").waitFor({state:"hidden"});
   };
   await page.evaluate(()=>{const read=File.prototype.text;File.prototype.text=function(){const result=read.call(this);if(this.name==="delayed-face.json")return new Promise(resolve=>{window.releaseFaceRead=()=>result.then(resolve);window.faceReadStarted=true;});return result;};});
-  await page.evaluate(()=>{window.generationSamples=[];new MutationObserver(()=>{const text=document.querySelector("#face-status").textContent;const match=/Generated locally in ([0-9.]+) ms/.exec(text);if(match)window.generationSamples.push(Number(match[1]));}).observe(document.querySelector("#face-status"),{childList:true,subtree:true,characterData:true});});
+  await page.evaluate(()=>{window.generationSamples=[];new MutationObserver(()=>{const text=document.querySelector("#face-status").textContent;const match=/Generated locally in ([0-9.]+) ms/.exec(text);if(text.includes("Generated locally in under 1 ms"))window.generationSamples.push({less_than_ms:1});else if(match)window.generationSamples.push({rounded_ms:Number(match[1]),rounding_ms:1});}).observe(document.querySelector("#face-status"),{childList:true,subtree:true,characterData:true});});
   assert.equal(await page.locator("#face-canvas").evaluate(e=>getComputedStyle(e).touchAction),"none","Painting styles are served under CSP");
   const baseline=(await snapshot()).status.project.revision;
   await stroke(.19,.43);
@@ -348,13 +348,34 @@ try {
   assert.equal((await snapshot()).status.project.revision,baseline,"Draft preview is read only");
   await page.fill("#face-request","remove all scars");await page.click("#face-generate");
   const refused=await face();assert.deepEqual(refused,generated);
+  await page.waitForFunction(()=>document.querySelector("#face-status").textContent.includes("Erase handmade paint only removes brush marks"));
   await page.click("#face-open");assert.deepEqual(await face(),generated,"Open reuses the edited draft");
   await page.selectOption("#face-brush-mode","erase");await stroke(.19,.43);
   await page.locator("#face-handmade-strength").evaluate(e=>{e.value="0.6";e.dispatchEvent(new Event("input",{bubbles:true}));});
   const refined=await face();assert.notEqual(refined.handmade_png,generated.handmade_png);
-  const previewStarted=Date.now();await page.click("#face-preview");
-  await page.waitForFunction(()=>document.querySelector("#face-status").textContent.includes("Face preview ready"));
-  const previewReceiptMs=Date.now()-previewStarted;
+  const expectedMaterial=await page.evaluate(async source=>{
+    const material={document:structuredClone(source.document),generated:null,handmade:null};
+    for(const kind of ['generated','handmade']) {
+      const png_base64=source[kind+'_png'];const bytes=Uint8Array.from(atob(png_base64),c=>c.charCodeAt(0));
+      const bitmap=await createImageBitmap(new Blob([bytes],{type:'image/png'}));const canvas=document.createElement('canvas');canvas.width=canvas.height=256;const ctx=canvas.getContext('2d');ctx.drawImage(bitmap,0,0);bitmap.close();
+      const rgba=ctx.getImageData(0,0,256,256).data;if(!rgba.some((value,index)=>index%4===3&&value))continue;
+      const sha256=[...new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))].map(n=>n.toString(16).padStart(2,'0')).join('');
+      material[kind]={resource:{sha256,bytes:bytes.length,media_type:'image/png'},png_base64};material.document[kind].image=material[kind].resource;
+    }
+    return material;
+  },refined);
+  const expectedDigest=await page.evaluate(async({url,material})=>(await import(url)).action_sha256(JSON.stringify({type:'preview_material',material})),{url:config.editor+'/sdk/'+config.sdk_sha256+'/aethyrforge_host.js',material:expectedMaterial});
+  // Drain the current candidate before timing a new request for that exact draft.
+  await page.waitForFunction(hash=>JSON.parse(window.hauntDemo.snapshot()).receipts.some(r=>r.outcome?.detail?.type==='material_preview'&&r.outcome.detail.action_sha256===hash),expectedDigest);
+  const previousReceipts=(await snapshot()).receipts.map(r=>r.request_id);
+  await page.evaluate(()=>{
+    const encode=HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL=function(...args){const at=performance.now();try{return encode.apply(this,args);}finally{if(window.previewSample)window.previewSample.png_encoding_ms+=performance.now()-at;}};
+    document.querySelector('#face-preview').addEventListener('click',()=>window.previewSample={started:performance.now(),png_encoding_ms:0},{capture:true,once:true});
+  });
+  await page.click("#face-preview");
+  await page.waitForFunction(({ids,hash})=>JSON.parse(window.hauntDemo.snapshot()).receipts.some(r=>!ids.includes(r.request_id)&&r.outcome?.state==='applied'&&r.outcome?.detail?.type==='material_preview'&&r.outcome.detail.action_sha256===hash),{ids:previousReceipts,hash:expectedDigest});
+  const previewTiming=await page.evaluate(()=>{const sample=window.previewSample;const result={click_event_to_adopted_frame_receipt_ms:performance.now()-sample.started,png_encoding_ms:sample.png_encoding_ms};window.previewSample=null;return result;});
   await page.screenshot({path:path.join(out,"face-preview-desktop.png")});
   await page.click("#face-cancel");
   assert.equal((await snapshot()).status.project.revision,baseline);
@@ -454,9 +475,17 @@ try {
   assert.deepEqual(await face(),currentB,"Redo refreshes the current applied face");
   await page.click("#tab-compile");
   await page.fill("#edit-source",(await page.locator("#edit-source").inputValue())+"\n// face lifecycle draft");
+  const beforeDraftRevision=(await snapshot()).status.project.revision;
   await page.click("#edit-source-draft");await confirm();
-  await page.waitForFunction(()=>document.querySelector("#face-controls").disabled);
+  assert.equal((await snapshot()).status.project.revision,beforeDraftRevision,"Keeping source draft does not advance world history");
+  assert.equal(await page.locator("#face-controls").evaluate(e=>e.disabled),false,"Same-context Draft keeps the canvas usable");
   await page.click("#tab-materials");
+  const shared=page.locator("#panel-materials details").filter({has:page.locator("#edit-fog")});
+  await shared.locator("summary").click();
+  const fog=Number(await page.locator("#edit-fog").inputValue());
+  await page.fill("#edit-fog",String(fog<0.05?fog+0.005:fog-0.005));
+  await page.click("#edit-fog-apply");await confirm();
+  await page.waitForFunction(()=>document.querySelector("#face-controls").disabled);
   assert.equal(await page.locator("#face-export").isEnabled(),true);
   await page.click("#face-open");await page.locator("#face-controls:not([disabled])").waitFor();
   await page.selectOption("#face-brush-mode","paint");await stroke(.25,.65);
@@ -464,12 +493,14 @@ try {
   await page.setViewportSize({width:390,height:844});await page.click("#tab-materials");
   await page.screenshot({path:path.join(out,"face-workspace-mobile.png")});
   assert.deepEqual(errors,[]);
-  const result={release:config.release,protocol_version:6,real_gpu_engine:true,real_native_project_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,microphone_used:false,synthetic_recognition:true,spoken_request_fixture_reaches_generator:true,fixture_direct_session:process.env.AETHYRFORGE_FIXTURE_DIRECT_SESSION==="1",text_request_reaches_local_generator:true,handmade_preserved_on_generation:true,read_only_preview_cancel:true,manual_erase_strength:true,open_reuses_draft:true,refusal_preserves_source:true,delayed_import_keeps_newer_strokes:true,save_blocks_unapplied_face:true,late_import_save_ack_keeps_draft_and_advances_base:true,self_contained_export:true,native_reopen_retains_editable_layers:true,clean_face_reopens_after_undo_redo_and_draft:true,missing_image_collected_for_undo_recovery:true,local_generation_cpu_ms:await page.evaluate(()=>window.generationSamples),browser:browser.version(),native_consumer:path.basename(process.env.OPENAGENTS_TEST_WEB_BINARY),sdk_sha256:config.sdk_sha256,preview_request_to_receipt_ms:previewReceiptMs,timing_method:"Preview request through receipt with an adopted GPU frame; screenshot encoding and local generation time are separate. This is not first-screen-pixel timing.",errors};
+  const result={release:config.release,protocol_version:6,real_gpu_engine:true,real_native_project_store:true,synthetic_account_service:true,real_signin_provider:false,real_speech_provider:false,microphone_used:false,synthetic_recognition:true,spoken_request_fixture_reaches_generator:true,fixture_direct_session:process.env.AETHYRFORGE_FIXTURE_DIRECT_SESSION==="1",text_request_reaches_local_generator:true,handmade_preserved_on_generation:true,read_only_preview_cancel:true,manual_erase_strength:true,open_reuses_draft:true,refusal_preserves_source:true,delayed_import_keeps_newer_strokes:true,save_blocks_unapplied_face:true,late_import_save_ack_keeps_draft_and_advances_base:true,self_contained_export:true,native_reopen_retains_editable_layers:true,clean_face_reopens_after_undo_redo_and_environment:true,same_context_draft_keeps_canvas_usable:true,missing_image_collected_for_undo_recovery:true,local_generation_cpu_samples:await page.evaluate(()=>window.generationSamples),browser:browser.version(),native_consumer:path.basename(process.env.OPENAGENTS_TEST_WEB_BINARY),sdk_sha256:config.sdk_sha256,preview_timing:previewTiming,timing_method:"Click event through a fresh receipt for the exact draft hash; the private bridge confirms an adopted renderer frame and GPU queue completion. Parent PNG encoding is reported separately within that interval. Screenshot encoding and local generation CPU time are separate; this is not first-screen-pixel or ASR latency.",errors};
   fs.writeFileSync(path.join(out,"browser-material.json"),JSON.stringify(result,null,2));console.log(JSON.stringify(result));
 } catch(error) {
   if(page){await page.screenshot({path:path.join(out,"material-error.png")});fs.writeFileSync(path.join(out,"material-error-state.json"),JSON.stringify({error:String(error),errors,body:await page.locator("body").innerText()},null,2));}
   throw error;
 } finally {
+  // Finish native proxy callbacks before disposing their API request context.
+  await context.unrouteAll({behavior:"wait"});
   await context.close();await browser.close();server.kill("SIGTERM");accountServer.close();
   fs.writeFileSync(path.join(out,"native-fixture.log"),log);
 }

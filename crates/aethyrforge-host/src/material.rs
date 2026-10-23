@@ -136,11 +136,13 @@ impl ScarRecipe {
         }) || controls.contains("don't")
             || controls.contains("don’t")
         {
-            return Err("Describe scars to add. Use Edit by hand to erase existing marks.");
+            return Err(
+                "The generator adds scars. Turn off Show generated scars to hide them. Erase handmade paint only removes brush marks.",
+            );
         }
         if !words.iter().any(|s| matches!(*s, "scar" | "scars")) {
             return Err(
-                "The local generator makes stylized scars. Use Edit by hand for other color changes.",
+                "The local generator makes stylized scars. Choose Paint under Brush for other color changes.",
             );
         }
         if words.iter().any(|s| {

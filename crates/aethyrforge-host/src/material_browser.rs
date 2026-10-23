@@ -427,9 +427,13 @@ fn generate(rc: &Rc<RefCell<State>>, request: &str) {
     work.document.recipe = Some(recipe);
     let _ = redraw(work);
     changed(&mut s);
-    tell(&format!(
-        "Generated locally in {elapsed:.0} ms. Preparing a preview…"
-    ));
+    if elapsed < 1.0 {
+        tell("Generated locally in under 1 ms. Preparing a preview…");
+    } else {
+        tell(&format!(
+            "Generated locally in {elapsed:.0} ms. Preparing a preview…"
+        ));
+    }
     drop(s);
     say("Scars generated locally. Say Review change, then Confirm change to apply them.");
     preview(rc);
