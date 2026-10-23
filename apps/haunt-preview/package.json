@@ -15,7 +15,8 @@
     "verify:town": "node scripts/verify-town.mjs",
     "verify:building-choices": "node scripts/verify-building-choices.mjs",
     "verify:natural-defaults": "node scripts/verify-natural-defaults.mjs",
-    "verify:compound": "node scripts/verify-compound.mjs"
+    "verify:compound": "node scripts/verify-compound.mjs",
+    "verify:source-history": "node scripts/verify-material-history.mjs"
   },
   "dependencies": {
     "effect": "4.0.6"

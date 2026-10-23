@@ -10,7 +10,7 @@ import {
   type AssetKind,
   type Behavior,
   SCENE_PATH,
-  MAX_SCENE_BYTES,
+  MAX_PROJECT_BYTES,
   readProject,
   cleanHaunt,
   type Decision,
@@ -24,6 +24,8 @@ type Bridge = {
   post: (message: object) => void;
   state: () => any;
   workspace: <T>(job: () => Promise<T>) => Promise<T>;
+  materialChanged?: (project: Project) => Promise<void>;
+  materialSource?: () => string;
 };
 const el = <T extends HTMLElement>(id: string) =>
   document.getElementById(id) as T;
@@ -201,6 +203,7 @@ export function createEditor(bridge: Bridge) {
       refresh();
       status(`Changed · ${Math.round(receipt.submittedMs)} ms`);
       await persist(result.state.project);
+      await bridge.materialChanged?.(result.state.project);
       return receipt;
     } finally {
       busy = false;
@@ -343,9 +346,12 @@ export function createEditor(bridge: Bridge) {
   async function ingest(text: string, restore = false) {
     if (selfWrites.has(text)) return;
     try {
-      if (new TextEncoder().encode(text).length > MAX_SCENE_BYTES)
+      if (new TextEncoder().encode(text).length > MAX_PROJECT_BYTES)
         throw new Error("The scene file is too large.");
-      const project = readProject(JSON.parse(text));
+      const parsed = JSON.parse(text);
+      if (parsed.materialDraft === undefined && bridge.materialSource)
+        parsed.materialDraft = { asset: LAB.material, source: bridge.materialSource() };
+      const project = readProject(parsed);
       if (JSON.stringify(project) === JSON.stringify(bridge.state().project))
         return;
       if (restore) {
@@ -361,12 +367,9 @@ export function createEditor(bridge: Bridge) {
         });
         rendered = -1;
         refresh();
-        if (
-          !IS_TOWN &&
-          JSON.stringify(cleanHaunt(JSON.parse(text))) !==
-            JSON.stringify(JSON.parse(text))
-        )
+        if (JSON.stringify(project) !== JSON.stringify(JSON.parse(text)))
           await persist(project);
+        await bridge.materialChanged?.(project);
         status("Opened your saved Kiln scene.");
       } else
         await submit(

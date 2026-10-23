@@ -2236,14 +2236,7 @@ impl App {
     }
 
     fn workspace_source(&self, path: &str) -> Option<String> {
-        let vfs = self.vfs.borrow();
-        let bytes = vfs.read(path).ok()?;
-        let source = std::str::from_utf8(bytes).ok()?;
-        // Empty drafts reach the consuming validator without replacing the running preview.
-        if source.len() > crate::shader::MAX_BYTES {
-            return None;
-        }
-        Some(source.to_owned())
+        PREVIEW_LAB.with(|lab| crate::shader::workspace_source(&self.vfs.borrow(), path, lab.get()))
     }
 
     fn notify_shader(&self) {
