@@ -485,6 +485,15 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12574: public `da4497735e` keeps owned face sources exportable when the
+  graphics session is unavailable or reconstructed. Thirty host library tests
+  and the Wasm host build pass, including account/world mismatch refusals. The
+  actual GPU-loss run found the export guard failure before it reached Reload;
+  it did not establish a reload or permission defect. Actual export/reconstruction,
+  accepted shader versus unfinished draft, and 3 cm checkpoint checks continue
+  in #12561 with fresh authorized sessions.
+  [Recovery evidence](../verse/aethyrforge-recovery-qualification.json).
+
 - #12573: public `c20ac6e2ff` supplies the scoped Kiln JSON command shapes without
   widening its parser, tools, or files. Seven focused tests and the browser Wasm
   build pass. The real Flint run produced the legal 0.98 world-effect Draft with

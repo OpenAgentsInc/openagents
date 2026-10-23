@@ -1,0 +1,27 @@
+{
+  "schema": "openagents.verse.graphics-recovery-qualification.v1",
+  "issue": 12574,
+  "source": "da4497735e4028f6694af05f9abada3eacb405f9",
+  "confirmed_defect": "After actual GPUDevice.destroy, source export stayed enabled but required a live InputContext. The retained story stopped at the missing download before attempting Reload.",
+  "change": "Read-only face export checks the draft owner and any live world branch, without requiring a working engine session. Account/project transitions still clear private drafts; edit authorization is unchanged.",
+  "checks": {
+    "host_library_tests": 30,
+    "wasm_host_build": true,
+    "coverage": [
+      "no graphics session",
+      "reconstructed same-world base",
+      "different account or signed-out account refusal",
+      "different live world and branch refusal"
+    ]
+  },
+  "after_close_12561": [
+    "Retest actual GPU-loss face export, fresh authorized reconstruction, exact active source versus unfinished draft, and eye/target/mode within 3 cm.",
+    "Keep genuine access revocation fail-closed. The failed source download did not establish a Reload defect."
+  ],
+  "private_evidence": [
+    "hosted-story-3/result.json",
+    "hosted-story-3/failure-state.json",
+    "sdk-12574-build.log"
+  ],
+  "production_traffic_changed": false
+}
