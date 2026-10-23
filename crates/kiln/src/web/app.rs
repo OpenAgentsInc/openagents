@@ -95,6 +95,7 @@ struct App {
     worker: RefCell<Option<Worker>>,
     busy: Cell<bool>,
     shader_preview: Cell<bool>,
+    verse: RefCell<Option<crate::verse::Workspace>>,
     stop: Cell<bool>,
     metrics: RefCell<Metrics>,
 }
@@ -107,6 +108,7 @@ struct ToolRun {
 thread_local! {
     /// Where Kiln's files are, such as `/admin/kiln/`, when another page
     /// runs Kiln ([`run_headless`]); empty for Kiln's own page.
+    static VERSE: RefCell<Option<crate::verse::Context>> = const { RefCell::new(None) };
     static BASE: RefCell<String> = const { RefCell::new(String::new()) };
     /// The controls Kiln reads and writes when another page runs it: a
     /// detached copy of its own page's, never shown.
@@ -156,6 +158,18 @@ pub async fn run_lab(base: String, lab: crate::shader::Lab) {
     run_headless(base).await;
 }
 
+pub async fn run_verse(base: String, raw: String) -> Result<(), JsValue> {
+    if raw.len() > 24_000 {
+        return Err(JsValue::from_str("Choose a smaller project context."));
+    }
+    let context: crate::verse::Context = serde_json::from_str(&raw)
+        .map_err(|_| JsValue::from_str("Choose a valid project context."))?;
+    crate::verse::Workspace::new(context.clone()).map_err(|e| JsValue::from_str(&e))?;
+    VERSE.with(|v| *v.borrow_mut() = Some(context));
+    run_headless(base).await;
+    Ok(())
+}
+
 pub async fn run_headless(base: String) {
     let base = if base.ends_with('/') {
         base
@@ -182,9 +196,14 @@ pub async fn run() {
             break key;
         }
     };
+    let verse = VERSE
+        .with(|v| v.borrow_mut().take())
+        .and_then(|v| crate::verse::Workspace::new(v).ok());
+    let scoped_vfs = verse.as_ref().map(|v| v.vfs.clone()).unwrap_or_default();
+    let scoped = verse.is_some();
     let app = Rc::new(App {
         doc,
-        vfs: RefCell::new(Vfs::default()),
+        vfs: RefCell::new(scoped_vfs),
         tools: RefCell::new(BTreeMap::new()),
         opfs: RefCell::new(None),
         base: RefCell::new(Vfs::default()),
@@ -207,12 +226,16 @@ pub async fn run() {
         worker: RefCell::new(None),
         busy: Cell::new(false),
         shader_preview: Cell::new(false),
+        verse: RefCell::new(verse),
         stop: Cell::new(false),
         metrics: RefCell::new(Metrics::default()),
     });
     app.wire();
-    let storage = app.open_storage().await;
-    let tools = app.load_tools().await;
+    let (storage, tools) = if scoped {
+        ("Project workspace".into(), "Project tools".into())
+    } else {
+        (app.open_storage().await, app.load_tools().await)
+    };
     let isolated = get(&window, "crossOriginIsolated").as_bool() == Some(true);
     el(&app.doc, "key").set_text_content(Some(&app.key.npub()));
     el(&app.doc, "env").set_text_content(Some(&format!(
@@ -221,9 +244,13 @@ pub async fn run() {
     )));
     app.page_metrics();
     app.render_files();
-    app.restore_session();
+    if !scoped {
+        app.restore_session();
+    }
     app.render_metrics();
-    app.load_admin_key();
+    if !scoped {
+        app.load_admin_key();
+    }
     *app.build.borrow_mut() = current_build().await.unwrap_or_else(|| "site".into());
     if let Some(node) = app.doc.get_element_by_id("build") {
         node.set_text_content(Some(&app.build.borrow()));
@@ -968,6 +995,16 @@ impl App {
     }
 
     async fn run_command(&self, command: &Command) -> Option<ToolRun> {
+        if let Some(workspace) = self.verse.borrow_mut().as_mut() {
+            let result = workspace.execute(command);
+            *self.vfs.borrow_mut() = workspace.vfs.clone();
+            self.render_files();
+            return Some(match result {
+                Ok(output) => ToolRun { code: 0, output },
+                Err(output) => ToolRun { code: 1, output },
+            });
+        }
+
         match command.call() {
             Ok(Some(call)) => {
                 self.log("cmd", &format!("$ {}", command.label()));
@@ -1110,8 +1147,21 @@ impl App {
             .borrow_mut()
             .working(Some("Asking a Pylon"), now_ms());
         self.push_transcript();
-        let mut agent = Agent::new(&task, cj::LEGACY_MAX_INPUT_BYTES);
-        if let Some(repo) = self.repo() {
+        let mut agent = if let Some(workspace) = self.verse.borrow().as_ref() {
+            match workspace.agent(&task) {
+                Ok(agent) => agent,
+                Err(error) => {
+                    *self.problem.borrow_mut() = Some(error);
+                    self.busy.set(false);
+                    return;
+                }
+            }
+        } else {
+            Agent::new(&task, cj::LEGACY_MAX_INPUT_BYTES)
+        };
+        if self.verse.borrow().is_some() {
+            agent.instructions = crate::verse::INSTRUCTIONS.into();
+        } else if let Some(repo) = self.repo() {
             let crates: Vec<String> = repo["crates"]
                 .as_array()
                 .map(|a| {
@@ -1380,6 +1430,14 @@ impl App {
                     self.run_view.borrow_mut().text(summary, now_ms());
                     self.push_transcript();
                     break;
+                }
+                if self.verse.borrow().is_some() && matches!(command, Command::Publish { .. }) {
+                    agent.observe(
+                        command,
+                        1,
+                        "Use the project controls to publish after review.".into(),
+                    );
+                    continue;
                 }
                 if let Command::Publish { subject, body } = command {
                     self.log("cmd", &format!("$ {}", command.label()));
@@ -1957,6 +2015,12 @@ impl App {
     /// page's key, then have the runner apply that exact patch, test it, and
     /// publish its check comment.
     async fn publish(&self, subject: &str, body: &str) -> ToolRun {
+        if self.verse.borrow().is_some() {
+            return ToolRun {
+                code: 1,
+                output: "Use the project controls to publish after review.".into(),
+            };
+        }
         let fail = |output: String| ToolRun { code: 1, output };
         let Some(repo) = self.repo() else {
             return fail("publish needs a crate loaded from the repository".into());
@@ -2162,6 +2226,41 @@ impl App {
         );
         set(&window, "kilnWrite", write.as_ref().clone());
         write.forget();
+        // This mode replaces the VFS with three creator-owned records. It grants no mutation authority.
+        let app = self.clone();
+        let context = Closure::<dyn Fn(String) -> Result<(), JsValue>>::new(move |raw: String| {
+            if app.busy.get() {
+                return Err(JsValue::from_str("Stop Kiln before changing its context."));
+            }
+            if raw.len() > 24_000 {
+                return Err(JsValue::from_str("Choose a smaller editing context."));
+            }
+            let context = serde_json::from_str(&raw)
+                .map_err(|_| JsValue::from_str("Choose a valid project context."))?;
+            let workspace =
+                crate::verse::Workspace::new(context).map_err(|e| JsValue::from_str(&e))?;
+            *app.vfs.borrow_mut() = workspace.vfs.clone();
+            *app.base.borrow_mut() = Vfs::default();
+            *app.verse.borrow_mut() = Some(workspace);
+            *app.opfs.borrow_mut() = None;
+            *app.opfs_base.borrow_mut() = None;
+            app.shader_preview.set(false);
+            app.render_files();
+            Ok(())
+        });
+        set(&window, "kilnVerseContext", context.as_ref().clone());
+        context.forget();
+        let app = self.clone();
+        let candidate = Closure::<dyn Fn() -> Result<String, JsValue>>::new(move || {
+            let held = app.verse.borrow();
+            let workspace = held
+                .as_ref()
+                .ok_or_else(|| JsValue::from_str("Open a project context first."))?;
+            let action = workspace.candidate().map_err(|e| JsValue::from_str(&e))?;
+            Ok(json!({"project":workspace.context.project,"selection":workspace.context.selection,"action":action}).to_string())
+        });
+        set(&window, "kilnVerseCandidate", candidate.as_ref().clone());
+        candidate.forget();
         // Only this opt-in API exposes the fixed shader file to a preview.
         let app = self.clone();
         let save = Closure::<dyn Fn(String) -> js_sys::Promise>::new(move |source: String| {
@@ -2378,7 +2477,7 @@ impl App {
         stop.forget();
         let app = self.clone();
         let load = Closure::<dyn Fn(String)>::new(move |slice: String| {
-            if slice.trim().is_empty() || app.busy.get() {
+            if slice.trim().is_empty() || app.busy.get() || app.verse.borrow().is_some() {
                 return;
             }
             *app.patch.borrow_mut() = None;
@@ -2484,6 +2583,9 @@ impl App {
     /// reset it. Only the runner's admin keys get an answer other than a
     /// refusal.
     async fn self_edit(self: Rc<Self>, action: &str) {
+        if self.verse.borrow().is_some() {
+            return;
+        }
         self.busy.set(true);
         let started = now_ms();
         let result = self.clone().self_edit_job(action).await;

@@ -15,6 +15,9 @@ has not moved. Only **Confirm change** should apply the move. Repeat after
 session expiry, then sign out and remove any test artifacts. Record the
 browser, deployed release, and result in the final epic qualification.
 
+This dedicated-account sign-in also qualifies the confirmed Kiln/material
+changes in #12551 and the integrated journey in #12561.
+
 The bearer account read and the synthetic account-service browser fixture
 are separate checks; neither proves completion through the real provider.
 

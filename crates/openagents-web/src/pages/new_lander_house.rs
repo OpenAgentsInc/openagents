@@ -1,6 +1,30 @@
 //! Haunted House review shell for the pinned, separately hosted private engine.
 
-use super::medieval_town::{Release, response};
+use super::medieval_town::{Release, response as engine_response};
+fn response(
+    status: StatusCode,
+    body: impl Into<String>,
+    kind: &'static str,
+    origin: Option<&str>,
+) -> Response {
+    let mut result = engine_response(status, body.into(), kind, origin);
+    if let Some(value) = result
+        .headers()
+        .get(axum::http::header::CONTENT_SECURITY_POLICY)
+        .and_then(|v| v.to_str().ok())
+    {
+        let value = value.replace(
+            "connect-src 'self'",
+            "img-src data: blob:; connect-src 'self' wss://relay.openagents.com",
+        );
+        if let Ok(value) = value.parse() {
+            result
+                .headers_mut()
+                .insert(axum::http::header::CONTENT_SECURITY_POLICY, value);
+        }
+    }
+    result
+}
 use crate::App;
 use axum::{Router, http::StatusCode, response::Response, routing::get};
 use maud::{DOCTYPE, PreEscaped, html};
@@ -81,12 +105,46 @@ async fn page() -> Response {
                     label for="edit-note" { "Notes" } textarea id="edit-note" maxlength="48000" {}
                     input id="edit-submit" type="submit" value="Move object" disabled;
                 }
+                div id="author-tools" hidden {
+                details {
+                    summary { "Materials and lighting" }
+                    label for="edit-material" { "Shared material ID (all surfaces using this ID)" } input id="edit-material" type="text" maxlength="128";
+                    label for="edit-parameter" { "Parameter (red, green, blue, roughness, metallic)" } input id="edit-parameter" type="text" value="roughness";
+                    label for="edit-value" { "Value" } input id="edit-value" type="number" step="any" value="0.8";
+                    button id="edit-material-apply" type="button" { "Apply material" }
+                    label for="edit-fog" { "Fog density (0–0.06)" } input id="edit-fog" type="number" step="0.001" min="0" max="0.06" value="0.01";
+                    button id="edit-fog-apply" type="button" { "Apply fog" }
+                    p id="edit-material-ids" {}
+                }
+                details {
+                    summary { "World effect" }
+                    p { "Applies to every material in the house." }
+                    label for="edit-source" { "WGSL source" } textarea id="edit-source" maxlength="4096" rows="8" {}
+                    button id="edit-source-draft" type="button" { "Keep world-effect draft" }
+                    button id="edit-source-compile" type="button" { "Compile world effect" }
+                    p id="edit-source-status" role="status" {}
+                }
+                details {
+                    summary { "Kiln" }
+                    label for="edit-kiln-request" { "Request" } textarea id="edit-kiln-request" maxlength="4800" rows="3" {}
+                    label { input id="edit-kiln-world" type="checkbox"; "Allow a world effect (all materials)" }
+                    button id="edit-kiln-ask" type="button" { "Ask Kiln" }
+                    button id="edit-kiln-stop" type="button" { "Stop" }
+                    button id="edit-kiln-review" type="button" { "Review Kiln's change" }
+                    p id="edit-kiln-status" role="status" {}
+                }
+                button id="edit-capture" type="button" { "Capture preview" }
+                img id="edit-capture-image" hidden alt="Captured view of the house" width="280";
+                button id="edit-undo" type="button" { "Undo" }
+                button id="edit-redo" type="button" { "Redo" }
+                }
                 p id="edit-status" role="status" aria-live="polite" {}
             }
             dialog id="edit-auth" hidden {
                 section role="dialog" aria-modal="true" aria-labelledby="edit-auth-title" {
                     h2 id="edit-auth-title" { "Sign in to make this change" }
                     p id="edit-auth-description" { "Your view and requested change will stay here." }
+                    ul id="edit-auth-changes" {}
                     a id="edit-signin" href="/login?return_to=%2Fnew-lander%2Fhouse" { "Sign in" }
                     button id="edit-confirm" type="button" hidden { "Confirm change" }
                     button id="edit-cancel" type="button" { "Cancel" }
@@ -115,10 +173,12 @@ async fn boot() -> Response {
         );
     };
     let url = serde_json::to_string(&r.sdk_url).expect("SDK URL");
+    let kiln_url = serde_json::to_string(&r.sdk_url.replace("aethyrforge_host.js", "kiln.js"))
+        .expect("Kiln URL");
     response(
         StatusCode::OK,
         format!(
-            "try{{const {{default:init,mount_studio}}=await import({url});await init();window.hauntDemo=mount_studio();}}catch{{const n=document.getElementById('world-notice');n.hidden=false;n.dataset.state='error';n.textContent='The house could not open. Reload to try again.';}}"
+            "window.loadVerseKiln=async context=>{{const k=await import({kiln_url});await k.default();await k.start_verse('/kiln/',context);}};try{{const {{default:init,mount_studio}}=await import({url});await init();window.hauntDemo=mount_studio();}}catch{{const n=document.getElementById('world-notice');n.hidden=false;n.dataset.state='error';n.textContent='The house could not open. Reload to try again.';}}"
         ),
         "text/javascript; charset=utf-8",
         Some(&r.origin()),
@@ -128,7 +188,7 @@ async fn boot() -> Response {
 async fn style() -> Response {
     response(
         StatusCode::OK,
-        "[hidden]{display:none!important}input,textarea{box-sizing:border-box;color:inherit;background:#172027;border:1px solid #727b80;border-radius:4px;padding:8px;width:100%}button,input[type=submit]{cursor:pointer}input:disabled{opacity:.45;cursor:default}#edit-panel{position:fixed;top:24px;right:24px;width:min(320px,80vw);padding:20px;background:#131d23ed;border:1px solid #727b8080;border-radius:10px}#edit-panel header{display:flex;justify-content:space-between;align-items:center}#edit-panel h2{margin:0}#edit-panel label{display:block;margin:12px 0 6px}.position-fields{display:flex;gap:10px}.position-fields label{width:30%}#edit-auth{margin:0;padding:0;border:0;max-width:none;max-height:none;width:100%;height:100%;color:inherit;position:fixed;inset:0;display:grid;place-items:center;background:#0005}#edit-auth section{max-width:360px;padding:32px;background:#131d23eb;border:1px solid #727b8080;border-radius:14px;backdrop-filter:blur(18px)}#edit-auth button,#edit-auth a{margin:8px 6px 0 0;display:inline-block}#edit-auth[hidden],#edit-panel[hidden]{display:none}html,body{height:100%;margin:0;background:#0c1014;color:#f0e9df;font:14px system-ui}main,iframe{position:fixed;inset:0;width:100%;height:100%;border:0}nav{position:fixed;bottom:16px;left:16px;right:16px;display:flex;align-items:center;gap:16px;pointer-events:none}nav>*{pointer-events:auto}nav span{flex:1;text-shadow:0 2px 4px #000}a,button{color:inherit;background:#10171cdd;border:1px solid #727b8080;border-radius:5px;padding:10px 14px;text-decoration:none}a:focus-visible,button:focus-visible{outline:2px solid white;outline-offset:3px}#world-notice{position:fixed;top:40%;left:50%;transform:translateX(-50%);padding:24px;max-width:400px;background:#131d23ee;border:1px solid #727b80}#world-notice[hidden]{display:none}@media(max-width:700px){nav{flex-wrap:wrap;gap:8px}nav span{order:5;flex-basis:100%;font-size:12px}}",
+        "[hidden]{display:none!important}input,textarea{box-sizing:border-box;color:inherit;background:#172027;border:1px solid #727b80;border-radius:4px;padding:8px;width:100%}input[type=checkbox]{width:auto}button,input[type=submit]{cursor:pointer}input:disabled{opacity:.45;cursor:default}#edit-panel{position:fixed;top:24px;right:24px;max-height:80vh;overflow:auto;width:min(320px,80vw);padding:20px;background:#131d23ed;border:1px solid #727b8080;border-radius:10px}#edit-panel header{display:flex;justify-content:space-between;align-items:center}#edit-panel h2{margin:0}#edit-panel label{display:block;margin:12px 0 6px}.position-fields{display:flex;gap:10px}.position-fields label{width:30%}#edit-auth{margin:0;padding:0;border:0;max-width:none;max-height:none;width:100%;height:100%;color:inherit;position:fixed;inset:0;display:grid;place-items:center;background:#0005}#edit-auth section{max-width:360px;padding:32px;background:#131d23eb;border:1px solid #727b8080;border-radius:14px;backdrop-filter:blur(18px)}#edit-auth button,#edit-auth a{margin:8px 6px 0 0;display:inline-block}#edit-auth[hidden],#edit-panel[hidden]{display:none}html,body{height:100%;margin:0;background:#0c1014;color:#f0e9df;font:14px system-ui}main,iframe{position:fixed;inset:0;width:100%;height:100%;border:0}nav{position:fixed;bottom:16px;left:16px;right:16px;display:flex;align-items:center;gap:16px;pointer-events:none}nav>*{pointer-events:auto}nav span{flex:1;text-shadow:0 2px 4px #000}a,button{color:inherit;background:#10171cdd;border:1px solid #727b8080;border-radius:5px;padding:10px 14px;text-decoration:none}a:focus-visible,button:focus-visible{outline:2px solid white;outline-offset:3px}#world-notice{position:fixed;top:40%;left:50%;transform:translateX(-50%);padding:24px;max-width:400px;background:#131d23ee;border:1px solid #727b80}#world-notice[hidden]{display:none}@media(max-width:700px){nav{flex-wrap:wrap;gap:8px}nav span{order:5;flex-basis:100%;font-size:12px}}",
         "text/css; charset=utf-8",
         None,
     )
@@ -171,6 +231,34 @@ mod tests {
             assert!(crate::upstream::owned(&uri));
             assert!(to_bytes(result.into_body(), 4096).await.unwrap().is_empty());
         }
+    }
+
+    #[tokio::test]
+    async fn new_lander_house_gates_creator_tools_and_names_effect_scope() {
+        let root = tempfile::tempdir().unwrap();
+        let app = crate::router(crate::Config::development(root.path().join("tasks")));
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri(HOUSE)
+                    .header(header::HOST, "127.0.0.1:4300")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let csp = response.headers()[header::CONTENT_SECURITY_POLICY]
+            .to_str()
+            .unwrap();
+        assert!(csp.contains("wss://relay.openagents.com"));
+        let bytes = to_bytes(response.into_body(), 65_536).await.unwrap();
+        let text = String::from_utf8(bytes.to_vec()).unwrap();
+        assert!(text.contains("id=\"author-tools\" hidden"));
+        assert!(text.contains("World effect"));
+        assert!(text.contains("Applies to every material in the house."));
+        assert!(text.contains("Allow a world effect (all materials)"));
+        assert!(!text.contains("id=\"edit-kiln-world\" type=\"checkbox\" checked"));
     }
 
     #[test]

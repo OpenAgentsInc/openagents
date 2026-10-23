@@ -243,6 +243,7 @@ dependencies = [
 name = "aethyrforge-host"
 version = "1.0.0"
 dependencies = [
+ "base64 0.22.1",
  "js-sys",
  "openagents-workspace-hack",
  "schemars 1.2.2",
@@ -10049,6 +10050,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 name = "kiln"
 version = "1.0.0"
 dependencies = [
+ "aethyrforge-host",
  "futures-channel",
  "futures-util",
  "getrandom 0.3.4",

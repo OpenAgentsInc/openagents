@@ -48,3 +48,9 @@ pub fn start_review() {
 pub async fn run_task(message: JsValue) -> Result<JsValue, JsValue> {
     worker::run(message).await
 }
+
+/// Start the existing agent loop with only the selected creator-owned project records.
+#[wasm_bindgen]
+pub async fn start_verse(base: String, context: String) -> Result<(), JsValue> {
+    app::run_verse(base, context).await
+}

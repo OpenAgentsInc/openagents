@@ -46,8 +46,8 @@ fn extended_status_and_authorization_never_cross_the_frozen_v1_boundary() {
     )
     .unwrap();
     let hello = host.hello().unwrap();
-    assert_eq!(hello.version, 2);
-    assert_eq!(hello.message, Message::Hello { versions: vec![2] });
+    assert_eq!(hello.version, 3);
+    assert_eq!(hello.message, Message::Hello { versions: vec![3] });
     let (_, ready) = Engine::accept(
         &hello.encode().unwrap(),
         "release-v2".into(),
@@ -67,4 +67,22 @@ fn extended_status_and_authorization_never_cross_the_frozen_v1_boundary() {
     );
     assert!(!include_str!("../schema/host-v1.json").contains("action_sha256"));
     assert!(include_str!("../schema/host-v2.json").contains("action_sha256"));
+}
+
+#[test]
+fn v3_authoring_is_never_sent_to_a_v2_consumer() {
+    let old_hello = r#"{"protocol":"openagents.aethyrforge.host","version":2,"session":"old-session","sequence":1,"message":{"type":"hello","versions":[2]}}"#;
+    assert_eq!(Envelope::decode(old_hello), Err(Error::Version));
+    assert!(matches!(
+        Engine::accept(old_hello, "release".into(), "abi".into(), 1, vec![]),
+        Err(Error::Version)
+    ));
+    let v2: serde_json::Value =
+        serde_json::from_str(include_str!("../schema/host-v2.json")).unwrap();
+    assert!(
+        v2["$defs"]["Status"]["properties"]
+            .get("authoring")
+            .is_none()
+    );
+    assert!(include_str!("../schema/host-v3.json").contains("AuthoringView"));
 }

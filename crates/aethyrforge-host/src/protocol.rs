@@ -2,7 +2,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub const PROTOCOL: &str = "openagents.aethyrforge.host";
-pub const VERSION: u16 = 2;
+pub const VERSION: u16 = 3;
 pub const MAX_BYTES: usize = 65_536;
 pub const MAX_PENDING: usize = 16;
 pub const MAX_RESULTS: usize = 64;
@@ -160,6 +160,8 @@ pub struct Status {
     pub checkpoint: Option<Checkpoint>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selection: Option<SelectedObject>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authoring: Option<crate::AuthoringView>,
 }
 impl Status {
     pub fn validate(&self) -> Result<(), Error> {
@@ -173,6 +175,12 @@ impl Status {
             .is_some_and(|s| !id(&s.id) || !id(&s.asset) || !point(&s.position))
         {
             return Err(Error::Invalid("selection"));
+        }
+        if let Some(view) = &self.authoring {
+            view.validate()?;
+            if view.revision != self.project.revision {
+                return Err(Error::Invalid("authoring revision"));
+            }
         }
         if let Some(c) = &self.checkpoint {
             c.validate()?;
@@ -219,24 +227,51 @@ impl Edit {
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
-    Authorize { grant: crate::ScopedGrant },
+    Authorize {
+        grant: crate::ScopedGrant,
+    },
     RevokeAuthorization,
-    Open { checkpoint: Option<Checkpoint> },
+    Open {
+        checkpoint: Option<Checkpoint>,
+    },
     Inspect,
-    Select { target: String },
-    Propose { operations: Vec<Edit> },
-    Draft { asset: String, source: String },
-    Compile { asset: Option<String> },
+    Select {
+        target: String,
+    },
+    Propose {
+        operations: Vec<Edit>,
+    },
+    Draft {
+        asset: String,
+        source: String,
+    },
+    Compile {
+        asset: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        source_sha256: Option<String>,
+    },
     Undo,
     Redo,
     Save,
-    Publish { visibility: Visibility },
-    Share { visibility: Visibility },
-    Navigate { destination: Destination },
+    Publish {
+        visibility: Visibility,
+    },
+    Share {
+        visibility: Visibility,
+    },
+    Navigate {
+        destination: Destination,
+    },
     Capture,
-    Observe { enabled: bool },
-    Cancel { target: String },
-    Lookup { target: String },
+    Observe {
+        enabled: bool,
+    },
+    Cancel {
+        target: String,
+    },
+    Lookup {
+        target: String,
+    },
     Close,
 }
 impl Action {
@@ -274,7 +309,10 @@ impl Action {
             Self::Open { .. } | Self::Inspect | Self::Observe { .. } => outcome.status.is_some(),
             Self::Publish { .. } => matches!(outcome.detail, Some(Detail::Published { .. })),
             Self::Share { .. } => matches!(outcome.detail, Some(Detail::Shared { .. })),
-            Self::Capture => matches!(outcome.detail, Some(Detail::Capture { .. })),
+            Self::Capture => matches!(
+                outcome.detail,
+                Some(Detail::Capture { .. } | Detail::CapturePreview { .. })
+            ),
             _ => true,
         };
         if valid {
@@ -295,7 +333,17 @@ impl Action {
                     && operations.iter().all(Edit::valid)
             }
             Self::Draft { asset, source } => id(asset) && text(source, 48_000),
-            Self::Compile { asset: Some(a) } => id(a),
+            Self::Compile {
+                asset,
+                source_sha256,
+            } => {
+                asset.as_ref().is_none_or(|a| id(a))
+                    && source_sha256.as_ref().is_none_or(|s| {
+                        s.len() == 64
+                            && s.bytes()
+                                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+                    })
+            }
             Self::Select { target } | Self::Cancel { target } | Self::Lookup { target } => {
                 id(target)
             }
@@ -313,6 +361,12 @@ impl Action {
 #[serde(deny_unknown_fields)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Detail {
+    CapturePreview {
+        png: String,
+        sha256: String,
+        width: u32,
+        height: u32,
+    },
     Diagnostics {
         items: Vec<Diagnostic>,
     },
@@ -360,6 +414,29 @@ impl Outcome {
         }
         if let Some(detail) = &self.detail {
             let valid = match detail {
+                Detail::CapturePreview {
+                    png,
+                    sha256,
+                    width,
+                    height,
+                } => {
+                    use base64::Engine;
+                    use sha2::Digest;
+                    base64::engine::general_purpose::STANDARD
+                        .decode(png)
+                        .is_ok_and(|bytes| {
+                            bytes.len() <= 24_576
+                                && bytes.len() >= 24
+                                && bytes[..8] == *b"\x89PNG\r\n\x1a\n"
+                                && u32::from_be_bytes(bytes[16..20].try_into().unwrap()) == *width
+                                && u32::from_be_bytes(bytes[20..24].try_into().unwrap()) == *height
+                                && *width > 0
+                                && *height > 0
+                                && *width <= 320
+                                && *height <= 320
+                                && format!("{:x}", sha2::Sha256::digest(&bytes)) == *sha256
+                        })
+                }
                 Detail::Diagnostics { items } => {
                     items.len() <= 32
                         && items.iter().all(|d| {

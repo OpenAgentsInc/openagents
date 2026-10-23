@@ -22,3 +22,12 @@ cp crates/aethyrforge-host/examples/mock.html "$output/mock.html"
 for variant in session version payload bytes object; do
   cp crates/aethyrforge-host/examples/adversarial.html "$output/forged-$variant.html"
 done
+
+# Optional public Kiln companion for creator releases. No private files are read.
+if [ "${AETHYRFORGE_BUILD_KILN:-0}" = 1 ]; then
+  CC_wasm32_unknown_unknown=${CC_wasm32_unknown_unknown:-/opt/homebrew/opt/llvm/bin/clang}
+  AR_wasm32_unknown_unknown=${AR_wasm32_unknown_unknown:-/opt/homebrew/opt/llvm/bin/llvm-ar}
+  export CC_wasm32_unknown_unknown AR_wasm32_unknown_unknown
+  cargo build --locked --profile kiln-web --target wasm32-unknown-unknown -p kiln --lib
+  wasm-bindgen --target web --no-typescript --out-dir "$output" "$CARGO_TARGET_DIR/wasm32-unknown-unknown/kiln-web/kiln.wasm"
+fi

@@ -22,10 +22,10 @@ no secrets, and private engine source maps are not published.
 2. The private engine loads the operator-pinned public Wasm SDK and constructs
    `EngineEndpoint` with its exact allowed host origin and supported capabilities.
    Once its document has loaded, it posts the fixed public string
-   `openagents.aethyrforge.host/2/listening` to that host origin. This carries no
+   `openagents.aethyrforge.host/3/listening` to that host origin. This carries no
    authority. The host accepts it only from the configured origin **and its exact
    iframe window**, once per frame load.
-3. The host generates a 192-bit random session, sends `hello` with version `[2]`
+3. The host generates a 192-bit random session, sends `hello` with version `[3]`
    and sequence 1 to that exact window/origin, and transfers exactly one MessagePort.
    The engine accepts only its configured parent origin/window, one port, version
    2, and a valid hello. It responds `ready` on that port. All further messages are
@@ -43,7 +43,7 @@ no secrets, and private engine source maps are not published.
    of Aethyrforge's richer authoring and release formats; matching it does not imply
    source, runtime, or saved-world compatibility.
 
-The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v2.json)
+The generated [JSON Schema](../../crates/aethyrforge-host/schema/host-v3.json)
 defines closed message shapes. Runtime validation adds UTF-8 byte limits, finite
 coordinates, safe integer bounds, state transitions, peer checks, and relationships
 between fields. Schema validation alone is insufficient. `Envelope::decode` and
@@ -146,3 +146,25 @@ request. Revocation ends editing without closing guest exploration. House edits
 are not written into shared browser storage; durable project saves belong to the
 public persistence service. A renderer acknowledgement alone is not publication
 or proof of an account save.
+
+Version 3 adds the bounded creator-owned authoring view. It uses a separate
+bootstrap and negotiates only version 3. The frozen v1 and v2 schemas and their
+pinned SDKs remain unchanged; their releases keep using those SDKs. New source
+drafts, diagnostics, active source, material bindings, and undo availability are
+never sent to old strict consumers. A draft does not activate a GPU generation.
+`compile` prepares a candidate against the submitted project revision, checks
+its material interface, and adopts it only while that revision and compilation
+request are current. Failed source remains editable beside the last working
+source. Object, material, environment, and activated source changes use the same
+project revision and bounded undo history. Save and Publish remain separate.
+
+The `world-effect` source hook applies to every rendered material. The UI and
+`effect_scope: "world"` name that scope. Kiln cannot write the hook unless the
+person enables `allow_world_effect` for the captured context. By default, it
+proposes moves or numeric changes to supplied material IDs. Material IDs are
+shared by all surfaces that use them; localized painting is a separate tool.
+
+World-effect compilation supplies `source_sha256` for the exact kept draft.
+The grant binds that action hash, and the preview checks the source hash before
+preparing a candidate. Changing a source draft cannot reuse consent to compile
+different bytes, even when the active world revision has not changed.

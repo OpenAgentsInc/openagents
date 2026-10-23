@@ -485,6 +485,22 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12551: unified project revisions/history, scoped Kiln workspace, confirmed
+  source hashes, world-effect compilation/recovery, and bounded capture code are
+  complete. Public host checks (24), new Kiln workspace checks (3), website checks
+  (3), private kernel checks (22), private authoring/protocol/profile checks (20),
+  Wasm type checks, dependency checks, private build, and real local GPU recovery,
+  overlap, history, pose, and repeated-capture checks pass.
+  [Qualification record](../verse/aethyrforge-authoring-qualification.json)
+  distinguishes trusted-service GPU mechanics from real-provider/authorization
+  evidence and labels receipt/status timing accurately. Build and check the
+  immutable v3 SDK/Kiln companion and isolated release with a fresh native
+  consumer; complete real Kiln/provider/grant integration in #12561. The dedicated
+  account's provider access remains in [NEEDS_OWNER.md](../../NEEDS_OWNER.md).
+  Creator controls stay hidden until the loaded release supplies authoring state.
+  #12563 still requires desktop/mobile recaptures before final qualification.
+
+
 - #12550: universe code, isolated release, 20 public host tests, four focused
   website tests, private build, fresh native consumer, and real guest browser
   checks pass. [Qualification record](../verse/aethyrforge-universe-qualification.json)

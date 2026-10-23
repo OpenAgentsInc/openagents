@@ -63,6 +63,8 @@ fn random() -> String {
 #[serde(deny_unknown_fields)]
 struct Resume {
     owner: Option<String>,
+    #[serde(default)]
+    project: Option<Project>,
     pending: PendingChange,
 }
 struct State {
@@ -115,6 +117,48 @@ impl State {
         } else {
             "Your view and requested change will stay here."
         }));
+        let list = element("edit-auth-changes");
+        list.set_text_content(None);
+        if let Some(p) = &self.pending {
+            let changes = match &p.pending.action {
+                Action::Propose { operations } => operations
+                    .iter()
+                    .map(|op| match op {
+                        Edit::Move { target, position } => format!(
+                            "Move {target} to {}, {}, {}",
+                            position[0], position[1], position[2]
+                        ),
+                        Edit::Material {
+                            target,
+                            parameter,
+                            value,
+                        } => format!("{target}: {parameter} = {value}"),
+                        Edit::Place { asset, position } => format!(
+                            "Place {asset} at {}, {}, {}",
+                            position[0], position[1], position[2]
+                        ),
+                        Edit::Remove { target } => format!("Remove {target}"),
+                    })
+                    .collect::<Vec<_>>(),
+                Action::Draft { .. } => {
+                    vec!["Keep the world-effect source shown in the editor as a draft.".into()]
+                }
+                Action::Compile { .. } => {
+                    vec![
+                        "Compile and apply the world effect to every material in the house.".into(),
+                    ]
+                }
+                Action::Undo => vec!["Undo the most recent change.".into()],
+                Action::Redo => vec!["Redo the last undone change.".into()],
+                _ => vec!["Apply the requested change.".into()],
+            };
+            for change in changes {
+                if let Ok(item) = window().document().expect("document").create_element("li") {
+                    item.set_text_content(Some(&change));
+                    let _ = list.append_child(&item);
+                }
+            }
+        }
         hide("edit-signin", signed);
         hide("edit-confirm", !signed);
     }
@@ -291,6 +335,12 @@ async fn confirm(weak: Weak<RefCell<State>>) {
             return;
         };
         let value = s.snapshot();
+        if p.project.as_ref().is_some_and(|base| {
+            serde_json::to_value(base).ok().as_ref() != Some(&value["status"]["project"])
+        }) {
+            say("The world changed. Review your change and try again.");
+            return;
+        }
         s.busy = true;
         json!({"csrf":csrf,"tab":s.tab,"session":value["session"],"release":element("engine-release").get_attribute("content"),"project":value["status"]["project"],"action":p.pending.action,"confirmed":true})
     };
@@ -331,9 +381,64 @@ async fn confirm(weak: Weak<RefCell<State>>) {
     }
 }
 fn selected(rc: &Rc<RefCell<State>>) {
+    if let Ok(raw) = kiln_call("kilnState", None) {
+        if let Ok(value) = serde_json::from_str::<Value>(&raw.as_string().unwrap_or_default()) {
+            let text = value["problem"]
+                .as_str()
+                .or_else(|| value["working"].as_str())
+                .unwrap_or(if value["busy"] == true {
+                    "Kiln is working."
+                } else {
+                    "Kiln is ready for review."
+                });
+            element("edit-kiln-status").set_text_content(Some(text));
+        }
+    }
     let mut s = rc.borrow_mut();
     let selection =
         serde_json::from_value::<SelectedObject>(s.snapshot()["status"]["selection"].clone()).ok();
+    if let Ok(view) =
+        serde_json::from_value::<AuthoringView>(s.snapshot()["status"]["authoring"].clone())
+    {
+        hide("author-tools", false);
+        let source: HtmlTextAreaElement = element("edit-source").unchecked_into();
+        if source.value().is_empty() {
+            source.set_value(&view.draft);
+        }
+        element("edit-source-status").set_text_content(Some(&if view.diagnostics.is_empty() {
+            if view.draft == view.active_source {
+                "The compiled world effect is active."
+            } else {
+                "Your source draft has changes to compile."
+            }
+            .into()
+        } else {
+            view.diagnostics.join("\n")
+        }));
+        let ids = view
+            .materials
+            .iter()
+            .filter(|m| {
+                selection
+                    .as_ref()
+                    .is_some_and(|s| m.objects.contains(&s.id))
+            })
+            .map(|m| m.id.as_str())
+            .collect::<Vec<_>>();
+        element("edit-material-ids").set_text_content(Some(&ids.join(", ")));
+        if input("edit-material").value().is_empty() {
+            if let Some(id) = ids.first() {
+                input("edit-material").set_value(id);
+            }
+        }
+        for (id, enabled) in [("edit-undo", view.can_undo), ("edit-redo", view.can_redo)] {
+            if enabled {
+                let _ = element(id).remove_attribute("disabled");
+            } else {
+                let _ = element(id).set_attribute("disabled", "");
+            }
+        }
+    }
     if selection == s.selection {
         return;
     }
@@ -349,6 +454,99 @@ fn selected(rc: &Rc<RefCell<State>>) {
         }
     }
     input("edit-submit").set_disabled(s.selection.is_none() || s.busy);
+}
+fn kiln_call(name: &str, arg: Option<&str>) -> Result<JsValue, JsValue> {
+    let f: js_sys::Function =
+        js_sys::Reflect::get(&window(), &JsValue::from_str(name))?.dyn_into()?;
+    if let Some(arg) = arg {
+        f.call1(&JsValue::NULL, &JsValue::from_str(arg))
+    } else {
+        f.call0(&JsValue::NULL)
+    }
+}
+async fn ask_kiln(weak: Weak<RefCell<State>>) {
+    let Some(rc) = weak.upgrade() else { return };
+    let snapshot = rc.borrow().snapshot();
+    let status = &snapshot["status"];
+    let Ok(view) = serde_json::from_value::<AuthoringView>(status["authoring"].clone()) else {
+        say("Wait for the editing tools to open.");
+        return;
+    };
+    let selection = status["selection"].clone();
+    let mut view = view;
+    view.materials.retain(|m| {
+        selection["id"]
+            .as_str()
+            .is_some_and(|id| m.objects.iter().any(|s| s == id))
+    });
+    let context =
+        json!({"project":status["project"],"selection":selection,"authoring":view,"allow_world_effect":input("edit-kiln-world").checked()}).to_string();
+    let task: HtmlTextAreaElement = element("edit-kiln-request").unchecked_into();
+    if task.value().trim().is_empty() {
+        return;
+    }
+    let run = async {
+        if js_sys::Reflect::get(&window(), &"kilnVerseContext".into())?.is_function() {
+            kiln_call("kilnVerseContext", Some(&context))?;
+        } else {
+            let p = kiln_call("loadVerseKiln", Some(&context))?;
+            JsFuture::from(Promise::resolve(&p)).await?;
+        }
+        kiln_call("kilnAgent", Some(&task.value()))?;
+        Ok::<(), JsValue>(())
+    }
+    .await;
+    if let Err(error) = run {
+        element("edit-kiln-status").set_text_content(Some(
+            error
+                .as_string()
+                .as_deref()
+                .unwrap_or("Kiln could not start. Your manual tools are still available."),
+        ));
+    }
+}
+fn queue_change(rc: &Rc<RefCell<State>>, mut action: Action) {
+    let mut s = rc.borrow_mut();
+    if s.busy {
+        return;
+    }
+    let snapshot = s.snapshot();
+    if let Action::Compile { source_sha256, .. } = &mut action {
+        use sha2::Digest;
+        let Some(source) = snapshot["status"]["authoring"]["draft"].as_str() else {
+            say("Wait for the source draft to open.");
+            return;
+        };
+        let editor: HtmlTextAreaElement = element("edit-source").unchecked_into();
+        if editor.value() != source {
+            say("Keep your source draft before compiling it.");
+            return;
+        }
+        *source_sha256 = Some(format!("{:x}", sha2::Sha256::digest(source.as_bytes())));
+    }
+    let Ok(checkpoint) = serde_json::from_value(snapshot["status"]["checkpoint"].clone()) else {
+        say("Wait for the house to open.");
+        return;
+    };
+    let pending = PendingChange {
+        world: "haunted-house".into(),
+        checkpoint,
+        selection: s.selection.as_ref().map(|s| s.id.clone()),
+        panels: vec!["edit".into()],
+        draft: note().value(),
+        action,
+    };
+    if pending.validate().is_err() {
+        say("Choose a valid project change.");
+        return;
+    }
+    s.pending = Some(Resume {
+        owner: s.account.clone(),
+        project: serde_json::from_value(snapshot["status"]["project"].clone()).ok(),
+        pending,
+    });
+    s.persist();
+    s.auth_card();
 }
 fn listen(
     listeners: &mut Vec<(EventTarget, &'static str, Handler)>,
@@ -375,6 +573,10 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
             h.restore_checkpoint(serde_json::to_string(&p.pending.checkpoint).unwrap())?;
         }
         note().set_value(&p.pending.draft);
+        if let Action::Draft { source, .. } = &p.pending.action {
+            let editor: HtmlTextAreaElement = element("edit-source").unchecked_into();
+            editor.set_value(source);
+        }
         hide("edit-panel", false);
         if let Action::Propose { operations } = &p.pending.action {
             if let Some(Edit::Move { target, position }) = operations.first() {
@@ -403,6 +605,136 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
     listen(&mut listeners, "edit-close", "click", |_| {
         hide("edit-panel", true)
     })?;
+    let weak = Rc::downgrade(&rc);
+    listen(&mut listeners, "edit-capture", "click", move |_| {
+        let weak = weak.clone();
+        spawn_local(async move {
+            let Some(rc) = weak.upgrade() else { return };
+            let Ok(id) = rc.borrow().request(&Action::Capture) else {
+                return;
+            };
+            for _ in 0..300 {
+                pause(50).await;
+                let value = rc.borrow().snapshot();
+                if let Some(r) = value["receipts"]
+                    .as_array()
+                    .and_then(|rows| rows.iter().find(|r| r["request_id"] == id))
+                {
+                    let detail = &r["outcome"]["detail"];
+                    if detail["type"] == "capture_preview" {
+                        if let Some(png) = detail["png"].as_str() {
+                            let _ = element("edit-capture-image")
+                                .set_attribute("src", &format!("data:image/png;base64,{png}"));
+                            hide("edit-capture-image", false);
+                            say("Preview captured.");
+                        }
+                    } else {
+                        say(r["outcome"]["message"]
+                            .as_str()
+                            .unwrap_or("The preview could not be captured."));
+                    }
+                    break;
+                }
+            }
+        });
+    })?;
+    let weak = Rc::downgrade(&rc);
+    listen(&mut listeners, "edit-kiln-ask", "click", move |_| {
+        spawn_local(ask_kiln(weak.clone()));
+    })?;
+    listen(&mut listeners, "edit-kiln-stop", "click", move |_| {
+        let _ = kiln_call("kilnStop", None);
+    })?;
+    let weak = Rc::downgrade(&rc);
+    listen(&mut listeners, "edit-kiln-review", "click", move |_| {
+        let Some(rc) = weak.upgrade() else { return };
+        let result = kiln_call("kilnVerseCandidate", None).and_then(|raw| {
+            let value: Value = serde_json::from_str(&raw.as_string().unwrap_or_default())
+                .map_err(|_| JsValue::from_str("Kiln's change is not ready yet."))?;
+            if value["project"] != rc.borrow().snapshot()["status"]["project"]
+                || value["selection"] != rc.borrow().snapshot()["status"]["selection"]
+            {
+                return Err(JsValue::from_str(
+                    "The world changed. Ask Kiln again with the current selection.",
+                ));
+            }
+            let action: Action = serde_json::from_value(value["action"].clone())
+                .map_err(|_| JsValue::from_str("Kiln's change could not be read."))?;
+            if let Action::Draft { source, .. } = &action {
+                let field: HtmlTextAreaElement = element("edit-source").unchecked_into();
+                field.set_value(source);
+            }
+            queue_change(&rc, action);
+            Ok(())
+        });
+        if let Err(error) = result {
+            say(error
+                .as_string()
+                .as_deref()
+                .unwrap_or("Kiln's change could not be read."));
+        }
+    })?;
+    for (id, action) in [
+        ("edit-undo", Action::Undo),
+        ("edit-redo", Action::Redo),
+        (
+            "edit-source-compile",
+            Action::Compile {
+                asset: Some(EFFECT_ASSET.into()),
+                source_sha256: None,
+            },
+        ),
+    ] {
+        let weak = Rc::downgrade(&rc);
+        listen(&mut listeners, id, "click", move |_| {
+            if let Some(rc) = weak.upgrade() {
+                queue_change(&rc, action.clone());
+            }
+        })?;
+    }
+    let weak = Rc::downgrade(&rc);
+    listen(&mut listeners, "edit-source-draft", "click", move |_| {
+        if let Some(rc) = weak.upgrade() {
+            let source: HtmlTextAreaElement = element("edit-source").unchecked_into();
+            queue_change(
+                &rc,
+                Action::Draft {
+                    asset: EFFECT_ASSET.into(),
+                    source: source.value(),
+                },
+            );
+        }
+    })?;
+    for id in ["edit-material-apply", "edit-fog-apply"] {
+        let weak = Rc::downgrade(&rc);
+        listen(&mut listeners, id, "click", move |_| {
+            if let Some(rc) = weak.upgrade() {
+                let (target, parameter, value) = if id == "edit-fog-apply" {
+                    (
+                        "environment".into(),
+                        "fogDensity".into(),
+                        input("edit-fog").value_as_number(),
+                    )
+                } else {
+                    (
+                        input("edit-material").value(),
+                        input("edit-parameter").value(),
+                        input("edit-value").value_as_number(),
+                    )
+                };
+                queue_change(
+                    &rc,
+                    Action::Propose {
+                        operations: vec![Edit::Material {
+                            target,
+                            parameter,
+                            value,
+                        }],
+                    },
+                );
+            }
+        })?;
+    }
     let weak = Rc::downgrade(&rc);
     listen(&mut listeners, "edit-form", "submit", move |event| {
         event.prevent_default();
@@ -444,6 +776,7 @@ pub fn mount_studio() -> Result<BrowserStudio, JsValue> {
         };
         s.pending = Some(Resume {
             owner: s.account.clone(),
+            project: serde_json::from_value(snapshot["status"]["project"].clone()).ok(),
             pending,
         });
         s.persist();

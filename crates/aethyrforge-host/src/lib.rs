@@ -46,3 +46,6 @@ pub use universe::*;
 mod universe_browser;
 #[cfg(target_arch = "wasm32")]
 pub use universe_browser::*;
+
+mod authoring;
+pub use authoring::*;

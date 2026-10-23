@@ -25,6 +25,7 @@ pub mod repo;
 pub mod serve;
 pub mod shader;
 pub mod transcript;
+pub mod verse;
 pub mod vfs;
 pub mod wasi;
 
