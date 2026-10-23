@@ -1,7 +1,7 @@
 {
-  "engine_url": "https://hac86e5de276e8c2b1a---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app/",
-  "sdk_url": "https://hac86e5de276e8c2b1a---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app/sdk/27180b672233cc87014557737141913403c4c25a3b634f07a5e7f9857d0e7b9b/aethyrforge_host.js",
-  "release": "hac86e5de276e8c2b1a",
+  "engine_url": "https://aa81cce521fdc4d2d9---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app/",
+  "sdk_url": "https://aa81cce521fdc4d2d9---aethyrforge-editor-ezxz4mgdsq-uc.a.run.app/sdk/6bab7ec2b6b51ac94e32b52ca2e465c45c4b8e5055db8e672ae51f0cfaaf68a8/aethyrforge_host.js",
+  "release": "aa81cce521fdc4d2d9",
   "engine_abi": "aethyrforge.browser.v1",
   "project_format": 1,
   "project": {
