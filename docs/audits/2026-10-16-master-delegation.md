@@ -485,6 +485,14 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12571: the official website upload filter now includes only the public Fantasy
+  Props catalog under `docs/verse`. The installed Cloud SDK's actual file chooser
+  confirms exactly one added file, no removals, and no private inputs. The original
+  native image build failed on the two catalog `include_bytes!` calls; the fresh
+  local consumer builds. The official image rebuild and candidate checks continue
+  in #12561, without changing production traffic.
+  [Build-context check](../verse/aethyrforge-build-context-qualification.json).
+
 - #12570: private `0a28e7d` keeps the last/default positive render size through
   transient zero-size layout and preserves the existing size limit. Type checking
   and two viewport/player checks pass. Clean hosted house and personal-player runs

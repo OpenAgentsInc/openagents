@@ -98,6 +98,10 @@
 !/docs/video-lab/
 /docs/video-lab/*
 !/docs/video-lab/schemas/
+# The native house and publication routes embed this public metadata catalog.
+!/docs/verse/
+/docs/verse/*
+!/docs/verse/fantasy-props-catalog.json
 !/bench/
 /bench/*
 !/bench/coder/

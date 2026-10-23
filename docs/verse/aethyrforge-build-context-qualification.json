@@ -1,0 +1,17 @@
+{
+  "schema": "openagents.web.build-context-check.v1",
+  "added": [
+    "docs/verse/fantasy-props-catalog.json"
+  ],
+  "removed": [],
+  "metadata_sha256": "5a2cabaa27476bb3e17ec14493ba8e8b759d81afb03608a75b7d220445245c50",
+  "metadata_bytes": 143998,
+  "parser": "installed official Google Cloud SDK FileChooser",
+  "private_inputs_added": false,
+  "issue": 12571,
+  "failed_cloud_build": "90210157-3416-4a5d-94e6-c82f84a16fc3",
+  "failed_source": "315138015de4056532254fbd078846c8744450eb",
+  "failed_reason": "Official upload filter omitted the public catalog referenced by two native include_bytes! calls.",
+  "full_image_rebuild": "Pending in #12561; no image or deployment pass claimed.",
+  "production_traffic_changed": false
+}
