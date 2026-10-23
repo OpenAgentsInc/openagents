@@ -485,6 +485,12 @@ The status lines below summarize each issue and its comments. Open the issue for
 
 ## After-close checks
 
+- #12578: Verse login and signup handoffs use the shared zinc CSS without
+  loading the engine or tool finder. The failed-password form retains its CSRF,
+  return address, and HTTP status in focused Rust checks. Native authentication
+  markup passes desktop and narrow visual checks under a light device preference.
+  Production handoff checks continue with #12577's deployment.
+
 - #12577: dark zinc styling is on main in the public host and private engine.
   Seven focused Rust checks, public TypeScript/build checks, 883 private tests
   (13 skipped), and isolated browser checks of guest entry, Jarvis, sign-in
